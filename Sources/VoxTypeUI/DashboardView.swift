@@ -13,8 +13,7 @@ public struct DashboardView: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text(UIStrings.text(.appSubtitle, language: model.language))
                     .foregroundStyle(.secondary)
-                workflowPicker
-                controls
+                manualWorkflowSection
                 statusCards
                 if let pending = model.pendingResolution {
                     CandidatePanelView(
@@ -38,26 +37,9 @@ public struct DashboardView: View {
             .animation(.easeInOut(duration: 0.25), value: model.pendingResolution != nil)
         }
         .navigationTitle(UIStrings.text(.appTitle, language: model.language))
-        .toolbar {
-            ToolbarItemGroup {
-                Button {
-                    model.runSelectedWorkflow()
-                } label: {
-                    Label(model.workflowRunButtonTitle(for: model.selectedWorkflow), systemImage: "play.fill")
-                }
-                .disabled(!model.canRunSelectedWorkflow)
-
-                Button {
-                    model.deliverTopOfStack()
-                } label: {
-                    Label(UIStrings.text(.pasteTopOfStack, language: model.language), systemImage: "doc.on.clipboard")
-                }
-                .disabled(!model.canDeliverTopOfStack)
-            }
-        }
     }
 
-    private var workflowPicker: some View {
+    private var manualWorkflowSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(UIStrings.text(.workflow, language: model.language))
@@ -67,37 +49,48 @@ public struct DashboardView: View {
                     model.openWorkflowEditor()
                 }
             }
-            Picker(UIStrings.text(.workflow, language: model.language), selection: $model.selectedWorkflowID) {
-                ForEach(model.workflows) { workflow in
-                    Text(model.localizedWorkflowName(for: workflow)).tag(workflow.id)
-                }
-            }
-            .pickerStyle(.menu)
-            .disabled(model.isRunning)
 
-            if let selectedWorkflow = model.selectedWorkflow {
-                Text(UIStrings.workflowDetail(selectedWorkflow, language: model.language))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if model.enabledManualWorkflows.isEmpty {
+                Text(
+                    model.language == .english
+                        ? "Enable a manual workflow in the workflow editor to run it."
+                        : "请先在工作流编辑器中启用一个手动工作流。"
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(model.enabledManualWorkflows) { workflow in
+                        Button {
+                            model.runWorkflow(workflow)
+                        } label: {
+                            HStack(alignment: .center, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(model.localizedWorkflowName(for: workflow))
+                                        .font(.subheadline.weight(.medium))
+                                    Text(UIStrings.workflowDetail(workflow, language: model.language))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                Text(model.workflowRunButtonTitle(for: workflow))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.quaternary.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!model.canTriggerWorkflow(workflow))
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var controls: some View {
-        HStack(spacing: 12) {
-            Button(model.workflowRunButtonTitle(for: model.selectedWorkflow)) {
-                model.runSelectedWorkflow()
-            }
-            .keyboardShortcut("r", modifiers: .command)
-            .disabled(!model.canRunSelectedWorkflow)
-
-            Button(UIStrings.text(.pasteTopOfStack, language: model.language)) {
-                model.deliverTopOfStack()
-            }
-            .keyboardShortcut("v", modifiers: [.command, .shift])
-            .disabled(!model.canDeliverTopOfStack)
-        }
     }
 
     private var statusCards: some View {
@@ -157,7 +150,7 @@ public struct DashboardView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(model.eventFeed) { entry in
+                        ForEach(model.eventFeed.reversed()) { entry in
                             Text(entry.text(for: model.language))
                                 .voxCard(cornerRadius: 10, opacity: 0.2, padding: 10)
                         }

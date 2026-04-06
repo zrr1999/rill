@@ -93,7 +93,7 @@ public struct DiagnosticsView: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(Array(model.diagnosticEvents.prefix(20).enumerated()), id: \.offset) { entry in
+                    ForEach(Array(model.diagnosticEvents.suffix(20).reversed().enumerated()), id: \.offset) { entry in
                         diagnosticRow(entry.element)
                     }
                 }

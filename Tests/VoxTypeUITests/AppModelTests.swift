@@ -246,7 +246,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(harness.model.historyRecords.first?.outcome, .completed)
     }
 
-    func testRunSelectedWorkflowGuardsAgainstDoubleClickBeforeEventsArrive() async {
+    func testRunWorkflowGuardsAgainstDoubleClickBeforeEventsArrive() async {
         let harness = makeHarness(delay: .milliseconds(150))
         await waitForListenerSetup()
         let stream = await harness.eventBus.stream()
@@ -261,8 +261,8 @@ final class AppModelTests: XCTestCase {
             return events
         }
 
-        harness.model.runSelectedWorkflow()
-        harness.model.runSelectedWorkflow()
+        harness.model.runWorkflow(harness.workflow)
+        harness.model.runWorkflow(harness.workflow)
 
         let events = await collector.value
         let failures = events.compactMap { event -> String? in
@@ -325,7 +325,7 @@ final class AppModelTests: XCTestCase {
         )
         await eventBusHolder.set(harness.eventBus)
 
-        harness.model.runSelectedWorkflow()
+        harness.model.runWorkflow(workflow)
         await waitForEventProcessing()
 
         let startedSnapshot = await probe.snapshot()
@@ -337,9 +337,9 @@ final class AppModelTests: XCTestCase {
             harness.model.workflowRunButtonTitle(for: workflow),
             UIStrings.text(.workflowStopAndTranscribe, language: harness.model.language)
         )
-        XCTAssertTrue(harness.model.canRunSelectedWorkflow)
+        XCTAssertTrue(harness.model.canTriggerWorkflow(workflow))
 
-        harness.model.runSelectedWorkflow()
+        harness.model.runWorkflow(workflow)
         await waitForEventProcessing()
 
         let finishedSnapshot = await probe.snapshot()
@@ -365,7 +365,7 @@ final class AppModelTests: XCTestCase {
             }
         )
 
-        harness.model.runSelectedWorkflow()
+        harness.model.runWorkflow(workflow)
         await waitForEventProcessing()
 
         XCTAssertFalse(harness.model.isRunning)
@@ -412,7 +412,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(harness.model.historyRecords.first?.isStackRelated == true)
     }
 
-    func testLoadsPersistedLanguageAndWorkflowSelection() async {
+    func testLoadsPersistedLanguageWhileIgnoringLegacyWorkflowSelection() async {
         let secondaryWorkflow = WorkflowDefinition(
             name: "Secondary Workflow",
             titleKey: .rewriteDemoStack,
@@ -436,7 +436,7 @@ final class AppModelTests: XCTestCase {
         await waitForEventProcessing()
 
         XCTAssertEqual(harness.model.language, .simplifiedChinese)
-        XCTAssertEqual(harness.model.selectedWorkflowID, secondaryWorkflow.id)
+        XCTAssertEqual(harness.model.enabledManualWorkflows.map(\.id), [harness.workflow.id, secondaryWorkflow.id])
     }
 
     func testLoadSettingsUsesBatchFetchWithoutRestoreWrites() async {
@@ -468,7 +468,6 @@ final class AppModelTests: XCTestCase {
         let activity = await settingsStore.activitySnapshot()
 
         XCTAssertEqual(harness.model.language, .simplifiedChinese)
-        XCTAssertEqual(harness.model.selectedWorkflowID, secondaryWorkflow.id)
         XCTAssertEqual(harness.model.deepgramAPIKey, "persisted-key")
         XCTAssertEqual(activity.batchReadCount, 1)
         XCTAssertEqual(activity.singleReadCount, 0)
@@ -476,7 +475,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(activity.removeCounts.isEmpty)
     }
 
-    func testChangingSettingsPersistsLanguageAndWorkflowSelection() async throws {
+    func testChangingSettingsPersistsLanguageWithoutWorkflowSelection() async throws {
         let primaryWorkflow = makeDefaultWorkflow()
         let secondaryWorkflow = WorkflowDefinition(
             name: "Secondary Workflow",
@@ -495,17 +494,16 @@ final class AppModelTests: XCTestCase {
 
         let expectedLanguage: AppLanguage = harness.model.language == .english ? .simplifiedChinese : .english
         harness.model.language = expectedLanguage
-        harness.model.selectedWorkflowID = secondaryWorkflow.id
         await waitForEventProcessing()
 
         let storedLanguage = try await settingsStore.string(forKey: .interfaceLanguage)
         let storedWorkflowID = try await settingsStore.string(forKey: .selectedWorkflowID)
 
         XCTAssertEqual(storedLanguage, expectedLanguage.rawValue)
-        XCTAssertEqual(storedWorkflowID, secondaryWorkflow.id.uuidString)
+        XCTAssertNil(storedWorkflowID)
     }
 
-    func testLoadSettingsRestoresClipboardMergeSimilarPreference() async {
+    func testLoadSettingsIgnoresLegacyClipboardMergeSimilarPreference() async {
         let settingsStore = UITestSettingsStore(
             storage: [.clipboardMergeSimilarItems: "true"]
         )
@@ -519,24 +517,42 @@ final class AppModelTests: XCTestCase {
 
         let activity = await settingsStore.activitySnapshot()
 
-        XCTAssertTrue(harness.model.mergeSimilarClipboardItems)
+        XCTAssertFalse(harness.model.mergeSimilarClipboardItems)
         XCTAssertTrue(activity.setCounts.isEmpty)
     }
 
-    func testUpdatingClipboardMergeSimilarPreferencePersistsSetting() async throws {
+    func testLoadSettingsRestoresClipboardHistoryVisibilityPreference() async {
+        let settingsStore = UITestSettingsStore(
+            storage: [.clipboardHistoryVisibility: ClipboardHistoryVisibility.all.rawValue]
+        )
+        let harness = makeHarness(
+            settingsStore: settingsStore,
+            settingsWriteDebounceDuration: .milliseconds(5)
+        )
+
+        await waitForEventProcessing()
+        try? await Task.sleep(for: .milliseconds(30))
+
+        let activity = await settingsStore.activitySnapshot()
+
+        XCTAssertEqual(harness.model.clipboardHistoryVisibility, .all)
+        XCTAssertTrue(activity.setCounts.isEmpty)
+    }
+
+    func testUpdatingClipboardHistoryVisibilityPersistsSetting() async throws {
         let settingsStore = UITestSettingsStore()
         let harness = makeHarness(settingsStore: settingsStore)
 
         await waitForEventProcessing()
 
-        harness.model.mergeSimilarClipboardItems = true
+        harness.model.clipboardHistoryVisibility = .all
         await waitForEventProcessing()
 
-        let storedValue = try await settingsStore.string(forKey: .clipboardMergeSimilarItems)
+        let storedValue = try await settingsStore.string(forKey: .clipboardHistoryVisibility)
         let activity = await settingsStore.activitySnapshot()
 
-        XCTAssertEqual(storedValue, "true")
-        XCTAssertEqual(activity.setCounts[.clipboardMergeSimilarItems], 1)
+        XCTAssertEqual(storedValue, ClipboardHistoryVisibility.all.rawValue)
+        XCTAssertEqual(activity.setCounts[.clipboardHistoryVisibility], 1)
     }
 
     func testDeepgramTextSettingWritesAreDebounced() async {
@@ -608,7 +624,7 @@ final class AppModelTests: XCTestCase {
         )
         await waitForEventProcessing()
 
-        XCTAssertEqual(harness.model.diagnosticEvents.first?.event, "diagnostic.live")
+        XCTAssertEqual(harness.model.diagnosticEvents.last?.event, "diagnostic.live")
     }
 
     func testLoadsPersistedDeepgramSettings() async {
@@ -633,15 +649,15 @@ final class AppModelTests: XCTestCase {
     func testLoadsPersistedWhisperKitModelSelection() async {
         let settingsStore = UITestSettingsStore(
             storage: [
-                .whisperKitModel: "openai_whisper-small",
+                .whisperKitModel: "distil-whisper_distil-large-v3_594MB",
             ]
         )
         let harness = makeHarness(settingsStore: settingsStore)
 
         await waitForEventProcessing()
 
-        XCTAssertEqual(harness.model.whisperKitModelOption, .small)
-        XCTAssertEqual(harness.model.whisperKitModel, "openai_whisper-small")
+        XCTAssertEqual(harness.model.whisperKitModelOption, .distilLargeV3Compact)
+        XCTAssertEqual(harness.model.whisperKitModel, "distil-whisper_distil-large-v3_594MB")
     }
 
     func testLoadsPersistedDownloadedWhisperKitModels() async throws {
@@ -694,6 +710,64 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(harness.model.preferredSpeechEngine, .cloud)
         XCTAssertEqual(harness.model.defaultWorkflowDraft().recognizer, .cloudSpeech)
+    }
+
+    func testBuiltinHotkeyWorkflowUsesPreferredSpeechEngineForExecution() async {
+        let harness = makeHarness(workflows: [makeBuiltinPushToTalkWorkflow()])
+
+        harness.model.preferredSpeechEngine = .cloud
+
+        let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
+
+        XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.recognizerID, AppModel.deepgramRecognizerID)
+    }
+
+    func testBuiltinHotkeyWorkflowUsesConfiguredVoiceGroupOutputMode() async {
+        let harness = makeHarness(workflows: [makeBuiltinPushToTalkWorkflow()])
+
+        harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
+
+        let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
+
+        XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.outputActions.first?.id, "stack.push")
+        XCTAssertEqual(
+            resolvedHotkeyWorkflow?.metadata[WorkflowMetadataKey.targetClipboardGroupID],
+            ClipboardGroup.voiceGroupID.uuidString
+        )
+    }
+
+    func testCustomHotkeyWorkflowKeepsOwnRecognizerWhenPreferredSpeechEngineChanges() async {
+        let customHotkeyWorkflow = WorkflowDefinition(
+            name: "Custom Hotkey Workflow",
+            trigger: .hotkey,
+            pipeline: PipelineDeclaration(
+                recognizerID: "custom.hotkey.recognizer",
+                outputActions: [OutputActionReference(id: "ui.test.action")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "orange"),
+            metadata: [AppModel.workflowOriginMetadataKey: AppModel.userWorkflowOriginMetadataValue]
+        )
+        let harness = makeHarness(workflows: [customHotkeyWorkflow])
+
+        harness.model.preferredSpeechEngine = .cloud
+
+        let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
+
+        XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.recognizerID, "custom.hotkey.recognizer")
+    }
+
+    func testPreparingLiveSubtitleSnapshotAutoHidesWhenNoFurtherUpdatesArrive() async {
+        let harness = makeHarness(liveSubtitlePreparingHideDelay: .milliseconds(80))
+        let snapshot = LiveSubtitleSnapshot(runID: UUID(), phase: .preparing, providerID: "whisperkit.stream")
+
+        await waitForEventProcessing()
+        await harness.eventBus.publish(.liveSubtitleUpdated(snapshot))
+        await waitForEventProcessing()
+        XCTAssertEqual(harness.model.liveSubtitleSnapshot?.phase, .preparing)
+
+        try? await Task.sleep(for: .milliseconds(140))
+
+        XCTAssertNil(harness.model.liveSubtitleSnapshot)
     }
 
     func testLoadsPersistedClipboardPanelHotkeyBinding() async {
@@ -773,7 +847,6 @@ final class AppModelTests: XCTestCase {
 
         XCTAssertEqual(harness.model.customWorkflows.count, 1)
         XCTAssertEqual(harness.model.customWorkflows.first?.name, "Custom Follow-up")
-        XCTAssertEqual(harness.model.selectedWorkflowID, customWorkflow.id)
         XCTAssertTrue(harness.model.isCustomWorkflow(try XCTUnwrap(harness.model.customWorkflows.first)))
     }
 
@@ -785,9 +858,8 @@ final class AppModelTests: XCTestCase {
             WorkflowEditorDraft(
                 name: "Follow-up Draft",
                 recognizer: .cloudSpeech,
-                destination: .copyToClipboard,
-                trigger: .manual,
-                normalizeWhitespace: true
+                postProcessSteps: [.init(kind: .normalizeWhitespace)],
+                destination: .copyToClipboard
             )
         )
         await waitForEventProcessing()
@@ -857,18 +929,18 @@ final class AppModelTests: XCTestCase {
             }
         )
 
-        harness.model.whisperKitModelOption = .small
+        harness.model.whisperKitModelOption = .distilLargeV3Compact
         await waitForEventProcessing()
 
         let snapshot = await probe.snapshot()
         XCTAssertEqual(snapshot.prepareCount, 1)
-        XCTAssertEqual(snapshot.lastSettings?.model, "openai_whisper-small")
+        XCTAssertEqual(snapshot.lastSettings?.model, "distil-whisper_distil-large-v3_594MB")
         XCTAssertEqual(snapshot.reportedProgress, [0.5])
-        XCTAssertEqual(harness.model.whisperKitModelOption, .small)
+        XCTAssertEqual(harness.model.whisperKitModelOption, .distilLargeV3Compact)
         XCTAssertEqual(harness.model.whisperKitPreparationState, .ready)
         XCTAssertEqual(harness.model.whisperKitPreparationProgress, 1)
-        XCTAssertEqual(harness.model.whisperKitPreparedModelIdentifier, "openai_whisper-small")
-        XCTAssertEqual(harness.model.downloadedWhisperKitModels, ["openai_whisper-small"])
+        XCTAssertEqual(harness.model.whisperKitPreparedModelIdentifier, "distil-whisper_distil-large-v3_594MB")
+        XCTAssertEqual(harness.model.downloadedWhisperKitModels, ["distil-whisper_distil-large-v3_594MB"])
         XCTAssertNil(harness.model.whisperKitPreparationError)
     }
 
@@ -941,10 +1013,10 @@ final class AppModelTests: XCTestCase {
         harness.model.saveWorkflowDraft(
             WorkflowEditorDraft(
                 name: "Chainable Menu Workflow",
+                eventType: .menuBar,
                 recognizer: .cloudSpeech,
+                postProcessSteps: [.init(kind: .normalizeWhitespace)],
                 destination: .copyToClipboard,
-                trigger: .menuBar,
-                normalizeWhitespace: true,
                 excludeFromWorkflowCapture: false
             )
         )
@@ -997,15 +1069,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(harness.model.workflowTriggerConflicts.isEmpty)
     }
 
-    func testDisabledSelectedWorkflowCannotRun() async {
+    func testEnablingBuiltinExclusiveWorkflowDisablesSiblingInsteadOfReportingConflict() async {
+        let dictation = makeBuiltinPushToTalkWorkflow()
+        let polish = makeBuiltinPushToTalkPolishWorkflow()
+        let disabledPayload = try? String(
+            data: JSONEncoder().encode([polish.id.uuidString: false]),
+            encoding: .utf8
+        )
+        let settingsStore = UITestSettingsStore(
+            storage: [.workflowEnabledStates: disabledPayload ?? ""]
+        )
+        let harness = makeHarness(
+            workflows: [dictation, polish],
+            settingsStore: settingsStore
+        )
+        await waitForEventProcessing()
+
+        harness.model.setWorkflowEnabled(true, for: polish.id)
+
+        XCTAssertFalse(harness.model.isWorkflowEnabled(dictation))
+        XCTAssertTrue(harness.model.isWorkflowEnabled(polish))
+        XCTAssertNil(harness.model.workflowLibraryError)
+    }
+
+    func testDisabledManualWorkflowCannotRun() async {
         let harness = makeHarness()
         harness.model.language = .simplifiedChinese
 
         harness.model.setWorkflowEnabled(false, for: harness.workflow.id)
-        harness.model.runSelectedWorkflow()
+        harness.model.runWorkflow(harness.workflow)
 
         XCTAssertFalse(harness.model.isRunning)
-        XCTAssertFalse(harness.model.canRunSelectedWorkflow)
+        XCTAssertFalse(harness.model.canTriggerWorkflow(harness.workflow))
         XCTAssertEqual(harness.model.lastFailure, "请先启用这个工作流再运行。")
     }
 
@@ -1015,10 +1110,9 @@ final class AppModelTests: XCTestCase {
             WorkflowEditorDraft(
                 name: "Local Override",
                 recognizer: .localSpeech,
-                destination: .pasteIntoApp,
-                trigger: .manual,
-                normalizeWhitespace: true,
-                whisperKitModelOverride: "openai_whisper-large-v3-v20240930"
+                whisperKitModelOverride: "openai_whisper-large-v3-v20240930",
+                postProcessSteps: [.init(kind: .normalizeWhitespace)],
+                destination: .pasteIntoApp
             )
         )
 
@@ -1072,18 +1166,17 @@ final class AppModelTests: XCTestCase {
                             sourceBundleIdentifier: "com.apple.Safari"
                         )
                     ],
-                    groups: [
-                        ClipboardGroupSummary(
-                            group: group,
-                            count: 1,
-                            previewText: "saved item"
-                        )
-                    ],
+                    groups: [],
+                    defaultGroup: ClipboardGroupSummary(
+                        group: group,
+                        count: 1,
+                        previewText: "saved item"
+                    ),
                     appAssignments: [
                         ClipboardAppAssignment(
                             bundleIdentifier: "com.apple.Safari",
                             applicationName: "Safari",
-                            groupID: group.id
+                            groupID: nil
                         )
                     ]
                 )
@@ -1092,9 +1185,52 @@ final class AppModelTests: XCTestCase {
         await waitForEventProcessing()
 
         XCTAssertEqual(harness.model.clipboardItems.first?.text, "saved item")
-        XCTAssertEqual(harness.model.clipboardGroups.first?.count, 1)
+        XCTAssertEqual(harness.model.clipboardDefaultGroup.count, 1)
         XCTAssertEqual(harness.model.clipboardAppAssignments.first?.bundleIdentifier, "com.apple.Safari")
         XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.representativeItem.text, "saved item")
+    }
+
+    func testClipboardUpdatedPreservesExplicitGroupSummariesAlongsideDefaultFallback() async {
+        let harness = makeHarness()
+        await waitForListenerSetup()
+        let defaultGroup = ClipboardGroup.defaultGroup
+        let explicitGroup = ClipboardGroup(name: "Browser")
+
+        await harness.eventBus.publish(
+            .clipboardUpdated(
+                ClipboardStoreSnapshot(
+                    items: [
+                        ClipboardHistoryItem(
+                            groupID: defaultGroup.id,
+                            text: "default item",
+                            sourceKind: .system
+                        ),
+                        ClipboardHistoryItem(
+                            groupID: explicitGroup.id,
+                            text: "browser item",
+                            sourceKind: .system
+                        )
+                    ],
+                    groups: [
+                        ClipboardGroupSummary(
+                            group: explicitGroup,
+                            count: 1,
+                            previewText: "browser item"
+                        )
+                    ],
+                    defaultGroup: ClipboardGroupSummary(
+                        group: defaultGroup,
+                        count: 1,
+                        previewText: "default item"
+                    ),
+                    appAssignments: []
+                )
+            )
+        )
+        await waitForEventProcessing()
+
+        XCTAssertEqual(harness.model.clipboardGroups.first?.group.id, explicitGroup.id)
+        XCTAssertEqual(harness.model.clipboardDefaultGroup.count, 1)
     }
 
     func testClipboardHistoryEntriesDeduplicateCopiesAndPasteCounts() async {
@@ -1135,19 +1271,19 @@ final class AppModelTests: XCTestCase {
                             sourceKind: .system
                         ),
                     ],
-                    groups: [
-                        ClipboardGroupSummary(
-                            group: group,
-                            count: 3,
-                            previewText: "alpha"
-                        )
-                    ],
+                    groups: [],
+                    defaultGroup: ClipboardGroupSummary(
+                        group: group,
+                        count: 3,
+                        previewText: "alpha"
+                    ),
                     appAssignments: []
                 )
             )
         )
         await waitForEventProcessing()
 
+        XCTAssertEqual(harness.model.clipboardDefaultGroup.count, 3)
         XCTAssertEqual(harness.model.clipboardHistoryEntries.count, 2)
         XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.copyCount, 2)
         XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.pasteCount, 3)
@@ -1156,8 +1292,11 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.lastUsedAt, laterUse)
     }
 
-    func testClipboardHistoryEntriesCanMergeSimilarTextWhenEnabled() async {
-        let harness = makeHarness()
+    func testClipboardHistoryEntriesDoNotMergeSimilarTextWhileFeatureIsDisabled() async {
+        let settingsStore = UITestSettingsStore(
+            storage: [.clipboardMergeSimilarItems: "true"]
+        )
+        let harness = makeHarness(settingsStore: settingsStore)
         await waitForListenerSetup()
         let group = ClipboardGroup.defaultGroup
         let now = Date()
@@ -1185,13 +1324,12 @@ final class AppModelTests: XCTestCase {
                             sourceKind: .system
                         ),
                     ],
-                    groups: [
-                        ClipboardGroupSummary(
-                            group: group,
-                            count: 3,
-                            previewText: "Hello, world!"
-                        )
-                    ],
+                    groups: [],
+                    defaultGroup: ClipboardGroupSummary(
+                        group: group,
+                        count: 3,
+                        previewText: "Hello, world!"
+                    ),
                     appAssignments: []
                 )
             )
@@ -1199,13 +1337,7 @@ final class AppModelTests: XCTestCase {
         await waitForEventProcessing()
 
         XCTAssertEqual(harness.model.clipboardHistoryEntries.count, 3)
-
-        harness.model.mergeSimilarClipboardItems = true
-        await waitForEventProcessing()
-
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.count, 2)
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.copyCount, 2)
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.includesSimilarText, true)
+        XCTAssertFalse(harness.model.mergeSimilarClipboardItems)
     }
 
     func testClipboardPanelRequestedOpensClipboardPanel() async {
@@ -1263,6 +1395,7 @@ private func makeHarness(
     delay: Duration = .zero,
     settingsStore: (any SettingsStore)? = nil,
     settingsWriteDebounceDuration: Duration = .milliseconds(300),
+    liveSubtitlePreparingHideDelay: Duration = .seconds(15),
     diagnosticRepository: (any DiagnosticRepository)? = nil,
     permissionSnapshot: PermissionSnapshot = PermissionSnapshot(accessibility: .granted, microphone: .unknown),
     prepareWhisperKitAction: @escaping @Sendable (
@@ -1318,6 +1451,7 @@ private func makeHarness(
         diagnosticRepository: diagnosticRepository,
         settingsStore: settingsStore,
         settingsWriteDebounceDuration: settingsWriteDebounceDuration,
+        liveSubtitlePreparingHideDelay: liveSubtitlePreparingHideDelay,
         prepareWhisperKitAction: prepareWhisperKitAction,
         startWorkflowAudioRunAction: startWorkflowAudioRunAction,
         finishWorkflowAudioRunAction: finishWorkflowAudioRunAction,
@@ -1349,6 +1483,55 @@ private func makeDefaultWorkflow() -> WorkflowDefinition {
             outputActions: [OutputActionReference(id: "ui.test.action")]
         ),
         ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
+    )
+}
+
+private func makeBuiltinPushToTalkWorkflow() -> WorkflowDefinition {
+    WorkflowDefinition(
+        id: UUID(uuidString: "B9E19A88-F9FB-4AB3-8444-CDBF7E215A88") ?? UUID(),
+        name: "Speech to Text",
+        titleKey: .pushToTalkCapture,
+        trigger: .hotkey,
+        pipeline: PipelineDeclaration(
+            recognizerID: AppModel.whisperKitRecognizerID,
+            postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
+            outputActions: [OutputActionReference(id: "inject.text")]
+        ),
+        ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red"),
+        metadata: [
+            AppModel.workflowCatalogMetadataKey: AppModel.builtinWorkflowCatalogValue,
+            AppModel.triggerGestureMetadataKey: AppModel.fnHoldGestureValue,
+            WorkflowMetadataKey.builtinKind: AppModel.builtinPushToTalkKindValue,
+            WorkflowMetadataKey.recognizerSelectionMode: "auto",
+            WorkflowMetadataKey.exclusiveGroup: "builtin.push-to-talk",
+            WorkflowMetadataKey.settingsExposeOutputMode: "true",
+        ]
+    )
+}
+
+private func makeBuiltinPushToTalkPolishWorkflow() -> WorkflowDefinition {
+    WorkflowDefinition(
+        id: UUID(uuidString: "BAE19A88-F9FB-4AB3-8444-CDBF7E215A88") ?? UUID(),
+        name: "Speech to Text + Polish",
+        titleKey: .pushToTalkPolish,
+        trigger: .hotkey,
+        pipeline: PipelineDeclaration(
+            recognizerID: AppModel.whisperKitRecognizerID,
+            postProcessSteps: [
+                PostProcessStep(kind: .normalizeWhitespace),
+                PostProcessStep(kind: .llmRewrite, prompt: "Polish into a concise final message while preserving meaning and language."),
+            ],
+            outputActions: [OutputActionReference(id: "inject.text")]
+        ),
+        ui: WorkflowUIConfig(symbolName: "wand.and.stars", accentColorName: "purple"),
+        metadata: [
+            AppModel.workflowCatalogMetadataKey: AppModel.builtinWorkflowCatalogValue,
+            AppModel.triggerGestureMetadataKey: AppModel.fnHoldGestureValue,
+            WorkflowMetadataKey.builtinKind: AppModel.builtinPushToTalkPolishKindValue,
+            WorkflowMetadataKey.recognizerSelectionMode: "auto",
+            WorkflowMetadataKey.exclusiveGroup: "builtin.push-to-talk",
+            WorkflowMetadataKey.settingsExposeOutputMode: "true",
+        ]
     )
 }
 

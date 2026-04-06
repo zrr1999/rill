@@ -22,6 +22,13 @@ enum WorkflowAudioRunState: Sendable, Equatable {
     case transcribing(workflowID: UUID)
 }
 
+public enum ClipboardHistoryVisibility: String, CaseIterable, Identifiable, Sendable, Equatable {
+    case remainingOnly = "remaining-only"
+    case all = "all"
+
+    public var id: String { rawValue }
+}
+
 private actor WhisperKitPreparationProgressRelay {
     weak var model: AppModel?
 
@@ -53,10 +60,9 @@ public struct WorkflowTriggerConflict: Identifiable, Equatable, Sendable {
 public final class AppModel {
     private static let settingsLoadKeys: [AppSettingKey] = [
         .interfaceLanguage,
-        .selectedWorkflowID,
         .customWorkflows,
         .workflowEnabledStates,
-        .clipboardMergeSimilarItems,
+        .clipboardHistoryVisibility,
         .clipboardPanelHotkey,
         .preferredSpeechEngine,
         .whisperKitModel,
@@ -72,6 +78,7 @@ public final class AppModel {
         .deepgramBaseURL,
         .deepgramModel,
         .deepgramLanguage,
+        .builtinPushToTalkOutputMode,
     ]
 
     private static let debouncedStringSettingKeys: Set<AppSettingKey> = [
@@ -98,12 +105,6 @@ public final class AppModel {
     public private(set) var workflowTriggerConflicts: [WorkflowTriggerConflict] = []
     public private(set) var workflowConflictIDsByWorkflowID: [UUID: [UUID]] = [:]
     public var selectedSidebarSection: SidebarSection? = .dashboard
-    public var selectedWorkflowID: UUID {
-        didSet {
-            guard oldValue != selectedWorkflowID else { return }
-            persistSelectedWorkflowPreference()
-        }
-    }
     public var language: AppLanguage {
         didSet {
             guard oldValue != language else { return }
@@ -124,6 +125,12 @@ public final class AppModel {
             applyPreferredSpeechEngineSelectionIfNeeded()
             guard !isRestoringSettings, preferredSpeechEngine == .local else { return }
             prepareWhisperKitModel()
+        }
+    }
+    public var builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode {
+        didSet {
+            guard oldValue != builtinPushToTalkOutputMode else { return }
+            persistBuiltinPushToTalkOutputModePreference()
         }
     }
     public var whisperKitModelOption: WhisperKitModelOption {
@@ -317,17 +324,28 @@ public final class AppModel {
     public private(set) var historyRecords: [HistoryRecord] = []
     public private(set) var clipboardItems: [ClipboardHistoryItem] = []
     public private(set) var clipboardGroups: [ClipboardGroupSummary] = []
+    public private(set) var clipboardDefaultGroup = ClipboardGroupSummary(
+        group: .defaultGroup,
+        count: 0,
+        previewText: nil
+    )
     public private(set) var clipboardAppAssignments: [ClipboardAppAssignment] = []
+    public private(set) var clipboardRemainingItemIDs: Set<UUID> = []
+    public private(set) var liveSubtitleSnapshot: LiveSubtitleSnapshot?
     private(set) var clipboardHistoryEntries: [ClipboardHistoryEntry] = []
-    public var mergeSimilarClipboardItems = false {
+    public var clipboardHistoryVisibility: ClipboardHistoryVisibility {
         didSet {
-            guard oldValue != mergeSimilarClipboardItems else { return }
-            rebuildClipboardHistoryEntries()
-            persistClipboardMergeSimilarPreference()
+            guard oldValue != clipboardHistoryVisibility else { return }
+            persistClipboardHistoryVisibilityPreference()
         }
     }
-    public var canRunSelectedWorkflow: Bool {
-        canTriggerWorkflow(selectedWorkflow)
+    // TODO: Re-enable similar-text merging once the clipboard history grouping regression is fixed.
+    public private(set) var mergeSimilarClipboardItems = false
+    public var enabledManualWorkflows: [WorkflowDefinition] {
+        enabledWorkflows(for: .manual)
+    }
+    public var canRunAnyManualWorkflow: Bool {
+        enabledManualWorkflows.contains(where: canTriggerWorkflow)
     }
     public var canDeliverTopOfStack: Bool {
         stackCount > 0 && permissionSnapshot.accessibility == .granted
@@ -377,6 +395,9 @@ public final class AppModel {
     private var isRestoringSettings = false
     private var pendingSettingWriteTasks: [AppSettingKey: Task<Void, Never>] = [:]
     private var pendingSettingWriteGenerations: [AppSettingKey: Int] = [:]
+    private var pendingLiveSubtitleHideTask: Task<Void, Never>?
+    private var clipboardUpdateDebounceTask: Task<Void, Never>?
+    private let liveSubtitlePreparingHideDelay: Duration
 
     public init(
         workflows: [WorkflowDefinition],
@@ -388,6 +409,7 @@ public final class AppModel {
         diagnosticRepository: (any DiagnosticRepository)? = nil,
         settingsStore: (any SettingsStore)? = nil,
         settingsWriteDebounceDuration: Duration = .milliseconds(300),
+        liveSubtitlePreparingHideDelay: Duration = .seconds(15),
         prepareWhisperKitAction: @escaping @Sendable (
             WhisperKitSettings,
             @escaping @Sendable (Progress) -> Void
@@ -432,10 +454,11 @@ public final class AppModel {
     ) {
         self.builtInWorkflows = workflows
         self.workflows = workflows
-        self.selectedWorkflowID = workflows.first?.id ?? UUID()
         self.language = language
+        self.clipboardHistoryVisibility = .remainingOnly
         self.clipboardPanelHotkeyBinding = .doubleCommand
         self.preferredSpeechEngine = .local
+        self.builtinPushToTalkOutputMode = .pasteIntoApp
         self.whisperKitModelOption = .automatic
         self.whisperKitCustomModel = ""
         self.whisperKitModel = WhisperKitSettings().model
@@ -458,6 +481,7 @@ public final class AppModel {
         self.diagnosticRepository = diagnosticRepository
         self.settingsStore = settingsStore
         self.settingsWriteDebounceDuration = settingsWriteDebounceDuration
+        self.liveSubtitlePreparingHideDelay = liveSubtitlePreparingHideDelay
         self.prepareWhisperKitAction = prepareWhisperKitAction
         self.startWorkflowAudioRunAction = startWorkflowAudioRunAction
         self.finishWorkflowAudioRunAction = finishWorkflowAudioRunAction
@@ -471,7 +495,6 @@ public final class AppModel {
         self.openAccessibilitySettingsAction = openAccessibilitySettingsAction
         self.openMicrophoneSettingsAction = openMicrophoneSettingsAction
         synchronizeWorkflowEnabledStates()
-        reconcileSelectedWorkflow(preferredWorkflowID: self.selectedWorkflowID)
         if let deliveryStack {
             Task { [weak self] in
                 let snapshot = await deliveryStack.clipboardSnapshot()
@@ -484,10 +507,6 @@ public final class AppModel {
         loadHistory()
         loadDiagnostics()
         startListening()
-    }
-
-    public var selectedWorkflow: WorkflowDefinition? {
-        workflows.first(where: { $0.id == selectedWorkflowID })
     }
 
     public func isWorkflowEnabled(_ workflow: WorkflowDefinition) -> Bool {
@@ -510,17 +529,28 @@ public final class AppModel {
         }
 
         hasModifiedWorkflowLibrary = true
+        if isEnabled, let exclusiveGroup = workflow.exclusiveGroupIdentifier {
+            for candidate in workflows where
+                candidate.id != workflowID &&
+                candidate.exclusiveGroupIdentifier == exclusiveGroup
+            {
+                workflowEnabledStates[candidate.id] = false
+            }
+        }
         workflowEnabledStates[workflowID] = isEnabled
         workflowLibraryError = nil
         updateWorkflowTriggerConflicts()
-        reconcileSelectedWorkflow(preferredWorkflowID: selectedWorkflowID)
         persistWorkflowEnabledStates()
     }
 
     public func enabledWorkflows(for trigger: TriggerBinding) -> [WorkflowDefinition] {
-        workflows.filter { workflow in
-            workflow.trigger == trigger && isWorkflowEnabled(workflow)
-        }
+        workflows
+            .filter { workflow in
+                workflow.trigger == trigger && isWorkflowEnabled(workflow)
+            }
+            .map { workflow in
+                resolvedWorkflowForExecution(workflow, trigger: trigger)
+            }
     }
 
     public func conflictingWorkflows(for workflow: WorkflowDefinition) -> [WorkflowDefinition] {
@@ -567,11 +597,17 @@ public final class AppModel {
         _ modelIdentifier: String,
         includeStatus: Bool = false
     ) -> String {
-        guard includeStatus else { return modelIdentifier }
+        let baseName: String
+        if let option = WhisperKitModelOption(rawValue: modelIdentifier) {
+            baseName = UIStrings.whisperKitModelOption(option, language: language)
+        } else {
+            baseName = modelIdentifier
+        }
+        guard includeStatus else { return baseName }
         let status = isWhisperKitModelDownloaded(modelIdentifier)
             ? UIStrings.text(.whisperKitDownloaded, language: language)
             : UIStrings.text(.whisperKitNotDownloaded, language: language)
-        return "\(modelIdentifier) · \(status)"
+        return "\(baseName) · \(status)"
     }
 
     public func whisperKitModelOptionLabel(_ option: WhisperKitModelOption) -> String {
@@ -628,11 +664,6 @@ public final class AppModel {
         .compactMap { $0 }
         .joined(separator: "\n")
         copyTextToClipboard(payload)
-    }
-
-    public func runSelectedWorkflow() {
-        guard let workflow = selectedWorkflow else { return }
-        runWorkflow(workflow, initiatedBy: .manual)
     }
 
     public func runWorkflow(_ workflow: WorkflowDefinition) {
@@ -794,7 +825,7 @@ public final class AppModel {
     }
 
     private func requiresCapturedAudioForInteractiveRun(_ workflow: WorkflowDefinition) -> Bool {
-        Self.recognizerIDsRequiringCapturedAudio.contains(workflow.pipeline.recognizerID)
+        Self.recognizerIDsRequiringCapturedAudio.contains(resolvedRecognizerID(for: workflow))
     }
 
     private func isRecordingWorkflowAudioRun(for workflow: WorkflowDefinition) -> Bool {
@@ -809,12 +840,13 @@ public final class AppModel {
 
     private func persistProviderSettingsForRun(_ workflow: WorkflowDefinition) async throws {
         guard let settingsStore else { return }
+        let recognizerID = resolvedRecognizerID(for: workflow)
 
-        if workflow.pipeline.recognizerID == Self.whisperKitRecognizerID {
+        if recognizerID == Self.whisperKitRecognizerID {
             try await Self.persistWhisperKitSettings(currentWhisperKitSettings(), into: settingsStore)
         }
 
-        if workflow.pipeline.recognizerID == Self.deepgramRecognizerID {
+        if recognizerID == Self.deepgramRecognizerID {
             try await Self.persistDeepgramSettings(currentDeepgramSettings(), into: settingsStore)
         }
     }
@@ -891,6 +923,16 @@ public final class AppModel {
         showClipboardPanelAction()
     }
 
+    public var isGlobalSearchActive = false
+
+    public func toggleGlobalSearch() {
+        isGlobalSearchActive.toggle()
+    }
+
+    public func beginCreatingWorkflow() {
+        openWorkflowEditor()
+    }
+
     public func openWorkflowEditor() {
         openWorkflowEditorAction()
     }
@@ -904,7 +946,14 @@ public final class AppModel {
     }
 
     public func useClipboardItem(_ item: ClipboardHistoryItem) {
+        lastFailure = nil
         useClipboardItemAction(item)
+    }
+
+    public func reportClipboardPanelPasteFailure() {
+        lastFailure = language == .english
+            ? "Clipboard paste was aborted because VoxType could not return focus to the target app."
+            : "剪贴板粘贴已中止，因为 VoxType 未能把焦点切回目标 App。"
     }
 
     public func pasteClipboardItem(_ item: ClipboardHistoryItem) {
@@ -976,7 +1025,7 @@ public final class AppModel {
         }
 
         workflowEditorError = nil
-        rebuildWorkflowLibrary(selecting: workflow.id)
+        rebuildWorkflowLibrary()
         persistWorkflowEnabledStates()
         persistCustomWorkflows()
         append(
@@ -992,15 +1041,7 @@ public final class AppModel {
         workflowEnabledStates.removeValue(forKey: workflow.id)
         workflowEditorError = nil
         workflowLibraryError = nil
-
-        let nextSelection: UUID?
-        if selectedWorkflowID == workflow.id {
-            nextSelection = customWorkflows.first?.id ?? builtInWorkflows.first?.id
-        } else {
-            nextSelection = selectedWorkflowID
-        }
-
-        rebuildWorkflowLibrary(selecting: nextSelection)
+        rebuildWorkflowLibrary()
         persistWorkflowEnabledStates()
         persistCustomWorkflows()
         append(
@@ -1171,19 +1212,40 @@ public final class AppModel {
         }
     }
 
-    public func createClipboardGroup(named name: String) {
+    public func setClipboardAllowsCrossGroupPaste(_ allowsCrossGroupPaste: Bool, forGroup groupID: UUID) {
         Task { [deliveryStack] in
-            _ = await deliveryStack?.createGroup(named: name)
+            await deliveryStack?.setAllowsCrossGroupPaste(allowsCrossGroupPaste, forGroup: groupID)
         }
     }
 
-    public func assignApplication(_ assignment: ClipboardAppAssignment, toGroup groupID: UUID) {
+    public func createClipboardGroup(
+        named name: String,
+        assigning assignment: ClipboardAppAssignment? = nil
+    ) {
+        Task { [deliveryStack] in
+            _ = await deliveryStack?.createGroup(named: name, assigning: assignment)
+        }
+    }
+
+    public func assignApplication(_ assignment: ClipboardAppAssignment, toGroup groupID: UUID?) {
         Task { [deliveryStack] in
             await deliveryStack?.assignApplication(
                 bundleIdentifier: assignment.bundleIdentifier,
                 applicationName: assignment.applicationName,
                 toGroup: groupID
             )
+        }
+    }
+
+    public func setClipboardFallbackPriority(_ fallbackPriority: Int, forGroup groupID: UUID) {
+        Task { [deliveryStack] in
+            _ = await deliveryStack?.setFallbackPriority(fallbackPriority, forGroup: groupID)
+        }
+    }
+
+    public func setClipboardItemTags(_ tags: [String], forItem itemID: UUID) {
+        Task { [deliveryStack] in
+            await deliveryStack?.updateItemTags(itemID, tags: tags)
         }
     }
 
@@ -1246,6 +1308,18 @@ public final class AppModel {
                 english: "Recognition: \(recognition.bestText)",
                 simplifiedChinese: "识别结果：\(recognition.bestText)"
             )
+        case .liveSubtitleUpdated(let snapshot):
+            pendingLiveSubtitleHideTask?.cancel()
+            if snapshot.isVisible {
+                liveSubtitleSnapshot = snapshot
+                if snapshot.phase == .failed {
+                    scheduleLiveSubtitleHide()
+                } else if snapshot.phase == .preparing {
+                    scheduleLiveSubtitleHide(after: liveSubtitlePreparingHideDelay)
+                }
+            } else {
+                liveSubtitleSnapshot = nil
+            }
         case .candidateResolutionRequested(let candidateCase):
             pendingResolution = candidateCase
             append(
@@ -1274,7 +1348,14 @@ public final class AppModel {
             stackCount = snapshot.count
             stackPreview = snapshot.topPreview
         case .clipboardUpdated(let snapshot):
-            updateClipboardSnapshot(snapshot)
+            clipboardUpdateDebounceTask?.cancel()
+            clipboardUpdateDebounceTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(16))
+                guard !Task.isCancelled else { return }
+                self?.updateClipboardSnapshot(snapshot)
+            }
+        case .clipboardGroupEvent(let groupEvent):
+            handleClipboardGroupEvent(groupEvent)
         case .clipboardPanelRequested:
             showClipboardPanel()
         case .runCompleted(let summary):
@@ -1305,6 +1386,7 @@ public final class AppModel {
                 english: "Run completed: \(summary.finalText)",
                 simplifiedChinese: "工作流完成：\(summary.finalText)"
             )
+            scheduleLiveSubtitleHide()
         case .runFailed(let failedRunID, let workflow, let message):
             lastFailure = message
             if activeRunID == failedRunID {
@@ -1336,10 +1418,11 @@ public final class AppModel {
                 english: "Failure: \(message)",
                 simplifiedChinese: "失败：\(message)"
             )
+            scheduleLiveSubtitleHide()
         case .diagnostic(let event):
-            diagnosticEvents.insert(event, at: 0)
-            if diagnosticEvents.count > 50 {
-                diagnosticEvents.removeLast(diagnosticEvents.count - 50)
+            diagnosticEvents.append(event)
+            if diagnosticEvents.count > 200 {
+                diagnosticEvents.removeFirst(diagnosticEvents.count - 200)
             }
             append(
                 english: "[\(UIStrings.subsystem(event.subsystem, language: .english))] \(event.message)",
@@ -1350,9 +1433,73 @@ public final class AppModel {
 
     private func append(english: String, simplifiedChinese: String) {
         let entry = EventFeedEntry(english: english, simplifiedChinese: simplifiedChinese)
-        eventFeed.insert(entry, at: 0)
+        eventFeed.append(entry)
         if eventFeed.count > 20 {
-            eventFeed.removeLast(eventFeed.count - 20)
+            eventFeed.removeFirst(eventFeed.count - 20)
+        }
+    }
+
+    private func handleClipboardGroupEvent(_ event: ClipboardGroupEvent) {
+        let eventDrivenWorkflows = workflows.filter { workflow in
+            guard let eventTypeRaw = workflow.metadata["eventType"],
+                  let eventType = WorkflowEditorDraft.EventType(rawValue: eventTypeRaw),
+                  !eventType.isVoiceEvent,
+                  isWorkflowEnabled(workflow) else { return false }
+            return true
+        }
+
+        for workflow in eventDrivenWorkflows {
+            guard let eventTypeRaw = workflow.metadata["eventType"],
+                  let eventType = WorkflowEditorDraft.EventType(rawValue: eventTypeRaw),
+                  let eventKind = eventType.groupEventKind,
+                  eventKind == event.kind else { continue }
+
+            // Check source group filter
+            if let sgid = workflow.metadata["sourceGroupID"],
+               let sourceGroupID = UUID(uuidString: sgid),
+               event.groupID != sourceGroupID { continue }
+
+            // Check exclude polish tag condition
+            if workflow.metadata["excludePolishTag"] != "false",
+               let item = event.item,
+               item.captureTags.contains(.polishGenerated) { continue }
+
+            let actionKindRaw = workflow.metadata["groupActionKind"] ?? ClipboardGroupActionKind.editItem.rawValue
+            guard let actionKind = ClipboardGroupActionKind(rawValue: actionKindRaw) else { continue }
+
+            let prompt = workflow.metadata["actionPrompt"]
+                ?? "Polish into a concise final message while preserving meaning and language."
+
+            append(
+                english: "Event trigger '\(workflow.name)' fired",
+                simplifiedChinese: "事件触发器「\(workflow.name)」已触发"
+            )
+
+            if actionKind == .editItem {
+                let polishSteps = workflow.pipeline.postProcessSteps.isEmpty
+                    ? [
+                        PostProcessStep(kind: .normalizeWhitespace),
+                        PostProcessStep(kind: .llmRewrite, prompt: prompt),
+                    ]
+                    : workflow.pipeline.postProcessSteps
+                Task { [sessionCoordinator] in
+                    await sessionCoordinator.polishClipboardItem(
+                        itemID: event.itemID,
+                        steps: polishSteps
+                    )
+                }
+            }
+        }
+    }
+
+    private func scheduleLiveSubtitleHide(after delay: Duration = .seconds(1)) {
+        guard liveSubtitleSnapshot != nil else { return }
+        let currentRunID = liveSubtitleSnapshot?.runID
+        pendingLiveSubtitleHideTask?.cancel()
+        pendingLiveSubtitleHideTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard let self, self.liveSubtitleSnapshot?.runID == currentRunID else { return }
+            self.liveSubtitleSnapshot = nil
         }
     }
 
@@ -1401,12 +1548,11 @@ public final class AppModel {
             do {
                 let storedSettings = try await settingsStore.strings(forKeys: Self.settingsLoadKeys)
                 let storedLanguage = storedSettings[.interfaceLanguage]
-                let storedWorkflowID = storedSettings[.selectedWorkflowID]
                 let storedCustomWorkflows = try Self.loadCustomWorkflows(from: storedSettings[.customWorkflows])
                 let storedWorkflowEnabledStates = try Self.loadWorkflowEnabledStates(
                     from: storedSettings[.workflowEnabledStates]
                 )
-                let storedClipboardMergeSimilarItems = storedSettings[.clipboardMergeSimilarItems]
+                let storedClipboardHistoryVisibility = storedSettings[.clipboardHistoryVisibility]
                 let storedClipboardPanelHotkey = storedSettings[.clipboardPanelHotkey]
                 let storedPreferredSpeechEngine = storedSettings[.preferredSpeechEngine]
                 let storedWhisperKitModel = storedSettings[.whisperKitModel]
@@ -1424,6 +1570,7 @@ public final class AppModel {
                 let storedDeepgramBaseURL = storedSettings[.deepgramBaseURL]
                 let storedDeepgramModel = storedSettings[.deepgramModel]
                 let storedDeepgramLanguage = storedSettings[.deepgramLanguage]
+                let storedBuiltinPushToTalkOutputMode = storedSettings[.builtinPushToTalkOutputMode]
 
                 await MainActor.run {
                     guard let self else { return }
@@ -1439,11 +1586,11 @@ public final class AppModel {
                         self.language = language
                     }
 
-                    if let storedClipboardMergeSimilarItems {
-                        self.mergeSimilarClipboardItems = Self.storedBoolean(
-                            storedClipboardMergeSimilarItems,
-                            defaultValue: false
-                        )
+                    if
+                        let storedClipboardHistoryVisibility,
+                        let clipboardHistoryVisibility = ClipboardHistoryVisibility(rawValue: storedClipboardHistoryVisibility)
+                    {
+                        self.clipboardHistoryVisibility = clipboardHistoryVisibility
                     }
 
                     self.clipboardPanelHotkeyBinding = HotkeyBindingDescriptor(
@@ -1465,14 +1612,6 @@ public final class AppModel {
                         self.whisperKitCustomModel = storedWhisperKitCustomModel
                     } else if self.whisperKitModelOption == .custom, let storedWhisperKitModel {
                         self.whisperKitCustomModel = storedWhisperKitModel
-                    }
-
-                    if
-                        let storedWorkflowID,
-                        let workflowID = UUID(uuidString: storedWorkflowID),
-                        self.workflows.contains(where: { $0.id == workflowID })
-                    {
-                        self.selectedWorkflowID = workflowID
                     }
 
                     if let storedWhisperKitModel {
@@ -1509,6 +1648,13 @@ public final class AppModel {
                         )
                     }
 
+                    if
+                        let storedBuiltinPushToTalkOutputMode,
+                        let outputMode = BuiltinPushToTalkOutputMode(rawValue: storedBuiltinPushToTalkOutputMode)
+                    {
+                        self.builtinPushToTalkOutputMode = outputMode
+                    }
+
                     if let storedDeepgramAPIKey {
                         self.deepgramAPIKey = storedDeepgramAPIKey
                     }
@@ -1526,7 +1672,7 @@ public final class AppModel {
                     }
 
                     self.applyPreferredSpeechEngineSelectionIfNeeded()
-                    self.rebuildWorkflowLibrary(selecting: self.selectedWorkflowID)
+                    self.rebuildWorkflowLibrary()
                     self.isRestoringSettings = false
                 }
             } catch {
@@ -1579,6 +1725,24 @@ public final class AppModel {
         }
     }
 
+    private func persistBuiltinPushToTalkOutputModePreference() {
+        guard !isRestoringSettings, let settingsStore else { return }
+        let outputMode = builtinPushToTalkOutputMode.rawValue
+
+        Task { [weak self, settingsStore] in
+            do {
+                try await settingsStore.setString(outputMode, forKey: .builtinPushToTalkOutputMode)
+            } catch {
+                await MainActor.run {
+                    self?.append(
+                        english: "Built-in Fn output preference persistence failed: \(error.localizedDescription)",
+                        simplifiedChinese: "内置 Fn 输出偏好持久化失败：\(error.localizedDescription)"
+                    )
+                }
+            }
+        }
+    }
+
     private func persistLanguagePreference() {
         guard !isRestoringSettings, let settingsStore else { return }
         let language = language
@@ -1591,24 +1755,6 @@ public final class AppModel {
                     self?.append(
                         english: "Language persistence failed: \(error.localizedDescription)",
                         simplifiedChinese: "语言设置持久化失败：\(error.localizedDescription)"
-                    )
-                }
-            }
-        }
-    }
-
-    private func persistSelectedWorkflowPreference() {
-        guard !isRestoringSettings, let settingsStore else { return }
-        let selectedWorkflowID = selectedWorkflowID.uuidString
-
-        Task { [weak self, settingsStore] in
-            do {
-                try await settingsStore.setString(selectedWorkflowID, forKey: .selectedWorkflowID)
-            } catch {
-                await MainActor.run {
-                    self?.append(
-                        english: "Workflow selection persistence failed: \(error.localizedDescription)",
-                        simplifiedChinese: "工作流选择持久化失败：\(error.localizedDescription)"
                     )
                 }
             }
@@ -1633,12 +1779,12 @@ public final class AppModel {
         }
     }
 
-    private func persistClipboardMergeSimilarPreference() {
+    private func persistClipboardHistoryVisibilityPreference() {
         persistStringSetting(
-            mergeSimilarClipboardItems ? "true" : "false",
-            for: .clipboardMergeSimilarItems,
-            englishFailurePrefix: "Clipboard merge-similar preference persistence failed",
-            simplifiedChineseFailurePrefix: "剪切板相似内容合并偏好持久化失败"
+            clipboardHistoryVisibility.rawValue,
+            for: .clipboardHistoryVisibility,
+            englishFailurePrefix: "Clipboard history visibility persistence failed",
+            simplifiedChineseFailurePrefix: "剪切板条目显示范围持久化失败"
         )
     }
 
@@ -1773,14 +1919,17 @@ public final class AppModel {
     private func updateClipboardSnapshot(_ snapshot: ClipboardStoreSnapshot) {
         clipboardItems = snapshot.items
         clipboardGroups = snapshot.groups
+        clipboardDefaultGroup = snapshot.defaultGroup
         clipboardAppAssignments = snapshot.appAssignments
+        clipboardRemainingItemIDs = Set(snapshot.remainingItemIDs)
         rebuildClipboardHistoryEntries()
     }
 
     private func rebuildClipboardHistoryEntries() {
+        // TODO: Re-enable similar-text merging once the history grouping bug is fixed.
         clipboardHistoryEntries = ClipboardHistoryEntryBuilder.build(
             from: clipboardItems,
-            mergeSimilarText: mergeSimilarClipboardItems
+            mergeSimilarText: false
         )
     }
 
@@ -1792,30 +1941,16 @@ public final class AppModel {
         }
     }
 
-    private func rebuildWorkflowLibrary(selecting workflowID: UUID? = nil) {
+    private func rebuildWorkflowLibrary() {
         let sortedCustomWorkflows = customWorkflows.sorted {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
         workflows = sortedCustomWorkflows + builtInWorkflows
         synchronizeWorkflowEnabledStates()
-        reconcileSelectedWorkflow(preferredWorkflowID: workflowID)
     }
 
     private func applyPreferredSpeechEngineSelectionIfNeeded() {
-        guard let selectedWorkflow else { return }
-        guard selectedWorkflow.titleKey == .localDictation || selectedWorkflow.titleKey == .cloudDictation else { return }
-
-        let targetTitleKey: WorkflowTitleKey = preferredSpeechEngine == .cloud ? .cloudDictation : .localDictation
-        guard
-            let workflowID = workflows.first(where: {
-                $0.titleKey == targetTitleKey && isWorkflowEnabled($0)
-            })?.id,
-            workflowID != selectedWorkflowID
-        else {
-            return
-        }
-
-        selectedWorkflowID = workflowID
+        // Workflow enablement no longer tracks a selected workflow.
     }
 
     private func persistCustomWorkflows() {
@@ -2020,7 +2155,21 @@ public final class AppModel {
             workflowEnabledStates[workflow.id] = true
         }
 
+        normalizeExclusiveWorkflowSelections()
         updateWorkflowTriggerConflicts()
+    }
+
+    private func normalizeExclusiveWorkflowSelections() {
+        let enabledGroups = Dictionary(grouping: workflows.filter { workflow in
+            isWorkflowEnabled(workflow) && workflow.exclusiveGroupIdentifier != nil
+        }, by: \.exclusiveGroupIdentifier)
+
+        for (_, members) in enabledGroups {
+            guard members.count > 1 else { continue }
+            for workflow in members.dropFirst() {
+                workflowEnabledStates[workflow.id] = false
+            }
+        }
     }
 
     private func updateWorkflowTriggerConflicts() {
@@ -2056,35 +2205,56 @@ public final class AppModel {
         }
     }
 
-    private func reconcileSelectedWorkflow(preferredWorkflowID: UUID? = nil) {
-        let desiredWorkflowID = preferredWorkflowID ?? selectedWorkflowID
-
-        if
-            let desiredWorkflow = workflows.first(where: { $0.id == desiredWorkflowID }),
-            isWorkflowEnabled(desiredWorkflow)
-        {
-            selectedWorkflowID = desiredWorkflow.id
-            return
-        }
-
-        if let firstEnabledWorkflowID = workflows.first(where: { isWorkflowEnabled($0) })?.id {
-            selectedWorkflowID = firstEnabledWorkflowID
-            return
-        }
-
-        if workflows.contains(where: { $0.id == desiredWorkflowID }) {
-            selectedWorkflowID = desiredWorkflowID
-        } else if let firstWorkflowID = workflows.first?.id {
-            selectedWorkflowID = firstWorkflowID
-        }
-    }
-
     private func conflictingEnabledWorkflowsForActivation(of workflow: WorkflowDefinition) -> [WorkflowDefinition] {
         guard workflow.trigger != .manual else { return [] }
+        let exclusiveGroup = workflow.exclusiveGroupIdentifier
         return workflows.filter { candidate in
             candidate.id != workflow.id &&
                 candidate.trigger == workflow.trigger &&
+                !(exclusiveGroup != nil && candidate.exclusiveGroupIdentifier == exclusiveGroup) &&
                 isWorkflowEnabled(candidate)
+        }
+    }
+
+    private func resolvedWorkflowForExecution(
+        _ workflow: WorkflowDefinition,
+        trigger: TriggerBinding
+    ) -> WorkflowDefinition {
+        var resolvedWorkflow = workflow
+        resolvedWorkflow.pipeline.recognizerID = resolvedRecognizerID(for: workflow)
+        if trigger == .hotkey, isBuiltinPushToTalkWorkflow(workflow) {
+            applyBuiltinPushToTalkOutputMode(to: &resolvedWorkflow)
+        }
+        return resolvedWorkflow
+    }
+
+    private func isBuiltinPushToTalkWorkflow(_ workflow: WorkflowDefinition) -> Bool {
+        workflow.trigger == .hotkey &&
+            workflow.metadata[Self.workflowCatalogMetadataKey] == Self.builtinWorkflowCatalogValue &&
+            workflow.metadata[Self.triggerGestureMetadataKey] == Self.fnHoldGestureValue &&
+            workflow.metadata[WorkflowMetadataKey.builtinKind]?.hasPrefix("push-to-talk") == true
+    }
+
+    private func resolvedRecognizerID(for workflow: WorkflowDefinition) -> String {
+        guard workflow.prefersAutomaticRecognizerSelection else {
+            return workflow.pipeline.recognizerID
+        }
+
+        return preferredSpeechEngine == .cloud
+            ? Self.deepgramRecognizerID
+            : Self.whisperKitRecognizerID
+    }
+
+    private func applyBuiltinPushToTalkOutputMode(to workflow: inout WorkflowDefinition) {
+        switch builtinPushToTalkOutputMode {
+        case .pasteIntoApp:
+            workflow.pipeline.outputActions = [OutputActionReference(id: "inject.text")]
+            workflow.pipeline.deliveryPolicy = .init(strategy: .immediate)
+            workflow.metadata.removeValue(forKey: WorkflowMetadataKey.targetClipboardGroupID)
+        case .saveToVoiceGroup:
+            workflow.pipeline.outputActions = [OutputActionReference(id: "stack.push")]
+            workflow.pipeline.deliveryPolicy = .init(strategy: .stackFirst)
+            workflow.metadata[WorkflowMetadataKey.targetClipboardGroupID] = ClipboardGroup.voiceGroupID.uuidString
         }
     }
 }
@@ -2100,7 +2270,14 @@ extension AppModel {
     nonisolated static let deepgramRecognizerID = "deepgram.prerecorded"
     nonisolated static let workflowOriginMetadataKey = "workflow.origin"
     nonisolated static let userWorkflowOriginMetadataValue = "user"
+    nonisolated static let workflowCatalogMetadataKey = "catalog"
+    nonisolated static let builtinWorkflowCatalogValue = "builtin.demo"
+    nonisolated static let triggerGestureMetadataKey = "trigger.gesture"
+    nonisolated static let fnHoldGestureValue = "fn-hold"
     nonisolated static let defaultHotkeyGesture = "control-option-shift-space"
+    nonisolated static let builtinPushToTalkOutputModeMetadataKey = WorkflowMetadataKey.settingsExposeOutputMode
+    nonisolated static let builtinPushToTalkKindValue = "push-to-talk.dictation"
+    nonisolated static let builtinPushToTalkPolishKindValue = "push-to-talk.polish"
 }
 
 private extension ActionResult {

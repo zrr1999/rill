@@ -2,13 +2,6 @@ import AppKit
 import SwiftUI
 import VoxTypeCore
 
-private struct WorkflowMenuOption: Identifiable {
-    let workflow: WorkflowDefinition
-    let title: String
-
-    var id: UUID { workflow.id }
-}
-
 private enum ClipboardPanelSection: String, CaseIterable, Identifiable {
     case history
     case routing
@@ -39,20 +32,33 @@ private enum ClipboardViewMetrics {
     static let rowSpacing: CGFloat = 6
 }
 
+private struct ClipboardHistorySectionModel: Identifiable, Equatable {
+    let groupID: UUID
+    let title: String
+    let entries: [ClipboardHistoryEntry]
+
+    var id: UUID { groupID }
+}
+
 public struct ClipboardView: View {
     @Bindable private var model: AppModel
+    private let previewContext: ClipboardRouteContext?
     @State private var isPresentingCreateGroupSheet = false
     @State private var newGroupName = ""
     @State private var searchText = ""
     @State private var debouncedSearchText = ""
     @State private var searchDebounceTask: Task<Void, Never>?
+    @State private var cachedFilteredSections: [ClipboardHistorySectionModel] = []
     @State private var selectedSection: ClipboardPanelSection = .history
     @State private var selectedEntryID: UUID?
     @State private var hoveredEntryID: UUID?
+    @State private var pendingGroupAssignment: ClipboardAppAssignment?
+    @State private var newTagText = ""
     @FocusState private var isSearchFieldFocused: Bool
 
-    public init(model: AppModel) {
+    public init(model: AppModel, previewContext: ClipboardRouteContext? = nil) {
         self.model = model
+        self.previewContext = previewContext
     }
 
     public var body: some View {
@@ -66,6 +72,27 @@ public struct ClipboardView: View {
             .onChange(of: filteredClipboardEntryIDs) { _, _ in
                 syncSelectedEntry()
             }
+            .onChange(of: debouncedSearchText) { _, _ in
+                recomputeFilteredSections()
+            }
+            .onChange(of: model.clipboardHistoryEntries) { _, _ in
+                recomputeFilteredSections()
+            }
+            .onChange(of: model.clipboardHistoryVisibility) { _, _ in
+                recomputeFilteredSections()
+            }
+            .onChange(of: model.clipboardRemainingItemIDs) { _, _ in
+                recomputeFilteredSections()
+            }
+            .onChange(of: model.clipboardGroups) { _, _ in
+                recomputeFilteredSections()
+            }
+            .onChange(of: model.clipboardDefaultGroup) { _, _ in
+                recomputeFilteredSections()
+            }
+            .onChange(of: model.clipboardAppAssignments) { _, _ in
+                recomputeFilteredSections()
+            }
             .onChange(of: selectedSection) { _, newValue in
                 guard newValue == .history else {
                     isSearchFieldFocused = false
@@ -75,6 +102,7 @@ public struct ClipboardView: View {
                 scheduleSearchFocusIfNeeded()
             }
             .onAppear {
+                recomputeFilteredSections()
                 syncSelectedEntry()
                 scheduleSearchFocusIfNeeded()
             }
@@ -83,6 +111,7 @@ public struct ClipboardView: View {
             }
             .onKeyPress(.upArrow) { navigateList(direction: -1) }
             .onKeyPress(.downArrow) { navigateList(direction: 1) }
+            .onKeyPress(.tab) { toggleSelectedSection() }
             .onKeyPress(.return) { pasteSelectedItem() }
             .onKeyPress(.delete) { deleteSelectedItem() }
     }
@@ -134,6 +163,7 @@ public struct ClipboardView: View {
     }
 
     private func pasteSelectedItem() -> KeyPress.Result {
+        guard shouldHandleReturnAction() else { return .ignored }
         guard selectedSection == .history,
               let selectedEntry,
               selectedEntry.representativeItem.supportsDirectPaste else {
@@ -146,6 +176,11 @@ public struct ClipboardView: View {
     private func deleteSelectedItem() -> KeyPress.Result {
         guard selectedSection == .history, let selectedEntry else { return .ignored }
         model.deleteClipboardHistoryEntry(selectedEntry)
+        return .handled
+    }
+
+    private func toggleSelectedSection() -> KeyPress.Result {
+        selectedSection = selectedSection == .history ? .routing : .history
         return .handled
     }
 
@@ -164,9 +199,6 @@ public struct ClipboardView: View {
             .textFieldStyle(.plain)
             .font(.title3)
             .focused($isSearchFieldFocused)
-            .onSubmit {
-                _ = pasteSelectedItem()
-            }
 
             if !searchText.isEmpty {
                 Button {
@@ -196,19 +228,22 @@ public struct ClipboardView: View {
             Spacer()
 
             if selectedSection == .history {
-                Toggle(
-                    UIStrings.text(.clipboardMergeSimilar, language: model.language),
-                    isOn: $model.mergeSimilarClipboardItems
-                )
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .help(UIStrings.text(.clipboardMergeSimilarHint, language: model.language))
+                Picker("", selection: $model.clipboardHistoryVisibility) {
+                    Text(UIStrings.text(.clipboardHistoryRemainingOnly, language: model.language))
+                        .tag(ClipboardHistoryVisibility.remainingOnly)
+                    Text(UIStrings.text(.clipboardHistoryAllItems, language: model.language))
+                        .tag(ClipboardHistoryVisibility.all)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 220)
 
                 Text(UIStrings.stackCountSummary(filteredClipboardEntries.count, language: model.language))
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             } else {
                 Button(UIStrings.text(.clipboardCreateGroup, language: model.language)) {
+                    pendingGroupAssignment = nil
                     newGroupName = ""
                     isPresentingCreateGroupSheet = true
                 }
@@ -244,9 +279,17 @@ public struct ClipboardView: View {
 
     private var historyListCard: some View {
         ScrollView {
-            LazyVStack(spacing: 2) {
-                ForEach(filteredClipboardEntries) { entry in
-                    historyListRow(entry)
+            LazyVStack(alignment: .leading, spacing: 10) {
+                ForEach(filteredClipboardSections) { section in
+                    VStack(alignment: .leading, spacing: 6) {
+                        historySectionHeader(section)
+
+                        LazyVStack(spacing: 2) {
+                            ForEach(section.entries) { entry in
+                                historyListRow(entry)
+                            }
+                        }
+                    }
                 }
             }
             .padding(6)
@@ -272,13 +315,7 @@ public struct ClipboardView: View {
                             )
                         }
 
-                        if !selectedEntry.tags.isEmpty {
-                            detailChipSection(
-                                title: UIStrings.text(.clipboardTags, language: model.language),
-                                values: selectedEntry.tags,
-                                tint: .blue
-                            )
-                        }
+                        editableTagsSection(for: selectedEntry)
 
                         if let latestError = selectedEntry.representativeItem.latestError {
                             Label(latestError, systemImage: "exclamationmark.triangle.fill")
@@ -431,26 +468,6 @@ public struct ClipboardView: View {
                 .controlSize(.small)
             }
 
-            if item.supportsWorkflowReplay {
-                Menu {
-                    workflowMenuButtons(for: item, replacingSourceItem: false)
-                } label: {
-                    actionMenuLabel(
-                        UIStrings.text(.clipboardReplayWithWorkflow, language: model.language),
-                        systemImage: "wand.and.stars"
-                    )
-                }
-
-                Menu {
-                    workflowMenuButtons(for: item, replacingSourceItem: true)
-                } label: {
-                    actionMenuLabel(
-                        UIStrings.text(.clipboardReplaceWithWorkflow, language: model.language),
-                        systemImage: "square.and.pencil"
-                    )
-                }
-            }
-
             Spacer(minLength: 0)
 
             Button(role: .destructive) {
@@ -531,6 +548,70 @@ public struct ClipboardView: View {
         }
     }
 
+    @ViewBuilder
+    private func editableTagsSection(for entry: ClipboardHistoryEntry) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(UIStrings.text(.clipboardTags, language: model.language))
+                .font(.subheadline.weight(.semibold))
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(entry.tags, id: \.self) { tag in
+                        HStack(spacing: 4) {
+                            Text(tag)
+                                .font(.caption.weight(.medium))
+                            Button {
+                                var updatedTags = entry.tags
+                                updatedTags.removeAll { $0 == tag }
+                                model.setClipboardItemTags(updatedTags, forItem: entry.representativeItem.id)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 8, weight: .bold))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.12), in: Capsule())
+                        .foregroundStyle(.blue)
+                    }
+                }
+            }
+
+            HStack(spacing: 6) {
+                TextField(
+                    model.language == .english ? "Add tag…" : "添加标签…",
+                    text: $newTagText
+                )
+                .textFieldStyle(.roundedBorder)
+                .font(.caption)
+                .onSubmit {
+                    addTag(to: entry)
+                }
+
+                Button {
+                    addTag(to: entry)
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundStyle(.blue)
+                }
+                .buttonStyle(.plain)
+                .disabled(newTagText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+    }
+
+    private func addTag(to entry: ClipboardHistoryEntry) {
+        let trimmed = newTagText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var updatedTags = entry.tags
+        if !updatedTags.contains(trimmed) {
+            updatedTags.append(trimmed)
+        }
+        model.setClipboardItemTags(updatedTags, forItem: entry.representativeItem.id)
+        newTagText = ""
+    }
+
     private var routingWorkspace: some View {
         ScrollView {
             LazyVGrid(
@@ -551,20 +632,14 @@ public struct ClipboardView: View {
                 Text(UIStrings.text(.clipboardGroups, language: model.language))
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text(UIStrings.stackCountSummary(model.clipboardGroups.count, language: model.language))
+                Text(UIStrings.stackCountSummary(displayedRoutingGroupSummaries.count, language: model.language))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
 
-            if model.clipboardGroups.isEmpty {
-                Text(UIStrings.text(.clipboardGroupsEmpty, language: model.language))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            } else {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(model.clipboardGroups) { summary in
-                        groupCard(summary)
-                    }
+            LazyVStack(alignment: .leading, spacing: 8) {
+                ForEach(displayedRoutingGroupSummaries) { summary in
+                    groupCard(summary)
                 }
             }
         }
@@ -579,7 +654,7 @@ public struct ClipboardView: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(summary.group.name)
+                    Text(groupName(for: summary.group.id))
                         .font(.callout.weight(.medium))
                     metadataPill(UIStrings.stackCountSummary(summary.count, language: model.language), tint: .secondary)
                 }
@@ -597,6 +672,52 @@ public struct ClipboardView: View {
                 .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 220)
+            }
+
+            if !isDefaultFallbackSummary(summary) {
+                Toggle(
+                    UIStrings.text(.clipboardCrossGroupFallback, language: model.language),
+                    isOn: Binding(
+                        get: { summary.group.allowsCrossGroupPaste },
+                        set: { model.setClipboardAllowsCrossGroupPaste($0, forGroup: summary.group.id) }
+                    )
+                )
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .help(UIStrings.text(.clipboardCrossGroupFallbackHint, language: model.language))
+
+                if summary.group.allowsCrossGroupPaste {
+                    HStack(spacing: 10) {
+                        Text(
+                            model.language == .english
+                                ? "Fallback priority"
+                                : "回退优先级"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Picker(
+                            "",
+                            selection: Binding(
+                                get: { summary.group.fallbackPriority ?? availableFallbackPriorities(for: summary.group.id).first ?? 1 },
+                                set: { model.setClipboardFallbackPriority($0, forGroup: summary.group.id) }
+                            )
+                        ) {
+                            ForEach(availableFallbackPriorities(for: summary.group.id), id: \.self) { priority in
+                                Text(fallbackPriorityLabel(priority)).tag(priority)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .controlSize(.small)
+                    }
+                }
+            }
+
+            if summary.group.id == ClipboardGroup.voiceGroupID, let subtitle = model.liveSubtitleSnapshot, subtitle.isVisible {
+                streamingSTTPreview(subtitle)
             }
 
             if previewItems.isEmpty {
@@ -650,6 +771,60 @@ public struct ClipboardView: View {
         }
     }
 
+    private func streamingSTTPreview(_ snapshot: LiveSubtitleSnapshot) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "waveform")
+                .font(.caption)
+                .foregroundStyle(.purple)
+                .symbolEffect(.variableColor.iterative, isActive: snapshot.phase == .transcribing || snapshot.phase == .recording || snapshot.phase == .listening)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(
+                    model.language == .english
+                        ? "Live: \(streamingPhaseLabel(snapshot.phase))"
+                        : "实时：\(streamingPhaseLabel(snapshot.phase))"
+                )
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.purple)
+
+                if !snapshot.displayText.isEmpty {
+                    (
+                        Text(snapshot.confirmedText.trimmingCharacters(in: .whitespacesAndNewlines))
+                            .foregroundStyle(.primary)
+                        + Text(snapshot.hypothesisText.trimmingCharacters(in: .whitespacesAndNewlines))
+                            .foregroundStyle(.secondary.opacity(0.6))
+                    )
+                    .font(.caption)
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding(10)
+        .background(.purple.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(.purple.opacity(0.18))
+        )
+    }
+
+    private func streamingPhaseLabel(_ phase: LiveSubtitlePhase) -> String {
+        switch phase {
+        case .hidden:
+            return model.language == .english ? "Hidden" : "已隐藏"
+        case .preparing:
+            return model.language == .english ? "Preparing…" : "准备中…"
+        case .recording, .listening:
+            return model.language == .english ? "Listening…" : "聆听中…"
+        case .transcribing:
+            return model.language == .english ? "Transcribing…" : "转写中…"
+        case .finalizing:
+            return model.language == .english ? "Finalizing…" : "收尾中…"
+        case .failed:
+            return model.language == .english ? "Unavailable" : "不可用"
+        }
+    }
+
     private var appAssignmentsPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -697,8 +872,9 @@ public struct ClipboardView: View {
                         set: { model.assignApplication(assignment, toGroup: $0) }
                     )
                 ) {
+                    Text(UIStrings.text(.clipboardDefaultGroup, language: model.language)).tag(Optional<UUID>.none)
                     ForEach(model.clipboardGroups) { group in
-                        Text(group.group.name).tag(group.group.id)
+                        Text(group.group.name).tag(Optional(group.group.id))
                     }
                 }
                 .pickerStyle(.menu)
@@ -706,6 +882,7 @@ public struct ClipboardView: View {
             }
 
             Button {
+                pendingGroupAssignment = assignment
                 newGroupName = assignment.applicationName
                 isPresentingCreateGroupSheet = true
             } label: {
@@ -729,10 +906,15 @@ public struct ClipboardView: View {
             HStack {
                 Spacer()
                 Button(UIStrings.text(.dismiss, language: model.language)) {
+                    pendingGroupAssignment = nil
                     isPresentingCreateGroupSheet = false
                 }
                 Button(UIStrings.text(.clipboardCreate, language: model.language)) {
-                    model.createClipboardGroup(named: newGroupName)
+                    model.createClipboardGroup(
+                        named: newGroupName,
+                        assigning: pendingGroupAssignment
+                    )
+                    pendingGroupAssignment = nil
                     isPresentingCreateGroupSheet = false
                 }
                 .keyboardShortcut(.defaultAction)
@@ -742,26 +924,81 @@ public struct ClipboardView: View {
         .frame(width: 420)
     }
 
-    private var workflowMenuOptions: [WorkflowMenuOption] {
-        model.workflows.map { workflow in
-            WorkflowMenuOption(
-                workflow: workflow,
-                title: model.localizedWorkflowName(for: workflow)
-            )
-        }
-    }
-
     private var clipboardGroupNamesByID: [UUID: String] {
         Dictionary(uniqueKeysWithValues: model.clipboardGroups.map { ($0.group.id, $0.group.name) })
     }
 
-    private var filteredClipboardEntries: [ClipboardHistoryEntry] {
-        let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return model.clipboardHistoryEntries }
+    private var routePresentation: ClipboardRoutePresentation {
+        ClipboardRoutePresentation.make(
+            explicitGroups: model.clipboardGroups,
+            defaultGroup: model.clipboardDefaultGroup,
+            appAssignments: model.clipboardAppAssignments,
+            previewContext: previewContext
+        )
+    }
 
-        return model.clipboardHistoryEntries.filter { entry in
-            entry.matchesSearchQuery(query, groupName: groupName(for: entry.representativeItem.groupID))
+    private var routingGroupSummaries: [ClipboardGroupSummary] {
+        routePresentation.orderedRoutingGroups
+    }
+
+    private var routingManagementGroupSummaries: [ClipboardGroupSummary] {
+        model.clipboardGroups + [model.clipboardDefaultGroup]
+    }
+
+    private var displayedRoutingGroupSummaries: [ClipboardGroupSummary] {
+        previewContext == nil ? routingManagementGroupSummaries : routingGroupSummaries
+    }
+
+    private func availableFallbackPriorities(for groupID: UUID) -> [Int] {
+        let currentPriority = model.clipboardGroups
+            .first(where: { $0.group.id == groupID })?
+            .group
+            .fallbackPriority
+        let usedPriorities = Set(
+            model.clipboardGroups
+                .filter { $0.group.id != groupID }
+                .compactMap(\.group.fallbackPriority)
+        )
+
+        return (1...99).filter { priority in
+            priority == currentPriority || !usedPriorities.contains(priority)
         }
+    }
+
+    private func fallbackPriorityLabel(_ priority: Int) -> String {
+        model.language == .english ? "Priority \(priority)" : "优先级 \(priority)"
+    }
+
+    private func recomputeFilteredSections() {
+        let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filteredEntries = routePresentation.visibleEntries(
+            from: model.clipboardHistoryEntries,
+            historyVisibility: model.clipboardHistoryVisibility,
+            remainingItemIDs: model.clipboardRemainingItemIDs
+        ).filter { entry in
+            guard !query.isEmpty else { return true }
+            return entry.matchesSearchQuery(query, groupName: groupName(for: entry.representativeItem.groupID))
+        }
+
+        let entriesByGroup = Dictionary(grouping: filteredEntries, by: { $0.representativeItem.groupID })
+        cachedFilteredSections = routingGroupSummaries.compactMap { summary in
+            guard let entries = entriesByGroup[summary.group.id], !entries.isEmpty else {
+                return nil
+            }
+            return ClipboardHistorySectionModel(
+                groupID: summary.group.id,
+                title: groupName(for: summary.group.id),
+                entries: entries
+            )
+        }
+    }
+
+    private var filteredClipboardSections: [ClipboardHistorySectionModel] {
+        cachedFilteredSections
+    }
+
+    private var filteredClipboardEntries: [ClipboardHistoryEntry] {
+        cachedFilteredSections.flatMap(\.entries)
     }
 
     private var filteredClipboardEntryIDs: [UUID] {
@@ -818,12 +1055,12 @@ public struct ClipboardView: View {
         }
     }
 
-    private func actionMenuLabel(_ title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.quaternary.opacity(0.18), in: Capsule())
+    private func shouldHandleReturnAction() -> Bool {
+        ClipboardInputMethodGuard.shouldHandleReturn(for: activeTextInputResponder)
+    }
+
+    private var activeTextInputResponder: NSResponder? {
+        NSApp.keyWindow?.firstResponder ?? NSApp.mainWindow?.firstResponder
     }
 
     private func emptyStateCard(systemImage: String, title: String, message: String) -> some View {
@@ -856,29 +1093,10 @@ public struct ClipboardView: View {
             }
         }
 
-        if item.supportsWorkflowReplay {
-            Menu(UIStrings.text(.clipboardReplayWithWorkflow, language: model.language)) {
-                workflowMenuButtons(for: item, replacingSourceItem: false)
-            }
-
-            Menu(UIStrings.text(.clipboardReplaceWithWorkflow, language: model.language)) {
-                workflowMenuButtons(for: item, replacingSourceItem: true)
-            }
-        }
-
         Button(role: .destructive) {
             model.deleteClipboardHistoryEntry(entry)
         } label: {
             Label(UIStrings.text(.clipboardDeleteItem, language: model.language), systemImage: "trash")
-        }
-    }
-
-    @ViewBuilder
-    private func workflowMenuButtons(for item: ClipboardHistoryItem, replacingSourceItem: Bool) -> some View {
-        ForEach(workflowMenuOptions) { option in
-            Button(option.title) {
-                model.replayClipboardItem(item, with: option.workflow, replacingSourceItem: replacingSourceItem)
-            }
         }
     }
 
@@ -1008,6 +1226,25 @@ public struct ClipboardView: View {
 
     private func groupName(for groupID: UUID) -> String {
         clipboardGroupNamesByID[groupID] ?? UIStrings.text(.clipboardDefaultGroup, language: model.language)
+    }
+
+    private func isDefaultFallbackSummary(_ summary: ClipboardGroupSummary) -> Bool {
+        summary.group.isReserved
+    }
+
+    private func historySectionHeader(_ section: ClipboardHistorySectionModel) -> some View {
+        HStack(spacing: 8) {
+            Text(section.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            metadataPill(
+                UIStrings.stackCountSummary(section.entries.count, language: model.language),
+                tint: .secondary
+            )
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 2)
     }
 
     @ViewBuilder
