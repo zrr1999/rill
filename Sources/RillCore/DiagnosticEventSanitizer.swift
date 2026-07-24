@@ -1,0 +1,562 @@
+import Foundation
+
+/// Removes user content and secrets before a diagnostic event crosses a storage or publication boundary.
+public enum DiagnosticEventSanitizer {
+  public static let invalidEventCode = "diagnostic.event.invalid"
+  public static let sanitizedMessage = "Diagnostic event recorded."
+
+  private enum MetadataValueKind {
+    case boolean
+    case closed(Set<String>)
+    case closedList(Set<String>)
+    case count
+    case eventCode
+    case integer
+  }
+
+  /// Event names are a protocol, not an extensible text field. New producers
+  /// must add their coordinate here before it can cross a persistence or copy
+  /// boundary. Unknown-but-well-formed strings deliberately fail closed.
+  private static let eventCodeCatalog: Set<String> = [
+    invalidEventCode,
+    "audio-processing.enqueued",
+    "audio-processing.failed",
+    "audio-processing.rejected-capture-resolution-failed",
+    "audio-processing.rejected-cleanup-pending",
+    "audio-processing.started",
+    "audio-processing.temporary-file-removal-failed",
+    "audio-processing.temporary-file-removed",
+    "audio-recovery.expiration-failed",
+    "audio-recovery.index-refresh-failed",
+    "audio-recovery.opt-out-cleanup-failed",
+    "audio-recovery.plaintext-cleanup-completed",
+    "audio-recovery.plaintext-cleanup-failed",
+    "audio-recovery.plaintext-cleanup-recovered",
+    "audio-recovery.plaintext-cleanup-retry-failed",
+    "audio-recovery.preserve-failed",
+    "audio-recovery.preserved",
+    "audio-recovery.retry-completed",
+    "audio-recovery.retry-completed-cleanup-pending",
+    "audio-recovery.retry-failed",
+    "audio-recovery.retry-failed-cleanup-pending",
+    "audio-recovery.startup-failed",
+    "audio-recovery.storage-unavailable",
+    "candidate.accepted",
+    "candidate.cancelled",
+    "candidate.dismissed",
+    "candidate.timeout",
+    "clipboard.capture.changed-before-read",
+    "clipboard.capture.focus-transition-skipped",
+    "clipboard.capture.ignore-next-armed",
+    "clipboard.capture.ignore-next-consumed",
+    "clipboard.capture.initial-skipped",
+    "clipboard.capture.paused",
+    "clipboard.capture.policy-unavailable",
+    "clipboard.capture.resumed",
+    "clipboard.capture.skipped",
+    "clipboard.capture.workflow-skipped",
+    "clipboard.inject.focus.activation-failed",
+    "clipboard.inject.focus.activation-requested",
+    "clipboard.inject.focus.changed",
+    "clipboard.inject.focus.unverifiable",
+    "clipboard.inject.keyboard-fallback",
+    "clipboard.inject.paste.begin",
+    "clipboard.inject.paste.blocked",
+    "clipboard.inject.paste.end",
+    "clipboard.inject.restore",
+    "clipboard.inject.snapshot.prepare",
+    "clipboard.inject.text.prepare",
+    "clipboard.paste.interception-bypassed",
+    "clipboard.persistence.schedule-failed",
+    "clipboard.preview.mirrored",
+    "clipboard.preview.mirroring-skipped",
+    "clipboard.preview.pending-write-discarded",
+    "clipboard.preview.pending-write-restored",
+    "clipboard.preview.restore-skipped",
+    "clipboard.preview.restored",
+    "clipboard.snapshot",
+    "clipboard.state.load-failed",
+    "clipboard.state.persist-failed",
+    "clipboard.state.reset",
+    "clipboard.state.reset-failed",
+    "clipboard.storage.rejected",
+    "clipboard.trigger.loop-prevented",
+    "clipboard.trigger.matched",
+    "clipboard.trigger.receipt-unavailable",
+    "clipboard.trigger.skipped",
+    "credentials.legacy-cleanup.failed",
+    "credentials.legacy-read.failed",
+    "credentials.migration.failed",
+    "credentials.migration.succeeded",
+    "credentials.secure-read.failed",
+    "credentials.secure-removal.failed",
+    "credentials.secure-write.failed",
+    "diagnostics.repository.save.failed",
+    "history.maintenance.blocked",
+    "history.maintenance.completed",
+    "history.maintenance.pending",
+    "managed-audio.cleanup-completed-after-retry",
+    "managed-audio.cleanup-retry-pending",
+    "markdown-append.cleanup-completed-after-retry",
+    "markdown-append.cleanup-indeterminate",
+    "markdown-append.cleanup-retry-pending",
+    "global-input.installed",
+    "global-input.unavailable",
+    "paste-intercept.installed",
+    "paste-intercept.unavailable",
+    "persistence.keychain.temporarily-unavailable",
+    "persistence.sqlite.fallback",
+    "persistence.sqlite.ready",
+    "provider.deepgram.configuration_invalid",
+    "provider.deepgram.configured_unverified",
+    "provider.deepgram.credential_unavailable",
+    "provider.deepgram.keyterms",
+    "provider.deepgram.test.completed",
+    "provider.deepgram.test.failed",
+    "provider.deepgram.test.recording.started",
+    "provider.sherpa-onnx.available",
+    "provider.sherpa-onnx.unavailable",
+    "recording.cancelled-after-deferred-release",
+    "recording.capture-service-failed",
+    "recording.deferred-release-ignored",
+    "recording.discarded-audio-cleanup-failed",
+    "recording.failure",
+    "recording.finished-after-deferred-release",
+    "recording.finishing",
+    "recording.hotkey.pressed",
+    "recording.hotkey.released",
+    "recording.live-authorization-revoked",
+    "recording.prepare.begin",
+    "recording.queued",
+    "recording.release.deferred",
+    "recording.started",
+    "recording.toggle.cancelled-before-start",
+    "recording.toggle.release-ignored",
+    "run-receipt.persistence.failed",
+    "security.webhook-configuration.blocked",
+    "security.webhook-configuration.protected",
+    "security.webhook-configuration.purge-pending",
+    "session.action",
+    "session.cancelled",
+    "session.failure",
+    "session.recognition-hints.resolved",
+    "session.recognition-hints.unsupported",
+    "session.recognition.recovery-pending",
+    "session.recognition.timeout",
+    "session.stage",
+    "session.transform.step",
+    "session.vocabulary.applied",
+    "session.vocabulary.load-failed",
+    "temporary-files.cleanup.completed",
+    "temporary-files.cleanup.pending",
+    "workflow-manifest.bundle.missing",
+    "workflow-manifest.fallback",
+    "workflow-manifest.loaded",
+    "workflow.audio-live-authorization-revoked",
+    "workflow.audio-recording.failed",
+    "workflow.audio-recording.queued",
+    "workflow.audio-recording.started",
+    "workflow.audio-recording.terminal-signal",
+
+    // Stable package-owned fixture coordinates. Keeping this finite lets
+    // repositories be exercised without reopening a free-form namespace.
+    "diagnostic.before-clear",
+    "diagnostic.boundary",
+    "diagnostic.live",
+    "diagnostic.newer",
+    "diagnostic.older",
+    "diagnostic.stored.newer",
+    "diagnostic.stored.older",
+    "persistence.must-remain",
+    "persistence.sentinel-control",
+    "provider.request.failed",
+    "providers.warning",
+    "session.debug",
+    "session.error",
+  ]
+
+  private static let actionIDs: Set<String> = [
+    "clipboard.copy",
+    "external.markdown.append",
+    "external.shortcuts.run",
+    "external.webhook.post",
+    "inject.text",
+    "stack.push",
+
+    // Package-owned fixture components used to verify typed coordinates.
+    "group.stack.action",
+    "probe.action",
+  ]
+
+  private static let recognizerIDs: Set<String> = [
+    "context.selection",
+    "deepgram.prerecorded",
+    "sherpa-onnx.local",
+    "sherpa-onnx.streaming",
+    "mock.recognizer",
+  ]
+
+  private static let transformerIDs: Set<String> = [
+    "transformer.normalize",
+    "mock.transformer",
+  ]
+
+  private static let providerIDs: Set<String> = [
+    "deepgram.live",
+    "deepgram.prerecorded",
+    "sherpa-onnx.local",
+    "sherpa-onnx.streaming",
+    "whisperkit.stream",
+  ]
+
+  private static let providerKinds: Set<String> = [
+    "deepgram",
+    "deepgram.live",
+    "sherpa-onnx",
+    "whisperkit",
+    "whisperkit.live",
+  ]
+
+  private static let providerModels: Set<String> = [
+    "distil-whisper_distil-large-v3_594MB",
+    "nova-3",
+    "nova-3-general",
+    "nova-3-medical",
+    "openai_whisper-large-v3-v20240930_626MB",
+    "openai_whisper-tiny",
+    "qwen3-asr-0.6b-int8",
+    "sense-voice-small-int8",
+  ]
+
+  private static let reasonCodes: Set<String> = [
+    "busy",
+    "cancelled",
+    "cloudConfirmationRequired",
+    "configuration",
+    "conditionFailed",
+    "contextRestricted",
+    "entry-too-large",
+    "eventKindMismatch",
+    "excludedByCaptureTag",
+    "expired",
+    "allActionsSkipped",
+    "invalid-entry",
+    "invalid-workflow-enabled-states",
+    "invalid-workflow-library",
+    "initialSilenceTimedOut",
+    "inputEndedUnexpectedly",
+    "maximumDurationReached",
+    "itemMissing",
+    "itemChanged",
+    "loopPrevented",
+    "not-found",
+    "paste-failed",
+    "paste-finished",
+    "policyBlocked",
+    "privacyBlocked",
+    "privacySettingsUnavailable",
+    "processing",
+    "processingDestinationUnavailable",
+    "protection-unavailable",
+    "request-failed",
+    "retry-outcome-unknown",
+    "rule-source-unavailable",
+    "settings-read-failed",
+    "settings-write-failed",
+    "speechEnded",
+    "sourceGroupMismatch",
+    "storage-unavailable",
+    "transport-failed",
+    "trust-material-unavailable",
+    "unclassified",
+    "unsupported",
+    "unsupported-payload",
+    "workflowDisabled",
+  ]
+
+  private static let outcomeCodes: Set<String> = [
+    "applied",
+    "blocked",
+    "cleanup-pending",
+    "completed",
+    "cancelled",
+    "failed",
+    "limited",
+    "load-failed",
+    "no-valid-keyterms",
+    "none-requested",
+    "partial",
+    "partially-applied",
+    "pending",
+    "preserved",
+    "resolved",
+    "restored",
+    "skipped",
+    "skipped-change-count",
+    "unsupported-model",
+    "unsupported-recognizer",
+    "write-failed",
+  ]
+
+  private static let privacyDecisionCodes: Set<String> = [
+    "allow",
+    "blockCloudProcessing",
+    "redactContext",
+    "requireCloudConfirmation",
+    "skipClipboardCapture",
+    "skipWorkflowCapture",
+  ]
+
+  private static let privacyReasonCodes: Set<String> = [
+    "autoGeneratedClipboard",
+    "cloudConfirmationRequired",
+    "cloudProcessingBlocked",
+    "cloudProviderSelected",
+    "concealedClipboard",
+    "itemTaggedExcludeFromWorkflowCapture",
+    "privacySettingsUnavailable",
+    "processingDestinationUnavailable",
+    "secureInput",
+    "sensitiveApplication",
+    "transientClipboard",
+    "unknownFocusContext",
+    "userDisabledClipboardHistory",
+  ]
+
+  /// Diagnostic metadata is deny-by-default. Each retained key has a narrow value grammar.
+  private static let metadataAllowlist: [String: MetadataValueKind] = [
+    "actionCount": .count,
+    "actionID": .closed(actionIDs),
+    "activationRevision": .count,
+    "acousticAboveThresholdDurationMilliseconds": .count,
+    "acousticMaximumConsecutiveAboveThresholdDurationMilliseconds": .count,
+    "acousticObservedDurationMilliseconds": .count,
+    "acousticObservedSegmentCount": .count,
+    "acousticPeakLevelPercentBucket": .count,
+    "applicationCount": .count,
+    "binding": .closed(["hotkey", "manual", "menuBar", "wakeWord"]),
+    "blockReason": .closed([
+      "invalid-pending-state",
+      "state-read-failed",
+      "state-write-failed",
+    ]),
+    "candidateSetCount": .count,
+    "clipboardPanelShortcut": .closed([
+      "disabled-by-preference",
+      "enabled",
+      "unavailable",
+    ]),
+    "clipboardRemovedCount": .count,
+    "controlMode": .closed(["holdToTalk", "toggle"]),
+    "commandVInterception": .closed([
+      "conditional",
+      "disabled-by-preference",
+      "unavailable",
+    ]),
+    "count": .count,
+    "credentialKey": .closed([
+      "provider.deepgram.api-key",
+      "provider.whisperkit.model-token",
+    ]),
+    "decision": .closed(privacyDecisionCodes),
+    "decisions": .closedList(privacyDecisionCodes),
+    "defaultModel": .closed([
+      "qwen3-asr-0.6b-int8",
+      "sense-voice-small-int8",
+    ]),
+    "deepgram.model": .closed(providerModels),
+    "deliveryCompleted": .boolean,
+    "diagnosticRemovedCount": .count,
+    "durationMillis": .count,
+    "event": .eventCode,
+    "eventKind": .closed(["itemCreated", "itemEdited", "itemRemoved"]),
+    "eventSourceState": .closed(["privateState"]),
+    "eventTap": .closed(["cghidEventTap"]),
+    "fileCount": .count,
+    "gesture": .closed(["control-option-shift-space", "fn-hold"]),
+    "groupCount": .count,
+    "hasImage": .boolean,
+    "historyCount": .count,
+    "httpStatusCode": .integer,
+    "issueCount": .count,
+    "keychainKeyState": .closed([
+      "alternate-key-retained",
+      "matching-key-retained",
+      "single-key",
+    ]),
+    "modelCount": .count,
+    "vadModel": .closed(["silero-vad-v4"]),
+    "outcome": .closed(outcomeCodes),
+    "omittedCount": .count,
+    "pendingCount": .count,
+    "pendingReason": .closed([
+      "logical-deletion-failed",
+      "physical-purge-failed",
+      "state-removal-failed",
+      "state-write-failed",
+    ]),
+    "preservedActiveClipboardCount": .count,
+    "protectedActionCount": .count,
+    "protections": .closedList(["autoGenerated", "concealed", "transient"]),
+    "pushToTalk": .closed(["active", "unavailable"]),
+    "provider": .closed(providerIDs),
+    "provider.kind": .closed(providerKinds),
+    "provider.model": .closed(providerModels),
+    "reason": .closed(reasonCodes),
+    "reasons": .closedList(privacyReasonCodes),
+    "recognizer.language": .closed(["auto", "en", "en-US", "zh", "zh-CN"]),
+    "recognizerID": .closed(recognizerIDs),
+    "rejectedCount": .count,
+    "replacementCount": .count,
+    "requestedTrigger": .closed(["hotkey", "manual", "menuBar", "wakeWord"]),
+    "resultCode": .closed([
+      "copiedToClipboard",
+      "cancelled",
+      "externalOutput",
+      "failed",
+      "injected",
+      "pushedToStack",
+      "skipped",
+    ]),
+    "retrySafe": .boolean,
+    "revision": .count,
+    "runRemovedCount": .count,
+    "runReceiptRemovedCount": .count,
+    "source": .closed([
+      "builtin",
+      "dashboard.run",
+      "hotkey.run",
+      "live",
+      "long-recording",
+      "menu-bar.run",
+      "prerecorded",
+      "push-to-talk",
+      "settings.deepgram-test",
+      "startup",
+      "tests",
+      "wake-word.run",
+    ]),
+    "stage": .closed([
+      "capturingInput",
+      "completed",
+      "delivering",
+      "failed",
+      "integrity",
+      "preparing",
+      "recognizing",
+      "resolution",
+      "resolving",
+      "runtime",
+      "tokenizer",
+      "trust-material-unavailable",
+      "trustRoot",
+      "transforming",
+      "unverified",
+    ]),
+    "state": .closed([
+      "active",
+      "armingIgnoreNextExternalChange",
+      "ignoringNextExternalChange",
+      "paused",
+      "pausing",
+      "resuming",
+    ]),
+    "status": .integer,
+    "statusCode": .integer,
+    "stepCount": .count,
+    "stepKind": .closed(["llmRewrite", "normalizeWhitespace", "snippetReplacement"]),
+    "strategy": .closed(["clipboardOnly", "immediate", "stackFirst"]),
+    "targetFocusActivationAttempted": .boolean,
+    "targetFocusActivationSucceeded": .boolean,
+    "targetFocusInitiallyMatched": .boolean,
+    "targetFocusProvided": .boolean,
+    "targetFocusVerified": .boolean,
+    "temporaryFileFailureArtifactKinds": .closedList([
+      "audio-capture",
+      "deepgram-live-capture",
+      "live-capture",
+      "recognition-work",
+      "recovery-audio",
+      "shortcut-text",
+    ]),
+    "temporaryFileFailureCount": .count,
+    "temporaryFileFailureOperations": .closedList([
+      "enumerate-temporary-directory",
+      "inspect-artifact",
+      "inspect-temporary-directory",
+      "remove-artifact",
+    ]),
+    "temporaryFileRemovedCount": .count,
+    "totalRemovedCount": .count,
+    "transformerID": .closed(transformerIDs),
+    "trigger": .closed(["hotkey", "manual", "menuBar", "wakeWord"]),
+    "vocabularyApplicationCount": .count,
+    "vocabularyIssueCount": .count,
+  ]
+
+  public static func sanitize(_ event: DiagnosticEvent) -> DiagnosticEvent {
+    var sanitized = event
+    sanitized.event = sanitizeEventCode(event.event)
+    sanitized.message = sanitizedMessage
+    sanitized.metadata = event.metadata.reduce(into: [:]) { result, entry in
+      guard
+        let kind = metadataAllowlist[entry.key],
+        isSafe(entry.value, as: kind)
+      else {
+        return
+      }
+      result[entry.key] = entry.value
+    }
+    return sanitized
+  }
+
+  /// Diagnostic event names are persisted as coordinates rather than content.
+  /// Only package-owned protocol values cross this plaintext boundary.
+  public static func sanitizeEventCode(_ eventCode: String) -> String {
+    eventCodeCatalog.contains(eventCode) ? eventCode : invalidEventCode
+  }
+
+  private static func isSafe(_ value: String, as kind: MetadataValueKind) -> Bool {
+    guard !containsSensitiveSyntax(value) else { return false }
+
+    switch kind {
+    case .boolean:
+      return ["false", "off", "on", "true"].contains(value)
+    case .closed(let allowedValues):
+      return allowedValues.contains(value)
+    case .closedList(let allowedValues):
+      let values = value.split(separator: ",", omittingEmptySubsequences: false)
+      return !values.isEmpty && values.allSatisfy { allowedValues.contains(String($0)) }
+    case .count:
+      guard value.count <= 20, let count = UInt64(value) else { return false }
+      return String(count) == value
+    case .eventCode:
+      return eventCodeCatalog.contains(value)
+    case .integer:
+      guard value.count <= 20, let number = Int64(value) else { return false }
+      return String(number) == value
+    }
+  }
+
+  private static func containsSensitiveSyntax(_ value: String) -> Bool {
+    let lowercaseValue = value.lowercased()
+    let forbiddenFragments = [
+      "authorization",
+      "bearer ",
+      "file://",
+      "token=",
+      "api_key",
+      "apikey",
+      "x-api-key",
+      "://",
+      "/users/",
+      "/home/",
+      "/private/",
+      "/var/folders/",
+    ]
+    return forbiddenFragments.contains { lowercaseValue.contains($0) }
+      || value.contains("?")
+      || value.contains("\n")
+      || value.contains("\r")
+  }
+}

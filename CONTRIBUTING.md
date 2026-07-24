@@ -1,0 +1,150 @@
+# Contributing to Rill
+
+感谢你改进 Rill。这个仓库包含语音采集、剪贴板路由、外部输出和本地持久化等高影响边界；提交应保持改动可解释、依赖可复现，并为失败、取消、隐私收紧和 App 退出路径补充验证。
+
+## 开发环境
+
+- macOS 14.0 或更高版本
+- Xcode 26 或更高版本，并选择包含 Swift 6.2+ 的 Command Line Tools；本地
+  默认开发工具链为 Xcode 27
+- 与所选 Xcode build version 匹配的 Metal Toolchain；运行 `xcodebuild -downloadComponent MetalToolchain` 安装，`xcrun --toolchain XcodeDefault metal -v` 必须成功。若组件已安装但验证仍失败，请通过 `DEVELOPER_DIR` 临时选择一个组件可用的并存稳定版 Xcode
+- Python 3.11 或更高版本
+- Git；运行完整发布预检还需要 macOS 自带的 `codesign`、`lipo`、`otool` 和磁盘映像工具
+- Gitleaks 8.30.1；仓库安装脚本会按当前 Mac 架构下载并校验固定 SHA-256
+- [just](https://just.systems/)、[uv](https://docs.astral.sh/uv/) 与
+  [prek](https://prek.j178.dev/)，用于运行与 CI 相同的仓库门禁
+
+先确认工具链，再使用锁定依赖的包装脚本：
+
+```bash
+swift --version
+xcrun --toolchain XcodeDefault metal -v
+python3 --version
+scripts/swift_locked.sh build
+scripts/swift_locked.sh test --parallel
+```
+
+安装 Git hooks，并通过统一入口运行开发门禁：
+
+```bash
+just install
+just check
+just test
+just ci
+```
+
+不要删除、绕过或手工改写 `Package.resolved`。所有 SwiftPM 构建和测试都应通过 `scripts/swift_locked.sh` 运行，以保证使用仓库锁定的依赖图。
+
+原生 MLX 路径固定使用 `mlx-audio-swift` 0.1.3 与 `mlx-swift` 0.31.4。
+`mlx-swift` 0.31.5/0.31.6 的 `CudaBuild` package plugin 会破坏当前 Xcode
+package graph，且 SwiftPM 消费方不能关闭传递插件；只有上游发布修复或仓库引入
+受审 fork 后才升级这个底层 pin。
+
+`scripts/check_dependency_security.py` 只使用 Python 3.11+ 标准库。本地默认模式对照 `scripts/dependency_security_baseline.json` 做确定性离线检查；baseline 只记录已经复核来源和受影响版本边界的 advisory，删除或放宽已固定的 required policy 会失败。需要联网复核全部 exact lock commit 时运行：
+
+```bash
+python3 scripts/check_dependency_security.py
+python3 scripts/check_dependency_security.py --live-osv
+```
+
+live 模式固定调用 OSV 官方 `https://api.osv.dev/v1/querybatch`；响应按 lock 顺序映射，只有返回独立 `next_page_token` 的条目会继续分页。网络、重定向、JSON/字段、结果数量、重复 advisory 或分页异常都必须 fail-closed，任何 advisory 都会阻断。依赖变化必须同步锁文件测试与第三方 NOTICE 证据；baseline 变化必须保留受审来源并更新 policy tests，不能用 baseline 忽略 live 结果。
+
+可以把仓库固定的 Gitleaks 安装到个人工具目录：
+
+```bash
+tool_dir="$HOME/.local/share/rill/bin"
+bash scripts/install_gitleaks.sh --destination "$tool_dir"
+export PATH="$tool_dir:$PATH"
+gitleaks version
+```
+
+## 改动边界
+
+模块依赖应保持单向：
+
+```text
+RillCore          领域模型与协议
+RillPlatform      macOS 系统边界
+RillProviders     识别、变换与输出实现
+RillRuntime       会话协调与运行生命周期
+RillPersistence   加密持久化
+RillUI            SwiftUI 与 AppModel
+RillApp           组合根
+```
+
+- 让 `RillCore` 保持平台无关；系统 API 和第三方 SDK 不应反向进入领域层。
+- 将一次运行的成功、失败、取消、部分完成和退出清理建模为显式状态，不用错误字符串替代跨层合同。
+- 新增任何正文、音频、路径、端点或凭据流向时，同步说明隐私判定、持久化、诊断清洗、取消与清理行为。
+- 修复应覆盖用户可见入口和真实组合根；仅有孤立模型或未注册实现不算产品能力。
+- 保持改动聚焦。不要顺带重写无关文件，也不要覆盖工作树中不属于当前改动的内容。
+
+## 测试
+
+开发时可以先运行定向测试：
+
+```bash
+scripts/swift_locked.sh test --filter MainShellFocusIntegrationTests
+scripts/swift_locked.sh test --filter SessionCoordinatorTests
+```
+
+提交前必须运行完整测试与仓库门禁；`just ci` 是本地与 CI 的统一入口：
+
+```bash
+just ci
+git diff --check
+git diff --cached --check
+```
+
+`scripts/preflight.sh` 会先运行依赖安全 policy tests 和 reviewed baseline 离线检查，再用固定版本的 Gitleaks 扫描完整 Git 历史与 tracked + untracked(nonignored) 当前源码快照；之后检查脚本语法、生成物和仓库根发布产物卫生，清理旧 SwiftPM 构建，执行 arm64-only Release 构建、验证最低 macOS 版本、装配并临时签名 App、运行完整测试。CI 在此基础上单独运行 live OSV exact-commit 查询，避免把可用网络伪装成本地确定性门禁。当前源码扫描拒绝 symlink 与非普通文件，并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。预检不能替代在 macOS 14 的 Apple Silicon 真机上验证最终公证包，也不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
+
+修复竞态或生命周期问题时，应优先使用可控的 fake、barrier 或 lease 写确定性测试；不要依赖固定 `sleep` 猜测时序。涉及 SwiftUI/AppKit 焦点、系统权限、全局快捷键、VoiceOver、签名或公证时，除自动化测试外还需记录真实环境验收结果。
+
+主窗口搜索由 MainShell 的浮层与 AppKit `NSSearchField` bridge 共同拥有，以便在 macOS 14 上确定性处理首次/重复 `Cmd-F`、方向键、`Return` 与 `Esc`；不要未经同等真实 App 回归就替换为 `.searchable`。普通页面路由由 shell 恢复侧栏焦点，typed Settings / History 目的地则由详情页持有目标焦点。鼠标选择后的恢复必须跨到主 RunLoop 的 default mode，不能只靠 `Task.yield()` 猜测 AppKit mouse tracking / first-responder 时序；修改任一侧时都应覆盖 Dashboard → Clipboard 的方向键、List selection、快速路由与 exact 详情 AX 焦点。
+
+## 生成文件
+
+不要直接编辑生成产物。
+
+- 内建工作流以 `Sources/RillApp/Resources/BuiltinWorkflows.toml` 为事实源。修改后运行：
+
+  ```bash
+  python3 scripts/generate_builtin_workflows.py
+  python3 scripts/generate_builtin_workflows.py --check
+  ```
+
+- `THIRD_PARTY_NOTICES.md` 由锁文件和脚本内受审证据生成。依赖变化后运行：
+
+  ```bash
+  python3 scripts/generate_third_party_notices.py
+  python3 scripts/generate_third_party_notices.py --check
+  ```
+
+- App 图标的受审源文件是 `Resources/AppIcon/AppIcon-1024-routed-voice-cursor.png`；`scripts/render_app_icon_renditions.swift` 生成包含透明圆角和小尺寸光学调整的传统 macOS renditions，`scripts/generate_app_icon.sh` 再装配 ICNS。图标来源与受审 SHA-256 记录在同目录 `README.md` 中。`scripts/release.sh` 默认把本地产物写入被忽略的 `.artifacts/release/`；仓库根目录禁止出现 `Rill.app`、`Rill.dmg` 或 `Rill.dmg.sha256`，也不应提交临时装配目录、本地发布产物或 `.rill-release.*` 私有 staging。
+
+生成器、事实源和生成结果应放在同一个提交中。
+
+## 提交与 Pull Request
+
+- 提交信息与 Pull Request 标题使用 zendev 的
+  `<emoji> <type>(<optional-scope>): <imperative summary>` 规范，例如
+  `🐛 fix(ui): preserve sidebar focus after route changes`。常用类型包括
+  `feat`、`fix`、`refactor`、`test`、`docs`、`build`、`ci` 和 `chore`；
+  emoji 必须与 type 匹配。
+- 一个提交只表达一个可审阅的意图；说明用户影响、关键边界、测试证据和仍需人工验证的内容。
+- 提交前确保 `prek` 与完整 preflight 通过。不要把 expected skip 写成全绿，也不要把本地 ad-hoc/Apple Development 签名描述为可公开分发。
+- `just install` 会同时安装 `pre-commit` 与 `commit-msg` hooks；
+  `zendev-commit-msg` 在本地验证提交，CI 使用同一 zendev 版本验证 Pull
+  Request 标题和描述结构。描述中列出风险、回滚方式、自动化结果和人工
+  QA；涉及数据格式或持久化时说明迁移、旧数据和 fail-closed 行为。
+
+## 发布权限
+
+普通贡献不应创建版本标签、安装到其他用户的 `/Applications`，或提交公证请求。发布脚本默认输出到 `.artifacts/release/`，并在构建前使旧 App/DMG/sidecar 失效；新产物只在同文件系统私有 staging 中完成验证后原子发布。仓库内 `RELEASE_OUTPUT_DIR` 的逻辑路径与解析后的物理祖先都必须位于 `.artifacts/`，公证快照 capability 也绑定物理输出位置；仓库外隔离目录不受此限制。完整发布策略测试（包括 App-only SwiftPM 产品面）必须保持通过。正式发布需要维护者明确授权，并要求：
+
+- 工作树（含未跟踪文件）干净；
+- `HEAD` 精确且唯一地标记为 `vMAJOR.MINOR.PATCH`；
+- `Package.resolved` 已跟踪且与该提交一致；
+- 使用 Developer ID Application 身份和维护者管理的 `notarytool` 凭据；
+- 最终 DMG 完成签名、公证、staple、Gatekeeper 复验和人工 QA。
+
+发布流程以 `scripts/release.sh` 和 `docs/release-qa-checklist.md` 为准。仓库尚未包含 `LICENSE` 与正式安全报告渠道；在维护者补齐前，不要推断授权条款，也不要在公开 issue 中披露敏感漏洞细节。

@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "Rill";
+"CFBundleName" = "Rill";
+"NSMicrophoneUsageDescription" = "Rill needs microphone access to capture voice input for speech-to-text.";

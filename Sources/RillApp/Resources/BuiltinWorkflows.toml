@@ -1,0 +1,85 @@
+schema_version = 1
+
+[metadata]
+source = "builtin"
+format = "toml"
+
+[[workflows]]
+id = "B9E19A88-F9FB-4AB3-8444-CDBF7E215A88"
+name = "Accurate Transcription"
+title_key = "pushToTalkCapture"
+trigger = "hotkey"
+symbol = "mic.fill"
+accent_color = "red"
+recognizer = "sherpa-onnx.local"
+mode = "dedicated-transcription"
+exclusive_group = "builtin.push-to-talk"
+builtin_kind = "push-to-talk.dictation"
+gesture = "fn-hold"
+interaction_mode = "press-and-hold"
+delivery = "immediate"
+output = "inject.text"
+settings_expose = ["output_mode"]
+text_style = "cleanInput"
+
+[[workflows.post_process]]
+kind = "normalizeWhitespace"
+
+[[workflows]]
+id = "A8E19A88-F9FB-4AB3-8444-CDBF7E215A88"
+name = "Streaming Direct"
+title_key = "streamingInput"
+trigger = "hotkey"
+symbol = "waveform.badge.mic"
+accent_color = "orange"
+recognizer = "sherpa-onnx.streaming"
+mode = "streaming-direct"
+exclusive_group = "builtin.push-to-talk"
+builtin_kind = "push-to-talk.streaming"
+gesture = "fn-hold"
+interaction_mode = "press-and-hold"
+delivery = "immediate"
+output = "inject.text"
+settings_expose = ["output_mode"]
+text_style = "rawInput"
+
+[[workflows]]
+id = "D1E19A88-F9FB-4AB3-8444-CDBF7E215A88"
+# TODO: switch to active only after a production llmRewrite transformer is
+# registered, privacy-classified, configurable, and covered by release tests.
+name = "Transcription + LLM Rewrite"
+title_key = "pushToTalkPolish"
+trigger = "hotkey"
+symbol = "wand.and.stars"
+accent_color = "purple"
+recognizer = "sherpa-onnx.local"
+mode = "transcription-with-rewrite"
+availability = "planned"
+exclusive_group = "builtin.push-to-talk"
+builtin_kind = "push-to-talk.polish"
+gesture = "fn-hold"
+interaction_mode = "press-and-hold"
+delivery = "immediate"
+output = "inject.text"
+settings_expose = ["output_mode"]
+text_style = "formalWriting"
+
+[[workflows.post_process]]
+kind = "normalizeWhitespace"
+
+[[workflows.post_process]]
+kind = "llmRewrite"
+prompt = "Polish into a concise final message while preserving meaning and language."
+
+[[workflows]]
+id = "C0E19A88-F9FB-4AB3-8444-CDBF7E215A88"
+name = "Raw Input"
+title_key = "rawInput"
+trigger = "manual"
+symbol = "text.quote"
+accent_color = "gray"
+recognizer = "auto"
+builtin_kind = "voice-mode.raw"
+delivery = "stackFirst"
+output = "stack.push"
+text_style = "rawInput"

@@ -1,0 +1,239 @@
+import SwiftUI
+import RillCore
+
+struct WorkflowExplanationSheetRequest: Identifiable, Equatable {
+    let workflowID: UUID
+
+    var id: UUID { workflowID }
+}
+
+struct WorkflowExplanationSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+    @Bindable var model: AppModel
+    let workflowID: UUID
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(UIStrings.workflowExplanationCopy(.sheetTitle, language: model.language))
+                    .font(.title2.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+
+                Spacer()
+
+                Button(UIStrings.workflowExplanationCopy(.close, language: model.language)) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+                .accessibilityIdentifier("workflow-explanation.close")
+            }
+
+            Label(
+                UIStrings.workflowExplanationCopy(.previewNotice, language: model.language),
+                systemImage: "lock.shield"
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+
+            ScrollView {
+                explanationContent
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            HStack {
+                Spacer()
+                Button {
+                    refresh()
+                } label: {
+                    Label(
+                        UIStrings.workflowExplanationCopy(.refresh, language: model.language),
+                        systemImage: "arrow.clockwise"
+                    )
+                }
+                .disabled(isLoading)
+                .accessibilityIdentifier("workflow-explanation.refresh")
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 620, idealWidth: 680, minHeight: 560, idealHeight: 720)
+        .accessibilityIdentifier("workflow-explanation.sheet")
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                refresh()
+            } else {
+                model.cancelWorkflowExplanation()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var explanationContent: some View {
+        switch model.workflowExplanationState {
+        case .loading(let stateWorkflowID) where stateWorkflowID == workflowID:
+            HStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(UIStrings.workflowExplanationCopy(.loading, language: model.language))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 24)
+            .accessibilityElement(children: .combine)
+        case .loaded(let receipt) where receipt.workflowID == workflowID:
+            explanationSections(
+                WorkflowExplanationPresentation.make(receipt: receipt, language: model.language)
+            )
+        case .failed(let stateWorkflowID, let reason) where stateWorkflowID == workflowID:
+            failureView(reason)
+        default:
+            failureView(WorkflowExplanationSelectionState.unavailableFailure(
+                workflowExists: model.workflows.contains(where: { $0.id == workflowID })
+            ))
+        }
+    }
+
+    private var isLoading: Bool {
+        guard case .loading(let stateWorkflowID) = model.workflowExplanationState else {
+            return false
+        }
+        return stateWorkflowID == workflowID
+    }
+
+    private func refresh() {
+        guard let workflow = model.workflows.first(where: { $0.id == workflowID }) else {
+            model.cancelWorkflowExplanation()
+            return
+        }
+        model.explainWorkflowBeforeRun(workflow)
+    }
+
+    private func failureView(_ failure: WorkflowExplanationFailure) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(
+                UIStrings.workflowExplanationFailure(failure, language: model.language),
+                systemImage: "exclamationmark.shield"
+            )
+            .foregroundStyle(.orange)
+
+            Button(UIStrings.workflowExplanationCopy(.retry, language: model.language)) {
+                refresh()
+            }
+            .disabled(failure == .workflowUnavailable)
+        }
+        .padding(.vertical, 20)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func explanationSections(
+        _ presentation: WorkflowExplanationPresentation
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            statusCard(presentation)
+
+            explanationSection(
+                title: UIStrings.workflowExplanationCopy(.trigger, language: model.language),
+                rows: [WorkflowExplanationPresentationRow(title: presentation.trigger, detail: "")]
+            )
+            explanationSection(
+                title: UIStrings.workflowExplanationCopy(.inputs, language: model.language),
+                rows: presentation.inputs
+            )
+            explanationSection(
+                title: UIStrings.workflowExplanationCopy(.transforms, language: model.language),
+                rows: presentation.transforms
+            )
+            explanationSection(
+                title: UIStrings.workflowExplanationCopy(.outputs, language: model.language),
+                rows: presentation.outputs
+            )
+            explanationSection(
+                title: UIStrings.workflowExplanationCopy(.destinations, language: model.language),
+                rows: presentation.destinations.map {
+                    WorkflowExplanationPresentationRow(title: $0, detail: "")
+                }
+            )
+            explanationSection(
+                title: UIStrings.workflowExplanationCopy(.privacyConditions, language: model.language),
+                rows: presentation.privacyReasons.map {
+                    WorkflowExplanationPresentationRow(title: $0, detail: "")
+                }
+            )
+            explanationSection(
+                title: UIStrings.workflowExplanationCopy(.issues, language: model.language),
+                rows: presentation.issues.map {
+                    WorkflowExplanationPresentationRow(title: $0, detail: "")
+                }
+            )
+        }
+    }
+
+    private func statusCard(_ presentation: WorkflowExplanationPresentation) -> some View {
+        let style = statusStyle(presentation.status)
+        return HStack(alignment: .top, spacing: 12) {
+            Image(systemName: style.icon.rawValue)
+                .font(.title3)
+                .foregroundStyle(style.color)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(presentation.statusTitle)
+                    .font(.headline)
+                Text(presentation.statusDetail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(style.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("workflow-explanation.status")
+    }
+
+    private func explanationSection(
+        title: String,
+        rows: [WorkflowExplanationPresentationRow]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+
+            if rows.isEmpty {
+                Text(UIStrings.workflowExplanationCopy(.none, language: model.language))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(row.title)
+                            .font(.callout.weight(.medium))
+                        if !row.detail.isEmpty {
+                            Text(row.detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 3)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func statusStyle(
+        _ status: WorkflowExplanationStatus
+    ) -> (icon: RillSystemSymbol, color: Color) {
+        switch status {
+        case .ready:
+            (.checkmarkShield, .green)
+        case .requiresConfirmation:
+            (.questionmarkBubble, .orange)
+        case .blocked:
+            (.xmarkShield, .red)
+        }
+    }
+}

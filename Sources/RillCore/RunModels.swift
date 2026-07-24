@@ -1,0 +1,405 @@
+import Foundation
+
+public enum WorkflowRunStage: String, Codable, Sendable, Equatable {
+    case preparing
+    case capturingInput
+    case recognizing
+    case resolving
+    case transforming
+    case delivering
+    case completed
+    case failed
+}
+
+public struct WorkflowTriggerEvent: Identifiable, Codable, Sendable, Equatable {
+    public var id: UUID
+    public var binding: TriggerBinding
+    public var workflowID: UUID?
+    public var sourceID: String
+    public var metadata: [String: String]
+    public var triggeredAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        binding: TriggerBinding,
+        workflowID: UUID? = nil,
+        sourceID: String,
+        metadata: [String: String] = [:],
+        triggeredAt: Date = Date()
+    ) {
+        self.id = id
+        self.binding = binding
+        self.workflowID = workflowID
+        self.sourceID = sourceID
+        self.metadata = metadata
+        self.triggeredAt = triggeredAt
+    }
+}
+
+public struct AudioProcessingQueueSnapshot: Codable, Sendable, Equatable {
+    public var processingRunID: UUID?
+    public var workflow: WorkflowPresentation?
+    public var pendingCount: Int
+    public var updatedAt: Date
+
+    public init(
+        processingRunID: UUID? = nil,
+        workflow: WorkflowPresentation? = nil,
+        pendingCount: Int,
+        updatedAt: Date = Date()
+    ) {
+        self.processingRunID = processingRunID
+        self.workflow = workflow
+        self.pendingCount = pendingCount
+        self.updatedAt = updatedAt
+    }
+
+    public var isVisible: Bool {
+        processingRunID != nil || pendingCount > 0
+    }
+
+    public var queuedCount: Int {
+        max(pendingCount - (processingRunID == nil ? 0 : 1), 0)
+    }
+}
+
+public struct WorkflowRunStageSnapshot: Codable, Sendable, Equatable {
+    public var runID: UUID
+    public var workflowID: UUID
+    public var workflow: WorkflowPresentation
+    public var stage: WorkflowRunStage
+    public var updatedAt: Date
+
+    public init(
+        runID: UUID,
+        workflowID: UUID,
+        workflow: WorkflowPresentation,
+        stage: WorkflowRunStage,
+        updatedAt: Date = Date()
+    ) {
+        self.runID = runID
+        self.workflowID = workflowID
+        self.workflow = workflow
+        self.stage = stage
+        self.updatedAt = updatedAt
+    }
+}
+
+// MARK: - Content-free terminal run receipts
+
+/// A privacy-bounded duration classification used by persisted run receipts.
+///
+/// Exact elapsed time is intentionally not part of the receipt contract. The
+/// runtime measures with a monotonic clock and immediately reduces the result
+/// to one of these closed buckets.
+public enum WorkflowRunDurationBucket: String, Codable, Sendable, Equatable, CaseIterable {
+    case under250ms
+    case ms250To999
+    case s1To4
+    case s5To14
+    case s15To59
+    case m1Plus
+    case unavailable
+
+    public static func classify(elapsedNanoseconds: UInt64) -> Self {
+        switch elapsedNanoseconds {
+        case ..<250_000_000:
+            return .under250ms
+        case ..<1_000_000_000:
+            return .ms250To999
+        case ..<5_000_000_000:
+            return .s1To4
+        case ..<15_000_000_000:
+            return .s5To14
+        case ..<60_000_000_000:
+            return .s15To59
+        default:
+            return .m1Plus
+        }
+    }
+}
+
+/// The actual invocation source, rather than the workflow's declared binding.
+public enum WorkflowRunTriggerKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case manual
+    case menuBar
+    case hotkey
+    case wakeWord
+    case clipboardGroupEvent
+    case stackDelivery
+    case clipboardUse
+    case clipboardReplay
+    case failedAudioRecovery
+
+    /// Whether this invocation obtains its body from a voice capture.
+    ///
+    /// Clipboard-derived invocations can reuse a workflow that declares a
+    /// recognizer, so workflow configuration is not a safe proxy for whether
+    /// a history body may be retained or displayed.
+    public var isVoiceCapture: Bool {
+        switch self {
+        case .manual, .menuBar, .hotkey, .wakeWord, .failedAudioRecovery:
+            return true
+        case .clipboardGroupEvent, .stackDelivery, .clipboardUse, .clipboardReplay:
+            return false
+        }
+    }
+}
+
+/// A closed, content-free reason for an invocation that intentionally did not run.
+public enum WorkflowRunSkipCode: String, Codable, Sendable, Equatable, CaseIterable {
+    case workflowDisabled
+    case busy
+    case unsupported
+    case privacyBlocked
+    case eventKindMismatch
+    case sourceGroupMismatch
+    case excludedByCaptureTag
+    case conditionFailed
+    case itemMissing
+    case itemChanged
+    case loopPrevented
+    case allActionsSkipped
+    case unclassified
+}
+
+public enum WorkflowRunOutcome: String, Codable, Sendable, Equatable, CaseIterable {
+    case completed
+    case partiallyCompleted
+    case failed
+    case cancelled
+    case skipped
+}
+
+/// The terminal classification for exactly one run attempt.
+public enum WorkflowRunTermination: Codable, Sendable, Equatable {
+    case completed
+    case partiallyCompleted(code: WorkflowRunFailureCode)
+    case failed(stage: WorkflowRunStage, code: WorkflowRunFailureCode)
+    case cancelled(stage: WorkflowRunStage)
+    case skipped(reason: WorkflowRunSkipCode)
+
+    public var outcome: WorkflowRunOutcome {
+        switch self {
+        case .completed:
+            return .completed
+        case .partiallyCompleted:
+            return .partiallyCompleted
+        case .failed:
+            return .failed
+        case .cancelled:
+            return .cancelled
+        case .skipped:
+            return .skipped
+        }
+    }
+}
+
+/// A stable action result code. Associated strings from `ActionResult` never
+/// cross into the receipt model.
+public enum WorkflowActionResultCode: String, Codable, Sendable, Equatable, CaseIterable {
+    case injected
+    case copiedToClipboard
+    case pushedToStack
+    case externalOutput
+    case skipped
+    case cancelled
+    case failed
+
+    public init(_ result: ActionResult) {
+        switch result {
+        case .injected:
+            self = .injected
+        case .copiedToClipboard:
+            self = .copiedToClipboard
+        case .pushedToStack:
+            self = .pushedToStack
+        case .externalOutput:
+            self = .externalOutput
+        case .skipped:
+            self = .skipped
+        case .failed:
+            self = .failed
+        }
+    }
+}
+
+public struct WorkflowActionReceipt: Codable, Sendable, Equatable {
+    public let actionIndex: Int
+    public let result: WorkflowActionResultCode
+    public let duration: WorkflowRunDurationBucket
+
+    public init(
+        actionIndex: Int,
+        result: WorkflowActionResultCode,
+        duration: WorkflowRunDurationBucket
+    ) {
+        self.actionIndex = actionIndex
+        self.result = result
+        self.duration = duration
+    }
+}
+
+public enum WorkflowRunReceiptValidationError: Error, Sendable, Equatable {
+    case unsupportedSchemaVersion(Int)
+    case tooManyActionDetails(Int)
+    case invalidActionSequence
+    case inconsistentTruncationFlag
+}
+
+/// An immutable, content-free terminal receipt for one workflow attempt.
+///
+/// The receipt deliberately excludes workflow names, component identifiers,
+/// source metadata, text statistics, free-form failures, paths, endpoints, and
+/// exact durations. `timestamp` is the terminal timeline coordinate; a start
+/// timestamp is not retained because it would reconstruct a more precise
+/// duration than the bucketed contract permits.
+public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
+    public static let currentSchemaVersion = 1
+    public static let maximumActionDetails = 32
+
+    public let schemaVersion: Int
+    public let runID: UUID
+    public let workflowID: UUID?
+    public let trigger: WorkflowRunTriggerKind
+    public let timestamp: Date
+    public let duration: WorkflowRunDurationBucket
+    public let termination: WorkflowRunTermination
+    public let actionDetails: [WorkflowActionReceipt]
+    public let detailsTruncated: Bool
+
+    public var id: UUID { runID }
+    public var outcome: WorkflowRunOutcome { termination.outcome }
+
+    public init(
+        runID: UUID,
+        workflowID: UUID?,
+        trigger: WorkflowRunTriggerKind,
+        timestamp: Date,
+        duration: WorkflowRunDurationBucket,
+        termination: WorkflowRunTermination,
+        actionDetails: [WorkflowActionReceipt] = [],
+        detailsTruncated: Bool = false
+    ) throws {
+        try self.init(
+            schemaVersion: Self.currentSchemaVersion,
+            runID: runID,
+            workflowID: workflowID,
+            trigger: trigger,
+            timestamp: timestamp,
+            duration: duration,
+            termination: termination,
+            actionDetails: actionDetails,
+            detailsTruncated: detailsTruncated
+        )
+    }
+
+    private init(
+        schemaVersion: Int,
+        runID: UUID,
+        workflowID: UUID?,
+        trigger: WorkflowRunTriggerKind,
+        timestamp: Date,
+        duration: WorkflowRunDurationBucket,
+        termination: WorkflowRunTermination,
+        actionDetails: [WorkflowActionReceipt],
+        detailsTruncated: Bool
+    ) throws {
+        guard schemaVersion == Self.currentSchemaVersion else {
+            throw WorkflowRunReceiptValidationError.unsupportedSchemaVersion(schemaVersion)
+        }
+        guard actionDetails.count <= Self.maximumActionDetails else {
+            throw WorkflowRunReceiptValidationError.tooManyActionDetails(actionDetails.count)
+        }
+        guard actionDetails.enumerated().allSatisfy({ offset, detail in
+            detail.actionIndex == offset
+        }) else {
+            throw WorkflowRunReceiptValidationError.invalidActionSequence
+        }
+        guard !detailsTruncated || actionDetails.count == Self.maximumActionDetails else {
+            throw WorkflowRunReceiptValidationError.inconsistentTruncationFlag
+        }
+
+        self.schemaVersion = schemaVersion
+        self.runID = runID
+        self.workflowID = workflowID
+        self.trigger = trigger
+        self.timestamp = timestamp
+        self.duration = duration
+        self.termination = termination
+        self.actionDetails = actionDetails
+        self.detailsTruncated = detailsTruncated
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion
+        case runID
+        case workflowID
+        case trigger
+        case timestamp
+        case duration
+        case termination
+        case actionDetails
+        case detailsTruncated
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            schemaVersion: container.decode(Int.self, forKey: .schemaVersion),
+            runID: container.decode(UUID.self, forKey: .runID),
+            workflowID: container.decodeIfPresent(UUID.self, forKey: .workflowID),
+            trigger: container.decode(WorkflowRunTriggerKind.self, forKey: .trigger),
+            timestamp: container.decode(Date.self, forKey: .timestamp),
+            duration: container.decode(WorkflowRunDurationBucket.self, forKey: .duration),
+            termination: container.decode(WorkflowRunTermination.self, forKey: .termination),
+            actionDetails: container.decode([WorkflowActionReceipt].self, forKey: .actionDetails),
+            detailsTruncated: container.decode(Bool.self, forKey: .detailsTruncated)
+        )
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(runID, forKey: .runID)
+        try container.encodeIfPresent(workflowID, forKey: .workflowID)
+        try container.encode(trigger, forKey: .trigger)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(duration, forKey: .duration)
+        try container.encode(termination, forKey: .termination)
+        try container.encode(actionDetails, forKey: .actionDetails)
+        try container.encode(detailsTruncated, forKey: .detailsTruncated)
+    }
+}
+
+public struct WorkflowRunReceiptQuery: Sendable, Equatable {
+    public var runID: UUID?
+    public var runIDs: Set<UUID>?
+    public var workflowID: UUID?
+    public var trigger: WorkflowRunTriggerKind?
+    public var outcome: WorkflowRunOutcome?
+    public var since: Date?
+    public var limit: Int?
+
+    public init(
+        runID: UUID? = nil,
+        runIDs: Set<UUID>? = nil,
+        workflowID: UUID? = nil,
+        trigger: WorkflowRunTriggerKind? = nil,
+        outcome: WorkflowRunOutcome? = nil,
+        since: Date? = nil,
+        limit: Int? = nil
+    ) {
+        self.runID = runID
+        self.runIDs = runIDs
+        self.workflowID = workflowID
+        self.trigger = trigger
+        self.outcome = outcome
+        self.since = since
+        self.limit = limit
+    }
+}
+
+public extension WorkflowRunReceiptQuery {
+    static let all = WorkflowRunReceiptQuery()
+}

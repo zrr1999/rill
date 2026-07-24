@@ -4,7 +4,6 @@
 # Swift Package Manager
 .build/
 Packages/
-Package.resolved
 .swiftpm/
 
 # Xcode
@@ -14,14 +13,21 @@ DerivedData/
 xcuserdata/
 
 # Build artifacts
-*.app/
-*.dmg
+/.artifacts/
 *.ipa
 *.dSYM.zip
 *.dSYM
+
+# Python tooling caches
+__pycache__/
+*.py[cod]
 
 # IDE
 .cursor/
 .vscode/
 *.swp
 *~
+
+.spark/
+.learnings/
+/SPARK.md

@@ -1,72 +1,181 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
-    name: "VoxTypeMacOS",
-    platforms: [.macOS(.v14)],
-    products: [
-        .library(name: "VoxTypeCore", targets: ["VoxTypeCore"]),
-        .library(name: "VoxTypePlatform", targets: ["VoxTypePlatform"]),
-        .library(name: "VoxTypeProviders", targets: ["VoxTypeProviders"]),
-        .library(name: "VoxTypeRuntime", targets: ["VoxTypeRuntime"]),
-        .library(name: "VoxTypePersistence", targets: ["VoxTypePersistence"]),
-        .library(name: "VoxTypeUI", targets: ["VoxTypeUI"]),
-        .executable(name: "VoxTypeApp", targets: ["VoxTypeApp"]),
-    ],
-    dependencies: [
-        .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.9.0"),
-    ],
-    targets: [
-        .target(name: "VoxTypeCore"),
-        .target(name: "VoxTypePlatform", dependencies: ["VoxTypeCore"]),
-        .target(
-            name: "VoxTypeProviders",
-            dependencies: [
-                "VoxTypeCore",
-                "VoxTypePlatform",
-                .product(name: "WhisperKit", package: "WhisperKit"),
-            ]
-        ),
-        .target(name: "VoxTypeRuntime", dependencies: ["VoxTypeCore", "VoxTypePlatform"]),
-        .target(
-            name: "VoxTypePersistence",
-            dependencies: ["VoxTypeCore"],
-            linkerSettings: [
-                .linkedLibrary("sqlite3")
-            ]
-        ),
-        .target(name: "VoxTypeUI", dependencies: ["VoxTypeCore", "VoxTypeRuntime"]),
-        .executableTarget(
-            name: "VoxTypeApp",
-            dependencies: [
-                "VoxTypeCore",
-                "VoxTypePlatform",
-                "VoxTypeProviders",
-                "VoxTypeRuntime",
-                "VoxTypePersistence",
-                "VoxTypeUI",
-            ],
-            resources: [
-                .process("Resources")
-            ]
-        ),
-        .testTarget(name: "VoxTypeCoreTests", dependencies: ["VoxTypeCore"]),
-        .testTarget(
-            name: "VoxTypePersistenceTests",
-            dependencies: ["VoxTypeCore", "VoxTypePersistence"]
-        ),
-        .testTarget(name: "VoxTypeRuntimeTests", dependencies: ["VoxTypeCore", "VoxTypePlatform", "VoxTypeRuntime"]),
-        .testTarget(
-            name: "VoxTypeProvidersTests",
-            dependencies: ["VoxTypeCore", "VoxTypeProviders"]
-        ),
-        .testTarget(
-            name: "VoxTypePlatformTests",
-            dependencies: ["VoxTypeCore", "VoxTypePlatform"]
-        ),
-        .testTarget(
-            name: "VoxTypeUITests",
-            dependencies: ["VoxTypeCore", "VoxTypeRuntime", "VoxTypeUI"]
-        ),
-    ]
+  name: "RillMacOS",
+  platforms: [.macOS(.v14)],
+  products: [
+    .executable(name: "RillApp", targets: ["RillApp"]),
+    .executable(name: "RillSpeechWorker", targets: ["RillSpeechWorker"]),
+  ],
+  dependencies: [
+    .package(
+      url: "https://github.com/Blaizzy/mlx-audio-swift.git",
+      exact: "0.1.3"
+    ),
+    .package(
+      url: "https://github.com/huggingface/swift-huggingface.git",
+      exact: "0.8.1"
+    ),
+    .package(
+      url: "https://github.com/ml-explore/mlx-swift.git",
+      exact: "0.31.4"
+    ),
+  ],
+  targets: [
+    .binaryTarget(
+      name: "SherpaOnnxNative",
+      path: "vendor/sherpa-onnx-v1.13.4/sherpa-onnx.xcframework"
+    ),
+    .binaryTarget(
+      name: "OnnxRuntimeNative",
+      path: "vendor/sherpa-onnx-v1.13.4/onnxruntime.xcframework"
+    ),
+    .target(
+      name: "CSherpaOnnx",
+      dependencies: [],
+      publicHeadersPath: "include",
+      cSettings: [
+        .unsafeFlags([
+          "-Ivendor/sherpa-onnx-v1.13.4/sherpa-onnx.xcframework/macos-arm64_x86_64/Headers"
+        ])
+      ],
+      linkerSettings: [
+        .linkedLibrary("c++"),
+        .linkedFramework("Accelerate"),
+      ]
+    ),
+    .target(
+      name: "RillSherpaRuntime",
+      dependencies: ["CSherpaOnnx"],
+      resources: [
+        .copy("Resources/silero_vad.onnx"),
+        .copy("Resources/LICENSE.silero-vad"),
+      ]
+    ),
+    .target(name: "RillCore"),
+    .target(
+      name: "RillPlatform",
+      dependencies: ["RillCore"],
+      linkerSettings: [
+        .linkedFramework("Security")
+      ]
+    ),
+    .target(
+      name: "RillProviders",
+      dependencies: [
+        "RillCore",
+        "RillPlatform",
+        "RillSherpaRuntime",
+      ]
+    ),
+    .target(
+      name: "RillMLXRuntime",
+      dependencies: [
+        "RillCore",
+        "RillProviders",
+        .product(name: "MLXAudioCore", package: "mlx-audio-swift"),
+        .product(name: "MLXAudioSTT", package: "mlx-audio-swift"),
+        .product(name: "MLX", package: "mlx-swift"),
+        .product(name: "HuggingFace", package: "swift-huggingface"),
+      ]
+    ),
+    .target(name: "RillRuntime", dependencies: ["RillCore", "RillPlatform"]),
+    .target(
+      name: "RillPersistence",
+      dependencies: ["RillCore"],
+      linkerSettings: [
+        .linkedLibrary("sqlite3")
+      ]
+    ),
+    .target(name: "RillUI", dependencies: ["RillCore", "RillRuntime"]),
+    .executableTarget(
+      name: "RillApp",
+      dependencies: [
+        "RillCore",
+        "RillPlatform",
+        "RillProviders",
+        "RillRuntime",
+        "RillPersistence",
+        "RillUI",
+        "SherpaOnnxNative",
+        "OnnxRuntimeNative",
+      ],
+      resources: [
+        .process("Resources/BuiltinWorkflowManifest.json"),
+        .process("Resources/BuiltinWorkflows.toml"),
+        .copy("Resources/WorkflowTemplates"),
+      ]
+    ),
+    .executableTarget(
+      name: "RillSpeechWorker",
+      dependencies: [
+        "RillCore",
+        "RillMLXRuntime",
+        "RillProviders",
+        "SherpaOnnxNative",
+        "OnnxRuntimeNative",
+      ]
+    ),
+    .testTarget(name: "RillCoreTests", dependencies: ["RillCore"]),
+    .testTarget(
+      name: "RillSherpaRuntimeTests",
+      dependencies: [
+        "RillSherpaRuntime",
+        "SherpaOnnxNative",
+        "OnnxRuntimeNative",
+      ]
+    ),
+    .testTarget(
+      name: "RillPersistenceTests",
+      dependencies: ["RillCore", "RillPersistence"]
+    ),
+    .testTarget(
+      name: "RillRuntimeTests",
+      dependencies: [
+        "RillCore",
+        "RillPersistence",
+        "RillPlatform",
+        "RillRuntime",
+      ]
+    ),
+    .testTarget(
+      name: "RillProvidersTests",
+      dependencies: [
+        "RillCore",
+        "RillProviders",
+        "SherpaOnnxNative",
+        "OnnxRuntimeNative",
+      ]
+    ),
+    .testTarget(
+      name: "RillMLXRuntimeTests",
+      dependencies: [
+        "RillCore",
+        "RillMLXRuntime",
+        "RillProviders",
+        "SherpaOnnxNative",
+        "OnnxRuntimeNative",
+      ]
+    ),
+    .testTarget(
+      name: "RillPlatformTests",
+      dependencies: ["RillCore", "RillPlatform"]
+    ),
+    .testTarget(
+      name: "RillUITests",
+      dependencies: ["RillCore", "RillRuntime", "RillUI"]
+    ),
+    .testTarget(
+      name: "RillAppTests",
+      dependencies: [
+        "RillApp",
+        "RillCore",
+        "RillPlatform",
+        "RillRuntime",
+        "SherpaOnnxNative",
+        "OnnxRuntimeNative",
+      ]
+    ),
+  ]
 )

@@ -1,0 +1,450 @@
+import Dispatch
+import Foundation
+import RillCore
+
+public enum WorkflowRunReceiptRecorderError: Error, Sendable, Equatable {
+    case runAlreadyStarted(runID: UUID)
+    case runNotStarted(runID: UUID)
+    case terminalAlreadyFinalized(runID: UUID)
+    case terminalAlreadyPrepared(runID: UUID)
+    case terminalWriteInProgress(runID: UUID)
+    case actionAlreadyInProgress(runID: UUID)
+    case actionNotInProgress(runID: UUID)
+    case unexpectedActionIndex(expected: Int, actual: Int)
+    case actionIndexMismatch(expected: Int, actual: Int)
+    case terminalWhileActionInProgress(runID: UUID)
+    case conflictingPreparedTerminal(runID: UUID)
+    case persistenceFailed(runID: UUID)
+    case writeObsoletedByClearBarrier(runID: UUID)
+}
+
+/// The sole builder for immutable terminal run receipts.
+///
+/// EventBus is deliberately downstream of persistence. Callers begin an
+/// attempt, record ordered action results, and finalize it exactly once. If a
+/// transient repository write fails, the frozen terminal value remains
+/// available for an explicit retry; action timing and the terminal timestamp
+/// are not recomputed. A terminal obsoleted by a completed clear is discarded
+/// without fan-out or a dead letter.
+public actor WorkflowRunReceiptRecorder {
+    public typealias WallClock = @Sendable () -> Date
+    public typealias MonotonicClock = @Sendable () -> UInt64
+    public typealias PersistenceRetryDelay = @Sendable (_ failedAttempt: Int) async -> Void
+    static let finalizedRunIDCapacity = 1_024
+    static let failedTerminalCapacity = 128
+
+    private struct ActiveAction: Sendable {
+        let index: Int
+        let startedAtNanoseconds: UInt64
+    }
+
+    private struct PreparedTerminal: Sendable {
+        let receipt: WorkflowRunReceipt
+        let generation: RunHistoryWriteGeneration
+    }
+
+    private struct PendingRun: Sendable {
+        let workflowID: UUID?
+        let trigger: WorkflowRunTriggerKind
+        let startedAtNanoseconds: UInt64
+        var nextActionIndex = 0
+        var activeAction: ActiveAction?
+        var actionDetails: [WorkflowActionReceipt] = []
+        var detailsTruncated = false
+        var preparedTerminal: PreparedTerminal?
+        var terminalWriteIsInProgress = false
+    }
+
+    private let repository: any WorkflowRunReceiptRepository
+    private let eventBus: EventBus?
+    private let diagnostics: DiagnosticsRecorder?
+    private let wallClock: WallClock
+    private let monotonicClock: MonotonicClock
+    private let maximumPersistenceAttempts: Int
+    private let persistenceRetryDelay: PersistenceRetryDelay
+    private var pendingRuns: [UUID: PendingRun] = [:]
+    private var beginningRunIDs: Set<UUID> = []
+    private var finalizedRunIDs: Set<UUID> = []
+    private var finalizedRunIDOrder: [UUID] = []
+    private var failedTerminals: [UUID: PreparedTerminal] = [:]
+    private var failedTerminalOrder: [UUID] = []
+    private var retryingFailedTerminalRunIDs: Set<UUID> = []
+
+    public init(
+        repository: any WorkflowRunReceiptRepository,
+        eventBus: EventBus? = nil,
+        diagnostics: DiagnosticsRecorder? = nil,
+        wallClock: @escaping WallClock = { Date() },
+        monotonicClock: @escaping MonotonicClock = {
+            DispatchTime.now().uptimeNanoseconds
+        },
+        maximumPersistenceAttempts: Int = 3,
+        persistenceRetryDelay: @escaping PersistenceRetryDelay = { failedAttempt in
+            let delay: Duration = failedAttempt == 1 ? .milliseconds(25) : .milliseconds(100)
+            try? await Task.sleep(for: delay)
+        }
+    ) {
+        self.repository = repository
+        self.eventBus = eventBus
+        self.diagnostics = diagnostics
+        self.wallClock = wallClock
+        self.monotonicClock = monotonicClock
+        self.maximumPersistenceAttempts = max(1, maximumPersistenceAttempts)
+        self.persistenceRetryDelay = persistenceRetryDelay
+    }
+
+    public func begin(
+        runID: UUID,
+        workflowID: UUID?,
+        trigger: WorkflowRunTriggerKind
+    ) async throws {
+        await retryOneFailedTerminalIfPossible()
+        guard !finalizedRunIDs.contains(runID) else {
+            throw WorkflowRunReceiptRecorderError.terminalAlreadyFinalized(runID: runID)
+        }
+        guard pendingRuns[runID] == nil, !beginningRunIDs.contains(runID) else {
+            throw WorkflowRunReceiptRecorderError.runAlreadyStarted(runID: runID)
+        }
+        beginningRunIDs.insert(runID)
+
+        let existingReceipts: [WorkflowRunReceipt]
+        do {
+            existingReceipts = try await repository.receipts(
+                matching: WorkflowRunReceiptQuery(runID: runID, limit: 1)
+            )
+        } catch {
+            await recordPersistenceFailureDiagnostic(runID: runID)
+            beginningRunIDs.remove(runID)
+            throw WorkflowRunReceiptRecorderError.persistenceFailed(runID: runID)
+        }
+        beginningRunIDs.remove(runID)
+        guard existingReceipts.isEmpty else {
+            rememberFinalizedRunID(runID)
+            throw WorkflowRunReceiptRecorderError.terminalAlreadyFinalized(runID: runID)
+        }
+
+        pendingRuns[runID] = PendingRun(
+            workflowID: workflowID,
+            trigger: trigger,
+            startedAtNanoseconds: monotonicClock()
+        )
+    }
+
+    public func beginAction(runID: UUID, actionIndex: Int) throws {
+        var run = try mutablePendingRun(runID: runID)
+        guard run.preparedTerminal == nil else {
+            throw WorkflowRunReceiptRecorderError.terminalAlreadyPrepared(runID: runID)
+        }
+        guard !run.terminalWriteIsInProgress else {
+            throw WorkflowRunReceiptRecorderError.terminalWriteInProgress(runID: runID)
+        }
+        guard run.activeAction == nil else {
+            throw WorkflowRunReceiptRecorderError.actionAlreadyInProgress(runID: runID)
+        }
+        guard actionIndex == run.nextActionIndex else {
+            throw WorkflowRunReceiptRecorderError.unexpectedActionIndex(
+                expected: run.nextActionIndex,
+                actual: actionIndex
+            )
+        }
+        run.activeAction = ActiveAction(
+            index: actionIndex,
+            startedAtNanoseconds: monotonicClock()
+        )
+        pendingRuns[runID] = run
+    }
+
+    public func finishAction(
+        runID: UUID,
+        actionIndex: Int,
+        result: WorkflowActionResultCode
+    ) throws {
+        var run = try mutablePendingRun(runID: runID)
+        guard run.preparedTerminal == nil else {
+            throw WorkflowRunReceiptRecorderError.terminalAlreadyPrepared(runID: runID)
+        }
+        guard !run.terminalWriteIsInProgress else {
+            throw WorkflowRunReceiptRecorderError.terminalWriteInProgress(runID: runID)
+        }
+        guard let activeAction = run.activeAction else {
+            throw WorkflowRunReceiptRecorderError.actionNotInProgress(runID: runID)
+        }
+        guard actionIndex == activeAction.index else {
+            throw WorkflowRunReceiptRecorderError.actionIndexMismatch(
+                expected: activeAction.index,
+                actual: actionIndex
+            )
+        }
+
+        let detail = WorkflowActionReceipt(
+            actionIndex: actionIndex,
+            result: result,
+            duration: Self.durationBucket(
+                from: activeAction.startedAtNanoseconds,
+                to: monotonicClock()
+            )
+        )
+        if run.actionDetails.count < WorkflowRunReceipt.maximumActionDetails {
+            run.actionDetails.append(detail)
+        } else {
+            run.detailsTruncated = true
+        }
+        run.nextActionIndex += 1
+        run.activeAction = nil
+        pendingRuns[runID] = run
+    }
+
+    public func finishAction(
+        runID: UUID,
+        actionIndex: Int,
+        result: ActionResult
+    ) throws {
+        try finishAction(
+            runID: runID,
+            actionIndex: actionIndex,
+            result: WorkflowActionResultCode(result)
+        )
+    }
+
+    @discardableResult
+    public func finish(
+        runID: UUID,
+        termination: WorkflowRunTermination
+    ) async throws -> WorkflowRunReceipt {
+        if let failedTerminal = failedTerminals[runID] {
+            guard failedTerminal.receipt.termination == termination else {
+                throw WorkflowRunReceiptRecorderError.conflictingPreparedTerminal(runID: runID)
+            }
+            return try await retryFailedTerminal(runID: runID)
+        }
+        guard !finalizedRunIDs.contains(runID) else {
+            throw WorkflowRunReceiptRecorderError.terminalAlreadyFinalized(runID: runID)
+        }
+        var run = try mutablePendingRun(runID: runID)
+        guard run.activeAction == nil else {
+            throw WorkflowRunReceiptRecorderError.terminalWhileActionInProgress(runID: runID)
+        }
+        guard !run.terminalWriteIsInProgress else {
+            throw WorkflowRunReceiptRecorderError.terminalWriteInProgress(runID: runID)
+        }
+
+        run.terminalWriteIsInProgress = true
+        pendingRuns[runID] = run
+
+        let prepared: PreparedTerminal
+        if let preparedTerminal = run.preparedTerminal {
+            guard preparedTerminal.receipt.termination == termination else {
+                throw WorkflowRunReceiptRecorderError.conflictingPreparedTerminal(runID: runID)
+            }
+            prepared = preparedTerminal
+        } else {
+            let generation: RunHistoryWriteGeneration
+            do {
+                generation = try await repository.captureRunHistoryWriteGeneration()
+            } catch {
+                await recordPersistenceFailureDiagnostic(runID: runID)
+                pendingRuns.removeValue(forKey: runID)
+                rememberFinalizedRunID(runID)
+                throw WorkflowRunReceiptRecorderError.persistenceFailed(runID: runID)
+            }
+            let receipt = try WorkflowRunReceipt(
+                runID: runID,
+                workflowID: run.workflowID,
+                trigger: run.trigger,
+                timestamp: wallClock(),
+                duration: Self.durationBucket(
+                    from: run.startedAtNanoseconds,
+                    to: monotonicClock()
+                ),
+                termination: termination,
+                actionDetails: run.actionDetails,
+                detailsTruncated: run.detailsTruncated
+            )
+            prepared = PreparedTerminal(receipt: receipt, generation: generation)
+            run.preparedTerminal = prepared
+            pendingRuns[runID] = run
+        }
+
+        do {
+            try await persistWithBoundedRetry(prepared)
+        } catch {
+            if Self.writeWasObsoletedByClearBarrier(error) {
+                pendingRuns.removeValue(forKey: runID)
+                rememberFinalizedRunID(runID)
+                throw WorkflowRunReceiptRecorderError.writeObsoletedByClearBarrier(
+                    runID: runID
+                )
+            }
+            await recordPersistenceFailureDiagnostic(runID: runID)
+            pendingRuns.removeValue(forKey: runID)
+            rememberFinalizedRunID(runID)
+            rememberFailedTerminal(prepared)
+            throw WorkflowRunReceiptRecorderError.persistenceFailed(runID: runID)
+        }
+
+        rememberFinalizedRunID(runID)
+        pendingRuns.removeValue(forKey: runID)
+        await publishRepositoryChange(for: prepared)
+        return prepared.receipt
+    }
+
+    /// Retries a bounded in-memory dead letter without recomputing its terminal
+    /// timestamp or duration. Production also opportunistically retries one
+    /// such receipt when a later run begins.
+    @discardableResult
+    public func retryFailedTerminal(runID: UUID) async throws -> WorkflowRunReceipt {
+        guard let prepared = failedTerminals[runID] else {
+            throw WorkflowRunReceiptRecorderError.runNotStarted(runID: runID)
+        }
+        guard retryingFailedTerminalRunIDs.insert(runID).inserted else {
+            throw WorkflowRunReceiptRecorderError.terminalWriteInProgress(runID: runID)
+        }
+        defer { retryingFailedTerminalRunIDs.remove(runID) }
+        do {
+            try await persistWithBoundedRetry(prepared)
+        } catch {
+            if Self.writeWasObsoletedByClearBarrier(error) {
+                removeFailedTerminal(runID)
+                rememberFinalizedRunID(runID)
+                throw WorkflowRunReceiptRecorderError.writeObsoletedByClearBarrier(
+                    runID: runID
+                )
+            }
+            await recordPersistenceFailureDiagnostic(runID: runID)
+            throw WorkflowRunReceiptRecorderError.persistenceFailed(runID: runID)
+        }
+        removeFailedTerminal(runID)
+        await publishRepositoryChange(for: prepared)
+        return prepared.receipt
+    }
+
+    private func mutablePendingRun(runID: UUID) throws -> PendingRun {
+        guard let run = pendingRuns[runID] else {
+            if finalizedRunIDs.contains(runID) {
+                throw WorkflowRunReceiptRecorderError.terminalAlreadyFinalized(runID: runID)
+            }
+            throw WorkflowRunReceiptRecorderError.runNotStarted(runID: runID)
+        }
+        return run
+    }
+
+    func rememberedFinalizedRunIDCount() -> Int {
+        finalizedRunIDs.count
+    }
+
+    func rememberedFailedTerminalCount() -> Int {
+        failedTerminals.count
+    }
+
+    func pendingRunCount() -> Int {
+        pendingRuns.count
+    }
+
+    private func persistWithBoundedRetry(
+        _ prepared: PreparedTerminal
+    ) async throws {
+        for attempt in 1 ... maximumPersistenceAttempts {
+            do {
+                try await repository.insertTerminal(
+                    prepared.receipt,
+                    generation: prepared.generation
+                )
+                return
+            } catch {
+                if Self.writeWasObsoletedByClearBarrier(error) {
+                    throw error
+                }
+                guard attempt < maximumPersistenceAttempts else { throw error }
+                await persistenceRetryDelay(attempt)
+            }
+        }
+    }
+
+    private func retryOneFailedTerminalIfPossible() async {
+        guard let runID = failedTerminalOrder.first,
+              let prepared = failedTerminals[runID],
+              retryingFailedTerminalRunIDs.insert(runID).inserted else { return }
+        defer { retryingFailedTerminalRunIDs.remove(runID) }
+        do {
+            try await repository.insertTerminal(
+                prepared.receipt,
+                generation: prepared.generation
+            )
+        } catch {
+            if Self.writeWasObsoletedByClearBarrier(error) {
+                removeFailedTerminal(runID)
+                rememberFinalizedRunID(runID)
+            }
+            return
+        }
+        removeFailedTerminal(runID)
+        await publishRepositoryChange(for: prepared)
+    }
+
+    private func publishRepositoryChange(for prepared: PreparedTerminal) async {
+        guard let eventBus else { return }
+        let receipt = prepared.receipt
+        await eventBus.publish(
+            .runReceiptRepositoryChanged(
+                WorkflowRunReceiptRepositoryChange(
+                    runID: receipt.runID,
+                    terminalTimestamp: receipt.timestamp,
+                    writeGeneration: prepared.generation
+                )
+            )
+        )
+    }
+
+    private func recordPersistenceFailureDiagnostic(runID: UUID) async {
+        guard let diagnostics else { return }
+        await diagnostics.record(
+            DiagnosticEvent(
+                runID: runID,
+                subsystem: .session,
+                level: .error,
+                event: "run-receipt.persistence.failed",
+                message: "A terminal run receipt could not be persisted."
+            )
+        )
+    }
+
+    private static func writeWasObsoletedByClearBarrier(_ error: any Error) -> Bool {
+        guard let repositoryError = error as? WorkflowRunReceiptRepositoryError,
+              case .writeObsoletedByClearBarrier = repositoryError else {
+            return false
+        }
+        return true
+    }
+
+    private func rememberFinalizedRunID(_ runID: UUID) {
+        guard finalizedRunIDs.insert(runID).inserted else { return }
+        finalizedRunIDOrder.append(runID)
+        if finalizedRunIDOrder.count > Self.finalizedRunIDCapacity {
+            let evictedRunID = finalizedRunIDOrder.removeFirst()
+            finalizedRunIDs.remove(evictedRunID)
+        }
+    }
+
+    private func rememberFailedTerminal(_ prepared: PreparedTerminal) {
+        guard failedTerminals[prepared.receipt.runID] == nil else { return }
+        failedTerminals[prepared.receipt.runID] = prepared
+        failedTerminalOrder.append(prepared.receipt.runID)
+        if failedTerminalOrder.count > Self.failedTerminalCapacity {
+            let evictedRunID = failedTerminalOrder.removeFirst()
+            failedTerminals.removeValue(forKey: evictedRunID)
+        }
+    }
+
+    private func removeFailedTerminal(_ runID: UUID) {
+        failedTerminals.removeValue(forKey: runID)
+        failedTerminalOrder.removeAll { $0 == runID }
+    }
+
+    private nonisolated static func durationBucket(
+        from start: UInt64,
+        to end: UInt64
+    ) -> WorkflowRunDurationBucket {
+        guard end >= start else { return .unavailable }
+        return .classify(elapsedNanoseconds: end - start)
+    }
+}

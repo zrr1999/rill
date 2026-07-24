@@ -1,0 +1,1557 @@
+import Foundation
+import RillCore
+
+public struct LocalizedText: Equatable, Sendable {
+  public let english: String
+  public let simplifiedChinese: String
+
+  public init(english: String, simplifiedChinese: String) {
+    self.english = english
+    self.simplifiedChinese = simplifiedChinese
+  }
+
+  public func string(for language: AppLanguage) -> String {
+    switch language {
+    case .english:
+      return english
+    case .simplifiedChinese:
+      return simplifiedChinese
+    }
+  }
+}
+
+/// A payload-free error boundary for local speech model preparation.
+///
+/// Provider errors must be mapped to one of these allowlisted stages before
+/// they cross into UI state. The generic case is the only fallback for errors
+/// that do not implement the trusted loader contract.
+public struct LocalSpeechPreparationFailure: Error, Equatable, Sendable {
+  public enum Stage: String, CaseIterable, Sendable {
+    case architectureUnsupported = "architecture-unsupported"
+    case trustMaterialUnavailable = "trust-material-unavailable"
+    case trustRoot
+    case resolution
+    case integrity
+    case tokenizer
+    case runtime
+    case generic
+  }
+
+  public let stage: Stage
+
+  public init(stage: Stage) {
+    self.stage = stage
+  }
+}
+
+extension LocalSpeechPreparationFailure: LocalizedError {
+  public var errorDescription: String? {
+    L10n.localSpeechPreparationFailure(stage).english
+  }
+}
+
+public enum L10n {
+  public enum Key: String, CaseIterable, Sendable {
+    case applicationShutdownDetail
+    case applicationShutdownTitle
+    case clipboardCurrentDescription
+    case clipboardCurrentTitle
+    case clipboardHistoryDescription
+    case clipboardHistoryTitle
+    case clipboardRoutingDescription
+    case clipboardRoutingTitle
+    case menuAbout
+    case menuCloudEngine
+    case menuClipboardCaptureActive
+    case menuClipboardCaptureOff
+    case menuClipboardCaptureTurningOn
+    case menuClipboardIgnoreNextArming
+    case menuClipboardIgnoreNextPending
+    case menuCopyLastResult
+    case menuIgnoreNextExternalCopy
+    case menuInterfaceLanguage
+    case menuLocalEngine
+    case menuLongRecording
+    case menuLongRecordingToggle
+    case menuLongRecordingToggleOff
+    case menuManageEngineSettings
+    case menuNoLongRecordingWorkflows
+    case menuNoManualWorkflows
+    case menuNoTextStyleWorkflows
+    case menuOpenMainWindow
+    case menuPasteIntoApp
+    case menuPasteTopOfStack
+    case menuTurnOffClipboardCapture
+    case menuQuit
+    case menuRecentResults
+    case menuTurnOnClipboardCapture
+    case menuSaveToVoiceGroup
+    case menuSpeechEngine
+    case menuStatusClipboardReady
+    case menuStatusFinishSetup
+    case menuStatusFinishSetupDetail
+    case menuStatusIdleDetail
+    case menuStatusLastResult
+    case menuStatusNeedsAttention
+    case menuStatusReady
+    case menuStatusRunning
+    case menuStatusRunningDetail
+    case menuStatusSetupLoading
+    case menuStatusSetupLoadingDetail
+    case menuTextOutput
+    case menuTextStyles
+    case menuWorkflows
+    case vocabularyAddRule
+    case vocabularyAnyApp
+    case vocabularyAnyGroup
+    case vocabularyAnyLocale
+    case vocabularyCaseSensitive
+    case vocabularyCorrectionAction
+    case vocabularyCorrectionCancel
+    case vocabularyCorrectionConflict
+    case vocabularyCorrectionCorrectedText
+    case vocabularyCorrectionCreated
+    case vocabularyCorrectionDescription
+    case vocabularyCorrectionHotwordOption
+    case vocabularyCorrectionMappingOption
+    case vocabularyCorrectionNoChange
+    case vocabularyCorrectionOpenSettings
+    case vocabularyCorrectionOriginalText
+    case vocabularyCorrectionReused
+    case vocabularyCorrectionSave
+    case vocabularyCorrectionScopeDescription
+    case vocabularyCorrectionScopeTitle
+    case vocabularyCorrectionSuggestions
+    case vocabularyCorrectionTitle
+    case vocabularyCorrectionUnknownApp
+    case vocabularyCorrectionUnknownGroup
+    case vocabularyCorrectionUnknownLanguage
+    case vocabularyCorrectionUnsupported
+    case vocabularyDescription
+    case vocabularyEmpty
+    case vocabularyHotwordBehavior
+    case vocabularyKind
+    case vocabularyLocale
+    case vocabularyMatchMode
+    case vocabularyPattern
+    case vocabularyPriority
+    case vocabularyReplacement
+    case vocabularyScope
+    case vocabularySourceApp
+    case vocabularyTitle
+    case settingsDeepgramFailureHint
+    case settingsDeepgramSecureEndpointHint
+    case settingsLongRecordingMode
+    case settingsLongRecordingModeDescription
+    case settingsFailedAudioRecovery
+    case settingsFailedAudioRecoveryClear
+    case settingsFailedAudioRecoveryClearConfirmation
+    case settingsFailedAudioRecoveryClearConfirmationDetail
+    case settingsFailedAudioRecoveryDescription
+    case historyFailedAudioDelete
+    case historyFailedAudioDeleteConfirmation
+    case historyFailedAudioDeleteConfirmationDetail
+    case historyFailedAudioExpires
+    case historyFailedAudioOutcomeUnknown
+    case historyFailedAudioRetry
+    case historyFailedAudioRetrying
+    case voiceModeOutputNone
+    case workflowAdvancedTextSteps
+    case workflowCloudModelOverride
+    case workflowLanguageAuto
+    case workflowLanguageOverride
+    case workflowRouteAutomaticHint
+    case workflowRouteCloudHint
+    case workflowRouteLocalHint
+    case workflowSpeechRoute
+    case workflowTextStyle
+    case workflowTextStyleHint
+    case workflowLocalSpeechModelOverride
+    case voiceFailureDeepgramMissingKeySummary
+    case voiceFailureDetailsLabel
+    case voiceFailureDismiss
+    case voiceFailureGenericSummary
+    case voiceFailureOpenRecognitionSettings
+    case voiceFailureTitle
+  }
+
+  private static let table: [Key: LocalizedText] = [
+    .applicationShutdownDetail: .init(
+      english: "Restoring the clipboard and saving local data before Rill closes.",
+      simplifiedChinese: "正在恢复剪贴板并保存本地数据，完成后 Rill 会自动退出。"
+    ),
+    .applicationShutdownTitle: .init(
+      english: "Safely quitting Rill…",
+      simplifiedChinese: "正在安全退出 Rill…"
+    ),
+    .clipboardCurrentDescription: .init(
+      english: "Items still available for stack, queue, or list delivery.",
+      simplifiedChinese: "仍在栈、队列或列表中可被粘贴的当前状态。"
+    ),
+    .clipboardCurrentTitle: .init(
+      english: "Current Clipboard",
+      simplifiedChinese: "当前剪贴板"
+    ),
+    .clipboardHistoryDescription: .init(
+      english: "All captured and generated items, including already used stack or queue entries.",
+      simplifiedChinese: "所有加入过的条目，包括已经出栈或出队的内容。"
+    ),
+    .clipboardHistoryTitle: .init(
+      english: "History",
+      simplifiedChinese: "历史"
+    ),
+    .clipboardRoutingDescription: .init(
+      english: "Groups, paste modes, and app routing rules.",
+      simplifiedChinese: "分组、粘贴模式和 App 路由规则。"
+    ),
+    .clipboardRoutingTitle: .init(
+      english: "Groups",
+      simplifiedChinese: "分组"
+    ),
+    .menuAbout: .init(
+      english: "About Rill",
+      simplifiedChinese: "关于 Rill"
+    ),
+    .menuCloudEngine: .init(
+      english: "Deepgram Cloud",
+      simplifiedChinese: "Deepgram 云端"
+    ),
+    .menuClipboardCaptureActive: .init(
+      english: "Clipboard capture active",
+      simplifiedChinese: "剪贴板捕获已开启"
+    ),
+    .menuClipboardCaptureOff: .init(
+      english: "Clipboard capture off",
+      simplifiedChinese: "剪贴板捕获已关闭"
+    ),
+    .menuClipboardCaptureTurningOn: .init(
+      english: "Turning on clipboard capture…",
+      simplifiedChinese: "正在开启剪贴板捕获…"
+    ),
+    .menuClipboardIgnoreNextArming: .init(
+      english: "Preparing one-time clipboard ignore…",
+      simplifiedChinese: "正在准备忽略下一次复制…"
+    ),
+    .menuClipboardIgnoreNextPending: .init(
+      english: "Next external copy will be ignored",
+      simplifiedChinese: "将忽略下一次外部复制"
+    ),
+    .menuCopyLastResult: .init(
+      english: "Copy Last Transcription Result",
+      simplifiedChinese: "复制上次转写结果"
+    ),
+    .menuIgnoreNextExternalCopy: .init(
+      english: "Ignore Next External Copy",
+      simplifiedChinese: "忽略下一次外部复制"
+    ),
+    .menuInterfaceLanguage: .init(
+      english: "Interface Language",
+      simplifiedChinese: "界面语言"
+    ),
+    .menuLocalEngine: .init(
+      english: "sherpa-onnx Local",
+      simplifiedChinese: "sherpa-onnx 本地"
+    ),
+    .menuLongRecording: .init(
+      english: "Toggle Recording",
+      simplifiedChinese: "切换式录音"
+    ),
+    .menuLongRecordingToggle: .init(
+      english: "Press Once to Start/Stop",
+      simplifiedChinese: "按一下开始 / 结束"
+    ),
+    .menuLongRecordingToggleOff: .init(
+      english: "Hold to Talk",
+      simplifiedChinese: "按住说话"
+    ),
+    .menuManageEngineSettings: .init(
+      english: "Manage Recognition Settings…",
+      simplifiedChinese: "管理识别设置…"
+    ),
+    .menuNoLongRecordingWorkflows: .init(
+      english: "No Toggle Recording Workflows",
+      simplifiedChinese: "暂无切换式录音工作流"
+    ),
+    .menuNoManualWorkflows: .init(
+      english: "No Manual Workflows",
+      simplifiedChinese: "暂无手动工作流"
+    ),
+    .menuNoTextStyleWorkflows: .init(
+      english: "No Text Style Workflows",
+      simplifiedChinese: "暂无文字风格工作流"
+    ),
+    .menuOpenMainWindow: .init(
+      english: "Open Rill Main Window",
+      simplifiedChinese: "打开 Rill 主窗口"
+    ),
+    .menuPasteIntoApp: .init(
+      english: "Type Directly into Current App",
+      simplifiedChinese: "直接输入到当前 App"
+    ),
+    .menuPasteTopOfStack: .init(
+      english: "Paste Top Clipboard Queue Item",
+      simplifiedChinese: "粘贴队列顶部条目"
+    ),
+    .menuTurnOffClipboardCapture: .init(
+      english: "Turn Off Clipboard Capture",
+      simplifiedChinese: "关闭剪贴板捕获"
+    ),
+    .menuQuit: .init(
+      english: "Quit Rill",
+      simplifiedChinese: "退出 Rill"
+    ),
+    .menuRecentResults: .init(
+      english: "Recent Results",
+      simplifiedChinese: "最近结果"
+    ),
+    .menuTurnOnClipboardCapture: .init(
+      english: "Turn On Clipboard Capture",
+      simplifiedChinese: "开启剪贴板捕获"
+    ),
+    .menuSaveToVoiceGroup: .init(
+      english: "Save to Voice Clipboard Group",
+      simplifiedChinese: "保存到语音剪贴板组"
+    ),
+    .menuSpeechEngine: .init(
+      english: "Recognition Engine",
+      simplifiedChinese: "识别引擎"
+    ),
+    .menuStatusClipboardReady: .init(
+      english: "Ready to paste",
+      simplifiedChinese: "可粘贴"
+    ),
+    .menuStatusFinishSetup: .init(
+      english: "Finish Voice Setup",
+      simplifiedChinese: "完成语音设置"
+    ),
+    .menuStatusFinishSetupDetail: .init(
+      english: "Open Rill to complete the required permission and speech setup steps.",
+      simplifiedChinese: "打开 Rill，完成所需权限和语音设置步骤。"
+    ),
+    .menuStatusIdleDetail: .init(
+      english: "Use a hotkey, workflow, or clipboard action to begin.",
+      simplifiedChinese: "使用快捷键、工作流或剪贴板动作开始。"
+    ),
+    .menuStatusLastResult: .init(
+      english: "Last result",
+      simplifiedChinese: "上次结果"
+    ),
+    .menuStatusNeedsAttention: .init(
+      english: "Needs attention",
+      simplifiedChinese: "需要处理"
+    ),
+    .menuStatusReady: .init(
+      english: "Rill Idle",
+      simplifiedChinese: "Rill 空闲"
+    ),
+    .menuStatusRunning: .init(
+      english: "Voice run active",
+      simplifiedChinese: "语音运行中"
+    ),
+    .menuStatusRunningDetail: .init(
+      english: "Recording, transcribing, or delivering text.",
+      simplifiedChinese: "正在录音、转写或输出文本。"
+    ),
+    .menuStatusSetupLoading: .init(
+      english: "Loading Voice Setup",
+      simplifiedChinese: "正在加载语音设置"
+    ),
+    .menuStatusSetupLoadingDetail: .init(
+      english: "Checking saved settings, credentials, and privacy safeguards.",
+      simplifiedChinese: "正在检查已保存设置、凭据和隐私保护。"
+    ),
+    .menuTextOutput: .init(
+      english: "Text Output",
+      simplifiedChinese: "文字输出"
+    ),
+    .menuTextStyles: .init(
+      english: "Text Style",
+      simplifiedChinese: "文字风格"
+    ),
+    .menuWorkflows: .init(
+      english: "Workflows",
+      simplifiedChinese: "工作流"
+    ),
+    .vocabularyAddRule: .init(
+      english: "Add Rule",
+      simplifiedChinese: "添加规则"
+    ),
+    .vocabularyAnyApp: .init(
+      english: "Any app",
+      simplifiedChinese: "任意 App"
+    ),
+    .vocabularyAnyGroup: .init(
+      english: "Any group",
+      simplifiedChinese: "任意分组"
+    ),
+    .vocabularyAnyLocale: .init(
+      english: "Any language",
+      simplifiedChinese: "任意语言"
+    ),
+    .vocabularyCaseSensitive: .init(
+      english: "Case sensitive",
+      simplifiedChinese: "区分大小写"
+    ),
+    .vocabularyCorrectionAction: .init(
+      english: "Correct terminology",
+      simplifiedChinese: "纠正术语"
+    ),
+    .vocabularyCorrectionCancel: .init(
+      english: "Cancel",
+      simplifiedChinese: "取消"
+    ),
+    .vocabularyCorrectionConflict: .init(
+      english:
+        "A rule with the same match and scope already has a different output. Review it in Settings before changing anything.",
+      simplifiedChinese: "相同匹配条件和作用范围已有不同输出的规则。请先在设置中检查，Rill 未保存本次建议。"
+    ),
+    .vocabularyCorrectionCorrectedText: .init(
+      english: "Corrected recognition",
+      simplifiedChinese: "纠正后的识别文本"
+    ),
+    .vocabularyCorrectionCreated: .init(
+      english: "Correction rule saved for future runs.",
+      simplifiedChinese: "纠正规则已保存，将用于后续运行。"
+    ),
+    .vocabularyCorrectionDescription: .init(
+      english:
+        "Edit the recognition text, then review one suggested rule. Saving never changes delivered history and only affects future runs.",
+      simplifiedChinese: "编辑识别文本并审查一条建议规则。保存不会改写已交付的历史，只影响后续运行。"
+    ),
+    .vocabularyCorrectionHotwordOption: .init(
+      english: "Prefer as a Deepgram hotword",
+      simplifiedChinese: "作为 Deepgram 热词优先识别"
+    ),
+    .vocabularyCorrectionMappingOption: .init(
+      english: "Replace recognized text",
+      simplifiedChinese: "替换识别文本"
+    ),
+    .vocabularyCorrectionNoChange: .init(
+      english: "Edit the recognition above to create a suggestion.",
+      simplifiedChinese: "请先编辑上方识别文本以生成建议。"
+    ),
+    .vocabularyCorrectionOpenSettings: .init(
+      english: "Open Vocabulary Settings",
+      simplifiedChinese: "打开词汇设置"
+    ),
+    .vocabularyCorrectionOriginalText: .init(
+      english: "Original recognition",
+      simplifiedChinese: "原始识别文本"
+    ),
+    .vocabularyCorrectionReused: .init(
+      english: "The matching correction rule is enabled for future runs.",
+      simplifiedChinese: "已有的匹配纠正规则已启用，将用于后续运行。"
+    ),
+    .vocabularyCorrectionSave: .init(
+      english: "Save for Future Runs",
+      simplifiedChinese: "保存并用于后续运行"
+    ),
+    .vocabularyCorrectionScopeDescription: .init(
+      english:
+        "Known recognition context stays constrained. Confirm each unavailable field before treating it as Any.",
+      simplifiedChinese: "已知的识别上下文会保持受限；只有逐项确认后，缺失字段才会按“任意”处理。"
+    ),
+    .vocabularyCorrectionScopeTitle: .init(
+      english: "Rule scope",
+      simplifiedChinese: "规则作用范围"
+    ),
+    .vocabularyCorrectionSuggestions: .init(
+      english: "Suggested rule",
+      simplifiedChinese: "建议规则"
+    ),
+    .vocabularyCorrectionTitle: .init(
+      english: "Correct Recognition",
+      simplifiedChinese: "纠正识别结果"
+    ),
+    .vocabularyCorrectionUnknownApp: .init(
+      english: "The source app is unavailable — apply in any app",
+      simplifiedChinese: "来源 App 不可用——确认应用于任意 App"
+    ),
+    .vocabularyCorrectionUnknownGroup: .init(
+      english: "The clipboard group is unavailable — apply in any group",
+      simplifiedChinese: "剪贴板分组不可用——确认应用于任意分组"
+    ),
+    .vocabularyCorrectionUnknownLanguage: .init(
+      english: "The recognition language is unavailable — apply to any language",
+      simplifiedChinese: "识别语言不可用——确认应用于任意语言"
+    ),
+    .vocabularyCorrectionUnsupported: .init(
+      english:
+        "These edits cannot be reduced to one safe rule. Add a precise rule manually in Vocabulary Settings.",
+      simplifiedChinese: "这些修改无法安全归纳为一条规则。请在词汇设置中手动添加精确规则。"
+    ),
+    .vocabularyDescription: .init(
+      english: "Teach Rill names, project terms, and replacements for voice output.",
+      simplifiedChinese: "为 Rill 配置人名、项目术语和语音输出替换规则。"
+    ),
+    .vocabularyEmpty: .init(
+      english: "No vocabulary rules yet.",
+      simplifiedChinese: "还没有词汇规则。"
+    ),
+    .vocabularyHotwordBehavior: .init(
+      english:
+        "For matching Deepgram Nova-3 runs, this term is sent with the audio after cloud confirmation; other speech engines ignore it.",
+      simplifiedChinese: "范围匹配时，该术语会在云端确认后随音频发送给 Deepgram Nova-3；其他识别引擎会忽略它。"
+    ),
+    .vocabularyKind: .init(
+      english: "Rule type",
+      simplifiedChinese: "规则类型"
+    ),
+    .vocabularyLocale: .init(
+      english: "Language scope",
+      simplifiedChinese: "语言范围"
+    ),
+    .vocabularyMatchMode: .init(
+      english: "Match mode",
+      simplifiedChinese: "匹配方式"
+    ),
+    .vocabularyPattern: .init(
+      english: "Spoken or recognized phrase",
+      simplifiedChinese: "口述或识别到的词"
+    ),
+    .vocabularyPriority: .init(
+      english: "Priority",
+      simplifiedChinese: "优先级"
+    ),
+    .vocabularyReplacement: .init(
+      english: "Preferred output",
+      simplifiedChinese: "期望输出"
+    ),
+    .vocabularyScope: .init(
+      english: "Scope",
+      simplifiedChinese: "作用范围"
+    ),
+    .vocabularySourceApp: .init(
+      english: "App bundle ID",
+      simplifiedChinese: "App Bundle ID"
+    ),
+    .vocabularyTitle: .init(
+      english: "Vocabulary & Mappings",
+      simplifiedChinese: "词汇与映射词"
+    ),
+    .settingsDeepgramFailureHint: .init(
+      english: "A recent cloud recognition run failed because the Deepgram API key is missing.",
+      simplifiedChinese: "最近一次云端识别失败，因为缺少 Deepgram API Key。"
+    ),
+    .settingsDeepgramSecureEndpointHint: .init(
+      english: "The API key and audio require HTTPS. Plain HTTP is allowed only for localhost.",
+      simplifiedChinese: "API Key 与音频必须通过 HTTPS 发送；仅本机地址允许明文 HTTP。"
+    ),
+    .settingsLongRecordingMode: .init(
+      english: "Toggle recording hotkey mode",
+      simplifiedChinese: "切换式录音快捷键模式"
+    ),
+    .settingsLongRecordingModeDescription: .init(
+      english:
+        "Press once to start and again to stop. Local Qwen recordings stop automatically at 20 seconds; other recognizers use their own limits.",
+      simplifiedChinese: "按一次开始，再按一次停止。本地 Qwen 录音最长 20 秒并会自动停止；其他识别器遵从各自上限。"
+    ),
+    .settingsFailedAudioRecovery: .init(
+      english: "Keep failed recordings for manual retry",
+      simplifiedChinese: "保留失败录音以供手动重试"
+    ),
+    .settingsFailedAudioRecoveryClear: .init(
+      english: "Clear Failed Recordings",
+      simplifiedChinese: "清除失败录音"
+    ),
+    .settingsFailedAudioRecoveryClearConfirmation: .init(
+      english: "Delete all retained failed recordings?",
+      simplifiedChinese: "删除全部保留的失败录音吗？"
+    ),
+    .settingsFailedAudioRecoveryClearConfirmationDetail: .init(
+      english:
+        "This permanently removes every encrypted recovery recording. Run history and completed transcripts are not changed.",
+      simplifiedChinese: "这会永久删除全部加密恢复录音；运行历史和已完成的转写不会改变。"
+    ),
+    .settingsFailedAudioRecoveryDescription: .init(
+      english:
+        "Off by default. Eligible recordings are encrypted with the local Keychain key for up to 24 hours (3 items, 16 MB each, 32 MB total). Retry rechecks current privacy and provider settings, writes only to History, and never repeats output actions.",
+      simplifiedChinese:
+        "默认关闭。符合条件的录音会使用本机 Keychain 密钥加密保存，最长 24 小时（最多 3 条、单条 16 MB、总计 32 MB）。重试会重新检查当前隐私与服务配置，只写入历史，不会重复执行输出动作。"
+    ),
+    .historyFailedAudioDelete: .init(
+      english: "Delete recording",
+      simplifiedChinese: "删除录音"
+    ),
+    .historyFailedAudioDeleteConfirmation: .init(
+      english: "Delete this retained recording?",
+      simplifiedChinese: "删除这条保留的录音吗？"
+    ),
+    .historyFailedAudioDeleteConfirmationDetail: .init(
+      english:
+        "This permanently removes the encrypted recovery recording. The run history entry is kept.",
+      simplifiedChinese: "这会永久删除加密恢复录音，但保留对应的运行历史条目。"
+    ),
+    .historyFailedAudioExpires: .init(
+      english: "Encrypted recording expires",
+      simplifiedChinese: "加密录音到期"
+    ),
+    .historyFailedAudioOutcomeUnknown: .init(
+      english:
+        "A previous retry was interrupted. Its provider outcome is unknown, so Rill will not repeat it automatically.",
+      simplifiedChinese: "上一次重试被中断，服务端结果未知，因此 Rill 不会自动重复请求。"
+    ),
+    .historyFailedAudioRetry: .init(
+      english: "Retry transcription",
+      simplifiedChinese: "重试转写"
+    ),
+    .historyFailedAudioRetrying: .init(
+      english: "Retrying…",
+      simplifiedChinese: "正在重试…"
+    ),
+    .voiceModeOutputNone: .init(
+      english: "No output",
+      simplifiedChinese: "无输出"
+    ),
+    .workflowAdvancedTextSteps: .init(
+      english: "Advanced Text Steps",
+      simplifiedChinese: "高级文本步骤"
+    ),
+    .workflowCloudModelOverride: .init(
+      english: "Deepgram model override",
+      simplifiedChinese: "Deepgram 模型覆盖"
+    ),
+    .workflowLanguageAuto: .init(
+      english: "Auto language",
+      simplifiedChinese: "自动语言"
+    ),
+    .workflowLanguageOverride: .init(
+      english: "Language override",
+      simplifiedChinese: "语言覆盖"
+    ),
+    .workflowRouteAutomaticHint: .init(
+      english:
+        "Uses the current global engine, with this workflow's language/model overrides when set.",
+      simplifiedChinese: "使用当前全局引擎；如已设置，则应用此工作流自己的语言/模型覆盖。"
+    ),
+    .workflowRouteCloudHint: .init(
+      english: "Cloud path through Deepgram; configure credentials in Settings before running.",
+      simplifiedChinese: "通过 Deepgram 云端路径识别；运行前请在设置中配置凭据。"
+    ),
+    .workflowRouteLocalHint: .init(
+      english: "Local path through sherpa-onnx; model and language stay on this Mac.",
+      simplifiedChinese: "通过 sherpa-onnx 本地路径识别；模型和语言处理留在本机。"
+    ),
+    .workflowSpeechRoute: .init(
+      english: "Speech Route",
+      simplifiedChinese: "语音路径"
+    ),
+    .workflowTextStyle: .init(
+      english: "Text Style",
+      simplifiedChinese: "文字风格"
+    ),
+    .workflowTextStyleHint: .init(
+      english: "Choose what Rill should do with your words before output.",
+      simplifiedChinese: "选择 Rill 在输出前如何处理你的语音文本。"
+    ),
+    .workflowLocalSpeechModelOverride: .init(
+      english: "Local model override",
+      simplifiedChinese: "本地模型覆盖"
+    ),
+    .voiceFailureDeepgramMissingKeySummary: .init(
+      english:
+        "Deepgram API key is missing. Add it in Recognition Settings before using cloud recognition.",
+      simplifiedChinese: "缺少 Deepgram API Key。使用云端识别前，请在识别设置中填写。"
+    ),
+    .voiceFailureDetailsLabel: .init(
+      english: "Details",
+      simplifiedChinese: "详细原因"
+    ),
+    .voiceFailureDismiss: .init(
+      english: "Dismiss",
+      simplifiedChinese: "忽略"
+    ),
+    .voiceFailureGenericSummary: .init(
+      english: "The last voice run failed. Review the details below.",
+      simplifiedChinese: "上次语音运行失败。请查看下方详细原因。"
+    ),
+    .voiceFailureOpenRecognitionSettings: .init(
+      english: "Open Recognition Settings",
+      simplifiedChinese: "打开识别设置"
+    ),
+    .voiceFailureTitle: .init(
+      english: "Voice Run Needs Attention",
+      simplifiedChinese: "语音运行需要处理"
+    ),
+  ]
+
+  public static func string(_ key: Key, language: AppLanguage) -> String {
+    table[key]?.string(for: language) ?? key.rawValue
+  }
+
+  public static func localSpeechPreparationFailure(
+    _ stage: LocalSpeechPreparationFailure.Stage
+  ) -> LocalizedText {
+    switch stage {
+    case .architectureUnsupported:
+      return LocalizedText(
+        english:
+          "Local speech preparation is unavailable because this build does not include a compatible sherpa-onnx runtime.",
+        simplifiedChinese: "此构建未包含兼容的 sherpa-onnx 运行时，无法准备本地语音。"
+      )
+    case .trustMaterialUnavailable:
+      return LocalizedText(
+        english:
+          "This build does not include reviewed local model trust material, so local speech is unavailable.",
+        simplifiedChinese: "此构建未包含受审的本地模型信任材料，因此本地语音不可用。"
+      )
+    case .trustRoot:
+      return LocalizedText(
+        english:
+          "Local speech preparation stopped because the model identity could not be verified.",
+        simplifiedChinese: "本地语音准备已停止，因为无法验证模型身份。"
+      )
+    case .resolution:
+      return LocalizedText(
+        english: "Local speech preparation could not obtain the selected model.",
+        simplifiedChinese: "本地语音准备无法取得所选模型。"
+      )
+    case .integrity:
+      return LocalizedText(
+        english:
+          "Local speech preparation stopped because the model failed integrity verification.",
+        simplifiedChinese: "本地语音准备已停止，因为模型未通过完整性验证。"
+      )
+    case .tokenizer:
+      return LocalizedText(
+        english: "Local speech preparation stopped because the tokenizer could not be verified.",
+        simplifiedChinese: "本地语音准备已停止，因为无法验证分词器。"
+      )
+    case .runtime:
+      return LocalizedText(
+        english: "Local speech preparation could not load the selected model.",
+        simplifiedChinese: "本地语音准备无法加载所选模型。"
+      )
+    case .generic:
+      return LocalizedText(
+        english: "Local speech preparation failed. Try again from Speech settings.",
+        simplifiedChinese: "本地语音准备失败。请在语音设置中重试。"
+      )
+    }
+  }
+
+  public static func itemCount(_ count: Int, language: AppLanguage) -> String {
+    switch language {
+    case .english:
+      return count == 1 ? "1 item" : "\(count) items"
+    case .simplifiedChinese:
+      return "\(count) 个条目"
+    }
+  }
+
+  public static func voiceFailureSummary(message: String, language: AppLanguage) -> String {
+    if hasDeepgramAPIKeyRecovery(for: message) {
+      return string(.voiceFailureDeepgramMissingKeySummary, language: language)
+    }
+    return string(.voiceFailureGenericSummary, language: language)
+  }
+
+  public static func menuClipboardReadyStatus(_ count: Int, language: AppLanguage) -> String {
+    "\(string(.menuStatusClipboardReady, language: language)): \(itemCount(count, language: language))"
+  }
+
+  static func voiceTextStyleTitle(_ style: VoiceTextStyle, language: AppLanguage) -> String {
+    switch (style, language) {
+    case (.rawInput, .english):
+      return "Raw Input"
+    case (.rawInput, .simplifiedChinese):
+      return "原样输入"
+    case (.cleanInput, .english):
+      return "Clean Input"
+    case (.cleanInput, .simplifiedChinese):
+      return "干净输入"
+    case (.formalWriting, .english):
+      return "Formal Writing"
+    case (.formalWriting, .simplifiedChinese):
+      return "正式写作"
+    case (.translateInput, .english):
+      return "Translate Input"
+    case (.translateInput, .simplifiedChinese):
+      return "翻译输入"
+    case (.commandMode, .english):
+      return "Command Mode"
+    case (.commandMode, .simplifiedChinese):
+      return "命令模式"
+    case (.custom, .english):
+      return "Custom Style"
+    case (.custom, .simplifiedChinese):
+      return "自定义风格"
+    }
+  }
+
+  static func speechRouteHint(_ route: WorkflowEditorDraft.RecognizerChoice, language: AppLanguage)
+    -> String
+  {
+    switch route {
+    case .automatic:
+      return string(.workflowRouteAutomaticHint, language: language)
+    case .localSpeech:
+      return string(.workflowRouteLocalHint, language: language)
+    case .cloudSpeech:
+      return string(.workflowRouteCloudHint, language: language)
+    }
+  }
+
+  static func voiceTextStyleDescription(_ style: VoiceTextStyle, language: AppLanguage) -> String {
+    switch (style, language) {
+    case (.rawInput, .english):
+      return "Keep the transcript as close to the recognizer result as possible."
+    case (.rawInput, .simplifiedChinese):
+      return "尽量保留识别结果原文。"
+    case (.cleanInput, .english):
+      return "Clean spacing and line breaks without rewriting meaning."
+    case (.cleanInput, .simplifiedChinese):
+      return "整理空格和换行，不改写含义。"
+    case (.formalWriting, .english):
+      return "Rewrite into a concise polished draft while preserving meaning."
+    case (.formalWriting, .simplifiedChinese):
+      return "在保留含义的前提下润色成简洁成稿。"
+    case (.translateInput, .english):
+      return "Translate the transcript when you ask for a target language."
+    case (.translateInput, .simplifiedChinese):
+      return "按你说出的目标语言翻译转写内容。"
+    case (.commandMode, .english):
+      return "Shape the transcript into a concise command or instruction."
+    case (.commandMode, .simplifiedChinese):
+      return "把转写内容整理成简洁命令或指令。"
+    case (.custom, .english):
+      return "Use the custom advanced text steps below."
+    case (.custom, .simplifiedChinese):
+      return "使用下方自定义高级文本步骤。"
+    }
+  }
+
+  public static func vocabularyRuleKind(_ kind: VocabularyRuleKind, language: AppLanguage) -> String
+  {
+    switch (kind, language) {
+    case (.hotword, .english):
+      return "Hotword"
+    case (.hotword, .simplifiedChinese):
+      return "热词"
+    case (.mapping, .english):
+      return "Mapping"
+    case (.mapping, .simplifiedChinese):
+      return "映射词"
+    }
+  }
+
+  public static func vocabularyMatchMode(_ mode: VocabularyMatchMode, language: AppLanguage)
+    -> String
+  {
+    switch (mode, language) {
+    case (.exactPhrase, .english):
+      return "Exact phrase"
+    case (.exactPhrase, .simplifiedChinese):
+      return "完整短语"
+    case (.wordBoundary, .english):
+      return "Word boundary"
+    case (.wordBoundary, .simplifiedChinese):
+      return "单词边界"
+    case (.regex, .english):
+      return "Regular expression"
+    case (.regex, .simplifiedChinese):
+      return "正则表达式"
+    }
+  }
+
+  public static func vocabularyScopeSummary(
+    _ scope: VocabularyRuleScope,
+    groupName: String?,
+    language: AppLanguage
+  ) -> String {
+    let bundleIdentifier = scope.bundleIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines)
+    let locale = scope.locale?.trimmingCharacters(in: .whitespacesAndNewlines)
+    var parts: [String] = []
+    parts.append(
+      bundleIdentifier?.isEmpty == false
+        ? bundleIdentifier! : string(.vocabularyAnyApp, language: language))
+    parts.append(groupName ?? string(.vocabularyAnyGroup, language: language))
+    parts.append(
+      locale?.isEmpty == false ? locale! : string(.vocabularyAnyLocale, language: language))
+    return parts.joined(separator: " · ")
+  }
+
+  public static func hasDeepgramAPIKeyRecovery(for message: String) -> Bool {
+    let normalized = message.lowercased()
+    return normalized.contains("deepgram api key is missing")
+      || normalized.contains("deepgram api key is unavailable")
+      || normalized.contains("deepgram_api_key")
+  }
+
+  static func privacyText(_ key: PrivacySettingsTextKey, language: AppLanguage) -> String {
+    privacyTextTable[key]?.string(for: language) ?? key.rawValue
+  }
+  static func privacySettingsHistoryPreviewMode(
+    _ mode: PrivacyHistoryPreviewMode, language: AppLanguage
+  ) -> String {
+    switch mode {
+    case .full: return language == .english ? "Full previews" : "完整预览"
+    case .restricted: return language == .english ? "Restricted previews" : "受限预览"
+    case .disabled: return language == .english ? "Disabled" : "禁用"
+    }
+  }
+  static func privacySettingsSpeechRouteHint(
+    _ route: WorkflowEditorDraft.RecognizerChoice, language: AppLanguage
+  ) -> String {
+    switch route {
+    case .automatic:
+      return privacyText(PrivacySettingsTextKey.automaticRouteHint, language: language)
+    case .localSpeech: return privacyText(PrivacySettingsTextKey.localRouteHint, language: language)
+    case .cloudSpeech: return privacyText(PrivacySettingsTextKey.cloudRouteHint, language: language)
+    }
+  }
+  private static var privacyTextTable: [PrivacySettingsTextKey: LocalizedText] {
+    [
+      PrivacySettingsTextKey.addRule: .init(english: "Add App", simplifiedChinese: "添加 App"),
+      PrivacySettingsTextKey.applicationNameOptional: .init(
+        english: "App name (optional)", simplifiedChinese: "App 名称（可选）"),
+      PrivacySettingsTextKey.automaticRouteHint: .init(
+        english: "Global engine; cloud may confirm.", simplifiedChinese: "全局引擎；云端可能确认。"),
+      PrivacySettingsTextKey.cloudConfirmation: .init(
+        english: "Confirm cloud", simplifiedChinese: "确认云端"),
+      PrivacySettingsTextKey.bundleIdentifier: .init(
+        english: "Bundle identifier (for example, com.example.Vault)",
+        simplifiedChinese: "Bundle ID（例如 com.example.Vault）"),
+      PrivacySettingsTextKey.cancelEdit: .init(english: "Cancel", simplifiedChinese: "取消"),
+      PrivacySettingsTextKey.cloudConfirmationDescription: .init(
+        english:
+          "Cloud speech streams audio to Deepgram; entering a restricted app or tightening privacy settings stops the current run.",
+        simplifiedChinese: "云端识别会把音频流式发送到 Deepgram；进入受限 App 或收紧隐私设置会停止当前运行。"),
+      PrivacySettingsTextKey.cloudRouteHint: .init(
+        english: "Cloud: audio leaves this Mac.", simplifiedChinese: "云端：音频离开本机。"),
+      PrivacySettingsTextKey.description: .init(
+        english: "Control privacy settings.", simplifiedChinese: "控制隐私设置。"),
+      PrivacySettingsTextKey.deleteRule: .init(english: "Delete", simplifiedChinese: "删除"),
+      PrivacySettingsTextKey.duplicateBundleIdentifier: .init(
+        english: "This bundle identifier already has a rule.",
+        simplifiedChinese: "这个 Bundle ID 已有规则。"),
+      PrivacySettingsTextKey.editRule: .init(english: "Edit", simplifiedChinese: "编辑"),
+      PrivacySettingsTextKey.historyPreviewDescription: .init(
+        english:
+          "Full previews show the complete result; restricted previews expose at most 96 summarized characters; hidden previews expose no result text. This does not delete local records.",
+        simplifiedChinese: "完整预览显示全部结果；受限预览最多暴露 96 个摘要字符；隐藏预览不暴露结果正文。此设置不会删除本地记录。"),
+      PrivacySettingsTextKey.historyPreviewHidden: .init(
+        english: "Preview hidden by privacy setting", simplifiedChinese: "已按隐私设置隐藏预览"),
+      PrivacySettingsTextKey.historyPreviewMode: .init(
+        english: "History preview mode", simplifiedChinese: "历史预览模式"),
+      PrivacySettingsTextKey.localRouteHint: .init(
+        english: "Local route: recognition stays on this Mac.", simplifiedChinese: "本地路径：识别留在本机。"),
+      PrivacySettingsTextKey.invalidBundleIdentifier: .init(
+        english: "Enter a valid reverse-DNS bundle identifier.",
+        simplifiedChinese: "请输入有效的反向域名格式 Bundle ID。"),
+      PrivacySettingsTextKey.loading: .init(
+        english: "Loading privacy settings…", simplifiedChinese: "正在加载隐私设置…"),
+      PrivacySettingsTextKey.missingBundleIdentifier: .init(
+        english: "A bundle identifier is required.", simplifiedChinese: "必须填写 Bundle ID。"),
+      PrivacySettingsTextKey.recommendedRule: .init(
+        english: "Recommended", simplifiedChinese: "推荐"),
+      PrivacySettingsTextKey.recommendedRuleCannotBeEdited: .init(
+        english: "Recommended rule identities cannot be edited or deleted.",
+        simplifiedChinese: "推荐规则不能编辑标识或删除。"),
+      PrivacySettingsTextKey.resetSafeDefaults: .init(
+        english: "Reset to Safe Defaults", simplifiedChinese: "恢复安全默认值"),
+      PrivacySettingsTextKey.restoreRecommended: .init(
+        english: "Restore Recommended", simplifiedChinese: "恢复推荐规则"),
+      PrivacySettingsTextKey.retryLoad: .init(english: "Retry Load", simplifiedChinese: "重试加载"),
+      PrivacySettingsTextKey.retrySave: .init(english: "Retry Save", simplifiedChinese: "重试保存"),
+      PrivacySettingsTextKey.routeDetailLabel: .init(english: "Privacy", simplifiedChinese: "隐私"),
+      PrivacySettingsTextKey.ruleBlocksClipboard: .init(
+        english: "Do not save clipboard history", simplifiedChinese: "不保存剪贴板历史"),
+      PrivacySettingsTextKey.ruleBlocksCloud: .init(
+        english: "Block cloud processing", simplifiedChinese: "阻止云端处理"),
+      PrivacySettingsTextKey.ruleBlocksSelectedText: .init(
+        english: "Redact selected text", simplifiedChinese: "隐藏选中文本"),
+      PrivacySettingsTextKey.ruleBlocksWorkflow: .init(
+        english: "Do not trigger workflows from clipboard", simplifiedChinese: "不从剪贴板触发工作流"),
+      PrivacySettingsTextKey.ruleEnabled: .init(english: "Enabled", simplifiedChinese: "已启用"),
+      PrivacySettingsTextKey.ruleNotFound: .init(
+        english: "This rule no longer exists. Reload Settings and try again.",
+        simplifiedChinese: "该规则已不存在，请重新打开设置后重试。"),
+      PrivacySettingsTextKey.saveRule: .init(english: "Save Changes", simplifiedChinese: "保存更改"),
+      PrivacySettingsTextKey.saving: .init(
+        english: "Saving privacy settings…", simplifiedChinese: "正在保存隐私设置…"),
+      PrivacySettingsTextKey.secureInputConservativeDescription: .init(
+        english: "Redact selected text when secure input is detected.",
+        simplifiedChinese: "检测到安全输入时隐藏选中文本。"),
+      PrivacySettingsTextKey.secureInputConservativeMode: .init(
+        english: "Conservative secure input", simplifiedChinese: "安全输入保守处理"),
+      PrivacySettingsTextKey.sensitiveApps: .init(
+        english: "Sensitive app exclusions", simplifiedChinese: "敏感 App 排除"),
+      PrivacySettingsTextKey.sensitiveAppsDescription: .init(
+        english: "Recommended rules cover password and keychain apps.",
+        simplifiedChinese: "推荐规则覆盖密码和钥匙串工具。"),
+      PrivacySettingsTextKey.technicalNotice: .init(
+        english: "Technical Privacy Notice", simplifiedChinese: "技术隐私说明"),
+      PrivacySettingsTextKey.technicalNoticeDescription: .init(
+        english:
+          "Read the bundled, offline description of local storage, network destinations, retention, and product boundaries.",
+        simplifiedChinese: "查看随 App 离线提供的本地存储、网络目的地、留存和产品边界说明。"),
+      PrivacySettingsTextKey.technicalNoticeUnavailable: .init(
+        english:
+          "The packaged privacy notice is unavailable. Reinstall Rill from a verified build.",
+        simplifiedChinese: "安装包中的隐私说明不可用，请从已验证的构建重新安装 Rill。"),
+      PrivacySettingsTextKey.title: .init(
+        english: "Privacy & Sensitive Apps", simplifiedChinese: "隐私与敏感 App"),
+    ]
+  }
+
+  static func historySettingsText(
+    _ key: HistorySettingsTextKey,
+    language: AppLanguage
+  ) -> String {
+    historySettingsTextTable[key]?.string(for: language) ?? key.rawValue
+  }
+
+  static func historyRetentionPeriod(
+    _ period: HistoryRetentionPeriod,
+    language: AppLanguage
+  ) -> String {
+    switch (period, language) {
+    case (.oneDay, .english): return "1 day"
+    case (.oneDay, .simplifiedChinese): return "1 天"
+    case (.oneWeek, .english): return "1 week"
+    case (.oneWeek, .simplifiedChinese): return "1 周"
+    case (.thirtyDays, .english): return "30 days"
+    case (.thirtyDays, .simplifiedChinese): return "30 天"
+    case (.oneYear, .english): return "1 year"
+    case (.oneYear, .simplifiedChinese): return "1 年"
+    case (.forever, .english): return "Forever"
+    case (.forever, .simplifiedChinese): return "永久保留"
+    }
+  }
+
+  static func historyMaintenanceResult(
+    removedCount: Int,
+    preservedActiveClipboardCount: Int,
+    language: AppLanguage
+  ) -> String {
+    switch language {
+    case .english:
+      return
+        "Removed \(removedCount) local history record(s); preserved \(preservedActiveClipboardCount) active clipboard item(s)."
+    case .simplifiedChinese:
+      return "已移除 \(removedCount) 条本地历史记录；保留 \(preservedActiveClipboardCount) 条仍在使用的剪贴板内容。"
+    }
+  }
+
+  private static var historySettingsTextTable: [HistorySettingsTextKey: LocalizedText] {
+    [
+      .cancel: .init(english: "Cancel", simplifiedChinese: "取消"),
+      .clearClipboard: .init(english: "Clear Clipboard History…", simplifiedChinese: "清除剪贴板历史…"),
+      .clearClipboardConfirmation: .init(
+        english: "Remove eligible clipboard history now?",
+        simplifiedChinese: "现在移除可清理的剪贴板历史吗？"
+      ),
+      .clearClipboardConfirmationDetail: .init(
+        english:
+          "History-only entries are removed. Items still active in a stack, queue, list, or delivery lease remain available.",
+        simplifiedChinese: "将移除仅存在于历史中的条目；仍在栈、队列、列表或投递租约中的条目会继续保留。"
+      ),
+      .clearRun: .init(
+        english: "Clear Run & Diagnostic History…",
+        simplifiedChinese: "清除运行与诊断历史…"
+      ),
+      .clearRunConfirmation: .init(
+        english: "Remove all run and diagnostic history now?",
+        simplifiedChinese: "现在移除全部运行与诊断历史吗？"
+      ),
+      .clearRunConfirmationDetail: .init(
+        english:
+          "Run records and diagnostics are removed. Items in the Voice Clipboard group are not changed.",
+        simplifiedChinese: "将移除运行记录与诊断；语音剪贴板分组中的条目不会改变。"
+      ),
+      .clipboardRetention: .init(english: "Clipboard history", simplifiedChinese: "剪贴板历史"),
+      .description: .init(
+        english:
+          "Choose how long local clipboard, run, and diagnostic records are kept. Cleanup can be retried if storage is temporarily unavailable.",
+        simplifiedChinese: "分别设置本地剪贴板、运行与诊断记录的保留时长；存储暂时不可用时可以重试清理。"
+      ),
+      .maintenancePending: .init(
+        english: "Local history cleanup is pending.",
+        simplifiedChinese: "本地历史清理尚待完成。"
+      ),
+      .maintenanceRunning: .init(
+        english: "Updating local history…",
+        simplifiedChinese: "正在更新本地历史…"
+      ),
+      .preservedClipboardDetail: .init(
+        english:
+          "Clearing does not remove items still used by the current stack, queue, list, or an active delivery lease.",
+        simplifiedChinese: "清除操作不会移除当前栈、队列、列表或活跃投递租约仍在使用的条目。"
+      ),
+      .preservedRunDetail: .init(
+        english: "Run and diagnostic history is independent from the Voice Clipboard group.",
+        simplifiedChinese: "运行与诊断历史和语音剪贴板分组相互独立。"
+      ),
+      .retry: .init(english: "Retry Cleanup", simplifiedChinese: "重试清理"),
+      .runActiveHint: .init(
+        english:
+          "Finish the active or queued voice run before clearing run and diagnostic history.",
+        simplifiedChinese: "请先完成当前或排队中的语音运行，再清除运行与诊断历史。"
+      ),
+      .runRetention: .init(
+        english: "Run & diagnostic history",
+        simplifiedChinese: "运行与诊断历史"
+      ),
+      .title: .init(english: "Local Data & Retention", simplifiedChinese: "本地数据与留存"),
+    ]
+  }
+}
+enum PrivacySettingsTextKey: String, CaseIterable, Sendable {
+  case addRule, applicationNameOptional, automaticRouteHint, bundleIdentifier, cancelEdit
+  case cloudConfirmation, cloudConfirmationDescription, cloudRouteHint, deleteRule, description
+  case duplicateBundleIdentifier, editRule, historyPreviewDescription, historyPreviewHidden
+  case historyPreviewMode, invalidBundleIdentifier, loading, localRouteHint, missingBundleIdentifier
+  case recommendedRule, recommendedRuleCannotBeEdited, resetSafeDefaults, restoreRecommended
+  case retryLoad, retrySave, routeDetailLabel
+  case ruleBlocksClipboard, ruleBlocksCloud, ruleBlocksSelectedText, ruleBlocksWorkflow, ruleEnabled
+  case ruleNotFound, saveRule, saving, secureInputConservativeDescription,
+    secureInputConservativeMode
+  case sensitiveApps, sensitiveAppsDescription, technicalNotice, technicalNoticeDescription
+  case technicalNoticeUnavailable, title
+}
+
+enum HistorySettingsTextKey: String, CaseIterable, Sendable {
+  case cancel
+  case clearClipboard
+  case clearClipboardConfirmation
+  case clearClipboardConfirmationDetail
+  case clearRun
+  case clearRunConfirmation
+  case clearRunConfirmationDetail
+  case clipboardRetention
+  case description
+  case maintenancePending
+  case maintenanceRunning
+  case preservedClipboardDetail
+  case preservedRunDetail
+  case retry
+  case runActiveHint
+  case runRetention
+  case title
+}
+extension UIStrings {
+  public static func stackPending(_ count: Int, language: AppLanguage) -> String {
+    switch language {
+    case .english:
+      return count == 0 ? "Route empty" : "\(count) item(s) pending"
+    case .simplifiedChinese:
+      return count == 0 ? "路由为空" : "待投递 \(count) 项"
+    }
+  }
+
+  public static func stackCountSummary(_ count: Int, language: AppLanguage) -> String {
+    switch language {
+    case .english:
+      return "\(count) item(s)"
+    case .simplifiedChinese:
+      return "\(count) 项"
+    }
+  }
+
+  public static func permissionState(_ state: PermissionState, language: AppLanguage) -> String {
+    switch (language, state) {
+    case (.english, .granted):
+      return "Granted"
+    case (.simplifiedChinese, .granted):
+      return "已授权"
+    case (.english, .denied):
+      return "Denied"
+    case (.simplifiedChinese, .denied):
+      return "未授权"
+    case (.english, .unknown):
+      return "Unknown"
+    case (.simplifiedChinese, .unknown):
+      return "未知"
+    }
+  }
+
+  public static func workflowName(_ workflow: WorkflowPresentation, language: AppLanguage) -> String
+  {
+    guard let titleKey = workflow.titleKey else {
+      return workflow.fallbackName
+    }
+    return workflowNameTable[titleKey]?.string(for: language) ?? workflow.fallbackName
+  }
+
+  private static var workflowNameTable: [WorkflowTitleKey: LocalizedText] {
+    [
+      .ambiguousDemoStack: .init(english: "Guided Capture", simplifiedChinese: "确认后保存"),
+      .directDemoClipboard: .init(english: "Capture Selection", simplifiedChinese: "收进剪贴板组"),
+      .rewriteDemoStack: .init(english: "Polish Draft", simplifiedChinese: "润色成稿"),
+      .pushToTalkCapture: .init(english: "Accurate Transcription", simplifiedChinese: "精准转写"),
+      .pushToTalkPolish: .init(
+        english: "Transcription + LLM Rewrite (Planned)",
+        simplifiedChinese: "转写 + 大模型润色（待办）"
+      ),
+      .rawInput: .init(english: "Raw Input", simplifiedChinese: "原样输入"),
+      .cleanInput: .init(english: "Clean Input", simplifiedChinese: "干净输入"),
+      .formalWriting: .init(english: "Formal Writing", simplifiedChinese: "正式写作"),
+      .translateInput: .init(english: "Translate Input", simplifiedChinese: "翻译输入"),
+      .commandMode: .init(english: "Command Mode", simplifiedChinese: "命令模式"),
+      .localDictation: .init(english: "Local Dictation", simplifiedChinese: "本地听写"),
+      .cloudDictation: .init(english: "Cloud Dictation", simplifiedChinese: "云端听写"),
+      .stackDelivery: .init(english: "Clipboard Delivery", simplifiedChinese: "剪贴板投递"),
+      .streamingInput: .init(english: "Streaming Direct", simplifiedChinese: "流式直出"),
+    ]
+  }
+
+  public static func candidateModeSummary(
+    mode: ResolutionMode,
+    timeoutSeconds: Int,
+    language: AppLanguage
+  ) -> String {
+    switch language {
+    case .english:
+      return "Mode: \(resolutionMode(mode, language: language)) · Timeout: \(timeoutSeconds)s"
+    case .simplifiedChinese:
+      return "模式：\(resolutionMode(mode, language: language)) · 超时：\(timeoutSeconds) 秒"
+    }
+  }
+
+  public static func resolutionMode(_ mode: ResolutionMode, language: AppLanguage) -> String {
+    switch (language, mode) {
+    case (.english, .blocking):
+      return "Blocking"
+    case (.simplifiedChinese, .blocking):
+      return "阻塞"
+    case (.english, .nonBlocking):
+      return "Non-blocking"
+    case (.simplifiedChinese, .nonBlocking):
+      return "非阻塞"
+    case (.english, .off):
+      return "Off"
+    case (.simplifiedChinese, .off):
+      return "关闭"
+    }
+  }
+
+  public static func spanSummary(lowerBound: Int, upperBound: Int, language: AppLanguage) -> String
+  {
+    switch language {
+    case .english:
+      return "Span \(lowerBound)-\(upperBound)"
+    case .simplifiedChinese:
+      return "范围 \(lowerBound)-\(upperBound)"
+    }
+  }
+
+  public static func candidateSource(_ source: CandidateSource, language: AppLanguage) -> String {
+    switch (language, source) {
+    case (_, .asr):
+      return "ASR"
+    case (_, .llm):
+      return "LLM"
+    case (.english, .heuristic):
+      return "HEURISTIC"
+    case (.simplifiedChinese, .heuristic):
+      return "规则"
+    case (.english, .user):
+      return "USER"
+    case (.simplifiedChinese, .user):
+      return "用户"
+    }
+  }
+
+  public static func subsystem(_ subsystem: SubsystemTag, language: AppLanguage) -> String {
+    switch (language, subsystem) {
+    case (.english, .session):
+      return "Session"
+    case (.simplifiedChinese, .session):
+      return "会话"
+    case (.english, .stack):
+      return "Queue"
+    case (.simplifiedChinese, .stack):
+      return "队列"
+    case (.english, .clipboard):
+      return "Clipboard"
+    case (.simplifiedChinese, .clipboard):
+      return "剪贴板"
+    case (.english, .resolver):
+      return "Resolution"
+    case (.simplifiedChinese, .resolver):
+      return "消歧"
+    case (.english, .platform):
+      return "Platform"
+    case (.simplifiedChinese, .platform):
+      return "平台"
+    case (.english, .providers):
+      return "Speech"
+    case (.simplifiedChinese, .providers):
+      return "语音服务"
+    case (.english, .ui):
+      return "Interface"
+    case (.simplifiedChinese, .ui):
+      return "界面"
+    }
+  }
+
+  public static func workflowDetail(_ workflow: WorkflowDefinition, language: AppLanguage) -> String
+  {
+    VoiceWorkflowPresentation(workflow: workflow).detail(language: language)
+  }
+
+  public static func workflowConflict(
+    trigger: TriggerBinding,
+    names: [String],
+    language: AppLanguage
+  ) -> String {
+    let triggerName = workflowTrigger(trigger, language: language)
+    let joinedNames = names.joined(separator: ", ")
+    switch language {
+    case .english:
+      return "Conflict: \(triggerName) is also enabled for \(joinedNames)."
+    case .simplifiedChinese:
+      return "冲突：\(triggerName) 也被以下工作流启用了：\(joinedNames)。"
+    }
+  }
+
+  public static func workflowEnableConflict(
+    trigger: TriggerBinding,
+    names: [String],
+    language: AppLanguage
+  ) -> String {
+    let triggerName = workflowTrigger(trigger, language: language)
+    let joinedNames = names.joined(separator: ", ")
+    switch language {
+    case .english:
+      return "Cannot enable this workflow. \(triggerName) is already in use by \(joinedNames)."
+    case .simplifiedChinese:
+      return "无法启用这个工作流。\(triggerName) 已被以下工作流占用：\(joinedNames)。"
+    }
+  }
+
+  public static func diagnosticLevel(_ level: DiagnosticLevel, language: AppLanguage) -> String {
+    switch (language, level) {
+    case (.english, .debug):
+      return "DEBUG"
+    case (.simplifiedChinese, .debug):
+      return "调试"
+    case (.english, .info):
+      return "INFO"
+    case (.simplifiedChinese, .info):
+      return "信息"
+    case (.english, .warning):
+      return "WARNING"
+    case (.simplifiedChinese, .warning):
+      return "警告"
+    case (.english, .error):
+      return "ERROR"
+    case (.simplifiedChinese, .error):
+      return "错误"
+    }
+  }
+
+  public static func clipboardMode(_ mode: ClipboardPasteMode, language: AppLanguage) -> String {
+    switch (language, mode) {
+    case (.english, .stack):
+      return "Stack"
+    case (.simplifiedChinese, .stack):
+      return "栈"
+    case (.english, .queue):
+      return "Queue"
+    case (.simplifiedChinese, .queue):
+      return "队列"
+    case (.english, .list):
+      return "List"
+    case (.simplifiedChinese, .list):
+      return "列表"
+    }
+  }
+
+  public static func clipboardSystemSource(
+    applicationName: String,
+    language: AppLanguage
+  ) -> String {
+    switch language {
+    case .english:
+      return "Copied from \(applicationName)"
+    case .simplifiedChinese:
+      return "来自 \(applicationName) 的复制"
+    }
+  }
+
+  public static func clipboardWorkflowSource(
+    _ workflow: WorkflowPresentation,
+    language: AppLanguage
+  ) -> String {
+    switch language {
+    case .english:
+      return "Produced by \(workflowName(workflow, language: language))"
+    case .simplifiedChinese:
+      return "由 \(workflowName(workflow, language: language)) 产生"
+    }
+  }
+
+  public static func deepgramTestButtonTitle(_ state: DeepgramAudioTestState, language: AppLanguage)
+    -> String
+  {
+    switch state {
+    case .idle:
+      return text(.deepgramRecordTest, language: language)
+    case .preparing:
+      return text(.deepgramCancelPreparation, language: language)
+    case .recording:
+      return text(.deepgramStopAndTest, language: language)
+    case .transcribing:
+      return text(.deepgramCancelTest, language: language)
+    }
+  }
+
+  public static func workflowTrigger(
+    _ trigger: TriggerBinding,
+    metadata: [String: String] = [:],
+    language: AppLanguage
+  ) -> String {
+    switch (language, trigger) {
+    case (.english, .manual):
+      return "Manual"
+    case (.simplifiedChinese, .manual):
+      return "手动"
+    case (.english, .menuBar):
+      return "Menu Bar"
+    case (.simplifiedChinese, .menuBar):
+      return "菜单栏"
+    case (.english, .hotkey):
+      return metadata["trigger.gesture"] ?? "Hotkey"
+    case (.simplifiedChinese, .hotkey):
+      return metadata["trigger.gesture"] ?? "快捷键"
+    case (.english, .wakeWord):
+      return "Wake Word"
+    case (.simplifiedChinese, .wakeWord):
+      return "唤醒词"
+    }
+  }
+
+  public static func recognizerName(_ id: String, language: AppLanguage) -> String {
+    switch (language, id) {
+    case (.english, "sherpa-onnx.local"):
+      return "Local Speech"
+    case (.simplifiedChinese, "sherpa-onnx.local"):
+      return "本地识别"
+    case (.english, "sherpa-onnx.streaming"):
+      return "Local Streaming Speech"
+    case (.simplifiedChinese, "sherpa-onnx.streaming"):
+      return "本地流式识别"
+    case (.english, "deepgram.prerecorded"):
+      return "Deepgram Cloud"
+    case (.simplifiedChinese, "deepgram.prerecorded"):
+      return "Deepgram 云端识别"
+    default:
+      return id
+    }
+  }
+
+  public static func actionName(_ id: String, language: AppLanguage) -> String {
+    switch id {
+    case "inject.text": return language == .english ? "Paste into App" : "输入到当前应用"
+    case "clipboard.copy": return language == .english ? "Copy to Clipboard" : "复制到剪贴板"
+    case "stack.push": return language == .english ? "Save to Queue" : "保存到队列"
+    case ExternalOutputActionID.webhookPost: return "Webhook"
+    case ExternalOutputActionID.shortcutsRun:
+      return language == .english ? "Run Shortcut" : "运行快捷指令"
+    case ExternalOutputActionID.markdownAppend:
+      return language == .english ? "Append to Markdown" : "追加到 Markdown"
+    default: return id
+    }
+  }
+
+  public static func editorRecognizer(
+    _ recognizer: WorkflowEditorDraft.RecognizerChoice,
+    language: AppLanguage
+  ) -> String {
+    switch (language, recognizer) {
+    case (.english, .automatic):
+      return "Automatic"
+    case (.simplifiedChinese, .automatic):
+      return "自动"
+    case (.english, .localSpeech):
+      return "Local Speech"
+    case (.simplifiedChinese, .localSpeech):
+      return "本地识别"
+    case (.english, .cloudSpeech):
+      return "Deepgram Cloud"
+    case (.simplifiedChinese, .cloudSpeech):
+      return "Deepgram 云端识别"
+    }
+  }
+
+  public static func editorDestination(
+    _ destination: WorkflowEditorDraft.DestinationChoice,
+    language: AppLanguage
+  ) -> String {
+    switch destination {
+    case .pasteIntoApp: return language == .english ? "Paste into Active App" : "输入到当前应用"
+    case .copyToClipboard: return language == .english ? "Copy to Clipboard" : "复制到剪贴板"
+    case .saveToQueue: return language == .english ? "Save to Clipboard Queue" : "保存到剪贴板队列"
+    case .sendToWebhook: return "Webhook"
+    case .runShortcut: return language == .english ? "Run macOS Shortcut" : "运行 macOS 快捷指令"
+    case .appendToMarkdown:
+      return language == .english ? "Append to Obsidian/Markdown" : "追加到 Obsidian/Markdown"
+    }
+  }
+
+  public static func speechEngine(_ engine: PreferredSpeechEngine, language: AppLanguage) -> String
+  {
+    switch (language, engine) {
+    case (.english, .local):
+      return "Local"
+    case (.simplifiedChinese, .local):
+      return "本地"
+    case (.english, .cloud):
+      return "Cloud"
+    case (.simplifiedChinese, .cloud):
+      return "云端"
+    }
+  }
+
+  public static func localSpeechModelOption(
+    _ option: LegacyWhisperModelOption,
+    language: AppLanguage
+  ) -> String {
+    switch language {
+    case .english:
+      switch option {
+      case .automatic:
+        return "Automatic"
+      case .tiny:
+        return "Fast — Tiny"
+      case .distilLargeV3Compact:
+        return "English Only — Distilled Large v3"
+      case .largeV320240930Compact:
+        return "Best Quality — Large v3"
+      case .custom:
+        return "Custom"
+      }
+    case .simplifiedChinese:
+      switch option {
+      case .automatic:
+        return "自动"
+      case .tiny:
+        return "快速 — Tiny"
+      case .distilLargeV3Compact:
+        return "仅英语 — Distilled Large v3"
+      case .largeV320240930Compact:
+        return "最佳质量 — Large v3"
+      case .custom:
+        return "自定义"
+      }
+    }
+  }
+
+  public static func builtinPushToTalkOutputMode(
+    _ mode: BuiltinPushToTalkOutputMode,
+    language: AppLanguage
+  ) -> String {
+    switch (language, mode) {
+    case (.english, .pasteIntoApp):
+      return "Type into App"
+    case (.simplifiedChinese, .pasteIntoApp):
+      return "直接输入"
+    case (.english, .saveToVoiceGroup):
+      return "Save to Speech Recognition Group"
+    case (.simplifiedChinese, .saveToVoiceGroup):
+      return "保存到语音识别组"
+    }
+  }
+}

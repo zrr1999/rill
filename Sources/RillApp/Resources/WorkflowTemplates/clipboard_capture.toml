@@ -1,0 +1,11 @@
+# Template: Capture into a dedicated clipboard group
+
+name = "Clipboard Capture"
+trigger = "manual"
+recognizer = "auto"
+output = "stack.push"
+delivery = "stackFirst"
+target_group = "voice"
+
+[[post_process]]
+kind = "normalizeWhitespace"

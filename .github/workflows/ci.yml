@@ -1,0 +1,92 @@
+name: "CI - Verify"
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos14-deployment-target:
+    name: macOS 14 deployment target
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          lfs: true
+
+      - name: Show build toolchain and deployment target
+        run: |
+          sw_vers
+          swift --version
+          xcodebuild -version
+          grep -F '.macOS(.v14)' Package.swift
+
+      - name: Run locked test suite for the macOS 14 deployment target
+        run: scripts/swift_locked.sh test --parallel
+
+  preflight:
+    name: Release preflight
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          lfs: true
+
+      - name: Install pinned prek
+        uses: j178/prek-action@e98a699c41eb69ab013a45817a0406469a748f8d # v2.0.5
+        with:
+          install-only: true
+          prek-version: "0.3.10"
+
+      - name: Install pinned Gitleaks
+        run: |
+          tool_dir="$RUNNER_TEMP/gitleaks-bin"
+          bash scripts/install_gitleaks.sh --destination "$tool_dir"
+          echo "$tool_dir" >> "$GITHUB_PATH"
+
+      - name: Run repository quality gates
+        run: |
+          prek --version
+          gitleaks version
+          prek validate-config prek.toml
+          prek -c prek.toml run --all-files
+
+      - name: Show toolchain versions
+        run: |
+          swift --version
+          python3 --version
+
+      - name: Query live OSV for SwiftPM and vendored native commits
+        run: python3 scripts/check_dependency_security.py --live-osv
+
+      - name: Run preflight
+        run: bash scripts/preflight.sh
+
+  verify:
+    name: Required CI
+    if: ${{ always() }}
+    needs:
+      - macos14-deployment-target
+      - preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every verification lane
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
+        with:
+          jobs: ${{ toJSON(needs) }}

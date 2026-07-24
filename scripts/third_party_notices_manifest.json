@@ -1,0 +1,734 @@
+{
+  "schemaVersion": 2,
+  "packages": [
+    {
+      "kind": "sourceControl",
+      "identity": "async-http-client",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "e5eab628baf9849380ce867d80f65ece8ff98daa48035f994714e6fe7dbdb3ce"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "eventsource",
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.md",
+          "sha256": "2f9b695627d569a3ce452b2c03fdd34310df78c8ea94edfafd9ce38381e5b502"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "mlx-audio-swift",
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE",
+          "sha256": "fd330bb5d9adf9e65bfe4d8f6f90c808a4196ef5c98aad018a3344256fcb2374"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "mlx-swift",
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE",
+          "sha256": "44326a4ea062241ae6fc26ee2ec90bdc81af7eb7b9d3966181b733fa69d42057"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "mlx-swift-lm",
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE",
+          "sha256": "7b1d86acac816ce8192209d7e01141c129b4d48d474c15cc5fb4af62f497c323"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-algorithms",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-asn1",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "11dd3b3b783e6ec26098dd38ebc962986ea109b85447e28e62867b83bd0f8c5b"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-async-algorithms",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-atomics",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-certificates",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "57d7797703d906b63c2be50d891cf70bdec307ae6f77a881638c33343f3dd195"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-collections",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-configuration",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "e7edb579b15aa8a733959cec14b244d48f11b771099382d6cfaf442af4c3b69d"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-crypto",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "b3ddc2ae068e76b3beb71be03c0400f90090f9469aa491bf7b1ac42320af37b8"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-distributed-tracing",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-http-structured-headers",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-http-types",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "eb79190094094bb6ce2b177a7ba7708f50bf873b9a2c5e6e1936a5f391b5ec0f"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-huggingface",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE",
+          "sha256": "4d6ad72952a8329063a71de28329b493de96cf57459e2ac217110d1a6a5f84ae"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-jinja",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE",
+          "sha256": "648b81e6c6f9975c3b6cf6d630229b6c8d6f1ddaef55f5770f576adda19f3495"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-log",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "879b241d49b407215a0ad8e1c6a71c358d7b29591b090cf379d37a5f50cff918"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-nio",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "d25ed2452b3476c342082d11e4e8bf5459174d2836124f842b499850bcebc50e"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-nio-extras",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "722817c4c450c062f1f6e7b9df36733c0f6983aaad3e5e4aa5d76fe23d90010a"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-nio-http2",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "56b85f4571b653e82649d82a696afe841a417206a21a25afac751bcb11c2ea87"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-nio-ssl",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "03e8ca5c65a3df21fe1ab48eef91bca7d370db56c290d8ef16eaaa09ba322abe"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-nio-transport-services",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-numerics",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-service-context",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "0881037b6840338ea800fdb5876540081a75d8bdd9eb8175a16f348247e8677e"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-service-lifecycle",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "e0583b716a12a866a2a1d7456c26a17d18e1ec70f0ecaf2c62ed77180d1db043"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-syntax",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-system",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "2245a990b635558be210fb3eb4f8a6f7a49aebc0fefbf5859146a65ddc7ddcf3"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-transformers",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE",
+          "sha256": "648b81e6c6f9975c3b6cf6d630229b6c8d6f1ddaef55f5770f576adda19f3495"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-xet",
+      "licenseExpression": "Apache-2.0",
+      "evidenceRevision": "b8447cbdf0e798de27bab3c5b0a99da98fae81e9",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE",
+          "sha256": "66d3de8f54fa087ac001d3fde9221c9c7d220f6856c37fb038fa858d71450f35"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "yyjson",
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE",
+          "sha256": "45e384d3d52c73cba3a64d6e6c25d47cd738cd8a55c30629e3201046eda62947"
+        }
+      ]
+    },
+    {
+      "kind": "vendored",
+      "identity": "sherpa-onnx",
+      "version": "1.13.4",
+      "source": "https://github.com/k2-fsa/sherpa-onnx/archive/142807252687d81b40d6315f23470a1512a00de3.tar.gz",
+      "sourceSHA256": "f0dc7c9b41b8691313daee671e826eb23946fa1320559a8d37e84f8774af76b2",
+      "root": "vendor/sherpa-onnx-v1.13.4",
+      "artifacts": [
+        {
+          "path": "sherpa-onnx.xcframework/Info.plist",
+          "sha256": "789acaf7864ac8784bfe62902545b2b9cc7751957d50b49c23ebf106a8e67a4d"
+        },
+        {
+          "path": "sherpa-onnx.xcframework/macos-arm64_x86_64/Headers/sherpa-onnx/c-api/c-api.h",
+          "sha256": "587e1039cc4ee242169494f3c0ba5baecc22482341168d88d57db965e1e77fa9"
+        },
+        {
+          "path": "sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a",
+          "sha256": "8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6"
+        }
+      ],
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.sherpa-onnx",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "kind": "vendored",
+      "identity": "kaldi-native-fbank",
+      "version": "1.22.3",
+      "source": "https://github.com/csukuangfj/kaldi-native-fbank/archive/refs/tags/v1.22.3.tar.gz",
+      "sourceSHA256": "9176cc66fc7ce1edf85cf355b06e320c57db6297df74277f575183468893cf61",
+      "root": "vendor/sherpa-onnx-v1.13.4",
+      "artifacts": [
+        {
+          "path": "sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a",
+          "sha256": "8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6"
+        }
+      ],
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "licenses/LICENSE.kaldi-native-fbank",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "kind": "vendored",
+      "identity": "kissfft",
+      "version": "8a8e66e33d692bad1376fe7904d87d767730537f",
+      "source": "https://github.com/mborgerding/kissfft/archive/8a8e66e33d692bad1376fe7904d87d767730537f.zip",
+      "sourceSHA256": "0aea1e377ad95d267c7e78403c000285b56812e7f7c1b3c3d8b1fe27d9b8f9bc",
+      "root": "vendor/sherpa-onnx-v1.13.4",
+      "artifacts": [
+        {
+          "path": "sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a",
+          "sha256": "8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6"
+        }
+      ],
+      "licenseExpression": "BSD-3-Clause",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "licenses/COPYING.kissfft",
+          "sha256": "a2840585f8411be8e6826a31ef15ae65c950bd74a2437a73b013398a934ad0c6"
+        }
+      ]
+    },
+    {
+      "kind": "vendored",
+      "identity": "kaldi-decoder",
+      "version": "0.3.0",
+      "source": "https://github.com/k2-fsa/kaldi-decoder/archive/refs/tags/v0.3.0.tar.gz",
+      "sourceSHA256": "b9f34cfb4fd3b1344100eead79ef4d37aa15962274b9e3056de345021f76a1b0",
+      "root": "vendor/sherpa-onnx-v1.13.4",
+      "artifacts": [
+        {
+          "path": "sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a",
+          "sha256": "8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6"
+        }
+      ],
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "licenses/LICENSE.kaldi-decoder",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        }
+      ]
+    },
+    {
+      "kind": "vendored",
+      "identity": "kaldifst",
+      "version": "1.8.0",
+      "source": "https://github.com/k2-fsa/kaldifst/archive/refs/tags/v1.8.0.tar.gz",
+      "sourceSHA256": "3f247b7e5a2409071202f5e2bc6200060f66728c0a3443c03923ad2723e040b3",
+      "root": "vendor/sherpa-onnx-v1.13.4",
+      "artifacts": [
+        {
+          "path": "sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a",
+          "sha256": "8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6"
+        }
+      ],
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "licenses/LICENSE.kaldifst",
+          "sha256": "a682d6efd1ee5dee08a8e405c233c2c198ea70ae0718129daa83ab58cfe31c5d"
+        }
+      ]
+    },
+    {
+      "kind": "vendored",
+      "identity": "openfst",
+      "version": "1.8.5-2026-04-11",
+      "source": "https://github.com/csukuangfj/openfst/archive/refs/tags/v1.8.5-2026-04-11.tar.gz",
+      "sourceSHA256": "57fbc4b950ae81b1a0e1e298af15652da968a6723a592b7874e9b4027a80a5b4",
+      "root": "vendor/sherpa-onnx-v1.13.4",
+      "artifacts": [
+        {
+          "path": "sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a",
+          "sha256": "8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6"
+        }
+      ],
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "licenses/COPYING.openfst",
+          "sha256": "4300529197035fd3452350718a0b8cee984e9412c9932d7f35fcde849fc97a4b"
+        }
+      ]
+    },
+    {
+      "kind": "vendored",
+      "identity": "eigen",
+      "version": "5.0.1",
+      "source": "https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.gz",
+      "sourceSHA256": "e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec",
+      "root": "vendor/sherpa-onnx-v1.13.4",
+      "artifacts": [
+        {
+          "path": "sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a",
+          "sha256": "8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6"
+        }
+      ],
+      "licenseExpression": "MPL-2.0 AND BSD-3-Clause AND Apache-2.0 AND Minpack",
+      "evidence": [
+        {
+          "kind": "notice",
+          "path": "licenses/eigen/COPYING.README",
+          "sha256": "db640ff2bd90c6abd6a4d3fbb351e0ee4d555417cf840492054d1cbb2ea85644"
+        },
+        {
+          "kind": "license",
+          "path": "licenses/eigen/COPYING.MPL2",
+          "sha256": "66a3107d5ad6a058aab753eaac2047ccb2ed0e39465dd0fe5844da3e300d5172"
+        },
+        {
+          "kind": "license",
+          "path": "licenses/eigen/COPYING.BSD",
+          "sha256": "51928dce36213c5333ba3172e847d735d4c6e9b7ff2722a326c49067155b82eb"
+        },
+        {
+          "kind": "license",
+          "path": "licenses/eigen/COPYING.MINPACK",
+          "sha256": "c87b7f8ee88f6195e91743820c00354833583aef091b72e2d4a49c8e28e798a0"
+        },
+        {
+          "kind": "license",
+          "path": "licenses/eigen/COPYING.APACHE",
+          "sha256": "03379001a7b12a2ec997a25554247d985270b353c10d5bafee9ac8d6519820b7"
+        }
+      ]
+    },
+    {
+      "kind": "vendored",
+      "identity": "simple-sentencepiece",
+      "version": "0.7",
+      "source": "https://github.com/pkufool/simple-sentencepiece/archive/refs/tags/v0.7.tar.gz",
+      "sourceSHA256": "1748a822060a35baa9f6609f84efc8eb54dc0e74b9ece3d82367b7119fdc75af",
+      "root": "vendor/sherpa-onnx-v1.13.4",
+      "artifacts": [
+        {
+          "path": "sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a",
+          "sha256": "8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6"
+        }
+      ],
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "licenses/LICENSE.simple-sentencepiece",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        }
+      ]
+    },
+    {
+      "kind": "vendored",
+      "identity": "nlohmann-json",
+      "version": "3.12.0",
+      "source": "https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.tar.gz",
+      "sourceSHA256": "4b92eb0c06d10683f7447ce9406cb97cd4b453be18d7279320f7b2f025c10187",
+      "root": "vendor/sherpa-onnx-v1.13.4",
+      "artifacts": [
+        {
+          "path": "sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a",
+          "sha256": "8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6"
+        }
+      ],
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "licenses/LICENSE.nlohmann-json",
+          "sha256": "46a65cffd1ea955132d95a8dd921640714a8d6b537d2e4e482d31145ae95b603"
+        }
+      ]
+    },
+    {
+      "kind": "vendored",
+      "identity": "onnxruntime",
+      "version": "1.27.0",
+      "source": "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.27.0/onnxruntime-osx-universal2-static_lib-1.27.0.zip",
+      "sourceSHA256": "6794da8dd86d0b83b453e7968771cddfb3004e3db4cda5cea6d4111a616f49cb",
+      "root": "vendor/sherpa-onnx-v1.13.4",
+      "artifacts": [
+        {
+          "path": "onnxruntime.xcframework/Info.plist",
+          "sha256": "c39bbaecfd75caff175823916844c56e68657019258d0140cd543cca66842926"
+        },
+        {
+          "path": "onnxruntime.xcframework/macos-arm64_x86_64/libonnxruntime.a",
+          "sha256": "4e39796b2b31829622407137352178e0eaef240a1e40fb322a05db4483bd37b9"
+        }
+      ],
+      "licenseExpression": "MIT AND LicenseRef-ONNXRuntime-ThirdParty",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.onnxruntime",
+          "sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+        },
+        {
+          "kind": "notice",
+          "path": "ThirdPartyNotices.onnxruntime.txt",
+          "sha256": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2"
+        }
+      ]
+    },
+    {
+      "kind": "vendored",
+      "identity": "silero-vad",
+      "version": "4-k2-fsa-export",
+      "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+      "sourceSHA256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+      "root": "Sources/RillSherpaRuntime/Resources",
+      "artifacts": [
+        {
+          "path": "silero_vad.onnx",
+          "sha256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
+        }
+      ],
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.silero-vad",
+          "sha256": "51c19c8be941a3fb00ccf58f0bf9053de9f7237a0b37327896eabad32dffe873"
+        }
+      ]
+    }
+  ]
+}

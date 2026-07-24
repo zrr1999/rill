@@ -1,0 +1,8 @@
+[files]
+extend-exclude = ["vendor/**"]
+
+[default.extend-words]
+caf = "caf"
+crpyto = "crpyto"
+Iz = "Iz"
+tipe = "tipe"

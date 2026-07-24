@@ -1,0 +1,14 @@
+# Template: Polish
+
+name = "Polish"
+trigger = "manual"
+recognizer = "auto"
+output = "stack.push"
+delivery = "stackFirst"
+
+[[post_process]]
+kind = "normalizeWhitespace"
+
+[[post_process]]
+kind = "llmRewrite"
+prompt = "Polish into a concise final message while preserving meaning and language."

@@ -1,0 +1,166 @@
+[[repos]]
+repo = "builtin"
+hooks = [
+  {
+    id = "check-added-large-files",
+    exclude = "^THIRD_PARTY_NOTICES\\.md$",
+    stages = ["pre-commit"]
+  },
+  { id = "check-case-conflict", stages = ["pre-commit"] },
+  { id = "check-executables-have-shebangs", stages = ["pre-commit"] },
+  { id = "check-json", stages = ["pre-commit"] },
+  { id = "check-merge-conflict", stages = ["pre-commit"] },
+  { id = "check-shebang-scripts-are-executable", stages = ["pre-commit"] },
+  { id = "check-symlinks", stages = ["pre-commit"] },
+  { id = "check-toml", stages = ["pre-commit"] },
+  { id = "check-yaml", stages = ["pre-commit"] },
+  { id = "detect-private-key", stages = ["pre-commit"] },
+  { id = "destroyed-symlinks", stages = ["pre-commit"] },
+  {
+    id = "end-of-file-fixer",
+    exclude = "^vendor/",
+    stages = ["pre-commit"]
+  },
+  { id = "forbid-new-submodules", stages = ["pre-commit"] },
+  {
+    id = "mixed-line-ending",
+    exclude = "^vendor/",
+    stages = ["pre-commit"]
+  },
+  {
+    id = "trailing-whitespace",
+    exclude = "^vendor/",
+    stages = ["pre-commit"]
+  },
+]
+
+[[repos]]
+repo = "https://github.com/tombi-toml/tombi-pre-commit"
+rev = "v1.1.3"
+hooks = [
+  { id = "tombi-format", stages = ["pre-commit"] },
+  {
+    id = "tombi-lint",
+    args = ["--error-on-warnings"],
+    stages = ["pre-commit"]
+  },
+]
+
+[[repos]]
+repo = "https://github.com/rhysd/actionlint"
+rev = "v1.7.12"
+hooks = [{ id = "actionlint", stages = ["pre-commit"] }]
+
+[[repos]]
+repo = "https://github.com/crate-ci/typos"
+rev = "v1.48.0"
+hooks = [
+  { id = "typos", args = ["--force-exclude"], stages = ["pre-commit"] },
+]
+
+[[repos]]
+repo = "https://github.com/zendev-lab/zendev"
+rev = "v0.0.7"
+hooks = [{ id = "zendev-commit-msg", stages = ["commit-msg"] }]
+
+[[repos]]
+repo = "local"
+hooks = [
+  {
+    id = "builtin-workflow-artifacts",
+    name = "check generated built-in workflow artifacts",
+    language = "system",
+    entry = "python3 scripts/generate_builtin_workflows.py --check",
+    files = "^Sources/RillApp/Resources/(BuiltinWorkflowManifest\\.json|BuiltinWorkflows\\.toml|WorkflowTemplates/)",
+    always_run = true,
+    pass_filenames = false,
+  },
+  {
+    id = "shell-syntax",
+    name = "check shell syntax",
+    language = "system",
+    entry = "bash scripts/check_shell_syntax.sh",
+    files = "\\.sh$",
+    always_run = true,
+    pass_filenames = false,
+  },
+  {
+    id = "third-party-notices",
+    name = "check reviewed third-party notices",
+    language = "system",
+    entry = "python3 scripts/generate_third_party_notices.py --check",
+    files = "^(Package\\.resolved|THIRD_PARTY_NOTICES\\.md|scripts/(generate_third_party_notices\\.py|third_party_notices_manifest\\.json)|vendor/sherpa-onnx-v1\\.13\\.4/)",
+    always_run = true,
+    pass_filenames = false,
+  },
+  {
+    id = "release-policy",
+    name = "check release policy",
+    language = "system",
+    entry = "bash scripts/tests/release_config_test.sh",
+    files = "^(\\.gitignore|Package\\.resolved|scripts/(assemble_app_bundle|check_release_artifact_hygiene|preflight|release|verify_release_executable)\\.sh|scripts/tests/release_config_test\\.sh)$",
+    always_run = true,
+    pass_filenames = false,
+  },
+  {
+    id = "app-icon-artifact",
+    name = "check app icon artifact",
+    language = "system",
+    entry = "bash scripts/tests/app_icon_test.sh",
+    files = "^(Resources/AppIcon/(AppIcon-1024-routed-voice-cursor\\.png|README\\.md)|scripts/(assemble_app_bundle|generate_app_icon|preflight)\\.sh|scripts/render_app_icon_renditions\\.swift|scripts/tests/app_icon_test\\.sh)$",
+    always_run = true,
+    pass_filenames = false,
+  },
+  {
+    id = "dependency-security-policy",
+    name = "test dependency security policy",
+    language = "system",
+    entry = "python3 scripts/tests/dependency_security_test.py",
+    files = "^(Package\\.resolved|\\.github/workflows/ci\\.yml|scripts/(check_dependency_security\\.py|dependency_security_baseline\\.json|preflight\\.sh|tests/dependency_security_test\\.py))$",
+    always_run = true,
+    pass_filenames = false,
+  },
+  {
+    id = "dependency-security-baseline",
+    name = "check reviewed dependency security baseline",
+    language = "system",
+    entry = "python3 scripts/check_dependency_security.py",
+    files = "^(Package\\.resolved|scripts/(check_dependency_security\\.py|dependency_security_baseline\\.json))$",
+    always_run = true,
+    pass_filenames = false,
+  },
+  {
+    id = "secret-scan-policy",
+    name = "check pinned secret scan policy",
+    language = "system",
+    entry = "bash scripts/tests/secret_scan_test.sh",
+    files = "^(\\.gitleaks\\.toml|\\.github/workflows/ci\\.yml|scripts/(check_secrets|install_gitleaks|preflight)\\.sh|scripts/tests/secret_scan_test\\.sh)$",
+    always_run = true,
+    pass_filenames = false,
+  },
+  {
+    id = "secret-scan",
+    name = "scan Git history and current source for secrets",
+    language = "system",
+    entry = "bash scripts/check_secrets.sh",
+    files = ".*",
+    always_run = true,
+    pass_filenames = false,
+  },
+  {
+    id = "working-diff-whitespace",
+    name = "check working diff whitespace",
+    language = "system",
+    entry = "git diff --check",
+    always_run = true,
+    pass_filenames = false,
+  },
+  {
+    id = "staged-diff-whitespace",
+    name = "check staged diff whitespace",
+    language = "system",
+    entry = "git diff --cached --check",
+    always_run = true,
+    pass_filenames = false,
+  },
+]

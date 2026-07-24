@@ -1,0 +1,71 @@
+import Foundation
+
+public enum LiveSubtitlePhase: String, Codable, Sendable, Equatable {
+    case hidden
+    case preparing
+    case recording
+    case listening
+    case transcribing
+    case finalizing
+    case processing
+    case failed
+}
+
+public struct LiveSubtitleSnapshot: Codable, Sendable, Equatable {
+    public var runID: UUID
+    public var workflow: WorkflowPresentation?
+    public var phase: LiveSubtitlePhase
+    public var confirmedText: String
+    public var hypothesisText: String
+    public var statusText: String?
+    public var levelMeter: [Float]
+    public var providerID: String?
+    public var queuedRunCount: Int
+    public var prefersCompactLayout: Bool
+    public var updatedAt: Date
+
+    public init(
+        runID: UUID,
+        workflow: WorkflowPresentation? = nil,
+        phase: LiveSubtitlePhase,
+        confirmedText: String = "",
+        hypothesisText: String = "",
+        statusText: String? = nil,
+        levelMeter: [Float] = [],
+        providerID: String? = nil,
+        queuedRunCount: Int = 0,
+        prefersCompactLayout: Bool = false,
+        updatedAt: Date = Date()
+    ) {
+        self.runID = runID
+        self.workflow = workflow
+        self.phase = phase
+        self.confirmedText = confirmedText
+        self.hypothesisText = hypothesisText
+        self.statusText = statusText
+        self.levelMeter = levelMeter
+        self.providerID = providerID
+        self.queuedRunCount = queuedRunCount
+        self.prefersCompactLayout = prefersCompactLayout
+        self.updatedAt = updatedAt
+    }
+}
+
+public extension LiveSubtitleSnapshot {
+    var displayText: String {
+        Self.joinedDisplayText([confirmedText, hypothesisText])
+    }
+
+    var isVisible: Bool {
+        phase != .hidden
+    }
+
+    static func joinedDisplayText(_ parts: [String]) -> String {
+        parts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}

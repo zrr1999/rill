@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 2,
+  "reviewedAt": "2026-07-23T14:49:35Z",
+  "expiresAt": "2026-10-21T14:49:35Z",
+  "reviewedAdvisories": [],
+  "vendoredDependencies": [
+    {
+      "identity": "sherpa-onnx",
+      "source": "https://github.com/k2-fsa/sherpa-onnx/archive/142807252687d81b40d6315f23470a1512a00de3.tar.gz",
+      "sourceSHA256": "f0dc7c9b41b8691313daee671e826eb23946fa1320559a8d37e84f8774af76b2",
+      "osv": {
+        "mode": "commit",
+        "repository": "https://github.com/k2-fsa/sherpa-onnx",
+        "revision": "142807252687d81b40d6315f23470a1512a00de3"
+      }
+    },
+    {
+      "identity": "kaldi-native-fbank",
+      "source": "https://github.com/csukuangfj/kaldi-native-fbank/archive/refs/tags/v1.22.3.tar.gz",
+      "sourceSHA256": "9176cc66fc7ce1edf85cf355b06e320c57db6297df74277f575183468893cf61",
+      "osv": {
+        "mode": "commit",
+        "repository": "https://github.com/csukuangfj/kaldi-native-fbank",
+        "revision": "b09e686fe2084732ddd30d1ef80acfc0f13eaf01"
+      }
+    },
+    {
+      "identity": "kissfft",
+      "source": "https://github.com/mborgerding/kissfft/archive/8a8e66e33d692bad1376fe7904d87d767730537f.zip",
+      "sourceSHA256": "0aea1e377ad95d267c7e78403c000285b56812e7f7c1b3c3d8b1fe27d9b8f9bc",
+      "osv": {
+        "mode": "commit",
+        "repository": "https://github.com/mborgerding/kissfft",
+        "revision": "8a8e66e33d692bad1376fe7904d87d767730537f"
+      }
+    },
+    {
+      "identity": "kaldi-decoder",
+      "source": "https://github.com/k2-fsa/kaldi-decoder/archive/refs/tags/v0.3.0.tar.gz",
+      "sourceSHA256": "b9f34cfb4fd3b1344100eead79ef4d37aa15962274b9e3056de345021f76a1b0",
+      "osv": {
+        "mode": "commit",
+        "repository": "https://github.com/k2-fsa/kaldi-decoder",
+        "revision": "62fda2d74246a90db9570e46fb16b012f813fae7"
+      }
+    },
+    {
+      "identity": "kaldifst",
+      "source": "https://github.com/k2-fsa/kaldifst/archive/refs/tags/v1.8.0.tar.gz",
+      "sourceSHA256": "3f247b7e5a2409071202f5e2bc6200060f66728c0a3443c03923ad2723e040b3",
+      "osv": {
+        "mode": "commit",
+        "repository": "https://github.com/k2-fsa/kaldifst",
+        "revision": "ab5bdd013bdf13921e6aeee77db5722ebf9955fb"
+      }
+    },
+    {
+      "identity": "openfst",
+      "source": "https://github.com/csukuangfj/openfst/archive/refs/tags/v1.8.5-2026-04-11.tar.gz",
+      "sourceSHA256": "57fbc4b950ae81b1a0e1e298af15652da968a6723a592b7874e9b4027a80a5b4",
+      "osv": {
+        "mode": "commit",
+        "repository": "https://github.com/csukuangfj/openfst",
+        "revision": "dbe9dcc03a1206b9350853d4b12e8b7c33186993"
+      }
+    },
+    {
+      "identity": "eigen",
+      "source": "https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.gz",
+      "sourceSHA256": "e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec",
+      "osv": {
+        "mode": "commit",
+        "repository": "https://gitlab.com/libeigen/eigen",
+        "revision": "bc3b39870ecb690a623a3f49149a358b95c5781d"
+      }
+    },
+    {
+      "identity": "simple-sentencepiece",
+      "source": "https://github.com/pkufool/simple-sentencepiece/archive/refs/tags/v0.7.tar.gz",
+      "sourceSHA256": "1748a822060a35baa9f6609f84efc8eb54dc0e74b9ece3d82367b7119fdc75af",
+      "osv": {
+        "mode": "commit",
+        "repository": "https://github.com/pkufool/simple-sentencepiece",
+        "revision": "62dd423df1d51da5ea06f1c3a046fc04f01b4f39"
+      }
+    },
+    {
+      "identity": "nlohmann-json",
+      "source": "https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.tar.gz",
+      "sourceSHA256": "4b92eb0c06d10683f7447ce9406cb97cd4b453be18d7279320f7b2f025c10187",
+      "osv": {
+        "mode": "commit",
+        "repository": "https://github.com/nlohmann/json",
+        "revision": "55f93686c01528224f448c19128836e7df245f72"
+      }
+    },
+    {
+      "identity": "onnxruntime",
+      "source": "https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.27.0/onnxruntime-osx-universal2-static_lib-1.27.0.zip",
+      "sourceSHA256": "6794da8dd86d0b83b453e7968771cddfb3004e3db4cda5cea6d4111a616f49cb",
+      "osv": {
+        "mode": "unsupported",
+        "reason": "The reviewed prebuilt release archive does not publish a verifiable source commit mapping for this exact binary."
+      }
+    },
+    {
+      "identity": "silero-vad",
+      "source": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+      "sourceSHA256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+      "osv": {
+        "mode": "unsupported",
+        "reason": "The reviewed standalone model release asset does not publish a verifiable source commit or export-recipe mapping for these exact bytes."
+      }
+    }
+  ]
+}

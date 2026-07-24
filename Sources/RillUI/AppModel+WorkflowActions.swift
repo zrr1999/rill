@@ -1,0 +1,1593 @@
+import Foundation
+import RillCore
+import RillRuntime
+
+private enum WorkflowExecutionSupportIssue: Equatable {
+  case legacyClipboardAutomationUnsupported
+  case invalidEventType
+  case plannedCapabilityUnavailable
+  case missingProductionTransformer
+  case unregisteredOutputAction(String)
+  case localSpeechUnavailable(LocalSpeechAvailability)
+}
+
+private enum WorkflowOperationFailureStage {
+  case workflowStart
+  case audioCaptureStart
+  case audioTranscription
+  case deepgramTestStart
+  case deepgramTestTranscription
+  case clipboardReplay
+
+  var presentation: LocalizedText {
+    switch self {
+    case .workflowStart:
+      LocalizedText(
+        english: "Workflow could not start. Review Privacy and provider settings, then retry.",
+        simplifiedChinese: "工作流无法启动。请检查隐私与服务商设置后重试。"
+      )
+    case .audioCaptureStart:
+      LocalizedText(
+        english:
+          "Workflow recording could not start. Check microphone access and provider settings, then retry.",
+        simplifiedChinese: "无法开始工作流录音。请检查麦克风权限与服务商设置后重试。"
+      )
+    case .audioTranscription:
+      LocalizedText(
+        english:
+          "The recorded workflow could not be transcribed. Check provider settings, then retry.",
+        simplifiedChinese: "无法转写这段工作流录音。请检查服务商设置后重试。"
+      )
+    case .deepgramTestStart:
+      LocalizedText(
+        english:
+          "The Deepgram speech check could not start. Verify microphone access, credential storage, and provider settings, then retry.",
+        simplifiedChinese: "无法启动 Deepgram 语音检查。请检查麦克风权限、凭据存储与服务商设置后重试。"
+      )
+    case .deepgramTestTranscription:
+      LocalizedText(
+        english:
+          "The Deepgram speech check could not be transcribed. Verify network and provider settings, then retry.",
+        simplifiedChinese: "Deepgram 语音检查无法完成转写。请检查网络与服务商设置后重试。"
+      )
+    case .clipboardReplay:
+      LocalizedText(
+        english:
+          "The clipboard item could not be replayed. Review Privacy and workflow settings, then retry.",
+        simplifiedChinese: "无法重新运行这个剪贴板项目。请检查隐私与工作流设置后重试。"
+      )
+    }
+  }
+}
+
+extension AppModel {
+  private func workflowLibraryIsReadyForMutation(reportingToEditor: Bool) -> Bool {
+    guard !isLoadingSettings else {
+      let message =
+        language == .english
+        ? "Workflows are still loading. Wait a moment and try again."
+        : "工作流仍在加载，请稍候再试。"
+      if reportingToEditor {
+        workflowEditorError = message
+      } else {
+        workflowLibraryError = message
+      }
+      return false
+    }
+    guard isWorkflowLibraryAvailable else {
+      refreshUnavailableStoredSettingsDomainErrors()
+      let message =
+        workflowLibraryError
+        ?? (language == .english
+          ? "The saved workflow library is unavailable. Repair storage, then retry."
+          : "已保存的工作流库不可用。请修复存储后重试。")
+      if reportingToEditor {
+        workflowEditorError = message
+      } else {
+        workflowLibraryError = message
+      }
+      return false
+    }
+    return true
+  }
+
+  public func isWorkflowEnabled(_ workflow: WorkflowDefinition) -> Bool {
+    WorkflowExecutionPolicy.supports(workflow)
+      && (workflowEnabledStates[workflow.id] ?? true)
+  }
+
+  public func setWorkflowEnabled(_ isEnabled: Bool, for workflowID: UUID) {
+    guard workflowLibraryIsReadyForMutation(reportingToEditor: false) else { return }
+    guard let workflow = workflows.first(where: { $0.id == workflowID }) else { return }
+
+    if isEnabled, let issue = workflowExecutionSupportIssue(for: workflow) {
+      workflowLibraryError = workflowEnableError(for: issue, language: language)
+      return
+    }
+
+    if isEnabled {
+      let conflicts = conflictingEnabledWorkflowsForActivation(of: workflow)
+      guard conflicts.isEmpty else {
+        workflowLibraryError = UIStrings.workflowEnableConflict(
+          trigger: workflow.trigger,
+          names: conflicts.map { localizedWorkflowName(for: $0) },
+          language: language
+        )
+        return
+      }
+    }
+
+    hasModifiedWorkflowLibrary = true
+    if isEnabled, let exclusiveGroup = workflow.exclusiveGroupIdentifier {
+      for candidate in workflows
+      where
+        candidate.id != workflowID && candidate.exclusiveGroupIdentifier == exclusiveGroup
+      {
+        workflowEnabledStates[candidate.id] = false
+      }
+    }
+    workflowEnabledStates[workflowID] = isEnabled
+    workflowLibraryError = nil
+    updateWorkflowTriggerConflicts()
+    persistWorkflowEnabledStates()
+  }
+
+  public func enabledWorkflows(for trigger: TriggerBinding) -> [WorkflowDefinition] {
+    workflows
+      .filter { workflow in
+        workflow.trigger == trigger
+          && isWorkflowEnabled(workflow)
+          && isWorkflowExecutionSupported(workflow)
+      }
+      .compactMap { workflow in
+        resolvedWorkflowForExecution(workflow, trigger: trigger)
+      }
+  }
+
+  public func conflictingWorkflows(for workflow: WorkflowDefinition) -> [WorkflowDefinition] {
+    guard
+      triggerRequiresExclusiveBinding(workflow.trigger),
+      isWorkflowEnabled(workflow),
+      let conflictWorkflowIDs = workflowConflictIDsByWorkflowID[workflow.id]
+    else {
+      return []
+    }
+
+    return workflows.filter { candidate in
+      candidate.id != workflow.id && conflictWorkflowIDs.contains(candidate.id)
+    }
+  }
+
+  @discardableResult
+  func deleteClipboardHistoryEntry(_ entry: ClipboardHistoryEntry) -> Bool {
+    submitClipboardMutation { [weak self] deliveryStack in
+      await deliveryStack.deleteItems(ids: entry.mergedItemIDs)
+      self?.append(
+        english: "Removed clipboard history entry",
+        simplifiedChinese: "已移除剪贴板历史项"
+      )
+    }
+  }
+
+  public var workflowSelectableLocalSpeechModels: [String] {
+    if !trustedLocalSpeechModels.isEmpty {
+      return trustedLocalSpeechModels.map(\.id)
+    }
+    let predefinedModels = LegacyWhisperModelOption.allCases.compactMap(\.modelIdentifier)
+    let downloadedCustomModels = downloadedLocalSpeechModels.filter { modelIdentifier in
+      !predefinedModels.contains(modelIdentifier)
+    }
+    return predefinedModels + downloadedCustomModels
+  }
+
+  public func isLocalSpeechModelDownloaded(_ modelIdentifier: String) -> Bool {
+    downloadedLocalSpeechModels.contains(modelIdentifier)
+  }
+
+  public func localSpeechModelDisplayName(
+    _ modelIdentifier: String,
+    includeStatus: Bool = false
+  ) -> String {
+    let baseName: String
+    if let descriptor = trustedLocalSpeechModels.first(where: { $0.id == modelIdentifier }) {
+      baseName =
+        language == .english
+        ? descriptor.englishName
+        : descriptor.simplifiedChineseName
+    } else if let option = LegacyWhisperModelOption(rawValue: modelIdentifier) {
+      baseName = UIStrings.localSpeechModelOption(option, language: language)
+    } else {
+      baseName = modelIdentifier
+    }
+    guard includeStatus, trustedLocalSpeechModels.isEmpty else { return baseName }
+    let status =
+      isLocalSpeechModelDownloaded(modelIdentifier)
+      ? UIStrings.text(.localSpeechDownloaded, language: language)
+      : UIStrings.text(.localSpeechNotDownloaded, language: language)
+    return "\(baseName) · \(status)"
+  }
+
+  public func localSpeechModelOptionLabel(_ option: LegacyWhisperModelOption) -> String {
+    guard let modelIdentifier = option.modelIdentifier else {
+      return UIStrings.localSpeechModelOption(option, language: language)
+    }
+    return localSpeechModelDisplayName(modelIdentifier, includeStatus: true)
+  }
+
+  public func useDownloadedLocalSpeechModel(_ modelIdentifier: String) {
+    guard areDownloadedLocalSpeechModelsAvailable else {
+      refreshUnavailableStoredSettingsDomainErrors()
+      return
+    }
+    workflowLibraryError = nil
+    if let option = LegacyWhisperModelOption(rawValue: modelIdentifier) {
+      localSpeechModelOption = option
+    } else {
+      localSpeechModelOption = .custom
+      legacyWhisperKitCustomModel = modelIdentifier
+    }
+    localSpeechModel = modelIdentifier
+    prepareLocalSpeechModel()
+  }
+
+  public var selectedTrustedLocalSpeechModelIdentifier: String {
+    if trustedLocalSpeechModels.contains(where: { $0.id == localSpeechModel }) {
+      return localSpeechModel
+    }
+    return defaultLocalSpeechModelIdentifier ?? ""
+  }
+
+  public var recommendedLocalSpeechModelIdentifier: String? {
+    let fittingModels = trustedLocalSpeechModels.filter {
+      $0.recommendedSystemMemoryGiB <= localSpeechPhysicalMemoryGiB
+    }
+    if let recommended = fittingModels.max(by: {
+      if $0.hardwareRecommendationPriority == $1.hardwareRecommendationPriority {
+        return $0.recommendedSystemMemoryGiB < $1.recommendedSystemMemoryGiB
+      }
+      return $0.hardwareRecommendationPriority < $1.hardwareRecommendationPriority
+    }) {
+      return recommended.id
+    }
+    return nil
+  }
+
+  public func localSpeechModelHardwareDescription(
+    _ descriptor: LocalSpeechModelDescriptor
+  ) -> String {
+    let category: String =
+      switch (language, descriptor.category) {
+      case (.english, .performance): "Performance"
+      case (.english, .intelligent): "Intelligent"
+      case (.english, .multilingual): "Multilingual"
+      case (_, .performance): "性能型"
+      case (_, .intelligent): "智能型"
+      case (_, .multilingual): "多语言"
+      }
+    let capacity: String
+    if descriptor.parameterCountMillions >= 1_000 {
+      let billions = Double(descriptor.parameterCountMillions) / 1_000
+      capacity = billions.rounded() == billions ? "\(Int(billions))B" : "\(billions)B"
+    } else {
+      capacity = "\(descriptor.parameterCountMillions)M"
+    }
+    let profile = "\(category) · \(capacity) · \(descriptor.quantization.rawValue)"
+    if descriptor.id == recommendedLocalSpeechModelIdentifier {
+      return language == .english
+        ? "Recommended for this Mac (\(localSpeechPhysicalMemoryGiB) GB memory) · \(profile)"
+        : "推荐用于本机（\(localSpeechPhysicalMemoryGiB) GB 内存）· \(profile)"
+    }
+    if localSpeechPhysicalMemoryGiB < descriptor.minimumSystemMemoryGiB {
+      return language == .english
+        ? "\(profile) · At least \(descriptor.minimumSystemMemoryGiB) GB memory required"
+        : "\(profile) · 至少需要 \(descriptor.minimumSystemMemoryGiB) GB 内存"
+    }
+    return language == .english
+      ? "\(profile) · \(descriptor.recommendedSystemMemoryGiB) GB memory recommended"
+      : "\(profile) · 建议 \(descriptor.recommendedSystemMemoryGiB) GB 内存"
+  }
+
+  public func selectRecommendedLocalSpeechModel() {
+    guard let recommendedLocalSpeechModelIdentifier else { return }
+    selectTrustedLocalSpeechModel(recommendedLocalSpeechModelIdentifier)
+  }
+
+  public func selectTrustedLocalSpeechModel(_ modelIdentifier: String) {
+    guard trustedLocalSpeechModels.contains(where: { $0.id == modelIdentifier }) else {
+      return
+    }
+    if localSpeechModel != modelIdentifier {
+      localSpeechModel = modelIdentifier
+    }
+    guard !isRestoringSettings else { return }
+    if isLoadingSettings {
+      shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = true
+      return
+    }
+    prepareLocalSpeechModel()
+  }
+
+  public func copyTextToClipboard(_ text: String) {
+    writeClipboardTextAction(text)
+  }
+
+  public func copyHistoryFailure(_ record: HistoryRecord) {
+    guard let failureMessage = record.failureMessage else { return }
+    let payload = [
+      "workflow: \(UIStrings.workflowName(record.workflow, language: language))",
+      "timestamp: \(record.timestamp.formatted(date: .numeric, time: .standard))",
+      "failure: \(failureMessage)",
+    ].joined(separator: "\n")
+    copyTextToClipboard(payload)
+  }
+
+  public func copyDiagnosticEvent(_ event: DiagnosticEvent) {
+    let metadata = event.metadata
+      .sorted { $0.key < $1.key }
+      .map { "\($0.key)=\($0.value)" }
+      .joined(separator: "\n")
+    let payload = [
+      "level: \(UIStrings.diagnosticLevel(event.level, language: .english))",
+      "subsystem: \(UIStrings.subsystem(event.subsystem, language: .english))",
+      "time: \(event.timestamp.formatted(date: .numeric, time: .standard))",
+      "event: \(event.event)",
+      "message: \(event.message)",
+      metadata.isEmpty ? nil : "metadata:\n\(metadata)",
+    ]
+    .compactMap { $0 }
+    .joined(separator: "\n")
+    copyTextToClipboard(payload)
+  }
+
+  public func runWorkflow(_ workflow: WorkflowDefinition) {
+    runWorkflow(workflow, initiatedBy: .manual)
+  }
+
+  public func runWorkflow(_ workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding) {
+    guard !hasBegunApplicationShutdown, !isLoadingSettings else { return }
+    if isRecordingWorkflowAudioRun(for: workflow) {
+      finishCapturedAudioWorkflowRun(for: workflow)
+      return
+    }
+
+    guard !isRunning else { return }
+    if let issue = workflowExecutionSupportIssue(
+      for: workflow,
+      includeRuntimeAvailability: true
+    ) {
+      let english = workflowRunError(for: issue, language: .english)
+      let simplifiedChinese = workflowRunError(for: issue, language: .simplifiedChinese)
+      lastFailure = language == .english ? english : simplifiedChinese
+      append(english: english, simplifiedChinese: simplifiedChinese)
+      return
+    }
+    guard isWorkflowEnabled(workflow) else {
+      let english = "Enable the workflow before running it."
+      let simplifiedChinese = "请先启用这个工作流再运行。"
+      lastFailure = language == .english ? english : simplifiedChinese
+      append(
+        english: english,
+        simplifiedChinese: simplifiedChinese
+      )
+      return
+    }
+    if workflow.prefersAutomaticRecognizerSelection,
+      hasUnavailableScalarSettings(in: .speechRoute)
+    {
+      let english = "Saved speech-routing settings are unavailable."
+      let simplifiedChinese = "已保存的语音路由设置不可用。"
+      lastFailure = language == .english ? english : simplifiedChinese
+      append(english: english, simplifiedChinese: simplifiedChinese)
+      return
+    }
+
+    guard
+      let workflowForExecution = resolvedWorkflowForExecution(
+        workflow,
+        trigger: binding
+      )
+    else {
+      let english = "Workflow routing could not be resolved safely."
+      let simplifiedChinese = "无法安全解析工作流路由。"
+      lastFailure = language == .english ? english : simplifiedChinese
+      append(english: english, simplifiedChinese: simplifiedChinese)
+      return
+    }
+    if requiresCapturedAudioForInteractiveRun(workflowForExecution) {
+      startCapturedAudioWorkflowRun(for: workflowForExecution, initiatedBy: binding)
+      return
+    }
+
+    launchWorkflowRun(workflowForExecution, initiatedBy: binding)
+  }
+
+  func canTriggerWorkflow(_ workflow: WorkflowDefinition?) -> Bool {
+    guard !hasBegunApplicationShutdown, !isLoadingSettings else { return false }
+    guard let workflow else { return false }
+    guard isWorkflowEnabled(workflow) else { return false }
+    guard
+      !workflow.prefersAutomaticRecognizerSelection
+        || !hasUnavailableScalarSettings(in: .speechRoute)
+    else {
+      return false
+    }
+    guard isWorkflowExecutionSupported(workflow) else { return false }
+
+    if isRecordingWorkflowAudioRun(for: workflow) {
+      return true
+    }
+
+    return !isRunning
+  }
+
+  func isWorkflowExecutionSupported(_ workflow: WorkflowDefinition) -> Bool {
+    workflowExecutionSupportIssue(
+      for: workflow,
+      includeRuntimeAvailability: true
+    ) == nil
+  }
+
+  private func workflowExecutionSupportIssue(
+    for workflow: WorkflowDefinition,
+    includeRuntimeAvailability: Bool = false
+  ) -> WorkflowExecutionSupportIssue? {
+    switch WorkflowExecutionPolicy.issue(for: workflow) {
+    case .legacyClipboardAutomationUnsupported:
+      return .legacyClipboardAutomationUnsupported
+    case .invalidEventType:
+      return .invalidEventType
+    case .plannedCapabilityUnavailable:
+      return .plannedCapabilityUnavailable
+    case nil:
+      break
+    }
+    if workflow.pipeline.postProcessSteps.contains(where: {
+      !Self.productionPostProcessStepKinds.contains($0.kind)
+    }) {
+      return .missingProductionTransformer
+    }
+    if let actionID = workflow.pipeline.outputActions.lazy
+      .map(\.id)
+      .first(where: { outputActionRegistry.action(for: $0) == nil })
+    {
+      return .unregisteredOutputAction(actionID)
+    }
+    if includeRuntimeAvailability,
+      !localSpeechTrustMaterialAvailable,
+      workflowUsesCurrentLocalSpeechRoute(workflow)
+    {
+      return .localSpeechUnavailable(localSpeechAvailability)
+    }
+    return nil
+  }
+
+  private func workflowUsesCurrentLocalSpeechRoute(_ workflow: WorkflowDefinition) -> Bool {
+    if workflow.prefersAutomaticRecognizerSelection {
+      return preferredSpeechEngine == .local
+    }
+    return workflow.pipeline.recognizerID == Self.sherpaOnnxRecognizerID
+      || workflow.pipeline.recognizerID == Self.sherpaStreamingRecognizerID
+  }
+
+  private func workflowEnableError(
+    for issue: WorkflowExecutionSupportIssue,
+    language: AppLanguage
+  ) -> String {
+    switch (language, issue) {
+    case (.english, .legacyClipboardAutomationUnsupported):
+      return
+        "Clipboard event workflows remain disabled until production actions and execution receipts are available."
+    case (.simplifiedChinese, .legacyClipboardAutomationUnsupported):
+      return "剪贴板事件工作流将在生产级动作与执行收据完成后开放。"
+    case (.english, .invalidEventType):
+      return "This workflow declares an invalid event type and remains disabled."
+    case (.simplifiedChinese, .invalidEventType):
+      return "此工作流声明了无效事件类型，已保持停用。"
+    case (.english, .plannedCapabilityUnavailable):
+      return "This preset is planned but is not available in the current build."
+    case (.simplifiedChinese, .plannedCapabilityUnavailable):
+      return "此预设尚在规划中，当前版本不可用。"
+    case (.english, .missingProductionTransformer):
+      return "This workflow uses a text step that has no production transformer."
+    case (.simplifiedChinese, .missingProductionTransformer):
+      return "此工作流使用了尚未配置生产级 transformer 的文本步骤。"
+    case (.english, .unregisteredOutputAction(let actionID)):
+      return "This workflow uses an output action that is unavailable in this build: \(actionID)."
+    case (.simplifiedChinese, .unregisteredOutputAction(let actionID)):
+      return "此工作流使用了当前版本不可用的输出动作：\(actionID)。"
+    case (_, .localSpeechUnavailable(let availability)):
+      return localSpeechWorkflowEnableError(availability, language: language)
+    }
+  }
+
+  private func workflowRunError(
+    for issue: WorkflowExecutionSupportIssue,
+    language: AppLanguage
+  ) -> String {
+    switch (language, issue) {
+    case (.english, .legacyClipboardAutomationUnsupported):
+      return "This legacy clipboard event workflow is disabled and cannot run."
+    case (.simplifiedChinese, .legacyClipboardAutomationUnsupported):
+      return "此旧版剪贴板事件工作流已停用，无法运行。"
+    case (.english, .invalidEventType):
+      return "This workflow cannot run because its event type is invalid."
+    case (.simplifiedChinese, .invalidEventType):
+      return "此工作流的事件类型无效，无法运行。"
+    case (.english, .plannedCapabilityUnavailable):
+      return "This planned preset cannot run in the current build."
+    case (.simplifiedChinese, .plannedCapabilityUnavailable):
+      return "此规划中预设暂时无法运行。"
+    case (.english, .missingProductionTransformer):
+      return "This workflow cannot run because a production text transformer is missing."
+    case (.simplifiedChinese, .missingProductionTransformer):
+      return "此工作流缺少生产级文本 transformer，无法运行。"
+    case (.english, .unregisteredOutputAction(let actionID)):
+      return
+        "This workflow cannot run because no production output action is registered for \(actionID)."
+    case (.simplifiedChinese, .unregisteredOutputAction(let actionID)):
+      return "此工作流无法运行，因为没有为 \(actionID) 注册生产级输出动作。"
+    case (_, .localSpeechUnavailable(let availability)):
+      return localSpeechWorkflowRunError(availability, language: language)
+    }
+  }
+
+  private func localSpeechWorkflowEnableError(
+    _ availability: LocalSpeechAvailability,
+    language: AppLanguage
+  ) -> String {
+    switch (language, availability) {
+    case (.english, .architectureUnsupported):
+      return
+        "This build does not include a compatible sherpa-onnx runtime. Choose Cloud speech before enabling this workflow."
+    case (.simplifiedChinese, .architectureUnsupported):
+      return
+        "此构建未包含兼容的 sherpa-onnx 运行时。启用此工作流前，请先改为云端语音。"
+    case (.english, .trustMaterialUnavailable):
+      return
+        "This build has no reviewed local speech model. Choose Cloud speech before enabling this workflow."
+    case (.simplifiedChinese, .trustMaterialUnavailable):
+      return "当前版本没有经审核的本地语音模型。请先将此工作流改为云端识别。"
+    case (.english, .available):
+      return "Local speech is currently unavailable for this workflow."
+    case (.simplifiedChinese, .available):
+      return "本地语音当前无法用于此工作流。"
+    }
+  }
+
+  private func localSpeechWorkflowRunError(
+    _ availability: LocalSpeechAvailability,
+    language: AppLanguage
+  ) -> String {
+    switch (language, availability) {
+    case (.english, .architectureUnsupported):
+      return
+        "This workflow cannot run because this build does not include a compatible sherpa-onnx runtime. Choose Cloud speech and retry."
+    case (.simplifiedChinese, .architectureUnsupported):
+      return
+        "此工作流无法运行，因为当前构建未包含兼容的 sherpa-onnx 运行时。请选择云端语音后重试。"
+    case (.english, .trustMaterialUnavailable):
+      return
+        "This workflow cannot run because this build has no reviewed local speech model. Choose Cloud speech and retry."
+    case (.simplifiedChinese, .trustMaterialUnavailable):
+      return "此工作流无法运行，因为当前版本没有经审核的本地语音模型。请选择云端识别后重试。"
+    case (.english, .available):
+      return "This workflow cannot run because local speech is currently unavailable."
+    case (.simplifiedChinese, .available):
+      return "此工作流无法运行，因为本地语音当前不可用。"
+    }
+  }
+
+  func workflowRunButtonTitle(for workflow: WorkflowDefinition?) -> String {
+    guard let workflow else {
+      return UIStrings.text(.runSelectedWorkflow, language: language)
+    }
+
+    if isPreparingWorkflowAudioRun(for: workflow) {
+      return UIStrings.text(.workflowPreparingAudio, language: language)
+    }
+
+    if isRecordingWorkflowAudioRun(for: workflow) {
+      return UIStrings.text(.workflowStopAndTranscribe, language: language)
+    }
+
+    if isTranscribingWorkflowAudioRun(for: workflow) {
+      return UIStrings.text(.workflowTranscribing, language: language)
+    }
+
+    if isRunning {
+      return UIStrings.text(.running, language: language)
+    }
+
+    if requiresCapturedAudioForInteractiveRun(workflow) {
+      return UIStrings.text(.workflowRecordAndRun, language: language)
+    }
+
+    return UIStrings.text(.runSelectedWorkflow, language: language)
+  }
+
+  func workflowMenuButtonTitle(for workflow: WorkflowDefinition) -> String {
+    let name = localizedWorkflowName(for: workflow)
+
+    if isPreparingWorkflowAudioRun(for: workflow) {
+      return "\(name) · \(UIStrings.text(.workflowPreparingAudio, language: language))"
+    }
+
+    if isRecordingWorkflowAudioRun(for: workflow) {
+      return "\(name) · \(UIStrings.text(.workflowStopAndTranscribe, language: language))"
+    }
+
+    if isTranscribingWorkflowAudioRun(for: workflow) {
+      return "\(name) · \(UIStrings.text(.workflowTranscribing, language: language))"
+    }
+
+    return name
+  }
+
+  func launchWorkflowRun(_ workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding) {
+    guard !hasBegunApplicationShutdown else { return }
+    isRunning = true
+    lastFailure = nil
+
+    interactiveWorkflowTaskGeneration &+= 1
+    let generation = interactiveWorkflowTaskGeneration
+    let task = Task { [weak self, sessionCoordinator, authorizeWorkflowRunAction] in
+      guard let self else { return }
+      defer { self.finishInteractiveWorkflowTask(generation: generation) }
+      do {
+        try Task.checkCancellation()
+        try await self.persistProviderSettingsForRun(workflow)
+        let authorized = try await authorizeWorkflowRunAction(workflow)
+        try Task.checkCancellation()
+        await sessionCoordinator.run(
+          triggerEvent: Self.makeInteractiveTriggerEvent(for: workflow, binding: binding),
+          authorizedContext: authorized
+        )
+      } catch is CancellationError {
+        self.isRunning = false
+      } catch {
+        self.isRunning = false
+        let failure = WorkflowOperationFailureStage.workflowStart.presentation
+        self.lastFailure = failure.string(for: self.language)
+        self.append(
+          english: failure.english,
+          simplifiedChinese: failure.simplifiedChinese
+        )
+      }
+    }
+    pendingInteractiveWorkflowTask = task
+  }
+
+  func startCapturedAudioWorkflowRun(
+    for workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding
+  ) {
+    isRunning = true
+    lastFailure = nil
+    workflowAudioRunState = .preparing(workflowID: workflow.id)
+
+    Task { [weak self, startWorkflowAudioRunAction] in
+      guard let self else { return }
+      do {
+        try await self.persistProviderSettingsForRun(workflow)
+        try await startWorkflowAudioRunAction(workflow, binding)
+        await MainActor.run {
+          guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
+          self.workflowAudioRunState = .recording(workflowID: workflow.id)
+          self.append(
+            english:
+              "Recording started. It will finish after you stop speaking; click again to stop now.",
+            simplifiedChinese: "已开始录音。停止说话后会自动结束；再次点击可立即停止。"
+          )
+        }
+      } catch is CancellationError {
+        await MainActor.run {
+          guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
+          self.isRunning = false
+          self.workflowAudioRunState = .idle
+          self.workflowAudioCaptureRunID = nil
+        }
+      } catch {
+        await MainActor.run {
+          guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
+          self.isRunning = false
+          self.workflowAudioRunState = .idle
+          self.workflowAudioCaptureRunID = nil
+          let failure = WorkflowOperationFailureStage.audioCaptureStart.presentation
+          self.lastFailure = failure.string(for: self.language)
+          self.append(
+            english: failure.english,
+            simplifiedChinese: failure.simplifiedChinese
+          )
+        }
+      }
+    }
+  }
+
+  func finishCapturedAudioWorkflowRun(for workflow: WorkflowDefinition) {
+    guard isRecordingWorkflowAudioRun(for: workflow) else { return }
+    workflowAudioRunState = .transcribing(workflowID: workflow.id)
+
+    Task { [weak self, finishWorkflowAudioRunAction] in
+      guard let self else { return }
+      do {
+        try await finishWorkflowAudioRunAction()
+        await MainActor.run {
+          self.workflowAudioRunState = .idle
+        }
+      } catch {
+        await MainActor.run {
+          self.isRunning = false
+          self.workflowAudioRunState = .idle
+          self.workflowAudioCaptureRunID = nil
+          let failure = WorkflowOperationFailureStage.audioTranscription.presentation
+          self.lastFailure = failure.string(for: self.language)
+          self.append(
+            english: failure.english,
+            simplifiedChinese: failure.simplifiedChinese
+          )
+        }
+      }
+    }
+  }
+
+  func requiresCapturedAudioForInteractiveRun(_ workflow: WorkflowDefinition) -> Bool {
+    guard
+      let resolvedWorkflow = resolvedWorkflowForExecution(
+        workflow,
+        trigger: workflow.trigger
+      )
+    else {
+      return false
+    }
+    return Self.recognizerIDsRequiringCapturedAudio.contains(
+      resolvedWorkflow.pipeline.recognizerID
+    )
+  }
+
+  func isPreparingWorkflowAudioRun(for workflow: WorkflowDefinition) -> Bool {
+    guard case .preparing(let workflowID) = workflowAudioRunState else { return false }
+    return workflowID == workflow.id
+  }
+
+  func isRecordingWorkflowAudioRun(for workflow: WorkflowDefinition) -> Bool {
+    guard case .recording(let workflowID) = workflowAudioRunState else { return false }
+    return workflowID == workflow.id
+  }
+
+  func isTranscribingWorkflowAudioRun(for workflow: WorkflowDefinition) -> Bool {
+    guard case .transcribing(let workflowID) = workflowAudioRunState else { return false }
+    return workflowID == workflow.id
+  }
+
+  func persistProviderSettingsForRun(_ workflow: WorkflowDefinition) async throws {
+    guard !isLoadingSettings else { throw CancellationError() }
+    let recognizerID = workflow.pipeline.recognizerID
+
+    if recognizerID == Self.deepgramRecognizerID {
+      guard !hasUnavailableScalarSettings(in: .deepgram) else {
+        throw ProviderSettingsPersistenceError.unavailableStoredSettings
+      }
+      guard let settingsStore else {
+        throw ProviderSettingsPersistenceError.unavailableStoredSettings
+      }
+      let settings = currentDeepgramSettings()
+      let credentialStore = self.credentialStore
+      invalidatePendingDeepgramSettingWrites()
+      do {
+        try await performTrackedPersistenceWrite {
+          try await Self.persistAndVerifyDeepgramSettings(
+            settings,
+            settingsStore: settingsStore,
+            credentialStore: credentialStore
+          )
+        }
+        deepgramCredentialAvailability = Self.deepgramCredentialAvailability(
+          for: settings.apiKey
+        )
+      } catch {
+        deepgramCredentialAvailability = .inaccessible
+        throw error
+      }
+    }
+  }
+
+  static func makeInteractiveTriggerEvent(
+    for workflow: WorkflowDefinition,
+    binding: TriggerBinding
+  ) -> WorkflowTriggerEvent {
+    WorkflowTriggerEvent(
+      binding: binding,
+      workflowID: workflow.id,
+      sourceID: interactiveTriggerSourceID(for: binding),
+      metadata: ["requestedTrigger": workflow.trigger.rawValue]
+    )
+  }
+
+  static func interactiveTriggerSourceID(for binding: TriggerBinding) -> String {
+    switch binding {
+    case .manual:
+      return "dashboard.run"
+    case .menuBar:
+      return "menu-bar.run"
+    case .hotkey:
+      return "hotkey.run"
+    case .wakeWord:
+      return "wake-word.run"
+    }
+  }
+
+  public func deliverTopOfStack() {
+    pasteTopOfStackAction()
+  }
+
+  public func refreshPermissions() {
+    refreshPermissionsAction()
+  }
+
+  public func requestAccessibilityPermission() {
+    requestAccessibilityAction()
+  }
+
+  public func requestMicrophonePermission() {
+    requestMicrophoneAction()
+  }
+
+  public func openAccessibilitySettings() {
+    openAccessibilitySettingsAction()
+  }
+
+  public func openMicrophoneSettings() {
+    openMicrophoneSettingsAction()
+  }
+
+  public func installClipboardPanelAction(_ action: @escaping () -> Void) {
+    showClipboardPanelAction = action
+  }
+
+  public func installClipboardCaptureControlActions(
+    setEnabled: @escaping (Bool, UInt64) -> Void,
+    ignoreNextExternalChange: @escaping () -> Void
+  ) {
+    setClipboardCaptureEnabledAction = setEnabled
+    ignoreNextExternalClipboardChangeAction = ignoreNextExternalChange
+    setEnabled(clipboardCaptureEnabled, clipboardCapturePreferenceRevision)
+  }
+
+  public func toggleClipboardCaptureEnabled() {
+    _ = setClipboardCaptureEnabled(!clipboardCaptureEnabled)
+  }
+
+  @available(*, deprecated, message: "Use toggleClipboardCaptureEnabled().")
+  public func toggleClipboardCapturePaused() {
+    toggleClipboardCaptureEnabled()
+  }
+
+  public func ignoreNextExternalClipboardChange() {
+    guard clipboardCaptureEnabled,
+      clipboardCaptureControlSnapshot.state == .active
+    else { return }
+    ignoreNextExternalClipboardChangeAction()
+  }
+
+  public func updateClipboardCaptureControlState(_ snapshot: ClipboardCaptureControlSnapshot) {
+    guard
+      snapshot.revision > clipboardCaptureControlSnapshot.revision
+        || snapshot == clipboardCaptureControlSnapshot
+    else { return }
+    clipboardCaptureControlSnapshot = snapshot
+  }
+
+  public func installOpenWorkflowEditorAction(_ action: @escaping () -> Void) {
+    openWorkflowEditorAction = action
+  }
+
+  public func installClipboardPanelHotkeyAction(
+    _ action: @escaping (HotkeyBindingDescriptor) -> Void
+  ) {
+    updateClipboardPanelHotkeyAction = action
+    action(clipboardPanelHotkeyBinding)
+  }
+
+  public func installUseClipboardItemAction(_ action: @escaping (ClipboardHistoryItem) -> Void) {
+    useClipboardItemAction = action
+  }
+
+  public func showClipboardPanel() {
+    showClipboardPanelAction()
+  }
+
+  public func selectSidebarSection(_ section: SidebarSection) {
+    // A plain sidebar selection is a fresh user navigation, not a request
+    // to resume an older search/CTA deep link that may still be waiting
+    // for its destination view to appear.
+    settingsNavigationRequest = nil
+    historyNavigationRequest = nil
+    selectedSidebarSection = section
+    selectedClipboardSidebarGroupID = nil
+    if section == .history {
+      runHistoryScope = .recentRuns
+    }
+  }
+
+  public func showClipboardManagement(groupID: UUID? = nil) {
+    settingsNavigationRequest = nil
+    historyNavigationRequest = nil
+    selectedSidebarSection = .clipboard
+    selectedClipboardSidebarGroupID = groupID
+  }
+
+  public func showRecentResults() {
+    selectSidebarSection(.history)
+    runHistoryScope = .recentResults
+  }
+
+  public func showSettings(_ section: SettingsSection) {
+    historyNavigationRequest = nil
+    selectedSidebarSection = .settings
+    selectedClipboardSidebarGroupID = nil
+    settingsNavigationRequest = SettingsNavigationRequest(section: section)
+  }
+
+  public func showHistoryEntry(_ entryID: UUID) {
+    settingsNavigationRequest = nil
+    selectedSidebarSection = .history
+    selectedClipboardSidebarGroupID = nil
+    runHistoryScope = .recentRuns
+    runHistoryDeepLinkState = .idle
+    historyNavigationRequest = HistoryNavigationRequest(
+      entryID: entryID,
+      scope: .recentRuns
+    )
+  }
+
+  public func beginCreatingWorkflow() {
+    openWorkflowEditor()
+  }
+
+  public func openWorkflowEditor() {
+    workflowEditorNavigationRequest = nil
+    openWorkflowEditorAction()
+  }
+
+  public func openWorkflowEditor(workflowID: UUID) {
+    guard workflows.contains(where: { $0.id == workflowID }) else { return }
+    workflowEditorNavigationRequest = WorkflowEditorNavigationRequest(
+      workflowID: workflowID
+    )
+    openWorkflowEditorAction()
+  }
+
+  public func setClipboardPanelHotkeyShortcut(_ shortcut: KeyboardShortcut) {
+    guard GlobalHotkeyPolicy.accepts(shortcut) else { return }
+    clipboardPanelHotkeyBinding = .keyboardShortcut(shortcut)
+  }
+
+  public func resetClipboardPanelHotkeyBinding() {
+    clipboardPanelHotkeyBinding = .doubleCommand
+  }
+
+  public func useClipboardItem(_ item: ClipboardHistoryItem) {
+    lastFailure = nil
+    useClipboardItemAction(item)
+  }
+
+  public func reportClipboardPanelPasteFailure() {
+    lastFailure =
+      language == .english
+      ? "Clipboard paste was aborted because Rill could not return focus to the target app."
+      : "剪贴板粘贴已中止，因为 Rill 未能把焦点切回目标 App。"
+  }
+
+  public func updatePermissionSnapshot(_ snapshot: PermissionSnapshot) {
+    permissionSnapshot = snapshot
+  }
+
+  public func localizedWorkflowName(for workflow: WorkflowDefinition) -> String {
+    UIStrings.workflowName(workflow.presentation, language: language)
+  }
+
+  public func defaultWorkflowDraft() -> WorkflowEditorDraft {
+    WorkflowEditorDraft(recognizer: .automatic)
+  }
+
+  public func isCustomWorkflow(_ workflow: WorkflowDefinition) -> Bool {
+    workflow.metadata[Self.workflowOriginMetadataKey] == Self.userWorkflowOriginMetadataValue
+  }
+
+  public func saveWorkflowDraft(_ draft: WorkflowEditorDraft, editing workflowID: UUID? = nil) {
+    guard workflowLibraryIsReadyForMutation(reportingToEditor: true) else { return }
+    let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedName.isEmpty else {
+      workflowEditorError =
+        language == .english
+        ? "Enter a workflow name before saving."
+        : "请先填写工作流名称。"
+      return
+    }
+
+    let existingMetadata =
+      workflowID
+      .flatMap { id in customWorkflows.first(where: { $0.id == id })?.metadata } ?? [:]
+    var sanitizedDraft = draft
+    sanitizedDraft.name = trimmedName
+    if let validationError = sanitizedDraft.outputValidationError(language: language) {
+      workflowEditorError = validationError
+      return
+    }
+
+    let workflow = sanitizedDraft.makeWorkflow(
+      id: workflowID ?? UUID(),
+      existingMetadata: existingMetadata,
+      hotkeyGesture: Self.defaultHotkeyGesture
+    )
+
+    hasModifiedWorkflowLibrary = true
+    if let workflowID, let index = customWorkflows.firstIndex(where: { $0.id == workflowID }) {
+      customWorkflows[index] = workflow
+    } else {
+      customWorkflows.insert(workflow, at: 0)
+    }
+
+    let enableConflicts = conflictingEnabledWorkflowsForActivation(of: workflow)
+    let desiredEnabledState = workflowEnabledStates[workflow.id] ?? true
+    if desiredEnabledState && !enableConflicts.isEmpty {
+      workflowEnabledStates[workflow.id] = false
+      workflowLibraryError = UIStrings.workflowEnableConflict(
+        trigger: workflow.trigger,
+        names: enableConflicts.map { localizedWorkflowName(for: $0) },
+        language: language
+      )
+    } else {
+      if workflowEnabledStates[workflow.id] == nil {
+        workflowEnabledStates[workflow.id] = true
+      }
+      workflowLibraryError = nil
+    }
+
+    workflowEditorError = nil
+    rebuildWorkflowLibrary()
+    persistWorkflowEnabledStates()
+    persistCustomWorkflows()
+    append(
+      english: "Workflow saved: \(workflow.name)",
+      simplifiedChinese: "工作流已保存：\(workflow.name)"
+    )
+  }
+
+  public func deleteCustomWorkflow(_ workflow: WorkflowDefinition) {
+    guard workflowLibraryIsReadyForMutation(reportingToEditor: false) else { return }
+    guard let index = customWorkflows.firstIndex(where: { $0.id == workflow.id }) else { return }
+    hasModifiedWorkflowLibrary = true
+    customWorkflows.remove(at: index)
+    workflowEnabledStates.removeValue(forKey: workflow.id)
+    workflowEditorError = nil
+    workflowLibraryError = nil
+    rebuildWorkflowLibrary()
+    persistWorkflowEnabledStates()
+    persistCustomWorkflows()
+    append(
+      english: "Workflow removed: \(workflow.name)",
+      simplifiedChinese: "工作流已删除：\(workflow.name)"
+    )
+  }
+
+  public func refreshDiagnostics() {
+    loadDiagnostics()
+  }
+
+  public func prepareLocalSpeechModel() {
+    guard !hasBegunApplicationShutdown,
+      !isLoadingSettings,
+      localSpeechPreparationState != .preparing
+    else {
+      return
+    }
+    guard !hasUnavailableScalarSettings(in: .localSpeech) else {
+      localSpeechPreparationError = ProviderSettingsPersistenceError.unavailableStoredSettings
+        .message(language: language)
+      return
+    }
+    guard localSpeechTrustMaterialAvailable else {
+      localSpeechPreparationState = .idle
+      localSpeechPreparationProgress = 0
+      localSpeechPreparedModelIdentifier = nil
+      localSpeechPreparationError = UIStrings.localSpeechAvailabilityDescription(
+        localSpeechAvailability,
+        language: language
+      )
+      return
+    }
+    localSpeechPreparationTaskOwner.cancelActive()
+    localSpeechReadinessGeneration += 1
+    localSpeechPreparationGeneration += 1
+    let generation = localSpeechPreparationGeneration
+    if !trustedLocalSpeechModels.isEmpty {
+      let selectedModel = selectedTrustedLocalSpeechModelIdentifier
+      guard !selectedModel.isEmpty else {
+        localSpeechPreparationState = .idle
+        localSpeechPreparationProgress = 0
+        localSpeechPreparedModelIdentifier = nil
+        localSpeechPreparationError = UIStrings.text(
+          UIStrings.Key.localSpeechTrustMaterialUnavailable,
+          language: language
+        )
+        return
+      }
+      if localSpeechModel != selectedModel {
+        localSpeechModel = selectedModel
+      }
+    } else if localSpeechModelOption == .custom {
+      let customModel = legacyWhisperKitCustomModel.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !customModel.isEmpty else {
+        localSpeechPreparationState = .idle
+        localSpeechPreparationProgress = 0
+        localSpeechPreparedModelIdentifier = nil
+        localSpeechPreparationError = UIStrings.text(
+          UIStrings.Key.legacyWhisperKitCustomModelRequired,
+          language: language
+        )
+        return
+      }
+      if localSpeechModel != customModel {
+        localSpeechModel = customModel
+      }
+    }
+    localSpeechPreparationState = .preparing
+    localSpeechPreparationProgress = 0
+    localSpeechPreparedModelIdentifier = nil
+    localSpeechPreparationError = nil
+    let settings = currentLocalSpeechSettings()
+    let operationID = UUID()
+    let progressRelay = LocalSpeechPreparationProgressRelay(
+      model: self,
+      operationID: operationID
+    )
+    let taskOwner = localSpeechPreparationTaskOwner
+
+    let task = Task { [weak self, prepareLocalSpeechAction, taskOwner] in
+      let shouldStartProvider = await MainActor.run {
+        guard let self,
+          !self.hasBegunApplicationShutdown,
+          taskOwner.isActive(id: operationID),
+          self.localSpeechPreparationGeneration == generation
+        else {
+          return false
+        }
+        return true
+      }
+      guard shouldStartProvider, !Task.isCancelled else {
+        await MainActor.run {
+          taskOwner.finish(id: operationID)
+        }
+        return
+      }
+      let result: Result<String, Error>
+      do {
+        result = .success(
+          try await prepareLocalSpeechAction(
+            settings,
+            { progress in
+              Task {
+                await progressRelay.update(progress: progress)
+              }
+            }))
+      } catch {
+        result = .failure(error)
+      }
+      let wasCancelled = Task.isCancelled
+      await MainActor.run {
+        let shouldPublish =
+          !wasCancelled
+          && taskOwner.isActive(id: operationID)
+          && self?.hasBegunApplicationShutdown == false
+          && self?.localSpeechPreparationGeneration == generation
+        taskOwner.finish(id: operationID)
+        guard shouldPublish, let self else { return }
+
+        switch result {
+        case .success(let preparedModel):
+          guard
+            self.acceptsPreparedLocalSpeechModel(
+              preparedModel,
+              requestedModel: settings.model
+            )
+          else {
+            self.localSpeechPreparationState = .idle
+            self.localSpeechPreparationProgress = 0
+            self.localSpeechPreparedModelIdentifier = nil
+            self.applyLocalSpeechPreparationFailure(
+              LocalSpeechPreparationFailure(stage: .trustRoot)
+            )
+            return
+          }
+          self.localSpeechPreparationState = .ready
+          self.localSpeechPreparationProgress = 1
+          self.localSpeechPreparedModelIdentifier = preparedModel
+          self.recordDownloadedLocalSpeechModel(preparedModel)
+          self.append(
+            english: "Local speech model is ready: \(preparedModel)",
+            simplifiedChinese: "本地语音模型已准备就绪：\(preparedModel)"
+          )
+        case .failure(is CancellationError):
+          self.localSpeechPreparationState = .idle
+          self.localSpeechPreparationProgress = 0
+          self.localSpeechPreparedModelIdentifier = nil
+        case .failure(let error):
+          self.localSpeechPreparationState = .idle
+          self.localSpeechPreparationProgress = 0
+          self.localSpeechPreparedModelIdentifier = nil
+          self.applyLocalSpeechPreparationFailure(error)
+        }
+      }
+    }
+    _ = taskOwner.replaceActive(id: operationID, with: task)
+  }
+
+  public func cancelLocalSpeechModelPreparation() {
+    guard localSpeechPreparationState == .preparing else { return }
+    localSpeechReadinessGeneration += 1
+    localSpeechPreparationGeneration += 1
+    localSpeechPreparationTaskOwner.cancelActive()
+    localSpeechPreparationState = .idle
+    localSpeechPreparationProgress = 0
+    localSpeechPreparedModelIdentifier = nil
+    localSpeechPreparationError = nil
+    releaseLocalSpeechRuntimeAction()
+  }
+
+  public func releaseLocalSpeechModelMemory() {
+    guard !hasBegunApplicationShutdown,
+      localSpeechPreparationState != .preparing
+    else {
+      return
+    }
+    localSpeechReadinessGeneration += 1
+    localSpeechPreparationGeneration += 1
+    localSpeechPreparationTaskOwner.cancelActive()
+    releaseLocalSpeechRuntimeAction()
+    localSpeechPreparationError = nil
+    append(
+      english:
+        "Released the local speech model from memory. It will load again on the next local recognition.",
+      simplifiedChinese: "已释放本地语音模型内存；下次本地识别时会重新加载。"
+    )
+  }
+
+  public func toggleDeepgramAudioTest() {
+    guard !isLoadingSettings else { return }
+    switch deepgramAudioTestState {
+    case .idle:
+      guard !hasUnavailableScalarSettings(in: .deepgram) else {
+        deepgramTestError = ProviderSettingsPersistenceError.unavailableStoredSettings
+          .message(language: language)
+        return
+      }
+      guard permissionSnapshot.microphone == .granted else {
+        deepgramTestError = UIStrings.text(.deepgramMicrophoneRequired, language: language)
+        return
+      }
+      let settings = currentDeepgramSettings()
+      guard !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        deepgramCredentialAvailability = .missing
+        deepgramTestError = UIStrings.text(.voiceSetupCloudCredentialMissing, language: language)
+        return
+      }
+
+      invalidatePendingDeepgramSettingWrites()
+      deepgramAudioTestGeneration += 1
+      let generation = deepgramAudioTestGeneration
+      deepgramAudioTestState = .preparing
+      deepgramAudioTestSettingsSnapshot = nil
+      deepgramCredentialAvailability = .saving
+      deepgramTestError = nil
+      deepgramTestTranscript = nil
+      let settingsStore = self.settingsStore
+      let credentialStore = self.credentialStore
+
+      Task {
+        [
+          weak self,
+          startDeepgramAudioTestAction,
+          cancelDeepgramAudioTestAction,
+          settingsStore,
+          credentialStore,
+        ] in
+        guard let self else { return }
+        var configurationVerified = false
+        do {
+          try await self.performTrackedPersistenceWrite {
+            try await Self.persistAndVerifyDeepgramSettings(
+              settings,
+              settingsStore: settingsStore,
+              credentialStore: credentialStore
+            )
+          }
+          configurationVerified = true
+          let shouldStart = await MainActor.run {
+            guard self.deepgramAudioTestGeneration == generation,
+              self.currentDeepgramSettings() == settings
+            else {
+              return false
+            }
+            self.deepgramCredentialAvailability = .available
+            return true
+          }
+          guard shouldStart else { throw CancellationError() }
+
+          try await startDeepgramAudioTestAction(settings)
+          let didCommitStart = await MainActor.run {
+            guard self.deepgramAudioTestGeneration == generation,
+              self.currentDeepgramSettings() == settings
+            else {
+              return false
+            }
+            self.deepgramAudioTestSettingsSnapshot = settings
+            self.deepgramAudioTestState = .recording
+            self.append(
+              english: "Deepgram test recording started.",
+              simplifiedChinese: "Deepgram 测试录音已开始。"
+            )
+            return true
+          }
+          if !didCommitStart {
+            await cancelDeepgramAudioTestAction()
+          }
+        } catch is CancellationError {
+          return
+        } catch {
+          await MainActor.run {
+            guard self.deepgramAudioTestGeneration == generation else { return }
+            self.deepgramAudioTestState = .idle
+            self.deepgramAudioTestSettingsSnapshot = nil
+            self.deepgramCredentialAvailability =
+              configurationVerified
+              ? .available
+              : .inaccessible
+            let failure = WorkflowOperationFailureStage.deepgramTestStart.presentation
+            self.deepgramTestError = failure.string(for: self.language)
+            self.append(
+              english: failure.english,
+              simplifiedChinese: failure.simplifiedChinese
+            )
+          }
+        }
+      }
+    case .preparing:
+      cancelDeepgramAudioTest()
+    case .recording:
+      guard let settings = deepgramAudioTestSettingsSnapshot else {
+        cancelDeepgramAudioTest()
+        deepgramTestError = UIStrings.text(.deepgramConfigurationChanged, language: language)
+        return
+      }
+      deepgramAudioTestState = .transcribing
+      let generation = deepgramAudioTestGeneration
+
+      Task { [weak self, finishDeepgramAudioTestAction] in
+        do {
+          let result = try await finishDeepgramAudioTestAction(settings)
+          await MainActor.run {
+            guard let self,
+              self.deepgramAudioTestGeneration == generation,
+              self.currentDeepgramSettings() == settings
+            else {
+              return
+            }
+            self.deepgramAudioTestState = .idle
+            self.deepgramAudioTestSettingsSnapshot = nil
+            self.deepgramTestTranscript = result.bestText
+            self.deepgramTestError = nil
+            self.append(
+              english: "Deepgram speech check completed.",
+              simplifiedChinese: "Deepgram 语音检查已完成。"
+            )
+          }
+        } catch {
+          await MainActor.run {
+            guard let self, self.deepgramAudioTestGeneration == generation else { return }
+            self.deepgramAudioTestState = .idle
+            self.deepgramAudioTestSettingsSnapshot = nil
+            let failure = WorkflowOperationFailureStage.deepgramTestTranscription.presentation
+            self.deepgramTestError = failure.string(for: self.language)
+            self.append(
+              english: failure.english,
+              simplifiedChinese: failure.simplifiedChinese
+            )
+          }
+        }
+      }
+    case .transcribing:
+      cancelDeepgramAudioTest()
+    }
+  }
+
+  public func cancelDeepgramAudioTest() {
+    deepgramAudioTestGeneration += 1
+    deepgramAudioTestState = .idle
+    deepgramAudioTestSettingsSnapshot = nil
+    Task { [cancelDeepgramAudioTestAction] in
+      await cancelDeepgramAudioTestAction()
+    }
+  }
+
+  public func replayClipboardItem(
+    _ item: ClipboardHistoryItem,
+    with workflow: WorkflowDefinition,
+    replacingSourceItem: Bool = false
+  ) {
+    guard !hasBegunApplicationShutdown, !isRunning else { return }
+    isRunning = true
+    lastFailure = nil
+    let operation =
+      replacingSourceItem
+      ? ClipboardItemDryRunOperation.replace
+      : .replay
+    interactiveWorkflowTaskGeneration &+= 1
+    let generation = interactiveWorkflowTaskGeneration
+    let task = Task { [weak self, sessionCoordinator, authorizeClipboardItemRunAction] in
+      guard let self else { return }
+      defer { self.finishInteractiveWorkflowTask(generation: generation) }
+      do {
+        try Task.checkCancellation()
+        let authorized = try await authorizeClipboardItemRunAction(
+          item.id,
+          item.version,
+          operation,
+          workflow
+        )
+        try Task.checkCancellation()
+        await sessionCoordinator.replayClipboardItem(
+          itemID: item.id,
+          authorizedContext: authorized,
+          replacingSourceItem: replacingSourceItem
+        )
+      } catch is CancellationError {
+        self.isRunning = false
+      } catch {
+        self.isRunning = false
+        let failure = WorkflowOperationFailureStage.clipboardReplay.presentation
+        self.lastFailure = failure.string(for: self.language)
+        self.append(
+          english: failure.english,
+          simplifiedChinese: failure.simplifiedChinese
+        )
+      }
+    }
+    pendingInteractiveWorkflowTask = task
+  }
+
+  @discardableResult
+  public func deleteClipboardItem(_ item: ClipboardHistoryItem) -> Bool {
+    submitClipboardMutation { deliveryStack in
+      await deliveryStack.deleteItem(id: item.id)
+    }
+  }
+
+  @discardableResult
+  public func setClipboardMode(_ mode: ClipboardPasteMode, forGroup groupID: UUID) -> Bool {
+    submitClipboardMutation { deliveryStack in
+      await deliveryStack.setMode(mode, forGroup: groupID)
+    }
+  }
+
+  @discardableResult
+  public func setClipboardAllowsCrossGroupPaste(
+    _ allowsCrossGroupPaste: Bool,
+    forGroup groupID: UUID
+  ) -> Bool {
+    submitClipboardMutation { deliveryStack in
+      await deliveryStack.setAllowsCrossGroupPaste(allowsCrossGroupPaste, forGroup: groupID)
+    }
+  }
+
+  @discardableResult
+  public func createClipboardGroup(
+    named name: String,
+    assigning assignment: ClipboardAppAssignment? = nil
+  ) -> Bool {
+    submitClipboardMutation { deliveryStack in
+      if let assignment {
+        _ = await deliveryStack.createGroup(named: name, assigning: assignment)
+      } else {
+        _ = await deliveryStack.createGroup(named: name)
+      }
+    }
+  }
+
+  @discardableResult
+  public func assignApplication(
+    _ assignment: ClipboardAppAssignment,
+    toGroup groupID: UUID?
+  ) -> Bool {
+    submitClipboardMutation { deliveryStack in
+      await deliveryStack.assignApplication(
+        bundleIdentifier: assignment.bundleIdentifier,
+        applicationName: assignment.applicationName,
+        toGroup: groupID
+      )
+    }
+  }
+
+  @discardableResult
+  public func setClipboardFallbackPriority(
+    _ fallbackPriority: Int,
+    forGroup groupID: UUID
+  ) -> Bool {
+    submitClipboardMutation { deliveryStack in
+      _ = await deliveryStack.setFallbackPriority(fallbackPriority, forGroup: groupID)
+    }
+  }
+
+  @discardableResult
+  public func setClipboardItemTags(_ tags: [String], forItem itemID: UUID) -> Bool {
+    submitClipboardMutation { deliveryStack in
+      await deliveryStack.updateItemTags(itemID, tags: tags)
+    }
+  }
+
+  @discardableResult
+  private func submitClipboardMutation(
+    _ operation: @escaping @MainActor @Sendable (DeliveryStack) async -> Void
+  ) -> Bool {
+    guard !hasBegunApplicationShutdown, let deliveryStack else { return false }
+    return clipboardMutationTaskOwner.submit {
+      await operation(deliveryStack)
+    }
+  }
+
+  /// Starts the irreversible clipboard-mutation shutdown boundary.
+  public func sealClipboardMutationsForApplicationShutdown() {
+    hasBegunApplicationShutdown = true
+    clipboardMutationTaskOwner.seal()
+  }
+
+  /// Waits for mutations accepted before the shutdown boundary. Accepted
+  /// writes are never cancelled because they may already own durable state.
+  public func drainClipboardMutationsForApplicationShutdown() async {
+    hasBegunApplicationShutdown = true
+    await clipboardMutationTaskOwner.drainAndStop()
+  }
+
+  public func acceptResolution(selections: [UUID: UUID]) {
+    guard let pendingResolution else { return }
+    Task {
+      _ = await candidateResolver.accept(caseID: pendingResolution.id, selections: selections)
+    }
+  }
+
+  public func dismissResolution() {
+    guard let pendingResolution else { return }
+    Task {
+      _ = await candidateResolver.dismiss(caseID: pendingResolution.id)
+    }
+  }
+
+  func finishInteractiveWorkflowTask(generation: Int) {
+    guard interactiveWorkflowTaskGeneration == generation else { return }
+    pendingInteractiveWorkflowTask = nil
+  }
+
+  /// Projects provider failures into fixed, payload-free UI state.
+  ///
+  /// App composition may preserve one of the trusted loader's allowlisted
+  /// stages by wrapping it in `LocalSpeechPreparationFailure`. Any other error
+  /// is deliberately collapsed to the generic presentation before it reaches
+  /// Settings or the activity feed.
+  func applyLocalSpeechPreparationFailure(_ error: Error) {
+    let stage = (error as? LocalSpeechPreparationFailure)?.stage ?? .generic
+    let presentation = L10n.localSpeechPreparationFailure(stage)
+    localSpeechPreparationError = presentation.string(for: language)
+    append(
+      english: presentation.english,
+      simplifiedChinese: presentation.simplifiedChinese
+    )
+  }
+
+  func acceptsPreparedLocalSpeechModel(
+    _ preparedModel: String,
+    requestedModel: String
+  ) -> Bool {
+    guard !trustedLocalSpeechModels.isEmpty else { return true }
+    return preparedModel == requestedModel
+      && trustedLocalSpeechModels.contains(where: { $0.id == preparedModel })
+  }
+}

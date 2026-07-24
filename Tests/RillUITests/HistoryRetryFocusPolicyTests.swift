@@ -1,0 +1,69 @@
+import Foundation
+import XCTest
+@testable import RillUI
+
+final class HistoryRetryFocusPolicyTests: XCTestCase {
+    func testRetryOwnedKeyboardAndAccessibilityFocusMoveToStableScopePicker() {
+        XCTAssertEqual(
+            HistoryInitialLoadRetryFocusPolicy.transition(
+                keyboardFocus: .initialLoadRetry,
+                accessibilityFocus: .initialLoadRetry
+            ),
+            HistoryInitialLoadRetryFocusTransition(
+                keyboardFocus: .scopePicker,
+                accessibilityFocus: .scopePicker
+            )
+        )
+    }
+
+    func testRetryRehomesOnlyTheFocusChannelItOwns() {
+        let entryID = UUID()
+        let keyboardEntryID = UUID()
+
+        XCTAssertEqual(
+            HistoryInitialLoadRetryFocusPolicy.transition(
+                keyboardFocus: .initialLoadRetry,
+                accessibilityFocus: .entry(entryID)
+            ),
+            HistoryInitialLoadRetryFocusTransition(
+                keyboardFocus: .scopePicker,
+                accessibilityFocus: .entry(entryID)
+            )
+        )
+        XCTAssertEqual(
+            HistoryInitialLoadRetryFocusPolicy.transition(
+                keyboardFocus: .entry(keyboardEntryID),
+                accessibilityFocus: .initialLoadRetry
+            ),
+            HistoryInitialLoadRetryFocusTransition(
+                keyboardFocus: .entry(keyboardEntryID),
+                accessibilityFocus: .scopePicker
+            )
+        )
+    }
+
+    func testMouseRetryPreservesUnrelatedOrAbsentFocus() {
+        let entryID = UUID()
+
+        XCTAssertEqual(
+            HistoryInitialLoadRetryFocusPolicy.transition(
+                keyboardFocus: .entry(entryID),
+                accessibilityFocus: .scopeSummary
+            ),
+            HistoryInitialLoadRetryFocusTransition(
+                keyboardFocus: .entry(entryID),
+                accessibilityFocus: .scopeSummary
+            )
+        )
+        XCTAssertEqual(
+            HistoryInitialLoadRetryFocusPolicy.transition(
+                keyboardFocus: nil,
+                accessibilityFocus: nil
+            ),
+            HistoryInitialLoadRetryFocusTransition(
+                keyboardFocus: nil,
+                accessibilityFocus: nil
+            )
+        )
+    }
+}

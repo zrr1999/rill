@@ -1,0 +1,12 @@
+# Template: Speech to Text
+
+name = "Speech to Text"
+trigger = "hotkey"
+recognizer = "auto"
+exclusive_group = "custom.push-to-talk"
+output = "inject.text"
+delivery = "immediate"
+settings_expose = ["output_mode"]
+
+[[post_process]]
+kind = "normalizeWhitespace"
