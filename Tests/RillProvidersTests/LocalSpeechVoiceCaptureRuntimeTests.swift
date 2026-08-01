@@ -300,8 +300,14 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     projection.observe("今天天气天气怎么样")
     XCTAssertEqual(projection.text, "今天天气怎么样")
 
-    projection.observe("今天天气怎么样怎么样呢")
+    projection.observe("今天天气天气怎么样怎么样呢")
     XCTAssertEqual(projection.text, "今天天气怎么样呢")
+
+    projection.reset()
+    projection.observe("the quick")
+    projection.observe("the quick quick brown")
+    projection.observe("the quick quick brown brown fox")
+    XCTAssertEqual(projection.text, "the quick brown fox")
   }
 
   func testStreamingPreviewProjectionPreservesIntentionalAndAmbiguousRepetition() {

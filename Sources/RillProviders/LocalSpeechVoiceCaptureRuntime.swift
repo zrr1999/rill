@@ -40,16 +40,22 @@ protocol LocalSpeechVoiceActivityDetector: AnyObject, Sendable {
 /// audio callback. The final offline recognizer remains authoritative.
 struct LocalSpeechStreamingPreviewProjection: Sendable, Equatable {
   private(set) var text = ""
+  private var previousRawCandidate = ""
+  private var previousProjectedCandidate = ""
   private var pendingReplacement = ""
   private var pendingReplacementObservations = 0
 
   mutating func observe(_ rawCandidate: String) {
     let trimmedCandidate = rawCandidate.trimmingCharacters(in: .whitespacesAndNewlines)
-    let candidate = Self.removingDuplicatedExtensionOverlap(
-      from: trimmedCandidate,
-      after: text
+    guard !trimmedCandidate.isEmpty else { return }
+    let candidate = Self.projectingCumulativeCandidate(
+      trimmedCandidate,
+      afterRaw: previousRawCandidate,
+      projectedPrevious: previousProjectedCandidate,
+      displayedText: text
     )
-    guard !candidate.isEmpty else { return }
+    previousRawCandidate = trimmedCandidate
+    previousProjectedCandidate = candidate
     guard !text.isEmpty else {
       accept(candidate)
       return
@@ -79,6 +85,8 @@ struct LocalSpeechStreamingPreviewProjection: Sendable, Equatable {
 
   mutating func reset() {
     text = ""
+    previousRawCandidate = ""
+    previousProjectedCandidate = ""
     clearPendingReplacement()
   }
 
@@ -150,6 +158,56 @@ struct LocalSpeechStreamingPreviewProjection: Sendable, Equatable {
       )
     }
     return candidate
+  }
+
+  /// Online transducers return the complete hypothesis after every chunk. A
+  /// duplicated tail removed from the display can still remain in that raw
+  /// hypothesis and otherwise reappear on the next extension. Track both
+  /// coordinates so every cumulative extension is applied to the previously
+  /// projected form instead of comparing raw text with already-repaired text.
+  private static func projectingCumulativeCandidate(
+    _ candidate: String,
+    afterRaw previousRawCandidate: String,
+    projectedPrevious previousProjectedCandidate: String,
+    displayedText: String
+  ) -> String {
+    guard !previousRawCandidate.isEmpty,
+      candidate.hasPrefix(previousRawCandidate)
+    else {
+      return removingDuplicatedExtensionOverlap(
+        from: candidate,
+        after: displayedText
+      )
+    }
+    guard candidate != previousRawCandidate else {
+      return previousProjectedCandidate
+    }
+
+    let previousRawCharacters = Array(previousRawCandidate)
+    let extensionCharacters = Array(candidate.dropFirst(previousRawCharacters.count))
+    guard extensionCharacters.count >= 2 else {
+      return previousProjectedCandidate + String(extensionCharacters)
+    }
+    if extensionCharacters == previousRawCharacters {
+      return previousProjectedCandidate + String(extensionCharacters)
+    }
+
+    let maximumOverlap = min(previousRawCharacters.count, extensionCharacters.count - 1)
+    for overlapCount in stride(from: maximumOverlap, through: 1, by: -1) {
+      let isSafeSingleCharacterOverlap =
+        overlapCount > 1
+        || (previousRawCharacters.count >= 2
+          && previousRawCharacters[previousRawCharacters.count - 1]
+            == previousRawCharacters[previousRawCharacters.count - 2])
+      guard isSafeSingleCharacterOverlap else { continue }
+      guard
+        previousRawCharacters.suffix(overlapCount)
+          == extensionCharacters.prefix(overlapCount)
+      else { continue }
+      return previousProjectedCandidate
+        + String(extensionCharacters.dropFirst(overlapCount))
+    }
+    return previousProjectedCandidate + String(extensionCharacters)
   }
 }
 

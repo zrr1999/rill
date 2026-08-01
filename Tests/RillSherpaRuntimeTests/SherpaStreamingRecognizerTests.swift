@@ -81,11 +81,18 @@ final class SherpaStreamingRecognizerDogfoodTests: XCTestCase {
     let samples = try load16KMonoSamples(at: URL(fileURLWithPath: audioPath))
 
     var hypothesis = ""
+    var distinctHypotheses: [String] = []
     for offset in stride(from: 0, to: samples.count, by: 3_200) {
       let end = min(offset + 3_200, samples.count)
       hypothesis = try stream.accept(samples: Array(samples[offset..<end]))
+      if distinctHypotheses.last != hypothesis {
+        distinctHypotheses.append(hypothesis)
+      }
     }
     let finalText = try stream.finish().trimmingCharacters(in: .whitespacesAndNewlines)
+
+    print("Streaming hypotheses: \(distinctHypotheses)")
+    print("Streaming final text: \(finalText)")
 
     XCTAssertFalse(hypothesis.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     XCTAssertFalse(finalText.isEmpty)

@@ -2648,21 +2648,10 @@ extension AppModel {
       setLiveSubtitlePresentation(captureSnapshot)
       return
     }
-
-    guard let queueSnapshot = audioProcessingQueueSnapshot, queueSnapshot.isVisible else {
-      setLiveSubtitlePresentation(nil)
-      return
-    }
-
-    setLiveSubtitlePresentation(
-      LiveSubtitleSnapshot(
-        runID: queueSnapshot.processingRunID ?? UUID(),
-        workflow: queueSnapshot.workflow,
-        phase: .processing,
-        statusText: queueStatusText(for: queueSnapshot.queuedCount),
-        queuedRunCount: queueSnapshot.queuedCount,
-        prefersCompactLayout: true
-      ))
+    // The floating surface belongs only to live capture. Background
+    // recognition and output remain observable in the menu bar/history, but
+    // never open a second panel that can fight with the next recording.
+    setLiveSubtitlePresentation(nil)
   }
 
   func setLiveSubtitlePresentation(_ snapshot: LiveSubtitleSnapshot?) {
@@ -2675,18 +2664,7 @@ extension AppModel {
   }
 
   func queuedBackgroundRunCount(from snapshot: AudioProcessingQueueSnapshot?) -> Int {
-    snapshot?.queuedCount ?? 0
-  }
-
-  func queueStatusText(for queuedCount: Int) -> String {
-    if language == .english {
-      return queuedCount > 0
-        ? "Processing in background (\(queuedCount) queued)"
-        : "Processing in background…"
-    }
-    return queuedCount > 0
-      ? "后台处理中（队列 \(queuedCount) 条）"
-      : "后台处理中…"
+    snapshot?.pendingCount ?? 0
   }
 
   func applyDiagnosticEvents(_ events: [DiagnosticEvent]) {

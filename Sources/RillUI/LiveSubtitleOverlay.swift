@@ -326,9 +326,10 @@ public struct LiveSubtitleOverlay: View {
 
   private var queueBadgeTitle: String {
     if language == .english {
-      return snapshot.queuedRunCount > 1 ? "\(snapshot.queuedRunCount) queued" : "1 queued"
+      return snapshot.queuedRunCount > 1
+        ? "\(snapshot.queuedRunCount) in background" : "1 in background"
     }
-    return snapshot.queuedRunCount > 1 ? "队列 \(snapshot.queuedRunCount)" : "队列 1"
+    return "后台 \(snapshot.queuedRunCount)"
   }
 
   @ViewBuilder
