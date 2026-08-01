@@ -32,8 +32,8 @@ extension PrivacyRunGate {
             return .blocked(reason: .triggerMismatch)
         }
         guard configuration.actionKind == .editItem,
-              workflow.pipeline.outputActions.count == 1,
-              workflow.pipeline.outputActions[0].id == "stack.push" else {
+              workflow.plan.output.actions.count == 1,
+              workflow.plan.output.actions[0].id == "stack.push" else {
             return .blocked(reason: .actionPlanUnsupported)
         }
         guard source.subject.contentKind == .text,
@@ -952,6 +952,12 @@ public struct PrivacyRunGate: Sendable {
         for index in rhs.sensitiveAppRules.indices {
             rhs.sensitiveAppRules[index].id = lhs.sensitiveAppRules[index].id
         }
+        // Durable workflow grants are consumed by the confirmation provider;
+        // they do not change the evaluated privacy policy itself. Granting or
+        // revoking one while a run is being confirmed must not look like a
+        // policy mutation and invalidate that same run.
+        lhs.cloudProcessingAuthorizations = []
+        rhs.cloudProcessingAuthorizations = []
         if ignoringCloudConfirmation {
             lhs.cloudConfirmationRequired = false
             rhs.cloudConfirmationRequired = false

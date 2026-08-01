@@ -1730,7 +1730,7 @@ enum ExternalOutputActionError: LocalizedError, Equatable, Sendable {
 
 private extension ActionContext {
     func outputActionConfiguration(for actionID: String) -> [String: String] {
-        workflow.pipeline.outputActions.first { $0.id == actionID }?.configuration ?? [:]
+        workflow.plan.output.actions.first { $0.id == actionID }?.configuration ?? [:]
     }
 }
 

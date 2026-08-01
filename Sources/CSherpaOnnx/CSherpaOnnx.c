@@ -27,6 +27,14 @@ struct RillSherpaSileroVad {
   const SherpaOnnxVoiceActivityDetector *raw;
 };
 
+struct RillSherpaKeywordSpotter {
+  const SherpaOnnxKeywordSpotter *raw;
+};
+
+struct RillSherpaKeywordStream {
+  const SherpaOnnxOnlineStream *raw;
+};
+
 static RillSherpaOfflineRecognizer *
 RillSherpaWrapRecognizer(const SherpaOnnxOfflineRecognizer *raw) {
   if (raw == NULL) {
@@ -313,6 +321,165 @@ int32_t RillSherpaOnlineStreamFinishAndDecode(
 }
 
 void RillSherpaFreeString(char *text) { free(text); }
+
+RillSherpaKeywordSpotter *RillSherpaCreateKeywordSpotter(
+    const char *encoder, const char *decoder, const char *joiner,
+    const char *tokens, const char *keywords, int32_t num_threads,
+    int32_t max_active_paths, int32_t num_trailing_blanks,
+    float keywords_score, float keywords_threshold) {
+  size_t keywords_size = keywords == NULL ? 0 : strlen(keywords);
+  if (encoder == NULL || encoder[0] == '\0' || decoder == NULL ||
+      decoder[0] == '\0' || joiner == NULL || joiner[0] == '\0' ||
+      tokens == NULL || tokens[0] == '\0' || keywords_size == 0 ||
+      keywords_size > INT32_MAX || num_threads <= 0 || max_active_paths <= 0 ||
+      num_trailing_blanks < 0 || !isfinite(keywords_score) ||
+      keywords_score <= 0 || !isfinite(keywords_threshold) ||
+      keywords_threshold <= 0 || keywords_threshold >= 1) {
+    return NULL;
+  }
+
+  SherpaOnnxKeywordSpotterConfig config = {0};
+  config.feat_config.sample_rate = 16000;
+  config.feat_config.feature_dim = 80;
+  config.model_config.transducer.encoder = encoder;
+  config.model_config.transducer.decoder = decoder;
+  config.model_config.transducer.joiner = joiner;
+  config.model_config.tokens = tokens;
+  config.model_config.num_threads = num_threads;
+  config.model_config.provider = "cpu";
+  config.max_active_paths = max_active_paths;
+  config.num_trailing_blanks = num_trailing_blanks;
+  config.keywords_score = keywords_score;
+  config.keywords_threshold = keywords_threshold;
+  config.keywords_buf = keywords;
+  config.keywords_buf_size = (int32_t)keywords_size;
+
+  const SherpaOnnxKeywordSpotter *raw =
+      SherpaOnnxCreateKeywordSpotter(&config);
+  if (raw == NULL) {
+    return NULL;
+  }
+  RillSherpaKeywordSpotter *spotter =
+      (RillSherpaKeywordSpotter *)calloc(1, sizeof(*spotter));
+  if (spotter == NULL) {
+    SherpaOnnxDestroyKeywordSpotter(raw);
+    return NULL;
+  }
+  spotter->raw = raw;
+  return spotter;
+}
+
+void RillSherpaDestroyKeywordSpotter(RillSherpaKeywordSpotter *spotter) {
+  if (spotter == NULL) {
+    return;
+  }
+  SherpaOnnxDestroyKeywordSpotter(spotter->raw);
+  free(spotter);
+}
+
+RillSherpaKeywordStream *RillSherpaCreateKeywordStream(
+    RillSherpaKeywordSpotter *spotter, const char *keywords) {
+  if (spotter == NULL || keywords == NULL || keywords[0] == '\0') {
+    return NULL;
+  }
+  const SherpaOnnxOnlineStream *raw =
+      SherpaOnnxCreateKeywordStreamWithKeywords(spotter->raw, keywords);
+  if (raw == NULL) {
+    return NULL;
+  }
+  RillSherpaKeywordStream *stream =
+      (RillSherpaKeywordStream *)calloc(1, sizeof(*stream));
+  if (stream == NULL) {
+    SherpaOnnxDestroyOnlineStream(raw);
+    return NULL;
+  }
+  stream->raw = raw;
+  return stream;
+}
+
+void RillSherpaDestroyKeywordStream(RillSherpaKeywordStream *stream) {
+  if (stream == NULL) {
+    return;
+  }
+  SherpaOnnxDestroyOnlineStream(stream->raw);
+  free(stream);
+}
+
+int32_t RillSherpaKeywordStreamAcceptAndDecode(
+    RillSherpaKeywordSpotter *spotter, RillSherpaKeywordStream *stream,
+    const float *samples, int32_t sample_count, int32_t sample_rate,
+    RillSherpaKeywordResult **result) {
+  if (spotter == NULL || stream == NULL || samples == NULL ||
+      sample_count <= 0 || sample_rate <= 0 || result == NULL) {
+    return 0;
+  }
+  *result = NULL;
+  for (int32_t index = 0; index < sample_count; ++index) {
+    if (!isfinite(samples[index]) || samples[index] < -1.0f ||
+        samples[index] > 1.0f) {
+      return 0;
+    }
+  }
+
+  SherpaOnnxOnlineStreamAcceptWaveform(stream->raw, sample_rate, samples,
+                                       sample_count);
+  while (SherpaOnnxIsKeywordStreamReady(spotter->raw, stream->raw)) {
+    SherpaOnnxDecodeKeywordStream(spotter->raw, stream->raw);
+  }
+  const SherpaOnnxKeywordResult *native =
+      SherpaOnnxGetKeywordResult(spotter->raw, stream->raw);
+  if (native == NULL) {
+    return 0;
+  }
+  if (native->keyword == NULL || native->keyword[0] == '\0') {
+    SherpaOnnxDestroyKeywordResult(native);
+    return 1;
+  }
+
+  RillSherpaKeywordResult *copy =
+      (RillSherpaKeywordResult *)calloc(1, sizeof(*copy));
+  if (copy == NULL) {
+    SherpaOnnxDestroyKeywordResult(native);
+    return 0;
+  }
+  copy->keyword = RillSherpaCopyString(native->keyword);
+  copy->count = native->count;
+  copy->start_time = native->start_time;
+  if (native->count > 0) {
+    copy->timestamps =
+        (float *)calloc((size_t)native->count, sizeof(float));
+    if (copy->timestamps != NULL && native->timestamps != NULL) {
+      memcpy(copy->timestamps, native->timestamps,
+             (size_t)native->count * sizeof(float));
+    }
+  }
+  SherpaOnnxDestroyKeywordResult(native);
+  if (copy->keyword == NULL ||
+      (copy->count > 0 && copy->timestamps == NULL)) {
+    RillSherpaDestroyKeywordResult(copy);
+    return 0;
+  }
+  *result = copy;
+  return 1;
+}
+
+int32_t RillSherpaResetKeywordStream(
+    RillSherpaKeywordSpotter *spotter, RillSherpaKeywordStream *stream) {
+  if (spotter == NULL || stream == NULL) {
+    return 0;
+  }
+  SherpaOnnxResetKeywordStream(spotter->raw, stream->raw);
+  return 1;
+}
+
+void RillSherpaDestroyKeywordResult(RillSherpaKeywordResult *result) {
+  if (result == NULL) {
+    return;
+  }
+  free(result->keyword);
+  free(result->timestamps);
+  free(result);
+}
 
 RillSherpaSileroVad *RillSherpaCreateSileroVad(
     const char *model, float threshold, float min_silence_duration,

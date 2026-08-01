@@ -3,6 +3,28 @@ import XCTest
 @testable import RillCore
 
 final class DiagnosticEventSanitizerTests: XCTestCase {
+  func testSanitizeRetainsWakeWordRuntimeCoordinatesWithoutUserContent() {
+    for eventCode in [
+      "wake-word.detected",
+      "wake-word.run-rejected",
+      "wake-word.start-failed",
+    ] {
+      let event = DiagnosticEvent(
+        subsystem: .providers,
+        level: .info,
+        event: eventCode,
+        message: "private wake phrase must not persist",
+        metadata: ["reason": "request-failed"]
+      )
+
+      let sanitized = DiagnosticEventSanitizer.sanitize(event)
+
+      XCTAssertEqual(sanitized.event, eventCode)
+      XCTAssertEqual(sanitized.message, DiagnosticEventSanitizer.sanitizedMessage)
+      XCTAssertEqual(sanitized.metadata, ["reason": "request-failed"])
+    }
+  }
+
   func testSanitizeRetainsClosedGlobalInputRouteMetadata() {
     let event = DiagnosticEvent(
       subsystem: .platform,
@@ -201,10 +223,10 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       message: "safe",
       metadata: [
         "actionID": "inject.text",
-        "provider": "deepgram.prerecorded",
-        "provider.kind": "deepgram",
-        "provider.model": "nova-3",
-        "recognizerID": "deepgram.prerecorded",
+        "provider": "sherpa-onnx.local",
+        "provider.kind": "sherpa-onnx",
+        "provider.model": "qwen3-asr-0.6b-int8",
+        "recognizerID": "sherpa-onnx.local",
         "transformerID": "transformer.normalize",
       ]
     )
@@ -608,6 +630,68 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
         ["reason": reason.rawValue],
         "Missing diagnostic reason contract for \(reason.rawValue)."
       )
+    }
+  }
+
+  func testOpenAIDiagnosticsRetainOnlyClosedOperationalCoordinates() {
+    let event = DiagnosticEvent(
+      subsystem: .providers,
+      level: .error,
+      event: "provider.openai.rewrite.failed",
+      message: "secret-key transcript-canary provider-body-canary",
+      metadata: [
+        "provider": "openai.responses",
+        "provider.kind": "openai",
+        "provider.model": "gpt-5.6-terra",
+        "transformerID": "transformer.openai.responses.rewrite",
+        "stage": "transforming",
+        "outcome": "authentication-failed",
+        "durationMillis": "42",
+        "httpStatusClass": "4xx",
+        "apiKey": "secret-key",
+        "input": "transcript-canary",
+        "output": "provider-body-canary",
+      ]
+    )
+
+    let sanitized = DiagnosticEventSanitizer.sanitize(event)
+
+    XCTAssertEqual(sanitized.event, "provider.openai.rewrite.failed")
+    XCTAssertEqual(sanitized.message, DiagnosticEventSanitizer.sanitizedMessage)
+    XCTAssertEqual(
+      sanitized.metadata,
+      [
+        "provider": "openai.responses",
+        "provider.kind": "openai",
+        "provider.model": "gpt-5.6-terra",
+        "transformerID": "transformer.openai.responses.rewrite",
+        "stage": "transforming",
+        "outcome": "authentication-failed",
+        "durationMillis": "42",
+        "httpStatusClass": "4xx",
+      ]
+    )
+    XCTAssertFalse(String(describing: sanitized).contains("secret-key"))
+    XCTAssertFalse(String(describing: sanitized).contains("transcript-canary"))
+    XCTAssertFalse(String(describing: sanitized).contains("provider-body-canary"))
+  }
+
+  func testOpenAILifecycleEventCodesRemainAddressable() {
+    for eventCode in [
+      "provider.openai.rewrite.started",
+      "provider.openai.rewrite.completed",
+      "provider.openai.rewrite.failed",
+      "provider.openai.verification.completed",
+      "provider.openai.verification.failed",
+    ] {
+      let event = DiagnosticEvent(
+        subsystem: .providers,
+        level: .info,
+        event: eventCode,
+        message: "provider lifecycle detail"
+      )
+
+      XCTAssertEqual(DiagnosticEventSanitizer.sanitize(event).event, eventCode)
     }
   }
 }

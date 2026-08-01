@@ -18,16 +18,6 @@ final class DiagnosticsViewTests: XCTestCase {
         }
     }
 
-    func testSpeechCheckButtonUsesCancellationTitleWhileTranscribing() {
-        XCTAssertEqual(
-            UIStrings.deepgramTestButtonTitle(.transcribing, language: .english),
-            "Cancel Test"
-        )
-        XCTAssertEqual(
-            UIStrings.deepgramTestButtonTitle(.transcribing, language: .simplifiedChinese),
-            "取消测试"
-        )
-    }
 
     func testTimelineShowsNewestTwentyEventsInNewestFirstOrder() {
         let baseTimestamp = Date(timeIntervalSince1970: 1_000)
@@ -45,6 +35,88 @@ final class DiagnosticsViewTests: XCTestCase {
 
         XCTAssertEqual(visibleEvents.count, 20)
         XCTAssertEqual(visibleEvents.map(\.event), (5..<25).reversed().map { "diagnostic.\($0)" })
+    }
+
+    func testActivityFilterHidesDebugWhileIssuesAndAllRemainAvailable() {
+        let timestamp = Date(timeIntervalSince1970: 1_000)
+        let debug = DiagnosticEvent(
+            timestamp: timestamp,
+            subsystem: .session,
+            level: .debug,
+            event: "debug.detail",
+            message: "Diagnostic event recorded."
+        )
+        let info = DiagnosticEvent(
+            timestamp: timestamp.addingTimeInterval(1),
+            subsystem: .session,
+            level: .info,
+            event: "recording.started",
+            message: "Diagnostic event recorded."
+        )
+        let warning = DiagnosticEvent(
+            timestamp: timestamp.addingTimeInterval(2),
+            subsystem: .providers,
+            level: .warning,
+            event: "provider.warning",
+            message: "Provider warning"
+        )
+
+        XCTAssertEqual(
+            DiagnosticsView.timelineEvents(from: [warning, info, debug]).map(\.event),
+            ["provider.warning", "recording.started"]
+        )
+        XCTAssertEqual(
+            DiagnosticsView.timelineEvents(
+                from: [warning, info, debug],
+                filter: .issues
+            ).map(\.event),
+            ["provider.warning"]
+        )
+        XCTAssertEqual(
+            DiagnosticsView.timelineEvents(
+                from: [warning, info, debug],
+                filter: .all
+            ).map(\.event),
+            ["provider.warning", "recording.started", "debug.detail"]
+        )
+    }
+
+    func testDiagnosticPresentationLocalizesKnownActivityAndKeepsTechnicalDetail() {
+        let event = DiagnosticEvent(
+            timestamp: Date(timeIntervalSince1970: 1_000),
+            subsystem: .session,
+            level: .info,
+            event: "session.stage",
+            message: "Diagnostic event recorded.",
+            metadata: ["stage": "recognizing", "model": "local-model"]
+        )
+
+        XCTAssertEqual(
+            DiagnosticEventPresentation.title(for: event, language: .english),
+            "Recognizing speech on device"
+        )
+        XCTAssertEqual(
+            DiagnosticEventPresentation.title(for: event, language: .simplifiedChinese),
+            "正在本机识别语音"
+        )
+        XCTAssertEqual(
+            DiagnosticEventPresentation.detail(for: event),
+            "session.stage · model=local-model · stage=recognizing"
+        )
+    }
+
+
+    func testRunFailurePresentationLocalizesGenericFailureWithoutLeakingRawInput() {
+        let raw = "provider-internal-canary"
+
+        XCTAssertEqual(
+            RunFailurePresentation.text(for: raw, language: .english),
+            HistoryFailureSanitizer.genericMessage
+        )
+        XCTAssertEqual(
+            RunFailurePresentation.text(for: raw, language: .simplifiedChinese),
+            "工作流失败。请在诊断中查看安全摘要后重试。"
+        )
     }
 
     func testTimelineIdentitySurvivesRefreshAndUnrelatedHeadInsertion() throws {

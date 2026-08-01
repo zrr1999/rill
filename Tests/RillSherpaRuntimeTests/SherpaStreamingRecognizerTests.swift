@@ -89,6 +89,16 @@ final class SherpaStreamingRecognizerDogfoodTests: XCTestCase {
 
     XCTAssertFalse(hypothesis.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     XCTAssertFalse(finalText.isEmpty)
+    if let expectedSubstring =
+      environment["RILL_SHERPA_STREAMING_EXPECTED_SUBSTRING"]?
+      .trimmingCharacters(in: .whitespacesAndNewlines),
+      !expectedSubstring.isEmpty
+    {
+      XCTAssertTrue(
+        finalText.localizedCaseInsensitiveContains(expectedSubstring),
+        "Expected '\(expectedSubstring)' in streaming transcript, got '\(finalText)'."
+      )
+    }
   }
 
   private func load16KMonoSamples(at url: URL) throws -> [Float] {

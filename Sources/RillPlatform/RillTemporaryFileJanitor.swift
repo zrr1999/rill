@@ -12,7 +12,7 @@ public struct RillTemporaryFileJanitor: Sendable {
     case recoveryAudio = "recovery-audio"
     case recognitionWork = "recognition-work"
     case liveCapture = "live-capture"
-    case deepgramLiveCapture = "deepgram-live-capture"
+    case retiredCloudCapture = "retired-cloud-capture"
   }
 
   public enum FailureOperation: String, Sendable, Equatable {
@@ -28,11 +28,11 @@ public struct RillTemporaryFileJanitor: Sendable {
     public private(set) var recoveryAudio = 0
     public private(set) var recognitionWork = 0
     public private(set) var liveCapture = 0
-    public private(set) var deepgramLiveCapture = 0
+    public private(set) var retiredCloudCapture = 0
 
     public var total: Int {
       shortcutText + audioCapture + recoveryAudio + recognitionWork + liveCapture
-        + deepgramLiveCapture
+        + retiredCloudCapture
     }
 
     public subscript(kind: ArtifactKind) -> Int {
@@ -47,8 +47,8 @@ public struct RillTemporaryFileJanitor: Sendable {
         recognitionWork
       case .liveCapture:
         liveCapture
-      case .deepgramLiveCapture:
-        deepgramLiveCapture
+      case .retiredCloudCapture:
+        retiredCloudCapture
       }
     }
 
@@ -64,8 +64,8 @@ public struct RillTemporaryFileJanitor: Sendable {
         recognitionWork += 1
       case .liveCapture:
         liveCapture += 1
-      case .deepgramLiveCapture:
-        deepgramLiveCapture += 1
+      case .retiredCloudCapture:
+        retiredCloudCapture += 1
       }
     }
   }
@@ -245,8 +245,10 @@ public struct RillTemporaryFileJanitor: Sendable {
     if hasPayload(filename, prefix: "rill-shortcut-", suffix: ".txt") {
       return .shortcutText
     }
+    // Preserve cleanup for recordings abandoned by releases that still had
+    // the retired cloud recognizer.
     if hasPayload(filename, prefix: "rill-deepgram-live-", suffix: ".wav") {
-      return .deepgramLiveCapture
+      return .retiredCloudCapture
     }
     if hasPayload(filename, prefix: "rill-recovery-", suffix: ".wav") {
       return .recoveryAudio

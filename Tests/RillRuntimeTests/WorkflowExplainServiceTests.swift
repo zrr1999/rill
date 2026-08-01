@@ -53,6 +53,41 @@ private struct WorkflowExplainAction: OutputAction {
 }
 
 final class WorkflowExplainServiceTests: XCTestCase {
+    func testOpenAIRewriteProfileIsClassifiedAsAvailableCloudTextProcessing() async {
+        let probe = WorkflowExplainProbe()
+        let service = makeService(
+            probe: probe,
+            recognizerIDs: ["sherpa-onnx.local"],
+            transformers: [
+                ("transformer.openai.responses.rewrite", [.llmRewrite]),
+            ],
+            actionIDs: ["inject.text"]
+        )
+        let workflow = makeWorkflow(
+            recognizerID: "sherpa-onnx.local",
+            steps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
+            actions: [OutputActionReference(id: "inject.text")]
+        )
+
+        let receipt = service.explainResolved(
+            resolvedPlan(for: workflow),
+            privacyEvaluation: PrivacyRunEvaluation(status: .ready)
+        )
+
+        XCTAssertEqual(receipt.status, .ready)
+        XCTAssertEqual(
+            receipt.transforms.first { $0.kind == .languageModelRewrite },
+            WorkflowExplanationTransform(
+                kind: .languageModelRewrite,
+                availability: .available,
+                usage: .required,
+                processingDestination: .cloudService
+            )
+        )
+        XCTAssertTrue(receipt.processingDestinations.contains(.cloudService))
+        await assertProbeWasNotInvoked(probe)
+    }
+
     func testKnownLocalWorkflowProducesAccurateContentFreeStaticPlan() async throws {
         let probe = WorkflowExplainProbe()
         let service = makeService(
@@ -303,105 +338,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
         )
     }
 
-    func testKnownCloudAndExternalOutputsReportDestinationsAndConfigurationIssues() async {
-        let probe = WorkflowExplainProbe()
-        let service = makeService(
-            probe: probe,
-            recognizerIDs: ["deepgram.prerecorded"],
-            actionIDs: [
-                ExternalOutputActionID.webhookPost,
-                ExternalOutputActionID.markdownAppend,
-            ]
-        )
-        let workflow = makeWorkflow(
-            recognizerID: "deepgram.prerecorded",
-            actions: [
-                OutputActionReference(id: ExternalOutputActionID.webhookPost),
-                OutputActionReference(
-                    id: ExternalOutputActionID.markdownAppend,
-                    configuration: [
-                        ExternalOutputActionConfigurationKey.markdownAppendPath:
-                            "/Users/CANARY/not-markdown.txt",
-                    ]
-                ),
-            ]
-        )
 
-        let receipt = service.explainResolved(resolvedPlan(for: workflow))
-
-        XCTAssertEqual(
-            receipt.inputs.map(\.category),
-            [.microphoneAudio, .recognitionHints]
-        )
-        XCTAssertEqual(receipt.inputs.map(\.usage), [.required, .conditional])
-        XCTAssertTrue(receipt.inputs.allSatisfy { $0.processingDestination == .cloudService })
-        XCTAssertEqual(receipt.outputs.map(\.processingDestination), [.remoteEndpoint, .localFile])
-        XCTAssertEqual(receipt.outputs.map(\.sourceActionIndex), [0, 1])
-        XCTAssertEqual(receipt.outputs.map(\.configurationState), [.missing, .invalid])
-        XCTAssertTrue(receipt.issues.contains(
-            WorkflowExplanationIssue(
-                kind: .configurationMissing,
-                component: .outputAction,
-                componentIndex: 0
-            )
-        ))
-        XCTAssertTrue(receipt.issues.contains(
-            WorkflowExplanationIssue(
-                kind: .configurationInvalid,
-                component: .outputAction,
-                componentIndex: 1
-            )
-        ))
-        XCTAssertEqual(receipt.status, .blocked)
-        await assertProbeWasNotInvoked(probe)
-    }
-
-    func testAutomaticSelectionsMustBeExplicitlyResolvedToCloudAndStack() async {
-        let probe = WorkflowExplainProbe()
-        let service = makeService(
-            probe: probe,
-            recognizerIDs: ["deepgram.prerecorded"],
-            actionIDs: ["stack.push"]
-        )
-        var workflow = makeWorkflow(
-            recognizerID: "sherpa-onnx.local",
-            actions: [OutputActionReference(id: "inject.text")]
-        )
-        workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode] = "auto"
-        workflow.metadata[WorkflowMetadataKey.settingsExposeOutputMode] = "true"
-        workflow.metadata[WorkflowMetadataKey.catalog] = BuiltinWorkflowRoutingValue.catalog
-        workflow.metadata[WorkflowMetadataKey.triggerGesture] =
-            BuiltinWorkflowRoutingValue.pushToTalkGesture
-        workflow.metadata[WorkflowMetadataKey.builtinKind] = "push-to-talk.dictation"
-
-        let plan = resolvedPlan(
-            for: workflow,
-            recognizer: .cloudSpeech,
-            output: .builtinSaveToVoiceGroup
-        )
-        let receipt = service.explainResolved(plan)
-
-        XCTAssertEqual(
-            receipt.inputs.map(\.category),
-            [.microphoneAudio, .recognitionHints]
-        )
-        XCTAssertEqual(receipt.inputs.map(\.usage), [.required, .conditional])
-        XCTAssertTrue(receipt.inputs.allSatisfy { $0.processingDestination == .cloudService })
-        XCTAssertEqual(
-            receipt.outputs,
-            [
-                WorkflowExplanationOutput(
-                    sourceActionIndex: 0,
-                    effect: .deliveryStackWrite,
-                    availability: .available,
-                    configurationState: .notRequired,
-                    processingDestination: .localStorage
-                ),
-            ]
-        )
-        XCTAssertFalse(receipt.outputs.contains { $0.effect == .focusedApplicationWrite })
-        await assertProbeWasNotInvoked(probe)
-    }
 
     func testOutputModeDoesNotRewriteManualInvocationOrCustomMetadata() {
         var builtinWorkflow = makeWorkflow(
@@ -575,52 +512,6 @@ final class WorkflowExplainServiceTests: XCTestCase {
         await assertProbeWasNotInvoked(probe)
     }
 
-    func testDynamicCloudPrivacyEvaluationRequiresConfirmationWithoutExecutingComponents() async {
-        let probe = WorkflowExplainProbe()
-        let service = makeService(
-            probe: probe,
-            recognizerIDs: ["deepgram.prerecorded"],
-            actionIDs: [ExternalOutputActionID.webhookPost]
-        )
-        let workflow = makeWorkflow(
-            recognizerID: "deepgram.prerecorded",
-            actions: [
-                OutputActionReference(
-                    id: ExternalOutputActionID.webhookPost,
-                    configuration: [
-                        ExternalOutputActionConfigurationKey.webhookURL:
-                            "https://example.invalid/hook",
-                    ]
-                ),
-            ]
-        )
-        let evaluation = PrivacyRunEvaluation(
-            status: .requiresConfirmation,
-            reasons: [.cloudProviderSelected, .cloudConfirmationRequired]
-        )
-
-        let receipt = service.explainResolved(
-            resolvedPlan(for: workflow),
-            privacyEvaluation: evaluation
-        )
-
-        XCTAssertEqual(receipt.status, .requiresConfirmation)
-        XCTAssertEqual(receipt.privacyReasons, evaluation.reasons)
-        XCTAssertEqual(
-            receipt.issues,
-            [
-                WorkflowExplanationIssue(
-                    kind: .privacyConfirmationRequired,
-                    component: .privacyPolicy
-                ),
-            ]
-        )
-        XCTAssertEqual(
-            service.privacyProcessingDestinations(for: resolvedPlan(for: workflow)),
-            .classified([.cloudSpeech, .cloudText])
-        )
-        await assertProbeWasNotInvoked(probe)
-    }
 
     func testDynamicRedactionsMakeContextInputsUnavailableWithoutLeakingContent() async throws {
         let probe = WorkflowExplainProbe()
@@ -793,7 +684,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
         steps: [PostProcessStep] = [],
         actions: [OutputActionReference]
     ) -> WorkflowDefinition {
-        WorkflowDefinition(
+        var workflow = WorkflowDefinition(
             name: "Workflow",
             trigger: .hotkey,
             pipeline: PipelineDeclaration(
@@ -803,6 +694,10 @@ final class WorkflowExplainServiceTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
+        workflow.plan.setup.vocabularyBindings = [
+            VocabularyCollectionBinding(collectionID: VocabularyCollection.personalID),
+        ]
+        return workflow
     }
 
     private func assertProbeWasNotInvoked(

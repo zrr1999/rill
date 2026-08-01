@@ -186,6 +186,9 @@ extension ClipboardView {
             if let focusedGroupID, entry.representativeItem.groupID != focusedGroupID {
                 return false
             }
+            if showsPinnedOnly, !entry.isPinned {
+                return false
+            }
             guard !query.isEmpty else { return true }
             return entry.matchesSearchQuery(query, groupName: groupName(for: entry.representativeItem.groupID))
         }

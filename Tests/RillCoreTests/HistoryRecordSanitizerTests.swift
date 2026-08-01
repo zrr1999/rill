@@ -16,10 +16,6 @@ final class HistoryRecordSanitizerTests: XCTestCase {
 
     func testKnownRecoveryCategoriesUseFixedContentFreeMessages() {
         XCTAssertEqual(
-            HistoryFailureSanitizer.sanitize("Deepgram API key is missing: dg-secret"),
-            "The Deepgram API key is unavailable. Open Settings, save a key, and retry."
-        )
-        XCTAssertEqual(
             HistoryFailureSanitizer.sanitize("Microphone permission denied at /private/input.wav"),
             "Microphone access is required. Grant access in System Settings and retry."
         )
@@ -68,6 +64,26 @@ final class HistoryRecordSanitizerTests: XCTestCase {
             ),
             HistoryFailureSanitizer.recognitionRecoveryPendingMessage
         )
+    }
+
+    func testOpenAIFailuresPreserveOnlyExactContentFreeMessages() {
+        for message in [
+            HistoryFailureSanitizer.openAICredentialUnavailableMessage,
+            HistoryFailureSanitizer.openAIConfigurationInvalidMessage,
+            HistoryFailureSanitizer.openAIAuthenticationFailedMessage,
+            HistoryFailureSanitizer.openAIRateLimitedMessage,
+            HistoryFailureSanitizer.openAITimedOutMessage,
+            HistoryFailureSanitizer.openAINetworkFailedMessage,
+            HistoryFailureSanitizer.openAIRefusedMessage,
+            HistoryFailureSanitizer.openAIIncompleteMessage,
+            HistoryFailureSanitizer.openAIInvalidResponseMessage,
+        ] {
+            XCTAssertEqual(HistoryFailureSanitizer.sanitize(message), message)
+            XCTAssertEqual(
+                HistoryFailureSanitizer.sanitize(message + " transcript-canary"),
+                HistoryFailureSanitizer.genericMessage
+            )
+        }
     }
 
     func testCommittedOutputFailurePreservesOnlyExactNonRetryableMessage() {

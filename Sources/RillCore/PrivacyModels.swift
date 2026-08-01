@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 public enum PrivacyDecision: String, Codable, Sendable, Equatable, CaseIterable {
@@ -40,6 +41,93 @@ public enum PrivacyProcessingDestination: String, Codable, Sendable, Equatable, 
         case .cloudSpeech, .cloudText:
             return true
         }
+    }
+}
+
+/// A durable, narrowly scoped grant for one workflow's cloud-processing shape.
+///
+/// The fingerprint includes the complete workflow declaration, classified cloud
+/// destinations, and provider-scope values. Only the final digest is retained;
+/// raw scope values are never stored. A workflow, endpoint, model, or credential
+/// change therefore requires fresh consent instead of silently inheriting an
+/// older grant.
+public struct CloudProcessingAuthorization: Identifiable, Codable, Sendable, Equatable {
+    public var id: UUID
+    public var workflowID: UUID
+    public var workflowName: String
+    public var scopeFingerprint: String
+    public var grantedAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        workflowID: UUID,
+        workflowName: String,
+        scopeFingerprint: String,
+        grantedAt: Date = Date()
+    ) {
+        self.id = id
+        self.workflowID = workflowID
+        self.workflowName = workflowName
+        self.scopeFingerprint = scopeFingerprint
+        self.grantedAt = grantedAt
+    }
+
+    public init(
+        id: UUID = UUID(),
+        workflow: WorkflowDefinition,
+        processingDestinations: [PrivacyProcessingDestination],
+        providerIdentities: [String],
+        grantedAt: Date = Date()
+    ) throws {
+        self.init(
+            id: id,
+            workflowID: workflow.id,
+            workflowName: workflow.name,
+            scopeFingerprint: try Self.scopeFingerprint(
+                workflow: workflow,
+                processingDestinations: processingDestinations,
+                providerIdentities: providerIdentities
+            ),
+            grantedAt: grantedAt
+        )
+    }
+
+    public func authorizes(
+        workflow: WorkflowDefinition,
+        processingDestinations: [PrivacyProcessingDestination],
+        providerIdentities: [String]
+    ) -> Bool {
+        guard workflowID == workflow.id else { return false }
+        return scopeFingerprint
+            == (try? Self.scopeFingerprint(
+                workflow: workflow,
+                processingDestinations: processingDestinations,
+                providerIdentities: providerIdentities
+            ))
+    }
+
+    public static func scopeFingerprint(
+        workflow: WorkflowDefinition,
+        processingDestinations: [PrivacyProcessingDestination],
+        providerIdentities: [String]
+    ) throws -> String {
+        let envelope = ScopeEnvelope(
+            schemaVersion: 1,
+            workflow: workflow,
+            processingDestinations: processingDestinations.map(\.rawValue).sorted(),
+            providerIdentities: providerIdentities.sorted()
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let digest = SHA256.hash(data: try encoder.encode(envelope))
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private struct ScopeEnvelope: Encodable {
+        let schemaVersion: Int
+        let workflow: WorkflowDefinition
+        let processingDestinations: [String]
+        let providerIdentities: [String]
     }
 }
 
@@ -251,22 +339,54 @@ public extension SensitiveAppRule {
 public struct PrivacyPolicySettings: Codable, Sendable, Equatable {
     public var sensitiveAppRules: [SensitiveAppRule]
     public var cloudConfirmationRequired: Bool
+    public var cloudProcessingAuthorizations: [CloudProcessingAuthorization]
     public var historyPreviewMode: PrivacyHistoryPreviewMode
     public var secureInputConservativeMode: Bool
 
     public init(
         sensitiveAppRules: [SensitiveAppRule] = SensitiveAppRule.recommendedDefaults,
         cloudConfirmationRequired: Bool = true,
+        cloudProcessingAuthorizations: [CloudProcessingAuthorization] = [],
         historyPreviewMode: PrivacyHistoryPreviewMode = .restricted,
         secureInputConservativeMode: Bool = true
     ) {
         self.sensitiveAppRules = sensitiveAppRules
         self.cloudConfirmationRequired = cloudConfirmationRequired
+        self.cloudProcessingAuthorizations = cloudProcessingAuthorizations
         self.historyPreviewMode = historyPreviewMode
         self.secureInputConservativeMode = secureInputConservativeMode
     }
 
     public static let defaults = PrivacyPolicySettings()
+
+    private enum CodingKeys: String, CodingKey {
+        case sensitiveAppRules
+        case cloudConfirmationRequired
+        case cloudProcessingAuthorizations
+        case historyPreviewMode
+        case secureInputConservativeMode
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sensitiveAppRules = try container.decode([SensitiveAppRule].self, forKey: .sensitiveAppRules)
+        cloudConfirmationRequired = try container.decode(
+            Bool.self,
+            forKey: .cloudConfirmationRequired
+        )
+        cloudProcessingAuthorizations = try container.decodeIfPresent(
+            [CloudProcessingAuthorization].self,
+            forKey: .cloudProcessingAuthorizations
+        ) ?? []
+        historyPreviewMode = try container.decode(
+            PrivacyHistoryPreviewMode.self,
+            forKey: .historyPreviewMode
+        )
+        secureInputConservativeMode = try container.decode(
+            Bool.self,
+            forKey: .secureInputConservativeMode
+        )
+    }
 }
 
 public struct PrivacyPolicyDecision: Codable, Sendable, Equatable {
@@ -413,14 +533,12 @@ public enum PrivacyPolicy {
         if processingDestinations.contains(where: \.isCloud) {
             return true
         }
-        if preferredSpeechEngine == .cloud {
-            return true
-        }
-        guard let recognizerID = workflow?.pipeline.recognizerID.normalizedPrivacyIdentifier else {
+        guard let recognizerID = workflow?.plan.setup.speechRoute?.recognizerID
+            .normalizedPrivacyIdentifier
+        else {
             return false
         }
-        return recognizerID.contains("deepgram")
-            || recognizerID.contains("cloud")
+        return recognizerID.contains("cloud")
             || recognizerID.contains("remote")
     }
 }

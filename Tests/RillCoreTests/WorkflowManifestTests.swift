@@ -21,6 +21,25 @@ final class WorkflowManifestTests: XCTestCase {
         XCTAssertEqual(workflow.availability, .planned)
     }
 
+    func testWorkflowDefaultEnabledMetadataDefaultsOnAndFailsClosed() {
+        var workflow = WorkflowDefinition(
+            name: "Default Enabled",
+            pipeline: PipelineDeclaration(
+                recognizerID: "sherpa-onnx.local",
+                outputActions: [OutputActionReference(id: "inject.text")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red")
+        )
+
+        XCTAssertTrue(workflow.isEnabledByDefault)
+
+        workflow.metadata[WorkflowMetadataKey.defaultEnabled] = "false"
+        XCTAssertFalse(workflow.isEnabledByDefault)
+
+        workflow.metadata[WorkflowMetadataKey.defaultEnabled] = "invalid"
+        XCTAssertFalse(workflow.isEnabledByDefault)
+    }
+
     func testManifestRoundTripPreservesMetadata() throws {
         let workflow = WorkflowDefinition(
             id: UUID(uuidString: "9B07CFCC-95DE-4EBA-A05F-AB2E8BE7DDB6")!,

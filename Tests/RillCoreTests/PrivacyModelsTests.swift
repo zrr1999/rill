@@ -2,6 +2,64 @@ import XCTest
 @testable import RillCore
 
 final class PrivacyModelsTests: XCTestCase {
+    func testCloudProcessingAuthorizationIsScopedToWorkflowAndProviderConfiguration() throws {
+        let workflow = WorkflowDefinition(
+            id: UUID(uuidString: "D74E1D72-32B2-4499-8A4F-A9F967A1BEE8")!,
+            name: "Voice Assistant",
+            pipeline: PipelineDeclaration(
+                recognizerID: "sherpa-onnx.local",
+                postProcessSteps: [PostProcessStep(kind: .llmRewrite)],
+                outputActions: [OutputActionReference(id: "speech.speak")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
+        )
+        let authorization = try CloudProcessingAuthorization(
+            workflow: workflow,
+            processingDestinations: [.localSpeech, .cloudText],
+            providerIdentities: ["openai.responses|https://api.openai.com/v1|gpt-5-mini"]
+        )
+
+        XCTAssertTrue(
+            authorization.authorizes(
+                workflow: workflow,
+                processingDestinations: [.cloudText, .localSpeech],
+                providerIdentities: ["openai.responses|https://api.openai.com/v1|gpt-5-mini"]
+            )
+        )
+        XCTAssertFalse(
+            authorization.authorizes(
+                workflow: workflow,
+                processingDestinations: [.cloudText, .localSpeech],
+                providerIdentities: ["openai.responses|https://api.openai.com/v1|gpt-5.4"]
+            )
+        )
+
+        var changedWorkflow = workflow
+        changedWorkflow.plan.process.steps.append(
+            WorkflowProcessStep(kind: .normalizeWhitespace)
+        )
+        XCTAssertFalse(
+            authorization.authorizes(
+                workflow: changedWorkflow,
+                processingDestinations: [.localSpeech, .cloudText],
+                providerIdentities: ["openai.responses|https://api.openai.com/v1|gpt-5-mini"]
+            )
+        )
+    }
+
+    func testLegacyPrivacyPolicySettingsDecodeWithoutCloudAuthorizations() throws {
+        let legacy = try JSONSerialization.data(withJSONObject: [
+            "sensitiveAppRules": [],
+            "cloudConfirmationRequired": true,
+            "historyPreviewMode": "restricted",
+            "secureInputConservativeMode": true,
+        ])
+
+        let settings = try JSONDecoder().decode(PrivacyPolicySettings.self, from: legacy)
+
+        XCTAssertTrue(settings.cloudProcessingAuthorizations.isEmpty)
+    }
+
     func testPrivacySettingsSourceFailsClosedUntilSettingsAreAvailable() throws {
         let source = PrivacyPolicySettingsSource()
 
@@ -152,10 +210,10 @@ final class PrivacyModelsTests: XCTestCase {
         XCTAssertEqual(result.missingVariables, [.selected, .clipboard])
     }
 
-    func testCloudSpeechRequiresConfirmation() {
+    func testUnclassifiedRemoteRecognizerRequiresConfirmation() {
         let decision = PrivacyPolicy.evaluate(
             context: makeContext(),
-            workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
+            workflow: makeWorkflow(recognizerID: "remote.speech"),
             settings: PrivacyPolicySettings(sensitiveAppRules: [])
         )
 
@@ -180,7 +238,7 @@ final class PrivacyModelsTests: XCTestCase {
 
         let decision = PrivacyPolicy.evaluate(
             context: context,
-            preferredSpeechEngine: .cloud,
+            processingDestinations: [.cloudText],
             settings: settings
         )
 
@@ -214,7 +272,7 @@ final class PrivacyModelsTests: XCTestCase {
 
         let cloud = PrivacyPolicy.evaluate(
             context: context,
-            workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
+            workflow: makeWorkflow(recognizerID: "remote.speech"),
             settings: settings
         )
         let local = PrivacyPolicy.evaluate(

@@ -179,7 +179,7 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     return L10n.string(.menuStatusReady, language: language)
   }
 
-  public var statusDetail: String {
+  public var statusDetail: String? {
     if let failure = trimmedFailure {
       return ClipboardTextFormatting.previewText(failure, limit: 96)
     }
@@ -201,11 +201,7 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
       return L10n.menuClipboardReadyStatus(stackCount, language: language)
     }
 
-    if let lastResultPreview {
-      return "\(L10n.string(.menuStatusLastResult, language: language)): \(lastResultPreview)"
-    }
-
-    return L10n.string(.menuStatusIdleDetail, language: language)
+    return nil
   }
 
   public var statusSystemImage: String {
@@ -234,12 +230,7 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
   }
 
   public var speechEngineTitle: String {
-    switch preferredSpeechEngine {
-    case .local:
-      return L10n.string(.menuLocalEngine, language: language)
-    case .cloud:
-      return L10n.string(.menuCloudEngine, language: language)
-    }
+    L10n.string(.menuLocalEngine, language: language)
   }
 
   public var outputModeTitle: String {
@@ -305,10 +296,6 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     clipboardSettingsAvailable
       && clipboardCaptureEnabled
       && clipboardCaptureState == .active
-  }
-
-  public var lastResultPreview: String? {
-    trimmedLastResult.map { ClipboardTextFormatting.previewText($0, limit: 96) }
   }
 
   public var persistenceStatusTitle: String? {
@@ -381,12 +368,12 @@ public struct MenuBarStatusView: View {
         .keyboardShortcut("o", modifiers: [.command, .shift])
 
         Button {
-          model.showRecentResults()
+          model.showRunHistory()
           openMainWindow()
         } label: {
           Label(
-            L10n.string(.menuRecentResults, language: model.language),
-            systemImage: "text.badge.checkmark")
+            UIStrings.text(.historyScopeAll, language: model.language),
+            systemImage: "clock.arrow.circlepath")
         }
 
         Button {
@@ -445,12 +432,6 @@ public struct MenuBarStatusView: View {
         Divider()
 
         Menu {
-          speechEngineMenu
-        } label: {
-          Label(L10n.string(.menuSpeechEngine, language: model.language), systemImage: "waveform")
-        }
-
-        Menu {
           languageMenu
         } label: {
           Label(L10n.string(.menuInterfaceLanguage, language: model.language), systemImage: "globe")
@@ -479,7 +460,10 @@ public struct MenuBarStatusView: View {
         Menu {
           workflowMenu
         } label: {
-          Label(L10n.string(.menuWorkflows, language: model.language), systemImage: "record.circle")
+          Label(
+            L10n.string(.menuWorkflows, language: model.language),
+            systemImage: "square.stack.3d.up"
+          )
         }
 
         Divider()
@@ -536,8 +520,8 @@ public struct MenuBarStatusView: View {
       .accessibilityIdentifier("menu.status.open-setup")
     }
 
-    if !model.isApplicationShuttingDown {
-      MenuBarFixedWidthText(text: panelState.statusDetail)
+    if !model.isApplicationShuttingDown, let statusDetail = panelState.statusDetail {
+      MenuBarFixedWidthText(text: statusDetail)
         .accessibilityIdentifier("menu.status.detail")
     }
 
@@ -556,9 +540,6 @@ public struct MenuBarStatusView: View {
         .accessibilityIdentifier("menu.status.persistence-detail")
     }
 
-    Label(panelState.speechEngineTitle, systemImage: "waveform")
-      .accessibilityIdentifier("menu.status.speech-engine")
-
     Label(panelState.outputModeTitle, systemImage: "textformat")
       .accessibilityIdentifier("menu.status.output-mode")
 
@@ -570,53 +551,6 @@ public struct MenuBarStatusView: View {
       systemImage: panelState.clipboardCaptureStatusSystemImage
     )
     .accessibilityIdentifier("menu.status.clipboard-capture")
-  }
-
-  @ViewBuilder
-  private var speechEngineMenu: some View {
-    scalarSettingsUnavailableNotice(.speechRoute)
-
-    Button {
-      model.setPreferredSpeechEngine(.local)
-    } label: {
-      selectionLabel(
-        L10n.string(.menuLocalEngine, language: model.language),
-        isSelected: model.preferredSpeechEngine == .local
-      )
-    }
-    .disabled(
-      !model.canMutateScalarSettings(in: .speechRoute)
-        || !model.localSpeechTrustMaterialAvailable
-    )
-    .help(
-      model.localSpeechTrustMaterialAvailable
-        ? L10n.string(.menuLocalEngine, language: model.language)
-        : UIStrings.localSpeechAvailabilityDescription(
-          model.localSpeechAvailability,
-          language: model.language
-        )
-    )
-
-    Button {
-      model.setPreferredSpeechEngine(.cloud)
-    } label: {
-      selectionLabel(
-        L10n.string(.menuCloudEngine, language: model.language),
-        isSelected: model.preferredSpeechEngine == .cloud
-      )
-    }
-    .disabled(!model.canMutateScalarSettings(in: .speechRoute))
-
-    Divider()
-
-    Button {
-      openRecognitionSettings()
-    } label: {
-      Label(
-        L10n.string(.menuManageEngineSettings, language: model.language),
-        systemImage: "slider.horizontal.3"
-      )
-    }
   }
 
   @ViewBuilder
@@ -706,11 +640,6 @@ public struct MenuBarStatusView: View {
         L10n.string(.menuPasteTopOfStack, language: model.language), systemImage: "arrow.down.doc")
     }
     .disabled(!panelState.canDeliverTopOfStack)
-  }
-
-  func openRecognitionSettings() {
-    model.showSettings(.speech)
-    openMainWindow()
   }
 
   func openStorageSettings() {

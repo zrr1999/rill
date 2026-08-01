@@ -30,6 +30,37 @@ extension AppModel {
     }
 
     @discardableResult
+    public func setPreferredLocalSpeechModel(_ modelIdentifier: String) -> Bool {
+        guard canMutateScalarSettings(in: .speechRoute),
+              canMutateScalarSettings(in: .localSpeech),
+              localSpeechTrustMaterialAvailable,
+              trustedLocalSpeechModels.contains(where: { $0.id == modelIdentifier }) else {
+            return false
+        }
+
+        if preferredSpeechEngine == .local {
+            selectTrustedLocalSpeechModel(modelIdentifier)
+        } else {
+            // Set the exact model before enabling the local route so the route
+            // transition prepares only the newly selected backend.
+            if localSpeechModel != modelIdentifier {
+                localSpeechModel = modelIdentifier
+            }
+            preferredSpeechEngine = .local
+        }
+        return true
+    }
+
+    @discardableResult
+    public func setPreferredTTSModel(_ modelIdentifier: String) -> Bool {
+        guard ttsModelOptions.contains(where: { $0.id == modelIdentifier }) else {
+            return false
+        }
+        ttsModelIdentifier = modelIdentifier
+        return true
+    }
+
+    @discardableResult
     public func setBuiltinPushToTalkOutputMode(
         _ mode: BuiltinPushToTalkOutputMode
     ) -> Bool {
@@ -42,6 +73,13 @@ extension AppModel {
     public func setLongRecordingModeEnabled(_ isEnabled: Bool) -> Bool {
         guard canMutateScalarSettings(in: .input) else { return false }
         longRecordingModeEnabled = isEnabled
+        return true
+    }
+
+    @discardableResult
+    public func setRecordingDurationLimit(_ limit: RecordingDurationLimit) -> Bool {
+        guard canMutateScalarSettings(in: .input) else { return false }
+        recordingDurationLimit = limit
         return true
     }
 }

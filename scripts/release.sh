@@ -17,6 +17,7 @@ APP_NAME="Rill"
 BUNDLE_ID="dev.zrr.Rill"
 SPEECH_WORKER_NAME="RillSpeechWorker"
 SPEECH_WORKER_IDENTIFIER="dev.zrr.Rill.SpeechWorker"
+MLX_RESOURCE_BUNDLE_NAME="mlx-swift_Cmlx.bundle"
 MIN_MACOS="14.0"
 
 # 签名身份（Developer ID Application 用于分发，Apple Development 用于本地）
@@ -1409,6 +1410,13 @@ cd "$PROJECT_DIR"
 purge_stale_module_caches_if_needed
 "$SCRIPT_DIR/preflight.sh"
 info "发布预检通过"
+
+# Preflight ends with a Debug test build. Release and Debug artifacts share the
+# same SwiftPM scratch path, so crossing configurations without a clean can
+# leave stale module-validation state behind on newer Xcode toolchains.
+info "清理 Debug 构建产物并重新构建 Release..."
+swift package clean
+"$SCRIPT_DIR/build_xcode_release.sh"
 BUILD_DIR="$(
   "$SCRIPT_DIR/build_xcode_release.sh" --show-bin-path
 )"
@@ -1451,8 +1459,14 @@ ENT
 info "签名 ($RESOLVED_SIGN_IDENTITY_NAME)..."
 revalidate_notarized_release_source "签名前"
 
+MLX_RESOURCE_BUNDLE="$APP_BUNDLE/Contents/Helpers/$MLX_RESOURCE_BUNDLE_NAME"
+info "先签名 MLX Metal 资源包..."
+codesign --force --timestamp \
+  --sign "$RESOLVED_SIGN_IDENTITY" \
+  "$MLX_RESOURCE_BUNDLE"
+
 SPEECH_WORKER_EXECUTABLE="$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_NAME"
-info "先签名语音识别辅助进程..."
+info "签名语音识别辅助进程..."
 codesign --force --options runtime --timestamp \
   --identifier "$SPEECH_WORKER_IDENTIFIER" \
   --sign "$RESOLVED_SIGN_IDENTITY" \

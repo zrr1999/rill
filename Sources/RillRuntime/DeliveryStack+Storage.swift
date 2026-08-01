@@ -157,7 +157,12 @@ extension DeliveryStack {
         var evictedHistoryItemIDs: Set<UUID> = []
         let currentActiveIDs = activeItemIDs()
         let evictionCandidates = historyIDs.reversed().filter {
-            $0 != item.id && !currentActiveIDs.contains($0)
+            $0 != item.id
+                && !currentActiveIDs.contains($0)
+                && (
+                    projectedRawOversizedItemIDs.contains($0)
+                        || itemsByID[$0]?.isPinned != true
+                )
         }
 
         for candidateID in evictionCandidates {
@@ -783,7 +788,11 @@ extension DeliveryStack {
         var remainingRawOversizedItemIDs = rawOversizedLegacyItemIDs
         var totalByteCount = knownEncodedItemByteCount()
         var removalIDs: Set<UUID> = []
-        for itemID in historyOnlyIDs.reversed() {
+        let evictionCandidates = historyOnlyIDs.reversed().filter { itemID in
+            remainingRawOversizedItemIDs.contains(itemID)
+                || itemsByID[itemID]?.isPinned != true
+        }
+        for itemID in evictionCandidates {
             guard historyOnlyCount > storageLimits.maximumHistoryOnlyItemCount
                     || !remainingRawOversizedItemIDs.isEmpty
                     || totalByteCount > storageLimits.maximumTotalEncodedItemByteCount

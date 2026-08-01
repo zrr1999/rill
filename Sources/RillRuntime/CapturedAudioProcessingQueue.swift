@@ -452,7 +452,8 @@ public actor CapturedAudioProcessingQueue {
                     triggerEvent: job.triggerEvent,
                     capturedAudio: capturedAudio,
                     contextSnapshot: authorization.authorizedContext.contextSnapshot,
-                    recognitionOptions: authorization.authorizedContext.recognitionOptions
+                    recognitionOptions: authorization.authorizedContext.recognitionOptions,
+                    waitsForAvailability: true
                 )
                 if case .failed(let failure) = outcome {
                     await preserveFailedAudioIfEligible(

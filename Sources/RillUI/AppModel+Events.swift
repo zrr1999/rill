@@ -75,38 +75,6 @@ private enum EventFeedPrivacyBodyKind {
     }
 }
 
-private func runFailurePresentation(for untrustedMessage: String?) -> LocalizedText {
-    let safeMessage = HistoryFailureSanitizer.sanitize(untrustedMessage)
-        ?? HistoryFailureSanitizer.genericMessage
-    let simplifiedChinese: String
-    switch safeMessage {
-    case "The Deepgram API key is unavailable. Open Settings, save a key, and retry.":
-        simplifiedChinese = "Deepgram API 密钥不可用。请在设置中保存密钥后重试。"
-    case "The Deepgram endpoint configuration is invalid. Open Settings and retry.":
-        simplifiedChinese = "Deepgram 端点配置无效。请在设置中修正后重试。"
-    case "Microphone access is required. Grant access in System Settings and retry.":
-        simplifiedChinese = "需要麦克风权限。请在系统设置中授权后重试。"
-    case "Accessibility access is required for direct text insertion. Grant access and retry.":
-        simplifiedChinese = "直接输入文本需要辅助功能权限。请授权后重试。"
-    case "The run was blocked by the current privacy policy. Review Privacy settings and retry.":
-        simplifiedChinese = "当前隐私策略阻止了本次运行。请检查隐私设置后重试。"
-    case HistoryFailureSanitizer.noSpeechMessage:
-        simplifiedChinese = "未检测到语音。请重试。"
-    case HistoryFailureSanitizer.globalInputUnavailableMessage:
-        simplifiedChinese = "全局键盘输入不可用，语音录制已停止。"
-    case HistoryFailureSanitizer.recognitionTimeoutMessage:
-        simplifiedChinese = "语音识别耗时过长，本次运行已停止。请重试。"
-    case HistoryFailureSanitizer.recognitionRecoveryPendingMessage:
-        simplifiedChinese = "上次识别操作仍在结束中。请稍候，或切换识别引擎。"
-    default:
-        simplifiedChinese = "工作流失败。请在诊断中查看安全摘要后重试。"
-    }
-    return LocalizedText(
-        english: safeMessage,
-        simplifiedChinese: simplifiedChinese
-    )
-}
-
 private func actionResultPresentation(_ result: ActionResult) -> LocalizedText {
     switch result {
     case .injected:
@@ -249,7 +217,7 @@ extension AppModel {
             workflowAudioRunState = .idle
             lastFailure = nil
             let wf = workflows.first(where: { $0.id == run.workflowID })
-            let isStack = wf?.pipeline.deliveryPolicy.strategy == .stackFirst
+            let isStack = wf?.plan.output.deliveryPolicy.strategy == .stackFirst
             pendingRuns[run.runID] = PendingRunInfo(
                 workflowID: run.workflowID,
                 workflow: run.workflow,
@@ -367,7 +335,7 @@ extension AppModel {
                     completedPending?.isStackRelated
                     ?? (
                         summary.workflow.titleKey == .stackDelivery
-                            || (workflows.first(where: { $0.id == summary.workflowID })?.pipeline.deliveryPolicy.strategy == .stackFirst)
+                            || (workflows.first(where: { $0.id == summary.workflowID })?.plan.output.deliveryPolicy.strategy == .stackFirst)
                     )
                 recordHistory(HistoryRecord(
                     runID: summary.runID,
@@ -426,7 +394,7 @@ extension AppModel {
             )
             scheduleLiveSubtitleHide()
         case .runFailed(let failedRunID, let workflow, let message):
-            let failurePresentation = runFailurePresentation(for: message)
+            let failurePresentation = RunFailurePresentation.localizedText(for: message)
             lastFailure = failurePresentation.string(for: language)
             let failedCurrentCapture = failedRunID != nil
                 && currentCaptureLiveSubtitleSnapshot?.runID == failedRunID
@@ -757,10 +725,13 @@ extension AppModel {
                 !(record.finalText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         })?.finalText
         lastFailure = records.first(where: { $0.outcome == .failed })
-            .map { runFailurePresentation(for: $0.failureMessage).string(for: language) }
+            .map {
+                RunFailurePresentation.text(
+                    for: $0.failureMessage,
+                    language: language
+                )
+            }
         pendingResolution = nil
-        deepgramTestTranscript = nil
-        deepgramTestError = nil
         eventFeed.removeAll()
         pendingRuns.removeAll()
         currentCaptureLiveSubtitleSnapshot = nil

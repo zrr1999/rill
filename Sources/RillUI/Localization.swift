@@ -170,16 +170,8 @@ public enum UIStrings {
     case voiceSetupLocalNeedsPreparation
     case voiceSetupLocalWillDownload
     case voiceSetupLocalFailed
-    case voiceSetupCloudCredentialSaving
-    case voiceSetupCloudCredentialMissing
-    case voiceSetupCloudCredentialUnavailable
-    case voiceSetupCloudNeedsCheck
-    case voiceSetupCloudVerified
     case voiceSetupPrivacyLoading
     case voiceSetupPrivacyUnavailable
-    case voiceSetupCloudConfirmationOn
-    case voiceSetupCloudConfirmationOff
-    case voiceSetupOpenDiagnostics
     case permissions
     case permissionHint
     case refreshPermissions
@@ -264,8 +256,13 @@ public enum UIStrings {
     case clipboardReplaceWithWorkflow
     case clipboardUseItem
     case clipboardDeleteItem
+    case clipboardPinItem
+    case clipboardUnpinItem
+    case clipboardPinnedBadge
+    case clipboardPinnedOnly
     case clipboardSearch
     case clipboardClearSearch
+    case clipboardNoPinnedItems
     case clipboardSection
     case clipboardAddTag
     case clipboardRemoveTag
@@ -298,8 +295,6 @@ public enum UIStrings {
     case diagnosticsLoadFailed
     case diagnosticsRetry
     case diagnosticsEmpty
-    case settingsDeepgram
-    case settingsDeepgramDescription
     case settingsSpeechEngine
     case settingsSpeechEngineDescription
     case settingsBuiltinPushToTalk
@@ -331,29 +326,12 @@ public enum UIStrings {
     case localSpeechLocalTestHint
     case localSpeechPreparationHint
     case localSpeechTrustedCatalogHint
-    case deepgramAPIKey
-    case deepgramBaseURL
-    case deepgramModel
-    case deepgramLanguage
-    case deepgramTestHint
-    case deepgramRecordTest
-    case deepgramCancelPreparation
-    case deepgramStopAndTest
-    case deepgramCancelTest
-    case deepgramConfigurationChanged
-    case deepgramLastTranscript
-    case deepgramNoTranscript
-    case deepgramMicrophoneRequired
     case settingsWorkflows
     case settingsWorkflowsDescription
     case stackPasteRequiresAccessibility
     case diagnosticsTitle
     case diagnosticsDescription
-    case diagnosticsSpeechCheck
-    case diagnosticsSpeechCheckDescription
     case diagnosticsTimeline
-    case diagnosticsManageProviderSettings
-    case diagnosticsOpenSettings
     case workflowsTitle
     case workflowsDescription
     case workflowEditor
@@ -426,6 +404,26 @@ public enum UIStrings {
     case (.simplifiedChinese, .vocabulary): "词汇"
     case (.english, .workflows): "Workflows"
     case (.simplifiedChinese, .workflows): "工作流"
+    }
+  }
+
+  public static func recordingDurationLimit(
+    _ limit: RecordingDurationLimit,
+    language: AppLanguage
+  ) -> String {
+    switch (language, limit) {
+    case (.english, .twoMinutes):
+      "2 minutes"
+    case (.simplifiedChinese, .twoMinutes):
+      "2 分钟"
+    case (.english, .fiveMinutes):
+      "5 minutes"
+    case (.simplifiedChinese, .fiveMinutes):
+      "5 分钟"
+    case (.english, .unlimited):
+      "Unlimited"
+    case (.simplifiedChinese, .unlimited):
+      "无限制"
     }
   }
 
@@ -518,24 +516,24 @@ public enum UIStrings {
     }
   }
 
-  public static func recentResultsAccessibilityLabel(
+  public static func recentRunsAccessibilityLabel(
     count: Int,
     language: AppLanguage
   ) -> String {
     switch language {
     case .english:
-      return count == 1 ? "Recent Results, 1 result" : "Recent Results, \(count) results"
+      return count == 1 ? "Recent Runs, 1 run" : "Recent Runs, \(count) runs"
     case .simplifiedChinese:
-      return "最近结果，\(count) 条"
+      return "最近运行，\(count) 条"
     }
   }
 
-  public static func recentResultsAccessibilityHint(language: AppLanguage) -> String {
+  public static func recentRunsAccessibilityHint(language: AppLanguage) -> String {
     switch language {
     case .english:
-      return "Opens Recent Results in Run History."
+      return "Opens Run History."
     case .simplifiedChinese:
-      return "在运行历史中打开最近结果。"
+      return "打开运行历史。"
     }
   }
 
@@ -692,8 +690,8 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   ),
   .voiceSetupLocalArchitectureUnsupported: .init(
     english:
-      "This build does not include a compatible sherpa-onnx runtime. Use a supported Rill build or select cloud speech.",
-    simplifiedChinese: "此构建未包含兼容的 sherpa-onnx 运行时。请使用受支持的 Rill 构建，或选择云端语音。"
+      "This build does not include a compatible local speech runtime. Use a supported Rill build.",
+    simplifiedChinese: "此构建未包含兼容的本地语音运行时。请使用受支持的 Rill 构建。"
   ),
   .voiceSetupLocalTrustMaterialUnavailable: .init(
     english:
@@ -717,27 +715,6 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     english: "Local model preparation failed. Open Settings for the reported error and retry.",
     simplifiedChinese: "本地模型准备失败。请在设置中查看已报告的错误并重试。"
   ),
-  .voiceSetupCloudCredentialMissing: .init(
-    english: "No usable Deepgram API key is available. Add one or check Keychain access.",
-    simplifiedChinese: "没有可用的 Deepgram API Key。请添加密钥或检查钥匙串访问。"
-  ),
-  .voiceSetupCloudCredentialSaving: .init(
-    english: "Saving the Deepgram API key to macOS Keychain…",
-    simplifiedChinese: "正在把 Deepgram API Key 保存到 macOS 钥匙串…"
-  ),
-  .voiceSetupCloudCredentialUnavailable: .init(
-    english:
-      "macOS Keychain could not read or save the Deepgram API key. Retry access before running a speech check.",
-    simplifiedChinese: "macOS 钥匙串无法读取或保存 Deepgram API Key。请先重试访问，再运行语音检查。"
-  ),
-  .voiceSetupCloudNeedsCheck: .init(
-    english: "An API key is entered but not verified. Run a Speech Check before relying on it.",
-    simplifiedChinese: "已填写 API Key，但尚未验证。正式使用前请运行一次语音检查。"
-  ),
-  .voiceSetupCloudVerified: .init(
-    english: "A Deepgram Speech Check passed in this app session.",
-    simplifiedChinese: "本次 App 会话中的 Deepgram 语音检查已通过。"
-  ),
   .voiceSetupPrivacyLoading: .init(
     english: "Loading privacy safeguards…",
     simplifiedChinese: "正在加载隐私保护设置…"
@@ -745,20 +722,6 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   .voiceSetupPrivacyUnavailable: .init(
     english: "Privacy settings are unavailable, so voice runs remain blocked.",
     simplifiedChinese: "隐私设置不可用，因此语音运行保持阻断。"
-  ),
-  .voiceSetupCloudConfirmationOn: .init(
-    english:
-      "Each cloud run asks before microphone audio and matching recognition terms leave this Mac.",
-    simplifiedChinese: "每次云端运行都会在麦克风音频和匹配的识别术语离开本机前询问。"
-  ),
-  .voiceSetupCloudConfirmationOff: .init(
-    english:
-      "Cloud confirmation is off. Audio and matching recognition terms may leave without a prompt.",
-    simplifiedChinese: "云端确认已关闭；音频和匹配的识别术语可能在不提示的情况下离开本机。"
-  ),
-  .voiceSetupOpenDiagnostics: .init(
-    english: "Run Speech Check",
-    simplifiedChinese: "运行语音检查"
   ),
   .permissions: .init(
     english: "Permissions",
@@ -1110,6 +1073,22 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     english: "Delete",
     simplifiedChinese: "删除"
   ),
+  .clipboardPinItem: .init(
+    english: "Pin",
+    simplifiedChinese: "置顶"
+  ),
+  .clipboardUnpinItem: .init(
+    english: "Unpin",
+    simplifiedChinese: "取消置顶"
+  ),
+  .clipboardPinnedBadge: .init(
+    english: "Pinned",
+    simplifiedChinese: "已置顶"
+  ),
+  .clipboardPinnedOnly: .init(
+    english: "Show pinned items only",
+    simplifiedChinese: "仅显示置顶条目"
+  ),
   .clipboardSearch: .init(
     english: "Search clipboard",
     simplifiedChinese: "搜索剪贴板"
@@ -1117,6 +1096,10 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   .clipboardClearSearch: .init(
     english: "Clear clipboard search",
     simplifiedChinese: "清除剪贴板搜索"
+  ),
+  .clipboardNoPinnedItems: .init(
+    english: "No pinned clipboard items match the current filters.",
+    simplifiedChinese: "没有匹配当前筛选条件的置顶剪贴板条目。"
   ),
   .clipboardSection: .init(
     english: "Clipboard section",
@@ -1256,15 +1239,6 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     english: "No persisted diagnostics yet.",
     simplifiedChinese: "还没有持久化诊断信息。"
   ),
-  .settingsDeepgram: .init(
-    english: "Deepgram Cloud",
-    simplifiedChinese: "Deepgram 云端识别"
-  ),
-  .settingsDeepgramDescription: .init(
-    english: "Uses your Deepgram account for cloud transcription. Add API settings here, then use "
-      + "Diagnostics to run a speech check.",
-    simplifiedChinese: "使用你的 Deepgram 账号进行云端转写。先在这里填写 API 信息，再去诊断页做语音检查。"
-  ),
   .settingsSpeechEngine: .init(
     english: "Speech Engine",
     simplifiedChinese: "语音引擎"
@@ -1303,8 +1277,8 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     simplifiedChinese: "此构建未包含受审的本地模型信任材料，无法准备或下载本地语音模型。"
   ),
   .localSpeechModel: .init(
-    english: "Local Model",
-    simplifiedChinese: "本地模型"
+    english: "Final Transcription Model",
+    simplifiedChinese: "最终转写模型"
   ),
   .localSpeechDownloadedModels: .init(
     english: "Downloaded Models",
@@ -1395,61 +1369,8 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   ),
   .localSpeechTrustedCatalogHint: .init(
     english:
-      "Choose a release-pinned sherpa-onnx model. Rill verifies the archive before extracting it for on-device use; custom model IDs are not accepted.",
-    simplifiedChinese: "请选择由发布版本固定的 sherpa-onnx 模型；Rill 会先校验下载包再解压用于本机识别，当前不接受自定义模型 ID。"
-  ),
-  .deepgramAPIKey: .init(
-    english: "API Key",
-    simplifiedChinese: "API Key"
-  ),
-  .deepgramBaseURL: .init(
-    english: "Base URL",
-    simplifiedChinese: "Base URL"
-  ),
-  .deepgramModel: .init(
-    english: "Model",
-    simplifiedChinese: "模型"
-  ),
-  .deepgramLanguage: .init(
-    english: "Language",
-    simplifiedChinese: "语言"
-  ),
-  .deepgramTestHint: .init(
-    english:
-      "Record a short sample to verify your microphone, API key, and cloud transcription setup.",
-    simplifiedChinese: "录一小段样本，检查麦克风、API Key 和云端转写配置是否正常。"
-  ),
-  .deepgramRecordTest: .init(
-    english: "Record Test Sample",
-    simplifiedChinese: "录制测试样本"
-  ),
-  .deepgramCancelPreparation: .init(
-    english: "Cancel Preparation",
-    simplifiedChinese: "取消准备"
-  ),
-  .deepgramStopAndTest: .init(
-    english: "Stop and Transcribe",
-    simplifiedChinese: "停止并转写"
-  ),
-  .deepgramCancelTest: .init(
-    english: "Cancel Test",
-    simplifiedChinese: "取消测试"
-  ),
-  .deepgramConfigurationChanged: .init(
-    english: "Deepgram settings changed, so the speech check was cancelled. Run it again.",
-    simplifiedChinese: "Deepgram 设置已更改，因此语音检查已取消。请重新运行。"
-  ),
-  .deepgramLastTranscript: .init(
-    english: "Latest Speech Check",
-    simplifiedChinese: "最近一次语音检查"
-  ),
-  .deepgramNoTranscript: .init(
-    english: "No speech check has completed yet.",
-    simplifiedChinese: "还没有完成过语音检查。"
-  ),
-  .deepgramMicrophoneRequired: .init(
-    english: "Grant microphone access before recording a speech check sample.",
-    simplifiedChinese: "请先授予麦克风权限，再录制语音检查样本。"
+      "Choose a release-pinned local model. Rill verifies downloaded artifacts before on-device use; custom model IDs are not accepted.",
+    simplifiedChinese: "请选择由当前版本固定的本地模型；Rill 会在本机使用前校验下载产物，当前不接受自定义模型 ID。"
   ),
   .settingsWorkflows: .init(
     english: "Workflows",
@@ -1471,25 +1392,9 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     english: "Validate your speech setup and inspect recent runtime events.",
     simplifiedChinese: "检查语音配置是否正常，并查看最近的运行事件。"
   ),
-  .diagnosticsSpeechCheck: .init(
-    english: "Speech Check",
-    simplifiedChinese: "语音检查"
-  ),
-  .diagnosticsSpeechCheckDescription: .init(
-    english: "Use this check after updating your microphone permission or Deepgram settings.",
-    simplifiedChinese: "更新麦克风权限或 Deepgram 配置后，可以在这里做一次快速检查。"
-  ),
   .diagnosticsTimeline: .init(
     english: "Runtime Timeline",
     simplifiedChinese: "运行时间线"
-  ),
-  .diagnosticsManageProviderSettings: .init(
-    english: "Manage Deepgram credentials in Settings before running a cloud speech check.",
-    simplifiedChinese: "在运行云端语音检查前，请先到设置页管理 Deepgram 凭据。"
-  ),
-  .diagnosticsOpenSettings: .init(
-    english: "Open Settings",
-    simplifiedChinese: "前往设置"
   ),
   .workflowsTitle: .init(
     english: "Workflow Editor",

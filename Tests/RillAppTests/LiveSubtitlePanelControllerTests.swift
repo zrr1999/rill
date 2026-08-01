@@ -6,6 +6,18 @@ import XCTest
 @testable import RillApp
 @testable import RillCore
 
+private actor DurationLimitRemovalProbe {
+  private var runIDs: [UUID] = []
+
+  func record(_ runID: UUID) {
+    runIDs.append(runID)
+  }
+
+  func snapshot() -> [UUID] {
+    runIDs
+  }
+}
+
 @MainActor
 final class LiveSubtitlePanelControllerTests: XCTestCase {
   private let visibleFrame = NSRect(x: 100, y: 80, width: 1_440, height: 900)
@@ -193,6 +205,48 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
 
     controller.update(snapshot: snapshot, language: .english)
     XCTAssertFalse(try XCTUnwrap(controller.windowState).isVisible)
+  }
+
+  func testDurationLimitRemovalIsRoutedOnceToTheCurrentRunOnly() async {
+    _ = NSApplication.shared
+    let controller = LiveSubtitlePanelController(
+      visibleFrameResolver: { self.visibleFrame }
+    )
+    defer {
+      controller.update(snapshot: nil, language: .english)
+    }
+    let probe = DurationLimitRemovalProbe()
+    let runID = UUID()
+    controller.installRemoveDurationLimitAction { requestedRunID in
+      await probe.record(requestedRunID)
+      return true
+    }
+    controller.update(
+      snapshot: LiveSubtitleSnapshot(
+        runID: runID,
+        phase: .recording,
+        recordingStartedAt: Date(),
+        maximumRecordingDurationSeconds: 120,
+        canRemoveRecordingDurationLimit: true
+      ),
+      language: .english
+    )
+
+    let notificationName = Notification.Name(
+      "works.earendil.rill.live-subtitle.remove-duration-limit-requested"
+    )
+    NotificationCenter.default.post(name: notificationName, object: UUID())
+    NotificationCenter.default.post(name: notificationName, object: runID)
+    NotificationCenter.default.post(name: notificationName, object: runID)
+    for _ in 0..<20 {
+      if !(await probe.snapshot()).isEmpty {
+        break
+      }
+      await Task.yield()
+    }
+
+    let routedRunIDs = await probe.snapshot()
+    XCTAssertEqual(routedRunIDs, [runID])
   }
 
   func testSameRunContentShrinksAfterDebounce() async throws {

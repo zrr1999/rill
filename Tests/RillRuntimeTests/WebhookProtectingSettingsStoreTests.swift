@@ -81,6 +81,51 @@ final class WebhookProtectingSettingsStoreTests: XCTestCase {
         XCTAssertEqual(secureSetCount, 1)
     }
 
+    func testMigrationSanitizesV2LibraryWithoutDroppingCustomizations() async throws {
+        let workflowID = UUID()
+        let collectionID = UUID()
+        let customization = WorkflowCustomization(
+            workflowID: workflowID,
+            vocabularyBindings: [
+                VocabularyCollectionBinding(collectionID: collectionID),
+            ]
+        )
+        let document = WorkflowLibraryDocument(
+            customWorkflows: [
+                makeWebhookWorkflow(
+                    id: workflowID,
+                    url: "https://example.com/v2-hook"
+                ),
+            ],
+            customizations: [customization]
+        )
+        let settingsStore = WebhookMigrationSettingsStore(
+            storage: [.workflowLibrary: try encode(document)]
+        )
+        let secureStore = WebhookMigrationSecureStore()
+        let migrator = WebhookConfigurationMigrator(
+            settingsStore: settingsStore,
+            secureStore: secureStore
+        )
+
+        let migrationState = await migrator.migrateIfNeeded()
+        XCTAssertEqual(migrationState, .ready(protectedActionCount: 1))
+        let snapshot = await settingsStore.snapshot()
+        let rawLibrary = try XCTUnwrap(snapshot.storage[.workflowLibrary])
+        let migrated = try JSONDecoder().decode(
+            WorkflowLibraryDocument.self,
+            from: Data(rawLibrary.utf8)
+        )
+
+        XCTAssertEqual(migrated.customizations, [customization])
+        XCTAssertNil(
+            migrated.customWorkflows[0].plan.output.actions[0].configuration[
+                ExternalOutputActionConfigurationKey.webhookURL
+            ]
+        )
+        XCTAssertNil(snapshot.storage[.customWorkflows])
+    }
+
     func testDuplicateWorkflowIDBlocksBeforeSecureOrAtomicWrites() async throws {
         let workflowID = UUID()
         let first = makeWebhookWorkflow(id: workflowID, url: "https://one.example")

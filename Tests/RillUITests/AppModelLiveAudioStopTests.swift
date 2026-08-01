@@ -23,7 +23,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
     func testMatchingLiveAuthorizationFailureClearsManualRecordingState() {
         let harness = makeHarness()
         let runID = UUID()
-        beginManualCapture(harness.model, runID: runID, providerID: "deepgram.live")
+        beginManualCapture(harness.model, runID: runID, providerID: "sherpa-onnx.local")
 
         harness.model.handle(
             .runFailed(
@@ -193,7 +193,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
     func testExplicitStopClearsOnlyMatchingVisibleCapture() {
         let harness = makeHarness()
         let runID = UUID()
-        beginManualCapture(harness.model, runID: runID, providerID: "deepgram.live")
+        beginManualCapture(harness.model, runID: runID, providerID: "sherpa-onnx.local")
 
         harness.model.markLiveAudioRunStoppedByUser(runID: UUID())
 

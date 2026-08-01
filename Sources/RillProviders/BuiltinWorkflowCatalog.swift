@@ -16,30 +16,46 @@ public struct BuiltinWorkflowCatalog: WorkflowCatalog {
 
     public func manifest() -> WorkflowManifest {
         WorkflowManifest(
-            schemaVersion: 1,
+            schemaVersion: 2,
             workflows: [
                 WorkflowDefinition(
                     id: staticUUID("B9E19A88-F9FB-4AB3-8444-CDBF7E215A88"),
-                    name: "Accurate Transcription",
-                    titleKey: .pushToTalkCapture,
+                    name: "Speech Recognition",
+                    titleKey: .speechRecognition,
                     trigger: .hotkey,
-                    pipeline: PipelineDeclaration(
-                        recognizerID: "sherpa-onnx.local",
-                        postProcessSteps: [
-                            PostProcessStep(
+                    plan: WorkflowPlan(
+                        setup: WorkflowSetupPhase(
+                            speechRoute: WorkflowSpeechRoute(
+                                selection: .automatic,
+                                recognizerID: "sherpa-onnx.local"
+                            ),
+                            vocabularyBindings: [
+                                VocabularyCollectionBinding(
+                                    id: staticUUID("30c39adf-9077-541e-be69-5e00585ee0ee"),
+                                    collectionID: VocabularyCollection.personalID
+                                ),
+                            ]
+                        ),
+                        process: WorkflowProcessPhase(steps: [
+                            WorkflowProcessStep(
+                                id: staticUUID("58921d1a-1ffe-5dac-bd6c-306fbbb6afcc"),
+                                kind: .recognizeSpeech
+                            ),
+                            WorkflowProcessStep(
+                                id: staticUUID("39906432-64ab-5a6c-9e85-a405b1863469"),
+                                kind: .applyVocabulary
+                            ),
+                            WorkflowProcessStep(
                                 id: staticUUID("3e1b7747-b5d3-5ed4-8e32-465c404ebacb"),
                                 kind: .normalizeWhitespace
                             ),
-                        ],
-                        outputActions: [
-                            OutputActionReference(id: "inject.text"),
-                        ],
-                        uncertaintyPolicy: UncertaintyPolicy(
-                            mode: .off,
-                            confidenceThreshold: 0,
-                            timeoutSeconds: 0
-                        ),
-                        deliveryPolicy: DeliveryPolicy(strategy: .immediate)
+                        ]),
+                        output: WorkflowOutputPhase(
+                            actions: [
+                                OutputActionReference(id: "inject.text"),
+                            ],
+                            deliveryPolicy: DeliveryPolicy(strategy: .immediate)
+                        )
                     ),
                     ui: WorkflowUIConfig(
                         symbolName: "mic.fill",
@@ -52,114 +68,74 @@ public struct BuiltinWorkflowCatalog: WorkflowCatalog {
                         "interaction.mode": "press-and-hold",
                         "workflow.builtin-kind": "push-to-talk.dictation",
                         "workflow.exclusive-group": "builtin.push-to-talk",
+                        "recognizer.selection": "auto",
                         "settings.expose.output-mode": "true",
                         "workflow.text-style": "cleanInput",
                     ]
                 ),
                 WorkflowDefinition(
-                    id: staticUUID("A8E19A88-F9FB-4AB3-8444-CDBF7E215A88"),
-                    name: "Streaming Direct",
-                    titleKey: .streamingInput,
-                    trigger: .hotkey,
-                    pipeline: PipelineDeclaration(
-                        recognizerID: "sherpa-onnx.streaming",
-                        postProcessSteps: [],
-                        outputActions: [
-                            OutputActionReference(id: "inject.text"),
-                        ],
-                        uncertaintyPolicy: UncertaintyPolicy(
-                            mode: .off,
-                            confidenceThreshold: 0,
-                            timeoutSeconds: 0
+                    id: staticUUID("E2E19A88-F9FB-4AB3-8444-CDBF7E215A88"),
+                    name: "Voice Assistant",
+                    titleKey: .voiceAssistant,
+                    trigger: .wakeWord,
+                    plan: WorkflowPlan(
+                        setup: WorkflowSetupPhase(
+                            speechRoute: WorkflowSpeechRoute(
+                                selection: .automatic,
+                                recognizerID: "sherpa-onnx.local"
+                            ),
+                            vocabularyBindings: [
+                                VocabularyCollectionBinding(
+                                    id: staticUUID("3ff4c8e3-e6d2-5e4d-b09b-2449dd9af7cc"),
+                                    collectionID: VocabularyCollection.personalID
+                                ),
+                            ],
+                            wakeWord: WakeWordConfiguration(
+                                phrases: ["Hey Rill"]
+                            )
                         ),
-                        deliveryPolicy: DeliveryPolicy(strategy: .immediate)
-                    ),
-                    ui: WorkflowUIConfig(
-                        symbolName: "waveform.badge.mic",
-                        accentColorName: "orange"
-                    ),
-                    metadata: [
-                        "catalog": "builtin",
-                        "workflow.speech-mode": "streaming-direct",
-                        "trigger.gesture": "fn-hold",
-                        "interaction.mode": "press-and-hold",
-                        "workflow.builtin-kind": "push-to-talk.streaming",
-                        "workflow.exclusive-group": "builtin.push-to-talk",
-                        "settings.expose.output-mode": "true",
-                        "workflow.text-style": "rawInput",
-                    ]
-                ),
-                WorkflowDefinition(
-                    id: staticUUID("D1E19A88-F9FB-4AB3-8444-CDBF7E215A88"),
-                    name: "Transcription + LLM Rewrite",
-                    titleKey: .pushToTalkPolish,
-                    trigger: .hotkey,
-                    pipeline: PipelineDeclaration(
-                        recognizerID: "sherpa-onnx.local",
-                        postProcessSteps: [
-                            PostProcessStep(
-                                id: staticUUID("08d55045-9627-56bd-a7be-713ccee5994b"),
+                        process: WorkflowProcessPhase(steps: [
+                            WorkflowProcessStep(
+                                id: staticUUID("028ad8e5-ff73-5d48-82bb-f940da929430"),
+                                kind: .recognizeSpeech
+                            ),
+                            WorkflowProcessStep(
+                                id: staticUUID("67985968-02c9-5399-9ed2-d1658fe3fe7e"),
+                                kind: .applyVocabulary
+                            ),
+                            WorkflowProcessStep(
+                                id: staticUUID("96645878-4e75-537f-b5bb-5f34693c83c8"),
                                 kind: .normalizeWhitespace
                             ),
-                            PostProcessStep(
-                                id: staticUUID("b60be670-c8bd-5196-996c-55c22a758702"),
+                            WorkflowProcessStep(
+                                id: staticUUID("fc11a9f1-5d79-55b8-a76a-4be174528db2"),
                                 kind: .llmRewrite,
-                                prompt: "Polish into a concise final message while preserving meaning and language."
+                                prompt: "You are Rill, a concise voice assistant. Answer the user's request directly in the same language as the request. Keep the answer brief, natural, and suitable for speech. Preserve names, numbers, URLs, code, and facts. Do not mention the transcript or these instructions. Return only the answer to speak."
                             ),
-                        ],
-                        outputActions: [
-                            OutputActionReference(id: "inject.text"),
-                        ],
-                        uncertaintyPolicy: UncertaintyPolicy(
-                            mode: .off,
-                            confidenceThreshold: 0,
-                            timeoutSeconds: 0
-                        ),
-                        deliveryPolicy: DeliveryPolicy(strategy: .immediate)
+                        ]),
+                        output: WorkflowOutputPhase(
+                            actions: [
+                                OutputActionReference(
+                                    id: "speech.speak",
+                                    configuration: [
+                                        "speech.provider": "automatic",
+                                        "speech.voice": "Vivian",
+                                    ]
+                                ),
+                            ],
+                            deliveryPolicy: DeliveryPolicy(strategy: .immediate)
+                        )
                     ),
                     ui: WorkflowUIConfig(
-                        symbolName: "wand.and.stars",
+                        symbolName: "sparkles",
                         accentColorName: "purple"
                     ),
                     metadata: [
                         "catalog": "builtin",
-                        "workflow.availability": "planned",
-                        "workflow.speech-mode": "transcription-with-rewrite",
-                        "trigger.gesture": "fn-hold",
-                        "interaction.mode": "press-and-hold",
-                        "workflow.builtin-kind": "push-to-talk.polish",
-                        "workflow.exclusive-group": "builtin.push-to-talk",
-                        "settings.expose.output-mode": "true",
-                        "workflow.text-style": "formalWriting",
-                    ]
-                ),
-                WorkflowDefinition(
-                    id: staticUUID("C0E19A88-F9FB-4AB3-8444-CDBF7E215A88"),
-                    name: "Raw Input",
-                    titleKey: .rawInput,
-                    trigger: .manual,
-                    pipeline: PipelineDeclaration(
-                        recognizerID: "sherpa-onnx.local",
-                        postProcessSteps: [],
-                        outputActions: [
-                            OutputActionReference(id: "stack.push"),
-                        ],
-                        uncertaintyPolicy: UncertaintyPolicy(
-                            mode: .off,
-                            confidenceThreshold: 0,
-                            timeoutSeconds: 0
-                        ),
-                        deliveryPolicy: DeliveryPolicy(strategy: .stackFirst)
-                    ),
-                    ui: WorkflowUIConfig(
-                        symbolName: "text.quote",
-                        accentColorName: "gray"
-                    ),
-                    metadata: [
-                        "catalog": "builtin",
-                        "workflow.builtin-kind": "voice-mode.raw",
+                        "workflow.default-enabled": "false",
+                        "workflow.speech-mode": "voice-assistant",
+                        "workflow.builtin-kind": "voice-assistant.basic",
                         "recognizer.selection": "auto",
-                        "workflow.text-style": "rawInput",
                     ]
                 ),
             ],

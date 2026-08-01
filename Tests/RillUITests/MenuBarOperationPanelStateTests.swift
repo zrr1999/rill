@@ -117,21 +117,6 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     )
   }
 
-  func testManageRecognitionSettingsUsesTypedSpeechDestinationBeforeOpeningWindow() {
-    let harness = makeHarness()
-    var openedMainWindowCount = 0
-    let menu = MenuBarStatusView(
-      model: harness.model,
-      openMainWindow: { openedMainWindowCount += 1 }
-    )
-
-    menu.openRecognitionSettings()
-
-    XCTAssertEqual(harness.model.selectedSidebarSection, .settings)
-    XCTAssertEqual(harness.model.settingsNavigationRequest?.section, .speech)
-    XCTAssertEqual(openedMainWindowCount, 1)
-  }
-
   func testGlobalInputCheckingKeepsMenuSetupStatusLoading() {
     let readiness = VoiceSetupReadiness(
       globalInput: .checking,
@@ -152,7 +137,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       isRunning: false,
       stackCount: 4,
       canDeliverTopOfStack: true,
-      preferredSpeechEngine: .cloud,
+      preferredSpeechEngine: .local,
       outputMode: .pasteIntoApp,
       voiceSetupStatus: .incomplete
     )
@@ -181,7 +166,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     XCTAssertEqual(state.statusDetail, "正在检查已保存设置、凭据和隐私保护。")
   }
 
-  func testCopyLastResultTrimsWhitespace() {
+  func testCopyLastResultRemainsAvailableWithoutExposingItInStatusDetail() {
     let state = MenuBarOperationPanelState(
       language: .english,
       isRunning: false,
@@ -194,7 +179,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
 
     XCTAssertTrue(state.canCopyLastResult)
     XCTAssertEqual(state.trimmedLastResult, "hello menu")
-    XCTAssertEqual(state.statusDetail, "Last result: hello menu")
+    XCTAssertNil(state.statusDetail)
   }
 
   func testFailureStatusTakesPriorityOverRunningAndStackState() {
@@ -202,17 +187,17 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       language: .simplifiedChinese,
       isRunning: true,
       lastCompletedText: "old result",
-      lastFailure: "Deepgram API key is missing.",
+      lastFailure: "Microphone access is unavailable.",
       stackCount: 3,
       canDeliverTopOfStack: true,
-      preferredSpeechEngine: .cloud,
+      preferredSpeechEngine: .local,
       outputMode: .saveToVoiceGroup
     )
 
     XCTAssertEqual(state.statusTitle, "需要处理")
     XCTAssertEqual(state.statusSystemImage, "exclamationmark.triangle.fill")
-    XCTAssertEqual(state.statusDetail, "Deepgram API key is missing.")
-    XCTAssertEqual(state.speechEngineTitle, "Deepgram 云端")
+    XCTAssertEqual(state.statusDetail, "Microphone access is unavailable.")
+    XCTAssertEqual(state.speechEngineTitle, "sherpa-onnx 本地")
     XCTAssertEqual(state.outputModeTitle, "保存到语音剪贴板组")
   }
 
@@ -251,7 +236,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       isRunning: true,
       stackCount: 0,
       canDeliverTopOfStack: false,
-      preferredSpeechEngine: .cloud,
+      preferredSpeechEngine: .local,
       outputMode: .saveToVoiceGroup
     )
 

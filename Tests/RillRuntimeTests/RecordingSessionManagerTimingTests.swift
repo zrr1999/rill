@@ -448,7 +448,7 @@ final class RecordingSessionManagerTimingTests: XCTestCase {
         let manager = makeManager(
             audioCaptureService: audioCaptureService,
             diagnostics: nil,
-            recordingCueAction: {
+            recordingCueAction: { _ in
                 await cueProbe.perform()
             }
         )
@@ -491,7 +491,7 @@ final class RecordingSessionManagerTimingTests: XCTestCase {
         let manager = makeManager(
             audioCaptureService: audioCaptureService,
             diagnostics: nil,
-            recordingCueAction: {
+            recordingCueAction: { _ in
                 await cueProbe.perform()
             }
         )
@@ -546,7 +546,7 @@ private func makeManager(
     audioCaptureService: RecordingTimingAudioCaptureService,
     diagnostics: DiagnosticsRecorder?,
     cueProbe: RecordingTimingCueProbe = RecordingTimingCueProbe(),
-    recordingCueAction: (@Sendable () async -> Void)? = nil
+    recordingCueAction: (@Sendable (RecordingInteractionCue) async -> Void)? = nil
 ) -> RecordingSessionManager {
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
@@ -594,7 +594,7 @@ private func makeManager(
         diagnostics: diagnostics,
         privacyRunGate: privacyRunGate,
         workflowProvider: { [workflow] },
-        recordingCueAction: recordingCueAction ?? {
+        recordingCueAction: recordingCueAction ?? { _ in
             await cueProbe.perform()
         }
     )

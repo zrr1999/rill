@@ -103,41 +103,6 @@ extension AppModelTests {
         })
     }
 
-    func testVoiceRunFailureRecordsVisibleHistoryAndLastFailure() async {
-        let voiceWorkflow = makeBuiltinPushToTalkWorkflow()
-        let harness = makeHarness(workflows: [voiceWorkflow])
-        await waitForListenerSetup()
-        let runID = UUID()
-
-        await harness.eventBus.publish(
-            .runStarted(
-                RunSnapshot(
-                    runID: runID,
-                    workflowID: voiceWorkflow.id,
-                    workflow: voiceWorkflow.presentation,
-                    trigger: .hotkey
-                )
-            )
-        )
-        await waitForEventProcessing()
-        await harness.eventBus.publish(.runFailed(runID: runID, workflow: nil, message: "Deepgram API key is missing."))
-        await waitForEventProcessing()
-
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertEqual(
-            harness.model.lastFailure,
-            harness.model.language == .english
-                ? "The Deepgram API key is unavailable. Open Settings, save a key, and retry."
-                : "Deepgram API 密钥不可用。请在设置中保存密钥后重试。"
-        )
-        XCTAssertEqual(harness.model.recentVoiceHistoryRecords.first?.runID, runID)
-        XCTAssertEqual(harness.model.recentVoiceHistoryRecords.first?.outcome, .failed)
-        XCTAssertEqual(harness.model.recentVoiceHistoryRecords.first?.trigger, .hotkey)
-        XCTAssertEqual(
-            harness.model.recentVoiceHistoryRecords.first?.failureMessage,
-            "The Deepgram API key is unavailable. Open Settings, save a key, and retry."
-        )
-    }
 
     func testRunCancellationClearsActiveStateWithoutCreatingFailureHistory() async throws {
         let historyRepository = InMemoryHistoryRepository()
@@ -250,10 +215,7 @@ extension AppModelTests {
                 await probe.record(workflow: workflow, binding: binding)
             }
         )
-        harness.model.preferredSpeechEngine = .cloud
         harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
-        harness.model.deepgramAPIKey = "test-deepgram-key"
-        await harness.model.flushPendingPersistenceWrites()
 
         harness.model.runWorkflow(workflow, initiatedBy: .hotkey)
         await waitForEventProcessing()
@@ -261,7 +223,7 @@ extension AppModelTests {
         let calls = await probe.snapshot()
         let captured = try XCTUnwrap(calls.first)
         XCTAssertEqual(captured.binding, .hotkey)
-        XCTAssertEqual(captured.workflow.pipeline.recognizerID, AppModel.deepgramRecognizerID)
+        XCTAssertEqual(captured.workflow.pipeline.recognizerID, AppModel.sherpaOnnxRecognizerID)
         XCTAssertEqual(captured.workflow.pipeline.outputActions.first?.id, "stack.push")
         XCTAssertEqual(
             captured.workflow.metadata[WorkflowMetadataKey.targetClipboardGroupID],
@@ -283,7 +245,6 @@ extension AppModelTests {
             metadata: [
                 WorkflowMetadataKey.recognizerSelectionMode: "auto",
                 WorkflowMetadataKey.languageOverride: "zh-CN",
-                WorkflowMetadataKey.deepgramModelOverride: "nova-3-medical",
             ]
         )
         let harness = makeHarness(
@@ -292,18 +253,13 @@ extension AppModelTests {
                 await probe.record(workflow: workflow, binding: binding)
             }
         )
-        harness.model.preferredSpeechEngine = .cloud
-        harness.model.deepgramAPIKey = "test-deepgram-key"
-        await harness.model.flushPendingPersistenceWrites()
-
         harness.model.runWorkflow(workflow)
         await waitForEventProcessing()
 
         let calls = await probe.snapshot()
         let captured = try XCTUnwrap(calls.first)
-        XCTAssertEqual(captured.workflow.pipeline.recognizerID, AppModel.deepgramRecognizerID)
+        XCTAssertEqual(captured.workflow.pipeline.recognizerID, AppModel.sherpaOnnxRecognizerID)
         XCTAssertEqual(captured.workflow.metadata[WorkflowMetadataKey.languageOverride], "zh-CN")
-        XCTAssertEqual(captured.workflow.metadata[WorkflowMetadataKey.deepgramModelOverride], "nova-3-medical")
     }
 
     func testSavingAndDeletingCustomWorkflowPersistsLibrary() async throws {
@@ -311,10 +267,10 @@ extension AppModelTests {
         let harness = makeHarness(settingsStore: settingsStore)
         await waitForEventProcessing()
 
-        harness.model.saveWorkflowDraft(
+        await harness.model.saveWorkflowDraft(
             WorkflowEditorDraft(
                 name: "Follow-up Draft",
-                recognizer: .cloudSpeech,
+                recognizer: .localSpeech,
                 postProcessSteps: [.init(kind: .normalizeWhitespace)],
                 destination: .copyToClipboard
             )
@@ -325,176 +281,143 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.customWorkflows.first?.name, "Follow-up Draft")
         XCTAssertTrue(harness.model.customWorkflows.first?.excludesOutputFromWorkflowCapture ?? false)
 
-        let storedValue = try await settingsStore.string(forKey: .customWorkflows)
+        let storedValue = try await settingsStore.string(forKey: .workflowLibrary)
         let storedData = try XCTUnwrap(storedValue?.data(using: .utf8))
-        let storedWorkflows = try JSONDecoder().decode([WorkflowDefinition].self, from: storedData)
-        XCTAssertEqual(storedWorkflows.count, 1)
-        XCTAssertEqual(storedWorkflows.first?.name, "Follow-up Draft")
-        XCTAssertTrue(storedWorkflows.first?.excludesOutputFromWorkflowCapture ?? false)
+        let storedLibrary = try JSONDecoder().decode(
+            WorkflowLibraryDocument.self,
+            from: storedData
+        )
+        XCTAssertEqual(storedLibrary.customWorkflows.count, 1)
+        XCTAssertEqual(storedLibrary.customWorkflows.first?.name, "Follow-up Draft")
+        XCTAssertTrue(
+            storedLibrary.customWorkflows.first?.excludesOutputFromWorkflowCapture ?? false
+        )
 
         let savedWorkflow = try XCTUnwrap(harness.model.customWorkflows.first)
-        harness.model.deleteCustomWorkflow(savedWorkflow)
+        await harness.model.deleteCustomWorkflow(savedWorkflow)
         await waitForEventProcessing()
 
         XCTAssertTrue(harness.model.customWorkflows.isEmpty)
-        let removedValue = try await settingsStore.string(forKey: .customWorkflows)
-        XCTAssertNil(removedValue)
+        let removedValue = try await settingsStore.string(forKey: .workflowLibrary)
+        let removedData = try XCTUnwrap(removedValue?.data(using: .utf8))
+        let removedLibrary = try JSONDecoder().decode(
+            WorkflowLibraryDocument.self,
+            from: removedData
+        )
+        XCTAssertTrue(removedLibrary.customWorkflows.isEmpty)
     }
 
-    func testDeepgramAudioTestToggleStartsThenFinishes() async {
-        let probe = DeepgramTestProbe()
+    func testTOMLStoreIsSourceOfTruthForVisualSaveAndDelete() async throws {
         let settingsStore = UITestSettingsStore()
-        let credentialStore = UITestSecureCredentialStore()
+        let workflowFileStore = UITestWorkflowFileStore()
         let harness = makeHarness(
             settingsStore: settingsStore,
-            credentialStore: credentialStore,
-            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted),
-            startDeepgramAudioTestAction: { settings in
-                await probe.recordStart(settings: settings)
-            },
-            finishDeepgramAudioTestAction: { settings in
-                await probe.recordFinish(settings: settings)
-                return RecognitionResult(rawText: "cloud result", bestText: "cloud result")
-            }
+            workflowFileStore: workflowFileStore
         )
         await waitForEventProcessing()
 
-        harness.model.deepgramAPIKey = "test-key"
-        harness.model.deepgramModel = "nova-3"
-        harness.model.deepgramLanguage = "en-US"
-        harness.model.toggleDeepgramAudioTest()
+        await harness.model.saveWorkflowDraft(
+            WorkflowEditorDraft(
+                name: "TOML Draft",
+                recognizer: .localSpeech,
+                postProcessSteps: [.init(kind: .normalizeWhitespace)],
+                destination: .copyToClipboard
+            )
+        )
         await waitForEventProcessing()
 
-        XCTAssertEqual(harness.model.deepgramAudioTestState, .recording)
+        let savedRecords = await workflowFileStore.records()
+        let savedRecord = try XCTUnwrap(savedRecords.first)
+        XCTAssertEqual(savedRecord.workflow.name, "TOML Draft")
+        XCTAssertEqual(harness.model.customWorkflows.map(\.id), [savedRecord.workflow.id])
 
-        harness.model.toggleDeepgramAudioTest()
-        await waitForEventProcessing()
+        let storedValue = try await settingsStore.string(forKey: .workflowLibrary)
+        let storedData = try XCTUnwrap(storedValue?.data(using: .utf8))
+        let storedLibrary = try JSONDecoder().decode(
+            WorkflowLibraryDocument.self,
+            from: storedData
+        )
+        XCTAssertTrue(storedLibrary.customWorkflows.isEmpty)
 
-        let snapshot = await probe.snapshot()
-        XCTAssertEqual(snapshot.startCount, 1)
-        XCTAssertEqual(snapshot.finishCount, 1)
-        XCTAssertEqual(snapshot.lastSettings?.apiKey, "test-key")
-        XCTAssertEqual(harness.model.deepgramAudioTestState, .idle)
-        XCTAssertEqual(harness.model.deepgramTestTranscript, "cloud result")
-        let credentialActivity = await credentialStore.activitySnapshot()
-        let storedModel = try? await settingsStore.string(forKey: .deepgramModel)
-        XCTAssertEqual(credentialActivity.storage[.deepgramAPIKey], "test-key")
-        XCTAssertEqual(storedModel, "nova-3")
+        await harness.model.deleteCustomWorkflow(savedRecord.workflow)
+        let remainingRecords = await workflowFileStore.records()
+        XCTAssertTrue(remainingRecords.isEmpty)
+        XCTAssertTrue(harness.model.customWorkflows.isEmpty)
     }
 
-    func testDeepgramAudioTestToggleCancelsWhileTranscribing() async {
-        let probe = DeepgramTestProbe()
-        let finishGate = DeepgramFinishGate()
+    func testEmptyTOMLDirectoryMigratesAndVerifiesLegacyWorkflowLibrary() async throws {
+        let legacyWorkflow = WorkflowEditorDraft(
+            name: "Legacy Workflow",
+            recognizer: .localSpeech,
+            postProcessSteps: [.init(kind: .normalizeWhitespace)],
+            destination: .copyToClipboard
+        ).makeWorkflow(
+            id: UUID(uuidString: "BBBBBBBB-2222-3333-4444-555555555555")!,
+            hotkeyGesture: AppModel.defaultHotkeyGesture
+        )
+        let legacyDocument = WorkflowLibraryDocument(customWorkflows: [legacyWorkflow])
+        let settingsStore = UITestSettingsStore(storage: [
+            .workflowLibrary: String(
+                decoding: try JSONEncoder().encode(legacyDocument),
+                as: UTF8.self
+            )
+        ])
+        let workflowFileStore = UITestWorkflowFileStore()
         let harness = makeHarness(
-            settingsStore: UITestSettingsStore(),
-            credentialStore: UITestSecureCredentialStore(),
-            permissionSnapshot: PermissionSnapshot(
-                accessibility: .granted,
-                microphone: .granted
-            ),
-            startDeepgramAudioTestAction: { settings in
-                await probe.recordStart(settings: settings)
-            },
-            finishDeepgramAudioTestAction: { settings in
-                await probe.recordFinish(settings: settings)
-                return try await finishGate.wait()
-            },
-            cancelDeepgramAudioTestAction: {
-                await probe.recordCancel()
-                await finishGate.cancel()
-            }
+            settingsStore: settingsStore,
+            workflowFileStore: workflowFileStore
         )
         await waitForEventProcessing()
-        harness.model.deepgramAPIKey = "test-key"
-        harness.model.toggleDeepgramAudioTest()
-        await waitForEventProcessing()
-        XCTAssertEqual(harness.model.deepgramAudioTestState, .recording)
 
-        harness.model.toggleDeepgramAudioTest()
-        XCTAssertEqual(harness.model.deepgramAudioTestState, .transcribing)
+        let migratedRecords = await workflowFileStore.records()
+        let migrated = try XCTUnwrap(migratedRecords.first)
+        XCTAssertEqual(migrated.workflow.id, legacyWorkflow.id)
+        XCTAssertEqual(harness.model.customWorkflows.map(\.id), [legacyWorkflow.id])
 
-        harness.model.toggleDeepgramAudioTest()
-        XCTAssertEqual(harness.model.deepgramAudioTestState, .idle)
-        await waitForEventProcessing()
-
-        let snapshot = await probe.snapshot()
-        XCTAssertEqual(snapshot.startCount, 1)
-        XCTAssertEqual(snapshot.cancelCount, 1)
-        XCTAssertNil(harness.model.deepgramTestTranscript)
+        let retiredValue = try await settingsStore.string(forKey: .workflowLibrary)
+        let retiredData = try XCTUnwrap(retiredValue?.data(using: .utf8))
+        let retiredLibrary = try JSONDecoder().decode(
+            WorkflowLibraryDocument.self,
+            from: retiredData
+        )
+        XCTAssertTrue(retiredLibrary.customWorkflows.isEmpty)
     }
 
-    func testDeepgramSpeechCheckDoesNotStartUntilConfigurationPersistsAndReadsBack() async {
-        let probe = DeepgramTestProbe()
-        let credentialStore = FailingSpeechCheckCredentialStore()
+    func testReloadKeepsLegacyWorkflowsAfterTOMLMigrationFailure() async throws {
+        let legacyWorkflow = WorkflowEditorDraft(
+            name: "Legacy Recovery Workflow",
+            recognizer: .localSpeech,
+            postProcessSteps: [],
+            destination: .copyToClipboard
+        ).makeWorkflow(
+            id: UUID(uuidString: "CCCCCCCC-2222-3333-4444-555555555555")!,
+            hotkeyGesture: AppModel.defaultHotkeyGesture
+        )
+        let legacyDocument = WorkflowLibraryDocument(customWorkflows: [legacyWorkflow])
+        let settingsStore = UITestSettingsStore(storage: [
+            .workflowLibrary: String(
+                decoding: try JSONEncoder().encode(legacyDocument),
+                as: UTF8.self
+            )
+        ])
+        let workflowFileStore = UITestWorkflowFileStore(rejectsSaves: true)
         let harness = makeHarness(
-            settingsStore: UITestSettingsStore(),
-            credentialStore: credentialStore,
-            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted),
-            startDeepgramAudioTestAction: { settings in
-                await probe.recordStart(settings: settings)
-            }
+            settingsStore: settingsStore,
+            workflowFileStore: workflowFileStore
         )
         await waitForEventProcessing()
 
-        harness.model.deepgramAPIKey = "memory-only-key"
-        harness.model.toggleDeepgramAudioTest()
-        await waitForEventProcessing()
-
-        let snapshot = await probe.snapshot()
-        XCTAssertEqual(snapshot.startCount, 0)
-        XCTAssertEqual(harness.model.deepgramAudioTestState, .idle)
-        XCTAssertEqual(harness.model.deepgramCredentialAvailability, .inaccessible)
-        XCTAssertNil(harness.model.deepgramTestTranscript)
-        XCTAssertEqual(
-            harness.model.deepgramTestError,
-            harness.model.language == .english
-                ? "The Deepgram speech check could not start. Verify microphone access, credential storage, and provider settings, then retry."
-                : "无法启动 Deepgram 语音检查。请检查麦克风权限、凭据存储与服务商设置后重试。"
-        )
+        XCTAssertEqual(harness.model.customWorkflows.map(\.id), [legacyWorkflow.id])
+        await harness.model.reloadWorkflowFiles()
+        XCTAssertEqual(harness.model.customWorkflows.map(\.id), [legacyWorkflow.id])
+        let partialRecords = await workflowFileStore.records()
+        XCTAssertEqual(partialRecords.count, 1)
     }
 
-    func testChangingDeepgramSettingsCancelsAnActiveSpeechCheckSnapshot() async {
-        let probe = DeepgramTestProbe()
-        let harness = makeHarness(
-            settingsStore: UITestSettingsStore(),
-            credentialStore: UITestSecureCredentialStore(),
-            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted),
-            startDeepgramAudioTestAction: { settings in
-                await probe.recordStart(settings: settings)
-            },
-            finishDeepgramAudioTestAction: { settings in
-                await probe.recordFinish(settings: settings)
-                return RecognitionResult(rawText: "stale", bestText: "stale")
-            }
-        )
-        await waitForEventProcessing()
-        harness.model.deepgramAPIKey = "test-key"
-        harness.model.toggleDeepgramAudioTest()
-        await waitForEventProcessing()
-        XCTAssertEqual(harness.model.deepgramAudioTestState, .recording)
 
-        harness.model.deepgramModel = "nova-3-medical"
-        await waitForEventProcessing()
 
-        let snapshot = await probe.snapshot()
-        XCTAssertEqual(snapshot.startCount, 1)
-        XCTAssertEqual(snapshot.finishCount, 0)
-        XCTAssertEqual(harness.model.deepgramAudioTestState, .idle)
-        XCTAssertNil(harness.model.deepgramTestTranscript)
-        XCTAssertEqual(
-            harness.model.deepgramTestError,
-            UIStrings.text(.deepgramConfigurationChanged, language: harness.model.language)
-        )
-    }
 
-    func testEditingDeepgramConfigurationClearsAStaleRecoverableKeyFailure() {
-        let harness = makeHarness(credentialStore: UITestSecureCredentialStore())
-        harness.model.lastFailure = "Deepgram API key is missing."
 
-        harness.model.deepgramAPIKey = "replacement-key"
-
-        XCTAssertNil(harness.model.lastFailure)
-    }
 
     func testSelectingWhisperKitModelAutomaticallyPreparesIt() async {
         let probe = WhisperKitPrepareProbe()
@@ -649,16 +572,88 @@ extension AppModelTests {
         XCTAssertTrue(harness.model.conflictingWorkflows(for: menuBarA).isEmpty)
     }
 
+    func testWakeWordWorkflowRespectsDefaultDisabledMetadata() {
+        let assistant = WorkflowDefinition(
+            name: "Voice Assistant",
+            trigger: .wakeWord,
+            plan: WorkflowPlan(
+                setup: WorkflowSetupPhase(
+                    speechRoute: WorkflowSpeechRoute(
+                        recognizerID: "ui.test.recognizer"
+                    ),
+                    wakeWord: WakeWordConfiguration(phrases: ["Hey Rill"])
+                ),
+                process: WorkflowProcessPhase(steps: [
+                    WorkflowProcessStep(kind: .recognizeSpeech)
+                ]),
+                output: WorkflowOutputPhase(
+                    actions: [OutputActionReference(id: "ui.test.action")]
+                )
+            ),
+            ui: WorkflowUIConfig(symbolName: "sparkles", accentColorName: "purple"),
+            metadata: [WorkflowMetadataKey.defaultEnabled: "false"]
+        )
+
+        let harness = makeHarness(workflows: [assistant])
+
+        XCTAssertFalse(harness.model.isWorkflowEnabled(assistant))
+    }
+
+    func testRetiredBuiltinPushToTalkSelectionMigratesToSpeechRecognition() async throws {
+        let speechRecognitionID = try XCTUnwrap(
+            UUID(uuidString: "B9E19A88-F9FB-4AB3-8444-CDBF7E215A88")
+        )
+        let retiredStreamingID = try XCTUnwrap(
+            UUID(uuidString: "A8E19A88-F9FB-4AB3-8444-CDBF7E215A88")
+        )
+        let speechRecognition = WorkflowDefinition(
+            id: speechRecognitionID,
+            name: "Speech Recognition",
+            trigger: .hotkey,
+            pipeline: PipelineDeclaration(
+                recognizerID: "ui.test.recognizer",
+                outputActions: [OutputActionReference(id: "ui.test.action")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red"),
+            metadata: [
+                WorkflowMetadataKey.catalog: BuiltinWorkflowRoutingValue.catalog,
+                WorkflowMetadataKey.builtinKind: AppModel.builtinPushToTalkKindValue,
+                WorkflowMetadataKey.triggerGesture:
+                    BuiltinWorkflowRoutingValue.pushToTalkGesture,
+            ]
+        )
+        let payload = try XCTUnwrap(
+            String(
+                data: JSONEncoder().encode([
+                    speechRecognitionID.uuidString: false,
+                    retiredStreamingID.uuidString: true,
+                ]),
+                encoding: .utf8
+            )
+        )
+        let harness = makeHarness(
+            workflows: [speechRecognition],
+            settingsStore: UITestSettingsStore(
+                storage: [.workflowEnabledStates: payload]
+            )
+        )
+
+        await waitForEventProcessing()
+
+        XCTAssertTrue(harness.model.isWorkflowEnabled(speechRecognition))
+        XCTAssertNil(harness.model.workflowEnabledStates[retiredStreamingID])
+    }
+
     func testSavingWorkflowCanDisableCaptureExclusionAndUseMenuBarTrigger() async throws {
         let settingsStore = UITestSettingsStore()
         let harness = makeHarness(settingsStore: settingsStore)
         await waitForEventProcessing()
 
-        harness.model.saveWorkflowDraft(
+        await harness.model.saveWorkflowDraft(
             WorkflowEditorDraft(
                 name: "Chainable Menu Workflow",
                 eventType: .menuBar,
-                recognizer: .cloudSpeech,
+                recognizer: .localSpeech,
                 postProcessSteps: [.init(kind: .normalizeWhitespace)],
                 destination: .copyToClipboard,
                 excludeFromWorkflowCapture: false
@@ -864,36 +859,10 @@ extension AppModelTests {
         XCTAssertFalse(harness.model.lastFailure?.contains("reviewed local speech model") == true)
     }
 
-    func testUnavailableAutomaticLocalRouteBecomesRunnableAfterChoosingCloud() async {
-        var workflow = WorkflowDefinition(
-            name: "Automatic Speech",
-            trigger: .manual,
-            pipeline: PipelineDeclaration(
-                recognizerID: "sherpa-onnx.local",
-                outputActions: [OutputActionReference(id: "ui.test.action")]
-            ),
-            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
-        )
-        workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode] = "auto"
-        let harness = makeHarness(
-            workflow: workflow,
-            localSpeechTrustMaterialAvailable: false
-        )
-        await waitForEventProcessing()
-
-        XCTAssertEqual(harness.model.preferredSpeechEngine, .cloud)
-        harness.model.preferredSpeechEngine = .local
-        XCTAssertFalse(harness.model.canTriggerWorkflow(workflow))
-        XCTAssertTrue(harness.model.enabledWorkflows(for: .manual).isEmpty)
-
-        harness.model.preferredSpeechEngine = .cloud
-        XCTAssertTrue(harness.model.canTriggerWorkflow(workflow))
-        XCTAssertEqual(harness.model.enabledWorkflows(for: .manual).map(\.id), [workflow.id])
-    }
 
     func testSavingLocalWorkflowPersistsSpecificModelOverride() async {
         let harness = makeHarness()
-        harness.model.saveWorkflowDraft(
+        await harness.model.saveWorkflowDraft(
             WorkflowEditorDraft(
                 name: "Local Override",
                 recognizer: .localSpeech,
@@ -913,6 +882,36 @@ extension AppModelTests {
         )
         XCTAssertEqual(savedWorkflow.metadata["provider"], "sherpa-onnx")
         XCTAssertNil(savedWorkflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
+    }
+
+    func testSavingWakeWordWorkflowRequiresExactModelVocabularyValidation() async {
+        let unavailableHarness = makeHarness()
+        let draft = WorkflowEditorDraft(
+            name: "Wake Assistant",
+            eventType: .wakeWord,
+            wakePhrasesText: "Hey Rill",
+            destination: .copyToClipboard
+        )
+
+        await unavailableHarness.model.saveWorkflowDraft(draft)
+
+        XCTAssertTrue(unavailableHarness.model.customWorkflows.isEmpty)
+        XCTAssertNotNil(unavailableHarness.model.workflowEditorError)
+
+        let readyHarness = makeHarness()
+        readyHarness.model.installWakeWordConfigurationValidationAction { configuration in
+            guard configuration.phrases == ["Hey Rill"] else {
+                throw WakeWordSaveValidationError.unexpectedConfiguration
+            }
+        }
+
+        await readyHarness.model.saveWorkflowDraft(draft)
+
+        XCTAssertEqual(readyHarness.model.customWorkflows.count, 1)
+        XCTAssertEqual(
+            readyHarness.model.customWorkflows.first?.plan.setup.wakeWord?.phrases,
+            ["Hey Rill"]
+        )
     }
 
     func testLoadingLegacyLocalWorkflowsMigratesRecognizerAndModelOverride() throws {
@@ -1291,18 +1290,14 @@ extension AppModelTests {
         XCTAssertNil(storedValue)
     }
 
-    func testShowRecentResultsSelectsHistoryResultsScope() {
+    func testShowRunHistorySelectsUnifiedRunHistory() {
         let harness = makeHarness()
 
         XCTAssertEqual(harness.model.selectedSidebarSection, .dashboard)
 
-        harness.model.showRecentResults()
+        harness.model.showRunHistory()
 
         XCTAssertEqual(harness.model.selectedSidebarSection, .history)
-        XCTAssertEqual(harness.model.runHistoryScope, .recentResults)
-
-        harness.model.selectSidebarSection(.history)
-
         XCTAssertEqual(harness.model.runHistoryScope, .recentRuns)
     }
 
@@ -1330,6 +1325,10 @@ extension AppModelTests {
 
 private enum FailingSpeechCheckCredentialError: Error {
     case writeRejected
+}
+
+private enum WakeWordSaveValidationError: Error {
+    case unexpectedConfiguration
 }
 
 private actor FailingSpeechCheckCredentialStore: SecureCredentialStore {

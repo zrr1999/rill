@@ -22,13 +22,13 @@ final class L10nTests: XCTestCase {
     XCTAssertEqual(L10n.string(longRecordingKey, language: .english), "Toggle Recording")
     XCTAssertEqual(
       L10n.string(longRecordingToggleKey, language: .english), "Press Once to Start/Stop")
-    XCTAssertTrue(
-      L10n.string(.settingsLongRecordingModeDescription, language: .english)
-        .contains("20 seconds")
+    XCTAssertEqual(
+      UIStrings.recordingDurationLimit(.twoMinutes, language: .english),
+      "2 minutes"
     )
-    XCTAssertTrue(
-      L10n.string(.settingsLongRecordingModeDescription, language: .simplifiedChinese)
-        .contains("20 秒")
+    XCTAssertEqual(
+      UIStrings.recordingDurationLimit(.unlimited, language: .simplifiedChinese),
+      "无限制"
     )
     XCTAssertEqual(L10n.string(textStylesKey, language: .simplifiedChinese), "文字风格")
   }
@@ -56,6 +56,20 @@ final class L10nTests: XCTestCase {
     XCTAssertEqual(L10n.itemCount(1, language: .english), "1 item")
     XCTAssertEqual(L10n.itemCount(2, language: .english), "2 items")
     XCTAssertEqual(L10n.itemCount(2, language: .simplifiedChinese), "2 个条目")
+  }
+
+  func testVocabularyHotwordCopyCoversLocalQwen() {
+    XCTAssertEqual(
+      L10n.string(.vocabularyCorrectionHotwordOption, language: .simplifiedChinese),
+      "作为识别热词优先识别"
+    )
+    let english = L10n.string(.vocabularyHotwordBehavior, language: .english)
+    let simplifiedChinese = L10n.string(
+      .vocabularyHotwordBehavior,
+      language: .simplifiedChinese
+    )
+    XCTAssertTrue(english.contains("local Qwen"))
+    XCTAssertTrue(simplifiedChinese.contains("本地 Qwen"))
   }
 
   func testHistoryRetentionLabelsAreLocalized() {
@@ -124,8 +138,8 @@ final class L10nTests: XCTestCase {
     XCTAssertEqual(UIStrings.loadedRunCount(3, language: .english), "3 runs loaded")
     XCTAssertEqual(UIStrings.loadedRunCount(3, language: .simplifiedChinese), "已加载 3 条运行")
     XCTAssertEqual(
-      UIStrings.recentResultsAccessibilityLabel(count: 2, language: .english),
-      "Recent Results, 2 results"
+      UIStrings.recentRunsAccessibilityLabel(count: 2, language: .english),
+      "Recent Runs, 2 runs"
     )
   }
 
@@ -287,27 +301,6 @@ final class L10nTests: XCTestCase {
     XCTAssertEqual(
       L10n.string(descriptionKey, language: .english),
       "Teach Rill names, project terms, and replacements for voice output."
-    )
-  }
-
-  func testVoiceFailureSummaryMapsDeepgramMissingKey() {
-    let message =
-      "Deepgram API key is missing. Set DEEPGRAM_API_KEY before using the cloud recognizer."
-
-    XCTAssertTrue(L10n.hasDeepgramAPIKeyRecovery(for: message))
-    XCTAssertEqual(
-      L10n.voiceFailureSummary(message: message, language: .english),
-      "Deepgram API key is missing. Add it in Recognition Settings before using cloud recognition."
-    )
-    XCTAssertEqual(
-      L10n.voiceFailureSummary(message: message, language: .simplifiedChinese),
-      "缺少 Deepgram API Key。使用云端识别前，请在识别设置中填写。"
-    )
-    XCTAssertFalse(L10n.hasDeepgramAPIKeyRecovery(for: "Network timeout"))
-    XCTAssertTrue(
-      L10n.hasDeepgramAPIKeyRecovery(
-        for: "The Deepgram API key is unavailable. Open Settings, save a key, and retry."
-      )
     )
   }
 

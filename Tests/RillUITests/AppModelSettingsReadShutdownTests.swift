@@ -232,7 +232,7 @@ final class AppModelSettingsReadTaskOwnerTests: XCTestCase {
 
     func testReplacementCancelsOldTaskButConcurrentDrainsWaitForRetiredAndActive() async {
         let owner = AppModelSettingsReadTaskOwner()
-        let slot = AppModelSettingsReadTaskSlot.deepgramCredentialRetry
+        let slot = AppModelSettingsReadTaskSlot.openAICredentialRetry
         let retiredGate = CancellationIgnoringSettingsReadGate()
         let activeGate = CancellationIgnoringSettingsReadGate()
 
@@ -311,11 +311,11 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         let gate = CancellationIgnoringSettingsReadGate()
         let lateBaseURL = "https://late-settings.example/v1"
         let settingsStore = PlannedSettingsReadStore(
-            storage: [.deepgramBaseURL: lateBaseURL]
+            storage: [.openAIBaseURL: lateBaseURL]
         )
         await settingsStore.enqueueReadGate(gate)
         let harness = makeHarness(settingsStore: settingsStore)
-        let initialBaseURL = harness.model.deepgramBaseURL
+        let initialBaseURL = harness.model.openAIBaseURL
         await gate.waitUntilEntered()
 
         let completion = SettingsReadShutdownCompletionProbe()
@@ -332,32 +332,32 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await shutdownTask.value
 
         XCTAssertNotEqual(initialBaseURL, lateBaseURL)
-        XCTAssertEqual(harness.model.deepgramBaseURL, initialBaseURL)
+        XCTAssertEqual(harness.model.openAIBaseURL, initialBaseURL)
         XCTAssertEqual(harness.model.settingsReadTaskOwner.state, .stopped)
         XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 0)
     }
 
-    func testShutdownDrainsRetiredAndActiveDeepgramRetriesWithoutPublishing() async throws {
+    func testShutdownDrainsRetiredAndActiveOpenAIRetriesWithoutPublishing() async throws {
         let settingsStore = PlannedSettingsReadStore()
         let credentialStore = PlannedCredentialReadStore(
-            storage: [.deepgramAPIKey: "initial-key"]
+            storage: [.openAIAPIKey: "initial-key"]
         )
         let harness = makeHarness(
             settingsStore: settingsStore,
             credentialStore: credentialStore
         )
         await waitUntil { !harness.model.isLoadingSettings }
-        XCTAssertEqual(harness.model.deepgramAPIKey, "initial-key")
+        XCTAssertEqual(harness.model.openAIAPIKey, "initial-key")
 
-        try await credentialStore.setCredential("late-key", for: .deepgramAPIKey)
+        try await credentialStore.setCredential("late-key", for: .openAIAPIKey)
         let retiredGate = CancellationIgnoringSettingsReadGate()
         let activeGate = CancellationIgnoringSettingsReadGate()
         await credentialStore.enqueueReadGate(retiredGate)
         await credentialStore.enqueueReadGate(activeGate)
 
-        harness.model.retryDeepgramCredentialLoad()
+        harness.model.retryOpenAICredentialLoad()
         await retiredGate.waitUntilEntered()
-        harness.model.retryDeepgramCredentialLoad()
+        harness.model.retryOpenAICredentialLoad()
         await retiredGate.waitUntilCancellationObserved()
         await activeGate.waitUntilEntered()
         XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 2)
@@ -368,10 +368,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             await completion.markCompleted()
         }
         await activeGate.waitUntilCancellationObserved()
-        XCTAssertEqual(harness.model.deepgramCredentialAvailability, .inaccessible)
-        XCTAssertFalse(
-            harness.model.retryingUnavailableScalarSettingsDomains.contains(.deepgram)
-        )
+        XCTAssertEqual(harness.model.openAICredentialAvailability, .inaccessible)
 
         await activeGate.release()
         for _ in 0..<10 { await Task.yield() }
@@ -381,10 +378,10 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await retiredGate.release()
         await shutdownTask.value
 
-        XCTAssertEqual(harness.model.deepgramAPIKey, "initial-key")
+        XCTAssertEqual(harness.model.openAIAPIKey, "initial-key")
         XCTAssertFalse(
             harness.model.eventFeed.contains {
-                $0.english == "Deepgram settings and credential access are available again."
+                $0.english == "OpenAI credential access is available again."
             }
         )
         XCTAssertEqual(harness.model.settingsReadTaskOwner.state, .stopped)
@@ -564,7 +561,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         let reporterGate = CancellationIgnoringSettingsReadGate()
         let eventRecorder = SettingsReadMigrationEventRecorder()
         let legacyStore = PlannedSettingsReadStore(
-            storage: [.deepgramAPIKey: "legacy-key"]
+            storage: [.openAIAPIKey: "legacy-key"]
         )
         let secureStore = PlannedCredentialReadStore()
         let migratingStore = MigratingSecureCredentialStore(
@@ -573,7 +570,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             eventReporter: { event in
                 await eventRecorder.record(event)
                 if event.kind == .migrationSucceeded,
-                   event.key == .deepgramAPIKey {
+                   event.key == .openAIAPIKey {
                     await reporterGate.wait()
                 }
             }
@@ -596,18 +593,18 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await reporterGate.release()
         await shutdownTask.value
 
-        let secureValue = await secureStore.storedValue(for: .deepgramAPIKey)
-        let legacyValue = await legacyStore.storedValue(for: .deepgramAPIKey)
+        let secureValue = await secureStore.storedValue(for: .openAIAPIKey)
+        let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
         let events = await eventRecorder.snapshot()
         XCTAssertEqual(secureValue, "legacy-key")
         XCTAssertNil(legacyValue)
         XCTAssertTrue(
             events.contains {
-                $0.kind == .migrationSucceeded && $0.key == .deepgramAPIKey
+                $0.kind == .migrationSucceeded && $0.key == .openAIAPIKey
             }
         )
-        XCTAssertEqual(harness.model.deepgramAPIKey, "")
-        XCTAssertEqual(harness.model.deepgramCredentialAvailability, .inaccessible)
+        XCTAssertEqual(harness.model.openAIAPIKey, "")
+        XCTAssertEqual(harness.model.openAICredentialAvailability, .inaccessible)
         XCTAssertEqual(harness.model.settingsReadTaskOwner.state, .stopped)
         XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 0)
     }

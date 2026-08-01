@@ -1,13 +1,15 @@
 import Foundation
 
 public struct WorkflowManifest: Codable, Sendable, Equatable {
+    public static let currentSchemaVersion = 2
+
     public var schemaVersion: Int
     public var voiceProfiles: [VoiceProfile]
     public var workflows: [WorkflowDefinition]
     public var metadata: [String: String]
 
     public init(
-        schemaVersion: Int = 1,
+        schemaVersion: Int = currentSchemaVersion,
         voiceProfiles: [VoiceProfile] = [],
         workflows: [WorkflowDefinition],
         metadata: [String: String] = [:]

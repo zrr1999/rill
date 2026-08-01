@@ -35,14 +35,14 @@ public struct SherpaOnnxRecognizer: SpeechRecognizer {
   static let qwenPromptScaffoldTokenCount = 15
   static let maximumQwenHotwordTokenCount =
     maximumQwenHotwordUTF8ByteCount + maximumQwenHotwordCount - 1
+  static let qwenMaximumTotalLength = 2_048
   static let maximumQwenAudioTokenCount = conservativeQwenAudioTokenCount(
     sampleCount: maximumAudioSampleCount
   )
   static let maximumQwenInputContextTokenCount =
     qwenPromptScaffoldTokenCount + maximumQwenAudioTokenCount + maximumQwenHotwordTokenCount
   static let minimumQwenOutputTokenCapacity =
-    SherpaQwen3ASRConfiguration.defaultMaximumTotalLength
-    - maximumQwenInputContextTokenCount
+    qwenMaximumTotalLength - maximumQwenInputContextTokenCount
 
   public enum RecognizerError: Error, LocalizedError, Equatable, Sendable {
     case missingCapturedAudio
@@ -410,6 +410,7 @@ public struct SherpaOnnxRecognizer: SpeechRecognizer {
             isDirectory: true
           ),
           threadCount: threadCount,
+          maximumTotalLength: qwenMaximumTotalLength,
           hotwords: sanitizedQwenHotwords(keyterms)
         )
       )

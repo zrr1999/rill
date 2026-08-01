@@ -50,22 +50,24 @@ public struct SpeechRecognizerCapabilities: Sendable, Equatable {
   /// Applies the provider limit without allowing invalid configuration to
   /// accidentally widen the capture window.
   public static func effectiveMaximumAudioDurationSeconds(
-    modeMaximumAudioDurationSeconds: Double,
+    modeMaximumAudioDurationSeconds: Double?,
     recognizerMaximumAudioDurationSeconds: Double?
-  ) -> Double {
-    guard modeMaximumAudioDurationSeconds.isFinite,
-      modeMaximumAudioDurationSeconds > 0
-    else {
-      return 0
+  ) -> Double? {
+    let validModeMaximum = modeMaximumAudioDurationSeconds.flatMap { value in
+      value.isFinite && value > 0 ? value : 0
     }
-    guard let recognizerMaximumAudioDurationSeconds else {
-      return modeMaximumAudioDurationSeconds
+    let validRecognizerMaximum = recognizerMaximumAudioDurationSeconds.flatMap { value in
+      value.isFinite && value > 0 ? value : 0
     }
-    guard recognizerMaximumAudioDurationSeconds.isFinite,
-      recognizerMaximumAudioDurationSeconds > 0
-    else {
-      return 0
+    switch (validModeMaximum, validRecognizerMaximum) {
+    case (.some(let mode), .some(let recognizer)):
+      return min(mode, recognizer)
+    case (.some(let mode), .none):
+      return mode
+    case (.none, .some(let recognizer)):
+      return recognizer
+    case (.none, .none):
+      return nil
     }
-    return min(modeMaximumAudioDurationSeconds, recognizerMaximumAudioDurationSeconds)
   }
 }

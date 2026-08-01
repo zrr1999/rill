@@ -23,6 +23,17 @@ candidate must then confirm.
 > passages below are retained as historical evidence for superseded builds and
 > do not satisfy the current arm64-only release gate.
 
+> **2026-07-28 KWS working-source evidence — not candidate evidence.** The
+> production downloader fetched the pinned 32,885,699-byte bilingual KWS
+> archive, verified its archive and retained-file SHA-256 values, published the
+> actual chunk-8 `left-64` inventory with a schema-2 receipt that binds the
+> pinned Apache-2.0 evidence, encoded `Hey Rill`, and initialized/reset the
+> production sherpa keyword spotter. A second run encoded `Light Up` and detected
+> that phrase in upstream fixture `en_0.wav` through the same native runtime.
+> This proves download, installation, tokenization, native configuration, and
+> fixture detection only. It does not tick the real-microphone, false-wake,
+> latency, multi-device, or minimum-macOS candidate checks below.
+
 > **Completed working-source baseline — not candidate evidence.** On
 > 2026-07-16, two complete preflight runs from the dirty development source each
 > passed the complete Swift suite plus the expected opt-in ASR dogfood skip.
@@ -82,7 +93,7 @@ candidate must then confirm.
 > quality; the `Rill` -> `VoxTry` substitution remains model-quality evidence.
 
 > A subsequent 2026-07-16 working-source installation extended strict
-> first-buffer readiness to the Deepgram live capture path. The AVAudio
+> first-buffer readiness to the realtime local capture path. The AVAudio
 > diagnostics fallback instead waits for `AVAudioRecorder.currentTime` to advance
 > above zero before reporting readiness; that is a recorder-progress gate, not a
 > strict first-accepted-buffer signal. The same installation removed diagnostic
@@ -133,7 +144,7 @@ candidate must then confirm.
 > remains second-press-owned. Capture stop/cancel retains the process-wide audio
 > slot until the microphone boundary has actually closed, and runtime conversion,
 > route, receive, send, or buffer failures terminate once instead of leaving a
-> false recording state. Configured Deepgram live failures no longer downgrade
+> false recording state. Configured local live failures no longer downgrade
 > to raw `AVAudioRecorder`. The focused regression set passed 165 tests; the
 > complete Swift suite and required release preflight each completed 1,771 tests
 > with 3 explicit opt-in skips and no failures. `prek` passed. The final
@@ -181,8 +192,7 @@ candidate must then confirm.
 > failure, and overflow close and transfer the partial file to the cleanup owner.
 > Local Qwen now advertises a 20-second provider limit, with a bounded 3.1-second
 > capture-startup tolerance accepted consistently by capture and recognition.
-> Deepgram remains uncapped at the recognizer-capability layer, so the existing
-> 120-second short-dictation and 1,800-second toggle-mode ceilings remain unchanged.
+> Other local recognizers retain their own explicit capability limits.
 > The focused provider set passed 82 tests, the combined capture/hotkey/focus
 > set passed 210 tests, and the 160-test Thread Sanitizer selection produced no
 > report. The production `SherpaOnnxRecognizer` then re-ran the pinned
@@ -234,9 +244,9 @@ hash from one clean, uniquely tagged candidate still need to be attached.
 | `scripts/preflight.sh` passes from the candidate source, including the zero-remote-package policy, fixed vendored-dependency provenance, secret scanning, the complete release-policy suite, arm64-only Release build, App assembly, signing-policy checks, and the complete Swift suite | **Working-source complete; candidate pending.** Rerun after the sherpa-onnx migration and attach the candidate's exact log and SHA-256. |
 | `prek validate-config prek.toml` and `prek -c prek.toml run --all-files` pass against the same source tree | **Working-source complete; candidate pending.** Both commands passed against the dirty development source; attach the clean candidate's exact log and SHA-256. |
 | `TrustedLocalSpeechCatalogTests`, `SherpaOnnxModelInstallerTests`, `SherpaOnnxRecognizerTests`, `SherpaOfflineRecognizerTests`, and `SessionCoordinatorTests` prove the fixed public Qwen catalog, public rejection of the internal SenseVoice identity, exact archive and installed-tree verification, typed no-speech handling, bounded Qwen hotwords, native runtime configuration, and persisted local speech selection | **Working-source complete; candidate pending.** Focused migration suites passed; rerun from the final candidate. Installed first-capture, silence, and quality behavior remain separate manual checks below. |
-| `RealtimeAudioCaptureServiceTests` and `DeepgramLiveCaptureRuntimeTests` prove the realtime and Deepgram live paths wait for their first accepted microphone buffer; `AVAudioCaptureServiceReadinessTests` proves the diagnostics fallback waits for `AVAudioRecorder.currentTime > 0`, a recorder-progress gate rather than a strict buffer signal; `RecordingSessionManagerTimingTests` and `ApplicationStartupTaskCoordinatorTests` prove startup cancellation drains late audio-engine work, the recording consumer is subscribed before the shared event tap starts, diagnostics cannot delay hotkey capture or cues, stopped runs never promote live subtitle hypotheses to final text, finalization drains the live task before handing a file-backed complete-sample capture to batch recognition, and start/stop cues cannot reverse across cancellation or replacement | **Working-source complete; candidate pending.** Included in the 1,691-test 2026-07-17 working-source install; rerun against and attach evidence for the clean candidate. |
+| `RealtimeAudioCaptureServiceTests` and `LocalSpeechVoiceCaptureRuntimeTests` prove the realtime local path waits for its first accepted microphone buffer; `AVAudioCaptureServiceReadinessTests` proves the diagnostics fallback waits for `AVAudioRecorder.currentTime > 0`, a recorder-progress gate rather than a strict buffer signal; `RecordingSessionManagerTimingTests` and `ApplicationStartupTaskCoordinatorTests` prove startup cancellation drains late audio-engine work, the recording consumer is subscribed before the shared event tap starts, diagnostics cannot delay hotkey capture or cues, stopped runs never promote live subtitle hypotheses to final text, finalization drains the live task before handing a file-backed complete-sample capture to batch recognition, and start/stop cues cannot reverse across cancellation or replacement | **Working-source complete; candidate pending.** Rerun against and attach evidence for the clean candidate. |
 | `AudioCaptureEndpointingTests`, `WorkflowAudioRunControllerTests`, `RecordingSessionManagerTests`, `RecordingSessionManagerToggleTests`, and `AppModelLiveAudioStopTests` prove first-terminal-wins signaling, exact short-dictation timing, automatic/manual stop races, microphone-boundary ownership, initial-silence discard, visible recording-to-transcribing projection, and isolation of hold and long/toggle gesture semantics | **Working-source complete; candidate pending.** Included in the 1,771-test 2026-07-17 working-source install; installed short dictation, silence, and physical Fn checks remain required below. |
-| `AppleVoiceProcessingAudioProcessorTests`, `LocalSpeechIncrementalWaveWriterTests`, `LocalSpeechVoiceCaptureRuntimeTests`, `RealtimeAudioCaptureServiceTests`, and `DeepgramLiveCaptureRuntimeTests` prove Apple Voice Processing activation on both I/O nodes, bypass disabled, AGC enabled, strongest-channel selection, exact 16 kHz energy framing, bounded realtime PCM/RMS retention, private incremental WAV output, accepted-tail drain, late-buffer rejection, permission/readiness races, exact frame ceilings, partial-file cleanup, explicit route/conversion failure, local-model injection, configured-live fail-closed behavior, and run/generation-scoped terminal cleanup | **Working-source complete; candidate pending.** The July 18 provider set passed 82 tests and its wider concurrency selection passed Thread Sanitizer. This proves frontend configuration and lifecycle, not controlled acoustic denoise effectiveness or constant-memory native offline decoding. |
+| `AppleVoiceProcessingAudioProcessorTests`, `LocalSpeechIncrementalWaveWriterTests`, `LocalSpeechVoiceCaptureRuntimeTests`, and `RealtimeAudioCaptureServiceTests` prove Apple Voice Processing activation on both I/O nodes, bypass disabled, AGC enabled, strongest-channel selection, exact 16 kHz energy framing, bounded realtime PCM/RMS retention, private incremental WAV output, accepted-tail drain, late-buffer rejection, permission/readiness races, exact frame ceilings, partial-file cleanup, explicit route/conversion failure, local-model injection, configured-live fail-closed behavior, and run/generation-scoped terminal cleanup | **Working-source complete; candidate pending.** This proves frontend configuration and lifecycle, not controlled acoustic denoise effectiveness or constant-memory native offline decoding. |
 | `HotkeyEventTapTests`, `RecordingSessionManagerTests`, and `StackPasteControllerTests` prove the shared producer must be valid and enabled before it is reported available; slow start preparation cannot block later release or second-toggle intent; tap interruption, failed re-enable, and teardown clear recognizer latches; producer loss cancels pending, hold, and toggle capture without waiting for a physical key-up; shutdown drains every derived start/release task; and the visible global-input capability downgrades after producer loss | **Working-source complete; candidate pending.** Included in the 1,691-test 2026-07-17 working-source install; real physical Fn behavior and system-level tap failure remain manual candidate checks. |
 | `SherpaOnnxModelInstallerTests` proves pinned archive size/SHA verification, safe archive inspection, canonical installed-file inventory verification, private atomic publication, corruption rejection and clean repair, cancellation of the external tar child, and verified offline cache reuse | **Working-source complete; candidate pending.** Focused migration suite passed, including a real pinned Qwen archive install; rerun deterministic tests from the candidate and attach the explicit model-install dogfood log separately. |
 | `MainShellFocusIntegrationTests` and `HistoryRetryFocusPolicyTests` prove the main-window sidebar Dashboard → Clipboard → History focus path across hosted AppKit detail replacement and mouse-event tracking, that Clipboard does not steal first responder into Search, and per-channel keyboard/VoiceOver focus rehoming when transient Retry controls disappear without stealing unrelated focus | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
@@ -252,7 +262,7 @@ hash from one clean, uniquely tagged candidate still need to be attached.
 | `SQLitePersistenceStoreTests` and `RunHistoryBrowsingUITests` prove receipt-primary snapshot/keyset pagination, 50-row page bounds, stable same-timestamp ordering, clear invalidation, runID/recordID deep links, privacy-bounded body access, cancellable full-history search, and failure-without-false-empty presentation | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
 | `ClipboardInputMethodGuardTests`, `ClipboardFocusPolicyTests`, and `L10nTests` prove destructive clipboard actions share one confirmation contract, disclose merged-item scope, and cannot escape active text/input-method or modal editing | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
 | `GlobalSearchIndexTests` retry-policy cases and `MainShellFocusIntegrationTests` prove only the current visible failed query can retry, cancelled or stale generations cannot publish, static destinations survive history failure, Retry-to-loading focus returns to the stable search field, the visible overlay removes sidebar/detail/toolbar background interaction and accessibility, and repeated Command-F refocuses without resetting search state | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `ManagedTemporaryAudioCleanupOwnerTests` plus AVAudio, Deepgram, Realtime, and controller lifecycle tests prove managed plaintext audio survives caller cancellation, retries transient deletion failures, emits path-free diagnostics, and drains at shutdown | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
+| `ManagedTemporaryAudioCleanupOwnerTests` plus AVAudio, local realtime, and controller lifecycle tests prove managed plaintext audio survives caller cancellation, retries transient deletion failures, emits path-free diagnostics, and drains at shutdown | **Working-source complete; candidate pending.** Rerun from and attach evidence for the clean candidate. |
 | The local-model preparation lifecycle tests (currently `AppModelWhisperKitPreparationShutdownTests` until the persisted-settings compatibility surface is renamed) prove user cancellation returns to idle, retired tasks cannot publish late progress or completion over replacements, and shutdown drains active and retired manual/warmup tasks | **Working-source complete; candidate pending.** Rerun from and attach evidence for the candidate. |
 | `UserVisibleErrorPrivacyTests` proves the covered Settings, privacy, retention, workflow, provider, runtime-failure, and action-result paths expose only fixed bilingual stage/reason copy | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
 
@@ -469,8 +479,8 @@ Complete the pass in both App languages.
       network request.
 - [ ] For `cloud + trusted local`, reviewed model setup, first load, offline
       restart, dictation, local recording/level/processing overlay, cancellation,
-      and shutdown pass on each required architecture. Deepgram partial-text
-      subtitles are tested separately; local batch recognition is not labeled live.
+      and shutdown pass on each required architecture. Local partial-text subtitles
+      are tested separately; local batch recognition is not labeled live.
 - [ ] With a trusted local engine persisted and model prewarm disabled, relaunch
       the installed candidate and confirm the model reaches an observable ready
       state before the first voice-hotkey capture; that first capture must not be
@@ -501,10 +511,42 @@ Complete the pass in both App languages.
       with explicit acceptance thresholds approved before the run.
       `docs/asr-dogfood-results.md` is historical exploratory TTS evidence and
       is not a release threshold or candidate result.
-- [ ] Deepgram setup and Speech Check show the cloud destination before capture;
-      tightening privacy during capture prevents subsequent egress.
 - [ ] Sensitive App, unknown focus, Secure Input, disabled preview, and revoked
       credentials all fail closed without body text in diagnostics.
+- [ ] Wake word is off by default. Enabling it explains continuous in-memory
+      microphone use, requires the selected local Qwen ASR, exposes model and
+      listening status, and provides an immediate stop control. After model
+      preparation, an offline relaunch starts listening without network access.
+- [ ] In quiet and repeatable everyday-noise conditions, the configured default
+      wake phrase triggers on at least 90% of first attempts. Record phrase,
+      speaker, distance, input route, background source, attempt count, hits,
+      false accepts, and measured wake-to-command-listening latency.
+- [ ] Run 30 consecutive real-microphone `wake phrase + command` attempts,
+      including short pauses between phrase and command. Every accepted combined
+      utterance preserves the command and enters the workflow without a second
+      STT pass. Separately verify phrase-only activation: speech during or after
+      the cue preserves the perceptual first syllable, 12 s initial silence
+      cancels cleanly, and 1.4 s trailing silence finishes exactly once.
+- [ ] Run an eight-hour negative set containing ordinary conversation, music,
+      television, and silence. Record the exact audio environment and allow at
+      most one false wake; do not substitute upstream fixtures or synthetic
+      noise for this candidate gate.
+- [ ] While capture is busy, TTS is playing, microphone permission is revoked,
+      or the input route changes, no new wake is emitted. The VAD/ASR gate resets rather than
+      replaying buffered audio and automatically resumes only after the owning
+      operation or route transition has completed.
+- [ ] Record wake-listening idle CPU and memory, cold model preparation time,
+      warm startup time, and detection latency on every supported Mac tier.
+      Repeat the chain with built-in microphone/speaker and headphones, on the
+      minimum supported macOS as well as the primary development system.
+- [ ] `speech.speak` follows configured copy/inject/stack actions and reads the
+      final result once with Qwen3-TTS in Chinese and English using reviewed
+      preset voices. Stopping from UI and Esc cancels playback, cleans the
+      managed WAV, and restores wake listening without replaying the text.
+- [ ] With Qwen TTS absent, unsupported, damaged, or failing before playback,
+      system speech is used once. A failure after playback begins never repeats
+      the result with system speech; action receipts and temporary-file cleanup
+      remain correct for success, cancellation, failure, and App quit.
 
 ## External output actions
 

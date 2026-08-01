@@ -21,6 +21,19 @@ private func makeRecordingTestPrivacyGate() -> PrivacyRunGate {
     )
 }
 
+private func makeRecordingCloudTestPrivacyGate() -> PrivacyRunGate {
+    PrivacyRunGate(
+        settingsProvider: {
+            PrivacyPolicySettings(
+                sensitiveAppRules: [],
+                cloudConfirmationRequired: false
+            )
+        },
+        cloudConfirmationProvider: { _, _, _ in true },
+        destinationClassifier: { _ in .classified([.cloudSpeech]) }
+    )
+}
+
 private actor RecordingRequestProbe {
     private var request: RecognitionRequest?
 
@@ -346,13 +359,33 @@ private actor MockAudioCaptureService: AudioCaptureService {
 
 private actor RecordingLiveContextStore {
     private var context: ContextSnapshot
+    private var applicationActivationRevision: UInt64 = 0
 
     init(_ context: ContextSnapshot) {
         self.context = context
     }
 
     func read() -> ContextSnapshot { context }
-    func replace(_ context: ContextSnapshot) { self.context = context }
+
+    func focusIdentitySample() -> FocusPrivacyIdentitySample {
+        FocusPrivacyIdentitySample(
+            focus: context.focus,
+            applicationActivationRevision: applicationActivationRevision
+        )
+    }
+
+    func replace(_ context: ContextSnapshot) {
+        let previous = self.context.focus
+        let next = context.focus
+        if previous.applicationName != next.applicationName
+            || previous.bundleIdentifier != next.bundleIdentifier
+            || previous.processIdentifier != next.processIdentifier
+            || previous.secureInput != next.secureInput
+        {
+            applicationActivationRevision &+= 1
+        }
+        self.context = context
+    }
 }
 
 private actor ControlledAudioCaptureService: AudioCaptureService {
@@ -667,6 +700,7 @@ private struct RecordingFocusTargetFixture {
 
 private func makeRecordingFocusTargetFixture(
     initialFocus: FocusPrivacyIdentitySample,
+    privacyRunGate: PrivacyRunGate = makeRecordingTestPrivacyGate(),
     runPreflight: @escaping RecognitionRunPreflight = { _ in }
 ) throws -> RecordingFocusTargetFixture {
     let eventBus = EventBus()
@@ -701,7 +735,7 @@ private func makeRecordingFocusTargetFixture(
         hotkeyTap: HotkeyEventTap(),
         capturedAudioProcessingQueue: queue,
         eventBus: eventBus,
-        privacyRunGate: makeRecordingTestPrivacyGate(),
+        privacyRunGate: privacyRunGate,
         workflowProvider: { [workflow] },
         privacyContextProvider: { await focusProbe.capturePrivacyContext() },
         focusIdentitySampleProvider: { await focusProbe.sample() },
@@ -712,6 +746,7 @@ private func makeRecordingFocusTargetFixture(
             )
         },
         runPreflight: runPreflight,
+        liveAuthorizationMonitorInterval: .milliseconds(5),
         pushToTalkGestureStateProvider: { _ in false }
     )
     return RecordingFocusTargetFixture(
@@ -848,7 +883,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         await fixture.manager.beginPushToTalk()
 
         let request = await fixture.audioCaptureService.snapshot()
-        XCTAssertEqual(request?.maxDurationSeconds, 120)
+        XCTAssertEqual(request?.maxDurationSeconds, 300)
         XCTAssertNil(
             request?.endpointControl,
             "Physical release remains authoritative for hold-to-talk."
@@ -1642,7 +1677,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             eventBus: eventBus,
             privacyRunGate: makeRecordingTestPrivacyGate(),
             workflowProvider: { [workflow] },
-            recordingCueAction: {}
+            recordingCueAction: { _ in }
         )
 
         let marker = "recording.synchronously-revoked-ready.\(UUID().uuidString)"
@@ -1739,7 +1774,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         await fixture.queue.shutdown()
     }
 
-    func testPushToTalkLiveCloudCaptureStopsWhenFocusBecomesSensitive() async throws {
+    func testPushToTalkCloudTextWorkflowStopsWhenFocusBecomesSensitive() async throws {
         let fixture = try makeLiveRevocationFixture()
 
         await fixture.manager.beginPushToTalk()
@@ -1757,7 +1792,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         XCTAssertEqual(request?.audioLifetime?.state, .revoked(.authorizationInvalidated))
     }
 
-    func testToggleLiveCloudCaptureStopsWhenFocusBecomesSensitive() async throws {
+    func testToggleCloudTextWorkflowStopsWhenFocusBecomesSensitive() async throws {
         let fixture = try makeLiveRevocationFixture()
 
         await fixture.manager.toggleLongRecording()
@@ -1893,7 +1928,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             name: "Legacy Clipboard Automation",
             trigger: .hotkey,
             pipeline: PipelineDeclaration(
-                recognizerID: "deepgram.prerecorded",
+                recognizerID: "remote.speech",
                 outputActions: []
             ),
             ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
@@ -1978,7 +2013,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         let workflow = WorkflowDefinition(
             name: "Unavailable Cloud Workflow",
             trigger: .hotkey,
-            pipeline: PipelineDeclaration(recognizerID: "deepgram.prerecorded", outputActions: []),
+            pipeline: PipelineDeclaration(recognizerID: "remote.speech", outputActions: []),
             ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
         )
         let audio = try CapturedAudio(
@@ -2124,6 +2159,71 @@ final class RecordingSessionManagerTests: XCTestCase {
         await fixture.queue.shutdown()
     }
 
+    func testLiveCloudCaptureStopsWhenPrivacyFocusIdentityDrifts() async throws {
+        let initialFocus = makeRecordingFocusIdentitySample(activationRevision: 12)
+        let fixture = try makeRecordingFocusTargetFixture(
+            initialFocus: initialFocus,
+            privacyRunGate: makeRecordingCloudTestPrivacyGate()
+        )
+
+        await fixture.manager.beginPushToTalk()
+        let request = await fixture.audioCaptureService.snapshot()
+        XCTAssertNotNil(request?.audioLifetime)
+
+        await fixture.focusProbe.update(
+            makeRecordingFocusIdentitySample(
+                applicationName: "Passwords",
+                bundleIdentifier: "com.apple.Passwords",
+                processIdentifier: 99,
+                secureInput: true,
+                activationRevision: 13
+            )
+        )
+        await waitForLiveRevocation(manager: fixture.manager)
+
+        let lifecycle = await fixture.audioCaptureService.lifecycleCounts()
+        XCTAssertEqual(lifecycle.finish, 0)
+        XCTAssertEqual(lifecycle.cancel, 1)
+        XCTAssertEqual(
+            request?.audioLifetime?.state,
+            .revoked(.authorizationInvalidated)
+        )
+
+        await fixture.manager.stopForApplicationShutdown()
+        await fixture.queue.shutdown()
+    }
+
+    func testLiveCloudCaptureStopsWhenSecureInputAppearsInSameApplication() async throws {
+        let initialFocus = makeRecordingFocusIdentitySample(activationRevision: 14)
+        let fixture = try makeRecordingFocusTargetFixture(
+            initialFocus: initialFocus,
+            privacyRunGate: makeRecordingCloudTestPrivacyGate()
+        )
+
+        await fixture.manager.beginPushToTalk()
+        let request = await fixture.audioCaptureService.snapshot()
+        XCTAssertNotNil(request?.audioLifetime)
+
+        await fixture.focusProbe.update(
+            makeRecordingFocusIdentitySample(
+                secureInput: true,
+                activationRevision: 14
+            )
+        )
+        await waitForLiveRevocation(manager: fixture.manager)
+
+        let lifecycle = await fixture.audioCaptureService.lifecycleCounts()
+        XCTAssertEqual(lifecycle.finish, 0)
+        XCTAssertEqual(lifecycle.cancel, 1)
+        XCTAssertEqual(
+            request?.audioLifetime?.state,
+            .revoked(.authorizationInvalidated)
+        )
+
+        await fixture.manager.stopForApplicationShutdown()
+        await fixture.queue.shutdown()
+    }
+
     func testCloudPrivacyBlockPreventsAudioCaptureFromStarting() async throws {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
@@ -2131,7 +2231,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         let workflow = WorkflowDefinition(
             name: "Blocked Cloud Workflow",
             trigger: .hotkey,
-            pipeline: PipelineDeclaration(recognizerID: "deepgram.prerecorded", outputActions: []),
+            pipeline: PipelineDeclaration(recognizerID: "remote.speech", outputActions: []),
             ui: WorkflowUIConfig(symbolName: "lock", accentColorName: "red")
         )
         let audio = try CapturedAudio(
@@ -2288,7 +2388,11 @@ final class RecordingSessionManagerTests: XCTestCase {
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let requestProbe = RecordingRequestProbe()
         let actionProbe = RecordingActionProbe()
-        let workflow = WorkflowDefinition(
+        let vocabularyMigration = VocabularyLegacyMigrator.migrate([
+            VocabularyRule(kind: .hotword, pattern: "Rill", replacement: ""),
+            VocabularyRule(kind: .hotword, pattern: "multi word", replacement: ""),
+        ])
+        var workflow = WorkflowDefinition(
             name: "Push to Talk Workflow",
             trigger: .hotkey,
             pipeline: PipelineDeclaration(
@@ -2297,6 +2401,8 @@ final class RecordingSessionManagerTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
         )
+        workflow.plan.setup.vocabularyBindings = vocabularyMigration.bindings
+        let configuredWorkflow = workflow
         let audio = try CapturedAudio(
             durationSeconds: 1.5,
             format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
@@ -2315,7 +2421,8 @@ final class RecordingSessionManagerTests: XCTestCase {
             candidateResolver: resolver,
             deliveryStack: deliveryStack,
             eventBus: eventBus,
-            diagnostics: diagnostics
+            diagnostics: diagnostics,
+            vocabularyCollectionProvider: { vocabularyMigration.collections }
         )
         let manager = RecordingSessionManager(
             audioCaptureService: audioCaptureService,
@@ -2328,7 +2435,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics,
             privacyRunGate: makeRecordingTestPrivacyGate(),
-            workflowProvider: { [workflow] },
+            workflowProvider: { [configuredWorkflow] },
             recognitionOptionsProvider: { _, _ in expectedOptions }
         )
 
@@ -2354,7 +2461,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         let actionValues = await actionProbe.snapshot()
         let currentState = await manager.currentState()
 
-        XCTAssertEqual(captureRequest?.workflow.id, workflow.id)
+        XCTAssertEqual(captureRequest?.workflow.id, configuredWorkflow.id)
         XCTAssertEqual(captureRequest?.triggerEvent?.metadata["gesture"], HotkeyEventTap.PushToTalkGesture.fnHold.rawValue)
         XCTAssertEqual(captureRequest?.metadata["gesture"], HotkeyEventTap.PushToTalkGesture.fnHold.rawValue)
         XCTAssertEqual(captureRequest?.options, expectedOptions)
@@ -2366,7 +2473,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         XCTAssertEqual(currentState, RecordingSessionManager.State.idle)
         XCTAssertTrue(events.contains { event in
             if case .runCompleted(let summary) = event {
-                return summary.workflow.fallbackName == workflow.name
+                return summary.workflow.fallbackName == configuredWorkflow.name
             }
             return false
         })
@@ -2968,10 +3075,13 @@ final class RecordingSessionManagerTests: XCTestCase {
             diagnostics: diagnostics
         )
         let workflow = WorkflowDefinition(
-            name: "Revocable Cloud Recording",
+            name: "Revocable Cloud Text Workflow",
             trigger: .hotkey,
             pipeline: PipelineDeclaration(
-                recognizerID: "deepgram.prerecorded",
+                recognizerID: "sherpa-onnx.local",
+                postProcessSteps: [
+                    PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
+                ],
                 outputActions: []
             ),
             ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
@@ -3000,6 +3110,9 @@ final class RecordingSessionManagerTests: XCTestCase {
             workflowProvider: { [workflow] },
             privacyContextProvider: { await contexts.read() },
             authorizedContextProvider: { _ in await contexts.read() },
+            focusIdentitySampleProvider: {
+                await contexts.focusIdentitySample()
+            },
             liveAuthorizationMonitorInterval: .milliseconds(5)
         )
         return LiveRevocationFixture(

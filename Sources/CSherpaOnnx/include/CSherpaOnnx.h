@@ -11,6 +11,8 @@ typedef struct RillSherpaOfflineRecognizer RillSherpaOfflineRecognizer;
 typedef struct RillSherpaOnlineRecognizer RillSherpaOnlineRecognizer;
 typedef struct RillSherpaOnlineStream RillSherpaOnlineStream;
 typedef struct RillSherpaSileroVad RillSherpaSileroVad;
+typedef struct RillSherpaKeywordSpotter RillSherpaKeywordSpotter;
+typedef struct RillSherpaKeywordStream RillSherpaKeywordStream;
 
 typedef enum RillSherpaVadStatus {
   RILL_SHERPA_VAD_STATUS_OK = 0,
@@ -27,6 +29,13 @@ typedef struct RillSherpaOfflineResult {
   float *durations;
   int32_t count;
 } RillSherpaOfflineResult;
+
+typedef struct RillSherpaKeywordResult {
+  char *keyword;
+  float *timestamps;
+  int32_t count;
+  float start_time;
+} RillSherpaKeywordResult;
 
 const char *RillSherpaOnnxVersion(void);
 const char *RillSherpaOnnxGitSHA1(void);
@@ -91,6 +100,29 @@ int32_t RillSherpaOnlineStreamFinishAndDecode(
     RillSherpaOnlineStream *stream, char **text);
 
 void RillSherpaFreeString(char *text);
+
+RillSherpaKeywordSpotter *RillSherpaCreateKeywordSpotter(
+    const char *encoder, const char *decoder, const char *joiner,
+    const char *tokens, const char *keywords, int32_t num_threads,
+    int32_t max_active_paths, int32_t num_trailing_blanks,
+    float keywords_score, float keywords_threshold);
+
+void RillSherpaDestroyKeywordSpotter(RillSherpaKeywordSpotter *spotter);
+
+RillSherpaKeywordStream *RillSherpaCreateKeywordStream(
+    RillSherpaKeywordSpotter *spotter, const char *keywords);
+
+void RillSherpaDestroyKeywordStream(RillSherpaKeywordStream *stream);
+
+int32_t RillSherpaKeywordStreamAcceptAndDecode(
+    RillSherpaKeywordSpotter *spotter, RillSherpaKeywordStream *stream,
+    const float *samples, int32_t sample_count, int32_t sample_rate,
+    RillSherpaKeywordResult **result);
+
+int32_t RillSherpaResetKeywordStream(
+    RillSherpaKeywordSpotter *spotter, RillSherpaKeywordStream *stream);
+
+void RillSherpaDestroyKeywordResult(RillSherpaKeywordResult *result);
 
 RillSherpaSileroVad *RillSherpaCreateSileroVad(
     const char *model, float threshold, float min_silence_duration,

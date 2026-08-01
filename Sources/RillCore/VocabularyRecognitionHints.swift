@@ -1,6 +1,6 @@
 import Foundation
 
-public enum VocabularyRuleSourceError: Error, LocalizedError, Sendable, Equatable {
+public enum VocabularyLibrarySourceError: Error, LocalizedError, Sendable, Equatable {
     case notReady
     case unavailable(String)
 
@@ -14,35 +14,61 @@ public enum VocabularyRuleSourceError: Error, LocalizedError, Sendable, Equatabl
     }
 }
 
-/// A process-wide, fail-closed snapshot of vocabulary rules.
+/// A process-wide, fail-closed snapshot of the vocabulary library.
 ///
 /// Reads and updates are synchronous so a validated edit is visible to the next
 /// recognition request before asynchronous persistence completes.
-public final class VocabularyRuleSource: @unchecked Sendable {
+public final class VocabularyLibrarySource: @unchecked Sendable {
     private enum State {
         case loading
-        case available([VocabularyRule])
+        case available([VocabularyCollection])
         case unavailable(String)
     }
 
     private let lock = NSLock()
     private var state: State
+    private var legacyRulesSnapshot: [VocabularyRule]?
 
     /// Passing `nil` leaves the source loading. Passing an explicit empty array
-    /// publishes an available snapshot containing no rules.
+    /// publishes an available personal collection containing no entries.
     public init(initialRules: [VocabularyRule]? = nil) {
-        state = initialRules.map(State.available) ?? .loading
+        legacyRulesSnapshot = initialRules
+        state = initialRules.map {
+            State.available([
+                .personal(entries: $0.map(VocabularyEntry.init(rule:))),
+            ])
+        } ?? .loading
+    }
+
+    public init(initialCollections: [VocabularyCollection]?) {
+        legacyRulesSnapshot = initialCollections?.flatMap { collection in
+            collection.entries.map { $0.legacyRule() }
+        }
+        state = initialCollections.map(State.available) ?? .loading
     }
 
     public func currentRules() throws -> [VocabularyRule] {
+        lock.lock()
+        defer { lock.unlock() }
+        switch state {
+        case .loading:
+            throw VocabularyLibrarySourceError.notReady
+        case .available:
+            return legacyRulesSnapshot ?? []
+        case .unavailable(let reason):
+            throw VocabularyLibrarySourceError.unavailable(reason)
+        }
+    }
+
+    public func currentCollections() throws -> [VocabularyCollection] {
         lock.lock()
         defer { lock.unlock() }
 
         switch state {
         case .loading:
             throw VocabularyRuleSourceError.notReady
-        case .available(let rules):
-            return rules
+        case .available(let collections):
+            return collections
         case .unavailable(let reason):
             throw VocabularyRuleSourceError.unavailable(reason)
         }
@@ -60,16 +86,32 @@ public final class VocabularyRuleSource: @unchecked Sendable {
 
     public func update(_ rules: [VocabularyRule]) {
         lock.lock()
-        state = .available(rules)
+        legacyRulesSnapshot = rules
+        state = .available([
+            .personal(entries: rules.map(VocabularyEntry.init(rule:))),
+        ])
+        lock.unlock()
+    }
+
+    public func updateCollections(_ collections: [VocabularyCollection]) {
+        lock.lock()
+        legacyRulesSnapshot = collections.flatMap { collection in
+            collection.entries.map { $0.legacyRule() }
+        }
+        state = .available(collections)
         lock.unlock()
     }
 
     public func markUnavailable(reason: String) {
         lock.lock()
+        legacyRulesSnapshot = nil
         state = .unavailable(reason)
         lock.unlock()
     }
 }
+
+public typealias VocabularyRuleSource = VocabularyLibrarySource
+public typealias VocabularyRuleSourceError = VocabularyLibrarySourceError
 
 public struct VocabularyRecognitionHintResolution: Sendable, Equatable {
     public var hints: RecognitionHints

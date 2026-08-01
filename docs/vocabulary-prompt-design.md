@@ -28,7 +28,7 @@ Rill 当前已有合适的接入点：
 | 层级 | 作用 | provider 依赖 | 当前状态 |
 |---|---|---:|---|
 | 映射词 mapping | ASR 后处理，把识别结果中的错词/口令替换成目标文本 | 否 | 已接入生产运行时 |
-| 热词 hotword | 传给支持的 ASR provider，提高识别概率 | 是 | 已接入 Deepgram Nova-3 实时与录后路径 |
+| 热词 hotword | 传给支持的 ASR provider，提高识别概率 | 是 | 已接入本地 Qwen 最终转写路径 |
 | 禁用词/敏感词 guard | 阻止某些文本进入历史或云端处理 | 否 | 可后续并入隐私任务 |
 
 **mapping** 仍是默认优先机制，因为它可测试、可解释、能立即改善 Type4Me/Wispr Flow 类场景：
@@ -140,7 +140,8 @@ VocabularyRuleSource
 - 规则只在隐私授权后读取；用户拒绝云端处理时不会解析或发送热词。
 - 录音开始时冻结语言和 hints，同一会话的实时识别、队列和录后 fallback 使用同一份快照，设置中途变化只影响下一次会话。
 - 只选择启用且 scope 匹配的 hotword，按优先级、创建时间、UUID 稳定排序，精确去重；空值、换行和控制字符被拒绝。
-- 通用 resolver 最多输出 50 个 keyterms。Deepgram planner 进一步限制单项 100 个 Unicode scalar、总计 500 个 scalar，并只对 `nova-3`、`nova-3-general`、`nova-3-medical` 追加重复的 `keyterm` 查询参数。
+- 通用 resolver 最多输出 50 个候选；本地 Qwen adapter 会进一步执行自己的数量、长度与字符预算。
+- 本地 Qwen 会复用同一份作用域快照，但进一步清洗为最多 16 个、合计最多 48 UTF-8 字节且不含逗号或控制字符的热词。sherpa-onnx Qwen 以逐请求 hotwords 传入，MLX Qwen 以有界 context 传入；两者都只是概率提示，不保证命中。
 - 诊断仅记录 source、outcome、采用数、省略数和拒绝数，不记录规则文本、请求 URL、转写原文或 provider 响应正文。
 - `SpeechRecognitionRequestOptions` 故意不实现 `Codable`，避免把会话级热词意外写入历史或设置。
 
@@ -218,14 +219,14 @@ PostProcessStep.prompt
 1. `VocabularyModels`、`VocabularyRuleApplicator`、`PromptVariableModels` 和 `PromptVariableRenderer` 的纯模型与测试。
 2. mapping 在 `SessionCoordinator` 的识别后、post-process 前运行，支持 App、目标剪贴板组和语言作用域。
 3. Settings 中的词汇规则管理，以及 mapping / hotword 不同语义的界面表达。
-4. typed recognition options、provider capability、捕获时快照和 Deepgram Nova-3 keyterm adapter；实时与录后请求共用 planner。
+4. typed recognition options、provider capability、捕获时快照，以及 sherpa-onnx Qwen hotwords 和 MLX Qwen context adapter；同一运行的实时与录后请求共用冻结后的 options 快照。
 5. 对规则加载失败、provider 不支持、模型不支持、容量省略和非法 keyterm 的无内容诊断。
 6. 一步纠错闭环已进入真实历史路径：用户编辑原识别结果后可从保守 planner 生成的 mapping / hotword 建议中显式选择；缺失作用域必须逐项人工确认，冲突规则不会覆盖已有配置。
 
 尚未完成：
 
 1. `PromptVariableRenderer` 尚未接入真实生产 transformer；当前没有可用的 LLM transformer，因此 UI 不应宣传语音命令已可用。
-2. Deepgram keyterm 与纠错建议的真实效果仍需在授权设备上用真人语料 dogfood；现有自动化验收覆盖请求规划、隐私顺序、快照传递、建议约束和敏感内容不落盘，不等于准确率或日常纠错成本验证。
+2. 本地 Qwen 热词与纠错建议的真实效果仍需在授权设备上用真人语料 dogfood；现有自动化验收覆盖请求规划、隐私顺序、快照传递、建议约束和敏感内容不落盘，不等于准确率或日常纠错成本验证。
 
 ## 5. 暂不做
 
@@ -244,4 +245,4 @@ PostProcessStep.prompt
 - 热词不进入 workflow metadata；Core 定义通用 hints 与 capability，具体 provider 只负责将其收窄为受支持的请求参数。
 - Prompt 变量只影响 transformer prompt，不污染 core workflow 定义。
 
-下一步不是扩展第二个热词 adapter，而是先完成真实 Deepgram/Qwen3-ASR dogfood 和首次启动 readiness；只有数据证明专业词仍是主要编辑成本时，再实现“用户修正 → 建议规则 → 人工确认作用域”的闭环。
+下一步不是扩展第二个热词 adapter，而是先完成真实 Qwen3-ASR dogfood 和首次启动 readiness；只有数据证明专业词仍是主要编辑成本时，再实现“用户修正 → 建议规则 → 人工确认作用域”的闭环。

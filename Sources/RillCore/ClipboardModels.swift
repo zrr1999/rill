@@ -296,6 +296,9 @@ public struct ClipboardHistoryItem: Identifiable, Codable, Sendable, Equatable {
     public var useCount: Int
     public var lastUsedAt: Date?
     public var tags: [String]
+    /// Keeps a history-only item out of automatic retention and capacity
+    /// eviction. Pinning never makes an item active in Stack / Queue / List.
+    public var isPinned: Bool
 
     public init(
         id: UUID = UUID(),
@@ -316,7 +319,8 @@ public struct ClipboardHistoryItem: Identifiable, Codable, Sendable, Equatable {
         latestError: String? = nil,
         useCount: Int = 0,
         lastUsedAt: Date? = nil,
-        tags: [String] = []
+        tags: [String] = [],
+        isPinned: Bool = false
     ) {
         self.id = id
         self.version = version
@@ -337,6 +341,7 @@ public struct ClipboardHistoryItem: Identifiable, Codable, Sendable, Equatable {
         self.useCount = useCount
         self.lastUsedAt = lastUsedAt
         self.tags = tags
+        self.isPinned = isPinned
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -359,6 +364,7 @@ public struct ClipboardHistoryItem: Identifiable, Codable, Sendable, Equatable {
         case useCount
         case lastUsedAt
         case tags
+        case isPinned
     }
 
     public init(from decoder: any Decoder) throws {
@@ -383,6 +389,7 @@ public struct ClipboardHistoryItem: Identifiable, Codable, Sendable, Equatable {
         useCount = try container.decodeIfPresent(Int.self, forKey: .useCount) ?? 0
         lastUsedAt = try container.decodeIfPresent(Date.self, forKey: .lastUsedAt)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -406,6 +413,7 @@ public struct ClipboardHistoryItem: Identifiable, Codable, Sendable, Equatable {
         try container.encode(useCount, forKey: .useCount)
         try container.encodeIfPresent(lastUsedAt, forKey: .lastUsedAt)
         try container.encode(tags, forKey: .tags)
+        try container.encode(isPinned, forKey: .isPinned)
     }
 }
 

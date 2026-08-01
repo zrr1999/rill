@@ -14,8 +14,7 @@ public protocol LocalSpeechBackendRecognizer: SpeechRecognizer {
 public actor RoutedLocalSpeechRecognizer: SpeechRecognizer {
   public nonisolated let id: String
   public nonisolated let capabilities = SpeechRecognizerCapabilities(
-    supportedHintKinds: [.keyterm],
-    maximumAudioDurationSeconds: Double(SherpaOnnxRecognizer.maximumAudioDurationSeconds)
+    supportedHintKinds: [.keyterm]
   )
 
   private let settingsProvider: @Sendable () async throws -> LocalSpeechSettings

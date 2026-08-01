@@ -159,92 +159,6 @@ private actor BlockingDeferredLegacyAudioCaptureProbe: AudioCaptureService {
   }
 }
 
-private actor PermissionRequestProbe {
-  private(set) var callCount = 0
-
-  func request() -> Bool {
-    callCount += 1
-    return true
-  }
-}
-
-private actor BlockingPermissionProbe {
-  private var requested = false
-  private var requestWaiters: [CheckedContinuation<Void, Never>] = []
-  private var resolution: CheckedContinuation<Bool, Never>?
-
-  func request() async -> Bool {
-    requested = true
-    let waiters = requestWaiters
-    requestWaiters.removeAll()
-    for waiter in waiters {
-      waiter.resume()
-    }
-    return await withCheckedContinuation { continuation in
-      resolution = continuation
-    }
-  }
-
-  func waitUntilRequested() async {
-    if requested { return }
-    await withCheckedContinuation { continuation in
-      requestWaiters.append(continuation)
-    }
-  }
-
-  func resolve(_ granted: Bool) {
-    resolution?.resume(returning: granted)
-    resolution = nil
-  }
-}
-
-private actor DeepgramConfigurationSequence {
-  private var configurations: [DeepgramRecognizer.Configuration?]
-
-  init(_ configurations: [DeepgramRecognizer.Configuration?]) {
-    self.configurations = configurations
-  }
-
-  func next() -> DeepgramRecognizer.Configuration? {
-    guard !configurations.isEmpty else { return nil }
-    return configurations.removeFirst()
-  }
-}
-
-private actor BlockingFirstDeepgramConfigurationProbe {
-  private var callCount = 0
-  private var firstRequestObserved = false
-  private var requestWaiters: [CheckedContinuation<Void, Never>] = []
-  private var firstResolution: CheckedContinuation<DeepgramRecognizer.Configuration?, Never>?
-
-  func next() async -> DeepgramRecognizer.Configuration? {
-    callCount += 1
-    guard callCount == 1 else { return nil }
-
-    firstRequestObserved = true
-    let waiters = requestWaiters
-    requestWaiters.removeAll()
-    for waiter in waiters {
-      waiter.resume()
-    }
-    return await withCheckedContinuation { continuation in
-      firstResolution = continuation
-    }
-  }
-
-  func waitUntilFirstRequest() async {
-    if firstRequestObserved { return }
-    await withCheckedContinuation { continuation in
-      requestWaiters.append(continuation)
-    }
-  }
-
-  func resolveFirst(with configuration: DeepgramRecognizer.Configuration?) {
-    firstResolution?.resume(returning: configuration)
-    firstResolution = nil
-  }
-}
-
 private actor LiveSnapshotProbe {
   private var snapshots: [LiveSubtitleSnapshot] = []
 
@@ -954,50 +868,6 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
     XCTAssertNil(signal)
   }
 
-  func testShutdownSealsServiceBeforeSuspendedConfigurationResumes() async throws {
-    let audio = try makeProbeAudio(named: "shutdown-seal")
-    let legacyCapture = LegacyAudioCaptureProbe(audio: audio)
-    let configurationProbe = BlockingFirstDeepgramConfigurationProbe()
-    let service = RealtimeAudioCaptureService(
-      legacyCaptureService: legacyCapture,
-      deepgramConfigurationProvider: { await configurationProbe.next() },
-    )
-    let runID = UUID()
-    let lifetime = AudioCaptureLifetime(runID: runID)
-    let request = AudioCaptureRequest(
-      runID: runID,
-      workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
-      audioLifetime: lifetime
-    )
-    let startTask = Task {
-      try await service.startCapture(request)
-    }
-    await configurationProbe.waitUntilFirstRequest()
-
-    await service.shutdown()
-
-    do {
-      try await service.startCapture(request)
-      XCTFail("Shutdown must permanently reject later capture starts.")
-    } catch let error as RealtimeAudioCaptureService.CaptureError {
-      XCTAssertEqual(error, .shuttingDown)
-    } catch {
-      XCTFail("Unexpected post-shutdown error: \(error)")
-    }
-
-    await configurationProbe.resolveFirst(with: nil)
-    do {
-      try await startTask.value
-      XCTFail("A configuration lookup released after shutdown must not start capture.")
-    } catch is CancellationError {
-      // Expected: shutdown cleared the in-flight capture reservation.
-    }
-
-    let legacyStartCount = await legacyCapture.startCallCount
-    XCTAssertEqual(legacyStartCount, 0)
-    XCTAssertEqual(lifetime.state, .revoked(.captureCancelled))
-  }
-
   func testFailedWaveCleanupTransfersPartialFileAndRetriesBeforeReturning() async throws {
     let runID = UUID()
     let fileURL = FileManager.default.temporaryDirectory
@@ -1028,98 +898,11 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
   }
 
-  func testDeepgramMissingAPIKeyFailsBeforePermissionOrFallbackCapture() async throws {
-    try await assertDeepgramConfigurationFailsBeforeLocalCapture(
-      configuration: .init(apiKey: " \n "),
-      expectedError: .missingAPIKey,
-      forbiddenDiagnosticFragments: ["api.deepgram.com"]
-    )
-  }
-
-  func testDeepgramInvalidBaseURLFailsBeforePermissionOrFallbackCapture() async throws {
-    try await assertDeepgramConfigurationFailsBeforeLocalCapture(
-      configuration: .init(
-        apiKey: "configuration-secret-canary",
-        baseURL: "http://configuration-url-canary.example.com"
-      ),
-      expectedError: .invalidBaseURL,
-      forbiddenDiagnosticFragments: [
-        "configuration-secret-canary",
-        "configuration-url-canary.example.com",
-      ]
-    )
-  }
-
-  func testConfiguredDeepgramPermissionFailureNeverFallsBackToRawCapture() async throws {
-    let audio = try makeProbeAudio(named: "deepgram-permission-failure")
-    let legacyCapture = LegacyAudioCaptureProbe(audio: audio)
-    let snapshotProbe = LiveSnapshotProbe()
-    let service = RealtimeAudioCaptureService(
-      legacyCaptureService: legacyCapture,
-      deepgramConfigurationProvider: { .init(apiKey: "test-key") },
-      deepgramMicrophonePermissionRequester: { false },
-      liveUpdateHandler: { snapshot in
-        await snapshotProbe.record(snapshot)
-      }
-    )
-    let runID = UUID()
-    let lifetime = AudioCaptureLifetime(runID: runID)
-    let request = AudioCaptureRequest(
-      runID: runID,
-      workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
-      audioLifetime: lifetime
-    )
-
-    do {
-      try await service.startCapture(request)
-      XCTFail("A configured Deepgram live startup failure must be terminal.")
-    } catch let error as RealtimeAudioCaptureService.CaptureError {
-      XCTAssertEqual(error, .microphonePermissionDenied)
-    }
-
-    let legacyStartCount = await legacyCapture.startCallCount
-    let snapshots = await snapshotProbe.all()
-    XCTAssertEqual(legacyStartCount, 0)
-    XCTAssertEqual(snapshots.last?.phase, .failed)
-    XCTAssertEqual(lifetime.state, .revoked(.serviceFailure))
-  }
-
-  func testDeepgramUnexpectedTerminationRequiresReservationAndRunOwnership() {
-    let reservationID = UUID()
-    let runID = UUID()
-    let scope = DeepgramLiveCaptureReadinessGate.Scope(runID: runID, generation: 4)
-
-    XCTAssertTrue(
-      RealtimeAudioCaptureService.acceptsDeepgramUnexpectedTermination(
-        activeReservationIdentity: reservationID,
-        expectedReservationIdentity: reservationID,
-        expectedRunID: runID,
-        scope: scope
-      )
-    )
-    XCTAssertFalse(
-      RealtimeAudioCaptureService.acceptsDeepgramUnexpectedTermination(
-        activeReservationIdentity: UUID(),
-        expectedReservationIdentity: reservationID,
-        expectedRunID: runID,
-        scope: scope
-      )
-    )
-    XCTAssertFalse(
-      RealtimeAudioCaptureService.acceptsDeepgramUnexpectedTermination(
-        activeReservationIdentity: reservationID,
-        expectedReservationIdentity: reservationID,
-        expectedRunID: UUID(),
-        scope: scope
-      )
-    )
-  }
-
-  func testCloudWorkflowAttemptsLiveCaptureThenFallsBack() async throws {
+  func testFallbackWorkflowUsesLegacyFileCapture() async throws {
     let audio = try CapturedAudio(
       durationSeconds: 1.0,
       format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
-      fileURL: URL(fileURLWithPath: "/tmp/rill-cloud-capture.wav")
+      fileURL: URL(fileURLWithPath: "/tmp/rill-fallback-capture.wav")
     )
     let legacyCapture = LegacyAudioCaptureProbe(audio: audio)
     let snapshotProbe = LiveSnapshotProbe()
@@ -1133,7 +916,7 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
     let lifetime = AudioCaptureLifetime(runID: runID)
     let request = AudioCaptureRequest(
       runID: runID,
-      workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
+      workflow: makeWorkflow(recognizerID: "fallback.file"),
       audioLifetime: lifetime
     )
 
@@ -1143,70 +926,11 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
 
     XCTAssertEqual(legacyRequest?.runID, request.runID)
     XCTAssertEqual(snapshots.last?.phase, .recording)
-    XCTAssertEqual(snapshots.last?.providerID, "deepgram.prerecorded")
+    XCTAssertEqual(snapshots.last?.providerID, "fallback.file")
 
     await service.cancelCapture()
     let updatedSnapshots = await snapshotProbe.all()
     XCTAssertEqual(updatedSnapshots.last?.phase, .hidden)
-  }
-
-  func testDeepgramMissingLifetimeFailsClosedBeforePermissionOrFallback() async throws {
-    let audio = try makeProbeAudio(named: "missing-lifetime")
-    let legacyCapture = LegacyAudioCaptureProbe(audio: audio)
-    let permissionProbe = PermissionRequestProbe()
-    let service = RealtimeAudioCaptureService(
-      legacyCaptureService: legacyCapture,
-      deepgramConfigurationProvider: { .init(apiKey: "test-key") },
-      deepgramMicrophonePermissionRequester: { await permissionProbe.request() },
-    )
-    let request = AudioCaptureRequest(
-      runID: UUID(),
-      workflow: makeWorkflow(recognizerID: "deepgram.prerecorded")
-    )
-
-    do {
-      try await service.startCapture(request)
-      XCTFail("Missing live authorization must fail closed.")
-    } catch let error as DeepgramLiveRuntimeError {
-      XCTAssertEqual(error, .missingAudioLifetime)
-    }
-
-    let permissionCallCount = await permissionProbe.callCount
-    let legacyStartCallCount = await legacyCapture.startCallCount
-    XCTAssertEqual(permissionCallCount, 0)
-    XCTAssertEqual(legacyStartCallCount, 0)
-  }
-
-  func testDeepgramRevokedLifetimeFailsClosedWithoutAudioSideEffects() async throws {
-    let audio = try makeProbeAudio(named: "revoked-lifetime")
-    let legacyCapture = LegacyAudioCaptureProbe(audio: audio)
-    let permissionProbe = PermissionRequestProbe()
-    let service = RealtimeAudioCaptureService(
-      legacyCaptureService: legacyCapture,
-      deepgramConfigurationProvider: { .init(apiKey: "test-key") },
-      deepgramMicrophonePermissionRequester: { await permissionProbe.request() },
-    )
-    let runID = UUID()
-    let lifetime = AudioCaptureLifetime(runID: runID)
-    lifetime.revoke(.authorizationInvalidated)
-    let request = AudioCaptureRequest(
-      runID: runID,
-      workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
-      audioLifetime: lifetime
-    )
-
-    do {
-      try await service.startCapture(request)
-      XCTFail("Revoked live authorization must fail closed.")
-    } catch let error as DeepgramLiveRuntimeError {
-      XCTAssertEqual(error, .audioAuthorizationRevoked)
-    }
-
-    let permissionCallCount = await permissionProbe.callCount
-    let legacyStartCallCount = await legacyCapture.startCallCount
-    XCTAssertEqual(permissionCallCount, 0)
-    XCTAssertEqual(legacyStartCallCount, 0)
-    XCTAssertEqual(lifetime.state, .revoked(.authorizationInvalidated))
   }
 
   func testRunScopedCancellationCannotCancelNewerFallbackCapture() async throws {
@@ -1219,7 +943,7 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
     let firstLifetime = AudioCaptureLifetime(runID: firstRunID)
     let firstRequest = AudioCaptureRequest(
       runID: firstRunID,
-      workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
+      workflow: makeWorkflow(recognizerID: "fallback.file"),
       audioLifetime: firstLifetime
     )
     try await service.startCapture(firstRequest)
@@ -1229,7 +953,7 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
     let secondLifetime = AudioCaptureLifetime(runID: secondRunID)
     let secondRequest = AudioCaptureRequest(
       runID: secondRunID,
-      workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
+      workflow: makeWorkflow(recognizerID: "fallback.file"),
       audioLifetime: secondLifetime
     )
     try await service.startCapture(secondRequest)
@@ -1246,126 +970,6 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
     _ = try await deferred.value()
   }
 
-  func testCancellingStartingRunCannotLeakIntoNextRun() async throws {
-    let audio = try makeProbeAudio(named: "starting-run-cancel")
-    let legacyCapture = LegacyAudioCaptureProbe(audio: audio)
-    let permissionProbe = BlockingPermissionProbe()
-    let configurationSequence = DeepgramConfigurationSequence([
-      .init(apiKey: "test-key"),
-      nil,
-    ])
-    let service = RealtimeAudioCaptureService(
-      legacyCaptureService: legacyCapture,
-      deepgramConfigurationProvider: { await configurationSequence.next() },
-      deepgramMicrophonePermissionRequester: { await permissionProbe.request() },
-    )
-    let firstRunID = UUID()
-    let firstLifetime = AudioCaptureLifetime(runID: firstRunID)
-    let firstRequest = AudioCaptureRequest(
-      runID: firstRunID,
-      workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
-      audioLifetime: firstLifetime
-    )
-
-    let startingTask = Task {
-      try await service.startCapture(firstRequest)
-    }
-    await permissionProbe.waitUntilRequested()
-    await service.cancelCapture(runID: firstRunID)
-    await permissionProbe.resolve(true)
-
-    do {
-      try await startingTask.value
-      XCTFail("The cancelled starting run must not become active.")
-    } catch is CancellationError {
-      // Expected.
-    }
-
-    let secondRunID = UUID()
-    let secondLifetime = AudioCaptureLifetime(runID: secondRunID)
-    try await service.startCapture(
-      AudioCaptureRequest(
-        runID: secondRunID,
-        workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
-        audioLifetime: secondLifetime
-      )
-    )
-    await service.cancelCapture(runID: firstRunID)
-
-    let deferred = try await service.finishCaptureDeferred()
-    XCTAssertEqual(firstLifetime.state, .revoked(.captureCancelled))
-    XCTAssertEqual(secondLifetime.state, .active)
-    _ = try await deferred.value()
-  }
-
-  func testConfigurationReservationRejectsConcurrentStartAndCannotOverwriteNewerRun() async throws {
-    let audio = try makeProbeAudio(named: "configuration-reservation")
-    let legacyCapture = LegacyAudioCaptureProbe(audio: audio)
-    let configurationProbe = BlockingFirstDeepgramConfigurationProbe()
-    let service = RealtimeAudioCaptureService(
-      legacyCaptureService: legacyCapture,
-      deepgramConfigurationProvider: { await configurationProbe.next() },
-    )
-    let firstRunID = UUID()
-    let firstLifetime = AudioCaptureLifetime(runID: firstRunID)
-    let firstRequest = AudioCaptureRequest(
-      runID: firstRunID,
-      workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
-      audioLifetime: firstLifetime
-    )
-    let firstStart = Task {
-      try await service.startCapture(firstRequest)
-    }
-    await configurationProbe.waitUntilFirstRequest()
-
-    let rejectedRunID = UUID()
-    do {
-      try await service.startCapture(
-        AudioCaptureRequest(
-          runID: rejectedRunID,
-          workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
-          audioLifetime: AudioCaptureLifetime(runID: rejectedRunID)
-        )
-      )
-      XCTFail("A preparing reservation must reject a concurrent start.")
-    } catch let error as RealtimeAudioCaptureService.CaptureError {
-      XCTAssertEqual(error, .alreadyCapturing)
-    }
-
-    await service.cancelCapture(runID: firstRunID)
-
-    // Reuse the run ID deliberately: ownership is the reservation identity,
-    // not caller-provided metadata that can be repeated by a stale task.
-    let secondRunID = firstRunID
-    let secondLifetime = AudioCaptureLifetime(runID: secondRunID)
-    try await service.startCapture(
-      AudioCaptureRequest(
-        runID: secondRunID,
-        workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
-        audioLifetime: secondLifetime
-      )
-    )
-    await configurationProbe.resolveFirst(with: .init(apiKey: "late-test-key"))
-
-    do {
-      try await firstStart.value
-      XCTFail("The cancelled configuration lookup must not reclaim capture ownership.")
-    } catch is CancellationError {
-      // Expected.
-    }
-
-    let activeLegacyRequest = await legacyCapture.snapshot()
-    let legacyStartCount = await legacyCapture.startCallCount
-    XCTAssertEqual(activeLegacyRequest?.runID, secondRunID)
-    XCTAssertTrue(activeLegacyRequest?.audioLifetime === secondLifetime)
-    XCTAssertEqual(legacyStartCount, 1)
-    XCTAssertEqual(firstLifetime.state, .revoked(.captureCancelled))
-    XCTAssertEqual(secondLifetime.state, .active)
-
-    let deferred = try await service.finishCaptureDeferred()
-    _ = try await deferred.value()
-  }
-
   func testCancelledStartingFallbackSweepsResourceInstalledAfterCancellation() async throws {
     let audio = try makeProbeAudio(named: "late-fallback-start")
     let legacyCapture = BlockingLateLegacyAudioCaptureProbe(audio: audio)
@@ -1378,7 +982,7 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
       try await service.startCapture(
         AudioCaptureRequest(
           runID: firstRunID,
-          workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
+          workflow: makeWorkflow(recognizerID: "fallback.file"),
           audioLifetime: firstLifetime
         )
       )
@@ -1412,7 +1016,7 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
     try await service.startCapture(
       AudioCaptureRequest(
         runID: secondRunID,
-        workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
+        workflow: makeWorkflow(recognizerID: "fallback.file"),
         audioLifetime: secondLifetime
       )
     )
@@ -1452,7 +1056,7 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
     try await service.startCapture(
       AudioCaptureRequest(
         runID: runID,
-        workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
+        workflow: makeWorkflow(recognizerID: "fallback.file"),
         audioLifetime: lifetime
       )
     )
@@ -1480,65 +1084,6 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
     XCTAssertEqual(lifetime.state, .revoked(.captureCancelled))
   }
 
-  private func assertDeepgramConfigurationFailsBeforeLocalCapture(
-    configuration: DeepgramRecognizer.Configuration,
-    expectedError: DeepgramRecognizer.RecognizerError,
-    forbiddenDiagnosticFragments: [String]
-  ) async throws {
-    let audio = try CapturedAudio(
-      durationSeconds: 1.0,
-      format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
-      fileURL: URL(fileURLWithPath: "/tmp/rill-deepgram-config-rejection.wav")
-    )
-    let legacyCapture = LegacyAudioCaptureProbe(audio: audio)
-    let permissionProbe = PermissionRequestProbe()
-    let snapshotProbe = LiveSnapshotProbe()
-    let service = RealtimeAudioCaptureService(
-      legacyCaptureService: legacyCapture,
-      deepgramConfigurationProvider: { configuration },
-      deepgramMicrophonePermissionRequester: {
-        await permissionProbe.request()
-      },
-      liveUpdateHandler: { snapshot in
-        await snapshotProbe.record(snapshot)
-      }
-    )
-    let runID = UUID()
-    let lifetime = AudioCaptureLifetime(runID: runID)
-    let request = AudioCaptureRequest(
-      runID: runID,
-      workflow: makeWorkflow(recognizerID: "deepgram.prerecorded"),
-      audioLifetime: lifetime
-    )
-    let expectedOutputURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("rill-deepgram-live-\(request.runID.uuidString)")
-      .appendingPathExtension("wav")
-    try? FileManager.default.removeItem(at: expectedOutputURL)
-
-    do {
-      try await service.startCapture(request)
-      XCTFail("Expected Deepgram configuration validation to fail")
-    } catch let error as DeepgramRecognizer.RecognizerError {
-      XCTAssertEqual(error, expectedError)
-    } catch {
-      XCTFail("Unexpected error: \(error)")
-    }
-
-    let permissionRequestCount = await permissionProbe.callCount
-    let legacyStartCount = await legacyCapture.startCallCount
-    let snapshots = await snapshotProbe.all()
-    let statusText = snapshots.last?.statusText ?? ""
-    XCTAssertEqual(permissionRequestCount, 0)
-    XCTAssertEqual(legacyStartCount, 0)
-    XCTAssertFalse(FileManager.default.fileExists(atPath: expectedOutputURL.path))
-    XCTAssertEqual(snapshots.last?.phase, .failed)
-    XCTAssertEqual(snapshots.last?.providerID, "deepgram.prerecorded")
-    XCTAssertTrue(statusText.isEmpty)
-    XCTAssertEqual(lifetime.state, .revoked(.serviceFailure))
-    for fragment in forbiddenDiagnosticFragments {
-      XCTAssertFalse(statusText.contains(fragment))
-    }
-  }
 }
 
 private func makeProbeAudio(named name: String) throws -> CapturedAudio {

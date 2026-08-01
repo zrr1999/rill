@@ -89,7 +89,7 @@ final class ClipboardItemDryRunPreparerTests: XCTestCase {
         let workflow = WorkflowDefinition(
             name: "Cloud recognizer is skipped during replay",
             pipeline: PipelineDeclaration(
-                recognizerID: "deepgram.prerecorded",
+                recognizerID: "remote.speech",
                 outputActions: [OutputActionReference(id: "stack.push")]
             ),
             ui: WorkflowUIConfig(symbolName: "doc", accentColorName: "blue")
@@ -127,7 +127,7 @@ final class ClipboardItemDryRunPreparerTests: XCTestCase {
         let workflow = WorkflowDefinition(
             name: "Replay",
             pipeline: PipelineDeclaration(
-                recognizerID: "deepgram.prerecorded",
+                recognizerID: "remote.speech",
                 outputActions: [OutputActionReference(id: "stack.push")]
             ),
             ui: WorkflowUIConfig(symbolName: "doc", accentColorName: "blue")

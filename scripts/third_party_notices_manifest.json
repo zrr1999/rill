@@ -68,6 +68,18 @@
     },
     {
       "kind": "sourceControl",
+      "identity": "openai",
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE",
+          "sha256": "7ad43d13a029c71f61a1efac5dff82b0dc0b16a58449e7374bffc8a16441f8cf"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
       "identity": "swift-algorithms",
       "licenseExpression": "Apache-2.0",
       "evidence": [
@@ -358,6 +370,23 @@
     },
     {
       "kind": "sourceControl",
+      "identity": "swift-openapi-runtime",
+      "licenseExpression": "Apache-2.0",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.txt",
+          "sha256": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac"
+        },
+        {
+          "kind": "notice",
+          "path": "NOTICE.txt",
+          "sha256": "b54b35c36f1cde851867e5dffc843d379456d202d332f04ae8d877232359925c"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
       "identity": "swift-service-context",
       "licenseExpression": "Apache-2.0",
       "evidence": [
@@ -411,6 +440,25 @@
           "kind": "license",
           "path": "LICENSE.txt",
           "sha256": "2245a990b635558be210fb3eb4f8a6f7a49aebc0fefbf5859146a65ddc7ddcf3"
+        }
+      ]
+    },
+    {
+      "kind": "sourceControl",
+      "identity": "swift-toml",
+      "licenseExpression": "MIT",
+      "evidence": [
+        {
+          "kind": "license",
+          "path": "LICENSE.md",
+          "sha256": "2f9b695627d569a3ce452b2c03fdd34310df78c8ea94edfafd9ce38381e5b502"
+        },
+        {
+          "kind": "license",
+          "path": "Sources/CTomlPlusPlus/toml.hpp",
+          "sha256": "2a20b4a8b1c5842e84c2ad0fef3c5e84e2d8f29ac79ac302345115c05f89ea72",
+          "lineStart": 3,
+          "lineEnd": 43
         }
       ]
     },

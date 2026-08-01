@@ -1,11 +1,38 @@
-# Template: Capture into a dedicated clipboard group
+# Rill workflow schema v1: Capture into the Voice clipboard group
+# Change `id` before keeping more than one copy of this template.
 
+schema_version = 1
+enabled = true
+id = "D0000000-0000-4000-8000-000000000002"
 name = "Clipboard Capture"
 trigger = "manual"
-recognizer = "auto"
-output = "stack.push"
-delivery = "stackFirst"
-target_group = "voice"
 
-[[post_process]]
-kind = "normalizeWhitespace"
+[ui]
+symbol = "tray.and.arrow.down.fill"
+accent = "blue"
+
+[setup.speech]
+selection = "automatic"
+recognizer = "sherpa-onnx.local"
+
+[[process]]
+id = "D0000000-0000-4000-8000-000000000201"
+kind = "recognize-speech"
+
+[[process]]
+id = "D0000000-0000-4000-8000-000000000202"
+kind = "apply-vocabulary"
+
+[[process]]
+id = "D0000000-0000-4000-8000-000000000203"
+kind = "normalize-whitespace"
+
+[output]
+strategy = "stack-first"
+
+[[output.actions]]
+id = "stack.push"
+
+[metadata]
+"workflow.origin" = "user"
+"clipboard.target-group-id" = "4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"

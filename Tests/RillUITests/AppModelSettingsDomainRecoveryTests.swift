@@ -140,7 +140,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
 
             var draft = harness.model.defaultWorkflowDraft()
             draft.name = "Must not overwrite"
-            harness.model.saveWorkflowDraft(draft)
+            await harness.model.saveWorkflowDraft(draft)
             await waitForEventProcessing()
 
             XCTAssertTrue(harness.model.customWorkflows.isEmpty)

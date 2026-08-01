@@ -38,6 +38,7 @@ public enum RillSystemSymbol: String, CaseIterable, Sendable {
     case point3ConnectedTrianglepathDotted = "point.3.connected.trianglepath.dotted"
     case questionmarkBubble = "questionmark.bubble"
     case slashCircleFill = "slash.circle.fill"
+    case speakerWave2 = "speaker.wave.2"
     case squareStack3dUp = "square.stack.3d.up"
     case squareStack3dUpFill = "square.stack.3d.up.fill"
     case stopFill = "stop.fill"

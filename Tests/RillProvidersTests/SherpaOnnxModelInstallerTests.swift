@@ -110,14 +110,14 @@ final class SherpaOnnxModelInstallerTests: XCTestCase {
     let streamingPreview =
       SherpaOnnxModelCatalog.streamingZipformerBilingualPreviewInt8
     XCTAssertEqual(streamingPreview.architecture, .streamingTransducer)
-    XCTAssertEqual(streamingPreview.archiveByteCount, 458_187_351)
+    XCTAssertEqual(streamingPreview.archiveByteCount, 511_274_346)
     XCTAssertEqual(
       streamingPreview.archiveSHA256,
-      "2b7c63322b32e5e0f2526043a1103366119ca58dd615cd7105a37c01db9553d7"
+      "27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8"
     )
     XCTAssertEqual(
       streamingPreview.installedFileInventorySHA256,
-      "cea6f98992fd166743ea63ca27ebf87c6b99e11b6d7cf5ae3944e2977dcbfc53"
+      "9adc9ead5f64877832a928980b189b12ba36fe192a137ec8c1ae39540b640c62"
     )
 
     let pinnedDescriptors: [

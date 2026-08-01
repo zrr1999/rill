@@ -147,12 +147,11 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         assertSentinelIsAbsent(from: harness.model)
     }
 
-    func testWorkflowAndDeepgramFailuresKeepTypedStageStateWithoutLeakingBackendDetail() async {
+    func testWorkflowFailuresKeepTypedStageStateWithoutLeakingBackendDetail() async {
         let harness = makeHarness(
             settingsStore: UserVisibleErrorPrivacySettingsStore(),
             credentialStore: UITestSecureCredentialStore(),
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted),
-            startDeepgramAudioTestAction: { _ in throw UserVisibleErrorPrivacySentinel.backend },
             authorizeWorkflowRunAction: { _ in throw UserVisibleErrorPrivacySentinel.backend }
         )
         await waitForEventProcessing()
@@ -163,12 +162,6 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         }
         XCTAssertNotNil(harness.model.lastFailure)
         XCTAssertFalse(harness.model.isRunning)
-
-        harness.model.deepgramAPIKey = "test-key"
-        harness.model.toggleDeepgramAudioTest()
-        await waitForEventProcessing()
-        XCTAssertEqual(harness.model.deepgramAudioTestState, .idle)
-        XCTAssertNotNil(harness.model.deepgramTestError)
         assertSentinelIsAbsent(from: harness.model)
     }
 
@@ -349,7 +342,6 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
     ) {
         let visibleText = [
             model.lastFailure,
-            model.deepgramTestError,
             model.privacySettingsLoadError,
             model.privacySettingsSaveError,
             model.historyRetentionSettingsError,

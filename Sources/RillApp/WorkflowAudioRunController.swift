@@ -3,8 +3,6 @@ import RillCore
 import RillRuntime
 
 actor WorkflowAudioRunController {
-  private static let shortDictationMaximumDurationSeconds = 120.0
-
   enum RunError: Error, LocalizedError, Equatable {
     case alreadyRecording
     case notRecording
@@ -69,6 +67,7 @@ actor WorkflowAudioRunController {
   private let runPreflight: RecognitionRunPreflight
   private let liveAuthorizationMonitorInterval: Duration
   private let recognizerDurationProvider: @Sendable (String) -> Double?
+  private let recordingDurationLimitProvider: @Sendable () async -> RecordingDurationLimit
   private let privacyRunGate: PrivacyRunGate?
   private let cleanupOwner: ManagedTemporaryAudioCleanupOwner
   private var state: State = .idle
@@ -100,6 +99,9 @@ actor WorkflowAudioRunController {
     runPreflight: @escaping RecognitionRunPreflight = { _ in },
     liveAuthorizationMonitorInterval: Duration = .milliseconds(50),
     recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
+    recordingDurationLimitProvider: @escaping @Sendable () async -> RecordingDurationLimit = {
+      .fiveMinutes
+    },
     privacyRunGate: PrivacyRunGate? = nil,
     cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner()
   ) {
@@ -113,11 +115,20 @@ actor WorkflowAudioRunController {
     self.runPreflight = runPreflight
     self.liveAuthorizationMonitorInterval = liveAuthorizationMonitorInterval
     self.recognizerDurationProvider = recognizerDurationProvider
+    self.recordingDurationLimitProvider = recordingDurationLimitProvider
     self.privacyRunGate = privacyRunGate
     self.cleanupOwner = cleanupOwner
   }
 
   func startRun(workflow: WorkflowDefinition, binding: TriggerBinding) async throws {
+    try await startRun(workflow: workflow, binding: binding, triggerEvent: nil)
+  }
+
+  func startRun(
+    workflow: WorkflowDefinition,
+    binding: TriggerBinding,
+    triggerEvent suppliedTriggerEvent: WorkflowTriggerEvent?
+  ) async throws {
     guard lifecycle == .accepting else {
       throw RunError.shuttingDown
     }
@@ -128,7 +139,15 @@ actor WorkflowAudioRunController {
       throw SessionCoordinator.SessionError.unsupportedWorkflow(issue)
     }
 
-    let runID = UUID()
+    if let suppliedTriggerEvent {
+      guard
+        suppliedTriggerEvent.binding == binding,
+        suppliedTriggerEvent.workflowID == workflow.id
+      else {
+        throw SessionCoordinator.SessionError.unsupportedWorkflow(.invalidEventType)
+      }
+    }
+    let runID = suppliedTriggerEvent?.id ?? UUID()
     state = .preparing(runID)
     preparingRunID = runID
     preparingWorkflow = workflow
@@ -180,12 +199,14 @@ actor WorkflowAudioRunController {
         throw CancellationError()
       }
       let recognitionOptions = liveAudioSession.audioCaptureOptions
-      let triggerEvent = WorkflowTriggerEvent(
-        binding: binding,
-        workflowID: workflow.id,
-        sourceID: Self.sourceID(for: binding),
-        metadata: ["requestedTrigger": workflow.trigger.rawValue]
-      )
+      let triggerEvent =
+        suppliedTriggerEvent
+        ?? WorkflowTriggerEvent(
+          binding: binding,
+          workflowID: workflow.id,
+          sourceID: Self.sourceID(for: binding),
+          metadata: ["requestedTrigger": workflow.trigger.rawValue]
+        )
       let endpointControl: AudioCaptureEndpointControl? =
         switch binding {
         case .manual, .menuBar, .wakeWord:
@@ -193,12 +214,14 @@ actor WorkflowAudioRunController {
         case .hotkey:
           nil
         }
+      let modeMaximumDurationSeconds = await recordingDurationLimitProvider().durationSeconds
+      let recognizerMaximumDurationSeconds = recognizerDurationProvider(
+        workflow.plan.setup.speechRoute?.recognizerID ?? ""
+      )
       let maximumDurationSeconds =
         SpeechRecognizerCapabilities.effectiveMaximumAudioDurationSeconds(
-          modeMaximumAudioDurationSeconds: Self.shortDictationMaximumDurationSeconds,
-          recognizerMaximumAudioDurationSeconds: recognizerDurationProvider(
-            workflow.pipeline.recognizerID
-          )
+          modeMaximumAudioDurationSeconds: modeMaximumDurationSeconds,
+          recognizerMaximumAudioDurationSeconds: recognizerMaximumDurationSeconds
         )
       let request = AudioCaptureRequest(
         runID: runID,
@@ -206,6 +229,8 @@ actor WorkflowAudioRunController {
         triggerEvent: triggerEvent,
         preferredFormat: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
         maxDurationSeconds: maximumDurationSeconds,
+        canRemoveMaxDurationLimit:
+          modeMaximumDurationSeconds != nil && recognizerMaximumDurationSeconds == nil,
         options: recognitionOptions,
         metadata: [
           "source": triggerEvent.sourceID,
@@ -288,6 +313,26 @@ actor WorkflowAudioRunController {
     try await task.value
   }
 
+  func removeMaximumDurationLimit(runID requestedRunID: UUID) async -> Bool {
+    guard lifecycle == .accepting,
+      case .recording(let runID, _, _, _) = state,
+      runID == requestedRunID
+    else {
+      return false
+    }
+    guard await audioCaptureService.removeMaximumDurationLimit(runID: runID) else {
+      return false
+    }
+    captureSignalSubscriptions[runID]?.watchdogTask.cancel()
+    enqueueDiagnostic(
+      level: .info,
+      event: "workflow.audio-recording.maximum-duration-removed",
+      message: "The user removed Rill's duration limit for the active recording.",
+      runID: runID
+    )
+    return true
+  }
+
   /// Claims the active capture synchronously, before the first suspension,
   /// so manual stop and automatic endpoint signals cannot both finish it.
   private func beginFinishingCurrentRun() -> Task<Void, Error>? {
@@ -326,7 +371,7 @@ actor WorkflowAudioRunController {
 
   private func startCaptureSignalSubscription(
     control: AudioCaptureEndpointControl,
-    maximumDurationSeconds: Double
+    maximumDurationSeconds: Double?
   ) {
     guard lifecycle == .accepting,
       case .recording(let runID, _, _, _) = state,
@@ -349,6 +394,7 @@ actor WorkflowAudioRunController {
       }
     }
     let watchdogTask = Task {
+      guard let maximumDurationSeconds else { return }
       do {
         try await Task.sleep(for: .seconds(maximumDurationSeconds))
         guard !Task.isCancelled else { return }
@@ -849,7 +895,9 @@ actor WorkflowAudioRunController {
           runID: runID,
           workflow: workflow.presentation,
           phase: phase,
-          providerID: phase == .hidden ? nil : workflow.pipeline.recognizerID
+          providerID: phase == .hidden
+            ? nil
+            : workflow.plan.setup.speechRoute?.recognizerID
         )
       )
     )

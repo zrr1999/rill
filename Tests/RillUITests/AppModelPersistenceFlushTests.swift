@@ -190,8 +190,8 @@ final class AppModelPersistenceFlushTests: XCTestCase {
             ? .simplifiedChinese
             : .english
         harness.model.language = expectedLanguage
-        harness.model.deepgramBaseURL = "https://latest.example.test"
-        harness.model.deepgramAPIKey = "latest-key"
+        harness.model.openAIBaseURL = "https://latest.example.test"
+        harness.model.openAIAPIKey = "latest-key"
         harness.model.setPrivacyCloudConfirmationRequired(false)
 
         let completion = PersistenceFlushCompletionProbe()
@@ -210,9 +210,9 @@ final class AppModelPersistenceFlushTests: XCTestCase {
         let didCompleteAfterWritesWereReleased = await completion.isCompleted()
         XCTAssertTrue(didCompleteAfterWritesWereReleased)
         XCTAssertEqual(snapshot.settings[.interfaceLanguage], expectedLanguage.rawValue)
-        XCTAssertEqual(snapshot.settings[.deepgramBaseURL], "https://latest.example.test")
+        XCTAssertEqual(snapshot.settings[.openAIBaseURL], "https://latest.example.test")
         XCTAssertEqual(snapshot.settings[.privacyCloudConfirmationRequired], "false")
-        XCTAssertEqual(snapshot.credentials[.deepgramAPIKey], "latest-key")
+        XCTAssertEqual(snapshot.credentials[.openAIAPIKey], "latest-key")
     }
 
     func testShutdownDrainsTerminalEventAndFlushWaitsForHistoryWrite() async throws {

@@ -1,9 +1,11 @@
+import AppKit
 import SwiftUI
 import RillCore
 
 public struct WorkflowsView: View {
     static let availableStepKinds: [PostProcessStepKind] = [
         .normalizeWhitespace,
+        .llmRewrite,
     ]
 
     @Bindable var model: AppModel
@@ -11,6 +13,8 @@ public struct WorkflowsView: View {
     @State var editingWorkflowID: UUID?
     @State var selectedWorkflowID: UUID?
     @State var presentedWorkflowExplanation: WorkflowExplanationSheetRequest?
+    @State var newVocabularyCollectionName = ""
+    @State var isSavingDraft = false
 
     public init(model: AppModel) {
         self.model = model
@@ -27,6 +31,14 @@ public struct WorkflowsView: View {
         .onAppear {
             if draft.name.isEmpty, editingWorkflowID == nil, selectedWorkflowID == nil {
                 resetDraft()
+            }
+        }
+        .task(id: model.isLoadingSettings) {
+            guard !model.isLoadingSettings else { return }
+            await model.reloadWorkflowFiles()
+            if let editingWorkflowID,
+               let workflow = model.customWorkflows.first(where: { $0.id == editingWorkflowID }) {
+                beginEditing(workflow)
             }
         }
         .task(id: model.workflowEditorNavigationRequest?.id) {
@@ -74,6 +86,42 @@ extension WorkflowsView {
 
                 Spacer(minLength: 12)
 
+                if let directoryURL = model.workflowConfigurationDirectoryURL {
+                    Button {
+                        NSWorkspace.shared.open(directoryURL)
+                    } label: {
+                        Label(
+                            model.language == .english ? "Open Folder" : "打开目录",
+                            systemImage: "folder"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help(directoryURL.path)
+                    .accessibilityIdentifier("workflows.open-config-directory")
+
+                    Button {
+                        Task { @MainActor in
+                            await model.reloadWorkflowFiles()
+                            if let editingWorkflowID,
+                               let workflow = model.customWorkflows.first(where: {
+                                   $0.id == editingWorkflowID
+                               }) {
+                                beginEditing(workflow)
+                            }
+                        }
+                    } label: {
+                        Label(
+                            model.language == .english ? "Reload" : "重新加载",
+                            systemImage: "arrow.clockwise"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(model.isLoadingSettings)
+                    .accessibilityIdentifier("workflows.reload-toml")
+                }
+
                 Button {
                     resetDraft()
                 } label: {
@@ -82,6 +130,22 @@ extension WorkflowsView {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(model.isLoadingSettings || !model.isWorkflowLibraryAvailable)
+            }
+
+            if let directoryURL = model.workflowConfigurationDirectoryURL {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(
+                        model.language == .english
+                            ? "TOML files are the source of truth. This window is a visual editor for them."
+                            : "TOML 文件是唯一事实来源；此窗口只是它们的可视化编辑器。"
+                    )
+                    Text(directoryURL.path)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("workflows.config-directory")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             if let workflowLibraryError = model.workflowLibraryError, !workflowLibraryError.isEmpty {
@@ -122,10 +186,56 @@ extension WorkflowsView {
                         isCustom: false,
                         localizedWorkflowNames: localizedWorkflowNames
                     )
+
+                    Divider()
+
+                    vocabularyLibrarySection
                 }
             }
         }
         .padding(24)
+    }
+
+    var vocabularyLibrarySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(model.language == .english ? "Vocabulary Collections" : "词库集合")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            Text(
+                model.language == .english
+                    ? "Reusable hotwords and replacements attached in workflow Setup."
+                    : "在工作流 Setup 中复用的热词与替换词集合。"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            ForEach(model.vocabularyCollections) { collection in
+                VocabularyCollectionCard(model: model, collection: collection)
+            }
+
+            HStack {
+                TextField(
+                    model.language == .english ? "New collection" : "新词库名称",
+                    text: $newVocabularyCollectionName
+                )
+                .textFieldStyle(.roundedBorder)
+
+                Button {
+                    model.createVocabularyCollection(named: newVocabularyCollectionName)
+                    newVocabularyCollectionName = ""
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.bordered)
+                .disabled(
+                    newVocabularyCollectionName
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty
+                )
+                .accessibilityIdentifier("vocabulary.collection.add")
+            }
+        }
     }
 
     var workflowEditorPane: some View {
@@ -244,9 +354,35 @@ extension WorkflowsView {
                             .tag(WorkflowEditorDraft.EventType.manual)
                         Text(model.language == .english ? "☰ Menu Bar" : "☰ 菜单栏")
                             .tag(WorkflowEditorDraft.EventType.menuBar)
+                        Text(model.language == .english ? "◉ Wake Word" : "◉ 唤醒词")
+                            .tag(WorkflowEditorDraft.EventType.wakeWord)
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
+                }
+
+                if draft.eventType == .wakeWord {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(model.language == .english ? "Wake phrases" : "唤醒短语")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        TextField(
+                            model.language == .english
+                                ? "One phrase per line (1–4)"
+                                : "每行一个短语（1–4 个）",
+                            text: $draft.wakePhrasesText,
+                            axis: .vertical
+                        )
+                        .lineLimit(1...4)
+                        .textFieldStyle(.roundedBorder)
+                        Text(
+                            model.language == .english
+                                ? "Local listening is off by default. Prepare the selected local Qwen ASR in Voice settings before enabling this workflow."
+                                : "本地监听默认关闭；启用此工作流前，请先在语音设置中准备当前本地 Qwen ASR。"
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    }
                 }
 
                 if !draft.eventType.isVoiceEvent {
@@ -329,10 +465,29 @@ extension WorkflowsView {
             }
 
             HStack {
+                if isInspectingBuiltinWorkflow, let selectedWorkflow {
+                    Button(
+                        model.language == .english
+                            ? "Apply Vocabulary Bindings"
+                            : "应用词库绑定"
+                    ) {
+                        model.setVocabularyBindings(
+                            draft.vocabularyBindings,
+                            for: selectedWorkflow.id
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("workflow.builtin.apply-vocabulary")
+                }
+
                 Button(saveButtonTitle) {
                     saveDraft()
                 }
-                .disabled(model.isLoadingSettings || !model.isWorkflowLibraryAvailable)
+                .disabled(
+                    isSavingDraft
+                        || model.isLoadingSettings
+                        || !model.isWorkflowLibraryAvailable
+                )
 
                 Button(UIStrings.text(.workflowReset, language: model.language)) {
                     if selectedWorkflow != nil {
@@ -354,14 +509,174 @@ extension WorkflowsView {
     }
 }
 
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
+private struct VocabularyCollectionCard: View {
+    @Bindable var model: AppModel
+    let collection: VocabularyCollection
+
+    @State private var isExpanded = false
+    @State private var entryKind = VocabularyRuleKind.hotword
+    @State private var pattern = ""
+    @State private var replacement = ""
+    @State private var confirmsCollectionDeletion = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(collection.entries) { entry in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(
+                            systemName:
+                                entry.content.kind == .hotword
+                                ? "waveform.badge.plus"
+                                : "arrow.triangle.2.circlepath"
+                        )
+                        .foregroundStyle(.secondary)
+                        Text(entryTitle(entry))
+                            .font(.caption)
+                            .lineLimit(2)
+                        Spacer()
+                        Button(role: .destructive) {
+                            model.deleteVocabularyEntry(
+                                entry.id,
+                                from: collection.id
+                            )
+                        } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier(
+                            "vocabulary.entry.\(entry.id.uuidString).delete"
+                        )
+                    }
+                }
+
+                Picker("", selection: $entryKind) {
+                    Text(model.language == .english ? "Hotword" : "热词")
+                        .tag(VocabularyRuleKind.hotword)
+                    Text(model.language == .english ? "Replacement" : "替换词")
+                        .tag(VocabularyRuleKind.mapping)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+
+                TextField(
+                    model.language == .english ? "Phrase" : "原词",
+                    text: $pattern
+                )
+                .textFieldStyle(.roundedBorder)
+
+                if entryKind == .mapping {
+                    TextField(
+                        model.language == .english ? "Replacement" : "替换为",
+                        text: $replacement
+                    )
+                    .textFieldStyle(.roundedBorder)
+                }
+
+                HStack {
+                    Button(model.language == .english ? "Add Entry" : "添加词条") {
+                        model.addVocabularyEntry(
+                            to: collection.id,
+                            kind: entryKind,
+                            pattern: pattern,
+                            replacement: replacement
+                        )
+                        pattern = ""
+                        replacement = ""
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(
+                        pattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+
+                    Spacer()
+
+                    if collection.id != VocabularyCollection.personalID {
+                        Button(role: .destructive) {
+                            confirmsCollectionDeletion = true
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier(
+                            "vocabulary.collection.\(collection.id.uuidString).delete"
+                        )
+                    }
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            Toggle(
+                isOn: Binding(
+                    get: { collection.enabled },
+                    set: {
+                        model.setVocabularyCollectionEnabled(
+                            collection.id,
+                            isEnabled: $0
+                        )
+                    }
+                )
+            ) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(collection.name)
+                        .font(.caption.weight(.medium))
+                    Text("\(collection.entries.count)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.checkbox)
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+        .alert(
+            model.language == .english ? "Delete collection?" : "删除词库？",
+            isPresented: $confirmsCollectionDeletion
+        ) {
+            Button(model.language == .english ? "Cancel" : "取消", role: .cancel) {}
+            Button(model.language == .english ? "Delete" : "删除", role: .destructive) {
+                model.deleteVocabularyCollection(collection.id)
+            }
+        } message: {
+            Text(
+                model.language == .english
+                    ? "The collection and its workflow bindings will be removed."
+                    : "该词库及其工作流绑定都会被移除。"
+            )
+        }
+    }
+
+    private func entryTitle(_ entry: VocabularyEntry) -> String {
+        switch entry.content {
+        case .hotword(let phrase):
+            return phrase
+        case .replacement(let pattern, let replacement, _, _):
+            return "\(pattern) → \(replacement)"
+        }
+    }
+}
+
 extension WorkflowsView {
     @ViewBuilder
     var voiceActionContent: some View {
         VStack(alignment: .leading, spacing: 8) {
+            workflowPhaseHeader(
+                .setup,
+                subtitle: model.language == .english
+                    ? "Resolve speech resources and freeze vocabulary for this run."
+                    : "解析语音资源，并为本次运行冻结词库快照。"
+            )
+
             actionStepRow(
                 number: 1,
                 icon: "mic.fill",
-                label: model.language == .english ? "Speech Recognition" : "语音识别"
+                label: model.language == .english ? "Speech Route" : "语音路由"
             ) {
                 Picker(
                     UIStrings.text(.workflowRecognizer, language: model.language),
@@ -402,35 +717,99 @@ extension WorkflowsView {
                 .textFieldStyle(.roundedBorder)
                 .font(.caption)
 
-                if draft.recognizer != .cloudSpeech {
-                    Picker(
-                        L10n.string(.workflowLocalSpeechModelOverride, language: model.language),
-                        selection: $draft.localSpeechModelOverride
-                    ) {
-                        Text(UIStrings.text(.workflowGlobalModelDefault, language: model.language)).tag("")
-                        ForEach(model.workflowSelectableLocalSpeechModels, id: \.self) { modelIdentifier in
-                            Text(model.localSpeechModelDisplayName(modelIdentifier, includeStatus: true))
-                                .tag(modelIdentifier)
-                        }
+                Picker(
+                    L10n.string(.workflowLocalSpeechModelOverride, language: model.language),
+                    selection: $draft.localSpeechModelOverride
+                ) {
+                    Text(UIStrings.text(.workflowGlobalModelDefault, language: model.language)).tag("")
+                    ForEach(model.workflowSelectableLocalSpeechModels, id: \.self) { modelIdentifier in
+                        Text(model.localSpeechModelDisplayName(modelIdentifier, includeStatus: true))
+                            .tag(modelIdentifier)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .font(.caption)
                 }
-
-                if draft.recognizer != .localSpeech {
-                    TextField(
-                        L10n.string(.workflowCloudModelOverride, language: model.language),
-                        text: $draft.deepgramModelOverride,
-                        prompt: Text(model.deepgramModel)
-                    )
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption)
-                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .font(.caption)
             }
 
             actionStepRow(
                 number: 2,
+                icon: "text.book.closed.fill",
+                label: model.language == .english ? "Vocabulary Collections" : "词库集合"
+            ) {
+                if model.vocabularyCollections.isEmpty {
+                    Text(model.language == .english ? "No collections available." : "暂无可用词库。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.vocabularyCollections) { collection in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Toggle(
+                                isOn: vocabularyBindingToggle(for: collection.id)
+                            ) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(collection.name)
+                                        .font(.caption.weight(.medium))
+                                    Text(vocabularyCollectionSummary(collection))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .toggleStyle(.checkbox)
+                            .accessibilityIdentifier(
+                                "workflow.setup.vocabulary.\(collection.id.uuidString)"
+                            )
+
+                            if vocabularyBindingIndex(for: collection.id) != nil {
+                                vocabularyConditionEditor(for: collection.id)
+                                    .padding(.leading, 20)
+                            }
+                        }
+                    }
+                }
+
+                Label(hotwordCapabilityDescription, systemImage: "info.circle")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            workflowPhaseHeader(
+                .process,
+                subtitle: model.language == .english
+                    ? "Recognize audio, apply vocabulary, then run text transforms in order."
+                    : "识别音频、应用词库，再按顺序执行文本处理。"
+            )
+
+            actionStepRow(
+                number: 3,
+                icon: "waveform",
+                label: model.language == .english ? "Recognize Speech" : "识别语音"
+            ) {
+                Text(
+                    model.language == .english
+                        ? "Audio → text using the frozen Setup route and supported hotword hints."
+                        : "使用 Setup 中冻结的路由和引擎支持的热词提示，将音频转换为文本。"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            actionStepRow(
+                number: 4,
+                icon: "arrow.triangle.2.circlepath",
+                label: model.language == .english ? "Apply Vocabulary" : "应用替换词"
+            ) {
+                Text(
+                    model.language == .english
+                        ? "Apply matching replacement entries before normalization and LLM rewriting."
+                        : "在空白规范化和 LLM 改写之前应用匹配的替换词。"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            actionStepRow(
+                number: 5,
                 icon: draft.textStyle.systemImage,
                 label: L10n.string(.workflowTextStyle, language: model.language)
             ) {
@@ -462,7 +841,7 @@ extension WorkflowsView {
 
             ForEach(Array(draft.postProcessSteps.enumerated()), id: \.element.id) { index, step in
                 actionStepRow(
-                    number: index + 3,
+                    number: index + 6,
                     icon: postProcessStepSystemSymbol(step.kind).rawValue,
                     label: postProcessStepKindLabel(step.kind)
                 ) {
@@ -476,6 +855,14 @@ extension WorkflowsView {
                         )
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
+
+                        Text(
+                            model.language == .english
+                                ? "OpenAI model: \(model.openAIModel). Change it in Settings → Speech Engine."
+                                : "OpenAI 模型：\(model.openAIModel)。可在“设置 → 语音引擎”中切换。"
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                     }
 
                     HStack(spacing: 4) {
@@ -549,8 +936,15 @@ extension WorkflowsView {
             .foregroundStyle(.green)
             .padding(.leading, 24)
 
+            workflowPhaseHeader(
+                .output,
+                subtitle: model.language == .english
+                    ? "Deliver the final text through one explicit destination."
+                    : "通过一个明确的目标投递最终文本。"
+            )
+
             actionStepRow(
-                number: draft.postProcessSteps.count + 3,
+                number: draft.postProcessSteps.count + 6,
                 icon: "arrow.right.circle",
                 label: UIStrings.text(.workflowDestination, language: model.language)
             ) {
@@ -622,10 +1016,54 @@ extension WorkflowsView {
                         )
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
-                    case .pasteIntoApp, .copyToClipboard, .saveToQueue:
+                    case .pasteIntoApp, .copyToClipboard, .saveToQueue, .speakOnly:
                         EmptyView()
                     }
                 }
+            }
+
+            actionStepRow(
+                number: draft.postProcessSteps.count + 7,
+                icon: "speaker.wave.2",
+                label: model.language == .english ? "Speak Result" : "朗读结果"
+            ) {
+                if draft.destination == .speakOnly {
+                    Text(
+                        model.language == .english
+                            ? "Speech is the primary output for this workflow."
+                            : "朗读是此工作流的主要输出。"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                } else {
+                    Toggle(
+                        model.language == .english
+                            ? "Read the final result aloud"
+                            : "朗读最终结果",
+                        isOn: $draft.speaksResult
+                    )
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                }
+                if draft.speaksResult || draft.destination == .speakOnly {
+                    Picker(
+                        model.language == .english ? "Preset voice" : "预置音色",
+                        selection: $draft.speechVoice
+                    ) {
+                        ForEach(Qwen3TTSVoice.allCases, id: \.self) { voice in
+                            Text(voice.rawValue).tag(voice)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("workflow.tts.voice")
+                }
+                Text(
+                    model.language == .english
+                        ? "Uses the selected Qwen3-TTS voice when ready, with the system voice as a fallback. Voices do not switch automatically by sentence."
+                        : "Qwen3-TTS 已就绪时使用所选音色，否则回退到系统语音；不会按句子自动切换音色。"
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
         }
     }
@@ -653,6 +1091,142 @@ extension WorkflowsView {
                 content()
             }
         }
+    }
+
+    func workflowPhaseHeader(
+        _ phase: WorkflowPhaseKind,
+        subtitle: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(phase.rawValue.uppercased())
+                .font(.caption2.weight(.bold).monospaced())
+                .foregroundStyle(.secondary)
+            Text(subtitle)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.top, phase == .setup ? 0 : 8)
+        .accessibilityIdentifier("workflow.phase.\(phase.rawValue)")
+    }
+
+    func vocabularyBindingToggle(for collectionID: UUID) -> Binding<Bool> {
+        Binding(
+            get: {
+                draft.vocabularyBindings.contains {
+                    $0.collectionID == collectionID
+                }
+            },
+            set: { isEnabled in
+                if isEnabled {
+                    guard !draft.vocabularyBindings.contains(where: {
+                        $0.collectionID == collectionID
+                    }) else { return }
+                    draft.vocabularyBindings.append(
+                        VocabularyCollectionBinding(collectionID: collectionID)
+                    )
+                } else {
+                    draft.vocabularyBindings.removeAll {
+                        $0.collectionID == collectionID
+                    }
+                }
+            }
+        )
+    }
+
+    func vocabularyBindingIndex(for collectionID: UUID) -> Int? {
+        draft.vocabularyBindings.firstIndex { $0.collectionID == collectionID }
+    }
+
+    @ViewBuilder
+    func vocabularyConditionEditor(for collectionID: UUID) -> some View {
+        if let index = vocabularyBindingIndex(for: collectionID) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(model.language == .english ? "Applies when (all fields match)" : "生效条件（字段之间为 AND）")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                TextField(
+                    model.language == .english ? "App bundle ID · any" : "App Bundle ID · 任意",
+                    text: Binding(
+                        get: {
+                            draft.vocabularyBindings[index].condition.bundleIdentifier ?? ""
+                        },
+                        set: {
+                            draft.vocabularyBindings[index].condition.bundleIdentifier =
+                                $0.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                        }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier(
+                    "workflow.setup.vocabulary.\(collectionID.uuidString).app"
+                )
+
+                HStack {
+                    TextField(
+                        model.language == .english ? "Language · any" : "语言 · 任意",
+                        text: Binding(
+                            get: { draft.vocabularyBindings[index].condition.locale ?? "" },
+                            set: {
+                                draft.vocabularyBindings[index].condition.locale =
+                                    $0.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                            }
+                        )
+                    )
+                    .textFieldStyle(.roundedBorder)
+
+                    Picker(
+                        model.language == .english ? "Clipboard group" : "剪贴板组",
+                        selection: Binding(
+                            get: {
+                                draft.vocabularyBindings[index].condition.clipboardGroupID
+                            },
+                            set: {
+                                draft.vocabularyBindings[index].condition.clipboardGroupID = $0
+                            }
+                        )
+                    ) {
+                        Text(model.language == .english ? "Any group" : "任意组")
+                            .tag(nil as UUID?)
+                        ForEach(model.clipboardGroups, id: \.group.id) { summary in
+                            Text(summary.group.name).tag(summary.group.id as UUID?)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            }
+        }
+    }
+
+    var hotwordCapabilityDescription: String {
+        let resolvedRecognizerID: String
+        switch draft.recognizer {
+        case .localSpeech:
+            resolvedRecognizerID =
+                selectedWorkflow?.plan.setup.speechRoute?.recognizerID
+                ?? "sherpa-onnx.local"
+        case .automatic:
+            resolvedRecognizerID = "sherpa-onnx.local"
+        }
+        let supportsHotwords = resolvedRecognizerID == "sherpa-onnx.local"
+        if supportsHotwords {
+            return model.language == .english
+                ? "Recognition hotwords are supported by the current engine; replacements run after recognition."
+                : "当前识别引擎支持热词；替换词会在识别后执行。"
+        }
+        return model.language == .english
+            ? "The current engine skips recognition hotwords; replacements still run after recognition."
+            : "当前识别引擎会跳过识别热词；替换词仍会在识别后执行。"
+    }
+
+    func vocabularyCollectionSummary(_ collection: VocabularyCollection) -> String {
+        let hotwordCount = collection.entries.reduce(into: 0) { count, entry in
+            if case .hotword = entry.content { count += 1 }
+        }
+        let replacementCount = collection.entries.count - hotwordCount
+        if model.language == .english {
+            return "\(hotwordCount) hotwords · \(replacementCount) replacements"
+        }
+        return "\(hotwordCount) 个热词 · \(replacementCount) 个替换词"
     }
 
     @ViewBuilder
@@ -761,8 +1335,6 @@ private extension WorkflowsView {
             return true
         case .automatic:
             return model.preferredSpeechEngine == .local
-        case .cloudSpeech:
-            return false
         }
     }
 }
@@ -879,9 +1451,14 @@ extension WorkflowsView {
 
                     if isCustom {
                         Button(role: .destructive) {
-                            model.deleteCustomWorkflow(workflow)
-                            if selectedWorkflowID == workflow.id || editingWorkflowID == workflow.id {
-                                resetDraft()
+                            Task { @MainActor in
+                                await model.deleteCustomWorkflow(workflow)
+                                guard !model.customWorkflows.contains(where: { $0.id == workflow.id }) else {
+                                    return
+                                }
+                                if selectedWorkflowID == workflow.id || editingWorkflowID == workflow.id {
+                                    resetDraft()
+                                }
                             }
                         } label: {
                             Image(systemName: "trash")
@@ -948,20 +1525,26 @@ extension WorkflowsView {
     }
 
     func saveDraft() {
+        guard !isSavingDraft else { return }
+        isSavingDraft = true
+        let submittedDraft = draft
         let currentEditingID = editingWorkflowID
-        model.saveWorkflowDraft(draft, editing: currentEditingID)
-        guard model.workflowEditorError == nil else { return }
+        Task { @MainActor in
+            defer { isSavingDraft = false }
+            await model.saveWorkflowDraft(submittedDraft, editing: currentEditingID)
+            guard model.workflowEditorError == nil else { return }
 
-        if let currentEditingID,
-           let savedWorkflow = model.customWorkflows.first(where: { $0.id == currentEditingID }) {
-            beginEditing(savedWorkflow)
-            return
-        }
+            if let currentEditingID,
+               let savedWorkflow = model.customWorkflows.first(where: { $0.id == currentEditingID }) {
+                beginEditing(savedWorkflow)
+                return
+            }
 
-        if let savedWorkflow = model.customWorkflows.first {
-            beginEditing(savedWorkflow)
-        } else {
-            resetDraft()
+            if let savedWorkflow = model.customWorkflows.first {
+                beginEditing(savedWorkflow)
+            } else {
+                resetDraft()
+            }
         }
     }
 

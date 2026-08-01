@@ -39,21 +39,29 @@ public struct WorkflowManifestValidator: Sendable {
             // visible but fail closed through WorkflowExecutionPolicy until
             // every runtime component is registered.
             guard workflow.availability == .active else { continue }
-            if recognizerRegistry.recognizer(for: workflow.pipeline.recognizerID) == nil {
+            guard let route = workflow.plan.setup.speechRoute else {
                 throw WorkflowManifestValidationError.missingRecognizer(
                     workflowID: workflow.id,
-                    recognizerID: workflow.pipeline.recognizerID
+                    recognizerID: ""
+                )
+            }
+            if recognizerRegistry.recognizer(for: route.recognizerID) == nil {
+                throw WorkflowManifestValidationError.missingRecognizer(
+                    workflowID: workflow.id,
+                    recognizerID: route.recognizerID
                 )
             }
 
-            for step in workflow.pipeline.postProcessSteps where transformerRegistry.transformer(for: step.kind) == nil {
+            for step in workflow.plan.process.steps {
+                guard let kind = step.kind.postProcessKind else { continue }
+                guard transformerRegistry.transformer(for: kind) == nil else { continue }
                 throw WorkflowManifestValidationError.missingTransformer(
                     workflowID: workflow.id,
-                    stepKind: step.kind
+                    stepKind: kind
                 )
             }
 
-            for action in workflow.pipeline.outputActions where actionRegistry.action(for: action.id) == nil {
+            for action in workflow.plan.output.actions where actionRegistry.action(for: action.id) == nil {
                 throw WorkflowManifestValidationError.missingAction(
                     workflowID: workflow.id,
                     actionID: action.id

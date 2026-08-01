@@ -14,9 +14,7 @@ extension AppModel {
             return
         }
 
-        let recognizerResolution: WorkflowRecognizerResolution = preferredSpeechEngine == .cloud
-            ? .cloudSpeech
-            : .localSpeech
+        let recognizerResolution = WorkflowRecognizerResolution.localSpeech
         let outputResolution: WorkflowOutputResolution
         switch builtinPushToTalkOutputMode {
         case .pasteIntoApp:

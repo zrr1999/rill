@@ -5,7 +5,7 @@ final class SecureCredentialMigrationTests: XCTestCase {
     func testMigrationWritesSecureStoreBeforeRemovingLegacyValue() async throws {
         let log = CredentialOperationLog()
         let legacyStore = FakeLegacySettingsStore(
-            storage: [.deepgramAPIKey: "legacy-secret"],
+            storage: [.openAIAPIKey: "legacy-secret"],
             log: log
         )
         let secureStore = FakeSecureCredentialStore(log: log)
@@ -16,10 +16,10 @@ final class SecureCredentialMigrationTests: XCTestCase {
             eventReporter: { event in await eventRecorder.record(event) }
         )
 
-        let value = try await store.credential(for: .deepgramAPIKey)
+        let value = try await store.credential(for: .openAIAPIKey)
         let operations = await log.snapshot()
-        let secureValue = await secureStore.storedValue(for: .deepgramAPIKey)
-        let legacyValue = await legacyStore.storedValue(for: .deepgramAPIKey)
+        let secureValue = await secureStore.storedValue(for: .openAIAPIKey)
+        let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
         let eventKinds = await eventRecorder.snapshot().map(\.kind)
 
         XCTAssertEqual(value, "legacy-secret")
@@ -72,7 +72,7 @@ final class SecureCredentialMigrationTests: XCTestCase {
     func testLegacyCleanupFailureKeepsKeychainValueAvailableAndDiagnosable() async throws {
         let log = CredentialOperationLog()
         let legacyStore = FakeLegacySettingsStore(
-            storage: [.deepgramAPIKey: "legacy-secret"],
+            storage: [.openAIAPIKey: "legacy-secret"],
             log: log,
             failRemove: true
         )
@@ -84,9 +84,9 @@ final class SecureCredentialMigrationTests: XCTestCase {
             eventReporter: { event in await eventRecorder.record(event) }
         )
 
-        let value = try await store.credential(for: .deepgramAPIKey)
-        let secureValue = await secureStore.storedValue(for: .deepgramAPIKey)
-        let legacyValue = await legacyStore.storedValue(for: .deepgramAPIKey)
+        let value = try await store.credential(for: .openAIAPIKey)
+        let secureValue = await secureStore.storedValue(for: .openAIAPIKey)
+        let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
         let eventKinds = await eventRecorder.snapshot().map(\.kind)
 
         XCTAssertEqual(value, "legacy-secret")
@@ -98,7 +98,7 @@ final class SecureCredentialMigrationTests: XCTestCase {
     func testSecureReadFailureNeverFallsBackToPlaintext() async {
         let log = CredentialOperationLog()
         let legacyStore = FakeLegacySettingsStore(
-            storage: [.deepgramAPIKey: "legacy-secret"],
+            storage: [.openAIAPIKey: "legacy-secret"],
             log: log
         )
         let secureStore = FakeSecureCredentialStore(log: log, failRead: true)
@@ -110,17 +110,17 @@ final class SecureCredentialMigrationTests: XCTestCase {
         )
 
         do {
-            _ = try await store.credential(for: .deepgramAPIKey)
+            _ = try await store.credential(for: .openAIAPIKey)
             XCTFail("Expected a secure read failure")
         } catch {
             XCTAssertEqual(
                 error as? SecureCredentialMigrationError,
-                .secureReadFailed(.deepgramAPIKey)
+                .secureReadFailed(.openAIAPIKey)
             )
         }
 
         let operations = await log.snapshot()
-        let legacyValue = await legacyStore.storedValue(for: .deepgramAPIKey)
+        let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
         let eventKinds = await eventRecorder.snapshot().map(\.kind)
         XCTAssertEqual(operations, ["secure.read"])
         XCTAssertEqual(legacyValue, "legacy-secret")
@@ -130,12 +130,12 @@ final class SecureCredentialMigrationTests: XCTestCase {
     func testClearFailureOnLegacyRemovalDoesNotRemoveSecureValue() async {
         let log = CredentialOperationLog()
         let legacyStore = FakeLegacySettingsStore(
-            storage: [.deepgramAPIKey: "legacy-secret"],
+            storage: [.openAIAPIKey: "legacy-secret"],
             log: log,
             failRemove: true
         )
         let secureStore = FakeSecureCredentialStore(
-            storage: [.deepgramAPIKey: "current-secret"],
+            storage: [.openAIAPIKey: "current-secret"],
             log: log
         )
         let store = MigratingSecureCredentialStore(
@@ -144,17 +144,17 @@ final class SecureCredentialMigrationTests: XCTestCase {
         )
 
         do {
-            try await store.removeCredential(for: .deepgramAPIKey)
+            try await store.removeCredential(for: .openAIAPIKey)
             XCTFail("Expected legacy cleanup failure")
         } catch {
             XCTAssertEqual(
                 error as? SecureCredentialMigrationError,
-                .legacyRemovalFailed(.deepgramAPIKey)
+                .legacyRemovalFailed(.openAIAPIKey)
             )
         }
 
-        let secureValue = await secureStore.storedValue(for: .deepgramAPIKey)
-        let legacyValue = await legacyStore.storedValue(for: .deepgramAPIKey)
+        let secureValue = await secureStore.storedValue(for: .openAIAPIKey)
+        let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
         let operations = await log.snapshot()
         XCTAssertEqual(secureValue, "current-secret")
         XCTAssertEqual(legacyValue, "legacy-secret")
@@ -165,7 +165,7 @@ final class SecureCredentialMigrationTests: XCTestCase {
         let log = CredentialOperationLog()
         let readGate = CredentialReadGate()
         let legacyStore = FakeLegacySettingsStore(
-            storage: [.deepgramAPIKey: "legacy-secret"],
+            storage: [.openAIAPIKey: "legacy-secret"],
             log: log,
             readGate: readGate
         )
@@ -176,11 +176,11 @@ final class SecureCredentialMigrationTests: XCTestCase {
         )
 
         let migrationTask = Task {
-            try await store.credential(for: .deepgramAPIKey)
+            try await store.credential(for: .openAIAPIKey)
         }
         await log.wait(for: "legacy.read")
         let userWriteTask = Task {
-            try await store.setCredential("new-user-secret", for: .deepgramAPIKey)
+            try await store.setCredential("new-user-secret", for: .openAIAPIKey)
         }
 
         await readGate.open()
@@ -188,7 +188,7 @@ final class SecureCredentialMigrationTests: XCTestCase {
         XCTAssertEqual(migratedValue, "legacy-secret")
         try await userWriteTask.value
 
-        let finalValue = await secureStore.storedValue(for: .deepgramAPIKey)
+        let finalValue = await secureStore.storedValue(for: .openAIAPIKey)
         XCTAssertEqual(finalValue, "new-user-secret")
     }
 }

@@ -139,12 +139,15 @@ class DependencySecurityTests(unittest.TestCase):
             manifest, policy.vendored_reviews
         )
         self.assertEqual(security.scan_offline_baseline(pins, policy.advisories), ())
-        self.assertEqual(len(pins), 32)
+        self.assertEqual(len(pins), 35)
         self.assertTrue(
             {
                 "mlx-audio-swift",
                 "mlx-swift",
+                "openai",
                 "swift-huggingface",
+                "swift-openapi-runtime",
+                "swift-toml",
                 "swift-xet",
             }.issubset({pin.identity for pin in pins})
         )

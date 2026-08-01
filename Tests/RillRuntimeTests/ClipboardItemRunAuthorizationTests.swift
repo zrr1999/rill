@@ -154,12 +154,12 @@ final class ClipboardItemRunAuthorizationTests: XCTestCase {
             subject: makeClipboardRunSubject(),
             operation: .replay
         )
-        let deepgramLocal = makeClipboardRunWorkflow(
-            recognizerID: "deepgram.prerecorded",
+        let remoteLocal = makeClipboardRunWorkflow(
+            recognizerID: "remote.speech",
             actionIDs: ["stack.push"]
         )
-        let deepgramWebhook = makeClipboardRunWorkflow(
-            recognizerID: "deepgram.prerecorded",
+        let remoteWebhook = makeClipboardRunWorkflow(
+            recognizerID: "remote.speech",
             actionIDs: [ExternalOutputActionID.webhookPost]
         )
         let localLLM = makeClipboardRunWorkflow(
@@ -168,24 +168,24 @@ final class ClipboardItemRunAuthorizationTests: XCTestCase {
             actionIDs: ["stack.push"]
         )
         let unknown = makeClipboardRunWorkflow(
-            recognizerID: "deepgram.prerecorded",
+            recognizerID: "remote.speech",
             actionIDs: ["unknown.destination"]
         )
 
         XCTAssertEqual(
             WorkflowPrivacyDestinationClassifier.classify(
-                deepgramLocal,
+                remoteLocal,
                 invocation: invocation
             ),
             .classified([])
         )
         XCTAssertEqual(
-            WorkflowPrivacyDestinationClassifier.classify(deepgramLocal),
-            .classified([.cloudSpeech])
+            WorkflowPrivacyDestinationClassifier.classify(remoteLocal),
+            .unavailable
         )
         XCTAssertEqual(
             WorkflowPrivacyDestinationClassifier.classify(
-                deepgramWebhook,
+                remoteWebhook,
                 invocation: invocation
             ),
             .classified([.cloudText])
@@ -203,13 +203,13 @@ final class ClipboardItemRunAuthorizationTests: XCTestCase {
         )
     }
 
-    func testDeepgramClipboardReplayUsesNoRecognitionOptionsAndNoCloudConfirmation() async throws {
+    func testRemoteSpeechClipboardReplayUsesNoRecognitionOptionsAndNoCloudConfirmation() async throws {
         let probe = ClipboardRunAuthorizationProbe()
         let context = makeClipboardRunContext()
         let gate = makeClipboardRunGate(probe: probe)
         let subject = makeClipboardRunSubject()
         let workflow = makeClipboardRunWorkflow(
-            recognizerID: "deepgram.prerecorded",
+            recognizerID: "remote.speech",
             actionIDs: ["stack.push"]
         )
 
@@ -239,7 +239,7 @@ final class ClipboardItemRunAuthorizationTests: XCTestCase {
     func testClipboardReplayConfirmsActualWebhookAndLanguageModelCloudTextDestinations() async throws {
         let workflows = [
             makeClipboardRunWorkflow(
-                recognizerID: "deepgram.prerecorded",
+                recognizerID: "remote.speech",
                 actionIDs: [ExternalOutputActionID.webhookPost]
             ),
             makeClipboardRunWorkflow(
@@ -391,7 +391,7 @@ final class ClipboardItemRunAuthorizationTests: XCTestCase {
         let localProbe = ClipboardRunAuthorizationProbe()
         let localGate = makeClipboardRunGate(probe: localProbe)
         let localWorkflow = makeClipboardRunWorkflow(
-            recognizerID: "deepgram.prerecorded",
+            recognizerID: "remote.speech",
             actionIDs: ["stack.push"]
         )
         let localEvaluation = await localGate.evaluate(
@@ -423,7 +423,7 @@ final class ClipboardItemRunAuthorizationTests: XCTestCase {
         let remoteProbe = ClipboardRunAuthorizationProbe()
         let remoteGate = makeClipboardRunGate(probe: remoteProbe)
         let remoteWorkflow = makeClipboardRunWorkflow(
-            recognizerID: "deepgram.prerecorded",
+            recognizerID: "remote.speech",
             actionIDs: [ExternalOutputActionID.webhookPost],
             actionConfiguration: [
                 ExternalOutputActionConfigurationKey.webhookURL: "https://example.invalid/hook",

@@ -2686,7 +2686,8 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       try step(statement, expecting: SQLITE_DONE)
     }
 
-    if key == .deepgramAPIKey || key == .legacyWhisperKitModelToken {
+    if key == .openAIAPIKey || key == .legacyWhisperKitModelToken
+    {
       // Legacy credentials may still exist in an older WAL frame. Apply the
       // secure deletion to the main database, then truncate those frames.
       try truncateWriteAheadLog()

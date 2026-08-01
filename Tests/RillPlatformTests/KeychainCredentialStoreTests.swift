@@ -10,13 +10,31 @@ final class KeychainCredentialStoreTests: XCTestCase {
             useDataProtectionKeychain: true
         )
 
-        let query = store.baseQuery(for: .deepgramAPIKey, useDataProtectionKeychain: true)
+        let query = store.baseQuery(for: .openAIAPIKey, useDataProtectionKeychain: true)
 
         XCTAssertTrue(store.usesDataProtectionKeychain)
         XCTAssertEqual(query[kSecUseDataProtectionKeychain] as? Bool, true)
         XCTAssertEqual(query[kSecAttrSynchronizable] as? Bool, false)
         XCTAssertEqual(query[kSecAttrService] as? String, "dev.zrr.Rill.tests")
-        XCTAssertEqual(query[kSecAttrAccount] as? String, SecureCredentialKey.deepgramAPIKey.rawValue)
+        XCTAssertEqual(query[kSecAttrAccount] as? String, SecureCredentialKey.openAIAPIKey.rawValue)
+    }
+
+    func testOpenAIUsesItsOwnKeychainAccount() {
+        let store = KeychainCredentialStore(
+            service: "dev.zrr.Rill.tests",
+            useDataProtectionKeychain: true
+        )
+
+        let query = store.baseQuery(for: .openAIAPIKey, useDataProtectionKeychain: true)
+
+        XCTAssertEqual(
+            query[kSecAttrAccount] as? String,
+            SecureCredentialKey.openAIAPIKey.rawValue
+        )
+        XCTAssertNotEqual(
+            query[kSecAttrAccount] as? String,
+            SecureCredentialKey.legacyWhisperKitModelToken.rawValue
+        )
     }
 
     func testLegacyQueryDoesNotChangeTheOriginalKeychainNamespace() {

@@ -18,7 +18,10 @@ public actor SherpaOnnxSpeechWorkerService: SpeechWorkerRequestHandling {
 
   public init() {}
 
-  public func handle(_ request: SpeechWorkerRequest) async -> SpeechWorkerResponse {
+  public func handle(
+    _ request: SpeechWorkerRequest,
+    progress _: @escaping @Sendable (SpeechWorkerProgress) -> Void
+  ) async -> SpeechWorkerResponse {
     do {
       let result = try await recognize(request)
       return .success(request: request, result: result)
@@ -91,9 +94,16 @@ public actor SherpaOnnxSpeechWorkerService: SpeechWorkerRequestHandling {
     let workflow = WorkflowDefinition(
       id: payload.runID,
       name: "Speech Worker",
-      pipeline: PipelineDeclaration(
-        recognizerID: recognizer.id,
-        outputActions: []
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(
+          speechRoute: WorkflowSpeechRoute(recognizerID: recognizer.id)
+        ),
+        process: WorkflowProcessPhase(
+          steps: [WorkflowProcessStep(kind: .recognizeSpeech)]
+        ),
+        output: WorkflowOutputPhase(
+          actions: [OutputActionReference(id: "clipboard.copy")]
+        )
       ),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "accent")
     )

@@ -237,61 +237,6 @@ actor UITestSecureCredentialStore: SecureCredentialStore {
   }
 }
 
-actor DeepgramTestProbe {
-  private(set) var startCount = 0
-  private(set) var finishCount = 0
-  private(set) var cancelCount = 0
-  private(set) var lastSettings: DeepgramSettings?
-
-  func recordStart(settings: DeepgramSettings) {
-    startCount += 1
-    lastSettings = settings
-  }
-
-  func recordFinish(settings: DeepgramSettings) {
-    finishCount += 1
-    lastSettings = settings
-  }
-
-  func recordCancel() {
-    cancelCount += 1
-  }
-
-  func snapshot() -> (
-    startCount: Int,
-    finishCount: Int,
-    cancelCount: Int,
-    lastSettings: DeepgramSettings?
-  ) {
-    (startCount, finishCount, cancelCount, lastSettings)
-  }
-}
-
-actor DeepgramFinishGate {
-  private var isCancelled = false
-  private var continuation: CheckedContinuation<RecognitionResult, Error>?
-
-  func wait() async throws -> RecognitionResult {
-    if isCancelled {
-      throw CancellationError()
-    }
-    return try await withCheckedThrowingContinuation { continuation in
-      if isCancelled {
-        continuation.resume(throwing: CancellationError())
-      } else {
-        self.continuation = continuation
-      }
-    }
-  }
-
-  func cancel() {
-    guard !isCancelled else { return }
-    isCancelled = true
-    continuation?.resume(throwing: CancellationError())
-    continuation = nil
-  }
-}
-
 actor WhisperKitPrepareProbe {
   private(set) var prepareCount = 0
   private(set) var lastSettings: LocalSpeechSettings?
@@ -508,12 +453,73 @@ struct AppModelTestHarness {
   let deliveryStack: DeliveryStack
 }
 
+private enum UITestWorkflowFileStoreError: Error {
+  case rejectedSave
+}
+
+actor UITestWorkflowFileStore: WorkflowFileStore {
+  nonisolated let configurationDirectoryURL = URL(
+    fileURLWithPath: "/tmp/rill-ui-test-workflows",
+    isDirectory: true
+  )
+
+  private var recordsByID: [UUID: WorkflowFileRecord]
+  private let rejectsSaves: Bool
+
+  init(records: [WorkflowFileRecord] = [], rejectsSaves: Bool = false) {
+    recordsByID = Dictionary(uniqueKeysWithValues: records.map {
+      ($0.workflow.id, $0)
+    })
+    self.rejectsSaves = rejectsSaves
+  }
+
+  func load() async -> WorkflowFileLoadResult {
+    let records = recordsByID.values.sorted {
+      $0.fileURL.lastPathComponent < $1.fileURL.lastPathComponent
+    }
+    return WorkflowFileLoadResult(
+      discoveredFileCount: records.count,
+      records: records
+    )
+  }
+
+  func save(
+    workflow: WorkflowDefinition,
+    isEnabled: Bool,
+    replacing fileURL: URL?
+  ) async throws -> URL {
+    let destination = fileURL
+      ?? configurationDirectoryURL.appendingPathComponent(
+        "\(workflow.id.uuidString.lowercased()).toml"
+      )
+    recordsByID[workflow.id] = WorkflowFileRecord(
+      workflow: workflow,
+      isEnabled: isEnabled,
+      fileURL: destination
+    )
+    guard !rejectsSaves else {
+      // Simulate an atomic write that succeeded before a later metadata step failed.
+      throw UITestWorkflowFileStoreError.rejectedSave
+    }
+    return destination
+  }
+
+  func delete(fileURL: URL) async throws {
+    recordsByID = recordsByID.filter { $0.value.fileURL != fileURL }
+  }
+
+  func records() -> [WorkflowFileRecord] {
+    recordsByID.values.sorted { $0.workflow.id.uuidString < $1.workflow.id.uuidString }
+  }
+}
+
 @MainActor
 func makeHarness(
   workflow: WorkflowDefinition? = nil,
   workflows: [WorkflowDefinition]? = nil,
   delay: Duration = .zero,
   settingsStore: (any SettingsStore)? = nil,
+  workflowFileStore: (any WorkflowFileStore)? = nil,
   usesEphemeralSettingsStoreWhenNil: Bool = true,
   credentialStore: (any SecureCredentialStore)? = nil,
   usesEphemeralCredentialStoreWhenNil: Bool = true,
@@ -530,6 +536,8 @@ func makeHarness(
   localSpeechAvailability: LocalSpeechAvailability? = nil,
   trustedLocalSpeechModels: [LocalSpeechModelDescriptor] = [],
   defaultLocalSpeechModelIdentifier: String? = nil,
+  ttsModelOptions: [TTSModelOption] = [],
+  defaultTTSModelIdentifier: String = "",
   localSpeechPhysicalMemoryGiB: Int = 16,
   historyRepository: (any HistoryRepository)? = nil,
   runHistoryBrowser: (any RunHistoryBrowsing)? = nil,
@@ -541,8 +549,11 @@ func makeHarness(
     accessibility: .granted, microphone: .unknown),
   globalInputCapability: GlobalInputCapability = .available,
   warmLocalSpeechForCaptureAction:
-    @escaping @Sendable (LocalSpeechSettings) async throws -> String =
-    { settings in
+    @escaping @Sendable (
+      LocalSpeechSettings,
+      @escaping @Sendable (Progress) -> Void
+    ) async throws -> String =
+    { settings, _ in
       settings.model
     },
   prepareLocalSpeechAction:
@@ -558,13 +569,8 @@ func makeHarness(
   startWorkflowAudioRunAction:
     @escaping @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void = { _, _ in },
   finishWorkflowAudioRunAction: @escaping @Sendable () async throws -> Void = {},
-  startDeepgramAudioTestAction: @escaping @Sendable (DeepgramSettings) async throws -> Void = { _ in
-  },
-  finishDeepgramAudioTestAction:
-    @escaping @Sendable (DeepgramSettings) async throws -> RecognitionResult = { _ in
-      RecognitionResult(rawText: "", bestText: "")
-    },
-  cancelDeepgramAudioTestAction: @escaping @Sendable () async -> Void = {},
+  verifyOpenAIConfigurationAction:
+    @escaping @Sendable (OpenAISettings) async throws -> Void = { _ in },
   retryFailedAudioRecoveryAction:
     @escaping @Sendable (
       UUID,
@@ -631,6 +637,7 @@ func makeHarness(
       UITestAction(id: "inject.text", log: actionLog),
       UITestAction(id: "clipboard.copy", log: actionLog),
       UITestAction(id: "stack.push", log: actionLog),
+      UITestAction(id: SpeechOutputActionID.speak, log: actionLog),
       UITestAction(id: ExternalOutputActionID.shortcutsRun, log: actionLog),
       UITestAction(id: ExternalOutputActionID.markdownAppend, log: actionLog),
     ]
@@ -675,6 +682,7 @@ func makeHarness(
     localHistoryMaintenance: localHistoryMaintenance,
     diagnosticRepository: diagnosticRepository,
     settingsStore: resolvedSettingsStore,
+    workflowFileStore: workflowFileStore,
     credentialStore: resolvedCredentialStore,
     localPersistenceStatus: localPersistenceStatus,
     vocabularyRuleSource: vocabularyRuleSource,
@@ -688,6 +696,8 @@ func makeHarness(
     localSpeechAvailability: localSpeechAvailability,
     trustedLocalSpeechModels: trustedLocalSpeechModels,
     defaultLocalSpeechModelIdentifier: defaultLocalSpeechModelIdentifier,
+    ttsModelOptions: ttsModelOptions,
+    defaultTTSModelIdentifier: defaultTTSModelIdentifier,
     localSpeechPhysicalMemoryGiB: localSpeechPhysicalMemoryGiB,
     warmLocalSpeechForCaptureAction: warmLocalSpeechForCaptureAction,
     prepareLocalSpeechAction: prepareLocalSpeechAction,
@@ -696,9 +706,7 @@ func makeHarness(
     stopLocalSpeechRuntimeAction: stopLocalSpeechRuntimeAction,
     startWorkflowAudioRunAction: startWorkflowAudioRunAction,
     finishWorkflowAudioRunAction: finishWorkflowAudioRunAction,
-    startDeepgramAudioTestAction: startDeepgramAudioTestAction,
-    finishDeepgramAudioTestAction: finishDeepgramAudioTestAction,
-    cancelDeepgramAudioTestAction: cancelDeepgramAudioTestAction,
+    verifyOpenAIConfigurationAction: verifyOpenAIConfigurationAction,
     retryFailedAudioRecoveryAction: retryFailedAudioRecoveryAction,
     deleteFailedAudioRecoveryAction: deleteFailedAudioRecoveryAction,
     clearFailedAudioRecoveryAction: clearFailedAudioRecoveryAction,

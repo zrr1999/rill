@@ -11,6 +11,7 @@ struct ClipboardHistoryEntry: Identifiable, Equatable, Sendable {
     let tags: [String]
     let searchIndexText: String
     let includesSimilarText: Bool
+    let isPinned: Bool
 
     var id: UUID { representativeItem.id }
     var isMerged: Bool { copyCount > 1 }
@@ -19,11 +20,12 @@ struct ClipboardHistoryEntry: Identifiable, Equatable, Sendable {
         let normalizedQuery = Self.normalizeSearchText(query)
         guard !normalizedQuery.isEmpty else { return true }
 
-        if searchIndexText.contains(normalizedQuery) {
-            return true
-        }
-
-        return Self.normalizeSearchText(groupName).contains(normalizedQuery)
+        let searchableText = searchIndexText
+            + "\n"
+            + Self.normalizeSearchText(groupName)
+        return normalizedQuery
+            .split(whereSeparator: \.isWhitespace)
+            .allSatisfy { searchableText.contains($0) }
     }
 
     static func normalizeSearchText(_ value: String) -> String {
@@ -38,6 +40,7 @@ enum ClipboardHistoryEntryBuilder {
     private static let exactGroupingInlineLength = 256
     private static let exactGroupingEdgeLength = 96
     private static let maxIndexedSearchLength = 2_048
+    private static let maxSearchIndexLength = 16_384
     private static let maxSimilarTextLength = 4_096
 
     static func build(
@@ -76,7 +79,10 @@ enum ClipboardHistoryEntryBuilder {
             }
         }
 
-        return orderedKeys.compactMap { buckets[$0]?.build(mergeSimilarText: mergeSimilarText) }
+        let entries = orderedKeys.compactMap {
+            buckets[$0]?.build(mergeSimilarText: mergeSimilarText)
+        }
+        return entries.filter(\.isPinned) + entries.filter { !$0.isPinned }
     }
 
     private enum GroupingKey: Hashable {
@@ -130,8 +136,9 @@ enum ClipboardHistoryEntryBuilder {
         private(set) var lastUsedAt: Date?
         private(set) var alternatives: [String]
         private(set) var tags: [String]
-        private(set) var searchTokens: [String]
+        private(set) var searchIndex: SearchIndexAccumulator
         private(set) var distinctTextSignatures: Set<String>
+        private(set) var isPinned: Bool
 
         init(seed item: ClipboardHistoryItem) {
             representativeItem = item
@@ -141,10 +148,11 @@ enum ClipboardHistoryEntryBuilder {
             lastUsedAt = item.lastUsedAt
             alternatives = item.alternatives
             tags = item.tags
-            searchTokens = Self.searchTokens(for: item)
+            searchIndex = SearchIndexAccumulator(item: item)
             distinctTextSignatures = item.contentKind == .text
                 ? Set([ClipboardHistoryEntryBuilder.exactTextSignature(for: item.text)])
                 : []
+            isPinned = item.isPinned
         }
 
         mutating func add(_ item: ClipboardHistoryItem) {
@@ -162,7 +170,8 @@ enum ClipboardHistoryEntryBuilder {
 
             appendUnique(item.alternatives, into: &alternatives)
             appendUnique(item.tags, into: &tags)
-            appendUnique(Self.searchTokens(for: item), into: &searchTokens)
+            searchIndex.append(item: item)
+            isPinned = isPinned || item.isPinned
 
             if item.contentKind == .text {
                 distinctTextSignatures.insert(ClipboardHistoryEntryBuilder.exactTextSignature(for: item.text))
@@ -178,30 +187,63 @@ enum ClipboardHistoryEntryBuilder {
                 lastUsedAt: lastUsedAt,
                 alternatives: alternatives,
                 tags: tags,
-                searchIndexText: ClipboardHistoryEntry.normalizeSearchText(searchTokens.joined(separator: "\n")),
-                includesSimilarText: mergeSimilarText && distinctTextSignatures.count > 1
+                searchIndexText: searchIndex.value,
+                includesSimilarText: mergeSimilarText && distinctTextSignatures.count > 1,
+                isPinned: isPinned
             )
-        }
-
-        private static func searchTokens(for item: ClipboardHistoryItem) -> [String] {
-            var tokens = [ClipboardHistoryEntryBuilder.limitedSearchToken(item.text)]
-            tokens.append(contentsOf: item.alternatives.map(ClipboardHistoryEntryBuilder.limitedSearchToken))
-            tokens.append(contentsOf: item.tags.map(ClipboardHistoryEntryBuilder.limitedSearchToken))
-
-            if let sourceApplicationName = item.sourceApplicationName {
-                tokens.append(ClipboardHistoryEntryBuilder.limitedSearchToken(sourceApplicationName))
-            }
-
-            if let workflowName = item.workflow?.fallbackName {
-                tokens.append(ClipboardHistoryEntryBuilder.limitedSearchToken(workflowName))
-            }
-
-            return tokens
         }
 
         private func appendUnique(_ values: [String], into target: inout [String]) {
             for value in values where !target.contains(value) {
                 target.append(value)
+            }
+        }
+    }
+
+    private struct SearchIndexAccumulator {
+        private var tokens: [String] = []
+        private var seenTokens: Set<String> = []
+        private var remainingCharacterCapacity = ClipboardHistoryEntryBuilder.maxSearchIndexLength
+
+        init(item: ClipboardHistoryItem) {
+            append(item: item)
+        }
+
+        var value: String {
+            tokens.joined(separator: "\n")
+        }
+
+        mutating func append(item: ClipboardHistoryItem) {
+            var values = [item.text]
+            values.append(contentsOf: item.alternatives)
+            values.append(contentsOf: item.tags)
+            values.append(contentsOf: item.fileURLs.map(\.lastPathComponent))
+            if let sourceApplicationName = item.sourceApplicationName {
+                values.append(sourceApplicationName)
+            }
+            if let sourceBundleIdentifier = item.sourceBundleIdentifier {
+                values.append(sourceBundleIdentifier)
+            }
+            if let workflowName = item.workflow?.fallbackName {
+                values.append(workflowName)
+            }
+            append(values)
+        }
+
+        private mutating func append(_ values: [String]) {
+            for value in values where remainingCharacterCapacity > 0 {
+                let normalized = ClipboardHistoryEntryBuilder.limitedSearchToken(value)
+                guard !normalized.isEmpty, seenTokens.insert(normalized).inserted else {
+                    continue
+                }
+                let separatorCost = tokens.isEmpty ? 0 : 1
+                guard remainingCharacterCapacity > separatorCost else { return }
+                let token = String(
+                    normalized.prefix(remainingCharacterCapacity - separatorCost)
+                )
+                guard !token.isEmpty else { return }
+                tokens.append(token)
+                remainingCharacterCapacity -= separatorCost + token.count
             }
         }
     }
@@ -217,7 +259,7 @@ enum ClipboardHistoryEntryBuilder {
 
     private static func limitedSearchToken(_ value: String) -> String {
         let token = String(value.prefix(maxIndexedSearchLength))
-        return token.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ClipboardHistoryEntry.normalizeSearchText(token)
     }
 
     private static func fnv1a64Hex(for text: String) -> String {

@@ -47,7 +47,7 @@ private actor RecordingCueOrderProbe {
   enum Event: Equatable, Sendable {
     case captureStarted
     case captureFinished
-    case cue
+    case cue(RecordingInteractionCue)
   }
 
   private var events: [Event] = []
@@ -180,8 +180,8 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
       recognizerDurationProvider: { recognizerID in
         recognizerID == "toggle.recognizer" ? 20 : nil
       },
-      recordingCueAction: {
-        await cueOrderProbe.record(.cue)
+      recordingCueAction: { cue in
+        await cueOrderProbe.record(.cue(cue))
       }
     )
 
@@ -236,7 +236,7 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
     XCTAssertEqual(actionValues, ["recorded"])
     XCTAssertEqual(
       cueOrder,
-      [.captureStarted, .cue, .captureFinished, .cue],
+      [.captureStarted, .cue(.started), .captureFinished, .cue(.stopped)],
       "Start feedback must follow confirmed capture readiness, and stop feedback must follow input shutdown."
     )
     XCTAssertTrue(

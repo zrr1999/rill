@@ -235,7 +235,27 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
   }
 
   func testCollectionWriteFailureRetriesTheExactVocabularySnapshotAndClearsState() async throws {
-    let store = FailThenSucceedSettingsStore(failures: [.vocabularyRules: 1])
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let workflowLibrary = String(
+      decoding: try encoder.encode(
+        WorkflowLibraryDocument(customWorkflows: [])
+      ),
+      as: UTF8.self
+    )
+    let vocabularyLibrary = String(
+      decoding: try encoder.encode(
+        VocabularyLibraryDocument(collections: [.personal()])
+      ),
+      as: UTF8.self
+    )
+    let store = FailThenSucceedSettingsStore(
+      storage: [
+        .workflowLibrary: workflowLibrary,
+        .vocabularyLibrary: vocabularyLibrary,
+      ],
+      failures: [.vocabularyLibrary: 1]
+    )
     let harness = makeHarness(
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
@@ -266,11 +286,23 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.settingsSaveState, .saved)
-    let snapshot = await store.snapshot(for: .vocabularyRules)
+    let snapshot = await store.snapshot(for: .vocabularyLibrary)
     XCTAssertEqual(snapshot.attempts, 2)
     let payload = try XCTUnwrap(snapshot.value)
-    let storedRules = try JSONDecoder().decode([VocabularyRule].self, from: Data(payload.utf8))
-    XCTAssertEqual(storedRules.map(\.pattern), ["product term"])
+    let library = try JSONDecoder().decode(
+      VocabularyLibraryDocument.self,
+      from: Data(payload.utf8)
+    )
+    let storedRules = library.collections.flatMap(\.entries)
+    XCTAssertEqual(
+      storedRules.compactMap { entry in
+        if case .replacement(let pattern, _, _, _) = entry.content {
+          return pattern
+        }
+        return nil
+      },
+      ["product term"]
+    )
   }
 
   func testShutdownDrainImmediatelyRetriesAndRecoversUnsavedScalar() async {

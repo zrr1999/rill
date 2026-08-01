@@ -18,6 +18,68 @@ private enum SettingsSheetDestination: Identifiable {
   }
 }
 
+private enum OpenAIModelSelection: String, CaseIterable, Identifiable {
+  case luna
+  case terra
+  case sol
+  case custom
+
+  var id: String { rawValue }
+
+  var modelIdentifier: String? {
+    switch self {
+    case .luna:
+      OpenAIModelOption.luna.rawValue
+    case .terra:
+      OpenAIModelOption.terra.rawValue
+    case .sol:
+      OpenAIModelOption.sol.rawValue
+    case .custom:
+      nil
+    }
+  }
+
+  init(modelIdentifier: String) {
+    switch modelIdentifier {
+    case OpenAIModelOption.luna.rawValue:
+      self = .luna
+    case OpenAIModelOption.terra.rawValue:
+      self = .terra
+    case OpenAIModelOption.sol.rawValue:
+      self = .sol
+    default:
+      self = .custom
+    }
+  }
+}
+
+struct VoiceAssistantSettingsActionVisibility: Equatable {
+  let showsWakeWordPreparation: Bool
+  let showsTTSPreparation: Bool
+  let showsStopPlayback: Bool
+
+  init(
+    wakeWordState: VoiceAssistantResourceState,
+    ttsState: VoiceAssistantResourceState,
+    isSpeechPlaybackActive: Bool
+  ) {
+    showsWakeWordPreparation = Self.showsPreparation(for: wakeWordState)
+    showsTTSPreparation = Self.showsPreparation(for: ttsState)
+    showsStopPlayback = isSpeechPlaybackActive
+  }
+
+  private static func showsPreparation(
+    for state: VoiceAssistantResourceState
+  ) -> Bool {
+    switch state {
+    case .notInstalled, .failed:
+      true
+    case .preparing, .ready, .unavailable:
+      false
+    }
+  }
+}
+
 enum SettingsPermissionAction: Equatable {
   case none
   case request
@@ -94,7 +156,13 @@ public struct SettingsView: View {
   @State private var sensitiveAppRuleError: String?
   @State private var destructiveConfirmation: SettingsDestructiveConfirmation?
   @State private var presentedSheet: SettingsSheetDestination?
+  @State private var expandedSettingsSections: Set<SettingsSection> = [.permissions]
+  @State private var wakePhrasesText: String
+  @State private var wakeListeningDraftEnabled: Bool
+  @State private var isApplyingWakeWordSettings = false
+  @State private var wakeWordSettingsError: String?
   @FocusState private var focusedSettingsSection: SettingsSection?
+  @FocusState private var wakePhrasesFieldFocused: Bool
   @AccessibilityFocusState private var accessibilityFocusedSettingsSection: SettingsSection?
 
   public init(
@@ -103,6 +171,13 @@ public struct SettingsView: View {
   ) {
     self.model = model
     self.privacyNoticeDocument = privacyNoticeDocument
+    let wakeWordSettings = model.wakeWordSettingsSnapshot
+    _wakePhrasesText = State(
+      initialValue: wakeWordSettings.phrases.joined(separator: "\n")
+    )
+    _wakeListeningDraftEnabled = State(
+      initialValue: wakeWordSettings.isEnabled
+    )
   }
 
   public var body: some View {
@@ -118,145 +193,37 @@ public struct SettingsView: View {
         }
 
         Section {
-          if model.hasUnavailableScalarSettings(in: .interface) {
-            unavailableScalarSettingsWarning(.interface)
-          }
-          Picker(
-            UIStrings.text(.language, language: model.language),
-            selection: Binding(
-              get: { model.language },
-              set: { model.setInterfaceLanguage($0) }
-            )
-          ) {
-            ForEach(AppLanguage.allCases) { lang in
-              Text(lang.displayName).tag(lang)
-            }
-          }
-          .pickerStyle(.segmented)
-          .frame(maxWidth: 260)
-          .disabled(!model.canMutateScalarSettings(in: .interface))
+          permissionsSection
+          speechEngineSection
+          builtinPushToTalkSection
+          voiceAssistantResourcesSection
         } header: {
-          settingsSectionHeader(.language)
-        } footer: {
-          Text(UIStrings.text(.settingsLanguageDescription, language: model.language))
+          settingsGroupHeader(
+            model.language == .english ? "Voice Input" : "语音输入",
+            systemImage: "waveform"
+          )
         }
-        .id(SettingsSection.language)
 
         Section {
-          if model.hasUnavailableScalarSettings(in: .clipboard) {
-            unavailableScalarSettingsWarning(.clipboard)
-          }
-          Toggle(
-            UIStrings.text(
-              .settingsClipboardCaptureEnabled,
-              language: model.language
-            ),
-            isOn: Binding(
-              get: { model.clipboardCaptureEnabled },
-              set: { model.setClipboardCaptureEnabled($0) }
-            )
-          )
-          .disabled(!model.canMutateScalarSettings(in: .clipboard))
-          .accessibilityIdentifier("settings.clipboard.capture-enabled")
-
-          Text(
-            UIStrings.text(
-              .settingsClipboardCaptureEnabledDescription,
-              language: model.language
-            )
-          )
-          .font(.caption)
-          .foregroundStyle(.secondary)
-
-          if ClipboardPanelShortcutPresentationPolicy.surfaceVisibility(
-            clipboardCaptureEnabled: model.clipboardCaptureEnabled
-          ).settingsRecorder {
-            Divider()
-
-            HotkeyRecorderView(
-              binding: model.clipboardPanelHotkeyBinding,
-              language: model.language,
-              beginClipboardPanelShortcutRecording: {
-                model.beginClipboardPanelShortcutRecording()
-              },
-              endClipboardPanelShortcutRecording: { suspensionID in
-                model.endClipboardPanelShortcutRecording(suspensionID)
-              },
-              commitClipboardPanelShortcutRecording: { suspensionID, keyCode in
-                model.commitClipboardPanelShortcutRecording(
-                  suspensionID,
-                  keyCode: keyCode
-                )
-              },
-              onRecord: { shortcut in
-                model.setClipboardPanelHotkeyShortcut(shortcut)
-              },
-              onReset: {
-                model.resetClipboardPanelHotkeyBinding()
-              }
-            )
-            .disabled(model.hasUnavailableScalarSettings(in: .clipboard))
-          }
+          clipboardPanelSection
+          vocabularySection
+          languageSection
         } header: {
-          settingsSectionHeader(.clipboardPanel)
-        } footer: {
-          Text(UIStrings.text(.settingsClipboardPanelDescription, language: model.language))
+          settingsGroupHeader(
+            model.language == .english ? "Features & Personalization" : "功能与个性化",
+            systemImage: "slider.horizontal.3"
+          )
         }
-        .id(SettingsSection.clipboardPanel)
 
         Section {
-          HStack {
-            Spacer()
-            Button(UIStrings.text(.refreshPermissions, language: model.language)) {
-              model.refreshPermissions()
-            }
-          }
-
-          globalInputPermissionRow(model.globalInputCapability)
-
-          permissionRow(
-            title: UIStrings.text(.accessibility, language: model.language),
-            state: model.permissionSnapshot.accessibility,
-            isRequired: model.voiceSetupReadiness.accessibilityRequired,
-            optionalDetail: UIStrings.text(
-              .voiceSetupAccessibilityOptional,
-              language: model.language
-            ),
-            requestAction: model.requestAccessibilityPermission,
-            openSettingsAction: model.openAccessibilitySettings
-          )
-
-          permissionRow(
-            title: UIStrings.text(.microphone, language: model.language),
-            state: model.permissionSnapshot.microphone,
-            requestAction: model.requestMicrophonePermission,
-            openSettingsAction: model.openMicrophoneSettings
-          )
-
-          if model.voiceSetupReadiness.accessibilityRequired,
-            model.permissionSnapshot.accessibility != .granted
-          {
-            Text(UIStrings.text(.appNotListedHint, language: model.language))
-              .font(.callout)
-              .foregroundStyle(.secondary)
-          }
+          privacySection
+          localDataAndRetentionSection
         } header: {
-          settingsSectionHeader(.permissions)
-        } footer: {
-          Text(UIStrings.text(.permissionHint, language: model.language))
+          settingsGroupHeader(
+            model.language == .english ? "Privacy & Data" : "隐私与数据",
+            systemImage: "lock.shield"
+          )
         }
-        .id(SettingsSection.permissions)
-
-        privacySection
-          .id(SettingsSection.privacy)
-        localDataAndRetentionSection
-          .id(SettingsSection.storage)
-        speechEngineSection
-          .id(SettingsSection.speech)
-        vocabularySection
-          .id(SettingsSection.vocabulary)
-        builtinPushToTalkSection
-          .id(SettingsSection.input)
       }
       .formStyle(.grouped)
       .task(id: model.settingsNavigationRequest?.id) {
@@ -298,15 +265,590 @@ public struct SettingsView: View {
     }
   }
 
+  private var permissionsSection: some View {
+    settingsDisclosure(.permissions) {
+      HStack {
+        Spacer()
+        Button(UIStrings.text(.refreshPermissions, language: model.language)) {
+          model.refreshPermissions()
+        }
+      }
+
+      globalInputPermissionRow(model.globalInputCapability)
+
+      permissionRow(
+        title: UIStrings.text(.accessibility, language: model.language),
+        state: model.permissionSnapshot.accessibility,
+        isRequired: model.voiceSetupReadiness.accessibilityRequired,
+        optionalDetail: UIStrings.text(
+          .voiceSetupAccessibilityOptional,
+          language: model.language
+        ),
+        requestAction: model.requestAccessibilityPermission,
+        openSettingsAction: model.openAccessibilitySettings
+      )
+
+      permissionRow(
+        title: UIStrings.text(.microphone, language: model.language),
+        state: model.permissionSnapshot.microphone,
+        requestAction: model.requestMicrophonePermission,
+        openSettingsAction: model.openMicrophoneSettings
+      )
+
+      if model.voiceSetupReadiness.accessibilityRequired,
+        model.permissionSnapshot.accessibility != .granted
+      {
+        Text(UIStrings.text(.appNotListedHint, language: model.language))
+          .font(.callout)
+          .foregroundStyle(.secondary)
+      }
+
+      Text(UIStrings.text(.permissionHint, language: model.language))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  private var voiceAssistantResourcesSection: some View {
+    settingsDisclosure(.voiceAssistant) {
+      LabeledContent(
+        model.language == .english ? "Wake-word listener" : "唤醒词监听"
+      ) {
+        Text(wakeWordRuntimeStatusText)
+          .foregroundStyle(wakeWordRuntimeStatusColor)
+      }
+
+      voiceResourceStatus(
+        state: model.wakeWordResourceState,
+        readyText:
+          model.language == .english
+          ? "Selected local ASR is ready"
+          : "当前本地语音模型已就绪"
+      )
+
+      if voiceAssistantActionVisibility.showsWakeWordPreparation {
+        Button(
+          resourcePreparationButtonTitle(
+            state: model.wakeWordResourceState,
+            englishName: "local ASR",
+            simplifiedChineseName: "本地语音模型"
+          )
+        ) {
+          model.prepareWakeWordModel()
+        }
+        .accessibilityIdentifier("settings.wake-word.prepare")
+      }
+
+      Toggle(
+        model.language == .english
+          ? "Enable wake-word listening"
+          : "启用唤醒词监听",
+        isOn: Binding(
+          get: { wakeListeningDraftEnabled },
+          set: { requestWakeWordListening($0) }
+        )
+      )
+      .disabled(
+        isApplyingWakeWordSettings
+          || (!wakeListeningDraftEnabled && !wakeWordModelIsReady)
+      )
+      .accessibilityIdentifier("settings.wake-word.enabled")
+
+      VStack(alignment: .leading, spacing: 5) {
+        Text(model.language == .english ? "Wake phrases" : "唤醒短语")
+          .font(.caption.weight(.medium))
+          .foregroundStyle(.secondary)
+        TextField(
+          model.language == .english
+            ? "One phrase per line (1–4)"
+            : "每行一个短语（1–4 个）",
+          text: $wakePhrasesText,
+          axis: .vertical
+        )
+        .lineLimit(1...4)
+        .textFieldStyle(.roundedBorder)
+        .focused($wakePhrasesFieldFocused)
+        .disabled(isApplyingWakeWordSettings)
+        .accessibilityIdentifier("settings.wake-word.phrases")
+
+        HStack(spacing: 8) {
+          Button(model.language == .english ? "Save phrases" : "保存短语") {
+            applyWakeWordSettings(
+              enableListening: wakeListeningDraftEnabled
+            )
+          }
+          .disabled(isApplyingWakeWordSettings || !wakeWordModelIsReady)
+          .accessibilityIdentifier("settings.wake-word.save")
+
+          if isApplyingWakeWordSettings {
+            ProgressView()
+              .controlSize(.small)
+          }
+
+          Spacer()
+
+          if let workflowName = model.wakeWordSettingsSnapshot.workflowName {
+            Text(
+              model.language == .english
+                ? "Workflow: \(workflowName)"
+                : "工作流：\(workflowName)"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          }
+        }
+      }
+
+      if let wakeWordSettingsError {
+        Label(wakeWordSettingsError, systemImage: "exclamationmark.triangle.fill")
+          .font(.caption)
+          .foregroundStyle(.red)
+      }
+
+      Text(
+        model.language == .english
+          ? "This edits the wake trigger only. Recognition, processing, output, and TTS remain part of the same workflow."
+          : "这里仅编辑唤醒触发；识别、处理、输出与 TTS 仍由同一个工作流负责。"
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+
+      Divider()
+
+      LabeledContent(
+        model.language == .english ? "Local TTS" : "本地 TTS"
+      ) {
+        Picker(
+          "",
+          selection: Binding(
+            get: { model.ttsModelIdentifier },
+            set: { _ = model.setPreferredTTSModel($0) }
+          )
+        ) {
+          ForEach(model.ttsModelOptions) { option in
+            Text(ttsModelOptionTitle(option))
+              .tag(option.id)
+          }
+        }
+        .labelsHidden()
+        .frame(minWidth: 320, alignment: .trailing)
+        .disabled(model.ttsResourceState.isPreparing)
+        .accessibilityIdentifier("settings.tts.model")
+      }
+      voiceResourceStatus(
+        state: model.ttsResourceState,
+        readyText: model.language == .english ? "TTS model ready" : "TTS 模型已就绪"
+      )
+
+      if voiceAssistantActionVisibility.showsTTSPreparation
+        || voiceAssistantActionVisibility.showsStopPlayback
+      {
+        HStack(spacing: 8) {
+          if voiceAssistantActionVisibility.showsTTSPreparation {
+            Button(
+              resourcePreparationButtonTitle(
+                state: model.ttsResourceState,
+                englishName: "TTS model",
+                simplifiedChineseName: "TTS 模型"
+              )
+            ) {
+              model.prepareTTSModel()
+            }
+            .accessibilityIdentifier("settings.tts.prepare")
+          }
+
+          if voiceAssistantActionVisibility.showsStopPlayback {
+            Button(
+              model.language == .english ? "Stop speech playback" : "停止语音播放"
+            ) {
+              model.stopSpeechPlaybackIfActive()
+            }
+            .accessibilityIdentifier("settings.tts.stop-playback")
+          }
+        }
+      }
+
+      Text(
+        model.language == .english
+          ? "Idle listening runs only local VAD. Complete speech candidates are checked by the selected local Qwen ASR and discarded unless they begin with a wake phrase. TTS falls back to the system voice when Qwen is unavailable."
+          : "空闲监听只运行本地 VAD；完整语音段由当前本地 Qwen ASR 检查，不以唤醒短语开头时立即丢弃。Qwen 不可用时 TTS 会退回系统语音。"
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+    }
+    .onChange(of: model.wakeWordSettingsSnapshot) { _, snapshot in
+      guard !isApplyingWakeWordSettings else { return }
+      wakeListeningDraftEnabled = snapshot.isEnabled
+      if !wakePhrasesFieldFocused {
+        wakePhrasesText = snapshot.phrases.joined(separator: "\n")
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func voiceResourceStatus(
+    state: VoiceAssistantResourceState,
+    readyText: String
+  ) -> some View {
+    switch state {
+    case .notInstalled:
+      Text(model.language == .english ? "Not installed" : "尚未安装")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    case .preparing(let progress):
+      if let progress, progress > 0 {
+        HStack(spacing: 8) {
+          ProgressView(value: progress)
+          Text(progress, format: .percent.precision(.fractionLength(0)))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .frame(minWidth: 34, alignment: .trailing)
+        }
+      } else {
+        HStack(spacing: 8) {
+          ProgressView()
+            .controlSize(.small)
+          Text(model.language == .english ? "Preparing download…" : "正在准备下载…")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
+    case .ready:
+      Label(readyText, systemImage: "checkmark.circle.fill")
+        .font(.caption)
+        .foregroundStyle(.green)
+    case .failed(let message):
+      Label(message, systemImage: "exclamationmark.triangle.fill")
+        .font(.caption)
+        .foregroundStyle(.red)
+    case .unavailable(let reason):
+      Label(
+        voiceResourceUnavailableText(reason),
+        systemImage: "exclamationmark.triangle.fill"
+      )
+      .font(.caption)
+      .foregroundStyle(.orange)
+    }
+  }
+
+  private var voiceAssistantActionVisibility: VoiceAssistantSettingsActionVisibility {
+    VoiceAssistantSettingsActionVisibility(
+      wakeWordState: model.wakeWordResourceState,
+      ttsState: model.ttsResourceState,
+      isSpeechPlaybackActive: model.isSpeechPlaybackActive
+    )
+  }
+
+  private var wakeWordModelIsReady: Bool {
+    if case .ready = model.wakeWordResourceState {
+      return true
+    }
+    return false
+  }
+
+  private var wakePhraseDraftValues: [String] {
+    wakePhrasesText
+      .split(whereSeparator: { $0.isNewline || $0 == "," || $0 == "，" })
+      .map(String.init)
+      .map(WakeWordConfiguration.normalizedPhrase)
+      .filter { !$0.isEmpty }
+  }
+
+  private func requestWakeWordListening(_ enabled: Bool) {
+    wakeListeningDraftEnabled = enabled
+    wakeWordSettingsError = nil
+    if enabled {
+      applyWakeWordSettings(enableListening: true)
+    } else {
+      model.disableWakeWordListening()
+    }
+  }
+
+  private func applyWakeWordSettings(enableListening: Bool) {
+    guard !isApplyingWakeWordSettings else { return }
+    isApplyingWakeWordSettings = true
+    wakeWordSettingsError = nil
+    let phrases = wakePhraseDraftValues
+    Task { @MainActor in
+      let result = await model.updateWakeWordSettings(
+        phrases: phrases,
+        enableListening: enableListening
+      )
+      isApplyingWakeWordSettings = false
+      switch result {
+      case .saved:
+        let snapshot = model.wakeWordSettingsSnapshot
+        wakeListeningDraftEnabled = snapshot.isEnabled
+        wakePhrasesText = snapshot.phrases.joined(separator: "\n")
+      case .failed(let message):
+        wakeListeningDraftEnabled = model.wakeWordSettingsSnapshot.isEnabled
+        wakeWordSettingsError = message
+      }
+    }
+  }
+
+  private func resourcePreparationButtonTitle(
+    state: VoiceAssistantResourceState,
+    englishName: String,
+    simplifiedChineseName: String
+  ) -> String {
+    if case .failed = state {
+      return model.language == .english
+        ? "Retry \(englishName)"
+        : "重试\(simplifiedChineseName)"
+    }
+    return model.language == .english
+      ? "Download \(englishName)"
+      : "下载\(simplifiedChineseName)"
+  }
+
+  private func voiceResourceUnavailableText(
+    _ reason: VoiceAssistantResourceUnavailableReason
+  ) -> String {
+    switch reason {
+    case .distributionLicenseUnverified:
+      return model.language == .english
+        ? "This local speech model is unavailable in the current distribution."
+        : "当前发行版本不提供此本地语音模型。"
+    }
+  }
+
+  private func ttsModelOptionTitle(_ option: TTSModelOption) -> String {
+    var components = [
+      "Qwen3-TTS 0.6B CustomVoice",
+      option.precision,
+      ByteCountFormatter.string(
+        fromByteCount: Int64(option.approximateDownloadByteCount),
+        countStyle: .file
+      ),
+    ]
+    if option.isDefault {
+      components.append(model.language == .english ? "Default" : "默认")
+    }
+    if model.downloadedTTSModelIdentifiers.contains(option.id) {
+      components.append(model.language == .english ? "Downloaded" : "已下载")
+    }
+    return components.joined(separator: " · ")
+  }
+
+  private var wakeWordRuntimeStatusText: String {
+    switch model.wakeWordRuntimeState {
+    case .disabled:
+      model.language == .english ? "Disabled" : "已停用"
+    case .modelMissing:
+      model.language == .english ? "Model required" : "需要模型"
+    case .starting:
+      model.language == .english ? "Starting" : "正在启动"
+    case .listening:
+      model.language == .english ? "Listening locally" : "正在本地监听"
+    case .suspended(let reason):
+      (model.language == .english ? "Paused: " : "已暂停：") + reason
+    case .failed:
+      model.language == .english ? "Unavailable" : "不可用"
+    }
+  }
+
+  private var wakeWordRuntimeStatusColor: Color {
+    switch model.wakeWordRuntimeState {
+    case .listening:
+      .green
+    case .failed:
+      .red
+    case .starting, .suspended:
+      .orange
+    case .disabled, .modelMissing:
+      .secondary
+    }
+  }
+
+  private var clipboardPanelSection: some View {
+    settingsDisclosure(.clipboardPanel) {
+      if model.hasUnavailableScalarSettings(in: .clipboard) {
+        unavailableScalarSettingsWarning(.clipboard)
+      }
+
+      Toggle(
+        UIStrings.text(
+          .settingsClipboardCaptureEnabled,
+          language: model.language
+        ),
+        isOn: Binding(
+          get: { model.clipboardCaptureEnabled },
+          set: { model.setClipboardCaptureEnabled($0) }
+        )
+      )
+      .disabled(!model.canMutateScalarSettings(in: .clipboard))
+      .accessibilityIdentifier("settings.clipboard.capture-enabled")
+
+      Text(
+        UIStrings.text(
+          .settingsClipboardCaptureEnabledDescription,
+          language: model.language
+        )
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+
+      if ClipboardPanelShortcutPresentationPolicy.surfaceVisibility(
+        clipboardCaptureEnabled: model.clipboardCaptureEnabled
+      ).settingsRecorder {
+        Divider()
+
+        HotkeyRecorderView(
+          binding: model.clipboardPanelHotkeyBinding,
+          language: model.language,
+          beginClipboardPanelShortcutRecording: {
+            model.beginClipboardPanelShortcutRecording()
+          },
+          endClipboardPanelShortcutRecording: { suspensionID in
+            model.endClipboardPanelShortcutRecording(suspensionID)
+          },
+          commitClipboardPanelShortcutRecording: { suspensionID, keyCode in
+            model.commitClipboardPanelShortcutRecording(
+              suspensionID,
+              keyCode: keyCode
+            )
+          },
+          onRecord: { shortcut in
+            model.setClipboardPanelHotkeyShortcut(shortcut)
+          },
+          onReset: {
+            model.resetClipboardPanelHotkeyBinding()
+          }
+        )
+        .disabled(model.hasUnavailableScalarSettings(in: .clipboard))
+      }
+
+      Text(UIStrings.text(.settingsClipboardPanelDescription, language: model.language))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  private var languageSection: some View {
+    settingsDisclosure(.language) {
+      if model.hasUnavailableScalarSettings(in: .interface) {
+        unavailableScalarSettingsWarning(.interface)
+      }
+
+      Picker(
+        UIStrings.text(.language, language: model.language),
+        selection: Binding(
+          get: { model.language },
+          set: { model.setInterfaceLanguage($0) }
+        )
+      ) {
+        ForEach(AppLanguage.allCases) { language in
+          Text(language.displayName).tag(language)
+        }
+      }
+      .pickerStyle(.segmented)
+      .frame(maxWidth: 260)
+      .disabled(!model.canMutateScalarSettings(in: .interface))
+
+      Text(UIStrings.text(.settingsLanguageDescription, language: model.language))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+  }
+
   private func settingsSectionHeader(_ section: SettingsSection) -> some View {
     Label(section.title(language: model.language), systemImage: section.symbolName)
-      .focusable()
-      .focused($focusedSettingsSection, equals: section)
       .accessibilityFocused(
         $accessibilityFocusedSettingsSection,
         equals: section
       )
       .accessibilityIdentifier("settings.section.\(section.rawValue)")
+  }
+
+  private func settingsGroupHeader(
+    _ title: String,
+    systemImage: String
+  ) -> some View {
+    Label(title, systemImage: systemImage)
+      .font(.headline)
+      .foregroundStyle(.primary)
+  }
+
+  private func settingsDisclosure<Content: View>(
+    _ section: SettingsSection,
+    @ViewBuilder content: @escaping () -> Content
+  ) -> some View {
+    DisclosureGroup(isExpanded: settingsDisclosureBinding(for: section)) {
+      VStack(alignment: .leading, spacing: 12) {
+        content()
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.top, 8)
+    } label: {
+      VStack(alignment: .leading, spacing: 3) {
+        settingsSectionHeader(section)
+        Text(settingsSectionSummary(section))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      .padding(.vertical, 2)
+    }
+    .focusable()
+    .focused($focusedSettingsSection, equals: section)
+    .focusEffectDisabled()
+    .id(section)
+  }
+
+  private func settingsDisclosureBinding(
+    for section: SettingsSection
+  ) -> Binding<Bool> {
+    Binding(
+      get: { expandedSettingsSections.contains(section) },
+      set: { isExpanded in
+        if isExpanded {
+          expandedSettingsSections.insert(section)
+        } else {
+          expandedSettingsSections.remove(section)
+        }
+      }
+    )
+  }
+
+  private func settingsSectionSummary(_ section: SettingsSection) -> String {
+    switch (section, model.language) {
+    case (.permissions, .english):
+      "Microphone, global shortcuts, and system access"
+    case (.permissions, .simplifiedChinese):
+      "麦克风、全局快捷键与系统访问"
+    case (.speech, .english):
+      "Recognition engine, model, and text refinement"
+    case (.speech, .simplifiedChinese):
+      "识别引擎、模型与文本润色"
+    case (.input, .english):
+      "Recording behavior, duration, and output"
+    case (.input, .simplifiedChinese):
+      "录音方式、时长与输出"
+    case (.voiceAssistant, .english):
+      "Wake listening, local voices, and model resources"
+    case (.voiceAssistant, .simplifiedChinese):
+      "唤醒监听、本地音色与模型资源"
+    case (.clipboardPanel, .english):
+      "Clipboard capture and panel shortcut"
+    case (.clipboardPanel, .simplifiedChinese):
+      "剪贴板捕获与面板快捷键"
+    case (.vocabulary, .english):
+      "Hotwords, replacements, and scoped corrections"
+    case (.vocabulary, .simplifiedChinese):
+      "热词、替换与限定范围的纠正"
+    case (.language, .english):
+      "Display language"
+    case (.language, .simplifiedChinese):
+      "界面显示语言"
+    case (.privacy, .english):
+      "Cloud confirmation and sensitive-app safeguards"
+    case (.privacy, .simplifiedChinese):
+      "云端确认与敏感应用保护"
+    case (.storage, .english):
+      "Retention, recovery, and local cleanup"
+    case (.storage, .simplifiedChinese):
+      "保留期限、恢复与本地清理"
+    }
   }
 
   private func positionSettingsSection(
@@ -319,6 +861,8 @@ public struct SettingsView: View {
     else {
       return
     }
+    expandedSettingsSections.insert(request.section)
+    await Task.yield()
     withAnimation(.easeInOut(duration: 0.2)) {
       proxy.scrollTo(request.section, anchor: .top)
     }
@@ -557,12 +1101,11 @@ public struct SettingsView: View {
   }
 
   private var speechEngineSection: some View {
-    Section {
+    settingsDisclosure(.speech) {
       ForEach(
         [
           ScalarSettingsDomain.speechRoute,
           .localSpeech,
-          .deepgram,
         ].filter { model.hasUnavailableScalarSettings(in: $0) }
       ) { domain in
         unavailableScalarSettingsWarning(domain)
@@ -571,20 +1114,24 @@ public struct SettingsView: View {
       Picker(
         UIStrings.text(.settingsSpeechEngine, language: model.language),
         selection: Binding(
-          get: { model.preferredSpeechEngine },
-          set: { engine in
-            model.setPreferredSpeechEngine(engine)
+          get: { selectedSpeechEngineIdentifier },
+          set: { identifier in
+            selectSpeechEngine(identifier)
           }
         )
       ) {
-        ForEach(PreferredSpeechEngine.allCases) { engine in
-          Text(UIStrings.speechEngine(engine, language: model.language))
-            .tag(engine)
-            .disabled(engine == .local && !model.localSpeechTrustMaterialAvailable)
+        ForEach(availableLocalSpeechEngines) { engine in
+          Text(UIStrings.localSpeechEngine(engine, language: model.language))
+            .tag(engine.rawValue)
+            .disabled(
+              !model.localSpeechTrustMaterialAvailable
+                || !model.canMutateScalarSettings(in: .localSpeech)
+            )
         }
       }
       .pickerStyle(.segmented)
       .disabled(!model.canMutateScalarSettings(in: .speechRoute))
+      .accessibilityIdentifier("settings.speech-engine")
 
       if !model.localSpeechAvailability.isAvailable {
         Label(
@@ -610,8 +1157,7 @@ public struct SettingsView: View {
         )
       }
 
-      if model.preferredSpeechEngine == .local {
-        VStack(alignment: .leading, spacing: 8) {
+      VStack(alignment: .leading, spacing: 8) {
           Text(UIStrings.text(.settingsLocalSpeech, language: model.language))
             .font(.subheadline.weight(.medium))
 
@@ -629,17 +1175,26 @@ public struct SettingsView: View {
                 UIStrings.text(.localSpeechModel, language: model.language),
                 selection: Binding(
                   get: { model.selectedTrustedLocalSpeechModelIdentifier },
-                  set: { model.selectTrustedLocalSpeechModel($0) }
+                  set: { _ = model.setPreferredLocalSpeechModel($0) }
                 )
               ) {
-                ForEach(model.trustedLocalSpeechModels) { descriptor in
-                  Text(model.localSpeechModelDisplayName(descriptor.id))
-                    .tag(descriptor.id)
+                ForEach(modelsForSelectedLocalSpeechEngine) { descriptor in
+                  Text(
+                    model.language == .english
+                      ? descriptor.englishName
+                      : descriptor.simplifiedChineseName
+                  )
+                  .tag(descriptor.id)
                 }
               }
               .pickerStyle(.menu)
-              .accessibilityIdentifier("settings.local-speech.trusted-model")
-              if let descriptor = model.trustedLocalSpeechModels.first(where: {
+              .disabled(
+                model.isLoadingSettings
+                  || !model.canMutateScalarSettings(in: .localSpeech)
+              )
+              .accessibilityIdentifier("settings.local-speech.model")
+
+              if let descriptor = modelsForSelectedLocalSpeechEngine.first(where: {
                 $0.id == model.selectedTrustedLocalSpeechModelIdentifier
               }) {
                 Text(
@@ -672,8 +1227,8 @@ public struct SettingsView: View {
                 }
                 Text(
                   model.language == .english
-                    ? "Live preview and Streaming Direct use the fixed bilingual Streaming Zipformer INT8 model (about 437 MiB additional first download); Accurate Transcription uses the selected final tier."
-                    : "流式预览和“流式直出”固定使用中英双语 Streaming Zipformer INT8（首次额外下载约 437 MiB）；“精准转写”使用所选最终档位。"
+                    ? "Live preview uses the fixed bilingual Streaming Zipformer INT8 model (about 437 MiB additional first download); Speech Recognition uses the selected final tier."
+                    : "流式预览固定使用中英双语 Streaming Zipformer INT8（首次额外下载约 437 MiB）；“语音识别”使用所选最终档位。"
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -852,91 +1407,259 @@ public struct SettingsView: View {
             }
           }
         }
-        .disabled(model.hasUnavailableScalarSettings(in: .localSpeech))
-      } else {
-        VStack(alignment: .leading, spacing: 12) {
-          Text(UIStrings.text(.settingsDeepgram, language: model.language))
-            .font(.subheadline.weight(.medium))
-          Text(UIStrings.text(.settingsDeepgramDescription, language: model.language))
-            .foregroundStyle(.secondary)
+      .disabled(model.hasUnavailableScalarSettings(in: .localSpeech))
 
-          if let failureMessage = recoverableDeepgramFailureMessage {
+      Divider()
+
+      VStack(alignment: .leading, spacing: 12) {
+        Text(L10n.string(.settingsOpenAITitle, language: model.language))
+          .font(.subheadline.weight(.medium))
+        Text(L10n.string(.settingsOpenAIDescription, language: model.language))
+          .foregroundStyle(.secondary)
+
+        switch model.openAICredentialAvailability {
+        case .loading:
+          ProgressView(UIStrings.text(.voiceSetupLoading, language: model.language))
+            .controlSize(.small)
+        case .saving:
+          ProgressView(L10n.string(.settingsOpenAISaving, language: model.language))
+            .controlSize(.small)
+        case .missing:
+          Label(
+            L10n.string(.settingsOpenAIMissing, language: model.language),
+            systemImage: "key.slash"
+          )
+          .font(.caption)
+          .foregroundStyle(.orange)
+        case .available:
+          Label(
+            L10n.string(.settingsOpenAIAvailable, language: model.language),
+            systemImage: "checkmark.circle.fill"
+          )
+          .font(.caption)
+          .foregroundStyle(.green)
+        case .inaccessible:
+          HStack(alignment: .firstTextBaseline, spacing: 10) {
             Label(
-              UIStrings.text(.diagnosticsManageProviderSettings, language: model.language),
+              L10n.string(.settingsOpenAIInaccessible, language: model.language),
               systemImage: "exclamationmark.triangle.fill"
             )
-            .font(.callout)
-            .foregroundStyle(.orange)
-            .accessibilityHint(failureMessage)
-          }
-
-          switch model.deepgramCredentialAvailability {
-          case .loading:
-            ProgressView(UIStrings.text(.voiceSetupLoading, language: model.language))
-              .controlSize(.small)
-          case .saving:
-            ProgressView(UIStrings.text(.voiceSetupCloudCredentialSaving, language: model.language))
-              .controlSize(.small)
-          case .inaccessible:
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-              Label(
-                UIStrings.text(.voiceSetupCloudCredentialUnavailable, language: model.language),
-                systemImage: "exclamationmark.triangle.fill"
-              )
-              .font(.callout)
-              .foregroundStyle(.red)
-              Spacer()
-              Button(UIStrings.text(.retryCredentialLoad, language: model.language)) {
-                model.retryDeepgramCredentialLoad()
-              }
-            }
-          case .missing, .available:
-            EmptyView()
-          }
-
-          SecureField(
-            UIStrings.text(.deepgramAPIKey, language: model.language),
-            text: $model.deepgramAPIKey
-          )
-          .textFieldStyle(.roundedBorder)
-
-          TextField(
-            UIStrings.text(.deepgramBaseURL, language: model.language),
-            text: $model.deepgramBaseURL
-          )
-          .textFieldStyle(.roundedBorder)
-          Text(L10n.string(.settingsDeepgramSecureEndpointHint, language: model.language))
             .font(.caption)
-            .foregroundStyle(.secondary)
-
-          HStack(spacing: 12) {
-            TextField(
-              UIStrings.text(.deepgramModel, language: model.language),
-              text: $model.deepgramModel
-            )
-            .textFieldStyle(.roundedBorder)
-
-            TextField(
-              UIStrings.text(.deepgramLanguage, language: model.language),
-              text: $model.deepgramLanguage
-            )
-            .textFieldStyle(.roundedBorder)
+            .foregroundStyle(.red)
+            Spacer()
+            Button(UIStrings.text(.retryCredentialLoad, language: model.language)) {
+              model.retryOpenAICredentialLoad()
+            }
           }
         }
-        .disabled(
-          model.deepgramAudioTestState != .idle
-            || model.hasUnavailableScalarSettings(in: .deepgram)
+
+        providerInputRow(L10n.string(.settingsOpenAIAPIKey, language: model.language)) {
+          SecureField("", text: $model.openAIAPIKey)
+            .textFieldStyle(.roundedBorder)
+            .disabled(model.openAICredentialAvailability == .inaccessible)
+            .accessibilityIdentifier("settings.openai.api-key")
+        }
+
+        providerInputRow(L10n.string(.settingsOpenAIBaseURL, language: model.language)) {
+          TextField("", text: $model.openAIBaseURL)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityIdentifier("settings.openai.base-url")
+        }
+
+        Text(L10n.string(.settingsOpenAIEndpointHint, language: model.language))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+
+        Picker(
+          L10n.string(.settingsOpenAIModel, language: model.language),
+          selection: openAIModelSelection
+        ) {
+          ForEach(OpenAIModelSelection.allCases) { selection in
+            Text(openAIModelLabel(selection)).tag(selection)
+          }
+        }
+        .pickerStyle(.menu)
+        .disabled(model.hasUnavailableScalarSettings(in: .openAI))
+        .accessibilityIdentifier("settings.openai.model")
+
+        Text(
+          model.language == .english
+            ? "Model ID: \(model.openAIModel)"
+            : "模型 ID：\(model.openAIModel)"
         )
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+
+        if openAIModelSelection.wrappedValue == .custom {
+          providerInputRow(
+            L10n.string(.settingsOpenAICustomModel, language: model.language)
+          ) {
+            TextField("", text: $model.openAIModel)
+              .textFieldStyle(.roundedBorder)
+              .accessibilityIdentifier("settings.openai.custom-model")
+          }
+        }
+
+        HStack(spacing: 10) {
+          Button(L10n.string(.settingsOpenAIVerify, language: model.language)) {
+            model.verifyOpenAIConfiguration()
+          }
+          .disabled(!model.canVerifyOpenAIConfiguration)
+          .accessibilityIdentifier("settings.openai.verify")
+
+          switch model.openAIConfigurationVerificationState {
+          case .idle:
+            EmptyView()
+          case .verifying:
+            ProgressView(L10n.string(.settingsOpenAIVerifying, language: model.language))
+              .controlSize(.small)
+          case .verified:
+            Label(
+              L10n.string(.settingsOpenAIVerificationSucceeded, language: model.language),
+              systemImage: "checkmark.seal.fill"
+            )
+            .font(.caption)
+            .foregroundStyle(.green)
+          case .failed:
+            Label(
+              openAIVerificationFailureMessage,
+              systemImage: "xmark.octagon.fill"
+            )
+            .font(.caption)
+            .foregroundStyle(.red)
+          }
+        }
+
+        if usesThirdPartyOpenAIEndpoint {
+          Text(thirdPartyOpenAICompatibilityHint)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+
+        Text(L10n.string(.settingsOpenAITranscriptOnlyHint, language: model.language))
+          .font(.caption)
+          .foregroundStyle(.secondary)
       }
-    } header: {
-      settingsSectionHeader(.speech)
-    } footer: {
+      .disabled(model.openAIConfigurationVerificationState == .verifying)
+
       Text(UIStrings.text(.settingsSpeechEngineDescription, language: model.language))
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
   }
 
+  private var openAIModelSelection: Binding<OpenAIModelSelection> {
+    Binding(
+      get: { OpenAIModelSelection(modelIdentifier: model.openAIModel) },
+      set: { selection in
+        if let modelIdentifier = selection.modelIdentifier {
+          model.openAIModel = modelIdentifier
+        } else if OpenAIModelOption(rawValue: model.openAIModel) != nil {
+          model.openAIModel = ""
+        }
+      }
+    )
+  }
+
+  private func openAIModelLabel(_ selection: OpenAIModelSelection) -> String {
+    switch selection {
+    case .luna:
+      model.language == .english
+        ? "Luna — high volume (gpt-5.6-luna)"
+        : "Luna — 高吞吐 (gpt-5.6-luna)"
+    case .terra:
+      model.language == .english
+        ? "Terra — balanced (gpt-5.6-terra)"
+        : "Terra — 均衡 (gpt-5.6-terra)"
+    case .sol:
+      model.language == .english
+        ? "Sol — highest capability (gpt-5.6-sol)"
+        : "Sol — 最高能力 (gpt-5.6-sol)"
+    case .custom:
+      model.language == .english ? "Custom model ID" : "自定义模型 ID"
+    }
+  }
+
+  private var usesThirdPartyOpenAIEndpoint: Bool {
+    guard let host = URLComponents(string: model.openAIBaseURL)?.host?.lowercased() else {
+      return false
+    }
+    return host != "api.openai.com"
+  }
+
+  private var thirdPartyOpenAICompatibilityHint: String {
+    switch model.language {
+    case .english:
+      "Verification uses the exact model ID shown above. Third-party providers must expose gpt-5.6-luna for the Luna preset to succeed."
+    case .simplifiedChinese:
+      "验证会使用上方显示的准确模型 ID。使用 Luna 预设时，第三方服务必须实际开放 gpt-5.6-luna。"
+    }
+  }
+
+  private var openAIVerificationFailureMessage: String {
+    switch (model.language, model.openAIVerificationFailure) {
+    case (.english, .credentialUnavailable):
+      "The saved API key could not be loaded."
+    case (.simplifiedChinese, .credentialUnavailable):
+      "无法读取已保存的 API Key。"
+    case (.english, .configurationInvalid):
+      "The endpoint rejected this request or model ID. Check the exact model available from the provider."
+    case (.simplifiedChinese, .configurationInvalid):
+      "该地址拒绝了当前请求或模型 ID。请核对服务商实际开放的模型 ID。"
+    case (.english, .authenticationFailed):
+      "Authentication failed. Check whether the API key belongs to this endpoint."
+    case (.simplifiedChinese, .authenticationFailed):
+      "身份验证失败。请确认 API Key 属于当前服务地址。"
+    case (.english, .rateLimited):
+      "The account is rate limited or has insufficient quota. Check the provider account and retry."
+    case (.simplifiedChinese, .rateLimited):
+      "账号受到限流或额度不足。请检查服务商账号后重试。"
+    case (.english, .timedOut):
+      "The verification request timed out."
+    case (.simplifiedChinese, .timedOut):
+      "验证请求超时。"
+    case (.english, .networkFailed):
+      "The endpoint could not be reached. Check the network and Base URL."
+    case (.simplifiedChinese, .networkFailed):
+      "无法连接该地址。请检查网络和 Base URL。"
+    case (.english, .refused):
+      "The model refused the verification request."
+    case (.simplifiedChinese, .refused):
+      "模型拒绝了验证请求。"
+    case (.english, .incomplete):
+      "The endpoint returned an incomplete response."
+    case (.simplifiedChinese, .incomplete):
+      "服务返回了不完整响应。"
+    case (.english, .invalidResponse):
+      "The endpoint returned empty content or an unrecognized Responses API payload."
+    case (.simplifiedChinese, .invalidResponse):
+      "服务返回了空内容或无法识别的 Responses API 响应。"
+    case (.english, .unknown), (.english, nil):
+      L10n.string(.settingsOpenAIVerificationFailed, language: .english)
+    case (.simplifiedChinese, .unknown), (.simplifiedChinese, nil):
+      L10n.string(.settingsOpenAIVerificationFailed, language: .simplifiedChinese)
+    }
+  }
+
+  private func providerInputRow<Content: View>(
+    _ title: String,
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(title)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      content()
+        .environment(\.layoutDirection, .leftToRight)
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
   private var localDataAndRetentionSection: some View {
-    Section {
+    settingsDisclosure(.storage) {
       Picker(
         L10n.historySettingsText(.clipboardRetention, language: model.language),
         selection: Binding(
@@ -1115,10 +1838,9 @@ public struct SettingsView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
       }
-    } header: {
-      settingsSectionHeader(.storage)
-    } footer: {
       Text(L10n.historySettingsText(.description, language: model.language))
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
   }
 
@@ -1138,25 +1860,47 @@ public struct SettingsView: View {
   }
 
   private var preferredSpeechRoute: WorkflowEditorDraft.RecognizerChoice {
-    model.preferredSpeechEngine == .local ? .localSpeech : .cloudSpeech
+    .localSpeech
   }
 
-  private var recoverableDeepgramFailureMessage: String? {
-    guard let message = model.lastFailure?.trimmingCharacters(in: .whitespacesAndNewlines),
-      !message.isEmpty,
-      hasDeepgramAPIKeyRecovery(for: message)
-    else {
-      return nil
+  private var availableLocalSpeechEngines: [LocalSpeechEngine] {
+    LocalSpeechEngine.allCases.filter { engine in
+      model.trustedLocalSpeechModels.contains(where: { $0.engine == engine })
     }
-    return message
   }
 
-  private func hasDeepgramAPIKeyRecovery(for message: String) -> Bool {
-    L10n.hasDeepgramAPIKeyRecovery(for: message)
+  private var selectedLocalSpeechEngine: LocalSpeechEngine? {
+    model.trustedLocalSpeechModels.first(where: {
+      $0.id == model.selectedTrustedLocalSpeechModelIdentifier
+    })?.engine ?? availableLocalSpeechEngines.first
+  }
+
+  private var modelsForSelectedLocalSpeechEngine: [LocalSpeechModelDescriptor] {
+    guard let selectedLocalSpeechEngine else { return [] }
+    return model.trustedLocalSpeechModels.filter {
+      $0.engine == selectedLocalSpeechEngine
+    }
+  }
+
+  private var selectedSpeechEngineIdentifier: String {
+    selectedLocalSpeechEngine?.rawValue ?? LocalSpeechEngine.sherpaOnnx.rawValue
+  }
+
+  private func selectSpeechEngine(_ identifier: String) {
+    guard let engine = LocalSpeechEngine(rawValue: identifier) else { return }
+    let currentModel = model.trustedLocalSpeechModels.first(where: {
+      $0.id == model.selectedTrustedLocalSpeechModelIdentifier
+        && $0.engine == engine
+    })
+    let modelIdentifier =
+      currentModel?.id
+      ?? model.trustedLocalSpeechModels.first(where: { $0.engine == engine })?.id
+    guard let modelIdentifier else { return }
+    model.setPreferredLocalSpeechModel(modelIdentifier)
   }
 
   private var privacySection: some View {
-    Section {
+    settingsDisclosure(.privacy) {
       if model.isLoadingPrivacySettings {
         Label(
           L10n.privacyText(.loading, language: model.language),
@@ -1250,6 +1994,51 @@ public struct SettingsView: View {
       .font(.caption)
       .foregroundStyle(.secondary)
 
+      if !model.privacyPolicySettings.cloudProcessingAuthorizations.isEmpty {
+        VStack(alignment: .leading, spacing: 8) {
+          HStack {
+            Text(
+              L10n.privacyText(.cloudAlwaysAllowed, language: model.language)
+            )
+            .font(.callout.weight(.medium))
+            Spacer()
+            Button(
+              L10n.privacyText(.revokeAllAuthorizations, language: model.language)
+            ) {
+              model.revokeAllCloudProcessingAuthorizations()
+            }
+            .disabled(privacySettingsControlsDisabled)
+          }
+
+          ForEach(
+            model.privacyPolicySettings.cloudProcessingAuthorizations.sorted {
+              $0.grantedAt > $1.grantedAt
+            }
+          ) { authorization in
+            HStack {
+              Label(authorization.workflowName, systemImage: "cloud")
+                .lineLimit(1)
+              Spacer()
+              Button(
+                L10n.privacyText(.revokeAuthorization, language: model.language)
+              ) {
+                model.revokeCloudProcessingAuthorization(authorization.id)
+              }
+              .buttonStyle(.borderless)
+              .disabled(privacySettingsControlsDisabled)
+            }
+          }
+
+          Text(
+            L10n.privacyText(.cloudAlwaysAllowedDescription, language: model.language)
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+      }
+
       Toggle(
         L10n.privacyText(
           PrivacySettingsTextKey.secureInputConservativeMode, language: model.language),
@@ -1313,8 +2102,6 @@ public struct SettingsView: View {
         sensitiveAppRuleRow(rule)
           .disabled(privacySettingsControlsDisabled)
       }
-    } header: {
-      settingsSectionHeader(.privacy)
     }
   }
 
@@ -1521,7 +2308,7 @@ public struct SettingsView: View {
   }
 
   private var vocabularySection: some View {
-    Section {
+    settingsDisclosure(.vocabulary) {
       if let vocabularyRulesError = model.vocabularyRulesError {
         settingsDomainLoadFailure(
           message: vocabularyRulesError,
@@ -1530,119 +2317,43 @@ public struct SettingsView: View {
       }
 
       VStack(alignment: .leading, spacing: 10) {
-        Text(L10n.string(.vocabularyDescription, language: model.language))
+        Text(
+          model.language == .english
+            ? "Hotwords and replacements now live in reusable collections attached to workflow Setup."
+            : "热词与替换词现在位于可复用词库中，并在工作流 Setup 阶段绑定。"
+        )
           .font(.callout)
           .foregroundStyle(.secondary)
 
-        Picker(L10n.string(.vocabularyKind, language: model.language), selection: $vocabularyKind) {
-          ForEach(vocabularyRuleKinds, id: \.rawValue) { kind in
-            Text(L10n.vocabularyRuleKind(kind, language: model.language)).tag(kind)
+        ForEach(model.vocabularyCollections) { collection in
+          HStack {
+            Label(
+              collection.name,
+              systemImage: collection.enabled
+                ? "text.book.closed.fill"
+                : "text.book.closed"
+            )
+            Spacer()
+            Text("\(collection.entries.count)")
+              .font(.caption.monospacedDigit())
+              .foregroundStyle(.secondary)
           }
         }
-        .pickerStyle(.segmented)
 
-        if vocabularyKind == .hotword {
+        Button {
+          model.selectSidebarSection(.workflows)
+        } label: {
           Label(
-            L10n.string(.vocabularyHotwordBehavior, language: model.language),
-            systemImage: "cloud"
+            model.language == .english
+              ? "Manage Collections and Workflow Bindings"
+              : "管理词库与工作流绑定",
+            systemImage: SidebarSection.workflows.symbolName
           )
-          .font(.caption)
-          .foregroundStyle(.secondary)
         }
-
-        TextField(
-          L10n.string(.vocabularyPattern, language: model.language),
-          text: $vocabularyPattern
-        )
-        .textFieldStyle(.roundedBorder)
-
-        if vocabularyKind == .mapping {
-          TextField(
-            L10n.string(.vocabularyReplacement, language: model.language),
-            text: $vocabularyReplacement
-          )
-          .textFieldStyle(.roundedBorder)
-        }
-
-        HStack(spacing: 12) {
-          if vocabularyKind == .mapping {
-            Picker(
-              L10n.string(.vocabularyMatchMode, language: model.language),
-              selection: $vocabularyMatchMode
-            ) {
-              ForEach(vocabularyMatchModes, id: \.rawValue) { mode in
-                Text(L10n.vocabularyMatchMode(mode, language: model.language)).tag(mode)
-              }
-            }
-            .pickerStyle(.menu)
-          }
-
-          TextField(
-            L10n.string(.vocabularyPriority, language: model.language),
-            value: $vocabularyPriority,
-            format: .number
-          )
-          .textFieldStyle(.roundedBorder)
-          .frame(maxWidth: 120)
-
-          if vocabularyKind == .mapping {
-            Toggle(
-              L10n.string(.vocabularyCaseSensitive, language: model.language),
-              isOn: $vocabularyCaseSensitive
-            )
-            .toggleStyle(.checkbox)
-          }
-        }
-
-        DisclosureGroup(L10n.string(.vocabularyScope, language: model.language)) {
-          VStack(alignment: .leading, spacing: 8) {
-            TextField(
-              L10n.string(.vocabularySourceApp, language: model.language),
-              text: $vocabularyBundleIdentifier
-            )
-            .textFieldStyle(.roundedBorder)
-
-            Picker(
-              L10n.string(.vocabularyAnyGroup, language: model.language),
-              selection: $vocabularyGroupID
-            ) {
-              Text(L10n.string(.vocabularyAnyGroup, language: model.language)).tag(nil as UUID?)
-              ForEach(vocabularyGroupChoices, id: \.group.id) { summary in
-                Text(summary.group.name).tag(summary.group.id as UUID?)
-              }
-            }
-            .pickerStyle(.menu)
-
-            TextField(
-              L10n.string(.vocabularyLocale, language: model.language),
-              text: $vocabularyLocale,
-              prompt: Text(L10n.string(.vocabularyAnyLocale, language: model.language))
-            )
-            .textFieldStyle(.roundedBorder)
-          }
-          .padding(.top, 6)
-        }
-
-        HStack {
-          Spacer()
-          Button(L10n.string(.vocabularyAddRule, language: model.language)) {
-            addVocabularyRule()
-          }
-          .disabled(vocabularyPattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("settings.vocabulary.open-workflows")
       }
       .disabled(!model.areVocabularyRulesAvailable)
-
-      if model.areVocabularyRulesAvailable && model.vocabularyRules.isEmpty {
-        Text(L10n.string(.vocabularyEmpty, language: model.language))
-          .foregroundStyle(.secondary)
-      } else if model.areVocabularyRulesAvailable {
-        ForEach(model.vocabularyRules) { rule in
-          vocabularyRuleRow(rule)
-        }
-      }
-    } header: {
-      settingsSectionHeader(.vocabulary)
     }
     .disabled(model.isLoadingSettings)
   }
@@ -1786,7 +2497,7 @@ public struct SettingsView: View {
   }
 
   private var builtinPushToTalkSection: some View {
-    Section {
+    settingsDisclosure(.input) {
       if model.hasUnavailableScalarSettings(in: .input) {
         unavailableScalarSettingsWarning(.input)
       }
@@ -1805,6 +2516,24 @@ public struct SettingsView: View {
         .foregroundStyle(.secondary)
 
       Picker(
+        L10n.string(.settingsRecordingDurationLimit, language: model.language),
+        selection: Binding(
+          get: { model.recordingDurationLimit },
+          set: { _ = model.setRecordingDurationLimit($0) }
+        )
+      ) {
+        ForEach(RecordingDurationLimit.allCases) { limit in
+          Text(UIStrings.recordingDurationLimit(limit, language: model.language)).tag(limit)
+        }
+      }
+      .pickerStyle(.menu)
+      .disabled(!model.canMutateScalarSettings(in: .input))
+
+      Text(L10n.string(.settingsRecordingDurationLimitDescription, language: model.language))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
+      Picker(
         UIStrings.text(.builtinPushToTalkOutputMode, language: model.language),
         selection: Binding(
           get: { model.builtinPushToTalkOutputMode },
@@ -1817,10 +2546,9 @@ public struct SettingsView: View {
       }
       .pickerStyle(.segmented)
       .disabled(!model.canMutateScalarSettings(in: .input))
-    } header: {
-      settingsSectionHeader(.input)
-    } footer: {
       Text(UIStrings.text(.settingsBuiltinPushToTalkDescription, language: model.language))
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
   }
 

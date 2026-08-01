@@ -4,7 +4,6 @@ import RillCore
 public enum WorkflowRecognizerResolution: Sendable, Equatable {
     case declared
     case localSpeech
-    case cloudSpeech
     case unresolved
 }
 
@@ -55,9 +54,7 @@ public enum WorkflowExecutionPlanResolver {
 
         switch (workflow.prefersAutomaticRecognizerSelection, recognizer) {
         case (true, .localSpeech):
-            resolvedWorkflow.pipeline.recognizerID = "sherpa-onnx.local"
-        case (true, .cloudSpeech):
-            resolvedWorkflow.pipeline.recognizerID = "deepgram.prerecorded"
+            resolvedWorkflow.plan.setup.speechRoute?.recognizerID = "sherpa-onnx.local"
         case (false, _):
             break
         case (true, .declared),
@@ -70,12 +67,12 @@ public enum WorkflowExecutionPlanResolver {
         )
         switch (outputDependsOnSettings, output) {
         case (true, .builtinPasteIntoApplication):
-            resolvedWorkflow.pipeline.outputActions = [OutputActionReference(id: "inject.text")]
-            resolvedWorkflow.pipeline.deliveryPolicy = .init(strategy: .immediate)
+            resolvedWorkflow.plan.output.actions = [OutputActionReference(id: "inject.text")]
+            resolvedWorkflow.plan.output.deliveryPolicy = .init(strategy: .immediate)
             resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.targetClipboardGroupID)
         case (true, .builtinSaveToVoiceGroup):
-            resolvedWorkflow.pipeline.outputActions = [OutputActionReference(id: "stack.push")]
-            resolvedWorkflow.pipeline.deliveryPolicy = .init(strategy: .stackFirst)
+            resolvedWorkflow.plan.output.actions = [OutputActionReference(id: "stack.push")]
+            resolvedWorkflow.plan.output.deliveryPolicy = .init(strategy: .stackFirst)
             resolvedWorkflow.metadata[WorkflowMetadataKey.targetClipboardGroupID] =
                 ClipboardGroup.voiceGroupID.uuidString
         case (false, _):
@@ -286,20 +283,6 @@ public struct WorkflowComponentProfileRegistry: Sendable {
                     ),
                 ]
             ),
-            "deepgram.prerecorded": RecognizerProfile(
-                inputs: [
-                    InputProfile(
-                        category: .microphoneAudio,
-                        usage: .required,
-                        destination: .cloudService
-                    ),
-                    InputProfile(
-                        category: .recognitionHints,
-                        usage: .conditional,
-                        destination: .cloudService
-                    ),
-                ]
-            ),
             "context.selection": RecognizerProfile(
                 inputs: [
                     InputProfile(
@@ -320,6 +303,11 @@ public struct WorkflowComponentProfileRegistry: Sendable {
                 componentID: "transformer.normalize",
                 kind: .whitespaceNormalization,
                 destination: .onDevice
+            ),
+            .llmRewrite: TransformerProfile(
+                componentID: "transformer.openai.responses.rewrite",
+                kind: .languageModelRewrite,
+                destination: .cloudService
             ),
         ]
         outputs = [
@@ -439,7 +427,7 @@ public struct WorkflowComponentProfileRegistry: Sendable {
         operation: ClipboardItemDryRunOperation
     ) -> ClipboardItemDryRunSourceReplacementPlan {
         guard operation == .replace else { return .notRequested }
-        let replacementCount = workflow.pipeline.outputActions.reduce(into: 0) { count, reference in
+        let replacementCount = workflow.plan.output.actions.reduce(into: 0) { count, reference in
             if closedOutputCapability(for: reference)?.sourceItemReplacement == .replacesSourceItem {
                 count += 1
             }
@@ -682,8 +670,9 @@ public struct WorkflowExplainService: Sendable {
         _ workflow: WorkflowDefinition,
         issues: inout [WorkflowExplanationIssue]
     ) -> [WorkflowExplanationInput] {
-        let component = recognizerRegistry.recognizer(for: workflow.pipeline.recognizerID)
-        guard let profile = profileRegistry.recognizer(for: workflow.pipeline.recognizerID) else {
+        let recognizerID = workflow.plan.setup.speechRoute?.recognizerID ?? ""
+        let component = recognizerRegistry.recognizer(for: recognizerID)
+        guard let profile = profileRegistry.recognizer(for: recognizerID) else {
             issues.append(
                 WorkflowExplanationIssue(
                     kind: .componentUnclassified,
@@ -727,15 +716,23 @@ public struct WorkflowExplainService: Sendable {
         _ workflow: WorkflowDefinition,
         issues: inout [WorkflowExplanationIssue]
     ) -> [WorkflowExplanationTransform] {
-        var transforms = [
-            WorkflowExplanationTransform(
-                kind: .vocabularyMapping,
-                availability: .available,
-                usage: .conditional,
-                processingDestination: .onDevice
-            ),
-        ]
-        transforms.append(contentsOf: workflow.pipeline.postProcessSteps.enumerated().map { index, step in
+        var transforms: [WorkflowExplanationTransform] = []
+        if workflow.plan.process.steps.contains(where: {
+            $0.kind == .applyVocabulary
+        }), workflow.plan.setup.vocabularyBindings.contains(where: {
+            $0.uses.contains(.textReplacement)
+        }) {
+            transforms.append(
+                WorkflowExplanationTransform(
+                    kind: .vocabularyMapping,
+                    availability: .available,
+                    usage: .conditional,
+                    processingDestination: .onDevice
+                )
+            )
+        }
+        let postProcessSteps = workflow.plan.process.steps.compactMap(\.postProcessStep)
+        transforms.append(contentsOf: postProcessSteps.enumerated().map { index, step in
             let component = transformerRegistry.transformer(for: step.kind)
             guard let profile = profileRegistry.transformer(for: step.kind) else {
                 issues.append(
@@ -792,7 +789,7 @@ public struct WorkflowExplainService: Sendable {
         _ workflow: WorkflowDefinition,
         issues: inout [WorkflowExplanationIssue]
     ) -> [WorkflowExplanationOutput] {
-        workflow.pipeline.outputActions.enumerated().flatMap { index, reference in
+        workflow.plan.output.actions.enumerated().flatMap { index, reference in
             let component = actionRegistry.action(for: reference.id)
             guard let profile = profileRegistry.output(for: reference.id) else {
                 issues.append(

@@ -3,15 +3,15 @@ import XCTest
 @testable import RillUI
 
 final class HistoryRetryFocusPolicyTests: XCTestCase {
-    func testRetryOwnedKeyboardAndAccessibilityFocusMoveToStableScopePicker() {
+    func testRetryOwnedFocusMovesToStableSummaryWithoutKeyboardRing() {
         XCTAssertEqual(
             HistoryInitialLoadRetryFocusPolicy.transition(
                 keyboardFocus: .initialLoadRetry,
                 accessibilityFocus: .initialLoadRetry
             ),
             HistoryInitialLoadRetryFocusTransition(
-                keyboardFocus: .scopePicker,
-                accessibilityFocus: .scopePicker
+                keyboardFocus: nil,
+                accessibilityFocus: .scopeSummary
             )
         )
     }
@@ -26,7 +26,7 @@ final class HistoryRetryFocusPolicyTests: XCTestCase {
                 accessibilityFocus: .entry(entryID)
             ),
             HistoryInitialLoadRetryFocusTransition(
-                keyboardFocus: .scopePicker,
+                keyboardFocus: nil,
                 accessibilityFocus: .entry(entryID)
             )
         )
@@ -37,7 +37,7 @@ final class HistoryRetryFocusPolicyTests: XCTestCase {
             ),
             HistoryInitialLoadRetryFocusTransition(
                 keyboardFocus: .entry(keyboardEntryID),
-                accessibilityFocus: .scopePicker
+                accessibilityFocus: .scopeSummary
             )
         )
     }

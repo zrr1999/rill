@@ -5,28 +5,38 @@ import XCTest
 
 @MainActor
 final class TrustedLocalSpeechCatalogTests: XCTestCase {
-  func testLocalSpeechTestWorkflowUsesBuiltinRawCaptureAndTargetsVoiceGroup() throws {
+  func testLocalSpeechTestWorkflowDerivesFromBuiltinRecognitionAndTargetsVoiceGroup() throws {
     let unrelated = makeDefaultWorkflow()
-    let rawWorkflow = WorkflowDefinition(
-      name: "Raw Input",
-      trigger: .manual,
+    let speechRecognition = WorkflowDefinition(
+      name: "Speech Recognition",
+      trigger: .hotkey,
       pipeline: PipelineDeclaration(
         recognizerID: AppModel.sherpaOnnxRecognizerID,
-        outputActions: [OutputActionReference(id: "stack.push")]
+        outputActions: [OutputActionReference(id: "inject.text")]
       ),
-      ui: WorkflowUIConfig(symbolName: "text.quote", accentColorName: "gray"),
+      ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red"),
       metadata: [
         WorkflowMetadataKey.catalog: BuiltinWorkflowRoutingValue.catalog,
-        WorkflowMetadataKey.builtinKind: "voice-mode.raw",
+        WorkflowMetadataKey.builtinKind: AppModel.builtinPushToTalkKindValue,
+        WorkflowMetadataKey.triggerGesture: BuiltinWorkflowRoutingValue.pushToTalkGesture,
+        WorkflowMetadataKey.recognizerSelectionMode: "auto",
       ]
     )
-    let harness = makeHarness(workflows: [unrelated, rawWorkflow])
+    let harness = makeHarness(workflows: [unrelated, speechRecognition])
 
     let testWorkflow = try XCTUnwrap(harness.model.localSpeechTestWorkflow)
 
-    XCTAssertEqual(testWorkflow.id, rawWorkflow.id)
+    XCTAssertEqual(testWorkflow.id, AppModel.localSpeechTestWorkflowID)
+    XCTAssertEqual(testWorkflow.trigger, .manual)
+    XCTAssertEqual(testWorkflow.plan.setup.speechRoute?.selection, .fixed)
+    XCTAssertEqual(
+      testWorkflow.plan.setup.speechRoute?.recognizerID,
+      AppModel.sherpaOnnxRecognizerID
+    )
+    XCTAssertEqual(testWorkflow.plan.output.actions.map(\.id), ["stack.push"])
     XCTAssertEqual(testWorkflow.targetClipboardGroupID, ClipboardGroup.voiceGroupID)
-    XCTAssertNil(rawWorkflow.targetClipboardGroupID)
+    XCTAssertNil(speechRecognition.targetClipboardGroupID)
+    XCTAssertNil(testWorkflow.metadata[WorkflowMetadataKey.catalog])
   }
 
   func testTrustedCatalogIsTheOnlySelectableSurfaceAndPreparationClearsAmbientSourceState() async {
@@ -42,7 +52,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     )
 
     XCTAssertTrue(harness.model.localSpeechTrustMaterialAvailable)
-    XCTAssertEqual(harness.model.preferredSpeechEngine, .cloud)
+    XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
     XCTAssertEqual(harness.model.workflowSelectableLocalSpeechModels, models.map(\.id))
     XCTAssertEqual(harness.model.localSpeechModel, models[0].id)
     XCTAssertEqual(
@@ -97,7 +107,11 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.localSpeechModel, models[0].id)
-    XCTAssertEqual(harness.model.downloadedLocalSpeechModels, [models[1].id])
+    XCTAssertEqual(
+      Set(harness.model.downloadedLocalSpeechModels),
+      Set(models.map(\.id)),
+      "The trusted default is prepared automatically when local speech is the product default."
+    )
     XCTAssertEqual(harness.model.legacyWhisperKitModelRepo, "")
     XCTAssertEqual(harness.model.legacyWhisperKitModelToken, "")
     XCTAssertEqual(harness.model.legacyWhisperKitModelFolder, "")
@@ -168,7 +182,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     )
     XCTAssertFalse(duplicateHarness.model.localSpeechTrustMaterialAvailable)
     XCTAssertTrue(duplicateHarness.model.trustedLocalSpeechModels.isEmpty)
-    XCTAssertEqual(duplicateHarness.model.preferredSpeechEngine, .cloud)
+    XCTAssertEqual(duplicateHarness.model.preferredSpeechEngine, .local)
 
     let missingDefaultHarness = makeHarness(
       trustedLocalSpeechModels: [model],
@@ -176,7 +190,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     )
     XCTAssertFalse(missingDefaultHarness.model.localSpeechTrustMaterialAvailable)
     XCTAssertTrue(missingDefaultHarness.model.trustedLocalSpeechModels.isEmpty)
-    XCTAssertEqual(missingDefaultHarness.model.preferredSpeechEngine, .cloud)
+    XCTAssertEqual(missingDefaultHarness.model.preferredSpeechEngine, .local)
   }
 
   func testHardwareRecommendationUsesMemoryFitAndModelPriority() throws {
@@ -259,7 +273,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     let harness = makeHarness(
       trustedLocalSpeechModels: models,
       defaultLocalSpeechModelIdentifier: models[0].id,
-      warmLocalSpeechForCaptureAction: { _ in "unreviewed-model" }
+      warmLocalSpeechForCaptureAction: { _, _ in "unreviewed-model" }
     )
     harness.model.preferredSpeechEngine = .local
     harness.model.localSpeechPrewarm = true

@@ -372,10 +372,10 @@ extension AppModelTests {
     func testAudioWorkflowStartFailureResetsPreparingState() async {
         let startGate = WorkflowAudioStartGate()
         let workflow = WorkflowDefinition(
-            name: "Cloud Dictation",
+            name: "File Dictation",
             titleKey: .rewriteDemoStack,
             pipeline: PipelineDeclaration(
-                recognizerID: "deepgram.prerecorded",
+                recognizerID: "sherpa-onnx.local",
                 outputActions: [OutputActionReference(id: "ui.test.action")]
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "cyan")
@@ -386,9 +386,6 @@ extension AppModelTests {
                 try await startGate.suspendStart()
             }
         )
-        harness.model.deepgramAPIKey = "test-deepgram-key"
-        await harness.model.flushPendingPersistenceWrites()
-
         harness.model.runWorkflow(workflow)
         await startGate.waitUntilStarted()
 
@@ -488,11 +485,11 @@ extension AppModelTests {
             storage: [
                 .interfaceLanguage: AppLanguage.simplifiedChinese.rawValue,
                 .selectedWorkflowID: secondaryWorkflow.id.uuidString,
-                .deepgramAPIKey: "legacy-plaintext-must-not-load",
+                .openAIAPIKey: "legacy-plaintext-must-not-load",
             ]
         )
         let credentialStore = UITestSecureCredentialStore(
-            storage: [.deepgramAPIKey: "persisted-key"]
+            storage: [.openAIAPIKey: "persisted-key"]
         )
         let harness = makeHarness(
             workflows: [makeDefaultWorkflow(), secondaryWorkflow],
@@ -507,7 +504,7 @@ extension AppModelTests {
         let activity = await settingsStore.activitySnapshot()
 
         XCTAssertEqual(harness.model.language, .simplifiedChinese)
-        XCTAssertEqual(harness.model.deepgramAPIKey, "persisted-key")
+        XCTAssertEqual(harness.model.openAIAPIKey, "persisted-key")
         XCTAssertEqual(activity.batchReadCount, 1)
         XCTAssertEqual(activity.singleReadCount, 0)
         XCTAssertTrue(activity.setCounts.isEmpty)
@@ -523,7 +520,7 @@ extension AppModelTests {
         let settingsStore = UITestSettingsStore(
             storage: [
                 .interfaceLanguage: initialLanguage.rawValue,
-                .preferredSpeechEngine: PreferredSpeechEngine.cloud.rawValue,
+                .preferredSpeechEngine: "cloud",
                 .legacyWhisperKitLanguage: "stale-language",
             ],
             suspendBatchReads: true
@@ -554,7 +551,7 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.language, userLanguage)
         XCTAssertEqual(harness.model.legacyWhisperKitLanguage, "user-language")
         XCTAssertEqual(harness.model.currentLocalSpeechSettings().language, "")
-        XCTAssertEqual(harness.model.preferredSpeechEngine, .cloud)
+        XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
         XCTAssertEqual(activity.storage[.interfaceLanguage], userLanguage.rawValue)
         XCTAssertEqual(activity.storage[.legacyWhisperKitLanguage], "stale-language")
         XCTAssertNil(activity.setCounts[.legacyWhisperKitLanguage])
@@ -682,7 +679,7 @@ extension AppModelTests {
         )
         await settingsStore.waitUntilBatchReadIsSuspended()
 
-        harness.model.saveWorkflowDraft(
+        await harness.model.saveWorkflowDraft(
             WorkflowEditorDraft(name: "Early Workflow", recognizer: .localSpeech)
         )
         harness.model.addVocabularyRule(
@@ -726,99 +723,6 @@ extension AppModelTests {
         XCTAssertNil(activity.setCounts[.localSpeechDownloadedModels])
     }
 
-    func testWorkflowAndSpeechCheckCannotOverwriteProviderSettingsDuringInitialRead() async {
-        let trustedModels = appModelTestTrustedLocalSpeechModels()
-        let whisperWorkflow = WorkflowDefinition(
-            name: "Local Startup Run",
-            trigger: .manual,
-            pipeline: PipelineDeclaration(
-                recognizerID: AppModel.sherpaOnnxRecognizerID,
-                outputActions: [OutputActionReference(id: "ui.test.action")]
-            ),
-            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
-        )
-        let deepgramWorkflow = WorkflowDefinition(
-            name: "Cloud Startup Run",
-            trigger: .manual,
-            pipeline: PipelineDeclaration(
-                recognizerID: AppModel.deepgramRecognizerID,
-                outputActions: [OutputActionReference(id: "ui.test.action")]
-            ),
-            ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "purple")
-        )
-        let settingsStore = UITestSettingsStore(
-            storage: [
-                .localSpeechModel: trustedModels[0].id,
-                .legacyWhisperKitModelRepo: "stored-whisper-repo",
-                .legacyWhisperKitModelFolder: "stored-whisper-folder",
-                .legacyWhisperKitLanguage: "fr",
-                .legacyWhisperKitDownloadIfNeeded: "false",
-                .localSpeechPrewarm: "false",
-                .deepgramBaseURL: "https://stored.example.test",
-                .deepgramModel: "stored-deepgram-model",
-                .deepgramLanguage: "de",
-            ],
-            suspendBatchReads: true
-        )
-        let credentialStore = UITestSecureCredentialStore(
-            storage: [
-                .legacyWhisperKitModelToken: "stored-whisper-token",
-                .deepgramAPIKey: "stored-deepgram-key",
-            ]
-        )
-        let harness = makeHarness(
-            workflows: [whisperWorkflow, deepgramWorkflow],
-            settingsStore: settingsStore,
-            credentialStore: credentialStore,
-            trustedLocalSpeechModels: trustedModels,
-            defaultLocalSpeechModelIdentifier: trustedModels[0].id,
-            permissionSnapshot: PermissionSnapshot(
-                accessibility: .granted,
-                microphone: .granted
-            )
-        )
-        await settingsStore.waitUntilBatchReadIsSuspended()
-
-        XCTAssertFalse(harness.model.canTriggerWorkflow(whisperWorkflow))
-        XCTAssertFalse(harness.model.canTriggerWorkflow(deepgramWorkflow))
-        harness.model.runWorkflow(whisperWorkflow)
-        harness.model.runWorkflow(deepgramWorkflow)
-        harness.model.toggleDeepgramAudioTest()
-        await Task.yield()
-
-        var settingsActivity = await settingsStore.activitySnapshot()
-        var credentialActivity = await credentialStore.activitySnapshot()
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertEqual(harness.model.deepgramAudioTestState, .idle)
-        XCTAssertTrue(settingsActivity.setCounts.isEmpty)
-        XCTAssertTrue(settingsActivity.removeCounts.isEmpty)
-        XCTAssertTrue(credentialActivity.setCounts.isEmpty)
-        XCTAssertTrue(credentialActivity.removeCounts.isEmpty)
-
-        await settingsStore.resumeBatchRead()
-        await waitForEventProcessing()
-
-        settingsActivity = await settingsStore.activitySnapshot()
-        credentialActivity = await credentialStore.activitySnapshot()
-        XCTAssertEqual(harness.model.localSpeechModel, trustedModels[0].id)
-        XCTAssertEqual(harness.model.legacyWhisperKitModelToken, "")
-        XCTAssertEqual(
-            harness.model.currentLocalSpeechSettings(),
-            LocalSpeechSettings(model: trustedModels[0].id, prewarm: false)
-        )
-        XCTAssertEqual(harness.model.deepgramAPIKey, "stored-deepgram-key")
-        XCTAssertEqual(harness.model.deepgramBaseURL, "https://stored.example.test")
-        XCTAssertEqual(harness.model.deepgramModel, "stored-deepgram-model")
-        XCTAssertEqual(harness.model.deepgramLanguage, "de")
-        XCTAssertTrue(settingsActivity.setCounts.isEmpty)
-        XCTAssertTrue(settingsActivity.removeCounts.isEmpty)
-        XCTAssertTrue(credentialActivity.setCounts.isEmpty)
-        XCTAssertTrue(credentialActivity.removeCounts.isEmpty)
-        XCTAssertEqual(
-            credentialActivity.storage[.legacyWhisperKitModelToken],
-            "stored-whisper-token"
-        )
-    }
 
     func testPresetSelectionDuringInitialReadDefersExactlyOneModelPreparation() async {
         let settingsStore = UITestSettingsStore(
@@ -943,31 +847,6 @@ extension AppModelTests {
         XCTAssertEqual(activity.setCounts[.clipboardHistoryVisibility], 1)
     }
 
-    func testDeepgramTextSettingWritesAreDebounced() async {
-        let settingsStore = UITestSettingsStore()
-        let credentialStore = UITestSecureCredentialStore()
-        let harness = makeHarness(
-            settingsStore: settingsStore,
-            credentialStore: credentialStore,
-            settingsWriteDebounceDuration: .milliseconds(20)
-        )
-
-        await waitForEventProcessing()
-
-        harness.model.deepgramAPIKey = "d"
-        harness.model.deepgramAPIKey = "de"
-        harness.model.deepgramAPIKey = "deepgram-key"
-
-        try? await Task.sleep(for: .milliseconds(50))
-
-        let activity = await settingsStore.activitySnapshot()
-        let credentialActivity = await credentialStore.activitySnapshot()
-
-        XCTAssertNil(activity.storage[.deepgramAPIKey])
-        XCTAssertNil(activity.setCounts[.deepgramAPIKey])
-        XCTAssertEqual(credentialActivity.storage[.deepgramAPIKey], "deepgram-key")
-        XCTAssertEqual(credentialActivity.setCounts[.deepgramAPIKey], 1)
-    }
 
     func testRetiredLocalSpeechSourceFieldsDoNotPersistOrReachTrustedRuntime() async {
         let trustedModels = appModelTestTrustedLocalSpeechModels()
@@ -1094,29 +973,6 @@ extension AppModelTests {
         XCTAssertEqual(readCount, 2)
     }
 
-    func testLoadsPersistedDeepgramSettings() async {
-        let settingsStore = UITestSettingsStore(
-            storage: [
-                .deepgramBaseURL: "https://example.deepgram.test",
-                .deepgramModel: "nova-2",
-                .deepgramLanguage: "zh-CN",
-            ]
-        )
-        let credentialStore = UITestSecureCredentialStore(
-            storage: [.deepgramAPIKey: "dg-key"]
-        )
-        let harness = makeHarness(
-            settingsStore: settingsStore,
-            credentialStore: credentialStore
-        )
-
-        await waitForEventProcessing()
-
-        XCTAssertEqual(harness.model.deepgramAPIKey, "dg-key")
-        XCTAssertEqual(harness.model.deepgramBaseURL, "https://example.deepgram.test")
-        XCTAssertEqual(harness.model.deepgramModel, "nova-2")
-        XCTAssertEqual(harness.model.deepgramLanguage, "zh-CN")
-    }
 
     func testLoadsPersistedVocabularyRules() async throws {
         let groupID = UUID(uuidString: "00000000-0000-0000-0000-00000000A001")!
@@ -1231,17 +1087,17 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.localSpeechModel, "distil-whisper_distil-large-v3_turbo_600MB-custom")
     }
 
-    func testLoadsPersistedPreferredSpeechEngine() async {
+    func testRetiredCloudSpeechPreferenceMigratesToLocal() async {
         let settingsStore = UITestSettingsStore(
             storage: [
-                .preferredSpeechEngine: PreferredSpeechEngine.cloud.rawValue,
+                .preferredSpeechEngine: "cloud",
             ]
         )
         let harness = makeHarness(settingsStore: settingsStore)
 
         await waitForEventProcessing()
 
-        XCTAssertEqual(harness.model.preferredSpeechEngine, .cloud)
+        XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
         XCTAssertEqual(harness.model.defaultWorkflowDraft().recognizer.rawValue, "automatic")
     }
 
@@ -1267,14 +1123,12 @@ extension AppModelTests {
         XCTAssertEqual(snapshot.storage[.longRecordingModeEnabled], "true")
     }
 
-    func testBuiltinHotkeyWorkflowUsesPreferredSpeechEngineForExecution() async {
+    func testBuiltinHotkeyWorkflowUsesLocalSpeechForExecution() async {
         let harness = makeHarness(workflows: [makeBuiltinPushToTalkWorkflow()])
-
-        harness.model.preferredSpeechEngine = .cloud
 
         let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
 
-        XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.recognizerID, AppModel.deepgramRecognizerID)
+        XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.recognizerID, AppModel.sherpaOnnxRecognizerID)
     }
 
     func testBuiltinHotkeyWorkflowUsesConfiguredVoiceGroupOutputMode() async {
@@ -1294,14 +1148,13 @@ extension AppModelTests {
     func testAppModelExecutionRoutingMatchesRuntimeResolvedPlan() throws {
         let workflow = makeBuiltinPushToTalkWorkflow()
         let harness = makeHarness(workflows: [workflow])
-        harness.model.preferredSpeechEngine = .cloud
         harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
 
         let actual = harness.model.enabledWorkflows(for: .hotkey).first
         guard case .resolved(let plan) = WorkflowExecutionPlanResolver.resolve(
             workflow,
             initiatedBy: .hotkey,
-            recognizer: .cloudSpeech,
+            recognizer: .localSpeech,
             output: .builtinSaveToVoiceGroup
         ) else {
             return XCTFail("Expected the runtime routing choices to resolve.")
@@ -1322,8 +1175,6 @@ extension AppModelTests {
             metadata: [AppModel.workflowOriginMetadataKey: AppModel.userWorkflowOriginMetadataValue]
         )
         let harness = makeHarness(workflows: [customHotkeyWorkflow])
-
-        harness.model.preferredSpeechEngine = .cloud
 
         let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
 
@@ -1486,7 +1337,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(
             settingsStore: settingsStore,
-            warmLocalSpeechForCaptureAction: { settings in
+            warmLocalSpeechForCaptureAction: { settings, _ in
                 await warmupProbe.record(settings)
                 return settings.model
             }
@@ -1511,7 +1362,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(
             settingsStore: settingsStore,
-            warmLocalSpeechForCaptureAction: { settings in
+            warmLocalSpeechForCaptureAction: { settings, _ in
                 await warmupProbe.record(settings)
                 return settings.model
             }

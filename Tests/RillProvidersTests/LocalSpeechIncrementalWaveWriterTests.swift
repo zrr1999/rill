@@ -6,10 +6,10 @@ import XCTest
 
 final class LocalSpeechIncrementalWaveWriterTests: XCTestCase {
   func testProductCaptureCeilingIncludesBoundedStartupTolerance() {
-    XCTAssertEqual(LocalSpeechIncrementalWaveWriter.maximumRequestedDurationSeconds, 20)
+    XCTAssertEqual(LocalSpeechIncrementalWaveWriter.maximumRequestedDurationSeconds, 120)
     XCTAssertEqual(LocalSpeechIncrementalWaveWriter.maximumStartupGraceSeconds, 3.1)
-    XCTAssertEqual(LocalSpeechIncrementalWaveWriter.maximumSupportedDurationSeconds, 23.1)
-    XCTAssertEqual(LocalSpeechIncrementalWaveWriter.maximumSupportedFrameCount, 369_600)
+    XCTAssertEqual(LocalSpeechIncrementalWaveWriter.maximumSupportedDurationSeconds, 123.1)
+    XCTAssertEqual(LocalSpeechIncrementalWaveWriter.maximumSupportedFrameCount, 1_969_600)
   }
 
   func testIncrementalWriterProducesPrivateCompleteMultiChunkWaveFile() throws {
@@ -56,6 +56,23 @@ final class LocalSpeechIncrementalWaveWriterTests: XCTestCase {
 
     XCTAssertEqual(artifact.frameCount, 4)
     XCTAssertEqual(try readWaveSamples(from: outputURL).count, 4)
+  }
+
+  func testRemovingFrameCeilingAllowsTheCurrentWriterToContinue() throws {
+    let outputURL = makeWriterTestURL()
+    defer { try? FileManager.default.removeItem(at: outputURL) }
+    let writer = try LocalSpeechIncrementalWaveWriter(
+      fileURL: outputURL,
+      maximumFrameCount: 4
+    )
+
+    try writer.append([0.1, 0.2, 0.3, 0.4])
+    writer.removeFrameLimit()
+    try writer.append([0.5, 0.6])
+    let artifact = try writer.finalize()
+
+    XCTAssertEqual(artifact.frameCount, 6)
+    XCTAssertEqual(try readWaveSamples(from: outputURL).count, 6)
   }
 
   func testNegativeFrameCeilingFailsClosedWithoutCreatingAFile() {

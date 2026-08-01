@@ -35,6 +35,7 @@ private final class BundledSherpaVoiceActivityDetectorAdapter:
 }
 
 public actor RealtimeAudioCaptureService: AudioCaptureService {
+  public nonisolated let sharedVoiceInputHub: SharedVoiceInputHub?
   typealias LocalSpeechCaptureRuntimeFactory =
     @Sendable (
       _ unexpectedTerminationHandler: @escaping @Sendable () async -> Void
@@ -43,7 +44,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
   private static let localSpeechRecognizerID = "sherpa-onnx.local"
   private static let streamingSpeechRecognizerID =
     SherpaStreamingCaptureRecognizer.recognizerID
-  private static let deepgramRecognizerID = "deepgram.prerecorded"
 
   public enum CaptureError: Error, LocalizedError, Equatable {
     case alreadyCapturing
@@ -96,8 +96,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     case startingLocalSpeech(LocalSpeechCaptureState)
     case localSpeech(LocalSpeechCaptureState)
     case stoppingLocalSpeech(LocalSpeechCaptureState, Task<Void, Never>)
-    case startingDeepgramLive(DeepgramCaptureState)
-    case deepgramLive(DeepgramCaptureState)
     case startingFallback(CaptureReservation)
     case fallback(CaptureReservation)
 
@@ -112,22 +110,12 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         return capture.reservation
       case .stoppingLocalSpeech(let capture, _):
         return capture.reservation
-      case .startingDeepgramLive(let capture),
-        .deepgramLive(let capture):
-        return capture.reservation
       }
     }
 
     var request: AudioCaptureRequest {
       reservation.request
     }
-  }
-
-  private struct DeepgramCaptureState: Sendable {
-    let reservation: CaptureReservation
-    let runtime: DeepgramLiveCaptureRuntime
-
-    var request: AudioCaptureRequest { reservation.request }
   }
 
   private struct LocalSpeechCaptureState: Sendable {
@@ -138,14 +126,12 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
   }
 
   private let legacyCaptureService: any AudioCaptureService
-  private let deepgramConfigurationProvider: @Sendable () async -> DeepgramRecognizer.Configuration?
-  private let deepgramHintDiagnosticReporter: DeepgramHintDiagnosticReporter
-  private let deepgramMicrophonePermissionRequester: (@Sendable () async -> Bool)?
   private let liveUpdateHandler: @Sendable (LiveSubtitleSnapshot) async -> Void
   private let cleanupOwner: ManagedTemporaryAudioCleanupOwner
   private let localSpeechCaptureRuntimeFactory: LocalSpeechCaptureRuntimeFactory
   private let localSpeechCaptureSource: (any LocalSpeechAudioCaptureSource)?
   private let isMicrophoneAuthorizedForLocalSpeechPrewarm: @Sendable () -> Bool
+  private let wakeWordSpeechStartedHandler: @Sendable () -> Void
 
   private var activeCapture: ActiveCapture?
   private var lifecycle: Lifecycle = .accepting
@@ -153,28 +139,32 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
 
   public init(
     legacyCaptureService: (any AudioCaptureService)? = nil,
-    deepgramConfigurationProvider:
-      @escaping @Sendable () async -> DeepgramRecognizer.Configuration? = { nil },
-    deepgramHintDiagnosticReporter: @escaping DeepgramHintDiagnosticReporter = { _ in },
-    deepgramMicrophonePermissionRequester: (@Sendable () async -> Bool)? = nil,
     streamingPreviewService: SherpaStreamingPreviewService? = nil,
     liveUpdateHandler: @escaping @Sendable (LiveSubtitleSnapshot) async -> Void = { _ in },
     cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
     localSpeechStartupTimeout: Duration = .seconds(3),
     localSpeechReadinessSleep: @escaping @Sendable (Duration) async throws -> Void = {
       try await Task.sleep(for: $0)
-    }
+    },
+    wakeWordSpeechStartedHandler: @escaping @Sendable () -> Void = {}
   ) {
     self.legacyCaptureService =
       legacyCaptureService
       ?? AVAudioCaptureService(cleanupOwner: cleanupOwner)
-    self.deepgramConfigurationProvider = deepgramConfigurationProvider
-    self.deepgramHintDiagnosticReporter = deepgramHintDiagnosticReporter
-    self.deepgramMicrophonePermissionRequester = deepgramMicrophonePermissionRequester
     self.liveUpdateHandler = liveUpdateHandler
     self.cleanupOwner = cleanupOwner
-    let localSpeechCaptureSource = AppleVoiceProcessingCaptureSource()
+    // Keep the process-wide producer on the validated VoiceProcessingIO
+    // frontend. Wake-word sensitivity is adjusted only in its consumer so a
+    // continuously enabled trigger cannot downgrade recording/STT to raw PCM.
+    let voiceInputProcessor = AppleVoiceProcessingAudioProcessor()
+    let sharedVoiceInputHub = SharedVoiceInputHub(processor: voiceInputProcessor)
+    self.sharedVoiceInputHub = sharedVoiceInputHub
+    let localSpeechCaptureSource = SharedVoiceInputCaptureSource(
+      hub: sharedVoiceInputHub,
+      processor: voiceInputProcessor
+    )
     self.localSpeechCaptureSource = localSpeechCaptureSource
+    self.wakeWordSpeechStartedHandler = wakeWordSpeechStartedHandler
     self.isMicrophoneAuthorizedForLocalSpeechPrewarm = {
       AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     }
@@ -184,7 +174,8 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
       liveUpdateHandler: liveUpdateHandler,
       cleanupOwner: cleanupOwner,
       startupTimeout: localSpeechStartupTimeout,
-      readinessSleep: localSpeechReadinessSleep
+      readinessSleep: localSpeechReadinessSleep,
+      wakeWordSpeechStartedHandler: wakeWordSpeechStartedHandler
     )
   }
 
@@ -195,13 +186,12 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     localSpeechCaptureRuntimeFactory: @escaping LocalSpeechCaptureRuntimeFactory
   ) {
     self.legacyCaptureService = legacyCaptureService
-    self.deepgramConfigurationProvider = { nil }
-    self.deepgramHintDiagnosticReporter = { _ in }
-    self.deepgramMicrophonePermissionRequester = nil
     self.liveUpdateHandler = liveUpdateHandler
     self.cleanupOwner = ManagedTemporaryAudioCleanupOwner()
+    self.sharedVoiceInputHub = nil
     self.localSpeechCaptureRuntimeFactory = localSpeechCaptureRuntimeFactory
     self.localSpeechCaptureSource = nil
+    self.wakeWordSpeechStartedHandler = {}
     self.isMicrophoneAuthorizedForLocalSpeechPrewarm = { false }
   }
 
@@ -217,12 +207,11 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
   ) {
     let cleanupOwner = ManagedTemporaryAudioCleanupOwner()
     self.legacyCaptureService = legacyCaptureService
-    self.deepgramConfigurationProvider = { nil }
-    self.deepgramHintDiagnosticReporter = { _ in }
-    self.deepgramMicrophonePermissionRequester = nil
     self.liveUpdateHandler = liveUpdateHandler
     self.cleanupOwner = cleanupOwner
+    self.sharedVoiceInputHub = nil
     self.localSpeechCaptureSource = localSpeechCaptureSource
+    self.wakeWordSpeechStartedHandler = {}
     self.isMicrophoneAuthorizedForLocalSpeechPrewarm =
       isMicrophoneAuthorizedForLocalSpeechPrewarm
     self.localSpeechCaptureRuntimeFactory = Self.makeLocalSpeechCaptureRuntimeFactory(
@@ -231,7 +220,8 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
       liveUpdateHandler: liveUpdateHandler,
       cleanupOwner: cleanupOwner,
       startupTimeout: .seconds(3),
-      readinessSleep: { try await Task.sleep(for: $0) }
+      readinessSleep: { try await Task.sleep(for: $0) },
+      wakeWordSpeechStartedHandler: {}
     )
   }
 
@@ -241,7 +231,8 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     liveUpdateHandler: @escaping @Sendable (LiveSubtitleSnapshot) async -> Void,
     cleanupOwner: ManagedTemporaryAudioCleanupOwner,
     startupTimeout: Duration,
-    readinessSleep: @escaping @Sendable (Duration) async throws -> Void
+    readinessSleep: @escaping @Sendable (Duration) async throws -> Void,
+    wakeWordSpeechStartedHandler: @escaping @Sendable () -> Void
   ) -> LocalSpeechCaptureRuntimeFactory {
     { unexpectedTerminationHandler in
       LocalSpeechVoiceCaptureRuntime(
@@ -258,7 +249,8 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         cleanupOwner: cleanupOwner,
         startupTimeout: startupTimeout,
         readinessSleep: readinessSleep,
-        unexpectedTerminationHandler: unexpectedTerminationHandler
+        unexpectedTerminationHandler: unexpectedTerminationHandler,
+        wakeWordSpeechStartedHandler: wakeWordSpeechStartedHandler
       )
     }
   }
@@ -281,23 +273,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
       return
     }
     try? localSpeechCaptureSource.prepareStoppedFrontend()
-  }
-
-  private func makeDeepgramLiveRuntime(
-    reservation: CaptureReservation
-  ) -> DeepgramLiveCaptureRuntime {
-    DeepgramLiveCaptureRuntime(
-      liveUpdateHandler: liveUpdateHandler,
-      hintDiagnosticReporter: deepgramHintDiagnosticReporter,
-      microphonePermissionRequester: deepgramMicrophonePermissionRequester,
-      cleanupOwner: cleanupOwner,
-      unexpectedTerminationHandler: { [weak self] scope in
-        await self?.handleUnexpectedDeepgramTermination(
-          reservation: reservation,
-          scope: scope
-        )
-      }
-    )
   }
 
   private func makeLocalSpeechCaptureRuntime(
@@ -326,41 +301,9 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     let reservation = CaptureReservation(request: request)
     activeCapture = .preparing(reservation)
 
-    if request.workflow.pipeline.recognizerID == Self.deepgramRecognizerID {
-      let deepgramConfiguration = await deepgramConfigurationProvider()
-      try requireOwnership(of: reservation)
-
-      if let deepgramConfiguration {
-        let runtime = makeDeepgramLiveRuntime(reservation: reservation)
-        let capture = DeepgramCaptureState(reservation: reservation, runtime: runtime)
-        activeCapture = .startingDeepgramLive(capture)
-        do {
-          try await runtime.startCapture(
-            request: request,
-            configuration: deepgramConfiguration
-          )
-          try requireOwnership(of: reservation)
-          activeCapture = .deepgramLive(capture)
-          return
-        } catch is CancellationError {
-          await cancelStartingReservationIfOwned(reservation)
-          throw CancellationError()
-        } catch {
-          guard owns(reservation) else {
-            throw CancellationError()
-          }
-          // Once a configured live path has started, every failure is
-          // terminal. Falling through to AVAudioRecorder would silently lose
-          // voice processing, endpoint detection, and transport diagnostics.
-          clearActiveCapture(identity: reservation.identity)
-          Self.revokeLifetime(for: request, reason: .serviceFailure)
-          await publishFailureSnapshot(for: request, error: error)
-          throw error
-        }
-      }
-    }
-
-    if Self.localSpeechRecognizerIDs.contains(request.workflow.pipeline.recognizerID) {
+    if let recognizerID = request.workflow.plan.setup.speechRoute?.recognizerID,
+      Self.localSpeechRecognizerIDs.contains(recognizerID)
+    {
       try requireOwnership(of: reservation)
       let runtime = makeLocalSpeechCaptureRuntime(reservation: reservation)
       let capture = LocalSpeechCaptureState(reservation: reservation, runtime: runtime)
@@ -475,28 +418,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         }
         throw error
       }
-    case .startingDeepgramLive(let capture):
-      clearActiveCapture(identity: capture.reservation.identity)
-      Self.cancelLifetime(for: capture.request)
-      await capture.runtime.cancelCapture(for: capture.request)
-      throw CaptureError.notCapturing
-    case .deepgramLive(let capture):
-      do {
-        let deferredCapture = try await capture.runtime.finishCaptureDeferred(for: capture.request)
-        guard owns(capture.reservation) else {
-          await discardServiceOwnedCapture(deferredCapture, for: capture.request)
-          throw CancellationError()
-        }
-        clearActiveCapture(identity: capture.reservation.identity)
-        return monitoring(deferredCapture, for: capture.request)
-      } catch {
-        let stillOwned = owns(capture.reservation)
-        clearActiveCapture(identity: capture.reservation.identity)
-        if stillOwned {
-          Self.revokeLifetime(for: capture.request, reason: .serviceFailure)
-        }
-        throw error
-      }
     case .startingFallback(let reservation):
       clearActiveCapture(identity: reservation.identity)
       Self.cancelLifetime(for: reservation.request)
@@ -564,13 +485,23 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     case .stoppingLocalSpeech(_, let teardownTask):
       await teardownTask.value
       clearActiveCapture(identity: reservation.identity, finishEndpoint: false)
-    case .startingDeepgramLive(let capture), .deepgramLive(let capture):
-      clearActiveCapture(identity: reservation.identity)
-      await capture.runtime.cancelCapture(for: capture.request)
     case .startingFallback, .fallback:
       clearActiveCapture(identity: reservation.identity)
       await legacyCaptureService.cancelCapture(runID: request.runID)
       await publishHiddenSnapshot(for: request)
+    }
+  }
+
+  public func removeMaximumDurationLimit(runID: UUID) async -> Bool {
+    guard let activeCapture, activeCapture.request.runID == runID else {
+      return false
+    }
+    switch activeCapture {
+    case .localSpeech(let capture):
+      return await capture.runtime.removeMaximumDurationLimit(runID: runID)
+    case .preparing, .startingLocalSpeech, .stoppingLocalSpeech,
+      .startingFallback, .fallback:
+      return false
     }
   }
 
@@ -642,9 +573,9 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
       return
     }
     switch activeCapture {
-    case .preparing, .startingLocalSpeech, .startingDeepgramLive, .startingFallback:
+    case .preparing, .startingLocalSpeech, .startingFallback:
       break
-    case .localSpeech, .stoppingLocalSpeech, .deepgramLive, .fallback:
+    case .localSpeech, .stoppingLocalSpeech, .fallback:
       return
     }
     clearActiveCapture(identity: reservation.identity)
@@ -663,41 +594,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
       for: reservation.request,
       error: CaptureError.microphoneStartFailed
     )
-  }
-
-  private func handleUnexpectedDeepgramTermination(
-    reservation: CaptureReservation,
-    scope: DeepgramLiveCaptureReadinessGate.Scope
-  ) async {
-    guard reservation.request.runID == scope.runID,
-      owns(reservation),
-      Self.acceptsDeepgramUnexpectedTermination(
-        activeReservationIdentity: activeCapture?.reservation.identity,
-        expectedReservationIdentity: reservation.identity,
-        expectedRunID: reservation.request.runID,
-        scope: scope
-      )
-    else {
-      return
-    }
-
-    _ = reservation.request.endpointControl?.send(.inputEndedUnexpectedly)
-    clearActiveCapture(identity: reservation.identity)
-    Self.revokeLifetime(for: reservation.request, reason: .serviceFailure)
-    await publishFailureSnapshot(
-      for: reservation.request,
-      error: CaptureError.microphoneStartFailed
-    )
-  }
-
-  static func acceptsDeepgramUnexpectedTermination(
-    activeReservationIdentity: UUID?,
-    expectedReservationIdentity: UUID,
-    expectedRunID: UUID,
-    scope: DeepgramLiveCaptureReadinessGate.Scope
-  ) -> Bool {
-    activeReservationIdentity == expectedReservationIdentity
-      && scope.runID == expectedRunID
   }
 
   private static func matchingLifetime(for request: AudioCaptureRequest) -> AudioCaptureLifetime? {
@@ -756,7 +652,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         runID: request.runID,
         workflow: request.workflow.presentation,
         phase: .failed,
-        providerID: request.workflow.pipeline.recognizerID
+        providerID: request.workflow.plan.setup.speechRoute?.recognizerID
       )
     )
   }
@@ -777,7 +673,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         runID: request.runID,
         workflow: request.workflow.presentation,
         phase: .recording,
-        providerID: request.workflow.pipeline.recognizerID
+        providerID: request.workflow.plan.setup.speechRoute?.recognizerID
       )
     )
   }

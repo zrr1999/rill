@@ -20,7 +20,7 @@ final class SherpaOnnxRecognizerTests: XCTestCase {
     XCTAssertEqual(configuration.threadCount, 2)
     XCTAssertEqual(
       SherpaOnnxRecognizer().capabilities.maximumAudioDurationSeconds,
-      20
+      120
     )
   }
 
@@ -172,9 +172,9 @@ final class SherpaOnnxRecognizerTests: XCTestCase {
     let exactDuration = SherpaOnnxRecognizer.maximumAcceptedAudioDurationSeconds
     let oneFrameDuration = 1 / Double(SherpaOnnxRecognizer.targetSampleRate)
 
-    XCTAssertEqual(SherpaOnnxRecognizer.maximumAudioDurationSeconds, 20)
-    XCTAssertEqual(exactDuration, 23.1)
-    XCTAssertEqual(SherpaOnnxRecognizer.maximumAudioSampleCount, 369_600)
+    XCTAssertEqual(SherpaOnnxRecognizer.maximumAudioDurationSeconds, 120)
+    XCTAssertEqual(exactDuration, 123.1)
+    XCTAssertEqual(SherpaOnnxRecognizer.maximumAudioSampleCount, 1_969_600)
 
     XCTAssertNoThrow(
       try SherpaOnnxRecognizer.validateCapturedAudioDuration(exactDuration)
@@ -214,7 +214,7 @@ final class SherpaOnnxRecognizerTests: XCTestCase {
   func testOverlongMetadataFailsBeforeLoadingAudioOrInstallingModel() async throws {
     let harness = makeHarness()
 
-    await assertRecognizerError(.audioTooLong(maximumDurationSeconds: 20)) {
+    await assertRecognizerError(.audioTooLong(maximumDurationSeconds: 120)) {
       try await harness.recognizer.recognize(
         try makeRequest(
           durationSeconds: SherpaOnnxRecognizer.maximumAcceptedAudioDurationSeconds
@@ -229,10 +229,11 @@ final class SherpaOnnxRecognizerTests: XCTestCase {
   }
 
   func testQwenContextBudgetPreservesDefaultOutputCapacity() {
-    XCTAssertEqual(SherpaOnnxRecognizer.maximumQwenAudioTokenCount, 301)
+    XCTAssertEqual(SherpaOnnxRecognizer.qwenMaximumTotalLength, 2_048)
+    XCTAssertEqual(SherpaOnnxRecognizer.maximumQwenAudioTokenCount, 1_601)
     XCTAssertEqual(SherpaOnnxRecognizer.maximumQwenHotwordTokenCount, 63)
-    XCTAssertEqual(SherpaOnnxRecognizer.maximumQwenInputContextTokenCount, 379)
-    XCTAssertEqual(SherpaOnnxRecognizer.minimumQwenOutputTokenCapacity, 133)
+    XCTAssertEqual(SherpaOnnxRecognizer.maximumQwenInputContextTokenCount, 1_679)
+    XCTAssertEqual(SherpaOnnxRecognizer.minimumQwenOutputTokenCapacity, 369)
     XCTAssertGreaterThanOrEqual(
       SherpaOnnxRecognizer.minimumQwenOutputTokenCapacity,
       SherpaQwen3ASRConfiguration.defaultMaximumNewTokens

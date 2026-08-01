@@ -16,9 +16,13 @@ enum DiagnosticsTimelineContent: Sendable {
 extension DiagnosticsTimelineContent {
     static func resolve(
         loadState: DiagnosticsLoadState,
-        events: [DiagnosticEvent]
+        events: [DiagnosticEvent],
+        filter: DiagnosticsTimelineFilter = .activity
     ) -> Self {
-        let entries = DiagnosticTimelineEntry.build(from: events, limit: 20)
+        let entries = DiagnosticTimelineEntry.build(
+            from: events.filter(filter.includes),
+            limit: 20
+        )
 
         switch loadState {
         case .loading:

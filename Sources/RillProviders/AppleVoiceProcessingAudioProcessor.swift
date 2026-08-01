@@ -193,6 +193,8 @@ protocol AppleVoiceProcessingEngineConfigurationTarget: AnyObject {
   var isVoiceProcessingAGCEnabled: Bool { get set }
 
   func setVoiceProcessingEnabled(_ isEnabled: Bool) throws
+  func minimizeOtherAudioDucking()
+  func enableRecordingOtherAudioDucking()
   func configureVoiceProcessingInputDevice() throws
   func establishVoiceProcessingOutputPath(matching format: AppleVoiceProcessingIOFormat) -> Bool
 }
@@ -306,6 +308,12 @@ struct AppleVoiceProcessingEngineConfigurator {
       throw AppleVoiceProcessingAudioError.voiceProcessingDidNotActivate
     }
 
+    // Rill is a speech recognizer, not a voice-chat app: there is no remote
+    // talker whose playback needs priority over music or other app audio.
+    // VoiceProcessingIO otherwise applies its default system-wide attenuation
+    // as soon as the frontend is configured, including during stopped prewarm.
+    target.minimizeOtherAudioDucking()
+
     try target.configureVoiceProcessingInputDevice()
 
     guard let inputFormat = target.voiceProcessingInputFormat else {
@@ -354,11 +362,11 @@ struct AppleVoiceProcessingStartedStateValidator {
     else {
       throw AppleVoiceProcessingAudioError.voiceProcessingDidNotActivate
     }
-    guard !state.isVoiceProcessingBypassed else {
-      throw AppleVoiceProcessingAudioError.voiceProcessingBypassCouldNotBeDisabled
-    }
     guard !state.isVoiceProcessingInputMuted else {
       throw AppleVoiceProcessingAudioError.voiceProcessingInputCouldNotBeUnmuted
+    }
+    guard !state.isVoiceProcessingBypassed else {
+      throw AppleVoiceProcessingAudioError.voiceProcessingBypassCouldNotBeDisabled
     }
     guard state.isVoiceProcessingAGCEnabled else {
       throw AppleVoiceProcessingAudioError.automaticGainControlDidNotActivate
@@ -775,6 +783,22 @@ private final class LiveAppleVoiceProcessingAudioEngineSession:
     try engine.inputNode.setVoiceProcessingEnabled(isEnabled)
   }
 
+  func minimizeOtherAudioDucking() {
+    engine.inputNode.voiceProcessingOtherAudioDuckingConfiguration =
+      AVAudioVoiceProcessingOtherAudioDuckingConfiguration(
+        enableAdvancedDucking: false,
+        duckingLevel: .min
+      )
+  }
+
+  func enableRecordingOtherAudioDucking() {
+    engine.inputNode.voiceProcessingOtherAudioDuckingConfiguration =
+      AVAudioVoiceProcessingOtherAudioDuckingConfiguration(
+        enableAdvancedDucking: false,
+        duckingLevel: .mid
+      )
+  }
+
   func configureVoiceProcessingInputDevice() throws {
     try configureInputDeviceIfNeeded()
   }
@@ -868,6 +892,7 @@ private final class LiveAppleVoiceProcessingAudioEngineSession:
           failureHandler(.inputConfigurationChanged)
         }
       }
+      enableRecordingOtherAudioDucking()
       engine.prepare()
       let preparedInputFormat = AppleVoiceProcessingIOFormat(
         audioFormat: inputNode.outputFormat(forBus: 0)
@@ -919,13 +944,16 @@ private final class LiveAppleVoiceProcessingAudioEngineSession:
       }
     } catch {
       configurationReuseState.invalidate()
-      tearDownEngine()
+      tearDownEngine(preserveConfiguration: false)
       throw error
     }
   }
 
   func stop() {
-    tearDownEngine()
+    // Keep a graph that completed start validation ready for the next capture.
+    // Failed configuration/start and route-change paths invalidate the state
+    // before stopping, so those still receive a full teardown below.
+    tearDownEngine(preserveConfiguration: configurationReuseState.isConfigured)
   }
 
   private func configureInputDeviceIfNeeded() throws {
@@ -947,11 +975,10 @@ private final class LiveAppleVoiceProcessingAudioEngineSession:
     }
   }
 
-  private func tearDownEngine() {
+  private func tearDownEngine(preserveConfiguration: Bool) {
     tearDownLock.lock()
     defer { tearDownLock.unlock() }
 
-    guard engine.isRunning || isTapInstalled || configurationChangeObserver != nil else { return }
     if let configurationChangeObserver {
       NotificationCenter.default.removeObserver(configurationChangeObserver)
       self.configurationChangeObserver = nil
@@ -960,11 +987,18 @@ private final class LiveAppleVoiceProcessingAudioEngineSession:
       configurationChangePolicy = AppleVoiceProcessingConfigurationChangePolicy()
     }
     engine.stop()
+    minimizeOtherAudioDucking()
     if isTapInstalled {
       engine.inputNode.removeTap(onBus: 0)
       isTapInstalled = false
     }
     engine.reset()
+    guard !preserveConfiguration else { return }
+
+    // Stale graphs must never be reused. Fully disabling VPIO also clears any
+    // stopped-state audio policy left behind by a failed configuration.
+    try? setVoiceProcessingEnabled(false)
+    configurationReuseState.invalidate()
   }
 }
 
@@ -1323,6 +1357,17 @@ final class AppleVoiceProcessingAudioProcessor:
 
   static func endpointRelativeEnergy(fromNormalizedRMS rms: Float) -> Float {
     min(max(rms / 0.05, 0), 1)
+  }
+
+  /// Maps PCM RMS onto a display meter without reusing endpoint sensitivity as
+  /// the visual ceiling. Endpointing intentionally treats 0.05 RMS as full
+  /// confidence; a waveform needs substantially more headroom so ordinary
+  /// speech keeps visible dynamics instead of flattening at maximum height.
+  static func meterRelativeEnergy(fromNormalizedRMS rms: Float) -> Float {
+    guard rms.isFinite, rms > 0 else { return 0 }
+    let floorDecibels: Float = -50
+    let decibels = 20 * log10(rms)
+    return min(max((decibels - floorDecibels) / -floorDecibels, 0), 1)
   }
 
   private func handleSessionFailure(

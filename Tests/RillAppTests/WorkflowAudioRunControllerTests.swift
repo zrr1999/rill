@@ -973,7 +973,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     await queue.shutdown()
   }
 
-  func testLiveCloudRunStopsWhenFocusBecomesSensitive() async throws {
+  func testLiveCloudTextRunStopsWhenFocusBecomesSensitive() async throws {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
@@ -1002,10 +1002,11 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       )
     )
     let workflow = WorkflowDefinition(
-      name: "Live Cloud Workflow",
+      name: "Live Cloud Text Workflow",
       trigger: .manual,
       pipeline: PipelineDeclaration(
-        recognizerID: "deepgram.prerecorded",
+        recognizerID: "sherpa-onnx.local",
+        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
         outputActions: []
       ),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
@@ -1070,10 +1071,11 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       )
     )
     let workflow = WorkflowDefinition(
-      name: "Run-scoped Cloud Workflow",
+      name: "Run-scoped Cloud Text Workflow",
       trigger: .manual,
       pipeline: PipelineDeclaration(
-        recognizerID: "deepgram.prerecorded",
+        recognizerID: "sherpa-onnx.local",
+        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
         outputActions: []
       ),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
@@ -1129,10 +1131,11 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       )
     )
     let workflow = WorkflowDefinition(
-      name: "Finishing Cloud Workflow",
+      name: "Finishing Cloud Text Workflow",
       trigger: .manual,
       pipeline: PipelineDeclaration(
-        recognizerID: "deepgram.prerecorded",
+        recognizerID: "sherpa-onnx.local",
+        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
         outputActions: []
       ),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
@@ -1280,10 +1283,11 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       )
     )
     let workflow = WorkflowDefinition(
-      name: "Shutdown Cleanup Workflow",
+      name: "Shutdown Cleanup Cloud Text Workflow",
       trigger: .manual,
       pipeline: PipelineDeclaration(
-        recognizerID: "deepgram.prerecorded",
+        recognizerID: "sherpa-onnx.local",
+        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
         outputActions: []
       ),
       ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
@@ -1304,7 +1308,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       cancelFailedAudioRecoveryRetries: {},
       stopLocalHistoryMaintenance: {},
       shutdownAudioQueue: { await queue.shutdown() },
-      cancelDeepgramTest: {},
       stopStackPaste: {},
       stopClipboardGroupScheduler: {},
       stopLocalSpeechPreparation: {},
@@ -1551,7 +1554,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     await realProcessingQueue.shutdown()
   }
 
-  func testManualCloudRunIsBlockedBeforeAudioCaptureWhenConfirmationIsDeclined() async {
+  func testManualCloudTextRunIsBlockedBeforeAudioCaptureWhenConfirmationIsDeclined() async {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
@@ -1607,9 +1610,13 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       privacyRunGate: gate
     )
     let workflow = WorkflowDefinition(
-      name: "Cloud Workflow",
+      name: "Cloud Text Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "deepgram.prerecorded", outputActions: []),
+      pipeline: PipelineDeclaration(
+        recognizerID: "sherpa-onnx.local",
+        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
+        outputActions: []
+      ),
       ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
     )
 
@@ -1663,7 +1670,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Unavailable Cloud Workflow",
       trigger: .manual,
-      pipeline: PipelineDeclaration(recognizerID: "deepgram.prerecorded", outputActions: []),
+      pipeline: PipelineDeclaration(recognizerID: "remote.speech", outputActions: []),
       ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
     )
 
@@ -1727,7 +1734,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       name: "Legacy Clipboard Automation",
       trigger: .manual,
       pipeline: PipelineDeclaration(
-        recognizerID: "deepgram.prerecorded",
+        recognizerID: "remote.speech",
         outputActions: []
       ),
       ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),

@@ -56,6 +56,15 @@ public enum WorkflowExecutionPolicy {
         on surface: WorkflowExecutionSurface
     ) -> WorkflowExecutionSurfaceDecision {
         guard workflow.availability == .active else { return .invalidConfiguration }
+        if workflow.trigger == .wakeWord {
+            guard let configuration = workflow.plan.setup.wakeWord,
+                (try? configuration.validatedPhrases()) != nil
+            else {
+                return .invalidConfiguration
+            }
+        } else if workflow.plan.setup.wakeWord != nil {
+            return .invalidConfiguration
+        }
         guard let eventType = workflow.metadata[WorkflowMetadataKey.legacyEventType] else {
             return surface == .clipboardGroupEvent ? .wrongSurface : .supported
         }

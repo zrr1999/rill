@@ -11,9 +11,7 @@ extension ClipboardView {
                 emptyStateCard(
                     systemImage: "doc.on.clipboard",
                     title: selectedSection.title(language: model.language),
-                    message: searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        ? selectedSection.description(language: model.language)
-                        : UIStrings.text(.clipboardNoResults, language: model.language)
+                    message: emptyClipboardResultsMessage
                 )
             } else {
                 HStack(alignment: .top, spacing: ClipboardViewMetrics.splitSpacing) {
@@ -35,6 +33,16 @@ extension ClipboardView {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var emptyClipboardResultsMessage: String {
+        if showsPinnedOnly {
+            return UIStrings.text(.clipboardNoPinnedItems, language: model.language)
+        }
+        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return UIStrings.text(.clipboardNoResults, language: model.language)
+        }
+        return selectedSection.description(language: model.language)
     }
 
     var historyListCard: some View {
@@ -168,6 +176,15 @@ extension ClipboardView {
             }
 
             Spacer(minLength: 4)
+
+            if entry.isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.caption2)
+                    .foregroundStyle(Color.accentColor)
+                    .accessibilityLabel(
+                        UIStrings.text(.clipboardPinnedBadge, language: model.language)
+                    )
+            }
 
             if item.latestError != nil {
                 Image(systemName: "exclamationmark.triangle.fill")

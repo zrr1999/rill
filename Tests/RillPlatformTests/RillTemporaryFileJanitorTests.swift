@@ -15,7 +15,7 @@ final class RillTemporaryFileJanitorTests: XCTestCase {
       ("rill-recording.wav", .audioCapture),
       ("rill-recognition-operation.caf", .recognitionWork),
       ("rill-live-session.wav", .liveCapture),
-      ("rill-deepgram-live-session.wav", .deepgramLiveCapture),
+      ("rill-deepgram-live-session.wav", .retiredCloudCapture),
     ]
     for (name, _) in artifacts {
       try createFile(

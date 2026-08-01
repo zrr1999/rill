@@ -1100,8 +1100,12 @@ private struct SherpaOnnxModelReceipt: Codable, Equatable, Sendable {
   }
 }
 
-private struct SherpaOnnxURLSessionArchiveDownloader: SherpaOnnxArchiveDownloading, Sendable {
+struct SherpaOnnxURLSessionArchiveDownloader: SherpaOnnxArchiveDownloading, Sendable {
   private static let allowedSourceHosts: Set<String> = ["github.com"]
+  private static let allowedReleaseAssetPathPrefixes = [
+    "/k2-fsa/sherpa-onnx/releases/download/asr-models/",
+    "/k2-fsa/sherpa-onnx/releases/download/kws-models/",
+  ]
   private static let allowedRedirectHosts: Set<String> = [
     "github.com",
     "objects.githubusercontent.com",
@@ -1163,7 +1167,7 @@ private struct SherpaOnnxURLSessionArchiveDownloader: SherpaOnnxArchiveDownloadi
     }
   }
 
-  private static func isAllowedSourceURL(_ url: URL) -> Bool {
+  static func isAllowedSourceURL(_ url: URL) -> Bool {
     guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
       components.scheme?.lowercased() == "https",
       let host = components.host?.lowercased(),
@@ -1173,7 +1177,7 @@ private struct SherpaOnnxURLSessionArchiveDownloader: SherpaOnnxArchiveDownloadi
       components.query == nil,
       components.fragment == nil,
       components.port == nil || components.port == 443,
-      components.path.hasPrefix("/k2-fsa/sherpa-onnx/releases/download/asr-models/")
+      allowedReleaseAssetPathPrefixes.contains(where: components.path.hasPrefix)
     else {
       return false
     }
@@ -1197,7 +1201,7 @@ private struct SherpaOnnxURLSessionArchiveDownloader: SherpaOnnxArchiveDownloadi
       return false
     }
     if host == originalURL.host?.lowercased() {
-      return components.path.hasPrefix("/k2-fsa/sherpa-onnx/releases/download/asr-models/")
+      return allowedReleaseAssetPathPrefixes.contains(where: components.path.hasPrefix)
     }
     return !components.path.isEmpty && components.path != "/"
   }

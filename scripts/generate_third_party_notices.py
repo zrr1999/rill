@@ -218,7 +218,7 @@ def load_manifest(path: Path) -> dict[str, dict[str, Any]]:
         if not isinstance(evidence, list) or not evidence:
             raise NoticeError(f"Notice manifest package {identity} has no evidence")
 
-        checked_evidence: list[dict[str, str]] = []
+        checked_evidence: list[dict[str, Any]] = []
         evidence_paths: set[str] = set()
         has_license = False
         for evidence_index, raw_evidence in enumerate(evidence):
@@ -226,9 +226,19 @@ def load_manifest(path: Path) -> dict[str, dict[str, Any]]:
                 raw_evidence,
                 f"notice manifest package {identity} evidence[{evidence_index}]",
             )
+            evidence_keys = {"kind", "path", "sha256"}
+            has_line_start = "lineStart" in item
+            has_line_end = "lineEnd" in item
+            if has_line_start or has_line_end:
+                if not (has_line_start and has_line_end):
+                    raise NoticeError(
+                        f"Package {identity} evidence line range must include "
+                        "lineStart and lineEnd"
+                    )
+                evidence_keys.update({"lineStart", "lineEnd"})
             require_exact_keys(
                 item,
-                {"kind", "path", "sha256"},
+                evidence_keys,
                 f"notice manifest package {identity} evidence[{evidence_index}]",
             )
             evidence_kind = item["kind"]
@@ -254,9 +264,30 @@ def load_manifest(path: Path) -> dict[str, dict[str, Any]]:
                 )
             evidence_paths.add(relative_path)
             has_license = has_license or evidence_kind == "license"
-            checked_evidence.append(
-                {"kind": evidence_kind, "path": relative_path, "sha256": digest}
-            )
+            checked_item: dict[str, Any] = {
+                "kind": evidence_kind,
+                "path": relative_path,
+                "sha256": digest,
+            }
+            if has_line_start:
+                line_start = item["lineStart"]
+                line_end = item["lineEnd"]
+                if (
+                    not isinstance(line_start, int)
+                    or isinstance(line_start, bool)
+                    or not isinstance(line_end, int)
+                    or isinstance(line_end, bool)
+                    or line_start < 1
+                    or line_end < line_start
+                    or line_end - line_start >= 1_000
+                ):
+                    raise NoticeError(
+                        f"Package {identity} has an invalid evidence line range"
+                    )
+                checked_item.update(
+                    {"lineStart": line_start, "lineEnd": line_end}
+                )
+            checked_evidence.append(checked_item)
         if not has_license:
             raise NoticeError(f"Package {identity} must include license evidence")
         checked_package: dict[str, Any] = {
@@ -567,6 +598,16 @@ def load_evidence(
                     f"{len(content)} bytes"
                 )
             display_path = f"{item['path']}@{evidence_revision}"
+        if "lineStart" in item:
+            lines = content.splitlines(keepends=True)
+            line_start = item["lineStart"]
+            line_end = item["lineEnd"]
+            if line_end > len(lines):
+                raise NoticeError(
+                    f"Evidence line range exceeds {package['identity']}/{item['path']}"
+                )
+            content = b"".join(lines[line_start - 1 : line_end])
+            display_path += f"#L{line_start}-L{line_end}"
         digest = hashlib.sha256(content).hexdigest()
         if digest != item["sha256"]:
             raise NoticeError(

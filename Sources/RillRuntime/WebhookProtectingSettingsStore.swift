@@ -74,6 +74,7 @@ public actor WebhookConfigurationMigrator {
         do {
             storedValues = try await settingsStore.strings(forKeys: [
                 .customWorkflows,
+                .workflowLibrary,
                 .workflowEnabledStates,
                 .webhookConfigurationProtectionState,
             ])
@@ -82,8 +83,19 @@ public actor WebhookConfigurationMigrator {
         }
 
         let workflows: [WorkflowDefinition]
+        let workflowLibrary: WorkflowLibraryDocument?
         do {
-            workflows = try Self.decodeWorkflows(storedValues[.customWorkflows])
+            if let rawLibrary = storedValues[.workflowLibrary], !rawLibrary.isEmpty {
+                let decodedLibrary = try JSONDecoder().decode(
+                    WorkflowLibraryDocument.self,
+                    from: Data(rawLibrary.utf8)
+                )
+                workflowLibrary = decodedLibrary
+                workflows = decodedLibrary.customWorkflows
+            } else {
+                workflowLibrary = nil
+                workflows = try Self.decodeWorkflows(storedValues[.customWorkflows])
+            }
         } catch {
             return await block(.invalidWorkflowLibrary)
         }
@@ -107,7 +119,7 @@ public actor WebhookConfigurationMigrator {
         var webhookWorkflowIDs: Set<UUID> = []
 
         for (workflowIndex, workflow) in workflows.enumerated() {
-            for (actionIndex, action) in workflow.pipeline.outputActions.enumerated() {
+            for (actionIndex, action) in workflow.plan.output.actions.enumerated() {
                 guard action.id == ExternalOutputActionID.webhookPost else { continue }
                 webhookWorkflowIDs.insert(workflow.id)
 
@@ -225,12 +237,12 @@ public actor WebhookConfigurationMigrator {
         var sanitizedWorkflows = workflows
         for plan in plans {
             var configuration = sanitizedWorkflows[plan.workflowIndex]
-                .pipeline.outputActions[plan.actionIndex].configuration
+                .plan.output.actions[plan.actionIndex].configuration
             configuration.removeValue(forKey: ExternalOutputActionConfigurationKey.webhookURL)
             configuration.removeValue(forKey: ExternalOutputActionConfigurationKey.webhookHeadersJSON)
             configuration[ExternalOutputActionConfigurationKey.webhookSecureReference] = plan.reference.rawValue
             sanitizedWorkflows[plan.workflowIndex]
-                .pipeline.outputActions[plan.actionIndex].configuration = configuration
+                .plan.output.actions[plan.actionIndex].configuration = configuration
         }
 
         let storedState = storedValues[.webhookConfigurationProtectionState]
@@ -244,7 +256,12 @@ public actor WebhookConfigurationMigrator {
         var atomicValues: [AppSettingKey: String] = [:]
         do {
             if !plans.isEmpty {
-                atomicValues[.customWorkflows] = try Self.encode(sanitizedWorkflows)
+                if var workflowLibrary {
+                    workflowLibrary.customWorkflows = sanitizedWorkflows
+                    atomicValues[.workflowLibrary] = try Self.encode(workflowLibrary)
+                } else {
+                    atomicValues[.customWorkflows] = try Self.encode(sanitizedWorkflows)
+                }
             }
             if enabledStatesChanged {
                 atomicValues[.workflowEnabledStates] = try Self.encode(enabledStates)
@@ -373,7 +390,8 @@ public actor WebhookProtectingSettingsStore: SettingsStore {
         }
         if Self.requiresProtection(for: key) {
             let result = await ensureProtection()
-            if key == .customWorkflows, !result.allowsWorkflowLibraryReads {
+            if (key == .customWorkflows || key == .workflowLibrary),
+               !result.allowsWorkflowLibraryReads {
                 return nil
             }
         }
@@ -387,6 +405,7 @@ public actor WebhookProtectingSettingsStore: SettingsStore {
         var values = try await settingsStore.strings(forKeys: keys)
         if let result, !result.allowsWorkflowLibraryReads {
             values.removeValue(forKey: .customWorkflows)
+            values.removeValue(forKey: .workflowLibrary)
         }
         values.removeValue(forKey: .webhookConfigurationProtectionState)
         return values
@@ -401,10 +420,15 @@ public actor WebhookProtectingSettingsStore: SettingsStore {
         let storedSnapshot = try await settingsStore.settingsSnapshot(forKeys: keys)
         var values = storedSnapshot.values
         var unavailableKeys = storedSnapshot.unavailableKeys
-        if let result, !result.allowsWorkflowLibraryReads,
-           keys.contains(.customWorkflows) {
-            values.removeValue(forKey: .customWorkflows)
-            unavailableKeys.insert(.customWorkflows)
+        if let result, !result.allowsWorkflowLibraryReads {
+            if keys.contains(.customWorkflows) {
+                values.removeValue(forKey: .customWorkflows)
+                unavailableKeys.insert(.customWorkflows)
+            }
+            if keys.contains(.workflowLibrary) {
+                values.removeValue(forKey: .workflowLibrary)
+                unavailableKeys.insert(.workflowLibrary)
+            }
         }
         values.removeValue(forKey: .webhookConfigurationProtectionState)
         unavailableKeys.remove(.webhookConfigurationProtectionState)
@@ -417,9 +441,9 @@ public actor WebhookProtectingSettingsStore: SettingsStore {
     public func setString(_ value: String, forKey key: AppSettingKey) async throws {
         try rejectReservedKey(key)
         try await authorizeWrite(to: [key])
-        if key == .customWorkflows {
-            try Self.rejectPlaintextWebhookConfiguration(in: value)
-            let webhookWorkflowIDs = try Self.webhookWorkflowIDs(in: value)
+        if key == .customWorkflows || key == .workflowLibrary {
+            try Self.rejectPlaintextWebhookConfiguration(in: value, key: key)
+            let webhookWorkflowIDs = try Self.webhookWorkflowIDs(in: value, key: key)
             guard !webhookWorkflowIDs.isEmpty else {
                 try await settingsStore.setString(value, forKey: key)
                 return
@@ -430,7 +454,7 @@ public actor WebhookProtectingSettingsStore: SettingsStore {
                 webhookWorkflowIDs: webhookWorkflowIDs
             )
             try await settingsStore.setStringsAtomically([
-                .customWorkflows: value,
+                key: value,
                 .workflowEnabledStates: enabledStates,
             ])
             return
@@ -458,9 +482,24 @@ public actor WebhookProtectingSettingsStore: SettingsStore {
         try await authorizeWrite(to: Array(values.keys))
         var protectedValues = values
         let webhookWorkflowIDs: Set<UUID>
-        if let workflows = values[.customWorkflows] {
-            try Self.rejectPlaintextWebhookConfiguration(in: workflows)
-            webhookWorkflowIDs = try Self.webhookWorkflowIDs(in: workflows)
+        if let workflows = values[.workflowLibrary] {
+            try Self.rejectPlaintextWebhookConfiguration(
+                in: workflows,
+                key: .workflowLibrary
+            )
+            webhookWorkflowIDs = try Self.webhookWorkflowIDs(
+                in: workflows,
+                key: .workflowLibrary
+            )
+        } else if let workflows = values[.customWorkflows] {
+            try Self.rejectPlaintextWebhookConfiguration(
+                in: workflows,
+                key: .customWorkflows
+            )
+            webhookWorkflowIDs = try Self.webhookWorkflowIDs(
+                in: workflows,
+                key: .customWorkflows
+            )
         } else {
             webhookWorkflowIDs = try await storedWebhookWorkflowIDs()
         }
@@ -469,7 +508,9 @@ public actor WebhookProtectingSettingsStore: SettingsStore {
                 enabledStates,
                 webhookWorkflowIDs: webhookWorkflowIDs
             )
-        } else if values[.customWorkflows] != nil, !webhookWorkflowIDs.isEmpty {
+        } else if values[.customWorkflows] != nil || values[.workflowLibrary] != nil,
+          !webhookWorkflowIDs.isEmpty
+        {
             let rawEnabledStates = try await settingsStore.string(forKey: .workflowEnabledStates)
             protectedValues[.workflowEnabledStates] = try Self.protectedEnabledStatesValue(
                 rawEnabledStates,
@@ -528,21 +569,28 @@ public actor WebhookProtectingSettingsStore: SettingsStore {
     }
 
     private static func requiresProtection(for key: AppSettingKey) -> Bool {
-        key == .customWorkflows || key == .workflowEnabledStates
+        key == .customWorkflows || key == .workflowLibrary
+            || key == .workflowEnabledStates
     }
 
-    private static func rejectPlaintextWebhookConfiguration(in rawValue: String) throws {
+    private static func rejectPlaintextWebhookConfiguration(
+        in rawValue: String,
+        key: AppSettingKey = .customWorkflows
+    ) throws {
         let workflows: [WorkflowDefinition]
         do {
-            workflows = try JSONDecoder().decode(
-                [WorkflowDefinition].self,
-                from: Data(rawValue.utf8)
-            )
+            workflows =
+                key == .workflowLibrary
+                ? try decodeWorkflowLibrary(rawValue).customWorkflows
+                : try JSONDecoder().decode(
+                    [WorkflowDefinition].self,
+                    from: Data(rawValue.utf8)
+                )
         } catch {
             throw WebhookProtectingSettingsStoreError.plaintextWorkflowWriteRejected
         }
         let containsPlaintext = workflows.contains { workflow in
-            workflow.pipeline.outputActions.contains { action in
+            workflow.plan.output.actions.contains { action in
                 action.id == ExternalOutputActionID.webhookPost
                     && (
                         action.configuration.keys.contains(
@@ -560,26 +608,46 @@ public actor WebhookProtectingSettingsStore: SettingsStore {
     }
 
     private func storedWebhookWorkflowIDs() async throws -> Set<UUID> {
+        if let rawLibrary = try await settingsStore.string(forKey: .workflowLibrary),
+          !rawLibrary.isEmpty
+        {
+            return try Self.webhookWorkflowIDs(in: rawLibrary, key: .workflowLibrary)
+        }
         let rawWorkflows = try await settingsStore.string(forKey: .customWorkflows)
         return try Self.webhookWorkflowIDs(in: rawWorkflows)
     }
 
-    private static func webhookWorkflowIDs(in rawValue: String?) throws -> Set<UUID> {
+    private static func webhookWorkflowIDs(
+        in rawValue: String?,
+        key: AppSettingKey = .customWorkflows
+    ) throws -> Set<UUID> {
         guard let rawValue, !rawValue.isEmpty else { return [] }
         let workflows: [WorkflowDefinition]
         do {
-            workflows = try JSONDecoder().decode(
-                [WorkflowDefinition].self,
-                from: Data(rawValue.utf8)
-            )
+            workflows =
+                key == .workflowLibrary
+                ? try decodeWorkflowLibrary(rawValue).customWorkflows
+                : try JSONDecoder().decode(
+                    [WorkflowDefinition].self,
+                    from: Data(rawValue.utf8)
+                )
         } catch {
             throw WebhookProtectingSettingsStoreError.plaintextWorkflowWriteRejected
         }
         return Set(workflows.compactMap { workflow in
-            workflow.pipeline.outputActions.contains(where: {
+            workflow.plan.output.actions.contains(where: {
                 $0.id == ExternalOutputActionID.webhookPost
             }) ? workflow.id : nil
         })
+    }
+
+    private static func decodeWorkflowLibrary(
+        _ rawValue: String
+    ) throws -> WorkflowLibraryDocument {
+        try JSONDecoder().decode(
+            WorkflowLibraryDocument.self,
+            from: Data(rawValue.utf8)
+        )
     }
 
     private static func protectedEnabledStatesValue(

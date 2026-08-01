@@ -216,7 +216,6 @@ final class ApplicationStartupTaskCoordinatorTests: XCTestCase {
       cancelFailedAudioRecoveryRetries: {},
       stopLocalHistoryMaintenance: {},
       shutdownAudioQueue: {},
-      cancelDeepgramTest: {},
       stopStackPaste: {},
       stopClipboardGroupScheduler: {},
       stopLocalSpeechPreparation: {},

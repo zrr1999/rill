@@ -6,7 +6,7 @@ import XCTest
 
 final class MLXAudioSwiftBackendTests: XCTestCase {
   func testCatalogRoutesOnlyExactPinnedMLXModelIdentity() throws {
-    let modelID = MLXAudioModelID.qwen3ASR17BInt8.rawValue
+    let modelID = MLXAudioModelID.qwen3ASR06BInt8.rawValue
 
     XCTAssertEqual(try LocalSpeechModelCatalog.backend(for: modelID), .mlxAudioSwift)
     XCTAssertEqual(
@@ -22,10 +22,29 @@ final class MLXAudioSwiftBackendTests: XCTestCase {
       )
     }
 
-    let descriptor = MLXAudioModelCatalog.descriptor(for: .qwen3ASR17BInt8)
-    XCTAssertEqual(descriptor.repository, "mlx-community/Qwen3-ASR-1.7B-8bit")
-    XCTAssertEqual(descriptor.revision.count, 40)
-    XCTAssertGreaterThan(descriptor.approximateDownloadByteCount, 2_000_000_000)
+    let compactDescriptor = MLXAudioModelCatalog.descriptor(for: .qwen3ASR06BInt8)
+    XCTAssertEqual(compactDescriptor.repository, "mlx-community/Qwen3-ASR-0.6B-8bit")
+    XCTAssertEqual(compactDescriptor.revision, "89e96d92ba34aca20b3e29fb10cc284097d1219f")
+    XCTAssertEqual(compactDescriptor.approximateDownloadByteCount, 1_010_771_234)
+    XCTAssertEqual(compactDescriptor.files.count, 9)
+    XCTAssertEqual(
+      compactDescriptor.files.reduce(UInt64(0)) { $0 + $1.byteCount },
+      compactDescriptor.approximateDownloadByteCount
+    )
+    XCTAssertTrue(
+      compactDescriptor.files.allSatisfy {
+        $0.byteCount > 0 && $0.sha256.count == 64
+      }
+    )
+
+    let largerDescriptor = MLXAudioModelCatalog.descriptor(for: .qwen3ASR17BInt8)
+    XCTAssertEqual(largerDescriptor.repository, "mlx-community/Qwen3-ASR-1.7B-8bit")
+    XCTAssertEqual(largerDescriptor.revision.count, 40)
+    XCTAssertGreaterThan(largerDescriptor.approximateDownloadByteCount, 2_000_000_000)
+    XCTAssertEqual(
+      MLXAudioModelCatalog.distributable.map(\.id),
+      [.qwen3ASR06BInt8, .qwen3ASR17BInt8]
+    )
   }
 
   func testWorkflowOverrideSelectsExactMLXModel() {

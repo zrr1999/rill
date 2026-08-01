@@ -173,6 +173,27 @@ private struct QueuedWhitespaceRecognizer: SpeechRecognizer {
     }
 }
 
+private struct QueuedNoopAction: OutputAction {
+    let id = "stack.push"
+
+    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+        .skipped("queue-policy-test")
+    }
+}
+
+private struct QueuedCloudTextTransformer: TextTransformer {
+    let id = "queued.cloud-text"
+    let supportedKinds: [PostProcessStepKind] = [.llmRewrite]
+
+    func transform(
+        text: String,
+        step: PostProcessStep,
+        context: TransformContext
+    ) async throws -> String {
+        text
+    }
+}
+
 private actor QueuedCleanupProbe {
     private var count = 0
 
@@ -245,8 +266,10 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [QueuedWhitespaceRecognizer(id: "whitespace.recognizer")]
             ),
-            transformerRegistry: TextTransformerRegistry(transformers: []),
-            actionRegistry: OutputActionRegistry(actions: []),
+            transformerRegistry: TextTransformerRegistry(
+                transformers: [QueuedCloudTextTransformer()]
+            ),
+            actionRegistry: OutputActionRegistry(actions: [QueuedNoopAction()]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
             deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
@@ -303,7 +326,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
         )
         let workflow = queuedWorkflow(
             name: "Deferred cloud fallback",
-            recognizerID: "deepgram.prerecorded"
+            recognizerID: "remote.speech"
         )
         let lease = try await gate.issueAudioProcessingLease(
             runID: runID,
@@ -332,11 +355,13 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
             contextProvider: QueuedPolicyContextProvider(),
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
-                    QueuedPolicyRecognizer(id: "deepgram.prerecorded", barrier: recognition),
+                    QueuedPolicyRecognizer(id: "sherpa-onnx.local", barrier: recognition),
                 ]
             ),
-            transformerRegistry: TextTransformerRegistry(transformers: []),
-            actionRegistry: OutputActionRegistry(actions: []),
+            transformerRegistry: TextTransformerRegistry(
+                transformers: [QueuedCloudTextTransformer()]
+            ),
+            actionRegistry: OutputActionRegistry(actions: [QueuedNoopAction()]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
             deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
@@ -491,7 +516,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
             [
                 QueuedConfirmationProbe.Call(
                     workflowID: fixture.cloudWorkflow.id,
-                    destinations: [.cloudSpeech]
+                    destinations: [.localSpeech, .cloudText]
                 ),
             ]
         )
@@ -522,7 +547,7 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
     )
     let cloudWorkflow = queuedWorkflow(
         name: "Deferred cloud",
-        recognizerID: "deepgram.prerecorded"
+        recognizerID: "remote.speech"
     )
     let localLease = try await gate.issueAudioProcessingLease(
         runID: firstRunID,
@@ -550,14 +575,26 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
         recognizerRegistry: SpeechRecognizerRegistry(
             recognizers: [
                 QueuedPolicyRecognizer(id: "sherpa-onnx.local", barrier: recognition),
-                QueuedPolicyRecognizer(id: "deepgram.prerecorded", barrier: recognition),
             ]
         ),
-        transformerRegistry: TextTransformerRegistry(transformers: []),
-        actionRegistry: OutputActionRegistry(actions: []),
+        transformerRegistry: TextTransformerRegistry(
+            transformers: [QueuedCloudTextTransformer()]
+        ),
+        actionRegistry: OutputActionRegistry(actions: [QueuedNoopAction()]),
         candidateResolver: CandidateResolver(eventBus: eventBus),
         deliveryStack: DeliveryStack(eventBus: eventBus),
-        eventBus: eventBus
+        eventBus: eventBus,
+        vocabularyCollectionProvider: {
+            [
+                .personal(
+                    entries: [
+                        VocabularyEntry(
+                            content: .hotword(phrase: "capture-time-hint")
+                        ),
+                    ]
+                ),
+            ]
+        }
     )
     let cleanup = QueuedCleanupProbe()
     let queue = CapturedAudioProcessingQueue(
@@ -622,12 +659,23 @@ private struct QueuedPolicyContextProvider: ContextProvider {
 }
 
 private func queuedWorkflow(name: String, recognizerID: String) -> WorkflowDefinition {
-    WorkflowDefinition(
+    let usesCloudTextFixture = recognizerID == "remote.speech"
+    var workflow = WorkflowDefinition(
         name: name,
         trigger: .hotkey,
-        pipeline: PipelineDeclaration(recognizerID: recognizerID, outputActions: []),
+        pipeline: PipelineDeclaration(
+            recognizerID: usesCloudTextFixture ? "sherpa-onnx.local" : recognizerID,
+            postProcessSteps: usesCloudTextFixture
+                ? [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")]
+                : [],
+            outputActions: [OutputActionReference(id: "stack.push")]
+        ),
         ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
+    workflow.plan.setup.vocabularyBindings = [
+        VocabularyCollectionBinding(collectionID: VocabularyCollection.personalID),
+    ]
+    return workflow
 }
 
 private func queuedPrivacyContext() -> ContextSnapshot {

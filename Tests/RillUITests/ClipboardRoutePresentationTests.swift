@@ -323,7 +323,8 @@ final class ClipboardRoutePresentationTests: XCTestCase {
             alternatives: [],
             tags: [],
             searchIndexText: ClipboardHistoryEntry.normalizeSearchText(text),
-            includesSimilarText: false
+            includesSimilarText: false,
+            isPinned: false
         )
     }
 

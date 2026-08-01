@@ -69,7 +69,7 @@ final class QueuedAudioAuthorizationLeaseTests: XCTestCase {
             runID: runID,
             workflow: workflow
         )
-        workflow.pipeline.recognizerID = "deepgram.prerecorded"
+        workflow.pipeline.recognizerID = "remote.speech"
 
         let claim = try await lease.claim(
             triggerEvent: WorkflowTriggerEvent(
@@ -311,7 +311,9 @@ private func makeLeaseWorkflow() -> WorkflowDefinition {
 
 private func makeCloudLeaseWorkflow() -> WorkflowDefinition {
     var workflow = makeLeaseWorkflow()
-    workflow.pipeline.recognizerID = "deepgram.prerecorded"
+    workflow.pipeline.postProcessSteps = [
+        PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
+    ]
     return workflow
 }
 

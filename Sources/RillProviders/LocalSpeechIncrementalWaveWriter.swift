@@ -3,7 +3,7 @@ import Foundation
 
 enum LocalSpeechCaptureLimits {
   static let sampleRateHz = 16_000.0
-  static let maximumRequestedDurationSeconds = 20.0
+  static let maximumRequestedDurationSeconds = 120.0
   static let startupToleranceSeconds = 3.1
   static let maximumAcceptedDurationSeconds =
     maximumRequestedDurationSeconds + startupToleranceSeconds
@@ -21,12 +21,17 @@ protocol LocalSpeechRecordingWriting: AnyObject, Sendable {
   var fileURL: URL { get }
 
   func append(_ samples: [Float]) throws
+  func removeFrameLimit()
   func finalize() throws -> LocalSpeechRecordingArtifact
   func closeForDiscard()
 }
 
+extension LocalSpeechRecordingWriting {
+  func removeFrameLimit() {}
+}
+
 typealias LocalSpeechRecordingWriterFactory =
-  @Sendable (URL, Int) throws -> any LocalSpeechRecordingWriting
+  @Sendable (URL, Int?) throws -> any LocalSpeechRecordingWriting
 
 enum LocalSpeechIncrementalWaveWriterError: Error, Sendable, Equatable {
   case invalidSamples
@@ -52,19 +57,19 @@ final class LocalSpeechIncrementalWaveWriter: LocalSpeechRecordingWriting, @unch
   private let lock = NSLock()
   private let format: AVAudioFormat
   private let scratchBuffer: AVAudioPCMBuffer
-  private let maximumFrameCount: Int
+  private var maximumFrameCount: Int?
   private var audioFile: AVAudioFile?
   private var frameCount = 0
 
   init(
     fileURL: URL,
-    maximumFrameCount: Int = LocalSpeechIncrementalWaveWriter.maximumSupportedFrameCount
+    maximumFrameCount: Int? = LocalSpeechIncrementalWaveWriter.maximumSupportedFrameCount
   ) throws {
-    guard maximumFrameCount >= 0 else {
+    if let maximumFrameCount, maximumFrameCount < 0 {
       throw LocalSpeechIncrementalWaveWriterError.invalidFrameLimit
     }
     self.fileURL = fileURL
-    self.maximumFrameCount = min(maximumFrameCount, Self.maximumSupportedFrameCount)
+    self.maximumFrameCount = maximumFrameCount
     guard
       let format = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
@@ -112,8 +117,10 @@ final class LocalSpeechIncrementalWaveWriter: LocalSpeechRecordingWriting, @unch
       guard frameCount <= Int.max - samples.count else {
         throw LocalSpeechIncrementalWaveWriterError.frameCountOverflow
       }
-      guard frameCount + samples.count <= maximumFrameCount else {
-        throw LocalSpeechIncrementalWaveWriterError.frameLimitExceeded
+      if let maximumFrameCount {
+        guard frameCount + samples.count <= maximumFrameCount else {
+          throw LocalSpeechIncrementalWaveWriterError.frameLimitExceeded
+        }
       }
 
       var offset = 0
@@ -131,6 +138,12 @@ final class LocalSpeechIncrementalWaveWriter: LocalSpeechRecordingWriting, @unch
         frameCount += writeCount
         offset += writeCount
       }
+    }
+  }
+
+  func removeFrameLimit() {
+    lock.withLock {
+      maximumFrameCount = nil
     }
   }
 

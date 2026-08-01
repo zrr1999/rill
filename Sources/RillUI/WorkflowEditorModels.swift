@@ -9,6 +9,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         case hotkey
         case manual
         case menuBar
+        case wakeWord
         case groupItemCreated
         case groupItemEdited
         case groupItemRemoved
@@ -17,7 +18,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
 
         public var isVoiceEvent: Bool {
             switch self {
-            case .hotkey, .manual, .menuBar: return true
+            case .hotkey, .manual, .menuBar, .wakeWord: return true
             case .groupItemCreated, .groupItemEdited, .groupItemRemoved: return false
             }
         }
@@ -27,13 +28,14 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             case .hotkey: return .hotkey
             case .manual: return .manual
             case .menuBar: return .menuBar
+            case .wakeWord: return .wakeWord
             case .groupItemCreated, .groupItemEdited, .groupItemRemoved: return nil
             }
         }
 
         var groupEventKind: ClipboardGroupEventKind? {
             switch self {
-            case .hotkey, .manual, .menuBar: return nil
+            case .hotkey, .manual, .menuBar, .wakeWord: return nil
             case .groupItemCreated: return .itemCreated
             case .groupItemEdited: return .itemEdited
             case .groupItemRemoved: return .itemRemoved
@@ -46,7 +48,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     public enum RecognizerChoice: String, CaseIterable, Identifiable, Codable, Sendable {
         case automatic
         case localSpeech
-        case cloudSpeech
 
         public var id: String { rawValue }
 
@@ -54,8 +55,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             switch self {
             case .automatic, .localSpeech:
                 return "sherpa-onnx.local"
-            case .cloudSpeech:
-                return "deepgram.prerecorded"
             }
         }
 
@@ -63,8 +62,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             switch recognizerID {
             case "sherpa-onnx.local":
                 self = .localSpeech
-            case "deepgram.prerecorded":
-                self = .cloudSpeech
             default:
                 return nil
             }
@@ -75,6 +72,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         case pasteIntoApp
         case copyToClipboard
         case saveToQueue
+        case speakOnly
         case sendToWebhook
         case runShortcut
         case appendToMarkdown
@@ -83,6 +81,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             .pasteIntoApp,
             .copyToClipboard,
             .saveToQueue,
+            .speakOnly,
             .runShortcut,
             .appendToMarkdown,
         ]
@@ -97,6 +96,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
                 return "clipboard.copy"
             case .saveToQueue:
                 return "stack.push"
+            case .speakOnly:
+                return SpeechOutputActionID.speak
             case .sendToWebhook:
                 return ExternalOutputActionID.webhookPost
             case .runShortcut:
@@ -114,19 +115,21 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
                 return .clipboardOnly
             case .saveToQueue:
                 return .stackFirst
-            case .sendToWebhook, .runShortcut, .appendToMarkdown:
+            case .speakOnly, .sendToWebhook, .runShortcut, .appendToMarkdown:
                 return .immediate
             }
         }
 
         init?(workflow: WorkflowDefinition) {
-            switch workflow.pipeline.outputActions.first?.id {
+            switch workflow.plan.output.actions.first?.id {
             case "inject.text":
                 self = .pasteIntoApp
             case "clipboard.copy":
                 self = .copyToClipboard
             case "stack.push":
                 self = .saveToQueue
+            case SpeechOutputActionID.speak:
+                self = .speakOnly
             case ExternalOutputActionID.webhookPost:
                 self = .sendToWebhook
             case ExternalOutputActionID.shortcutsRun:
@@ -174,6 +177,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     // Event
     public var eventType: EventType
     public var sourceGroupID: UUID?
+    public var wakePhrasesText: String
 
     // Condition
     public var excludePolishTag: Bool
@@ -182,7 +186,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     public var recognizer: RecognizerChoice
     public var speechLanguageOverride: String
     public var localSpeechModelOverride: String
-    public var deepgramModelOverride: String
+    public var vocabularyBindings: [VocabularyCollectionBinding]
     public var postProcessSteps: [PostProcessStepDraft]
     public var destination: DestinationChoice
     public var targetGroupID: UUID?
@@ -191,6 +195,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     public var shortcutName: String
     public var markdownAppendPath: String
     public var excludeFromWorkflowCapture: Bool
+    public var speaksResult: Bool
+    public var speechVoice: Qwen3TTSVoice
 
     // Action – group event
     public var groupActionKind: ClipboardGroupActionKind
@@ -202,11 +208,14 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         name: String = "",
         eventType: EventType = .hotkey,
         sourceGroupID: UUID? = nil,
+        wakePhrasesText: String = WakeWordConfiguration.defaultPhrases.joined(separator: "\n"),
         excludePolishTag: Bool = true,
         recognizer: RecognizerChoice = .automatic,
         speechLanguageOverride: String = "",
         localSpeechModelOverride: String = "",
-        deepgramModelOverride: String = "",
+        vocabularyBindings: [VocabularyCollectionBinding] = [
+            VocabularyCollectionBinding(collectionID: VocabularyCollection.personalID),
+        ],
         postProcessSteps: [PostProcessStepDraft] = [PostProcessStepDraft(kind: .normalizeWhitespace)],
         destination: DestinationChoice = .pasteIntoApp,
         targetGroupID: UUID? = nil,
@@ -215,17 +224,20 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         shortcutName: String = "",
         markdownAppendPath: String = "",
         excludeFromWorkflowCapture: Bool = true,
+        speaksResult: Bool = false,
+        speechVoice: Qwen3TTSVoice = .vivian,
         groupActionKind: ClipboardGroupActionKind = .editItem,
         actionPrompt: String = ""
     ) {
         self.name = name
         self.eventType = eventType
         self.sourceGroupID = sourceGroupID
+        self.wakePhrasesText = wakePhrasesText
         self.excludePolishTag = excludePolishTag
         self.recognizer = recognizer
         self.speechLanguageOverride = speechLanguageOverride
         self.localSpeechModelOverride = localSpeechModelOverride
-        self.deepgramModelOverride = deepgramModelOverride
+        self.vocabularyBindings = vocabularyBindings
         self.postProcessSteps = postProcessSteps
         self.destination = destination
         self.targetGroupID = targetGroupID
@@ -234,6 +246,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         self.shortcutName = shortcutName
         self.markdownAppendPath = markdownAppendPath
         self.excludeFromWorkflowCapture = excludeFromWorkflowCapture
+        self.speaksResult = speaksResult
+        self.speechVoice = speechVoice
         self.groupActionKind = groupActionKind
         self.actionPrompt = actionPrompt
     }
@@ -246,13 +260,18 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     // MARK: - From WorkflowDefinition (voice workflows)
 
     init?(workflow: WorkflowDefinition) {
+        let selectedRecognizer: RecognizerChoice?
+        if workflow.prefersAutomaticRecognizerSelection {
+            selectedRecognizer = .automatic
+        } else if let route = workflow.plan.setup.speechRoute {
+            selectedRecognizer = RecognizerChoice(recognizerID: route.recognizerID)
+        } else {
+            selectedRecognizer = nil
+        }
         guard
-            let recognizer = workflow.prefersAutomaticRecognizerSelection
-                ? RecognizerChoice.automatic
-                : RecognizerChoice(recognizerID: workflow.pipeline.recognizerID),
+            let recognizer = selectedRecognizer,
             let destination = DestinationChoice(workflow: workflow),
-            destination != .sendToWebhook,
-            workflow.trigger != .wakeWord
+            destination != .sendToWebhook
         else {
             return nil
         }
@@ -268,9 +287,12 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             case .hotkey: self.eventType = .hotkey
             case .manual: self.eventType = .manual
             case .menuBar: self.eventType = .menuBar
-            default: self.eventType = .manual
+            case .wakeWord: self.eventType = .wakeWord
             }
         }
+        self.wakePhrasesText =
+            workflow.plan.setup.wakeWord?.phrases.joined(separator: "\n")
+            ?? WakeWordConfiguration.defaultPhrases.joined(separator: "\n")
 
         if let sgid = workflow.metadata["sourceGroupID"], let uuid = UUID(uuidString: sgid) {
             self.sourceGroupID = uuid
@@ -282,15 +304,26 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         self.recognizer = recognizer
         self.speechLanguageOverride = workflow.metadata[WorkflowMetadataKey.languageOverride] ?? ""
         self.destination = destination
-        self.postProcessSteps = workflow.pipeline.postProcessSteps.map { PostProcessStepDraft(step: $0) }
+        self.vocabularyBindings = workflow.plan.setup.vocabularyBindings
+        self.postProcessSteps = workflow.plan.process.steps
+            .compactMap(\.postProcessStep)
+            .map { PostProcessStepDraft(step: $0) }
         self.excludeFromWorkflowCapture = workflow.excludesOutputFromWorkflowCapture
+        self.speaksResult = workflow.plan.output.actions.contains {
+            $0.id == SpeechOutputActionID.speak
+        }
+        self.speechVoice =
+            workflow.plan.output.actions
+            .first(where: { $0.id == SpeechOutputActionID.speak })?
+            .configuration[SpeechOutputActionConfigurationKey.voice]
+            .flatMap(Qwen3TTSVoice.init(rawValue:))
+            ?? .vivian
         self.localSpeechModelOverride =
             workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride]
             ?? workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride]
             ?? ""
-        self.deepgramModelOverride = workflow.metadata[WorkflowMetadataKey.deepgramModelOverride] ?? ""
         self.targetGroupID = workflow.targetClipboardGroupID
-        let outputConfiguration = workflow.pipeline.outputActions.first?.configuration ?? [:]
+        let outputConfiguration = workflow.plan.output.actions.first?.configuration ?? [:]
         self.webhookURL = outputConfiguration[ExternalOutputActionConfigurationKey.webhookURL] ?? ""
         self.webhookHeadersJSON = outputConfiguration[ExternalOutputActionConfigurationKey.webhookHeadersJSON] ?? ""
         self.shortcutName = outputConfiguration[ExternalOutputActionConfigurationKey.shortcutName] ?? ""
@@ -317,7 +350,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         metadata["provider"] = recognizer.providerMetadataValue
         let trimmedLanguageOverride = speechLanguageOverride.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedModelOverride = localSpeechModelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedDeepgramModelOverride = deepgramModelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
         let outputActionConfiguration = destination.outputConfiguration(from: self)
 
         // Event metadata
@@ -358,17 +390,12 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         } else {
             metadata.removeValue(forKey: WorkflowMetadataKey.languageOverride)
         }
-        if recognizer != .cloudSpeech, !trimmedModelOverride.isEmpty {
+        if !trimmedModelOverride.isEmpty {
             metadata[WorkflowMetadataKey.localSpeechModelOverride] = trimmedModelOverride
             metadata.removeValue(forKey: WorkflowMetadataKey.legacyWhisperKitModelOverride)
         } else {
             metadata.removeValue(forKey: WorkflowMetadataKey.localSpeechModelOverride)
             metadata.removeValue(forKey: WorkflowMetadataKey.legacyWhisperKitModelOverride)
-        }
-        if recognizer != .localSpeech, !trimmedDeepgramModelOverride.isEmpty {
-            metadata[WorkflowMetadataKey.deepgramModelOverride] = trimmedDeepgramModelOverride
-        } else {
-            metadata.removeValue(forKey: WorkflowMetadataKey.deepgramModelOverride)
         }
         if destination == .saveToQueue, let targetGroupID {
             metadata[WorkflowMetadataKey.targetClipboardGroupID] = targetGroupID.uuidString
@@ -376,19 +403,58 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             metadata.removeValue(forKey: WorkflowMetadataKey.targetClipboardGroupID)
         }
 
+        let route = WorkflowSpeechRoute(
+            selection: recognizer == .automatic ? .automatic : .fixed,
+            recognizerID: recognizer.recognizerID,
+            language: trimmedLanguageOverride.isEmpty ? nil : trimmedLanguageOverride,
+            localModel:
+                !trimmedModelOverride.isEmpty
+                ? trimmedModelOverride
+                : nil
+        )
+        let processSteps =
+            [
+                WorkflowProcessStep(kind: .recognizeSpeech),
+                WorkflowProcessStep(kind: .applyVocabulary),
+            ]
+            + postProcessSteps.map { WorkflowProcessStep($0.toStep()) }
+        var outputActions = [
+            OutputActionReference(
+                id: destination.outputActionID,
+                configuration: outputActionConfiguration
+            ),
+        ]
+        if speaksResult, destination != .speakOnly {
+            outputActions.append(
+                OutputActionReference(
+                    id: SpeechOutputActionID.speak,
+                    configuration: [
+                        SpeechOutputActionConfigurationKey.provider:
+                            SpeechSynthesisProvider.automatic.rawValue,
+                        SpeechOutputActionConfigurationKey.voice:
+                            speechVoice.rawValue,
+                    ]
+                )
+            )
+        }
         return WorkflowDefinition(
             id: id,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             trigger: trigger,
-            pipeline: PipelineDeclaration(
-                recognizerID: recognizer.recognizerID,
-                postProcessSteps: postProcessSteps.map { $0.toStep() },
-                outputActions: [OutputActionReference(
-                    id: destination.outputActionID,
-                    configuration: outputActionConfiguration
-                )],
-                uncertaintyPolicy: UncertaintyPolicy(mode: .off, confidenceThreshold: 0, timeoutSeconds: 0),
-                deliveryPolicy: DeliveryPolicy(strategy: destination.deliveryStrategy)
+            plan: WorkflowPlan(
+                setup: WorkflowSetupPhase(
+                    speechRoute: route,
+                    vocabularyBindings: vocabularyBindings,
+                    wakeWord:
+                        trigger == .wakeWord
+                        ? WakeWordConfiguration(phrases: wakePhrases)
+                        : nil
+                ),
+                process: WorkflowProcessPhase(steps: processSteps),
+                output: WorkflowOutputPhase(
+                    actions: outputActions,
+                    deliveryPolicy: DeliveryPolicy(strategy: destination.deliveryStrategy)
+                )
             ),
             ui: WorkflowUIConfig(
                 symbolName: systemSymbol.rawValue,
@@ -429,13 +495,32 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
                 ? "Clipboard event workflows are unavailable until production actions and receipts are implemented."
                 : "剪贴板事件工作流将在生产级动作与执行收据完成后开放。"
         }
-        if let unsupportedStep = postProcessSteps.first(where: { $0.kind != .normalizeWhitespace }) {
+        if eventType == .wakeWord {
+            do {
+                _ = try WakeWordConfiguration(phrases: wakePhrases).validatedPhrases()
+            } catch {
+                return language == .english
+                    ? error.localizedDescription
+                    : "唤醒词必须包含 1–4 个不重复的有效短语。"
+            }
+        }
+        if let unsupportedStep = postProcessSteps.first(where: {
+            $0.kind != .normalizeWhitespace && $0.kind != .llmRewrite
+        }) {
             return language == .english
                 ? "The \(unsupportedStep.kind.rawValue) step is not available without a configured production transformer."
                 : "尚未配置生产级 transformer，不能使用 \(unsupportedStep.kind.rawValue) 步骤。"
         }
+        if postProcessSteps.contains(where: {
+            $0.kind == .llmRewrite
+                && $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) {
+            return language == .english
+                ? "Enter an instruction for every LLM rewrite step."
+                : "请为每个大模型改写步骤填写指令。"
+        }
         switch destination {
-        case .pasteIntoApp, .copyToClipboard, .saveToQueue:
+        case .pasteIntoApp, .copyToClipboard, .saveToQueue, .speakOnly:
             return nil
         case .sendToWebhook:
             return UIStrings.externalOutputValidationMessage(.webhookUnavailable, language: language)
@@ -457,6 +542,14 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
 
     // MARK: - Derived
 
+    var wakePhrases: [String] {
+        wakePhrasesText
+            .split(whereSeparator: { $0.isNewline || $0 == "," || $0 == "，" })
+            .map(String.init)
+            .map(WakeWordConfiguration.normalizedPhrase)
+            .filter { !$0.isEmpty }
+    }
+
     private var systemSymbol: RillSystemSymbol {
         if !eventType.isVoiceEvent {
             return .boltFill
@@ -475,6 +568,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             return .docOnClipboard
         case .saveToQueue:
             return .squareStack3dUp
+        case .speakOnly:
+            return .speakerWave2
         case .sendToWebhook:
             return .point3ConnectedTrianglepathDotted
         case .runShortcut:
@@ -493,8 +588,6 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             return "blue"
         case .localSpeech:
             return "teal"
-        case .cloudSpeech:
-            return "cyan"
         }
     }
 
@@ -505,6 +598,13 @@ private extension WorkflowEditorDraft.DestinationChoice {
         switch self {
         case .pasteIntoApp, .copyToClipboard, .saveToQueue:
             return [:]
+        case .speakOnly:
+            return [
+                SpeechOutputActionConfigurationKey.provider:
+                    SpeechSynthesisProvider.automatic.rawValue,
+                SpeechOutputActionConfigurationKey.voice:
+                    draft.speechVoice.rawValue,
+            ]
         case .sendToWebhook:
             var configuration: [String: String] = [:]
             configuration[ExternalOutputActionConfigurationKey.webhookURL] = draft.webhookURL
@@ -535,8 +635,6 @@ private extension WorkflowEditorDraft.RecognizerChoice {
             return "automatic"
         case .localSpeech:
             return "sherpa-onnx"
-        case .cloudSpeech:
-            return "deepgram"
         }
     }
 }

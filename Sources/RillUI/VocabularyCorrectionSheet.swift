@@ -12,10 +12,12 @@ public struct VocabularyCorrectionSheet: View {
     @Bindable private var model: AppModel
     @State private var draft: VocabularyCorrectionDraft
     @State private var saveIssue: SaveIssue?
+    @State private var targetCollectionID: UUID?
 
     public init(model: AppModel, source: RecognitionCorrectionSource) {
         self.model = model
         _draft = State(initialValue: VocabularyCorrectionDraft(source: source))
+        _targetCollectionID = State(initialValue: VocabularyCollection.personalID)
     }
 
     public var body: some View {
@@ -117,6 +119,8 @@ public struct VocabularyCorrectionSheet: View {
     private func optionRow(_ option: VocabularyCorrectionDraft.Option) -> some View {
         Button {
             draft.selectOption(id: option.id)
+            targetCollectionID =
+                compatibleCollections(for: option.scope.knownConstraints).first?.id
             saveIssue = nil
         } label: {
             HStack(alignment: .top, spacing: 10) {
@@ -173,6 +177,24 @@ public struct VocabularyCorrectionSheet: View {
                         .toggleStyle(.checkbox)
                     }
                 }
+
+                Picker(
+                    model.language == .english ? "Save to collection" : "保存到词库",
+                    selection: $targetCollectionID
+                ) {
+                    Text(
+                        model.language == .english
+                            ? "Create matching scoped collection"
+                            : "创建匹配条件的词库"
+                    )
+                    .tag(nil as UUID?)
+                    ForEach(compatibleCollections(for: option.scope.knownConstraints)) {
+                        collection in
+                        Text(collection.name).tag(collection.id as UUID?)
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityIdentifier("vocabulary.correction.target-collection")
             }
         }
         .padding(12)
@@ -288,6 +310,14 @@ public struct VocabularyCorrectionSheet: View {
             ?? groupID.uuidString
     }
 
+    private func compatibleCollections(
+        for scope: VocabularyRuleScope?
+    ) -> [VocabularyCollection] {
+        guard let scope else { return [] }
+        let compatibleIDs = Set(model.vocabularyCollectionIDs(compatibleWith: scope))
+        return model.vocabularyCollections.filter { compatibleIDs.contains($0.id) }
+    }
+
     private func unknownScopeLabel(_ field: VocabularyCorrectionScopeField) -> String {
         switch field {
         case .bundleIdentifier:
@@ -312,7 +342,10 @@ public struct VocabularyCorrectionSheet: View {
             return
         }
 
-        switch model.saveVocabularyCorrectionRule(rule) {
+        let compatibleIDs = Set(model.vocabularyCollectionIDs(compatibleWith: rule.scope))
+        let selectedCollectionID =
+            targetCollectionID.flatMap { compatibleIDs.contains($0) ? $0 : nil }
+        switch model.saveVocabularyCorrectionRule(rule, to: selectedCollectionID) {
         case .created:
             model.append(
                 english: L10n.string(.vocabularyCorrectionCreated, language: .english),
@@ -335,7 +368,7 @@ public struct VocabularyCorrectionSheet: View {
     }
 
     private func openVocabularySettings() {
-        model.selectSidebarSection(.settings)
+        model.selectSidebarSection(.workflows)
         dismiss()
     }
 }

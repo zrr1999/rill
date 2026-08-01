@@ -39,6 +39,10 @@ public enum SpeechWorkerClientError: Error, LocalizedError, Sendable, Equatable 
         "The recorded audio is invalid."
       case .recognitionFailed:
         "Local speech recognition failed."
+      case .invalidText:
+        "The speech worker rejected the synthesis text."
+      case .synthesisFailed:
+        "Local speech synthesis failed."
       }
     case .invalidManagedAudio:
       "Local speech recognition requires Rill-managed temporary audio."
@@ -55,6 +59,11 @@ public enum SpeechWorkerClientError: Error, LocalizedError, Sendable, Equatable 
 /// SIGTERM, wait 500 ms, then send SIGKILL if necessary. No continuation is
 /// released until that bounded termination sequence has completed.
 public actor SpeechWorkerSupervisor {
+  private struct RequestLaneWaiter {
+    let id: UUID
+    let continuation: CheckedContinuation<Bool, Never>
+  }
+
   public struct Configuration: Sendable, Equatable {
     public var executableURL: URL
     public var arguments: [String]
@@ -81,6 +90,8 @@ public actor SpeechWorkerSupervisor {
   private var session: SpeechWorkerProcessSession?
   private var retiringSession: SpeechWorkerProcessSession?
   private var activeRequestID: UUID?
+  private var requestLaneIsHeld = false
+  private var requestLaneWaiters: [RequestLaneWaiter] = []
   private var isShutdown = false
 
   public init(configuration: Configuration) {
@@ -109,7 +120,11 @@ public actor SpeechWorkerSupervisor {
       ),
       timeout: timeout
     )
-    guard let result = response.result, response.preparedModelID == nil else {
+    guard let result = response.result,
+      response.synthesisResult == nil,
+      response.preparedModelID == nil,
+      response.releasedModelID == nil
+    else {
       if let session {
         try await invalidate(session)
       }
@@ -120,7 +135,8 @@ public actor SpeechWorkerSupervisor {
 
   public func prepareModel(
     _ payload: SpeechWorkerModelPreparationPayload,
-    timeout: Duration
+    timeout: Duration,
+    progress: @escaping @Sendable (SpeechWorkerProgress) -> Void = { _ in }
   ) async throws -> String {
     _ = try ensureSession()
     let response = try await exchange(
@@ -129,9 +145,14 @@ public actor SpeechWorkerSupervisor {
         generation: generation,
         modelPreparationPayload: payload
       ),
-      timeout: timeout
+      timeout: timeout,
+      progress: progress
     )
-    guard response.result == nil, response.preparedModelID == payload.modelID else {
+    guard response.result == nil,
+      response.synthesisResult == nil,
+      response.preparedModelID == payload.modelID,
+      response.releasedModelID == nil
+    else {
       if let session {
         try await invalidate(session)
       }
@@ -140,23 +161,108 @@ public actor SpeechWorkerSupervisor {
     return payload.modelID
   }
 
+  public func prepareTTSModel(
+    _ payload: SpeechWorkerModelPreparationPayload,
+    timeout: Duration,
+    progress: @escaping @Sendable (SpeechWorkerProgress) -> Void = { _ in }
+  ) async throws -> String {
+    _ = try ensureSession()
+    let response = try await exchange(
+      SpeechWorkerRequest(
+        requestID: requestIDGenerator(),
+        generation: generation,
+        ttsModelPreparationPayload: payload
+      ),
+      timeout: timeout,
+      progress: progress
+    )
+    guard response.result == nil,
+      response.synthesisResult == nil,
+      response.preparedModelID == payload.modelID,
+      response.releasedModelID == nil
+    else {
+      if let session {
+        try await invalidate(session)
+      }
+      throw SpeechWorkerClientError.protocolViolation
+    }
+    return payload.modelID
+  }
+
+  public func synthesize(
+    _ payload: SpeechWorkerSynthesisPayload,
+    timeout: Duration
+  ) async throws -> SpeechWorkerSynthesisResult {
+    _ = try ensureSession()
+    let response = try await exchange(
+      SpeechWorkerRequest(
+        requestID: requestIDGenerator(),
+        generation: generation,
+        synthesisPayload: payload
+      ),
+      timeout: timeout
+    )
+    guard let result = response.synthesisResult,
+      response.result == nil,
+      response.preparedModelID == nil,
+      response.releasedModelID == nil
+    else {
+      if let session {
+        try await invalidate(session)
+      }
+      throw SpeechWorkerClientError.protocolViolation
+    }
+    return result
+  }
+
+  public func releaseTTSModel(
+    modelID: String,
+    timeout: Duration = .seconds(10)
+  ) async throws {
+    guard session != nil else { return }
+    let response = try await exchange(
+      SpeechWorkerRequest(
+        requestID: requestIDGenerator(),
+        generation: generation,
+        releaseTTSModelID: modelID
+      ),
+      timeout: timeout
+    )
+    guard response.result == nil,
+      response.synthesisResult == nil,
+      response.preparedModelID == nil,
+      response.releasedModelID == modelID
+    else {
+      if let session {
+        try await invalidate(session)
+      }
+      throw SpeechWorkerClientError.protocolViolation
+    }
+  }
+
   private func exchange(
     _ request: SpeechWorkerRequest,
-    timeout: Duration
+    timeout: Duration,
+    progress: @escaping @Sendable (SpeechWorkerProgress) -> Void = { _ in }
   ) async throws -> SpeechWorkerResponse {
     precondition(timeout > .zero)
-    guard activeRequestID == nil else {
-      throw SpeechWorkerClientError.requestAlreadyActive
-    }
+    let laneID = UUID()
+    try await acquireRequestLane(id: laneID)
+    defer { releaseRequestLane(id: laneID) }
+    try Task.checkCancellation()
+
     let session = try ensureSession()
     let requestID = request.requestID
     let requestGeneration = request.generation
     activeRequestID = request.requestID
     do {
-      let response = try await session.exchange(request, timeout: timeout)
+      let response = try await session.exchange(
+        request,
+        timeout: timeout,
+        progress: progress
+      )
       if Task.isCancelled {
         try await invalidate(session)
-        activeRequestID = nil
         throw CancellationError()
       }
       guard self.session === session, generation == requestGeneration else {
@@ -169,8 +275,10 @@ public actor SpeechWorkerSupervisor {
         try await invalidate(session)
         throw SpeechWorkerClientError.staleResponse
       }
-      activeRequestID = nil
       switch response.status {
+      case .progress:
+        try await invalidate(session)
+        throw SpeechWorkerClientError.protocolViolation
       case .success:
         return response
       case .failure:
@@ -181,12 +289,54 @@ public actor SpeechWorkerSupervisor {
         throw SpeechWorkerClientError.remoteFailure(failure)
       }
     } catch {
-      activeRequestID = nil
       if !session.isRunning {
         self.session = nil
       }
       throw error
     }
+  }
+
+  private func acquireRequestLane(id: UUID) async throws {
+    if !requestLaneIsHeld, requestLaneWaiters.isEmpty {
+      requestLaneIsHeld = true
+      return
+    }
+
+    let acquired = await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        guard !Task.isCancelled else {
+          continuation.resume(returning: false)
+          return
+        }
+        requestLaneWaiters.append(
+          RequestLaneWaiter(id: id, continuation: continuation)
+        )
+      }
+    } onCancel: {
+      Task {
+        await self.cancelRequestLaneWaiter(id: id)
+      }
+    }
+    guard acquired else { throw CancellationError() }
+  }
+
+  private func cancelRequestLaneWaiter(id: UUID) {
+    guard let index = requestLaneWaiters.firstIndex(where: { $0.id == id }) else {
+      return
+    }
+    let waiter = requestLaneWaiters.remove(at: index)
+    waiter.continuation.resume(returning: false)
+  }
+
+  private func releaseRequestLane(id _: UUID) {
+    activeRequestID = nil
+    guard !requestLaneWaiters.isEmpty else {
+      requestLaneIsHeld = false
+      return
+    }
+    requestLaneIsHeld = true
+    let waiter = requestLaneWaiters.removeFirst()
+    waiter.continuation.resume(returning: true)
   }
 
   /// Drops the worker's native model cache by retiring the entire process.
@@ -215,6 +365,10 @@ public actor SpeechWorkerSupervisor {
 
   func retainedStderrByteCount() -> Int {
     session?.retainedStderrByteCount ?? 0
+  }
+
+  func queuedRequestCountForTesting() -> Int {
+    requestLaneWaiters.count
   }
 
   private func ensureSession() throws -> SpeechWorkerProcessSession {
@@ -467,7 +621,8 @@ private final class SpeechWorkerProcessSession: @unchecked Sendable {
 
   func exchange(
     _ request: SpeechWorkerRequest,
-    timeout: Duration
+    timeout: Duration,
+    progress: @escaping @Sendable (SpeechWorkerProgress) -> Void
   ) async throws -> SpeechWorkerResponse {
     if Task.isCancelled {
       _ = await terminateAndWait()
@@ -489,18 +644,35 @@ private final class SpeechWorkerProcessSession: @unchecked Sendable {
     let responseTask = Task.detached(priority: Task.currentPriority) { [self] in
       let result: Result<SpeechWorkerResponse, SpeechWorkerClientError>
       do {
-        guard
-          let data = try outputReader.readLine(
-            maximumByteCount: SpeechWorkerProtocol.maximumResponseByteCount
-          )
-        else {
-          result = .failure(.workerDisconnected)
-          await race.resolve(.response(result))
-          return
+        while true {
+          guard
+            let data = try outputReader.readLine(
+              maximumByteCount: SpeechWorkerProtocol.maximumResponseByteCount
+            )
+          else {
+            throw SpeechWorkerClientError.workerDisconnected
+          }
+          let response = try SpeechWorkerProtocolCodec.decodeResponseLine(data)
+          guard response.requestID == request.requestID,
+            response.generation == request.generation,
+            response.protocolVersion == SpeechWorkerProtocol.version
+          else {
+            throw SpeechWorkerClientError.staleResponse
+          }
+          if response.status == .progress {
+            guard let update = response.progress else {
+              throw SpeechWorkerClientError.protocolViolation
+            }
+            progress(update)
+          } else {
+            result = .success(response)
+            break
+          }
         }
-        result = .success(try SpeechWorkerProtocolCodec.decodeResponseLine(data))
       } catch is SpeechWorkerProtocolError {
         result = .failure(.protocolViolation)
+      } catch let error as SpeechWorkerClientError {
+        result = .failure(error)
       } catch {
         result = .failure(.workerDisconnected)
       }

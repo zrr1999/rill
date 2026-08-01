@@ -61,7 +61,6 @@ public enum L10n {
     case clipboardRoutingDescription
     case clipboardRoutingTitle
     case menuAbout
-    case menuCloudEngine
     case menuClipboardCaptureActive
     case menuClipboardCaptureOff
     case menuClipboardCaptureTurningOn
@@ -139,10 +138,26 @@ public enum L10n {
     case vocabularyScope
     case vocabularySourceApp
     case vocabularyTitle
-    case settingsDeepgramFailureHint
-    case settingsDeepgramSecureEndpointHint
+    case settingsOpenAIAPIKey
+    case settingsOpenAIAvailable
+    case settingsOpenAIBaseURL
+    case settingsOpenAICustomModel
+    case settingsOpenAIDescription
+    case settingsOpenAIEndpointHint
+    case settingsOpenAIInaccessible
+    case settingsOpenAIMissing
+    case settingsOpenAIModel
+    case settingsOpenAISaving
+    case settingsOpenAITitle
+    case settingsOpenAITranscriptOnlyHint
+    case settingsOpenAIVerificationFailed
+    case settingsOpenAIVerificationSucceeded
+    case settingsOpenAIVerify
+    case settingsOpenAIVerifying
     case settingsLongRecordingMode
     case settingsLongRecordingModeDescription
+    case settingsRecordingDurationLimit
+    case settingsRecordingDurationLimitDescription
     case settingsFailedAudioRecovery
     case settingsFailedAudioRecoveryClear
     case settingsFailedAudioRecoveryClearConfirmation
@@ -157,17 +172,14 @@ public enum L10n {
     case historyFailedAudioRetrying
     case voiceModeOutputNone
     case workflowAdvancedTextSteps
-    case workflowCloudModelOverride
     case workflowLanguageAuto
     case workflowLanguageOverride
     case workflowRouteAutomaticHint
-    case workflowRouteCloudHint
     case workflowRouteLocalHint
     case workflowSpeechRoute
     case workflowTextStyle
     case workflowTextStyleHint
     case workflowLocalSpeechModelOverride
-    case voiceFailureDeepgramMissingKeySummary
     case voiceFailureDetailsLabel
     case voiceFailureDismiss
     case voiceFailureGenericSummary
@@ -211,10 +223,6 @@ public enum L10n {
     .menuAbout: .init(
       english: "About Rill",
       simplifiedChinese: "关于 Rill"
-    ),
-    .menuCloudEngine: .init(
-      english: "Deepgram Cloud",
-      simplifiedChinese: "Deepgram 云端"
     ),
     .menuClipboardCaptureActive: .init(
       english: "Clipboard capture active",
@@ -419,8 +427,8 @@ public enum L10n {
       simplifiedChinese: "编辑识别文本并审查一条建议规则。保存不会改写已交付的历史，只影响后续运行。"
     ),
     .vocabularyCorrectionHotwordOption: .init(
-      english: "Prefer as a Deepgram hotword",
-      simplifiedChinese: "作为 Deepgram 热词优先识别"
+      english: "Prefer as a recognition hotword",
+      simplifiedChinese: "作为识别热词优先识别"
     ),
     .vocabularyCorrectionMappingOption: .init(
       english: "Replace recognized text",
@@ -490,8 +498,8 @@ public enum L10n {
     ),
     .vocabularyHotwordBehavior: .init(
       english:
-        "For matching Deepgram Nova-3 runs, this term is sent with the audio after cloud confirmation; other speech engines ignore it.",
-      simplifiedChinese: "范围匹配时，该术语会在云端确认后随音频发送给 Deepgram Nova-3；其他识别引擎会忽略它。"
+        "Matching local Qwen runs use a bounded hotword context. Hotwords improve recognition probability but do not guarantee a match.",
+      simplifiedChinese: "范围匹配时，本地 Qwen 使用有界热词上下文。热词只提高识别概率，不保证命中。"
     ),
     .vocabularyKind: .init(
       english: "Rule type",
@@ -529,13 +537,73 @@ public enum L10n {
       english: "Vocabulary & Mappings",
       simplifiedChinese: "词汇与映射词"
     ),
-    .settingsDeepgramFailureHint: .init(
-      english: "A recent cloud recognition run failed because the Deepgram API key is missing.",
-      simplifiedChinese: "最近一次云端识别失败，因为缺少 Deepgram API Key。"
+    .settingsOpenAIAPIKey: .init(
+      english: "OpenAI API Key",
+      simplifiedChinese: "OpenAI API Key"
     ),
-    .settingsDeepgramSecureEndpointHint: .init(
-      english: "The API key and audio require HTTPS. Plain HTTP is allowed only for localhost.",
-      simplifiedChinese: "API Key 与音频必须通过 HTTPS 发送；仅本机地址允许明文 HTTP。"
+    .settingsOpenAIAvailable: .init(
+      english: "API key saved in Keychain",
+      simplifiedChinese: "API Key 已保存到钥匙串"
+    ),
+    .settingsOpenAIBaseURL: .init(
+      english: "Base URL",
+      simplifiedChinese: "Base URL"
+    ),
+    .settingsOpenAICustomModel: .init(
+      english: "Custom model ID",
+      simplifiedChinese: "自定义模型 ID"
+    ),
+    .settingsOpenAIDescription: .init(
+      english:
+        "Uses an OpenAI-compatible Responses API for built-in and custom voice workflow text steps.",
+      simplifiedChinese: "使用兼容 OpenAI Responses API 的服务，为内置和自定义语音工作流提供大模型文本步骤。"
+    ),
+    .settingsOpenAIEndpointHint: .init(
+      english:
+        "The API key and transcript are sent to this endpoint. Use HTTPS; plain HTTP is allowed only for loopback addresses.",
+      simplifiedChinese: "API Key 与转写正文会发送到该地址。请使用 HTTPS；仅回环地址允许明文 HTTP。"
+    ),
+    .settingsOpenAIInaccessible: .init(
+      english: "OpenAI credential storage is unavailable.",
+      simplifiedChinese: "OpenAI 凭据存储不可用。"
+    ),
+    .settingsOpenAIMissing: .init(
+      english: "Add an API key to enable text polishing.",
+      simplifiedChinese: "添加 API Key 后才能启用文本润色。"
+    ),
+    .settingsOpenAIModel: .init(
+      english: "Model preset",
+      simplifiedChinese: "模型预设"
+    ),
+    .settingsOpenAISaving: .init(
+      english: "Saving API key securely…",
+      simplifiedChinese: "正在安全保存 API Key…"
+    ),
+    .settingsOpenAITitle: .init(
+      english: "OpenAI Text Polishing",
+      simplifiedChinese: "OpenAI 文本润色"
+    ),
+    .settingsOpenAITranscriptOnlyHint: .init(
+      english:
+        "Only the final transcript is sent. Requests use the configured Responses API endpoint, non-streaming mode, and store=false.",
+      simplifiedChinese: "仅发送最终转写正文。请求使用已配置的 Responses API 地址、非流式模式，并设置 store=false。"
+    ),
+    .settingsOpenAIVerificationFailed: .init(
+      english:
+        "Verification failed. Check the endpoint, model ID, key, network, and account limits.",
+      simplifiedChinese: "验证失败。请检查地址、模型 ID、API Key、网络和账号额度。"
+    ),
+    .settingsOpenAIVerificationSucceeded: .init(
+      english: "OpenAI configuration verified.",
+      simplifiedChinese: "OpenAI 配置验证成功。"
+    ),
+    .settingsOpenAIVerify: .init(
+      english: "Verify Configuration",
+      simplifiedChinese: "验证配置"
+    ),
+    .settingsOpenAIVerifying: .init(
+      english: "Verifying OpenAI configuration…",
+      simplifiedChinese: "正在验证 OpenAI 配置…"
     ),
     .settingsLongRecordingMode: .init(
       english: "Toggle recording hotkey mode",
@@ -543,8 +611,17 @@ public enum L10n {
     ),
     .settingsLongRecordingModeDescription: .init(
       english:
-        "Press once to start and again to stop. Local Qwen recordings stop automatically at 20 seconds; other recognizers use their own limits.",
-      simplifiedChinese: "按一次开始，再按一次停止。本地 Qwen 录音最长 20 秒并会自动停止；其他识别器遵从各自上限。"
+        "Press once to start and again to stop. The selected recording limit applies to built-in and manual voice runs.",
+      simplifiedChinese: "按一次开始，再按一次停止。所选录音上限同时用于内置听写和手动语音运行。"
+    ),
+    .settingsRecordingDurationLimit: .init(
+      english: "Recording time limit",
+      simplifiedChinese: "录音时间上限"
+    ),
+    .settingsRecordingDurationLimitDescription: .init(
+      english:
+        "Unlimited disables Rill's automatic stop; available disk space and provider or model limits still apply.",
+      simplifiedChinese: "“无限制”会关闭 Rill 的自动停止；可用磁盘空间以及所选模型或服务自身的硬限制仍然有效。"
     ),
     .settingsFailedAudioRecovery: .init(
       english: "Keep failed recordings for manual retry",
@@ -607,10 +684,6 @@ public enum L10n {
       english: "Advanced Text Steps",
       simplifiedChinese: "高级文本步骤"
     ),
-    .workflowCloudModelOverride: .init(
-      english: "Deepgram model override",
-      simplifiedChinese: "Deepgram 模型覆盖"
-    ),
     .workflowLanguageAuto: .init(
       english: "Auto language",
       simplifiedChinese: "自动语言"
@@ -623,10 +696,6 @@ public enum L10n {
       english:
         "Uses the current global engine, with this workflow's language/model overrides when set.",
       simplifiedChinese: "使用当前全局引擎；如已设置，则应用此工作流自己的语言/模型覆盖。"
-    ),
-    .workflowRouteCloudHint: .init(
-      english: "Cloud path through Deepgram; configure credentials in Settings before running.",
-      simplifiedChinese: "通过 Deepgram 云端路径识别；运行前请在设置中配置凭据。"
     ),
     .workflowRouteLocalHint: .init(
       english: "Local path through sherpa-onnx; model and language stay on this Mac.",
@@ -647,11 +716,6 @@ public enum L10n {
     .workflowLocalSpeechModelOverride: .init(
       english: "Local model override",
       simplifiedChinese: "本地模型覆盖"
-    ),
-    .voiceFailureDeepgramMissingKeySummary: .init(
-      english:
-        "Deepgram API key is missing. Add it in Recognition Settings before using cloud recognition.",
-      simplifiedChinese: "缺少 Deepgram API Key。使用云端识别前，请在识别设置中填写。"
     ),
     .voiceFailureDetailsLabel: .init(
       english: "Details",
@@ -740,9 +804,6 @@ public enum L10n {
   }
 
   public static func voiceFailureSummary(message: String, language: AppLanguage) -> String {
-    if hasDeepgramAPIKeyRecovery(for: message) {
-      return string(.voiceFailureDeepgramMissingKeySummary, language: language)
-    }
     return string(.voiceFailureGenericSummary, language: language)
   }
 
@@ -787,8 +848,6 @@ public enum L10n {
       return string(.workflowRouteAutomaticHint, language: language)
     case .localSpeech:
       return string(.workflowRouteLocalHint, language: language)
-    case .cloudSpeech:
-      return string(.workflowRouteCloudHint, language: language)
     }
   }
 
@@ -871,13 +930,6 @@ public enum L10n {
     return parts.joined(separator: " · ")
   }
 
-  public static func hasDeepgramAPIKeyRecovery(for message: String) -> Bool {
-    let normalized = message.lowercased()
-    return normalized.contains("deepgram api key is missing")
-      || normalized.contains("deepgram api key is unavailable")
-      || normalized.contains("deepgram_api_key")
-  }
-
   static func privacyText(_ key: PrivacySettingsTextKey, language: AppLanguage) -> String {
     privacyTextTable[key]?.string(for: language) ?? key.rawValue
   }
@@ -897,7 +949,6 @@ public enum L10n {
     case .automatic:
       return privacyText(PrivacySettingsTextKey.automaticRouteHint, language: language)
     case .localSpeech: return privacyText(PrivacySettingsTextKey.localRouteHint, language: language)
-    case .cloudSpeech: return privacyText(PrivacySettingsTextKey.cloudRouteHint, language: language)
     }
   }
   private static var privacyTextTable: [PrivacySettingsTextKey: LocalizedText] {
@@ -915,10 +966,18 @@ public enum L10n {
       PrivacySettingsTextKey.cancelEdit: .init(english: "Cancel", simplifiedChinese: "取消"),
       PrivacySettingsTextKey.cloudConfirmationDescription: .init(
         english:
-          "Cloud speech streams audio to Deepgram; entering a restricted app or tightening privacy settings stops the current run.",
-        simplifiedChinese: "云端识别会把音频流式发送到 Deepgram；进入受限 App 或收紧隐私设置会停止当前运行。"),
-      PrivacySettingsTextKey.cloudRouteHint: .init(
-        english: "Cloud: audio leaves this Mac.", simplifiedChinese: "云端：音频离开本机。"),
+          "Cloud text processing can send selected context off this Mac; restricted apps and stricter privacy settings block those runs.",
+        simplifiedChinese: "云端文本处理可能把所选上下文发送到本机之外；受限 App 与更严格的隐私设置会阻止这些运行。"),
+      PrivacySettingsTextKey.cloudAlwaysAllowed: .init(
+        english: "Always-allowed workflows", simplifiedChinese: "永久允许的工作流"),
+      PrivacySettingsTextKey.cloudAlwaysAllowedDescription: .init(
+        english:
+          "These grants only match the saved workflow and provider configuration. Rill asks again after either changes.",
+        simplifiedChinese: "授权仅匹配保存时的工作流与服务配置；任一配置变化后，Rill 都会重新询问。"),
+      PrivacySettingsTextKey.revokeAuthorization: .init(
+        english: "Revoke", simplifiedChinese: "撤销"),
+      PrivacySettingsTextKey.revokeAllAuthorizations: .init(
+        english: "Revoke All", simplifiedChinese: "全部撤销"),
       PrivacySettingsTextKey.description: .init(
         english: "Control privacy settings.", simplifiedChinese: "控制隐私设置。"),
       PrivacySettingsTextKey.deleteRule: .init(english: "Delete", simplifiedChinese: "删除"),
@@ -1099,11 +1158,12 @@ public enum L10n {
 }
 enum PrivacySettingsTextKey: String, CaseIterable, Sendable {
   case addRule, applicationNameOptional, automaticRouteHint, bundleIdentifier, cancelEdit
-  case cloudConfirmation, cloudConfirmationDescription, cloudRouteHint, deleteRule, description
+  case cloudAlwaysAllowed, cloudAlwaysAllowedDescription, cloudConfirmation
+  case cloudConfirmationDescription, deleteRule, description
   case duplicateBundleIdentifier, editRule, historyPreviewDescription, historyPreviewHidden
   case historyPreviewMode, invalidBundleIdentifier, loading, localRouteHint, missingBundleIdentifier
   case recommendedRule, recommendedRuleCannotBeEdited, resetSafeDefaults, restoreRecommended
-  case retryLoad, retrySave, routeDetailLabel
+  case retryLoad, retrySave, revokeAllAuthorizations, revokeAuthorization, routeDetailLabel
   case ruleBlocksClipboard, ruleBlocksCloud, ruleBlocksSelectedText, ruleBlocksWorkflow, ruleEnabled
   case ruleNotFound, saveRule, saving, secureInputConservativeDescription,
     secureInputConservativeMode
@@ -1180,6 +1240,7 @@ extension UIStrings {
       .directDemoClipboard: .init(english: "Capture Selection", simplifiedChinese: "收进剪贴板组"),
       .rewriteDemoStack: .init(english: "Polish Draft", simplifiedChinese: "润色成稿"),
       .pushToTalkCapture: .init(english: "Accurate Transcription", simplifiedChinese: "精准转写"),
+      .speechRecognition: .init(english: "Speech Recognition", simplifiedChinese: "语音识别"),
       .pushToTalkPolish: .init(
         english: "Transcription + LLM Rewrite (Planned)",
         simplifiedChinese: "转写 + 大模型润色（待办）"
@@ -1193,6 +1254,7 @@ extension UIStrings {
       .cloudDictation: .init(english: "Cloud Dictation", simplifiedChinese: "云端听写"),
       .stackDelivery: .init(english: "Clipboard Delivery", simplifiedChinese: "剪贴板投递"),
       .streamingInput: .init(english: "Streaming Direct", simplifiedChinese: "流式直出"),
+      .voiceAssistant: .init(english: "Voice Assistant", simplifiedChinese: "语音助手"),
     ]
   }
 
@@ -1383,21 +1445,6 @@ extension UIStrings {
     }
   }
 
-  public static func deepgramTestButtonTitle(_ state: DeepgramAudioTestState, language: AppLanguage)
-    -> String
-  {
-    switch state {
-    case .idle:
-      return text(.deepgramRecordTest, language: language)
-    case .preparing:
-      return text(.deepgramCancelPreparation, language: language)
-    case .recording:
-      return text(.deepgramStopAndTest, language: language)
-    case .transcribing:
-      return text(.deepgramCancelTest, language: language)
-    }
-  }
-
   public static func workflowTrigger(
     _ trigger: TriggerBinding,
     metadata: [String: String] = [:],
@@ -1433,10 +1480,6 @@ extension UIStrings {
       return "Local Streaming Speech"
     case (.simplifiedChinese, "sherpa-onnx.streaming"):
       return "本地流式识别"
-    case (.english, "deepgram.prerecorded"):
-      return "Deepgram Cloud"
-    case (.simplifiedChinese, "deepgram.prerecorded"):
-      return "Deepgram 云端识别"
     default:
       return id
     }
@@ -1469,10 +1512,6 @@ extension UIStrings {
       return "Local Speech"
     case (.simplifiedChinese, .localSpeech):
       return "本地识别"
-    case (.english, .cloudSpeech):
-      return "Deepgram Cloud"
-    case (.simplifiedChinese, .cloudSpeech):
-      return "Deepgram 云端识别"
     }
   }
 
@@ -1484,6 +1523,7 @@ extension UIStrings {
     case .pasteIntoApp: return language == .english ? "Paste into Active App" : "输入到当前应用"
     case .copyToClipboard: return language == .english ? "Copy to Clipboard" : "复制到剪贴板"
     case .saveToQueue: return language == .english ? "Save to Clipboard Queue" : "保存到剪贴板队列"
+    case .speakOnly: return language == .english ? "Speak Only" : "仅朗读"
     case .sendToWebhook: return "Webhook"
     case .runShortcut: return language == .english ? "Run macOS Shortcut" : "运行 macOS 快捷指令"
     case .appendToMarkdown:
@@ -1498,10 +1538,22 @@ extension UIStrings {
       return "Local"
     case (.simplifiedChinese, .local):
       return "本地"
-    case (.english, .cloud):
-      return "Cloud"
-    case (.simplifiedChinese, .cloud):
-      return "云端"
+    }
+  }
+
+  public static func localSpeechEngine(
+    _ engine: LocalSpeechEngine,
+    language: AppLanguage
+  ) -> String {
+    switch (language, engine) {
+    case (.english, .sherpaOnnx):
+      return "sherpa-onnx Local"
+    case (.simplifiedChinese, .sherpaOnnx):
+      return "sherpa-onnx 本地"
+    case (.english, .mlxAudioSwift):
+      return "MLX Local"
+    case (.simplifiedChinese, .mlxAudioSwift):
+      return "MLX 本地"
     }
   }
 

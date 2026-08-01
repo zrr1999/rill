@@ -8,6 +8,7 @@ private enum WorkflowExecutionSupportIssue: Equatable {
   case plannedCapabilityUnavailable
   case missingProductionTransformer
   case unregisteredOutputAction(String)
+  case openAIUnavailable(OpenAICredentialAvailability)
   case localSpeechUnavailable(LocalSpeechAvailability)
 }
 
@@ -15,8 +16,6 @@ private enum WorkflowOperationFailureStage {
   case workflowStart
   case audioCaptureStart
   case audioTranscription
-  case deepgramTestStart
-  case deepgramTestTranscription
   case clipboardReplay
 
   var presentation: LocalizedText {
@@ -37,18 +36,6 @@ private enum WorkflowOperationFailureStage {
         english:
           "The recorded workflow could not be transcribed. Check provider settings, then retry.",
         simplifiedChinese: "无法转写这段工作流录音。请检查服务商设置后重试。"
-      )
-    case .deepgramTestStart:
-      LocalizedText(
-        english:
-          "The Deepgram speech check could not start. Verify microphone access, credential storage, and provider settings, then retry.",
-        simplifiedChinese: "无法启动 Deepgram 语音检查。请检查麦克风权限、凭据存储与服务商设置后重试。"
-      )
-    case .deepgramTestTranscription:
-      LocalizedText(
-        english:
-          "The Deepgram speech check could not be transcribed. Verify network and provider settings, then retry.",
-        simplifiedChinese: "Deepgram 语音检查无法完成转写。请检查网络与服务商设置后重试。"
       )
     case .clipboardReplay:
       LocalizedText(
@@ -118,18 +105,55 @@ extension AppModel {
     }
 
     hasModifiedWorkflowLibrary = true
+    var changedWorkflowIDs: Set<UUID> = [workflowID]
     if isEnabled, let exclusiveGroup = workflow.exclusiveGroupIdentifier {
       for candidate in workflows
       where
         candidate.id != workflowID && candidate.exclusiveGroupIdentifier == exclusiveGroup
       {
         workflowEnabledStates[candidate.id] = false
+        changedWorkflowIDs.insert(candidate.id)
       }
     }
     workflowEnabledStates[workflowID] = isEnabled
     workflowLibraryError = nil
     updateWorkflowTriggerConflicts()
     persistWorkflowEnabledStates()
+    persistWorkflowFileEnabledStates(for: changedWorkflowIDs)
+    workflowLibraryChangedAction()
+  }
+
+  private func persistWorkflowFileEnabledStates(for workflowIDs: Set<UUID>) {
+    guard let workflowFileStore else { return }
+    let records = customWorkflows.compactMap { workflow -> (WorkflowDefinition, Bool, URL?)? in
+      guard workflowIDs.contains(workflow.id) else { return nil }
+      return (
+        workflow,
+        workflowEnabledStates[workflow.id] ?? true,
+        workflowFileURLsByID[workflow.id]
+      )
+    }
+    guard !records.isEmpty else { return }
+
+    Task { @MainActor [weak self] in
+      for (workflow, isEnabled, existingURL) in records {
+        do {
+          let fileURL = try await workflowFileStore.save(
+            workflow: workflow,
+            isEnabled: isEnabled,
+            replacing: existingURL
+          )
+          self?.workflowFileURLsByID[workflow.id] = fileURL
+        } catch {
+          guard let self else { return }
+          self.workflowLibraryError =
+            self.language == .english
+            ? "The workflow TOML state could not be saved: \(error.localizedDescription)"
+            : "无法保存工作流 TOML 状态：\(error.localizedDescription)"
+          return
+        }
+      }
+    }
   }
 
   public func enabledWorkflows(for trigger: TriggerBinding) -> [WorkflowDefinition] {
@@ -441,16 +465,23 @@ extension AppModel {
     case nil:
       break
     }
-    if workflow.pipeline.postProcessSteps.contains(where: {
+    if workflow.plan.process.steps.compactMap(\.postProcessStep).contains(where: {
       !Self.productionPostProcessStepKinds.contains($0.kind)
     }) {
       return .missingProductionTransformer
     }
-    if let actionID = workflow.pipeline.outputActions.lazy
+    if let actionID = workflow.plan.output.actions.lazy
       .map(\.id)
       .first(where: { outputActionRegistry.action(for: $0) == nil })
     {
       return .unregisteredOutputAction(actionID)
+    }
+    if workflow.plan.process.steps.contains(where: { $0.kind == .llmRewrite }) {
+      guard openAICredentialAvailability == .available,
+        !hasUnavailableScalarSettings(in: .openAI)
+      else {
+        return .openAIUnavailable(openAICredentialAvailability)
+      }
     }
     if includeRuntimeAvailability,
       !localSpeechTrustMaterialAvailable,
@@ -465,8 +496,8 @@ extension AppModel {
     if workflow.prefersAutomaticRecognizerSelection {
       return preferredSpeechEngine == .local
     }
-    return workflow.pipeline.recognizerID == Self.sherpaOnnxRecognizerID
-      || workflow.pipeline.recognizerID == Self.sherpaStreamingRecognizerID
+    return workflow.plan.setup.speechRoute?.recognizerID == Self.sherpaOnnxRecognizerID
+      || workflow.plan.setup.speechRoute?.recognizerID == Self.sherpaStreamingRecognizerID
   }
 
   private func workflowEnableError(
@@ -495,6 +526,10 @@ extension AppModel {
       return "This workflow uses an output action that is unavailable in this build: \(actionID)."
     case (.simplifiedChinese, .unregisteredOutputAction(let actionID)):
       return "此工作流使用了当前版本不可用的输出动作：\(actionID)。"
+    case (.english, .openAIUnavailable(_)):
+      return "Add an OpenAI API key in Settings before enabling this workflow."
+    case (.simplifiedChinese, .openAIUnavailable(_)):
+      return "请先在设置中添加 OpenAI API Key，再启用此工作流。"
     case (_, .localSpeechUnavailable(let availability)):
       return localSpeechWorkflowEnableError(availability, language: language)
     }
@@ -526,6 +561,10 @@ extension AppModel {
         "This workflow cannot run because no production output action is registered for \(actionID)."
     case (.simplifiedChinese, .unregisteredOutputAction(let actionID)):
       return "此工作流无法运行，因为没有为 \(actionID) 注册生产级输出动作。"
+    case (.english, .openAIUnavailable(_)):
+      return "OpenAI text polishing is unavailable. Open Settings and save an API key."
+    case (.simplifiedChinese, .openAIUnavailable(_)):
+      return "OpenAI 文本润色当前不可用。请打开设置并保存 API Key。"
     case (_, .localSpeechUnavailable(let availability)):
       return localSpeechWorkflowRunError(availability, language: language)
     }
@@ -739,7 +778,7 @@ extension AppModel {
       return false
     }
     return Self.recognizerIDsRequiringCapturedAudio.contains(
-      resolvedWorkflow.pipeline.recognizerID
+      resolvedWorkflow.plan.setup.speechRoute?.recognizerID ?? ""
     )
   }
 
@@ -760,34 +799,7 @@ extension AppModel {
 
   func persistProviderSettingsForRun(_ workflow: WorkflowDefinition) async throws {
     guard !isLoadingSettings else { throw CancellationError() }
-    let recognizerID = workflow.pipeline.recognizerID
-
-    if recognizerID == Self.deepgramRecognizerID {
-      guard !hasUnavailableScalarSettings(in: .deepgram) else {
-        throw ProviderSettingsPersistenceError.unavailableStoredSettings
-      }
-      guard let settingsStore else {
-        throw ProviderSettingsPersistenceError.unavailableStoredSettings
-      }
-      let settings = currentDeepgramSettings()
-      let credentialStore = self.credentialStore
-      invalidatePendingDeepgramSettingWrites()
-      do {
-        try await performTrackedPersistenceWrite {
-          try await Self.persistAndVerifyDeepgramSettings(
-            settings,
-            settingsStore: settingsStore,
-            credentialStore: credentialStore
-          )
-        }
-        deepgramCredentialAvailability = Self.deepgramCredentialAvailability(
-          for: settings.apiKey
-        )
-      } catch {
-        deepgramCredentialAvailability = .inaccessible
-        throw error
-      }
-    }
+    _ = workflow
   }
 
   static func makeInteractiveTriggerEvent(
@@ -915,9 +927,8 @@ extension AppModel {
     selectedClipboardSidebarGroupID = groupID
   }
 
-  public func showRecentResults() {
+  public func showRunHistory() {
     selectSidebarSection(.history)
-    runHistoryScope = .recentResults
   }
 
   public func showSettings(_ section: SettingsSection) {
@@ -993,7 +1004,10 @@ extension AppModel {
     workflow.metadata[Self.workflowOriginMetadataKey] == Self.userWorkflowOriginMetadataValue
   }
 
-  public func saveWorkflowDraft(_ draft: WorkflowEditorDraft, editing workflowID: UUID? = nil) {
+  public func saveWorkflowDraft(
+    _ draft: WorkflowEditorDraft,
+    editing workflowID: UUID? = nil
+  ) async {
     guard workflowLibraryIsReadyForMutation(reportingToEditor: true) else { return }
     let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedName.isEmpty else {
@@ -1013,12 +1027,51 @@ extension AppModel {
       workflowEditorError = validationError
       return
     }
+    if sanitizedDraft.eventType == .wakeWord {
+      do {
+        try await validateWakeWordConfigurationAction(
+          WakeWordConfiguration(phrases: sanitizedDraft.wakePhrases)
+        )
+      } catch {
+        workflowEditorError =
+          language == .english
+          ? error.localizedDescription
+          : "无法保存唤醒词工作流：\(error.localizedDescription)"
+        return
+      }
+    }
 
     let workflow = sanitizedDraft.makeWorkflow(
       id: workflowID ?? UUID(),
       existingMetadata: existingMetadata,
       hotkeyGesture: Self.defaultHotkeyGesture
     )
+
+    let enableConflicts = conflictingEnabledWorkflowsForActivation(of: workflow)
+    let desiredEnabledState = workflowEnabledStates[workflow.id] ?? true
+    let supportIssue = desiredEnabledState
+      ? workflowExecutionSupportIssue(for: workflow)
+      : nil
+    let savedEnabledState = desiredEnabledState
+      && supportIssue == nil
+      && enableConflicts.isEmpty
+
+    if let workflowFileStore {
+      do {
+        let fileURL = try await workflowFileStore.save(
+          workflow: workflow,
+          isEnabled: savedEnabledState,
+          replacing: workflowFileURLsByID[workflow.id]
+        )
+        workflowFileURLsByID[workflow.id] = fileURL
+      } catch {
+        workflowEditorError =
+          language == .english
+          ? "The workflow TOML file could not be saved: \(error.localizedDescription)"
+          : "无法保存工作流 TOML 文件：\(error.localizedDescription)"
+        return
+      }
+    }
 
     hasModifiedWorkflowLibrary = true
     if let workflowID, let index = customWorkflows.firstIndex(where: { $0.id == workflowID }) {
@@ -1027,9 +1080,10 @@ extension AppModel {
       customWorkflows.insert(workflow, at: 0)
     }
 
-    let enableConflicts = conflictingEnabledWorkflowsForActivation(of: workflow)
-    let desiredEnabledState = workflowEnabledStates[workflow.id] ?? true
-    if desiredEnabledState && !enableConflicts.isEmpty {
+    if desiredEnabledState, let supportIssue {
+      workflowEnabledStates[workflow.id] = false
+      workflowLibraryError = workflowEnableError(for: supportIssue, language: language)
+    } else if desiredEnabledState && !enableConflicts.isEmpty {
       workflowEnabledStates[workflow.id] = false
       workflowLibraryError = UIStrings.workflowEnableConflict(
         trigger: workflow.trigger,
@@ -1053,11 +1107,23 @@ extension AppModel {
     )
   }
 
-  public func deleteCustomWorkflow(_ workflow: WorkflowDefinition) {
+  public func deleteCustomWorkflow(_ workflow: WorkflowDefinition) async {
     guard workflowLibraryIsReadyForMutation(reportingToEditor: false) else { return }
     guard let index = customWorkflows.firstIndex(where: { $0.id == workflow.id }) else { return }
+    if let workflowFileStore, let fileURL = workflowFileURLsByID[workflow.id] {
+      do {
+        try await workflowFileStore.delete(fileURL: fileURL)
+      } catch {
+        workflowLibraryError =
+          language == .english
+          ? "The workflow TOML file could not be removed: \(error.localizedDescription)"
+          : "无法删除工作流 TOML 文件：\(error.localizedDescription)"
+        return
+      }
+    }
     hasModifiedWorkflowLibrary = true
     customWorkflows.remove(at: index)
+    workflowFileURLsByID.removeValue(forKey: workflow.id)
     workflowEnabledStates.removeValue(forKey: workflow.id)
     workflowEditorError = nil
     workflowLibraryError = nil
@@ -1133,6 +1199,8 @@ extension AppModel {
     }
     localSpeechPreparationState = .preparing
     localSpeechPreparationProgress = 0
+    localSpeechPreparationCompletedUnitCount = 0
+    localSpeechPreparationTotalUnitCount = 0
     localSpeechPreparedModelIdentifier = nil
     localSpeechPreparationError = nil
     let settings = currentLocalSpeechSettings()
@@ -1229,6 +1297,8 @@ extension AppModel {
     localSpeechPreparationTaskOwner.cancelActive()
     localSpeechPreparationState = .idle
     localSpeechPreparationProgress = 0
+    localSpeechPreparationCompletedUnitCount = 0
+    localSpeechPreparationTotalUnitCount = 0
     localSpeechPreparedModelIdentifier = nil
     localSpeechPreparationError = nil
     releaseLocalSpeechRuntimeAction()
@@ -1250,163 +1320,6 @@ extension AppModel {
         "Released the local speech model from memory. It will load again on the next local recognition.",
       simplifiedChinese: "已释放本地语音模型内存；下次本地识别时会重新加载。"
     )
-  }
-
-  public func toggleDeepgramAudioTest() {
-    guard !isLoadingSettings else { return }
-    switch deepgramAudioTestState {
-    case .idle:
-      guard !hasUnavailableScalarSettings(in: .deepgram) else {
-        deepgramTestError = ProviderSettingsPersistenceError.unavailableStoredSettings
-          .message(language: language)
-        return
-      }
-      guard permissionSnapshot.microphone == .granted else {
-        deepgramTestError = UIStrings.text(.deepgramMicrophoneRequired, language: language)
-        return
-      }
-      let settings = currentDeepgramSettings()
-      guard !settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        deepgramCredentialAvailability = .missing
-        deepgramTestError = UIStrings.text(.voiceSetupCloudCredentialMissing, language: language)
-        return
-      }
-
-      invalidatePendingDeepgramSettingWrites()
-      deepgramAudioTestGeneration += 1
-      let generation = deepgramAudioTestGeneration
-      deepgramAudioTestState = .preparing
-      deepgramAudioTestSettingsSnapshot = nil
-      deepgramCredentialAvailability = .saving
-      deepgramTestError = nil
-      deepgramTestTranscript = nil
-      let settingsStore = self.settingsStore
-      let credentialStore = self.credentialStore
-
-      Task {
-        [
-          weak self,
-          startDeepgramAudioTestAction,
-          cancelDeepgramAudioTestAction,
-          settingsStore,
-          credentialStore,
-        ] in
-        guard let self else { return }
-        var configurationVerified = false
-        do {
-          try await self.performTrackedPersistenceWrite {
-            try await Self.persistAndVerifyDeepgramSettings(
-              settings,
-              settingsStore: settingsStore,
-              credentialStore: credentialStore
-            )
-          }
-          configurationVerified = true
-          let shouldStart = await MainActor.run {
-            guard self.deepgramAudioTestGeneration == generation,
-              self.currentDeepgramSettings() == settings
-            else {
-              return false
-            }
-            self.deepgramCredentialAvailability = .available
-            return true
-          }
-          guard shouldStart else { throw CancellationError() }
-
-          try await startDeepgramAudioTestAction(settings)
-          let didCommitStart = await MainActor.run {
-            guard self.deepgramAudioTestGeneration == generation,
-              self.currentDeepgramSettings() == settings
-            else {
-              return false
-            }
-            self.deepgramAudioTestSettingsSnapshot = settings
-            self.deepgramAudioTestState = .recording
-            self.append(
-              english: "Deepgram test recording started.",
-              simplifiedChinese: "Deepgram 测试录音已开始。"
-            )
-            return true
-          }
-          if !didCommitStart {
-            await cancelDeepgramAudioTestAction()
-          }
-        } catch is CancellationError {
-          return
-        } catch {
-          await MainActor.run {
-            guard self.deepgramAudioTestGeneration == generation else { return }
-            self.deepgramAudioTestState = .idle
-            self.deepgramAudioTestSettingsSnapshot = nil
-            self.deepgramCredentialAvailability =
-              configurationVerified
-              ? .available
-              : .inaccessible
-            let failure = WorkflowOperationFailureStage.deepgramTestStart.presentation
-            self.deepgramTestError = failure.string(for: self.language)
-            self.append(
-              english: failure.english,
-              simplifiedChinese: failure.simplifiedChinese
-            )
-          }
-        }
-      }
-    case .preparing:
-      cancelDeepgramAudioTest()
-    case .recording:
-      guard let settings = deepgramAudioTestSettingsSnapshot else {
-        cancelDeepgramAudioTest()
-        deepgramTestError = UIStrings.text(.deepgramConfigurationChanged, language: language)
-        return
-      }
-      deepgramAudioTestState = .transcribing
-      let generation = deepgramAudioTestGeneration
-
-      Task { [weak self, finishDeepgramAudioTestAction] in
-        do {
-          let result = try await finishDeepgramAudioTestAction(settings)
-          await MainActor.run {
-            guard let self,
-              self.deepgramAudioTestGeneration == generation,
-              self.currentDeepgramSettings() == settings
-            else {
-              return
-            }
-            self.deepgramAudioTestState = .idle
-            self.deepgramAudioTestSettingsSnapshot = nil
-            self.deepgramTestTranscript = result.bestText
-            self.deepgramTestError = nil
-            self.append(
-              english: "Deepgram speech check completed.",
-              simplifiedChinese: "Deepgram 语音检查已完成。"
-            )
-          }
-        } catch {
-          await MainActor.run {
-            guard let self, self.deepgramAudioTestGeneration == generation else { return }
-            self.deepgramAudioTestState = .idle
-            self.deepgramAudioTestSettingsSnapshot = nil
-            let failure = WorkflowOperationFailureStage.deepgramTestTranscription.presentation
-            self.deepgramTestError = failure.string(for: self.language)
-            self.append(
-              english: failure.english,
-              simplifiedChinese: failure.simplifiedChinese
-            )
-          }
-        }
-      }
-    case .transcribing:
-      cancelDeepgramAudioTest()
-    }
-  }
-
-  public func cancelDeepgramAudioTest() {
-    deepgramAudioTestGeneration += 1
-    deepgramAudioTestState = .idle
-    deepgramAudioTestSettingsSnapshot = nil
-    Task { [cancelDeepgramAudioTestAction] in
-      await cancelDeepgramAudioTestAction()
-    }
   }
 
   public func replayClipboardItem(
@@ -1521,6 +1434,16 @@ extension AppModel {
   public func setClipboardItemTags(_ tags: [String], forItem itemID: UUID) -> Bool {
     submitClipboardMutation { deliveryStack in
       await deliveryStack.updateItemTags(itemID, tags: tags)
+    }
+  }
+
+  @discardableResult
+  func setClipboardHistoryEntryPinned(
+    _ isPinned: Bool,
+    entry: ClipboardHistoryEntry
+  ) -> Bool {
+    submitClipboardMutation { deliveryStack in
+      await deliveryStack.setItemsPinned(isPinned, itemIDs: entry.mergedItemIDs)
     }
   }
 

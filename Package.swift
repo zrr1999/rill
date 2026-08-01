@@ -10,6 +10,10 @@ let package = Package(
   ],
   dependencies: [
     .package(
+      url: "https://github.com/mattt/swift-toml.git",
+      exact: "2.0.0"
+    ),
+    .package(
       url: "https://github.com/Blaizzy/mlx-audio-swift.git",
       exact: "0.1.3"
     ),
@@ -20,6 +24,10 @@ let package = Package(
     .package(
       url: "https://github.com/ml-explore/mlx-swift.git",
       exact: "0.31.4"
+    ),
+    .package(
+      url: "https://github.com/MacPaw/OpenAI.git",
+      exact: "0.5.1"
     ),
   ],
   targets: [
@@ -56,7 +64,10 @@ let package = Package(
     .target(name: "RillCore"),
     .target(
       name: "RillPlatform",
-      dependencies: ["RillCore"],
+      dependencies: [
+        "RillCore",
+        .product(name: "TOML", package: "swift-toml"),
+      ],
       linkerSettings: [
         .linkedFramework("Security")
       ]
@@ -67,6 +78,7 @@ let package = Package(
         "RillCore",
         "RillPlatform",
         "RillSherpaRuntime",
+        .product(name: "OpenAI", package: "OpenAI"),
       ]
     ),
     .target(
@@ -76,6 +88,7 @@ let package = Package(
         "RillProviders",
         .product(name: "MLXAudioCore", package: "mlx-audio-swift"),
         .product(name: "MLXAudioSTT", package: "mlx-audio-swift"),
+        .product(name: "MLXAudioTTS", package: "mlx-audio-swift"),
         .product(name: "MLX", package: "mlx-swift"),
         .product(name: "HuggingFace", package: "swift-huggingface"),
       ]
@@ -144,6 +157,7 @@ let package = Package(
       dependencies: [
         "RillCore",
         "RillProviders",
+        "RillSherpaRuntime",
         "SherpaOnnxNative",
         "OnnxRuntimeNative",
       ]

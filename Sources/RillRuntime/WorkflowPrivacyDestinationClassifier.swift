@@ -28,7 +28,7 @@ public enum WorkflowPrivacyDestinationClassifier {
         switch invocation {
         case .capture:
             guard classifyRecognizer(
-                workflow.pipeline.recognizerID,
+                workflow.plan.setup.speechRoute?.recognizerID ?? "",
                 destinations: &destinations
             ) else {
                 return .unavailable
@@ -43,7 +43,7 @@ public enum WorkflowPrivacyDestinationClassifier {
             // result and therefore never invokes or classifies the recognizer.
         }
 
-        for step in workflow.pipeline.postProcessSteps {
+        for step in workflow.plan.process.steps.compactMap(\.postProcessStep) {
             switch step.kind {
             case .snippetReplacement, .normalizeWhitespace:
                 break
@@ -52,12 +52,14 @@ public enum WorkflowPrivacyDestinationClassifier {
             }
         }
 
-        for action in workflow.pipeline.outputActions {
+        for action in workflow.plan.output.actions {
             switch action.id {
             case "clipboard.copy", "inject.text", "stack.push",
                  ExternalOutputActionID.shortcutsRun,
                  ExternalOutputActionID.markdownAppend:
                 break
+            case SpeechOutputActionID.speak:
+                appendUnique(.localSpeech, to: &destinations)
             case ExternalOutputActionID.webhookPost:
                 appendUnique(.cloudText, to: &destinations)
             default:
@@ -75,9 +77,6 @@ public enum WorkflowPrivacyDestinationClassifier {
         switch identifier {
         case "sherpa-onnx.local", "sherpa-onnx.streaming":
             appendUnique(.localSpeech, to: &destinations)
-            return true
-        case let identifier where identifier.hasPrefix("deepgram."):
-            appendUnique(.cloudSpeech, to: &destinations)
             return true
         case "context.selection":
             return true

@@ -147,6 +147,9 @@ final class LiveSubtitlePanelController {
   private static let stopRequestedNotification = Notification.Name(
     "works.earendil.rill.live-subtitle.stop-requested"
   )
+  private static let removeDurationLimitRequestedNotification = Notification.Name(
+    "works.earendil.rill.live-subtitle.remove-duration-limit-requested"
+  )
 
   private let visibleFrameResolver: @MainActor () -> NSRect?
   private let uptimeProvider: @MainActor () -> TimeInterval
@@ -159,8 +162,11 @@ final class LiveSubtitlePanelController {
   private var currentVisibleFrame: NSRect?
   private var closeObserver: NotificationObserverToken?
   private var stopObserver: NotificationObserverToken?
+  private var removeDurationLimitObserver: NotificationObserverToken?
   private var stopAction: (@Sendable (UUID) async -> Void)?
+  private var removeDurationLimitAction: (@Sendable (UUID) async -> Bool)?
   private var stopRequestedRunID: UUID?
+  private var durationLimitRemovalRequestedRunID: UUID?
   private var pendingShrinkTask: Task<Void, Never>?
   private var firstShrinkRequestAt: TimeInterval?
 
@@ -210,10 +216,39 @@ final class LiveSubtitlePanelController {
       }
     }
     self.stopObserver = NotificationObserverToken(stopObserver)
+
+    let removeDurationLimitObserver = NotificationCenter.default.addObserver(
+      forName: Self.removeDurationLimitRequestedNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] notification in
+      guard let runID = notification.object as? UUID else { return }
+      Task { @MainActor in
+        guard let self,
+          self.visibleRunID == runID,
+          self.durationLimitRemovalRequestedRunID != runID,
+          let removeDurationLimitAction = self.removeDurationLimitAction
+        else {
+          return
+        }
+        self.durationLimitRemovalRequestedRunID = runID
+        let removed = await removeDurationLimitAction(runID)
+        if !removed, self.visibleRunID == runID {
+          self.durationLimitRemovalRequestedRunID = nil
+        }
+      }
+    }
+    self.removeDurationLimitObserver = NotificationObserverToken(removeDurationLimitObserver)
   }
 
   func installStopAction(_ action: @escaping @Sendable (UUID) async -> Void) {
     stopAction = action
+  }
+
+  func installRemoveDurationLimitAction(
+    _ action: @escaping @Sendable (UUID) async -> Bool
+  ) {
+    removeDurationLimitAction = action
   }
 
   var windowState: LiveSubtitlePanelWindowState? {
@@ -247,6 +282,7 @@ final class LiveSubtitlePanelController {
       visibleRunID = nil
       currentVisibleFrame = nil
       stopRequestedRunID = nil
+      durationLimitRemovalRequestedRunID = nil
       cancelPendingShrink()
       return
     }
@@ -261,6 +297,11 @@ final class LiveSubtitlePanelController {
     dismissedRunID = nil
     if stopRequestedRunID != snapshot.runID {
       stopRequestedRunID = nil
+    }
+    if durationLimitRemovalRequestedRunID != snapshot.runID
+      || snapshot.canRemoveRecordingDurationLimit != true
+    {
+      durationLimitRemovalRequestedRunID = nil
     }
 
     let panel = panel ?? makePanel()

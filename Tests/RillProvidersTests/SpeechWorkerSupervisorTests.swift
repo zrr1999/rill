@@ -31,6 +31,104 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     try await supervisor.shutdown()
   }
 
+  func testModelPreparationForwardsProgressFramesBeforeFinalResponse() async throws {
+    let progressResponse = makePreparationProgressResponse(
+      requestID: speechWorkerTestRequestID,
+      generation: 1
+    )
+    let finalResponse = makePreparationResponse(
+      requestID: speechWorkerTestRequestID,
+      generation: 1
+    )
+    let recorder = WorkerProgressRecorder()
+    let supervisor = makeSupervisor(
+      script: persistentResponseScript,
+      response: progressResponse + finalResponse
+    )
+
+    let prepared = try await supervisor.prepareModel(
+      SpeechWorkerModelPreparationPayload(
+        modelID: MLXAudioModelID.qwen3ASR17BInt8.rawValue,
+        downloadIfNeeded: true
+      ),
+      timeout: .seconds(2),
+      progress: recorder.record
+    )
+
+    XCTAssertEqual(prepared, MLXAudioModelID.qwen3ASR17BInt8.rawValue)
+    XCTAssertEqual(
+      recorder.snapshot(),
+      [
+        SpeechWorkerProgress(
+          phase: .downloading,
+          completedUnitCount: 25,
+          totalUnitCount: 100
+        )
+      ]
+    )
+    try await supervisor.shutdown()
+  }
+
+  func testConcurrentRecognitionRequestsUseTheSingleWorkerLaneInOrder() async throws {
+    let response = makeSuccessResponse(
+      requestID: speechWorkerTestRequestID,
+      generation: 1
+    )
+    let supervisor = makeSupervisor(
+      script: "while IFS= read -r request; do sleep 0.05; printf '%s' \"$1\"; done",
+      response: response
+    )
+    let payload = makePayload()
+
+    async let first = supervisor.recognize(payload, timeout: .seconds(2))
+    async let second = supervisor.recognize(payload, timeout: .seconds(2))
+    let results = try await [first, second]
+
+    XCTAssertEqual(results.map(\.bestText), ["worker result", "worker result"])
+    try await supervisor.shutdown()
+  }
+
+  func testCancellingAQueuedRecognitionDoesNotCancelTheActiveRequest() async throws {
+    let response = makeSuccessResponse(
+      requestID: speechWorkerTestRequestID,
+      generation: 1
+    )
+    let supervisor = makeSupervisor(
+      script: "while IFS= read -r request; do sleep 0.1; printf '%s' \"$1\"; done",
+      response: response
+    )
+    let payload = makePayload()
+    let first = Task {
+      try await supervisor.recognize(payload, timeout: .seconds(2))
+    }
+    _ = try await waitForPID(supervisor)
+    let second = Task {
+      try await supervisor.recognize(payload, timeout: .seconds(2))
+    }
+    await waitUntil {
+      await supervisor.queuedRequestCountForTesting() == 1
+    }
+    let queuedRequestCount = await supervisor.queuedRequestCountForTesting()
+    XCTAssertEqual(queuedRequestCount, 1)
+
+    second.cancel()
+    do {
+      _ = try await second.value
+      XCTFail("Expected the queued request to be cancelled")
+    } catch {
+      XCTAssertTrue(error is CancellationError)
+    }
+
+    let firstResult = try await first.value
+    XCTAssertEqual(firstResult.bestText, "worker result")
+    let thirdResult = try await supervisor.recognize(
+      payload,
+      timeout: .seconds(2)
+    )
+    XCTAssertEqual(thirdResult.bestText, "worker result")
+    try await supervisor.shutdown()
+  }
+
   func testRecognizerAdapterUsesWorkerResultWithoutInProcessFallback() async throws {
     let response = makeSuccessResponse(requestID: speechWorkerTestRequestID, generation: 1)
     let supervisor = makeSupervisor(script: persistentResponseScript, response: response)
@@ -97,15 +195,32 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
   }
 
   func testCancellationDoesNotReturnUntilTermIgnoringWorkerIsReaped() async throws {
-    let supervisor = makeSupervisor(
-      script: "trap '' TERM; IFS= read -r request || exit 0; while :; do :; done",
-      response: ""
+    let markerURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "rill-worker-ready-\(UUID().uuidString)"
+    )
+    defer { try? FileManager.default.removeItem(at: markerURL) }
+    let script = """
+      trap '' TERM
+      : > "$1"
+      IFS= read -r request || exit 0
+      while :; do :; done
+      """
+    let supervisor = SpeechWorkerSupervisor(
+      configuration: .init(
+        executableURL: URL(fileURLWithPath: "/bin/sh"),
+        arguments: ["-c", script, "rill-fake", markerURL.path]
+      ),
+      requestIDGenerator: { speechWorkerTestRequestID }
     )
     let payload = makePayload()
     let task = Task {
       try await supervisor.recognize(payload, timeout: .seconds(30))
     }
     let pid = try await waitForPID(supervisor)
+    await waitUntil {
+      FileManager.default.fileExists(atPath: markerURL.path)
+    }
+    XCTAssertTrue(FileManager.default.fileExists(atPath: markerURL.path))
     let cancellationStartedAt = ContinuousClock.now
     task.cancel()
 
@@ -342,6 +457,30 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     return String(data: data, encoding: .utf8)!
   }
 
+  private func makePreparationProgressResponse(
+    requestID: UUID,
+    generation: UInt64
+  ) -> String {
+    let request = SpeechWorkerRequest(
+      requestID: requestID,
+      generation: generation,
+      modelPreparationPayload: SpeechWorkerModelPreparationPayload(
+        modelID: MLXAudioModelID.qwen3ASR17BInt8.rawValue,
+        downloadIfNeeded: true
+      )
+    )
+    let response = SpeechWorkerResponse.progress(
+      request: request,
+      update: SpeechWorkerProgress(
+        phase: .downloading,
+        completedUnitCount: 25,
+        totalUnitCount: 100
+      )
+    )
+    let data = try! SpeechWorkerProtocolCodec.encodeResponseLine(response)
+    return String(data: data, encoding: .utf8)!
+  }
+
   private func makeManagedAudioFile() throws -> URL {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent(
       "rill-recognition-worker-adapter-\(UUID().uuidString).wav"
@@ -393,5 +532,20 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
       if await condition() { return }
       try? await Task.sleep(for: .milliseconds(5))
     }
+  }
+}
+
+private final class WorkerProgressRecorder: @unchecked Sendable {
+  private let lock = NSLock()
+  private var values: [SpeechWorkerProgress] = []
+
+  func record(_ progress: SpeechWorkerProgress) {
+    lock.withLock {
+      values.append(progress)
+    }
+  }
+
+  func snapshot() -> [SpeechWorkerProgress] {
+    lock.withLock { values }
   }
 }

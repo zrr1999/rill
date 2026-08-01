@@ -125,7 +125,7 @@ final class PrivacyRunGateTests: XCTestCase {
                 contextProvider: { _ in
                     await fullContextProbe.capture(minimalContext)
                 },
-                workflow: makeRunWorkflow(recognizerID: "deepgram.prerecorded")
+                workflow: makeRunWorkflow(recognizerID: "remote.speech")
             )
             XCTFail("Expected sensitive cloud processing to be blocked.")
         } catch let error as PrivacyRunGate.GateError {
@@ -156,7 +156,7 @@ final class PrivacyRunGateTests: XCTestCase {
 
         let preview = await gate.evaluate(
             context: makeRunContext(bundleIdentifier: "com.example.vault"),
-            workflow: makeRunWorkflow(recognizerID: "deepgram.prerecorded")
+            workflow: makeRunWorkflow(recognizerID: "remote.speech")
         )
         XCTAssertEqual(preview.status, .blocked)
         XCTAssertTrue(preview.reasons.contains(.sensitiveApplication))
@@ -169,7 +169,7 @@ final class PrivacyRunGateTests: XCTestCase {
         do {
             _ = try await gate.authorize(
                 context: makeRunContext(bundleIdentifier: "com.example.vault"),
-                workflow: makeRunWorkflow(recognizerID: "deepgram.prerecorded")
+                workflow: makeRunWorkflow(recognizerID: "remote.speech")
             )
             XCTFail("Expected sensitive cloud processing to be blocked.")
         } catch let error as PrivacyRunGate.GateError {
@@ -198,7 +198,7 @@ final class PrivacyRunGateTests: XCTestCase {
 
         let preview = await gate.evaluate(
             context: context,
-            workflow: makeRunWorkflow(recognizerID: "deepgram.prerecorded")
+            workflow: makeRunWorkflow(recognizerID: "remote.speech")
         )
         XCTAssertEqual(preview.status, .requiresConfirmation)
         XCTAssertTrue(preview.reasons.contains(.cloudConfirmationRequired))
@@ -208,7 +208,7 @@ final class PrivacyRunGateTests: XCTestCase {
 
         let authorized = try await gate.authorize(
             context: context,
-            workflow: makeRunWorkflow(recognizerID: "deepgram.prerecorded")
+            workflow: makeRunWorkflow(recognizerID: "remote.speech")
         )
 
         confirmationCount = await confirmation.snapshot()
@@ -240,7 +240,7 @@ final class PrivacyRunGateTests: XCTestCase {
         _ = try await gate.captureAuthorizedContext(
             privacyContextProvider: { await privacyContexts.next() },
             contextProvider: { _ in await fullContexts.next() },
-            workflow: makeRunWorkflow(recognizerID: "deepgram.prerecorded")
+            workflow: makeRunWorkflow(recognizerID: "remote.speech")
         )
 
         let confirmationCount = await confirmation.snapshot()
@@ -269,7 +269,7 @@ final class PrivacyRunGateTests: XCTestCase {
         _ = try await gate.captureAuthorizedContext(
             privacyContextProvider: { await privacyContexts.next() },
             contextProvider: { _ in await fullContexts.next() },
-            workflow: makeRunWorkflow(recognizerID: "deepgram.prerecorded")
+            workflow: makeRunWorkflow(recognizerID: "remote.speech")
         )
 
         let confirmationCount = await confirmation.snapshot()
@@ -308,7 +308,7 @@ final class PrivacyRunGateTests: XCTestCase {
             _ = try await gate.captureAuthorizedContext(
                 privacyContextProvider: { await privacyContexts.next() },
                 contextProvider: { _ in await fullContexts.next() },
-                workflow: makeRunWorkflow(recognizerID: "deepgram.prerecorded")
+                workflow: makeRunWorkflow(recognizerID: "remote.speech")
             )
             XCTFail("A newly blocking retry policy must fail closed.")
         } catch let error as PrivacyRunGate.GateError {
@@ -332,7 +332,7 @@ final class PrivacyRunGateTests: XCTestCase {
         do {
             _ = try await gate.authorize(
                 context: makeRunContext(),
-                workflow: makeRunWorkflow(recognizerID: "deepgram.prerecorded")
+                workflow: makeRunWorkflow(recognizerID: "remote.speech")
             )
             XCTFail("Expected cloud confirmation to be declined.")
         } catch let error as PrivacyRunGate.GateError {
@@ -450,7 +450,7 @@ final class PrivacyRunGateTests: XCTestCase {
         var context = makeRunContext()
         context.focus.applicationName = nil
         context.focus.bundleIdentifier = nil
-        let workflow = makeRunWorkflow(recognizerID: "deepgram.prerecorded")
+        let workflow = makeRunWorkflow(recognizerID: "remote.speech")
 
         let preview = await gate.evaluate(context: context, workflow: workflow)
         XCTAssertEqual(preview.status, .blocked)
@@ -619,7 +619,7 @@ final class PrivacyRunGateTests: XCTestCase {
         do {
             _ = try await gate.authorize(
                 context: makeRunContext(),
-                workflow: makeRunWorkflow(recognizerID: "deepgram.prerecorded")
+                workflow: makeRunWorkflow(recognizerID: "remote.speech")
             )
             XCTFail("A stricter post-confirmation policy must invalidate authorization.")
         } catch let error as PrivacyRunGate.GateError {
@@ -720,10 +720,14 @@ private func makeRunWorkflow(
     recognizerID: String,
     actionIDs: [String] = []
 ) -> WorkflowDefinition {
-    WorkflowDefinition(
+    let usesCloudTextFixture = recognizerID == "remote.speech"
+    return WorkflowDefinition(
         name: "Privacy Run",
         pipeline: PipelineDeclaration(
-            recognizerID: recognizerID,
+            recognizerID: usesCloudTextFixture ? "sherpa-onnx.local" : recognizerID,
+            postProcessSteps: usesCloudTextFixture
+                ? [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")]
+                : [],
             outputActions: actionIDs.map { OutputActionReference(id: $0) }
         ),
         ui: WorkflowUIConfig(symbolName: "lock", accentColorName: "blue")

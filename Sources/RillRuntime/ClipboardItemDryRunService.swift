@@ -400,7 +400,8 @@ private extension ClipboardItemDryRunService {
         var reads = sourceWorkflowReads
         var issues: [ClipboardItemDryRunIssue] = []
 
-        for (index, step) in workflow.pipeline.postProcessSteps.enumerated() {
+        let postProcessSteps = workflow.plan.process.steps.compactMap(\.postProcessStep)
+        for (index, step) in postProcessSteps.enumerated() {
             guard let capability = profileRegistry.closedTransformCapability(for: step.kind) else {
                 transforms.append(
                     WorkflowExplanationTransform(
@@ -429,7 +430,7 @@ private extension ClipboardItemDryRunService {
             )
         }
 
-        for (index, reference) in workflow.pipeline.outputActions.enumerated() {
+        for (index, reference) in workflow.plan.output.actions.enumerated() {
             guard let capability = profileRegistry.closedOutputCapability(for: reference) else {
                 effects.append(
                     ClipboardItemDryRunActionEffect(

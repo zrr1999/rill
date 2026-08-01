@@ -1,15 +1,19 @@
 import Foundation
 
 public enum SecureCredentialKey: String, CaseIterable, Sendable, Equatable {
-    case deepgramAPIKey = "provider.deepgram.api-key"
+    case openAIAPIKey = "provider.openai.api-key"
     case legacyWhisperKitModelToken = "provider.whisperkit.model-token"
+    // Cleanup-only identity for credentials written before cloud ASR removal.
+    case retiredDeepgramAPIKey = "provider.deepgram.api-key"
 
     public var legacySettingKey: AppSettingKey {
         switch self {
-        case .deepgramAPIKey:
-            return .deepgramAPIKey
+        case .openAIAPIKey:
+            return .openAIAPIKey
         case .legacyWhisperKitModelToken:
             return .legacyWhisperKitModelToken
+        case .retiredDeepgramAPIKey:
+            return .retiredDeepgramAPIKey
         }
     }
 }

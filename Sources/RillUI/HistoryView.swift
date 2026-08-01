@@ -79,7 +79,6 @@ public enum RunHistoryScope: String, CaseIterable, Identifiable, Sendable {
 }
 
 enum HistoryViewFocusTarget: Hashable {
-    case scopePicker
     case scopeSummary
     case initialLoadRetry
     case entry(UUID)
@@ -143,15 +142,10 @@ enum HistoryInitialLoadRetryFocusPolicy {
         accessibilityFocus: HistoryViewFocusTarget?
     ) -> HistoryInitialLoadRetryFocusTransition {
         HistoryInitialLoadRetryFocusTransition(
-            keyboardFocus: stableTarget(for: keyboardFocus),
-            accessibilityFocus: stableTarget(for: accessibilityFocus)
+            keyboardFocus: keyboardFocus == .initialLoadRetry ? nil : keyboardFocus,
+            accessibilityFocus:
+                accessibilityFocus == .initialLoadRetry ? .scopeSummary : accessibilityFocus
         )
-    }
-
-    private static func stableTarget(
-        for current: HistoryViewFocusTarget?
-    ) -> HistoryViewFocusTarget? {
-        current == .initialLoadRetry ? .scopePicker : current
     }
 }
 
@@ -189,26 +183,12 @@ public struct HistoryView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Picker(
-                        UIStrings.text(.historyScopeLabel, language: model.language),
-                        selection: $model.runHistoryScope
-                    ) {
-                        Text(UIStrings.text(.historyScopeAll, language: model.language))
-                            .tag(RunHistoryScope.recentRuns)
-                        Text(UIStrings.text(.resultsTitle, language: model.language))
-                            .tag(RunHistoryScope.recentResults)
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 360)
-                    .focused($focusedTarget, equals: .scopePicker)
-                    .accessibilityFocused(
-                        $accessibilityFocusedTarget,
-                        equals: .scopePicker
-                    )
-                    .accessibilityIdentifier("history.scope")
-
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        Text(UIStrings.text(descriptionKey, language: model.language))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(UIStrings.text(.historyScopeAll, language: model.language))
+                                .font(.headline)
+                            Text(UIStrings.text(.historyDescription, language: model.language))
+                        }
                         Spacer(minLength: 12)
                         if case .loaded = model.effectiveRunHistoryLoadState {
                             Text(
@@ -227,32 +207,10 @@ public struct HistoryView: View {
                         equals: .scopeSummary
                     )
 
-                    if model.runHistoryScope == .recentRuns,
-                       let error = model.failedAudioRecoveryError {
+                    if let error = model.failedAudioRecoveryError {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.callout)
                             .foregroundStyle(.red)
-                    }
-
-                    if model.runHistoryHasNewerEntries {
-                        HStack(spacing: 10) {
-                            Label(
-                                UIStrings.text(.historyNewRunsAvailable, language: model.language),
-                                systemImage: "sparkles"
-                            )
-                            Spacer()
-                            Button(
-                                UIStrings.text(.historyRefreshNewest, language: model.language)
-                            ) {
-                                model.refreshNewestRunHistoryPage()
-                            }
-                            .disabled(model.isRunHistoryPageTransitioning)
-                            .accessibilityIdentifier("history.new-runs.refresh")
-                        }
-                        .padding(12)
-                        .background(.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("history.new-runs")
                     }
 
                     if case .expired = model.runHistoryDeepLinkState {
@@ -349,12 +307,6 @@ public struct HistoryView: View {
                 }
                 .id(Self.topAnchorID)
                 .padding(24)
-            }
-            .onChange(of: model.runHistoryScope) { _, _ in
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    proxy.scrollTo(Self.topAnchorID, anchor: .top)
-                }
-                accessibilityFocusedTarget = .scopeSummary
             }
             .task(
                 id: HistoryNavigationTaskIdentity(
@@ -653,10 +605,26 @@ public struct HistoryView: View {
 
                 if let failure = record.failureMessage {
                     HStack(alignment: .top, spacing: 8) {
-                        Label(failure, systemImage: "exclamationmark.triangle")
+                        Label(
+                            RunFailurePresentation.text(
+                                for: failure,
+                                language: model.language
+                            ),
+                            systemImage: "exclamationmark.triangle"
+                        )
                             .font(.callout)
                             .foregroundStyle(.red)
                         Spacer()
+                        Button {
+                            model.selectSidebarSection(.diagnostics)
+                        } label: {
+                            Label(
+                                UIStrings.text(.sidebarDiagnostics, language: model.language),
+                                systemImage: SidebarSection.diagnostics.symbolName
+                            )
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
                         Button(UIStrings.text(.copy, language: model.language)) {
                             model.copyHistoryFailure(record)
                         }
@@ -964,21 +932,5 @@ public struct HistoryView: View {
         model.displayedRunHistoryEntries
     }
 
-    private var descriptionKey: UIStrings.Key {
-        switch model.runHistoryScope {
-        case .recentRuns:
-            return .historyDescription
-        case .recentResults:
-            return .resultsDescription
-        }
-    }
-
-    private var emptyKey: UIStrings.Key {
-        switch model.runHistoryScope {
-        case .recentRuns:
-            return .historyEmpty
-        case .recentResults:
-            return .resultsEmpty
-        }
-    }
+    private var emptyKey: UIStrings.Key { .historyEmpty }
 }

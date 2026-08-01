@@ -574,8 +574,6 @@ extension AppModelTests {
         ]
         harness.model.lastCompletedText = "transcript-before-clear"
         harness.model.lastFailure = "failure-before-clear"
-        harness.model.deepgramTestTranscript = "deepgram-before-clear"
-        harness.model.deepgramTestError = "deepgram-error-before-clear"
         harness.model.eventFeed = [
             EventFeedEntry(
                 english: "content-before-clear",
@@ -597,8 +595,6 @@ extension AppModelTests {
         XCTAssertTrue(harness.model.diagnosticEvents.isEmpty)
         XCTAssertNil(harness.model.lastCompletedText)
         XCTAssertNil(harness.model.lastFailure)
-        XCTAssertNil(harness.model.deepgramTestTranscript)
-        XCTAssertNil(harness.model.deepgramTestError)
         XCTAssertTrue(harness.model.eventFeed.isEmpty)
         XCTAssertNil(harness.model.liveSubtitleSnapshot)
     }

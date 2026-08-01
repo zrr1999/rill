@@ -3,6 +3,34 @@ import XCTest
 @testable import RillUI
 
 final class VoiceWorkflowPresentationTests: XCTestCase {
+    @MainActor
+    func testWorkflowEditorExposesAndValidatesLLMRewriteSteps() {
+        XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.formalWriting))
+        XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.translateInput))
+        XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.commandMode))
+        XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.custom))
+        XCTAssertTrue(WorkflowsView.availableStepKinds.contains(.llmRewrite))
+
+        var draft = WorkflowEditorDraft(
+            name: "Custom Rewrite",
+            postProcessSteps: [
+                .init(kind: .normalizeWhitespace),
+                .init(kind: .llmRewrite, prompt: "Rewrite as a concise release note."),
+            ]
+        )
+        XCTAssertNil(draft.outputValidationError(language: .english))
+
+        draft.postProcessSteps[1].prompt = "  "
+        XCTAssertEqual(
+            draft.outputValidationError(language: .english),
+            "Enter an instruction for every LLM rewrite step."
+        )
+        XCTAssertEqual(
+            draft.outputValidationError(language: .simplifiedChinese),
+            "请为每个大模型改写步骤填写指令。"
+        )
+    }
+
     func testVoiceTextStyleInferenceCoversBuiltInModes() {
         XCTAssertEqual(VoiceTextStyle.infer(from: []), .rawInput)
         XCTAssertEqual(
@@ -64,13 +92,12 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
         XCTAssertTrue(UIStrings.workflowDetail(workflow, language: .simplifiedChinese).contains("模式：翻译输入"))
     }
 
-    func testDraftSpeechRouteWritesPerWorkflowASRMetadata() {
+    func testDraftSpeechRouteWritesPerWorkflowLocalASRMetadata() {
         let draft = WorkflowEditorDraft(
-            name: "Cloud Meeting",
+            name: "Local Meeting",
             recognizer: .automatic,
             speechLanguageOverride: "zh-CN",
             localSpeechModelOverride: "distil-large-v3",
-            deepgramModelOverride: "nova-3-medical",
             destination: .saveToQueue
         )
 
@@ -81,34 +108,11 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
         XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.languageOverride], "zh-CN")
         XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride], "distil-large-v3")
         XCTAssertNil(workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
-        XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.deepgramModelOverride], "nova-3-medical")
 
         let roundTrip = WorkflowEditorDraft(workflow: workflow)
         XCTAssertEqual(roundTrip?.recognizer, .automatic)
         XCTAssertEqual(roundTrip?.speechLanguageOverride, "zh-CN")
         XCTAssertEqual(roundTrip?.localSpeechModelOverride, "distil-large-v3")
-        XCTAssertEqual(roundTrip?.deepgramModelOverride, "nova-3-medical")
-    }
-
-    func testFixedCloudRouteDropsLocalOnlyModelOverride() {
-        let draft = WorkflowEditorDraft(
-            name: "Cloud Only",
-            recognizer: .cloudSpeech,
-            speechLanguageOverride: "en-US",
-            localSpeechModelOverride: "large-v3",
-            deepgramModelOverride: "nova-2",
-            destination: .copyToClipboard
-        )
-
-        let workflow = draft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
-
-        XCTAssertEqual(workflow.pipeline.recognizerID, "deepgram.prerecorded")
-        XCTAssertNil(workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode])
-        XCTAssertNil(workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride])
-        XCTAssertNil(workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
-        XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.deepgramModelOverride], "nova-2")
-        let englishDetail = VoiceWorkflowPresentation(workflow: workflow).detail(language: .english)
-        XCTAssertTrue(englishDetail.contains("Language: en-US"))
     }
 
     func testMenuTitleUsesStyleWithoutDuplicatingBuiltinNames() {
@@ -181,6 +185,67 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
         XCTAssertEqual(WorkflowEditorDraft(workflow: markdownWorkflow)?.markdownAppendPath, "~/Notes/Capture.md")
     }
 
+    func testSpeechOnlyVoiceAssistantCanBeEditedAndRoundTripsOneTTSAction() throws {
+        let assistant = WorkflowDefinition(
+            name: "Voice Assistant",
+            titleKey: .voiceAssistant,
+            trigger: .wakeWord,
+            plan: WorkflowPlan(
+                setup: WorkflowSetupPhase(
+                    speechRoute: WorkflowSpeechRoute(
+                        selection: .automatic,
+                        recognizerID: "sherpa-onnx.local"
+                    ),
+                    vocabularyBindings: [
+                        VocabularyCollectionBinding(
+                            collectionID: VocabularyCollection.personalID
+                        )
+                    ],
+                    wakeWord: WakeWordConfiguration(phrases: ["Hey Rill"])
+                ),
+                process: WorkflowProcessPhase(steps: [
+                    WorkflowProcessStep(kind: .recognizeSpeech),
+                    WorkflowProcessStep(kind: .applyVocabulary),
+                    WorkflowProcessStep(kind: .normalizeWhitespace),
+                    WorkflowProcessStep(
+                        kind: .llmRewrite,
+                        prompt: "Answer briefly for speech."
+                    ),
+                ]),
+                output: WorkflowOutputPhase(actions: [
+                    OutputActionReference(
+                        id: SpeechOutputActionID.speak,
+                        configuration: [
+                            SpeechOutputActionConfigurationKey.provider:
+                                SpeechSynthesisProvider.automatic.rawValue,
+                            SpeechOutputActionConfigurationKey.voice:
+                                Qwen3TTSVoice.ryan.rawValue,
+                        ]
+                    )
+                ])
+            ),
+            ui: WorkflowUIConfig(symbolName: "sparkles", accentColorName: "purple")
+        )
+
+        let draft = try XCTUnwrap(WorkflowEditorDraft(workflow: assistant))
+
+        XCTAssertEqual(draft.eventType, .wakeWord)
+        XCTAssertEqual(draft.destination, .speakOnly)
+        XCTAssertTrue(draft.speaksResult)
+        XCTAssertEqual(draft.speechVoice, .ryan)
+        XCTAssertEqual(draft.postProcessSteps.map(\.kind), [.normalizeWhitespace, .llmRewrite])
+
+        let saved = draft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
+        XCTAssertEqual(saved.plan.output.actions.count, 1)
+        XCTAssertEqual(saved.plan.output.actions.first?.id, SpeechOutputActionID.speak)
+        XCTAssertEqual(
+            saved.plan.output.actions.first?
+                .configuration[SpeechOutputActionConfigurationKey.voice],
+            Qwen3TTSVoice.ryan.rawValue
+        )
+        XCTAssertEqual(saved.plan.process.steps.map(\.kind), assistant.plan.process.steps.map(\.kind))
+    }
+
     func testExternalOutputValidationAndLabelsAreLocalized() {
         let draft = WorkflowEditorDraft(name: "Legacy Webhook", destination: .sendToWebhook)
         XCTAssertEqual(
@@ -190,6 +255,7 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
         XCTAssertFalse(WorkflowEditorDraft.DestinationChoice.productionChoices.contains(.sendToWebhook))
         XCTAssertTrue(WorkflowEditorDraft.DestinationChoice.productionChoices.contains(.runShortcut))
         XCTAssertTrue(WorkflowEditorDraft.DestinationChoice.productionChoices.contains(.appendToMarkdown))
+        XCTAssertTrue(WorkflowEditorDraft.DestinationChoice.productionChoices.contains(.speakOnly))
 
         let legacyWebhookWorkflow = draft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
         XCTAssertNil(WorkflowEditorDraft(workflow: legacyWebhookWorkflow))

@@ -21,6 +21,7 @@ JSON_OUTPUT = (
 SWIFT_OUTPUT = ROOT / "Sources" / "RillProviders" / "BuiltinWorkflowCatalog.swift"
 
 VOICE_GROUP_ID = "4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"
+PERSONAL_VOCABULARY_ID = "E79EF7C7-8867-5D6C-8E88-1119C62B9702"
 DOCUMENT_KEYS = {"schema_version", "metadata", "workflows"}
 POST_PROCESS_KEYS = {"id", "kind", "prompt"}
 SUPPORTED_DELIVERY_STRATEGIES = {"immediate", "stackFirst", "clipboardOnly"}
@@ -30,8 +31,14 @@ SUPPORTED_SPEECH_MODES = {
     "streaming-direct",
     "dedicated-transcription",
     "transcription-with-rewrite",
+    "voice-assistant",
 }
 SUPPORTED_SETTINGS = {"output_mode"}
+SUPPORTED_SPEECH_OUTPUT_CONFIGURATION = {
+    "speech.language",
+    "speech.provider",
+    "speech.voice",
+}
 SUPPORTED_TITLE_KEYS = {
     "ambiguousDemoStack",
     "cleanInput",
@@ -44,9 +51,11 @@ SUPPORTED_TITLE_KEYS = {
     "pushToTalkPolish",
     "rawInput",
     "rewriteDemoStack",
+    "speechRecognition",
     "stackDelivery",
     "translateInput",
     "streamingInput",
+    "voiceAssistant",
 }
 SUPPORTED_TRIGGERS = {"manual", "hotkey", "menuBar", "wakeWord"}
 WORKFLOW_KEYS = {
@@ -54,6 +63,7 @@ WORKFLOW_KEYS = {
     "availability",
     "builtin_kind",
     "delivery",
+    "default_enabled",
     "exclusive_group",
     "gesture",
     "id",
@@ -61,6 +71,7 @@ WORKFLOW_KEYS = {
     "mode",
     "name",
     "output",
+    "output_configuration",
     "post_process",
     "recognizer",
     "settings_expose",
@@ -69,6 +80,7 @@ WORKFLOW_KEYS = {
     "text_style",
     "title_key",
     "trigger",
+    "wake_phrases",
 }
 
 
@@ -171,6 +183,11 @@ def build_workflow(
 
     recognizer = required_string(entry, "recognizer", location)
     metadata: dict[str, str] = {"catalog": catalog}
+    default_enabled = optional_bool(entry, "default_enabled", location)
+    if default_enabled is not None:
+        metadata["workflow.default-enabled"] = (
+            "true" if default_enabled else "false"
+        )
     availability = optional_string(entry, "availability", location) or "active"
     validate_member(availability, SUPPORTED_AVAILABILITY, f"{location}.availability")
     if availability != "active":
@@ -220,6 +237,42 @@ def build_workflow(
         entry, "text_style", metadata, "workflow.text-style", location
     )
 
+    wake_phrases = string_list(
+        entry.get("wake_phrases", []), f"{location}.wake_phrases"
+    )
+    if trigger == "wakeWord":
+        validate_wake_phrases(wake_phrases, f"{location}.wake_phrases")
+    elif "wake_phrases" in entry:
+        raise SourceError(
+            f"{location}.wake_phrases is supported only for wakeWord workflows"
+        )
+
+    output_id = required_string(entry, "output", location)
+    output_configuration = string_mapping(
+        entry.get("output_configuration", {}),
+        f"{location}.output_configuration",
+    )
+    if output_configuration:
+        if output_id != "speech.speak":
+            raise SourceError(
+                f"{location}.output_configuration is supported only for speech.speak"
+            )
+        unsupported_output_configuration = (
+            set(output_configuration) - SUPPORTED_SPEECH_OUTPUT_CONFIGURATION
+        )
+        if unsupported_output_configuration:
+            values = ", ".join(sorted(unsupported_output_configuration))
+            raise SourceError(
+                f"{location}.output_configuration contains unsupported values: {values}"
+            )
+        provider = output_configuration.get("speech.provider")
+        if provider is not None:
+            validate_member(
+                provider,
+                {"automatic", "qwen3", "system"},
+                f"{location}.output_configuration.speech.provider",
+            )
+
     raw_steps = entry.get("post_process", [])
     if not isinstance(raw_steps, list):
         raise SourceError(f"{location}.post_process must be an array of tables")
@@ -236,26 +289,52 @@ def build_workflow(
     if len(step_ids) != len(set(step_ids)):
         raise SourceError(f"{location}.post_process must use unique step IDs")
 
+    setup: dict[str, Any] = {
+        "speechRoute": {
+            "selection": "automatic" if recognizer == "auto" else "fixed",
+            "recognizerID": recognizer_id,
+        },
+        "vocabularyBindings": [
+            {
+                "id": str(uuid.uuid5(workflow_id, "personal-vocabulary-binding")),
+                "collectionID": PERSONAL_VOCABULARY_ID,
+                "uses": ["recognitionHints", "textReplacement"],
+                "condition": {},
+            }
+        ],
+    }
+    if trigger == "wakeWord":
+        setup["wakeWord"] = {"phrases": wake_phrases}
+
     return {
         "id": str(workflow_id).upper(),
         "name": required_string(entry, "name", location),
         "titleKey": title_key,
         "trigger": trigger,
-        "pipeline": {
-            "recognizerID": recognizer_id,
-            "postProcessSteps": steps,
-            "outputActions": [
-                {
-                    "id": required_string(entry, "output", location),
-                    "configuration": {},
-                }
-            ],
-            "uncertaintyPolicy": {
-                "mode": "off",
-                "confidenceThreshold": 0,
-                "timeoutSeconds": 0,
+        "plan": {
+            "setup": setup,
+            "process": {
+                "steps": [
+                    {
+                        "id": str(uuid.uuid5(workflow_id, "recognize-speech")),
+                        "kind": "recognizeSpeech",
+                    },
+                    {
+                        "id": str(uuid.uuid5(workflow_id, "apply-vocabulary")),
+                        "kind": "applyVocabulary",
+                    },
+                    *steps,
+                ]
             },
-            "deliveryPolicy": {"strategy": delivery},
+            "output": {
+                "actions": [
+                {
+                    "id": output_id,
+                    "configuration": output_configuration,
+                }
+                ],
+                "deliveryPolicy": {"strategy": delivery},
+            },
         },
         "ui": {
             "symbolName": required_string(entry, "symbol", location),
@@ -285,8 +364,6 @@ def build_post_process(
     )
     prompt = optional_string(step, "prompt", location)
     if kind == "llmRewrite":
-        if not is_planned:
-            raise SourceError(f"{location}.llmRewrite is allowed only for planned presets")
         if prompt is None:
             raise SourceError(f"{location}.prompt is required for llmRewrite")
     elif prompt is not None:
@@ -347,9 +424,12 @@ def render_swift_catalog(manifest: Mapping[str, Any]) -> str:
 
 def render_swift_workflow(workflow: Mapping[str, Any], indent: int) -> list[str]:
     prefix = " " * indent
-    pipeline = workflow["pipeline"]
-    uncertainty = pipeline["uncertaintyPolicy"]
-    delivery = pipeline["deliveryPolicy"]
+    plan = workflow["plan"]
+    setup = plan["setup"]
+    process = plan["process"]
+    output = plan["output"]
+    route = setup["speechRoute"]
+    delivery = output["deliveryPolicy"]
     ui = workflow["ui"]
     title_key = workflow["titleKey"]
 
@@ -359,53 +439,75 @@ def render_swift_workflow(workflow: Mapping[str, Any], indent: int) -> list[str]
         f"{prefix}    name: {swift_string(workflow['name'])},",
         f"{prefix}    titleKey: {'.' + title_key if title_key is not None else 'nil'},",
         f"{prefix}    trigger: .{workflow['trigger']},",
-        f"{prefix}    pipeline: PipelineDeclaration(",
-        f"{prefix}        recognizerID: {swift_string(pipeline['recognizerID'])},",
+        f"{prefix}    plan: WorkflowPlan(",
+        f"{prefix}        setup: WorkflowSetupPhase(",
+        f"{prefix}            speechRoute: WorkflowSpeechRoute(",
+        f"{prefix}                selection: .{route['selection']},",
+        f"{prefix}                recognizerID: {swift_string(route['recognizerID'])}",
+        f"{prefix}            ),",
+        f"{prefix}            vocabularyBindings: [",
+        f"{prefix}                VocabularyCollectionBinding(",
+        f"{prefix}                    id: staticUUID({swift_string(setup['vocabularyBindings'][0]['id'])}),",
+        f"{prefix}                    collectionID: VocabularyCollection.personalID",
+        f"{prefix}                ),",
+        f"{prefix}            ]{',' if 'wakeWord' in setup else ''}",
     ]
+    if "wakeWord" in setup:
+        phrases = ", ".join(
+            swift_string(phrase) for phrase in setup["wakeWord"]["phrases"]
+        )
+        lines.extend(
+            [
+                f"{prefix}            wakeWord: WakeWordConfiguration(",
+                f"{prefix}                phrases: [{phrases}]",
+                f"{prefix}            )",
+            ]
+        )
+    lines.extend(
+        [
+            f"{prefix}        ),",
+            f"{prefix}        process: WorkflowProcessPhase(steps: [",
+        ]
+    )
 
-    steps = pipeline["postProcessSteps"]
-    if steps:
-        lines.append(f"{prefix}        postProcessSteps: [")
-        for step in steps:
-            prompt = step["prompt"]
-            lines.extend(
-                [
-                    f"{prefix}            PostProcessStep(",
-                    f"{prefix}                id: staticUUID({swift_string(step['id'])}),",
-                    f"{prefix}                kind: .{step['kind']}{',' if prompt is not None else ''}",
-                ]
-            )
-            if prompt is not None:
-                lines.append(f"{prefix}                prompt: {swift_string(prompt)}")
-            lines.append(f"{prefix}            ),")
-        lines.append(f"{prefix}        ],")
-    else:
-        lines.append(f"{prefix}        postProcessSteps: [],")
-
-    actions = pipeline["outputActions"]
-    lines.append(f"{prefix}        outputActions: [")
+    for step in process["steps"]:
+        prompt = step.get("prompt")
+        lines.extend(
+            [
+                f"{prefix}            WorkflowProcessStep(",
+                f"{prefix}                id: staticUUID({swift_string(step['id'])}),",
+                f"{prefix}                kind: .{step['kind']}{',' if prompt is not None else ''}",
+            ]
+        )
+        if prompt is not None:
+            lines.append(f"{prefix}                prompt: {swift_string(prompt)}")
+        lines.append(f"{prefix}            ),")
+    lines.extend(
+        [
+            f"{prefix}        ]),",
+            f"{prefix}        output: WorkflowOutputPhase(",
+            f"{prefix}            actions: [",
+        ]
+    )
+    actions = output["actions"]
     for action in actions:
         configuration = action["configuration"]
         if configuration:
-            lines.append(f"{prefix}            OutputActionReference(")
-            lines.append(f"{prefix}                id: {swift_string(action['id'])},")
-            lines.append(f"{prefix}                configuration: [")
-            lines.extend(render_swift_mapping(configuration, indent=indent + 20))
-            lines.append(f"{prefix}                ]")
-            lines.append(f"{prefix}            ),")
+            lines.append(f"{prefix}                OutputActionReference(")
+            lines.append(f"{prefix}                    id: {swift_string(action['id'])},")
+            lines.append(f"{prefix}                    configuration: [")
+            lines.extend(render_swift_mapping(configuration, indent=indent + 24))
+            lines.append(f"{prefix}                    ]")
+            lines.append(f"{prefix}                ),")
         else:
             lines.append(
-                f"{prefix}            OutputActionReference(id: {swift_string(action['id'])}),"
+                f"{prefix}                OutputActionReference(id: {swift_string(action['id'])}),"
             )
     lines.extend(
         [
-            f"{prefix}        ],",
-            f"{prefix}        uncertaintyPolicy: UncertaintyPolicy(",
-            f"{prefix}            mode: .{uncertainty['mode']},",
-            f"{prefix}            confidenceThreshold: {swift_number(uncertainty['confidenceThreshold'])},",
-            f"{prefix}            timeoutSeconds: {swift_number(uncertainty['timeoutSeconds'])}",
-            f"{prefix}        ),",
-            f"{prefix}        deliveryPolicy: DeliveryPolicy(strategy: .{delivery['strategy']})",
+            f"{prefix}            ],",
+            f"{prefix}            deliveryPolicy: DeliveryPolicy(strategy: .{delivery['strategy']})",
+            f"{prefix}        )",
             f"{prefix}    ),",
             f"{prefix}    ui: WorkflowUIConfig(",
             f"{prefix}        symbolName: {swift_string(ui['symbolName'])},",
@@ -510,6 +612,15 @@ def optional_string(entry: Mapping[str, Any], key: str, location: str) -> str | 
     return value
 
 
+def optional_bool(entry: Mapping[str, Any], key: str, location: str) -> bool | None:
+    value = entry.get(key)
+    if value is None:
+        return None
+    if type(value) is not bool:
+        raise SourceError(f"{location}.{key} must be a boolean")
+    return value
+
+
 def copy_optional_metadata(
     entry: Mapping[str, Any],
     source_key: str,
@@ -538,6 +649,20 @@ def string_list(value: Any, location: str) -> list[str]:
     if len(value) != len(set(value)):
         raise SourceError(f"{location} must not contain duplicate values")
     return value
+
+
+def validate_wake_phrases(value: list[str], location: str) -> None:
+    if not 1 <= len(value) <= 4:
+        raise SourceError(f"{location} must contain between one and four phrases")
+    identities: set[str] = set()
+    for phrase in value:
+        normalized = " ".join(phrase.split())
+        if len(normalized) < 2 or len(normalized) > 64:
+            raise SourceError(f"{location} contains an invalid phrase")
+        identity = normalized.casefold()
+        if identity in identities:
+            raise SourceError(f"{location} must not contain duplicate phrases")
+        identities.add(identity)
 
 
 def table(value: Any, location: str) -> Mapping[str, Any]:

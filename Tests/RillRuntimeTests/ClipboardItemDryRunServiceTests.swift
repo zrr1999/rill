@@ -21,7 +21,7 @@ private actor ClipboardDryRunSideEffectProbe {
 }
 
 private struct ClipboardDryRunProbeRecognizer: SpeechRecognizer {
-    let id = "deepgram.prerecorded"
+    let id = "remote.speech"
     let probe: ClipboardDryRunSideEffectProbe
 
     func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
@@ -121,7 +121,7 @@ final class ClipboardItemDryRunServiceTests: XCTestCase {
         let itemID = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
         let workflow = makeWorkflow(
             name: "CANARY-WORKFLOW-NAME",
-            recognizerID: "deepgram.prerecorded",
+            recognizerID: "remote.speech",
             steps: [
                 PostProcessStep(
                     kind: .normalizeWhitespace,
@@ -196,7 +196,7 @@ final class ClipboardItemDryRunServiceTests: XCTestCase {
     func testExcludedSourceFailsClosedBeforeWorkflowProjection() {
         let canaryWorkflow = makeWorkflow(
             name: "CANARY-EXCLUDED",
-            recognizerID: "deepgram.prerecorded",
+            recognizerID: "remote.speech",
             actions: [OutputActionReference(id: ExternalOutputActionID.webhookPost)]
         )
 
@@ -331,7 +331,7 @@ final class ClipboardItemDryRunServiceTests: XCTestCase {
             subject: makeSubject(),
             operation: .replay,
             workflow: makeWorkflow(
-                recognizerID: "deepgram.prerecorded",
+                recognizerID: "remote.speech",
                 actions: [
                     OutputActionReference(
                         id: ExternalOutputActionID.webhookPost,
@@ -454,7 +454,7 @@ final class ClipboardItemDryRunServiceTests: XCTestCase {
             subject: makeSubject(),
             operation: .replace,
             workflow: makeWorkflow(
-                recognizerID: "deepgram.prerecorded",
+                recognizerID: "remote.speech",
                 steps: [PostProcessStep(kind: .normalizeWhitespace)],
                 actions: [OutputActionReference(id: "stack.push")]
             ),

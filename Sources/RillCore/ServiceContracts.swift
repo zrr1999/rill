@@ -114,6 +114,11 @@ public protocol AudioCaptureService: Sendable {
     /// Cancels only the matching run. A stale cancellation must not affect a newer capture.
     func cancelCapture(runID: UUID) async
 
+    /// Removes a product-owned finite duration limit from the matching active
+    /// capture. Returns false when the run is stale or the provider cannot
+    /// safely continue without its current limit.
+    func removeMaximumDurationLimit(runID: UUID) async -> Bool
+
     /// Stops capture and drains service-owned managed temporary audio cleanup.
     func shutdown() async
 }
@@ -130,6 +135,10 @@ public extension AudioCaptureService {
         await cancelCapture()
     }
 
+    func removeMaximumDurationLimit(runID _: UUID) async -> Bool {
+        false
+    }
+
     func shutdown() async {
         await cancelCapture()
     }
@@ -143,6 +152,22 @@ public protocol TriggerSource: Sendable {
     var id: String { get }
     var binding: TriggerBinding { get }
     func stream() -> AsyncStream<WorkflowTriggerEvent>
+}
+
+public protocol SpeechSynthesizer: Sendable {
+    var id: String { get }
+    func synthesize(_ request: SpeechSynthesisRequest) async throws -> SpeechAsset
+    func releaseResources() async
+}
+
+public extension SpeechSynthesizer {
+    func releaseResources() async {}
+}
+
+public protocol SpeechPlaybackService: Sendable {
+    func play(_ asset: SpeechAsset, runID: UUID) async throws
+    func stop(runID: UUID) async
+    func shutdown() async
 }
 
 public protocol TextTransformer: Sendable {

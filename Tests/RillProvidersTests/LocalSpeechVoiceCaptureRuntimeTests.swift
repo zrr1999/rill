@@ -129,7 +129,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
       sourceFactory: { source },
       liveUpdateHandler: { await snapshots.append($0) }
     )
-    let request = makeLocalSpeechRequest()
+    let request = makeLocalSpeechRequest(maxDurationSeconds: 120)
 
     let startTask = Task { try await runtime.startCapture(request: request) }
     try await source.waitUntilStarted()
@@ -169,13 +169,74 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     let phases = await snapshots.phases
     XCTAssertTrue(phases.contains(.recording))
     XCTAssertEqual(phases.last, .hidden)
+    let publishedSnapshots = await snapshots.values
+    let recordingSnapshot = try XCTUnwrap(
+      publishedSnapshots.first(where: { $0.phase == .recording })
+    )
+    XCTAssertNotNil(recordingSnapshot.recordingStartedAt)
+    XCTAssertEqual(recordingSnapshot.maximumRecordingDurationSeconds, 120)
+    let hiddenSnapshot = try XCTUnwrap(publishedSnapshots.last)
+    XCTAssertNil(hiddenSnapshot.recordingStartedAt)
+    XCTAssertNil(hiddenSnapshot.maximumRecordingDurationSeconds)
+  }
+
+  func testRemovingDurationLimitOnlyUpdatesTheActiveCapture() async throws {
+    let source = TestLocalSpeechAudioCaptureSource()
+    let snapshots = LocalSpeechSnapshotProbe()
+    let runID = UUID()
+    let writer = try TestLocalSpeechRecordingWriter(
+      fileURL: makeLocalSpeechOutputURL(runID: runID),
+      failure: .none
+    )
+    let runtime = LocalSpeechVoiceCaptureRuntime(
+      permissionRequester: { true },
+      sourceFactory: { source },
+      recordingWriterFactory: { _, _ in writer },
+      liveUpdateHandler: { await snapshots.append($0) }
+    )
+    let request = makeLocalSpeechRequest(
+      runID: runID,
+      maxDurationSeconds: 120,
+      canRemoveMaxDurationLimit: true
+    )
+
+    let startTask = Task { try await runtime.startCapture(request: request) }
+    try await source.waitUntilStarted()
+    source.emit(
+      samples: Array(
+        repeating: Float(0.2),
+        count: LocalSpeechInputReadinessDetector.minimumUsableFrameSampleCount
+      ),
+      cumulativeRMS: [0.005]
+    )
+    try await startTask.value
+
+    let firstRemoval = await runtime.removeMaximumDurationLimit(runID: runID)
+    let repeatedRemoval = await runtime.removeMaximumDurationLimit(runID: runID)
+    let staleRemoval = await runtime.removeMaximumDurationLimit(runID: UUID())
+    XCTAssertTrue(firstRemoval)
+    XCTAssertFalse(repeatedRemoval)
+    XCTAssertFalse(staleRemoval)
+    XCTAssertEqual(writer.removeFrameLimitCount, 1)
+
+    let publishedSnapshots = await snapshots.values
+    let unlimitedSnapshot = try XCTUnwrap(
+      publishedSnapshots.last(where: {
+        $0.runID == runID && $0.phase == .recording
+          && $0.recordingDurationIsUnlimited == true
+      })
+    )
+    XCTAssertNil(unlimitedSnapshot.maximumRecordingDurationSeconds)
+    XCTAssertEqual(unlimitedSnapshot.canRemoveRecordingDurationLimit, false)
+
+    await runtime.cancelCapture(for: request)
   }
 
   func testFixedStreamingPreviewPublishesHypothesisWithoutChangingCapturedAudio() async throws {
     let source = TestLocalSpeechAudioCaptureSource()
     let snapshots = LocalSpeechSnapshotProbe()
     let preview = TestLocalSpeechStreamingPreviewSession(
-      results: [.success("你好 world")],
+      results: [.success("你好 world"), .success("")],
       finishResult: .success("你好 world final")
     )
     let runtime = LocalSpeechVoiceCaptureRuntime(
@@ -191,14 +252,20 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     try await source.waitUntilStarted()
     source.emit(samples: samples, cumulativeRMS: [0.005, 0.005, 0.005])
     try await startTask.value
+    let trailingSamples = Array(repeating: Float(0.1), count: 1_600)
+    source.emit(samples: trailingSamples, cumulativeRMS: [0.005])
+    try await preview.waitUntilAcceptedSampleCount(2)
 
     let capturedAudio = try await runtime.finishCaptureDeferred(for: request).value()
     defer { _ = try? capturedAudio.removeManagedTemporaryFile() }
     let recordingSnapshots = await snapshots.values.filter { $0.phase == .recording }
 
-    XCTAssertTrue(recordingSnapshots.contains { $0.hypothesisText == "你好 world" })
-    XCTAssertEqual(preview.acceptedSampleCounts, [samples.count])
-    XCTAssertEqual(capturedAudio.durationSeconds, Double(samples.count) / 16_000)
+    XCTAssertEqual(recordingSnapshots.last?.hypothesisText, "你好 world")
+    XCTAssertEqual(preview.acceptedSampleCounts, [samples.count, trailingSamples.count])
+    XCTAssertEqual(
+      capturedAudio.durationSeconds,
+      Double(samples.count + trailingSamples.count) / 16_000
+    )
     XCTAssertEqual(
       capturedAudio.metadata[SherpaStreamingCaptureRecognizer.bestTextMetadataKey],
       "你好 world final"
@@ -207,6 +274,52 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
       capturedAudio.metadata[SherpaStreamingCaptureRecognizer.modelMetadataKey],
       SherpaStreamingPreviewService.modelID
     )
+  }
+
+  func testStreamingPreviewProjectionHoldsTransientRewritesUntilTheyStabilize() {
+    var projection = LocalSpeechStreamingPreviewProjection()
+
+    projection.observe("你好 Rill")
+    XCTAssertEqual(projection.text, "你好 Rill")
+
+    projection.observe("")
+    projection.observe("天气")
+    XCTAssertEqual(projection.text, "你好 Rill")
+
+    projection.observe("天气如何")
+    XCTAssertEqual(projection.text, "天气如何")
+
+    projection.observe("天气如何呢")
+    XCTAssertEqual(projection.text, "天气如何呢")
+  }
+
+  func testStreamingPreviewProjectionRemovesDuplicatedExtensionOverlap() {
+    var projection = LocalSpeechStreamingPreviewProjection()
+
+    projection.observe("今天天气")
+    projection.observe("今天天气天气怎么样")
+    XCTAssertEqual(projection.text, "今天天气怎么样")
+
+    projection.observe("今天天气怎么样怎么样呢")
+    XCTAssertEqual(projection.text, "今天天气怎么样呢")
+  }
+
+  func testStreamingPreviewProjectionPreservesIntentionalAndAmbiguousRepetition() {
+    var projection = LocalSpeechStreamingPreviewProjection()
+
+    projection.observe("谢谢")
+    projection.observe("谢谢谢谢")
+    XCTAssertEqual(projection.text, "谢谢谢谢")
+
+    projection.reset()
+    projection.observe("今天")
+    projection.observe("今天天气")
+    XCTAssertEqual(projection.text, "今天天气")
+
+    projection.reset()
+    projection.observe("我我")
+    projection.observe("我我我觉得")
+    XCTAssertEqual(projection.text, "我我觉得")
   }
 
   func testStreamingPreviewFailureFallsBackWithoutTerminatingCapture() async throws {
@@ -315,7 +428,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     XCTAssertEqual(voiceActivityDetector.acceptedSampleCounts, [4_800, 1_600])
   }
 
-  func testTwentySecondFrameCeilingIncludesBoundedStartupGrace() async throws {
+  func testTwoMinuteFrameCeilingIncludesBoundedStartupGrace() async throws {
     let source = TestLocalSpeechAudioCaptureSource()
     let factoryProbe = LocalSpeechWriterFactoryProbe()
     let runtime = LocalSpeechVoiceCaptureRuntime(
@@ -326,7 +439,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
         return try TestLocalSpeechRecordingWriter(fileURL: fileURL, failure: .none)
       }
     )
-    let request = makeLocalSpeechRequest(maxDurationSeconds: 20)
+    let request = makeLocalSpeechRequest(maxDurationSeconds: 120)
 
     let startTask = Task { try await runtime.startCapture(request: request) }
     try await source.waitUntilStarted()
@@ -456,6 +569,58 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     let capturedAudio = try await runtime.finishCaptureDeferred(for: request).value()
     defer { _ = try? capturedAudio.removeManagedTemporaryFile() }
     XCTAssertGreaterThan(capturedAudio.durationSeconds, 0.3)
+  }
+
+  func testWakeCaptureKeepsOnlyTwoHundredMillisecondsBeforeFirstSpeech() async throws {
+    let source = TestLocalSpeechAudioCaptureSource()
+    let voiceActivityDetector = TestLocalSpeechVoiceActivityDetector([
+      .observations(Self.silenceObservations(count: 1)),
+      .observations(Self.speechObservations(count: 1)),
+    ])
+    let runID = UUID()
+    let writer = try TestLocalSpeechRecordingWriter(
+      fileURL: makeLocalSpeechOutputURL(runID: runID),
+      failure: .none
+    )
+    let speechStarted = LocalSpeechCallbackCounter()
+    let runtime = LocalSpeechVoiceCaptureRuntime(
+      permissionRequester: { true },
+      sourceFactory: { source },
+      recordingWriterFactory: { _, _ in writer },
+      voiceActivityDetectorFactory: { _ in voiceActivityDetector },
+      wakeWordSpeechStartedHandler: {
+        speechStarted.increment()
+      }
+    )
+    let endpointControl = AudioCaptureEndpointControl(
+      runID: runID,
+      policy: .shortDictation
+    )
+    let request = makeLocalSpeechRequest(
+      runID: runID,
+      endpointControl: endpointControl,
+      triggerBinding: .wakeWord
+    )
+
+    let startTask = Task { try await runtime.startCapture(request: request) }
+    try await source.waitUntilStarted()
+    source.emit(
+      samples: Array(repeating: 0.001, count: 4_800),
+      cumulativeRMS: [0.005]
+    )
+    try await startTask.value
+    XCTAssertEqual(writer.frameCount, 0)
+
+    source.emit(
+      samples: Array(repeating: 0.1, count: 1_600),
+      cumulativeRMS: [0.005, 0.016]
+    )
+    try await writer.waitUntilFrameCount(3_200)
+
+    let capturedAudio = try await runtime.finishCaptureDeferred(for: request).value()
+    defer { _ = try? capturedAudio.removeManagedTemporaryFile() }
+    XCTAssertEqual(speechStarted.value, 1)
+    XCTAssertEqual(capturedAudio.durationSeconds, 0.2, accuracy: 0.0001)
   }
 
   func testStreamFailureBeforeFirstBufferFailsTypedAndStopsSource() async throws {
@@ -1074,6 +1239,15 @@ private final class TestLocalSpeechStreamingPreviewSession:
     lock.withLock { acceptedCounts }
   }
 
+  func waitUntilAcceptedSampleCount(_ expectedCount: Int) async throws {
+    for _ in 0..<2_000 {
+      if acceptedSampleCounts.count >= expectedCount { return }
+      try await Task.sleep(for: .milliseconds(1))
+    }
+    XCTFail("Timed out waiting for the streaming preview session.")
+    throw TestLocalSpeechFailure.timeout
+  }
+
   func accept(samples: [Float]) throws -> String {
     try lock.withLock {
       acceptedCounts.append(samples.count)
@@ -1113,6 +1287,7 @@ private final class TestLocalSpeechRecordingWriter: LocalSpeechRecordingWriting,
   private var storedFrameCount = 0
   private var isClosed = false
   private var storedCloseCount = 0
+  private var storedRemoveFrameLimitCount = 0
 
   init(fileURL: URL, failure: Failure) throws {
     self.fileURL = fileURL
@@ -1126,6 +1301,29 @@ private final class TestLocalSpeechRecordingWriter: LocalSpeechRecordingWriting,
 
   var closeCount: Int {
     lock.withLock { storedCloseCount }
+  }
+
+  var removeFrameLimitCount: Int {
+    lock.withLock { storedRemoveFrameLimitCount }
+  }
+
+  var frameCount: Int {
+    lock.withLock { storedFrameCount }
+  }
+
+  func waitUntilFrameCount(_ expectedCount: Int) async throws {
+    for _ in 0..<2_000 {
+      if frameCount >= expectedCount { return }
+      try await Task.sleep(for: .milliseconds(1))
+    }
+    XCTFail("Timed out waiting for the recording writer.")
+    throw TestLocalSpeechFailure.timeout
+  }
+
+  func removeFrameLimit() {
+    lock.withLock {
+      storedRemoveFrameLimitCount += 1
+    }
   }
 
   func append(_ samples: [Float]) throws {
@@ -1160,13 +1358,13 @@ private final class TestLocalSpeechRecordingWriter: LocalSpeechRecordingWriting,
 
 private final class LocalSpeechWriterFactoryProbe: @unchecked Sendable {
   private let lock = NSLock()
-  private var storedFrameLimits: [Int] = []
+  private var storedFrameLimits: [Int?] = []
 
-  var frameLimits: [Int] {
+  var frameLimits: [Int?] {
     lock.withLock { storedFrameLimits }
   }
 
-  func record(frameLimit: Int) {
+  func record(frameLimit: Int?) {
     lock.withLock {
       storedFrameLimits.append(frameLimit)
     }
@@ -1539,23 +1737,47 @@ private func makeLocalSpeechRequest(
   runID: UUID = UUID(),
   endpointControl: AudioCaptureEndpointControl? = nil,
   audioLifetime: AudioCaptureLifetime? = nil,
-  maxDurationSeconds: Double? = nil
+  maxDurationSeconds: Double? = nil,
+  canRemoveMaxDurationLimit: Bool = false,
+  triggerBinding: TriggerBinding = .hotkey
 ) -> AudioCaptureRequest {
   AudioCaptureRequest(
     runID: runID,
     workflow: WorkflowDefinition(
       name: "Local speech",
-      trigger: .hotkey,
+      trigger: triggerBinding,
       pipeline: PipelineDeclaration(
         recognizerID: "sherpa-onnx.local",
         outputActions: []
       ),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
     ),
+    triggerEvent:
+      triggerBinding == .wakeWord
+      ? WorkflowTriggerEvent(
+        id: runID,
+        binding: triggerBinding,
+        sourceID: "test"
+      )
+      : nil,
     maxDurationSeconds: maxDurationSeconds,
+    canRemoveMaxDurationLimit: canRemoveMaxDurationLimit,
     endpointControl: endpointControl,
     audioLifetime: audioLifetime
   )
+}
+
+private final class LocalSpeechCallbackCounter: @unchecked Sendable {
+  private let lock = NSLock()
+  private var count = 0
+
+  var value: Int {
+    lock.withLock { count }
+  }
+
+  func increment() {
+    lock.withLock { count += 1 }
+  }
 }
 
 private func makeLocalSpeechOutputURL(runID: UUID) -> URL {

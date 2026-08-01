@@ -2,9 +2,10 @@ import SwiftUI
 import RillCore
 
 private enum DashboardViewMetrics {
-    static let summaryCardHeight: CGFloat = 220
-    static let recentResultsPreviewLimit = 3
-    static let recentResultLineLimit = 4
+    static let summaryCardHeight: CGFloat = 168
+    static let recentRunsPreviewLimit = 2
+    static let recentRunLineLimit = 3
+    static let activityPreviewLimit = 6
 }
 
 struct ClipboardPanelShortcutSurfaceVisibility: Sendable, Equatable {
@@ -46,9 +47,9 @@ public struct DashboardView: View {
                 if !model.voiceSetupReadiness.isComplete {
                     voiceSetupCard(model.voiceSetupReadiness)
                 }
-                statusCards
                 Text(UIStrings.text(.appSubtitle, language: model.language))
                     .foregroundStyle(.secondary)
+                statusCards
                 if let failureMessage = latestFailureMessage {
                     voiceFailureBanner(message: failureMessage)
                 }
@@ -269,49 +270,6 @@ public struct DashboardView: View {
                 actionIdentifier: "dashboard.local-speech.open-settings",
                 action: { model.showSettings(.speech) }
             )
-        case .cloudCredentialSaving:
-            setupRow(
-                title: UIStrings.text(.settingsDeepgram, language: model.language),
-                detail: .voiceSetupCloudCredentialSaving,
-                symbol: "key.fill",
-                color: .blue
-            )
-        case .cloudCredentialMissing:
-            setupRow(
-                title: UIStrings.text(.settingsDeepgram, language: model.language),
-                detail: .voiceSetupCloudCredentialMissing,
-                symbol: "key.fill",
-                color: .orange,
-                actionTitle: UIStrings.text(.openSettings, language: model.language),
-                actionIdentifier: "dashboard.deepgram.open-settings",
-                action: { model.showSettings(.speech) }
-            )
-        case .cloudCredentialUnavailable:
-            setupRow(
-                title: UIStrings.text(.settingsDeepgram, language: model.language),
-                detail: .voiceSetupCloudCredentialUnavailable,
-                symbol: "exclamationmark.triangle.fill",
-                color: .red,
-                actionTitle: UIStrings.text(.retryCredentialLoad, language: model.language),
-                action: model.retryDeepgramCredentialLoad
-            )
-        case .cloudNeedsSpeechCheck:
-            setupRow(
-                title: UIStrings.text(.settingsDeepgram, language: model.language),
-                detail: .voiceSetupCloudNeedsCheck,
-                symbol: "waveform.badge.mic",
-                color: .orange,
-                actionTitle: UIStrings.text(.voiceSetupOpenDiagnostics, language: model.language),
-                actionIdentifier: "dashboard.deepgram.open-diagnostics",
-                action: { model.selectSidebarSection(.diagnostics) }
-            )
-        case .cloudSpeechCheckPassed:
-            setupRow(
-                title: UIStrings.text(.settingsDeepgram, language: model.language),
-                detail: .voiceSetupCloudVerified,
-                symbol: "checkmark.circle.fill",
-                color: .green
-            )
         }
     }
 
@@ -335,22 +293,8 @@ public struct DashboardView: View {
                 actionIdentifier: "dashboard.privacy.open-settings",
                 action: { model.showSettings(.privacy) }
             )
-        case .available(let cloudConfirmationRequired):
-            if readiness.preferredSpeechEngine == .cloud {
-                setupRow(
-                    title: L10n.privacyText(.cloudConfirmation, language: model.language),
-                    detail: cloudConfirmationRequired
-                        ? .voiceSetupCloudConfirmationOn
-                        : .voiceSetupCloudConfirmationOff,
-                    symbol: cloudConfirmationRequired
-                        ? RillSystemSymbol.lockShieldFill.rawValue
-                        : RillSystemSymbol.exclamationmarkShieldFill.rawValue,
-                    color: cloudConfirmationRequired ? .green : .orange,
-                    actionTitle: UIStrings.text(.openSettings, language: model.language),
-                    actionIdentifier: "dashboard.cloud-confirmation.open-settings",
-                    action: { model.showSettings(.privacy) }
-                )
-            }
+        case .available:
+            EmptyView()
         }
     }
 
@@ -409,27 +353,27 @@ public struct DashboardView: View {
             }
 
             Button {
-                model.showRecentResults()
+                model.showRunHistory()
             } label: {
-                recentResultsCard
+                recentRunsCard
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
-                UIStrings.recentResultsAccessibilityLabel(
-                    count: model.recentVoiceResultRecords.count,
+                UIStrings.recentRunsAccessibilityLabel(
+                    count: recentRunEntries.count,
                     language: model.language
                 )
             )
             .accessibilityHint(
-                UIStrings.recentResultsAccessibilityHint(language: model.language)
+                UIStrings.recentRunsAccessibilityHint(language: model.language)
             )
-            .accessibilityIdentifier("dashboard.recent-results")
+            .accessibilityIdentifier("dashboard.recent-runs")
         }
         .animation(.easeInOut(duration: 0.2), value: model.clipboardCaptureEnabled)
         .animation(.easeInOut(duration: 0.2), value: model.stackCount)
-        .animation(.easeInOut(duration: 0.2), value: model.recentVoiceResultRecords.map(\.id))
+        .animation(.easeInOut(duration: 0.2), value: recentRunEntries.map(\.id))
     }
 
     private func statusCard(title: String, primary: String, secondary: String) -> some View {
@@ -450,42 +394,62 @@ public struct DashboardView: View {
         .rillCard(opacity: 0.35)
     }
 
-    private var recentResultsCard: some View {
+    private var recentRunsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(UIStrings.text(.latestOutput, language: model.language))
+            Text(UIStrings.text(.historyScopeAll, language: model.language))
                 .font(.headline)
 
-            if model.recentVoiceResultRecords.isEmpty {
-                Text(UIStrings.text(.noCompletedOutput, language: model.language))
+            if recentRunEntries.isEmpty {
+                Text(UIStrings.text(.historyEmpty, language: model.language))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(model.recentVoiceResultRecords.prefix(DashboardViewMetrics.recentResultsPreviewLimit))) { record in
+                    ForEach(
+                        Array(recentRunEntries.prefix(DashboardViewMetrics.recentRunsPreviewLimit))
+                    ) { entry in
                         VStack(alignment: .leading, spacing: 4) {
                             HStack(alignment: .top, spacing: 8) {
-                                Text(UIStrings.workflowName(record.workflow, language: model.language))
+                                Label(
+                                    GlobalSearchText.status(
+                                        entry.status,
+                                        language: model.language
+                                    ),
+                                    systemImage: entry.status.systemSymbol.rawValue
+                                )
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
+                                Text(recentRunTitle(entry))
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
                                 Spacer()
-                                Text(record.timestamp, style: .relative)
+                                Text(entry.timestamp, style: .relative)
                                     .font(.caption2)
                                     .foregroundStyle(.tertiary)
                             }
 
-                            HistoryPreviewContent(
-                                text: record.finalText,
-                                mode: model.privacyPolicySettings.historyPreviewMode,
-                                language: model.language
-                            ) { text, privacyLineLimit in
-                                Text(ClipboardTextFormatting.previewText(text, limit: 260))
-                                    .font(.body.weight(.medium))
-                                    .lineLimit(
-                                        min(
-                                            privacyLineLimit ?? DashboardViewMetrics.recentResultLineLimit,
-                                            DashboardViewMetrics.recentResultLineLimit
+                            if let finalText = entry.record?.finalText {
+                                HistoryPreviewContent(
+                                    text: finalText,
+                                    mode: model.privacyPolicySettings.historyPreviewMode,
+                                    language: model.language
+                                ) { text, privacyLineLimit in
+                                    Text(ClipboardTextFormatting.previewText(text, limit: 260))
+                                        .font(.body.weight(.medium))
+                                        .lineLimit(
+                                            min(
+                                                privacyLineLimit
+                                                    ?? DashboardViewMetrics.recentRunLineLimit,
+                                                DashboardViewMetrics.recentRunLineLimit
+                                            )
                                         )
-                                    )
+                                        .truncationMode(.tail)
+                                }
+                            } else if let failureMessage = entry.record?.failureMessage {
+                                Text(failureMessage)
+                                    .font(.body.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(DashboardViewMetrics.recentRunLineLimit)
                                     .truncationMode(.tail)
                             }
                         }
@@ -498,6 +462,24 @@ public struct DashboardView: View {
         }
         .frame(maxWidth: .infinity, minHeight: DashboardViewMetrics.summaryCardHeight, alignment: .topLeading)
         .rillCard(opacity: 0.35)
+    }
+
+    private var recentRunEntries: [HistoryTimelineEntry] {
+        HistoryTimelineBuilder.allRuns(
+            records: model.recentVoiceHistoryRecords,
+            receipts: Array(model.workflowRunReceiptsByRunID.values)
+        )
+    }
+
+    private func recentRunTitle(_ entry: HistoryTimelineEntry) -> String {
+        if let record = entry.record {
+            return UIStrings.workflowName(record.workflow, language: model.language)
+        }
+        if let workflowID = entry.workflowID,
+           let workflow = model.workflows.first(where: { $0.id == workflowID }) {
+            return UIStrings.workflowName(workflow.presentation, language: model.language)
+        }
+        return GlobalSearchText.genericRun(language: model.language)
     }
 
     private var latestFailureMessage: String? {
@@ -539,39 +521,33 @@ public struct DashboardView: View {
                     .textSelection(.enabled)
             }
 
-            if hasDeepgramAPIKeyRecovery(for: message) {
-                Button {
-                    model.setPreferredSpeechEngine(.cloud)
-                    model.showSettings(.speech)
-                } label: {
-                    Label(
-                        UIStrings.text(.diagnosticsOpenSettings, language: model.language),
-                        systemImage: "slider.horizontal.3"
-                    )
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("dashboard.failure.open-settings")
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .rillCard(opacity: 0.45)
     }
 
     private func failureSummary(for message: String) -> String {
-        if hasDeepgramAPIKeyRecovery(for: message) {
-            return UIStrings.text(.diagnosticsManageProviderSettings, language: model.language)
-        }
         return UIStrings.text(.historyDescription, language: model.language)
-    }
-
-    private func hasDeepgramAPIKeyRecovery(for message: String) -> Bool {
-        L10n.hasDeepgramAPIKeyRecovery(for: message)
     }
 
     private var eventFeed: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(UIStrings.text(.eventFeed, language: model.language))
-                .font(.headline)
+            HStack(alignment: .firstTextBaseline) {
+                Text(UIStrings.text(.eventFeed, language: model.language))
+                    .font(.headline)
+                Spacer()
+                Button {
+                    model.selectSidebarSection(.diagnostics)
+                } label: {
+                    Label(
+                        UIStrings.text(.sidebarDiagnostics, language: model.language),
+                        systemImage: SidebarSection.diagnostics.symbolName
+                    )
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .accessibilityIdentifier("dashboard.open-diagnostics")
+            }
             if model.eventFeed.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "text.bubble")
@@ -583,11 +559,13 @@ public struct DashboardView: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: 120)
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(model.eventFeed.reversed()) { entry in
-                            eventFeedRow(entry)
-                        }
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(
+                        model.eventFeed
+                            .suffix(DashboardViewMetrics.activityPreviewLimit)
+                            .reversed()
+                    ) { entry in
+                        eventFeedRow(entry)
                     }
                 }
             }

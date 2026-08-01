@@ -55,11 +55,27 @@ extension ClipboardView {
             }
         }
 
+        Button {
+            togglePinned(entry)
+        } label: {
+            Label(
+                UIStrings.text(
+                    entry.isPinned ? .clipboardUnpinItem : .clipboardPinItem,
+                    language: model.language
+                ),
+                systemImage: entry.isPinned ? "pin.slash" : "pin"
+            )
+        }
+
         Button(role: .destructive) {
             requestDeletion(of: entry)
         } label: {
             Label(UIStrings.text(.clipboardDeleteItem, language: model.language), systemImage: "trash")
         }
+    }
+
+    func togglePinned(_ entry: ClipboardHistoryEntry) {
+        model.setClipboardHistoryEntryPinned(!entry.isPinned, entry: entry)
     }
 
     func presentDryRun(for item: ClipboardHistoryItem) {

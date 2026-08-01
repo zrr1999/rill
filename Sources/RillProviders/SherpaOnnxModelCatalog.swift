@@ -194,20 +194,22 @@ public enum SherpaOnnxModelCatalog {
   )
 
   /// Fixed low-latency model used only for local live subtitle hypotheses.
+  /// The storage identifier retains its original `small` spelling so an
+  /// authenticated upgrade replaces the earlier preview cache in place.
   /// Final transcription continues to use the user's selected tier model.
   public static let streamingZipformerBilingualPreviewInt8 = SherpaOnnxModelDescriptor(
     id: .streamingZipformerBilingualPreviewInt8,
     architecture: .streamingTransducer,
     archiveURL: URL(
       string:
-        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16.tar.bz2"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2"
     )!,
-    archiveByteCount: 458_187_351,
-    archiveSHA256: "2b7c63322b32e5e0f2526043a1103366119ca58dd615cd7105a37c01db9553d7",
+    archiveByteCount: 511_274_346,
+    archiveSHA256: "27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8",
     archiveRootDirectoryName:
-      "sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16",
+      "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
     installedFileInventorySHA256:
-      "cea6f98992fd166743ea63ca27ebf87c6b99e11b6d7cf5ae3944e2977dcbfc53",
+      "9adc9ead5f64877832a928980b189b12ba36fe192a137ec8c1ae39540b640c62",
     requiredEntries: [
       .init(relativePath: "encoder-epoch-99-avg-1.int8.onnx", kind: .regularFile),
       .init(relativePath: "decoder-epoch-99-avg-1.int8.onnx", kind: .regularFile),

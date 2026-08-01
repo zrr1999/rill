@@ -16,14 +16,20 @@ public actor RoutedSpeechWorkerService: SpeechWorkerRequestHandling {
     self.mlxAudioSwift = mlxAudioSwift
   }
 
-  public func handle(_ request: SpeechWorkerRequest) async -> SpeechWorkerResponse {
+  public func handle(
+    _ request: SpeechWorkerRequest,
+    progress: @escaping @Sendable (SpeechWorkerProgress) -> Void
+  ) async -> SpeechWorkerResponse {
     let modelID =
       request.recognitionPayload?.modelID
+      ?? request.synthesisPayload?.modelID
       ?? request.modelPreparationPayload?.modelID
       ?? ""
-    if MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelID) {
-      return await mlxAudioSwift.handle(request)
+    if MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelID)
+      || SpeechSynthesisModelCatalog.supportedModelIdentifiers.contains(modelID)
+    {
+      return await mlxAudioSwift.handle(request, progress: progress)
     }
-    return await sherpaOnnx.handle(request)
+    return await sherpaOnnx.handle(request, progress: progress)
   }
 }

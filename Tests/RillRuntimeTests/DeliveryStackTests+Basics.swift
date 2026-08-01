@@ -107,6 +107,27 @@ extension DeliveryStackTests {
         XCTAssertNotNil(item.lastUsedAt)
     }
 
+    func testPinningPreservesHistoryAndActiveOrderWhileAdvancingItemVersion() async throws {
+        let stack = DeliveryStack(eventBus: EventBus())
+        await stack.setMode(.list, forGroup: ClipboardGroup.defaultGroupID)
+        let first = DeliveryItem(workflowID: UUID(), text: "first")
+        let second = DeliveryItem(workflowID: UUID(), text: "second")
+        await stack.push(first)
+        await stack.push(second)
+        let before = await stack.clipboardSnapshot()
+        let firstBefore = try XCTUnwrap(before.items.first(where: { $0.id == first.id }))
+
+        let result = await stack.setItemsPinned(true, itemIDs: [first.id])
+        let after = await stack.clipboardSnapshot()
+        let firstAfter = try XCTUnwrap(after.items.first(where: { $0.id == first.id }))
+
+        XCTAssertTrue(result.wasAccepted)
+        XCTAssertEqual(after.items.map(\.id), before.items.map(\.id))
+        XCTAssertEqual(after.remainingItemIDs, before.remainingItemIDs)
+        XCTAssertTrue(firstAfter.isPinned)
+        XCTAssertEqual(firstAfter.version, firstBefore.version.advanced())
+    }
+
     func testVoiceGroupServesAsCrossGroupFallbackWhenAssignedGroupIsEmpty() async throws {
         let stack = DeliveryStack(eventBus: EventBus())
         let safariContext = ClipboardRouteContext(

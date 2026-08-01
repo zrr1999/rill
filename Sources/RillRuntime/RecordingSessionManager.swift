@@ -26,9 +26,6 @@ final class RecordingCueToken: @unchecked Sendable {
 
 public actor RecordingSessionManager {
   private static let preparingReleaseDebounce = Duration.milliseconds(140)
-  private static let holdToTalkMaximumDurationSeconds = 120.0
-  private static let longRecordingMaximumDurationSeconds = 1_800.0
-
   public enum State: Sendable, Equatable {
     case idle
     case preparing(UUID)
@@ -122,10 +119,11 @@ public actor RecordingSessionManager {
   private let runPreflight: RecognitionRunPreflight
   private let liveAuthorizationMonitorInterval: Duration
   private let longRecordingModeProvider: @Sendable () async -> Bool
+  private let recordingDurationLimitProvider: @Sendable () async -> RecordingDurationLimit
   private let recognizerDurationProvider: @Sendable (String) -> Double?
   private let pushToTalkGestureStateProvider: @Sendable (HotkeyEventTap.PushToTalkGesture) -> Bool
   private let cleanupOwner: ManagedTemporaryAudioCleanupOwner
-  private let recordingCueAction: (@Sendable () async -> Void)?
+  private let recordingCueAction: (@Sendable (RecordingInteractionCue) async -> Void)?
 
   private var state: State = .idle
   private var started = false
@@ -194,10 +192,13 @@ public actor RecordingSessionManager {
     runPreflight: @escaping RecognitionRunPreflight = { _ in },
     liveAuthorizationMonitorInterval: Duration = .milliseconds(50),
     longRecordingModeProvider: @escaping @Sendable () async -> Bool = { false },
+    recordingDurationLimitProvider: @escaping @Sendable () async -> RecordingDurationLimit = {
+      .fiveMinutes
+    },
     recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
     pushToTalkGestureStateProvider: (@Sendable (HotkeyEventTap.PushToTalkGesture) -> Bool)? = nil,
     cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
-    recordingCueAction: (@Sendable () async -> Void)? = nil
+    recordingCueAction: (@Sendable (RecordingInteractionCue) async -> Void)? = nil
   ) {
     self.audioCaptureService = audioCaptureService
     self.hotkeyTap = hotkeyTap
@@ -218,6 +219,7 @@ public actor RecordingSessionManager {
     self.runPreflight = runPreflight
     self.liveAuthorizationMonitorInterval = liveAuthorizationMonitorInterval
     self.longRecordingModeProvider = longRecordingModeProvider
+    self.recordingDurationLimitProvider = recordingDurationLimitProvider
     self.recognizerDurationProvider = recognizerDurationProvider
     self.cleanupOwner = cleanupOwner
     self.recordingCueAction = recordingCueAction
@@ -684,16 +686,20 @@ public actor RecordingSessionManager {
     let privacyContextProvider = self.privacyContextProvider
     let targetBoundAuthorizedContextProvider = self.targetBoundAuthorizedContextProvider
     var rejectedPrivacyFocus = expectedFocus.focus
+    rejectedPrivacyFocus.applicationName = nil
+    rejectedPrivacyFocus.bundleIdentifier = nil
     rejectedPrivacyFocus.processIdentifier =
       expectedFocus.focus.processIdentifier == Int32.min
       ? Int32.max
       : Int32.min
     rejectedPrivacyFocus.focusedRole = nil
     rejectedPrivacyFocus.selectedText = ""
+    rejectedPrivacyFocus.secureInput = true
     let rejectedPrivacyContext = ContextSnapshot(
       // A non-throwing PrivacyRunGate provider needs a content-free value
-      // that cannot compare as the authorized source. This sentinel
-      // forces the gate's exact source check to reject target drift.
+      // that cannot compare as the authorized source. Removing the prior
+      // application identity and marking Secure Input keeps live cloud
+      // authorization fail-closed after target drift.
       focus: rejectedPrivacyFocus,
       clipboard: ContextSnapshot.empty.clipboard
     )
@@ -702,7 +708,18 @@ public actor RecordingSessionManager {
       guard currentFocus.hasSamePrivacyIdentity(as: expectedFocus) else {
         return rejectedPrivacyContext
       }
-      return await privacyContextProvider()
+      let context = await privacyContextProvider()
+      let capturedFocus = FocusPrivacyIdentitySample(
+        focus: context.focus,
+        applicationActivationRevision: expectedFocus.applicationActivationRevision
+      )
+      let confirmedFocus = await focusIdentitySampleProvider()
+      guard capturedFocus.hasSamePrivacyIdentity(as: expectedFocus),
+        confirmedFocus.hasSamePrivacyIdentity(as: expectedFocus)
+      else {
+        return rejectedPrivacyContext
+      }
+      return context
     }
     let boundAuthorizedContextProvider:
       @Sendable (
@@ -712,7 +729,23 @@ public actor RecordingSessionManager {
         guard currentFocus.hasSamePrivacyIdentity(as: expectedFocus) else {
           return .empty
         }
-        return await targetBoundAuthorizedContextProvider(decision, expectedFocus) ?? .empty
+        guard let context = await targetBoundAuthorizedContextProvider(
+          decision,
+          expectedFocus
+        ) else {
+          return .empty
+        }
+        let capturedFocus = FocusPrivacyIdentitySample(
+          focus: context.focus,
+          applicationActivationRevision: expectedFocus.applicationActivationRevision
+        )
+        let confirmedFocus = await focusIdentitySampleProvider()
+        guard capturedFocus.hasSamePrivacyIdentity(as: expectedFocus),
+          confirmedFocus.hasSamePrivacyIdentity(as: expectedFocus)
+        else {
+          return .empty
+        }
+        return context
       }
     let liveAudioSession: AuthorizedLiveAudioSession
     if let privacyRunGate {
@@ -776,16 +809,14 @@ public actor RecordingSessionManager {
     }
     let recognitionOptions = liveAudioSession.audioCaptureOptions
     let sourceID = controlMode == .toggle ? "long-recording" : "push-to-talk"
-    let modeMaximumDurationSeconds =
-      controlMode == .toggle
-      ? Self.longRecordingMaximumDurationSeconds
-      : Self.holdToTalkMaximumDurationSeconds
+    let modeMaximumDurationSeconds = await recordingDurationLimitProvider().durationSeconds
+    let recognizerMaximumDurationSeconds = recognizerDurationProvider(
+      workflow.plan.setup.speechRoute?.recognizerID ?? ""
+    )
     let maximumDurationSeconds =
       SpeechRecognizerCapabilities.effectiveMaximumAudioDurationSeconds(
         modeMaximumAudioDurationSeconds: modeMaximumDurationSeconds,
-        recognizerMaximumAudioDurationSeconds: recognizerDurationProvider(
-          workflow.pipeline.recognizerID
-        )
+        recognizerMaximumAudioDurationSeconds: recognizerMaximumDurationSeconds
       )
     let triggerEvent = WorkflowTriggerEvent(
       binding: .hotkey,
@@ -802,6 +833,8 @@ public actor RecordingSessionManager {
       triggerEvent: triggerEvent,
       preferredFormat: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
       maxDurationSeconds: maximumDurationSeconds,
+      canRemoveMaxDurationLimit:
+        modeMaximumDurationSeconds != nil && recognizerMaximumDurationSeconds == nil,
       options: recognitionOptions,
       metadata: [
         "source": sourceID,
@@ -817,7 +850,7 @@ public actor RecordingSessionManager {
       level: .debug,
       event: "recording.prepare.begin",
       message:
-        "Push-to-talk preparing with \(gesture.rawValue) using workflow \(workflow.name) and recognizer \(workflow.pipeline.recognizerID).",
+        "Push-to-talk preparing with \(gesture.rawValue) using workflow \(workflow.name) and recognizer \(workflow.plan.setup.speechRoute?.recognizerID ?? "unconfigured").",
       runID: runID
     )
 
@@ -909,7 +942,7 @@ public actor RecordingSessionManager {
       else {
         return
       }
-      await performRecordingCue(token: pendingStart.startCueToken)
+      await performRecordingCue(token: pendingStart.startCueToken, cue: .started)
       completedStartCueCount += 1
     } catch is CancellationError {
       _ = pendingStart.request.audioLifetime?.cancel()
@@ -1001,6 +1034,27 @@ public actor RecordingSessionManager {
 
   public func cancelCurrentRecording(runID requestedRunID: UUID? = nil) async {
     await cancelCaptures(runID: requestedRunID)
+  }
+
+  public func removeMaximumDurationLimit(runID requestedRunID: UUID) async -> Bool {
+    guard !hasBegunApplicationShutdown,
+      case .recording(let runID) = state,
+      runID == requestedRunID,
+      activeRunID == runID
+    else {
+      return false
+    }
+    guard await audioCaptureService.removeMaximumDurationLimit(runID: runID) else {
+      return false
+    }
+    cancelMaximumDurationTask(runID: runID)
+    enqueueDiagnostic(
+      level: .info,
+      event: "recording.maximum-duration-removed",
+      message: "The user removed Rill's duration limit for the active recording.",
+      runID: runID
+    )
+    return true
   }
 
   public func stopForApplicationShutdown() async {
@@ -1500,7 +1554,7 @@ extension RecordingSessionManager {
       await discard(deferredCapture, runID: runID)
       return
     }
-    await performRecordingCue(token: stopCueToken)
+    await performRecordingCue(token: stopCueToken, cue: .stopped)
     stopCueToken.invalidate()
     guard ownsFinishingRecording(runID: runID, operationID: operationID),
       !Task.isCancelled
@@ -1876,15 +1930,18 @@ extension RecordingSessionManager {
     await task?.value
   }
 
-  fileprivate func performRecordingCue(token: RecordingCueToken) async {
+  fileprivate func performRecordingCue(
+    token: RecordingCueToken,
+    cue: RecordingInteractionCue
+  ) async {
     if let recordingCueAction {
-      await recordingCueAction()
+      await recordingCueAction(cue)
       return
     }
     await MainActor.run {
       token.performIfValid {
         NSHapticFeedbackManager.defaultPerformer.perform(
-          .alignment,
+          cue == .started ? .alignment : .generic,
           performanceTime: .now
         )
       }

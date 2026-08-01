@@ -5,6 +5,7 @@ import RillRuntime
 
 extension AppModel {
     func synchronizeWorkflowEnabledStates() {
+        migrateRetiredBuiltinPushToTalkSelection()
         let validWorkflowIDs = Set(workflows.map(\.id))
         workflowEnabledStates = workflowEnabledStates.filter { validWorkflowIDs.contains($0.key) }
 
@@ -12,12 +13,31 @@ extension AppModel {
             if !WorkflowExecutionPolicy.supports(workflow) {
                 workflowEnabledStates[workflow.id] = false
             } else if workflowEnabledStates[workflow.id] == nil {
-                workflowEnabledStates[workflow.id] = true
+                workflowEnabledStates[workflow.id] = workflow.isEnabledByDefault
             }
         }
 
         normalizeExclusiveWorkflowSelections()
         updateWorkflowTriggerConflicts()
+    }
+
+    private func migrateRetiredBuiltinPushToTalkSelection() {
+        guard
+            let speechRecognitionID = UUID(
+                uuidString: "B9E19A88-F9FB-4AB3-8444-CDBF7E215A88"
+            ),
+            workflows.contains(where: { $0.id == speechRecognitionID })
+        else {
+            return
+        }
+        let retiredIDs = [
+            "A8E19A88-F9FB-4AB3-8444-CDBF7E215A88",
+            "D1E19A88-F9FB-4AB3-8444-CDBF7E215A88",
+        ].compactMap(UUID.init(uuidString:))
+        guard retiredIDs.contains(where: { workflowEnabledStates[$0] == true }) else {
+            return
+        }
+        workflowEnabledStates[speechRecognitionID] = true
     }
 
     func normalizeExclusiveWorkflowSelections() {
@@ -81,8 +101,7 @@ extension AppModel {
         _ workflow: WorkflowDefinition,
         trigger: TriggerBinding
     ) -> WorkflowDefinition? {
-        let recognizerResolution: WorkflowRecognizerResolution =
-            preferredSpeechEngine == .cloud ? .cloudSpeech : .localSpeech
+        let recognizerResolution = WorkflowRecognizerResolution.localSpeech
         let outputResolution: WorkflowOutputResolution
         switch builtinPushToTalkOutputMode {
         case .pasteIntoApp:

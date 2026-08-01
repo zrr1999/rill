@@ -123,7 +123,7 @@ enum ApplicationShutdownOperation {
     cancelFailedAudioRecoveryRetries: @escaping @Sendable () async -> Void,
     stopLocalHistoryMaintenance: @escaping @Sendable () async -> Void,
     shutdownAudioQueue: @escaping @Sendable () async -> Void,
-    cancelDeepgramTest: @escaping @Sendable () async -> Void,
+    shutdownSpeechPlayback: @escaping @Sendable () async -> Void = {},
     drainTextInjectionClipboardRecovery: @escaping @Sendable () async -> Void = {},
     stopStackPaste: @escaping @Sendable () async -> Void,
     stopGlobalInputOwner: @escaping @Sendable () async -> Void = {},
@@ -169,7 +169,7 @@ enum ApplicationShutdownOperation {
           await shutdownAudioQueue()
         }
         group.addTask {
-          await cancelDeepgramTest()
+          await shutdownSpeechPlayback()
         }
       }
       // A text injection can temporarily sit on top of a StackPaste
@@ -198,6 +198,17 @@ enum ApplicationShutdownOperation {
 @MainActor
 final class VoiceInputApplicationDelegate: NSObject, NSApplicationDelegate {
   private let terminationCoordinator = ApplicationTerminationCoordinator()
+  private var escapeMonitor: Any?
+
+  func installEscapeAction(_ action: @escaping @MainActor () -> Bool) {
+    if let escapeMonitor {
+      NSEvent.removeMonitor(escapeMonitor)
+    }
+    escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      guard event.keyCode == 53, action() else { return event }
+      return nil
+    }
+  }
 
   func installCleanupOperation(
     _ operation: @escaping ApplicationTerminationCoordinator.CleanupOperation
@@ -208,6 +219,13 @@ final class VoiceInputApplicationDelegate: NSObject, NSApplicationDelegate {
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     terminationCoordinator.beginTermination { shouldTerminate in
       sender.reply(toApplicationShouldTerminate: shouldTerminate)
+    }
+  }
+
+  func applicationWillTerminate(_: Notification) {
+    if let escapeMonitor {
+      NSEvent.removeMonitor(escapeMonitor)
+      self.escapeMonitor = nil
     }
   }
 }

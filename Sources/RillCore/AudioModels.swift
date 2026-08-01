@@ -42,6 +42,9 @@ public struct AudioCaptureRequest: Sendable, Equatable {
     public var triggerEvent: WorkflowTriggerEvent?
     public var preferredFormat: AudioFormat?
     public var maxDurationSeconds: Double?
+    /// Whether the finite product-owned duration limit may be removed while
+    /// this capture is active. Provider hard limits are never removable.
+    public var canRemoveMaxDurationLimit: Bool
     public var metadata: [String: String]
     public var options: SpeechRecognitionRequestOptions
     /// Run-scoped policy and terminal coordination between the capture
@@ -59,6 +62,7 @@ public struct AudioCaptureRequest: Sendable, Equatable {
         triggerEvent: WorkflowTriggerEvent? = nil,
         preferredFormat: AudioFormat? = nil,
         maxDurationSeconds: Double? = nil,
+        canRemoveMaxDurationLimit: Bool = false,
         options: SpeechRecognitionRequestOptions = .empty,
         metadata: [String: String] = [:],
         endpointControl: AudioCaptureEndpointControl? = nil,
@@ -69,6 +73,7 @@ public struct AudioCaptureRequest: Sendable, Equatable {
         self.triggerEvent = triggerEvent
         self.preferredFormat = preferredFormat
         self.maxDurationSeconds = maxDurationSeconds
+        self.canRemoveMaxDurationLimit = canRemoveMaxDurationLimit
         self.metadata = metadata
         self.options = options
         self.endpointControl = endpointControl

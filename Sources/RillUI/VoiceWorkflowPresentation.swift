@@ -12,6 +12,10 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
     static let selectableCases: [VoiceTextStyle] = [
         .rawInput,
         .cleanInput,
+        .formalWriting,
+        .translateInput,
+        .commandMode,
+        .custom,
     ]
 
     var id: String { rawValue }
@@ -38,7 +42,7 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
            let style = VoiceTextStyle(rawValue: rawValue) {
             return style
         }
-        return infer(from: workflow.pipeline.postProcessSteps)
+        return infer(from: workflow.plan.process.steps.compactMap(\.postProcessStep))
     }
 
     static func infer(from steps: [PostProcessStep]) -> VoiceTextStyle {
@@ -122,8 +126,8 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
     init(workflow: WorkflowDefinition) {
         textStyle = VoiceTextStyle.infer(from: workflow)
         trigger = workflow.trigger
-        outputActionID = workflow.pipeline.outputActions.first?.id
-        recognizerID = workflow.pipeline.recognizerID
+        outputActionID = workflow.plan.output.actions.first?.id
+        recognizerID = workflow.plan.setup.speechRoute?.recognizerID ?? ""
         prefersAutomaticRecognizerSelection = workflow.prefersAutomaticRecognizerSelection
         languageOverride = workflow.metadata[WorkflowMetadataKey.languageOverride]
         usesBuiltinTitle = workflow.titleKey != nil

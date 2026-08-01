@@ -102,6 +102,10 @@ extension AppModel {
     public func loadNewerRunHistoryPage() {
         guard !isRunHistoryPageTransitioning, runHistoryPage != nil else { return }
         if let target = runHistoryNewerPageLocators.last {
+            if runHistoryHasNewerEntries, runHistoryNewerPageLocators.count == 1 {
+                loadRunHistoryFirstPage(preservingCurrentPage: true)
+                return
+            }
             loadRunHistoryPage(
                 at: target,
                 newerLocators: Array(runHistoryNewerPageLocators.dropLast()),
@@ -116,8 +120,10 @@ extension AppModel {
     }
 
     func noteNewRunAvailableForHistoryBrowsing() {
-        guard usesPagedRunHistory, runHistoryPage != nil else { return }
+        guard usesPagedRunHistory else { return }
         runHistoryHasNewerEntries = true
+        guard runHistoryPage == nil || isPresentingNewestRunHistoryPage else { return }
+        loadRunHistoryFirstPage(preservingCurrentPage: runHistoryPage != nil)
     }
 
     func resetRunHistoryBrowsingForPrivacyChange() {
@@ -322,6 +328,16 @@ extension AppModel {
 
     private var runHistoryContentAccess: RunHistoryContentAccess {
         Self.runHistoryContentAccess(for: privacyPolicySettings.historyPreviewMode)
+    }
+
+    private var isPresentingNewestRunHistoryPage: Bool {
+        guard runHistoryNewerPageLocators.isEmpty else { return false }
+        switch runHistoryCurrentPageLocator {
+        case .request(.first), .snapshotAnchor:
+            return true
+        case .request(.next), .deepLinkAnchor, nil:
+            return false
+        }
     }
 
     private static func runHistoryContentAccess(

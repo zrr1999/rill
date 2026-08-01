@@ -108,6 +108,7 @@ final class AppModelClipboardMutationShutdownTests: XCTestCase {
             model.setClipboardFallbackPriority(9, forGroup: ClipboardGroup.defaultGroupID)
         )
         XCTAssertFalse(model.setClipboardItemTags(["rejected"], forItem: item.id))
+        XCTAssertFalse(model.setClipboardHistoryEntryPinned(true, entry: entry))
 
         await model.drainClipboardMutationsForApplicationShutdown()
         XCTAssertEqual(model.clipboardMutationTaskOwner.state, .stopped)

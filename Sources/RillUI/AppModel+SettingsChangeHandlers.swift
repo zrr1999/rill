@@ -59,6 +59,16 @@ extension AppModel {
     }
   }
 
+  func handleTTSModelIdentifierChange(from oldValue: String) {
+    guard oldValue != ttsModelIdentifier else { return }
+    persistStringSetting(ttsModelIdentifier, for: .ttsModel)
+    selectTTSModelAction(ttsModelIdentifier)
+    ttsResourceState =
+      downloadedTTSModelIdentifiers.contains(ttsModelIdentifier)
+      ? .ready
+      : .notInstalled
+  }
+
   func handleBuiltinPushToTalkOutputModeChange(from oldValue: BuiltinPushToTalkOutputMode) {
     guard oldValue != builtinPushToTalkOutputMode else { return }
     invalidateWorkflowExplanation()
@@ -68,6 +78,11 @@ extension AppModel {
   func handleLongRecordingModeChange(from oldValue: Bool) {
     guard oldValue != longRecordingModeEnabled else { return }
     persistLongRecordingModePreference()
+  }
+
+  func handleRecordingDurationLimitChange(from oldValue: RecordingDurationLimit) {
+    guard oldValue != recordingDurationLimit else { return }
+    persistRecordingDurationLimitPreference()
   }
 
   func handleLegacyWhisperModelOptionChange(from oldValue: LegacyWhisperModelOption) {
@@ -124,6 +139,7 @@ extension AppModel {
     guard oldValue != localSpeechModel else { return }
     publishCurrentLocalSpeechSettingsToRuntime()
     resetLocalSpeechPreparationStatus()
+    synchronizeWakeWordResourceWithLocalSpeechModel()
     persistStringSetting(localSpeechModel, for: .localSpeechModel)
   }
 
@@ -162,41 +178,52 @@ extension AppModel {
     persistStringSetting(localSpeechPrewarm ? "true" : "false", for: .localSpeechPrewarm)
   }
 
-  func handleDeepgramAPIKeyChange(from oldValue: String) {
-    guard oldValue != deepgramAPIKey else { return }
+  func handleOpenAIAPIKeyChange(from oldValue: String) {
+    guard oldValue != openAIAPIKey else { return }
+    openAIVerificationTask?.cancel()
+    openAIVerificationTask = nil
+    openAIVerificationGeneration &+= 1
+    openAIVerificationFailure = nil
+    openAIConfigurationVerificationState = .idle
     if !isRestoringSettings {
-      deepgramCredentialLoadGeneration += 1
-      deepgramCredentialAvailability = credentialStore == nil ? .inaccessible : .saving
+      openAICredentialLoadGeneration &+= 1
+      openAICredentialAvailability = credentialStore == nil ? .inaccessible : .saving
     }
-    handleDeepgramStringChange(
-      from: oldValue,
-      value: deepgramAPIKey,
-      key: .deepgramAPIKey
+    persistSecureCredential(
+      openAIAPIKey,
+      for: .openAIAPIKey,
+      taskKey: .openAIAPIKey
     )
   }
 
-  func handleDeepgramBaseURLChange(from oldValue: String) {
-    handleDeepgramStringChange(
+  func handleOpenAIBaseURLChange(from oldValue: String) {
+    handleOpenAIConfigurationStringChange(
       from: oldValue,
-      value: deepgramBaseURL,
-      key: .deepgramBaseURL
+      value: openAIBaseURL,
+      key: .openAIBaseURL
     )
   }
 
-  func handleDeepgramModelChange(from oldValue: String) {
-    handleDeepgramStringChange(
+  func handleOpenAIModelChange(from oldValue: String) {
+    handleOpenAIConfigurationStringChange(
       from: oldValue,
-      value: deepgramModel,
-      key: .deepgramModel
+      value: openAIModel,
+      key: .openAIModel
     )
   }
 
-  func handleDeepgramLanguageChange(from oldValue: String) {
-    handleDeepgramStringChange(
-      from: oldValue,
-      value: deepgramLanguage,
-      key: .deepgramLanguage
-    )
+  private func handleOpenAIConfigurationStringChange(
+    from oldValue: String,
+    value: String,
+    key: AppSettingKey
+  ) {
+    guard oldValue != value else { return }
+    openAIVerificationTask?.cancel()
+    openAIVerificationTask = nil
+    openAIVerificationGeneration &+= 1
+    openAIVerificationFailure = nil
+    openAIConfigurationVerificationState = .idle
+    persistStringSetting(value, for: key)
   }
 
   func handleLegacyWhisperRuntimeSettingChange<Value: Equatable>(
@@ -208,27 +235,4 @@ extension AppModel {
     resetLocalSpeechPreparationStatus()
   }
 
-  func handleDeepgramStringChange(
-    from oldValue: String,
-    value: String,
-    key: AppSettingKey
-  ) {
-    guard oldValue != value else { return }
-    if !isRestoringSettings,
-      let lastFailure,
-      L10n.hasDeepgramAPIKeyRecovery(for: lastFailure)
-    {
-      self.lastFailure = nil
-    }
-    let cancelledActiveSpeechCheck = !isRestoringSettings && deepgramAudioTestState != .idle
-    if cancelledActiveSpeechCheck {
-      cancelDeepgramAudioTest()
-    }
-    deepgramTestTranscript = nil
-    deepgramTestError =
-      cancelledActiveSpeechCheck
-      ? UIStrings.text(.deepgramConfigurationChanged, language: language)
-      : nil
-    persistDeepgramSetting(value, for: key)
-  }
 }

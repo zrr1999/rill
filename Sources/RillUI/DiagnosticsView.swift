@@ -3,6 +3,7 @@ import RillCore
 
 public struct DiagnosticsView: View {
     @Bindable private var model: AppModel
+    @State private var timelineFilter: DiagnosticsTimelineFilter = .activity
 
     public init(model: AppModel) {
         self.model = model
@@ -13,78 +14,11 @@ public struct DiagnosticsView: View {
             VStack(alignment: .leading, spacing: 24) {
                 Text(UIStrings.text(.diagnosticsDescription, language: model.language))
                     .foregroundStyle(.secondary)
-                speechCheckSection
                 diagnosticsSection
             }
             .padding(24)
         }
         .navigationTitle(UIStrings.text(.diagnosticsTitle, language: model.language))
-    }
-
-    private var speechCheckSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-                Label(
-                    UIStrings.text(.diagnosticsSpeechCheck, language: model.language),
-                    systemImage: "waveform.badge.mic"
-                )
-                .font(.headline)
-
-                Text(UIStrings.text(.diagnosticsSpeechCheckDescription, language: model.language))
-                    .foregroundStyle(.secondary)
-
-                switch model.deepgramCredentialAvailability {
-                case .loading:
-                    ProgressView(UIStrings.text(.voiceSetupLoading, language: model.language))
-                case .saving:
-                    ProgressView(UIStrings.text(.voiceSetupCloudCredentialSaving, language: model.language))
-                case .inaccessible:
-                    Text(UIStrings.text(.voiceSetupCloudCredentialUnavailable, language: model.language))
-                        .font(.callout)
-                        .foregroundStyle(.red)
-
-                    Button(UIStrings.text(.retryCredentialLoad, language: model.language)) {
-                        model.retryDeepgramCredentialLoad()
-                    }
-                case .missing:
-                    Text(UIStrings.text(.diagnosticsManageProviderSettings, language: model.language))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-
-                    Button(UIStrings.text(.diagnosticsOpenSettings, language: model.language)) {
-                        model.showSettings(.speech)
-                    }
-                    .accessibilityIdentifier("diagnostics.open-settings")
-                case .available:
-                    Text(UIStrings.text(.deepgramTestHint, language: model.language))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-
-                    Button(UIStrings.deepgramTestButtonTitle(model.deepgramAudioTestState, language: model.language)) {
-                        model.toggleDeepgramAudioTest()
-                    }
-
-                    if let error = model.deepgramTestError {
-                        Text(error)
-                            .font(.callout)
-                            .foregroundStyle(.red)
-                    } else if let transcript = model.deepgramTestTranscript, !transcript.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(UIStrings.text(.deepgramLastTranscript, language: model.language))
-                                .font(.subheadline.weight(.medium))
-                            Text(transcript)
-                                .font(.callout)
-                                .padding(8)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
-                        }
-                    } else {
-                        Text(UIStrings.text(.deepgramNoTranscript, language: model.language))
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .rillCard()
     }
 
     private var diagnosticsSection: some View {
@@ -96,6 +30,19 @@ public struct DiagnosticsView: View {
                     )
                     .font(.headline)
                     Spacer()
+                    Picker(
+                        UIStrings.text(.diagnosticsTimeline, language: model.language),
+                        selection: $timelineFilter
+                    ) {
+                        ForEach(DiagnosticsTimelineFilter.allCases) { filter in
+                            Text(filter.title(language: model.language))
+                                .tag(filter)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                    .accessibilityIdentifier("diagnostics.timeline.filter")
                     Button(UIStrings.text(.refreshDiagnostics, language: model.language)) {
                         model.refreshDiagnostics()
                     }
@@ -105,7 +52,8 @@ public struct DiagnosticsView: View {
 
                 switch Self.timelineContent(
                     loadState: model.diagnosticsLoadState,
-                    events: model.diagnosticEvents
+                    events: model.diagnosticEvents,
+                    filter: timelineFilter
                 ) {
                 case .loading(let entries):
                     ProgressView(UIStrings.text(.diagnosticsLoading, language: model.language))
@@ -141,19 +89,33 @@ public struct DiagnosticsView: View {
             .rillCard()
     }
 
-    static func timelineEvents(from events: [DiagnosticEvent]) -> [DiagnosticEvent] {
-        timelineEntries(from: events).map(\.event)
+    static func timelineEvents(
+        from events: [DiagnosticEvent],
+        filter: DiagnosticsTimelineFilter = .activity
+    ) -> [DiagnosticEvent] {
+        timelineEntries(from: events, filter: filter).map(\.event)
     }
 
-    static func timelineEntries(from events: [DiagnosticEvent]) -> [DiagnosticTimelineEntry] {
-        DiagnosticTimelineEntry.build(from: events, limit: 20)
+    static func timelineEntries(
+        from events: [DiagnosticEvent],
+        filter: DiagnosticsTimelineFilter = .activity
+    ) -> [DiagnosticTimelineEntry] {
+        DiagnosticTimelineEntry.build(
+            from: events.filter(filter.includes),
+            limit: 20
+        )
     }
 
     static func timelineContent(
         loadState: DiagnosticsLoadState,
-        events: [DiagnosticEvent]
+        events: [DiagnosticEvent],
+        filter: DiagnosticsTimelineFilter = .activity
     ) -> DiagnosticsTimelineContent {
-        DiagnosticsTimelineContent.resolve(loadState: loadState, events: events)
+        DiagnosticsTimelineContent.resolve(
+            loadState: loadState,
+            events: events,
+            filter: filter
+        )
     }
 
     @ViewBuilder
@@ -184,27 +146,15 @@ public struct DiagnosticsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("[\(UIStrings.subsystem(event.subsystem, language: model.language))] \(event.message)")
-                .font(.subheadline)
+            Text(DiagnosticEventPresentation.title(for: event, language: model.language))
+                .font(.subheadline.weight(.medium))
 
-            Text(metadataSummary(for: event))
+            Text(DiagnosticEventPresentation.detail(for: event))
                 .font(.caption)
+                .monospaced()
                 .foregroundStyle(.secondary)
         }
         .rillCard(cornerRadius: 10, opacity: 0.2, padding: 10)
-    }
-
-    private func metadataSummary(for event: DiagnosticEvent) -> String {
-        let metadata = event.metadata
-            .sorted { $0.key < $1.key }
-            .map { "\($0.key)=\($0.value)" }
-            .joined(separator: " · ")
-
-        if metadata.isEmpty {
-            return event.event
-        }
-
-        return "\(event.event) · \(metadata)"
     }
 
     private func diagnosticColor(_ level: DiagnosticLevel) -> Color {

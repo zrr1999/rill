@@ -43,7 +43,7 @@ final class AppModelLiveSubtitleMeterRefreshTests: XCTestCase {
           runID: currentRunID,
           phase: .recording,
           levelMeter: [0.9],
-          providerID: "deepgram.live"
+          providerID: "sherpa-onnx.local"
         )
       )
     )
@@ -72,7 +72,7 @@ final class AppModelLiveSubtitleMeterRefreshTests: XCTestCase {
           phase: .transcribing,
           confirmedText: "current",
           levelMeter: [0.9],
-          providerID: "deepgram.live"
+          providerID: "sherpa-onnx.local"
         )
       )
     )
@@ -156,7 +156,7 @@ final class AppModelLiveSubtitleMeterRefreshTests: XCTestCase {
         LiveSubtitleSnapshot(
           runID: runID,
           phase: .listening,
-          providerID: "deepgram.live"
+          providerID: "sherpa-onnx.local"
         )
       )
     )
@@ -165,7 +165,7 @@ final class AppModelLiveSubtitleMeterRefreshTests: XCTestCase {
         LiveSubtitleSnapshot(
           runID: runID,
           phase: .recording,
-          providerID: "deepgram.live"
+          providerID: "sherpa-onnx.local"
         )
       )
     )
@@ -178,7 +178,7 @@ final class AppModelLiveSubtitleMeterRefreshTests: XCTestCase {
           runID: runID,
           phase: .recording,
           levelMeter: levels,
-          providerID: "deepgram.live"
+          providerID: "sherpa-onnx.local"
         )
       )
     )

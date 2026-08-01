@@ -112,9 +112,12 @@ final class PrivacySettingsPresentationTests: XCTestCase {
             _ = try await runtimeGate.authorize(
                 context: runtimeContext,
                 workflow: WorkflowDefinition(
-                    name: "Cloud Test",
+                    name: "Cloud Text Test",
                     pipeline: PipelineDeclaration(
-                        recognizerID: "deepgram.prerecorded",
+                        recognizerID: "sherpa-onnx.local",
+                        postProcessSteps: [
+                            PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
+                        ],
                         outputActions: []
                     ),
                     ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
@@ -189,8 +192,56 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         XCTAssertEqual(snapshot.atomicSnapshots.count, 2)
         XCTAssertEqual(snapshot.atomicSnapshots[0][.privacyCloudConfirmationRequired], "false")
         XCTAssertEqual(snapshot.atomicSnapshots[1][.privacyCloudConfirmationRequired], "true")
-        XCTAssertTrue(snapshot.atomicSnapshots.allSatisfy { $0.count == 4 })
+        XCTAssertTrue(snapshot.atomicSnapshots.allSatisfy { $0.count == 5 })
         XCTAssertEqual(snapshot.storage[.privacyCloudConfirmationRequired], "true")
+    }
+
+    func testLoadsPersistsAndRevokesCloudProcessingAuthorizations() async throws {
+        let authorization = CloudProcessingAuthorization(
+            id: UUID(uuidString: "C6270EA5-475C-4803-A970-7B541448350B")!,
+            workflowID: UUID(uuidString: "87378403-E9DC-4071-B900-D30DFBC9BC9D")!,
+            workflowName: "Voice Assistant",
+            scopeFingerprint: String(repeating: "a", count: 64),
+            grantedAt: Date(timeIntervalSince1970: 1_000)
+        )
+        let encoded = try JSONEncoder().encode([authorization])
+        let settingsStore = UITestSettingsStore(
+            storage: [
+                .privacyCloudProcessingAuthorizations: String(decoding: encoded, as: UTF8.self)
+            ]
+        )
+        let privacySettingsSource = PrivacyPolicySettingsSource()
+        let harness = makeHarness(
+            settingsStore: settingsStore,
+            privacySettingsSource: privacySettingsSource
+        )
+
+        await waitForEventProcessing()
+
+        XCTAssertEqual(
+            harness.model.privacyPolicySettings.cloudProcessingAuthorizations,
+            [authorization]
+        )
+        harness.model.revokeCloudProcessingAuthorization(authorization.id)
+        await harness.model.waitForPendingPrivacySettingsWrite()
+
+        let afterRevoke = await settingsStore.activitySnapshot()
+        let storedAfterRevoke = try JSONDecoder().decode(
+            [CloudProcessingAuthorization].self,
+            from: Data(
+                try XCTUnwrap(
+                    afterRevoke.storage[.privacyCloudProcessingAuthorizations]
+                ).utf8
+            )
+        )
+        XCTAssertTrue(storedAfterRevoke.isEmpty)
+
+        XCTAssertTrue(harness.model.grantCloudProcessingAuthorization(authorization))
+        await harness.model.waitForPendingPrivacySettingsWrite()
+        XCTAssertEqual(
+            try privacySettingsSource.currentSettings().cloudProcessingAuthorizations,
+            [authorization]
+        )
     }
 
     func testPrivacySaveFailureStaysVisibleUntilRetrySucceeds() async throws {
@@ -224,7 +275,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         let settingsStore = UITestSettingsStore(
             storage: [
                 .interfaceLanguage: AppLanguage.simplifiedChinese.rawValue,
-                .preferredSpeechEngine: PreferredSpeechEngine.cloud.rawValue,
+                .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
                 .privacySensitiveAppRules: "{not-json",
             ]
         )
@@ -238,7 +289,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
 
         XCTAssertEqual(harness.model.privacyPolicySettings, .defaults)
         XCTAssertEqual(harness.model.language, .simplifiedChinese)
-        XCTAssertEqual(harness.model.preferredSpeechEngine, .cloud)
+        XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
         XCTAssertNotNil(harness.model.privacySettingsLoadError)
         XCTAssertNil(harness.model.privacySettingsSaveError)
         XCTAssertThrowsError(try privacySettingsSource.currentSettings()) { error in
@@ -272,7 +323,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         XCTAssertEqual(try privacySettingsSource.currentSettings(), .defaults)
         XCTAssertTrue(
             harness.model.eventFeed.contains {
-                $0.english == "The Deepgram credential could not be read from secure storage."
+                $0.english == "The OpenAI credential could not be read from secure storage."
             }
         )
     }
@@ -307,12 +358,15 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         )
     }
 
-    func testWorkflowDetailIncludesPrivacyRouteHint() {
+    func testWorkflowDetailIncludesLocalSpeechPrivacyRouteHint() {
         let workflow = WorkflowDefinition(
-            name: "Cloud Dictation",
+            name: "Local Dictation with Cloud Text Rewrite",
             trigger: .manual,
             pipeline: PipelineDeclaration(
-                recognizerID: "deepgram.prerecorded",
+                recognizerID: "sherpa-onnx.local",
+                postProcessSteps: [
+                    PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
+                ],
                 outputActions: [OutputActionReference(id: "clipboard.copy")]
             ),
             ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
@@ -320,7 +374,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
 
         let detail = VoiceWorkflowPresentation(workflow: workflow).detail(language: .english)
 
-        XCTAssertTrue(detail.contains("Privacy: Cloud: audio leaves this Mac."))
+        XCTAssertTrue(detail.contains("Privacy: Local route: recognition stays on this Mac."))
     }
 }
 

@@ -10,9 +10,9 @@ import XCTest
 private actor AppBootstrapLocalSpeechPreparationProbe {
   enum Event: Equatable {
     case model
+    case audioFrontend
     case streamingPreview
     case streamingPreviewFailure
-    case audioFrontend
   }
 
   private var events: [Event] = []
@@ -77,10 +77,23 @@ private actor AppBootstrapPrivacyContextSequenceProbe {
 }
 
 private struct AppBootstrapExplanationRecognizer: SpeechRecognizer {
-  let id = "deepgram.prerecorded"
+  let id = "sherpa-onnx.local"
 
   func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
     RecognitionResult(rawText: "", bestText: "")
+  }
+}
+
+private struct AppBootstrapExplanationTransformer: TextTransformer {
+  let id = "transformer.openai.responses.rewrite"
+  let supportedKinds: [PostProcessStepKind] = [.llmRewrite]
+
+  func transform(
+    text: String,
+    step: PostProcessStep,
+    context: TransformContext
+  ) async throws -> String {
+    text
   }
 }
 
@@ -417,6 +430,37 @@ private func makeClipboardItemUseLease(
 }
 
 final class AppBootstrapTests: XCTestCase {
+  func testTTSPreparationProgressDoesNotResetWhenLoadingStarts() {
+    XCTAssertEqual(
+      AppBootstrap.displayedTTSPreparationProgress(
+        .init(phase: .downloading, completedUnitCount: 1, totalUnitCount: 2)
+      ),
+      0.475,
+      accuracy: 0.000_001
+    )
+    XCTAssertEqual(
+      AppBootstrap.displayedTTSPreparationProgress(
+        .init(phase: .downloading, completedUnitCount: 2, totalUnitCount: 2)
+      ),
+      0.95,
+      accuracy: 0.000_001
+    )
+    XCTAssertEqual(
+      AppBootstrap.displayedTTSPreparationProgress(
+        .init(phase: .loading, completedUnitCount: 0, totalUnitCount: 1)
+      ),
+      0.95,
+      accuracy: 0.000_001
+    )
+    XCTAssertEqual(
+      AppBootstrap.displayedTTSPreparationProgress(
+        .init(phase: .loading, completedUnitCount: 1, totalUnitCount: 1)
+      ),
+      1,
+      accuracy: 0.000_001
+    )
+  }
+
   func testFileHistoryItemUsesPanelRichPasteWithPrivacyFocusTarget() async throws {
     let item = ClipboardHistoryItem(
       groupID: ClipboardGroup.defaultGroupID,
@@ -678,16 +722,19 @@ final class AppBootstrapTests: XCTestCase {
       recognizerRegistry: SpeechRecognizerRegistry(
         recognizers: [AppBootstrapExplanationRecognizer()]
       ),
-      transformerRegistry: TextTransformerRegistry(transformers: []),
+      transformerRegistry: TextTransformerRegistry(
+        transformers: [AppBootstrapExplanationTransformer()]
+      ),
       actionRegistry: OutputActionRegistry(
         actions: [AppBootstrapExplanationAction()]
       )
     )
     let workflow = WorkflowDefinition(
-      name: "Cloud preview",
+      name: "Cloud text preview",
       trigger: .manual,
       pipeline: PipelineDeclaration(
-        recognizerID: "deepgram.prerecorded",
+        recognizerID: "sherpa-onnx.local",
+        postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
         outputActions: [OutputActionReference(id: "inject.text")]
       ),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
@@ -729,188 +776,9 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertFalse(encoded.contains("AXTextArea"))
   }
 
-  func
-    testDeepgramDiagnosticAuthorizationUsesPrivacyContextAndBlocksSensitiveAppBeforeConfirmation()
-    async
-  {
-    let probe = AppBootstrapExplanationProbe()
-    let context = ContextSnapshot(
-      focus: FocusSnapshot(
-        applicationName: "Vault",
-        bundleIdentifier: "com.example.vault",
-        processIdentifier: 7,
-        focusedRole: nil,
-        selectedText: "",
-        secureInput: false
-      ),
-      clipboard: ClipboardSnapshot(plainText: "", changeCount: 1)
-    )
-    let gate = PrivacyRunGate(
-      settingsProvider: {
-        PrivacyPolicySettings(
-          sensitiveAppRules: [
-            SensitiveAppRule(
-              bundleIdentifier: "com.example.vault",
-              applicationName: "Vault"
-            )
-          ],
-          cloudConfirmationRequired: true
-        )
-      },
-      cloudConfirmationProvider: { _, _, _ in
-        await probe.recordConfirmation()
-        return true
-      }
-    )
-    let authorize = AppBootstrap.makeDeepgramDiagnosticPrivacyAuthorization(
-      privacyRunGate: gate,
-      privacyContextProvider: {
-        await probe.capture(context)
-      }
-    )
 
-    do {
-      try await authorize(DeepgramAudioTestController.diagnosticWorkflow)
-      XCTFail("Expected the sensitive-application policy to block the diagnostic")
-    } catch let error as PrivacyRunGate.GateError {
-      XCTAssertEqual(error, .cloudProcessingBlocked)
-    } catch {
-      XCTFail("Unexpected error: \(error)")
-    }
 
-    let calls = await probe.snapshot()
-    XCTAssertEqual(calls.privacyCaptures, 1)
-    XCTAssertEqual(calls.confirmations, 0)
-  }
 
-  func testDeepgramDiagnosticPreflightDoesNotConsumeSharedCloudConfirmation() async throws {
-    let probe = AppBootstrapExplanationProbe()
-    let context = ContextSnapshot(
-      focus: FocusSnapshot(
-        applicationName: "Notes",
-        bundleIdentifier: "com.apple.Notes",
-        processIdentifier: 11,
-        focusedRole: nil,
-        selectedText: "",
-        secureInput: false
-      ),
-      clipboard: ClipboardSnapshot(plainText: "", changeCount: 0)
-    )
-    let gate = PrivacyRunGate(
-      settingsProvider: {
-        PrivacyPolicySettings(
-          sensitiveAppRules: [],
-          cloudConfirmationRequired: true
-        )
-      },
-      cloudConfirmationProvider: { _, _, destinations in
-        await probe.recordConfirmation()
-        XCTAssertEqual(destinations, [.cloudSpeech])
-        return true
-      }
-    )
-    let authorize = AppBootstrap.makeDeepgramDiagnosticPrivacyAuthorization(
-      privacyRunGate: gate,
-      privacyContextProvider: {
-        await probe.capture(context)
-      }
-    )
-    let preflight = AppBootstrap.makeDeepgramDiagnosticPrivacyPreflight(
-      privacyRunGate: gate,
-      privacyContextProvider: {
-        await probe.capture(context)
-      }
-    )
-
-    try await preflight(DeepgramAudioTestController.diagnosticWorkflow)
-
-    var calls = await probe.snapshot()
-    XCTAssertEqual(calls.privacyCaptures, 1)
-    XCTAssertEqual(calls.confirmations, 0)
-
-    try await authorize(DeepgramAudioTestController.diagnosticWorkflow)
-
-    calls = await probe.snapshot()
-    XCTAssertEqual(calls.privacyCaptures, 3)
-    XCTAssertEqual(calls.confirmations, 1)
-  }
-
-  func testDeepgramDiagnosticAuthorizationRejectsUnstablePrivacyIdentity() async {
-    let base = ContextSnapshot(
-      focus: FocusSnapshot(
-        applicationName: "Notes",
-        bundleIdentifier: "com.apple.Notes",
-        processIdentifier: 11,
-        focusedRole: nil,
-        selectedText: "",
-        secureInput: false
-      ),
-      clipboard: ClipboardSnapshot(plainText: "", changeCount: 1)
-    )
-    var changedFocus = base
-    changedFocus.focus.applicationName = "Mail"
-    changedFocus.focus.bundleIdentifier = "com.apple.mail"
-    changedFocus.focus.processIdentifier = 12
-    var changedSecureInput = base
-    changedSecureInput.focus.secureInput = true
-    var changedClipboard = base
-    changedClipboard.clipboard.changeCount = 2
-
-    for (label, changed) in [
-      ("focus", changedFocus),
-      ("secureInput", changedSecureInput),
-      ("changeCount", changedClipboard),
-    ] {
-      let contextProbe = AppBootstrapPrivacyContextSequenceProbe(
-        contexts: [base, changed, base, changed]
-      )
-      let gate = PrivacyRunGate(
-        settingsProvider: {
-          PrivacyPolicySettings(
-            sensitiveAppRules: [],
-            cloudConfirmationRequired: false
-          )
-        },
-        cloudConfirmationProvider: { _, _, _ in
-          XCTFail("A confirmation is not expected for this identity check")
-          return false
-        }
-      )
-      let authorize = AppBootstrap.makeDeepgramDiagnosticPrivacyAuthorization(
-        privacyRunGate: gate,
-        privacyContextProvider: { await contextProbe.next() }
-      )
-
-      do {
-        try await authorize(DeepgramAudioTestController.diagnosticWorkflow)
-        XCTFail("Expected \(label) drift to invalidate authorization")
-      } catch let error as PrivacyRunGate.GateError {
-        XCTAssertEqual(error, .contextChangedDuringAuthorization, label)
-      } catch {
-        XCTFail("Unexpected \(label) error: \(error)")
-      }
-
-      let captureCount = await contextProbe.count()
-      XCTAssertEqual(captureCount, 4, label)
-    }
-  }
-
-  func testDeepgramConfigurationFailsClosedWhenOneSettingIsUnreadable() async {
-    let settingsStore = AppBootstrapSettingsStore(
-      storage: [
-        .deepgramBaseURL: "https://api.deepgram.com",
-        .deepgramModel: "nova-3",
-      ],
-      unavailableKeys: [.deepgramLanguage]
-    )
-
-    let configuration = await AppBootstrap.deepgramConfiguration(
-      from: settingsStore,
-      credentialStore: nil
-    )
-
-    XCTAssertNil(configuration)
-  }
 
   func testPackagedRuntimeExcludesWebhookAndRetainsSecureExternalActions() {
     let registry = OutputActionRegistry(
@@ -926,142 +794,10 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertNotNil(registry.action(for: ExternalOutputActionID.markdownAppend))
   }
 
-  func testRecognitionRunPreflightValidatesOnlyDeepgramWorkflows() async throws {
-    let preflight = AppBootstrap.makeRecognitionRunPreflight {
-      DeepgramRecognizer.Configuration(apiKey: " \n\t ")
-    }
-    let deepgramWorkflow = WorkflowDefinition(
-      name: "Deepgram",
-      pipeline: PipelineDeclaration(recognizerID: "deepgram.prerecorded", outputActions: []),
-      ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
-    )
-    let localWorkflow = WorkflowDefinition(
-      name: "Local",
-      pipeline: PipelineDeclaration(recognizerID: "sherpa-onnx.local", outputActions: []),
-      ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
-    )
-    let selectionWorkflow = WorkflowDefinition(
-      name: "Selection",
-      pipeline: PipelineDeclaration(recognizerID: "selection.capture", outputActions: []),
-      ui: WorkflowUIConfig(symbolName: "text.cursor", accentColorName: "blue")
-    )
 
-    do {
-      try await preflight(deepgramWorkflow)
-      XCTFail("Expected the Deepgram preflight to reject a blank key.")
-    } catch let error as DeepgramRecognizer.RecognizerError {
-      XCTAssertEqual(error, .missingAPIKey)
-    }
-    try await preflight(localWorkflow)
-    try await preflight(selectionWorkflow)
-  }
-
-  func testClipboardItemAuthorizationSkipsDeepgramPreflightAndCloudSpeechConfirmation() async throws
-  {
-    let probe = AppBootstrapExplanationProbe()
-    let context = ContextSnapshot(
-      focus: FocusSnapshot(
-        applicationName: "Notes",
-        bundleIdentifier: "com.apple.Notes",
-        processIdentifier: 42,
-        focusedRole: "AXTextArea",
-        selectedText: "",
-        secureInput: false
-      ),
-      clipboard: ClipboardSnapshot(plainText: "", changeCount: 3)
-    )
-    let gate = PrivacyRunGate(
-      settingsProvider: {
-        PrivacyPolicySettings(
-          sensitiveAppRules: [],
-          cloudConfirmationRequired: true
-        )
-      },
-      cloudConfirmationProvider: { _, _, _ in
-        await probe.recordConfirmation()
-        return false
-      }
-    )
-    let workflow = WorkflowDefinition(
-      name: "Stored text replay",
-      pipeline: PipelineDeclaration(
-        recognizerID: "deepgram.prerecorded",
-        outputActions: [OutputActionReference(id: "stack.push")]
-      ),
-      ui: WorkflowUIConfig(symbolName: "doc.on.clipboard", accentColorName: "blue")
-    )
-    let deliveryStack = DeliveryStack(eventBus: EventBus())
-    await deliveryStack.captureSystemClipboard(
-      snapshot: ClipboardSnapshot(plainText: "stored", changeCount: 1),
-      context: ClipboardRouteContext(
-        applicationName: "Notes",
-        bundleIdentifier: "com.apple.Notes"
-      ),
-      disposition: .historyOnly
-    )
-    let clipboardSnapshot = await deliveryStack.clipboardSnapshot()
-    let item = try XCTUnwrap(clipboardSnapshot.items.first)
-    let currentSubject = await deliveryStack.clipboardItemDryRunSubject(itemID: item.id)
-    let subject = try XCTUnwrap(currentSubject)
-    let invalidDeepgramPreflight = AppBootstrap.makeRecognitionRunPreflight {
-      DeepgramRecognizer.Configuration(apiKey: "")
-    }
-    let authorize = AppBootstrap.makeClipboardItemRunAuthorization(
-      deliveryStack: deliveryStack,
-      privacyRunGate: gate,
-      privacyContextProvider: {
-        await probe.capture(context)
-      },
-      authorizedContextProvider: { _ in
-        await probe.capture(context)
-      }
-    )
-
-    do {
-      try await invalidDeepgramPreflight(workflow)
-      XCTFail("The control preflight should reject a missing Deepgram key")
-    } catch let error as DeepgramRecognizer.RecognizerError {
-      XCTAssertEqual(error, .missingAPIKey)
-    }
-    let authorized = try await authorize(
-      item.id,
-      item.version,
-      .replay,
-      workflow
-    )
-    let calls = await probe.snapshot()
-
-    XCTAssertEqual(calls.privacyCaptures, 2)
-    XCTAssertEqual(calls.confirmations, 0)
-    XCTAssertEqual(authorized.recognitionOptions, .empty)
-    XCTAssertEqual(
-      authorized.invocation,
-      .clipboardItem(subject: subject, operation: .replay)
-    )
-
-    do {
-      _ = try await authorize(
-        item.id,
-        item.version.advanced(),
-        .replay,
-        workflow
-      )
-      XCTFail("A stale UI item version must not silently authorize the current item.")
-    } catch let error as PrivacyRunGate.GateError {
-      XCTAssertEqual(error, .clipboardItemChangedDuringAuthorization)
-    } catch {
-      XCTFail("Unexpected stale-version error: \(error)")
-    }
-    let callsAfterStaleAttempt = await probe.snapshot()
-    XCTAssertEqual(
-      callsAfterStaleAttempt.privacyCaptures,
-      calls.privacyCaptures
-    )
-    XCTAssertEqual(callsAfterStaleAttempt.confirmations, calls.confirmations)
-  }
 
   func testRecognitionRunPreflightBlocksLegacyClipboardAutomation() async {
-    let preflight = AppBootstrap.makeRecognitionRunPreflight { nil }
+    let preflight = AppBootstrap.makeRecognitionRunPreflight()
     let workflow = WorkflowDefinition(
       name: "Legacy Clipboard Automation",
       pipeline: PipelineDeclaration(
@@ -1087,8 +823,7 @@ final class AppBootstrapTests: XCTestCase {
   func testRecognitionRunPreflightRejectsUnknownTrustedLocalModelOverride() async {
     let trustedModels = Set(SherpaOnnxModelID.allCases.map(\.rawValue))
     let preflight = AppBootstrap.makeRecognitionRunPreflight(
-      trustedLocalModelIdentifiers: trustedModels,
-      deepgramConfigurationProvider: { nil }
+      trustedLocalModelIdentifiers: trustedModels
     )
     let workflow = WorkflowDefinition(
       name: "Unknown Local Model",
@@ -1113,6 +848,7 @@ final class AppBootstrapTests: XCTestCase {
   func testPublicDistributionExposesOnlyApprovedPinnedModels() async throws {
     var expectedModelIdentifiers = [SherpaOnnxModelID.qwen3ASR06BInt8.rawValue]
     #if arch(arm64)
+      expectedModelIdentifiers.append(MLXAudioModelID.qwen3ASR06BInt8.rawValue)
       expectedModelIdentifiers.append(MLXAudioModelID.qwen3ASR17BInt8.rawValue)
     #endif
     XCTAssertEqual(
@@ -1149,6 +885,24 @@ final class AppBootstrapTests: XCTestCase {
           && $0.recommendedSystemMemoryGiB >= $0.minimumSystemMemoryGiB
       }
     )
+    #if arch(arm64)
+      XCTAssertEqual(
+        AppBootstrap.distributableLocalSpeechModels.map(\.englishName),
+        [
+          "Qwen3-ASR · 0.6B · INT8",
+          "Qwen3-ASR · 0.6B · INT8",
+          "Qwen3-ASR · 1.7B · INT8",
+        ]
+      )
+      XCTAssertEqual(
+        AppBootstrap.distributableLocalSpeechModels.map(\.engine),
+        [.sherpaOnnx, .mlxAudioSwift, .mlxAudioSwift]
+      )
+      XCTAssertEqual(
+        AppBootstrap.distributableLocalSpeechModels.map(\.simplifiedChineseName),
+        AppBootstrap.distributableLocalSpeechModels.map(\.englishName)
+      )
+    #endif
 
     let normalized = try AppBootstrap.sherpaOnnxConfiguration(
       settings: LocalSpeechSettings(model: SherpaOnnxModelID.senseVoiceSmallInt8.rawValue)
@@ -1196,9 +950,7 @@ final class AppBootstrapTests: XCTestCase {
           SherpaOnnxModelID.senseVoiceSmallInt8.rawValue
       ]
     )
-    let preflight = AppBootstrap.makeRecognitionRunPreflight(
-      deepgramConfigurationProvider: { nil }
-    )
+    let preflight = AppBootstrap.makeRecognitionRunPreflight()
 
     do {
       try await preflight(workflow)
@@ -1211,41 +963,55 @@ final class AppBootstrapTests: XCTestCase {
     }
   }
 
-  func testBuiltinSpeechPresetsSeparateStreamingFinalAndPlannedRewrite() throws {
-    let presets = BuiltinWorkflowCatalog().manifest().workflows.filter {
-      $0.speechMode != nil
-    }
+  func testBuiltinCatalogContainsSpeechRecognitionAndVoiceAssistant() throws {
+    let workflows = BuiltinWorkflowCatalog().manifest().workflows
 
-    XCTAssertEqual(
-      presets.map(\.speechMode),
-      [
-        .dedicatedTranscription,
-        .streamingDirect,
-        .transcriptionWithRewrite,
-      ])
-    let streaming = try XCTUnwrap(presets.first { $0.speechMode == .streamingDirect })
-    XCTAssertEqual(
-      streaming.pipeline.recognizerID,
-      SherpaStreamingCaptureRecognizer.recognizerID
-    )
-    XCTAssertTrue(streaming.pipeline.postProcessSteps.isEmpty)
-    XCTAssertEqual(streaming.availability, .active)
+    XCTAssertEqual(workflows.map(\.titleKey), [.speechRecognition, .voiceAssistant])
 
-    let final = try XCTUnwrap(
-      presets.first { $0.speechMode == .dedicatedTranscription }
+    let speechRecognition = try XCTUnwrap(
+      workflows.first { $0.titleKey == .speechRecognition }
     )
-    XCTAssertEqual(final.pipeline.recognizerID, "sherpa-onnx.local")
-    XCTAssertEqual(final.pipeline.postProcessSteps.map(\.kind), [.normalizeWhitespace])
-
-    let rewrite = try XCTUnwrap(
-      presets.first { $0.speechMode == .transcriptionWithRewrite }
-    )
-    XCTAssertEqual(rewrite.availability, .planned)
+    XCTAssertEqual(speechRecognition.trigger, .hotkey)
+    XCTAssertTrue(speechRecognition.prefersAutomaticRecognizerSelection)
     XCTAssertEqual(
-      rewrite.pipeline.postProcessSteps.map(\.kind),
-      [.normalizeWhitespace, .llmRewrite]
+      speechRecognition.plan.process.steps.map(\.kind),
+      [.recognizeSpeech, .applyVocabulary, .normalizeWhitespace]
     )
-    XCTAssertFalse(rewrite.pipeline.postProcessSteps[1].prompt?.isEmpty ?? true)
+    XCTAssertEqual(
+      speechRecognition.plan.setup.vocabularyBindings.first?.uses,
+      Set(VocabularyBindingUse.allCases)
+    )
+    XCTAssertEqual(speechRecognition.plan.output.actions.map(\.id), ["inject.text"])
+    XCTAssertTrue(speechRecognition.isEnabledByDefault)
+
+    let voiceAssistant = try XCTUnwrap(
+      workflows.first { $0.titleKey == .voiceAssistant }
+    )
+    XCTAssertEqual(voiceAssistant.trigger, .wakeWord)
+    XCTAssertTrue(voiceAssistant.prefersAutomaticRecognizerSelection)
+    XCTAssertEqual(voiceAssistant.plan.setup.wakeWord?.phrases, ["Hey Rill"])
+    XCTAssertEqual(
+      voiceAssistant.plan.process.steps.map(\.kind),
+      [.recognizeSpeech, .applyVocabulary, .normalizeWhitespace, .llmRewrite]
+    )
+    XCTAssertFalse(
+      voiceAssistant.plan.process.steps.last?.prompt?.isEmpty ?? true
+    )
+    let speak = try XCTUnwrap(voiceAssistant.plan.output.actions.first)
+    XCTAssertEqual(speak.id, SpeechOutputActionID.speak)
+    XCTAssertEqual(
+      speak.configuration[SpeechOutputActionConfigurationKey.provider],
+      SpeechSynthesisProvider.automatic.rawValue
+    )
+    XCTAssertEqual(
+      speak.configuration[SpeechOutputActionConfigurationKey.voice],
+      Qwen3TTSVoice.vivian.rawValue
+    )
+    let assistantDraft = try XCTUnwrap(WorkflowEditorDraft(workflow: voiceAssistant))
+    XCTAssertEqual(assistantDraft.destination, .speakOnly)
+    XCTAssertTrue(assistantDraft.speaksResult)
+    XCTAssertEqual(assistantDraft.speechVoice, .vivian)
+    XCTAssertFalse(voiceAssistant.isEnabledByDefault)
   }
 
   func testRecognitionRunPreflightRequiresReadyLocalSpeechSessionSettings() async throws {
@@ -1255,8 +1021,7 @@ final class AppBootstrapTests: XCTestCase {
       trustedLocalModelIdentifiers: trustedModels,
       localSpeechSettingsProvider: {
         try source.currentSettings()
-      },
-      deepgramConfigurationProvider: { nil }
+      }
     )
     let workflow = WorkflowDefinition(
       name: "Local",
@@ -1302,8 +1067,7 @@ final class AppBootstrapTests: XCTestCase {
       trustedLocalModelIdentifiers: [SherpaOnnxModelID.qwen3ASR06BInt8.rawValue],
       localSpeechSettingsProvider: {
         LocalSpeechSettings(model: "unreviewed-model")
-      },
-      deepgramConfigurationProvider: { nil }
+      }
     )
 
     do {
@@ -1412,26 +1176,30 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertEqual(installation.threadCount, selected.threadCount)
   }
 
-  func testLocalSpeechResourcePreparationWarmsAudioOnlyWhenPrewarmIsEnabled() async throws {
-    let coldProbe = AppBootstrapLocalSpeechPreparationProbe()
-    let coldModel = try await AppBootstrap.prepareLocalSpeechModelAndAudioFrontend(
-      prewarmAudioFrontend: false,
-      prepareModel: { await coldProbe.prepareModel() },
-      prepareAudioFrontend: { await coldProbe.prepareAudioFrontend() }
-    )
-    XCTAssertEqual(coldModel, "prepared-model")
-    let coldEvents = await coldProbe.snapshot()
-    XCTAssertEqual(coldEvents, [.model])
-
-    let warmProbe = AppBootstrapLocalSpeechPreparationProbe()
-    let warmModel = try await AppBootstrap.prepareLocalSpeechModelAndAudioFrontend(
+  func testLocalSpeechResourcePreparationWarmsAuthorizedAudioFrontendWhenEnabled() async throws {
+    let probe = AppBootstrapLocalSpeechPreparationProbe()
+    let model = try await AppBootstrap.prepareLocalSpeechModelAndAudioFrontend(
       prewarmAudioFrontend: true,
-      prepareModel: { await warmProbe.prepareModel() },
-      prepareAudioFrontend: { await warmProbe.prepareAudioFrontend() }
+      prepareModel: { await probe.prepareModel() },
+      prepareAudioFrontend: { await probe.prepareAudioFrontend() }
     )
-    XCTAssertEqual(warmModel, "prepared-model")
-    let warmEvents = await warmProbe.snapshot()
-    XCTAssertEqual(warmEvents, [.model, .audioFrontend])
+
+    XCTAssertEqual(model, "prepared-model")
+    let events = await probe.snapshot()
+    XCTAssertEqual(events, [.model, .audioFrontend])
+  }
+
+  func testLocalSpeechResourcePreparationSkipsAudioFrontendWhenDisabled() async throws {
+    let probe = AppBootstrapLocalSpeechPreparationProbe()
+    let model = try await AppBootstrap.prepareLocalSpeechModelAndAudioFrontend(
+      prewarmAudioFrontend: false,
+      prepareModel: { await probe.prepareModel() },
+      prepareAudioFrontend: { await probe.prepareAudioFrontend() }
+    )
+
+    XCTAssertEqual(model, "prepared-model")
+    let events = await probe.snapshot()
+    XCTAssertEqual(events, [.model])
   }
 
   func testStreamingPreviewPreparationIsBestEffortAfterFinalModel() async throws {
@@ -1515,7 +1283,7 @@ final class AppBootstrapTests: XCTestCase {
     )
     let keychainStore = AppBootstrapCredentialStore(
       storage: [
-        .deepgramAPIKey: "current-deepgram-key",
+        .openAIAPIKey: "current-openai-key",
         .legacyWhisperKitModelToken: "retired-keychain-token",
       ]
     )
@@ -1531,7 +1299,7 @@ final class AppBootstrapTests: XCTestCase {
     )
     let retiredSQLiteToken = await legacySettingsStore.storedValue(for: .legacyWhisperKitModelToken)
     let retiredKeychainToken = await keychainStore.storedValue(for: .legacyWhisperKitModelToken)
-    let currentDeepgramKey = await keychainStore.storedValue(for: .deepgramAPIKey)
+    let currentOpenAIKey = await keychainStore.storedValue(for: .openAIAPIKey)
     let sqliteTokenRemovalCount =
       await legacySettingsStore.removalCount(for: .legacyWhisperKitModelToken)
     let keychainTokenRemovalCount =
@@ -1552,10 +1320,57 @@ final class AppBootstrapTests: XCTestCase {
         .localSpeechPrewarm: "true",
       ]
     )
-    XCTAssertEqual(currentDeepgramKey, "current-deepgram-key")
+    XCTAssertEqual(currentOpenAIKey, "current-openai-key")
     XCTAssertEqual(sqliteTokenRemovalCount, 1)
     XCTAssertEqual(keychainTokenRemovalCount, 1)
     XCTAssertEqual(sherpaSettingRemovalCounts, [0, 0, 0])
+  }
+
+  func testStartupPurgesRetiredCloudSpeechCredentialAndSettings() async throws {
+    let localModel = SherpaOnnxModelID.qwen3ASR06BInt8.rawValue
+    let settingsStore = AppBootstrapSettingsStore(
+      storage: [
+        .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
+        .localSpeechModel: localModel,
+        .retiredDeepgramAPIKey: "retired-sqlite-key",
+        .retiredDeepgramBaseURL: "https://retired.example.invalid",
+        .retiredDeepgramModel: "retired-model",
+        .retiredDeepgramLanguage: "en",
+      ]
+    )
+    let keychainStore = AppBootstrapCredentialStore(
+      storage: [
+        .openAIAPIKey: "current-openai-key",
+        .retiredDeepgramAPIKey: "retired-keychain-key",
+      ]
+    )
+    let credentialStore = MigratingSecureCredentialStore(
+      secureStore: keychainStore,
+      legacySettingsStore: settingsStore
+    )
+
+    await AppBootstrap.purgeRetiredCloudSpeechConfiguration(
+      credentialStore: credentialStore,
+      settingsStore: settingsStore
+    )
+
+    let retiredAPIKey = await settingsStore.storedValue(for: .retiredDeepgramAPIKey)
+    let retiredBaseURL = await settingsStore.storedValue(for: .retiredDeepgramBaseURL)
+    let retiredModel = await settingsStore.storedValue(for: .retiredDeepgramModel)
+    let retiredLanguage = await settingsStore.storedValue(for: .retiredDeepgramLanguage)
+    let retiredKeychainKey = await keychainStore.storedValue(for: .retiredDeepgramAPIKey)
+    let currentOpenAIKey = await keychainStore.storedValue(for: .openAIAPIKey)
+    let retainedEngine = try await settingsStore.string(forKey: .preferredSpeechEngine)
+    let retainedModel = try await settingsStore.string(forKey: .localSpeechModel)
+
+    XCTAssertNil(retiredAPIKey)
+    XCTAssertNil(retiredBaseURL)
+    XCTAssertNil(retiredModel)
+    XCTAssertNil(retiredLanguage)
+    XCTAssertNil(retiredKeychainKey)
+    XCTAssertEqual(currentOpenAIKey, "current-openai-key")
+    XCTAssertEqual(retainedEngine, PreferredSpeechEngine.local.rawValue)
+    XCTAssertEqual(retainedModel, localModel)
   }
 
   func testClipboardGroupRegistrationKeepsExecutionSupportSeparateFromEnabledState() throws {
@@ -1744,29 +1559,6 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertEqual(blockedDiagnostic.metadata["blockReason"], "invalid-pending-state")
   }
 
-  func testDeepgramHintDiagnosticContainsOnlyCountsAndReasonCodes() {
-    let diagnostic = AppBootstrap.deepgramHintDiagnostic(
-      for: DeepgramHintDiagnosticReport(
-        source: .live,
-        outcome: .partiallyApplied,
-        count: 20,
-        omittedCount: 3
-      )
-    )
-    let sanitized = DiagnosticEventSanitizer.sanitize(diagnostic)
-
-    XCTAssertEqual(diagnostic.event, "provider.deepgram.keyterms")
-    XCTAssertEqual(
-      diagnostic.metadata,
-      [
-        "count": "20",
-        "omittedCount": "3",
-        "outcome": "partially-applied",
-        "source": "live",
-      ]
-    )
-    XCTAssertEqual(sanitized.metadata, diagnostic.metadata)
-  }
 
   func testLocalSpeechPreparationBoundaryMapsProviderErrorsToPayloadFreeStages() throws {
     let cases: [(any Error, LocalSpeechPreparationFailure.Stage)] = [
@@ -1961,8 +1753,10 @@ final class AppBootstrapTests: XCTestCase {
       processingDestinations: [.cloudText],
       usesChinese: false
     )
-    XCTAssertTrue(textOnly.contains("final text"))
-    XCTAssertTrue(textOnly.contains("HTTPS webhook"))
+    XCTAssertTrue(textOnly.contains("final transcript"))
+    XCTAssertTrue(textOnly.contains("configured cloud text service"))
+    XCTAssertTrue(textOnly.contains("Always Allow"))
+    XCTAssertTrue(textOnly.contains("Settings > Privacy"))
     XCTAssertFalse(textOnly.contains("microphone audio"))
 
     let mixed = CloudPrivacyConfirmationCopy.informativeText(
@@ -1972,8 +1766,10 @@ final class AppBootstrapTests: XCTestCase {
     )
     XCTAssertTrue(mixed.contains("麦克风音频"))
     XCTAssertTrue(mixed.contains("云端识别术语"))
-    XCTAssertTrue(mixed.contains("最终文本"))
-    XCTAssertTrue(mixed.contains("HTTPS Webhook"))
+    XCTAssertTrue(mixed.contains("最终转写"))
+    XCTAssertTrue(mixed.contains("配置的云端文本服务"))
+    XCTAssertTrue(mixed.contains("始终允许"))
+    XCTAssertTrue(mixed.contains("设置 > 隐私"))
 
     let defensive = CloudPrivacyConfirmationCopy.informativeText(
       workflowName: "Voice",

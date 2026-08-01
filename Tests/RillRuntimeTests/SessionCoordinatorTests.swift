@@ -361,7 +361,11 @@ final class SessionCoordinatorTests: XCTestCase {
         let deliveryStack = DeliveryStack(eventBus: eventBus)
         let requestProbe = RecognitionRequestProbe()
         let actionProbe = ActionProbe()
-        let workflow = WorkflowDefinition(
+        let vocabularyMigration = VocabularyLegacyMigrator.migrate([
+            VocabularyRule(kind: .hotword, pattern: "Rill", replacement: ""),
+            VocabularyRule(kind: .hotword, pattern: "multi word", replacement: ""),
+        ])
+        var workflow = WorkflowDefinition(
             name: "Hints",
             pipeline: PipelineDeclaration(
                 recognizerID: "options.probe",
@@ -369,6 +373,7 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
+        workflow.plan.setup.vocabularyBindings = vocabularyMigration.bindings
         let expectedOptions = SpeechRecognitionRequestOptions(
             language: "zh-CN",
             hints: RecognitionHints(keyterms: ["Rill", "multi word"])
@@ -388,13 +393,19 @@ final class SessionCoordinatorTests: XCTestCase {
             candidateResolver: CandidateResolver(eventBus: eventBus),
             deliveryStack: deliveryStack,
             eventBus: eventBus,
+            vocabularyCollectionProvider: { vocabularyMigration.collections },
             recognitionOptionsProvider: { _, _ in expectedOptions }
         )
 
         await coordinator.run(workflow: workflow, contextSnapshot: .empty)
 
         let requests = await requestProbe.snapshot()
-        XCTAssertEqual(requests.map(\.options), [expectedOptions])
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertEqual(requests.first?.options.language, expectedOptions.language)
+        XCTAssertEqual(
+            requests.first?.options.hints.keyterms.sorted(),
+            expectedOptions.hints.keyterms.sorted()
+        )
     }
 
     func testCoordinatorDropsUnsupportedHintsWithoutPublishingTheirContent() async {
@@ -403,7 +414,10 @@ final class SessionCoordinatorTests: XCTestCase {
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
         let requestProbe = RecognitionRequestProbe()
         let actionProbe = ActionProbe()
-        let workflow = WorkflowDefinition(
+        let vocabularyMigration = VocabularyLegacyMigrator.migrate([
+            VocabularyRule(kind: .hotword, pattern: keytermCanary, replacement: ""),
+        ])
+        var workflow = WorkflowDefinition(
             name: "Unsupported Hints",
             pipeline: PipelineDeclaration(
                 recognizerID: "options.probe",
@@ -411,6 +425,7 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
+        workflow.plan.setup.vocabularyBindings = vocabularyMigration.bindings
         let coordinator = SessionCoordinator(
             contextProvider: MockContextProvider(),
             recognizerRegistry: SpeechRecognizerRegistry(
@@ -426,7 +441,8 @@ final class SessionCoordinatorTests: XCTestCase {
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
             deliveryStack: DeliveryStack(eventBus: eventBus, diagnostics: diagnostics),
             eventBus: eventBus,
-            diagnostics: diagnostics
+            diagnostics: diagnostics,
+            vocabularyCollectionProvider: { vocabularyMigration.collections }
         )
 
         await coordinator.run(
@@ -606,6 +622,69 @@ final class SessionCoordinatorTests: XCTestCase {
             if case .runCompleted = event { return true }
             return false
         })
+    }
+
+    func testPreRecognizedWakeCommandSkipsRecognizerAndKeepsWorkflowPipeline() async {
+        let eventBus = EventBus()
+        let recognitionProbe = RecognitionRequestProbe()
+        let actionProbe = ActionProbe()
+        var workflow = WorkflowDefinition(
+            name: "Voice Assistant",
+            trigger: .wakeWord,
+            pipeline: PipelineDeclaration(
+                recognizerID: "options.probe",
+                postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
+                outputActions: [OutputActionReference(id: "probe.action")],
+                uncertaintyPolicy: .init(mode: .off),
+                deliveryPolicy: .init(strategy: .immediate)
+            ),
+            ui: WorkflowUIConfig(symbolName: "sparkles", accentColorName: "purple")
+        )
+        workflow.plan.setup.wakeWord = WakeWordConfiguration(
+            phrases: ["Hey Rill"]
+        )
+        let coordinator = SessionCoordinator(
+            contextProvider: MockContextProvider(),
+            recognizerRegistry: SpeechRecognizerRegistry(
+                recognizers: [
+                    OptionsProbeRecognizer(
+                        supportsKeyterms: true,
+                        probe: recognitionProbe
+                    ),
+                ]
+            ),
+            transformerRegistry: TextTransformerRegistry(
+                transformers: [MockTransformer()]
+            ),
+            actionRegistry: OutputActionRegistry(
+                actions: [ProbeAction(probe: actionProbe)]
+            ),
+            candidateResolver: CandidateResolver(eventBus: eventBus),
+            deliveryStack: DeliveryStack(eventBus: eventBus),
+            eventBus: eventBus
+        )
+        let triggerEvent = WorkflowTriggerEvent(
+            binding: .wakeWord,
+            workflowID: workflow.id,
+            sourceID: "wake-word.qwen-asr"
+        )
+        let authorization = AuthorizedWorkflowRunContext(
+            workflow: workflow,
+            contextSnapshot: .empty,
+            recognitionOptions: .empty
+        )
+
+        await coordinator.runRecognizedText(
+            "打开客厅灯",
+            runID: triggerEvent.id,
+            triggerEvent: triggerEvent,
+            authorizedContext: authorization
+        )
+
+        let recognitionRequests = await recognitionProbe.snapshot()
+        let actionValues = await actionProbe.snapshot()
+        XCTAssertEqual(recognitionRequests, [])
+        XCTAssertEqual(actionValues, ["打开客厅灯 transformed"])
     }
 
     func testDeliverTopOfStackPublishesCompletionSummary() async {
@@ -816,7 +895,11 @@ final class SessionCoordinatorTests: XCTestCase {
             stageEvents.first { $0.metadata["stage"] == "recognizing" }?.metadata["recognizerID"],
             "mock.recognizer"
         )
-        XCTAssertEqual(stageEvents.first { $0.metadata["stage"] == "transforming" }?.metadata["stepCount"], "1")
+        XCTAssertEqual(
+            stageEvents.first { $0.metadata["stage"] == "transforming" }?
+                .metadata["stepCount"],
+            "3"
+        )
         XCTAssertEqual(stageEvents.first { $0.metadata["stage"] == "delivering" }?.metadata["actionCount"], "1")
         XCTAssertNotNil(stageEvents.first { $0.metadata["stage"] == "completed" }?.metadata["durationMillis"])
 
@@ -1013,7 +1096,7 @@ final class SessionCoordinatorTests: XCTestCase {
         let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let probe = ActionProbe()
-        let workflow = WorkflowDefinition(
+        var workflow = WorkflowDefinition(
             name: "Vocabulary Workflow",
             pipeline: PipelineDeclaration(
                 recognizerID: "mock.recognizer",
@@ -1054,6 +1137,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             VocabularyRule(kind: .hotword, pattern: "local", replacement: "cloud")
         ]
+        let vocabularyMigration = VocabularyLegacyMigrator.migrate(rules)
+        workflow.plan.setup.vocabularyBindings = vocabularyMigration.bindings
         let coordinator = SessionCoordinator(
             contextProvider: MockContextProvider(),
             recognizerRegistry: SpeechRecognizerRegistry(
@@ -1072,7 +1157,7 @@ final class SessionCoordinatorTests: XCTestCase {
             deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics,
-            vocabularyRuleProvider: { rules }
+            vocabularyCollectionProvider: { vocabularyMigration.collections }
         )
 
         await coordinator.run(workflow: workflow, contextSnapshot: context)
@@ -1114,7 +1199,7 @@ final class SessionCoordinatorTests: XCTestCase {
                 ),
             ]
         )
-        let workflow = WorkflowDefinition(
+        var workflow = WorkflowDefinition(
             name: "Correction Source Workflow",
             pipeline: PipelineDeclaration(
                 recognizerID: "mock.recognizer",
@@ -1132,6 +1217,18 @@ final class SessionCoordinatorTests: XCTestCase {
                 WorkflowMetadataKey.languageOverride: "en-US",
             ]
         )
+        let vocabularyMigration = VocabularyLegacyMigrator.migrate([
+            VocabularyRule(
+                pattern: "vux type",
+                replacement: "Rill",
+                scope: VocabularyRuleScope(
+                    bundleIdentifier: "com.example.editor",
+                    clipboardGroupID: targetGroupID,
+                    locale: "zh-CN"
+                )
+            ),
+        ])
+        workflow.plan.setup.vocabularyBindings = vocabularyMigration.bindings
         let context = ContextSnapshot(
             focus: FocusSnapshot(
                 applicationName: "Editor",
@@ -1153,19 +1250,7 @@ final class SessionCoordinatorTests: XCTestCase {
             candidateResolver: resolver,
             deliveryStack: deliveryStack,
             eventBus: eventBus,
-            vocabularyRuleProvider: {
-                [
-                    VocabularyRule(
-                        pattern: "vux type",
-                        replacement: "Rill",
-                        scope: VocabularyRuleScope(
-                            bundleIdentifier: "com.example.editor",
-                            clipboardGroupID: targetGroupID,
-                            locale: "zh-CN"
-                        )
-                    ),
-                ]
-            }
+            vocabularyCollectionProvider: { vocabularyMigration.collections }
         )
 
         let stream = await eventBus.stream()
@@ -1209,7 +1294,7 @@ final class SessionCoordinatorTests: XCTestCase {
         )
     }
 
-    func testVocabularyProviderFailureDoesNotDiscardRecognizedText() async {
+    func testUnboundWorkflowDoesNotLoadVocabularyCollections() async {
         struct LoadFailure: Error {}
 
         let eventBus = EventBus()
@@ -1244,7 +1329,7 @@ final class SessionCoordinatorTests: XCTestCase {
         let deliveredValues = await probe.snapshot()
         XCTAssertEqual(deliveredValues, ["original"])
         let events = await diagnostics.snapshot(matching: DiagnosticQuery(subsystem: .session))
-        XCTAssertTrue(events.contains { $0.event == "session.vocabulary.load-failed" && $0.level == .warning })
+        XCTAssertFalse(events.contains { $0.event == "session.vocabulary.load-failed" })
     }
 
     func testMissingTransformerFailsInsteadOfSilentlyReturningUnprocessedText() async {
@@ -1326,11 +1411,12 @@ final class SessionCoordinatorTests: XCTestCase {
 
     func testReportedRecognizerFailureUsesContentFreeRecoverableClassification() async {
         let eventBus = EventBus()
+        let actionProbe = ActionProbe()
         let workflow = WorkflowDefinition(
             name: "Reported Failure",
             pipeline: PipelineDeclaration(
                 recognizerID: "failing.recognizer",
-                outputActions: []
+                outputActions: [OutputActionReference(id: "probe.action")]
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "red")
         )
@@ -1340,7 +1426,9 @@ final class SessionCoordinatorTests: XCTestCase {
                 recognizers: [FailingRecognizer(message: "private provider detail")]
             ),
             transformerRegistry: TextTransformerRegistry(transformers: []),
-            actionRegistry: OutputActionRegistry(actions: []),
+            actionRegistry: OutputActionRegistry(
+                actions: [ProbeAction(probe: actionProbe)]
+            ),
             candidateResolver: CandidateResolver(eventBus: eventBus),
             deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
@@ -1626,7 +1714,7 @@ extension SessionCoordinatorTests {
         XCTAssertEqual(finalState, .idle)
     }
 
-    func testCapturedAudioQueuePreservesTheCaptureTimeOptionsSnapshot() async throws {
+    func testCapturedAudioQueueUsesCaptureTimeLanguageAndPlanOwnedHints() async throws {
         let eventBus = EventBus()
         let requestProbe = RecognitionRequestProbe()
         let actionProbe = ActionProbe()
@@ -1642,6 +1730,7 @@ extension SessionCoordinatorTests {
             language: "zh-CN",
             hints: RecognitionHints(keyterms: ["capture-time-term"])
         )
+        let expectedRuntimeOptions = SpeechRecognitionRequestOptions(language: "zh-CN")
         let coordinator = SessionCoordinator(
             contextProvider: MockContextProvider(),
             recognizerRegistry: SpeechRecognizerRegistry(
@@ -1693,7 +1782,111 @@ extension SessionCoordinatorTests {
             try? await Task.sleep(for: .milliseconds(5))
         }
         let requests = await requestProbe.snapshot()
-        XCTAssertEqual(requests.map(\.options), [capturedOptions])
+        XCTAssertEqual(requests.map(\.options), [expectedRuntimeOptions])
+    }
+
+    func testCapturedAudioWaitsForActiveRunAndCompletesAfterItsOutput() async throws {
+        let eventBus = EventBus()
+        let firstRunGate = BlockingGate()
+        let firstRunProbe = QueueActionProbe()
+        let secondRunProbe = ActionProbe()
+        let recognizer = MockRecognizer(
+            result: RecognitionResult(rawText: "recognized", bestText: "recognized")
+        )
+        let coordinator = SessionCoordinator(
+            contextProvider: MockContextProvider(),
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [recognizer]),
+            transformerRegistry: TextTransformerRegistry(transformers: []),
+            actionRegistry: OutputActionRegistry(
+                actions: [
+                    BlockingQueueAction(probe: firstRunProbe, gate: firstRunGate),
+                    ProbeAction(probe: secondRunProbe),
+                ]
+            ),
+            candidateResolver: CandidateResolver(eventBus: eventBus),
+            deliveryStack: DeliveryStack(eventBus: eventBus),
+            eventBus: eventBus
+        )
+        let firstWorkflow = WorkflowDefinition(
+            name: "First Output",
+            pipeline: PipelineDeclaration(
+                recognizerID: recognizer.id,
+                outputActions: [OutputActionReference(id: "blocking.queue.action")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "1.circle", accentColorName: "blue")
+        )
+        let secondWorkflow = WorkflowDefinition(
+            name: "Second Capture",
+            pipeline: PipelineDeclaration(
+                recognizerID: recognizer.id,
+                outputActions: [OutputActionReference(id: "probe.action")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "2.circle", accentColorName: "green")
+        )
+        let firstRunID = UUID()
+        let secondRunID = UUID()
+        let firstTask = Task {
+            await coordinator.runReportingOutcome(
+                workflow: firstWorkflow,
+                runID: firstRunID,
+                contextSnapshot: .empty,
+                preRecognizedText: "first"
+            )
+        }
+        for _ in 0..<200 {
+            if await firstRunProbe.snapshot() == ["First Output"] { break }
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        let startedFirstRuns = await firstRunProbe.snapshot()
+        XCTAssertEqual(startedFirstRuns, ["First Output"])
+
+        let queue = CapturedAudioProcessingQueue(
+            sessionCoordinator: coordinator,
+            eventBus: eventBus
+        )
+        let audio = try CapturedAudio(
+            durationSeconds: 1,
+            format: AudioFormat(
+                sampleRateHz: 16_000,
+                channelCount: 1,
+                encoding: .pcm16
+            ),
+            inlineData: Data()
+        )
+        let transfer = await queue.enqueue(
+            authorizationLease: makeAudioProcessingTestLease(
+                runID: secondRunID,
+                workflow: secondWorkflow
+            ),
+            triggerEvent: nil,
+            deferredCapture: .resolved(audio)
+        )
+        XCTAssertEqual(
+            transfer,
+            CapturedAudioProcessingQueue.OwnershipTransferResult.accepted
+        )
+
+        for _ in 0..<50 {
+            if await queue.pendingCount == 1 { break }
+            await Task.yield()
+        }
+        let pendingWhileFirstRunIsActive = await queue.pendingCount
+        let secondOutputWhileFirstRunIsActive = await secondRunProbe.snapshot()
+        XCTAssertEqual(pendingWhileFirstRunIsActive, 1)
+        XCTAssertTrue(secondOutputWhileFirstRunIsActive.isEmpty)
+
+        await firstRunGate.resume()
+        _ = await firstTask.value
+        for _ in 0..<200 {
+            if await secondRunProbe.snapshot() == ["recognized"] { break }
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+
+        let completedSecondOutputs = await secondRunProbe.snapshot()
+        let finalPendingCount = await queue.pendingCount
+        XCTAssertEqual(completedSecondOutputs, ["recognized"])
+        XCTAssertEqual(finalPendingCount, 0)
+        await queue.shutdown()
     }
 
     func testDeliverTopOfStackKeepsStateBusyUntilCompletedDiagnosticsFinish() async {

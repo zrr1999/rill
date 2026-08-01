@@ -9,8 +9,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
   public let id: String
   public let backend = LocalSpeechModelBackend.mlxAudioSwift
   public let capabilities = SpeechRecognizerCapabilities(
-    supportedHintKinds: [.keyterm],
-    maximumAudioDurationSeconds: Double(SherpaOnnxRecognizer.maximumAudioDurationSeconds)
+    supportedHintKinds: [.keyterm]
   )
 
   private let supervisor: SpeechWorkerSupervisor
@@ -36,7 +35,8 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
 
   public func prepareModel(
     modelIdentifier: String,
-    downloadIfNeeded: Bool
+    downloadIfNeeded: Bool,
+    progress: @escaping @Sendable (SpeechWorkerProgress) -> Void = { _ in }
   ) async throws -> String {
     guard let modelID = MLXAudioModelID(rawValue: modelIdentifier),
       MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelIdentifier)
@@ -48,7 +48,8 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
         modelID: modelID.rawValue,
         downloadIfNeeded: downloadIfNeeded
       ),
-      timeout: preparationTimeout
+      timeout: preparationTimeout,
+      progress: progress
     )
     guard prepared == modelID.rawValue else {
       throw SpeechWorkerClientError.protocolViolation
@@ -65,7 +66,9 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
     else {
       throw SpeechWorkerClientError.invalidManagedAudio
     }
-    try SherpaOnnxRecognizer.validateCapturedAudioDuration(capturedAudio.durationSeconds)
+    guard capturedAudio.durationSeconds.isFinite, capturedAudio.durationSeconds >= 0 else {
+      throw SherpaOnnxRecognizer.RecognizerError.invalidAudioFile
+    }
 
     let settings = try await settingsProvider()
     let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(

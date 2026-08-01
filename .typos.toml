@@ -5,4 +5,7 @@ extend-exclude = ["vendor/**"]
 caf = "caf"
 crpyto = "crpyto"
 Iz = "Iz"
+IY = "IY"
+Ono = "Ono"
+ono = "ono"
 tipe = "tipe"

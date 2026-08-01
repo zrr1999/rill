@@ -36,9 +36,9 @@ public enum WorkflowMetadataKey {
     /// the local speech engine.
     public static let legacyWhisperKitModelOverride = "recognizer.whisperkit.model"
     public static let languageOverride = "recognizer.language"
-    public static let deepgramModelOverride = "deepgram.model"
     public static let exclusiveGroup = "workflow.exclusive-group"
     public static let builtinKind = "workflow.builtin-kind"
+    public static let defaultEnabled = "workflow.default-enabled"
     public static let availability = "workflow.availability"
     public static let speechMode = "workflow.speech-mode"
     public static let targetClipboardGroupID = "clipboard.target-group-id"
@@ -59,6 +59,7 @@ public enum SpeechWorkflowMode: String, Codable, Sendable, Equatable {
     case streamingDirect = "streaming-direct"
     case dedicatedTranscription = "dedicated-transcription"
     case transcriptionWithRewrite = "transcription-with-rewrite"
+    case voiceAssistant = "voice-assistant"
 }
 
 /// A validated, content-free clipboard group automation declaration.
@@ -126,6 +127,13 @@ public extension WorkflowDefinition {
             .flatMap(SpeechWorkflowMode.init(rawValue:))
     }
 
+    var isEnabledByDefault: Bool {
+        guard let rawValue = metadata[WorkflowMetadataKey.defaultEnabled] else {
+            return true
+        }
+        return rawValue == "true"
+    }
+
     var excludesOutputFromWorkflowCapture: Bool {
         guard let rawValue = metadata[WorkflowMetadataKey.excludeOutputFromWorkflowCapture] else {
             return true
@@ -134,7 +142,8 @@ public extension WorkflowDefinition {
     }
 
     var prefersAutomaticRecognizerSelection: Bool {
-        metadata[WorkflowMetadataKey.recognizerSelectionMode] == "auto"
+        plan.setup.speechRoute?.selection == .automatic
+            || metadata[WorkflowMetadataKey.recognizerSelectionMode] == "auto"
     }
 
     var exclusiveGroupIdentifier: String? {
@@ -241,6 +250,7 @@ public enum WorkflowTitleKey: String, Codable, Sendable, Equatable {
     case pushToTalkPolish
     case rawInput
     case cleanInput
+    case speechRecognition
     case formalWriting
     case translateInput
     case commandMode
@@ -248,6 +258,7 @@ public enum WorkflowTitleKey: String, Codable, Sendable, Equatable {
     case cloudDictation
     case stackDelivery
     case streamingInput
+    case voiceAssistant
 }
 
 public struct WorkflowPresentation: Codable, Sendable, Equatable {
@@ -344,6 +355,57 @@ public struct PipelineDeclaration: Codable, Sendable, Equatable {
         self.uncertaintyPolicy = uncertaintyPolicy
         self.deliveryPolicy = deliveryPolicy
     }
+
+    public func workflowPlan(
+        metadata: [String: String] = [:]
+    ) -> WorkflowPlan {
+        let selection: SpeechRouteSelection =
+            metadata[WorkflowMetadataKey.recognizerSelectionMode] == "auto"
+            ? .automatic
+            : .fixed
+        var processSteps = [
+            WorkflowProcessStep(kind: .recognizeSpeech),
+        ]
+        if uncertaintyPolicy.mode != .off {
+            processSteps.append(
+                WorkflowProcessStep(
+                    kind: .resolveUncertainty,
+                    uncertaintyPolicy: uncertaintyPolicy
+                )
+            )
+        }
+        processSteps.append(WorkflowProcessStep(kind: .applyVocabulary))
+        processSteps.append(contentsOf: postProcessSteps.map(WorkflowProcessStep.init))
+        return WorkflowPlan(
+            setup: WorkflowSetupPhase(
+                speechRoute: WorkflowSpeechRoute(
+                    selection: selection,
+                    recognizerID: recognizerID,
+                    language: metadata[WorkflowMetadataKey.languageOverride],
+                    localModel: metadata[WorkflowMetadataKey.localSpeechModelOverride]
+                )
+            ),
+            process: WorkflowProcessPhase(steps: processSteps),
+            output: WorkflowOutputPhase(
+                actions: outputActions,
+                deliveryPolicy: deliveryPolicy
+            )
+        )
+    }
+
+    public init(plan: WorkflowPlan) {
+        let uncertaintyPolicy =
+            plan.process.steps.first(where: { $0.kind == .resolveUncertainty })?
+            .uncertaintyPolicy
+            ?? .init(mode: .off)
+        self.init(
+            recognizerID: plan.setup.speechRoute?.recognizerID ?? "",
+            postProcessSteps: plan.process.steps.compactMap(\.postProcessStep),
+            outputActions: plan.output.actions,
+            uncertaintyPolicy: uncertaintyPolicy,
+            deliveryPolicy: plan.output.deliveryPolicy
+        )
+    }
 }
 
 public struct WorkflowDefinition: Identifiable, Codable, Sendable, Equatable {
@@ -351,9 +413,15 @@ public struct WorkflowDefinition: Identifiable, Codable, Sendable, Equatable {
     public var name: String
     public var titleKey: WorkflowTitleKey?
     public var trigger: TriggerBinding
-    public var pipeline: PipelineDeclaration
+    public var plan: WorkflowPlan
     public var ui: WorkflowUIConfig
     public var metadata: [String: String]
+
+    /// Schema-v1 compatibility projection. New runtime code must consume `plan`.
+    public var pipeline: PipelineDeclaration {
+        get { PipelineDeclaration(plan: plan) }
+        set { plan = newValue.workflowPlan(metadata: metadata) }
+    }
 
     public init(
         id: UUID = UUID(),
@@ -368,13 +436,69 @@ public struct WorkflowDefinition: Identifiable, Codable, Sendable, Equatable {
         self.name = name
         self.titleKey = titleKey
         self.trigger = trigger
-        self.pipeline = pipeline
+        self.ui = ui
+        self.metadata = metadata
+        self.plan = pipeline.workflowPlan(metadata: metadata)
+    }
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        titleKey: WorkflowTitleKey? = nil,
+        trigger: TriggerBinding = .manual,
+        plan: WorkflowPlan,
+        ui: WorkflowUIConfig,
+        metadata: [String: String] = [:]
+    ) {
+        self.id = id
+        self.name = name
+        self.titleKey = titleKey
+        self.trigger = trigger
+        self.plan = plan
         self.ui = ui
         self.metadata = metadata
     }
 
     public var presentation: WorkflowPresentation {
         WorkflowPresentation(fallbackName: name, titleKey: titleKey)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case titleKey
+        case trigger
+        case plan
+        case pipeline
+        case ui
+        case metadata
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        titleKey = try container.decodeIfPresent(WorkflowTitleKey.self, forKey: .titleKey)
+        trigger = try container.decode(TriggerBinding.self, forKey: .trigger)
+        ui = try container.decode(WorkflowUIConfig.self, forKey: .ui)
+        metadata = try container.decodeIfPresent([String: String].self, forKey: .metadata) ?? [:]
+        if let decodedPlan = try container.decodeIfPresent(WorkflowPlan.self, forKey: .plan) {
+            plan = decodedPlan
+        } else {
+            let legacyPipeline = try container.decode(PipelineDeclaration.self, forKey: .pipeline)
+            plan = legacyPipeline.workflowPlan(metadata: metadata)
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(titleKey, forKey: .titleKey)
+        try container.encode(trigger, forKey: .trigger)
+        try container.encode(plan, forKey: .plan)
+        try container.encode(ui, forKey: .ui)
+        try container.encode(metadata, forKey: .metadata)
     }
 }
 

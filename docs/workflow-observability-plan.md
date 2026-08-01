@@ -129,7 +129,7 @@ Workflows UI 只允许预览已保存且当前 `WorkflowEditorDraft` 与保存�
 
 最小解释能力：
 
-1. 按固定类别和 usage 说明 trigger 与输入来源：麦克风是 required；Deepgram recognition hints 是 conditional，表示静态上可能随音频发送，并不声称当前 options 一定包含 keyterms。不要把同一 keyterms payload 再重复记为 vocabulary terms。
+1. 按固定类别和 usage 说明 trigger 与输入来源：麦克风是 required；本地 recognition hints 是 conditional，表示运行时可能传给所选本地模型，并不声称当前 options 一定包含热词。不要把同一 hints payload 再重复记为 vocabulary terms。
 2. 在声明的 post-process steps 前列出 on-device `vocabularyMapping`，并标为 conditional；它表示本地规则可能生效，不声称当前一定存在匹配规则。其他 transform 列出类别及可用状态，不渲染 prompt 或变量。
 3. 列出每个 action 的全部 output effects、来源 action index、配置状态和处理目的地，不回显配置值；例如复制 action 同时包含系统剪贴板写入和本地 history/storage 写入。
 4. 查询 recognizer、transformer 和 action registry，但绝不调用 `recognize`、`transform` 或 `execute`。
@@ -157,7 +157,7 @@ redaction 规则属于执行合同而非 UI 提示：Secure Input 和未知焦�
 相邻的系统副作用也使用相同的“最终使用前复核”原则：
 
 - StackPaste mirror/capture 在 payload read 前后与 mirror write 后比较 pasteboard descriptor/change count、焦点身份、Secure Input、策略决定和 capture-control revision；焦点/设置竞态、暂停/ignore-next 或 ownership 变化会丢弃 payload、恢复仍由 Rill 持有的原剪贴板并关闭 paste interception。
-- Deepgram Speech Check 在录音前完成 provider 配置持久化/回读和无确认的隐私 preflight；录音结束后、recognizer egress 前重新授权。内部 `finishing` 状态拒绝重复 start/finish，取消后不继续识别并清理托管临时音频。
+- 本地语音准备会校验受信模型身份和安装状态；内部 `finishing` 状态拒绝重复 start/finish，取消后不继续识别并清理托管临时音频。
 - TextInjection 把 `inject.text` 绑定到运行开始时的 bundle/PID 最小身份，必要时尝试恢复目标 App，并在 Command-V 或每个键盘分块前复核。浮动剪贴板面板在任何 await 前锁定 content-free PID/bundle，恢复后 AppBootstrap 只采集一次当前 privacy context 并与锁定目标比较；A 被 B 抢焦点时 text/rich 均不调用 action。无法验证、激活失败或焦点漂移时 fail-closed；临时 clipboard 仍按 change count 条件恢复。诊断只记录固定事件、布尔状态、outcome 和长度/计数，不记录目标身份或正文。
 
 正文级 prompt 预览不属于运行前解释。若未来确有调试需要，应放在用户明确授权的独立工具中，
@@ -219,14 +219,13 @@ redaction 规则属于执行合同而非 UI 提示：Secure Input 和未知焦�
 - 解释服务不会调用 recognizer、transformer、action、上下文正文读取或确认回调。
 - Workflows 入口在草稿和保存版本不一致时禁用；切换、删除、关闭、失活或设置变化后，旧异步收据不能写回当前 UI。
 - 自动 recognizer/output mode 未解析时返回 typed blocked，不回退到 manifest 占位路径。
-- Deepgram 收据把 audio 标为 required、recognition hints 标为 conditional，且两者均指向云端；不重复报告同一 keyterms payload。
+- 本地语音收据把 audio 标为 required、recognition hints 标为 conditional，且两者均指向本机；不重复报告同一 hints payload。
 - 收据在声明步骤前包含 conditional on-device vocabulary mapping；多效果 action 不遗漏次级存储写入，并保留来源 action index。
-- Explain 和 live authorization 对 Deepgram、LLM rewrite、Webhook、本地 ASR 与本地输出使用同一个 closed destination classifier；未知 ID 两侧均 fail-closed。
+- Explain 和 live authorization 对 LLM rewrite、Webhook、本地 ASR 与本地输出使用同一个 closed destination classifier；未知 ID 两侧均 fail-closed。
 - 非音频工作流与 replay 授权失败时，Coordinator、recognizer、transformer 和 action 调用数均为 0；公共 Runtime API 不能从 raw context 构造一次运行。
 - Secure Input、未知焦点和 `excludeFromWorkflowCapture` 的 preview/authorization redaction 保持一致；授权期间设置或 focus/clipboard 身份漂移会拒绝提交。
 - Stack mirror/capture 的 payload-read/mirror-write 竞态测试覆盖敏感 App、Secure Input、设置收紧、焦点 activation、暂停和 ignore-next；失效写入只在仍持有 change count 时恢复。
-- Deepgram Speech Check 的测试覆盖 preflight 不消费 confirmation、最终 egress 重新授权、设置/焦点竞态、`finishing` 重入与取消；TextInjection 测试覆盖目标激活、分块间漂移、粘贴前漂移、条件恢复和诊断 canary。
-- Deepgram live 的 run-scoped lifetime 在每次网络发送前获取原子 permit；Runtime 以内容无关 reason 持续复核焦点/设置，敏感或未知焦点、Secure Input、设置不可用和新出现的确认要求会关流。输入停止后的 seal 与 processing lease finalizer 共同阻止 revoked 会话转成 prerecorded 整段上传；旧 run 的撤销不能取消新 run。
+- 本地语音准备与运行测试覆盖受信模型校验、`finishing` 重入、取消和托管临时音频清理；TextInjection 测试覆盖目标激活、分块间漂移、粘贴前漂移、条件恢复和诊断 canary。
 - replay 生成新的 runID，默认持久化边界不保存与原运行的稳定关联。
 - legacy clipboard state 解码会生成新的 item generation，并在 schema 6 回写；同 item mutation 单调递增 revision，删除后同 ID 重建必须改变 generation，无关 item mutation 不使 subject 失效。
 - clipboard dry-run preparer 对 `.use` 不取 privacy context；replay/replace 使用 clipboard invocation 的 privacy-only evaluate，绝不确认、授权或调用 recognizer/transformer/action。准备期间 item 漂移返回固定错误且不提交收据。

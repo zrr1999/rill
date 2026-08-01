@@ -49,11 +49,17 @@ struct RillApplication: App {
             liveSubtitlePanelController.update(snapshot: snapshot, language: language)
         }
         liveSubtitlePanelController.installStopAction(container.cancelLiveAudio)
+        liveSubtitlePanelController.installRemoveDurationLimitAction(
+            container.removeLiveAudioDurationLimit
+        )
 
         self._container = State(initialValue: container)
         self.clipboardPanelController = clipboardPanelController
         self.liveSubtitlePanelController = liveSubtitlePanelController
         let shutdown = container.shutdown
+        applicationDelegate.installEscapeAction {
+            container.model.stopSpeechPlaybackIfActive()
+        }
         applicationDelegate.installCleanupOperation {
             await clipboardPanelController.shutdown()
             await shutdown()

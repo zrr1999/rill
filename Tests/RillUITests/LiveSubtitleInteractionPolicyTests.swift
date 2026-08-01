@@ -31,6 +31,93 @@ final class LiveSubtitleInteractionPolicyTests: XCTestCase {
     XCTAssertTrue(LiveSubtitlePresentationPolicy.standardLiveTextPreservesLatestContent)
   }
 
+  func testRecordingTimerShowsElapsedAndMaximumDurationBeforeWarningWindow() throws {
+    let startedAt = Date(timeIntervalSince1970: 1_000)
+    let snapshot = LiveSubtitleSnapshot(
+      runID: UUID(),
+      phase: .recording,
+      recordingStartedAt: startedAt,
+      maximumRecordingDurationSeconds: 120
+    )
+
+    let state = try XCTUnwrap(
+      LiveSubtitlePresentationPolicy.recordingTimerState(
+        for: snapshot,
+        now: startedAt.addingTimeInterval(67.9)
+      )
+    )
+
+    XCTAssertEqual(state.elapsedSeconds, 67)
+    XCTAssertEqual(state.maximumSeconds, 120)
+    XCTAssertEqual(state.remainingSeconds, 53)
+    XCTAssertFalse(state.isNearLimit)
+    XCTAssertEqual(
+      LiveSubtitlePresentationPolicy.formattedDuration(state.elapsedSeconds),
+      "1:07"
+    )
+    XCTAssertEqual(
+      LiveSubtitlePresentationPolicy.formattedDuration(try XCTUnwrap(state.maximumSeconds)),
+      "2:00"
+    )
+    XCTAssertFalse(state.isUnlimited)
+  }
+
+  func testRecordingTimerTurnsCriticalForLastTenPercentAndClampsAtLimit() throws {
+    let startedAt = Date(timeIntervalSince1970: 2_000)
+    let snapshot = LiveSubtitleSnapshot(
+      runID: UUID(),
+      phase: .recording,
+      recordingStartedAt: startedAt,
+      maximumRecordingDurationSeconds: 120
+    )
+
+    let warning = try XCTUnwrap(
+      LiveSubtitlePresentationPolicy.recordingTimerState(
+        for: snapshot,
+        now: startedAt.addingTimeInterval(108)
+      )
+    )
+    XCTAssertEqual(warning.remainingSeconds, 12)
+    XCTAssertTrue(warning.isNearLimit)
+
+    let expired = try XCTUnwrap(
+      LiveSubtitlePresentationPolicy.recordingTimerState(
+        for: snapshot,
+        now: startedAt.addingTimeInterval(130)
+      )
+    )
+    XCTAssertEqual(expired.elapsedSeconds, 120)
+    XCTAssertEqual(expired.remainingSeconds, 0)
+    XCTAssertTrue(expired.isNearLimit)
+  }
+
+  func testUnlimitedRecordingTimerKeepsElapsedTimeWithoutWarningOrRemainingTime() throws {
+    let startedAt = Date(timeIntervalSince1970: 3_000)
+    let snapshot = LiveSubtitleSnapshot(
+      runID: UUID(),
+      phase: .recording,
+      recordingStartedAt: startedAt,
+      recordingDurationIsUnlimited: true
+    )
+
+    let state = try XCTUnwrap(
+      LiveSubtitlePresentationPolicy.recordingTimerState(
+        for: snapshot,
+        now: startedAt.addingTimeInterval(3_725.8)
+      )
+    )
+
+    XCTAssertEqual(state.elapsedSeconds, 3_725)
+    XCTAssertNil(state.maximumSeconds)
+    XCTAssertNil(state.remainingSeconds)
+    XCTAssertFalse(state.isNearLimit)
+    XCTAssertTrue(state.isUnlimited)
+    XCTAssertEqual(
+      LiveSubtitlePresentationPolicy.formattedDuration(state.elapsedSeconds),
+      "1:02:05"
+    )
+  }
+
   func testFinalizingUsesAProcessingSymbolInsteadOfARecordingSymbol() {
     XCTAssertEqual(
       LiveSubtitlePresentationPolicy.statusSymbol(for: .recording),
@@ -42,13 +129,13 @@ final class LiveSubtitleInteractionPolicyTests: XCTestCase {
     )
   }
 
-  func testProviderDisclosureDistinguishesCloudAndOnDeviceCapture() {
+  func testProviderDisclosureIdentifiesOnDeviceCapture() {
     XCTAssertEqual(
       LiveSubtitleInteractionPolicy.providerDisclosureTitle(
-        providerID: "deepgram.live",
+        providerID: "sherpa-onnx.local",
         language: .english
       ),
-      "Cloud · Deepgram"
+      "On-device"
     )
     XCTAssertEqual(
       LiveSubtitleInteractionPolicy.providerDisclosureTitle(
@@ -65,17 +152,17 @@ final class LiveSubtitleInteractionPolicyTests: XCTestCase {
     )
   }
 
-  func testCloudDisclosureUsesSemanticHighContrastStyleOnlyWhenRequested() {
+  func testLocalDisclosureUsesTintedStyleEvenAtHighContrast() {
     XCTAssertEqual(
       LiveSubtitlePresentationPolicy.providerDisclosureStyle(
-        providerID: "deepgram.live",
+        providerID: "sherpa-onnx.local",
         increasedContrast: true
       ),
-      .highContrast
+      .tinted
     )
     XCTAssertEqual(
       LiveSubtitlePresentationPolicy.providerDisclosureStyle(
-        providerID: "deepgram.live",
+        providerID: "sherpa-onnx.local",
         increasedContrast: false
       ),
       .tinted

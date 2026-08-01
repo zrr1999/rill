@@ -125,8 +125,11 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     let provider = CancellationIgnoringWhisperKitProvider()
     let harness = makeHarness(
       settingsStore: settingsStore,
-      warmLocalSpeechForCaptureAction: { settings in
-        await provider.prepare(settings: settings)
+      warmLocalSpeechForCaptureAction: { settings, progressCallback in
+        await provider.prepare(
+          settings: settings,
+          progressCallback: progressCallback
+        )
       }
     )
 
@@ -138,6 +141,13 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     XCTAssertEqual(harness.model.localSpeechPreparationState, .preparing)
     XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
 
+    await provider.emitProgress(completed: 25, total: 100)
+    await waitUntil {
+      harness.model.localSpeechPreparationProgress == 0.25
+    }
+    XCTAssertEqual(harness.model.localSpeechPreparationCompletedUnitCount, 25)
+    XCTAssertEqual(harness.model.localSpeechPreparationTotalUnitCount, 100)
+
     await provider.release(returning: modelIdentifier)
     await waitUntil {
       harness.model.localSpeechPreparationState == .ready
@@ -147,37 +157,6 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, modelIdentifier)
   }
 
-  func testSwitchingToCloudRetiresBackgroundReadinessAndRejectsLateCompletion() async {
-    let modelIdentifier = "retired-local-model"
-    let settingsStore = UITestSettingsStore(
-      storage: [
-        .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
-        .localSpeechModel: modelIdentifier,
-        .localSpeechPrewarm: "false",
-      ]
-    )
-    let provider = CancellationIgnoringWhisperKitProvider()
-    let harness = makeHarness(
-      settingsStore: settingsStore,
-      warmLocalSpeechForCaptureAction: { settings in
-        await provider.prepare(settings: settings)
-      }
-    )
-    await provider.waitUntilStarted()
-
-    harness.model.preferredSpeechEngine = .cloud
-
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
-    XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
-    await provider.waitUntilCancellationObserved()
-    await provider.release(returning: modelIdentifier)
-    await waitForEventProcessing()
-
-    XCTAssertEqual(harness.model.preferredSpeechEngine, .cloud)
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
-    XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
-    XCTAssertFalse(harness.model.downloadedLocalSpeechModels.contains(modelIdentifier))
-  }
 
   func testChangingModelRetiresOldReadinessAndOnlyPublishesReplacement() async {
     let firstModel = "first-local-model"
@@ -197,8 +176,11 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     ])
     let harness = makeHarness(
       settingsStore: settingsStore,
-      warmLocalSpeechForCaptureAction: { settings in
-        await providerQueue.prepare(settings: settings)
+      warmLocalSpeechForCaptureAction: { settings, progressCallback in
+        await providerQueue.prepare(
+          settings: settings,
+          progressCallback: progressCallback
+        )
       }
     )
     await firstProvider.waitUntilStarted()
@@ -445,14 +427,18 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     let settingsStore = UITestSettingsStore(
       storage: [
         .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
+        .localSpeechModel: "test-model",
         .localSpeechPrewarm: "false",
       ]
     )
     let provider = CancellationIgnoringWhisperKitProvider()
     let harness = makeHarness(
       settingsStore: settingsStore,
-      warmLocalSpeechForCaptureAction: { settings in
-        await provider.prepare(settings: settings)
+      warmLocalSpeechForCaptureAction: { settings, progressCallback in
+        await provider.prepare(
+          settings: settings,
+          progressCallback: progressCallback
+        )
       }
     )
     await provider.waitUntilStarted()

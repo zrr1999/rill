@@ -2,14 +2,15 @@ import Foundation
 import SwiftUI
 
 public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
-    case language
-    case clipboardPanel
     case permissions
+    case speech
+    case input
+    case voiceAssistant
+    case clipboardPanel
+    case vocabulary
+    case language
     case privacy
     case storage
-    case speech
-    case vocabulary
-    case input
 
     public var id: String { rawValue }
 
@@ -31,6 +32,8 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
             L10n.string(.vocabularyTitle, language: language)
         case .input:
             UIStrings.text(.settingsBuiltinPushToTalk, language: language)
+        case .voiceAssistant:
+            language == .english ? "Wake Word & Speech Output" : "唤醒词与语音输出"
         }
     }
 
@@ -44,6 +47,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         case .speech: "waveform.path.ecg"
         case .vocabulary: "text.badge.checkmark"
         case .input: "mic.badge.plus"
+        case .voiceAssistant: "waveform.badge.mic"
         }
     }
 
@@ -60,11 +64,13 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         case .storage:
             "storage retention history clear recovery data 保留 历史 清理 恢复 本地 数据"
         case .speech:
-            "speech engine sherpa onnx qwen deepgram api key model cloud local 语音 引擎 模型 云端 本地 密钥"
+            "speech engine sherpa onnx qwen openai llm api key model text polishing local 语音 引擎 模型 大模型 润色 本地 密钥"
         case .vocabulary:
             "vocabulary hotword mapping replacement keyterm 词汇 热词 映射 替换"
         case .input:
             "push to talk fn toggle recording output input 按住说话 切换式录音 输出 输入"
+        case .voiceAssistant:
+            "wake word kws speech output tts qwen playback 唤醒词 监听 语音 输出 播放 模型"
         }
     }
 }

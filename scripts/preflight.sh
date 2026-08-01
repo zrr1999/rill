@@ -9,6 +9,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 BUILD_DIR=""
 SOURCE_REVISION=""
 SOURCE_DIRTY="false"
+MLX_RESOURCE_BUNDLE_NAME="mlx-swift_Cmlx.bundle"
 
 info() { echo "▸ $*"; }
 error() {
@@ -178,6 +179,8 @@ trap cleanup EXIT INT TERM
   --source-revision "$SOURCE_REVISION" \
   --source-dirty "$SOURCE_DIRTY" \
   --version-label "0.0.0-preflight+${SOURCE_REVISION:0:12}"
+codesign --force --sign - \
+  "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/$MLX_RESOURCE_BUNDLE_NAME"
 codesign --force --options runtime --sign - \
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker"
 codesign --force --options runtime --sign - "$PACKAGE_SMOKE_ROOT/Rill.app"
@@ -192,6 +195,9 @@ cmp -s \
   || error "Packaged local model notices do not match LOCAL_MODEL_NOTICES.md"
 cleanup
 trap - EXIT INT TERM
+
+info "Cleaning Release build artifacts before the Debug test suite..."
+swift package clean
 
 info "Running the test suite..."
 "$SCRIPT_DIR/swift_locked.sh" test --parallel

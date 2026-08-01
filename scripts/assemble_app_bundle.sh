@@ -15,6 +15,7 @@ SPEECH_WORKER_PRODUCT="RillSpeechWorker"
 MIN_MACOS="14.0"
 OWN_RESOURCE_BUNDLE="RillMacOS_RillApp.bundle"
 SHERPA_RESOURCE_BUNDLE="RillMacOS_RillSherpaRuntime.bundle"
+MLX_RESOURCE_BUNDLE="mlx-swift_Cmlx.bundle"
 SILERO_VAD_MODEL_NAME="silero_vad.onnx"
 SILERO_VAD_MODEL_SHA256="9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
 SILERO_VAD_LICENSE_NAME="LICENSE.silero-vad"
@@ -189,6 +190,7 @@ shopt -u nullglob
 
 own_bundle_found=false
 sherpa_bundle_found=false
+mlx_bundle_found=false
 dependency_bundle_count=0
 for source_bundle in "${RESOURCE_SOURCES[@]}"; do
   bundle_name="$(basename "$source_bundle")"
@@ -202,6 +204,9 @@ for source_bundle in "${RESOURCE_SOURCES[@]}"; do
   elif [[ "$bundle_name" == "$SHERPA_RESOURCE_BUNDLE" ]]; then
     sherpa_bundle_found=true
     ((dependency_bundle_count += 1))
+  elif [[ "$bundle_name" == "$MLX_RESOURCE_BUNDLE" ]]; then
+    mlx_bundle_found=true
+    ((dependency_bundle_count += 1))
   else
     ((dependency_bundle_count += 1))
   fi
@@ -210,6 +215,8 @@ done
 $own_bundle_found || error "Required app resource bundle not found: $OWN_RESOURCE_BUNDLE"
 $sherpa_bundle_found \
   || error "Required Sherpa resource bundle not found: $SHERPA_RESOURCE_BUNDLE"
+$mlx_bundle_found \
+  || error "Required MLX resource bundle not found: $MLX_RESOURCE_BUNDLE"
 
 SILERO_VAD_BUILD_RESOURCE_ROOT="$BUILD_DIR/$SHERPA_RESOURCE_BUNDLE/Contents/Resources"
 verify_sha256 \
@@ -243,7 +250,15 @@ bash "$SCRIPT_DIR/verify_release_executable.sh" \
 
 for source_bundle in "${RESOURCE_SOURCES[@]}"; do
   bundle_name="$(basename "$source_bundle")"
-  resource_destination="$APP_BUNDLE/Contents/Resources/$bundle_name"
+  if [[ "$bundle_name" == "$MLX_RESOURCE_BUNDLE" ]]; then
+    # Cmlx discovers its Metal shader bundle relative to the executable that
+    # loads it. RillSpeechWorker is an independent command-line helper, so its
+    # MLX resources must be colocated with that helper rather than the app's
+    # main Resources directory.
+    resource_destination="$APP_BUNDLE/Contents/Helpers/$bundle_name"
+  else
+    resource_destination="$APP_BUNDLE/Contents/Resources/$bundle_name"
+  fi
 
   ditto "$source_bundle" "$resource_destination"
   [[ -n "$(find "$resource_destination" -mindepth 1 -print -quit)" ]] \
@@ -342,7 +357,13 @@ plist_value() {
 
 for source_bundle in "${RESOURCE_SOURCES[@]}"; do
   bundle_name="$(basename "$source_bundle")"
-  resource_destination="$APP_BUNDLE/Contents/Resources/$bundle_name"
+  if [[ "$bundle_name" == "$MLX_RESOURCE_BUNDLE" ]]; then
+    resource_destination="$APP_BUNDLE/Contents/Helpers/$bundle_name"
+    [[ ! -e "$APP_BUNDLE/Contents/Resources/$bundle_name" ]] \
+      || error "MLX resource bundle must be owned by the speech worker"
+  else
+    resource_destination="$APP_BUNDLE/Contents/Resources/$bundle_name"
+  fi
 
   [[ -d "$resource_destination" ]] || error "Missing copied bundle: $bundle_name"
   [[ ! -e "$APP_BUNDLE/$bundle_name" ]] || error "Resource bundle must not be placed in the app root: $bundle_name"

@@ -3,18 +3,19 @@ import RillCore
 
 extension DeliveryStack {
     public func pruneHistory(olderThan cutoff: Date) async throws -> ClipboardCleanupResult {
-        try await cleanHistory { $0.createdAt < cutoff }
+        try await cleanHistory(preservingPinnedItems: true) { $0.createdAt < cutoff }
     }
 
     public func clearHistory() async throws -> ClipboardCleanupResult {
-        try await cleanHistory { _ in true }
+        try await cleanHistory(preservingPinnedItems: false) { _ in true }
     }
 
     public func clearHistory(through upperBound: Date) async throws -> ClipboardCleanupResult {
-        try await cleanHistory { $0.createdAt <= upperBound }
+        try await cleanHistory(preservingPinnedItems: false) { $0.createdAt <= upperBound }
     }
 
     private func cleanHistory(
+        preservingPinnedItems: Bool,
         where isEligible: (ClipboardHistoryItem) -> Bool
     ) async throws -> ClipboardCleanupResult {
         await ensureInitialized()
@@ -24,7 +25,11 @@ extension DeliveryStack {
         await beginHistoryMaintenance()
 
         let eligibleIDs = Set(historyIDs.compactMap { itemID -> UUID? in
-            guard let item = itemsByID[itemID], isEligible(item) else { return nil }
+            guard let item = itemsByID[itemID],
+                  (!preservingPinnedItems || !item.isPinned),
+                  isEligible(item) else {
+                return nil
+            }
             return itemID
         })
         let initiallyActiveIDs = activeItemIDs()

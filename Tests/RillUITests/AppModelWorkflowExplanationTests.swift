@@ -30,7 +30,6 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
             }
         )
         await waitForListenerSetup()
-        harness.model.preferredSpeechEngine = .cloud
         harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
 
         harness.model.explainWorkflowBeforeRun(workflow)
@@ -39,7 +38,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         let calls = await probe.snapshot()
         let captured = try XCTUnwrap(calls.first)
         XCTAssertEqual(calls.count, 1)
-        XCTAssertEqual(captured.pipeline.recognizerID, AppModel.deepgramRecognizerID)
+        XCTAssertEqual(captured.pipeline.recognizerID, AppModel.sherpaOnnxRecognizerID)
         XCTAssertEqual(captured.pipeline.outputActions.map(\.id), ["inject.text"])
         guard case .loaded(let receipt) = harness.model.workflowExplanationState else {
             return XCTFail("Expected a loaded workflow explanation")
@@ -90,10 +89,10 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
             }
         )
         await waitForListenerSetup()
-        harness.model.preferredSpeechEngine = .local
+        harness.model.builtinPushToTalkOutputMode = .pasteIntoApp
 
         harness.model.explainWorkflowBeforeRun(workflow)
-        harness.model.preferredSpeechEngine = .cloud
+        harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
         try? await Task.sleep(for: .milliseconds(140))
 
         XCTAssertEqual(harness.model.workflowExplanationState, .idle)
@@ -308,11 +307,11 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
             )
         )
 
-        var cloudDraft = savedDraft
-        cloudDraft.recognizer = .cloudSpeech
+        var recognizerDraft = savedDraft
+        recognizerDraft.recognizer = .localSpeech
         XCTAssertFalse(
             WorkflowExplanationSelectionState.canExplainSavedWorkflow(
-                draft: cloudDraft,
+                draft: recognizerDraft,
                 selectedWorkflow: workflow
             )
         )

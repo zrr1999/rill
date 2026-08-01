@@ -261,6 +261,31 @@ extension DeliveryStackTests {
         XCTAssertEqual(snapshot.defaultGroup.previewText, "expired active")
     }
 
+    func testAutomaticPruningPreservesPinnedHistoryButExplicitClearRemovesIt() async throws {
+        let stack = DeliveryStack(eventBus: EventBus())
+        let pinnedID = try await addHistoryOnlyItem(
+            to: stack,
+            text: "pinned history",
+            createdAt: Date(timeIntervalSince1970: 10)
+        )
+        let pinResult = await stack.setItemsPinned(true, itemIDs: [pinnedID])
+        XCTAssertTrue(pinResult.wasAccepted)
+
+        let pruneResult = try await stack.pruneHistory(
+            olderThan: Date(timeIntervalSince1970: 50)
+        )
+        let retainedItem = await stack.item(id: pinnedID)
+
+        XCTAssertEqual(pruneResult.removedCount, 0)
+        XCTAssertTrue(retainedItem?.isPinned == true)
+
+        let clearResult = try await stack.clearHistory()
+        let clearedItem = await stack.item(id: pinnedID)
+
+        XCTAssertEqual(clearResult.removedCount, 1)
+        XCTAssertNil(clearedItem)
+    }
+
     func testClearHistoryPreservesActiveItems() async throws {
         let stack = DeliveryStack(eventBus: EventBus())
         _ = try await addHistoryOnlyItem(to: stack, text: "history one")

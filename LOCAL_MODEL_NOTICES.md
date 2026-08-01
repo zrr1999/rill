@@ -3,12 +3,13 @@
 Rill bundles the fixed Silero VAD v4 endpointing model described below. It
 does not bundle automatic speech recognition model weights. A user must
 explicitly prepare a selected final ASR model and the fixed streaming-preview
-model while online before first use. sherpa-onnx model downloads use reviewed
-fixed archives, exact byte counts, SHA-256 digests, and expected inventories.
-The optional native MLX Swift model instead uses a reviewed Hugging Face
-repository at an exact commit and a reviewed SwiftPM dependency lock.
-Recognition from prepared models is offline; preparing a missing model is the
-network boundary.
+model while online before first use. The wake-word model is also downloaded
+only after the user enables and prepares that optional feature. sherpa-onnx
+model downloads use reviewed fixed archives, exact byte counts, SHA-256
+digests, and expected inventories. The optional native MLX Swift model instead
+uses a reviewed Hugging Face repository at an exact commit and a reviewed
+SwiftPM dependency lock. Recognition from prepared models is offline;
+preparing a missing model is the network boundary.
 
 `Trusted` below means that Rill binds a bundled resource or download to exact
 reviewed bytes. It does not mean that human-consented quality thresholds, every
@@ -49,27 +50,64 @@ improve transcription quality. The fixed hash prevents an unnoticed resource
 replacement after review, but it is not a signature or an independent audit of
 the upstream training and export chain.
 
-## Streaming Zipformer small bilingual INT8 (fixed live preview)
+## Bilingual Zipformer 3M KWS INT8 (fixed wake-word preview)
+
+- Rill model ID: `kws-zipformer-zh-en-3m-preview-int8`
+- Role: optional on-device Chinese/English keyword spotting before Rill starts
+  command capture; it is not an ASR or speaker-verification model
+- Release asset URL:
+  `https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2`
+- Exact archive size: `32885699` bytes
+- Archive SHA-256:
+  `68447f4fbc67e70eee3a93961f36e81e98f47aef73ce7e7ca00885c6cd3616a6`
+- Expected root directory:
+  `sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20`
+- Retained chunk-8 layout: `left-64` INT8 encoder, FP32 decoder, INT8 joiner,
+  `tokens.txt`, and `en.phone`
+- Publisher model repository:
+  [`pkufool/icefall-kws-zipformer-zh-en-3M-2025-12-20`](https://modelscope.cn/models/pkufool/icefall-kws-zipformer-zh-en-3M-2025-12-20)
+- Exact reviewed revision: `541d04e28be57efc6fdf46a341da09e043a37b52`
+- License evidence:
+  [`README.md` at the pinned revision](https://modelscope.cn/models/pkufool/icefall-kws-zipformer-zh-en-3M-2025-12-20/resolve/541d04e28be57efc6fdf46a341da09e043a37b52/README.md)
+- License-evidence SHA-256:
+  `34d92bb4dc9fb259efb67f329d2cd68f6e0a6226121a694a3b6b4c748378559c`
+- Publisher-declared license: Apache License 2.0
+- Upstream NOTICE disposition: no `NOTICE` file was provided in the release
+  archive or the pinned publisher repository
+
+The GitHub release asset and the ModelScope model are both published by
+`pkufool`; the three retained `left-64` ONNX files have identical SHA-256
+digests in both sources. The release archive does not carry a `LICENSE` file,
+so Rill binds distribution approval to the publisher's exact-revision model
+card instead of inferring a license from the archive host. The full Apache
+License 2.0 text is included in the App's `THIRD_PARTY_NOTICES.md` resource.
+The pinned evidence clears the software distribution license/NOTICE gate; it
+does not replace wake-rate, false-activation, microphone, architecture, or
+minimum-macOS acceptance testing, so this model remains a product preview.
+
+## Streaming Zipformer bilingual INT8 (fixed live preview)
 
 - Rill model ID:
   `streaming-zipformer-small-bilingual-zh-en-preview-int8`
+- Storage compatibility: the internal ID retains its original `small` spelling
+  so this reviewed upgrade replaces the earlier preview cache in place
 - Role: fixed low-latency Chinese/English live subtitle hypotheses; never used
   as the selected final-transcription tier
 - Archive URL:
-  `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16.tar.bz2`
-- Exact archive size: `458187351` bytes
+  `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2`
+- Exact archive size: `511274346` bytes
 - Archive SHA-256:
-  `2b7c63322b32e5e0f2526043a1103366119ca58dd615cd7105a37c01db9553d7`
+  `27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8`
 - Expected root directory:
-  `sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16`
+  `sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20`
 - Canonical installed-file inventory SHA-256:
-  `cea6f98992fd166743ea63ca27ebf87c6b99e11b6d7cf5ae3944e2977dcbfc53`
+  `9adc9ead5f64877832a928980b189b12ba36fe192a137ec8c1ae39540b640c62`
 - Upstream model card:
-  [`csukuangfj/k2fsa-zipformer-bilingual-zh-en-t`](https://huggingface.co/csukuangfj/k2fsa-zipformer-bilingual-zh-en-t)
+  [`csukuangfj/k2fsa-zipformer-chinese-english-mixed`](https://huggingface.co/csukuangfj/k2fsa-zipformer-chinese-english-mixed)
 - Publisher-declared license: Apache License 2.0
 
-The release archive contains INT8 and FP32 files for several chunk layouts but
-does not contain a license file. Rill uses only the root INT8 encoder,
+The release archive contains INT8 and FP32 files but does not contain a license
+file. Rill uses only the root INT8 encoder,
 decoder, joiner, and token table at runtime while preserving and hashing the
 complete extracted archive. Attribution therefore follows the upstream model
 card and k2-fsa release provenance; the App's third-party notices already carry
@@ -117,6 +155,25 @@ plus English remains a product target that requires real-microphone acceptance.
 Credit: the Qwen team for Qwen3-ASR; `zengshuishui` and `Wasser1462` for the
 ONNX export; and k2-fsa for the sherpa-onnx release archive and runtime
 integration.
+
+## Qwen3-ASR 0.6B 8bit for mlx-audio-swift (optional Apple Silicon final model)
+
+- Rill model ID: `qwen3-asr-0.6b-mlx-8bit`
+- Role: lower-memory optional Qwen final-transcription model; Rill marks 8 GB
+  as the minimum and 16 GB as the recommended memory tier for this option
+- Model repository:
+  [`mlx-community/Qwen3-ASR-0.6B-8bit`](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit)
+- Exact reviewed revision: `89e96d92ba34aca20b3e29fb10cc284097d1219f`
+- Exact reviewed file total: `1010771234` bytes
+- Model publisher-declared license: Apache License 2.0
+- Runtime: the same pinned `mlx-audio-swift` 0.1.3 worker boundary described
+  below for the 1.7B option
+- Compute boundary: Apple Silicon Metal GPU through MLX; this integration does
+  not target the Apple Neural Engine
+
+The helper downloads only the nine reviewed model files at the exact revision,
+validates their byte counts and SHA-256 digests, and publishes an exact receipt.
+This is artifact and runtime evidence, not a human-microphone quality claim.
 
 ## Qwen3-ASR 1.7B 8bit for mlx-audio-swift (optional Apple Silicon final model)
 

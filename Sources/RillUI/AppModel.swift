@@ -3,19 +3,19 @@ import Observation
 import RillCore
 import RillRuntime
 
-public enum DeepgramAudioTestState: Sendable, Equatable {
-  case idle
-  case preparing
-  case recording
-  case transcribing
-}
-
-public enum DeepgramCredentialAvailability: Sendable, Equatable {
+public enum OpenAICredentialAvailability: Sendable, Equatable {
   case loading
   case missing
   case saving
   case available
   case inaccessible
+}
+
+public enum OpenAIConfigurationVerificationState: Sendable, Equatable {
+  case idle
+  case verifying
+  case verified
+  case failed
 }
 
 public enum LocalSpeechPreparationState: Sendable, Equatable {
@@ -154,14 +154,83 @@ public struct WorkflowTriggerConflict: Identifiable, Equatable, Sendable {
   }
 }
 
+public enum VoiceAssistantResourceState: Sendable, Equatable {
+  case notInstalled
+  case preparing(progress: Double?)
+  case ready
+  case failed(String)
+  case unavailable(VoiceAssistantResourceUnavailableReason)
+
+  public var isPreparing: Bool {
+    if case .preparing = self { return true }
+    return false
+  }
+}
+
+public enum VoiceAssistantResourceUnavailableReason: Error, Sendable, Equatable {
+  case distributionLicenseUnverified
+}
+
+public struct TTSModelOption: Identifiable, Equatable, Sendable {
+  public let id: String
+  public let precision: String
+  public let approximateDownloadByteCount: UInt64
+  public let isDefault: Bool
+
+  public init(
+    id: String,
+    precision: String,
+    approximateDownloadByteCount: UInt64,
+    isDefault: Bool
+  ) {
+    self.id = id
+    self.precision = precision
+    self.approximateDownloadByteCount = approximateDownloadByteCount
+    self.isDefault = isDefault
+  }
+}
+
+public enum WakeWordRuntimePresentationState: Sendable, Equatable {
+  case disabled
+  case modelMissing
+  case starting
+  case listening
+  case suspended(String)
+  case failed(String)
+}
+
+public struct WakeWordSettingsSnapshot: Sendable, Equatable {
+  public let phrases: [String]
+  public let isEnabled: Bool
+  public let workflowName: String?
+
+  public init(
+    phrases: [String],
+    isEnabled: Bool,
+    workflowName: String?
+  ) {
+    self.phrases = phrases
+    self.isEnabled = isEnabled
+    self.workflowName = workflowName
+  }
+}
+
+public enum WakeWordSettingsUpdateResult: Sendable, Equatable {
+  case saved
+  case failed(String)
+}
+
 @MainActor
 @Observable
 public final class AppModel {
   static let vocabularyRulesSettingKey = AppSettingKey(rawValue: "vocabulary.rules")!
+  static let vocabularyLibrarySettingKey = AppSettingKey.vocabularyLibrary
+  static let workflowLibrarySettingKey = AppSettingKey.workflowLibrary
 
   static let settingsLoadKeys: [AppSettingKey] = [
     .interfaceLanguage,
     .customWorkflows,
+    workflowLibrarySettingKey,
     .workflowEnabledStates,
     .clipboardCaptureEnabled,
     .clipboardMergeSimilarItems,
@@ -171,6 +240,7 @@ public final class AppModel {
     .localSpeechModel,
     .localSpeechDownloadedModels,
     .localSpeechPrewarm,
+    .ttsModel,
     .legacyWhisperKitModel,
     .legacyWhisperKitDownloadedModels,
     .legacyWhisperKitCustomModel,
@@ -179,12 +249,13 @@ public final class AppModel {
     .legacyWhisperKitLanguage,
     .legacyWhisperKitDownloadIfNeeded,
     .legacyWhisperKitPrewarm,
-    .deepgramBaseURL,
-    .deepgramModel,
-    .deepgramLanguage,
+    .openAIBaseURL,
+    .openAIModel,
     vocabularyRulesSettingKey,
+    vocabularyLibrarySettingKey,
     .privacySensitiveAppRules,
     .privacyCloudConfirmationRequired,
+    .privacyCloudProcessingAuthorizations,
     .privacyHistoryPreviewMode,
     .privacySecureInputConservativeMode,
     .clipboardHistoryRetentionPeriod,
@@ -192,21 +263,22 @@ public final class AppModel {
     .failedAudioRecoveryEnabled,
     .builtinPushToTalkOutputMode,
     .longRecordingModeEnabled,
+    .recordingDurationLimit,
   ]
 
   static let debouncedStringSettingKeys: Set<AppSettingKey> = [
     .localSpeechModel,
-    .deepgramAPIKey,
-    .deepgramBaseURL,
-    .deepgramModel,
-    .deepgramLanguage,
+    .ttsModel,
+    .openAIAPIKey,
+    .openAIBaseURL,
+    .openAIModel,
   ]
 
   static let recognizerIDsRequiringCapturedAudio: Set<String> = [
-    sherpaOnnxRecognizerID,
-    deepgramRecognizerID,
+    sherpaOnnxRecognizerID
   ]
   static let productionPostProcessStepKinds: Set<PostProcessStepKind> = [
+    .llmRewrite,
     .normalizeWhitespace
   ]
 
@@ -217,6 +289,9 @@ public final class AppModel {
     .available
   public internal(set) var workflowTriggerConflicts: [WorkflowTriggerConflict] = []
   public internal(set) var workflowConflictIDsByWorkflowID: [UUID: [UUID]] = [:]
+  public var workflowConfigurationDirectoryURL: URL? {
+    workflowFileStore?.configurationDirectoryURL
+  }
   public let localPersistenceStatus: LocalPersistenceStatus
   public internal(set) var selectedSidebarSection: SidebarSection = .dashboard
   public internal(set) var selectedClipboardSidebarGroupID: UUID?
@@ -246,6 +321,9 @@ public final class AppModel {
   public var longRecordingModeEnabled: Bool {
     didSet { handleLongRecordingModeChange(from: oldValue) }
   }
+  public var recordingDurationLimit: RecordingDurationLimit {
+    didSet { handleRecordingDurationLimitChange(from: oldValue) }
+  }
   public var localSpeechModelOption: LegacyWhisperModelOption {
     didSet { handleLegacyWhisperModelOptionChange(from: oldValue) }
   }
@@ -269,20 +347,28 @@ public final class AppModel {
     didSet { handleLegacyWhisperDownloadIfNeededChange(from: oldValue) }
   }
   public var localSpeechPrewarm: Bool { didSet { handleLocalSpeechPrewarmChange(from: oldValue) } }
-  public var deepgramAPIKey: String { didSet { handleDeepgramAPIKeyChange(from: oldValue) } }
-  public internal(set) var deepgramCredentialAvailability: DeepgramCredentialAvailability = .loading
   public internal(set) var settingsSaveState: SettingsSaveState = .saved
   public internal(set) var unavailableScalarSettingKeys: Set<AppSettingKey> = []
   public internal(set) var retryingUnavailableScalarSettingsDomains: Set<ScalarSettingsDomain> = []
-  public var deepgramBaseURL: String { didSet { handleDeepgramBaseURLChange(from: oldValue) } }
-  public var deepgramModel: String { didSet { handleDeepgramModelChange(from: oldValue) } }
-  public var deepgramLanguage: String { didSet { handleDeepgramLanguageChange(from: oldValue) } }
+  public var openAIAPIKey: String { didSet { handleOpenAIAPIKeyChange(from: oldValue) } }
+  public var openAIBaseURL: String {
+    didSet { handleOpenAIBaseURLChange(from: oldValue) }
+  }
+  public var openAIModel: String {
+    didSet { handleOpenAIModelChange(from: oldValue) }
+  }
+  public internal(set) var openAICredentialAvailability: OpenAICredentialAvailability = .loading
+  public internal(set) var openAIConfigurationVerificationState:
+    OpenAIConfigurationVerificationState = .idle
+  public internal(set) var openAIVerificationFailure: OpenAIVerificationFailure?
   public var isRunning = false
   public internal(set) var isLoadingSettings = true
   public internal(set) var isRetryingUnavailableSettingsDomains = false
   var workflowAudioRunState: WorkflowAudioRunState = .idle
   public internal(set) var localSpeechPreparationState: LocalSpeechPreparationState = .idle
   public internal(set) var localSpeechPreparationProgress: Double = 0
+  public internal(set) var localSpeechPreparationCompletedUnitCount: Int64 = 0
+  public internal(set) var localSpeechPreparationTotalUnitCount: Int64 = 0
   public internal(set) var localSpeechPreparedModelIdentifier: String?
   public internal(set) var downloadedLocalSpeechModels: [String] = []
   public internal(set) var downloadedLocalSpeechModelsAvailability:
@@ -294,13 +380,18 @@ public final class AppModel {
   public let trustedLocalSpeechModels: [LocalSpeechModelDescriptor]
   public let defaultLocalSpeechModelIdentifier: String?
   public let localSpeechPhysicalMemoryGiB: Int
-  public internal(set) var deepgramAudioTestState: DeepgramAudioTestState = .idle
-  var deepgramAudioTestSettingsSnapshot: DeepgramSettings?
-  var deepgramAudioTestGeneration = 0
-  public var deepgramTestTranscript: String?
-  public var deepgramTestError: String?
   public var workflowEditorError: String?
   public var workflowLibraryError: String?
+  public internal(set) var wakeWordResourceState: VoiceAssistantResourceState = .notInstalled
+  public internal(set) var wakeWordRuntimeState: WakeWordRuntimePresentationState = .disabled
+  public let ttsModelOptions: [TTSModelOption]
+  public let defaultTTSModelIdentifier: String
+  public var ttsModelIdentifier: String {
+    didSet { handleTTSModelIdentifierChange(from: oldValue) }
+  }
+  public internal(set) var downloadedTTSModelIdentifiers: Set<String> = []
+  public internal(set) var ttsResourceState: VoiceAssistantResourceState = .notInstalled
+  public internal(set) var isSpeechPlaybackActive = false
   public internal(set) var workflowExplanationState: WorkflowExplanationLoadState = .idle
   public var pendingResolution: CandidateResolutionCase?
   public var permissionSnapshot: PermissionSnapshot
@@ -327,11 +418,23 @@ public final class AppModel {
   public internal(set) var diagnosticsLoadState: DiagnosticsLoadState = .loading
   public internal(set) var vocabularyRules: [VocabularyRule] = [] {
     didSet {
-      vocabularyRuleSource.update(vocabularyRules)
+      if !isApplyingVocabularyLibrary {
+        let migration = VocabularyLegacyMigrator.migrate(vocabularyRules)
+        vocabularyCollections = migration.collections
+        vocabularyCollectionBindings = migration.bindings
+        vocabularyRuleSource.updateCollections(vocabularyCollections)
+        rebuildWorkflowLibrary()
+      }
       guard oldValue != vocabularyRules else { return }
-      persistVocabularyRules()
+      guard !isApplyingVocabularyLibrary else { return }
+      persistVocabularyLibrary()
     }
   }
+  public internal(set) var vocabularyCollections: [VocabularyCollection] = [.personal()]
+  public internal(set) var vocabularyCollectionBindings: [VocabularyCollectionBinding] = [
+    VocabularyCollectionBinding(collectionID: VocabularyCollection.personalID),
+  ]
+  public internal(set) var workflowCustomizations: [WorkflowCustomization] = []
   public internal(set) var vocabularyRulesAvailability: StoredSettingsDomainAvailability =
     .available
   public internal(set) var vocabularyRulesError: String?
@@ -433,14 +536,32 @@ public final class AppModel {
   public var localSpeechTestWorkflow: WorkflowDefinition? {
     guard
       var workflow = workflows.first(where: { workflow in
-        workflow.trigger == .manual
+        workflow.trigger == .hotkey
           && workflow.metadata[WorkflowMetadataKey.catalog]
             == BuiltinWorkflowRoutingValue.catalog
-          && workflow.metadata[WorkflowMetadataKey.builtinKind] == "voice-mode.raw"
+          && workflow.metadata[WorkflowMetadataKey.builtinKind]
+            == Self.builtinPushToTalkKindValue
       })
     else {
       return nil
     }
+    workflow.id = Self.localSpeechTestWorkflowID
+    workflow.name = "Local Speech Test"
+    workflow.titleKey = nil
+    workflow.trigger = .manual
+    workflow.plan.setup.speechRoute = WorkflowSpeechRoute(
+      selection: .fixed,
+      recognizerID: Self.sherpaOnnxRecognizerID
+    )
+    workflow.plan.output = WorkflowOutputPhase(
+      actions: [OutputActionReference(id: "stack.push")],
+      deliveryPolicy: DeliveryPolicy(strategy: .stackFirst)
+    )
+    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.catalog)
+    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.triggerGesture)
+    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.builtinKind)
+    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.exclusiveGroup)
+    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.recognizerSelectionMode)
     workflow.metadata[WorkflowMetadataKey.targetClipboardGroupID] =
       ClipboardGroup.voiceGroupID.uuidString
     return workflow
@@ -500,6 +621,7 @@ public final class AppModel {
   let localHistoryMaintenance: (any LocalHistoryMaintaining)?
   let diagnosticRepository: (any DiagnosticRepository)?
   let settingsStore: (any SettingsStore)?
+  let workflowFileStore: (any WorkflowFileStore)?
   let credentialStore: (any SecureCredentialStore)?
   let vocabularyRuleSource: VocabularyRuleSource
   let privacySettingsSource: PrivacyPolicySettingsSource
@@ -510,7 +632,11 @@ public final class AppModel {
   var waitForLiveSubtitleMeterRefresh: @Sendable (Duration) async throws -> Void = { duration in
     try await Task.sleep(for: duration)
   }
-  let warmLocalSpeechForCaptureAction: @Sendable (LocalSpeechSettings) async throws -> String
+  let warmLocalSpeechForCaptureAction:
+    @Sendable (
+      LocalSpeechSettings,
+      @escaping @Sendable (Progress) -> Void
+    ) async throws -> String
   let prepareLocalSpeechAction:
     @Sendable (
       LocalSpeechSettings,
@@ -522,9 +648,7 @@ public final class AppModel {
   let startWorkflowAudioRunAction:
     @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void
   let finishWorkflowAudioRunAction: @Sendable () async throws -> Void
-  let startDeepgramAudioTestAction: @Sendable (DeepgramSettings) async throws -> Void
-  let finishDeepgramAudioTestAction: @Sendable (DeepgramSettings) async throws -> RecognitionResult
-  let cancelDeepgramAudioTestAction: @Sendable () async -> Void
+  let verifyOpenAIConfigurationAction: @Sendable (OpenAISettings) async throws -> Void
   let retryFailedAudioRecoveryAction:
     @Sendable (
       UUID,
@@ -572,10 +696,102 @@ public final class AppModel {
   var setClipboardCaptureEnabledAction: (Bool, UInt64) -> Void = { _, _ in }
   var ignoreNextExternalClipboardChangeAction: () -> Void = {}
   var openWorkflowEditorAction: () -> Void = {}
+  var workflowLibraryChangedAction: @MainActor () -> Void = {}
+  var prepareWakeWordModelAction:
+    @Sendable (@escaping @Sendable (Double) -> Void) async throws -> String = { _ in
+      throw NSError(
+        domain: "Rill.WakeWord",
+        code: 1,
+        userInfo: [
+          NSLocalizedDescriptionKey:
+            "Local speech preparation for wake-word listening is unavailable."
+        ]
+      )
+    }
+  var prepareTTSModelAction:
+    @Sendable (String, @escaping @Sendable (Double) -> Void) async throws -> Void = { _, _ in
+      throw NSError(
+        domain: "Rill.TTS",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "TTS model preparation is unavailable."]
+      )
+    }
+  var selectTTSModelAction: @Sendable (String) -> Void = { _ in }
+  var validateWakeWordConfigurationAction:
+    @Sendable (WakeWordConfiguration) async throws -> Void = { _ in
+      throw NSError(
+        domain: "Rill.WakeWord",
+        code: 2,
+          userInfo: [
+            NSLocalizedDescriptionKey:
+            "Prepare the selected local speech model before saving a wake-word workflow."
+          ]
+      )
+    }
+  var stopSpeechPlaybackAction: @MainActor () -> Bool = { false }
   var updateClipboardPanelHotkeyAction: (HotkeyBindingDescriptor) -> Void = { _ in }
   var useClipboardItemAction: (ClipboardHistoryItem) -> Void = { _ in }
   var updateLiveSubtitlePanelAction: @MainActor (LiveSubtitleSnapshot?, AppLanguage) -> Void = {
     _, _ in
+  }
+
+  public func installWorkflowLibraryChangedAction(
+    _ action: @escaping @MainActor () -> Void
+  ) {
+    workflowLibraryChangedAction = action
+  }
+
+  public func installVoiceAssistantResourceActions(
+    prepareWakeWordModel:
+      @escaping @Sendable (@escaping @Sendable (Double) -> Void) async throws -> String,
+    prepareTTSModel:
+      @escaping @Sendable (
+        String,
+        @escaping @Sendable (Double) -> Void
+      ) async throws -> Void,
+    selectTTSModel: @escaping @Sendable (String) -> Void,
+    downloadedTTSModelIdentifiers: Set<String>,
+    validateWakeWordConfiguration:
+      @escaping @Sendable (WakeWordConfiguration) async throws -> Void,
+    stopSpeechPlayback: @escaping @MainActor () -> Bool
+  ) {
+    prepareWakeWordModelAction = prepareWakeWordModel
+    prepareTTSModelAction = prepareTTSModel
+    selectTTSModelAction = selectTTSModel
+    self.downloadedTTSModelIdentifiers = downloadedTTSModelIdentifiers.intersection(
+      Set(ttsModelOptions.map(\.id))
+    )
+    selectTTSModelAction(ttsModelIdentifier)
+    ttsResourceState =
+      self.downloadedTTSModelIdentifiers.contains(ttsModelIdentifier)
+      ? .ready
+      : .notInstalled
+    validateWakeWordConfigurationAction = validateWakeWordConfiguration
+    stopSpeechPlaybackAction = stopSpeechPlayback
+    synchronizeWakeWordResourceWithLocalSpeechModel()
+  }
+
+  public func installWakeWordConfigurationValidationAction(
+    _ action: @escaping @Sendable (WakeWordConfiguration) async throws -> Void
+  ) {
+    validateWakeWordConfigurationAction = action
+  }
+
+  public func updateWakeWordRuntimeState(_ state: WakeWordRuntimePresentationState) {
+    wakeWordRuntimeState = state
+    if state == .listening {
+      wakeWordResourceState = .ready
+    } else if state == .modelMissing, wakeWordResourceState == .ready {
+      wakeWordResourceState = .notInstalled
+    }
+  }
+
+  public func updateWakeWordResourceState(_ state: VoiceAssistantResourceState) {
+    wakeWordResourceState = state
+  }
+
+  public func updateSpeechPlaybackState(isActive: Bool) {
+    isSpeechPlaybackActive = isActive
   }
   var pendingRuns: [UUID: PendingRunInfo] = [:]
   var pendingInteractiveWorkflowTask: Task<Void, Never>?
@@ -586,6 +802,8 @@ public final class AppModel {
   var hasStoppedEventListener = false
   var activeRunID: UUID?
   var workflowEnabledStates: [UUID: Bool] = [:]
+  var workflowFileURLsByID: [UUID: URL] = [:]
+  var usesWorkflowFilesAsSource = false
   var hasModifiedWorkflowLibrary = false
   var isRestoringSettings = false
   /// Keys changed by the user after the initial snapshot read started but
@@ -598,7 +816,6 @@ public final class AppModel {
   var pendingPersistenceWriteBarrierTask: Task<Void, Never>?
   var persistenceWriteBarrierGeneration = 0
   var settingsLoadGeneration = 0
-  var deepgramCredentialLoadGeneration = 0
   var unavailableSettingsDomainRetryGeneration = 0
   var scalarSettingsRetryGenerations: [ScalarSettingsDomain: Int] = [:]
   var localSpeechModelMutationGeneration = 0
@@ -632,6 +849,9 @@ public final class AppModel {
   var localSpeechPreparationGeneration = 0
   let localSpeechPreparationTaskOwner = LocalSpeechPreparationTaskOwner()
   var shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = false
+  var openAICredentialLoadGeneration = 0
+  var openAIVerificationGeneration = 0
+  var openAIVerificationTask: Task<Void, Never>?
   var failedAudioRecoveryRetryTasks: [UUID: Task<Void, Never>] = [:]
   var hasBegunApplicationShutdown = false {
     didSet {
@@ -642,6 +862,7 @@ public final class AppModel {
   let clipboardMutationTaskOwner = AppModelClipboardMutationTaskOwner()
   let workflowExplanationTaskOwner = WorkflowExplanationTaskOwner()
   var workflowExplanationGeneration = 0
+  var isApplyingVocabularyLibrary = false
   var hasReceivedClipboardSnapshot = false
   let liveSubtitlePreparingHideDelay: Duration
 
@@ -658,6 +879,7 @@ public final class AppModel {
     localHistoryMaintenance: (any LocalHistoryMaintaining)? = nil,
     diagnosticRepository: (any DiagnosticRepository)? = nil,
     settingsStore: (any SettingsStore)? = nil,
+    workflowFileStore: (any WorkflowFileStore)? = nil,
     credentialStore: (any SecureCredentialStore)? = nil,
     localPersistenceStatus: LocalPersistenceStatus = .ready,
     vocabularyRuleSource: VocabularyRuleSource = VocabularyRuleSource(initialRules: []),
@@ -673,11 +895,16 @@ public final class AppModel {
     localSpeechAvailability: LocalSpeechAvailability? = nil,
     trustedLocalSpeechModels: [LocalSpeechModelDescriptor] = [],
     defaultLocalSpeechModelIdentifier: String? = nil,
+    ttsModelOptions: [TTSModelOption] = [],
+    defaultTTSModelIdentifier: String = "",
     localSpeechPhysicalMemoryGiB: Int = Int(
       ProcessInfo.processInfo.physicalMemory / 1_073_741_824
     ),
     warmLocalSpeechForCaptureAction:
-      @escaping @Sendable (LocalSpeechSettings) async throws -> String = { settings in
+      @escaping @Sendable (
+        LocalSpeechSettings,
+        @escaping @Sendable (Progress) -> Void
+      ) async throws -> String = { settings, _ in
         settings.model
       },
     prepareLocalSpeechAction:
@@ -709,18 +936,14 @@ public final class AppModel {
         userInfo: [NSLocalizedDescriptionKey: "Workflow audio completion is not configured."]
       )
     },
-    startDeepgramAudioTestAction: @escaping @Sendable (DeepgramSettings) async throws -> Void = {
-      _ in
-    },
-    finishDeepgramAudioTestAction:
-      @escaping @Sendable (DeepgramSettings) async throws -> RecognitionResult = { _ in
+    verifyOpenAIConfigurationAction:
+      @escaping @Sendable (OpenAISettings) async throws -> Void = { _ in
         throw NSError(
-          domain: "Rill.AppModel",
+          domain: "Rill.AppModel.OpenAI",
           code: 1,
-          userInfo: [NSLocalizedDescriptionKey: "Deepgram audio testing is not configured."]
+          userInfo: [NSLocalizedDescriptionKey: "OpenAI verification is not configured."]
         )
       },
-    cancelDeepgramAudioTestAction: @escaping @Sendable () async -> Void = {},
     retryFailedAudioRecoveryAction:
       @escaping @Sendable (
         UUID,
@@ -831,25 +1054,29 @@ public final class AppModel {
     self.clipboardCaptureEnabled = settingsStore != nil && !loadsPersistentSettingsOnInitialization
     self.clipboardHistoryVisibility = .remainingOnly
     self.clipboardPanelHotkeyBinding = .doubleCommand
-    // A trusted catalog proves artifact identity, not broad model quality or
-    // supported-device acceptance. New users explicitly opt in to local
-    // speech while the release-owned catalog is a technical preview.
-    self.preferredSpeechEngine = .cloud
+    self.preferredSpeechEngine = .local
     self.builtinPushToTalkOutputMode = .pasteIntoApp
     self.longRecordingModeEnabled = false
+    self.recordingDurationLimit = .fiveMinutes
     self.localSpeechModelOption = .automatic
     self.legacyWhisperKitCustomModel = ""
     self.localSpeechModel = defaultLocalSpeechModelIdentifier ?? LocalSpeechSettings().model
+    let resolvedDefaultTTSModelIdentifier =
+      ttsModelOptions.contains(where: { $0.id == defaultTTSModelIdentifier })
+      ? defaultTTSModelIdentifier
+      : (ttsModelOptions.first(where: \.isDefault)?.id ?? ttsModelOptions.first?.id ?? "")
+    self.ttsModelOptions = ttsModelOptions
+    self.defaultTTSModelIdentifier = resolvedDefaultTTSModelIdentifier
+    self.ttsModelIdentifier = resolvedDefaultTTSModelIdentifier
     self.legacyWhisperKitModelRepo = LocalSpeechSettings().modelRepo
     self.legacyWhisperKitModelToken = LocalSpeechSettings().modelToken
     self.legacyWhisperKitModelFolder = LocalSpeechSettings().modelFolder
     self.legacyWhisperKitLanguage = LocalSpeechSettings().language
     self.legacyWhisperKitDownloadIfNeeded = LocalSpeechSettings().downloadIfNeeded
     self.localSpeechPrewarm = LocalSpeechSettings().prewarm
-    self.deepgramAPIKey = ""
-    self.deepgramBaseURL = DeepgramSettings().baseURL
-    self.deepgramModel = DeepgramSettings().model
-    self.deepgramLanguage = DeepgramSettings().language
+    self.openAIAPIKey = ""
+    self.openAIBaseURL = OpenAISettings().baseURL
+    self.openAIModel = OpenAISettings().model
     self.permissionSnapshot = permissionSnapshot
     self.eventBus = eventBus
     self.sessionCoordinator = sessionCoordinator
@@ -862,6 +1089,7 @@ public final class AppModel {
     self.localHistoryMaintenance = localHistoryMaintenance
     self.diagnosticRepository = diagnosticRepository
     self.settingsStore = settingsStore
+    self.workflowFileStore = workflowFileStore
     self.credentialStore = credentialStore
     self.localPersistenceStatus = localPersistenceStatus
     self.vocabularyRuleSource = vocabularyRuleSource
@@ -886,9 +1114,7 @@ public final class AppModel {
     self.stopLocalSpeechRuntimeAction = stopLocalSpeechRuntimeAction
     self.startWorkflowAudioRunAction = startWorkflowAudioRunAction
     self.finishWorkflowAudioRunAction = finishWorkflowAudioRunAction
-    self.startDeepgramAudioTestAction = startDeepgramAudioTestAction
-    self.finishDeepgramAudioTestAction = finishDeepgramAudioTestAction
-    self.cancelDeepgramAudioTestAction = cancelDeepgramAudioTestAction
+    self.verifyOpenAIConfigurationAction = verifyOpenAIConfigurationAction
     self.retryFailedAudioRecoveryAction = retryFailedAudioRecoveryAction
     self.deleteFailedAudioRecoveryAction = deleteFailedAudioRecoveryAction
     self.clearFailedAudioRecoveryAction = clearFailedAudioRecoveryAction
@@ -919,7 +1145,7 @@ public final class AppModel {
       loadSettings()
     } else {
       isLoadingSettings = false
-      deepgramCredentialAvailability = .inaccessible
+      openAICredentialAvailability = .inaccessible
       if settingsStore == nil {
         unavailableScalarSettingKeys.formUnion(
           ScalarSettingsDomain.clipboard.settingKeys
@@ -946,7 +1172,6 @@ struct PendingRunInfo {
 extension AppModel {
   nonisolated static let sherpaOnnxRecognizerID = "sherpa-onnx.local"
   nonisolated static let sherpaStreamingRecognizerID = "sherpa-onnx.streaming"
-  nonisolated static let deepgramRecognizerID = "deepgram.prerecorded"
   nonisolated static let workflowOriginMetadataKey = "workflow.origin"
   nonisolated static let userWorkflowOriginMetadataValue = "user"
   nonisolated static let workflowCatalogMetadataKey = WorkflowMetadataKey.catalog
@@ -958,6 +1183,9 @@ extension AppModel {
     .settingsExposeOutputMode
   nonisolated static let builtinPushToTalkKindValue = "push-to-talk.dictation"
   nonisolated static let builtinPushToTalkPolishKindValue = "push-to-talk.polish"
+  nonisolated static let localSpeechTestWorkflowID = UUID(
+    uuidString: "95DA4DD0-38BF-4AE6-AF6E-493FA77E748B"
+  )!
 }
 
 extension ActionResult {

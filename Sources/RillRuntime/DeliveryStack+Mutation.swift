@@ -112,6 +112,99 @@ extension DeliveryStack {
         return result
     }
 
+    /// Atomically updates the retention policy for one or more clipboard
+    /// items. Pinning is presentation/history policy only: it does not reorder
+    /// history or make an item active in a Stack / Queue / List.
+    @discardableResult
+    public func setItemsPinned(
+        _ isPinned: Bool,
+        itemIDs: [UUID]
+    ) async -> ClipboardStorageMutationResult {
+        await ensureInitialized()
+        await waitForHistoryMaintenanceIfNeeded()
+
+        let targetIDs = Set(itemIDs)
+        guard !targetIDs.isEmpty else {
+            return .accepted(evictedHistoryItemCount: 0)
+        }
+        guard rawOversizedLegacyItemIDs.isEmpty else {
+            return await rejectItemsPinnedMutation(.itemTooLarge)
+        }
+
+        var projectedItemsByID: [UUID: ClipboardHistoryItem] = [:]
+        var projectedByteCountsByID: [UUID: Int] = [:]
+        for itemID in targetIDs {
+            guard var item = itemsByID[itemID], item.isPinned != isPinned else {
+                continue
+            }
+            item.isPinned = isPinned
+            item.advanceVersion()
+
+            let encodedByteCount: Int
+            do {
+                encodedByteCount = try accountedEncodedItemByteCount(for: item)
+            } catch {
+                return await rejectItemsPinnedMutation(.itemEncodingFailed)
+            }
+            if let rejection = itemStorageRejectionReason(
+                for: item,
+                encodedItemByteCount: encodedByteCount
+            ) {
+                return await rejectItemsPinnedMutation(rejection)
+            }
+            projectedItemsByID[itemID] = item
+            projectedByteCountsByID[itemID] = encodedByteCount
+        }
+
+        guard !projectedItemsByID.isEmpty else {
+            return .accepted(evictedHistoryItemCount: 0)
+        }
+
+        var projectedTotalByteCount = 0
+        for itemID in historyIDs {
+            let byteCount: Int
+            if let projectedByteCount = projectedByteCountsByID[itemID] {
+                byteCount = projectedByteCount
+            } else if let existingByteCount = encodedItemByteCountsByID[itemID] {
+                byteCount = existingByteCount
+            } else if let item = itemsByID[itemID],
+                      let computedByteCount = try? accountedEncodedItemByteCount(for: item) {
+                byteCount = computedByteCount
+            } else {
+                return await rejectItemsPinnedMutation(.itemEncodingFailed)
+            }
+            let (nextTotal, overflowed) = projectedTotalByteCount.addingReportingOverflow(
+                byteCount
+            )
+            guard !overflowed else {
+                return await rejectItemsPinnedMutation(.totalByteLimitReached)
+            }
+            projectedTotalByteCount = nextTotal
+        }
+        guard projectedTotalByteCount <= storageLimits.maximumTotalEncodedItemByteCount else {
+            return await rejectItemsPinnedMutation(.totalByteLimitReached)
+        }
+
+        for (itemID, item) in projectedItemsByID {
+            itemsByID[itemID] = item
+            encodedItemByteCountsByID[itemID] = projectedByteCountsByID[itemID]
+        }
+        updateStoragePressureAfterCurrentStateChange()
+
+        let result = ClipboardStorageMutationResult.accepted(evictedHistoryItemCount: 0)
+        await publishStorageMutationResult(result)
+        return result
+    }
+
+    private func rejectItemsPinnedMutation(
+        _ reason: ClipboardStorageRejectionReason
+    ) async -> ClipboardStorageMutationResult {
+        recordStorageMutationRejection(reason)
+        let result = ClipboardStorageMutationResult.rejected(reason)
+        await publishStorageMutationResult(result)
+        return result
+    }
+
     public func deleteItem(id itemID: UUID) async {
         await ensureInitialized()
         await deleteItems(ids: [itemID])

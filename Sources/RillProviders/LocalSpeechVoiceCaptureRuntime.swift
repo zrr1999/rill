@@ -12,6 +12,7 @@ protocol LocalSpeechAudioCaptureSource: AnyObject, Sendable {
   var endpointRMS: [Float] { get }
 
   func prepareStoppedFrontend() throws
+  func setPendingHandoffID(_ id: UUID?)
   func startStreaming() -> LocalSpeechAudioStream
   func stop()
   func shutdown()
@@ -19,6 +20,7 @@ protocol LocalSpeechAudioCaptureSource: AnyObject, Sendable {
 
 extension LocalSpeechAudioCaptureSource {
   func prepareStoppedFrontend() throws {}
+  func setPendingHandoffID(_: UUID?) {}
   func shutdown() {}
 }
 
@@ -31,6 +33,124 @@ struct LocalSpeechVoiceActivityObservation: Sendable, Equatable {
 protocol LocalSpeechVoiceActivityDetector: AnyObject, Sendable {
   func accept(samples: [Float]) throws -> [LocalSpeechVoiceActivityObservation]
   func reset()
+}
+
+/// Keeps the low-latency decoder useful without letting transient empty or
+/// unrelated hypotheses make the subtitle visibly disappear or jump on every
+/// audio callback. The final offline recognizer remains authoritative.
+struct LocalSpeechStreamingPreviewProjection: Sendable, Equatable {
+  private(set) var text = ""
+  private var pendingReplacement = ""
+  private var pendingReplacementObservations = 0
+
+  mutating func observe(_ rawCandidate: String) {
+    let trimmedCandidate = rawCandidate.trimmingCharacters(in: .whitespacesAndNewlines)
+    let candidate = Self.removingDuplicatedExtensionOverlap(
+      from: trimmedCandidate,
+      after: text
+    )
+    guard !candidate.isEmpty else { return }
+    guard !text.isEmpty else {
+      accept(candidate)
+      return
+    }
+    guard candidate != text else {
+      clearPendingReplacement()
+      return
+    }
+    if Self.isCompatibleProgression(from: text, to: candidate) {
+      accept(candidate)
+      return
+    }
+
+    if !pendingReplacement.isEmpty,
+      Self.isCompatibleProgression(from: pendingReplacement, to: candidate)
+    {
+      pendingReplacement = candidate
+      pendingReplacementObservations += 1
+    } else {
+      pendingReplacement = candidate
+      pendingReplacementObservations = 1
+    }
+    if pendingReplacementObservations >= 2 {
+      accept(candidate)
+    }
+  }
+
+  mutating func reset() {
+    text = ""
+    clearPendingReplacement()
+  }
+
+  private mutating func accept(_ candidate: String) {
+    text = candidate
+    clearPendingReplacement()
+  }
+
+  private mutating func clearPendingReplacement() {
+    pendingReplacement = ""
+    pendingReplacementObservations = 0
+  }
+
+  private static func isCompatibleProgression(
+    from current: String,
+    to candidate: String
+  ) -> Bool {
+    if candidate.hasPrefix(current) { return true }
+
+    let currentCharacters = Array(current)
+    let candidateCharacters = Array(candidate)
+    let shorterCount = min(currentCharacters.count, candidateCharacters.count)
+    guard shorterCount >= 2 else { return false }
+    let commonPrefixCount = zip(currentCharacters, candidateCharacters)
+      .prefix { $0.0 == $0.1 }
+      .count
+    return commonPrefixCount >= 2
+      && Double(commonPrefixCount) / Double(shorterCount) >= 0.65
+  }
+
+  /// Some transducer hypotheses repeat the stable tail when extending the
+  /// transcript, for example `今天天气` -> `今天天气天气怎么样`. Remove only the
+  /// overlap that crosses the already-present/new-extension boundary. This is
+  /// deliberately more conservative than generic repeated-word cleanup: a
+  /// complete candidate such as `谢谢谢谢` remains untouched, and a one-character
+  /// overlap is only collapsed when it would otherwise create three identical
+  /// characters in a row.
+  private static func removingDuplicatedExtensionOverlap(
+    from candidate: String,
+    after current: String
+  ) -> String {
+    guard !current.isEmpty, candidate.hasPrefix(current) else { return candidate }
+
+    let currentCharacters = Array(current)
+    let candidateCharacters = Array(candidate)
+    let extensionCharacters = Array(candidateCharacters.dropFirst(currentCharacters.count))
+    guard extensionCharacters.count >= 2 else { return candidate }
+
+    // A complete repeated utterance is ambiguous and must remain verbatim.
+    // The decoder-boundary bug always has additional novel text after the
+    // duplicated tail, while `谢谢` -> `谢谢谢谢` does not.
+    if extensionCharacters == currentCharacters { return candidate }
+
+    let maximumOverlap = min(currentCharacters.count, extensionCharacters.count - 1)
+    guard maximumOverlap > 0 else { return candidate }
+
+    for overlapCount in stride(from: maximumOverlap, through: 1, by: -1) {
+      let isSafeSingleCharacterOverlap =
+        overlapCount > 1
+        || (currentCharacters.count >= 2
+          && currentCharacters[currentCharacters.count - 1]
+            == currentCharacters[currentCharacters.count - 2])
+      guard isSafeSingleCharacterOverlap else { continue }
+      guard currentCharacters.suffix(overlapCount) == extensionCharacters.prefix(overlapCount)
+      else { continue }
+
+      return String(
+        currentCharacters + extensionCharacters.dropFirst(overlapCount)
+      )
+    }
+    return candidate
+  }
 }
 
 typealias LocalSpeechVoiceActivityDetectorFactory =
@@ -109,6 +229,7 @@ actor LocalSpeechVoiceCaptureRuntime {
   private let pcmInactivityTimeout: Duration
   private let pcmInactivitySleep: PCMInactivitySleep
   private let unexpectedTerminationHandler: @Sendable () async -> Void
+  private let wakeWordSpeechStartedHandler: @Sendable () -> Void
   private let readinessCommitHook: (@Sendable () async -> Void)?
   private let startupTerminationRecordedHook: (@Sendable () async -> Void)?
 
@@ -130,8 +251,15 @@ actor LocalSpeechVoiceCaptureRuntime {
   private var endpointDetector: SpeechEndpointDetector?
   private var voiceActivityDetector: (any LocalSpeechVoiceActivityDetector)?
   private var streamingPreviewSession: (any LocalSpeechStreamingPreviewSession)?
-  private var streamingPreviewText = ""
+  private var streamingPreviewProjection = LocalSpeechStreamingPreviewProjection()
+  private var recordingStartedAt: Date?
+  private var recordingDurationLimitRemoved = false
   private var inputReadinessDetector = LocalSpeechInputReadinessDetector()
+  private var wakeWordPreRollSamples: [Float] = []
+  private var wakeWordCommandStarted = false
+
+  private static let wakeWordPreRollFrameCount =
+    Int(Double(SharedVoiceInputFrame.sampleRate) * 0.2)
 
   init(
     permissionRequester: @escaping PermissionRequester =
@@ -156,6 +284,7 @@ actor LocalSpeechVoiceCaptureRuntime {
     pcmInactivityTimeout: Duration = .seconds(2),
     pcmInactivitySleep: @escaping PCMInactivitySleep = { try await Task.sleep(for: $0) },
     unexpectedTerminationHandler: @escaping @Sendable () async -> Void = {},
+    wakeWordSpeechStartedHandler: @escaping @Sendable () -> Void = {},
     readinessCommitHook: (@Sendable () async -> Void)? = nil,
     startupTerminationRecordedHook: (@Sendable () async -> Void)? = nil
   ) {
@@ -172,6 +301,7 @@ actor LocalSpeechVoiceCaptureRuntime {
     self.pcmInactivityTimeout = pcmInactivityTimeout
     self.pcmInactivitySleep = pcmInactivitySleep
     self.unexpectedTerminationHandler = unexpectedTerminationHandler
+    self.wakeWordSpeechStartedHandler = wakeWordSpeechStartedHandler
     self.readinessCommitHook = readinessCommitHook
     self.startupTerminationRecordedHook = startupTerminationRecordedHook
   }
@@ -215,7 +345,8 @@ actor LocalSpeechVoiceCaptureRuntime {
     }
     try throwIfPreparationCancelled(request: request, generation: generation)
     let newStreamingPreviewSession = await streamingPreviewSessionFactory()
-    if request.workflow.pipeline.recognizerID == SherpaStreamingCaptureRecognizer.recognizerID,
+    if request.workflow.plan.setup.speechRoute?.recognizerID
+      == SherpaStreamingCaptureRecognizer.recognizerID,
       newStreamingPreviewSession == nil
     {
       throw RealtimeAudioCaptureService.CaptureError.streamingSpeechUnavailable
@@ -240,6 +371,10 @@ actor LocalSpeechVoiceCaptureRuntime {
       throw error
     }
     let source = sourceFactory()
+    source.setPendingHandoffID(
+      request.triggerEvent?.metadata[SharedVoiceInputMetadata.handoffID]
+        .flatMap(UUID.init(uuidString:))
+    )
     let audioStream = source.startStreaming()
     let readinessGate = LocalSpeechCaptureReadinessGate()
 
@@ -258,8 +393,12 @@ actor LocalSpeechVoiceCaptureRuntime {
     endpointDetector = request.endpointControl.map { SpeechEndpointDetector(policy: $0.policy) }
     voiceActivityDetector = newVoiceActivityDetector
     streamingPreviewSession = newStreamingPreviewSession
-    streamingPreviewText = ""
+    streamingPreviewProjection.reset()
+    recordingStartedAt = nil
+    recordingDurationLimitRemoved = false
     inputReadinessDetector = LocalSpeechInputReadinessDetector()
+    wakeWordPreRollSamples.removeAll(keepingCapacity: true)
+    wakeWordCommandStarted = request.triggerEvent?.binding != .wakeWord
 
     let streamTask = Task { [weak self] in
       do {
@@ -308,11 +447,12 @@ actor LocalSpeechVoiceCaptureRuntime {
       }
       activeReadinessGate = nil
       recordingGeneration = generation
+      recordingStartedAt = Date()
       startPCMInactivityWatchdog(generation: generation)
       await publish(
         phase: .recording,
         request: request,
-        hypothesisText: streamingPreviewText,
+        hypothesisText: streamingPreviewProjection.text,
         levelMeter: Self.levelMeter(from: source.endpointRMS)
       )
     } catch is CancellationError {
@@ -426,6 +566,28 @@ actor LocalSpeechVoiceCaptureRuntime {
     await publish(phase: .hidden, request: request)
   }
 
+  func removeMaximumDurationLimit(runID: UUID) async -> Bool {
+    guard activeRequest?.runID == runID,
+      activeRequest?.canRemoveMaxDurationLimit == true,
+      !recordingDurationLimitRemoved,
+      recordingGeneration != nil,
+      let recordingWriter = activeRecordingWriter
+    else {
+      return false
+    }
+    recordingWriter.removeFrameLimit()
+    recordingDurationLimitRemoved = true
+    if let request = activeRequest {
+      await publish(
+        phase: .recording,
+        request: request,
+        hypothesisText: streamingPreviewProjection.text,
+        levelMeter: Self.levelMeter(from: activeSource?.endpointRMS ?? [])
+      )
+    }
+    return true
+  }
+
   private func receiveBuffer(
     _ buffer: [Float],
     generation: UInt64,
@@ -447,6 +609,9 @@ actor LocalSpeechVoiceCaptureRuntime {
     pcmActivityRevision &+= 1
 
     if finishingGeneration == generation {
+      if activeRequest?.triggerEvent?.binding == .wakeWord, !wakeWordCommandStarted {
+        return
+      }
       do {
         try recordingWriter.append(buffer)
       } catch {
@@ -460,14 +625,19 @@ actor LocalSpeechVoiceCaptureRuntime {
       await failActiveStream(generation: generation)
       return
     }
-    do {
-      try recordingWriter.append(buffer)
-    } catch {
-      await failActiveStream(generation: generation)
-      return
+    let isWaitingForWakeCommand =
+      activeRequest?.triggerEvent?.binding == .wakeWord && !wakeWordCommandStarted
+    if isWaitingForWakeCommand {
+      wakeWordPreRollSamples.append(contentsOf: buffer)
+      if wakeWordPreRollSamples.count > Self.wakeWordPreRollFrameCount {
+        wakeWordPreRollSamples.removeFirst(
+          wakeWordPreRollSamples.count - Self.wakeWordPreRollFrameCount
+        )
+      }
     }
+    let observedSpeech: Bool
     do {
-      try observeEndpointSamples(
+      observedSpeech = try observeEndpointSamples(
         buffer,
         generation: generation,
         terminalState: terminalState
@@ -476,15 +646,36 @@ actor LocalSpeechVoiceCaptureRuntime {
       await failActiveStream(generation: generation)
       return
     }
+    let samplesForRecording: [Float]
+    if isWaitingForWakeCommand {
+      guard observedSpeech else {
+        if readiness == .ready {
+          await activeReadinessGate?.signalReady()
+        }
+        return
+      }
+      wakeWordCommandStarted = true
+      samplesForRecording = wakeWordPreRollSamples
+      wakeWordPreRollSamples.removeAll(keepingCapacity: true)
+      wakeWordSpeechStartedHandler()
+    } else {
+      samplesForRecording = buffer
+    }
+    do {
+      try recordingWriter.append(samplesForRecording)
+    } catch {
+      await failActiveStream(generation: generation)
+      return
+    }
     if let previewSession = streamingPreviewSession {
       do {
-        streamingPreviewText = try previewSession.accept(samples: buffer)
-          .trimmingCharacters(in: .whitespacesAndNewlines)
+        streamingPreviewProjection.observe(
+          try previewSession.accept(samples: samplesForRecording)
+        )
       } catch {
         // Subtitle hypotheses are optional. A damaged or unavailable preview
         // runtime must never terminate capture or final offline recognition.
         streamingPreviewSession = nil
-        streamingPreviewText = ""
       }
     }
     switch readiness {
@@ -499,7 +690,7 @@ actor LocalSpeechVoiceCaptureRuntime {
       await publish(
         phase: .recording,
         request: request,
-        hypothesisText: streamingPreviewText,
+        hypothesisText: streamingPreviewProjection.text,
         levelMeter: Self.levelMeter(from: source.endpointRMS)
       )
     }
@@ -509,7 +700,7 @@ actor LocalSpeechVoiceCaptureRuntime {
     _ samples: [Float],
     generation: UInt64,
     terminalState: AppleVoiceProcessingPCMStreamTerminalState
-  ) throws {
+  ) throws -> Bool {
     guard recordingGeneration == generation || activeReadinessGate != nil,
       activeStreamTerminalState === terminalState,
       let request = activeRequest,
@@ -517,9 +708,10 @@ actor LocalSpeechVoiceCaptureRuntime {
       var detector = endpointDetector,
       let voiceActivityDetector
     else {
-      return
+      return false
     }
 
+    var observedSpeech = false
     for activity in try voiceActivityDetector.accept(samples: samples) {
       guard terminalState.terminalFailure == nil else {
         throw RealtimeAudioCaptureService.CaptureError.microphoneStartFailed
@@ -538,6 +730,7 @@ actor LocalSpeechVoiceCaptureRuntime {
         relativeLevel: measuredLevel,
         durationSeconds: activity.durationSeconds
       )
+      observedSpeech = observedSpeech || activity.isSpeech
       guard
         let outcome = detector.observe(
           isSpeech: activity.isSpeech,
@@ -563,6 +756,7 @@ actor LocalSpeechVoiceCaptureRuntime {
       break
     }
     endpointDetector = detector
+    return observedSpeech
   }
 
   private func failActiveStream(generation: UInt64) async {
@@ -685,8 +879,12 @@ actor LocalSpeechVoiceCaptureRuntime {
     voiceActivityDetector?.reset()
     voiceActivityDetector = nil
     streamingPreviewSession = nil
-    streamingPreviewText = ""
+    streamingPreviewProjection.reset()
+    recordingStartedAt = nil
+    recordingDurationLimitRemoved = false
     inputReadinessDetector = LocalSpeechInputReadinessDetector()
+    wakeWordPreRollSamples.removeAll(keepingCapacity: true)
+    wakeWordCommandStarted = false
     return DetachedResources(
       request: request,
       source: source,
@@ -698,7 +896,7 @@ actor LocalSpeechVoiceCaptureRuntime {
   }
 
   private func finishStreamingPreview() -> String? {
-    let lastHypothesis = streamingPreviewText.trimmingCharacters(
+    let lastHypothesis = streamingPreviewProjection.text.trimmingCharacters(
       in: .whitespacesAndNewlines
     )
     guard let streamingPreviewSession else {
@@ -794,7 +992,19 @@ actor LocalSpeechVoiceCaptureRuntime {
         phase: phase,
         hypothesisText: hypothesisText,
         levelMeter: levelMeter,
-        providerID: phase == .hidden ? nil : request.workflow.pipeline.recognizerID
+        providerID: phase == .hidden
+          ? nil
+          : request.workflow.plan.setup.speechRoute?.recognizerID,
+        recordingStartedAt: phase == .hidden ? nil : recordingStartedAt,
+        maximumRecordingDurationSeconds:
+          phase == .hidden || recordingDurationLimitRemoved
+          ? nil : request.maxDurationSeconds,
+        recordingDurationIsUnlimited:
+          phase == .hidden ? nil : (request.maxDurationSeconds == nil || recordingDurationLimitRemoved),
+        canRemoveRecordingDurationLimit:
+          phase == .hidden
+          ? nil
+          : (request.canRemoveMaxDurationLimit && !recordingDurationLimitRemoved)
       )
     )
   }
@@ -818,15 +1028,9 @@ actor LocalSpeechVoiceCaptureRuntime {
       .appendingPathExtension("wav")
   }
 
-  private func maximumRecordingFrameCount(for request: AudioCaptureRequest) -> Int {
-    let requestedDuration =
-      request.maxDurationSeconds
-      ?? LocalSpeechIncrementalWaveWriter.maximumRequestedDurationSeconds
+  private func maximumRecordingFrameCount(for request: AudioCaptureRequest) -> Int? {
+    guard let requestedDuration = request.maxDurationSeconds else { return nil }
     guard requestedDuration.isFinite, requestedDuration > 0 else { return 0 }
-    let boundedRequestedDuration = min(
-      requestedDuration,
-      LocalSpeechIncrementalWaveWriter.maximumRequestedDurationSeconds
-    )
     let timeoutComponents = startupTimeout.components
     let timeoutSeconds = max(
       Double(timeoutComponents.seconds)
@@ -837,21 +1041,15 @@ actor LocalSpeechVoiceCaptureRuntime {
       timeoutSeconds + 0.1,
       LocalSpeechIncrementalWaveWriter.maximumStartupGraceSeconds
     )
-    let boundedCaptureDuration = min(
-      boundedRequestedDuration + startupGrace,
-      LocalSpeechIncrementalWaveWriter.maximumSupportedDurationSeconds
-    )
-    let exactFrameCount =
-      boundedCaptureDuration * LocalSpeechIncrementalWaveWriter.sampleRateHz
-    return min(
-      max(Int(exactFrameCount.rounded(.down)), 1),
-      LocalSpeechIncrementalWaveWriter.maximumSupportedFrameCount
-    )
+    let captureDuration = requestedDuration + startupGrace
+    let exactFrameCount = captureDuration * LocalSpeechIncrementalWaveWriter.sampleRateHz
+    guard exactFrameCount.isFinite, exactFrameCount <= Double(Int.max) else { return 0 }
+    return max(Int(exactFrameCount.rounded(.down)), 1)
   }
 
   private static func levelMeter(from cumulativeRMS: [Float]) -> [Float] {
     cumulativeRMS.suffix(20).map {
-      AppleVoiceProcessingAudioProcessor.endpointRelativeEnergy(fromNormalizedRMS: $0)
+      AppleVoiceProcessingAudioProcessor.meterRelativeEnergy(fromNormalizedRMS: $0)
     }
   }
 

@@ -65,7 +65,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         XCTAssertEqual(harness.model.localSpeechAvailability, .architectureUnsupported)
         XCTAssertFalse(harness.model.localSpeechTrustMaterialAvailable)
         XCTAssertFalse(harness.model.setPreferredSpeechEngine(.local))
-        XCTAssertEqual(harness.model.preferredSpeechEngine, .cloud)
+        XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
         XCTAssertEqual(
             UIStrings.localSpeechAvailabilityDescription(
                 harness.model.localSpeechAvailability,
@@ -143,39 +143,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         XCTAssertTrue(harness.model.voiceSetupReadiness.isComplete)
     }
 
-    func testCloudReadinessRequiresNonemptyCurrentSessionSpeechCheck() {
-        let harness = makeHarness(
-            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
-        )
-        harness.model.preferredSpeechEngine = .cloud
-        harness.model.deepgramAPIKey = "test-key"
-        harness.model.deepgramCredentialAvailability = .available
-        harness.model.deepgramTestTranscript = "  \n"
 
-        XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .cloudNeedsSpeechCheck)
-        XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
-
-        harness.model.deepgramTestTranscript = "verified transcript"
-
-        XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .cloudSpeechCheckPassed)
-        XCTAssertTrue(harness.model.voiceSetupReadiness.isComplete)
-    }
-
-    func testChangingDeepgramConfigurationInvalidatesCurrentSessionVerification() {
-        let harness = makeHarness(
-            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
-        )
-        harness.model.preferredSpeechEngine = .cloud
-        harness.model.deepgramAPIKey = "test-key"
-        harness.model.deepgramCredentialAvailability = .available
-        harness.model.deepgramTestTranscript = "verified transcript"
-        XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .cloudSpeechCheckPassed)
-
-        harness.model.deepgramModel = "nova-3-medical"
-
-        XCTAssertNil(harness.model.deepgramTestTranscript)
-        XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .cloudNeedsSpeechCheck)
-    }
 
     func testSelectingRecordedLocalModelRunsPreparationAndDoesNotFabricateReadyOnFailure() async {
         let probe = WhisperKitPrepareProbe()
@@ -218,7 +186,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         let harness = makeHarness(
             settingsStore: settingsStore,
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted),
-            warmLocalSpeechForCaptureAction: { _ in
+            warmLocalSpeechForCaptureAction: { _, _ in
                 throw NSError(
                     domain: "VoiceSetupReadinessTests",
                     code: 2,
@@ -249,91 +217,5 @@ final class VoiceSetupReadinessTests: XCTestCase {
         XCTAssertFalse(exposedText.contains("abcdef0123456789"))
     }
 
-    func testCloudCredentialReadFailureIsUnavailableRatherThanMissingAndCanRetry() async {
-        let settingsStore = UITestSettingsStore(
-            storage: [.preferredSpeechEngine: PreferredSpeechEngine.cloud.rawValue]
-        )
-        let credentialStore = ControlledReadinessCredentialStore(
-            credential: "recovered-key",
-            failsReads: true
-        )
-        let harness = makeHarness(
-            settingsStore: settingsStore,
-            credentialStore: credentialStore,
-            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
-        )
-        await waitForEventProcessing()
 
-        XCTAssertEqual(harness.model.deepgramCredentialAvailability, .inaccessible)
-        XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .cloudCredentialUnavailable)
-
-        await credentialStore.setFailsReads(false)
-        harness.model.retryDeepgramCredentialLoad()
-        await waitForEventProcessing()
-
-        XCTAssertEqual(harness.model.deepgramAPIKey, "recovered-key")
-        XCTAssertEqual(harness.model.deepgramCredentialAvailability, .available)
-        XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .cloudNeedsSpeechCheck)
-    }
-
-    func testCloudCredentialWriteFailureCannotBecomeReadyFromAnInMemorySpeechCheck() async {
-        let settingsStore = UITestSettingsStore(
-            storage: [.preferredSpeechEngine: PreferredSpeechEngine.cloud.rawValue]
-        )
-        let credentialStore = ControlledReadinessCredentialStore(failsWrites: true)
-        let harness = makeHarness(
-            settingsStore: settingsStore,
-            credentialStore: credentialStore,
-            settingsWriteDebounceDuration: .milliseconds(1),
-            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
-        )
-        await waitForEventProcessing()
-
-        harness.model.deepgramAPIKey = "memory-only-key"
-        await waitForEventProcessing()
-        harness.model.deepgramTestTranscript = "apparently verified"
-
-        XCTAssertEqual(harness.model.deepgramCredentialAvailability, .inaccessible)
-        XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .cloudCredentialUnavailable)
-        XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
-    }
-}
-
-private enum ControlledReadinessCredentialError: Error {
-    case unavailable
-}
-
-private actor ControlledReadinessCredentialStore: SecureCredentialStore {
-    private var credential: String?
-    private var failsReads: Bool
-    private let failsWrites: Bool
-
-    init(
-        credential: String? = nil,
-        failsReads: Bool = false,
-        failsWrites: Bool = false
-    ) {
-        self.credential = credential
-        self.failsReads = failsReads
-        self.failsWrites = failsWrites
-    }
-
-    func credential(for key: SecureCredentialKey) async throws -> String? {
-        if failsReads { throw ControlledReadinessCredentialError.unavailable }
-        return key == .deepgramAPIKey ? credential : nil
-    }
-
-    func setCredential(_ value: String, for key: SecureCredentialKey) async throws {
-        if failsWrites { throw ControlledReadinessCredentialError.unavailable }
-        if key == .deepgramAPIKey { credential = value }
-    }
-
-    func removeCredential(for key: SecureCredentialKey) async throws {
-        if failsWrites { throw ControlledReadinessCredentialError.unavailable }
-        if key == .deepgramAPIKey { credential = nil }
-    }
-
-    func setFailsReads(_ value: Bool) {
-        failsReads = value
-    }
 }

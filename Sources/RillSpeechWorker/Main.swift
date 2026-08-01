@@ -20,6 +20,9 @@ enum RillSpeechWorkerMain {
   private static func run(standardIO: WorkerStandardIO) async -> Int32 {
     let reader = SpeechWorkerBoundedLineReader(fileHandle: .standardInput)
     let service = RoutedSpeechWorkerService()
+    let protocolWriter = WorkerProtocolOutputWriter(
+      output: standardIO.protocolOutput
+    )
 
     while true {
       let line: Data
@@ -45,7 +48,20 @@ enum RillSpeechWorkerMain {
         return EX_DATAERR
       }
 
-      let response = await service.handle(request)
+      let response = await service.handle(request) { progress in
+        do {
+          let frame = try SpeechWorkerProtocolCodec.encodeResponseLine(
+            .progress(request: request, update: progress)
+          )
+          _ = protocolWriter.write(frame)
+        } catch {
+          protocolWriter.markFailed()
+        }
+      }
+      guard !protocolWriter.hasFailed else {
+        log("parent_connection_lost", to: standardIO.diagnosticOutput)
+        return EX_IOERR
+      }
       let encoded: Data
       do {
         encoded = try SpeechWorkerProtocolCodec.encodeResponseLine(response)
@@ -62,9 +78,7 @@ enum RillSpeechWorkerMain {
         }
       }
 
-      do {
-        try standardIO.protocolOutput.write(contentsOf: encoded)
-      } catch {
+      guard protocolWriter.write(encoded) else {
         log("parent_connection_lost", to: standardIO.diagnosticOutput)
         return EX_IOERR
       }
@@ -76,6 +90,39 @@ enum RillSpeechWorkerMain {
   private static func log(_ event: StaticString, to output: FileHandle) {
     let data = Data("RillSpeechWorker: \(event)\n".utf8)
     try? output.write(contentsOf: data)
+  }
+}
+
+private final class WorkerProtocolOutputWriter: @unchecked Sendable {
+  private let output: FileHandle
+  private let lock = NSLock()
+  private var failed = false
+
+  init(output: FileHandle) {
+    self.output = output
+  }
+
+  var hasFailed: Bool {
+    lock.withLock { failed }
+  }
+
+  func markFailed() {
+    lock.withLock {
+      failed = true
+    }
+  }
+
+  func write(_ data: Data) -> Bool {
+    lock.withLock {
+      guard !failed else { return false }
+      do {
+        try output.write(contentsOf: data)
+        return true
+      } catch {
+        failed = true
+        return false
+      }
+    }
   }
 }
 

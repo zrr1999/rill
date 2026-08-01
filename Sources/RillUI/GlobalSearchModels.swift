@@ -250,7 +250,7 @@ enum GlobalSearchIndex {
         language: AppLanguage,
         workflows: [WorkflowDefinition]
     ) -> [GlobalSearchResult] {
-        workflows.map { workflow in
+        workflows.filter { $0.availability == .active }.map { workflow in
             let title = UIStrings.workflowName(workflow.presentation, language: language)
             let detail = GlobalSearchText.workflowDetail(language: language)
             return GlobalSearchResult(

@@ -279,6 +279,12 @@ run_notarized_source_case() {
 run_locked_dependency_policy_case() {
   local invocation_log="$TEST_ROOT/swift-invocations.log"
   local expected_log=""
+  local preflight_release_build_line=""
+  local preflight_transition_clean_line=""
+  local preflight_test_line=""
+  local release_preflight_line=""
+  local release_transition_clean_line=""
+  local release_build_line=""
 
   : >"$invocation_log"
   [[ -x "$LOCKED_SWIFT_SCRIPT" ]] || {
@@ -317,9 +323,52 @@ run_locked_dependency_policy_case() {
     echo "FAIL: bundle assembly does not verify vendored dependency provenance" >&2
     exit 1
   fi
+  if [[ "$(grep -Ec '^[[:space:]]*swift package clean$' "$PREFLIGHT_SCRIPT")" -ne 2 ]] \
+    || [[ "$(grep -Ec '^[[:space:]]*swift package clean$' "$RELEASE_SCRIPT")" -ne 1 ]]; then
+    echo "FAIL: release scripts must isolate every Release/Debug configuration transition" >&2
+    exit 1
+  fi
+  preflight_release_build_line="$(
+    grep -n -m1 '^"\$SCRIPT_DIR/build_xcode_release.sh"$' "$PREFLIGHT_SCRIPT" \
+      | cut -d: -f1
+  )"
+  preflight_transition_clean_line="$(
+    grep -n '^[[:space:]]*swift package clean$' "$PREFLIGHT_SCRIPT" \
+      | tail -n 1 \
+      | cut -d: -f1
+  )"
+  preflight_test_line="$(
+    grep -n -m1 '^"\$SCRIPT_DIR/swift_locked.sh" test --parallel$' "$PREFLIGHT_SCRIPT" \
+      | cut -d: -f1
+  )"
+  release_preflight_line="$(
+    grep -n -m1 '^"\$SCRIPT_DIR/preflight.sh"$' "$RELEASE_SCRIPT" \
+      | cut -d: -f1
+  )"
+  release_transition_clean_line="$(
+    grep -n -m1 '^[[:space:]]*swift package clean$' "$RELEASE_SCRIPT" \
+      | cut -d: -f1
+  )"
+  release_build_line="$(
+    grep -n -m1 '^"\$SCRIPT_DIR/build_xcode_release.sh"$' "$RELEASE_SCRIPT" \
+      | cut -d: -f1
+  )"
+  if [[ -z "$preflight_release_build_line" \
+      || -z "$preflight_transition_clean_line" \
+      || -z "$preflight_test_line" \
+      || "$preflight_transition_clean_line" -le "$preflight_release_build_line" \
+      || "$preflight_transition_clean_line" -ge "$preflight_test_line" \
+      || -z "$release_preflight_line" \
+      || -z "$release_transition_clean_line" \
+      || -z "$release_build_line" \
+      || "$release_transition_clean_line" -le "$release_preflight_line" \
+      || "$release_transition_clean_line" -ge "$release_build_line" ]]; then
+    echo "FAIL: Release/Debug configuration cleanup is not ordered at the transition boundary" >&2
+    exit 1
+  fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: release build paths share dependency and warning policies and verify vendored provenance"
+  echo "PASS: release paths share policies, verify provenance, and isolate build configurations"
 }
 
 run_vendored_xcode_build_policy_case() {
@@ -1879,6 +1928,7 @@ run_speech_worker_bundle_signing_policy_case() {
   local app_bundle="$fixture/Rill.app"
   local speech_worker="$app_bundle/Contents/Helpers/RillSpeechWorker"
   local main_flow=""
+  local mlx_bundle_signing_line=""
   local helper_identifier_line=""
   local outer_entitlements_line=""
   local verification_line=""
@@ -2052,17 +2102,21 @@ DETAILS
   fi
 
   main_flow="$(sed -n '/^# ─── 步骤 3: 签名/,/^verify_signed_app$/p' "$RELEASE_SCRIPT")"
+  mlx_bundle_signing_line="$(grep -n -m1 -- '"$MLX_RESOURCE_BUNDLE"' \
+    <<<"$main_flow" | cut -d: -f1)"
   helper_identifier_line="$(grep -n -m1 -- '--identifier "$SPEECH_WORKER_IDENTIFIER"' \
     <<<"$main_flow" | cut -d: -f1)"
   outer_entitlements_line="$(grep -n -m1 -- '--entitlements "$ENTITLEMENTS"' \
     <<<"$main_flow" | cut -d: -f1)"
   verification_line="$(grep -n -m1 '^verify_signed_app$' <<<"$main_flow" | cut -d: -f1)"
-  if [[ -z "$helper_identifier_line" \
+  if [[ -z "$mlx_bundle_signing_line" \
+    || -z "$helper_identifier_line" \
     || -z "$outer_entitlements_line" \
     || -z "$verification_line" \
+    || "$mlx_bundle_signing_line" -ge "$helper_identifier_line" \
     || "$helper_identifier_line" -ge "$outer_entitlements_line" \
     || "$outer_entitlements_line" -ge "$verification_line" ]]; then
-    echo "FAIL: release must sign the helper before the outer app and then verify the nested graph" >&2
+    echo "FAIL: release must sign MLX resources and the helper before the outer app, then verify the nested graph" >&2
     exit 1
   fi
   if sed -n '1,/^info "签名外层应用/p' <<<"$main_flow" \

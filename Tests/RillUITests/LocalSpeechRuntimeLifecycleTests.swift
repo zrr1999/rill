@@ -6,33 +6,6 @@ import XCTest
 
 @MainActor
 final class LocalSpeechRuntimeLifecycleTests: XCTestCase {
-  func testStoredCloudRouteDisablesRuntimeAndLocalSelectionReenablesBeforePreparation() async {
-    let probe = LocalSpeechRuntimeLifecycleProbe()
-    let settingsStore = UITestSettingsStore(
-      storage: [
-        .preferredSpeechEngine: PreferredSpeechEngine.cloud.rawValue
-      ]
-    )
-    let harness = makeHarness(
-      settingsStore: settingsStore,
-      prepareLocalSpeechAction: { settings, _ in
-        probe.recordPreparation(model: settings.model)
-        return settings.model
-      },
-      setLocalSpeechRuntimeEnabledAction: { enabled in
-        probe.recordRuntimeEnabled(enabled)
-      }
-    )
-    await waitForEventProcessing()
-
-    XCTAssertEqual(probe.runtimeTransitions, [false])
-
-    harness.model.preferredSpeechEngine = .local
-    await waitForEventProcessing()
-
-    XCTAssertEqual(probe.runtimeTransitions, [false, true])
-    XCTAssertEqual(probe.preparationCount, 1)
-  }
 
   func testExplicitMemoryReleaseKeepsLocalRouteEnabled() async {
     let probe = LocalSpeechRuntimeLifecycleProbe()

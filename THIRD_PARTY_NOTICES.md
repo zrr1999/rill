@@ -26,6 +26,7 @@ rendered text only normalizes line endings and trailing horizontal whitespace.
 | `mlx-swift-lm` | source control | 3.31.4 | <https://github.com/ml-explore/mlx-swift-lm.git> | `MIT` | Git revision `bd4b7434e6bdb588c7ef55706ff8904cb7fd4c57` | `LICENSE` (license, `7b1d86acac816ce8192209d7e01141c129b4d48d474c15cc5fb4af62f497c323`) |
 | `nlohmann-json` | vendored | 3.12.0 | <https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.tar.gz> | `MIT` | source archive (`4b92eb0c06d10683f7447ce9406cb97cd4b453be18d7279320f7b2f025c10187`)<br>`sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a` (`8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6`) | `licenses/LICENSE.nlohmann-json` (license, `46a65cffd1ea955132d95a8dd921640714a8d6b537d2e4e482d31145ae95b603`) |
 | `onnxruntime` | vendored | 1.27.0 | <https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.27.0/onnxruntime-osx-universal2-static_lib-1.27.0.zip> | `MIT AND LicenseRef-ONNXRuntime-ThirdParty` | source archive (`6794da8dd86d0b83b453e7968771cddfb3004e3db4cda5cea6d4111a616f49cb`)<br>`onnxruntime.xcframework/Info.plist` (`c39bbaecfd75caff175823916844c56e68657019258d0140cd543cca66842926`)<br>`onnxruntime.xcframework/macos-arm64_x86_64/libonnxruntime.a` (`4e39796b2b31829622407137352178e0eaef240a1e40fb322a05db4483bd37b9`) | `LICENSE.onnxruntime` (license, `2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c`)<br>`ThirdPartyNotices.onnxruntime.txt` (notice, `0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2`) |
+| `openai` | source control | 0.5.1 | <https://github.com/MacPaw/OpenAI.git> | `MIT` | Git revision `a532be89be9a30ec003e4ba0974a52a88d26fc6d` | `LICENSE` (license, `7ad43d13a029c71f61a1efac5dff82b0dc0b16a58449e7374bffc8a16441f8cf`) |
 | `openfst` | vendored | 1.8.5-2026-04-11 | <https://github.com/csukuangfj/openfst/archive/refs/tags/v1.8.5-2026-04-11.tar.gz> | `Apache-2.0` | source archive (`57fbc4b950ae81b1a0e1e298af15652da968a6723a592b7874e9b4027a80a5b4`)<br>`sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a` (`8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6`) | `licenses/COPYING.openfst` (license, `4300529197035fd3452350718a0b8cee984e9412c9932d7f35fcde849fc97a4b`) |
 | `sherpa-onnx` | vendored | 1.13.4 | <https://github.com/k2-fsa/sherpa-onnx/archive/142807252687d81b40d6315f23470a1512a00de3.tar.gz> | `Apache-2.0` | source archive (`f0dc7c9b41b8691313daee671e826eb23946fa1320559a8d37e84f8774af76b2`)<br>`sherpa-onnx.xcframework/Info.plist` (`789acaf7864ac8784bfe62902545b2b9cc7751957d50b49c23ebf106a8e67a4d`)<br>`sherpa-onnx.xcframework/macos-arm64_x86_64/Headers/sherpa-onnx/c-api/c-api.h` (`587e1039cc4ee242169494f3c0ba5baecc22482341168d88d57db965e1e77fa9`)<br>`sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a` (`8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6`) | `LICENSE.sherpa-onnx` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`) |
 | `silero-vad` | vendored | 4-k2-fsa-export | <https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx> | `MIT` | source archive (`9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6`)<br>`silero_vad.onnx` (`9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6`) | `LICENSE.silero-vad` (license, `51c19c8be941a3fb00ccf58f0bf9053de9f7237a0b37327896eabad32dffe873`) |
@@ -50,10 +51,12 @@ rendered text only normalizes line endings and trailing horizontal whitespace.
 | `swift-nio-ssl` | source control | 2.37.2 | <https://github.com/apple/swift-nio-ssl.git> | `Apache-2.0` | Git revision `d930168b86f46ca51a4bc09c5ca45c1833db8067` | `LICENSE.txt` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)<br>`NOTICE.txt` (notice, `03e8ca5c65a3df21fe1ab48eef91bca7d370db56c290d8ef16eaaa09ba322abe`) |
 | `swift-nio-transport-services` | source control | 1.28.0 | <https://github.com/apple/swift-nio-transport-services.git> | `Apache-2.0` | Git revision `67787bb645a5e67d2edcdfbe48a216cc549222d5` | `LICENSE.txt` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`) |
 | `swift-numerics` | source control | 1.1.1 | <https://github.com/apple/swift-numerics> | `Apache-2.0` | Git revision `0c0290ff6b24942dadb83a929ffaaa1481df04a2` | `LICENSE.txt` (license, `770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55`) |
+| `swift-openapi-runtime` | source control | 1.12.0 | <https://github.com/apple/swift-openapi-runtime> | `Apache-2.0` | Git revision `3d3a8457661daf7fb260ceeb9f0e24e5204ba5fb` | `LICENSE.txt` (license, `8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac`)<br>`NOTICE.txt` (notice, `b54b35c36f1cde851867e5dffc843d379456d202d332f04ae8d877232359925c`) |
 | `swift-service-context` | source control | 1.3.0 | <https://github.com/apple/swift-service-context.git> | `Apache-2.0` | Git revision `d0997351b0c7779017f88e7a93bc30a1878d7f29` | `LICENSE.txt` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)<br>`NOTICE.txt` (notice, `0881037b6840338ea800fdb5876540081a75d8bdd9eb8175a16f348247e8677e`) |
 | `swift-service-lifecycle` | source control | 2.11.0 | <https://github.com/swift-server/swift-service-lifecycle> | `Apache-2.0` | Git revision `9829955b385e5bb88128b73f1b8389e9b9c3191a` | `LICENSE.txt` (license, `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`)<br>`NOTICE.txt` (notice, `e0583b716a12a866a2a1d7456c26a17d18e1ec70f0ecaf2c62ed77180d1db043`) |
 | `swift-syntax` | source control | 603.0.2 | <https://github.com/swiftlang/swift-syntax.git> | `Apache-2.0` | Git revision `79e4b74a295b6eb74a8b585e3a39d29e70c1dbd1` | `LICENSE.txt` (license, `770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55`) |
 | `swift-system` | source control | 1.7.5 | <https://github.com/apple/swift-system.git> | `Apache-2.0` | Git revision `50688cacbd41d547e9eb9f7a213542340b7c442b` | `LICENSE.txt` (license, `2245a990b635558be210fb3eb4f8a6f7a49aebc0fefbf5859146a65ddc7ddcf3`) |
+| `swift-toml` | source control | 2.0.0 | <https://github.com/mattt/swift-toml.git> | `MIT` | Git revision `827506c90475e82d5a7f191f950fb3025cbdc0d6` | `LICENSE.md` (license, `2f9b695627d569a3ce452b2c03fdd34310df78c8ea94edfafd9ce38381e5b502`)<br>`Sources/CTomlPlusPlus/toml.hpp#L3-L43` (license, `2a20b4a8b1c5842e84c2ad0fef3c5e84e2d8f29ac79ac302345115c05f89ea72`) |
 | `swift-transformers` | source control | 1.2.1 | <https://github.com/huggingface/swift-transformers.git> | `Apache-2.0` | Git revision `58c4bc11963a140358d791f678a60a2745a23146` | `LICENSE` (license, `648b81e6c6f9975c3b6cf6d630229b6c8d6f1ddaef55f5770f576adda19f3495`) |
 | `swift-xet` | source control | 0.2.3 | <https://github.com/mattt/swift-xet.git> | `Apache-2.0` | Git revision `341bfd4172f6a57119bfd49bafa11cf5d21fab75` | `LICENSE@b8447cbdf0e798de27bab3c5b0a99da98fae81e9` (license, `66d3de8f54fa087ac001d3fde9221c9c7d220f6856c37fb038fa858d71450f35`) |
 | `yyjson` | source control | 0.12.0 | <https://github.com/ibireme/yyjson.git> | `MIT` | Git revision `8b4a38dc994a110abaec8a400615567bd996105f` | `LICENSE` (license, `45e384d3d52c73cba3a64d6e6c25d47cd738cd8a55c30629e3201046eda62947`) |
@@ -6776,6 +6779,54 @@ Applies to: `swift-system/LICENSE.txt` (license).
     otherwise be required by Sections 4(a), 4(b) and 4(d) of the License.
 ```
 
+### Evidence `2a20b4a8b1c5842e84c2ad0fef3c5e84e2d8f29ac79ac302345115c05f89ea72`
+
+Applies to: `swift-toml/Sources/CTomlPlusPlus/toml.hpp#L3-L43` (license).
+
+```text
+// toml++ v3.4.0
+// https://github.com/marzer/tomlplusplus
+// SPDX-License-Identifier: MIT
+//
+//----------------------------------------------------------------------------------------------------------------------
+//
+// -         THIS FILE WAS ASSEMBLED FROM MULTIPLE HEADER FILES BY A SCRIPT - PLEASE DON'T EDIT IT DIRECTLY            -
+//
+// If you wish to submit a contribution to toml++, hooray and thanks! Before you crack on, please be aware that this
+// file was assembled from a number of smaller files by a python script, and code contributions should not be made
+// against it directly. You should instead make your changes in the relevant source file(s). The file names of the files
+// that contributed to this header can be found at the beginnings and ends of the corresponding sections of this file.
+//
+//----------------------------------------------------------------------------------------------------------------------
+//
+// TOML Language Specifications:
+// latest:      https://github.com/toml-lang/toml/blob/master/README.md
+// v1.0.0:      https://toml.io/en/v1.0.0
+// v0.5.0:      https://toml.io/en/v0.5.0
+// changelog:   https://github.com/toml-lang/toml/blob/master/CHANGELOG.md
+//
+//----------------------------------------------------------------------------------------------------------------------
+//
+// MIT License
+//
+// Copyright (c) Mark Gillard <mark.gillard@outlook.com.au>
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+// documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+// permit persons to whom the Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all copies or substantial portions of the
+// Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+// WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
+//----------------------------------------------------------------------------------------------------------------------
+```
+
 ### Evidence `2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c`
 
 Applies to: `onnxruntime/LICENSE.onnxruntime` (license).
@@ -6806,7 +6857,7 @@ SOFTWARE.
 
 ### Evidence `2f9b695627d569a3ce452b2c03fdd34310df78c8ea94edfafd9ce38381e5b502`
 
-Applies to: `eventsource/LICENSE.md` (license).
+Applies to: `eventsource/LICENSE.md` (license), `swift-toml/LICENSE.md` (license).
 
 ```text
 Copyright 2025 Mattt (https://mat.tt)
@@ -8450,6 +8501,34 @@ Applies to: `swift-algorithms/LICENSE.txt` (license), `swift-async-algorithms/LI
     otherwise be required by Sections 4(a), 4(b) and 4(d) of the License.
 ```
 
+### Evidence `7ad43d13a029c71f61a1efac5dff82b0dc0b16a58449e7374bffc8a16441f8cf`
+
+Applies to: `openai/LICENSE` (license).
+
+```text
+MIT License
+
+Copyright (c) 2023 MacPaw Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ### Evidence `7b1d86acac816ce8192209d7e01141c129b4d48d474c15cc5fb4af62f497c323`
 
 Applies to: `mlx-swift-lm/LICENSE` (license).
@@ -8522,7 +8601,7 @@ scripts from SwiftNIO.
 
 ### Evidence `8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac`
 
-Applies to: `swift-asn1/LICENSE.txt` (license), `swift-certificates/LICENSE.txt` (license), `swift-configuration/LICENSE.txt` (license).
+Applies to: `swift-asn1/LICENSE.txt` (license), `swift-certificates/LICENSE.txt` (license), `swift-configuration/LICENSE.txt` (license), `swift-openapi-runtime/LICENSE.txt` (license).
 
 ```text
 
@@ -9013,6 +9092,65 @@ This product contains a derivation of various files from SwiftNIO.
     * https://www.apache.org/licenses/LICENSE-2.0
   * HOMEPAGE:
     * https://github.com/apple/swift-nio
+```
+
+### Evidence `b54b35c36f1cde851867e5dffc843d379456d202d332f04ae8d877232359925c`
+
+Applies to: `swift-openapi-runtime/NOTICE.txt` (notice).
+
+```text
+
+                       The SwiftOpenAPIGenerator Project
+                       =================================
+
+Please visit the SwiftOpenAPIGenerator web site for more information:
+
+  * https://github.com/apple/swift-openapi-runtime
+
+Copyright 2023 The SwiftOpenAPIGenerator Project
+
+The SwiftOpenAPIGenerator Project licenses this file to you under the Apache
+License, version 2.0 (the "License"); you may not use this file except in
+compliance with the License. You may obtain a copy of the License at:
+
+  https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+
+Also, please refer to each LICENSE.txt file, which is located in
+the 'license' directory of the distribution file, for the license terms of the
+components that this product depends on.
+
+-------------------------------------------------------------------------------
+
+This product contains derivations of various scripts and templates from SwiftNIO.
+
+  * LICENSE (Apache License 2.0):
+    * https://www.apache.org/licenses/LICENSE-2.0
+  * HOMEPAGE:
+    * https://github.com/apple/swift-nio
+
+---
+
+This product contains coder implementations inspired by swift-http-structured-headers.
+
+  * LICENSE (Apache License 2.0):
+    * https://www.apache.org/licenses/LICENSE-2.0
+  * HOMEPAGE:
+    * https://github.com/apple/swift-http-structured-headers
+
+---
+
+This product contains header character set validation logic inspired by swift-http-types.
+
+  * LICENSE (Apache License 2.0):
+    * https://www.apache.org/licenses/LICENSE-2.0
+  * HOMEPAGE:
+    * https://github.com/apple/swift-http-types
 ```
 
 ### Evidence `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4`

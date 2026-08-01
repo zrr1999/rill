@@ -1,20 +1,20 @@
 # ASR Dogfood Benchmark 计划
 
 > 来源：`docs/competitive-research.md` 与 `docs/technology-selection.md`。
-> 目标：用小样本、低成本的真实使用数据，帮助 Rill 决定本地/云端 ASR provider 与模型优先级。
+> 目标：用小样本、低成本的真实使用数据，帮助 Rill 决定本地 ASR 引擎与模型优先级。
 
 ## 1. 为什么需要 benchmark
 
-Rill 的当前架构是本地多后端（sherpa-onnx + Apple Silicon 可选原生 mlx-audio-swift）+ 云端 Deepgram。16 GB 默认仍是 Qwen3-ASR 0.6B INT8；24 GB 及以上可对照 Qwen3-ASR 1.7B 8bit。ASR 模型权重不随 App 捆绑，首次准备是明确的联网边界，准备后的识别离线运行；用于自动端点的固定 Silero VAD v4 模型随 App 捆绑并按 SHA-256 校验。两个 Qwen 档位都尚未通过本计划要求的真人编辑成本、自动停录、噪声、延迟阈值与支持机型矩阵，因此不能称为 GA。SenseVoiceSmall INT8 只在源码中保留固定的内部预览身份，不属于公开候选版的设置、下载或推荐路径。竞品 Type4Me、Superwhisper、Wispr Flow、VoiceInk/open-wispr 的经验说明：
+Rill 的当前架构是本地多后端（sherpa-onnx + Apple Silicon 可选原生 mlx-audio-swift），不提供云端 ASR。16 GB 默认仍是 Qwen3-ASR 0.6B INT8；24 GB 及以上可对照 Qwen3-ASR 1.7B 8bit。ASR 模型权重不随 App 捆绑，首次准备是明确的联网边界，准备后的识别离线运行；用于自动端点的固定 Silero VAD v4 模型随 App 捆绑并按 SHA-256 校验。两个 Qwen 档位都尚未通过本计划要求的真人编辑成本、自动停录、噪声、延迟阈值与支持机型矩阵，因此不能称为 GA。SenseVoiceSmall INT8 只在源码中保留固定的内部预览身份，不属于公开候选版的设置、下载或推荐路径。竞品 Type4Me、Superwhisper、Wispr Flow、VoiceInk/open-wispr 的经验说明：
 
 - 用户感知不只取决于最终准确率，还取决于首字延迟、最终延迟和是否需要手工编辑。
 - 中英混合、专有名词、人名、项目名、命令式短句往往比普通英文句子更能暴露问题。
-- 本地优先和云端增强需要有明确切换依据，而不是只凭体感。
+- 不同本地引擎和模型档位需要有明确切换依据，而不是只凭体感。
 
 因此 benchmark 的目标不是学术评测，而是回答：
 
 1. Qwen 0.6B 默认档能否达到真人编辑成本、自动停止和延迟门禁，1.7B 的质量增益能否抵偿额外内存与最终延迟？
-2. 哪些场景需要推荐云端？
+2. 1.7B MLX 档位在哪些设备和场景中值得推荐？
 3. SenseVoiceSmall 是否在产品与法律审核后值得进入独立内部评估，以及是否需要 Soniox/火山等新 provider？
 4. 词汇管理和 Prompt 变量能减少多少手工编辑？
 
@@ -28,7 +28,6 @@ Rill 的当前架构是本地多后端（sherpa-onnx + Apple Silicon 可选原�
 |---|---|---|
 | Rill + sherpa-onnx / Qwen3-ASR 0.6B INT8 | 本地 | 默认路径；每个候选版必测 |
 | Rill + mlx-audio-swift / Qwen3-ASR 1.7B 8bit | 本地 Apple Silicon | 启用该档位的候选版必测；同一录音与 0.6B 做质量、RTF、峰值内存对照 |
-| Rill + Deepgram 当前生产路径 | 云端 | 当前可用候选版必测 |
 | macOS 系统听写 | 系统 | 用户天然对照组 |
 
 ### 可选参考
@@ -69,7 +68,7 @@ Rill 的当前架构是本地多后端（sherpa-onnx + Apple Silicon 可选原�
 
 ### 4.2 中英混合与技术词
 
-5. 把 sherpa-onnx 和 Deepgram 的 provider seam 保持干净。
+5. 把 sherpa-onnx 和 MLX 的 provider seam 保持干净。
 6. 这个 Pull Request 先不要引入 Core Data。
 7. 我们需要一个 PromptVariableContext 来渲染 selected 和 clipboard。
 8. Run swift test after updating the VocabularyRule applicator.
@@ -102,7 +101,7 @@ Rill 的当前架构是本地多后端（sherpa-onnx + Apple Silicon 可选原�
 ```text
 case_id,tool,engine,local_or_cloud,first_token_s,final_s,edit_count,proprietary_terms_ok,format_ok,failure_type,notes
 01,Rill,Qwen3-ASR-0.6B-int8,local,0.8,2.1,1,true,true,,
-01,Rill,Deepgram,cloud,0.4,1.0,0,true,true,,
+01,Rill,Qwen3-ASR-1.7B-8bit,local-mlx,0.4,1.0,0,true,true,,
 ```
 
 Markdown 版：
@@ -118,7 +117,7 @@ Markdown 版：
    - 确认每个工具的语言/模型设置。
    - 打开同一个文本编辑器作为输入目标。
 2. **基线（10 分钟）**
-   - 先跑 Rill Qwen3-ASR 0.6B INT8 与 Deepgram，各 10 条。
+   - 先跑 Rill Qwen3-ASR 0.6B INT8 与 1.7B 8bit，各 10 条。
    - 记录延迟、编辑次数和明显失败。
 3. **竞品对照（10 分钟）**
    - 选择 1-2 个竞品跑同样 10 条。
@@ -151,7 +150,7 @@ Markdown 版：
 2. 对本节 20 条语句记录两次原始结果、自动停止结果、最终延迟和编辑次数。
 3. 固定 model ID、archive SHA-256、App commit、Mac 架构与 macOS 版本。
 4. 使用获明确同意的真人语料；合成或上游 fixture 必须单独标记，不能混算。
-5. 证明转写阶段无网络；Deepgram 对照必须作为独立 cloud run 记录。
+5. 证明两个现役档位的转写阶段均无网络。
 6. 在声明支持的 arm64 候选机上完成；没有 Apple Silicon 真机证据时保持未验收。
 
 SenseVoiceSmall 只允许在产品与法律审核先行批准的非公开构建中运行独立对照；
@@ -167,7 +166,6 @@ SenseVoiceSmall 只允许在产品与法律审核先行批准的非公开构建�
 |---|---|
 | Qwen 延迟可接受但专有词错多 | 优先改进 VocabularyRule / 有界热词，而不是换 provider |
 | Qwen 长停顿截断或不能自动停止 | 先修录音能量与 endpointing，再比较 ASR 模型 |
-| Deepgram 准确但隐私压力高 | 保持可选增强，强化云端提示和敏感 App 排除 |
 | 内部 SenseVoiceSmall 评估更快且质量相近 | 产品与法律审核后，才讨论是否提案进入公开目录 |
 | Type4Me 中文明显更好 | 先核对同语料、同设备与词汇配置，再评估火山/Soniox adapter |
 | Superwhisper mode 减少编辑 | 优先做用户模式和 Prompt 变量 UI |
@@ -176,7 +174,7 @@ SenseVoiceSmall 只允许在产品与法律审核先行批准的非公开构建�
 ## 8. 与现有计划的关系
 
 - `docs/vocabulary-prompt-design.md`：benchmark 中的专有词错误会直接转化为 `VocabularyRule` 测试样例。
-- `docs/privacy-sensitive-apps-plan.md`：benchmark 必须记录 local/cloud path，避免只追求云端准确率。
+- `docs/privacy-sensitive-apps-plan.md`：benchmark 必须记录实际本地引擎和模型路径，避免混淆下载联网边界与离线识别边界。
 - `docs/workflow-observability-plan.md`：每次 benchmark run 后应能看到 recognizer、model、duration 和 post-process steps。
 
 ## 9. 最小产出

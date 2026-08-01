@@ -275,6 +275,37 @@ extension DeliveryStackTests {
         XCTAssertFalse(snapshot.items.contains { $0.text == "oldest" })
     }
 
+    func testHistoryCapacityPreservesPinnedItemAndEvictsOldestUnpinnedItem() async throws {
+        var limits = ClipboardStorageLimits.productDefault
+        limits.maximumHistoryOnlyItemCount = 2
+        let stack = DeliveryStack(eventBus: EventBus(), storageLimits: limits)
+
+        var itemIDsByText: [String: UUID] = [:]
+        for text in ["pinned oldest", "evictable middle", "newest"] {
+            let item = DeliveryItem(workflowID: UUID(), text: text)
+            itemIDsByText[text] = item.id
+            let result = await stack.push(item)
+            XCTAssertTrue(result.wasAccepted)
+            let leaseCandidate = await stack.beginDeliveryLease(
+                for: ClipboardRouteContext()
+            )
+            let lease = try XCTUnwrap(leaseCandidate)
+            await stack.completeDelivery(leaseID: lease.leaseID)
+
+            if text == "pinned oldest" {
+                let pinResult = await stack.setItemsPinned(true, itemIDs: [item.id])
+                XCTAssertTrue(pinResult.wasAccepted)
+            }
+        }
+
+        let snapshot = await stack.clipboardSnapshot()
+        let middleID = try XCTUnwrap(itemIDsByText["evictable middle"])
+
+        XCTAssertEqual(snapshot.items.map(\.text), ["newest", "pinned oldest"])
+        XCTAssertTrue(snapshot.items.last?.isPinned == true)
+        XCTAssertFalse(snapshot.items.contains { $0.id == middleID })
+    }
+
     func testBytePressureEvictsHistoryOnlyBeforeRejectingActiveContent() async throws {
         let probe = DeliveryStack(eventBus: EventBus())
         let sample = ClipboardHistoryItem(

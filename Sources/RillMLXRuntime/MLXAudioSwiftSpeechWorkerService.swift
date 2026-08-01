@@ -1,8 +1,10 @@
+import CryptoKit
 import Darwin
 import Foundation
 import HuggingFace
 import MLXAudioCore
 import MLXAudioSTT
+import MLXAudioTTS
 import RillCore
 import RillProviders
 
@@ -13,6 +15,8 @@ public enum MLXAudioSwiftRuntimeError: Error, LocalizedError, Sendable, Equatabl
   case invalidModelStore
   case invalidAudio
   case modelLoadFailed
+  case invalidText
+  case synthesisFailed
 
   public var errorDescription: String? {
     switch self {
@@ -28,6 +32,10 @@ public enum MLXAudioSwiftRuntimeError: Error, LocalizedError, Sendable, Equatabl
       "The captured audio is invalid."
     case .modelLoadFailed:
       "The MLX-Audio Swift model could not be loaded."
+    case .invalidText:
+      "The speech synthesis request is invalid."
+    case .synthesisFailed:
+      "MLX-Audio Swift speech synthesis failed."
     }
   }
 }
@@ -39,7 +47,11 @@ struct MLXAudioSwiftInferenceOutput: Sendable, Equatable {
 }
 
 protocol MLXAudioSwiftInferenceEngine: Sendable {
-  func prepare(modelID: String, downloadIfNeeded: Bool) async throws -> String
+  func prepare(
+    modelID: String,
+    downloadIfNeeded: Bool,
+    progress: @escaping @Sendable (SpeechWorkerProgress) -> Void
+  ) async throws -> String
 
   func recognize(
     modelID: String,
@@ -52,16 +64,25 @@ protocol MLXAudioSwiftInferenceEngine: Sendable {
 
 public actor MLXAudioSwiftSpeechWorkerService: SpeechWorkerRequestHandling {
   private let engine: any MLXAudioSwiftInferenceEngine
+  private let ttsEngine: any MLXAudioSwiftTTSInferenceEngine
 
   public init() {
     self.engine = MLXAudioSwiftQwenEngine()
+    self.ttsEngine = MLXAudioSwiftQwenTTSEngine()
   }
 
-  init(engine: any MLXAudioSwiftInferenceEngine) {
+  init(
+    engine: any MLXAudioSwiftInferenceEngine,
+    ttsEngine: any MLXAudioSwiftTTSInferenceEngine = MLXAudioSwiftQwenTTSEngine()
+  ) {
     self.engine = engine
+    self.ttsEngine = ttsEngine
   }
 
-  public func handle(_ request: SpeechWorkerRequest) async -> SpeechWorkerResponse {
+  public func handle(
+    _ request: SpeechWorkerRequest,
+    progress: @escaping @Sendable (SpeechWorkerProgress) -> Void
+  ) async -> SpeechWorkerResponse {
     do {
       guard request.protocolVersion == SpeechWorkerProtocol.version else {
         throw SpeechWorkerProtocolError.unsupportedVersion
@@ -75,7 +96,8 @@ public actor MLXAudioSwiftSpeechWorkerService: SpeechWorkerRequestHandling {
         }
         let prepared = try await engine.prepare(
           modelID: payload.modelID,
-          downloadIfNeeded: payload.downloadIfNeeded
+          downloadIfNeeded: payload.downloadIfNeeded,
+          progress: progress
         )
         return .prepared(request: request, modelID: prepared)
 
@@ -85,9 +107,11 @@ public actor MLXAudioSwiftSpeechWorkerService: SpeechWorkerRequestHandling {
         else {
           throw SpeechWorkerProtocolError.invalidRequest
         }
-        try SherpaOnnxRecognizer.validateCapturedAudioDuration(
-          payload.audioDurationSeconds
-        )
+        guard payload.audioDurationSeconds.isFinite,
+          payload.audioDurationSeconds >= 0
+        else {
+          throw MLXAudioSwiftRuntimeError.invalidAudio
+        }
         let audioURL: URL
         do {
           audioURL = try SpeechWorkerInputValidation.validatedManagedAudioURL(
@@ -118,6 +142,45 @@ public actor MLXAudioSwiftSpeechWorkerService: SpeechWorkerRequestHandling {
           processingDurationMillis: output.processingDurationMillis
         )
         return .success(request: request, result: result)
+      case .prepareTTSModel:
+        guard request.recognitionPayload == nil,
+          request.synthesisPayload == nil,
+          let payload = request.modelPreparationPayload
+        else {
+          throw SpeechWorkerProtocolError.invalidRequest
+        }
+        let prepared = try await ttsEngine.prepareTTS(
+          modelID: payload.modelID,
+          downloadIfNeeded: payload.downloadIfNeeded,
+          progress: progress
+        )
+        return .prepared(request: request, modelID: prepared)
+      case .synthesizeSpeech:
+        guard request.recognitionPayload == nil,
+          request.modelPreparationPayload == nil,
+          let payload = request.synthesisPayload
+        else {
+          throw SpeechWorkerProtocolError.invalidRequest
+        }
+        let output = try await ttsEngine.synthesize(payload: payload)
+        return .synthesized(
+          request: request,
+          result: SpeechWorkerSynthesisResult(
+            audioFilePath: output.audioFileURL.path,
+            sampleRate: output.sampleRate,
+            channelCount: output.channelCount,
+            durationSeconds: output.durationSeconds
+          )
+        )
+      case .releaseTTSModel:
+        guard request.recognitionPayload == nil,
+          request.synthesisPayload == nil,
+          let payload = request.modelPreparationPayload
+        else {
+          throw SpeechWorkerProtocolError.invalidRequest
+        }
+        try await ttsEngine.releaseTTS(modelID: payload.modelID)
+        return .released(request: request, modelID: payload.modelID)
       }
     } catch {
       return .failure(request: request, code: Self.failureCode(for: error))
@@ -141,6 +204,10 @@ public actor MLXAudioSwiftSpeechWorkerService: SpeechWorkerRequestHandling {
         return .modelUnavailable
       case .invalidAudio:
         return .invalidAudio
+      case .invalidText:
+        return .invalidText
+      case .synthesisFailed:
+        return .synthesisFailed
       case .architectureUnsupported:
         return .recognitionFailed
       }
@@ -197,7 +264,11 @@ private actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
     self.store = store
   }
 
-  func prepare(modelID: String, downloadIfNeeded: Bool) async throws -> String {
+  func prepare(
+    modelID: String,
+    downloadIfNeeded: Bool,
+    progress: @escaping @Sendable (SpeechWorkerProgress) -> Void
+  ) async throws -> String {
     #if !arch(arm64)
       throw MLXAudioSwiftRuntimeError.architectureUnsupported
     #else
@@ -212,7 +283,15 @@ private actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
       let descriptor = MLXAudioModelCatalog.descriptor(for: id)
       let modelDirectory = try await store.modelDirectory(
         descriptor: descriptor,
-        downloadIfNeeded: downloadIfNeeded
+        downloadIfNeeded: downloadIfNeeded,
+        progress: progress
+      )
+      progress(
+        SpeechWorkerProgress(
+          phase: .loading,
+          completedUnitCount: 0,
+          totalUnitCount: 1
+        )
       )
       let model: Qwen3ASRModel
       do {
@@ -221,6 +300,13 @@ private actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
         throw MLXAudioSwiftRuntimeError.modelLoadFailed
       }
       loadedModel = LoadedModel(id: id, model: model)
+      progress(
+        SpeechWorkerProgress(
+          phase: .loading,
+          completedUnitCount: 1,
+          totalUnitCount: 1
+        )
+      )
       return id.rawValue
     #endif
   }
@@ -232,7 +318,11 @@ private actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
     keyterms: [String],
     downloadIfNeeded: Bool
   ) async throws -> MLXAudioSwiftInferenceOutput {
-    _ = try await prepare(modelID: modelID, downloadIfNeeded: downloadIfNeeded)
+    _ = try await prepare(
+      modelID: modelID,
+      downloadIfNeeded: downloadIfNeeded,
+      progress: { _ in }
+    )
     guard let loadedModel else {
       throw MLXAudioSwiftRuntimeError.modelLoadFailed
     }
@@ -265,19 +355,12 @@ private struct MLXAudioSwiftModelReceipt: Codable, Equatable {
   let modelID: String
   let repository: String
   let revision: String
+  let files: [MLXAudioModelFile]
 }
 
 struct MLXAudioSwiftModelStore: Sendable {
   static let receiptFileName = ".rill-mlx-audio-swift-model.json"
-  static let requiredFileNames = [
-    "config.json",
-    "model.safetensors",
-    "model.safetensors.index.json",
-    "preprocessor_config.json",
-    "tokenizer_config.json",
-    "vocab.json",
-    "merges.txt",
-  ]
+  static let generatedFileNames = ["tokenizer.json"]
 
   let modelRootURL: URL
   let hubCacheRootURL: URL
@@ -292,7 +375,8 @@ struct MLXAudioSwiftModelStore: Sendable {
 
   func modelDirectory(
     descriptor: MLXAudioModelDescriptor,
-    downloadIfNeeded: Bool
+    downloadIfNeeded: Bool,
+    progress: @escaping @Sendable (SpeechWorkerProgress) -> Void = { _ in }
   ) async throws -> URL {
     // Keep a Rill-owned, exact-revision publication directory. The
     // mlx-audio-swift 0.1.3 loader consumes it directly without re-resolving the
@@ -303,8 +387,24 @@ struct MLXAudioSwiftModelStore: Sendable {
       descriptor.repository.replacingOccurrences(of: "/", with: "_"),
       isDirectory: true
     )
-    if try Self.validatePublishedModel(at: publicationURL, descriptor: descriptor) {
-      return publicationURL
+    if FileManager.default.fileExists(atPath: publicationParentURL.path) {
+      try Self.preparePrivateDirectory(publicationParentURL)
+      try Self.removeAbandonedEntries(
+        in: publicationParentURL,
+        for: descriptor.id
+      )
+    }
+    if Self.isRegularDirectory(publicationURL) {
+      try Self.removeGeneratedFiles(at: publicationURL)
+      if try Self.validatePublishedModel(at: publicationURL, descriptor: descriptor) {
+        return publicationURL
+      }
+      if try Self.repairReceiptForAuthenticatedFiles(
+        at: publicationURL,
+        descriptor: descriptor
+      ) {
+        return publicationURL
+      }
     }
     guard downloadIfNeeded else {
       throw MLXAudioSwiftRuntimeError.modelUnavailable(descriptor.id.rawValue)
@@ -334,39 +434,38 @@ struct MLXAudioSwiftModelStore: Sendable {
     }
     let cache = HubCache(cacheDirectory: hubCacheRootURL)
     let client = HubClient(cache: cache)
+    progress(
+      SpeechWorkerProgress(
+        phase: .downloading,
+        completedUnitCount: 0,
+        totalUnitCount: Int64(descriptor.approximateDownloadByteCount)
+      )
+    )
     do {
       _ = try await client.downloadSnapshot(
         of: repository,
         kind: .model,
         to: stagingURL,
         revision: descriptor.revision,
-        matching: [
-          "*.json",
-          "*.safetensors",
-          "*.txt",
-          "*.model",
-          "*.tiktoken",
-          "*.jinja",
-          "*.jsonl",
-          "*.yaml",
-          "*.npz",
-        ],
+        matching: descriptor.files.map(\.path),
         localFilesOnly: false,
         maxConcurrentDownloads: 4,
-        progressHandler: nil
+        progressHandler: { hubProgress in
+          let total = max(hubProgress.totalUnitCount, 1)
+          progress(
+            SpeechWorkerProgress(
+              phase: .downloading,
+              completedUnitCount: min(max(hubProgress.completedUnitCount, 0), total),
+              totalUnitCount: total
+            )
+          )
+        }
       )
     } catch {
       throw MLXAudioSwiftRuntimeError.modelUnavailable(descriptor.id.rawValue)
     }
 
-    let receipt = MLXAudioSwiftModelReceipt(
-      schemaVersion: 1,
-      modelID: descriptor.id.rawValue,
-      repository: descriptor.repository,
-      revision: descriptor.revision
-    )
-    let receiptData = try JSONEncoder().encode(receipt)
-    try receiptData.write(
+    try Self.receiptData(for: descriptor).write(
       to: stagingURL.appendingPathComponent(Self.receiptFileName),
       options: .atomic
     )
@@ -396,59 +495,204 @@ struct MLXAudioSwiftModelStore: Sendable {
     return publicationURL
   }
 
+  static func removeAbandonedEntries(
+    in publicationParentURL: URL,
+    for modelID: MLXAudioModelID
+  ) throws {
+    let prefixes = [
+      ".\(modelID.rawValue).",
+    ]
+    let suffixes = [".partial", ".replaced"]
+    let entries = try FileManager.default.contentsOfDirectory(
+      at: publicationParentURL,
+      includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+      options: []
+    )
+    for entry in entries {
+      let name = entry.lastPathComponent
+      guard prefixes.contains(where: name.hasPrefix),
+        suffixes.contains(where: name.hasSuffix)
+      else {
+        continue
+      }
+      try FileManager.default.removeItem(at: entry)
+    }
+  }
+
   static func validatePublishedModel(
+    at directory: URL,
+    descriptor: MLXAudioModelDescriptor,
+    verifyDigests: Bool = true
+  ) throws -> Bool {
+    guard isRegularDirectory(directory) else {
+      return false
+    }
+    let receiptURL = directory.appendingPathComponent(receiptFileName)
+    let receiptValues = try? receiptURL.resourceValues(
+      forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+    )
+    guard receiptValues?.isRegularFile == true,
+      receiptValues?.isSymbolicLink != true,
+      let receiptSize = receiptValues?.fileSize,
+      receiptSize > 0,
+      receiptSize <= 32 * 1_024
+    else {
+      return false
+    }
+    guard let receipt = try? JSONDecoder().decode(
+      MLXAudioSwiftModelReceipt.self,
+      from: Data(contentsOf: receiptURL)
+    ), receipt == Self.receipt(for: descriptor)
+    else {
+      return false
+    }
+    return try validateFileInventory(
+      at: directory,
+      descriptor: descriptor,
+      verifyDigests: verifyDigests
+    )
+  }
+
+  static func receiptData(
+    for descriptor: MLXAudioModelDescriptor
+  ) throws -> Data {
+    try JSONEncoder().encode(receipt(for: descriptor))
+  }
+
+  static func repairReceiptForAuthenticatedFiles(
     at directory: URL,
     descriptor: MLXAudioModelDescriptor
   ) throws -> Bool {
-    var isDirectory: ObjCBool = false
-    guard FileManager.default.fileExists(
-      atPath: directory.path,
-      isDirectory: &isDirectory
-    ), isDirectory.boolValue
+    guard try validateFileInventory(
+      at: directory,
+      descriptor: descriptor,
+      verifyDigests: true
+    ) else {
+      return false
+    }
+    try receiptData(for: descriptor).write(
+      to: directory.appendingPathComponent(receiptFileName),
+      options: .atomic
+    )
+    return try validatePublishedModel(
+      at: directory,
+      descriptor: descriptor,
+      verifyDigests: false
+    )
+  }
+
+  static func removeGeneratedFiles(at directory: URL) throws {
+    guard isRegularDirectory(directory) else { return }
+    let generatedNames = Set(generatedFileNames)
+    let entries = try FileManager.default.contentsOfDirectory(
+      at: directory,
+      includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+      options: []
+    )
+    for entry in entries where generatedNames.contains(entry.lastPathComponent) {
+      let values = try entry.resourceValues(
+        forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
+      )
+      guard values.isRegularFile == true || values.isSymbolicLink == true else {
+        continue
+      }
+      try FileManager.default.removeItem(at: entry)
+    }
+  }
+
+  private static func receipt(
+    for descriptor: MLXAudioModelDescriptor
+  ) -> MLXAudioSwiftModelReceipt {
+    MLXAudioSwiftModelReceipt(
+      schemaVersion: 2,
+      modelID: descriptor.id.rawValue,
+      repository: descriptor.repository,
+      revision: descriptor.revision,
+      files: descriptor.files
+    )
+  }
+
+  private static func validateFileInventory(
+    at directory: URL,
+    descriptor: MLXAudioModelDescriptor,
+    verifyDigests: Bool
+  ) throws -> Bool {
+    guard isRegularDirectory(directory) else { return false }
+    let fileNames = descriptor.files.map(\.path)
+    guard
+      !fileNames.isEmpty,
+      Set(fileNames).count == fileNames.count,
+      fileNames.allSatisfy({
+        !$0.isEmpty
+          && !$0.contains("/")
+          && !$0.contains("\\")
+          && $0 != receiptFileName
+          && !generatedFileNames.contains($0)
+      })
     else {
       return false
     }
-    let values = try directory.resourceValues(
-      forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+
+    let entries = try FileManager.default.contentsOfDirectory(
+      at: directory,
+      includingPropertiesForKeys: nil,
+      options: []
     )
-    guard values.isDirectory == true, values.isSymbolicLink != true else {
+    let expectedNames = Set(fileNames + [receiptFileName])
+    guard entries.count == expectedNames.count,
+      Set(entries.map(\.lastPathComponent)) == expectedNames
+    else {
       return false
     }
-    for fileName in requiredFileNames {
-      let fileURL = directory.appendingPathComponent(fileName)
-      let fileValues = try fileURL.resourceValues(
+
+    for file in descriptor.files {
+      let fileURL = directory.appendingPathComponent(file.path)
+      let values = try fileURL.resourceValues(
         forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
       )
-      guard fileValues.isRegularFile == true,
-        fileValues.isSymbolicLink != true,
-        (fileValues.fileSize ?? 0) > 0
+      guard
+        values.isRegularFile == true,
+        values.isSymbolicLink != true,
+        let fileSize = values.fileSize,
+        fileSize >= 0,
+        UInt64(fileSize) == file.byteCount
       else {
         return false
       }
+      if verifyDigests,
+        try sha256(fileURL) != file.sha256.lowercased()
+      {
+        return false
+      }
     }
-    let receiptURL = directory.appendingPathComponent(receiptFileName)
-    let receiptValues = try receiptURL.resourceValues(
-      forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
-    )
-    guard receiptValues.isRegularFile == true,
-      receiptValues.isSymbolicLink != true,
-      let receiptSize = receiptValues.fileSize,
-      receiptSize > 0,
-      receiptSize <= 16 * 1_024
-    else {
-      return false
-    }
-    let receipt = try JSONDecoder().decode(
-      MLXAudioSwiftModelReceipt.self,
-      from: Data(contentsOf: receiptURL)
-    )
-    return receipt
-      == MLXAudioSwiftModelReceipt(
-        schemaVersion: 1,
-        modelID: descriptor.id.rawValue,
-        repository: descriptor.repository,
-        revision: descriptor.revision
+
+    let receiptValues = try directory.appendingPathComponent(receiptFileName)
+      .resourceValues(
+        forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
       )
+    return receiptValues.isRegularFile == true
+      && receiptValues.isSymbolicLink != true
+      && (receiptValues.fileSize ?? 0) > 0
+      && (receiptValues.fileSize ?? 0) <= 32 * 1_024
+  }
+
+  private static func isRegularDirectory(_ directory: URL) -> Bool {
+    let values = try? directory.resourceValues(
+      forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+    )
+    return values?.isDirectory == true && values?.isSymbolicLink != true
+  }
+
+  private static func sha256(_ fileURL: URL) throws -> String {
+    let handle = try FileHandle(forReadingFrom: fileURL)
+    defer { try? handle.close() }
+    var hasher = SHA256()
+    while true {
+      let data = try handle.read(upToCount: 4 * 1_024 * 1_024) ?? Data()
+      if data.isEmpty { break }
+      hasher.update(data: data)
+    }
+    return hasher.finalize().map { String(format: "%02x", $0) }.joined()
   }
 
   private static func preparePrivateDirectory(_ directory: URL) throws {

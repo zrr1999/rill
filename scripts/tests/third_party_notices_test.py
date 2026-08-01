@@ -28,6 +28,10 @@ APP_ICON_SOURCE = (
 )
 PRIVACY_NOTICE = PROJECT_DIR / "PRIVACY.md"
 LOCAL_MODEL_NOTICES = PROJECT_DIR / "LOCAL_MODEL_NOTICES.md"
+WAKE_WORD_MODEL_CATALOG = (
+    PROJECT_DIR / "Sources" / "RillProviders" / "WakeWordModelCatalog.swift"
+)
+MLX_RESOURCE_BUNDLE_NAME = "mlx-swift_Cmlx.bundle"
 DEPENDENCY_MANIFEST = PROJECT_DIR / "scripts" / "third_party_notices_manifest.json"
 PACKAGE_MANIFEST = PROJECT_DIR / "Package.swift"
 SHERPA_BUILD_SCRIPT = PROJECT_DIR / "scripts" / "build_sherpa_onnx_runtime.sh"
@@ -59,6 +63,13 @@ SILERO_VAD_LICENSE_SHA256 = (
 )
 SILERO_VAD_UPSTREAM_LICENSE_SHA256 = (
     "2e63e9a38b6e8fc0c7bc37ce174caca1862870856c6daf5697cfb785e925520b"
+)
+WAKE_WORD_ARCHIVE_SHA256 = (
+    "68447f4fbc67e70eee3a93961f36e81e98f47aef73ce7e7ca00885c6cd3616a6"
+)
+WAKE_WORD_LICENSE_REVISION = "541d04e28be57efc6fdf46a341da09e043a37b52"
+WAKE_WORD_LICENSE_SHA256 = (
+    "34d92bb4dc9fb259efb67f329d2cd68f6e0a6226121a694a3b6b4c748378559c"
 )
 
 
@@ -189,6 +200,12 @@ class Fixture:
         sherpa_resources = sherpa_bundle / "Contents" / "Resources"
         shutil.copy2(SILERO_VAD_RESOURCE, sherpa_resources / SILERO_VAD_RESOURCE.name)
         shutil.copy2(SILERO_VAD_LICENSE, sherpa_resources / SILERO_VAD_LICENSE.name)
+
+        mlx_bundle = build_dir / MLX_RESOURCE_BUNDLE_NAME
+        create_bundle(mlx_bundle, "mlx-swift_Cmlx")
+        (mlx_bundle / "Contents" / "Resources" / "default.metallib").write_bytes(
+            b"fixture metal library"
+        )
         return build_dir
 
 
@@ -211,6 +228,25 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertIn("Sample dependency license", content)
         checked = run(self.fixture.generator_command(check=True))
         self.assertEqual(checked.returncode, 0, checked.stderr)
+
+    def test_generator_can_pin_a_license_excerpt_by_line_range(self) -> None:
+        first_line = b"Sample dependency license\n"
+        manifest = json.loads(self.fixture.manifest.read_text(encoding="utf-8"))
+        evidence = manifest["packages"][0]["evidence"][0]
+        evidence.update(
+            {
+                "sha256": hashlib.sha256(first_line).hexdigest(),
+                "lineStart": 1,
+                "lineEnd": 1,
+            }
+        )
+        write_json(self.fixture.manifest, manifest)
+
+        self.fixture.generate()
+        content = self.fixture.output.read_text(encoding="utf-8")
+        self.assertIn("`LICENSE#L1-L1`", content)
+        self.assertIn("Sample dependency license", content)
+        self.assertNotIn("Copyright Example", content)
 
     def test_check_rejects_missing_or_stale_generated_output(self) -> None:
         missing = run(self.fixture.generator_command(check=True))
@@ -525,6 +561,27 @@ EOF
             packaged_speech_worker.read_bytes(),
             (build_dir / "RillSpeechWorker").read_bytes(),
         )
+        packaged_mlx_bundle = (
+            app_bundle / "Contents" / "Helpers" / MLX_RESOURCE_BUNDLE_NAME
+        )
+        self.assertTrue(packaged_mlx_bundle.is_dir())
+        self.assertFalse(
+            (
+                app_bundle / "Contents" / "Resources" / MLX_RESOURCE_BUNDLE_NAME
+            ).exists()
+        )
+        self.assertEqual(
+            (
+                packaged_mlx_bundle / "Contents" / "Resources" / "default.metallib"
+            ).read_bytes(),
+            (
+                build_dir
+                / MLX_RESOURCE_BUNDLE_NAME
+                / "Contents"
+                / "Resources"
+                / "default.metallib"
+            ).read_bytes(),
+        )
         packaged = app_bundle / "Contents" / "Resources" / "THIRD_PARTY_NOTICES.md"
         self.assertEqual(packaged.read_bytes(), self.fixture.output.read_bytes())
         packaged_privacy_notice = (
@@ -746,6 +803,38 @@ EOF
         ):
             self.assertIn(pinned_value, local_notices)
         self.assertIn("does not suppress noise", local_notices)
+
+    def test_repository_wake_word_license_evidence_is_pinned_and_packaged(
+        self,
+    ) -> None:
+        catalog = WAKE_WORD_MODEL_CATALOG.read_text(encoding="utf-8")
+        local_notices = LOCAL_MODEL_NOTICES.read_text(encoding="utf-8")
+        third_party_notices = (PROJECT_DIR / "THIRD_PARTY_NOTICES.md").read_text(
+            encoding="utf-8"
+        )
+
+        for pinned_value in (
+            WAKE_WORD_ARCHIVE_SHA256,
+            WAKE_WORD_LICENSE_REVISION,
+            WAKE_WORD_LICENSE_SHA256,
+            "encoder-epoch-13-avg-2-chunk-8-left-64.int8.onnx",
+            "decoder-epoch-13-avg-2-chunk-8-left-64.onnx",
+            "joiner-epoch-13-avg-2-chunk-8-left-64.int8.onnx",
+            'licenseExpression: "Apache-2.0"',
+            "upstreamNotice: .notProvidedByPublisher",
+        ):
+            self.assertIn(pinned_value, catalog)
+
+        for pinned_value in (
+            WAKE_WORD_ARCHIVE_SHA256,
+            WAKE_WORD_LICENSE_REVISION,
+            WAKE_WORD_LICENSE_SHA256,
+            "Apache License 2.0",
+            "no `NOTICE` file was provided",
+            "`left-64`",
+        ):
+            self.assertIn(pinned_value, local_notices)
+        self.assertIn("Apache License", third_party_notices)
 
     def test_repository_native_runtime_inventory_matches_reviewed_build(self) -> None:
         manifest = json.loads(DEPENDENCY_MANIFEST.read_text(encoding="utf-8"))

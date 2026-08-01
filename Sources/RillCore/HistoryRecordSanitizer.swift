@@ -30,6 +30,24 @@ public enum HistoryFailureSanitizer {
         "Speech recognition took too long. This run was stopped; please try again."
     public static let recognitionRecoveryPendingMessage =
         "The previous recognition operation is still finishing. Please wait a moment or switch recognition engines."
+    public static let openAICredentialUnavailableMessage =
+        "The OpenAI API key is unavailable. Open Settings, save a key, and retry."
+    public static let openAIConfigurationInvalidMessage =
+        "The OpenAI endpoint or model configuration is invalid. Open Settings and retry."
+    public static let openAIAuthenticationFailedMessage =
+        "OpenAI rejected the saved API key. Verify it in Settings and retry."
+    public static let openAIRateLimitedMessage =
+        "OpenAI is temporarily rate limited. Wait a moment and retry."
+    public static let openAITimedOutMessage =
+        "OpenAI text polishing took too long. This run was stopped; please retry."
+    public static let openAINetworkFailedMessage =
+        "OpenAI could not be reached. Check the network and retry."
+    public static let openAIRefusedMessage =
+        "OpenAI declined to rewrite this text. No text was inserted."
+    public static let openAIIncompleteMessage =
+        "OpenAI returned an incomplete rewrite. No text was inserted."
+    public static let openAIInvalidResponseMessage =
+        "OpenAI returned an invalid rewrite. No text was inserted."
 
     public static func sanitize(_ message: String?) -> String? {
         guard let message else { return nil }
@@ -56,17 +74,22 @@ public enum HistoryFailureSanitizer {
         if trimmed == recognitionRecoveryPendingMessage {
             return recognitionRecoveryPendingMessage
         }
+        if [
+            openAICredentialUnavailableMessage,
+            openAIConfigurationInvalidMessage,
+            openAIAuthenticationFailedMessage,
+            openAIRateLimitedMessage,
+            openAITimedOutMessage,
+            openAINetworkFailedMessage,
+            openAIRefusedMessage,
+            openAIIncompleteMessage,
+            openAIInvalidResponseMessage,
+        ].contains(trimmed) {
+            return trimmed
+        }
 
         let normalized = trimmed.lowercased()
 
-        if normalized.contains("deepgram") &&
-            (normalized.contains("api key") || normalized.contains("api_key")) {
-            return "The Deepgram API key is unavailable. Open Settings, save a key, and retry."
-        }
-        if normalized.contains("deepgram") &&
-            (normalized.contains("url") || normalized.contains("endpoint") || normalized.contains("https")) {
-            return "The Deepgram endpoint configuration is invalid. Open Settings and retry."
-        }
         if normalized.contains("microphone") &&
             (normalized.contains("permission") || normalized.contains("access") || normalized.contains("denied")) {
             return "Microphone access is required. Grant access in System Settings and retry."

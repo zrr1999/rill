@@ -1,4 +1,5 @@
 import AppKit
+import Dispatch
 import Foundation
 import RillCore
 import RillPersistence
@@ -15,6 +16,7 @@ struct AppContainer {
   let recordingSessionManager: RecordingSessionManager
   let shutdown: @Sendable () async -> Void
   let cancelLiveAudio: @Sendable (UUID) async -> Void
+  let removeLiveAudioDurationLimit: @Sendable (UUID) async -> Bool
   let useClipboardItem:
     @Sendable (
       ClipboardHistoryItem,
@@ -30,12 +32,41 @@ struct AppContainer {
 
 @MainActor
 enum AppBootstrap {
+  nonisolated static var ttsModelOptions: [TTSModelOption] {
+    SpeechSynthesisModelCatalog.supportedModels.map { descriptor in
+      let precision =
+        switch descriptor.id {
+        case .qwen3TTS06BCustomVoiceInt4: "INT4"
+        case .qwen3TTS06BCustomVoiceInt8: "INT8"
+        case .qwen3TTS06BCustomVoiceBF16: "BF16"
+        }
+      return TTSModelOption(
+        id: descriptor.id.rawValue,
+        precision: precision,
+        approximateDownloadByteCount: descriptor.approximateDownloadByteCount,
+        isDefault: descriptor.id == SpeechSynthesisModelCatalog.defaultModel.id
+      )
+    }
+  }
+
+  nonisolated static func displayedTTSPreparationProgress(
+    _ update: SpeechWorkerProgress
+  ) -> Double {
+    switch update.phase {
+    case .downloading:
+      return update.fractionCompleted * 0.95
+    case .loading:
+      return 0.95 + (update.fractionCompleted * 0.05)
+    }
+  }
+
   nonisolated static var distributableLocalSpeechModels: [LocalSpeechModelDescriptor] {
     var models = [
       LocalSpeechModelDescriptor(
         id: SherpaOnnxModelID.qwen3ASR06BInt8.rawValue,
-        englishName: "16 GB · Qwen3-ASR 0.6B INT8 — Default",
-        simplifiedChineseName: "16 GB · Qwen3-ASR 0.6B INT8（默认）",
+        engine: .sherpaOnnx,
+        englishName: "Qwen3-ASR · 0.6B · INT8",
+        simplifiedChineseName: "Qwen3-ASR · 0.6B · INT8",
         englishDetail:
           "Best default for Simplified Chinese with some English mixing; suitable for 16 GB Macs · about 838 MB final-model download",
         simplifiedChineseDetail:
@@ -52,9 +83,29 @@ enum AppBootstrap {
     #if arch(arm64)
       models.append(
         LocalSpeechModelDescriptor(
+          id: MLXAudioModelID.qwen3ASR06BInt8.rawValue,
+          engine: .mlxAudioSwift,
+          englishName: "Qwen3-ASR · 0.6B · INT8",
+          simplifiedChineseName: "Qwen3-ASR · 0.6B · INT8",
+          englishDetail:
+            "Lower-memory Qwen final transcription on Apple Silicon (8 GB minimum, 16 GB recommended) · about 1.01 GB model download · native Swift MLX backend",
+          simplifiedChineseDetail:
+            "面向 Apple Silicon 的轻量千问最终转写模型（最低 8 GB，建议 16 GB）· 模型下载约 1.01 GB · 原生 Swift MLX 后端",
+          forcesAutomaticLanguageDetection: true,
+          category: .intelligent,
+          parameterCountMillions: 600,
+          quantization: .int8,
+          minimumSystemMemoryGiB: 8,
+          recommendedSystemMemoryGiB: 16,
+          hardwareRecommendationPriority: 20
+        )
+      )
+      models.append(
+        LocalSpeechModelDescriptor(
           id: MLXAudioModelID.qwen3ASR17BInt8.rawValue,
-          englishName: "24 GB+ · Qwen3-ASR 1.7B 8bit — MLX GPU",
-          simplifiedChineseName: "24 GB+ · Qwen3-ASR 1.7B 8bit（MLX GPU）",
+          engine: .mlxAudioSwift,
+          englishName: "Qwen3-ASR · 1.7B · INT8",
+          simplifiedChineseName: "Qwen3-ASR · 1.7B · INT8",
           englishDetail:
             "Higher-capacity Chinese/English final transcription on Apple Silicon (16 GB minimum, 24 GB recommended) · about 2.46 GB model download · native Swift MLX backend",
           simplifiedChineseDetail:
@@ -65,7 +116,7 @@ enum AppBootstrap {
           quantization: .int8,
           minimumSystemMemoryGiB: 16,
           recommendedSystemMemoryGiB: 24,
-          hardwareRecommendationPriority: 20
+          hardwareRecommendationPriority: 30
         )
       )
     #endif
@@ -121,16 +172,6 @@ enum AppBootstrap {
     var installationConfiguration = configuration
     installationConfiguration.prewarm = false
     return installationConfiguration
-  }
-
-  nonisolated static func deepgramConfiguration(
-    from settingsStore: (any SettingsStore)?,
-    credentialStore: (any SecureCredentialStore)?
-  ) async -> DeepgramRecognizer.Configuration? {
-    await AppSettingsLoader.loadDeepgramConfiguration(
-      from: settingsStore,
-      credentialStore: credentialStore
-    )
   }
 
   nonisolated static func stopStartupTasks(
@@ -247,6 +288,21 @@ enum AppBootstrap {
     }
   }
 
+  nonisolated static func purgeRetiredCloudSpeechConfiguration(
+    credentialStore: any SecureCredentialStore,
+    settingsStore: (any SettingsStore)?
+  ) async {
+    try? await credentialStore.removeCredential(for: .retiredDeepgramAPIKey)
+    guard let settingsStore else { return }
+    for key in [
+      AppSettingKey.retiredDeepgramBaseURL,
+      .retiredDeepgramModel,
+      .retiredDeepgramLanguage,
+    ] {
+      try? await settingsStore.removeValue(forKey: key)
+    }
+  }
+
   nonisolated static func makeClipboardItemRunAuthorization(
     deliveryStack: DeliveryStack,
     privacyRunGate: PrivacyRunGate,
@@ -292,52 +348,18 @@ enum AppBootstrap {
     }
   }
 
-  nonisolated static func makeDeepgramDiagnosticPrivacyAuthorization(
-    privacyRunGate: PrivacyRunGate,
-    privacyContextProvider: @escaping @Sendable () async -> ContextSnapshot
-  ) -> @Sendable (WorkflowDefinition) async throws -> Void {
-    { workflow in
-      _ = try await privacyRunGate.captureAuthorizedContext(
-        privacyContextProvider: privacyContextProvider,
-        contextProvider: { _ in await privacyContextProvider() },
-        workflow: workflow
-      )
-    }
-  }
-
-  nonisolated static func makeDeepgramDiagnosticPrivacyPreflight(
-    privacyRunGate: PrivacyRunGate,
-    privacyContextProvider: @escaping @Sendable () async -> ContextSnapshot
-  ) -> @Sendable (WorkflowDefinition) async throws -> Void {
-    { workflow in
-      let evaluation = await privacyRunGate.evaluate(
-        context: await privacyContextProvider(),
-        workflow: workflow
-      )
-      guard evaluation.status == .blocked else { return }
-      if evaluation.reasons.contains(.privacySettingsUnavailable) {
-        throw PrivacyRunGate.GateError.settingsUnavailable
-      }
-      if evaluation.reasons.contains(.processingDestinationUnavailable) {
-        throw PrivacyRunGate.GateError.processingDestinationUnavailable
-      }
-      throw PrivacyRunGate.GateError.cloudProcessingBlocked
-    }
-  }
-
   nonisolated static func makeRecognitionRunPreflight(
     trustedLocalModelIdentifiers: Set<String> =
       LocalSpeechModelCatalog.distributableModelIdentifiers,
     defaultLocalModelIdentifier: String = LocalSpeechModelCatalog.defaultModelIdentifier,
     localSpeechSettingsProvider:
-      @escaping @Sendable () async throws -> LocalSpeechSettings = { .init() },
-    deepgramConfigurationProvider: @escaping @Sendable () async -> DeepgramRecognizer.Configuration?
+      @escaping @Sendable () async throws -> LocalSpeechSettings = { .init() }
   ) -> RecognitionRunPreflight {
     { workflow in
       if let issue = WorkflowExecutionPolicy.issue(for: workflow) {
         throw SessionCoordinator.SessionError.unsupportedWorkflow(issue)
       }
-      if workflow.pipeline.recognizerID == "sherpa-onnx.local" {
+      if workflow.plan.setup.speechRoute?.recognizerID == "sherpa-onnx.local" {
         let settings = try await localSpeechSettingsProvider()
         let configuredModelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
           settings: settings
@@ -361,12 +383,6 @@ enum AppBootstrap {
           throw LocalSpeechModelSelectionError.unsupportedModelIdentifier(modelOverride)
         }
       }
-      if workflow.pipeline.recognizerID == SherpaStreamingCaptureRecognizer.recognizerID {
-        return
-      }
-      guard workflow.pipeline.recognizerID == "deepgram.prerecorded" else { return }
-      let configuration = await deepgramConfigurationProvider() ?? .init()
-      _ = try DeepgramConfigurationValidator.validate(configuration)
     }
   }
 
@@ -412,10 +428,10 @@ enum AppBootstrap {
     )
   }
 
-  /// Keeps model readiness authoritative while opportunistically warming the
-  /// already-authorized, stopped audio frontend. Audio preparation is
-  /// deliberately best-effort at the service boundary and cannot change the
-  /// prepared model result.
+  /// Keeps model readiness authoritative while opportunistically preparing the
+  /// already-authorized, stopped audio frontend. The frontend uses minimum
+  /// stopped-state ducking and is retained so the first recording does not pay
+  /// VoiceProcessingIO graph configuration latency.
   nonisolated static func prepareLocalSpeechModelAndAudioFrontend(
     prewarmAudioFrontend: Bool,
     prepareModel: @Sendable () async throws -> String,
@@ -571,23 +587,6 @@ enum AppBootstrap {
     )
   }
 
-  nonisolated static func deepgramHintDiagnostic(
-    for report: DeepgramHintDiagnosticReport
-  ) -> DiagnosticEvent {
-    DiagnosticEvent(
-      subsystem: .providers,
-      level: report.outcome == .unsupportedModel ? .warning : .info,
-      event: "provider.deepgram.keyterms",
-      message: "Deepgram recognition hint planning completed.",
-      metadata: [
-        "count": String(report.count),
-        "omittedCount": String(report.omittedCount),
-        "outcome": report.outcome.rawValue,
-        "source": report.source.rawValue,
-      ]
-    )
-  }
-
   nonisolated static func useClipboardItem(
     _ item: ClipboardHistoryItem,
     target: ClipboardPasteTargetIdentity,
@@ -727,6 +726,7 @@ private struct PlatformServices {
   let permissionGate: PermissionGate
   let contextProvider: BuiltinContextProvider
   let credentialStore: any SecureCredentialStore
+  let recordingCuePlayer: RecordingInteractionCuePlayer
 }
 
 private struct ProviderServices {
@@ -736,7 +736,7 @@ private struct ProviderServices {
   let localSpeechSettingsSource: LocalSpeechSettingsSource
   let sherpaOnnxConfigurationProvider:
     @Sendable () async throws -> SherpaOnnxRecognizer.Configuration
-  let deepgramConfigurationProvider: @Sendable () async -> DeepgramRecognizer.Configuration?
+  let openAISettingsProvider: @Sendable () async throws -> OpenAISettings
   let localSpeechAvailability: LocalSpeechAvailability
   let trustedLocalSpeechModels: [LocalSpeechModelDescriptor]
   let defaultLocalSpeechModelIdentifier: String?
@@ -748,6 +748,12 @@ private struct ProviderServices {
   let localSpeechRecognizer: RoutedLocalSpeechRecognizer
   let streamingPreviewService: SherpaStreamingPreviewService
   let workflowAudioCaptureService: RealtimeAudioCaptureService
+  let wakeWordTriggerSource: WakeWordTriggerSource?
+  let speechOutputAction: any OutputAction
+  let qwen3TTSSynthesizer: Qwen3TTSSpeechSynthesizer
+  let ttsModelSelectionSource: SpeechSynthesisModelSelectionSource
+  let speechPlaybackService: AVSpeechPlaybackService
+  let ttsMemoryPressureSource: DispatchSourceMemoryPressure
 }
 
 private struct Registries {
@@ -763,7 +769,7 @@ private struct RuntimeServices {
   let stackPasteController: StackPasteController
   let recordingSessionManager: RecordingSessionManager
   let workflowAudioRunController: WorkflowAudioRunController
-  let deepgramAudioTestController: DeepgramAudioTestController
+  let wakeWordCoordinator: WakeWordCoordinator?
   let failedAudioRecoveryController: FailedAudioRecoveryController?
   let clipboardGroupEventScheduler: ClipboardGroupEventScheduler
   let privacyRunGate: PrivacyRunGate
@@ -815,6 +821,35 @@ private final class GlobalInputCapabilityBridge {
 }
 
 @MainActor
+private final class SpeechPlaybackPresentationBridge {
+  weak var model: AppModel?
+  private var isActive = false
+
+  func update(isActive: Bool) {
+    self.isActive = isActive
+    model?.updateSpeechPlaybackState(isActive: isActive)
+  }
+
+  func attach(_ model: AppModel) {
+    self.model = model
+    model.updateSpeechPlaybackState(isActive: isActive)
+  }
+}
+
+@MainActor
+private final class CloudProcessingAuthorizationBridge {
+  weak var model: AppModel?
+
+  func attach(_ model: AppModel) {
+    self.model = model
+  }
+
+  func grant(_ authorization: CloudProcessingAuthorization) -> Bool {
+    model?.grantCloudProcessingAuthorization(authorization) ?? false
+  }
+}
+
+@MainActor
 private enum AppContainerFactory {
   private typealias RecognitionOptionsProvider =
     @Sendable (
@@ -828,11 +863,17 @@ private enum AppContainerFactory {
 
   static func makeContainer() -> AppContainer {
     let workflowSelectionBridge = WorkflowSelectionBridge()
+    let speechPlaybackPresentationBridge = SpeechPlaybackPresentationBridge()
+    let cloudProcessingAuthorizationBridge = CloudProcessingAuthorizationBridge()
     let core = makeCoreServices(
       workflowSelectionBridge: workflowSelectionBridge
     )
     let platform = makePlatformServices(core: core)
-    let providers = makeProviderServices(core: core, platform: platform)
+    let providers = makeProviderServices(
+      core: core,
+      platform: platform,
+      speechPlaybackPresentationBridge: speechPlaybackPresentationBridge
+    )
     let registries = makeRegistries(
       core: core,
       platform: platform,
@@ -843,7 +884,8 @@ private enum AppContainerFactory {
       platform: platform,
       providers: providers,
       registries: registries,
-      workflowSelectionBridge: workflowSelectionBridge
+      workflowSelectionBridge: workflowSelectionBridge,
+      cloudProcessingAuthorizationBridge: cloudProcessingAuthorizationBridge
     )
     let model = AppModelFactory.makeModel(
       core: core,
@@ -855,6 +897,13 @@ private enum AppContainerFactory {
     runtime.workflowSelectionBridge.model = model
     runtime.clipboardCaptureControlBridge.model = model
     runtime.globalInputCapabilityBridge.attach(model)
+    speechPlaybackPresentationBridge.attach(model)
+    cloudProcessingAuthorizationBridge.attach(model)
+    model.installWorkflowLibraryChangedAction {
+      Task {
+        await runtime.wakeWordCoordinator?.reconcile()
+      }
+    }
     model.installGlobalInputActions(
       request: {
         _ = platform.permissionGate.requestGlobalInputAccess()
@@ -975,12 +1024,16 @@ private enum AppContainerFactory {
       injectionEngine: injectionEngine,
       permissionGate: PermissionGate(),
       contextProvider: BuiltinContextProvider(focusTracker: focusTracker, pasteboard: pasteboard),
-      credentialStore: credentialStore
+      credentialStore: credentialStore,
+      recordingCuePlayer: RecordingInteractionCuePlayer()
     )
   }
 
-  private static func makeProviderServices(core: CoreServices, platform: PlatformServices)
-    -> ProviderServices
+  private static func makeProviderServices(
+    core: CoreServices,
+    platform: PlatformServices,
+    speechPlaybackPresentationBridge: SpeechPlaybackPresentationBridge
+  ) -> ProviderServices
   {
     let managedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(
       diagnosticReporter: { diagnostic in
@@ -1064,8 +1117,8 @@ private enum AppContainerFactory {
             defaultModelIdentifier: defaultTrustedModelIdentifier
           )
         }
-    let deepgramConfigurationProvider: @Sendable () async -> DeepgramRecognizer.Configuration? = {
-      await AppSettingsLoader.loadDeepgramConfiguration(
+    let openAISettingsProvider: @Sendable () async throws -> OpenAISettings = {
+      try await AppSettingsLoader.loadOpenAISettings(
         from: core.persistence.settingsStore,
         credentialStore: platform.credentialStore
       )
@@ -1101,16 +1154,59 @@ private enum AppContainerFactory {
     )
     let streamingPreviewService = SherpaStreamingPreviewService()
     let workflowAudioCaptureService = RealtimeAudioCaptureService(
-      deepgramConfigurationProvider: deepgramConfigurationProvider,
-      deepgramHintDiagnosticReporter: { report in
-        guard report.outcome != .noneRequested else { return }
-        await core.diagnostics.record(AppBootstrap.deepgramHintDiagnostic(for: report))
-      },
       streamingPreviewService: streamingPreviewService,
       liveUpdateHandler: { snapshot in
         await core.eventBus.publish(.liveSubtitleUpdated(snapshot))
       },
-      cleanupOwner: managedTemporaryAudioCleanupOwner
+      cleanupOwner: managedTemporaryAudioCleanupOwner,
+      wakeWordSpeechStartedHandler: {
+        Task { @MainActor in
+          platform.recordingCuePlayer.stop()
+        }
+      }
+    )
+    let ttsModelSelectionSource = SpeechSynthesisModelSelectionSource()
+    let qwen3TTSSynthesizer = Qwen3TTSSpeechSynthesizer(
+      supervisor: speechWorkerSupervisor,
+      selectionSource: ttsModelSelectionSource
+    )
+    let ttsMemoryPressureSource = DispatchSource.makeMemoryPressureSource(
+      eventMask: [.warning, .critical],
+      queue: .global(qos: .utility)
+    )
+    ttsMemoryPressureSource.setEventHandler {
+      Task {
+        // ASR and TTS have independent worker instances; TTS is the first
+        // optional model released when the process receives memory pressure.
+        await qwen3TTSSynthesizer.releaseResources()
+      }
+    }
+    ttsMemoryPressureSource.resume()
+    let speechPlaybackService = AVSpeechPlaybackService()
+    let wakeWordTriggerSource: WakeWordTriggerSource?
+    if let sharedVoiceInputHub = workflowAudioCaptureService.sharedVoiceInputHub {
+      wakeWordTriggerSource = WakeWordTriggerSource(
+        hub: sharedVoiceInputHub,
+        recognizer: localSpeechRecognizer
+      )
+    } else {
+      wakeWordTriggerSource = nil
+    }
+    let speechOutputAction = SpeakTextAction(
+      synthesizer: AutomaticSpeechSynthesizer(
+        preferred: qwen3TTSSynthesizer,
+        fallback: SystemSpeechSynthesizer()
+      ),
+      playback: speechPlaybackService,
+      playbackStateChanged: { isPlaying in
+        await speechPlaybackPresentationBridge.update(isActive: isPlaying)
+        guard let wakeWordTriggerSource else { return }
+        if isPlaying {
+          await wakeWordTriggerSource.suspend(for: .speechPlayback)
+        } else {
+          await wakeWordTriggerSource.resume(from: .speechPlayback)
+        }
+      }
     )
     return ProviderServices(
       diagnosticsAudioCaptureService: AVAudioCaptureService(
@@ -1120,7 +1216,7 @@ private enum AppContainerFactory {
       markdownFileAppendCoordinator: markdownFileAppendCoordinator,
       localSpeechSettingsSource: localSpeechSettingsSource,
       sherpaOnnxConfigurationProvider: sherpaOnnxConfigurationProvider,
-      deepgramConfigurationProvider: deepgramConfigurationProvider,
+      openAISettingsProvider: openAISettingsProvider,
       localSpeechAvailability: localSpeechAvailability,
       trustedLocalSpeechModels: trustedLocalSpeechModels,
       defaultLocalSpeechModelIdentifier: defaultTrustedModelIdentifier,
@@ -1131,7 +1227,13 @@ private enum AppContainerFactory {
       mlxAudioSwiftRecognizer: mlxAudioSwiftRecognizer,
       localSpeechRecognizer: localSpeechRecognizer,
       streamingPreviewService: streamingPreviewService,
-      workflowAudioCaptureService: workflowAudioCaptureService
+      workflowAudioCaptureService: workflowAudioCaptureService,
+      wakeWordTriggerSource: wakeWordTriggerSource,
+      speechOutputAction: speechOutputAction,
+      qwen3TTSSynthesizer: qwen3TTSSynthesizer,
+      ttsModelSelectionSource: ttsModelSelectionSource,
+      speechPlaybackService: speechPlaybackService,
+      ttsMemoryPressureSource: ttsMemoryPressureSource
     )
   }
 
@@ -1145,20 +1247,19 @@ private enum AppContainerFactory {
         recognizers: [
           providers.localSpeechRecognizer,
           SherpaStreamingCaptureRecognizer(),
-          DeepgramRecognizer(
-            configurationProvider: providers.deepgramConfigurationProvider,
-            hintDiagnosticReporter: { report in
-              guard report.outcome != .noneRequested else { return }
-              await core.diagnostics.record(
-                AppBootstrap.deepgramHintDiagnostic(for: report)
-              )
-            }
-          ),
           SelectionCaptureRecognizer(),
         ]
       ),
       transformerRegistry: TextTransformerRegistry(
-        transformers: [WhitespaceNormalizerTransformer()]
+        transformers: [
+          WhitespaceNormalizerTransformer(),
+          OpenAITextRewriteTransformer(
+            settingsProvider: providers.openAISettingsProvider,
+            diagnosticReporter: { event in
+              await core.diagnostics.record(event)
+            }
+          ),
+        ]
       ),
       actionRegistry: OutputActionRegistry(
         actions: [
@@ -1166,6 +1267,7 @@ private enum AppContainerFactory {
           ClipboardCopyAction(
             pasteboard: platform.pasteboard, clipboardCapture: core.deliveryStack),
           InjectTextAction(engine: platform.injectionEngine),
+          providers.speechOutputAction,
         ]
           + AppBootstrap.makeExternalOutputActions(
             markdownCleanupCoordinator: providers.markdownFileAppendCoordinator
@@ -1179,9 +1281,14 @@ private enum AppContainerFactory {
     platform: PlatformServices,
     providers: ProviderServices,
     registries: Registries,
-    workflowSelectionBridge: WorkflowSelectionBridge
+    workflowSelectionBridge: WorkflowSelectionBridge,
+    cloudProcessingAuthorizationBridge: CloudProcessingAuthorizationBridge
   ) -> RuntimeServices {
-    let privacyRunGate = makePrivacyRunGate(core: core)
+    let privacyRunGate = makePrivacyRunGate(
+      core: core,
+      providers: providers,
+      authorizationBridge: cloudProcessingAuthorizationBridge
+    )
     let recognitionOptionsProvider = makeRecognitionOptionsProvider(
       core: core,
       providers: providers
@@ -1192,8 +1299,7 @@ private enum AppContainerFactory {
         ?? LocalSpeechModelCatalog.defaultModelIdentifier,
       localSpeechSettingsProvider: {
         try providers.localSpeechSettingsSource.currentSettings()
-      },
-      deepgramConfigurationProvider: providers.deepgramConfigurationProvider
+      }
     )
     let coordinator = makeCoordinator(
       core: core,
@@ -1280,6 +1386,48 @@ private enum AppContainerFactory {
         await platform.contextProvider.captureContext(applying: decision)
       }
     )
+    let workflowAudioRunController = WorkflowAudioRunController(
+      audioCaptureService: providers.workflowAudioCaptureService,
+      capturedAudioProcessingQueue: queue,
+      diagnostics: core.diagnostics,
+      eventBus: core.eventBus,
+      contextProvider: {
+        await platform.contextProvider.captureContext()
+      },
+      privacyContextProvider: {
+        await platform.contextProvider.capturePrivacyContext()
+      },
+      authorizedContextProvider: { decision in
+        await platform.contextProvider.captureContext(applying: decision)
+      },
+      recognitionOptionsProvider: recognitionOptionsProvider,
+      runPreflight: recognitionRunPreflight,
+      recognizerDurationProvider: { recognizerID in
+        registries.recognizerRegistry.recognizer(for: recognizerID)?
+          .capabilities.maximumAudioDurationSeconds
+      },
+      privacyRunGate: privacyRunGate,
+      cleanupOwner: providers.managedTemporaryAudioCleanupOwner
+    )
+    let wakeWordCoordinator = providers.wakeWordTriggerSource.map {
+      WakeWordCoordinator(
+        source: $0,
+        workflowSelectionBridge: bridge,
+        audioRunController: workflowAudioRunController,
+        cuePlayer: platform.recordingCuePlayer,
+        eventBus: core.eventBus,
+        diagnostics: core.diagnostics,
+        runPrefilledCommand: { workflow, event, command in
+          let authorizedContext = try await authorizeWorkflowRunAction(workflow)
+          await coordinator.runRecognizedText(
+            command,
+            runID: event.id,
+            triggerEvent: event,
+            authorizedContext: authorizedContext
+          )
+        }
+      )
+    }
     return RuntimeServices(
       coordinator: coordinator,
       capturedAudioProcessingQueue: queue,
@@ -1301,46 +1449,8 @@ private enum AppContainerFactory {
         recognitionOptionsProvider: recognitionOptionsProvider,
         runPreflight: recognitionRunPreflight
       ),
-      workflowAudioRunController: WorkflowAudioRunController(
-        audioCaptureService: providers.workflowAudioCaptureService,
-        capturedAudioProcessingQueue: queue,
-        diagnostics: core.diagnostics,
-        eventBus: core.eventBus,
-        contextProvider: {
-          await platform.contextProvider.captureContext()
-        },
-        privacyContextProvider: {
-          await platform.contextProvider.capturePrivacyContext()
-        },
-        authorizedContextProvider: { decision in
-          await platform.contextProvider.captureContext(applying: decision)
-        },
-        recognitionOptionsProvider: recognitionOptionsProvider,
-        runPreflight: recognitionRunPreflight,
-        recognizerDurationProvider: { recognizerID in
-          registries.recognizerRegistry.recognizer(for: recognizerID)?
-            .capabilities.maximumAudioDurationSeconds
-        },
-        privacyRunGate: privacyRunGate,
-        cleanupOwner: providers.managedTemporaryAudioCleanupOwner
-      ),
-      deepgramAudioTestController: DeepgramAudioTestController(
-        audioCaptureService: providers.diagnosticsAudioCaptureService,
-        diagnostics: core.diagnostics,
-        privacyPreflight: AppBootstrap.makeDeepgramDiagnosticPrivacyPreflight(
-          privacyRunGate: privacyRunGate,
-          privacyContextProvider: {
-            await platform.contextProvider.capturePrivacyContext()
-          }
-        ),
-        privacyAuthorization: AppBootstrap.makeDeepgramDiagnosticPrivacyAuthorization(
-          privacyRunGate: privacyRunGate,
-          privacyContextProvider: {
-            await platform.contextProvider.capturePrivacyContext()
-          }
-        ),
-        cleanupOwner: providers.managedTemporaryAudioCleanupOwner
-      ),
+      workflowAudioRunController: workflowAudioRunController,
+      wakeWordCoordinator: wakeWordCoordinator,
       failedAudioRecoveryController: failedAudioRecoveryController,
       clipboardGroupEventScheduler: core.clipboardGroupEventScheduler,
       privacyRunGate: privacyRunGate,
@@ -1376,6 +1486,9 @@ private enum AppContainerFactory {
       runReceiptRecorder: core.runReceiptRecorder,
       vocabularyRuleProvider: {
         try core.vocabularyRuleSource.currentRules()
+      },
+      vocabularyCollectionProvider: {
+        try core.vocabularyRuleSource.currentCollections()
       },
       recognitionOptionsProvider: recognitionOptionsProvider,
       recognitionAudioCleanupOwner: recognitionAudioCleanupOwner,
@@ -1475,49 +1588,9 @@ private enum AppContainerFactory {
         for: workflow,
         providers: providers
       )
-      let rules: [VocabularyRule]
-      do {
-        rules = try core.vocabularyRuleSource.currentRules()
-      } catch {
-        await core.diagnostics.record(
-          recognitionHintResolutionDiagnostic(
-            outcome: "load-failed",
-            count: 0,
-            omittedCount: 0,
-            rejectedCount: 0,
-            recognizerID: workflow.pipeline.recognizerID
-          )
-        )
-        return SpeechRecognitionRequestOptions(language: language)
-      }
-
-      let resolution = VocabularyRecognitionHintResolver().resolve(
-        rules: rules,
-        context: VocabularyRuleContext(
-          contextSnapshot: context,
-          clipboardGroupID: workflow.targetClipboardGroupID,
-          locale: language
-        )
-      )
-      if resolution.validKeytermCount > 0 || resolution.rejectedKeytermCount > 0 {
-        let outcome =
-          resolution.omittedKeytermCount > 0
-          ? "limited"
-          : (resolution.rejectedKeytermCount > 0 ? "partial" : "resolved")
-        await core.diagnostics.record(
-          recognitionHintResolutionDiagnostic(
-            outcome: outcome,
-            count: resolution.hints.keyterms.count,
-            omittedCount: resolution.omittedKeytermCount,
-            rejectedCount: resolution.rejectedKeytermCount,
-            recognizerID: workflow.pipeline.recognizerID
-          )
-        )
-      }
-      return SpeechRecognitionRequestOptions(
-        language: language,
-        hints: resolution.hints
-      )
+      _ = core
+      _ = context
+      return SpeechRecognitionRequestOptions(language: language)
     }
   }
 
@@ -1525,15 +1598,7 @@ private enum AppContainerFactory {
     for workflow: WorkflowDefinition,
     providers: ProviderServices
   ) async -> String? {
-    switch workflow.pipeline.recognizerID {
-    case "deepgram.prerecorded":
-      if let override = AppSettingsLoader.trimmedNonEmpty(
-        workflow.metadata[WorkflowMetadataKey.languageOverride]
-      ) {
-        return override
-      }
-      let configuration = await providers.deepgramConfigurationProvider()
-      return AppSettingsLoader.trimmedNonEmpty(configuration?.language)
+    switch workflow.plan.setup.speechRoute?.recognizerID {
     case "sherpa-onnx.local", SherpaStreamingCaptureRecognizer.recognizerID:
       // Both shipped local models default to multilingual automatic detection.
       // The recognizer still applies an explicit per-workflow language override
@@ -1568,20 +1633,90 @@ private enum AppContainerFactory {
     )
   }
 
-  private static func makePrivacyRunGate(core: CoreServices) -> PrivacyRunGate {
+  private static func makePrivacyRunGate(
+    core: CoreServices,
+    providers: ProviderServices,
+    authorizationBridge: CloudProcessingAuthorizationBridge
+  ) -> PrivacyRunGate {
     PrivacyRunGate(
       settingsProvider: {
         try core.privacySettingsSource.currentSettings()
       },
       cloudConfirmationProvider: { workflow, _, processingDestinations in
-        await MainActor.run {
+        var providerIdentities: [String] = []
+        if processingDestinations.contains(.cloudText) {
+          do {
+            let settings = try await providers.openAISettingsProvider()
+            providerIdentities.append(
+              cloudAuthorizationScopeIdentity([
+                "openai.responses",
+                settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                settings.model.trimmingCharacters(in: .whitespacesAndNewlines),
+                settings.apiKey,
+              ])
+            )
+          } catch {
+            // Keep this failure state in the scope. Once provider settings are
+            // available, its fingerprint changes and Rill asks again.
+            providerIdentities.append("cloud-text.configuration-unavailable")
+          }
+        }
+        if processingDestinations.contains(.cloudSpeech) {
+          let route = workflow.plan.setup.speechRoute
+          providerIdentities.append(
+            cloudAuthorizationScopeIdentity([
+              "cloud-speech",
+              route?.recognizerID ?? "unavailable",
+              route?.providerModel ?? "",
+            ])
+          )
+        }
+
+        let authorization = try? CloudProcessingAuthorization(
+          workflow: workflow,
+          processingDestinations: processingDestinations,
+          providerIdentities: providerIdentities
+        )
+        if let settings = try? core.privacySettingsSource.currentSettings(),
+          settings.cloudProcessingAuthorizations.contains(where: {
+            $0.authorizes(
+              workflow: workflow,
+              processingDestinations: processingDestinations,
+              providerIdentities: providerIdentities
+            )
+          })
+        {
+          return true
+        }
+
+        let response = await MainActor.run {
           CloudPrivacyConfirmation.confirm(
             workflow: workflow,
             processingDestinations: processingDestinations
           )
         }
+        switch response {
+        case .cancel:
+          return false
+        case .allowOnce:
+          return true
+        case .alwaysAllow:
+          guard let authorization else { return true }
+          _ = await MainActor.run {
+            authorizationBridge.grant(authorization)
+          }
+          return true
+        }
       }
     )
+  }
+
+  nonisolated private static func cloudAuthorizationScopeIdentity(
+    _ components: [String]
+  ) -> String {
+    components
+      .map { "\($0.utf8.count):\($0)" }
+      .joined(separator: "|")
   }
 
   private static func startBackgroundServices(
@@ -1596,13 +1731,15 @@ private enum AppContainerFactory {
     return ApplicationStartupTaskCoordinator(
       operations: [
         {
-          // sherpa-onnx release archives are public and never consume the
-          // retired Whisper repository token. Remove both its legacy SQLite
-          // value and Keychain item through the serialized migration store so
-          // an older credential is not retained after the provider cutover.
+          // Remove credentials and settings retained only for one-way cleanup
+          // after the local-speech and cloud-ASR provider cutovers.
           guard !Task.isCancelled else { return }
           try? await platform.credentialStore.removeCredential(
             for: .legacyWhisperKitModelToken
+          )
+          await AppBootstrap.purgeRetiredCloudSpeechConfiguration(
+            credentialStore: platform.credentialStore,
+            settingsStore: core.persistence.settingsStore
           )
         },
         {
@@ -1684,15 +1821,6 @@ private enum AppContainerFactory {
           }
           guard !Task.isCancelled else { return }
           await core.diagnostics.record(providers.localSpeechStartupDiagnostic)
-          guard !Task.isCancelled else { return }
-          let deepgramConfiguration = await providers.deepgramConfigurationProvider()
-          guard !Task.isCancelled else { return }
-          if let deepgramConfiguration {
-            await core.diagnostics.record(
-              DeepgramRecognizer.startupDiagnostic(configuration: deepgramConfiguration))
-          } else {
-            await core.diagnostics.record(DeepgramRecognizer.startupDiagnostic())
-          }
         },
         {
           // Subscribe every shared-hotkey consumer before the event tap is
@@ -1716,6 +1844,11 @@ private enum AppContainerFactory {
               await runtime.globalInputOwner.start()
             }
           )
+        },
+        {
+          await model.waitForInitialVoiceConfiguration()
+          guard !Task.isCancelled else { return }
+          await runtime.wakeWordCoordinator?.start()
         },
       ]
     )
@@ -1756,6 +1889,7 @@ private enum AppContainerFactory {
           await runtime.recordingSessionManager.stopForApplicationShutdown()
         },
         cancelWorkflowRun: {
+          await runtime.wakeWordCoordinator?.shutdown()
           async let audioRunCancellation: Void = runtime.workflowAudioRunController.shutdown()
           async let interactiveRunCancellation: Void =
             model
@@ -1772,8 +1906,10 @@ private enum AppContainerFactory {
         shutdownAudioQueue: {
           await runtime.capturedAudioProcessingQueue.shutdown()
         },
-        cancelDeepgramTest: {
-          await runtime.deepgramAudioTestController.shutdown()
+        shutdownSpeechPlayback: {
+          providers.ttsMemoryPressureSource.cancel()
+          await providers.speechPlaybackService.shutdown()
+          await providers.qwen3TTSSynthesizer.releaseResources()
         },
         drainTextInjectionClipboardRecovery: {
           await platform.injectionEngine
@@ -1810,6 +1946,14 @@ private enum AppContainerFactory {
         async let workflowCancellation: Void = runtime.workflowAudioRunController
           .cancelRun(runID: runID)
         _ = await (recordingCancellation, workflowCancellation)
+      },
+      removeLiveAudioDurationLimit: { runID in
+        async let recordingRemoval = runtime.recordingSessionManager
+          .removeMaximumDurationLimit(runID: runID)
+        async let workflowRemoval = runtime.workflowAudioRunController
+          .removeMaximumDurationLimit(runID: runID)
+        let results = await (recordingRemoval, workflowRemoval)
+        return results.0 || results.1
       },
       useClipboardItem: { item, target in
         await runtime.stackPasteController.performProgrammaticPaste {
@@ -1929,6 +2073,7 @@ private enum AppModelFactory {
       localHistoryMaintenance: core.localHistoryMaintenance,
       diagnosticRepository: core.persistence.diagnosticRepository,
       settingsStore: core.persistence.settingsStore,
+      workflowFileStore: XDGWorkflowFileStore(),
       credentialStore: platform.credentialStore,
       localPersistenceStatus: core.persistence.localPersistenceStatus,
       vocabularyRuleSource: core.vocabularyRuleSource,
@@ -1937,7 +2082,9 @@ private enum AppModelFactory {
       localSpeechAvailability: providers.localSpeechAvailability,
       trustedLocalSpeechModels: providers.trustedLocalSpeechModels,
       defaultLocalSpeechModelIdentifier: providers.defaultLocalSpeechModelIdentifier,
-      warmLocalSpeechForCaptureAction: { settings in
+      ttsModelOptions: AppBootstrap.ttsModelOptions,
+      defaultTTSModelIdentifier: SpeechSynthesisModelCatalog.defaultModel.id.rawValue,
+      warmLocalSpeechForCaptureAction: { settings, _ in
         do {
           let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
             settings: settings
@@ -2157,14 +2304,13 @@ private enum AppModelFactory {
       finishWorkflowAudioRunAction: {
         try await runtime.workflowAudioRunController.finishRun()
       },
-      startDeepgramAudioTestAction: { settings in
-        try await runtime.deepgramAudioTestController.startTest(settings: settings)
-      },
-      finishDeepgramAudioTestAction: { settings in
-        try await runtime.deepgramAudioTestController.finishTest(settings: settings)
-      },
-      cancelDeepgramAudioTestAction: {
-        await runtime.deepgramAudioTestController.cancelTest()
+      verifyOpenAIConfigurationAction: { settings in
+        try await OpenAIConfigurationVerifier.verify(
+          settings: settings,
+          diagnosticReporter: { event in
+            await core.diagnostics.record(event)
+          }
+        )
       },
       retryFailedAudioRecoveryAction: { receiptID, workflow in
         guard let controller = runtime.failedAudioRecoveryController else {
@@ -2248,6 +2394,100 @@ private enum AppModelFactory {
     )
     guard let resolvedModel = model else {
       preconditionFailure("AppModel was not initialized")
+    }
+    resolvedModel.installVoiceAssistantResourceActions(
+      prepareWakeWordModel: { progressCallback in
+        guard providers.wakeWordTriggerSource != nil else {
+          throw WakeWordTriggerSourceError.modelNotInstalled
+        }
+        let settings = try providers.localSpeechSettingsSource.currentSettings()
+        let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
+          settings: settings
+        )
+        let backend = try LocalSpeechModelCatalog.backend(for: modelIdentifier)
+        try await providers.localSpeechRecognizer.prepareForUse(of: backend)
+        switch backend {
+        case .sherpaOnnx:
+          var configuration = try AppBootstrap.sherpaOnnxConfiguration(
+            settings: settings,
+            trustedModelIdentifiers:
+              SherpaOnnxModelCatalog.distributableModelIdentifiers,
+            defaultModelIdentifier: SherpaOnnxModelCatalog.defaultModelID.rawValue
+          )
+          configuration.downloadIfNeeded = true
+          let prepared = try await providers.sherpaOnnxModelPreparer.prepareModel(
+            using: AppBootstrap.modelInstallationConfiguration(from: configuration),
+            progress: { update in
+              let total = max(update.totalByteCount, 1)
+              progressCallback(
+                min(max(Double(update.completedByteCount) / Double(total), 0), 1)
+              )
+            }
+          )
+          progressCallback(1)
+          return prepared
+        case .mlxAudioSwift:
+          let prepared = try await providers.mlxAudioSwiftRecognizer.prepareModel(
+            modelIdentifier: modelIdentifier,
+            downloadIfNeeded: true,
+            progress: { update in
+              progressCallback(update.fractionCompleted)
+            }
+          )
+          progressCallback(1)
+          return prepared
+        }
+      },
+      prepareTTSModel: { modelIdentifier, progressCallback in
+        try await providers.qwen3TTSSynthesizer.prepare(
+          modelIdentifier: modelIdentifier,
+          downloadIfNeeded: true,
+          progress: { update in
+            progressCallback(AppBootstrap.displayedTTSPreparationProgress(update))
+          }
+        )
+      },
+      selectTTSModel: { modelIdentifier in
+        _ = providers.ttsModelSelectionSource.selectModel(modelIdentifier)
+      },
+      downloadedTTSModelIdentifiers:
+        SpeechSynthesisModelInventory.installedModelIdentifiers(),
+      validateWakeWordConfiguration: { configuration in
+        guard let source = providers.wakeWordTriggerSource else {
+          throw WakeWordTriggerSourceError.modelNotInstalled
+        }
+        try await source.validate(configuration: configuration)
+      },
+      stopSpeechPlayback: {
+        guard providers.speechPlaybackService.isPlaying else { return false }
+        Task { @MainActor in
+          await providers.speechPlaybackService.shutdown()
+        }
+        return true
+      }
+    )
+    if let wakeWordTriggerSource = providers.wakeWordTriggerSource {
+      Task { @MainActor [weak resolvedModel] in
+        for await status in wakeWordTriggerSource.statusStream() {
+          guard !Task.isCancelled, let resolvedModel else { return }
+          let presentation: WakeWordRuntimePresentationState
+          switch status {
+          case .disabled:
+            presentation = .disabled
+          case .modelMissing:
+            presentation = .modelMissing
+          case .starting:
+            presentation = .starting
+          case .listening:
+            presentation = .listening
+          case .suspended(let reason):
+            presentation = .suspended(reason.rawValue)
+          case .failed(let message):
+            presentation = .failed(message)
+          }
+          resolvedModel.updateWakeWordRuntimeState(presentation)
+        }
+      }
     }
     return resolvedModel
   }
@@ -2740,10 +2980,16 @@ extension SecureCredentialStoreEvent {
 
 @MainActor
 private enum CloudPrivacyConfirmation {
+  enum Response: Sendable, Equatable {
+    case cancel
+    case allowOnce
+    case alwaysAllow
+  }
+
   static func confirm(
     workflow: WorkflowDefinition,
     processingDestinations: [PrivacyProcessingDestination]
-  ) -> Bool {
+  ) -> Response {
     let usesChinese = Locale.current.identifier.lowercased().hasPrefix("zh")
     let alert = NSAlert()
     alert.alertStyle = .warning
@@ -2753,9 +2999,14 @@ private enum CloudPrivacyConfirmation {
       processingDestinations: processingDestinations,
       usesChinese: usesChinese
     )
-    alert.addButton(withTitle: usesChinese ? "继续" : "Continue")
+    alert.addButton(withTitle: usesChinese ? "仅这一次" : "Allow Once")
+    alert.addButton(withTitle: usesChinese ? "始终允许" : "Always Allow")
     alert.addButton(withTitle: usesChinese ? "取消" : "Cancel")
-    return alert.runModal() == .alertFirstButtonReturn
+    return switch alert.runModal() {
+    case .alertFirstButtonReturn: .allowOnce
+    case .alertSecondButtonReturn: .alwaysAllow
+    default: .cancel
+    }
   }
 }
 
@@ -2767,56 +3018,62 @@ enum CloudPrivacyConfirmationCopy {
   ) -> String {
     let sendsSpeech = processingDestinations.contains(.cloudSpeech)
     let sendsText = processingDestinations.contains(.cloudText)
-    return switch (usesChinese, sendsSpeech, sendsText) {
+    let processingCopy = switch (usesChinese, sendsSpeech, sendsText) {
     case (false, true, false):
       "The workflow “\(workflowName)” will stream microphone audio and any matching cloud-recognition terms to its cloud speech service while recording. Rill continuously checks the current focus and privacy settings and stops the run if they become restricted. Nothing from this run has left this Mac yet."
     case (true, true, false):
       "工作流“\(workflowName)”会在录音期间，将麦克风音频以及范围匹配的云端识别术语流式发送到云端语音服务。Rill 会持续检查当前焦点与隐私设置；一旦变为受限状态，就会停止本次运行。本次内容尚未离开本机。"
     case (false, false, true):
-      "The workflow “\(workflowName)” will send its final text to the configured HTTPS webhook. Nothing from this run has left this Mac yet."
+      "The workflow “\(workflowName)” will send its final transcript to the configured cloud text service for rewriting. Nothing from this run has left this Mac yet."
     case (true, false, true):
-      "工作流“\(workflowName)”会将最终文本发送到配置的 HTTPS Webhook。本次内容尚未离开本机。"
+      "工作流“\(workflowName)”会将最终转写发送到已配置的云端文本服务进行润色。本次内容尚未离开本机。"
     case (false, true, true):
-      "The workflow “\(workflowName)” will stream microphone audio and matching cloud-recognition terms while recording, then send final text to the configured HTTPS webhook. Rill continuously checks the current focus and privacy settings and stops the run if they become restricted. Nothing from this run has left this Mac yet."
+      "The workflow “\(workflowName)” will stream microphone audio and matching cloud-recognition terms while recording, then send its final transcript to the configured cloud text service for rewriting. Rill continuously checks the current focus and privacy settings and stops the run if they become restricted. Nothing from this run has left this Mac yet."
     case (true, true, true):
-      "工作流“\(workflowName)”会在录音期间流式发送麦克风音频和范围匹配的云端识别术语，并将最终文本发送到配置的 HTTPS Webhook。Rill 会持续检查当前焦点与隐私设置；一旦变为受限状态，就会停止本次运行。本次内容尚未离开本机。"
+      "工作流“\(workflowName)”会在录音期间流式发送麦克风音频和范围匹配的云端识别术语，随后将最终转写发送到已配置的云端文本服务进行润色。Rill 会持续检查当前焦点与隐私设置；一旦变为受限状态，就会停止本次运行。本次内容尚未离开本机。"
     case (false, false, false):
       "The workflow “\(workflowName)” requested cloud processing, but its cloud destination could not be classified. Cancel unless this is expected. Nothing from this run has left this Mac yet."
     case (true, false, false):
       "工作流“\(workflowName)”请求了云端处理，但无法对云端目的地进行分类。如非预期，请取消。本次内容尚未离开本机。"
     }
+    let authorizationCopy = usesChinese
+      ? "选择“始终允许”后，仅当此工作流及云端服务配置保持不变时不再询问；可随时在“设置 > 隐私”中撤销。"
+      : "Choose “Always Allow” to skip this prompt only while this workflow and cloud-service configuration remain unchanged. Revoke it anytime in Settings > Privacy."
+    return processingCopy + "\n\n" + authorizationCopy
   }
 }
 
 private enum AppSettingsLoader {
-  static func loadDeepgramConfiguration(
+  private enum LoadError: Error {
+    case unavailable
+  }
+
+  static func loadOpenAISettings(
     from settingsStore: (any SettingsStore)?,
     credentialStore: (any SecureCredentialStore)?
-  ) async -> DeepgramRecognizer.Configuration? {
-    do {
-      let settingKeys: [AppSettingKey] = [
-        .deepgramBaseURL,
-        .deepgramModel,
-        .deepgramLanguage,
-      ]
-      let storedSnapshot =
-        try await settingsStore?.settingsSnapshot(
-          forKeys: settingKeys
-        ) ?? .empty
-      guard storedSnapshot.unavailableKeys.isDisjoint(with: Set(settingKeys)) else {
-        return nil
-      }
-      let storedSettings = storedSnapshot.values
-      let storedAPIKey = try await credentialStore?.credential(for: .deepgramAPIKey)
-      return DeepgramRecognizer.Configuration(
-        apiKey: trimmedNonEmpty(storedAPIKey),
-        baseURL: trimmedNonEmpty(storedSettings[.deepgramBaseURL]) ?? DeepgramSettings().baseURL,
-        model: trimmedNonEmpty(storedSettings[.deepgramModel]) ?? DeepgramSettings().model,
-        language: trimmedNonEmpty(storedSettings[.deepgramLanguage])
-      )
-    } catch {
-      return nil
+  ) async throws -> OpenAISettings {
+    let settingKeys: [AppSettingKey] = [.openAIBaseURL, .openAIModel]
+    let storedSnapshot =
+      try await settingsStore?.settingsSnapshot(
+        forKeys: settingKeys
+      ) ?? .empty
+    guard storedSnapshot.unavailableKeys.isDisjoint(with: Set(settingKeys)) else {
+      throw LoadError.unavailable
     }
+    let baseURL =
+      trimmedNonEmpty(storedSnapshot.values[.openAIBaseURL])
+      ?? OpenAISettings.defaultBaseURL
+    let model =
+      trimmedNonEmpty(storedSnapshot.values[.openAIModel])
+      ?? OpenAISettings.defaultModel
+    guard
+      OpenAISettings.isValidBaseURL(baseURL),
+      OpenAISettings.isValidModelIdentifier(model)
+    else {
+      throw LoadError.unavailable
+    }
+    let apiKey = try await credentialStore?.credential(for: .openAIAPIKey) ?? ""
+    return OpenAISettings(apiKey: apiKey, baseURL: baseURL, model: model)
   }
 
   static func trimmedNonEmpty(_ value: String?) -> String? {
@@ -2828,7 +3085,7 @@ private enum AppSettingsLoader {
 }
 
 @MainActor
-private final class WorkflowSelectionBridge {
+final class WorkflowSelectionBridge {
   weak var model: AppModel?
 
   func enabledWorkflows(for trigger: TriggerBinding) -> [WorkflowDefinition] {

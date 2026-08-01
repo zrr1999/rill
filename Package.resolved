@@ -1,5 +1,5 @@
 {
-  "originHash" : "55d173f4c6a143fa1370d1c55b117c0e5d17559f127fa7d2f8970787a9f4d16c",
+  "originHash" : "bbfd78f7483c4df5b10d66e16a36017c34de0e975dd287b689c612d93ad83db4",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -44,6 +44,15 @@
       "state" : {
         "revision" : "bd4b7434e6bdb588c7ef55706ff8904cb7fd4c57",
         "version" : "3.31.4"
+      }
+    },
+    {
+      "identity" : "openai",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/MacPaw/OpenAI.git",
+      "state" : {
+        "revision" : "a532be89be9a30ec003e4ba0974a52a88d26fc6d",
+        "version" : "0.5.1"
       }
     },
     {
@@ -227,6 +236,15 @@
       }
     },
     {
+      "identity" : "swift-openapi-runtime",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-openapi-runtime",
+      "state" : {
+        "revision" : "3d3a8457661daf7fb260ceeb9f0e24e5204ba5fb",
+        "version" : "1.12.0"
+      }
+    },
+    {
       "identity" : "swift-service-context",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-service-context.git",
@@ -260,6 +278,15 @@
       "state" : {
         "revision" : "50688cacbd41d547e9eb9f7a213542340b7c442b",
         "version" : "1.7.5"
+      }
+    },
+    {
+      "identity" : "swift-toml",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mattt/swift-toml.git",
+      "state" : {
+        "revision" : "827506c90475e82d5a7f191f950fb3025cbdc0d6",
+        "version" : "2.0.0"
       }
     },
     {

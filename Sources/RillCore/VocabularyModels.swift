@@ -11,7 +11,7 @@ public enum VocabularyMatchMode: String, Codable, Sendable, Equatable {
     case regex
 }
 
-public struct VocabularyRuleScope: Codable, Sendable, Equatable {
+public struct VocabularyRuleScope: Codable, Sendable, Equatable, Hashable {
     public var bundleIdentifier: String?
     public var clipboardGroupID: UUID?
     public var locale: String?

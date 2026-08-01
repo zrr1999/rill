@@ -578,21 +578,31 @@ final class PasteboardControllerTests: XCTestCase {
         XCTAssertTrue(pasteboard.writeObjects([item]))
         let expectedChangeCount = pasteboard.changeCount
 
+        var observedError: PasteboardController.ConditionalWriteError?
         XCTAssertThrowsError(
             try controller.beginTemporaryWrite(
                 ClipboardSnapshot(plainText: "must not win", changeCount: 0),
                 ifChangeCountIs: expectedChangeCount
             )
         ) { error in
-            XCTAssertEqual(
-                error as? PasteboardController.ConditionalWriteError,
-                .unreadableRepresentation(
-                    itemIndex: 0,
-                    typeName: promisedType.rawValue
-                )
-            )
+            observedError = error as? PasteboardController.ConditionalWriteError
         }
-        XCTAssertEqual(pasteboard.changeCount, expectedChangeCount)
+        switch observedError {
+        case .unreadableRepresentation(
+            itemIndex: 0,
+            typeName: promisedType.rawValue
+        ):
+            XCTAssertEqual(pasteboard.changeCount, expectedChangeCount)
+        case .changeCountChanged:
+            // Under load, macOS may invalidate an unresolved promised
+            // representation while it is being materialized. That advances
+            // the named pasteboard's change count before Rill can report the
+            // more specific unreadable-representation error. Both outcomes
+            // are fail-closed and must leave the replacement unwritten.
+            XCTAssertNotEqual(pasteboard.changeCount, expectedChangeCount)
+        default:
+            XCTFail("Unexpected conditional write error: \(String(describing: observedError))")
+        }
         XCTAssertNil(pasteboard.string(forType: .string))
         withExtendedLifetime(provider) {}
     }

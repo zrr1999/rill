@@ -210,6 +210,34 @@ extension DeliveryStackTests {
         XCTAssertEqual(flushResult, .notConfigured)
     }
 
+    func testPinnedStatePersistsAcrossStackRestoration() async throws {
+        let settingsStore = RuntimeTestSettingsStore()
+        let stack = DeliveryStack(
+            eventBus: EventBus(),
+            clipboardPersistenceStore: settingsStore
+        )
+        await stack.captureSystemClipboard(
+            snapshot: ClipboardSnapshot(plainText: "durable pin", changeCount: 1),
+            context: ClipboardRouteContext()
+        )
+        let capturedSnapshot = await stack.clipboardSnapshot()
+        let captured = try XCTUnwrap(capturedSnapshot.items.first)
+
+        let pinResult = await stack.setItemsPinned(true, itemIDs: [captured.id])
+        let flushResult = await stack.flushPendingPersistenceWrites()
+        let restoredStack = DeliveryStack(
+            eventBus: EventBus(),
+            clipboardPersistenceStore: settingsStore
+        )
+        let restoredSnapshot = await restoredStack.clipboardSnapshot()
+        let restored = try XCTUnwrap(restoredSnapshot.items.first)
+
+        XCTAssertTrue(pinResult.wasAccepted)
+        XCTAssertEqual(flushResult, .persisted)
+        XCTAssertEqual(restored.id, captured.id)
+        XCTAssertTrue(restored.isPinned)
+    }
+
     func testUnavailablePersistedClipboardStateCannotBeOverwrittenByCaptureFlushOrClear() async throws {
         let protectedSentinel = "protected-unreadable-clipboard-state"
         let settingsStore = RuntimeTestSettingsStore(

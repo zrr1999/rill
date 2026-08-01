@@ -58,6 +58,21 @@ extension ClipboardView {
                 .accessibilityIdentifier("clipboard.preview-effects")
             }
 
+            Button {
+                togglePinned(entry)
+            } label: {
+                Label(
+                    UIStrings.text(
+                        entry.isPinned ? .clipboardUnpinItem : .clipboardPinItem,
+                        language: model.language
+                    ),
+                    systemImage: entry.isPinned ? "pin.slash" : "pin"
+                )
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityIdentifier("clipboard.pin")
+
             Spacer(minLength: 0)
 
             Button(role: .destructive) {
@@ -91,6 +106,13 @@ extension ClipboardView {
         return VStack(alignment: .leading, spacing: 12) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    if entry.isPinned {
+                        metadataPill(
+                            UIStrings.text(.clipboardPinnedBadge, language: model.language),
+                            systemImage: "pin.fill",
+                            tint: .blue
+                        )
+                    }
                     metadataPill(groupName(for: item.groupID), systemImage: "square.stack.3d.up", tint: .green)
                     metadataPill(tint: .secondary, systemImage: "clock") {
                         Text(item.createdAt, style: .relative)

@@ -97,6 +97,7 @@ public struct ClipboardView: View {
     @State var searchText = ""
     @State var debouncedSearchText = ""
     @State var searchDebounceTask: Task<Void, Never>?
+    @State var showsPinnedOnly = false
     @State var cachedFilteredSections: [ClipboardHistorySectionModel] = []
     @State var selectedSection: ClipboardViewSection
     @State var selectedEntryID: UUID?
@@ -192,6 +193,9 @@ public struct ClipboardView: View {
                 syncSelectedEntry(previousVisibleEntryIDs: previousEntryIDs)
             }
             .onChange(of: debouncedSearchText) { _, _ in
+                recomputeFilteredSections()
+            }
+            .onChange(of: showsPinnedOnly) { _, _ in
                 recomputeFilteredSections()
             }
             .onChange(of: model.clipboardItems) { _, _ in
@@ -503,6 +507,25 @@ public struct ClipboardView: View {
                 .accessibilityLabel(UIStrings.text(.clipboardClearSearch, language: model.language))
                 .accessibilityIdentifier("clipboard.search.clear")
             }
+
+            Button {
+                showsPinnedOnly.toggle()
+            } label: {
+                Image(systemName: showsPinnedOnly ? "pin.fill" : "pin")
+                    .foregroundStyle(showsPinnedOnly ? Color.accentColor : Color.secondary)
+                    .padding(6)
+                    .background(
+                        showsPinnedOnly
+                            ? Color.accentColor.opacity(0.12)
+                            : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(UIStrings.text(.clipboardPinnedOnly, language: model.language))
+            .accessibilityLabel(UIStrings.text(.clipboardPinnedOnly, language: model.language))
+            .accessibilityAddTraits(showsPinnedOnly ? .isSelected : [])
+            .accessibilityIdentifier("clipboard.filter.pinned")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

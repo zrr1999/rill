@@ -6,6 +6,23 @@ import XCTest
 
 @MainActor
 final class GlobalSearchIndexTests: XCTestCase {
+    func testSettingsSectionsFollowProgressiveImportanceOrder() {
+        XCTAssertEqual(
+            SettingsSection.allCases,
+            [
+                .permissions,
+                .speech,
+                .input,
+                .voiceAssistant,
+                .clipboardPanel,
+                .vocabulary,
+                .language,
+                .privacy,
+                .storage,
+            ]
+        )
+    }
+
     func testHistoryRetryCopyIsFixedInBothLanguages() {
         XCTAssertEqual(GlobalSearchText.historyRetry(language: .english), "Retry")
         XCTAssertEqual(GlobalSearchText.historyRetry(language: .simplifiedChinese), "重试")
@@ -159,7 +176,7 @@ final class GlobalSearchIndexTests: XCTestCase {
             historyPreviewMode: .full
         )
 
-        let speechSettings = GlobalSearchIndex.filter(results, query: "deepgram key")
+        let speechSettings = GlobalSearchIndex.filter(results, query: "openai key")
         XCTAssertEqual(speechSettings.map(\.destination), [.settings(.speech)])
         XCTAssertTrue(
             GlobalSearchIndex.filter(results, query: "sensevoice").isEmpty,
@@ -191,6 +208,25 @@ final class GlobalSearchIndexTests: XCTestCase {
 
         XCTAssertEqual(results.map(\.destination), [.workflow(workflow.id)])
         XCTAssertFalse(results.contains { $0.category == .history })
+    }
+
+    func testPlannedWorkflowsStayOutOfProductSearch() {
+        let active = makeWorkflow(name: "Ready Workflow")
+        var planned = makeWorkflow(name: "Future Workflow")
+        planned.metadata[WorkflowMetadataKey.availability] = WorkflowAvailability.planned.rawValue
+
+        let results = GlobalSearchIndex.makeStaticResults(
+            language: .english,
+            workflows: [planned, active]
+        )
+
+        XCTAssertEqual(
+            GlobalSearchIndex.filter(results, query: "Ready Workflow").map(\.destination),
+            [.workflow(active.id)]
+        )
+        XCTAssertTrue(
+            GlobalSearchIndex.filter(results, query: "Future Workflow").isEmpty
+        )
     }
 
     func testKeyboardSelectionIsVisibleStableAndClampedToResults() throws {

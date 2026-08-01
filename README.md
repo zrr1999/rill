@@ -1,5 +1,10 @@
 # Rill
 
+User workflows are standard TOML files under
+`$XDG_CONFIG_HOME/rill/workflows` (defaulting to
+`$HOME/.config/rill/workflows`). The separate Workflow window is a visual
+editor for those files; see [the workflow TOML specification](docs/workflow-toml.md).
+
 **本地优先的语音输入 + 剪贴板路由工作站** — 一款原生 macOS 应用，将语音识别、应用级剪贴板分组和可观察语音工作流合为一体。
 
 > 🎙 按住 Fn 说话，松开即输入 · 📋 剪贴板分组路由 · ⚡ 可观察语音工作流 · 🔄 语音状态浮窗
@@ -9,24 +14,23 @@
 ## ✨ 核心特性
 
 ### 🎤 语音转文字
-- **多后端边界** — 云端 [Deepgram](https://deepgram.com)、本地 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 与 Apple Silicon 可选的原生 [mlx-audio-swift](https://github.com/Blaizzy/mlx-audio-swift) 已接入；16 GB 默认仍是 Qwen3-ASR 0.6B INT8，也可选择经 MLX/Metal GPU 运行的 Qwen3-ASR 1.7B 8bit；流式预览固定使用轻量中英双语 Streaming Zipformer
+- **本地多引擎边界** — [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 与 Apple Silicon 可选的原生 [mlx-audio-swift](https://github.com/Blaizzy/mlx-audio-swift) 已接入；16 GB 默认仍是 Qwen3-ASR 0.6B INT8，也可选择经 MLX/Metal GPU 运行的 Qwen3-ASR 1.7B 8bit；流式预览固定使用轻量中英双语 Streaming Zipformer
 - **按住说话（Push-to-Talk）** — 按住 `Fn` 开始录音，松开自动识别并输入
 - **本地语音端点** — 主窗口和菜单栏触发的单次听写用随 App 固定捆绑的 Silero VAD v4 判断语音起止：持续语音达到 300 ms 后进入说话态，随后 1.4 秒静音自动收尾，起始 12 秒没有语音则取消空录音。`Fn` 按住说话仍由松键结束，切换式录音由第二次按键结束
-- **采集前端处理** — 本地与 Deepgram 采集会启用 Apple Voice Processing 和自动增益，并在运行时验证没有被旁路；它们不是独立的宽带降噪器，当前文档不承诺量化降噪效果
-- **语音状态浮窗** — 所有路径都会显示录音、音量和处理状态；Deepgram 显示联网 partial text，本地路径由固定 Streaming Zipformer 生成实时 hypothesis，停止或自动端点后再由所选档位模型生成最终转写
+- **采集前端处理** — 本地采集会启用 Apple Voice Processing 和自动增益，并在运行时验证没有被旁路；它们不是独立的宽带降噪器，当前文档不承诺量化降噪效果
+- **语音状态浮窗** — 本地路径会显示录音、音量和处理状态，由固定 Streaming Zipformer 生成实时 hypothesis，停止或自动端点后再由所选档位模型生成最终转写
 - **中英文支持** — 界面和识别均支持中文/英文双语切换
-- **作用域热词** — Deepgram Nova-3 接收筛选后的 keyterms；sherpa 与 MLX Qwen 路径只接收清洗并设有数量/长度上限的热词，MLX 后端通过 Qwen3-ASR 的有界 context 传入
-- **Deepgram Speech Check** — 录音前先校验已持久化并回读的 provider 配置与当前隐私策略；录音结束后、音频真正外发前再次授权。录音收尾、最终授权、识别与临时文件清理由同一个 run-scoped Task 持有；取消或退出会等待它完整结束，不会留下已落盘音频
-- **延迟音频双阶段授权** — 录音与 exact workflow/run 绑定一次性 lease；队列在解析音频前 claim，解析后、识别前再次检查设置与目的地。等待期间收紧策略会阻止录后云端上传和实时失败后的整段重传
-- **可撤销的云端实时会话** — Deepgram 每次连接、启动和音频发送都需要 run-scoped 原子 permit；录音期间持续检查当前焦点与最新隐私设置，进入敏感/未知焦点、Secure Input 或策略不可用时立即按 runID 关流并丢弃缓冲尾部。停止输入后再次 seal，未 seal 或已撤销的录音不能进入录后 fallback
-- **明确且可停止的实时状态** — 字幕浮窗区分“本机处理”和“Cloud · Deepgram”；活动录音按钮会真正停止对应 run，而不是只隐藏窗口。停止输入后，控制器与后台队列通过原子所有权转移避免重复处理或遗留音频；App 退出会等待录音、手动工作流、音频队列、Deepgram Speech Check 与剪贴板监听清理。清理超时会取消本次退出而不取消清理；事件排空和持久化先于可能较慢的模型卸载
-- **有界实时背压** — Deepgram 音频缓冲固定上限；网络无法及时消费时会 fail-closed，立即撤销外发权限、断开 WebSocket、停止采集并删除临时音频，不会无界占用内存或静默丢音后继续识别
-- **有界本地录音** — 本地 sherpa-onnx 模型对所有录音模式采用 20 秒 provider 上限并自动停止；采集层只额外接受 3.0 秒启动检测窗口和单个 0.1 秒 PCM 块的有界余量。Deepgram 等其他识别器遵从各自上限。本地采集只在实时层保留 32 个 PCM chunk 和 20 个音量样本，由非实时 consumer 增量写入权限为 `0600` 的 16 kHz WAV；正常停止会排空所有已接纳尾帧，异常、取消或超时会先关闭文件再清理，不在 Core Audio 回调累计整段录音
+- **作用域热词** — sherpa 与 MLX Qwen 路径只接收清洗并设有数量/长度上限的热词，MLX 后端通过 Qwen3-ASR 的有界 context 传入
+- **OpenAI-compatible 文本工作流（BYOK）** — 内置预设和自定义语音工作流的 `llmRewrite` 步骤使用 MacPaw/OpenAI 0.5.1 的 Responses API，只把当前最终转写正文发送到用户配置的 endpoint；API Key 保存在 macOS Keychain。默认使用官方 OpenAI `/v1` 与 `gpt-5.6-terra`，也可选择 Sol / Luna 或填写自定义 Base URL 和模型 ID；配置缺失、云端拒绝或请求失败时不会注入原文或部分结果
+- **延迟音频双阶段授权** — 录音与 exact workflow/run 绑定一次性 lease；队列在解析音频前 claim，解析后、识别前再次检查设置与目的地。等待期间收紧策略会阻止后续识别或投递
+- **明确且可停止的实时状态** — 活动录音按钮会真正停止对应 run，而不是只隐藏窗口。停止输入后，控制器与后台队列通过原子所有权转移避免重复处理或遗留音频；App 退出会等待录音、手动工作流、音频队列与剪贴板监听清理。清理超时会取消本次退出而不取消清理；事件排空和持久化先于可能较慢的模型卸载
+- **有界本地录音** — 本地 sherpa-onnx 模型对所有录音模式采用 20 秒 provider 上限并自动停止；采集层只额外接受 3.0 秒启动检测窗口和单个 0.1 秒 PCM 块的有界余量。本地采集只在实时层保留 32 个 PCM chunk 和 20 个音量样本，由非实时 consumer 增量写入权限为 `0600` 的 16 kHz WAV；正常停止会排空所有已接纳尾帧，异常、取消或超时会先关闭文件再清理，不在 Core Audio 回调累计整段录音
 - **失败录音恢复（可选）** — 默认关闭；符合条件的投递前失败录音可加密保留最多 24 小时，并从历史页手动重试或删除。重试在解密前和解密后、provider 调用前都重新检查当前隐私与配置，只生成新的运行历史，不重复输出动作。App 退出会拒绝新重试、取消并等待所有活动重试恢复 durable receipt，并执行最终全局恢复明文 sweep；无法证明全部托管明文已清理时会阻止本次退出，让清理继续完成
 
 ### 📋 剪贴板管理系统
 - **默认不监听** — 新安装默认关闭系统剪贴板捕获和浮动面板全局快捷键；只有用户在设置或菜单栏明确开启后才建立新的捕获基线，关闭期间的变化不会在重新开启时补录
 - **分组路由** — 为不同应用分配独立的剪贴板组（Stack / Queue / List 三种模式）
+- **置顶与快速检索** — 正文、来源 App、标签和分组支持多关键词联合搜索；合并条目可原子置顶并一键只看置顶内容。置顶只影响历史展示、自动留存和容量逐出，不会伪装成 Stack / Queue / List 活动项；显式删除或“清除历史”仍按用户命令执行
 - **语音识别组** — 可将语音识别结果保存到专属组，每个条目可打标签
 - **跨组回退** — 当当前组为空时自动从优先级更高的组获取内容
 - **智能粘贴** — `Cmd-V` 自动感知当前应用所属组，递送对应内容
@@ -34,18 +38,18 @@
 - **有界且原子的本地存储** — schema 8 将受保护 metadata 与 immutable image blobs 分离，并最多保留 1000 个活动项、每组 500 个活动项和 500 个仅历史项；单项文本上限 1 MiB、图片上限 32 MiB，全部条目的内容总量上限 64 MiB；自定义组最多 256 个、App 路由最多 1024 条，名称、Bundle ID、capture tag 和来源元数据也在编码前校验。超限时只逐出最旧的仅历史项；活动项或已取得粘贴租约的条目不会被静默丢弃，App 分配与新建组在完整校验后原子提交，失败不会产生半移动、幽灵组或把已消费条目重新激活
 - **竞态安全的捕获与镜像** — Secure Input 与未知焦点会遮蔽选区和剪贴板输入，排除工作流捕获的标签只遮蔽工作流可见的剪贴板；Stack 路由预览与外部剪贴板捕获会在载荷读取和条件镜像写入前后复核焦点、Secure Input、设置与 change count，边界变化时 fail-closed 且不覆盖外部新剪贴板
 - **有界富内容投递** — 临时替换系统剪贴板前，Rill 最多保存 128 个 item、每项 32 个 representation、总计 256 个 representation / 64 MiB；任一表示不可读或超限都会在替换前失败。图片的 ImageIO 解码、完整性检查和 TIFF → PNG 转换在主线程外 single-flight 串行执行，并在提交前复核 change count。精确写回失败会保留原 archive，只重试恢复而不重复粘贴；退出会排空内外两层临时事务，无法证明恢复完成时拒绝本次正常退出
-- **安全清理** — 剪贴板、运行历史及相关诊断默认保留 30 天，可按域设为 1 天 / 1 周 / 30 天 / 1 年 / 永久；清理不会误删 Stack / Queue / List 中仍待使用的内容，Rill 遗留临时音频也会在启动和周期维护时回收
+- **安全清理** — 剪贴板、运行历史及相关诊断默认保留 30 天，可按域设为 1 天 / 1 周 / 30 天 / 1 年 / 永久；自动清理不会误删已置顶或仍在 Stack / Queue / List 中待使用的内容，Rill 遗留临时音频也会在启动和周期维护时回收
 - **可恢复的状态持久化** — 分组、路由规则和历史记录跨重启保持；schema 7 图片会原子迁移到 schema 8 metadata/blob graph。不可读、损坏或超出 schema 8 边界的状态进入 `loadUnavailable`，保留原始存储且不以空状态覆盖。主窗口 Clipboard 提供明确、不可撤销的 Reset Storage 确认，用于同时删除受保护旧状态和本次会话的条目、分组与 App 路由；取消或删除失败不会产生半重置
 - **本地静态数据保护** — 运行正文、纠错来源、剪贴板状态、设置和导出元数据使用 Keychain 根密钥与 AES-256-GCM 保护；错误或缺失密钥会 fail-closed
 
 ### ⚡ 可观察工作流
 - **可视化编辑器** — 配置触发方式、识别路径、确定性文本处理和输出位置
-- **真实能力优先** — 未配置生产 provider 的 LLM、Snippet 和组事件动作不会出现在新建入口中
+- **真实能力优先** — 任何包含 `llmRewrite` 的内置或自定义语音工作流只在 OpenAI 凭据可读取时可启用；Snippet 与组事件动作仍不会出现在生产入口中
 - **多种触发方式** — 快捷键、菜单栏和手动触发
 - **失败可见** — 缺失 recognizer、transformer 或 action 时明确失败，不静默跳过
 - **内容无关的运行前解释** — Workflows 页可预览已保存且没有未保存改动的工作流，查看当前触发、输入类别、处理步骤、输出效果、数据目的地和固定隐私原因；收据不包含正文、prompt、路径、端点或凭据
 - **预览与授权分离** — 预览只读取不含正文的隐私快照，不显示云端确认，也不是执行凭证；真实运行会用同一目的地分类器重新检查焦点、剪贴板与隐私设置。语音、非音频工作流和剪贴板重放均须先取得与具体工作流绑定的运行时授权；重放/替换还会同时评估 exact 条目来源 App 与当前动作目标，来源侧的云端禁用规则不会因切换前台 App 而失效
-- **Prompt 变量安全基础** — `{text}`、`{selected}`、`{clipboard}` 等 Core 模型使用单遍、有硬上限、非递归的渲染器；运行正文和上下文不可序列化，只有满足 canonical 子集/顺序约束的 content-free summary 可进入收据或诊断。生产 transformer 尚未接线，因此新建工作流不会把这项基础能力伪装成可运行功能
+- **Prompt 变量安全基础** — `{text}`、`{selected}`、`{clipboard}` 等 Core 模型使用单遍、有硬上限、非递归的渲染器；运行正文和上下文不可序列化，只有满足 canonical 子集/顺序约束的 content-free summary 可进入收据或诊断。OpenAI transformer 可服务内置与自定义语音工作流，但只能取得当前转写正文，选区、剪贴板、App 名和 bundle ID 不进入请求
 - **Durable 运行收据** — Runtime 直接记录真实触发、分桶耗时、动作固定结果和完成/部分完成/失败/取消/跳过终态；输出动作取消会写入固定 `cancelled` 结果，首个动作取消与已有副作用后的取消分别成为 cancelled 与 partially-completed，不会伪装成失败。加密落库后只发送仓库失效通知，历史时间线必须回读 durable truth。剪贴板/堆栈运行不会二次保存或展示正文，收据本身不含正文、名称、错误字符串、精确长度或正文指纹
 - **剪贴板零副作用预演** — 当前/历史条目可从详情或右键菜单打开 `Paste / Replay / Replace` 影响预演，查看固定的读取类别、处理步骤、潜在副作用、目的地、替换计划与隐私条件；界面只有刷新和关闭，不提供运行入口。Runtime 以 per-item generation + revision 原子解析精确条目，replay/replace 与真实授权共用 invocation-aware 目的地分类；同类型正文漂移、分组/标签变化和删除后同 ID 重建都会使旧结果失效
 
@@ -69,16 +73,16 @@
 | 功能 | Rill | Type4Me |
 |------|---------|---------|
 | 本地 ASR | sherpa-onnx 0.6B 默认 + Apple Silicon 原生 MLX Swift 1.7B 可选 | SenseVoice + Qwen3-ASR 校准 |
-| 云端 ASR | Deepgram | 多家；以当前 provider registry 为准 |
+| 云端 ASR | 不提供 | 多家；以当前 provider registry 为准 |
 | **剪贴板路由模型** | App / 组路由 + Stack / Queue / List | 本次源码快照未见同类路由模型 |
 | **可观察工作流** | 内容无关运行前解释 + 运行时重新授权 | 模式、Prompt 与快捷键配置 |
 | **工作流配置** | 三节点可视化配置 | 模式与 Prompt 配置 |
-| **语音状态浮窗** | ✅；Deepgram 与固定本地 Streaming Zipformer 均提供 partial text | ✅ |
+| **语音状态浮窗** | ✅；固定本地 Streaming Zipformer 提供 partial text | ✅ |
 | **组标签系统** | ✅ | 本次源码快照未见 |
 | 确定性映射词 | ✅ App / 组 / 语言作用域 | ✅ |
 | 一步纠错闭环 | ✅ 人工确认建议与作用域 | 热词/片段管理工具 |
 | 本地历史留存 | ✅ 剪贴板与运行域独立配置、可清理 | 识别历史 + CSV 导出 |
-| ASR 热词 | ✅ Deepgram keyterms + Qwen 有界热词，支持 App / 组 / 语言作用域 | ✅ |
+| ASR 热词 | ✅ Qwen 有界热词，支持 App / 组 / 语言作用域 | ✅ |
 | Prompt 变量 | 🧪 有界单遍模型与 content-free summary 已完成，尚未接入生产变换器 | ✅ |
 | 本地 LLM | 🔜 Provider / model 待选；Ollama 仅为候选 | ✅ Ollama |
 
@@ -121,17 +125,19 @@ plugin target GUID；消费方没有关闭传递插件的开关。上游修复�
 | model ID | 角色 / 后端 | 固定来源 | 大小 / 固定身份 |
 |---|---|---|---|
 | `qwen3-asr-0.6b-int8` | 默认最终模型；中文均衡；16 GB；sherpa-onnx | [Qwen3-ASR 0.6B INT8 archive](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2) | `878702423` bytes；SHA-256 `393f8a14e2f5fb96746aaab342997a40641001fbd5bf9592a080a8329178ee96` |
+| `qwen3-asr-0.6b-mlx-8bit` | 可选轻量最终模型；Apple Silicon；MLX/Metal GPU | [`mlx-community/Qwen3-ASR-0.6B-8bit`](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit) | 约 1.01 GB；commit `89e96d92ba34aca20b3e29fb10cc284097d1219f` |
 | `qwen3-asr-1.7b-mlx-8bit` | 可选较大最终模型；Apple Silicon；MLX/Metal GPU | [`mlx-community/Qwen3-ASR-1.7B-8bit`](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit) | 约 2.46 GB；commit `a8379a2e2f9e313c9292cdf1af4055ab56d50d55` |
-| `streaming-zipformer-small-bilingual-zh-en-preview-int8` | 固定流式预览；不出现在档位选择器；sherpa-onnx | [Streaming Zipformer bilingual INT8 archive](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-small-bilingual-zh-en-2023-02-16.tar.bz2) | `458187351` bytes；SHA-256 `2b7c63322b32e5e0f2526043a1103366119ca58dd615cd7105a37c01db9553d7` |
+| `streaming-zipformer-small-bilingual-zh-en-preview-int8` | 固定流式预览；不出现在档位选择器；sherpa-onnx | [Streaming Zipformer bilingual INT8 archive](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2) | `511274346` bytes；SHA-256 `27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8` |
 
 Omnilingual 300M/1B 已降为候选档位，公开安装器、最终识别器和设置均拒绝它们；候选理由与重新准入条件见 [本地模型候选清单](docs/local-model-candidates.md)。Fun-ASR Nano INT8/FP16 与已退役 Cohere 的固定 trust anchor 和解码实现仍保留，仅用于旧安装识别、迁移和内部 benchmark；它们同样不进入公开产品面。流式预览模型
 准备失败时只退化为录音音量/状态显示，不改变最终档位模型的可用性。
 
-内置语音预设把执行策略放在工作流声明中：`流式直出` 在结束时直接复用固定
-Streaming Zipformer 的最终 hypothesis，不再做离线二次转写；`精准转写` 使用所选
-最终档位；`转写 + 大模型润色` 已声明 `llmRewrite` 步骤但标记为 planned，在生产级
-LLM transformer 接入前保持禁用。三者共用现有 recognizer、transformer 和 action
-流水线，捕获层不会直接依赖文本注入。
+内置目录只保留两条基础链路：`语音识别` 使用 Fn 触发，按当前语音路由选择最终
+STT 模型，在识别阶段提供个人词库热词提示，并在识别后执行确定性替换，再输出文字；
+`语音助手` 使用 `Hey Rill` 唤醒，依次执行 STT、词汇处理、OpenAI-compatible
+Responses LLM 回答和 automatic/Vivian TTS。语音助手默认停用，用户需要先配置
+OpenAI API Key，并在设置中主动启用唤醒监听。两条链路共用现有 recognizer、
+transformer 和 action 流水线，捕获层不会直接依赖文字注入或语音播放。
 
 Qwen archive 的 README 将 ONNX 导出追溯到 ModelScope `zengshuishui/Qwen3-ASR-onnx`、`Wasser1462/Qwen3-ASR-onnx` 与上游 Qwen3-ASR；ModelScope 导出和上游 Qwen 均声明 Apache-2.0。2026-07-18，当前 arm64 Mac 已用严格 source-built runtime 和生产 `SherpaOfflineRecognizer` 在 6.761 秒内跑通 archive 自带的 16 kHz 单声道 `cantonese.wav`，结果保留粤语中文及 `My Princess`；同一生产 provider 又在 2.830 秒内跑通 `codeswitch.wav`，结果保留 `alone, all by myself`。archive 的参考文本表明后者是英、法、意、西语切换，并非中英混合。两者都只是离线技术 fixture，不是真人麦克风、简体中文 + 英文验收或 GA 证据，也不能替代生产录音链路验收。
 
@@ -191,7 +197,7 @@ SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
 
 ### 首次使用
 1. 打开 Rill，按 Dashboard 的“完成语音设置”清单授权 **输入监控** 与 **麦克风**；只有事件监听真正启动后，`Fn` 和全局剪贴板快捷键才会显示就绪；使用直接输入时还需授权 **辅助功能**
-2. 在 Settings 选择本地语音模型或使用硬件推荐。1.7B 选项仅在 Apple Silicon 可见，不需要额外 Python 环境；首次准备需要联网，之后本地转写离线运行。App 不会回退到未知模型、内部预览或未固定来源。选择 Deepgram 时，请在 Diagnostics 完成本次会话的 Speech Check；检查前会执行隐私 preflight，录音结束后会在音频外发前再次授权
+2. 在 Settings 选择本地语音模型或使用硬件推荐。1.7B 选项仅在 Apple Silicon 可见，不需要额外 Python 环境；首次准备需要联网，之后本地转写离线运行。App 不会回退到未知模型、内部预览或未固定来源
 3. 按住 `Fn` 开始说话，松开后文字按当前输出模式输入活动 App 或保存到语音剪贴板组
 
 ---
@@ -201,7 +207,7 @@ SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
 ### 语音输入
 | 操作 | 说明 |
 |------|------|
-| 按住 `Fn` | 开始录音；浮窗显示录音状态和音量，Deepgram 路径还会显示实时 partial text |
+| 按住 `Fn` | 开始录音；浮窗显示录音状态、音量和本地实时 partial text |
 | 松开 `Fn` | 停止录音，识别结果自动输入到当前应用 |
 | `Cmd-F` | 搜索页面、工作流、运行历史和设置分区 |
 
@@ -214,8 +220,13 @@ SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
 
 ### 工作流
 内置两个生产可用工作流：
-1. **语音转文字** — `Fn` 按住说话 → 识别 → 输入（快捷键触发）
-2. **原样输入** — 手动录音 → 原样转写 → 保存到剪贴板组
+1. **语音识别** — `Fn` 按住说话 → STT → 热词与替换词 → 输出文字
+2. **语音助手** — `Hey Rill` → STT → 热词与替换词 → LLM 回答 → TTS
+
+语音助手默认停用；启用前需要准备当前本地 Qwen ASR 并配置 OpenAI-compatible LLM。
+空闲监听只运行本地 VAD，完整语音段才交给 Qwen 检查唤醒短语；同一句中的后续命令会
+直接进入工作流，不再重复 STT。TTS 默认使用 automatic provider：Qwen3-TTS 可用时
+使用 Vivian，否则回退系统语音。
 
 你也可以创建自定义语音工作流，选择本地/云端识别、输出目标和确定性文本处理。
 保存工作流且当前编辑草稿与已保存版本一致后，可在 Workflows 页选择“运行前解释”。预览会按当前路由和隐私设置显示 `ready`、`requires confirmation` 或 `blocked`；它不会读取选区/剪贴板正文，也不会替代运行时的重新检查与云端确认。
@@ -235,7 +246,7 @@ SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
 ```
 RillCore        — 领域模型和服务协议
 RillPlatform    — macOS 系统集成（焦点追踪、剪贴板控制、权限、文字注入）
-RillProviders   — ASR 合同与路由（sherpa-onnx、原生 MLX Swift、Deepgram）、确定性文本处理与输出动作
+RillProviders   — ASR 合同与路由（sherpa-onnx、原生 MLX Swift）、确定性文本处理与输出动作
 RillMLXRuntime  — 仅由语音辅助进程链接的原生 MLX/Metal 推理实现
 RillRuntime     — 事件总线、剪贴板存储、候选解析、会话协调器
 RillPersistence — 数据持久化
@@ -251,13 +262,14 @@ RillApp         — 组合根和应用入口
 
 - [x] **确定性映射词** — 识别后按 App、剪贴板组和语言作用域替换，可解释、可测试
 - [x] **历史留存与清理** — 默认 30 天、分域配置与清理、保护活动剪贴板项；运行历史、收据与诊断使用持久 CAS generation 阻止旧写复活，读路径只承认当前 generation，并清除 SQLite / WAL 残留
-- [x] **ASR 热词** — 显式 provider 能力合同；Deepgram 接收作用域 keyterms，Qwen 本地路径接收清洗且有界的热词
+- [x] **ASR 热词** — 显式 provider 能力合同；Qwen 本地路径接收清洗且有界的热词
 - [x] **一步纠错闭环** — 从真实识别历史生成保守 mapping/hotword 建议，未知作用域必须人工确认
 - [x] **本地静态数据保护** — Keychain 根密钥、AES-256-GCM、可恢复 SQLite v8 迁移、加密运行收据、权威运行来源、逻辑清除 generation 与物理残留清理
 - [x] **Durable 运行收据** — 内容无关的真实 trigger、动作终态、耗时分桶与 receipt-first 历史时间线
 - [x] **组事件可解释性** — 无正文 exact-item descriptor、有界背压、退出排空、严格配置解析、固定 skip/loop 收据、lineage/8-hop 阻断与双语 History 原因；动作仍关闭
 - [x] **失败录音恢复** — 显式 opt-in、Keychain/AES-GCM、硬 TTL 与容量上限、一次性当前策略重试及独立删除/清空
 - [x] **运行前解释** — 已保存工作流的动态、内容无关隐私预览；执行时重新检查并使用与工作流绑定的授权
+- [x] **云端转写润色** — OpenAI-compatible BYOK、Keychain 凭据、自定义 endpoint / 模型、云端确认与失败不投递
 - [ ] **Prompt 变量** — `{text}` `{selected}` `{clipboard}` 让语音输入升级为语音命令
 - [ ] **更多云端引擎** — 火山（豆包语音）、Soniox、AssemblyAI
 - [x] **Toggle 录音模式** — 按一下开始，再按一下停止

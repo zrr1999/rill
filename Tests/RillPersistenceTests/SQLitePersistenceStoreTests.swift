@@ -2520,12 +2520,12 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let values = try await store.strings(forKeys: [
       .interfaceLanguage,
       .selectedWorkflowID,
-      .deepgramModel,
+      .openAIModel,
     ])
 
     XCTAssertEqual(values[.interfaceLanguage], "simplifiedChinese")
     XCTAssertEqual(values[.selectedWorkflowID], selectedWorkflowID)
-    XCTAssertNil(values[.deepgramModel])
+    XCTAssertNil(values[.openAIModel])
     XCTAssertEqual(values.count, 2)
   }
 
@@ -2598,10 +2598,10 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let store = try SQLitePersistenceStore(databaseURL: databaseURL)
     let secret = "legacy-credential-" + UUID().uuidString
 
-    try await store.setString(secret, forKey: .deepgramAPIKey)
-    try await store.removeValue(forKey: .deepgramAPIKey)
+    try await store.setString(secret, forKey: .openAIAPIKey)
+    try await store.removeValue(forKey: .openAIAPIKey)
 
-    let storedCredential = try await store.string(forKey: .deepgramAPIKey)
+    let storedCredential = try await store.string(forKey: .openAIAPIKey)
     XCTAssertNil(storedCredential)
     let secretData = Data(secret.utf8)
     for url in [

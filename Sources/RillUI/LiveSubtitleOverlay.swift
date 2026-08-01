@@ -120,6 +120,8 @@ public struct LiveSubtitleOverlay: View {
           queueBadge
         }
 
+        recordingTimer
+
         Text(statusTitle)
           .font(.caption.weight(.semibold))
           .foregroundStyle(accentColor)
@@ -186,6 +188,8 @@ public struct LiveSubtitleOverlay: View {
       if snapshot.queuedRunCount > 0 {
         queueBadge
       }
+
+      recordingTimer
 
       controlButton
     }
@@ -327,6 +331,95 @@ public struct LiveSubtitleOverlay: View {
     return snapshot.queuedRunCount > 1 ? "队列 \(snapshot.queuedRunCount)" : "队列 1"
   }
 
+  @ViewBuilder
+  private var recordingTimer: some View {
+    if isAudioCaptureActive,
+      snapshot.recordingStartedAt != nil
+    {
+      TimelineView(.periodic(from: .now, by: 1)) { context in
+        if let state = LiveSubtitlePresentationPolicy.recordingTimerState(
+          for: snapshot,
+          now: context.date
+        ) {
+          HStack(spacing: 6) {
+            Text(recordingTimerTitle(state))
+              .font(.caption2.monospacedDigit().weight(.semibold))
+              .foregroundStyle(state.isNearLimit ? Color.red : secondaryTextColor)
+              .padding(.horizontal, 7)
+              .padding(.vertical, 3)
+              .background(
+                (state.isNearLimit ? Color.red : secondaryTextColor).opacity(0.09),
+                in: Capsule()
+              )
+              .overlay(
+                Capsule()
+                  .strokeBorder(
+                    (state.isNearLimit ? Color.red : borderColor).opacity(
+                      state.isNearLimit ? 0.8 : 0.7
+                    )
+                  )
+              )
+              .accessibilityLabel(Text(recordingTimerAccessibilityLabel(state)))
+
+            if state.isNearLimit, snapshot.canRemoveRecordingDurationLimit == true {
+              Button(action: requestUnlimitedRecording) {
+                Text(language == .english ? "No limit" : "不限时")
+                  .font(.caption2.weight(.semibold))
+                  .padding(.horizontal, 7)
+                  .padding(.vertical, 3)
+              }
+              .buttonStyle(.plain)
+              .foregroundStyle(Color.red)
+              .background(Color.red.opacity(0.12), in: Capsule())
+              .overlay(Capsule().strokeBorder(Color.red.opacity(0.8)))
+              .help(
+                language == .english
+                  ? "Continue without Rill's automatic recording limit"
+                  : "继续录音，并解除 Rill 的自动停止上限"
+              )
+              .accessibilityLabel(
+                Text(language == .english ? "Continue with no time limit" : "继续且不限时")
+              )
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private func recordingTimerTitle(
+    _ state: LiveSubtitlePresentationPolicy.RecordingTimerState
+  ) -> String {
+    let elapsed = LiveSubtitlePresentationPolicy.formattedDuration(state.elapsedSeconds)
+    if state.isUnlimited {
+      return language == .english ? "\(elapsed) · No limit" : "\(elapsed) · 不限时"
+    }
+    guard let maximumSeconds = state.maximumSeconds else { return elapsed }
+    return "\(elapsed) / \(LiveSubtitlePresentationPolicy.formattedDuration(maximumSeconds))"
+  }
+
+  private func recordingTimerAccessibilityLabel(
+    _ state: LiveSubtitlePresentationPolicy.RecordingTimerState
+  ) -> String {
+    let elapsed = LiveSubtitlePresentationPolicy.formattedDuration(state.elapsedSeconds)
+    if state.isUnlimited {
+      return language == .english
+        ? "Recorded \(elapsed). No time limit."
+        : "已录制 \(elapsed)，不限时。"
+    }
+    guard let maximumSeconds = state.maximumSeconds,
+      let remainingSeconds = state.remainingSeconds
+    else {
+      return language == .english ? "Recorded \(elapsed)." : "已录制 \(elapsed)。"
+    }
+    let maximum = LiveSubtitlePresentationPolicy.formattedDuration(maximumSeconds)
+    let remaining = LiveSubtitlePresentationPolicy.formattedDuration(remainingSeconds)
+    if language == .english {
+      return "Recorded \(elapsed) of \(maximum). \(remaining) remaining."
+    }
+    return "已录制 \(elapsed)，上限 \(maximum)，剩余 \(remaining)。"
+  }
+
   private var controlButton: some View {
     let stopsCapture = LiveSubtitleInteractionPolicy.showsStopControl(for: snapshot.phase)
     let title =
@@ -358,6 +451,13 @@ public struct LiveSubtitleOverlay: View {
       name: LiveSubtitleInteractionPolicy.showsStopControl(for: snapshot.phase)
         ? Self.stopRequestedNotification
         : Self.closeRequestedNotification,
+      object: snapshot.runID
+    )
+  }
+
+  private func requestUnlimitedRecording() {
+    NotificationCenter.default.post(
+      name: Self.removeDurationLimitRequestedNotification,
       object: snapshot.runID
     )
   }
@@ -414,6 +514,9 @@ public struct LiveSubtitleOverlay: View {
   private static let stopRequestedNotification = Notification.Name(
     "works.earendil.rill.live-subtitle.stop-requested"
   )
+  private static let removeDurationLimitRequestedNotification = Notification.Name(
+    "works.earendil.rill.live-subtitle.remove-duration-limit-requested"
+  )
 }
 
 enum LiveSubtitleInteractionPolicy {
@@ -422,7 +525,7 @@ enum LiveSubtitleInteractionPolicy {
   }
 
   static func isCloudProvider(_ providerID: String?) -> Bool {
-    providerID?.lowercased().hasPrefix("deepgram.") == true
+    false
   }
 
   static func providerDisclosureTitle(
@@ -430,9 +533,6 @@ enum LiveSubtitleInteractionPolicy {
     language: AppLanguage
   ) -> String? {
     guard let providerID else { return nil }
-    if isCloudProvider(providerID) {
-      return language == .english ? "Cloud · Deepgram" : "云端 · Deepgram"
-    }
     if providerID.lowercased().hasPrefix("sherpa-onnx.") {
       return language == .english ? "On-device" : "本机处理"
     }
@@ -441,6 +541,14 @@ enum LiveSubtitleInteractionPolicy {
 }
 
 enum LiveSubtitlePresentationPolicy {
+  struct RecordingTimerState: Equatable {
+    let elapsedSeconds: Int
+    let maximumSeconds: Int?
+    let remainingSeconds: Int?
+    let isNearLimit: Bool
+    let isUnlimited: Bool
+  }
+
   enum ProviderDisclosureStyle: Equatable {
     case tinted
     case highContrast
@@ -448,6 +556,60 @@ enum LiveSubtitlePresentationPolicy {
 
   static let standardLiveTextLineLimit = 4
   static let standardLiveTextPreservesLatestContent = true
+
+  static func recordingTimerState(
+    for snapshot: LiveSubtitleSnapshot,
+    now: Date
+  ) -> RecordingTimerState? {
+    guard let startedAt = snapshot.recordingStartedAt else { return nil }
+    let rawElapsed = now.timeIntervalSince(startedAt)
+    guard rawElapsed.isFinite, rawElapsed <= Double(Int.max) else { return nil }
+    let unboundedElapsedSeconds = max(0, Int(floor(rawElapsed)))
+    guard let maximumDurationSeconds = snapshot.maximumRecordingDurationSeconds else {
+      guard snapshot.recordingDurationIsUnlimited == true else { return nil }
+      return RecordingTimerState(
+        elapsedSeconds: unboundedElapsedSeconds,
+        maximumSeconds: nil,
+        remainingSeconds: nil,
+        isNearLimit: false,
+        isUnlimited: true
+      )
+    }
+    guard maximumDurationSeconds.isFinite,
+      maximumDurationSeconds > 0,
+      maximumDurationSeconds <= Double(Int.max)
+    else {
+      return nil
+    }
+    let maximumSeconds = max(1, Int(ceil(maximumDurationSeconds)))
+    let elapsedSeconds = min(
+      maximumSeconds,
+      unboundedElapsedSeconds
+    )
+    let remainingSeconds = maximumSeconds - elapsedSeconds
+    let warningWindowSeconds = min(
+      15,
+      max(5, Int(ceil(maximumDurationSeconds * 0.1)))
+    )
+    return RecordingTimerState(
+      elapsedSeconds: elapsedSeconds,
+      maximumSeconds: maximumSeconds,
+      remainingSeconds: remainingSeconds,
+      isNearLimit: remainingSeconds <= warningWindowSeconds,
+      isUnlimited: false
+    )
+  }
+
+  static func formattedDuration(_ totalSeconds: Int) -> String {
+    let clampedSeconds = max(0, totalSeconds)
+    let hours = clampedSeconds / 3_600
+    let minutes = (clampedSeconds % 3_600) / 60
+    let seconds = clampedSeconds % 60
+    if hours > 0 {
+      return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+    }
+    return String(format: "%d:%02d", minutes, seconds)
+  }
 
   static func isAudioCaptureActive(phase: LiveSubtitlePhase) -> Bool {
     switch phase {

@@ -16,7 +16,11 @@ final class PrivacyNoticeDocumentTests: XCTestCase {
         let document = try PrivacyNoticeDocument(markdown: markdown)
 
         XCTAssertEqual(document.markdown, markdown)
-        XCTAssertTrue(markdown.contains("Deepgram"))
+        XCTAssertFalse(markdown.localizedCaseInsensitiveContains("deepgram"))
+        XCTAssertTrue(markdown.contains("OpenAI Responses API"))
+        XCTAssertTrue(markdown.contains("store: false"))
+        XCTAssertTrue(markdown.contains("does not silently fall back"))
+        XCTAssertTrue(markdown.contains("不会静默回退"))
         XCTAssertTrue(markdown.contains("github.com"))
         XCTAssertTrue(markdown.contains("release-assets.githubusercontent.com"))
         XCTAssertFalse(markdown.contains("huggingface.co"))

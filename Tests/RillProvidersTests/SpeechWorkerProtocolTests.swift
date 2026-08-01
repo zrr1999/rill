@@ -56,6 +56,21 @@ final class SpeechWorkerProtocolTests: XCTestCase {
     }
   }
 
+  func testLongAudioIsAcceptedOnlyForTrustedMLXModels() throws {
+    var mlxRequest = makeRequest()
+    mlxRequest.recognitionPayload?.modelID = MLXAudioModelID.qwen3ASR17BInt8.rawValue
+    mlxRequest.recognitionPayload?.audioDurationSeconds = 3_600
+    XCTAssertNoThrow(try SpeechWorkerProtocolCodec.encodeRequestLine(mlxRequest))
+
+    var sherpaRequest = makeRequest()
+    sherpaRequest.recognitionPayload?.audioDurationSeconds = 3_600
+    XCTAssertThrowsError(
+      try SpeechWorkerProtocolCodec.encodeRequestLine(sherpaRequest)
+    ) { error in
+      XCTAssertEqual(error as? SpeechWorkerProtocolError, .invalidRequest)
+    }
+  }
+
   func testResponseRejectsTranscriptLargerThanTheFrameBudget() {
     let request = makeRequest()
     let response = SpeechWorkerResponse.success(
@@ -138,6 +153,37 @@ final class SpeechWorkerProtocolTests: XCTestCase {
       try SpeechWorkerProtocolCodec.decodeResponseLine(encodedResponse.dropLast()),
       response
     )
+  }
+
+  func testPreparationProgressRoundTripsAndRejectsInvalidCounts() throws {
+    let request = SpeechWorkerRequest(
+      requestID: UUID(uuidString: "44444444-4444-4444-4444-444444444444")!,
+      generation: 3,
+      modelPreparationPayload: SpeechWorkerModelPreparationPayload(
+        modelID: MLXAudioModelID.qwen3ASR17BInt8.rawValue,
+        downloadIfNeeded: true
+      )
+    )
+    var response = SpeechWorkerResponse.progress(
+      request: request,
+      update: SpeechWorkerProgress(
+        phase: .downloading,
+        completedUnitCount: 25,
+        totalUnitCount: 100
+      )
+    )
+    let encoded = try SpeechWorkerProtocolCodec.encodeResponseLine(response)
+
+    XCTAssertEqual(
+      try SpeechWorkerProtocolCodec.decodeResponseLine(encoded.dropLast()),
+      response
+    )
+    XCTAssertEqual(response.progress?.fractionCompleted, 0.25)
+
+    response.progress?.completedUnitCount = 101
+    XCTAssertThrowsError(try SpeechWorkerProtocolCodec.encodeResponseLine(response)) { error in
+      XCTAssertEqual(error as? SpeechWorkerProtocolError, .invalidResponse)
+    }
   }
 
   private func makeRequest() -> SpeechWorkerRequest {

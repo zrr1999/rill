@@ -9,26 +9,16 @@ public enum VoiceSetupProviderReadiness: Sendable, Equatable {
   case localPreviouslyPrepared
   case localNeedsPreparation(downloadIfNeeded: Bool)
   case localPreparationFailed
-  case cloudCredentialSaving
-  case cloudCredentialMissing
-  case cloudCredentialUnavailable
-  case cloudNeedsSpeechCheck
-  case cloudSpeechCheckPassed
-
   public var isReady: Bool {
     switch self {
-    case .localReady, .cloudSpeechCheckPassed:
+    case .localReady:
       return true
     case .loading,
       .localPreparing,
       .localUnavailable,
       .localPreviouslyPrepared,
       .localNeedsPreparation,
-      .localPreparationFailed,
-      .cloudCredentialSaving,
-      .cloudCredentialMissing,
-      .cloudCredentialUnavailable,
-      .cloudNeedsSpeechCheck:
+      .localPreparationFailed:
       return false
     }
   }
@@ -99,46 +89,22 @@ extension AppModel {
   private var voiceSetupProviderReadiness: VoiceSetupProviderReadiness {
     guard !isLoadingSettings else { return .loading }
 
-    switch preferredSpeechEngine {
-    case .local:
-      guard localSpeechAvailability.isAvailable else {
-        return .localUnavailable(localSpeechAvailability)
+    guard localSpeechAvailability.isAvailable else {
+      return .localUnavailable(localSpeechAvailability)
+    }
+    switch localSpeechPreparationState {
+    case .preparing:
+      return .localPreparing(progress: localSpeechPreparationProgress)
+    case .ready:
+      return .localReady
+    case .idle:
+      if localSpeechPreparationError != nil {
+        return .localPreparationFailed
       }
-      switch localSpeechPreparationState {
-      case .preparing:
-        return .localPreparing(progress: localSpeechPreparationProgress)
-      case .ready:
-        return .localReady
-      case .idle:
-        if localSpeechPreparationError != nil {
-          return .localPreparationFailed
-        }
-        if hasRecordedPreparationForSelectedLocalModel {
-          return .localPreviouslyPrepared
-        }
-        return .localNeedsPreparation(downloadIfNeeded: true)
+      if hasRecordedPreparationForSelectedLocalModel {
+        return .localPreviouslyPrepared
       }
-    case .cloud:
-      switch deepgramCredentialAvailability {
-      case .loading:
-        return .loading
-      case .saving:
-        return .cloudCredentialSaving
-      case .inaccessible:
-        return .cloudCredentialUnavailable
-      case .missing:
-        return .cloudCredentialMissing
-      case .available:
-        break
-      }
-      guard !deepgramAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-        return .cloudCredentialMissing
-      }
-      let verifiedTranscript = deepgramTestTranscript?
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-      return verifiedTranscript?.isEmpty == false
-        ? .cloudSpeechCheckPassed
-        : .cloudNeedsSpeechCheck
+      return .localNeedsPreparation(downloadIfNeeded: true)
     }
   }
 

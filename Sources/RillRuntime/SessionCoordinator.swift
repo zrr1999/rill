@@ -14,6 +14,7 @@ public actor SessionCoordinator {
         case missingRecognizer(String)
         case missingTransformer(PostProcessStepKind)
         case missingAction(String)
+        case invalidWorkflowPlan(String)
         case noSpeech
         case unsupportedWorkflow(WorkflowExecutionPolicyIssue)
         case privacyAuthorizationRequired
@@ -29,6 +30,8 @@ public actor SessionCoordinator {
                 return "No text transformer is registered for \(kind.rawValue)."
             case .missingAction(let id):
                 return "No output action is registered for \(id)."
+            case .invalidWorkflowPlan(let message):
+                return message
             case .noSpeech:
                 return HistoryFailureSanitizer.noSpeechMessage
             case .unsupportedWorkflow(.legacyClipboardAutomationUnsupported):
@@ -45,17 +48,33 @@ public actor SessionCoordinator {
         }
     }
 
-    private var state: State = .idle
+    private struct RunLaneWaiter {
+        let id: UUID
+        let runID: UUID
+        let continuation: CheckedContinuation<Bool, Never>
+    }
+
+    private var state: State = .idle {
+        didSet {
+            if case .idle = state {
+                grantNextRunLaneWaiterIfPossible()
+            }
+        }
+    }
+    private var runLaneOwner: UUID?
+    private var runLaneWaiters: [RunLaneWaiter] = []
     private let privacyContextProvider: @Sendable () async -> ContextSnapshot
     private let recognizerRegistry: SpeechRecognizerRegistry
     private let transformerRegistry: TextTransformerRegistry
     private let actionRegistry: OutputActionRegistry
+    private let workflowPlanCompiler: WorkflowPlanCompiler
     private let candidateResolver: CandidateResolver
     private let deliveryStack: DeliveryStack
     private let eventBus: EventBus
     private let diagnostics: DiagnosticsRecorder?
     private let runReceiptRecorder: WorkflowRunReceiptRecorder?
-    private let vocabularyRuleProvider: @Sendable () async throws -> [VocabularyRule]
+    private let vocabularyCollectionProvider:
+        @Sendable () async throws -> [VocabularyCollection]
     private let recognitionOptionsProvider: @Sendable (
         WorkflowDefinition,
         ContextSnapshot
@@ -70,6 +89,7 @@ public actor SessionCoordinator {
         let trigger: WorkflowRunTriggerKind
         let contextSnapshot: ContextSnapshot
         let recognitionOptions: SpeechRecognitionRequestOptions
+        let resolvedPlan: ResolvedWorkflowPlan
         let startedAt: Date
         let receiptIsActive: Bool
 
@@ -90,6 +110,8 @@ public actor SessionCoordinator {
         diagnostics: DiagnosticsRecorder? = nil,
         runReceiptRecorder: WorkflowRunReceiptRecorder? = nil,
         vocabularyRuleProvider: @escaping @Sendable () async throws -> [VocabularyRule] = { [] },
+        vocabularyCollectionProvider:
+            (@Sendable () async throws -> [VocabularyCollection])? = nil,
         recognitionOptionsProvider: @escaping @Sendable (
             WorkflowDefinition,
             ContextSnapshot
@@ -103,12 +125,24 @@ public actor SessionCoordinator {
         self.recognizerRegistry = recognizerRegistry
         self.transformerRegistry = transformerRegistry
         self.actionRegistry = actionRegistry
+        self.workflowPlanCompiler = WorkflowPlanCompiler(
+            recognizerRegistry: recognizerRegistry,
+            transformerRegistry: transformerRegistry,
+            actionRegistry: actionRegistry
+        )
         self.candidateResolver = candidateResolver
         self.deliveryStack = deliveryStack
         self.eventBus = eventBus
         self.diagnostics = diagnostics
         self.runReceiptRecorder = runReceiptRecorder
-        self.vocabularyRuleProvider = vocabularyRuleProvider
+        self.vocabularyCollectionProvider =
+            vocabularyCollectionProvider
+            ?? {
+                let rules = try await vocabularyRuleProvider()
+                return [
+                    .personal(entries: rules.map(VocabularyEntry.init(rule:))),
+                ]
+            }
         self.recognitionOptionsProvider = recognitionOptionsProvider
         self.recognitionTimeoutPolicy = recognitionTimeoutPolicy
         self.recognitionTimeoutExecutor = RecognitionTimeoutExecutor(
@@ -119,6 +153,82 @@ public actor SessionCoordinator {
 
     public func currentState() -> State {
         state
+    }
+
+    /// Reserves the coordinator before any receipt, registry, or provider
+    /// suspension. Interactive entry points retain fail-fast busy behavior;
+    /// captured audio and recognized wake commands wait FIFO so a new capture
+    /// never cancels or discards an older run that is still producing output.
+    private func acquireRunLane(
+        runID: UUID,
+        waitsForAvailability: Bool
+    ) async -> Bool {
+        if runLaneOwner == nil, case .idle = state {
+            runLaneOwner = runID
+            state = .running(runID)
+            return true
+        }
+        guard waitsForAvailability else { return false }
+
+        let waiterID = UUID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                runLaneWaiters.append(
+                    RunLaneWaiter(
+                        id: waiterID,
+                        runID: runID,
+                        continuation: continuation
+                    )
+                )
+            }
+        } onCancel: {
+            Task { await self.cancelRunLaneWaiter(id: waiterID) }
+        }
+    }
+
+    private func cancelRunLaneWaiter(id: UUID) {
+        guard let index = runLaneWaiters.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+        let waiter = runLaneWaiters.remove(at: index)
+        waiter.continuation.resume(returning: false)
+    }
+
+    private func releaseRunLane(runID: UUID) {
+        guard runLaneOwner == runID else { return }
+        if state.belongs(to: runID) {
+            state = .idle
+        }
+        runLaneOwner = nil
+        grantNextRunLaneWaiterIfPossible()
+    }
+
+    private func grantNextRunLaneWaiterIfPossible() {
+        guard runLaneOwner == nil,
+              case .idle = state,
+              !runLaneWaiters.isEmpty else {
+            return
+        }
+        let waiter = runLaneWaiters.removeFirst()
+        runLaneOwner = waiter.runID
+        state = .running(waiter.runID)
+        waiter.continuation.resume(returning: true)
+    }
+}
+
+private extension SessionCoordinator.State {
+    func belongs(to runID: UUID) -> Bool {
+        switch self {
+        case .idle:
+            false
+        case .running(let activeRunID), .resolving(let activeRunID),
+             .delivering(let activeRunID):
+            activeRunID == runID
+        }
     }
 }
 
@@ -159,6 +269,47 @@ public extension SessionCoordinator {
         )
     }
 
+    /// Continues an authorized voice workflow with command text already
+    /// recognized by the local wake-phrase gate. The workflow is compiled for
+    /// text input, so recognition is not repeated while vocabulary transforms,
+    /// LLM steps, outputs, receipts, and lifecycle events remain unchanged.
+    func runRecognizedText(
+        _ text: String,
+        runID providedRunID: UUID? = nil,
+        triggerEvent: WorkflowTriggerEvent? = nil,
+        authorizedContext: AuthorizedWorkflowRunContext
+    ) async {
+        let runID = providedRunID ?? UUID()
+        do {
+            try await authorizedContext.consume()
+        } catch {
+            await rejectAuthorizedInvocation(
+                runID: runID,
+                workflow: authorizedContext.workflow,
+                trigger: runReceiptTrigger(for: triggerEvent),
+                message: error.localizedDescription
+            )
+            return
+        }
+        guard case .capture = authorizedContext.invocation else {
+            await rejectAuthorizedInvocation(
+                runID: runID,
+                workflow: authorizedContext.workflow,
+                trigger: runReceiptTrigger(for: triggerEvent)
+            )
+            return
+        }
+        _ = await runReportingOutcome(
+            workflow: authorizedContext.workflow,
+            runID: runID,
+            triggerEvent: triggerEvent,
+            contextSnapshot: authorizedContext.contextSnapshot,
+            recognitionOptions: authorizedContext.recognitionOptions,
+            preRecognizedText: text,
+            waitsForAvailability: true
+        )
+    }
+
     internal func run(
         workflow: WorkflowDefinition,
         runID providedRunID: UUID? = nil,
@@ -185,10 +336,54 @@ public extension SessionCoordinator {
         capturedAudio: CapturedAudio? = nil,
         contextSnapshot: ContextSnapshot? = nil,
         recognitionOptions: SpeechRecognitionRequestOptions? = nil,
-        receiptTrigger: WorkflowRunTriggerKind? = nil
+        receiptTrigger: WorkflowRunTriggerKind? = nil,
+        preRecognizedText: String? = nil,
+        waitsForAvailability: Bool = false
     ) async -> WorkflowRunExecutionResult {
         let runID = providedRunID ?? UUID()
         let effectiveReceiptTrigger = receiptTrigger ?? runReceiptTrigger(for: triggerEvent)
+        let acquiredRunLane = await acquireRunLane(
+            runID: runID,
+            waitsForAvailability: waitsForAvailability
+        )
+        guard acquiredRunLane else {
+            if waitsForAvailability, Task.isCancelled {
+                return .failed(
+                    WorkflowRunFailureSummary(
+                        runID: runID,
+                        stage: .preparing,
+                        code: .cancelled
+                    )
+                )
+            }
+            let busyReceiptRegistration = await beginRunReceipt(
+                runID: runID,
+                workflowID: workflow.id,
+                trigger: effectiveReceiptTrigger
+            )
+            let busyReceiptIsActive = busyReceiptRegistration == .active
+            if busyReceiptRegistration != .duplicate {
+                await finishRunReceipt(
+                    runID: runID,
+                    isActive: busyReceiptIsActive,
+                    termination: .skipped(reason: .busy)
+                )
+            }
+            await publishFailure(
+                runID: runID,
+                workflow: workflow.presentation,
+                message: SessionError.alreadyRunning.localizedDescription
+            )
+            return .failed(
+                WorkflowRunFailureSummary(
+                    runID: runID,
+                    stage: .preparing,
+                    code: .busy
+                )
+            )
+        }
+        defer { releaseRunLane(runID: runID) }
+
         let receiptRegistration = await beginRunReceipt(
             runID: runID,
             workflowID: workflow.id,
@@ -209,26 +404,6 @@ public extension SessionCoordinator {
             )
         }
         let receiptIsActive = receiptRegistration == .active
-
-        guard case .idle = state else {
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: .skipped(reason: .busy)
-            )
-            await publishFailure(
-                runID: runID,
-                workflow: workflow.presentation,
-                message: SessionError.alreadyRunning.localizedDescription
-            )
-            return .failed(
-                WorkflowRunFailureSummary(
-                    runID: runID,
-                    stage: .preparing,
-                    code: .busy
-                )
-            )
-        }
 
         if let issue = WorkflowExecutionPolicy.issue(for: workflow) {
             let error = SessionError.unsupportedWorkflow(issue)
@@ -274,21 +449,35 @@ public extension SessionCoordinator {
 
         var failureStage = WorkflowRunStage.preparing
         do {
-            try validateRegisteredOutputActions(in: workflow)
-            let session = await startRunSession(
+            let session = try await startRunSession(
                 for: workflow,
                 runID: runID,
                 trigger: effectiveReceiptTrigger,
                 contextSnapshot: contextSnapshot,
                 recognitionOptions: recognitionOptions,
+                compilationInput: preRecognizedText == nil ? nil : .text,
                 receiptIsActive: receiptIsActive
             )
             failureStage = .recognizing
-            let recognition = try await recognize(
-                in: session,
-                triggerEvent: triggerEvent,
-                capturedAudio: capturedAudio
-            )
+            let recognition: RecognitionResult
+            if let preRecognizedText {
+                let text = preRecognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else {
+                    throw SessionError.noSpeech
+                }
+                recognition = RecognitionResult(
+                    rawText: text,
+                    bestText: text,
+                    candidateSets: []
+                )
+                await eventBus.publish(.recognitionCompleted(recognition))
+            } else {
+                recognition = try await recognize(
+                    in: session,
+                    triggerEvent: triggerEvent,
+                    capturedAudio: capturedAudio
+                )
+            }
             failureStage = .resolving
             let resolvedRecognition = await resolveIfNeeded(recognition, in: session)
             let correctionSource = RecognitionCorrectionSource(
@@ -373,17 +562,10 @@ public extension SessionCoordinator {
             return .busy
         case .noSpeech:
             return .noSpeech
-        case .missingRecognizer, .missingTransformer, .missingAction, .unsupportedWorkflow,
+        case .missingRecognizer, .missingTransformer, .missingAction, .invalidWorkflowPlan,
+             .unsupportedWorkflow,
              .privacyAuthorizationRequired, .authorizationInvocationMismatch:
             return .configuration
-        }
-    }
-
-    private func validateRegisteredOutputActions(
-        in workflow: WorkflowDefinition
-    ) throws {
-        for reference in workflow.pipeline.outputActions where actionRegistry.action(for: reference.id) == nil {
-            throw SessionError.missingAction(reference.id)
         }
     }
 
@@ -399,11 +581,12 @@ public extension SessionCoordinator {
         let workflow = WorkflowDefinition(
             name: "Stack Delivery",
             titleKey: .stackDelivery,
-            pipeline: PipelineDeclaration(
-                recognizerID: "stack.replay",
-                outputActions: [OutputActionReference(id: selectedActionID)],
-                uncertaintyPolicy: .init(mode: .off),
-                deliveryPolicy: .init(strategy: .immediate)
+            plan: WorkflowPlan(
+                setup: WorkflowSetupPhase(),
+                process: WorkflowProcessPhase(),
+                output: WorkflowOutputPhase(
+                    actions: [OutputActionReference(id: selectedActionID)]
+                )
             ),
             ui: WorkflowUIConfig(symbolName: "square.stack.3d.up.fill", accentColorName: "indigo")
         )
@@ -565,11 +748,12 @@ public extension SessionCoordinator {
         let selectedActionID = actionID ?? defaultStackDeliveryActionID
         let workflow = WorkflowDefinition(
             name: "Clipboard Item",
-            pipeline: PipelineDeclaration(
-                recognizerID: "clipboard.item",
-                outputActions: [OutputActionReference(id: selectedActionID)],
-                uncertaintyPolicy: .init(mode: .off),
-                deliveryPolicy: .init(strategy: .immediate)
+            plan: WorkflowPlan(
+                setup: WorkflowSetupPhase(),
+                process: WorkflowProcessPhase(),
+                output: WorkflowOutputPhase(
+                    actions: [OutputActionReference(id: selectedActionID)]
+                )
             ),
             ui: WorkflowUIConfig(symbolName: "doc.on.clipboard", accentColorName: "indigo")
         )
@@ -896,12 +1080,13 @@ public extension SessionCoordinator {
 
         var failureStage = WorkflowRunStage.transforming
         do {
-            let session = await startRunSession(
+            let session = try await startRunSession(
                 for: workflow,
                 runID: runID,
                 trigger: .clipboardReplay,
                 contextSnapshot: contextSnapshot,
                 recognitionOptions: recognitionOptions,
+                compilationInput: .text,
                 receiptIsActive: receiptIsActive
             )
             let replayRecognition = RecognitionResult(
@@ -1379,8 +1564,9 @@ private extension SessionCoordinator {
         trigger: WorkflowRunTriggerKind,
         contextSnapshot: ContextSnapshot,
         recognitionOptions providedRecognitionOptions: SpeechRecognitionRequestOptions? = nil,
+        compilationInput: WorkflowPlanInput? = nil,
         receiptIsActive: Bool
-    ) async -> RunSession {
+    ) async throws -> RunSession {
         let startedAt = Date()
         state = .running(runID)
         await eventBus.publish(
@@ -1405,18 +1591,52 @@ private extension SessionCoordinator {
         )
 
         await eventBus.publish(.contextCaptured(contextSnapshot))
-        let recognitionOptions: SpeechRecognitionRequestOptions
+        var recognitionOptions: SpeechRecognitionRequestOptions
         if let providedRecognitionOptions {
             recognitionOptions = providedRecognitionOptions
         } else {
             recognitionOptions = await recognitionOptionsProvider(workflow, contextSnapshot)
         }
+        let vocabularyContext = VocabularyRuleContext(
+            contextSnapshot: contextSnapshot,
+            clipboardGroupID: workflow.targetClipboardGroupID,
+            locale: recognitionOptions.language
+                ?? workflow.plan.setup.speechRoute?.language
+                ?? workflow.metadata[WorkflowMetadataKey.languageOverride]
+        )
+        let collections: [VocabularyCollection]
+        if workflow.plan.setup.vocabularyBindings.isEmpty {
+            collections = []
+        } else {
+            do {
+                collections = try await vocabularyCollectionProvider()
+            } catch {
+                throw SessionError.invalidWorkflowPlan(
+                    "Vocabulary collections are unavailable."
+                )
+            }
+        }
+        let resolvedPlan: ResolvedWorkflowPlan
+        do {
+            resolvedPlan = try workflowPlanCompiler.compile(
+                workflow: workflow,
+                collections: collections,
+                context: vocabularyContext,
+                input: compilationInput,
+                allowEmptyOutput: trigger == .failedAudioRecovery
+            )
+        } catch {
+            throw SessionError.invalidWorkflowPlan(error.localizedDescription)
+        }
+        recognitionOptions.hints = resolvedPlan.recognitionHints
+        await recordCompiledPlan(resolvedPlan, runID: runID, workflow: workflow.presentation)
         return RunSession(
             runID: runID,
             workflow: workflow,
             trigger: trigger,
             contextSnapshot: contextSnapshot,
             recognitionOptions: recognitionOptions,
+            resolvedPlan: resolvedPlan,
             startedAt: startedAt,
             receiptIsActive: receiptIsActive
         )
@@ -1427,20 +1647,27 @@ private extension SessionCoordinator {
         triggerEvent: WorkflowTriggerEvent?,
         capturedAudio: CapturedAudio?
     ) async throws -> RecognitionResult {
-        guard let recognizer = recognizerRegistry.recognizer(for: session.workflow.pipeline.recognizerID) else {
-            throw SessionError.missingRecognizer(session.workflow.pipeline.recognizerID)
+        guard
+            let recognizerID = session.resolvedPlan.recognizerID,
+            let recognizer = recognizerRegistry.recognizer(for: recognizerID)
+        else {
+            throw SessionError.missingRecognizer(
+                session.resolvedPlan.recognizerID ?? "none"
+            )
         }
 
         await recordStage(
             .recognizing,
             runID: session.runID,
             workflow: session.presentation,
-            metadata: ["recognizerID": session.workflow.pipeline.recognizerID]
+            metadata: ["recognizerID": recognizerID]
         )
         var options = session.recognitionOptions
-        if !recognizer.capabilities.supports(.keyterm), !options.hints.keyterms.isEmpty {
+        if !recognizer.capabilities.supports(.keyterm),
+           session.resolvedPlan.validHotwordCount > 0
+        {
             await recordUnsupportedRecognitionHints(
-                count: options.hints.keyterms.count,
+                count: session.resolvedPlan.validHotwordCount,
                 recognizerID: recognizer.id,
                 session: session
             )
@@ -1511,7 +1738,11 @@ private extension SessionCoordinator {
 
     private func resolveIfNeeded(_ recognition: RecognitionResult, in session: RunSession) async -> RecognitionResult {
         guard
-            session.workflow.pipeline.uncertaintyPolicy.mode != .off,
+            let resolutionStep = session.resolvedPlan.declaration.process.steps.first(
+                where: { $0.kind == .resolveUncertainty }
+            ),
+            let uncertaintyPolicy = resolutionStep.uncertaintyPolicy,
+            uncertaintyPolicy.mode != .off,
             recognition.requiresResolution
         else {
             return recognition
@@ -1527,7 +1758,7 @@ private extension SessionCoordinator {
         let resolutionCase = CandidateResolutionCase(
             runID: session.runID,
             recognitionResult: recognition,
-            policy: session.workflow.pipeline.uncertaintyPolicy
+            policy: uncertaintyPolicy
         )
         let outcome = await candidateResolver.resolve(resolutionCase)
         await eventBus.publish(
@@ -1540,27 +1771,54 @@ private extension SessionCoordinator {
         from recognition: RecognitionResult,
         in session: RunSession
     ) async throws -> String {
-        let vocabularyResult = await applyVocabularyRules(
-            to: recognition.bestText,
-            in: session
-        )
-        var finalText = vocabularyResult.text
-        if vocabularyResult.changed ||
-            !vocabularyResult.issues.isEmpty ||
-            !session.workflow.pipeline.postProcessSteps.isEmpty {
-            await recordStage(
-                .transforming,
-                runID: session.runID,
-                workflow: session.presentation,
-                metadata: [
-                    "stepCount": String(session.workflow.pipeline.postProcessSteps.count),
-                    "vocabularyApplicationCount": String(vocabularyResult.applications.count),
-                    "vocabularyIssueCount": String(vocabularyResult.issues.count),
-                ]
-            )
-        }
-
-        for step in session.workflow.pipeline.postProcessSteps {
+        var finalText = recognition.bestText
+        var didRecordTransformStage = false
+        for processStep in session.resolvedPlan.declaration.process.steps {
+            switch processStep.kind {
+            case .recognizeSpeech, .resolveUncertainty:
+                continue
+            case .applyVocabulary:
+                let result = VocabularyRuleApplicator.apply(
+                    text: finalText,
+                    rules: session.resolvedPlan.replacementRules
+                )
+                finalText = result.text
+                if result.changed || !result.issues.isEmpty {
+                    if !didRecordTransformStage {
+                        await recordStage(
+                            .transforming,
+                            runID: session.runID,
+                            workflow: session.presentation,
+                            metadata: [
+                                "stepCount": String(
+                                    session.resolvedPlan.declaration.process.steps.count
+                                ),
+                                "vocabularyApplicationCount": String(result.applications.count),
+                                "vocabularyIssueCount": String(result.issues.count),
+                            ]
+                        )
+                        didRecordTransformStage = true
+                    }
+                    await recordVocabularyApplication(result, in: session)
+                }
+                continue
+            case .snippetReplacement, .llmRewrite, .normalizeWhitespace:
+                break
+            }
+            guard let step = processStep.postProcessStep else { continue }
+            if !didRecordTransformStage {
+                await recordStage(
+                    .transforming,
+                    runID: session.runID,
+                    workflow: session.presentation,
+                    metadata: [
+                        "stepCount": String(
+                            session.resolvedPlan.declaration.process.steps.count
+                        ),
+                    ]
+                )
+                didRecordTransformStage = true
+            }
             guard let transformer = transformerRegistry.transformer(for: step.kind) else {
                 throw SessionError.missingTransformer(step.kind)
             }
@@ -1585,29 +1843,6 @@ private extension SessionCoordinator {
         }
 
         return finalText
-    }
-
-    private func applyVocabularyRules(
-        to text: String,
-        in session: RunSession
-    ) async -> VocabularyApplicationResult {
-        let rules: [VocabularyRule]
-        do {
-            rules = try await vocabularyRuleProvider()
-        } catch {
-            await recordVocabularyProviderFailure(error, in: session)
-            return VocabularyApplicationResult(text: text)
-        }
-
-        let result = VocabularyRuleApplicator.apply(
-            text: text,
-            rules: rules,
-            context: vocabularyContext(in: session)
-        )
-        if result.changed || !result.issues.isEmpty {
-            await recordVocabularyApplication(result, in: session)
-        }
-        return result
     }
 
     private func vocabularyContext(in session: RunSession) -> VocabularyRuleContext {
@@ -1664,19 +1899,31 @@ private extension SessionCoordinator {
         )
     }
 
-    private func recordVocabularyProviderFailure(
-        _: any Error,
-        in session: RunSession
+    private func recordCompiledPlan(
+        _ plan: ResolvedWorkflowPlan,
+        runID: UUID,
+        workflow: WorkflowPresentation
     ) async {
         guard let diagnostics else { return }
         await diagnostics.record(
             DiagnosticEvent(
-                runID: session.runID,
+                runID: runID,
                 subsystem: .session,
-                level: .warning,
-                event: "session.vocabulary.load-failed",
-                message: "Vocabulary mappings could not be loaded.",
-                metadata: ["reason": "rule-source-unavailable"]
+                level: .debug,
+                event: "session.workflow-plan.compiled",
+                message: "Compiled the workflow plan for this run.",
+                metadata: [
+                    "workflow": workflow.fallbackName,
+                    "recognizerID": plan.recognizerID ?? "none",
+                    "vocabularyCollectionCount": String(
+                        plan.activeVocabularyCollectionCount
+                    ),
+                    "hotwordCount": String(plan.validHotwordCount),
+                    "hotwordOmittedCount": String(plan.omittedHotwordCount),
+                    "hotwordRejectedCount": String(plan.rejectedHotwordCount),
+                    "hotwordOutcome":
+                        plan.recognizerAcceptsHotwords ? "supported" : "unsupported-recognizer",
+                ]
             )
         )
     }
@@ -1688,7 +1935,9 @@ private extension SessionCoordinator {
         sourceClipboardItemSubject: ClipboardItemDryRunSubject? = nil
     ) async throws -> DeliveryExecutionSummary {
         state = .delivering(session.runID)
-        var deliveryMetadata = ["actionCount": String(session.workflow.pipeline.outputActions.count)]
+        var deliveryMetadata = [
+            "actionCount": String(session.resolvedPlan.declaration.output.actions.count),
+        ]
         if let sourceClipboardItemSubject {
             deliveryMetadata["sourceClipboardItemID"] = sourceClipboardItemSubject.itemID.uuidString
         }
@@ -1710,7 +1959,9 @@ private extension SessionCoordinator {
         )
 
         var summary = DeliveryExecutionSummary()
-        for (actionIndex, reference) in session.workflow.pipeline.outputActions.enumerated() {
+        for (actionIndex, reference) in
+            session.resolvedPlan.declaration.output.actions.enumerated()
+        {
             guard let action = actionRegistry.action(for: reference.id) else {
                 throw SessionError.missingAction(reference.id)
             }

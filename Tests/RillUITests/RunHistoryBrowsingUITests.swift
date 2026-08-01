@@ -397,6 +397,54 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         XCTAssertEqual(containingCalls.fresh, 0)
     }
 
+    func testNewRunDoesNotInterruptOlderPageAndRefreshesWhenReturningToNewest() async throws {
+        let session = try makeSession(access: .restrictedPreview)
+        let newestEntry = try makeEntry(name: "Newest", timestamp: 300)
+        let olderEntry = try makeEntry(name: "Older", timestamp: 200)
+        let refreshedEntry = try makeEntry(name: "Automatically refreshed", timestamp: 400)
+        let cursor = RunHistoryCursor(
+            session: session,
+            after: RunHistorySortKey(timestamp: newestEntry.timestamp, entryID: newestEntry.id)
+        )
+        let newestPage = RunHistoryPage(
+            session: session,
+            entries: [newestEntry],
+            nextCursor: cursor
+        )
+        let olderPage = RunHistoryPage(session: session, entries: [olderEntry], nextCursor: nil)
+        let refreshedPage = RunHistoryPage(
+            session: session,
+            entries: [refreshedEntry],
+            nextCursor: nil
+        )
+        let browser = ScriptedRunHistoryBrowser(
+            pageOutcomes: [.page(newestPage), .page(olderPage), .page(refreshedPage)]
+        )
+        let harness = makeHarness(runHistoryBrowser: browser)
+
+        let loadedNewest = await waitUntil { harness.model.runHistoryPage == newestPage }
+        XCTAssertTrue(loadedNewest)
+        harness.model.loadOlderRunHistoryPage()
+        let loadedOlder = await waitUntil { harness.model.runHistoryPage == olderPage }
+        XCTAssertTrue(loadedOlder)
+
+        harness.model.noteNewRunAvailableForHistoryBrowsing()
+        XCTAssertEqual(harness.model.runHistoryPage, olderPage)
+        XCTAssertTrue(harness.model.runHistoryHasNewerEntries)
+
+        harness.model.loadNewerRunHistoryPage()
+        let loadedRefresh = await waitUntil { harness.model.runHistoryPage == refreshedPage }
+        XCTAssertTrue(loadedRefresh)
+        XCTAssertFalse(harness.model.runHistoryHasNewerEntries)
+
+        let requests = await browser.requests()
+        XCTAssertEqual(requests.count, 3)
+        let lastRequest = try XCTUnwrap(requests.last)
+        guard case .first = lastRequest else {
+            return XCTFail("Returning to the newest page must load a fresh repository snapshot")
+        }
+    }
+
     func testPaginationFailurePreservesCurrentPage() async throws {
         let session = try makeSession(access: .restrictedPreview)
         let entry = try makeEntry(name: "Stable", timestamp: 200)
@@ -437,7 +485,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         XCTAssertEqual(harness.model.runHistoryPage, page)
     }
 
-    func testScopeResetAndNewRunRefreshCaptureFreshFirstPages() async throws {
+    func testScopeResetAndNewRunAutomaticallyRefreshCaptureFreshFirstPages() async throws {
         let allSession = try makeSession(access: .restrictedPreview, scope: .allRuns)
         let resultsSession = try makeSession(access: .restrictedPreview, scope: .voiceResults)
         let allEntry = try makeEntry(name: "All", timestamp: 300)
@@ -465,10 +513,6 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         let loadedResults = await waitUntil { harness.model.runHistoryPage == resultsPage }
         XCTAssertTrue(loadedResults)
         harness.model.noteNewRunAvailableForHistoryBrowsing()
-        XCTAssertTrue(harness.model.runHistoryHasNewerEntries)
-        XCTAssertEqual(harness.model.runHistoryPage, resultsPage)
-
-        harness.model.refreshNewestRunHistoryPage()
         let loadedRefresh = await waitUntil { harness.model.runHistoryPage == refreshedPage }
         XCTAssertTrue(loadedRefresh)
         XCTAssertFalse(harness.model.runHistoryHasNewerEntries)

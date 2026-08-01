@@ -4,6 +4,7 @@ import RillCore
 
 public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
     case dashboard
+    case workflows
     case clipboard
     case history
     case diagnostics
@@ -14,6 +15,7 @@ public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
     public var symbolName: String {
         switch self {
         case .dashboard: return "gauge.with.dots.needle.33percent"
+        case .workflows: return "point.3.connected.trianglepath.dotted"
         case .clipboard: return "doc.on.clipboard"
         case .history: return "clock.arrow.circlepath"
         case .diagnostics: return "stethoscope"
@@ -24,6 +26,7 @@ public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
     public var titleKey: UIStrings.Key {
         switch self {
         case .dashboard: return .sidebarDashboard
+        case .workflows: return .sidebarWorkflows
         case .clipboard: return .sidebarClipboard
         case .history: return .sidebarHistory
         case .diagnostics: return .sidebarDiagnostics
@@ -187,6 +190,7 @@ public struct MainShellView: View {
         .dashboard,
         .clipboard,
         .history,
+        .workflows,
         .diagnostics,
         .settings,
     ]
@@ -535,6 +539,8 @@ public struct MainShellView: View {
         switch model.selectedSidebarSection {
         case .dashboard:
             DashboardView(model: model)
+        case .workflows:
+            WorkflowsView(model: model)
         case .clipboard:
             ClipboardView(
                 model: model,

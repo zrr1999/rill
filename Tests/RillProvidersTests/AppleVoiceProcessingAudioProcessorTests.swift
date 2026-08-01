@@ -126,6 +126,7 @@ final class AppleVoiceProcessingAudioProcessorTests: XCTestCase {
       target.operations,
       [
         .setVoiceProcessingEnabled(true),
+        .minimizeOtherAudioDucking,
         .configureInputDevice,
         .establishOutputPath(
           AppleVoiceProcessingIOFormat(sampleRate: 48_000, channelCount: 1)
@@ -215,10 +216,8 @@ final class AppleVoiceProcessingAudioProcessorTests: XCTestCase {
       Array(target.operations.prefix(3)),
       [
         .setVoiceProcessingEnabled(true),
+        .minimizeOtherAudioDucking,
         .configureInputDevice,
-        .establishOutputPath(
-          AppleVoiceProcessingIOFormat(sampleRate: 48_000, channelCount: 1)
-        ),
       ]
     )
   }
@@ -361,6 +360,33 @@ final class AppleVoiceProcessingAudioProcessorTests: XCTestCase {
     processor.stopRecording()
     XCTAssertEqual(session.events, [.configure, .start, .stop])
     withExtendedLifetime(stream) {}
+  }
+
+  func testProcessorReusesValidatedConfigurationAcrossNormalRecordingRestart() throws {
+    let session = TestVoiceProcessingAudioEngineSession()
+    session.emulatesConfigurationReuse = true
+    let processor = AppleVoiceProcessingAudioProcessor(
+      sessionFactory: TestVoiceProcessingAudioEngineSessionFactory(session: session)
+    )
+
+    let (firstStream, firstContinuation) =
+      processor.startStreamingRecordingLive(inputDeviceID: nil)
+    processor.stopRecording()
+    firstContinuation.finish()
+
+    let (secondStream, secondContinuation) =
+      processor.startStreamingRecordingLive(inputDeviceID: nil)
+
+    XCTAssertEqual(
+      session.events,
+      [.configure, .start, .stop, .start],
+      "A normal restart must not repeat the expensive VoiceProcessingIO configuration."
+    )
+
+    processor.stopRecording()
+    secondContinuation.finish()
+    XCTAssertEqual(session.events, [.configure, .start, .stop, .start, .stop])
+    withExtendedLifetime((firstStream, secondStream)) {}
   }
 
   func testFailedStoppedFrontendPreparationDoesNotBlockCaptureStaleRouteRetry() async throws {
@@ -524,6 +550,37 @@ final class AppleVoiceProcessingAudioProcessorTests: XCTestCase {
     XCTAssertEqual(rms.count, 2)
     XCTAssertEqual(rms[0], 0.02, accuracy: 0.0001)
     XCTAssertEqual(rms[1], 0.005, accuracy: 0.0001)
+  }
+
+  func testDisplayMeterKeepsHeadroomAboveEndpointThreshold() {
+    XCTAssertEqual(
+      AppleVoiceProcessingAudioProcessor.endpointRelativeEnergy(fromNormalizedRMS: 0.05),
+      1
+    )
+
+    let quiet = AppleVoiceProcessingAudioProcessor.meterRelativeEnergy(
+      fromNormalizedRMS: 0.005
+    )
+    let ordinarySpeech = AppleVoiceProcessingAudioProcessor.meterRelativeEnergy(
+      fromNormalizedRMS: 0.05
+    )
+    let loudSpeech = AppleVoiceProcessingAudioProcessor.meterRelativeEnergy(
+      fromNormalizedRMS: 0.5
+    )
+
+    XCTAssertGreaterThan(quiet, 0)
+    XCTAssertLessThan(quiet, ordinarySpeech)
+    XCTAssertLessThan(ordinarySpeech, 0.6)
+    XCTAssertGreaterThan(loudSpeech, ordinarySpeech)
+    XCTAssertLessThan(loudSpeech, 1)
+    XCTAssertEqual(
+      AppleVoiceProcessingAudioProcessor.meterRelativeEnergy(fromNormalizedRMS: 1),
+      1
+    )
+    XCTAssertEqual(
+      AppleVoiceProcessingAudioProcessor.meterRelativeEnergy(fromNormalizedRMS: .nan),
+      0
+    )
   }
 
   func testProcessorPropagatesConfigurationFailureAndDoesNotStart() async {
@@ -963,6 +1020,8 @@ private final class TestVoiceProcessingConfigurationTarget:
 {
   enum Operation: Equatable {
     case setVoiceProcessingEnabled(Bool)
+    case minimizeOtherAudioDucking
+    case enableRecordingOtherAudioDucking
     case configureInputDevice
     case establishOutputPath(AppleVoiceProcessingIOFormat)
     case setBypassed(Bool)
@@ -1029,6 +1088,14 @@ private final class TestVoiceProcessingConfigurationTarget:
     guard activationTakesEffect else { return }
     isInputVoiceProcessingEnabled = isEnabled
     isOutputVoiceProcessingEnabled = isEnabled
+  }
+
+  func minimizeOtherAudioDucking() {
+    operations.append(.minimizeOtherAudioDucking)
+  }
+
+  func enableRecordingOtherAudioDucking() {
+    operations.append(.enableRecordingOtherAudioDucking)
   }
 
   func configureVoiceProcessingInputDevice() throws {

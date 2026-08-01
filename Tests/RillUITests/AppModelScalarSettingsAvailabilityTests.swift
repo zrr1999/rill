@@ -87,7 +87,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
     XCTAssertFalse(harness.model.setInterfaceLanguage(.simplifiedChinese))
     XCTAssertFalse(harness.model.setClipboardCaptureEnabled(!initialClipboardCaptureEnabled))
-    XCTAssertFalse(harness.model.setPreferredSpeechEngine(.cloud))
+    XCTAssertFalse(harness.model.setPreferredSpeechEngine(.local))
     XCTAssertFalse(harness.model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup))
     XCTAssertFalse(harness.model.setLongRecordingModeEnabled(true))
     await harness.model.flushPendingPersistenceWrites()
@@ -137,20 +137,18 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
     XCTAssertTrue(harness.model.setInterfaceLanguage(.simplifiedChinese))
     XCTAssertTrue(harness.model.setClipboardCaptureEnabled(true))
-    XCTAssertTrue(harness.model.setPreferredSpeechEngine(.cloud))
     XCTAssertTrue(harness.model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup))
     XCTAssertTrue(harness.model.setLongRecordingModeEnabled(true))
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.language, .simplifiedChinese)
     XCTAssertTrue(harness.model.clipboardCaptureEnabled)
-    XCTAssertEqual(harness.model.preferredSpeechEngine, .cloud)
+    XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
     XCTAssertEqual(harness.model.builtinPushToTalkOutputMode, .saveToVoiceGroup)
     XCTAssertTrue(harness.model.longRecordingModeEnabled)
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.storage[.interfaceLanguage], AppLanguage.simplifiedChinese.rawValue)
     XCTAssertEqual(activity.storage[.clipboardCaptureEnabled], "true")
-    XCTAssertEqual(activity.storage[.preferredSpeechEngine], PreferredSpeechEngine.cloud.rawValue)
     XCTAssertEqual(
       activity.storage[.builtinPushToTalkOutputMode],
       BuiltinPushToTalkOutputMode.saveToVoiceGroup.rawValue
@@ -158,7 +156,6 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertEqual(activity.storage[.longRecordingModeEnabled], "true")
     XCTAssertEqual(activity.setCounts[.interfaceLanguage], 1)
     XCTAssertEqual(activity.setCounts[.clipboardCaptureEnabled], 1)
-    XCTAssertEqual(activity.setCounts[.preferredSpeechEngine], 1)
     XCTAssertEqual(activity.setCounts[.builtinPushToTalkOutputMode], 1)
     XCTAssertEqual(activity.setCounts[.longRecordingModeEnabled], 1)
   }
@@ -187,9 +184,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       harness.model.setClipboardCaptureEnabled(!initialClipboardCaptureEnabled)
     )
     XCTAssertFalse(
-      harness.model.setPreferredSpeechEngine(
-        initialEngine == .local ? .cloud : .local
-      )
+      harness.model.setPreferredSpeechEngine(.local)
     )
     XCTAssertFalse(
       harness.model.setBuiltinPushToTalkOutputMode(
@@ -211,54 +206,6 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertTrue(activity.removeCounts.isEmpty)
   }
 
-  func testUnavailableDeepgramScalarsBlockWholeConfigurationWrites() async {
-    let whisperModel = "preserve-whisper-model"
-    let deepgramLanguage = "preserve-deepgram-language"
-    let store = UITestSettingsStore(
-      storage: [
-        .localSpeechModel: whisperModel,
-        .deepgramLanguage: deepgramLanguage,
-      ],
-      unavailableKeys: [
-        .localSpeechModel,
-        .deepgramLanguage,
-      ]
-    )
-    let whisperWorkflow = providerWorkflow(
-      name: "Local",
-      recognizerID: AppModel.sherpaOnnxRecognizerID
-    )
-    let deepgramWorkflow = providerWorkflow(
-      name: "Cloud",
-      recognizerID: AppModel.deepgramRecognizerID
-    )
-    let harness = makeHarness(
-      workflows: [whisperWorkflow, deepgramWorkflow],
-      settingsStore: store,
-      credentialStore: UITestSecureCredentialStore()
-    )
-    await waitUntil { !harness.model.isLoadingSettings }
-
-    do {
-      try await harness.model.persistProviderSettingsForRun(deepgramWorkflow)
-      XCTFail("Expected unavailable Deepgram settings to block persistence.")
-    } catch {
-      XCTAssertEqual(
-        error as? ProviderSettingsPersistenceError,
-        .unavailableStoredSettings
-      )
-      XCTAssertEqual(
-        error.localizedDescription,
-        "Saved speech-provider settings are unavailable."
-      )
-    }
-
-    let activity = await store.activitySnapshot()
-    XCTAssertEqual(activity.storage[.localSpeechModel], whisperModel)
-    XCTAssertEqual(activity.storage[.deepgramLanguage], deepgramLanguage)
-    XCTAssertTrue(activity.setCounts.isEmpty)
-    XCTAssertTrue(activity.removeCounts.isEmpty)
-  }
 
   func testLocalSpeechSettingsSourceFailsClosedAndRecoversWithScalarDomain() async throws {
     let store = UITestSettingsStore(
@@ -463,44 +410,118 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertEqual(activity.setCounts[.localSpeechModel], 1)
   }
 
-  func testDeepgramRetryReloadsExactScalarsAndCredentialBeforeRecovery() async {
-    let deepgramKeys = ScalarSettingsDomain.deepgram.settingKeys
+
+  func testOpenAISettingsPersistCustomEndpointModelAndCredentialInCorrectStores() async {
     let store = UITestSettingsStore(
       storage: [
-        .deepgramBaseURL: "https://recovered.example.test",
-        .deepgramModel: "recovered-model",
-        .deepgramLanguage: "fr",
-      ],
-      unavailableKeys: [.deepgramLanguage]
+        .openAIBaseURL: "https://gateway.example.com/openai/v1",
+        .openAIModel: "vendor/custom-model",
+      ]
     )
     let credentials = UITestSecureCredentialStore(
-      storage: [.deepgramAPIKey: "recovered-key"]
+      storage: [.openAIAPIKey: "stored-openai-key"]
     )
     let harness = makeHarness(
       settingsStore: store,
-      credentialStore: credentials
+      credentialStore: credentials,
+      settingsWriteDebounceDuration: .zero
     )
     await waitUntil { !harness.model.isLoadingSettings }
-    XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .deepgram))
-    XCTAssertEqual(harness.model.deepgramCredentialAvailability, .inaccessible)
 
-    await store.setUnavailableKeys([])
-    harness.model.retryDeepgramCredentialLoad()
+    XCTAssertEqual(harness.model.openAIAPIKey, "stored-openai-key")
+    XCTAssertEqual(harness.model.openAIBaseURL, "https://gateway.example.com/openai/v1")
+    XCTAssertEqual(harness.model.openAIModel, "vendor/custom-model")
+    XCTAssertEqual(harness.model.openAICredentialAvailability, .available)
+
+    harness.model.openAIAPIKey = "replacement-openai-key"
+    harness.model.openAIBaseURL = "http://localhost:11434/v1"
+    harness.model.openAIModel = "local-model"
+    await harness.model.flushPendingPersistenceWrites()
+    await waitUntil { harness.model.openAICredentialAvailability == .available }
+
+    let settingsActivity = await store.activitySnapshot()
+    XCTAssertEqual(settingsActivity.storage[.openAIBaseURL], "http://localhost:11434/v1")
+    XCTAssertEqual(settingsActivity.storage[.openAIModel], "local-model")
+    XCTAssertNil(settingsActivity.storage[.openAIAPIKey])
+    let credentialActivity = await credentials.activitySnapshot()
+    XCTAssertEqual(credentialActivity.storage[.openAIAPIKey], "replacement-openai-key")
+  }
+
+  func testOpenAIVerificationUsesCurrentCustomSettingsAndRejectsInvalidURL() async {
+    let probe = OpenAIVerificationProbe()
+    let store = UITestSettingsStore(
+      storage: [
+        .openAIBaseURL: "https://gateway.example.com/v1",
+        .openAIModel: "vendor/verification-model",
+      ]
+    )
+    let credentials = UITestSecureCredentialStore(
+      storage: [.openAIAPIKey: "verification-key"]
+    )
+    let harness = makeHarness(
+      settingsStore: store,
+      credentialStore: credentials,
+      verifyOpenAIConfigurationAction: { settings in
+        await probe.record(settings)
+      }
+    )
     await waitUntil {
-      !harness.model.isRetryingUnavailableScalarSettings(in: .deepgram)
-        && harness.model.deepgramCredentialAvailability == .available
+      !harness.model.isLoadingSettings
+        && harness.model.openAICredentialAvailability == .available
     }
 
-    XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .deepgram))
-    XCTAssertEqual(harness.model.deepgramAPIKey, "recovered-key")
-    XCTAssertEqual(harness.model.deepgramBaseURL, "https://recovered.example.test")
-    XCTAssertEqual(harness.model.deepgramModel, "recovered-model")
-    XCTAssertEqual(harness.model.deepgramLanguage, "fr")
-    let settingsActivity = await store.activitySnapshot()
-    XCTAssertEqual(Set(settingsActivity.settingsSnapshotRequests.last ?? []), deepgramKeys)
-    XCTAssertTrue(settingsActivity.setCounts.isEmpty)
-    let credentialActivity = await credentials.activitySnapshot()
-    XCTAssertEqual(credentialActivity.readCounts[.deepgramAPIKey], 2)
+    harness.model.verifyOpenAIConfiguration()
+    await waitUntil {
+      harness.model.openAIConfigurationVerificationState == .verified
+    }
+
+    let settings = await probe.lastSettings()
+    XCTAssertEqual(
+      settings,
+      OpenAISettings(
+        apiKey: "verification-key",
+        baseURL: "https://gateway.example.com/v1",
+        model: "vendor/verification-model"
+      )
+    )
+
+    harness.model.openAIBaseURL = "http://public.example.com/v1"
+    XCTAssertFalse(harness.model.canVerifyOpenAIConfiguration)
+  }
+
+  func testOpenAIVerificationPreservesSafeFailureCategoryUntilSettingsChange() async {
+    let store = UITestSettingsStore(
+      storage: [
+        .openAIBaseURL: "https://gateway.example.com/v1",
+        .openAIModel: "missing-model",
+      ]
+    )
+    let credentials = UITestSecureCredentialStore(
+      storage: [.openAIAPIKey: "verification-key"]
+    )
+    let harness = makeHarness(
+      settingsStore: store,
+      credentialStore: credentials,
+      verifyOpenAIConfigurationAction: { _ in
+        throw UITestOpenAIVerificationError(failure: .configurationInvalid)
+      }
+    )
+    await waitUntil {
+      !harness.model.isLoadingSettings
+        && harness.model.openAICredentialAvailability == .available
+    }
+
+    harness.model.verifyOpenAIConfiguration()
+    await waitUntil {
+      harness.model.openAIConfigurationVerificationState == .failed
+    }
+
+    XCTAssertEqual(harness.model.openAIVerificationFailure, .configurationInvalid)
+
+    harness.model.openAIModel = "available-model"
+
+    XCTAssertEqual(harness.model.openAIConfigurationVerificationState, .idle)
+    XCTAssertNil(harness.model.openAIVerificationFailure)
   }
 
   private func trustedLocalSpeechModels(
@@ -522,7 +543,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
   func testSecureStoreWithoutSettingsStoreKeepsAllStoredDomainsUnavailable() async {
     let credentials = UITestSecureCredentialStore(
-      storage: [.deepgramAPIKey: "keychain-only-key"]
+      storage: [.openAIAPIKey: "keychain-only-key"]
     )
     let whisperWorkflow = providerWorkflow(
       name: "Local",
@@ -540,8 +561,8 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertEqual(harness.model.workflowLibraryAvailability, .unavailable)
     XCTAssertEqual(harness.model.downloadedLocalSpeechModelsAvailability, .unavailable)
     XCTAssertEqual(harness.model.vocabularyRulesAvailability, .unavailable)
-    XCTAssertEqual(harness.model.deepgramAPIKey, "keychain-only-key")
-    XCTAssertEqual(harness.model.deepgramCredentialAvailability, .inaccessible)
+    XCTAssertEqual(harness.model.openAIAPIKey, "keychain-only-key")
+    XCTAssertEqual(harness.model.openAICredentialAvailability, .inaccessible)
 
     // Local speech uses the process-wide session source rather than
     // forcing a durable write before every run. The source remains typed
@@ -560,10 +581,6 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertEqual(
       ScalarSettingsDomain.speechRoute.unavailableWarning(language: .simplifiedChinese),
       "部分已保存的语音路由设置无法读取。相关控件已锁定，以保留原始存储值。"
-    )
-    XCTAssertEqual(
-      ScalarSettingsDomain.deepgram.unavailableWarning(language: .english),
-      "Some saved Deepgram settings could not be read. These controls are locked to preserve the original stored values."
     )
     XCTAssertEqual(
       ScalarSettingsDomain.input.unavailableWarning(language: .simplifiedChinese),
@@ -596,5 +613,23 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       try? await Task.sleep(for: .milliseconds(5))
     }
     XCTFail("Timed out waiting for scalar settings state.", file: file, line: line)
+  }
+}
+
+private struct UITestOpenAIVerificationError: OpenAIVerificationFailureProviding {
+  let failure: OpenAIVerificationFailure
+
+  var openAIVerificationFailure: OpenAIVerificationFailure { failure }
+}
+
+private actor OpenAIVerificationProbe {
+  private var settings: OpenAISettings?
+
+  func record(_ settings: OpenAISettings) {
+    self.settings = settings
+  }
+
+  func lastSettings() -> OpenAISettings? {
+    settings
   }
 }

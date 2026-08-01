@@ -22,6 +22,10 @@ public struct LiveSubtitleSnapshot: Codable, Sendable, Equatable {
     public var providerID: String?
     public var queuedRunCount: Int
     public var prefersCompactLayout: Bool
+    public var recordingStartedAt: Date?
+    public var maximumRecordingDurationSeconds: Double?
+    public var recordingDurationIsUnlimited: Bool?
+    public var canRemoveRecordingDurationLimit: Bool?
     public var updatedAt: Date
 
     public init(
@@ -35,6 +39,10 @@ public struct LiveSubtitleSnapshot: Codable, Sendable, Equatable {
         providerID: String? = nil,
         queuedRunCount: Int = 0,
         prefersCompactLayout: Bool = false,
+        recordingStartedAt: Date? = nil,
+        maximumRecordingDurationSeconds: Double? = nil,
+        recordingDurationIsUnlimited: Bool? = nil,
+        canRemoveRecordingDurationLimit: Bool? = nil,
         updatedAt: Date = Date()
     ) {
         self.runID = runID
@@ -47,6 +55,10 @@ public struct LiveSubtitleSnapshot: Codable, Sendable, Equatable {
         self.providerID = providerID
         self.queuedRunCount = queuedRunCount
         self.prefersCompactLayout = prefersCompactLayout
+        self.recordingStartedAt = recordingStartedAt
+        self.maximumRecordingDurationSeconds = maximumRecordingDurationSeconds
+        self.recordingDurationIsUnlimited = recordingDurationIsUnlimited
+        self.canRemoveRecordingDurationLimit = canRemoveRecordingDurationLimit
         self.updatedAt = updatedAt
     }
 }

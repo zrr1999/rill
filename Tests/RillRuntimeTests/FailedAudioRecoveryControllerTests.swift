@@ -92,7 +92,7 @@ private struct RecoveryExecutionBoundaryContextProvider: ContextProvider {
 }
 
 private struct RecoveryExecutionBoundaryRecognizer: SpeechRecognizer {
-    let id = "deepgram.recovery-boundary"
+    let id = "remote.recovery-boundary"
     let probe: RecoveryExecutionBoundaryProbe
 
     func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
@@ -738,7 +738,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             name: "Legacy Clipboard Automation",
             trigger: .manual,
             pipeline: PipelineDeclaration(
-                recognizerID: "deepgram.recovery-boundary",
+                recognizerID: "remote.recovery-boundary",
                 outputActions: [OutputActionReference(id: "recovery-controller.action")]
             ),
             ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
@@ -1113,7 +1113,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
 
     func testCloudPrivacyDeclineOccursBeforeAudioIsDecrypted() async throws {
         var workflow = makeWorkflow()
-        workflow.pipeline.recognizerID = "deepgram.recovery-test"
+        workflow.pipeline.recognizerID = "remote.recovery-test"
         let receipt = makeReceipt(workflowID: workflow.id)
         let store = RecoveryControllerStoreProbe(receipt: receipt)
         let privacyGate = PrivacyRunGate(
@@ -1154,7 +1154,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             name: "Cloud recovery final authorization",
             trigger: .manual,
             pipeline: PipelineDeclaration(
-                recognizerID: "deepgram.recovery-boundary",
+                recognizerID: "remote.recovery-boundary",
                 outputActions: [OutputActionReference(id: "recovery-controller.action")]
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
@@ -1238,7 +1238,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
 
     func testRetryRechecksExpirationAfterCloudConfirmation() async throws {
         var workflow = makeWorkflow()
-        workflow.pipeline.recognizerID = "deepgram.recovery-test"
+        workflow.pipeline.recognizerID = "remote.recovery-test"
         let receipt = makeReceipt(workflowID: workflow.id)
         let store = RecoveryControllerStoreProbe(receipt: receipt)
         let clock = LockedRecoveryDate(Date(timeIntervalSince1970: 199))

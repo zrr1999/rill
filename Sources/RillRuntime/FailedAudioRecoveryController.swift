@@ -297,8 +297,8 @@ public actor FailedAudioRecoveryController {
         // Recovery reprocesses into run history only. It never repeats paste,
         // clipboard, Shortcut, file, or network output actions from the old run.
         var recoveryWorkflow = workflow
-        recoveryWorkflow.pipeline.outputActions = []
-        recoveryWorkflow.pipeline.deliveryPolicy = .init(strategy: .immediate)
+        recoveryWorkflow.plan.output.actions = []
+        recoveryWorkflow.plan.output.deliveryPolicy = .init(strategy: .immediate)
         let retryRunID = UUID()
 
         // Current provider configuration and privacy policy are authoritative.

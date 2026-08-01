@@ -187,7 +187,6 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
 
     func testApplicationShutdownRunsEveryCleanupOperation() async {
         let invocations = TerminationInvocationProbe()
-        let deepgramTestLatch = TerminationLatch()
         let recoveryRetryLatch = TerminationLatch()
         let historyMaintenanceLatch = TerminationLatch()
         let preparationLatch = TerminationLatch()
@@ -210,10 +209,6 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
             },
             shutdownAudioQueue: {
                 await invocations.record("audio-queue")
-            },
-            cancelDeepgramTest: {
-                await invocations.record("deepgram-test")
-                await deepgramTestLatch.wait()
             },
             drainTextInjectionClipboardRecovery: {
                 await invocations.record("text-injection-clipboard")
@@ -242,7 +237,6 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
             await shutdown()
             await invocations.record("shutdown-complete")
         }
-        await deepgramTestLatch.waitUntilWaiting()
         await recoveryRetryLatch.waitUntilWaiting()
         await historyMaintenanceLatch.waitUntilWaiting()
         await invocations.waitUntilCount(for: "recording", reaches: 1)
@@ -254,7 +248,6 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
         let recoveryRetryCount = await invocations.count(for: "audio-recovery")
         let historyMaintenanceCount = await invocations.count(for: "history-maintenance")
         let audioQueueCount = await invocations.count(for: "audio-queue")
-        let deepgramTestCount = await invocations.count(for: "deepgram-test")
         let textInjectionClipboardCount = await invocations.count(
             for: "text-injection-clipboard"
         )
@@ -268,7 +261,6 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
         XCTAssertEqual(recoveryRetryCount, 1)
         XCTAssertEqual(historyMaintenanceCount, 1)
         XCTAssertEqual(audioQueueCount, 1)
-        XCTAssertEqual(deepgramTestCount, 1)
         XCTAssertEqual(textInjectionClipboardCount, 0)
         XCTAssertEqual(stackCount, 0)
         XCTAssertEqual(
@@ -286,8 +278,6 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
         let incompleteShutdownCount = await invocations.count(for: "shutdown-complete")
         XCTAssertEqual(incompleteShutdownCount, 0)
 
-        await deepgramTestLatch.open()
-        await Task.yield()
         let schedulerCountWhileRecoveryWasBlocked = await invocations.count(
             for: "group-scheduler"
         )
@@ -395,7 +385,6 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
             cancelFailedAudioRecoveryRetries: {},
             stopLocalHistoryMaintenance: {},
             shutdownAudioQueue: {},
-            cancelDeepgramTest: {},
             stopStackPaste: {},
             stopClipboardGroupScheduler: {
                 await invocations.record("stop-scheduler")
@@ -477,7 +466,6 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
             cancelFailedAudioRecoveryRetries: {},
             stopLocalHistoryMaintenance: {},
             shutdownAudioQueue: {},
-            cancelDeepgramTest: {},
             stopStackPaste: {},
             stopClipboardGroupScheduler: {
                 await invocations.record("stop-scheduler")

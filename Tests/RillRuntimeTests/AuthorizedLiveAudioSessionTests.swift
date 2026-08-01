@@ -73,7 +73,7 @@ final class AuthorizedLiveAudioSessionTests: XCTestCase {
         await fixture.session.cancel()
     }
 
-    func testAllowedApplicationChangeKeepsCloudSessionActive() async throws {
+    func testAllowedApplicationChangeKeepsCloudTextSessionActive() async throws {
         let fixture = try await makeFixture()
         try await fixture.session.startMonitoring()
 
@@ -313,10 +313,13 @@ private func makeLiveContext(
 
 private func makeLiveWorkflow() -> WorkflowDefinition {
     WorkflowDefinition(
-        name: "Live Cloud Test",
+        name: "Live Cloud Text Test",
         trigger: .manual,
         pipeline: PipelineDeclaration(
-            recognizerID: "deepgram.prerecorded",
+            recognizerID: "sherpa-onnx.local",
+            postProcessSteps: [
+                PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
+            ],
             outputActions: []
         ),
         ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
