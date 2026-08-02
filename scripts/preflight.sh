@@ -197,7 +197,7 @@ info "Cleaning Release build artifacts before the Debug test suite..."
 swift package clean
 
 info "Running the test suite..."
-"$SCRIPT_DIR/swift_locked.sh" test --parallel
+"$SCRIPT_DIR/swift_locked.sh" test
 
 info "Checking the working diff for whitespace errors..."
 git diff --check

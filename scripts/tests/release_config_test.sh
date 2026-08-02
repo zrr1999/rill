@@ -342,7 +342,7 @@ run_locked_dependency_policy_case() {
       | cut -d: -f1
   )"
   preflight_test_line="$(
-    grep -n -m1 '^"\$SCRIPT_DIR/swift_locked.sh" test --parallel$' "$PREFLIGHT_SCRIPT" \
+    grep -n -m1 '^"\$SCRIPT_DIR/swift_locked.sh" test$' "$PREFLIGHT_SCRIPT" \
       | cut -d: -f1
   )"
   release_preflight_line="$(
@@ -1585,7 +1585,8 @@ run_ci_prek_policy_case() {
   if ! grep -Fq 'uses: j178/prek-action@e98a699c41eb69ab013a45817a0406469a748f8d # v2.0.5' "$CI_WORKFLOW" \
     || ! grep -Fq 'prek-version: "0.3.10"' "$CI_WORKFLOW" \
     || ! grep -Fq 'prek validate-config prek.toml' "$CI_WORKFLOW" \
-    || ! grep -Fq 'prek -c prek.toml run --all-files' "$CI_WORKFLOW"; then
+    || ! grep -Fq 'prek -c prek.toml run --all-files' "$CI_WORKFLOW" \
+    || ! grep -Fq 'run: scripts/swift_locked.sh test' "$CI_WORKFLOW"; then
     echo "FAIL: CI must install the reviewed prek action and version, then run the complete config" >&2
     exit 1
   fi
@@ -1595,6 +1596,10 @@ run_ci_prek_policy_case() {
   fi
   if grep -Fq 'lfs: true' "$CI_WORKFLOW"; then
     echo "FAIL: CI must not fetch Git LFS now that the repository has no LFS assets" >&2
+    exit 1
+  fi
+  if grep -Fq 'scripts/swift_locked.sh test --parallel' "$CI_WORKFLOW"; then
+    echo "FAIL: CI must serialize the shared-state XCTest suite" >&2
     exit 1
   fi
 

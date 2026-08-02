@@ -33,7 +33,7 @@ jobs:
           grep -F '.macOS(.v14)' Package.swift
 
       - name: Run locked test suite for the macOS 14 deployment target
-        run: scripts/swift_locked.sh test --parallel
+        run: scripts/swift_locked.sh test
 
   preflight:
     name: Release preflight
