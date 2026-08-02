@@ -19,11 +19,11 @@ let package = Package(
     ),
     .package(
       url: "https://github.com/huggingface/swift-huggingface.git",
-      exact: "0.8.1"
+      exact: "0.9.0"
     ),
     .package(
       url: "https://github.com/ml-explore/mlx-swift.git",
-      exact: "0.31.4"
+      exact: "0.31.6"
     ),
     .package(
       url: "https://github.com/MacPaw/OpenAI.git",
