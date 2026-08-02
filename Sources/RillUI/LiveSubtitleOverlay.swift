@@ -310,7 +310,7 @@ enum LiveSubtitleInteractionPolicy {
   }
 }
 
-enum LiveSubtitlePresentationPolicy {
+public enum LiveSubtitlePresentationPolicy {
   enum RecordingTimerWarningLevel: Equatable {
     case normal
     case warning
@@ -335,7 +335,7 @@ enum LiveSubtitlePresentationPolicy {
   static let standardLiveTextLineLimit = 2
   static let standardLiveTextPreservesLatestContent = true
 
-  static func usesExpandedLayout(_ snapshot: LiveSubtitleSnapshot) -> Bool {
+  public static func usesExpandedLayout(_ snapshot: LiveSubtitleSnapshot) -> Bool {
     snapshot.livePreviewPlacement == .overlay
       && isAudioCaptureActive(phase: snapshot.phase)
       && !snapshot.displayText.isEmpty
