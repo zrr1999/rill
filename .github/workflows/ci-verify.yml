@@ -58,6 +58,11 @@ jobs:
           bash scripts/install_gitleaks.sh --destination "$tool_dir"
           echo "$tool_dir" >> "$GITHUB_PATH"
 
+      - name: Resolve locked SwiftPM dependencies
+        run: |
+          swift package resolve
+          git diff --exit-code -- Package.resolved
+
       - name: Run repository quality gates
         run: |
           prek --version

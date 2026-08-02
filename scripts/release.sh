@@ -575,7 +575,7 @@ require_clean_release_index() {
     [[ -n "$line" ]] || continue
     tag="${line:0:1}"
     case "$tag" in
-    [a-z] | S)
+    [[:lower:]] | S)
       error "公证发布拒绝 assume-unchanged、skip-worktree 或 sparse checkout 条目"
       ;;
     esac

@@ -18,7 +18,7 @@ public enum SpeechPlaybackError: Error, LocalizedError, Sendable {
 
 @MainActor
 public final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService,
-  AVAudioPlayerDelegate
+  @MainActor AVAudioPlayerDelegate
 {
   private var player: AVAudioPlayer?
   private var activeRunID: UUID?
