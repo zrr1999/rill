@@ -874,6 +874,71 @@ private func makeStreamHotkeyPreparationFixture(
 }
 
 final class RecordingSessionManagerTests: XCTestCase {
+    func testWarmFnStartupDoesNotPublishSeparatePreparingSurface() async throws {
+        let eventBus = EventBus()
+        let workflow = WorkflowDefinition(
+            name: "Warm Fn Workflow",
+            trigger: .hotkey,
+            pipeline: PipelineDeclaration(
+                recognizerID: "recording.recognizer",
+                outputActions: []
+            ),
+            ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
+        )
+        let audioCaptureService = MockAudioCaptureService(
+            audio: try CapturedAudio(
+                durationSeconds: 1,
+                format: AudioFormat(
+                    sampleRateHz: 16_000,
+                    channelCount: 1,
+                    encoding: .pcm16
+                ),
+                inlineData: Data([1])
+            )
+        )
+        let coordinator = SessionCoordinator(
+            contextProvider: RecordingTestContextProvider(),
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
+            transformerRegistry: TextTransformerRegistry(transformers: []),
+            actionRegistry: OutputActionRegistry(actions: []),
+            candidateResolver: CandidateResolver(eventBus: eventBus),
+            deliveryStack: DeliveryStack(eventBus: eventBus),
+            eventBus: eventBus
+        )
+        let queue = makeCapturedAudioProcessingQueue(
+            sessionCoordinator: coordinator,
+            eventBus: eventBus
+        )
+        let manager = RecordingSessionManager(
+            audioCaptureService: audioCaptureService,
+            hotkeyTap: HotkeyEventTap(),
+            capturedAudioProcessingQueue: queue,
+            eventBus: eventBus,
+            privacyRunGate: makeRecordingTestPrivacyGate(),
+            workflowProvider: { [workflow] },
+            pushToTalkGestureStateProvider: { _ in false }
+        )
+        let marker = "recording.warm-start-presentation.\(UUID().uuidString)"
+        let stream = await eventBus.stream()
+        let collector = Task {
+            await collectRecordingEvents(from: stream, untilDiagnosticNamed: marker)
+        }
+
+        await manager.beginPushToTalk()
+        try? await Task.sleep(for: .milliseconds(350))
+        await publishRecordingEventMarker(named: marker, on: eventBus)
+        let events = await collector.value
+
+        XCTAssertFalse(events.contains { event in
+            guard case .liveSubtitleUpdated(let snapshot) = event else { return false }
+            return snapshot.phase == .preparing
+        })
+
+        await manager.cancelCurrentRecording()
+        await manager.stopForApplicationShutdown()
+        await queue.shutdown()
+    }
+
     func testHoldToTalkHasSafetyLimitButNoSilenceEndpoint() async throws {
         let fixture = try makeStreamHotkeyPreparationFixture(
             longRecordingModeEnabled: false
@@ -2480,6 +2545,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         XCTAssertEqual(captureRequest?.triggerEvent?.metadata["gesture"], HotkeyEventTap.PushToTalkGesture.fnHold.rawValue)
         XCTAssertEqual(captureRequest?.metadata["gesture"], HotkeyEventTap.PushToTalkGesture.fnHold.rawValue)
         XCTAssertEqual(captureRequest?.options, expectedOptions)
+        XCTAssertEqual(captureRequest?.liveSubtitleNetworkUsage, .unknown)
         XCTAssertEqual(recognitionRequest?.capturedAudio, audio)
         XCTAssertEqual(recognitionRequest?.options, expectedOptions)
         XCTAssertEqual(recognitionRequest?.triggerEvent?.binding, .hotkey)

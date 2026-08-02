@@ -169,15 +169,11 @@ extension AppModel {
         )
       }
       var customizedWorkflow = sourceWorkflow
-      customizedWorkflow.id = UUID()
       customizedWorkflow.name = localizedWorkflowName(for: sourceWorkflow)
       customizedWorkflow.titleKey = nil
       customizedWorkflow.plan.setup.wakeWord = WakeWordConfiguration(
         phrases: normalizedPhrases
       )
-      customizedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.catalog)
-      customizedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.builtinKind)
-      customizedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.defaultEnabled)
       customizedWorkflow.metadata[Self.workflowOriginMetadataKey] =
         Self.userWorkflowOriginMetadataValue
 
@@ -185,7 +181,7 @@ extension AppModel {
         do {
           let fileURL = try await workflowFileStore.save(
             workflow: customizedWorkflow,
-            isEnabled: false,
+            isEnabled: workflowEnabledStates[customizedWorkflow.id] ?? false,
             replacing: nil
           )
           workflowFileURLsByID[customizedWorkflow.id] = fileURL
@@ -196,14 +192,13 @@ extension AppModel {
 
       hasModifiedWorkflowLibrary = true
       customWorkflows.insert(customizedWorkflow, at: 0)
-      workflowEnabledStates[customizedWorkflow.id] = false
       workflowEditorError = nil
       workflowLibraryError = nil
       rebuildWorkflowLibrary()
       persistCustomWorkflows()
       append(
-        english: "Wake workflow customized: \(customizedWorkflow.name)",
-        simplifiedChinese: "已定制唤醒工作流：\(customizedWorkflow.name)"
+        english: "Built-in wake workflow updated: \(customizedWorkflow.name)",
+        simplifiedChinese: "内置唤醒工作流已更新：\(customizedWorkflow.name)"
       )
       savedWorkflowID = customizedWorkflow.id
     } else {

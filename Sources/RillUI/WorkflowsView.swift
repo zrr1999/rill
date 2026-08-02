@@ -38,7 +38,7 @@ public struct WorkflowsView: View {
             guard !model.isLoadingSettings else { return }
             await model.reloadWorkflowFiles()
             if let editingWorkflowID,
-               let workflow = model.customWorkflows.first(where: { $0.id == editingWorkflowID }) {
+               let workflow = model.workflows.first(where: { $0.id == editingWorkflowID }) {
                 beginEditing(workflow)
             }
         }
@@ -105,7 +105,7 @@ extension WorkflowsView {
                         Task { @MainActor in
                             await model.reloadWorkflowFiles()
                             if let editingWorkflowID,
-                               let workflow = model.customWorkflows.first(where: {
+                               let workflow = model.workflows.first(where: {
                                    $0.id == editingWorkflowID
                                }) {
                                 beginEditing(workflow)
@@ -175,7 +175,7 @@ extension WorkflowsView {
                         emptyTitle: model.isWorkflowLibraryAvailable
                             ? UIStrings.text(.workflowCustomEmpty, language: model.language)
                             : nil,
-                        workflows: model.customWorkflows,
+                        workflows: model.userCreatedWorkflows,
                         isCustom: true,
                         localizedWorkflowNames: localizedWorkflowNames
                     )
@@ -183,7 +183,7 @@ extension WorkflowsView {
                     workflowListSection(
                         title: UIStrings.text(.workflowBuiltIn, language: model.language),
                         emptyTitle: nil,
-                        workflows: model.builtInWorkflows,
+                        workflows: model.editableBuiltInWorkflows,
                         isCustom: false,
                         localizedWorkflowNames: localizedWorkflowNames
                     )
@@ -297,9 +297,9 @@ extension WorkflowsView {
                     if isInspectingBuiltinWorkflow {
                         Label(
                             model.language == .english
-                                ? "Built-in workflows stay immutable. Saving here creates a custom copy."
-                                : "内置工作流保持只读；在这里保存会生成一个自定义副本。",
-                            systemImage: "square.on.square"
+                                ? "Changes are saved as a TOML override for this built-in workflow. Restore Defaults removes the override."
+                                : "修改会保存为此内置工作流的 TOML 覆盖；“恢复默认”会移除该覆盖。",
+                            systemImage: "arrow.triangle.2.circlepath"
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -323,8 +323,8 @@ extension WorkflowsView {
     var editorSubtitle: String {
         if isInspectingBuiltinWorkflow {
             return model.language == .english
-                ? "Inspect the preset in the mode editor and save a customized copy if needed."
-                : "在模式编辑器里查看这个预设；如需修改，可保存为自定义副本。"
+                ? "Edit this built-in workflow directly, or restore its bundled defaults later."
+                : "直接编辑这个内置工作流；之后也可以恢复到应用内置默认值。"
         }
         if editingWorkflowID != nil {
             return model.language == .english
@@ -482,21 +482,6 @@ extension WorkflowsView {
             }
 
             HStack {
-                if isInspectingBuiltinWorkflow, let selectedWorkflow {
-                    Button(
-                        model.language == .english
-                            ? "Apply Vocabulary Bindings"
-                            : "应用词库绑定"
-                    ) {
-                        model.setVocabularyBindings(
-                            draft.vocabularyBindings,
-                            for: selectedWorkflow.id
-                        )
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("workflow.builtin.apply-vocabulary")
-                }
-
                 Button(saveButtonTitle) {
                     saveDraft()
                 }
@@ -505,6 +490,22 @@ extension WorkflowsView {
                         || model.isLoadingSettings
                         || !model.isWorkflowLibraryAvailable
                 )
+
+                if isInspectingBuiltinWorkflow, let selectedWorkflow {
+                    Button(
+                        model.language == .english ? "Restore Defaults" : "恢复默认"
+                    ) {
+                        restoreBuiltInWorkflow(selectedWorkflow)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(
+                        isSavingDraft
+                            || model.isLoadingSettings
+                            || !model.isWorkflowLibraryAvailable
+                            || !model.canRestoreBuiltInWorkflow(selectedWorkflow)
+                    )
+                    .accessibilityIdentifier("workflow.builtin.restore-defaults")
+                }
 
                 Button(UIStrings.text(.workflowReset, language: model.language)) {
                     if selectedWorkflow != nil {
@@ -693,23 +694,27 @@ extension WorkflowsView {
             actionStepRow(
                 number: 1,
                 icon: "mic.fill",
-                label: model.language == .english ? "Speech Route" : "语音路由"
+                label: model.language == .english ? "Speech Recognition" : "语音识别"
             ) {
-                Picker(
-                    UIStrings.text(.workflowRecognizer, language: model.language),
-                    selection: $draft.recognizer
-                ) {
-                    ForEach(WorkflowEditorDraft.RecognizerChoice.allCases) { recognizer in
-                        Text(UIStrings.editorRecognizer(recognizer, language: model.language)).tag(recognizer)
-                    }
+                HStack(spacing: 8) {
+                    Image(systemName: "laptopcomputer")
+                        .foregroundStyle(.green)
+                    Text(UIStrings.editorRecognizer(.localSpeech, language: model.language))
+                        .font(.callout.weight(.medium))
+                    Spacer(minLength: 8)
+                    Text(model.language == .english ? "On-device" : "设备端")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
 
-                Text(L10n.speechRouteHint(draft.recognizer, language: model.language))
+                Text(
+                    model.language == .english
+                        ? "Uses the local engine and model selected in Voice settings unless a model override is set below."
+                        : "默认使用语音设置中选择的本地引擎和模型；也可在下方为此工作流指定模型。"
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(L10n.privacySettingsSpeechRouteHint(draft.recognizer, language: model.language))
+                Text(L10n.privacySettingsSpeechRouteHint(.localSpeech, language: model.language))
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -1269,15 +1274,9 @@ extension WorkflowsView {
     }
 
     var hotwordCapabilityDescription: String {
-        let resolvedRecognizerID: String
-        switch draft.recognizer {
-        case .localSpeech:
-            resolvedRecognizerID =
-                selectedWorkflow?.plan.setup.speechRoute?.recognizerID
-                ?? "local-speech"
-        case .automatic:
-            resolvedRecognizerID = "local-speech"
-        }
+        let resolvedRecognizerID =
+            selectedWorkflow?.plan.setup.speechRoute?.recognizerID
+            ?? "local-speech"
         let supportsHotwords = ["local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming"]
             .contains(resolvedRecognizerID)
         if supportsHotwords {
@@ -1404,13 +1403,7 @@ extension WorkflowsView {
 
 private extension WorkflowsView {
     var draftUsesUnavailableLocalSpeech: Bool {
-        guard !model.localSpeechTrustMaterialAvailable else { return false }
-        switch draft.recognizer {
-        case .localSpeech:
-            return true
-        case .automatic:
-            return model.preferredSpeechEngine == .local
-        }
+        !model.localSpeechTrustMaterialAvailable
     }
 }
 
@@ -1593,9 +1586,6 @@ extension WorkflowsView {
     }
 
     var saveButtonTitle: String {
-        if isInspectingBuiltinWorkflow {
-            return model.language == .english ? "Save as Custom Copy" : "另存为自定义副本"
-        }
         return UIStrings.text(.workflowSave, language: model.language)
     }
 
@@ -1610,12 +1600,12 @@ extension WorkflowsView {
             guard model.workflowEditorError == nil else { return }
 
             if let currentEditingID,
-               let savedWorkflow = model.customWorkflows.first(where: { $0.id == currentEditingID }) {
+               let savedWorkflow = model.workflows.first(where: { $0.id == currentEditingID }) {
                 beginEditing(savedWorkflow)
                 return
             }
 
-            if let savedWorkflow = model.customWorkflows.first {
+            if let savedWorkflow = model.userCreatedWorkflows.first {
                 beginEditing(savedWorkflow)
             } else {
                 resetDraft()
@@ -1632,9 +1622,23 @@ extension WorkflowsView {
         }
 
         selectedWorkflowID = workflow.id
-        editingWorkflowID = model.isCustomWorkflow(workflow) ? workflow.id : nil
+        editingWorkflowID = workflow.id
         model.workflowEditorError = nil
         self.draft = draft
+    }
+
+    func restoreBuiltInWorkflow(_ workflow: WorkflowDefinition) {
+        guard !isSavingDraft else { return }
+        isSavingDraft = true
+        Task { @MainActor in
+            defer { isSavingDraft = false }
+            await model.restoreBuiltInWorkflowToDefault(workflow)
+            guard model.workflowEditorError == nil,
+                  let restoredWorkflow = model.workflows.first(where: { $0.id == workflow.id }) else {
+                return
+            }
+            beginEditing(restoredWorkflow)
+        }
     }
 
     func resetDraft() {

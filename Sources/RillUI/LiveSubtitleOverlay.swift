@@ -77,11 +77,14 @@ public struct LiveSubtitleOverlay: View {
   }
 
   private var compactBody: some View {
-    HStack(spacing: 8) {
+    HStack(spacing: 6) {
+      networkUsageDisclosure
       waveform
       Spacer(minLength: 2)
       recordingTimer
-      controlButton
+      if isAudioCaptureActive {
+        escapeHint
+      }
     }
     .padding(.horizontal, 12)
     .frame(
@@ -92,11 +95,14 @@ public struct LiveSubtitleOverlay: View {
 
   private var expandedBody: some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 8) {
+      HStack(spacing: 6) {
+        networkUsageDisclosure
         waveform
         Spacer(minLength: 2)
         recordingTimer
-        controlButton
+        if isAudioCaptureActive {
+          escapeHint
+        }
       }
 
       liveText
@@ -124,9 +130,60 @@ public struct LiveSubtitleOverlay: View {
       accentColor: meterColor,
       barCount: 12,
       barWidth: 2,
+      barSpacing: 2,
       minHeight: 3,
       maxHeight: 20
     )
+  }
+
+  private var networkUsageDisclosure: some View {
+    let usage = snapshot.networkUsage ?? .unknown
+    let showsTitle = LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot)
+    let tint = networkUsageTint(usage)
+    return HStack(spacing: 4) {
+      Image(systemName: LiveSubtitleInteractionPolicy.networkDisclosureSymbolName(usage))
+        .font(.system(size: 10, weight: .semibold))
+      if showsTitle {
+        Text(
+          LiveSubtitleInteractionPolicy.networkDisclosureShortTitle(
+            usage,
+            language: language
+          )
+        )
+        .font(.caption2.weight(.medium))
+      }
+    }
+    .foregroundStyle(tint)
+    .padding(.horizontal, showsTitle ? 6 : 0)
+    .frame(minWidth: 20, minHeight: 20)
+    .fixedSize()
+    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    .help(
+      LiveSubtitleInteractionPolicy.networkDisclosureTitle(
+        usage,
+        language: language
+      )
+    )
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(
+      Text(
+        LiveSubtitleInteractionPolicy.networkDisclosureTitle(
+          usage,
+          language: language
+        )
+      )
+    )
+  }
+
+  private func networkUsageTint(_ usage: LiveSubtitleNetworkUsage) -> Color {
+    switch usage {
+    case .offline:
+      .green
+    case .online:
+      .blue
+    case .unknown:
+      secondaryTextColor
+    }
   }
 
   private var liveText: Text {
@@ -220,32 +277,23 @@ public struct LiveSubtitleOverlay: View {
     }
   }
 
-  private var controlButton: some View {
-    let cancelsCapture = LiveSubtitleInteractionPolicy.showsStopControl(for: snapshot.phase)
-    let title = cancelsCapture
-      ? (language == .english ? "Cancel and discard" : "取消并丢弃")
-      : UIStrings.text(.liveSubtitleClose, language: language)
-    return Button(action: requestControlAction) {
-      Image(systemName: "xmark")
-        .font(.system(size: 9, weight: .bold))
-        .foregroundStyle(secondaryTextColor)
-        .frame(width: 22, height: 22)
-        .contentShape(Circle())
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.5), in: Circle())
-        .overlay(Circle().strokeBorder(borderColor.opacity(0.65), lineWidth: 0.75))
-    }
-    .buttonStyle(.plain)
-    .help(title)
-    .accessibilityLabel(Text(title))
-  }
-
-  private func requestControlAction() {
-    NotificationCenter.default.post(
-      name: LiveSubtitleInteractionPolicy.showsStopControl(for: snapshot.phase)
-        ? Self.stopRequestedNotification
-        : Self.closeRequestedNotification,
-      object: snapshot.runID
-    )
+  private var escapeHint: some View {
+    Text("esc")
+      .font(.caption2.monospaced().weight(.medium))
+      .foregroundStyle(secondaryTextColor)
+      .padding(.horizontal, 6)
+      .frame(height: 20)
+      .background(
+        Color(nsColor: .controlBackgroundColor).opacity(0.42),
+        in: RoundedRectangle(cornerRadius: 5)
+      )
+      .overlay(
+        RoundedRectangle(cornerRadius: 5)
+          .strokeBorder(borderColor.opacity(0.55), lineWidth: 0.75)
+      )
+      .accessibilityLabel(
+        Text(language == .english ? "Press Escape to cancel and discard" : "按 Escape 取消并丢弃")
+      )
   }
 
   private func requestUnlimitedRecording() {
@@ -277,36 +325,52 @@ public struct LiveSubtitleOverlay: View {
       : LiveSubtitleOverlayMetrics.compactCornerRadius
   }
 
-  private static let closeRequestedNotification = Notification.Name(
-    "works.earendil.rill.live-subtitle.close-requested"
-  )
-  private static let stopRequestedNotification = Notification.Name(
-    "works.earendil.rill.live-subtitle.stop-requested"
-  )
   private static let removeDurationLimitRequestedNotification = Notification.Name(
     "works.earendil.rill.live-subtitle.remove-duration-limit-requested"
   )
 }
 
 enum LiveSubtitleInteractionPolicy {
-  static func showsStopControl(for phase: LiveSubtitlePhase) -> Bool {
-    LiveSubtitlePresentationPolicy.isAudioCaptureActive(phase: phase)
+  static func networkDisclosureTitle(
+    _ usage: LiveSubtitleNetworkUsage,
+    language: AppLanguage
+  ) -> String {
+    switch (usage, language) {
+    case (.offline, .english):
+      "Offline — processed entirely on this Mac"
+    case (.offline, .simplifiedChinese):
+      "离线 — 全程在本机处理"
+    case (.online, .english):
+      "Online — this workflow uses a network service"
+    case (.online, .simplifiedChinese):
+      "联网 — 此工作流会使用网络服务"
+    case (.unknown, .english):
+      "Network use could not be determined"
+    case (.unknown, .simplifiedChinese):
+      "联网状态无法确定"
+    }
   }
 
-  static func isCloudProvider(_ providerID: String?) -> Bool { false }
-
-  static func providerDisclosureTitle(
-    providerID: String?,
+  static func networkDisclosureShortTitle(
+    _ usage: LiveSubtitleNetworkUsage,
     language: AppLanguage
-  ) -> String? {
-    guard let providerID else { return nil }
-    if providerID.lowercased() == "local-speech"
-      || providerID.lowercased().hasPrefix("local-speech.")
-      || providerID.lowercased().hasPrefix("sherpa-onnx.")
-    {
-      return language == .english ? "On-device" : "本机处理"
+  ) -> String {
+    switch (usage, language) {
+    case (.offline, .english): "Offline"
+    case (.offline, .simplifiedChinese): "离线"
+    case (.online, .english): "Online"
+    case (.online, .simplifiedChinese): "联网"
+    case (.unknown, .english): "Unknown"
+    case (.unknown, .simplifiedChinese): "未知"
     }
-    return nil
+  }
+
+  static func networkDisclosureSymbolName(_ usage: LiveSubtitleNetworkUsage) -> String {
+    switch usage {
+    case .offline: "lock.fill"
+    case .online: "network"
+    case .unknown: "questionmark"
+    }
   }
 }
 
@@ -325,11 +389,6 @@ public enum LiveSubtitlePresentationPolicy {
     let isUnlimited: Bool
 
     var isNearLimit: Bool { warningLevel != .normal }
-  }
-
-  enum ProviderDisclosureStyle: Equatable {
-    case tinted
-    case highContrast
   }
 
   static let standardLiveTextLineLimit = 2
@@ -404,7 +463,7 @@ public enum LiveSubtitlePresentationPolicy {
     return String(format: "%d:%02d", minutes, seconds)
   }
 
-  static func isAudioCaptureActive(phase: LiveSubtitlePhase) -> Bool {
+  public static func isAudioCaptureActive(phase: LiveSubtitlePhase) -> Bool {
     switch phase {
     case .preparing, .recording, .listening, .transcribing:
       true
@@ -423,11 +482,4 @@ public enum LiveSubtitlePresentationPolicy {
     }
   }
 
-  static func providerDisclosureStyle(
-    providerID: String?,
-    increasedContrast: Bool
-  ) -> ProviderDisclosureStyle {
-    increasedContrast && LiveSubtitleInteractionPolicy.isCloudProvider(providerID)
-      ? .highContrast : .tinted
-  }
 }

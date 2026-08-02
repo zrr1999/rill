@@ -4,14 +4,13 @@ import XCTest
 @testable import RillUI
 
 final class LiveSubtitleInteractionPolicyTests: XCTestCase {
-  func testActiveCapturePhasesExposeStopInsteadOfDismiss() {
+  func testAudioCaptureActivityIsLimitedToRecordingLifecyclePhases() {
     for phase in [
       LiveSubtitlePhase.preparing,
       .recording,
       .listening,
       .transcribing,
     ] {
-      XCTAssertTrue(LiveSubtitleInteractionPolicy.showsStopControl(for: phase))
       XCTAssertTrue(LiveSubtitlePresentationPolicy.isAudioCaptureActive(phase: phase))
     }
 
@@ -21,7 +20,6 @@ final class LiveSubtitleInteractionPolicyTests: XCTestCase {
       .processing,
       .failed,
     ] {
-      XCTAssertFalse(LiveSubtitleInteractionPolicy.showsStopControl(for: phase))
       XCTAssertFalse(LiveSubtitlePresentationPolicy.isAudioCaptureActive(phase: phase))
     }
   }
@@ -79,6 +77,7 @@ final class LiveSubtitleInteractionPolicyTests: XCTestCase {
     )
     XCTAssertEqual(warning.remainingSeconds, 12)
     XCTAssertTrue(warning.isNearLimit)
+    XCTAssertEqual(warning.warningLevel, .warning)
 
     let expired = try XCTUnwrap(
       LiveSubtitlePresentationPolicy.recordingTimerState(
@@ -89,6 +88,21 @@ final class LiveSubtitleInteractionPolicyTests: XCTestCase {
     XCTAssertEqual(expired.elapsedSeconds, 120)
     XCTAssertEqual(expired.remainingSeconds, 0)
     XCTAssertTrue(expired.isNearLimit)
+    XCTAssertEqual(expired.warningLevel, .critical)
+  }
+
+  func testOverlayTextExpandsButCursorPreviewStaysCompact() {
+    let overlay = LiveSubtitleSnapshot(
+      runID: UUID(),
+      phase: .transcribing,
+      hypothesisText: "Preview",
+      livePreviewPlacement: .overlay
+    )
+    var cursor = overlay
+    cursor.livePreviewPlacement = .cursor
+
+    XCTAssertTrue(LiveSubtitlePresentationPolicy.usesExpandedLayout(overlay))
+    XCTAssertFalse(LiveSubtitlePresentationPolicy.usesExpandedLayout(cursor))
   }
 
   func testUnlimitedRecordingTimerKeepsElapsedTimeWithoutWarningOrRemainingTime() throws {
@@ -129,50 +143,52 @@ final class LiveSubtitleInteractionPolicyTests: XCTestCase {
     )
   }
 
-  func testProviderDisclosureIdentifiesOnDeviceCapture() {
+  func testNetworkDisclosureDistinguishesOfflineAndOnlineWorkflows() {
     XCTAssertEqual(
-      LiveSubtitleInteractionPolicy.providerDisclosureTitle(
-        providerID: "sherpa-onnx.local",
+      LiveSubtitleInteractionPolicy.networkDisclosureTitle(
+        .offline,
         language: .english
       ),
-      "On-device"
+      "Offline — processed entirely on this Mac"
     )
     XCTAssertEqual(
-      LiveSubtitleInteractionPolicy.providerDisclosureTitle(
-        providerID: "sherpa-onnx.local",
+      LiveSubtitleInteractionPolicy.networkDisclosureTitle(
+        .online,
         language: .simplifiedChinese
       ),
-      "本机处理"
+      "联网 — 此工作流会使用网络服务"
     )
-    XCTAssertNil(
-      LiveSubtitleInteractionPolicy.providerDisclosureTitle(
-        providerID: nil,
+    XCTAssertEqual(
+      LiveSubtitleInteractionPolicy.networkDisclosureShortTitle(
+        .offline,
+        language: .simplifiedChinese
+      ),
+      "离线"
+    )
+    XCTAssertEqual(
+      LiveSubtitleInteractionPolicy.networkDisclosureShortTitle(
+        .online,
         language: .english
-      )
+      ),
+      "Online"
     )
   }
 
-  func testLocalDisclosureUsesTintedStyleEvenAtHighContrast() {
+  func testNetworkDisclosureUsesDistinctSymbolsAndFailsClosedForUnknownUsage() {
     XCTAssertEqual(
-      LiveSubtitlePresentationPolicy.providerDisclosureStyle(
-        providerID: "sherpa-onnx.local",
-        increasedContrast: true
-      ),
-      .tinted
+      LiveSubtitleInteractionPolicy.networkDisclosureSymbolName(.offline),
+      "lock.fill"
     )
     XCTAssertEqual(
-      LiveSubtitlePresentationPolicy.providerDisclosureStyle(
-        providerID: "sherpa-onnx.local",
-        increasedContrast: false
-      ),
-      .tinted
+      LiveSubtitleInteractionPolicy.networkDisclosureSymbolName(.online),
+      "network"
     )
     XCTAssertEqual(
-      LiveSubtitlePresentationPolicy.providerDisclosureStyle(
-        providerID: "sherpa-onnx.local",
-        increasedContrast: true
+      LiveSubtitleInteractionPolicy.networkDisclosureTitle(
+        .unknown,
+        language: .simplifiedChinese
       ),
-      .tinted
+      "联网状态无法确定"
     )
   }
 }

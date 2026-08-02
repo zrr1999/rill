@@ -8,6 +8,7 @@ public struct VoiceActivityIndicator: View {
   public let accentColor: Color
   public let barCount: Int
   public let barWidth: CGFloat
+  public let barSpacing: CGFloat
   public let minHeight: CGFloat
   public let maxHeight: CGFloat
 
@@ -17,6 +18,7 @@ public struct VoiceActivityIndicator: View {
     accentColor: Color = .purple,
     barCount: Int = 12,
     barWidth: CGFloat = 4,
+    barSpacing: CGFloat = 3,
     minHeight: CGFloat = 6,
     maxHeight: CGFloat = 28
   ) {
@@ -25,29 +27,29 @@ public struct VoiceActivityIndicator: View {
     self.accentColor = accentColor
     self.barCount = barCount
     self.barWidth = barWidth
+    self.barSpacing = barSpacing
     self.minHeight = minHeight
     self.maxHeight = maxHeight
   }
 
   public var body: some View {
-    let heights = barHeights
+    let levels = Self.displayedLevels(levelMeter, barCount: barCount, isActive: isActive)
 
-    HStack(alignment: .bottom, spacing: 3) {
-      ForEach(Array(heights.enumerated()), id: \.offset) { index, height in
+    HStack(alignment: .center, spacing: barSpacing) {
+      ForEach(Array(levels.enumerated()), id: \.offset) { index, level in
         RoundedRectangle(cornerRadius: 2, style: .continuous)
           .fill(barGradient(for: index))
-          .frame(width: barWidth, height: height)
+          .frame(width: barWidth, height: barHeight(for: level))
+          .opacity(Self.barOpacity(for: level))
       }
     }
-    .frame(height: maxHeight, alignment: .bottomLeading)
-    .animation(Self.meterAnimation(reduceMotion: accessibilityReduceMotion), value: heights)
+    .frame(height: maxHeight, alignment: .center)
+    .animation(Self.meterAnimation(reduceMotion: accessibilityReduceMotion), value: levels)
     .accessibilityHidden(true)
   }
 
-  private var barHeights: [CGFloat] {
-    Self.displayedLevels(levelMeter, barCount: barCount, isActive: isActive).map { sample in
-      minHeight + CGFloat(sample) * (maxHeight - minHeight)
-    }
+  private func barHeight(for level: Float) -> CGFloat {
+    minHeight + CGFloat(level) * (maxHeight - minHeight)
   }
 
   static func displayedLevels(
@@ -70,7 +72,12 @@ public struct VoiceActivityIndicator: View {
   }
 
   static func meterAnimation(reduceMotion: Bool) -> Animation? {
-    reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 0.78)
+    reduceMotion ? nil : .easeInOut(duration: 0.08)
+  }
+
+  static func barOpacity(for level: Float) -> Double {
+    let clampedLevel = level.isFinite ? max(0, min(level, 1)) : 0
+    return 0.62 + Double(clampedLevel) * 0.38
   }
 
   private func barGradient(for index: Int) -> LinearGradient {
@@ -79,9 +86,10 @@ public struct VoiceActivityIndicator: View {
       colors: [
         accentColor.opacity(opacity),
         accentColor.opacity(min(opacity + 0.18, 1)),
+        accentColor.opacity(opacity),
       ],
-      startPoint: .bottom,
-      endPoint: .top
+      startPoint: .top,
+      endPoint: .bottom
     )
   }
 }

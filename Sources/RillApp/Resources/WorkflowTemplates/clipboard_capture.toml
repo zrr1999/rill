@@ -12,7 +12,7 @@ symbol = "tray.and.arrow.down.fill"
 accent = "blue"
 
 [setup.speech]
-selection = "automatic"
+selection = "fixed"
 recognizer = "local-speech"
 local_model = "qwen3-asr-0.6b-mlx-8bit"
 

@@ -1100,7 +1100,7 @@ extension AppModelTests {
         await waitForEventProcessing()
 
         XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
-        XCTAssertEqual(harness.model.defaultWorkflowDraft().recognizer.rawValue, "automatic")
+        XCTAssertEqual(harness.model.defaultWorkflowDraft().recognizer, .localSpeech)
     }
 
     func testLoadsPersistedLongRecordingMode() async {

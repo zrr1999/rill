@@ -143,6 +143,31 @@ final class VoiceSetupReadinessTests: XCTestCase {
         XCTAssertTrue(harness.model.voiceSetupReadiness.isComplete)
     }
 
+    func testCursorLivePreviewRequiresAccessibilityEvenWithoutDirectInsertion() {
+        let harness = makeHarness(
+            permissionSnapshot: PermissionSnapshot(accessibility: .denied, microphone: .granted),
+            globalInputCapability: .available
+        )
+        harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
+        harness.model.workflows.append(
+            WorkflowDefinition(
+                name: "Cursor preview",
+                trigger: .manual,
+                pipeline: PipelineDeclaration(
+                    recognizerID: "local-speech",
+                    outputActions: [OutputActionReference(id: "stack.push")]
+                ),
+                ui: WorkflowUIConfig(symbolName: "cursorarrow.rays", accentColorName: "blue"),
+                metadata: [
+                    WorkflowMetadataKey.livePreviewEnabled: "true",
+                    WorkflowMetadataKey.livePreviewPlacement: "cursor",
+                ]
+            )
+        )
+
+        XCTAssertTrue(harness.model.voiceSetupReadiness.accessibilityRequired)
+    }
+
 
 
     func testSelectingRecordedLocalModelRunsPreparationAndDoesNotFabricateReadyOnFailure() async {

@@ -1224,6 +1224,7 @@ actor LocalSpeechVoiceCaptureRuntime {
         providerID: phase == .hidden
           ? nil
           : request.workflow.plan.setup.speechRoute?.recognizerID,
+        networkUsage: request.liveSubtitleNetworkUsage,
         livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement,
         recordingStartedAt: phase == .hidden ? nil : recordingStartedAt,
         maximumRecordingDurationSeconds:

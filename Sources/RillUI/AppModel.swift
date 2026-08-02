@@ -647,7 +647,7 @@ public final class AppModel {
   let localSpeechSettingsSource: LocalSpeechSettingsSource
   let settingsWriteDebounceDuration: Duration
   let historyRetentionMaintenanceInterval: Duration?
-  let liveSubtitleMeterRefreshInterval: Duration = .milliseconds(180)
+  let liveSubtitleMeterRefreshInterval: Duration = .milliseconds(40)
   var waitForLiveSubtitleMeterRefresh: @Sendable (Duration) async throws -> Void = { duration in
     try await Task.sleep(for: duration)
   }

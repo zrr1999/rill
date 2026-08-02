@@ -50,4 +50,12 @@ final class VoiceActivityIndicatorTests: XCTestCase {
     XCTAssertNil(VoiceActivityIndicator.meterAnimation(reduceMotion: true))
     XCTAssertNotNil(VoiceActivityIndicator.meterAnimation(reduceMotion: false))
   }
+
+  func testMeterOpacityFadesMeasuredEnergyWithoutHidingNeutralTicks() {
+    XCTAssertEqual(VoiceActivityIndicator.barOpacity(for: -.infinity), 0.62)
+    XCTAssertEqual(VoiceActivityIndicator.barOpacity(for: 0), 0.62)
+    XCTAssertEqual(VoiceActivityIndicator.barOpacity(for: 0.5), 0.81, accuracy: 0.001)
+    XCTAssertEqual(VoiceActivityIndicator.barOpacity(for: 1), 1)
+    XCTAssertEqual(VoiceActivityIndicator.barOpacity(for: .infinity), 0.62)
+  }
 }

@@ -245,7 +245,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
       streamingPreviewSessionFactory: { _ in preview },
       liveUpdateHandler: { await snapshots.append($0) }
     )
-    let request = makeLocalSpeechRequest()
+    let request = makeLocalSpeechRequest(livePreviewPlacement: .cursor)
     let samples = Array(repeating: Float(0.2), count: 4_800)
 
     let startTask = Task { try await runtime.startCapture(request: request) }
@@ -261,6 +261,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     let recordingSnapshots = await snapshots.values.filter { $0.phase == .recording }
 
     XCTAssertEqual(recordingSnapshots.last?.hypothesisText, "你好 world")
+    XCTAssertEqual(recordingSnapshots.last?.livePreviewPlacement, .cursor)
     XCTAssertEqual(preview.acceptedSampleCounts, [samples.count, trailingSamples.count])
     XCTAssertEqual(
       capturedAudio.durationSeconds,
@@ -1836,7 +1837,8 @@ private func makeLocalSpeechRequest(
   audioLifetime: AudioCaptureLifetime? = nil,
   maxDurationSeconds: Double? = nil,
   canRemoveMaxDurationLimit: Bool = false,
-  triggerBinding: TriggerBinding = .hotkey
+  triggerBinding: TriggerBinding = .hotkey,
+  livePreviewPlacement: LivePreviewPlacement = .overlay
 ) -> AudioCaptureRequest {
   AudioCaptureRequest(
     runID: runID,
@@ -1847,7 +1849,10 @@ private func makeLocalSpeechRequest(
         recognizerID: "sherpa-onnx.local",
         outputActions: []
       ),
-      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
+      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal"),
+      metadata: [
+        WorkflowMetadataKey.livePreviewPlacement: livePreviewPlacement.rawValue
+      ]
     ),
     triggerEvent:
       triggerBinding == .wakeWord

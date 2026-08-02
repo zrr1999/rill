@@ -308,7 +308,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         )
 
         var recognizerDraft = savedDraft
-        recognizerDraft.recognizer = .localSpeech
+        recognizerDraft.recognizer = .automatic
         XCTAssertFalse(
             WorkflowExplanationSelectionState.canExplainSavedWorkflow(
                 draft: recognizerDraft,

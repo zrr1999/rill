@@ -22,6 +22,40 @@ final class WorkflowPrivacyDestinationClassifierTests: XCTestCase {
             WorkflowPrivacyDestinationClassifier.classify(workflow),
             .classified([.localSpeech, .cloudText])
         )
+        XCTAssertEqual(
+            WorkflowPrivacyDestinationClassifier.liveSubtitleNetworkUsage(for: workflow),
+            .online
+        )
+    }
+
+    func testLiveSubtitleNetworkUsageDistinguishesOfflineAndUnknownWorkflows() {
+        let offline = WorkflowDefinition(
+            name: "Local Dictation",
+            trigger: .hotkey,
+            pipeline: PipelineDeclaration(
+                recognizerID: "sherpa-onnx.local",
+                outputActions: [OutputActionReference(id: "inject.text")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "green")
+        )
+        let unknown = WorkflowDefinition(
+            name: "Unknown Provider",
+            trigger: .hotkey,
+            pipeline: PipelineDeclaration(
+                recognizerID: "unclassified.speech",
+                outputActions: []
+            ),
+            ui: WorkflowUIConfig(symbolName: "questionmark", accentColorName: "orange")
+        )
+
+        XCTAssertEqual(
+            WorkflowPrivacyDestinationClassifier.liveSubtitleNetworkUsage(for: offline),
+            .offline
+        )
+        XCTAssertEqual(
+            WorkflowPrivacyDestinationClassifier.liveSubtitleNetworkUsage(for: unknown),
+            .unknown
+        )
     }
 
     func testSpeechOutputRemainsLocalWhenRecognizerIsSkippedForTextReplay() {

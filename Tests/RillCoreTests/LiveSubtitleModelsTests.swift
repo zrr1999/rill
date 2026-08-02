@@ -19,4 +19,19 @@ final class LiveSubtitleModelsTests: XCTestCase {
             "hello world from vox"
         )
     }
+
+    func testNetworkUsageRoundTripsWithoutExposingWorkflowDetails() throws {
+        let snapshot = LiveSubtitleSnapshot(
+            runID: UUID(),
+            phase: .recording,
+            networkUsage: .online
+        )
+
+        let decoded = try JSONDecoder().decode(
+            LiveSubtitleSnapshot.self,
+            from: JSONEncoder().encode(snapshot)
+        )
+
+        XCTAssertEqual(decoded.networkUsage, .online)
+    }
 }

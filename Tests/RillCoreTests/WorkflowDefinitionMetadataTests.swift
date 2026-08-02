@@ -29,6 +29,21 @@ final class WorkflowDefinitionMetadataTests: XCTestCase {
         XCTAssertFalse(workflow.excludesOutputFromWorkflowCapture)
     }
 
+    func testCursorPlacementIsIgnoredWhenLivePreviewIsDisabled() {
+        let workflow = WorkflowDefinition(
+            name: "Preview disabled",
+            pipeline: PipelineDeclaration(recognizerID: "local-speech", outputActions: []),
+            ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue"),
+            metadata: [
+                WorkflowMetadataKey.livePreviewEnabled: "false",
+                WorkflowMetadataKey.livePreviewPlacement: "cursor",
+            ]
+        )
+
+        XCTAssertFalse(workflow.livePreviewIsEnabled)
+        XCTAssertEqual(workflow.resolvedLivePreviewPlacement, .overlay)
+    }
+
     func testBuiltinPushToTalkRoutingRequiresEveryIdentityAndInvocationCondition() {
         let workflow = WorkflowDefinition(
             name: "Builtin Push to Talk",

@@ -119,7 +119,6 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
     let trigger: TriggerBinding
     let outputActionID: String?
     let recognizerID: String
-    let prefersAutomaticRecognizerSelection: Bool
     let languageOverride: String?
     let usesBuiltinTitle: Bool
 
@@ -128,7 +127,6 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
         trigger = workflow.trigger
         outputActionID = workflow.plan.output.actions.first?.id
         recognizerID = workflow.plan.setup.speechRoute?.recognizerID ?? ""
-        prefersAutomaticRecognizerSelection = workflow.prefersAutomaticRecognizerSelection
         languageOverride = workflow.metadata[WorkflowMetadataKey.languageOverride]
         usesBuiltinTitle = workflow.titleKey != nil
     }
@@ -161,9 +159,6 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
     }
 
     private func speechRouteTitle(language: AppLanguage) -> String {
-        if prefersAutomaticRecognizerSelection {
-            return UIStrings.editorRecognizer(.automatic, language: language)
-        }
         if let route = WorkflowEditorDraft.RecognizerChoice(recognizerID: recognizerID) {
             return UIStrings.editorRecognizer(route, language: language)
         }
@@ -171,13 +166,10 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
     }
 
     func privacyRouteHint(language: AppLanguage) -> String {
-        if prefersAutomaticRecognizerSelection {
-            return L10n.privacySettingsSpeechRouteHint(.automatic, language: language)
-        }
         if let route = WorkflowEditorDraft.RecognizerChoice(recognizerID: recognizerID) {
             return L10n.privacySettingsSpeechRouteHint(route, language: language)
         }
-        return L10n.privacySettingsSpeechRouteHint(.automatic, language: language)
+        return L10n.privacySettingsSpeechRouteHint(.localSpeech, language: language)
     }
 }
 

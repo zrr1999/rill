@@ -214,7 +214,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         sourceGroupID: UUID? = nil,
         wakePhrasesText: String = WakeWordConfiguration.defaultPhrases.joined(separator: "\n"),
         excludePolishTag: Bool = true,
-        recognizer: RecognizerChoice = .automatic,
+        recognizer: RecognizerChoice = .localSpeech,
         speechLanguageOverride: String = "",
         localSpeechModelOverride: String = "",
         livePreviewEnabled: Bool = true,
@@ -272,13 +272,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     // MARK: - From WorkflowDefinition (voice workflows)
 
     init?(workflow: WorkflowDefinition) {
-        let selectedRecognizer: RecognizerChoice?
-        if workflow.prefersAutomaticRecognizerSelection {
-            selectedRecognizer = .automatic
-        } else if let route = workflow.plan.setup.speechRoute {
-            selectedRecognizer = RecognizerChoice(recognizerID: route.recognizerID)
-        } else {
-            selectedRecognizer = nil
+        let selectedRecognizer = workflow.plan.setup.speechRoute.flatMap {
+            RecognizerChoice(recognizerID: $0.recognizerID)
         }
         guard
             let recognizer = selectedRecognizer,
@@ -373,7 +368,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     ) -> WorkflowDefinition {
         var metadata = existingMetadata
         metadata[AppModel.workflowOriginMetadataKey] = AppModel.userWorkflowOriginMetadataValue
-        metadata["provider"] = recognizer.providerMetadataValue
+        metadata["provider"] = RecognizerChoice.localSpeech.providerMetadataValue
         let trimmedLanguageOverride = speechLanguageOverride.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedModelOverride = localSpeechModelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
         let outputActionConfiguration = destination.outputConfiguration(from: self)
@@ -410,11 +405,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             livePreviewEnabled ? "true" : "false"
         metadata[WorkflowMetadataKey.livePreviewPlacement] = livePreviewPlacement.rawValue
         metadata[WorkflowMetadataKey.streamingProfile] = streamingProfile
-        if recognizer == .automatic {
-            metadata[WorkflowMetadataKey.recognizerSelectionMode] = "auto"
-        } else {
-            metadata.removeValue(forKey: WorkflowMetadataKey.recognizerSelectionMode)
-        }
+        metadata.removeValue(forKey: WorkflowMetadataKey.recognizerSelectionMode)
         if !trimmedLanguageOverride.isEmpty {
             metadata[WorkflowMetadataKey.languageOverride] = trimmedLanguageOverride
         } else {
@@ -434,8 +425,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         }
 
         let route = WorkflowSpeechRoute(
-            selection: recognizer == .automatic ? .automatic : .fixed,
-            recognizerID: recognizer.recognizerID,
+            selection: .fixed,
+            recognizerID: RecognizerChoice.localSpeech.recognizerID,
             language: trimmedLanguageOverride.isEmpty ? nil : trimmedLanguageOverride,
             localModel:
                 !trimmedModelOverride.isEmpty

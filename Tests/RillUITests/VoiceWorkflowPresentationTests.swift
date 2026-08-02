@@ -99,7 +99,7 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
         XCTAssertTrue(UIStrings.workflowDetail(workflow, language: .simplifiedChinese).contains("模式：翻译输入"))
     }
 
-    func testDraftSpeechRouteWritesPerWorkflowLocalASRMetadata() {
+    func testDraftSpeechRouteNormalizesLegacyAutomaticChoiceToLocalASR() {
         let draft = WorkflowEditorDraft(
             name: "Local Meeting",
             recognizer: .automatic,
@@ -111,13 +111,14 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
         let workflow = draft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
 
         XCTAssertEqual(workflow.pipeline.recognizerID, "local-speech")
-        XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode], "auto")
+        XCTAssertEqual(workflow.plan.setup.speechRoute?.selection, .fixed)
+        XCTAssertNil(workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode])
         XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.languageOverride], "zh-CN")
         XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride], "distil-large-v3")
         XCTAssertNil(workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
 
         let roundTrip = WorkflowEditorDraft(workflow: workflow)
-        XCTAssertEqual(roundTrip?.recognizer, .automatic)
+        XCTAssertEqual(roundTrip?.recognizer, .localSpeech)
         XCTAssertEqual(roundTrip?.speechLanguageOverride, "zh-CN")
         XCTAssertEqual(roundTrip?.localSpeechModelOverride, "distil-large-v3")
     }

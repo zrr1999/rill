@@ -237,7 +237,9 @@ actor WorkflowAudioRunController {
           "binding": binding.rawValue,
         ],
         endpointControl: endpointControl,
-        audioLifetime: liveAudioSession.audioLifetime
+        audioLifetime: liveAudioSession.audioLifetime,
+        liveSubtitleNetworkUsage:
+          WorkflowPrivacyDestinationClassifier.liveSubtitleNetworkUsage(for: workflow)
       )
 
       try await audioCaptureService.startCapture(request)
@@ -898,6 +900,8 @@ actor WorkflowAudioRunController {
           providerID: phase == .hidden
             ? nil
             : workflow.plan.setup.speechRoute?.recognizerID,
+          networkUsage:
+            WorkflowPrivacyDestinationClassifier.liveSubtitleNetworkUsage(for: workflow),
           livePreviewPlacement: workflow.resolvedLivePreviewPlacement
         )
       )

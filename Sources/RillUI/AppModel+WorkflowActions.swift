@@ -1079,11 +1079,36 @@ extension AppModel {
   }
 
   public func defaultWorkflowDraft() -> WorkflowEditorDraft {
-    WorkflowEditorDraft(recognizer: .automatic)
+    WorkflowEditorDraft(recognizer: .localSpeech)
   }
 
   public func isCustomWorkflow(_ workflow: WorkflowDefinition) -> Bool {
-    workflow.metadata[Self.workflowOriginMetadataKey] == Self.userWorkflowOriginMetadataValue
+    !isBuiltInWorkflow(workflow)
+      && workflow.metadata[Self.workflowOriginMetadataKey] == Self.userWorkflowOriginMetadataValue
+  }
+
+  public func isBuiltInWorkflow(_ workflow: WorkflowDefinition) -> Bool {
+    builtInWorkflows.contains { $0.id == workflow.id }
+  }
+
+  public var userCreatedWorkflows: [WorkflowDefinition] {
+    let builtInIDs = Set(builtInWorkflows.map(\.id))
+    return customWorkflows.filter { !builtInIDs.contains($0.id) }
+  }
+
+  public var editableBuiltInWorkflows: [WorkflowDefinition] {
+    builtInWorkflows.map { builtInWorkflow in
+      workflows.first(where: { $0.id == builtInWorkflow.id }) ?? builtInWorkflow
+    }
+  }
+
+  public func canRestoreBuiltInWorkflow(_ workflow: WorkflowDefinition) -> Bool {
+    guard let defaultWorkflow = builtInWorkflows.first(where: { $0.id == workflow.id }) else {
+      return false
+    }
+    return customWorkflows.contains(where: { $0.id == workflow.id })
+      || workflowCustomizations.contains(where: { $0.workflowID == workflow.id })
+      || workflowEnabledStates[workflow.id] != defaultWorkflow.isEnabledByDefault
   }
 
   public func saveWorkflowDraft(
@@ -1100,9 +1125,10 @@ extension AppModel {
       return
     }
 
-    let existingMetadata =
-      workflowID
-      .flatMap { id in customWorkflows.first(where: { $0.id == id })?.metadata } ?? [:]
+    let existingMetadata = workflowID.flatMap { id in
+      customWorkflows.first(where: { $0.id == id })?.metadata
+        ?? builtInWorkflows.first(where: { $0.id == id })?.metadata
+    } ?? [:]
     var sanitizedDraft = draft
     sanitizedDraft.name = trimmedName
     if let validationError = sanitizedDraft.outputValidationError(language: language) {
@@ -1130,7 +1156,9 @@ extension AppModel {
     )
 
     let enableConflicts = conflictingEnabledWorkflowsForActivation(of: workflow)
-    let desiredEnabledState = workflowEnabledStates[workflow.id] ?? true
+    let desiredEnabledState = workflowEnabledStates[workflow.id]
+      ?? builtInWorkflows.first(where: { $0.id == workflow.id })?.isEnabledByDefault
+      ?? true
     let supportIssue = desiredEnabledState
       ? workflowExecutionSupportIssue(for: workflow)
       : nil
@@ -1191,6 +1219,7 @@ extension AppModel {
 
   public func deleteCustomWorkflow(_ workflow: WorkflowDefinition) async {
     guard workflowLibraryIsReadyForMutation(reportingToEditor: false) else { return }
+    guard !isBuiltInWorkflow(workflow) else { return }
     guard let index = customWorkflows.firstIndex(where: { $0.id == workflow.id }) else { return }
     if let workflowFileStore, let fileURL = workflowFileURLsByID[workflow.id] {
       do {
@@ -1215,6 +1244,39 @@ extension AppModel {
     append(
       english: "Workflow removed: \(workflow.name)",
       simplifiedChinese: "工作流已删除：\(workflow.name)"
+    )
+  }
+
+  public func restoreBuiltInWorkflowToDefault(_ workflow: WorkflowDefinition) async {
+    guard workflowLibraryIsReadyForMutation(reportingToEditor: true) else { return }
+    guard let defaultWorkflow = builtInWorkflows.first(where: { $0.id == workflow.id }) else {
+      return
+    }
+
+    if let workflowFileStore, let fileURL = workflowFileURLsByID[workflow.id] {
+      do {
+        try await workflowFileStore.delete(fileURL: fileURL)
+      } catch {
+        workflowEditorError = language == .english
+          ? "The built-in workflow override could not be removed: \(error.localizedDescription)"
+          : "无法删除内置工作流覆盖文件：\(error.localizedDescription)"
+        return
+      }
+    }
+
+    hasModifiedWorkflowLibrary = true
+    customWorkflows.removeAll { $0.id == workflow.id }
+    workflowFileURLsByID.removeValue(forKey: workflow.id)
+    workflowCustomizations.removeAll { $0.workflowID == workflow.id }
+    workflowEnabledStates[workflow.id] = defaultWorkflow.isEnabledByDefault
+    workflowEditorError = nil
+    workflowLibraryError = nil
+    rebuildWorkflowLibrary()
+    persistWorkflowEnabledStates()
+    persistCustomWorkflows()
+    append(
+      english: "Built-in workflow restored: \(localizedWorkflowName(for: defaultWorkflow))",
+      simplifiedChinese: "内置工作流已恢复默认：\(localizedWorkflowName(for: defaultWorkflow))"
     )
   }
 

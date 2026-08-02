@@ -79,11 +79,21 @@ extension AppModel {
       globalInput: globalInputCapability,
       microphone: permissionSnapshot.microphone,
       accessibility: permissionSnapshot.accessibility,
-      accessibilityRequired: builtinPushToTalkOutputMode == .pasteIntoApp,
+      accessibilityRequired:
+        builtinPushToTalkOutputMode == .pasteIntoApp
+        || hasEnabledCursorLivePreview,
       preferredSpeechEngine: preferredSpeechEngine,
       provider: voiceSetupProviderReadiness,
       privacy: voiceSetupPrivacyReadiness
     )
+  }
+
+  private var hasEnabledCursorLivePreview: Bool {
+    workflows.contains { workflow in
+      isWorkflowEnabled(workflow)
+        && workflow.livePreviewIsEnabled
+        && workflow.resolvedLivePreviewPlacement == .cursor
+    }
   }
 
   private var voiceSetupProviderReadiness: VoiceSetupProviderReadiness {

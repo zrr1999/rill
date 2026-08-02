@@ -13,6 +13,17 @@ public enum WorkflowPrivacyDestinationClassification: Sendable, Equatable {
 /// Closed classification shared by privacy preview and live authorization.
 /// Unknown components fail closed instead of being guessed to be local.
 public enum WorkflowPrivacyDestinationClassifier {
+    public static func liveSubtitleNetworkUsage(
+        for workflow: WorkflowDefinition
+    ) -> LiveSubtitleNetworkUsage {
+        switch classify(workflow) {
+        case .classified(let destinations):
+            return destinations.contains(where: \.isCloud) ? .online : .offline
+        case .unavailable:
+            return .unknown
+        }
+    }
+
     public static func classify(
         _ workflow: WorkflowDefinition
     ) -> WorkflowPrivacyDestinationClassification {

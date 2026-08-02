@@ -1,7 +1,8 @@
 # Rill workflow TOML specification
 
-Rill stores every user workflow as one TOML document. These files are the
-source of truth; the Workflow window is a visual editor for the same documents.
+Rill stores every user workflow, including an edited built-in workflow override,
+as one TOML document. These files are the source of truth; the Workflow window
+is a visual editor for the same documents.
 
 ## Location and discovery
 
@@ -40,7 +41,7 @@ symbol = "mic.fill"
 accent = "blue"
 
 [setup.speech]
-selection = "automatic"
+selection = "fixed"
 recognizer = "sherpa-onnx.local"
 language = "zh-CN"
 live_preview = true
@@ -82,9 +83,14 @@ removed on the next visual save.
 ## Enumerated values
 
 - `trigger`: `manual`, `hotkey`, `menu-bar`, `wake-word`
-- `setup.speech.selection`: `automatic`, `fixed`
+- `setup.speech.selection`: `fixed`. Rill still accepts `automatic` while
+  reading older files, but the visual editor normalizes saved workflows to the
+  current local speech route.
 - `setup.speech.live_preview_placement`: `overlay`, `cursor`. It defaults to
   `overlay` when omitted and is ignored while `live_preview` is disabled.
+  Cursor preview uses a run-scoped macOS Accessibility replacement transaction,
+  not InputMethodKit marked text. Unsupported or changed editor targets fall
+  back to the overlay for that run.
 - vocabulary `uses`: `recognition-hints`, `text-replacement`
 - process `kind`: `recognize-speech`, `resolve-uncertainty`,
   `apply-vocabulary`, `snippet-replacement`, `llm-rewrite`,
@@ -107,6 +113,12 @@ XDG directory and provides **Open Folder** and **Reload** actions. Rill reloads
 the directory when the window opens; use **Reload** after changing files in an
 external editor. A workflow run freezes its validated plan before recognition,
 so an edit affects the next run rather than mutating one already in progress.
+
+Built-in workflows remain identified by their bundled UUID. Editing one writes
+a TOML override with that same UUID, so it stays in the Built-in section instead
+of becoming a duplicate custom workflow. **Restore Defaults** removes the TOML
+override and any saved per-workflow vocabulary customization, then restores the
+bundled definition and its default enabled state.
 
 On the first launch after this format is introduced, Rill migrates the legacy
 JSON workflow library only when the XDG directory contains no TOML files. It

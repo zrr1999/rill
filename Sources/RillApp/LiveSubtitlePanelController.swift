@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import QuartzCore
 import SwiftUI
 import RillCore
@@ -94,6 +95,48 @@ enum LiveSubtitlePanelGeometry {
   }
 }
 
+enum LiveSubtitlePanelAnimationPolicy {
+  static let fadeInDuration: TimeInterval = 0.1
+  static let fadeOutDuration: TimeInterval = 0.1
+
+  static func shouldAnimateEntrance(
+    for _: LiveSubtitleSnapshot,
+    reduceMotion: Bool
+  ) -> Bool {
+    !reduceMotion
+  }
+}
+
+private struct LiveSubtitlePanelPresentation {
+  let snapshot: LiveSubtitleSnapshot
+  let language: AppLanguage
+}
+
+@MainActor
+private final class LiveSubtitlePanelPresentationModel: ObservableObject {
+  @Published private(set) var presentation: LiveSubtitlePanelPresentation
+
+  init(snapshot: LiveSubtitleSnapshot, language: AppLanguage) {
+    presentation = LiveSubtitlePanelPresentation(snapshot: snapshot, language: language)
+  }
+
+  func update(snapshot: LiveSubtitleSnapshot, language: AppLanguage) {
+    presentation = LiveSubtitlePanelPresentation(snapshot: snapshot, language: language)
+  }
+}
+
+private struct LiveSubtitlePanelRootView: View {
+  @ObservedObject var model: LiveSubtitlePanelPresentationModel
+
+  var body: some View {
+    LiveSubtitleOverlay(
+      snapshot: model.presentation.snapshot,
+      language: model.presentation.language,
+      includesShadow: false
+    )
+  }
+}
+
 struct LiveSubtitlePanelWindowState: Equatable {
   let isVisible: Bool
   let isOpaque: Bool
@@ -119,12 +162,6 @@ struct LiveSubtitlePanelWindowState: Equatable {
 final class LiveSubtitlePanelController {
   static let accessibilityIdentifier = "works.earendil.rill.live-subtitle"
 
-  private static let closeRequestedNotification = Notification.Name(
-    "works.earendil.rill.live-subtitle.close-requested"
-  )
-  private static let stopRequestedNotification = Notification.Name(
-    "works.earendil.rill.live-subtitle.stop-requested"
-  )
   private static let removeDurationLimitRequestedNotification = Notification.Name(
     "works.earendil.rill.live-subtitle.remove-duration-limit-requested"
   )
@@ -133,18 +170,16 @@ final class LiveSubtitlePanelController {
   private let reduceMotionProvider: @MainActor () -> Bool
 
   private var panel: NSPanel?
-  private var hostingController: NSHostingController<LiveSubtitleOverlay>?
+  private var hostingController: NSHostingController<LiveSubtitlePanelRootView>?
+  private var presentationModel: LiveSubtitlePanelPresentationModel?
   private var visibleRunID: UUID?
-  private var dismissedRunID: UUID?
   private var currentVisibleFrame: NSRect?
-  private var closeObserver: NotificationObserverToken?
-  private var stopObserver: NotificationObserverToken?
   private var removeDurationLimitObserver: NotificationObserverToken?
-  private var stopAction: (@Sendable (UUID) async -> Void)?
   private var removeDurationLimitAction: (@Sendable (UUID) async -> Bool)?
-  private var stopRequestedRunID: UUID?
   private var durationLimitRemovalRequestedRunID: UUID?
   private var visibilityGeneration: UInt64 = 0
+  private(set) var shadowInvalidationCount = 0
+  private(set) var windowFrameAssignmentCount = 0
 
   init(
     visibleFrameResolver: @escaping @MainActor () -> NSRect? = {
@@ -156,38 +191,6 @@ final class LiveSubtitlePanelController {
   ) {
     self.visibleFrameResolver = visibleFrameResolver
     self.reduceMotionProvider = reduceMotionProvider
-
-    let observer = NotificationCenter.default.addObserver(
-      forName: Self.closeRequestedNotification,
-      object: nil,
-      queue: .main
-    ) { [weak self] notification in
-      guard let runID = notification.object as? UUID else { return }
-      Task { @MainActor in
-        self?.dismiss(runID: runID)
-      }
-    }
-    closeObserver = NotificationObserverToken(observer)
-
-    let stopObserver = NotificationCenter.default.addObserver(
-      forName: Self.stopRequestedNotification,
-      object: nil,
-      queue: .main
-    ) { [weak self] notification in
-      guard let runID = notification.object as? UUID else { return }
-      Task { @MainActor in
-        guard let self,
-          self.visibleRunID == runID,
-          self.stopRequestedRunID != runID,
-          let stopAction = self.stopAction
-        else {
-          return
-        }
-        self.stopRequestedRunID = runID
-        await stopAction(runID)
-      }
-    }
-    self.stopObserver = NotificationObserverToken(stopObserver)
 
     let removeDurationLimitObserver = NotificationCenter.default.addObserver(
       forName: Self.removeDurationLimitRequestedNotification,
@@ -211,10 +214,6 @@ final class LiveSubtitlePanelController {
       }
     }
     self.removeDurationLimitObserver = NotificationObserverToken(removeDurationLimitObserver)
-  }
-
-  func installStopAction(_ action: @escaping @Sendable (UUID) async -> Void) {
-    stopAction = action
   }
 
   func installRemoveDurationLimitAction(
@@ -248,26 +247,19 @@ final class LiveSubtitlePanelController {
     )
   }
 
+  var presentationHostIdentity: ObjectIdentifier? {
+    hostingController.map(ObjectIdentifier.init)
+  }
+
   func update(snapshot: LiveSubtitleSnapshot?, language: AppLanguage) {
     guard let snapshot, snapshot.isVisible else {
       hidePanel(animated: true)
       visibleRunID = nil
       currentVisibleFrame = nil
-      stopRequestedRunID = nil
       durationLimitRemovalRequestedRunID = nil
       return
     }
 
-    if dismissedRunID == snapshot.runID {
-      hidePanel(animated: false)
-      visibleRunID = nil
-      currentVisibleFrame = nil
-      return
-    }
-    dismissedRunID = nil
-    if stopRequestedRunID != snapshot.runID {
-      stopRequestedRunID = nil
-    }
     if durationLimitRemovalRequestedRunID != snapshot.runID
       || snapshot.canRemoveRecordingDurationLimit != true
     {
@@ -275,21 +267,28 @@ final class LiveSubtitlePanelController {
     }
 
     let panel = panel ?? makePanel()
-    let overlay = LiveSubtitleOverlay(
-      snapshot: snapshot,
-      language: language,
-      includesShadow: false
-    )
-    let hostingController = hostingController ?? NSHostingController(rootView: overlay)
-    hostingController.rootView = overlay
+    let presentationModel: LiveSubtitlePanelPresentationModel
+    if let existingModel = self.presentationModel {
+      existingModel.update(snapshot: snapshot, language: language)
+      presentationModel = existingModel
+    } else {
+      let newModel = LiveSubtitlePanelPresentationModel(snapshot: snapshot, language: language)
+      self.presentationModel = newModel
+      presentationModel = newModel
+    }
+    let hostingController: NSHostingController<LiveSubtitlePanelRootView>
+    if let existingController = self.hostingController {
+      hostingController = existingController
+    } else {
+      let newController = NSHostingController(
+        rootView: LiveSubtitlePanelRootView(model: presentationModel)
+      )
+      self.hostingController = newController
+      panel.contentViewController = newController
+      hostingController = newController
+    }
     configureHostingView(hostingController.view, snapshot: snapshot)
     configureAccessibility(of: panel, language: language)
-
-    if self.hostingController == nil {
-      self.hostingController = hostingController
-      panel.contentViewController = hostingController
-      configureHostingView(hostingController.view, snapshot: snapshot)
-    }
     self.panel = panel
 
     let visibleFrame = visibleFrameResolver()
@@ -304,16 +303,22 @@ final class LiveSubtitlePanelController {
       visibilityGeneration &+= 1
       panel.setContentSize(surfaceSize)
       position(panel, using: visibleFrame)
-      panel.alphaValue = reduceMotionProvider() ? 1 : 0
+      hostingController.view.layoutSubtreeIfNeeded()
+      hostingController.view.displayIfNeeded()
+      let shouldAnimateEntrance = LiveSubtitlePanelAnimationPolicy.shouldAnimateEntrance(
+        for: snapshot,
+        reduceMotion: reduceMotionProvider()
+      )
+      panel.alphaValue = shouldAnimateEntrance ? 0 : 1
+      invalidateShadow(of: panel)
       panel.orderFrontRegardless()
-      if !reduceMotionProvider() {
+      if shouldAnimateEntrance {
         NSAnimationContext.runAnimationGroup { context in
-          context.duration = 0.1
+          context.duration = LiveSubtitlePanelAnimationPolicy.fadeInDuration
           context.timingFunction = CAMediaTimingFunction(name: .easeOut)
           panel.animator().alphaValue = 1
         }
       }
-      panel.invalidateShadow()
       visibleRunID = snapshot.runID
       return
     }
@@ -326,20 +331,33 @@ final class LiveSubtitlePanelController {
           visibleFrame: visibleFrame
         ).windowFrame
         if reduceMotionProvider() {
+          windowFrameAssignmentCount += 1
           panel.setFrame(targetFrame, display: true)
+          invalidateShadow(of: panel)
         } else {
+          windowFrameAssignmentCount += 1
           NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.16
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(targetFrame, display: true)
+          } completionHandler: { [weak self, weak panel] in
+            Task { @MainActor in
+              guard let self, let panel else { return }
+              self.invalidateShadow(of: panel)
+            }
           }
         }
       } else {
         panel.setContentSize(surfaceSize)
+        invalidateShadow(of: panel)
       }
     } else {
       position(panel, using: visibleFrame)
     }
+  }
+
+  private func invalidateShadow(of panel: NSPanel) {
+    shadowInvalidationCount += 1
     panel.invalidateShadow()
   }
 
@@ -381,13 +399,6 @@ final class LiveSubtitlePanelController {
     panel.setAccessibilityLabel(title)
   }
 
-  private func dismiss(runID: UUID) {
-    dismissedRunID = runID
-    visibleRunID = nil
-    currentVisibleFrame = nil
-    hidePanel(animated: false)
-  }
-
   private func hidePanel(animated: Bool) {
     guard let panel, panel.isVisible else { return }
     visibilityGeneration &+= 1
@@ -398,7 +409,7 @@ final class LiveSubtitlePanelController {
       return
     }
     NSAnimationContext.runAnimationGroup { context in
-      context.duration = 0.1
+      context.duration = LiveSubtitlePanelAnimationPolicy.fadeOutDuration
       context.timingFunction = CAMediaTimingFunction(name: .easeIn)
       panel.animator().alphaValue = 0
     } completionHandler: { [weak self, weak panel] in
@@ -417,6 +428,8 @@ final class LiveSubtitlePanelController {
       surfaceSize: surfaceSize,
       visibleFrame: visibleFrame
     )
+    guard panel.frame != layout.windowFrame else { return }
+    windowFrameAssignmentCount += 1
     panel.setFrame(layout.windowFrame, display: false)
   }
 

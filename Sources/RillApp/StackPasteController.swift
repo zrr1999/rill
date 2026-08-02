@@ -1914,7 +1914,8 @@ extension StackPasteController {
     case .clipboardPanelRequested:
       guard desiredClipboardCaptureEnabled else { return }
       await eventBus.publish(.clipboardPanelRequested)
-    case .globalInputUnavailable, .pushToTalkPressed, .pushToTalkReleased, .customHotkey:
+    case .globalInputUnavailable, .pushToTalkPressed, .pushToTalkReleased,
+      .liveAudioCancellationRequested, .customHotkey:
       break
     }
   }

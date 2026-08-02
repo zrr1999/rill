@@ -274,11 +274,13 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
 
     XCTAssertEqual(result, .saved)
     let customized = try XCTUnwrap(harness.model.customWorkflows.first)
+    XCTAssertEqual(customized.id, builtinAssistant.id)
     XCTAssertEqual(customized.plan.setup.wakeWord?.phrases, ["你好 Rill"])
     XCTAssertEqual(customized.plan.process, builtinAssistant.plan.process)
     XCTAssertEqual(customized.plan.output, builtinAssistant.plan.output)
     XCTAssertTrue(harness.model.isWorkflowEnabled(customized))
-    XCTAssertFalse(harness.model.isWorkflowEnabled(builtinAssistant))
+    XCTAssertTrue(harness.model.isWorkflowEnabled(builtinAssistant))
+    XCTAssertEqual(harness.model.workflows.map(\.id), [builtinAssistant.id])
   }
 
   @MainActor

@@ -37,11 +37,13 @@ public final class HotkeyEventTap: @unchecked Sendable {
         case clipboardPanelRequested
         case pushToTalkPressed(PushToTalkGesture)
         case pushToTalkReleased(PushToTalkGesture)
+        case liveAudioCancellationRequested(UUID)
         case globalInputUnavailable
         case customHotkey(String)
     }
 
     private static let pasteKeyCode: CGKeyCode = 9
+    fileprivate static let escapeKeyCode: CGKeyCode = 53
     fileprivate static let legacyPushToTalkKeyCode: CGKeyCode = 49
     fileprivate static let legacyPushToTalkModifiers: CGEventFlags = [.maskControl, .maskAlternate, .maskShift]
     fileprivate static let functionKeyCode: CGKeyCode = 63
@@ -70,6 +72,7 @@ public final class HotkeyEventTap: @unchecked Sendable {
     private var doubleCommandTapRecognizer = DoubleCommandTapRecognizer()
     private var clipboardPanelShortcutRecognizer = ClipboardPanelShortcutRecognizer()
     private var pushToTalkRecognizer = PushToTalkGestureRecognizer()
+    private var liveAudioEscapeRecognizer = LiveAudioEscapeRecognizer()
     private let monotonicClock = ContinuousClock()
     private let eventTapHealthChecker: HotkeyEventTapHealthChecker<CFMachPort>
     private let physicalKeyStateProvider: @Sendable (CGKeyCode) -> Bool
@@ -119,6 +122,15 @@ public final class HotkeyEventTap: @unchecked Sendable {
             continuation.onTermination = { [weak self, id] _ in
                 self?.removeContinuation(id)
             }
+        }
+    }
+
+    /// Enables global Escape cancellation only while one live-audio run owns
+    /// the nonactivating recording surface. Idle Escape events keep flowing to
+    /// the foreground application unchanged.
+    public func setLiveAudioEscapeCancellationRunID(_ runID: UUID?) {
+        withLock {
+            liveAudioEscapeRecognizer.setActiveRunID(runID)
         }
     }
 
@@ -414,6 +426,7 @@ public final class HotkeyEventTap: @unchecked Sendable {
         doubleCommandTapRecognizer.reset()
         clipboardPanelShortcutRecognizer.reset()
         skippedPasteEvents = 0
+        liveAudioEscapeRecognizer.reset()
         _ = pushToTalkRecognizer.interrupt()
     }
 
@@ -429,6 +442,7 @@ public final class HotkeyEventTap: @unchecked Sendable {
         clipboardPanelShortcutRecognizer.reset()
         doubleCommandTapRecognizer.reset()
         skippedPasteEvents = 0
+        liveAudioEscapeRecognizer.resetLatch()
         let activeGesture = pushToTalkRecognizer.activeGesture
         let shouldPreserveActiveTrigger = activeGesture.map {
             isPushToTalkGestureActive($0)
@@ -513,6 +527,21 @@ public final class HotkeyEventTap: @unchecked Sendable {
             emit(.clipboardPanelRequested)
         }
 
+        let escapeHandling = handleLiveAudioEscape(
+            type: type,
+            keyCode: keyCode,
+            flags: event.flags
+        )
+        switch escapeHandling {
+        case .passThrough:
+            break
+        case .swallow(let runID):
+            if let runID {
+                emit(.liveAudioCancellationRequested(runID))
+            }
+            return nil
+        }
+
         let pushToTalkHandling = handlePushToTalk(type: type, keyCode: keyCode, flags: event.flags)
         switch pushToTalkHandling {
         case .passThrough:
@@ -562,6 +591,16 @@ public final class HotkeyEventTap: @unchecked Sendable {
     private var isPasteInterceptEnabled: Bool {
         withLock {
             pasteInterceptEnabled
+        }
+    }
+
+    private func handleLiveAudioEscape(
+        type: CGEventType,
+        keyCode: CGKeyCode,
+        flags: CGEventFlags
+    ) -> LiveAudioEscapeRecognizerOutput {
+        withLock {
+            liveAudioEscapeRecognizer.handle(type: type, keyCode: keyCode, flags: flags)
         }
     }
 
@@ -697,6 +736,14 @@ public final class HotkeyEventTap: @unchecked Sendable {
         flags: CGEventFlags
     ) -> PushToTalkGestureRecognizerOutput {
         handlePushToTalk(type: type, keyCode: keyCode, flags: flags)
+    }
+
+    func testingHandleLiveAudioEscape(
+        type: CGEventType,
+        keyCode: CGKeyCode,
+        flags: CGEventFlags
+    ) -> LiveAudioEscapeRecognizerOutput {
+        handleLiveAudioEscape(type: type, keyCode: keyCode, flags: flags)
     }
 
     func testingHandleClipboardPanelShortcut(
@@ -906,6 +953,61 @@ struct ClipboardPanelShortcutRecognizer {
             case .shift:
                 flags.insert(.maskShift)
             }
+        }
+    }
+}
+
+enum LiveAudioEscapeRecognizerOutput: Equatable {
+    case passThrough
+    case swallow(UUID?)
+}
+
+struct LiveAudioEscapeRecognizer {
+    private var activeRunID: UUID?
+    private var latchedRunID: UUID?
+
+    mutating func setActiveRunID(_ runID: UUID?) {
+        activeRunID = runID
+    }
+
+    mutating func reset() {
+        activeRunID = nil
+        latchedRunID = nil
+    }
+
+    mutating func resetLatch() {
+        latchedRunID = nil
+    }
+
+    mutating func handle(
+        type: CGEventType,
+        keyCode: CGKeyCode,
+        flags: CGEventFlags
+    ) -> LiveAudioEscapeRecognizerOutput {
+        guard keyCode == HotkeyEventTap.escapeKeyCode else { return .passThrough }
+
+        switch type {
+        case .keyDown:
+            if latchedRunID != nil {
+                return .swallow(nil)
+            }
+            let disallowedModifiers = flags.intersection([
+                .maskCommand,
+                .maskControl,
+                .maskAlternate,
+                .maskShift,
+            ])
+            guard disallowedModifiers.isEmpty, let activeRunID else {
+                return .passThrough
+            }
+            latchedRunID = activeRunID
+            return .swallow(activeRunID)
+        case .keyUp:
+            guard latchedRunID != nil else { return .passThrough }
+            latchedRunID = nil
+            return .swallow(nil)
+        default:
+            return .passThrough
         }
     }
 }

@@ -483,6 +483,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     XCTAssertEqual(preview.phase, .preparing)
     XCTAssertEqual(preview.workflow, workflow.presentation)
     XCTAssertEqual(preview.providerID, workflow.pipeline.recognizerID)
+    XCTAssertEqual(preview.networkUsage, .offline)
     let captureBeforePreflight = await audioCaptureService.snapshot()
     XCTAssertNil(captureBeforePreflight.request)
 
@@ -491,6 +492,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let startedCapture = await audioCaptureService.snapshot()
     let runID = try XCTUnwrap(startedCapture.request?.runID)
     XCTAssertEqual(preview.runID, runID)
+    XCTAssertEqual(startedCapture.request?.liveSubtitleNetworkUsage, .offline)
 
     await controller.cancelRun(runID: runID)
     await controller.shutdown()

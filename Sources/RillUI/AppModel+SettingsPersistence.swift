@@ -2567,6 +2567,8 @@ extension AppModel {
       || current.phase != snapshot.phase || current.confirmedText != snapshot.confirmedText
       || current.hypothesisText != snapshot.hypothesisText
       || current.statusText != snapshot.statusText || current.providerID != snapshot.providerID
+      || current.networkUsage != snapshot.networkUsage
+      || current.livePreviewPlacement != snapshot.livePreviewPlacement
       || current.queuedRunCount != snapshot.queuedRunCount
       || current.prefersCompactLayout != snapshot.prefersCompactLayout
   }
@@ -2762,10 +2764,21 @@ extension AppModel {
 
   func rebuildWorkflowLibrary() {
     invalidateWorkflowExplanation()
-    let sortedCustomWorkflows = customWorkflows.sorted {
-      $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+    let builtInWorkflowIDs = Set(builtInWorkflows.map(\.id))
+    let builtInOverridesByID = Dictionary(
+      uniqueKeysWithValues: customWorkflows
+        .filter { builtInWorkflowIDs.contains($0.id) }
+        .map { ($0.id, $0) }
+    )
+    let sortedCustomWorkflows = customWorkflows
+      .filter { !builtInWorkflowIDs.contains($0.id) }
+      .sorted {
+        $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+      }
+    let effectiveBuiltInWorkflows = builtInWorkflows.map {
+      builtInOverridesByID[$0.id] ?? $0
     }
-    workflows = (sortedCustomWorkflows + builtInWorkflows).map {
+    workflows = (sortedCustomWorkflows + effectiveBuiltInWorkflows).map {
       workflowApplyingVocabularyCustomization($0)
     }
     synchronizeWorkflowEnabledStates()

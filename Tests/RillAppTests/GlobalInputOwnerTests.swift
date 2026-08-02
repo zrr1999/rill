@@ -11,6 +11,7 @@ private final class GlobalInputOwnerProbe: @unchecked Sendable {
   private var installationCount = 0
   private var uninstallationCount = 0
   private var observedCapabilities: [GlobalInputCapability] = []
+  private var cancelledRunIDs: [UUID] = []
 
   init(installationOutcomes: [Bool]) {
     self.installationOutcomes = installationOutcomes
@@ -36,6 +37,12 @@ private final class GlobalInputOwnerProbe: @unchecked Sendable {
     }
   }
 
+  func recordCancellation(runID: UUID) {
+    lock.withLock {
+      cancelledRunIDs.append(runID)
+    }
+  }
+
   var installCount: Int {
     lock.withLock { installationCount }
   }
@@ -46,6 +53,10 @@ private final class GlobalInputOwnerProbe: @unchecked Sendable {
 
   var capabilities: [GlobalInputCapability] {
     lock.withLock { observedCapabilities }
+  }
+
+  var cancellations: [UUID] {
+    lock.withLock { cancelledRunIDs }
   }
 }
 
@@ -103,5 +114,30 @@ final class GlobalInputOwnerTests: XCTestCase {
 
     await owner.stop()
     XCTAssertEqual(probe.uninstallCount, 1)
+  }
+
+  func testOwnerRoutesRunScopedEscapeCancellation() async {
+    let hotkeyTap = HotkeyEventTap()
+    let probe = GlobalInputOwnerProbe(installationOutcomes: [true])
+    let owner = GlobalInputOwner(
+      hotkeyTap: hotkeyTap,
+      installTap: { probe.install() },
+      uninstallTap: { probe.uninstall() },
+      permissionChecker: { true },
+      liveAudioCancellationHandler: { runID in
+        probe.recordCancellation(runID: runID)
+      }
+    )
+    let runID = UUID()
+
+    await owner.start()
+    hotkeyTap.testingEmit(.liveAudioCancellationRequested(runID))
+    for _ in 0..<200 {
+      if probe.cancellations == [runID] { break }
+      await Task.yield()
+    }
+
+    XCTAssertEqual(probe.cancellations, [runID])
+    await owner.stop()
   }
 }

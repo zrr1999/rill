@@ -408,6 +408,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
               runID: request.runID,
               workflow: request.workflow.presentation,
               phase: .hidden,
+              networkUsage: request.liveSubtitleNetworkUsage,
               livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
             )
           )
@@ -611,6 +612,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         workflow: request.workflow.presentation,
         phase: .failed,
         providerID: request.workflow.plan.setup.speechRoute?.recognizerID,
+        networkUsage: request.liveSubtitleNetworkUsage,
         livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
       )
     )
@@ -622,6 +624,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         runID: request.runID,
         workflow: request.workflow.presentation,
         phase: .hidden,
+        networkUsage: request.liveSubtitleNetworkUsage,
         livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
       )
     )
@@ -634,6 +637,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         workflow: request.workflow.presentation,
         phase: .recording,
         providerID: request.workflow.plan.setup.speechRoute?.recognizerID,
+        networkUsage: request.liveSubtitleNetworkUsage,
         livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
       )
     )

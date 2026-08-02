@@ -11,6 +11,15 @@ public enum LiveSubtitlePhase: String, Codable, Sendable, Equatable {
     case failed
 }
 
+/// A run-scoped disclosure of whether the selected workflow can complete
+/// without contacting a network service. The runtime freezes this value from
+/// the same destination classifier used by the privacy gate.
+public enum LiveSubtitleNetworkUsage: String, Codable, Sendable, Equatable {
+    case offline
+    case online
+    case unknown
+}
+
 public struct LiveSubtitleSnapshot: Codable, Sendable, Equatable {
     public var runID: UUID
     public var workflow: WorkflowPresentation?
@@ -20,6 +29,7 @@ public struct LiveSubtitleSnapshot: Codable, Sendable, Equatable {
     public var statusText: String?
     public var levelMeter: [Float]
     public var providerID: String?
+    public var networkUsage: LiveSubtitleNetworkUsage?
     public var livePreviewPlacement: LivePreviewPlacement
     public var queuedRunCount: Int
     public var prefersCompactLayout: Bool
@@ -38,6 +48,7 @@ public struct LiveSubtitleSnapshot: Codable, Sendable, Equatable {
         statusText: String? = nil,
         levelMeter: [Float] = [],
         providerID: String? = nil,
+        networkUsage: LiveSubtitleNetworkUsage? = nil,
         livePreviewPlacement: LivePreviewPlacement = .overlay,
         queuedRunCount: Int = 0,
         prefersCompactLayout: Bool = false,
@@ -55,6 +66,7 @@ public struct LiveSubtitleSnapshot: Codable, Sendable, Equatable {
         self.statusText = statusText
         self.levelMeter = levelMeter
         self.providerID = providerID
+        self.networkUsage = networkUsage
         self.livePreviewPlacement = livePreviewPlacement
         self.queuedRunCount = queuedRunCount
         self.prefersCompactLayout = prefersCompactLayout

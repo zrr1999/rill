@@ -55,6 +55,9 @@ public struct AudioCaptureRequest: Sendable, Equatable {
     /// Optional for source compatibility. Cloud live providers must reject a
     /// request that does not carry a matching active lifetime.
     public var audioLifetime: AudioCaptureLifetime?
+    /// Frozen disclosure for the live recording surface. This is derived from
+    /// the complete workflow rather than inferred from the speech provider.
+    public var liveSubtitleNetworkUsage: LiveSubtitleNetworkUsage?
 
     public init(
         runID: UUID,
@@ -66,7 +69,8 @@ public struct AudioCaptureRequest: Sendable, Equatable {
         options: SpeechRecognitionRequestOptions = .empty,
         metadata: [String: String] = [:],
         endpointControl: AudioCaptureEndpointControl? = nil,
-        audioLifetime: AudioCaptureLifetime? = nil
+        audioLifetime: AudioCaptureLifetime? = nil,
+        liveSubtitleNetworkUsage: LiveSubtitleNetworkUsage? = nil
     ) {
         self.runID = runID
         self.workflow = workflow
@@ -78,6 +82,7 @@ public struct AudioCaptureRequest: Sendable, Equatable {
         self.options = options
         self.endpointControl = endpointControl
         self.audioLifetime = audioLifetime
+        self.liveSubtitleNetworkUsage = liveSubtitleNetworkUsage
     }
 }
 

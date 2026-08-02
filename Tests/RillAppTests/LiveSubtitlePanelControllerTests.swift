@@ -87,7 +87,8 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
       )
 
       let accessibleContent = accessibilityText(including: liveSubtitleWindow)
-      XCTAssertTrue(accessibleContent.contains("Cancel and discard"))
+      XCTAssertTrue(accessibleContent.contains("Press Escape to cancel and discard"))
+      XCTAssertFalse(accessibleContent.contains("Cancel and discard\nbutton"))
     } else {
       // Xcode 27 beta's SwiftPM XCTest host can expose the added NSPanel as a
       // second AXApplication element with the title "xctest", hiding the
@@ -163,8 +164,8 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
     )
   }
 
-  func testCloseRequestDismissesTheSingleAccessiblePanelForTheCurrentRun() async throws {
-    prepareApplicationForAccessibilityTesting()
+  func testCaptureStartupFadesWithoutChangingCompactGeometryHostOrShadow() throws {
+    _ = NSApplication.shared
     let controller = LiveSubtitlePanelController(
       visibleFrameResolver: { self.visibleFrame },
       reduceMotionProvider: { true }
@@ -173,27 +174,63 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
       controller.update(snapshot: nil, language: .english)
     }
     let runID = UUID()
-    let snapshot = LiveSubtitleSnapshot(
+    let preparing = LiveSubtitleSnapshot(runID: runID, phase: .preparing)
+    let recording = LiveSubtitleSnapshot(
       runID: runID,
-      phase: .finalizing,
-      hypothesisText: "Done"
+      phase: .recording,
+      recordingStartedAt: Date()
     )
-    controller.update(snapshot: snapshot, language: .english)
-    XCTAssertTrue(try XCTUnwrap(controller.windowState).isVisible)
 
-    NotificationCenter.default.post(
-      name: Notification.Name("works.earendil.rill.live-subtitle.close-requested"),
-      object: runID
+    XCTAssertEqual(
+      LiveSubtitlePanelGeometry.preferredSurfaceSize(for: preparing),
+      LiveSubtitlePanelGeometry.preferredSurfaceSize(for: recording)
     )
-    await Task.yield()
-
-    XCTAssertFalse(try XCTUnwrap(controller.windowState).isVisible)
     XCTAssertTrue(
-      try accessibilityWindows().allSatisfy { !isLiveSubtitleWindow($0) }
+      LiveSubtitlePanelAnimationPolicy.shouldAnimateEntrance(
+        for: preparing,
+        reduceMotion: false
+      )
+    )
+    XCTAssertFalse(
+      LiveSubtitlePanelAnimationPolicy.shouldAnimateEntrance(
+        for: recording,
+        reduceMotion: true
+      )
     )
 
-    controller.update(snapshot: snapshot, language: .english)
-    XCTAssertFalse(try XCTUnwrap(controller.windowState).isVisible)
+    XCTAssertEqual(LiveSubtitlePanelAnimationPolicy.fadeInDuration, 0.1)
+    XCTAssertEqual(LiveSubtitlePanelAnimationPolicy.fadeOutDuration, 0.1)
+
+    controller.update(snapshot: preparing, language: .english)
+    let hostIdentity = try XCTUnwrap(controller.presentationHostIdentity)
+    let shadowInvalidationCount = controller.shadowInvalidationCount
+    let windowFrameAssignmentCount = controller.windowFrameAssignmentCount
+    controller.update(snapshot: recording, language: .english)
+
+    XCTAssertEqual(controller.presentationHostIdentity, hostIdentity)
+    XCTAssertEqual(controller.shadowInvalidationCount, shadowInvalidationCount)
+    XCTAssertEqual(controller.windowFrameAssignmentCount, windowFrameAssignmentCount)
+    XCTAssertEqual(
+      try XCTUnwrap(controller.windowState).contentSize,
+      LiveSubtitlePanelGeometry.preferredSurfaceSize(for: recording)
+    )
+  }
+
+  func testNonCaptureEntranceStillHonorsMotionPreference() {
+    let snapshot = LiveSubtitleSnapshot(runID: UUID(), phase: .processing)
+
+    XCTAssertTrue(
+      LiveSubtitlePanelAnimationPolicy.shouldAnimateEntrance(
+        for: snapshot,
+        reduceMotion: false
+      )
+    )
+    XCTAssertFalse(
+      LiveSubtitlePanelAnimationPolicy.shouldAnimateEntrance(
+        for: snapshot,
+        reduceMotion: true
+      )
+    )
   }
 
   func testDurationLimitRemovalIsRoutedOnceToTheCurrentRunOnly() async {

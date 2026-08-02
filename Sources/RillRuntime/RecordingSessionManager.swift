@@ -26,6 +26,12 @@ final class RecordingCueToken: @unchecked Sendable {
 
 public actor RecordingSessionManager {
   private static let preparingReleaseDebounce = Duration.milliseconds(140)
+  /// The warm Fn path reaches microphone readiness in under the product's
+  /// 250 ms target. Publishing a separate preparing surface before that point
+  /// produces two WindowServer presentation commits for one physical press.
+  /// Keep the fast path single-shot, while still surfacing genuinely cold or
+  /// blocked audio startup.
+  private static let preparingPresentationDelay = Duration.milliseconds(300)
   public enum State: Sendable, Equatable {
     case idle
     case preparing(UUID)
@@ -352,7 +358,8 @@ public actor RecordingSessionManager {
       await handleGlobalInputUnavailable(
         waitsForCancellationCompletion: waitsForFinishingCompletion
       )
-    case .manualPasteInterceptRequested, .clipboardPanelRequested, .customHotkey(_):
+    case .manualPasteInterceptRequested, .clipboardPanelRequested,
+      .liveAudioCancellationRequested, .customHotkey(_):
       break
     }
   }
@@ -441,7 +448,8 @@ public actor RecordingSessionManager {
     case .globalInputUnavailable:
       await handleGlobalInputUnavailable(waitsForCancellationCompletion: false)
 
-    case .manualPasteInterceptRequested, .clipboardPanelRequested, .customHotkey:
+    case .manualPasteInterceptRequested, .clipboardPanelRequested,
+      .liveAudioCancellationRequested, .customHotkey:
       break
     }
   }
@@ -841,7 +849,9 @@ public actor RecordingSessionManager {
         "gesture": gesture.rawValue,
         "controlMode": controlMode.rawValue,
       ],
-      audioLifetime: liveAudioSession.audioLifetime
+      audioLifetime: liveAudioSession.audioLifetime,
+      liveSubtitleNetworkUsage:
+        WorkflowPrivacyDestinationClassifier.liveSubtitleNetworkUsage(for: workflow)
     )
 
     activeTriggerEvent = triggerEvent
@@ -882,20 +892,19 @@ public actor RecordingSessionManager {
       _ = pendingStart.request.audioLifetime?.cancel()
       return
     }
-    // Present the accepted Fn gesture immediately. Microphone readiness still
-    // gates the start cue and the `.recording` phase, but a cold audio frontend
-    // must never make the key press appear to have been ignored.
-    await eventBus.publish(
-      .liveSubtitleUpdated(
-        LiveSubtitleSnapshot(
-          runID: pendingStart.runID,
-          workflow: pendingStart.workflow.presentation,
-          phase: .preparing,
-          providerID: pendingStart.workflow.plan.setup.speechRoute?.recognizerID,
-          livePreviewPlacement: pendingStart.workflow.resolvedLivePreviewPlacement
-        )
-      )
-    )
+    // Avoid presenting two separate surfaces on the normal warm path. The
+    // capture runtime publishes `.recording` once PCM is ready; only publish a
+    // waiting state if startup is actually cold or blocked beyond the target.
+    let preparingPresentationTask = Task { [weak self] in
+      do {
+        try await Task.sleep(for: Self.preparingPresentationDelay)
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
+      await self?.publishPreparingPresentationIfCurrent(pendingStart)
+    }
+    defer { preparingPresentationTask.cancel() }
     guard !hasBegunApplicationShutdown,
       !Task.isCancelled,
       activeRunID == pendingStart.runID,
@@ -1005,6 +1014,32 @@ public actor RecordingSessionManager {
         await audioCaptureService.cancelCapture(runID: pendingStart.runID)
       }
     }
+  }
+
+  private func publishPreparingPresentationIfCurrent(
+    _ pendingStart: PendingPushToTalkStart
+  ) async {
+    guard !hasBegunApplicationShutdown,
+      activeRunID == pendingStart.runID,
+      case .preparing(let expectedRunID) = state,
+      expectedRunID == pendingStart.runID
+    else {
+      return
+    }
+    await eventBus.publish(
+      .liveSubtitleUpdated(
+        LiveSubtitleSnapshot(
+          runID: pendingStart.runID,
+          workflow: pendingStart.workflow.presentation,
+          phase: .preparing,
+          providerID: pendingStart.workflow.plan.setup.speechRoute?.recognizerID,
+          networkUsage: WorkflowPrivacyDestinationClassifier.liveSubtitleNetworkUsage(
+            for: pendingStart.workflow
+          ),
+          livePreviewPlacement: pendingStart.workflow.resolvedLivePreviewPlacement
+        )
+      )
+    )
   }
 
   public func endPushToTalk(

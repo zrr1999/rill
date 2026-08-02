@@ -15,6 +15,7 @@ actor GlobalInputOwner {
   private let uninstallTap: @Sendable () -> Void
   private let permissionChecker: @Sendable () -> Bool
   private let capabilityObserver: @Sendable (GlobalInputCapability) async -> Void
+  private let liveAudioCancellationHandler: @Sendable (UUID) async -> Void
 
   private var started = false
   private var stopped = false
@@ -30,7 +31,8 @@ actor GlobalInputOwner {
     permissionChecker: @escaping @Sendable () -> Bool = {
       PermissionGate.hasGlobalInputAccess()
     },
-    capabilityObserver: @escaping @Sendable (GlobalInputCapability) async -> Void = { _ in }
+    capabilityObserver: @escaping @Sendable (GlobalInputCapability) async -> Void = { _ in },
+    liveAudioCancellationHandler: @escaping @Sendable (UUID) async -> Void = { _ in }
   ) {
     self.hotkeyTap = hotkeyTap
     self.diagnostics = diagnostics
@@ -38,6 +40,7 @@ actor GlobalInputOwner {
     self.uninstallTap = uninstallTap ?? { hotkeyTap.uninstall() }
     self.permissionChecker = permissionChecker
     self.capabilityObserver = capabilityObserver
+    self.liveAudioCancellationHandler = liveAudioCancellationHandler
   }
 
   func start() async {
@@ -86,6 +89,10 @@ actor GlobalInputOwner {
   }
 
   private func handle(_ event: HotkeyEventTap.Event) async {
+    if case .liveAudioCancellationRequested(let runID) = event {
+      await liveAudioCancellationHandler(runID)
+      return
+    }
     guard case .globalInputUnavailable = event else { return }
     guard started, !stopped else { return }
     guard automaticRecoveryArmed else {

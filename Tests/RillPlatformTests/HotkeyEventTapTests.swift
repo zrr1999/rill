@@ -92,6 +92,62 @@ final class HotkeyEventTapTests: XCTestCase {
         XCTAssertEqual(release, .swallow(.pushToTalkReleased(.controlOptionShiftSpace)))
     }
 
+    func testEscapePassesThroughWithoutAnActiveLiveAudioRun() {
+        let tap = HotkeyEventTap()
+
+        XCTAssertEqual(
+            tap.testingHandleLiveAudioEscape(type: .keyDown, keyCode: 53, flags: []),
+            .passThrough
+        )
+        XCTAssertEqual(
+            tap.testingHandleLiveAudioEscape(type: .keyUp, keyCode: 53, flags: []),
+            .passThrough
+        )
+    }
+
+    func testEscapeCancelsActiveRunOnceAndSwallowsMatchingRelease() {
+        let tap = HotkeyEventTap()
+        let runID = UUID()
+        tap.setLiveAudioEscapeCancellationRunID(runID)
+
+        XCTAssertEqual(
+            tap.testingHandleLiveAudioEscape(
+                type: .keyDown,
+                keyCode: 53,
+                flags: [.maskSecondaryFn]
+            ),
+            .swallow(runID)
+        )
+        XCTAssertEqual(
+            tap.testingHandleLiveAudioEscape(
+                type: .keyDown,
+                keyCode: 53,
+                flags: [.maskSecondaryFn]
+            ),
+            .swallow(nil)
+        )
+
+        tap.setLiveAudioEscapeCancellationRunID(nil)
+        XCTAssertEqual(
+            tap.testingHandleLiveAudioEscape(type: .keyUp, keyCode: 53, flags: []),
+            .swallow(nil)
+        )
+    }
+
+    func testModifiedEscapeRemainsAvailableToTheForegroundApplication() {
+        let tap = HotkeyEventTap()
+        tap.setLiveAudioEscapeCancellationRunID(UUID())
+
+        XCTAssertEqual(
+            tap.testingHandleLiveAudioEscape(
+                type: .keyDown,
+                keyCode: 53,
+                flags: [.maskCommand]
+            ),
+            .passThrough
+        )
+    }
+
     func testUnrelatedFlagsPassThrough() {
         var recognizer = PushToTalkGestureRecognizer()
 

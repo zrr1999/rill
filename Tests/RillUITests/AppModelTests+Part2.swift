@@ -345,6 +345,43 @@ extension AppModelTests {
         XCTAssertTrue(harness.model.customWorkflows.isEmpty)
     }
 
+    func testBuiltInWorkflowSaveUsesSameIdentityAndRestoreDeletesOverride() async throws {
+        let builtInWorkflow = makeBuiltinPushToTalkWorkflow()
+        let workflowFileStore = UITestWorkflowFileStore()
+        let harness = makeHarness(
+            workflows: [builtInWorkflow],
+            workflowFileStore: workflowFileStore
+        )
+        await waitForEventProcessing()
+
+        var draft = try XCTUnwrap(WorkflowEditorDraft(workflow: builtInWorkflow))
+        draft.name = "Focused Dictation"
+        draft.destination = .copyToClipboard
+        await harness.model.saveWorkflowDraft(draft, editing: builtInWorkflow.id)
+
+        let savedRecords = await workflowFileStore.records()
+        let savedRecord = try XCTUnwrap(savedRecords.first)
+        XCTAssertEqual(savedRecord.workflow.id, builtInWorkflow.id)
+        XCTAssertEqual(savedRecord.workflow.name, "Focused Dictation")
+        XCTAssertEqual(savedRecord.workflow.plan.setup.speechRoute?.selection, .fixed)
+        XCTAssertFalse(savedRecord.workflow.prefersAutomaticRecognizerSelection)
+        XCTAssertEqual(harness.model.customWorkflows.map(\.id), [builtInWorkflow.id])
+        XCTAssertTrue(harness.model.userCreatedWorkflows.isEmpty)
+        XCTAssertEqual(harness.model.editableBuiltInWorkflows.map(\.name), ["Focused Dictation"])
+        XCTAssertEqual(harness.model.workflows.map(\.id), [builtInWorkflow.id])
+        XCTAssertTrue(harness.model.canRestoreBuiltInWorkflow(savedRecord.workflow))
+
+        await harness.model.restoreBuiltInWorkflowToDefault(savedRecord.workflow)
+
+        let restoredRecords = await workflowFileStore.records()
+        XCTAssertTrue(restoredRecords.isEmpty)
+        XCTAssertTrue(harness.model.customWorkflows.isEmpty)
+        XCTAssertTrue(harness.model.userCreatedWorkflows.isEmpty)
+        XCTAssertEqual(harness.model.editableBuiltInWorkflows.map(\.name), [builtInWorkflow.name])
+        XCTAssertEqual(harness.model.workflows.map(\.id), [builtInWorkflow.id])
+        XCTAssertFalse(harness.model.canRestoreBuiltInWorkflow(builtInWorkflow))
+    }
+
     func testEmptyTOMLDirectoryMigratesAndVerifiesLegacyWorkflowLibrary() async throws {
         let legacyWorkflow = WorkflowEditorDraft(
             name: "Legacy Workflow",

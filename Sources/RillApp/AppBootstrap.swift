@@ -15,7 +15,7 @@ struct AppContainer {
   let stackPasteController: StackPasteController
   let recordingSessionManager: RecordingSessionManager
   let shutdown: @Sendable () async -> Void
-  let cancelLiveAudio: @Sendable (UUID) async -> Void
+  let setLiveAudioEscapeCancellationRunID: @Sendable (UUID?) -> Void
   let removeLiveAudioDurationLimit: @Sendable (UUID) async -> Bool
   let useClipboardItem:
     @Sendable (
@@ -769,6 +769,19 @@ private final class CloudProcessingAuthorizationBridge {
 }
 
 @MainActor
+private final class LiveAudioCancellationPresentationBridge {
+  weak var model: AppModel?
+
+  func attach(_ model: AppModel) {
+    self.model = model
+  }
+
+  func markStoppedByUser(runID: UUID) {
+    model?.markLiveAudioRunStoppedByUser(runID: runID)
+  }
+}
+
+@MainActor
 private enum AppContainerFactory {
   private typealias RecognitionOptionsProvider =
     @Sendable (
@@ -785,6 +798,7 @@ private enum AppContainerFactory {
     let speechPlaybackPresentationBridge = SpeechPlaybackPresentationBridge()
     let speechModelPoolPresentationBridge = SpeechModelPoolPresentationBridge()
     let cloudProcessingAuthorizationBridge = CloudProcessingAuthorizationBridge()
+    let liveAudioCancellationPresentationBridge = LiveAudioCancellationPresentationBridge()
     let core = makeCoreServices(
       workflowSelectionBridge: workflowSelectionBridge
     )
@@ -806,7 +820,8 @@ private enum AppContainerFactory {
       providers: providers,
       registries: registries,
       workflowSelectionBridge: workflowSelectionBridge,
-      cloudProcessingAuthorizationBridge: cloudProcessingAuthorizationBridge
+      cloudProcessingAuthorizationBridge: cloudProcessingAuthorizationBridge,
+      liveAudioCancellationPresentationBridge: liveAudioCancellationPresentationBridge
     )
     let model = AppModelFactory.makeModel(
       core: core,
@@ -821,6 +836,7 @@ private enum AppContainerFactory {
     speechPlaybackPresentationBridge.attach(model)
     speechModelPoolPresentationBridge.attach(model)
     cloudProcessingAuthorizationBridge.attach(model)
+    liveAudioCancellationPresentationBridge.attach(model)
     model.installWorkflowLibraryChangedAction {
       Task {
         await runtime.wakeWordCoordinator?.reconcile()
@@ -1222,7 +1238,8 @@ private enum AppContainerFactory {
     providers: ProviderServices,
     registries: Registries,
     workflowSelectionBridge: WorkflowSelectionBridge,
-    cloudProcessingAuthorizationBridge: CloudProcessingAuthorizationBridge
+    cloudProcessingAuthorizationBridge: CloudProcessingAuthorizationBridge,
+    liveAudioCancellationPresentationBridge: LiveAudioCancellationPresentationBridge
   ) -> RuntimeServices {
     let privacyRunGate = makePrivacyRunGate(
       core: core,
@@ -1301,16 +1318,6 @@ private enum AppContainerFactory {
     let bridge = workflowSelectionBridge
     let clipboardCaptureControlBridge = ClipboardCaptureControlBridge()
     let globalInputCapabilityBridge = GlobalInputCapabilityBridge()
-    let globalInputOwner = GlobalInputOwner(
-      hotkeyTap: platform.hotkeyTap,
-      diagnostics: core.diagnostics,
-      permissionChecker: {
-        PermissionGate.hasGlobalInputAccess()
-      },
-      capabilityObserver: { capability in
-        await globalInputCapabilityBridge.update(capability)
-      }
-    )
     let authorizeWorkflowRunAction:
       @Sendable (
         WorkflowDefinition
@@ -1386,6 +1393,37 @@ private enum AppContainerFactory {
       eventBus: core.eventBus,
       coordinator: platform.cursorTextPreviewCoordinator
     )
+    let recordingSessionManager = makeRecordingManager(
+      core: core,
+      platform: platform,
+      providers: providers,
+      queue: queue,
+      bridge: bridge,
+      privacyRunGate: privacyRunGate,
+      recognizerRegistry: registries.recognizerRegistry,
+      recognitionOptionsProvider: recognitionOptionsProvider,
+      runPreflight: recognitionRunPreflight
+    )
+    let cancelLiveAudio: @Sendable (UUID) async -> Void = { runID in
+      await platform.cursorTextPreviewCoordinator.finish(runID: runID)
+      await liveAudioCancellationPresentationBridge.markStoppedByUser(runID: runID)
+      async let recordingCancellation: Void = recordingSessionManager
+        .cancelCurrentRecording(runID: runID)
+      async let workflowCancellation: Void = workflowAudioRunController
+        .cancelRun(runID: runID)
+      _ = await (recordingCancellation, workflowCancellation)
+    }
+    let globalInputOwner = GlobalInputOwner(
+      hotkeyTap: platform.hotkeyTap,
+      diagnostics: core.diagnostics,
+      permissionChecker: {
+        PermissionGate.hasGlobalInputAccess()
+      },
+      capabilityObserver: { capability in
+        await globalInputCapabilityBridge.update(capability)
+      },
+      liveAudioCancellationHandler: cancelLiveAudio
+    )
     return RuntimeServices(
       coordinator: coordinator,
       capturedAudioProcessingQueue: queue,
@@ -1397,17 +1435,7 @@ private enum AppContainerFactory {
         coordinator: coordinator,
         captureControlBridge: clipboardCaptureControlBridge
       ),
-      recordingSessionManager: makeRecordingManager(
-        core: core,
-        platform: platform,
-        providers: providers,
-        queue: queue,
-        bridge: bridge,
-        privacyRunGate: privacyRunGate,
-        recognizerRegistry: registries.recognizerRegistry,
-        recognitionOptionsProvider: recognitionOptionsProvider,
-        runPreflight: recognitionRunPreflight
-      ),
+      recordingSessionManager: recordingSessionManager,
       workflowAudioRunController: workflowAudioRunController,
       wakeWordCoordinator: wakeWordCoordinator,
       cursorTextPreviewLifecycleCoordinator: cursorTextPreviewLifecycleCoordinator,
@@ -1907,14 +1935,8 @@ private enum AppContainerFactory {
           await core.deliveryStack.drainPersistenceForApplicationShutdown()
         }
       ),
-      cancelLiveAudio: { runID in
-        await platform.cursorTextPreviewCoordinator.finish(runID: runID)
-        await model.markLiveAudioRunStoppedByUser(runID: runID)
-        async let recordingCancellation: Void = runtime.recordingSessionManager
-          .cancelCurrentRecording(runID: runID)
-        async let workflowCancellation: Void = runtime.workflowAudioRunController
-          .cancelRun(runID: runID)
-        _ = await (recordingCancellation, workflowCancellation)
+      setLiveAudioEscapeCancellationRunID: { runID in
+        platform.hotkeyTap.setLiveAudioEscapeCancellationRunID(runID)
       },
       removeLiveAudioDurationLimit: { runID in
         async let recordingRemoval = runtime.recordingSessionManager
