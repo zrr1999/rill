@@ -4,7 +4,6 @@ set -euo pipefail
 
 MIN_MACOS="14.0"
 REQUIRED_ARCHITECTURE="arm64"
-REQUIRE_SHERPA=false
 
 error() {
   echo "error: $*" >&2
@@ -12,22 +11,8 @@ error() {
 }
 
 usage() {
-  echo "usage: $0 [--require-sherpa] /path/to/executable" >&2
+  echo "usage: $0 /path/to/executable" >&2
 }
-
-while [[ "$#" -gt 1 ]]; do
-  case "$1" in
-  --require-sherpa)
-    $REQUIRE_SHERPA && error "--require-sherpa may be specified only once"
-    REQUIRE_SHERPA=true
-    shift
-    ;;
-  *)
-    usage
-    error "unsupported argument: $1"
-    ;;
-  esac
-done
 
 [[ "$#" -eq 1 ]] || {
   usage
@@ -36,7 +21,6 @@ done
 
 executable="$1"
 command -v lipo >/dev/null 2>&1 || error "Required command not found: lipo"
-command -v nm >/dev/null 2>&1 || error "Required command not found: nm"
 command -v xcrun >/dev/null 2>&1 || error "Required command not found: xcrun"
 [[ -f "$executable" && -x "$executable" && ! -L "$executable" ]] \
   || error "Release executable must be an executable regular non-symlink file: $executable"
@@ -97,37 +81,3 @@ verify_build_version() {
 }
 
 verify_build_version "$REQUIRED_ARCHITECTURE"
-
-verify_sherpa_static_linkage() {
-  local architecture="$1"
-  local symbols=""
-  local required_symbol=""
-
-  if ! symbols="$(nm -m -arch "$architecture" "$executable" 2>&1)"; then
-    error "Cannot inspect sherpa-onnx linkage in the $architecture slice: $executable"
-  fi
-
-  for required_symbol in \
-    SherpaOnnxCreateOfflineRecognizer \
-    SherpaOnnxCreateVoiceActivityDetector \
-    SherpaOnnxOfflineStreamSetOption; do
-    grep -Eq \
-      "\\(__TEXT,__text\\)[[:space:]]+external[[:space:]]+_${required_symbol}$" \
-      <<<"$symbols" \
-      || error "Release executable must statically define $required_symbol in the $architecture slice: $executable"
-    if grep -Eq "\\(undefined\\).*[[:space:]]_${required_symbol}$" <<<"$symbols"; then
-      error "Release executable must not dynamically resolve $required_symbol in the $architecture slice: $executable"
-    fi
-  done
-  # The no-TTS build keeps inert C-ABI stubs for compatibility, so gate the
-  # implementation symbols that prove Piper/eSpeak code was actually linked.
-  if grep -Eq \
-    '(_espeak_|__ZN5piper|CallPhonemizeEspeak|phonemize_eSpeak)' \
-    <<<"$symbols"; then
-    error "Release executable must exclude Piper and eSpeak implementation code in the $architecture slice: $executable"
-  fi
-}
-
-if $REQUIRE_SHERPA; then
-  verify_sherpa_static_linkage "$REQUIRED_ARCHITECTURE"
-fi

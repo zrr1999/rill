@@ -112,6 +112,7 @@ public enum ClipboardItemDryRunEffect: String, Codable, Sendable, Equatable, Cas
     case shortcutInvocation
     case temporaryFileWrite
     case fileAppend
+    case speechPlayback
     case unclassified
 }
 

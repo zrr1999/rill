@@ -86,7 +86,7 @@ private struct AppBootstrapExplanationRecognizer: SpeechRecognizer {
 
 private struct AppBootstrapExplanationTransformer: TextTransformer {
   let id = "transformer.openai.responses.rewrite"
-  let supportedKinds: [PostProcessStepKind] = [.llmRewrite]
+  let supportedKinds: [PostProcessStepKind] = [.llmRewrite, .llmAnswer]
 
   func transform(
     text: String,
@@ -821,14 +821,14 @@ final class AppBootstrapTests: XCTestCase {
   }
 
   func testRecognitionRunPreflightRejectsUnknownTrustedLocalModelOverride() async {
-    let trustedModels = Set(SherpaOnnxModelID.allCases.map(\.rawValue))
+    let trustedModels = LocalSpeechModelCatalog.distributableModelIdentifiers
     let preflight = AppBootstrap.makeRecognitionRunPreflight(
       trustedLocalModelIdentifiers: trustedModels
     )
     let workflow = WorkflowDefinition(
       name: "Unknown Local Model",
       pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
+        recognizerID: "local-speech",
         outputActions: []
       ),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal"),
@@ -846,7 +846,7 @@ final class AppBootstrapTests: XCTestCase {
   }
 
   func testPublicDistributionExposesOnlyApprovedPinnedModels() async throws {
-    var expectedModelIdentifiers = [SherpaOnnxModelID.qwen3ASR06BInt8.rawValue]
+    var expectedModelIdentifiers: [String] = []
     #if arch(arm64)
       expectedModelIdentifiers.append(MLXAudioModelID.qwen3ASR06BInt8.rawValue)
       expectedModelIdentifiers.append(MLXAudioModelID.qwen3ASR17BInt8.rawValue)
@@ -862,7 +862,7 @@ final class AppBootstrapTests: XCTestCase {
     )
     XCTAssertEqual(
       AppBootstrap.distributableLocalSpeechModels.first?.id,
-      SherpaOnnxModelID.qwen3ASR06BInt8.rawValue
+      MLXAudioModelID.qwen3ASR06BInt8.rawValue
     )
     XCTAssertEqual(
       AppBootstrap.distributableLocalSpeechModels.first?.recommendedSystemMemoryGiB,
@@ -870,7 +870,7 @@ final class AppBootstrapTests: XCTestCase {
     )
     XCTAssertEqual(
       AppBootstrap.distributableLocalSpeechModels.map(\.hardwareRecommendationPriority),
-      Array(10..<(10 + AppBootstrap.distributableLocalSpeechModels.count * 10)).filter {
+      Array(20..<(20 + AppBootstrap.distributableLocalSpeechModels.count * 10)).filter {
         $0.isMultiple(of: 10)
       }
     )
@@ -890,13 +890,12 @@ final class AppBootstrapTests: XCTestCase {
         AppBootstrap.distributableLocalSpeechModels.map(\.englishName),
         [
           "Qwen3-ASR · 0.6B · INT8",
-          "Qwen3-ASR · 0.6B · INT8",
           "Qwen3-ASR · 1.7B · INT8",
         ]
       )
       XCTAssertEqual(
         AppBootstrap.distributableLocalSpeechModels.map(\.engine),
-        [.sherpaOnnx, .mlxAudioSwift, .mlxAudioSwift]
+        [.mlxAudioSwift, .mlxAudioSwift]
       )
       XCTAssertEqual(
         AppBootstrap.distributableLocalSpeechModels.map(\.simplifiedChineseName),
@@ -904,50 +903,27 @@ final class AppBootstrapTests: XCTestCase {
       )
     #endif
 
-    let normalized = try AppBootstrap.sherpaOnnxConfiguration(
-      settings: LocalSpeechSettings(model: SherpaOnnxModelID.senseVoiceSmallInt8.rawValue)
-    )
-    XCTAssertEqual(normalized.modelIdentifier, SherpaOnnxModelID.qwen3ASR06BInt8.rawValue)
-    let retiredVariant = try AppBootstrap.sherpaOnnxConfiguration(
-      settings: LocalSpeechSettings(model: SherpaOnnxModelID.funASRNano08BFP16.rawValue),
-      trustedModelIdentifiers: Set(expectedModelIdentifiers)
+    XCTAssertEqual(
+      LocalSpeechModelCatalog.normalizedLegacyModelID(
+        "sherpa-onnx-qwen3-asr-0.6b-int8-2026-03-25"
+      ),
+      MLXAudioModelID.qwen3ASR06BInt8.rawValue
     )
     XCTAssertEqual(
-      retiredVariant.modelIdentifier,
-      SherpaOnnxModelID.qwen3ASR06BInt8.rawValue
+      LocalSpeechModelCatalog.normalizedLegacyModelID("sherpa-onnx.local"),
+      MLXAudioModelID.qwen3ASR06BInt8.rawValue
     )
-    let retiredCohere = try AppBootstrap.sherpaOnnxConfiguration(
-      settings: LocalSpeechSettings(model: SherpaOnnxModelID.cohereTranscribe2BInt8.rawValue),
-      trustedModelIdentifiers: Set(expectedModelIdentifiers)
-    )
-    XCTAssertEqual(
-      retiredCohere.modelIdentifier,
-      SherpaOnnxModelID.qwen3ASR06BInt8.rawValue
-    )
-    for candidate in [
-      SherpaOnnxModelID.omnilingualASRCTCV2300MInt8,
-      .omnilingualASRCTCV21BInt8,
-    ] {
-      let normalizedCandidate = try AppBootstrap.sherpaOnnxConfiguration(
-        settings: LocalSpeechSettings(model: candidate.rawValue),
-        trustedModelIdentifiers: Set(expectedModelIdentifiers)
-      )
-      XCTAssertEqual(
-        normalizedCandidate.modelIdentifier,
-        SherpaOnnxModelID.qwen3ASR06BInt8.rawValue
-      )
-    }
 
     let workflow = WorkflowDefinition(
       name: "Preview Override",
       pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
+        recognizerID: "local-speech",
         outputActions: []
       ),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal"),
       metadata: [
         WorkflowMetadataKey.localSpeechModelOverride:
-          SherpaOnnxModelID.senseVoiceSmallInt8.rawValue
+          "retired-sense-voice-model"
       ]
     )
     let preflight = AppBootstrap.makeRecognitionRunPreflight()
@@ -958,7 +934,7 @@ final class AppBootstrapTests: XCTestCase {
     } catch {
       XCTAssertEqual(
         error as? LocalSpeechModelSelectionError,
-        .unsupportedModelIdentifier(SherpaOnnxModelID.senseVoiceSmallInt8.rawValue)
+        .unsupportedModelIdentifier("retired-sense-voice-model")
       )
     }
   }
@@ -972,7 +948,8 @@ final class AppBootstrapTests: XCTestCase {
       workflows.first { $0.titleKey == .speechRecognition }
     )
     XCTAssertEqual(speechRecognition.trigger, .hotkey)
-    XCTAssertTrue(speechRecognition.prefersAutomaticRecognizerSelection)
+    XCTAssertFalse(speechRecognition.prefersAutomaticRecognizerSelection)
+    XCTAssertEqual(speechRecognition.plan.setup.speechRoute?.recognizerID, "local-speech")
     XCTAssertEqual(
       speechRecognition.plan.process.steps.map(\.kind),
       [.recognizeSpeech, .applyVocabulary, .normalizeWhitespace]
@@ -988,11 +965,12 @@ final class AppBootstrapTests: XCTestCase {
       workflows.first { $0.titleKey == .voiceAssistant }
     )
     XCTAssertEqual(voiceAssistant.trigger, .wakeWord)
-    XCTAssertTrue(voiceAssistant.prefersAutomaticRecognizerSelection)
+    XCTAssertFalse(voiceAssistant.prefersAutomaticRecognizerSelection)
+    XCTAssertEqual(voiceAssistant.plan.setup.speechRoute?.recognizerID, "local-speech")
     XCTAssertEqual(voiceAssistant.plan.setup.wakeWord?.phrases, ["Hey Rill"])
     XCTAssertEqual(
       voiceAssistant.plan.process.steps.map(\.kind),
-      [.recognizeSpeech, .applyVocabulary, .normalizeWhitespace, .llmRewrite]
+      [.recognizeSpeech, .applyVocabulary, .normalizeWhitespace, .llmAnswer]
     )
     XCTAssertFalse(
       voiceAssistant.plan.process.steps.last?.prompt?.isEmpty ?? true
@@ -1016,7 +994,7 @@ final class AppBootstrapTests: XCTestCase {
 
   func testRecognitionRunPreflightRequiresReadyLocalSpeechSessionSettings() async throws {
     let source = LocalSpeechSettingsSource()
-    let trustedModels = Set(SherpaOnnxModelID.allCases.map(\.rawValue))
+    let trustedModels = LocalSpeechModelCatalog.distributableModelIdentifiers
     let preflight = AppBootstrap.makeRecognitionRunPreflight(
       trustedLocalModelIdentifiers: trustedModels,
       localSpeechSettingsProvider: {
@@ -1026,7 +1004,7 @@ final class AppBootstrapTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Local",
       pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
+        recognizerID: "local-speech",
         outputActions: []
       ),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
@@ -1040,7 +1018,7 @@ final class AppBootstrapTests: XCTestCase {
       XCTAssertEqual(error.localizedDescription, "Local speech settings are still loading.")
     }
 
-    source.update(LocalSpeechSettings(model: SherpaOnnxModelID.senseVoiceSmallInt8.rawValue))
+    source.update(LocalSpeechSettings(model: MLXAudioModelID.qwen3ASR06BInt8.rawValue))
     try await preflight(workflow)
 
     source.markUnavailable()
@@ -1057,14 +1035,14 @@ final class AppBootstrapTests: XCTestCase {
     let workflow = WorkflowDefinition(
       name: "Local",
       pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
+        recognizerID: "local-speech",
         outputActions: []
       ),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "teal")
     )
 
     let preflight = AppBootstrap.makeRecognitionRunPreflight(
-      trustedLocalModelIdentifiers: [SherpaOnnxModelID.qwen3ASR06BInt8.rawValue],
+      trustedLocalModelIdentifiers: [MLXAudioModelID.qwen3ASR06BInt8.rawValue],
       localSpeechSettingsProvider: {
         LocalSpeechSettings(model: "unreviewed-model")
       }
@@ -1080,40 +1058,14 @@ final class AppBootstrapTests: XCTestCase {
     }
   }
 
-  func testSherpaConfigurationUsesOnlyReleaseCatalogIdentity() throws {
-    let trustedModels = Set(SherpaOnnxModelID.allCases.map(\.rawValue))
-    let selected = try AppBootstrap.sherpaOnnxConfiguration(
-      settings: LocalSpeechSettings(
-        model: " \(SherpaOnnxModelID.senseVoiceSmallInt8.rawValue) ",
-        modelRepo: "ambient/repository",
-        modelToken: "secret-canary",
-        modelFolder: "/tmp/ambient-model",
-        language: " zh ",
-        downloadIfNeeded: false,
-        prewarm: true
-      ),
-      trustedModelIdentifiers: trustedModels
-    )
-    XCTAssertEqual(selected.modelIdentifier, SherpaOnnxModelID.senseVoiceSmallInt8.rawValue)
-    XCTAssertEqual(selected.language, "zh")
-    XCTAssertFalse(selected.downloadIfNeeded)
-    XCTAssertTrue(selected.prewarm)
-
-    let normalized = try AppBootstrap.sherpaOnnxConfiguration(
-      settings: LocalSpeechSettings(model: "unreviewed-model"),
-      trustedModelIdentifiers: trustedModels,
-      defaultModelIdentifier: SherpaOnnxModelID.qwen3ASR06BInt8.rawValue
-    )
-    XCTAssertEqual(normalized.modelIdentifier, SherpaOnnxModelID.qwen3ASR06BInt8.rawValue)
-
-    XCTAssertThrowsError(
-      try AppBootstrap.sherpaOnnxConfiguration(
-        settings: LocalSpeechSettings(),
-        trustedModelIdentifiers: trustedModels,
-        defaultModelIdentifier: "missing-model"
+  func testLegacySherpaSettingsNormalizeToTheDefaultMLXModel() {
+    for value in ["auto", "sherpa-onnx.local", "sherpa-onnx.streaming"] {
+      XCTAssertEqual(
+        LocalSpeechModelCatalog.effectiveModelIdentifier(
+          settings: LocalSpeechSettings(model: value)
+        ),
+        MLXAudioModelID.qwen3ASR06BInt8.rawValue
       )
-    ) { error in
-      XCTAssertEqual(error as? SherpaOnnxModelInstallationError, .invalidCatalogDescriptor)
     }
   }
 
@@ -1157,44 +1109,10 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertFalse(AppBootstrap.speechWorkerExecutableIsAvailable(at: link))
   }
 
-  func testModelInstallationConfigurationCannotPrewarmInTheHostProcess() {
-    let selected = SherpaOnnxRecognizer.Configuration(
-      modelIdentifier: SherpaOnnxModelCatalog.defaultModelID.rawValue,
-      language: "zh-CN",
-      downloadIfNeeded: false,
-      prewarm: true,
-      threadCount: 4
-    )
-
-    let installation = AppBootstrap.modelInstallationConfiguration(from: selected)
-
-    XCTAssertTrue(selected.prewarm)
-    XCTAssertFalse(installation.prewarm)
-    XCTAssertEqual(installation.modelIdentifier, selected.modelIdentifier)
-    XCTAssertEqual(installation.language, selected.language)
-    XCTAssertEqual(installation.downloadIfNeeded, selected.downloadIfNeeded)
-    XCTAssertEqual(installation.threadCount, selected.threadCount)
-  }
-
-  func testLocalSpeechResourcePreparationWarmsAuthorizedAudioFrontendWhenEnabled() async throws {
+  func testLocalSpeechResourcePreparationDoesNotAcquireMicrophoneFrontend() async throws {
     let probe = AppBootstrapLocalSpeechPreparationProbe()
-    let model = try await AppBootstrap.prepareLocalSpeechModelAndAudioFrontend(
-      prewarmAudioFrontend: true,
-      prepareModel: { await probe.prepareModel() },
-      prepareAudioFrontend: { await probe.prepareAudioFrontend() }
-    )
-
-    XCTAssertEqual(model, "prepared-model")
-    let events = await probe.snapshot()
-    XCTAssertEqual(events, [.model, .audioFrontend])
-  }
-
-  func testLocalSpeechResourcePreparationSkipsAudioFrontendWhenDisabled() async throws {
-    let probe = AppBootstrapLocalSpeechPreparationProbe()
-    let model = try await AppBootstrap.prepareLocalSpeechModelAndAudioFrontend(
-      prewarmAudioFrontend: false,
-      prepareModel: { await probe.prepareModel() },
-      prepareAudioFrontend: { await probe.prepareAudioFrontend() }
+    let model = try await AppBootstrap.prepareLocalSpeechModel(
+      prepareModel: { await probe.prepareModel() }
     )
 
     XCTAssertEqual(model, "prepared-model")
@@ -1272,7 +1190,7 @@ final class AppBootstrapTests: XCTestCase {
       "The retired credential purge must remain an application-startup operation."
     )
 
-    let qwenModel = SherpaOnnxModelID.qwen3ASR06BInt8.rawValue
+    let qwenModel = MLXAudioModelID.qwen3ASR06BInt8.rawValue
     let legacySettingsStore = AppBootstrapSettingsStore(
       storage: [
         .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
@@ -1327,7 +1245,7 @@ final class AppBootstrapTests: XCTestCase {
   }
 
   func testStartupPurgesRetiredCloudSpeechCredentialAndSettings() async throws {
-    let localModel = SherpaOnnxModelID.qwen3ASR06BInt8.rawValue
+    let localModel = MLXAudioModelID.qwen3ASR06BInt8.rawValue
     let settingsStore = AppBootstrapSettingsStore(
       storage: [
         .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
@@ -1562,17 +1480,9 @@ final class AppBootstrapTests: XCTestCase {
 
   func testLocalSpeechPreparationBoundaryMapsProviderErrorsToPayloadFreeStages() throws {
     let cases: [(any Error, LocalSpeechPreparationFailure.Stage)] = [
-      (SherpaOnnxModelInstallationError.invalidCatalogDescriptor, .trustRoot),
-      (SherpaOnnxModelInstallationError.downloadFailed, .resolution),
-      (SherpaOnnxModelInstallationError.archiveDigestMismatch, .integrity),
-      (
-        SherpaOnnxRecognizer.RecognizerError.unsupportedModelIdentifier("unreviewed-model"),
-        .trustRoot
-      ),
-      (SherpaOnnxRecognizer.RecognizerError.modelNotInstalled("qwen"), .resolution),
-      (SherpaOnnxRecognizer.RecognizerError.invalidAudioFile, .runtime),
       (LocalSpeechModelSelectionError.unsupportedModelIdentifier("unreviewed"), .trustRoot),
       (SpeechWorkerClientError.remoteFailure(.modelUnavailable), .resolution),
+      (SpeechWorkerClientError.protocolViolation, .integrity),
       (SpeechWorkerClientError.requestTimedOut, .runtime),
     ]
 

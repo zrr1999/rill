@@ -563,6 +563,12 @@ func makeHarness(
     ) async throws -> String = { settings, _ in
       settings.model
     },
+  synchronizeResidentSpeechModelsAction:
+    @escaping @Sendable (_ added: Set<String>, _ removed: Set<String>) async -> Void = {
+      _, _ in
+    },
+  prepareEnabledSpeechModelAction:
+    @escaping @Sendable (_ modelID: String) async -> Void = { _ in },
   setLocalSpeechRuntimeEnabledAction: @escaping @Sendable (Bool) -> Void = { _ in },
   releaseLocalSpeechRuntimeAction: @escaping @Sendable () -> Void = {},
   stopLocalSpeechRuntimeAction: @escaping @Sendable () async -> Void = {},
@@ -701,6 +707,8 @@ func makeHarness(
     localSpeechPhysicalMemoryGiB: localSpeechPhysicalMemoryGiB,
     warmLocalSpeechForCaptureAction: warmLocalSpeechForCaptureAction,
     prepareLocalSpeechAction: prepareLocalSpeechAction,
+    synchronizeResidentSpeechModelsAction: synchronizeResidentSpeechModelsAction,
+    prepareEnabledSpeechModelAction: prepareEnabledSpeechModelAction,
     setLocalSpeechRuntimeEnabledAction: setLocalSpeechRuntimeEnabledAction,
     releaseLocalSpeechRuntimeAction: releaseLocalSpeechRuntimeAction,
     stopLocalSpeechRuntimeAction: stopLocalSpeechRuntimeAction,
@@ -771,7 +779,7 @@ func makeBuiltinPushToTalkWorkflow() -> WorkflowDefinition {
     titleKey: .pushToTalkCapture,
     trigger: .hotkey,
     pipeline: PipelineDeclaration(
-      recognizerID: AppModel.sherpaOnnxRecognizerID,
+      recognizerID: AppModel.localSpeechRecognizerID,
       postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
       outputActions: [OutputActionReference(id: "inject.text")]
     ),
@@ -793,7 +801,7 @@ func makeBuiltinPushToTalkPolishWorkflow() -> WorkflowDefinition {
     titleKey: .pushToTalkPolish,
     trigger: .manual,
     pipeline: PipelineDeclaration(
-      recognizerID: AppModel.sherpaOnnxRecognizerID,
+      recognizerID: AppModel.localSpeechRecognizerID,
       postProcessSteps: [
         PostProcessStep(kind: .normalizeWhitespace),
         PostProcessStep(

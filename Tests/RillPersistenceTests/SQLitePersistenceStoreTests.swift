@@ -886,7 +886,8 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         bundleIdentifier: "com.example.editor",
         clipboardGroupID: UUID(),
         locale: "en-US"
-      )
+      ),
+      languageModelInputTexts: ["normalized question", "second LLM input"]
     )
     let correctedRecord = HistoryRecord(
       id: id,

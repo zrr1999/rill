@@ -9,6 +9,11 @@ private enum WorkflowExecutionSupportIssue: Equatable {
   case missingProductionTransformer
   case unregisteredOutputAction(String)
   case openAIUnavailable(OpenAICredentialAvailability)
+  case openAIConfigurationInvalid
+  case openAIVerificationFailed(OpenAIVerificationFailure?)
+  case microphonePermissionRequired
+  case wakeWordModelNotReady
+  case privacySettingsUnavailable
   case localSpeechUnavailable(LocalSpeechAvailability)
 }
 
@@ -87,8 +92,8 @@ extension AppModel {
     guard workflowLibraryIsReadyForMutation(reportingToEditor: false) else { return }
     guard let workflow = workflows.first(where: { $0.id == workflowID }) else { return }
 
-    if isEnabled, let issue = workflowExecutionSupportIssue(for: workflow) {
-      workflowLibraryError = workflowEnableError(for: issue, language: language)
+    if isEnabled, let activationError = workflowEnablementError(for: workflow) {
+      workflowLibraryError = activationError
       return
     }
 
@@ -195,13 +200,17 @@ extension AppModel {
 
   public var workflowSelectableLocalSpeechModels: [String] {
     if !trustedLocalSpeechModels.isEmpty {
-      return trustedLocalSpeechModels.map(\.id)
+      return trustedLocalSpeechModels.map(\.id).filter(enabledSpeechModelIDs.contains)
     }
     let predefinedModels = LegacyWhisperModelOption.allCases.compactMap(\.modelIdentifier)
     let downloadedCustomModels = downloadedLocalSpeechModels.filter { modelIdentifier in
       !predefinedModels.contains(modelIdentifier)
     }
     return predefinedModels + downloadedCustomModels
+  }
+
+  public var workflowSelectableTTSModels: [String] {
+    ttsModelOptions.map(\.id).filter(enabledSpeechModelIDs.contains)
   }
 
   public func isLocalSpeechModelDownloaded(_ modelIdentifier: String) -> Bool {
@@ -476,11 +485,32 @@ extension AppModel {
     {
       return .unregisteredOutputAction(actionID)
     }
-    if workflow.plan.process.steps.contains(where: { $0.kind == .llmRewrite }) {
+    if workflow.trigger == .wakeWord {
+      guard permissionSnapshot.microphone == .granted else {
+        return .microphonePermissionRequired
+      }
+      guard case .ready = wakeWordResourceState else {
+        return .wakeWordModelNotReady
+      }
+    }
+    if workflow.plan.process.steps.contains(where: {
+      $0.kind == .llmRewrite || $0.kind == .llmAnswer
+    }) {
       guard openAICredentialAvailability == .available,
         !hasUnavailableScalarSettings(in: .openAI)
       else {
         return .openAIUnavailable(openAICredentialAvailability)
+      }
+      guard OpenAISettings.isValidBaseURL(openAIBaseURL),
+        OpenAISettings.isValidModelIdentifier(openAIModel)
+      else {
+        return .openAIConfigurationInvalid
+      }
+      if openAIConfigurationVerificationState == .failed {
+        return .openAIVerificationFailed(openAIVerificationFailure)
+      }
+      guard !isLoadingPrivacySettings, privacySettingsLoadError == nil else {
+        return .privacySettingsUnavailable
       }
     }
     if includeRuntimeAvailability,
@@ -492,11 +522,19 @@ extension AppModel {
     return nil
   }
 
+  func workflowEnablementError(for workflow: WorkflowDefinition) -> String? {
+    guard let issue = workflowExecutionSupportIssue(for: workflow) else {
+      return nil
+    }
+    return workflowEnableError(for: issue, language: language)
+  }
+
   private func workflowUsesCurrentLocalSpeechRoute(_ workflow: WorkflowDefinition) -> Bool {
     if workflow.prefersAutomaticRecognizerSelection {
       return preferredSpeechEngine == .local
     }
-    return workflow.plan.setup.speechRoute?.recognizerID == Self.sherpaOnnxRecognizerID
+    return workflow.plan.setup.speechRoute?.recognizerID == Self.localSpeechRecognizerID
+      || workflow.plan.setup.speechRoute?.recognizerID == Self.sherpaOnnxRecognizerID
       || workflow.plan.setup.speechRoute?.recognizerID == Self.sherpaStreamingRecognizerID
   }
 
@@ -530,6 +568,26 @@ extension AppModel {
       return "Add an OpenAI API key in Settings before enabling this workflow."
     case (.simplifiedChinese, .openAIUnavailable(_)):
       return "请先在设置中添加 OpenAI API Key，再启用此工作流。"
+    case (.english, .openAIConfigurationInvalid):
+      return "Enter a valid OpenAI-compatible endpoint and model ID before enabling this workflow."
+    case (.simplifiedChinese, .openAIConfigurationInvalid):
+      return "请先填写有效的 OpenAI-compatible 地址与模型 ID，再启用此工作流。"
+    case (.english, .openAIVerificationFailed):
+      return "The current LLM configuration failed verification. Fix it or verify it again before enabling this workflow."
+    case (.simplifiedChinese, .openAIVerificationFailed):
+      return "当前 LLM 配置验证失败。请修复配置或重新验证后再启用此工作流。"
+    case (.english, .microphonePermissionRequired):
+      return "Grant microphone access before enabling wake-word listening."
+    case (.simplifiedChinese, .microphonePermissionRequired):
+      return "请先授予麦克风权限，再启用唤醒监听。"
+    case (.english, .wakeWordModelNotReady):
+      return "Prepare the selected local ASR model before enabling wake-word listening."
+    case (.simplifiedChinese, .wakeWordModelNotReady):
+      return "请先准备当前本地 ASR 模型，再启用唤醒监听。"
+    case (.english, .privacySettingsUnavailable):
+      return "Cloud privacy settings are unavailable. Repair them before enabling this assistant workflow."
+    case (.simplifiedChinese, .privacySettingsUnavailable):
+      return "云端隐私设置当前不可用。请修复后再启用语音助手工作流。"
     case (_, .localSpeechUnavailable(let availability)):
       return localSpeechWorkflowEnableError(availability, language: language)
     }
@@ -565,6 +623,26 @@ extension AppModel {
       return "OpenAI text polishing is unavailable. Open Settings and save an API key."
     case (.simplifiedChinese, .openAIUnavailable(_)):
       return "OpenAI 文本润色当前不可用。请打开设置并保存 API Key。"
+    case (.english, .openAIConfigurationInvalid):
+      return "The OpenAI-compatible endpoint or model ID is invalid. Review Speech settings and retry."
+    case (.simplifiedChinese, .openAIConfigurationInvalid):
+      return "OpenAI-compatible 地址或模型 ID 无效。请检查语音设置后重试。"
+    case (.english, .openAIVerificationFailed):
+      return "The current LLM configuration failed verification. Review Speech settings and retry."
+    case (.simplifiedChinese, .openAIVerificationFailed):
+      return "当前 LLM 配置验证失败。请检查语音设置后重试。"
+    case (.english, .microphonePermissionRequired):
+      return "Wake-word listening requires microphone access."
+    case (.simplifiedChinese, .microphonePermissionRequired):
+      return "唤醒监听需要麦克风权限。"
+    case (.english, .wakeWordModelNotReady):
+      return "Wake-word listening requires the selected local ASR model to be ready."
+    case (.simplifiedChinese, .wakeWordModelNotReady):
+      return "唤醒监听需要先准备当前本地 ASR 模型。"
+    case (.english, .privacySettingsUnavailable):
+      return "Cloud privacy settings are unavailable, so this assistant workflow cannot run."
+    case (.simplifiedChinese, .privacySettingsUnavailable):
+      return "云端隐私设置当前不可用，因此语音助手工作流无法运行。"
     case (_, .localSpeechUnavailable(let availability)):
       return localSpeechWorkflowRunError(availability, language: language)
     }
@@ -577,10 +655,10 @@ extension AppModel {
     switch (language, availability) {
     case (.english, .architectureUnsupported):
       return
-        "This build does not include a compatible sherpa-onnx runtime. Choose Cloud speech before enabling this workflow."
+        "This build does not include a compatible local speech worker. Enable a supported local model before enabling this workflow."
     case (.simplifiedChinese, .architectureUnsupported):
       return
-        "此构建未包含兼容的 sherpa-onnx 运行时。启用此工作流前，请先改为云端语音。"
+        "此构建未包含兼容的本地语音 worker。启用此工作流前，请先启用受支持的本地模型。"
     case (.english, .trustMaterialUnavailable):
       return
         "This build has no reviewed local speech model. Choose Cloud speech before enabling this workflow."
@@ -600,10 +678,10 @@ extension AppModel {
     switch (language, availability) {
     case (.english, .architectureUnsupported):
       return
-        "This workflow cannot run because this build does not include a compatible sherpa-onnx runtime. Choose Cloud speech and retry."
+        "This workflow cannot run because the compatible local speech worker is unavailable. Enable a supported local model and retry."
     case (.simplifiedChinese, .architectureUnsupported):
       return
-        "此工作流无法运行，因为当前构建未包含兼容的 sherpa-onnx 运行时。请选择云端语音后重试。"
+        "此工作流无法运行，因为兼容的本地语音 worker 不可用。请启用受支持的本地模型后重试。"
     case (.english, .trustMaterialUnavailable):
       return
         "This workflow cannot run because this build has no reviewed local speech model. Choose Cloud speech and retry."
@@ -989,7 +1067,11 @@ extension AppModel {
   }
 
   public func updatePermissionSnapshot(_ snapshot: PermissionSnapshot) {
+    let microphoneChanged = permissionSnapshot.microphone != snapshot.microphone
     permissionSnapshot = snapshot
+    if microphoneChanged {
+      workflowLibraryChangedAction()
+    }
   }
 
   public func localizedWorkflowName(for workflow: WorkflowDefinition) -> String {
@@ -1460,6 +1542,7 @@ extension AppModel {
   /// Starts the irreversible clipboard-mutation shutdown boundary.
   public func sealClipboardMutationsForApplicationShutdown() {
     hasBegunApplicationShutdown = true
+    cancelResidentSpeechModelSynchronizationForApplicationShutdown()
     clipboardMutationTaskOwner.seal()
   }
 

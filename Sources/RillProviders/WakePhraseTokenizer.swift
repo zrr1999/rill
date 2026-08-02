@@ -3,7 +3,7 @@ import RillCore
 
 public struct EncodedWakePhrase: Equatable, Sendable {
     /// Short open-vocabulary phrases need a little more contextual bias than
-    /// sherpa-onnx's corpus examples, which are generally longer proper names.
+    /// the offline Qwen candidate pass, which generally handles longer proper names.
     /// Keep the override on each keyword so multiple configured phrases use
     /// the same reviewed operating point regardless of spotter defaults.
     public static let keywordBoostingScore: Float = 1.5

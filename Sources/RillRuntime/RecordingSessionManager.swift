@@ -882,6 +882,39 @@ public actor RecordingSessionManager {
       _ = pendingStart.request.audioLifetime?.cancel()
       return
     }
+    // Present the accepted Fn gesture immediately. Microphone readiness still
+    // gates the start cue and the `.recording` phase, but a cold audio frontend
+    // must never make the key press appear to have been ignored.
+    await eventBus.publish(
+      .liveSubtitleUpdated(
+        LiveSubtitleSnapshot(
+          runID: pendingStart.runID,
+          workflow: pendingStart.workflow.presentation,
+          phase: .preparing,
+          providerID: pendingStart.workflow.plan.setup.speechRoute?.recognizerID,
+          livePreviewPlacement: pendingStart.workflow.resolvedLivePreviewPlacement
+        )
+      )
+    )
+    guard !hasBegunApplicationShutdown,
+      !Task.isCancelled,
+      activeRunID == pendingStart.runID,
+      case .preparing(let expectedRunID) = state,
+      expectedRunID == pendingStart.runID
+    else {
+      _ = pendingStart.request.audioLifetime?.cancel()
+      await eventBus.publish(
+        .liveSubtitleUpdated(
+          LiveSubtitleSnapshot(
+            runID: pendingStart.runID,
+            workflow: pendingStart.workflow.presentation,
+            phase: .hidden,
+            livePreviewPlacement: pendingStart.workflow.resolvedLivePreviewPlacement
+          )
+        )
+      )
+      return
+    }
     do {
       try await audioCaptureService.startCapture(pendingStart.request)
       guard case .preparing(let expectedRunID) = state, expectedRunID == pendingStart.runID else {

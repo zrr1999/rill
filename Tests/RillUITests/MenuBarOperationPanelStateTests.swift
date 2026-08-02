@@ -197,7 +197,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     XCTAssertEqual(state.statusTitle, "需要处理")
     XCTAssertEqual(state.statusSystemImage, "exclamationmark.triangle.fill")
     XCTAssertEqual(state.statusDetail, "Microphone access is unavailable.")
-    XCTAssertEqual(state.speechEngineTitle, "sherpa-onnx 本地")
+    XCTAssertEqual(state.speechEngineTitle, "本地语音")
     XCTAssertEqual(state.outputModeTitle, "保存到语音剪贴板组")
   }
 

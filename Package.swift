@@ -31,36 +31,6 @@ let package = Package(
     ),
   ],
   targets: [
-    .binaryTarget(
-      name: "SherpaOnnxNative",
-      path: "vendor/sherpa-onnx-v1.13.4/sherpa-onnx.xcframework"
-    ),
-    .binaryTarget(
-      name: "OnnxRuntimeNative",
-      path: "vendor/sherpa-onnx-v1.13.4/onnxruntime.xcframework"
-    ),
-    .target(
-      name: "CSherpaOnnx",
-      dependencies: [],
-      publicHeadersPath: "include",
-      cSettings: [
-        .unsafeFlags([
-          "-Ivendor/sherpa-onnx-v1.13.4/sherpa-onnx.xcframework/macos-arm64_x86_64/Headers"
-        ])
-      ],
-      linkerSettings: [
-        .linkedLibrary("c++"),
-        .linkedFramework("Accelerate"),
-      ]
-    ),
-    .target(
-      name: "RillSherpaRuntime",
-      dependencies: ["CSherpaOnnx"],
-      resources: [
-        .copy("Resources/silero_vad.onnx"),
-        .copy("Resources/LICENSE.silero-vad"),
-      ]
-    ),
     .target(name: "RillCore"),
     .target(
       name: "RillPlatform",
@@ -77,7 +47,6 @@ let package = Package(
       dependencies: [
         "RillCore",
         "RillPlatform",
-        "RillSherpaRuntime",
         .product(name: "OpenAI", package: "OpenAI"),
       ]
     ),
@@ -89,6 +58,7 @@ let package = Package(
         .product(name: "MLXAudioCore", package: "mlx-audio-swift"),
         .product(name: "MLXAudioSTT", package: "mlx-audio-swift"),
         .product(name: "MLXAudioTTS", package: "mlx-audio-swift"),
+        .product(name: "MLXAudioVAD", package: "mlx-audio-swift"),
         .product(name: "MLX", package: "mlx-swift"),
         .product(name: "HuggingFace", package: "swift-huggingface"),
       ]
@@ -111,8 +81,6 @@ let package = Package(
         "RillRuntime",
         "RillPersistence",
         "RillUI",
-        "SherpaOnnxNative",
-        "OnnxRuntimeNative",
       ],
       resources: [
         .process("Resources/BuiltinWorkflowManifest.json"),
@@ -126,19 +94,9 @@ let package = Package(
         "RillCore",
         "RillMLXRuntime",
         "RillProviders",
-        "SherpaOnnxNative",
-        "OnnxRuntimeNative",
       ]
     ),
     .testTarget(name: "RillCoreTests", dependencies: ["RillCore"]),
-    .testTarget(
-      name: "RillSherpaRuntimeTests",
-      dependencies: [
-        "RillSherpaRuntime",
-        "SherpaOnnxNative",
-        "OnnxRuntimeNative",
-      ]
-    ),
     .testTarget(
       name: "RillPersistenceTests",
       dependencies: ["RillCore", "RillPersistence"]
@@ -157,9 +115,6 @@ let package = Package(
       dependencies: [
         "RillCore",
         "RillProviders",
-        "RillSherpaRuntime",
-        "SherpaOnnxNative",
-        "OnnxRuntimeNative",
       ]
     ),
     .testTarget(
@@ -168,8 +123,6 @@ let package = Package(
         "RillCore",
         "RillMLXRuntime",
         "RillProviders",
-        "SherpaOnnxNative",
-        "OnnxRuntimeNative",
       ]
     ),
     .testTarget(
@@ -187,8 +140,6 @@ let package = Package(
         "RillCore",
         "RillPlatform",
         "RillRuntime",
-        "SherpaOnnxNative",
-        "OnnxRuntimeNative",
       ]
     ),
   ]

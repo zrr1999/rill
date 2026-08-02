@@ -257,8 +257,8 @@ public enum L10n {
       simplifiedChinese: "界面语言"
     ),
     .menuLocalEngine: .init(
-      english: "sherpa-onnx Local",
-      simplifiedChinese: "sherpa-onnx 本地"
+      english: "Local Speech",
+      simplifiedChinese: "本地语音"
     ),
     .menuLongRecording: .init(
       english: "Toggle Recording",
@@ -698,8 +698,8 @@ public enum L10n {
       simplifiedChinese: "使用当前全局引擎；如已设置，则应用此工作流自己的语言/模型覆盖。"
     ),
     .workflowRouteLocalHint: .init(
-      english: "Local path through sherpa-onnx; model and language stay on this Mac.",
-      simplifiedChinese: "通过 sherpa-onnx 本地路径识别；模型和语言处理留在本机。"
+      english: "Local speech worker; the workflow's model and language stay on this Mac.",
+      simplifiedChinese: "使用本地语音 worker；workflow 的模型和语言处理留在本机。"
     ),
     .workflowSpeechRoute: .init(
       english: "Speech Route",
@@ -750,8 +750,8 @@ public enum L10n {
     case .architectureUnsupported:
       return LocalizedText(
         english:
-          "Local speech preparation is unavailable because this build does not include a compatible sherpa-onnx runtime.",
-        simplifiedChinese: "此构建未包含兼容的 sherpa-onnx 运行时，无法准备本地语音。"
+          "Local speech preparation is unavailable because this build does not include a compatible MLX worker.",
+        simplifiedChinese: "此构建未包含兼容的 MLX worker，无法准备本地语音。"
       )
     case .trustMaterialUnavailable:
       return LocalizedText(
@@ -1472,6 +1472,10 @@ extension UIStrings {
 
   public static func recognizerName(_ id: String, language: AppLanguage) -> String {
     switch (language, id) {
+    case (.english, "local-speech"):
+      return "Local Speech"
+    case (.simplifiedChinese, "local-speech"):
+      return "本地识别"
     case (.english, "sherpa-onnx.local"):
       return "Local Speech"
     case (.simplifiedChinese, "sherpa-onnx.local"):
@@ -1547,9 +1551,9 @@ extension UIStrings {
   ) -> String {
     switch (language, engine) {
     case (.english, .sherpaOnnx):
-      return "sherpa-onnx Local"
+      return "Legacy Local"
     case (.simplifiedChinese, .sherpaOnnx):
-      return "sherpa-onnx 本地"
+      return "旧版本地"
     case (.english, .mlxAudioSwift):
       return "MLX Local"
     case (.simplifiedChinese, .mlxAudioSwift):

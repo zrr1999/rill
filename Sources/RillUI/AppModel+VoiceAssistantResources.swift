@@ -7,10 +7,17 @@ extension AppModel {
       return
     }
     let selectedModel = selectedTrustedLocalSpeechModelIdentifier
-    wakeWordResourceState =
+    let updatedState: VoiceAssistantResourceState =
       !selectedModel.isEmpty && downloadedLocalSpeechModels.contains(selectedModel)
       ? .ready
       : .notInstalled
+    guard updatedState != wakeWordResourceState else { return }
+    wakeWordResourceState = updatedState
+    workflowLibraryChangedAction()
+  }
+
+  public var voiceAssistantReadiness: VoiceAssistantReadiness {
+    voiceAssistantReadiness(for: wakeWordSettingsWorkflow)
   }
 
   public var wakeWordSettingsSnapshot: WakeWordSettingsSnapshot {
@@ -41,10 +48,13 @@ extension AppModel {
         workflowLibraryChangedAction()
       } catch is CancellationError {
         wakeWordResourceState = .notInstalled
+        workflowLibraryChangedAction()
       } catch let reason as VoiceAssistantResourceUnavailableReason {
         wakeWordResourceState = .unavailable(reason)
+        workflowLibraryChangedAction()
       } catch {
         wakeWordResourceState = .failed(error.localizedDescription)
+        workflowLibraryChangedAction()
       }
     }
   }
@@ -100,6 +110,12 @@ extension AppModel {
     }
 
     let sourceWorkflow = wakeWordSettingsWorkflow
+    if enableListening,
+      let sourceWorkflow,
+      let activationError = workflowEnablementError(for: sourceWorkflow)
+    {
+      return .failed(activationError)
+    }
     let editableWorkflow = sourceWorkflow.flatMap { workflow in
       customWorkflows.first(where: { $0.id == workflow.id })
     }
@@ -244,6 +260,87 @@ extension AppModel {
     })
       ?? customWorkflows.first(where: { $0.trigger == .wakeWord })
       ?? workflows.first(where: { $0.trigger == .wakeWord })
+  }
+
+  private func voiceAssistantReadiness(
+    for workflow: WorkflowDefinition?
+  ) -> VoiceAssistantReadiness {
+    let requiresLLM = workflow?.plan.process.steps.contains(where: {
+      $0.kind == .llmRewrite || $0.kind == .llmAnswer
+    }) ?? false
+
+    let llm: VoiceAssistantLLMReadiness
+    if !requiresLLM {
+      llm = .notRequired
+    } else if isLoadingSettings {
+      llm = .loading
+    } else {
+      switch openAICredentialAvailability {
+      case .loading, .saving:
+        llm = .loading
+      case .missing:
+        llm = .credentialMissing
+      case .inaccessible:
+        llm = .credentialInaccessible
+      case .available:
+        guard
+          !hasUnavailableScalarSettings(in: .openAI),
+          OpenAISettings.isValidBaseURL(openAIBaseURL),
+          OpenAISettings.isValidModelIdentifier(openAIModel)
+        else {
+          llm = .configurationInvalid
+          break
+        }
+        switch openAIConfigurationVerificationState {
+        case .idle:
+          llm = .configured
+        case .verifying:
+          llm = .verifying
+        case .verified:
+          llm = .verified
+        case .failed:
+          llm = .verificationFailed(openAIVerificationFailure)
+        }
+      }
+    }
+
+    let privacy: VoiceAssistantPrivacyReadiness
+    if !requiresLLM {
+      privacy = .notRequired
+    } else if isLoadingPrivacySettings {
+      privacy = .loading
+    } else if privacySettingsLoadError != nil {
+      privacy = .unavailable
+    } else {
+      privacy = .ready(
+        cloudConfirmationRequired: privacyPolicySettings.cloudConfirmationRequired
+      )
+    }
+
+    let usesSpeechOutput = workflow?.plan.output.actions.contains(where: {
+      $0.id == SpeechOutputActionID.speak
+    }) ?? false
+    let speechOutput: VoiceAssistantSpeechOutputReadiness
+    if !usesSpeechOutput {
+      speechOutput = .notRequired
+    } else {
+      switch ttsResourceState {
+      case .ready:
+        speechOutput = .localVoice
+      case .preparing:
+        speechOutput = .preparingLocalVoice
+      case .notInstalled, .failed, .unavailable:
+        speechOutput = .systemFallback
+      }
+    }
+
+    return VoiceAssistantReadiness(
+      microphone: permissionSnapshot.microphone,
+      localSpeech: wakeWordResourceState,
+      llm: llm,
+      privacy: privacy,
+      speechOutput: speechOutput
+    )
   }
 
   private func localizedWakeWordSettingsError(_ error: Error) -> String {

@@ -26,7 +26,6 @@ actor WakeWordCoordinator {
   private var configuredWorkflowID: UUID?
   private var configuredConfiguration: WakeWordConfiguration?
   private var activeRunID: UUID?
-  private var foregroundRunIDs: Set<UUID> = []
   private var stopped = false
 
   init(
@@ -152,7 +151,7 @@ actor WakeWordCoordinator {
       )
     )
     await MainActor.run {
-      cuePlayer.play(.wakeDetected)
+      cuePlayer.play(.started)
     }
     do {
       if let command = await source.claimPrefilledCommand(for: event.id) {
@@ -182,13 +181,6 @@ actor WakeWordCoordinator {
   }
 
   private func handleTerminalEvent(_ event: RillEvent) async {
-    if case .runStarted(let snapshot) = event {
-      guard snapshot.runID != activeRunID else { return }
-      foregroundRunIDs.insert(snapshot.runID)
-      await source.suspend(for: .busy)
-      return
-    }
-
     let terminalRunID: UUID?
     switch event {
     case .runCompleted(let summary):
@@ -200,13 +192,8 @@ actor WakeWordCoordinator {
     default:
       return
     }
-    guard let terminalRunID else { return }
-    if terminalRunID == activeRunID {
-      self.activeRunID = nil
-    } else {
-      foregroundRunIDs.remove(terminalRunID)
-    }
-    guard activeRunID == nil, foregroundRunIDs.isEmpty else { return }
+    guard let terminalRunID, terminalRunID == activeRunID else { return }
+    activeRunID = nil
     await source.resume(from: .busy)
     await reconcile()
   }

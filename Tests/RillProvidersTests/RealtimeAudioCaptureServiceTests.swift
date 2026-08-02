@@ -387,7 +387,7 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
     XCTAssertEqual(source.shutdownCount, 1)
   }
 
-  func testAuthorizedLocalSpeechAudioFrontendPrewarmOnlyPreparesAndFailureStaysSilent()
+  func testAuthorizedLocalSpeechModelPrewarmNeverInitializesTheMicrophoneFrontend()
     async throws
   {
     let audio = try makeProbeAudio(named: "local-speech-prewarm-authorized")
@@ -405,7 +405,7 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
 
     await service.prepareLocalSpeechAudioFrontendIfAuthorized()
 
-    XCTAssertEqual(source.prepareCount, 1)
+    XCTAssertEqual(source.prepareCount, 0)
     XCTAssertEqual(source.startCount, 0)
     XCTAssertEqual(source.stopCount, 0)
     let snapshotsAfterFailure = await snapshotProbe.all()
@@ -413,13 +413,13 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
 
     source.setPreparationError(nil)
     await service.prepareLocalSpeechAudioFrontendIfAuthorized()
-    XCTAssertEqual(source.prepareCount, 2)
+    XCTAssertEqual(source.prepareCount, 0)
     XCTAssertEqual(source.startCount, 0)
 
     await service.shutdown()
     XCTAssertEqual(source.shutdownCount, 1)
     await service.prepareLocalSpeechAudioFrontendIfAuthorized()
-    XCTAssertEqual(source.prepareCount, 2)
+    XCTAssertEqual(source.prepareCount, 0)
   }
 
   func testSequentialLocalCapturesReuseOneStoppedVoiceProcessingSource() async throws {

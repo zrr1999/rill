@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Generate distributable notices from locked and vendored dependencies.
+"""Generate distributable notices from locked SwiftPM dependencies.
 
 The reviewed manifest records license evidence for every dependency. SwiftPM's
-``Package.resolved`` supplies source-control pins when they exist; vendored
-packages instead carry reviewed source, version, artifact, and evidence hashes
-directly in the manifest. The generator fails closed when either inventory or
-any reviewed byte changes.
+``Package.resolved`` supplies source-control pins. The generator fails closed
+when either the inventory or any reviewed evidence byte changes.
 """
 
 from __future__ import annotations
@@ -32,7 +30,6 @@ MAX_EVIDENCE_BYTES = 2 * 1024 * 1024
 IDENTITY_PATTERN = re.compile(r"[a-z0-9][a-z0-9._-]*\Z")
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 REVISION_PATTERN = re.compile(r"[0-9a-f]{40,64}\Z")
-VERSION_PATTERN = re.compile(r"[0-9A-Za-z][0-9A-Za-z.+-]{0,127}\Z")
 
 
 class NoticeError(Exception):
@@ -44,7 +41,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resolved", type=Path, default=DEFAULT_RESOLVED)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--checkouts-dir", type=Path, default=DEFAULT_CHECKOUTS)
-    parser.add_argument("--project-dir", type=Path, default=PROJECT_DIR)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument(
         "--check",
@@ -175,26 +171,13 @@ def load_manifest(path: Path) -> dict[str, dict[str, Any]]:
     for index, raw_package in enumerate(packages):
         package = require_object(raw_package, f"notice manifest packages[{index}]")
         package_kind = package.get("kind")
-        if package_kind == "sourceControl":
-            expected_keys = {"kind", "identity", "licenseExpression", "evidence"}
-            if "evidenceRevision" in package:
-                expected_keys.add("evidenceRevision")
-        elif package_kind == "vendored":
-            expected_keys = {
-                "kind",
-                "identity",
-                "version",
-                "source",
-                "sourceSHA256",
-                "root",
-                "artifacts",
-                "licenseExpression",
-                "evidence",
-            }
-        else:
+        if package_kind != "sourceControl":
             raise NoticeError(
                 f"Notice manifest package {index} has an invalid kind: {package_kind!r}"
             )
+        expected_keys = {"kind", "identity", "licenseExpression", "evidence"}
+        if "evidenceRevision" in package:
+            expected_keys.add("evidenceRevision")
         require_exact_keys(
             package,
             expected_keys,
@@ -296,7 +279,7 @@ def load_manifest(path: Path) -> dict[str, dict[str, Any]]:
             "licenseExpression": expression,
             "evidence": checked_evidence,
         }
-        if package_kind == "sourceControl" and "evidenceRevision" in package:
+        if "evidenceRevision" in package:
             evidence_revision = package["evidenceRevision"]
             if not isinstance(evidence_revision, str) or not REVISION_PATTERN.fullmatch(
                 evidence_revision
@@ -305,76 +288,6 @@ def load_manifest(path: Path) -> dict[str, dict[str, Any]]:
                     f"Package {identity} has an invalid evidence revision"
                 )
             checked_package["evidenceRevision"] = evidence_revision
-        if package_kind == "vendored":
-            version = package["version"]
-            source = package["source"]
-            source_digest = package["sourceSHA256"]
-            root_path = package["root"]
-            artifacts = package["artifacts"]
-            if not isinstance(version, str) or not VERSION_PATTERN.fullmatch(version):
-                raise NoticeError(f"Vendored package {identity} has an invalid version")
-            if not isinstance(source, str) or not valid_https_source(source):
-                raise NoticeError(
-                    f"Vendored package {identity} must use an HTTPS source URL"
-                )
-            if not isinstance(source_digest, str) or not SHA256_PATTERN.fullmatch(
-                source_digest
-            ):
-                raise NoticeError(
-                    f"Vendored package {identity} has an invalid source SHA-256"
-                )
-            if not isinstance(root_path, str) or not safe_relative_path(root_path):
-                raise NoticeError(
-                    f"Vendored package {identity} has an unsafe root: {root_path!r}"
-                )
-            if not isinstance(artifacts, list) or not artifacts:
-                raise NoticeError(f"Vendored package {identity} has no artifacts")
-            checked_artifacts: list[dict[str, str]] = []
-            artifact_paths: set[str] = set()
-            for artifact_index, raw_artifact in enumerate(artifacts):
-                artifact = require_object(
-                    raw_artifact,
-                    f"notice manifest package {identity} artifacts[{artifact_index}]",
-                )
-                require_exact_keys(
-                    artifact,
-                    {"path", "sha256"},
-                    f"notice manifest package {identity} artifacts[{artifact_index}]",
-                )
-                artifact_path = artifact["path"]
-                artifact_digest = artifact["sha256"]
-                if not isinstance(artifact_path, str) or not safe_relative_path(
-                    artifact_path
-                ):
-                    raise NoticeError(
-                        f"Vendored package {identity} has an unsafe artifact path: "
-                        f"{artifact_path!r}"
-                    )
-                if artifact_path in artifact_paths:
-                    raise NoticeError(
-                        f"Vendored package {identity} repeats artifact path: "
-                        f"{artifact_path}"
-                    )
-                if not isinstance(artifact_digest, str) or not SHA256_PATTERN.fullmatch(
-                    artifact_digest
-                ):
-                    raise NoticeError(
-                        f"Vendored package {identity} has an invalid artifact SHA-256: "
-                        f"{artifact_path}"
-                    )
-                artifact_paths.add(artifact_path)
-                checked_artifacts.append(
-                    {"path": artifact_path, "sha256": artifact_digest}
-                )
-            checked_package.update(
-                {
-                    "version": version,
-                    "source": source,
-                    "sourceSHA256": source_digest,
-                    "root": root_path,
-                    "artifacts": checked_artifacts,
-                }
-            )
         result[identity] = checked_package
     return result
 
@@ -392,13 +305,8 @@ def safe_relative_path(value: str) -> bool:
 def validate_inventory(
     pins: dict[str, dict[str, str]], manifest: dict[str, dict[str, Any]]
 ) -> None:
-    source_control = {
-        identity
-        for identity, package in manifest.items()
-        if package["kind"] == "sourceControl"
-    }
-    missing = sorted(set(pins) - source_control)
-    stale = sorted(source_control - set(pins))
+    missing = sorted(set(pins) - set(manifest))
+    stale = sorted(set(manifest) - set(pins))
     if missing or stale:
         missing_text = ", ".join(missing) or "none"
         stale_text = ", ".join(stale) or "none"
@@ -624,48 +532,6 @@ def load_evidence(
     return result
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    try:
-        with path.open("rb") as source:
-            while chunk := source.read(1024 * 1024):
-                digest.update(chunk)
-    except OSError as error:
-        raise NoticeError(
-            f"Cannot hash reviewed artifact at {path}: {error}"
-        ) from error
-    return digest.hexdigest()
-
-
-def verify_vendored_artifacts(
-    root: Path, package: dict[str, Any]
-) -> list[dict[str, str]]:
-    verified: list[dict[str, str]] = []
-    for item in package["artifacts"]:
-        resolved = resolve_reviewed_file(
-            root,
-            item["path"],
-            identity=package["identity"],
-            label="Artifact",
-        )
-        try:
-            size = resolved.stat().st_size
-        except OSError as error:
-            raise NoticeError(
-                f"Cannot inspect reviewed artifact at {resolved}: {error}"
-            ) from error
-        if size <= 0:
-            raise NoticeError(f"Reviewed artifact is empty: {resolved}")
-        digest = sha256_file(resolved)
-        if digest != item["sha256"]:
-            raise NoticeError(
-                f"Artifact SHA-256 mismatch for {package['identity']}/{item['path']}: "
-                f"expected {item['sha256']}, found {digest}"
-            )
-        verified.append(item)
-    return verified
-
-
 def markdown_cell(value: str) -> str:
     return value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
 
@@ -686,36 +552,14 @@ def render(
     pins: dict[str, dict[str, str]],
     manifest: dict[str, dict[str, Any]],
     checkouts_dir: Path,
-    project_dir: Path,
 ) -> bytes:
     collected: dict[str, list[dict[str, Any]]] = {}
-    verified_artifacts: dict[str, list[dict[str, str]]] = {}
     unique_texts: dict[str, dict[str, Any]] = {}
     for identity in sorted(manifest):
         package = manifest[identity]
-        if package["kind"] == "sourceControl":
-            checkout = find_checkout(checkouts_dir, pins[identity])
-            evidence = load_evidence(checkout, package)
-            verify_checkout_worktree(checkout, pins[identity])
-            verified_artifacts[identity] = []
-        else:
-            vendor_root = project_dir.joinpath(*PurePosixPath(package["root"]).parts)
-            try:
-                resolved_project = project_dir.resolve(strict=True)
-                resolved_vendor_root = vendor_root.resolve(strict=True)
-                resolved_vendor_root.relative_to(resolved_project)
-            except (OSError, ValueError) as error:
-                raise NoticeError(
-                    f"Missing or unsafe vendored root for {identity}: {package['root']}"
-                ) from error
-            if vendor_root.is_symlink():
-                raise NoticeError(
-                    f"Vendored root must not be a symlink for {identity}: {vendor_root}"
-                )
-            verified_artifacts[identity] = verify_vendored_artifacts(
-                resolved_vendor_root, package
-            )
-            evidence = load_evidence(resolved_vendor_root, package)
+        checkout = find_checkout(checkouts_dir, pins[identity])
+        evidence = load_evidence(checkout, package)
+        verify_checkout_worktree(checkout, pins[identity])
         collected[identity] = evidence
         for item in evidence:
             entry = unique_texts.setdefault(
@@ -733,14 +577,13 @@ def render(
     lines = [
         "# Rill Third-Party Notices",
         "",
-        "This file is generated from `Package.resolved` when present and the reviewed",
-        "source, artifact, and license evidence in",
+        "This file is generated from `Package.resolved` and the reviewed license",
+        "evidence in",
         "`scripts/third_party_notices_manifest.json`. Do not edit it manually.",
         "",
-        "The notices below cover source-control dependencies locked for this build and",
-        "native runtimes vendored into the source tree.",
+        "The notices below cover source-control dependencies locked for this build.",
         "They do not grant a license to Rill itself.",
-        "SHA-256 values cover the reviewed artifacts and original evidence bytes;",
+        "SHA-256 values cover the original evidence bytes;",
         "rendered text only normalizes line endings and trailing horizontal whitespace.",
         "",
         "## Dependency inventory",
@@ -750,37 +593,21 @@ def render(
     ]
     for identity in sorted(manifest):
         package = manifest[identity]
+        pin = pins[identity]
         evidence_text = "<br>".join(
             f"`{item['path']}` ({item['kind']}, `{item['sha256']}`)"
             for item in collected[identity]
         )
-        if package["kind"] == "sourceControl":
-            pin = pins[identity]
-            kind = "source control"
-            version = pin["version"]
-            source = pin["location"]
-            artifact_text = f"Git revision `{pin['revision']}`"
-        else:
-            kind = "vendored"
-            version = package["version"]
-            source = package["source"]
-            artifact_text = (
-                f"source archive (`{package['sourceSHA256']}`)<br>"
-                + "<br>".join(
-                    f"`{item['path']}` (`{item['sha256']}`)"
-                    for item in verified_artifacts[identity]
-                )
-            )
         lines.append(
             "| "
             + " | ".join(
                 [
                     f"`{markdown_cell(identity)}`",
-                    kind,
-                    markdown_cell(version),
-                    f"<{source}>",
+                    "source control",
+                    markdown_cell(pin["version"]),
+                    f"<{pin['location']}>",
                     f"`{markdown_cell(package['licenseExpression'])}`",
-                    artifact_text,
+                    f"Git revision `{pin['revision']}`",
                     evidence_text,
                 ]
             )
@@ -856,7 +683,6 @@ def main() -> int:
             pins,
             manifest,
             arguments.checkouts_dir,
-            arguments.project_dir,
         )
         check_or_write(arguments.output, content, arguments.check)
     except NoticeError as error:

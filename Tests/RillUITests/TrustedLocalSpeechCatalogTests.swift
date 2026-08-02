@@ -3,6 +3,30 @@ import XCTest
 @testable import RillCore
 @testable import RillUI
 
+private actor ResidentModelSynchronizationProbe {
+  private var calls: [(added: Set<String>, removed: Set<String>)] = []
+
+  func record(added: Set<String>, removed: Set<String>) {
+    calls.append((added, removed))
+  }
+
+  func snapshot() -> [(added: Set<String>, removed: Set<String>)] {
+    calls
+  }
+}
+
+private actor EnabledSpeechModelPreparationProbe {
+  private var modelIDs: [String] = []
+
+  func record(_ modelID: String) {
+    modelIDs.append(modelID)
+  }
+
+  func snapshot() -> [String] {
+    modelIDs
+  }
+}
+
 @MainActor
 final class TrustedLocalSpeechCatalogTests: XCTestCase {
   func testLocalSpeechTestWorkflowDerivesFromBuiltinRecognitionAndTargetsVoiceGroup() throws {
@@ -11,7 +35,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
       name: "Speech Recognition",
       trigger: .hotkey,
       pipeline: PipelineDeclaration(
-        recognizerID: AppModel.sherpaOnnxRecognizerID,
+        recognizerID: AppModel.localSpeechRecognizerID,
         outputActions: [OutputActionReference(id: "inject.text")]
       ),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red"),
@@ -31,7 +55,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     XCTAssertEqual(testWorkflow.plan.setup.speechRoute?.selection, .fixed)
     XCTAssertEqual(
       testWorkflow.plan.setup.speechRoute?.recognizerID,
-      AppModel.sherpaOnnxRecognizerID
+      AppModel.localSpeechRecognizerID
     )
     XCTAssertEqual(testWorkflow.plan.output.actions.map(\.id), ["stack.push"])
     XCTAssertEqual(testWorkflow.targetClipboardGroupID, ClipboardGroup.voiceGroupID)
@@ -53,7 +77,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
 
     XCTAssertTrue(harness.model.localSpeechTrustMaterialAvailable)
     XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
-    XCTAssertEqual(harness.model.workflowSelectableLocalSpeechModels, models.map(\.id))
+    XCTAssertEqual(harness.model.workflowSelectableLocalSpeechModels, [models[0].id])
     XCTAssertEqual(harness.model.localSpeechModel, models[0].id)
     XCTAssertEqual(
       harness.model.localSpeechModelDisplayName(models[1].id, includeStatus: true),
@@ -109,8 +133,8 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     XCTAssertEqual(harness.model.localSpeechModel, models[0].id)
     XCTAssertEqual(
       Set(harness.model.downloadedLocalSpeechModels),
-      Set(models.map(\.id)),
-      "The trusted default is prepared automatically when local speech is the product default."
+      Set([models[1].id]),
+      "The resident model pool owns startup loading; the legacy readiness path must not invent a completed download."
     )
     XCTAssertEqual(harness.model.legacyWhisperKitModelRepo, "")
     XCTAssertEqual(harness.model.legacyWhisperKitModelToken, "")
@@ -268,41 +292,191 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     )
   }
 
-  func testTrustedWarmupRejectsMismatchedProviderResult() async {
+  func testV5ResidentModelPoolDoesNotRunLegacyWarmupProvider() async {
+    let probe = WhisperKitPrepareProbe()
     let models = makeModels()
     let harness = makeHarness(
       trustedLocalSpeechModels: models,
       defaultLocalSpeechModelIdentifier: models[0].id,
-      warmLocalSpeechForCaptureAction: { _, _ in "unreviewed-model" }
+      warmLocalSpeechForCaptureAction: { settings, _ in
+        await probe.recordPreparation(settings: settings)
+        return "unreviewed-model"
+      }
     )
     harness.model.preferredSpeechEngine = .local
     harness.model.localSpeechPrewarm = true
 
     harness.model.queueLocalSpeechReadinessIfNeeded()
-    await waitUntil {
-      harness.model.localSpeechPreparationState == .idle
-        && harness.model.localSpeechPreparationError != nil
-    }
+    try? await Task.sleep(for: .milliseconds(50))
 
+    let snapshot = await probe.snapshot()
+    XCTAssertEqual(snapshot.prepareCount, 0)
     XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
-    XCTAssertFalse(harness.model.downloadedLocalSpeechModels.contains("unreviewed-model"))
+    XCTAssertNil(harness.model.localSpeechPreparationError)
+    XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
+  }
+
+  func testResidentModelSynchronizationPreservesRapidSettingChangeOrder() async {
+    let models = makeModels()
+    let probe = ResidentModelSynchronizationProbe()
+    let harness = makeHarness(
+      trustedLocalSpeechModels: models,
+      defaultLocalSpeechModelIdentifier: models[0].id,
+      synchronizeResidentSpeechModelsAction: { added, removed in
+        try? await Task.sleep(for: .milliseconds(20))
+        guard !Task.isCancelled else { return }
+        await probe.record(added: added, removed: removed)
+      }
+    )
+
+    harness.model.setSpeechModelEnabled(models[1].id, enabled: true)
+    harness.model.setSpeechModelResident(models[1].id, resident: true)
+    harness.model.setSpeechModelResident(models[0].id, resident: false)
+
+    await waitUntil {
+      // The asynchronous probe is checked below; keep yielding until the
+      // synchronization chain itself has had time to drain.
+      harness.model.residentSpeechModelIDs == [models[1].id]
+    }
+    try? await Task.sleep(for: .milliseconds(80))
+
+    let calls = await probe.snapshot()
+    XCTAssertEqual(calls.count, 2)
+    XCTAssertEqual(calls[0].added, [models[1].id])
+    XCTAssertTrue(calls[0].removed.isEmpty)
+    XCTAssertTrue(calls[1].added.isEmpty)
+    XCTAssertEqual(calls[1].removed, [models[0].id])
+  }
+
+  func testResidentModelBudgetRequiresExplicitConfirmationAndInvalidatesOnChange() {
+    let gib: UInt64 = 1_073_741_824
+    let models = [
+      LocalSpeechModelDescriptor(
+        id: "qwen3-asr-0.6b-mlx-8bit",
+        engine: .mlxAudioSwift,
+        englishName: "Qwen3-ASR 0.6B",
+        simplifiedChineseName: "Qwen3-ASR 0.6B",
+        approximateDownloadByteCount: gib,
+        conservativeRuntimePeakByteCount: gib
+      ),
+      LocalSpeechModelDescriptor(
+        id: "qwen3-asr-1.7b-mlx-8bit",
+        engine: .mlxAudioSwift,
+        englishName: "Qwen3-ASR 1.7B",
+        simplifiedChineseName: "Qwen3-ASR 1.7B",
+        approximateDownloadByteCount: 2 * gib,
+        conservativeRuntimePeakByteCount: 2 * gib
+      ),
+    ]
+    let harness = makeHarness(
+      trustedLocalSpeechModels: models,
+      defaultLocalSpeechModelIdentifier: models[0].id,
+      localSpeechPhysicalMemoryGiB: 8
+    )
+
+    harness.model.setSpeechModelEnabled(models[1].id, enabled: true)
+    harness.model.setSpeechModelResident(models[1].id, resident: true)
+
+    XCTAssertEqual(harness.model.residentSpeechModelIDs, [models[0].id])
+    XCTAssertEqual(harness.model.pendingResidentSpeechModelIDs, Set(models.map(\.id)))
+    XCTAssertTrue(harness.model.pendingResidentSpeechModelBudget?.requiresConfirmation == true)
+
+    harness.model.confirmPendingResidentSpeechModels()
+
+    XCTAssertEqual(harness.model.residentSpeechModelIDs, Set(models.map(\.id)))
     XCTAssertEqual(
-      harness.model.localSpeechPreparationError,
-      L10n.localSpeechPreparationFailure(.trustRoot).string(for: harness.model.language)
+      harness.model.residentSpeechBudgetConfirmation,
+      harness.model.residentSpeechModelBudget.confirmationFingerprint
+    )
+
+    harness.model.setSpeechModelEnabled(models[1].id, enabled: false)
+
+    XCTAssertEqual(harness.model.residentSpeechModelIDs, [models[0].id])
+    XCTAssertNil(harness.model.residentSpeechBudgetConfirmation)
+  }
+
+  func testEnablingModelStartsPredownloadWithoutMakingItResident() async {
+    let models = makeModels()
+    let probe = EnabledSpeechModelPreparationProbe()
+    let harness = makeHarness(
+      trustedLocalSpeechModels: models,
+      defaultLocalSpeechModelIdentifier: models[0].id,
+      prepareEnabledSpeechModelAction: { modelID in
+        await probe.record(modelID)
+      }
+    )
+
+    harness.model.setSpeechModelEnabled(models[1].id, enabled: true)
+    try? await Task.sleep(for: .milliseconds(20))
+    let preparedModelIDs = await probe.snapshot()
+
+    XCTAssertEqual(preparedModelIDs, [models[1].id])
+    XCTAssertTrue(harness.model.enabledSpeechModelIDs.contains(models[1].id))
+    XCTAssertFalse(harness.model.residentSpeechModelIDs.contains(models[1].id))
+  }
+
+  func testMeasuredModelPeakOverridesEstimatePersistsAndInvalidatesConfirmation() async throws {
+    let modelID = "qwen3-asr-0.6b-mlx-8bit"
+    let model = LocalSpeechModelDescriptor(
+      id: modelID,
+      engine: .mlxAudioSwift,
+      englishName: "Qwen3-ASR 0.6B",
+      simplifiedChineseName: "Qwen3-ASR 0.6B",
+      approximateDownloadByteCount: 600_000_000,
+      conservativeRuntimePeakByteCount: 900_000_000
+    )
+    let settingsStore = UITestSettingsStore()
+    let harness = makeHarness(
+      settingsStore: settingsStore,
+      trustedLocalSpeechModels: [model],
+      defaultLocalSpeechModelIdentifier: modelID
+    )
+    await waitUntil { !harness.model.isLoadingSettings }
+    harness.model.residentSpeechBudgetConfirmation =
+      harness.model.residentSpeechModelBudget.confirmationFingerprint
+
+    harness.model.recordMeasuredSpeechModelPeak(
+      modelID: modelID,
+      peakByteCount: 1_200_000_000
+    )
+    await harness.model.flushPendingPersistenceWrites()
+
+    XCTAssertEqual(
+      harness.model.speechModelResourceCatalog.first?.estimatedPeakByteCount,
+      1_200_000_000
+    )
+    XCTAssertNil(harness.model.residentSpeechBudgetConfirmation)
+    let stored = await settingsStore.activitySnapshot().storage[.speechModelMeasuredPeaks]
+    let decoded = try XCTUnwrap(stored).data(using: .utf8).map {
+      try JSONDecoder().decode([String: UInt64].self, from: $0)
+    }
+    XCTAssertEqual(decoded, [modelID: 1_200_000_000])
+
+    let restored = makeHarness(
+      settingsStore: settingsStore,
+      trustedLocalSpeechModels: [model],
+      defaultLocalSpeechModelIdentifier: modelID
+    )
+    await waitUntil { !restored.model.isLoadingSettings }
+    XCTAssertEqual(
+      restored.model.speechModelResourceCatalog.first?.measuredPeakByteCount,
+      1_200_000_000
     )
   }
 
   private func makeModels() -> [LocalSpeechModelDescriptor] {
     [
       LocalSpeechModelDescriptor(
-        id: "qwen3-asr-0.6b-int8",
+        id: "qwen3-asr-0.6b-mlx-8bit",
+        engine: .mlxAudioSwift,
         englishName: "Qwen3-ASR 0.6B INT8",
         simplifiedChineseName: "Qwen3-ASR 0.6B INT8"
       ),
       LocalSpeechModelDescriptor(
-        id: "sense-voice-small-int8",
-        englishName: "SenseVoiceSmall INT8",
-        simplifiedChineseName: "SenseVoiceSmall INT8"
+        id: "qwen3-asr-1.7b-mlx-8bit",
+        engine: .mlxAudioSwift,
+        englishName: "Qwen3-ASR 1.7B INT8",
+        simplifiedChineseName: "Qwen3-ASR 1.7B INT8"
       ),
     ]
   }

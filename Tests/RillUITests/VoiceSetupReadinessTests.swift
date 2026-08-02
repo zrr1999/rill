@@ -71,14 +71,14 @@ final class VoiceSetupReadinessTests: XCTestCase {
                 harness.model.localSpeechAvailability,
                 language: .english
             ),
-            "This build does not include a compatible sherpa-onnx runtime. Use a supported Rill build or cloud speech."
+            "This build does not include a compatible MLX speech worker. Use a supported Rill build."
         )
         XCTAssertEqual(
             UIStrings.localSpeechAvailabilityDescription(
                 harness.model.localSpeechAvailability,
                 language: .simplifiedChinese
             ),
-            "此构建未包含兼容的 sherpa-onnx 运行时，请使用受支持的 Rill 构建或云端语音。"
+            "此构建未包含兼容的 MLX 语音 worker，请使用受支持的 Rill 构建。"
         )
 
         // A historical local preference remains fail-closed and reports the

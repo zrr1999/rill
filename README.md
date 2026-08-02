@@ -14,17 +14,17 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 ## ✨ 核心特性
 
 ### 🎤 语音转文字
-- **本地多引擎边界** — [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 与 Apple Silicon 可选的原生 [mlx-audio-swift](https://github.com/Blaizzy/mlx-audio-swift) 已接入；16 GB 默认仍是 Qwen3-ASR 0.6B INT8，也可选择经 MLX/Metal GPU 运行的 Qwen3-ASR 1.7B 8bit；流式预览固定使用轻量中英双语 Streaming Zipformer
+- **统一本地语音边界** — 稳定的 `local-speech` recognizer 由独立 worker 中的原生 [mlx-audio-swift](https://github.com/Blaizzy/mlx-audio-swift) 实现；默认启用并常驻 Qwen3-ASR 0.6B 8bit，也可在模型池加入 1.7B 8bit。Qwen v5 流式结果只用于预览，封口 WAV 的离线结果始终是正式文本
 - **按住说话（Push-to-Talk）** — 按住 `Fn` 开始录音，松开自动识别并输入
-- **本地语音端点** — 主窗口和菜单栏触发的单次听写用随 App 固定捆绑的 Silero VAD v4 判断语音起止：持续语音达到 300 ms 后进入说话态，随后 1.4 秒静音自动收尾，起始 12 秒没有语音则取消空录音。`Fn` 按住说话仍由松键结束，切换式录音由第二次按键结束
-- **采集前端处理** — 本地采集会启用 Apple Voice Processing 和自动增益，并在运行时验证没有被旁路；它们不是独立的宽带降噪器，当前文档不承诺量化降噪效果
-- **语音状态浮窗** — 本地路径会显示录音、音量和处理状态，由固定 Streaming Zipformer 生成实时 hypothesis，停止或自动端点后再由所选档位模型生成最终转写
+- **本地语音端点** — 主窗口和菜单栏触发的单次听写使用固定 revision/hash 的 MLX Silero VAD v6 判断语音起止；`Fn` 按住说话仍由松键结束，切换式录音由第二次按键结束
+- **按需采集前端** — 唤醒词使用可与其他 App 共存的 input-only 原始前端；只有实际识别运行才切换到 Apple Voice Processing 和自动增益，并在结束后完整释放 VPIO。模型预加载不会预配置或占用麦克风
+- **稳定尺寸的语音状态浮窗** — 本地路径以固定标准/紧凑尺寸显示录音、音量和处理状态；增长中的实时 hypothesis 只保留最新两行，不会按正文长度不断撑大窗口。停止或自动端点后再由所选档位模型生成最终转写
 - **中英文支持** — 界面和识别均支持中文/英文双语切换
-- **作用域热词** — sherpa 与 MLX Qwen 路径只接收清洗并设有数量/长度上限的热词，MLX 后端通过 Qwen3-ASR 的有界 context 传入
+- **作用域热词** — Qwen 路径只接收清洗并设有数量/长度上限的热词，通过 Qwen3-ASR 的有界 context 传入
 - **OpenAI-compatible 文本工作流（BYOK）** — 内置预设和自定义语音工作流的 `llmRewrite` 步骤使用 MacPaw/OpenAI 0.5.1 的 Responses API，只把当前最终转写正文发送到用户配置的 endpoint；API Key 保存在 macOS Keychain。默认使用官方 OpenAI `/v1` 与 `gpt-5.6-terra`，也可选择 Sol / Luna 或填写自定义 Base URL 和模型 ID；配置缺失、云端拒绝或请求失败时不会注入原文或部分结果
 - **延迟音频双阶段授权** — 录音与 exact workflow/run 绑定一次性 lease；队列在解析音频前 claim，解析后、识别前再次检查设置与目的地。等待期间收紧策略会阻止后续识别或投递
 - **明确且可停止的实时状态** — 活动录音按钮会真正停止对应 run，而不是只隐藏窗口。停止输入后，控制器与后台队列通过原子所有权转移避免重复处理或遗留音频；App 退出会等待录音、手动工作流、音频队列与剪贴板监听清理。清理超时会取消本次退出而不取消清理；事件排空和持久化先于可能较慢的模型卸载
-- **有界本地录音** — 本地 sherpa-onnx 模型对所有录音模式采用 20 秒 provider 上限并自动停止；采集层只额外接受 3.0 秒启动检测窗口和单个 0.1 秒 PCM 块的有界余量。本地采集只在实时层保留 32 个 PCM chunk 和 20 个音量样本，由非实时 consumer 增量写入权限为 `0600` 的 16 kHz WAV；正常停止会排空所有已接纳尾帧，异常、取消或超时会先关闭文件再清理，不在 Core Audio 回调累计整段录音
+- **有界本地录音** — 同一份 16 kHz 单声道 PCM 同时送往 v5 流式预览和权限为 `0600` 的受管 WAV；实时层只保留有界 PCM/音量状态。流式失败只关闭预览，正常停止会排空尾帧并继续离线 final，异常、取消或超时会先关闭文件再清理
 - **失败录音恢复（可选）** — 默认关闭；符合条件的投递前失败录音可加密保留最多 24 小时，并从历史页手动重试或删除。重试在解密前和解密后、provider 调用前都重新检查当前隐私与配置，只生成新的运行历史，不重复输出动作。App 退出会拒绝新重试、取消并等待所有活动重试恢复 durable receipt，并执行最终全局恢复明文 sweep；无法证明全部托管明文已清理时会阻止本次退出，让清理继续完成
 
 ### 📋 剪贴板管理系统
@@ -72,12 +72,12 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 
 | 功能 | Rill | Type4Me |
 |------|---------|---------|
-| 本地 ASR | sherpa-onnx 0.6B 默认 + Apple Silicon 原生 MLX Swift 1.7B 可选 | SenseVoice + Qwen3-ASR 校准 |
+| 本地 ASR | 原生 MLX Swift Qwen3-ASR 0.6B 默认 + 1.7B 可选 | SenseVoice + Qwen3-ASR 校准 |
 | 云端 ASR | 不提供 | 多家；以当前 provider registry 为准 |
 | **剪贴板路由模型** | App / 组路由 + Stack / Queue / List | 本次源码快照未见同类路由模型 |
 | **可观察工作流** | 内容无关运行前解释 + 运行时重新授权 | 模式、Prompt 与快捷键配置 |
 | **工作流配置** | 三节点可视化配置 | 模式与 Prompt 配置 |
-| **语音状态浮窗** | ✅；固定本地 Streaming Zipformer 提供 partial text | ✅ |
+| **语音状态浮窗** | ✅；Qwen v5 confirmed/provisional 流式预览 | ✅ |
 | **组标签系统** | ✅ | 本次源码快照未见 |
 | 确定性映射词 | ✅ App / 组 / 语言作用域 | ✅ |
 | 一步纠错闭环 | ✅ 人工确认建议与作用域 | 热词/片段管理工具 |
@@ -92,7 +92,7 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 
 ### 系统要求
 - macOS 14.0 (Sonoma) 或更高版本，仅支持 Apple Silicon（arm64）；发布产物必须是单一 arm64 slice
-- sherpa-onnx 与 MLX 本地 runtime 均随 arm64 App 提供；每个候选版本必须在声明支持的 Apple Silicon 硬件上完成录音、模型准备和转写验收
+- 原生 MLX 本地 runtime 随 arm64 App 提供；每个候选版本必须在声明支持的 Apple Silicon 硬件上完成录音、模型准备和转写验收
 - 可选的 Qwen3-ASR 1.7B 8bit 使用随辅助进程编译的原生 mlx-audio-swift 0.1.3 与 MLX/Metal GPU；用户无需安装 Python 或 `uv`，该路径不使用 ANE/NPU
 - Xcode 26 或更高版本，并选择包含 Swift 6.2+ 的 Command Line Tools；本地
   默认开发工具链为 Xcode 27
@@ -112,9 +112,9 @@ gitleaks version
 bash scripts/preflight.sh
 ```
 
-安装脚本只接受 Gitleaks 8.30.1 的受审 macOS 资产，并在安装前校验当前架构对应的固定 SHA-256。`Package.resolved` 固定 mlx-audio-swift 及其完整 SwiftPM 依赖图；预检会把锁定图与第三方许可证清单、离线 advisory baseline 和 CI 的实时 OSV 查询对照，并继续校验 vendored sherpa-onnx、ONNX Runtime、Silero VAD 的来源与精确字节。随后它用 stdlib Python 3.11+ 执行离线安全策略，检查发布脚本语法与生成产物、执行 arm64 Release 构建和 App 装配，验证产物只含 arm64，并检查 `LC_BUILD_VERSION` 的 macOS `minos` 精确为 14.0；语音 worker 还必须静态包含 sherpa-onnx 的 ASR 与 VAD 入口并拒绝链接 Piper/eSpeak 实现。最后运行完整测试并检查补丁空白错误。凭据扫描会拒绝源码 symlink/非普通文件，并在扫描后重新枚举源文件集、逐字节比对扫描快照，任何扫描期间的增删改都会 fail-closed 并要求重试。这个 Mach-O 门禁不能替代在 Sonoma 的 Apple Silicon 真机上运行最终公证包。
+安装脚本只接受 Gitleaks 8.30.1 的受审 macOS 资产，并在安装前校验当前架构对应的固定 SHA-256。`Package.resolved` 固定 mlx-audio-swift 及其完整 SwiftPM 依赖图；预检会把锁定图与第三方许可证清单、离线 advisory baseline 和 CI 的实时 OSV 查询对照。随后它检查发布脚本语法与生成产物、执行 arm64 Release 构建和 App 装配，验证主 App 与语音 worker 都只有 arm64 slice，且 `LC_BUILD_VERSION` 的 macOS `minos` 精确为 14.0。最后运行完整测试并检查补丁空白错误。这个 Mach-O 门禁不能替代在 Sonoma 的 Apple Silicon 真机上运行最终公证包。
 
-本地语音保持一个稳定 recognizer 边界，按精确模型 ID 路由到同一受监管辅助进程中的 sherpa 与 MLX 服务。默认 Qwen3-ASR 0.6B INT8 使用静态链接的 sherpa-onnx 1.13.4 / ONNX Runtime；仓库中的 XCFramework 由固定 commit 以 `EIGEN_MPL2_ONLY`、TTS/说话人分离/PortAudio 关闭的配置构建，只合并明确的 ASR/VAD archive allowlist，[构建来源、工具链和 Source Code Form 链接](vendor/sherpa-onnx-v1.13.4/BUILD_PROVENANCE.md)均可复核。Apple Silicon 还可选择 Qwen3-ASR 1.7B 8bit：辅助进程原生链接 mlx-audio-swift 0.1.3，并把 Hugging Face 模型固定到精确 commit；0.1.3 直接从 Rill 验证后的本地目录加载，支持自动语言检测和有界 keyterm context。主 App 不链接 MLX，切换最终模型会终止共享 worker、释放前一个后端，避免两套模型同时常驻。ASR 权重不随 App 捆绑，完成准备后的识别不联网。用于自动端点的 Silero VAD v4 模型随 App 捆绑，启动时和发布装配时都按固定大小与 SHA-256 校验；缺失或漂移会使本地语音能力 fail-closed，而不会退回 RMS 猜测。
+本地语音保持稳定的 `local-speech` recognizer 边界。一个 ASR worker 可缓存多个已启用 Qwen 模型，但所有 Qwen decode 经过同一串行通道；独立 TTS worker 可与 ASR、LLM、录音并行。模型和 Silero VAD v6 均固定到精确 Hugging Face revision，并在发布本地目录前校验受审文件的大小与 SHA-256。主 App 不链接 MLX，模型预加载也不会初始化麦克风。
 
 SwiftPM 依赖采用可复现的兼容组合：上层 `mlx-audio-swift` 固定为最新稳定版
 0.1.3，底层 `mlx-swift` 暂固定为 0.31.4。0.31.5/0.31.6 给跨平台
@@ -124,24 +124,23 @@ plugin target GUID；消费方没有关闭传递插件的开关。上游修复�
 
 | model ID | 角色 / 后端 | 固定来源 | 大小 / 固定身份 |
 |---|---|---|---|
-| `qwen3-asr-0.6b-int8` | 默认最终模型；中文均衡；16 GB；sherpa-onnx | [Qwen3-ASR 0.6B INT8 archive](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2) | `878702423` bytes；SHA-256 `393f8a14e2f5fb96746aaab342997a40641001fbd5bf9592a080a8329178ee96` |
-| `qwen3-asr-0.6b-mlx-8bit` | 可选轻量最终模型；Apple Silicon；MLX/Metal GPU | [`mlx-community/Qwen3-ASR-0.6B-8bit`](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit) | 约 1.01 GB；commit `89e96d92ba34aca20b3e29fb10cc284097d1219f` |
+| `qwen3-asr-0.6b-mlx-8bit` | 默认最终模型与流式预览；Apple Silicon；MLX/Metal GPU | [`mlx-community/Qwen3-ASR-0.6B-8bit`](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit) | 约 1.01 GB；commit `89e96d92ba34aca20b3e29fb10cc284097d1219f` |
 | `qwen3-asr-1.7b-mlx-8bit` | 可选较大最终模型；Apple Silicon；MLX/Metal GPU | [`mlx-community/Qwen3-ASR-1.7B-8bit`](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit) | 约 2.46 GB；commit `a8379a2e2f9e313c9292cdf1af4055ab56d50d55` |
-| `streaming-zipformer-small-bilingual-zh-en-preview-int8` | 固定流式预览；不出现在档位选择器；sherpa-onnx | [Streaming Zipformer bilingual INT8 archive](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2) | `511274346` bytes；SHA-256 `27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8` |
 
-Omnilingual 300M/1B 已降为候选档位，公开安装器、最终识别器和设置均拒绝它们；候选理由与重新准入条件见 [本地模型候选清单](docs/local-model-candidates.md)。Fun-ASR Nano INT8/FP16 与已退役 Cohere 的固定 trust anchor 和解码实现仍保留，仅用于旧安装识别、迁移和内部 benchmark；它们同样不进入公开产品面。流式预览模型
-准备失败时只退化为录音音量/状态显示，不改变最终档位模型的可用性。
+流式预览准备或推理失败时只退化为录音音量/状态显示，不改变受管 WAV 与离线最终识别。
 
 内置目录只保留两条基础链路：`语音识别` 使用 Fn 触发，按当前语音路由选择最终
 STT 模型，在识别阶段提供个人词库热词提示，并在识别后执行确定性替换，再输出文字；
 `语音助手` 使用 `Hey Rill` 唤醒，依次执行 STT、词汇处理、OpenAI-compatible
 Responses LLM 回答和 automatic/Vivian TTS。语音助手默认停用，用户需要先配置
-OpenAI API Key，并在设置中主动启用唤醒监听。两条链路共用现有 recognizer、
-transformer 和 action 流水线，捕获层不会直接依赖文字注入或语音播放。
+OpenAI API Key，并在设置中主动启用唤醒监听。设置页会在启用前汇总检查麦克风、
+当前本地 ASR、LLM 配置、云端隐私策略与语音输出；已知无效或验证失败的 LLM 配置
+不会启动连续监听。两条链路共用现有 recognizer、transformer 和 action 流水线，
+但使用独立运行通道；Fn/交互识别在共享麦克风入口拥有高于环境唤醒的优先级，助手的
+LLM/TTS 后处理不会占住实时识别通道。ASR 与 TTS 也使用独立 worker supervisor，
+捕获层不会直接依赖文字注入或语音播放。
 
-Qwen archive 的 README 将 ONNX 导出追溯到 ModelScope `zengshuishui/Qwen3-ASR-onnx`、`Wasser1462/Qwen3-ASR-onnx` 与上游 Qwen3-ASR；ModelScope 导出和上游 Qwen 均声明 Apache-2.0。2026-07-18，当前 arm64 Mac 已用严格 source-built runtime 和生产 `SherpaOfflineRecognizer` 在 6.761 秒内跑通 archive 自带的 16 kHz 单声道 `cantonese.wav`，结果保留粤语中文及 `My Princess`；同一生产 provider 又在 2.830 秒内跑通 `codeswitch.wav`，结果保留 `alone, all by myself`。archive 的参考文本表明后者是英、法、意、西语切换，并非中英混合。两者都只是离线技术 fixture，不是真人麦克风、简体中文 + 英文验收或 GA 证据，也不能替代生产录音链路验收。
-
-源码和本地 runtime 仍保留固定的 SenseVoiceSmall 身份，供内部兼容与未来评估使用；它不属于当前公开产品目录，不会出现在公开设置、下载或推荐路径中。只有产品与法律审核均通过后，才会重新评估其公开分发资格。完整 archive 身份、来源链、风险说明以及 FunASR 1.1 英中正文见 [LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md)。
+完整模型身份、来源 revision 与哈希入口见 [LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md)。
 
 仓库通过 `justfile`、`prek.toml` 和 GitHub Actions 共享同一组门禁。
 安装 `just`、`uv` 后，可安装 pre-commit/commit-msg hooks 并运行完整检查：
@@ -226,7 +225,13 @@ SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
 语音助手默认停用；启用前需要准备当前本地 Qwen ASR 并配置 OpenAI-compatible LLM。
 空闲监听只运行本地 VAD，完整语音段才交给 Qwen 检查唤醒短语；同一句中的后续命令会
 直接进入工作流，不再重复 STT。TTS 默认使用 automatic provider：Qwen3-TTS 可用时
-使用 Vivian，否则回退系统语音。
+使用 Vivian，否则回退系统语音。助手设置中的就绪检查会阻止在麦克风未授权、本地
+ASR 未准备、LLM 配置无效或云端隐私策略不可用时开启监听；LLM 已配置但尚未主动验证
+时会明确提示验证建议，而不会把未验证状态伪装成已验证。
+
+设置中的“提供商与模型”只管理共享的 STT、LLM 和 TTS 资源；音色保存在各自 workflow
+的输出步骤中。环境唤醒与交互识别是两个显式音频通道：开始 Fn/交互录音时会立即取消
+唤醒候选，录音结束后恢复环境监听，而已经启动的助手 LLM/TTS 会在独立通道继续运行。
 
 你也可以创建自定义语音工作流，选择本地/云端识别、输出目标和确定性文本处理。
 保存工作流且当前编辑草稿与已保存版本一致后，可在 Workflows 页选择“运行前解释”。预览会按当前路由和隐私设置显示 `ready`、`requires confirmation` 或 `blocked`；它不会读取选区/剪贴板正文，也不会替代运行时的重新检查与云端确认。
@@ -246,7 +251,7 @@ SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
 ```
 RillCore        — 领域模型和服务协议
 RillPlatform    — macOS 系统集成（焦点追踪、剪贴板控制、权限、文字注入）
-RillProviders   — ASR 合同与路由（sherpa-onnx、原生 MLX Swift）、确定性文本处理与输出动作
+RillProviders   — 稳定 ASR/TTS 合同、Speech Worker v5、确定性文本处理与输出动作
 RillMLXRuntime  — 仅由语音辅助进程链接的原生 MLX/Metal 推理实现
 RillRuntime     — 事件总线、剪贴板存储、候选解析、会话协调器
 RillPersistence — 数据持久化

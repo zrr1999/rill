@@ -37,16 +37,29 @@ public struct Qwen3TTSSpeechSynthesizer: SpeechSynthesizer {
   public let id = "speech.qwen3-tts"
   private let supervisor: SpeechWorkerSupervisor
   private let selectionSource: SpeechSynthesisModelSelectionSource
+  private let enabledModelIDsProvider: @Sendable () throws -> Set<String>
+  private let residentModelIDsProvider: @Sendable () throws -> Set<String>
   private let synthesisTimeout: Duration
+  private let idleReleaseCoordinator: TTSIdleReleaseCoordinator
 
   public init(
     supervisor: SpeechWorkerSupervisor,
     selectionSource: SpeechSynthesisModelSelectionSource = .init(),
+    enabledModelIDsProvider: @escaping @Sendable () throws -> Set<String> = {
+      SpeechSynthesisModelCatalog.supportedModelIdentifiers
+    },
+    residentModelIDsProvider: @escaping @Sendable () throws -> Set<String> = {
+      SpeechSynthesisModelCatalog.supportedModelIdentifiers
+    },
+    idleReleaseDelay: Duration = .seconds(30),
     synthesisTimeout: Duration = .seconds(300)
   ) {
     self.supervisor = supervisor
     self.selectionSource = selectionSource
+    self.enabledModelIDsProvider = enabledModelIDsProvider
+    self.residentModelIDsProvider = residentModelIDsProvider
     self.synthesisTimeout = synthesisTimeout
+    self.idleReleaseCoordinator = TTSIdleReleaseCoordinator(delay: idleReleaseDelay)
   }
 
   public func prepare(
@@ -55,9 +68,12 @@ public struct Qwen3TTSSpeechSynthesizer: SpeechSynthesizer {
     progress: @escaping @Sendable (SpeechWorkerProgress) -> Void = { _ in }
   ) async throws {
     let modelIdentifier = modelIdentifier ?? selectionSource.currentModelIdentifier()
-    guard SpeechSynthesisModelCatalog.supportedModelIdentifiers.contains(modelIdentifier) else {
+    guard SpeechSynthesisModelCatalog.supportedModelIdentifiers.contains(modelIdentifier),
+      try enabledModelIDsProvider().contains(modelIdentifier)
+    else {
       throw SpeechWorkerClientError.protocolViolation
     }
+    await idleReleaseCoordinator.markActive(modelID: modelIdentifier)
     _ = try await supervisor.prepareTTSModel(
       SpeechWorkerModelPreparationPayload(
         modelID: modelIdentifier,
@@ -72,10 +88,35 @@ public struct Qwen3TTSSpeechSynthesizer: SpeechSynthesizer {
     guard request.isValid, Qwen3TTSVoice(rawValue: request.voice) != nil else {
       throw SpeechSynthesisActionError.invalidRequest
     }
+    let modelIdentifier = request.modelID ?? selectionSource.currentModelIdentifier()
+    guard SpeechSynthesisModelCatalog.supportedModelIdentifiers.contains(modelIdentifier),
+      try enabledModelIDsProvider().contains(modelIdentifier)
+    else {
+      throw SpeechSynthesisActionError.invalidRequest
+    }
+    let residentModelIDs = try residentModelIDsProvider()
+      .intersection(SpeechSynthesisModelCatalog.supportedModelIdentifiers)
+    let resident = residentModelIDs.contains(modelIdentifier)
+    let workerShouldRemainRunning = !residentModelIDs.isEmpty
+    await idleReleaseCoordinator.markActive(modelID: modelIdentifier)
+    defer {
+      Task {
+        await idleReleaseCoordinator.scheduleRelease(
+          modelID: modelIdentifier,
+          resident: resident
+        ) { [supervisor] in
+          if workerShouldRemainRunning {
+            try? await supervisor.releaseTTSModel(modelID: modelIdentifier)
+          } else {
+            try? await supervisor.releaseLoadedModel()
+          }
+        }
+      }
+    }
     let result = try await supervisor.synthesize(
       SpeechWorkerSynthesisPayload(
         runID: request.runID,
-        modelID: selectionSource.currentModelIdentifier(),
+        modelID: modelIdentifier,
         text: request.text,
         voice: request.voice,
         language: request.language,
@@ -108,9 +149,8 @@ public struct Qwen3TTSSpeechSynthesizer: SpeechSynthesizer {
   }
 
   public func releaseResources() async {
-    try? await supervisor.releaseTTSModel(
-      modelID: selectionSource.currentModelIdentifier()
-    )
+    await idleReleaseCoordinator.cancelAll()
+    try? await supervisor.releaseLoadedModel()
   }
 
   private static func isRegularNonSymbolicFile(_ url: URL) -> Bool {
@@ -120,5 +160,48 @@ public struct Qwen3TTSSpeechSynthesizer: SpeechSynthesizer {
       return lstat(path, &status)
     }
     return result == 0 && (status.st_mode & S_IFMT) == S_IFREG
+  }
+}
+
+private actor TTSIdleReleaseCoordinator {
+  private let delay: Duration
+  private var pending: [String: Task<Void, Never>] = [:]
+
+  init(delay: Duration) {
+    precondition(delay > .zero)
+    self.delay = delay
+  }
+
+  func markActive(modelID: String) {
+    pending.removeValue(forKey: modelID)?.cancel()
+  }
+
+  func scheduleRelease(
+    modelID: String,
+    resident: Bool,
+    release: @escaping @Sendable () async -> Void
+  ) {
+    pending.removeValue(forKey: modelID)?.cancel()
+    guard !resident else { return }
+    let delay = self.delay
+    pending[modelID] = Task { [weak self] in
+      do {
+        try await Task.sleep(for: delay)
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
+      await release()
+      await self?.releaseFinished(modelID: modelID)
+    }
+  }
+
+  func cancelAll() {
+    for task in pending.values { task.cancel() }
+    pending.removeAll()
+  }
+
+  private func releaseFinished(modelID: String) {
+    pending.removeValue(forKey: modelID)
   }
 }

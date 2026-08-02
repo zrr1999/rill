@@ -33,7 +33,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         case .input:
             UIStrings.text(.settingsBuiltinPushToTalk, language: language)
         case .voiceAssistant:
-            language == .english ? "Wake Word & Speech Output" : "唤醒词与语音输出"
+            language == .english ? "Voice Assistant" : "语音助手"
         }
     }
 
@@ -64,13 +64,13 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         case .storage:
             "storage retention history clear recovery data 保留 历史 清理 恢复 本地 数据"
         case .speech:
-            "speech engine sherpa onnx qwen openai llm api key model text polishing local 语音 引擎 模型 大模型 润色 本地 密钥"
+            "providers speech stt tts mlx qwen openai llm api key model local 提供商 语音 识别 合成 音色 模型 大模型 本地 密钥"
         case .vocabulary:
             "vocabulary hotword mapping replacement keyterm 词汇 热词 映射 替换"
         case .input:
             "push to talk fn toggle recording output input 按住说话 切换式录音 输出 输入"
         case .voiceAssistant:
-            "wake word kws speech output tts qwen playback 唤醒词 监听 语音 输出 播放 模型"
+            "voice assistant readiness wake word listener priority channel 语音助手 就绪 唤醒词 监听 优先级 通道"
         }
     }
 }

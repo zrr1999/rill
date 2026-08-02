@@ -97,6 +97,10 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
       [
         .localSpeechModel,
         .localSpeechPrewarm,
+        .enabledSpeechModels,
+        .residentSpeechModels,
+        .residentSpeechBudgetConfirmation,
+        .speechModelMeasuredPeaks,
       ]
     case .openAI:
       [.openAIBaseURL, .openAIModel]
@@ -248,6 +252,10 @@ struct StoredAppSettingsSnapshot {
   let legacyWhisperKitLanguage: String?
   let legacyWhisperKitDownloadIfNeeded: String?
   let localSpeechPrewarm: String?
+  let enabledSpeechModels: String?
+  let residentSpeechModels: String?
+  let residentSpeechBudgetConfirmation: String?
+  let speechModelMeasuredPeaks: String?
   let openAIAPIKey: String?
   let openAICredentialAvailability: OpenAICredentialAvailability
   let openAIBaseURL: String?
@@ -783,6 +791,11 @@ extension AppModel {
       legacyWhisperKitLanguage: storedSettings[.legacyWhisperKitLanguage],
       legacyWhisperKitDownloadIfNeeded: storedSettings[.legacyWhisperKitDownloadIfNeeded],
       localSpeechPrewarm: storedSettings[.localSpeechPrewarm],
+      enabledSpeechModels: storedSettings[.enabledSpeechModels],
+      residentSpeechModels: storedSettings[.residentSpeechModels],
+      residentSpeechBudgetConfirmation:
+        storedSettings[.residentSpeechBudgetConfirmation],
+      speechModelMeasuredPeaks: storedSettings[.speechModelMeasuredPeaks],
       openAIAPIKey: openAIAPIKey,
       openAICredentialAvailability: openAICredentialAvailability,
       openAIBaseURL: storedSettings[.openAIBaseURL],
@@ -834,6 +847,7 @@ extension AppModel {
     isLoadingSettings = false
     settingsKeysModifiedDuringInitialLoad.removeAll()
     shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = false
+    synchronizeResidentSpeechModels(from: [])
     if settings.workflowLibraryNeedsMigration
       || settings.vocabularyLibraryNeedsMigration
     {
@@ -1207,6 +1221,34 @@ extension AppModel {
     }
     applyStoredLegacyWhisperModelStrings(settings)
     applyStoredLegacyWhisperBooleans(settings)
+    if shouldApplyStoredSetting(.enabledSpeechModels),
+      let rawValue = settings.enabledSpeechModels,
+      let values = try? Self.loadDownloadedLocalSpeechModels(from: rawValue)
+    {
+      enabledSpeechModelIDs = Set(values).intersection(
+        speechModelResourceCatalog.map(\.id)
+      )
+    }
+    if shouldApplyStoredSetting(.residentSpeechModels),
+      let rawValue = settings.residentSpeechModels,
+      let values = try? Self.loadDownloadedLocalSpeechModels(from: rawValue)
+    {
+      residentSpeechModelIDs = Set(values).intersection(enabledSpeechModelIDs)
+    }
+    if shouldApplyStoredSetting(.speechModelMeasuredPeaks),
+      let values = try? Self.loadMeasuredSpeechModelPeaks(
+        from: settings.speechModelMeasuredPeaks
+      )
+    {
+      let catalogIDs = Set(speechModelResourceCatalog.map(\.id))
+      measuredSpeechModelPeakByteCounts = values.filter { catalogIDs.contains($0.key) }
+    }
+    if shouldApplyStoredSetting(.residentSpeechBudgetConfirmation) {
+      let value = settings.residentSpeechBudgetConfirmation?
+        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+      residentSpeechBudgetConfirmation =
+        value == residentSpeechModelBudget.confirmationFingerprint ? value : nil
+    }
     normalizeTrustedLocalSpeechSelection()
     synchronizeWakeWordResourceWithLocalSpeechModel()
     return trustedModelMigration
@@ -1542,6 +1584,7 @@ extension AppModel {
         self.retryingUnavailableScalarSettingsDomains.remove(.openAI)
         self.openAICredentialAvailability =
           Self.openAICredentialAvailability(for: credential)
+        self.workflowLibraryChangedAction()
         self.append(
           english: "OpenAI settings and credential access are available again.",
           simplifiedChinese: "OpenAI 设置与凭据访问已恢复。"
@@ -1558,6 +1601,7 @@ extension AppModel {
         }
         self.retryingUnavailableScalarSettingsDomains.remove(.openAI)
         self.openAICredentialAvailability = .inaccessible
+        self.workflowLibraryChangedAction()
         self.append(
           english: "OpenAI settings or credential access are still unavailable.",
           simplifiedChinese: "OpenAI 设置或凭据访问仍不可用。"
@@ -2130,6 +2174,7 @@ extension AppModel {
           if isCurrentWrite, credentialKey == .openAIAPIKey {
             self.openAICredentialAvailability =
               Self.openAICredentialAvailability(for: value)
+            self.workflowLibraryChangedAction()
           }
         }
       } catch is CancellationError {
@@ -2144,6 +2189,7 @@ extension AppModel {
           guard isCurrentWrite else { return }
           if credentialKey == .openAIAPIKey {
             self.openAICredentialAvailability = .inaccessible
+            self.workflowLibraryChangedAction()
           }
           self.append(
             english:
@@ -2310,6 +2356,10 @@ extension AppModel {
       .localSpeechModel,
       .localSpeechDownloadedModels,
       .localSpeechPrewarm,
+      .enabledSpeechModels,
+      .residentSpeechModels,
+      .residentSpeechBudgetConfirmation,
+      .speechModelMeasuredPeaks,
       .openAIBaseURL,
       .openAIModel:
       .speech
@@ -2844,6 +2894,26 @@ extension AppModel {
     return decoded.sorted()
   }
 
+  static func loadMeasuredSpeechModelPeaks(
+    from rawValue: String?
+  ) throws -> [String: UInt64] {
+    guard let rawValue, !rawValue.isEmpty else { return [:] }
+    let decoded = try JSONDecoder().decode(
+      [String: UInt64].self,
+      from: Data(rawValue.utf8)
+    )
+    guard decoded.allSatisfy({ entry in
+      let identifier = entry.key.trimmingCharacters(in: .whitespacesAndNewlines)
+      return identifier == entry.key
+        && !identifier.isEmpty
+        && identifier.utf8.count <= 256
+        && entry.value > 0
+    }) else {
+      throw StoredSettingsCollectionValidationError.invalidIdentifier
+    }
+    return decoded
+  }
+
   static func loadVocabularyRules(from rawValue: String?) throws -> [VocabularyRule] {
     guard let rawValue, !rawValue.isEmpty else { return [] }
     let data = Data(rawValue.utf8)
@@ -2965,13 +3035,15 @@ extension AppModel {
     var workflow = workflow
     workflow.titleKey = nil
     workflow.metadata[workflowOriginMetadataKey] = userWorkflowOriginMetadataValue
-    if workflow.plan.setup.speechRoute?.recognizerID == "whisperkit.local" {
-      workflow.plan.setup.speechRoute?.recognizerID = sherpaOnnxRecognizerID
+    if ["whisperkit.local", "auto", sherpaOnnxRecognizerID, sherpaStreamingRecognizerID]
+      .contains(workflow.plan.setup.speechRoute?.recognizerID ?? "")
+    {
+      workflow.plan.setup.speechRoute?.recognizerID = localSpeechRecognizerID
     }
     if workflow.plan.setup.speechRoute?.recognizerID == "deepgram.prerecorded" {
-      workflow.plan.setup.speechRoute?.recognizerID = sherpaOnnxRecognizerID
+      workflow.plan.setup.speechRoute?.recognizerID = localSpeechRecognizerID
       workflow.plan.setup.speechRoute?.providerModel = nil
-      workflow.metadata["provider"] = "sherpa-onnx"
+      workflow.metadata["provider"] = "local-speech"
       workflow.metadata.removeValue(forKey: "deepgram.model")
     }
     if workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride] == nil,
@@ -2992,7 +3064,10 @@ extension AppModel {
         modelFolder: "",
         language: "",
         downloadIfNeeded: true,
-        prewarm: localSpeechPrewarm
+        prewarm: localSpeechPrewarm,
+        enabledModelIDs: enabledSpeechModelIDs,
+        residentModelIDs: residentSpeechModelIDs,
+        residentBudgetConfirmation: residentSpeechBudgetConfirmation
       )
     }
     return LocalSpeechSettings(
@@ -3002,7 +3077,10 @@ extension AppModel {
       modelFolder: legacyWhisperKitModelFolder,
       language: legacyWhisperKitLanguage,
       downloadIfNeeded: legacyWhisperKitDownloadIfNeeded,
-      prewarm: localSpeechPrewarm
+      prewarm: localSpeechPrewarm,
+      enabledModelIDs: enabledSpeechModelIDs,
+      residentModelIDs: residentSpeechModelIDs,
+      residentBudgetConfirmation: residentSpeechBudgetConfirmation
     )
   }
 
@@ -3024,12 +3102,9 @@ extension AppModel {
     localSpeechSettingsSource.update(currentLocalSpeechSettings())
   }
 
-  /// Ensures the selected local model is installed and verified whenever local
-  /// speech is active.
-  ///
-  /// `LocalSpeechSettings.prewarm` alone decides whether this readiness pass
-  /// also creates the native runtime cache. With prewarm disabled, recognition
-  /// performs the first lazy runtime load.
+  /// Compatibility warmup for installations that do not expose the v5 model
+  /// pool. Current builds synchronize `residentModelIDs` directly and keep
+  /// microphone initialization entirely outside model preparation.
   func queueLocalSpeechReadinessIfNeeded() {
     localSpeechPreparationTaskOwner.cancelActive()
     localSpeechReadinessGeneration += 1
@@ -3039,7 +3114,8 @@ extension AppModel {
       !isRestoringSettings,
       !hasUnavailableScalarSettings(in: .localSpeech),
       localSpeechTrustMaterialAvailable,
-      preferredSpeechEngine == .local
+      preferredSpeechEngine == .local,
+      !trustedLocalSpeechModels.contains(where: { $0.engine == .mlxAudioSwift })
     else {
       return
     }
@@ -3690,6 +3766,7 @@ extension AppModel {
   func retryPrivacySettingsLoad() {
     guard !hasBegunApplicationShutdown, !isLoadingPrivacySettings else { return }
     isLoadingPrivacySettings = true
+    workflowLibraryChangedAction()
     let settingsStore = self.settingsStore
     let settingKeys: [AppSettingKey] = [
       .privacySensitiveAppRules,
@@ -3737,6 +3814,7 @@ extension AppModel {
         self.isLoadingPrivacySettings = false
         self.privacySettingsLoadError = nil
         self.privacySettingsSource.update(policy)
+        self.workflowLibraryChangedAction()
       } catch is CancellationError {
         return
       } catch {
@@ -3754,6 +3832,7 @@ extension AppModel {
         self.privacySettingsSource.markUnavailable(
           reason: "Privacy settings could not be loaded."
         )
+        self.workflowLibraryChangedAction()
       }
     }
     taskOwner.replaceActive(in: slot, id: taskID, with: task)
@@ -3768,6 +3847,7 @@ extension AppModel {
     privacyPolicySettings = defaults
     isRestoringSettings = false
     privacySettingsSource.update(defaults)
+    workflowLibraryChangedAction()
     persistPrivacyPolicySettings()
   }
 
@@ -3891,6 +3971,11 @@ extension AppModel {
     }
     if let value = values[.localSpeechPrewarm], storedBooleanIfValid(value) == nil {
       invalidKeys.insert(.localSpeechPrewarm)
+    }
+    if let value = values[.speechModelMeasuredPeaks],
+      (try? loadMeasuredSpeechModelPeaks(from: value)) == nil
+    {
+      invalidKeys.insert(.speechModelMeasuredPeaks)
     }
     if let value = values[.builtinPushToTalkOutputMode],
       BuiltinPushToTalkOutputMode(rawValue: value) == nil

@@ -44,6 +44,66 @@ public struct TransformContext: Sendable, Equatable {
     }
 }
 
+/// One user-visible message that was actually sent to a language model.
+///
+/// The trace surface is intentionally closed: credentials, request headers,
+/// endpoint URLs, captured application context, and arbitrary provider
+/// metadata cannot be represented here.
+public struct LanguageModelTraceMessage: Codable, Sendable, Equatable {
+    public enum Role: String, Codable, Sendable, Equatable {
+        case user
+        case assistant
+    }
+
+    public var role: Role
+    public var content: String
+
+    public init(role: Role, content: String) {
+        self.role = role
+        self.content = content
+    }
+}
+
+/// Reviewable provenance for one completed language-model request.
+///
+/// This value is retained only inside the encrypted, privacy-gated history
+/// payload. Its fixed fields deliberately exclude API keys, authorization
+/// headers, provider endpoints, tool state, and unrelated foreground context.
+public struct LanguageModelTrace: Codable, Sendable, Equatable {
+    public var providerID: String
+    public var modelID: String
+    public var systemPrompt: String
+    public var workflowPrompt: String
+    public var messages: [LanguageModelTraceMessage]
+    public var responseText: String
+
+    public init(
+        providerID: String,
+        modelID: String,
+        systemPrompt: String,
+        workflowPrompt: String,
+        messages: [LanguageModelTraceMessage],
+        responseText: String
+    ) {
+        self.providerID = providerID
+        self.modelID = modelID
+        self.systemPrompt = systemPrompt
+        self.workflowPrompt = workflowPrompt
+        self.messages = messages
+        self.responseText = responseText
+    }
+}
+
+public struct TracedTextTransformation: Sendable, Equatable {
+    public var text: String
+    public var trace: LanguageModelTrace
+
+    public init(text: String, trace: LanguageModelTrace) {
+        self.text = text
+        self.trace = trace
+    }
+}
+
 public protocol SpeechRecognizer: Sendable {
     var id: String { get }
     var capabilities: SpeechRecognizerCapabilities { get }
@@ -174,6 +234,25 @@ public protocol TextTransformer: Sendable {
     var id: String { get }
     var supportedKinds: [PostProcessStepKind] { get }
     func transform(text: String, step: PostProcessStep, context: TransformContext) async throws -> String
+}
+
+/// A transformer that can return the exact, credential-free request trace
+/// alongside its output. Orchestration checks this capability only for LLM
+/// steps; ordinary text transformers keep the minimal `TextTransformer` API.
+public protocol TracedTextTransformer: TextTransformer {
+    func transformWithTrace(
+        text: String,
+        step: PostProcessStep,
+        context: TransformContext
+    ) async throws -> TracedTextTransformation
+}
+
+/// Allows a transformer to declare that a failed speech-text rewrite may
+/// safely fall back to the already recognized text. This is intentionally an
+/// error-owned decision so orchestration never guesses that an arbitrary
+/// transformer failure is recoverable.
+public protocol SpeechTextFallbackEligibleError: Error {
+    var allowsSpeechTextFallback: Bool { get }
 }
 
 public protocol OutputAction: Sendable {

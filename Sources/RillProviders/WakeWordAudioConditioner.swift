@@ -3,7 +3,7 @@ import Foundation
 /// Applies a small, KWS-only gain after VoiceProcessingIO.
 ///
 /// The shared microphone stream intentionally remains untouched so recording
-/// and STT preserve their existing levels. Sherpa's short-keyword decoder is
+/// and STT preserve their existing levels. The offline Qwen candidate pass is
 /// noticeably more level-sensitive than the downstream ASR path, especially
 /// for a speaker more than arm's length from the built-in microphone.
 enum WakeWordAudioConditioner {

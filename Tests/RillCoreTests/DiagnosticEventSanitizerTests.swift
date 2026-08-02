@@ -3,6 +3,33 @@ import XCTest
 @testable import RillCore
 
 final class DiagnosticEventSanitizerTests: XCTestCase {
+  func testAudioProcessingLaneRetainsOnlyClosedRuntimeValues() {
+    for lane in ["assistant", "interactive"] {
+      let sanitized = DiagnosticEventSanitizer.sanitize(
+        DiagnosticEvent(
+          subsystem: .session,
+          level: .debug,
+          event: "audio-processing.enqueued",
+          message: "Queued audio.",
+          metadata: ["lane": lane]
+        )
+      )
+
+      XCTAssertEqual(sanitized.metadata["lane"], lane)
+    }
+
+    let rejected = DiagnosticEventSanitizer.sanitize(
+      DiagnosticEvent(
+        subsystem: .session,
+        level: .debug,
+        event: "audio-processing.enqueued",
+        message: "Queued audio.",
+        metadata: ["lane": "background-canary"]
+      )
+    )
+    XCTAssertNil(rejected.metadata["lane"])
+  }
+
   func testSanitizeRetainsWakeWordRuntimeCoordinatesWithoutUserContent() {
     for eventCode in [
       "wake-word.detected",
@@ -692,6 +719,42 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       )
 
       XCTAssertEqual(DiagnosticEventSanitizer.sanitize(event).event, eventCode)
+    }
+  }
+
+  func testSherpaRecognitionRecoveryDiagnosticsRetainOnlyClosedCoordinates() {
+    for outcome in ["pending", "completed", "failed"] {
+      let event = DiagnosticEvent(
+        subsystem: .providers,
+        level: .warning,
+        event: "provider.sherpa-onnx.recognition.retry",
+        message: "private worker detail",
+        metadata: [
+          "provider": "sherpa-onnx.local",
+          "provider.kind": "sherpa-onnx",
+          "recognizerID": "sherpa-onnx.local",
+          "stage": "recognizing",
+          "outcome": outcome,
+          "failureCode": "recognitionFailed",
+          "stderr": "private worker detail",
+        ]
+      )
+
+      let sanitized = DiagnosticEventSanitizer.sanitize(event)
+
+      XCTAssertEqual(sanitized.event, "provider.sherpa-onnx.recognition.retry")
+      XCTAssertEqual(sanitized.message, DiagnosticEventSanitizer.sanitizedMessage)
+      XCTAssertEqual(
+        sanitized.metadata,
+        [
+          "provider": "sherpa-onnx.local",
+          "provider.kind": "sherpa-onnx",
+          "recognizerID": "sherpa-onnx.local",
+          "stage": "recognizing",
+          "outcome": outcome,
+          "failureCode": "recognitionFailed",
+        ]
+      )
     }
   }
 }

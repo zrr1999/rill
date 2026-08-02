@@ -20,6 +20,7 @@ public struct LiveSubtitleSnapshot: Codable, Sendable, Equatable {
     public var statusText: String?
     public var levelMeter: [Float]
     public var providerID: String?
+    public var livePreviewPlacement: LivePreviewPlacement
     public var queuedRunCount: Int
     public var prefersCompactLayout: Bool
     public var recordingStartedAt: Date?
@@ -37,6 +38,7 @@ public struct LiveSubtitleSnapshot: Codable, Sendable, Equatable {
         statusText: String? = nil,
         levelMeter: [Float] = [],
         providerID: String? = nil,
+        livePreviewPlacement: LivePreviewPlacement = .overlay,
         queuedRunCount: Int = 0,
         prefersCompactLayout: Bool = false,
         recordingStartedAt: Date? = nil,
@@ -53,6 +55,7 @@ public struct LiveSubtitleSnapshot: Codable, Sendable, Equatable {
         self.statusText = statusText
         self.levelMeter = levelMeter
         self.providerID = providerID
+        self.livePreviewPlacement = livePreviewPlacement
         self.queuedRunCount = queuedRunCount
         self.prefersCompactLayout = prefersCompactLayout
         self.recordingStartedAt = recordingStartedAt

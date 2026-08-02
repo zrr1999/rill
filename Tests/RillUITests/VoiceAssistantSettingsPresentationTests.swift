@@ -122,7 +122,13 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
 
   @MainActor
   func testWakeWordSettingsCreateAndEnableDefaultDictationWorkflow() async {
-    let harness = makeHarness()
+    let harness = makeHarness(
+      permissionSnapshot: PermissionSnapshot(
+        accessibility: .granted,
+        microphone: .granted
+      )
+    )
+    harness.model.updateWakeWordResourceState(.ready)
     harness.model.installWakeWordConfigurationValidationAction { configuration in
       guard configuration.phrases == ["Hey Rill", "你好 Rill"] else {
         throw WakeWordSettingsTestError.unexpectedConfiguration
@@ -162,7 +168,13 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
 
   @MainActor
   func testWakeWordSettingsPreserveExistingWorkflowPipeline() async throws {
-    let harness = makeHarness()
+    let harness = makeHarness(
+      permissionSnapshot: PermissionSnapshot(
+        accessibility: .granted,
+        microphone: .granted
+      )
+    )
+    harness.model.updateWakeWordResourceState(.ready)
     harness.model.installWakeWordConfigurationValidationAction { _ in }
     await harness.model.saveWorkflowDraft(
       WorkflowEditorDraft(
@@ -200,7 +212,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
         setup: WorkflowSetupPhase(
           speechRoute: WorkflowSpeechRoute(
             selection: .automatic,
-            recognizerID: AppModel.sherpaOnnxRecognizerID
+            recognizerID: AppModel.localSpeechRecognizerID
           ),
           vocabularyBindings: [
             VocabularyCollectionBinding(
@@ -242,6 +254,10 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       workflows: [builtinAssistant],
       credentialStore: UITestSecureCredentialStore(
         storage: [.openAIAPIKey: "test-openai-key"]
+      ),
+      permissionSnapshot: PermissionSnapshot(
+        accessibility: .granted,
+        microphone: .granted
       )
     )
     harness.model.installWakeWordConfigurationValidationAction { _ in }
@@ -249,6 +265,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       !harness.model.isLoadingSettings
         && harness.model.openAICredentialAvailability == .available
     }
+    harness.model.updateWakeWordResourceState(.ready)
 
     let result = await harness.model.updateWakeWordSettings(
       phrases: ["你好 Rill"],
@@ -262,6 +279,126 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     XCTAssertEqual(customized.plan.output, builtinAssistant.plan.output)
     XCTAssertTrue(harness.model.isWorkflowEnabled(customized))
     XCTAssertFalse(harness.model.isWorkflowEnabled(builtinAssistant))
+  }
+
+  @MainActor
+  func testVoiceAssistantReadinessAllowsConfiguredLLMAndSystemVoiceFallback() async {
+    let assistant = makeAssistantWorkflow()
+    let harness = makeHarness(
+      workflows: [assistant],
+      credentialStore: UITestSecureCredentialStore(
+        storage: [.openAIAPIKey: "test-openai-key"]
+      ),
+      permissionSnapshot: PermissionSnapshot(
+        accessibility: .granted,
+        microphone: .granted
+      )
+    )
+    await waitUntil {
+      !harness.model.isLoadingSettings
+        && harness.model.openAICredentialAvailability == .available
+    }
+    harness.model.updateWakeWordResourceState(.ready)
+
+    XCTAssertEqual(harness.model.voiceAssistantReadiness.llm, .configured)
+    XCTAssertEqual(
+      harness.model.voiceAssistantReadiness.speechOutput,
+      .systemFallback
+    )
+    XCTAssertTrue(harness.model.voiceAssistantReadiness.canEnableListening)
+  }
+
+  @MainActor
+  func testVoiceAssistantReadinessBlocksKnownInvalidOrFailedLLMConfiguration() async {
+    let assistant = makeAssistantWorkflow()
+    let harness = makeHarness(
+      workflows: [assistant],
+      credentialStore: UITestSecureCredentialStore(
+        storage: [.openAIAPIKey: "test-openai-key"]
+      ),
+      permissionSnapshot: PermissionSnapshot(
+        accessibility: .granted,
+        microphone: .granted
+      )
+    )
+    await waitUntil {
+      !harness.model.isLoadingSettings
+        && harness.model.openAICredentialAvailability == .available
+    }
+    harness.model.updateWakeWordResourceState(.ready)
+    harness.model.language = .english
+
+    harness.model.openAIBaseURL = "http://not-a-loopback.example"
+    XCTAssertEqual(
+      harness.model.voiceAssistantReadiness.llm,
+      .configurationInvalid
+    )
+    XCTAssertFalse(harness.model.voiceAssistantReadiness.canEnableListening)
+
+    harness.model.openAIBaseURL = OpenAISettings.defaultBaseURL
+    harness.model.setWorkflowEnabled(true, for: assistant.id)
+    XCTAssertEqual(
+      harness.model.enabledWorkflows(for: .wakeWord).map(\.id),
+      [assistant.id]
+    )
+
+    harness.model.openAIConfigurationVerificationState = .failed
+    harness.model.openAIVerificationFailure = .authenticationFailed
+    XCTAssertEqual(
+      harness.model.voiceAssistantReadiness.llm,
+      .verificationFailed(.authenticationFailed)
+    )
+    XCTAssertFalse(harness.model.voiceAssistantReadiness.canEnableListening)
+    XCTAssertTrue(harness.model.isWorkflowEnabled(assistant))
+    XCTAssertTrue(harness.model.enabledWorkflows(for: .wakeWord).isEmpty)
+
+    harness.model.setWorkflowEnabled(false, for: assistant.id)
+    harness.model.setWorkflowEnabled(true, for: assistant.id)
+    XCTAssertFalse(harness.model.isWorkflowEnabled(assistant))
+    XCTAssertEqual(
+      harness.model.workflowLibraryError,
+      "The current LLM configuration failed verification. Fix it or verify it again before enabling this workflow."
+    )
+  }
+
+  @MainActor
+  func testVoiceAssistantActivationRequiresMicrophoneAndPreparedLocalASR() async {
+    let assistant = makeAssistantWorkflow()
+    let harness = makeHarness(
+      workflows: [assistant],
+      credentialStore: UITestSecureCredentialStore(
+        storage: [.openAIAPIKey: "test-openai-key"]
+      ),
+      permissionSnapshot: PermissionSnapshot(
+        accessibility: .granted,
+        microphone: .denied
+      )
+    )
+    await waitUntil {
+      !harness.model.isLoadingSettings
+        && harness.model.openAICredentialAvailability == .available
+    }
+    harness.model.language = .english
+
+    harness.model.setWorkflowEnabled(true, for: assistant.id)
+    XCTAssertEqual(
+      harness.model.workflowLibraryError,
+      "Grant microphone access before enabling wake-word listening."
+    )
+
+    harness.model.updatePermissionSnapshot(
+      PermissionSnapshot(accessibility: .granted, microphone: .granted)
+    )
+    harness.model.setWorkflowEnabled(true, for: assistant.id)
+    XCTAssertEqual(
+      harness.model.workflowLibraryError,
+      "Prepare the selected local ASR model before enabling wake-word listening."
+    )
+
+    harness.model.updateWakeWordResourceState(.ready)
+    harness.model.setWorkflowEnabled(true, for: assistant.id)
+    XCTAssertTrue(harness.model.isWorkflowEnabled(assistant))
+    XCTAssertNil(harness.model.workflowLibraryError)
   }
 
   @MainActor
@@ -292,6 +429,32 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       await Task.yield()
     }
     XCTAssertTrue(predicate())
+  }
+
+  private func makeAssistantWorkflow() -> WorkflowDefinition {
+    WorkflowDefinition(
+      name: "Voice Assistant",
+      titleKey: .voiceAssistant,
+      trigger: .wakeWord,
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(
+          speechRoute: WorkflowSpeechRoute(
+            selection: .automatic,
+            recognizerID: AppModel.localSpeechRecognizerID
+          ),
+          wakeWord: WakeWordConfiguration(phrases: ["Hey Rill"])
+        ),
+        process: WorkflowProcessPhase(steps: [
+          WorkflowProcessStep(kind: .recognizeSpeech),
+          WorkflowProcessStep(kind: .llmRewrite, prompt: "Answer briefly."),
+        ]),
+        output: WorkflowOutputPhase(actions: [
+          OutputActionReference(id: SpeechOutputActionID.speak)
+        ])
+      ),
+      ui: WorkflowUIConfig(symbolName: "sparkles", accentColorName: "purple"),
+      metadata: [WorkflowMetadataKey.defaultEnabled: "false"]
+    )
   }
 }
 

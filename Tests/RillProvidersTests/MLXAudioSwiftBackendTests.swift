@@ -9,11 +9,10 @@ final class MLXAudioSwiftBackendTests: XCTestCase {
     let modelID = MLXAudioModelID.qwen3ASR06BInt8.rawValue
 
     XCTAssertEqual(try LocalSpeechModelCatalog.backend(for: modelID), .mlxAudioSwift)
-    XCTAssertEqual(
+    XCTAssertThrowsError(
       try LocalSpeechModelCatalog.backend(
-        for: SherpaOnnxModelID.qwen3ASR06BInt8.rawValue
-      ),
-      .sherpaOnnx
+        for: "sherpa-onnx-qwen3-asr-0.6b-int8-2026-03-25"
+      )
     )
     XCTAssertThrowsError(try LocalSpeechModelCatalog.backend(for: "unreviewed-model")) {
       XCTAssertEqual(
@@ -50,7 +49,7 @@ final class MLXAudioSwiftBackendTests: XCTestCase {
   func testWorkflowOverrideSelectsExactMLXModel() {
     let workflow = WorkflowDefinition(
       name: "MLX override",
-      pipeline: PipelineDeclaration(recognizerID: "sherpa-onnx.local", outputActions: []),
+      pipeline: PipelineDeclaration(recognizerID: "local-speech", outputActions: []),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "accent"),
       metadata: [
         WorkflowMetadataKey.localSpeechModelOverride:
@@ -61,7 +60,7 @@ final class MLXAudioSwiftBackendTests: XCTestCase {
     XCTAssertEqual(
       LocalSpeechModelCatalog.effectiveModelIdentifier(
         settings: LocalSpeechSettings(
-          model: SherpaOnnxModelID.qwen3ASR06BInt8.rawValue
+          model: "sherpa-onnx-qwen3-asr-0.6b-int8-2026-03-25"
         ),
         workflow: workflow
       ),

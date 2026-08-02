@@ -162,17 +162,16 @@ final class MLXAudioSwiftSpeechWorkerServiceTests: XCTestCase {
     XCTAssertFalse(text.contains("token-must-not-leak"))
   }
 
-  func testWorkerRouterSelectsHandlersByReviewedModelIdentity() async {
-    let sherpa = RecordingWorkerHandler()
+  func testWorkerRouterRejectsRetiredModelAndRoutesReviewedMLXIdentity() async {
     let mlx = RecordingWorkerHandler()
-    let router = RoutedSpeechWorkerService(sherpaOnnx: sherpa, mlxAudioSwift: mlx)
+    let router = RoutedSpeechWorkerService(mlxAudioSwift: mlx)
 
-    _ = await router.handle(
+    let retired = await router.handle(
       SpeechWorkerRequest(
         requestID: UUID(),
         generation: 1,
         modelPreparationPayload: SpeechWorkerModelPreparationPayload(
-          modelID: SherpaOnnxModelCatalog.defaultModelID.rawValue,
+          modelID: "sherpa-onnx-qwen3-asr-0.6b-int8-2026-03-25",
           downloadIfNeeded: false
         )
       )
@@ -188,9 +187,8 @@ final class MLXAudioSwiftSpeechWorkerServiceTests: XCTestCase {
       )
     )
 
-    let sherpaRequestCount = await sherpa.requestCount()
     let mlxRequestCount = await mlx.requestCount()
-    XCTAssertEqual(sherpaRequestCount, 1)
+    XCTAssertEqual(retired.failure, .unsupportedModel)
     XCTAssertEqual(mlxRequestCount, 1)
   }
 

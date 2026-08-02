@@ -374,7 +374,10 @@ private struct WorkflowTOMLDocument: Codable {
     name = workflow.name
     trigger = workflow.trigger.tomlValue
     ui = WorkflowTOMLUI(config: workflow.ui)
-    setup = WorkflowTOMLSetup(phase: workflow.plan.setup)
+    setup = WorkflowTOMLSetup(
+      phase: workflow.plan.setup,
+      metadata: workflow.metadata
+    )
     process = workflow.plan.process.steps.map(WorkflowTOMLProcessStep.init)
     output = WorkflowTOMLOutput(phase: workflow.plan.output)
     metadata = workflow.metadata
@@ -401,6 +404,8 @@ private struct WorkflowTOMLDocument: Codable {
     guard let trigger = TriggerBinding(tomlValue: trigger) else {
       throw WorkflowFileStoreError.invalidWorkflow("Unknown trigger '\(trigger)'.")
     }
+    var normalizedMetadata = metadata
+    try setup.speech?.applyMetadata(to: &normalizedMetadata)
     return try WorkflowDefinition(
       id: id,
       name: name,
@@ -412,7 +417,7 @@ private struct WorkflowTOMLDocument: Codable {
         output: try output.phase()
       ),
       ui: ui.config,
-      metadata: metadata
+      metadata: normalizedMetadata
     )
   }
 }
@@ -442,8 +447,18 @@ private struct WorkflowTOMLSetup: Codable {
     case wakeWord = "wake_word"
   }
 
-  init(phase: WorkflowSetupPhase) {
+  init(phase: WorkflowSetupPhase, metadata: [String: String]) {
     speech = phase.speechRoute.map(WorkflowTOMLSpeechRoute.init)
+    speech?.livePreview = metadata[WorkflowMetadataKey.livePreviewEnabled].flatMap {
+      switch $0.lowercased() {
+      case "true", "yes", "1", "on": true
+      case "false", "no", "0", "off": false
+      default: nil
+      }
+    }
+    speech?.streamingProfile = metadata[WorkflowMetadataKey.streamingProfile]
+    speech?.livePreviewPlacement =
+      metadata[WorkflowMetadataKey.livePreviewPlacement]
     vocabulary = phase.vocabularyBindings.map(WorkflowTOMLVocabularyBinding.init)
     wakeWord = phase.wakeWord.map(WorkflowTOMLWakeWord.init)
   }
@@ -479,6 +494,9 @@ private struct WorkflowTOMLSpeechRoute: Codable {
   var language: String?
   var localModel: String?
   var providerModel: String?
+  var livePreview: Bool?
+  var livePreviewPlacement: String?
+  var streamingProfile: String?
 
   enum CodingKeys: String, CodingKey {
     case selection
@@ -486,6 +504,9 @@ private struct WorkflowTOMLSpeechRoute: Codable {
     case language
     case localModel = "local_model"
     case providerModel = "provider_model"
+    case livePreview = "live_preview"
+    case livePreviewPlacement = "live_preview_placement"
+    case streamingProfile = "streaming_profile"
   }
 
   init(route: WorkflowSpeechRoute) {
@@ -494,6 +515,9 @@ private struct WorkflowTOMLSpeechRoute: Codable {
     language = route.language
     localModel = route.localModel
     providerModel = route.providerModel
+    livePreview = nil
+    livePreviewPlacement = nil
+    streamingProfile = nil
   }
 
   func route() throws -> WorkflowSpeechRoute {
@@ -502,13 +526,44 @@ private struct WorkflowTOMLSpeechRoute: Codable {
         "Unknown speech selection '\(selection)'."
       )
     }
+    let normalizedRecognizer: String
+    switch recognizer.lowercased() {
+    case "auto", "sherpa-onnx.local", "sherpa-onnx.streaming":
+      normalizedRecognizer = "local-speech"
+    default:
+      normalizedRecognizer = recognizer
+    }
     return WorkflowSpeechRoute(
       selection: selection,
-      recognizerID: recognizer,
+      recognizerID: normalizedRecognizer,
       language: language,
-      localModel: localModel,
+      localModel: localModel.map { modelID in
+        switch modelID.lowercased() {
+        case "auto", "sherpa-onnx-qwen3-asr-0.6b-int8-2026-03-25":
+          "qwen3-asr-0.6b-mlx-8bit"
+        default:
+          modelID
+        }
+      },
       providerModel: providerModel
     )
+  }
+
+  func applyMetadata(to metadata: inout [String: String]) throws {
+    if let livePreview {
+      metadata[WorkflowMetadataKey.livePreviewEnabled] = livePreview ? "true" : "false"
+    }
+    if let livePreviewPlacement {
+      guard LivePreviewPlacement(rawValue: livePreviewPlacement) != nil else {
+        throw WorkflowFileStoreError.invalidWorkflow(
+          "Unknown live preview placement '\(livePreviewPlacement)'."
+        )
+      }
+      metadata[WorkflowMetadataKey.livePreviewPlacement] = livePreviewPlacement
+    }
+    if let streamingProfile {
+      metadata[WorkflowMetadataKey.streamingProfile] = streamingProfile
+    }
   }
 }
 
@@ -733,6 +788,7 @@ private extension WorkflowProcessStepKind {
     case .applyVocabulary: "apply-vocabulary"
     case .snippetReplacement: "snippet-replacement"
     case .llmRewrite: "llm-rewrite"
+    case .llmAnswer: "llm-answer"
     case .normalizeWhitespace: "normalize-whitespace"
     }
   }
@@ -744,6 +800,7 @@ private extension WorkflowProcessStepKind {
     case "apply-vocabulary": self = .applyVocabulary
     case "snippet-replacement": self = .snippetReplacement
     case "llm-rewrite": self = .llmRewrite
+    case "llm-answer": self = .llmAnswer
     case "normalize-whitespace": self = .normalizeWhitespace
     default: return nil
     }

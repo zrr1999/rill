@@ -10,6 +10,7 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
         XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.commandMode))
         XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.custom))
         XCTAssertTrue(WorkflowsView.availableStepKinds.contains(.llmRewrite))
+        XCTAssertTrue(WorkflowsView.availableStepKinds.contains(.llmAnswer))
 
         var draft = WorkflowEditorDraft(
             name: "Custom Rewrite",
@@ -17,6 +18,12 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
                 .init(kind: .normalizeWhitespace),
                 .init(kind: .llmRewrite, prompt: "Rewrite as a concise release note."),
             ]
+        )
+        XCTAssertNil(draft.outputValidationError(language: .english))
+
+        draft.postProcessSteps[1] = .init(
+            kind: .llmAnswer,
+            prompt: "Answer the request directly."
         )
         XCTAssertNil(draft.outputValidationError(language: .english))
 
@@ -103,7 +110,7 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
 
         let workflow = draft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
 
-        XCTAssertEqual(workflow.pipeline.recognizerID, "sherpa-onnx.local")
+        XCTAssertEqual(workflow.pipeline.recognizerID, "local-speech")
         XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode], "auto")
         XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.languageOverride], "zh-CN")
         XCTAssertEqual(workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride], "distil-large-v3")
@@ -113,6 +120,32 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
         XCTAssertEqual(roundTrip?.recognizer, .automatic)
         XCTAssertEqual(roundTrip?.speechLanguageOverride, "zh-CN")
         XCTAssertEqual(roundTrip?.localSpeechModelOverride, "distil-large-v3")
+    }
+
+    func testLivePreviewPlacementDefaultsToOverlayAndRoundTripsCursor() throws {
+        var legacyWorkflow = WorkflowEditorDraft(name: "Legacy")
+            .makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
+        legacyWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.livePreviewPlacement)
+        XCTAssertEqual(
+            WorkflowEditorDraft(workflow: legacyWorkflow)?.livePreviewPlacement,
+            .overlay
+        )
+
+        let draft = WorkflowEditorDraft(
+            name: "Cursor Preview",
+            livePreviewEnabled: true,
+            livePreviewPlacement: .cursor
+        )
+        let workflow = draft.makeWorkflow(id: UUID(), hotkeyGesture: "fn-hold")
+
+        XCTAssertEqual(
+            workflow.metadata[WorkflowMetadataKey.livePreviewPlacement],
+            LivePreviewPlacement.cursor.rawValue
+        )
+        XCTAssertEqual(
+            WorkflowEditorDraft(workflow: workflow)?.livePreviewPlacement,
+            .cursor
+        )
     }
 
     func testMenuTitleUsesStyleWithoutDuplicatingBuiltinNames() {

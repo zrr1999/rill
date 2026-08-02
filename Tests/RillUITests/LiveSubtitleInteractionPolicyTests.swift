@@ -27,7 +27,7 @@ final class LiveSubtitleInteractionPolicyTests: XCTestCase {
   }
 
   func testStandardLiveTextPreservesLatestContentWithinBoundedHeight() {
-    XCTAssertEqual(LiveSubtitlePresentationPolicy.standardLiveTextLineLimit, 4)
+    XCTAssertEqual(LiveSubtitlePresentationPolicy.standardLiveTextLineLimit, 2)
     XCTAssertTrue(LiveSubtitlePresentationPolicy.standardLiveTextPreservesLatestContent)
   }
 

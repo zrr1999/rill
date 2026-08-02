@@ -43,6 +43,8 @@ accent = "blue"
 selection = "automatic"
 recognizer = "sherpa-onnx.local"
 language = "zh-CN"
+live_preview = true
+live_preview_placement = "overlay"
 
 [[setup.vocabulary]]
 id = "99999999-2222-3333-4444-555555555555"
@@ -81,6 +83,8 @@ removed on the next visual save.
 
 - `trigger`: `manual`, `hotkey`, `menu-bar`, `wake-word`
 - `setup.speech.selection`: `automatic`, `fixed`
+- `setup.speech.live_preview_placement`: `overlay`, `cursor`. It defaults to
+  `overlay` when omitted and is ignored while `live_preview` is disabled.
 - vocabulary `uses`: `recognition-hints`, `text-replacement`
 - process `kind`: `recognize-speech`, `resolve-uncertainty`,
   `apply-vocabulary`, `snippet-replacement`, `llm-rewrite`,

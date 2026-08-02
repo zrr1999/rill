@@ -4,9 +4,8 @@
 # The unfiltered build intentionally produces both RillApp and the bundled
 # RillSpeechWorker helper from one reviewed package graph.
 #
-# sherpa-onnx and ONNX Runtime remain reviewed XCFrameworks in vendor/. The
-# optional native MLX backend is consumed from the exact Package.resolved graph;
-# no dependency checkout is patched during release builds.
+# The native MLX backend is consumed from the exact Package.resolved graph; no
+# dependency checkout is patched during release builds.
 
 set -euo pipefail
 

@@ -17,6 +17,62 @@ public enum LocalSpeechModelSelectionError: Error, LocalizedError, Sendable, Equ
   }
 }
 
+public enum LocalSpeechRecognitionPolicy {
+  public static let maximumAudioDurationSeconds =
+    Int(LocalSpeechCaptureLimits.maximumRequestedDurationSeconds)
+  public static let maximumAcceptedAudioDurationSeconds =
+    LocalSpeechCaptureLimits.maximumAcceptedDurationSeconds
+  public static let maximumThreadCount = 16
+  private static let maximumHotwordCount = 16
+  private static let maximumHotwordUTF8ByteCount = 48
+  private static let maximumHotwordScalarCount = 128
+
+  public static func resolvedLanguage(
+    requestLanguage: String?,
+    workflowLanguage: String?,
+    configurationLanguage: String?
+  ) -> String? {
+    normalizedLanguage(requestLanguage)
+      ?? normalizedLanguage(workflowLanguage)
+      ?? normalizedLanguage(configurationLanguage)
+  }
+
+  public static func sanitizedQwenHotwords(_ keyterms: [String]) -> [String] {
+    var hotwords: [String] = []
+    var seen = Set<String>()
+    var totalByteCount = 0
+    for keyterm in keyterms {
+      let candidate = keyterm.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !candidate.isEmpty,
+        candidate.unicodeScalars.count <= maximumHotwordScalarCount,
+        !candidate.contains(","),
+        !candidate.unicodeScalars.contains(where: {
+          CharacterSet.controlCharacters.contains($0)
+            || CharacterSet.newlines.contains($0)
+        }),
+        seen.insert(candidate).inserted
+      else { continue }
+      let byteCount = candidate.utf8.count
+      guard totalByteCount + byteCount <= maximumHotwordUTF8ByteCount else { break }
+      hotwords.append(candidate)
+      totalByteCount += byteCount
+      if hotwords.count == maximumHotwordCount { break }
+    }
+    return hotwords
+  }
+
+  private static func normalizedLanguage(_ language: String?) -> String? {
+    let value = language?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard !value.isEmpty,
+      !value.unicodeScalars.contains(where: {
+        CharacterSet.controlCharacters.contains($0)
+          || CharacterSet.newlines.contains($0)
+      })
+    else { return nil }
+    return value
+  }
+}
+
 public enum MLXAudioModelID: String, CaseIterable, Codable, Sendable {
   case qwen3ASR06BInt8 = "qwen3-asr-0.6b-mlx-8bit"
   case qwen3ASR17BInt8 = "qwen3-asr-1.7b-mlx-8bit"
@@ -168,18 +224,14 @@ public enum MLXAudioModelCatalog {
 }
 
 public enum LocalSpeechModelCatalog {
-  public static let defaultModelIdentifier = SherpaOnnxModelCatalog.defaultModelID.rawValue
+  public static let defaultModelIdentifier = MLXAudioModelID.qwen3ASR06BInt8.rawValue
 
   public static let distributableModelIdentifiers =
-    SherpaOnnxModelCatalog.distributableModelIdentifiers
-    .union(MLXAudioModelCatalog.distributableModelIdentifiers)
+    MLXAudioModelCatalog.distributableModelIdentifiers
 
   public static func backend(
     for modelIdentifier: String
   ) throws -> LocalSpeechModelBackend {
-    if SherpaOnnxModelCatalog.distributableModelIdentifiers.contains(modelIdentifier) {
-      return .sherpaOnnx
-    }
     if MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelIdentifier) {
       return .mlxAudioSwift
     }
@@ -197,9 +249,22 @@ public enum LocalSpeechModelCatalog {
         .trimmingCharacters(in: .whitespacesAndNewlines),
       !override.isEmpty
     {
-      return override
+      return normalizedLegacyModelID(override)
     }
-    let configured = settings.model.trimmingCharacters(in: .whitespacesAndNewlines)
+    let configured = normalizedLegacyModelID(
+      settings.model.trimmingCharacters(in: .whitespacesAndNewlines)
+    )
     return configured.isEmpty ? defaultModelIdentifier : configured
+  }
+
+  public static func normalizedLegacyModelID(_ modelID: String) -> String {
+    let normalized = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
+    switch normalized.lowercased() {
+    case "", "auto", "sherpa-onnx.local", "sherpa-onnx.streaming",
+      "sherpa-onnx-qwen3-asr-0.6b-int8-2026-03-25":
+      return defaultModelIdentifier
+    default:
+      return normalized
+    }
   }
 }

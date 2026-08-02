@@ -11,6 +11,10 @@ public enum AppSettingKey: String, Codable, Sendable, Equatable {
   case localSpeechModel = "provider.local-speech.model"
   case localSpeechDownloadedModels = "provider.local-speech.downloaded-models"
   case localSpeechPrewarm = "provider.local-speech.prewarm"
+  case enabledSpeechModels = "provider.speech-model-pool.enabled"
+  case residentSpeechModels = "provider.speech-model-pool.resident"
+  case residentSpeechBudgetConfirmation = "provider.speech-model-pool.budget-confirmation"
+  case speechModelMeasuredPeaks = "provider.speech-model-pool.measured-peaks"
   case ttsModel = "provider.tts.model"
   // Read-only compatibility keys for settings written before the sherpa-onnx cutover.
   case legacyWhisperKitModel = "provider.whisperkit.model"
@@ -169,10 +173,12 @@ public struct LocalSpeechModelDescriptor: Identifiable, Equatable, Sendable {
   public let minimumSystemMemoryGiB: Int
   public let recommendedSystemMemoryGiB: Int
   public let hardwareRecommendationPriority: Int
+  public let approximateDownloadByteCount: UInt64
+  public let conservativeRuntimePeakByteCount: UInt64?
 
   public init(
     id: String,
-    engine: LocalSpeechEngine = .sherpaOnnx,
+    engine: LocalSpeechEngine = .mlxAudioSwift,
     englishName: String,
     simplifiedChineseName: String,
     englishDetail: String = "",
@@ -183,7 +189,9 @@ public struct LocalSpeechModelDescriptor: Identifiable, Equatable, Sendable {
     quantization: LocalSpeechModelQuantization = .int8,
     minimumSystemMemoryGiB: Int = 8,
     recommendedSystemMemoryGiB: Int = 16,
-    hardwareRecommendationPriority: Int = 0
+    hardwareRecommendationPriority: Int = 0,
+    approximateDownloadByteCount: UInt64 = 0,
+    conservativeRuntimePeakByteCount: UInt64? = nil
   ) {
     self.id = id
     self.engine = engine
@@ -198,6 +206,8 @@ public struct LocalSpeechModelDescriptor: Identifiable, Equatable, Sendable {
     self.minimumSystemMemoryGiB = minimumSystemMemoryGiB
     self.recommendedSystemMemoryGiB = recommendedSystemMemoryGiB
     self.hardwareRecommendationPriority = hardwareRecommendationPriority
+    self.approximateDownloadByteCount = approximateDownloadByteCount
+    self.conservativeRuntimePeakByteCount = conservativeRuntimePeakByteCount
   }
 }
 
@@ -218,6 +228,22 @@ public struct LocalSpeechSettings: Codable, Sendable, Equatable {
   public var language: String
   public var downloadIfNeeded: Bool
   public var prewarm: Bool
+  public var enabledModelIDs: Set<String>
+  public var residentModelIDs: Set<String>
+  public var residentBudgetConfirmation: String?
+
+  private enum CodingKeys: String, CodingKey {
+    case model
+    case modelRepo
+    case modelToken
+    case modelFolder
+    case language
+    case downloadIfNeeded
+    case prewarm
+    case enabledModelIDs
+    case residentModelIDs
+    case residentBudgetConfirmation
+  }
 
   public init(
     model: String = "",
@@ -226,7 +252,10 @@ public struct LocalSpeechSettings: Codable, Sendable, Equatable {
     modelFolder: String = "",
     language: String = "",
     downloadIfNeeded: Bool = true,
-    prewarm: Bool = false
+    prewarm: Bool = false,
+    enabledModelIDs: Set<String> = ["qwen3-asr-0.6b-mlx-8bit"],
+    residentModelIDs: Set<String> = ["qwen3-asr-0.6b-mlx-8bit"],
+    residentBudgetConfirmation: String? = nil
   ) {
     self.model = model
     self.modelRepo = modelRepo
@@ -235,6 +264,110 @@ public struct LocalSpeechSettings: Codable, Sendable, Equatable {
     self.language = language
     self.downloadIfNeeded = downloadIfNeeded
     self.prewarm = prewarm
+    self.enabledModelIDs = enabledModelIDs
+    self.residentModelIDs = residentModelIDs.intersection(enabledModelIDs)
+    self.residentBudgetConfirmation = residentBudgetConfirmation
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let defaults = Self()
+    self.init(
+      model: try container.decodeIfPresent(String.self, forKey: .model) ?? defaults.model,
+      modelRepo: try container.decodeIfPresent(String.self, forKey: .modelRepo)
+        ?? defaults.modelRepo,
+      modelToken: try container.decodeIfPresent(String.self, forKey: .modelToken)
+        ?? defaults.modelToken,
+      modelFolder: try container.decodeIfPresent(String.self, forKey: .modelFolder)
+        ?? defaults.modelFolder,
+      language: try container.decodeIfPresent(String.self, forKey: .language)
+        ?? defaults.language,
+      downloadIfNeeded: try container.decodeIfPresent(Bool.self, forKey: .downloadIfNeeded)
+        ?? defaults.downloadIfNeeded,
+      prewarm: try container.decodeIfPresent(Bool.self, forKey: .prewarm)
+        ?? defaults.prewarm,
+      enabledModelIDs: try container.decodeIfPresent(Set<String>.self, forKey: .enabledModelIDs)
+        ?? defaults.enabledModelIDs,
+      residentModelIDs: try container.decodeIfPresent(Set<String>.self, forKey: .residentModelIDs)
+        ?? defaults.residentModelIDs,
+      residentBudgetConfirmation: try container.decodeIfPresent(
+        String.self,
+        forKey: .residentBudgetConfirmation
+      )
+    )
+  }
+}
+
+public enum SpeechModelCapability: String, Codable, Sendable, Equatable {
+  case speechToText = "stt"
+  case textToSpeech = "tts"
+}
+
+public struct SpeechModelResourceDescriptor: Identifiable, Codable, Sendable, Equatable {
+  public let id: String
+  public let capability: SpeechModelCapability
+  public let downloadByteCount: UInt64
+  public let conservativeRuntimePeakByteCount: UInt64?
+  public var measuredPeakByteCount: UInt64?
+
+  public init(
+    id: String,
+    capability: SpeechModelCapability,
+    downloadByteCount: UInt64,
+    conservativeRuntimePeakByteCount: UInt64? = nil,
+    measuredPeakByteCount: UInt64? = nil
+  ) {
+    self.id = id
+    self.capability = capability
+    self.downloadByteCount = downloadByteCount
+    self.conservativeRuntimePeakByteCount = conservativeRuntimePeakByteCount
+    self.measuredPeakByteCount = measuredPeakByteCount
+  }
+
+  public var estimatedPeakByteCount: UInt64 {
+    if let measuredPeakByteCount { return measuredPeakByteCount }
+    if let conservativeRuntimePeakByteCount { return conservativeRuntimePeakByteCount }
+    let multiplied = downloadByteCount.multipliedReportingOverflow(by: 3)
+    guard !multiplied.overflow else { return .max }
+    return multiplied.partialValue / 2
+  }
+}
+
+public struct SpeechModelResourceBudget: Sendable, Equatable {
+  public static let warningFraction = 0.2
+
+  public let models: [SpeechModelResourceDescriptor]
+  public let physicalMemoryByteCount: UInt64
+
+  public init(
+    residentModelIDs: Set<String>,
+    catalog: [SpeechModelResourceDescriptor],
+    physicalMemoryByteCount: UInt64
+  ) {
+    let unique = Dictionary(catalog.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    models = residentModelIDs.compactMap { unique[$0] }.sorted { $0.id < $1.id }
+    self.physicalMemoryByteCount = physicalMemoryByteCount
+  }
+
+  public var estimatedPeakByteCount: UInt64 {
+    models.reduce(0) { total, model in
+      let sum = total.addingReportingOverflow(model.estimatedPeakByteCount)
+      return sum.overflow ? .max : sum.partialValue
+    }
+  }
+
+  public var estimatedFraction: Double {
+    guard physicalMemoryByteCount > 0 else { return 1 }
+    return Double(estimatedPeakByteCount) / Double(physicalMemoryByteCount)
+  }
+
+  public var requiresConfirmation: Bool {
+    estimatedFraction > Self.warningFraction
+  }
+
+  public var confirmationFingerprint: String {
+    models.map { "\($0.id):\($0.estimatedPeakByteCount)" }.joined(separator: "|")
+      + "@\(physicalMemoryByteCount)"
   }
 }
 

@@ -160,7 +160,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
       capturedAudio.format,
       AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .float32)
     )
-    XCTAssertEqual(capturedAudio.metadata["live.provider"], "sherpa-onnx.capture")
+    XCTAssertEqual(capturedAudio.metadata["live.provider"], "local-speech.streaming-preview")
     let fileURL = try XCTUnwrap(capturedAudio.fileURL)
     XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
     XCTAssertGreaterThan(try Data(contentsOf: fileURL).count, 44)
@@ -232,7 +232,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     await runtime.cancelCapture(for: request)
   }
 
-  func testFixedStreamingPreviewPublishesHypothesisWithoutChangingCapturedAudio() async throws {
+  func testQwenStreamingPreviewPublishesHypothesisWithoutChangingCapturedAudio() async throws {
     let source = TestLocalSpeechAudioCaptureSource()
     let snapshots = LocalSpeechSnapshotProbe()
     let preview = TestLocalSpeechStreamingPreviewSession(
@@ -242,7 +242,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     let runtime = LocalSpeechVoiceCaptureRuntime(
       permissionRequester: { true },
       sourceFactory: { source },
-      streamingPreviewSessionFactory: { preview },
+      streamingPreviewSessionFactory: { _ in preview },
       liveUpdateHandler: { await snapshots.append($0) }
     )
     let request = makeLocalSpeechRequest()
@@ -267,13 +267,63 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
       Double(samples.count + trailingSamples.count) / 16_000
     )
     XCTAssertEqual(
-      capturedAudio.metadata[SherpaStreamingCaptureRecognizer.bestTextMetadataKey],
+      capturedAudio.metadata["streaming.preview.final"],
       "你好 world final"
     )
-    XCTAssertEqual(
-      capturedAudio.metadata[SherpaStreamingCaptureRecognizer.modelMetadataKey],
-      SherpaStreamingPreviewService.modelID
+  }
+
+  func testSlowStreamingPreviewStartupDoesNotDelayCaptureAndReplaysPreRoll() async throws {
+    let source = TestLocalSpeechAudioCaptureSource()
+    let snapshots = LocalSpeechSnapshotProbe()
+    let previewFactoryGate = LocalSpeechStreamingPreviewFactoryGate()
+    let preview = TestLocalSpeechStreamingPreviewSession(
+      results: [.success("实时预览")]
     )
+    let runtime = LocalSpeechVoiceCaptureRuntime(
+      permissionRequester: { true },
+      sourceFactory: { source },
+      streamingPreviewSessionFactory: { _ in
+        await previewFactoryGate.waitForSession()
+      },
+      liveUpdateHandler: { await snapshots.append($0) }
+    )
+    let request = makeLocalSpeechRequest()
+    let preRoll = Array(repeating: Float(0.2), count: 4_800)
+
+    let startTask = Task { try await runtime.startCapture(request: request) }
+    try await source.waitUntilStarted()
+    source.emit(samples: preRoll, cumulativeRMS: [0.005, 0.005, 0.005])
+    try await startTask.value
+
+    let snapshotsAfterReadiness = await snapshots.values
+    XCTAssertTrue(
+      snapshotsAfterReadiness.contains { $0.phase == .recording },
+      "Recording readiness must not wait for worker/model startup."
+    )
+    XCTAssertTrue(preview.acceptedSampleCounts.isEmpty)
+
+    await previewFactoryGate.resume(with: preview)
+    try await preview.waitUntilAcceptedSampleCount(1)
+    for _ in 0..<2_000 {
+      if await snapshots.values.contains(where: {
+        $0.phase == .recording && $0.hypothesisText == "实时预览"
+      }) {
+        break
+      }
+      try await Task.sleep(for: .milliseconds(1))
+    }
+
+    XCTAssertEqual(preview.acceptedSampleCounts, [preRoll.count])
+    let snapshotsAfterPreview = await snapshots.values
+    XCTAssertTrue(
+      snapshotsAfterPreview.contains { snapshot in
+        snapshot.phase == .recording && snapshot.hypothesisText == "实时预览"
+      }
+    )
+
+    let capturedAudio = try await runtime.finishCaptureDeferred(for: request).value()
+    defer { _ = try? capturedAudio.removeManagedTemporaryFile() }
+    XCTAssertEqual(capturedAudio.durationSeconds, Double(preRoll.count) / 16_000)
   }
 
   func testStreamingPreviewProjectionHoldsTransientRewritesUntilTheyStabilize() {
@@ -291,6 +341,26 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
 
     projection.observe("天气如何呢")
     XCTAssertEqual(projection.text, "天气如何呢")
+  }
+
+  func testStreamingPreviewProjectionRemovesQwenLanguageEnvelopeAndRestartFragments() {
+    var projection = LocalSpeechStreamingPreviewProjection()
+
+    projection.observe("language None")
+    XCTAssertEqual(projection.text, "")
+
+    projection.observe("language None<asr_text>我是一只猪。")
+    XCTAssertEqual(projection.text, "我是一只猪。")
+
+    projection.observe(
+      "language None<asr_text>我是一只猪。 language None<asr_text>"
+    )
+    XCTAssertEqual(projection.text, "我是一只猪。")
+
+    projection.observe(
+      "language None<asr_text>我是一只猪。<|im_end|> language Chinese"
+    )
+    XCTAssertEqual(projection.text, "我是一只猪。")
   }
 
   func testStreamingPreviewProjectionRemovesDuplicatedExtensionOverlap() {
@@ -335,7 +405,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     let runtime = LocalSpeechVoiceCaptureRuntime(
       permissionRequester: { true },
       sourceFactory: { source },
-      streamingPreviewSessionFactory: { preview },
+      streamingPreviewSessionFactory: { _ in preview },
       liveUpdateHandler: { await snapshots.append($0) }
     )
     let request = makeLocalSpeechRequest()
@@ -357,26 +427,27 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     XCTAssertGreaterThan(capturedAudio.durationSeconds, 0)
   }
 
-  func testStreamingDirectWorkflowFailsBeforeCaptureWhenStreamingModelIsUnavailable() async {
+  func testLegacyStreamingAliasStillRecordsWhenPreviewIsUnavailable() async throws {
     let source = TestLocalSpeechAudioCaptureSource()
     let runtime = LocalSpeechVoiceCaptureRuntime(
       permissionRequester: { true },
       sourceFactory: { source },
-      streamingPreviewSessionFactory: { nil }
+      streamingPreviewSessionFactory: { _ in nil }
     )
-    var request = makeLocalSpeechRequest()
-    request.workflow.pipeline.recognizerID = SherpaStreamingCaptureRecognizer.recognizerID
+    let request: AudioCaptureRequest = {
+      var value = makeLocalSpeechRequest()
+      value.workflow.pipeline.recognizerID = "sherpa-onnx.streaming"
+      return value
+    }()
+    let startTask = Task { try await runtime.startCapture(request: request) }
+    try await source.waitUntilStarted()
+    source.emit(samples: Array(repeating: 0.2, count: 1_600), cumulativeRMS: [0.005])
+    try await startTask.value
+    let capturedAudio = try await runtime.finishCaptureDeferred(for: request).value()
+    defer { _ = try? capturedAudio.removeManagedTemporaryFile() }
 
-    do {
-      try await runtime.startCapture(request: request)
-      XCTFail("Streaming-direct must not record when its only recognizer is unavailable.")
-    } catch {
-      XCTAssertEqual(
-        error as? RealtimeAudioCaptureService.CaptureError,
-        .streamingSpeechUnavailable
-      )
-    }
-    XCTAssertEqual(source.startCount, 0)
+    XCTAssertEqual(source.startCount, 1)
+    XCTAssertGreaterThan(capturedAudio.durationSeconds, 0)
   }
 
   func testFinishDrainsEveryAcceptedTailChunkBeforeFinalizingWaveFile() async throws {
@@ -1274,6 +1345,26 @@ private final class TestLocalSpeechStreamingPreviewSession:
     case .failure:
       throw TestLocalSpeechFailure.stream
     }
+  }
+}
+
+private actor LocalSpeechStreamingPreviewFactoryGate {
+  private var resolvedSession: (any LocalSpeechStreamingPreviewSession)?
+  private var continuation:
+    CheckedContinuation<(any LocalSpeechStreamingPreviewSession)?, Never>?
+  private var isResolved = false
+
+  func waitForSession() async -> (any LocalSpeechStreamingPreviewSession)? {
+    if isResolved { return resolvedSession }
+    return await withCheckedContinuation { continuation = $0 }
+  }
+
+  func resume(with session: (any LocalSpeechStreamingPreviewSession)?) {
+    guard !isResolved else { return }
+    isResolved = true
+    resolvedSession = session
+    continuation?.resume(returning: session)
+    continuation = nil
   }
 }
 

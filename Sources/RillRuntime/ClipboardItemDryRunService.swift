@@ -543,6 +543,8 @@ private extension ClipboardItemDryRunService {
             append(.shortcutInvocation, destination: capability.processingDestination)
         case .fileAppend:
             append(.fileAppend, destination: capability.processingDestination)
+        case .speechPlayback:
+            append(.speechPlayback, destination: capability.processingDestination)
         case .unclassified:
             append(.unclassified, destination: .unclassified)
         }
@@ -611,6 +613,7 @@ private extension ClipboardItemDryRunService {
         switch kind {
         case .snippetReplacement: .snippetReplacement
         case .llmRewrite: .languageModelRewrite
+        case .llmAnswer: .languageModelAnswer
         case .normalizeWhitespace: .whitespaceNormalization
         }
     }

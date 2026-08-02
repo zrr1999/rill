@@ -25,7 +25,7 @@ PERSONAL_VOCABULARY_ID = "E79EF7C7-8867-5D6C-8E88-1119C62B9702"
 DOCUMENT_KEYS = {"schema_version", "metadata", "workflows"}
 POST_PROCESS_KEYS = {"id", "kind", "prompt"}
 SUPPORTED_DELIVERY_STRATEGIES = {"immediate", "stackFirst", "clipboardOnly"}
-SUPPORTED_POST_PROCESS_KINDS = {"llmRewrite", "normalizeWhitespace"}
+SUPPORTED_POST_PROCESS_KINDS = {"llmAnswer", "llmRewrite", "normalizeWhitespace"}
 SUPPORTED_AVAILABILITY = {"active", "planned"}
 SUPPORTED_SPEECH_MODES = {
     "streaming-direct",
@@ -34,6 +34,8 @@ SUPPORTED_SPEECH_MODES = {
     "voice-assistant",
 }
 SUPPORTED_SETTINGS = {"output_mode"}
+SUPPORTED_STREAMING_PROFILES = {"realtime", "agent", "subtitle"}
+SUPPORTED_LIVE_PREVIEW_PLACEMENTS = {"overlay", "cursor"}
 SUPPORTED_SPEECH_OUTPUT_CONFIGURATION = {
     "speech.language",
     "speech.provider",
@@ -68,6 +70,9 @@ WORKFLOW_KEYS = {
     "gesture",
     "id",
     "interaction_mode",
+    "live_preview",
+    "live_preview_placement",
+    "local_model",
     "mode",
     "name",
     "output",
@@ -75,6 +80,7 @@ WORKFLOW_KEYS = {
     "post_process",
     "recognizer",
     "settings_expose",
+    "streaming_profile",
     "symbol",
     "target_group",
     "text_style",
@@ -210,10 +216,35 @@ def build_workflow(
     )
 
     if recognizer == "auto":
-        recognizer_id = "sherpa-onnx.local"
+        recognizer_id = "local-speech"
         metadata["recognizer.selection"] = "auto"
     else:
         recognizer_id = recognizer
+
+    local_model = optional_string(entry, "local_model", location)
+    if local_model is not None:
+        metadata["recognizer.local.model"] = local_model
+    live_preview = optional_bool(entry, "live_preview", location)
+    if live_preview is not None:
+        metadata["recognizer.live_preview"] = "true" if live_preview else "false"
+    live_preview_placement = optional_string(
+        entry, "live_preview_placement", location
+    )
+    if live_preview_placement is not None:
+        validate_member(
+            live_preview_placement,
+            SUPPORTED_LIVE_PREVIEW_PLACEMENTS,
+            f"{location}.live_preview_placement",
+        )
+        metadata["recognizer.live_preview_placement"] = live_preview_placement
+    streaming_profile = optional_string(entry, "streaming_profile", location)
+    if streaming_profile is not None:
+        validate_member(
+            streaming_profile,
+            SUPPORTED_STREAMING_PROFILES,
+            f"{location}.streaming_profile",
+        )
+        metadata["recognizer.streaming_profile"] = streaming_profile
 
     settings = string_list(
         entry.get("settings_expose", []), f"{location}.settings_expose"
@@ -303,6 +334,8 @@ def build_workflow(
             }
         ],
     }
+    if local_model is not None:
+        setup["speechRoute"]["localModel"] = local_model
     if trigger == "wakeWord":
         setup["wakeWord"] = {"phrases": wake_phrases}
 
@@ -363,9 +396,9 @@ def build_post_process(
         else uuid.uuid5(workflow_id, f"post-process-{index}")
     )
     prompt = optional_string(step, "prompt", location)
-    if kind == "llmRewrite":
+    if kind in {"llmAnswer", "llmRewrite"}:
         if prompt is None:
-            raise SourceError(f"{location}.prompt is required for llmRewrite")
+            raise SourceError(f"{location}.prompt is required for {kind}")
     elif prompt is not None:
         raise SourceError(f"{location}.prompt is unsupported for built-in {kind} steps")
     return {
@@ -443,7 +476,8 @@ def render_swift_workflow(workflow: Mapping[str, Any], indent: int) -> list[str]
         f"{prefix}        setup: WorkflowSetupPhase(",
         f"{prefix}            speechRoute: WorkflowSpeechRoute(",
         f"{prefix}                selection: .{route['selection']},",
-        f"{prefix}                recognizerID: {swift_string(route['recognizerID'])}",
+        f"{prefix}                recognizerID: {swift_string(route['recognizerID'])},",
+        f"{prefix}                localModel: {swift_string(route['localModel']) if route.get('localModel') is not None else 'nil'}",
         f"{prefix}            ),",
         f"{prefix}            vocabularyBindings: [",
         f"{prefix}                VocabularyCollectionBinding(",

@@ -2,6 +2,11 @@ import Foundation
 import RillCore
 
 public actor CapturedAudioProcessingQueue {
+    public enum Lane: String, Sendable, Equatable {
+        case interactive
+        case assistant
+    }
+
     public enum OwnershipTransferResult: Sendable, Equatable {
         case accepted
         case rejected
@@ -38,6 +43,8 @@ public actor CapturedAudioProcessingQueue {
     private let eventBus: EventBus
     private let diagnostics: DiagnosticsRecorder?
     private let failedAudioRecoveryController: FailedAudioRecoveryController?
+    private let lane: Lane
+    private let publishesSnapshots: Bool
     private let rejectedCapturedAudioRemoval: @Sendable (CapturedAudio) async throws -> Void
     private let rejectedCleanupInitialRetryDelay: Duration
     private let rejectedCleanupMaximumRetryDelay: Duration
@@ -56,13 +63,17 @@ public actor CapturedAudioProcessingQueue {
         sessionCoordinator: SessionCoordinator,
         eventBus: EventBus,
         diagnostics: DiagnosticsRecorder? = nil,
-        failedAudioRecoveryController: FailedAudioRecoveryController? = nil
+        failedAudioRecoveryController: FailedAudioRecoveryController? = nil,
+        lane: Lane = .interactive,
+        publishesSnapshots: Bool = true
     ) {
         self.init(
             sessionCoordinator: sessionCoordinator,
             eventBus: eventBus,
             diagnostics: diagnostics,
             failedAudioRecoveryController: failedAudioRecoveryController,
+            lane: lane,
+            publishesSnapshots: publishesSnapshots,
             rejectedCapturedAudioRemoval: { capturedAudio in
                 _ = try capturedAudio.removeManagedTemporaryFile()
             },
@@ -80,6 +91,8 @@ public actor CapturedAudioProcessingQueue {
         eventBus: EventBus,
         diagnostics: DiagnosticsRecorder? = nil,
         failedAudioRecoveryController: FailedAudioRecoveryController? = nil,
+        lane: Lane = .interactive,
+        publishesSnapshots: Bool = true,
         rejectedCapturedAudioRemoval: @escaping @Sendable (
             CapturedAudio
         ) async throws -> Void,
@@ -94,6 +107,8 @@ public actor CapturedAudioProcessingQueue {
         self.eventBus = eventBus
         self.diagnostics = diagnostics
         self.failedAudioRecoveryController = failedAudioRecoveryController
+        self.lane = lane
+        self.publishesSnapshots = publishesSnapshots
         self.rejectedCapturedAudioRemoval = rejectedCapturedAudioRemoval
         self.rejectedCleanupInitialRetryDelay = rejectedCleanupInitialRetryDelay
         self.rejectedCleanupMaximumRetryDelay = rejectedCleanupMaximumRetryDelay
@@ -531,6 +546,7 @@ public actor CapturedAudioProcessingQueue {
     }
 
     private func publishSnapshot() async {
+        guard publishesSnapshots else { return }
         await eventBus.publish(.audioProcessingQueueUpdated(snapshot()))
     }
 
@@ -650,7 +666,7 @@ public actor CapturedAudioProcessingQueue {
                 level: level,
                 event: event,
                 message: message,
-                metadata: metadata
+                metadata: metadata.merging(["lane": lane.rawValue]) { current, _ in current }
             )
         )
     }

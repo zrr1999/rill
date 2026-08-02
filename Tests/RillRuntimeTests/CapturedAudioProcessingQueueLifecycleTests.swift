@@ -401,7 +401,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         XCTAssertEqual(execution.action, 0)
         XCTAssertEqual(preserveCallCount, 0)
         XCTAssertEqual(cleanupFailure.message, DiagnosticEventSanitizer.sanitizedMessage)
-        XCTAssertTrue(cleanupFailure.metadata.isEmpty)
+        XCTAssertEqual(cleanupFailure.metadata, ["lane": "interactive"])
         XCTAssertFalse(cleanupFailure.message.lowercased().contains("canary"))
     }
 
@@ -513,7 +513,10 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
             resolutionFailures.first?.message,
             DiagnosticEventSanitizer.sanitizedMessage
         )
-        XCTAssertTrue(resolutionFailures.first?.metadata.isEmpty == true)
+        XCTAssertEqual(
+            resolutionFailures.first?.metadata,
+            ["lane": "interactive"]
+        )
         XCTAssertFalse(
             diagnosticEvents.contains {
                 $0.event == "audio-processing.rejected-cleanup-pending"

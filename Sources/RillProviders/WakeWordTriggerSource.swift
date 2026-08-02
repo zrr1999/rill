@@ -1,9 +1,9 @@
 import Foundation
 import RillCore
-import RillSherpaRuntime
 
 public enum WakeWordSuspensionReason: String, Sendable, Equatable, Hashable {
   case busy
+  case interactiveRecognition
   case speechPlayback
   case microphonePermission
   case inputDeviceChanged
@@ -49,8 +49,14 @@ public actor WakeWordTriggerSource: TriggerSource {
     var totalDurationSeconds: Double
   }
 
+  private struct PendingRecognition {
+    let capturedAudio: CapturedAudio
+    let workflow: WorkflowDefinition
+    let phrases: [String]
+  }
+
   private enum Timing {
-    static let preRollSampleCount = SharedVoiceInputFrame.sampleRate / 5
+    static let preRollSampleCount = SharedVoiceInputFrame.sampleRate / 2
     static let minimumSpeechDurationSeconds = 0.3
     static let trailingSilenceSeconds = 0.8
     static let maximumCandidateDurationSeconds = 12.0
@@ -58,6 +64,8 @@ public actor WakeWordTriggerSource: TriggerSource {
 
   private let hub: SharedVoiceInputHub
   private let recognizer: any SpeechRecognizer
+  private let vadSessionFactory:
+    @Sendable () async -> (any LocalSpeechStreamingPreviewSession)?
   private nonisolated let eventStream: AsyncStream<WorkflowTriggerEvent>
   private nonisolated let eventContinuation:
     AsyncStream<WorkflowTriggerEvent>.Continuation
@@ -65,14 +73,16 @@ public actor WakeWordTriggerSource: TriggerSource {
   private nonisolated let statusContinuation:
     AsyncStream<WakeWordListeningStatus>.Continuation
 
-  private var detector: SherpaVoiceActivityDetector?
+  private var vadSession: (any LocalSpeechStreamingPreviewSession)?
   private var workflow: WorkflowDefinition?
   private var configuration: WakeWordConfiguration?
   private var subscriptionID: UUID?
   private var listeningTask: Task<Void, Never>?
+  private var activityTask: Task<Void, Never>?
   private var inputRestartTask: Task<Void, Never>?
   private var recognitionTask: Task<Void, Never>?
   private var activeRecognitionID: UUID?
+  private var queuedRecognition: PendingRecognition?
   private var candidate: Candidate?
   private var preRoll: [Float] = []
   private var pendingCommands: [UUID: String] = [:]
@@ -81,10 +91,13 @@ public actor WakeWordTriggerSource: TriggerSource {
 
   public init(
     hub: SharedVoiceInputHub,
-    recognizer: any SpeechRecognizer
+    recognizer: any SpeechRecognizer,
+    vadSessionFactory: @escaping @Sendable () async ->
+      (any LocalSpeechStreamingPreviewSession)? = { nil }
   ) {
     self.hub = hub
     self.recognizer = recognizer
+    self.vadSessionFactory = vadSessionFactory
     let (eventStream, eventContinuation) =
       AsyncStream<WorkflowTriggerEvent>.makeStream(
         bufferingPolicy: .bufferingNewest(8)
@@ -128,20 +141,26 @@ public actor WakeWordTriggerSource: TriggerSource {
     publish(.starting)
     try validate(configuration: configuration)
 
-    let detector: SherpaVoiceActivityDetector
-    do {
-      detector = try .bundled()
-    } catch {
-      publish(.failed(error.localizedDescription))
-      throw error
+    guard let vadSession = await vadSessionFactory() else {
+      publish(.modelMissing)
+      throw WakeWordTriggerSourceError.modelNotInstalled
     }
-    let subscription = try await hub.subscribe()
-    self.detector = detector
+    let activityStream = hub.activityStream()
+    let subscription = try await hub.subscribe(channel: .ambientWakeWord)
+    let activity = await hub.currentActivity()
+    self.vadSession = vadSession
     self.workflow = workflow
     self.configuration = configuration
     subscriptionID = subscription.id
     suspensionReasons.removeAll()
-    publish(.listening)
+    apply(activity: activity)
+
+    activityTask = Task { [weak self] in
+      for await activity in activityStream {
+        guard !Task.isCancelled else { return }
+        await self?.voiceInputActivityChanged(activity)
+      }
+    }
 
     listeningTask = Task { [weak self] in
       do {
@@ -165,7 +184,13 @@ public actor WakeWordTriggerSource: TriggerSource {
   }
 
   public func setSuspended(_ reason: WakeWordSuspensionReason?) async {
+    let interactiveRecognitionIsActive = suspensionReasons.contains(
+      .interactiveRecognition
+    )
     suspensionReasons = reason.map { [$0] } ?? []
+    if interactiveRecognitionIsActive {
+      suspensionReasons.insert(.interactiveRecognition)
+    }
     resetGate(cancelRecognition: true)
     publishEffectiveListeningStatus()
   }
@@ -193,21 +218,24 @@ public actor WakeWordTriggerSource: TriggerSource {
   }
 
   private func receive(_ frame: SharedVoiceInputFrame) async {
-    guard suspensionReasons.isEmpty, let detector else { return }
+    guard suspensionReasons.isEmpty, let vadSession else { return }
     let wakeWordSamples = WakeWordAudioConditioner.prepare(frame.samples)
-    guard recognitionTask == nil else {
-      appendToPreRoll(wakeWordSamples)
-      return
-    }
 
     do {
-      let observations = try detector.accept(samples: wakeWordSamples)
+      _ = try vadSession.accept(samples: wakeWordSamples)
+      let observations = vadSession.drainVoiceActivity()
       let speechDuration = observations
         .filter(\.isSpeech)
-        .reduce(0) { $0 + $1.durationSeconds }
+        .reduce(0) { duration, _ in
+          duration + Double(MLXSileroVADConstants.chunkSampleCount)
+            / Double(SharedVoiceInputFrame.sampleRate)
+        }
       let silenceDuration = observations
         .filter { !$0.isSpeech }
-        .reduce(0) { $0 + $1.durationSeconds }
+        .reduce(0) { duration, _ in
+          duration + Double(MLXSileroVADConstants.chunkSampleCount)
+            / Double(SharedVoiceInputFrame.sampleRate)
+        }
 
       if candidate == nil, speechDuration > 0 {
         try beginCandidate(with: wakeWordSamples)
@@ -278,7 +306,6 @@ public actor WakeWordTriggerSource: TriggerSource {
     guard candidate.speechDurationSeconds >= Timing.minimumSpeechDurationSeconds else {
       candidate.writer.closeForDiscard()
       try? FileManager.default.removeItem(at: candidate.writer.fileURL)
-      detector?.reset()
       return
     }
 
@@ -295,18 +322,30 @@ public actor WakeWordTriggerSource: TriggerSource {
       fileURL: artifact.fileURL,
       fileOwnership: .managedTemporary
     )
+    let pending = PendingRecognition(
+      capturedAudio: capturedAudio,
+      workflow: workflow,
+      phrases: try configuration.validatedPhrases()
+    )
+    guard recognitionTask == nil else {
+      replaceQueuedRecognition(with: pending)
+      return
+    }
+    startRecognition(pending)
+  }
+
+  private func startRecognition(_ pending: PendingRecognition) {
     let recognitionID = UUID()
     activeRecognitionID = recognitionID
-    let phrases = try configuration.validatedPhrases()
     recognitionTask = Task { [weak self] in
       guard let self else {
-        _ = try? capturedAudio.removeManagedTemporaryFile()
+        _ = try? pending.capturedAudio.removeManagedTemporaryFile()
         return
       }
       await self.recognizeCandidate(
-        capturedAudio,
-        workflow: workflow,
-        phrases: phrases,
+        pending.capturedAudio,
+        workflow: pending.workflow,
+        phrases: pending.phrases,
         recognitionID: recognitionID
       )
     }
@@ -324,17 +363,19 @@ public actor WakeWordTriggerSource: TriggerSource {
     do {
       var options = SpeechRecognitionRequestOptions.empty
       options.hints.keyterms = phrases
+      var candidateWorkflow = workflow
+      candidateWorkflow.metadata["speech.task-priority"] = "wake-candidate"
       let result = try await recognizer.recognize(
         RecognitionRequest(
           runID: recognitionID,
-          workflow: workflow,
+          workflow: candidateWorkflow,
           contextSnapshot: .empty,
           capturedAudio: capturedAudio,
           options: options
         )
       )
       try Task.checkCancellation()
-      candidateRecognitionCompleted(
+      await candidateRecognitionCompleted(
         result,
         phrases: phrases,
         recognitionID: recognitionID
@@ -350,21 +391,24 @@ public actor WakeWordTriggerSource: TriggerSource {
     _ result: RecognitionResult,
     phrases: [String],
     recognitionID: UUID
-  ) {
+  ) async {
     guard activeRecognitionID == recognitionID else { return }
     recognitionTask = nil
     activeRecognitionID = nil
-    detector?.reset()
-    guard suspensionReasons.isEmpty,
+    let activity = await hub.currentActivity()
+    guard !activity.isInteractiveRecognitionActive,
+      suspensionReasons.isEmpty,
       let workflow,
       let match = WakePhraseMatcher.match(
         transcript: result.bestText,
         phrases: phrases
       )
     else {
-      publishEffectiveListeningStatus()
+      startQueuedRecognitionOrPublishStatus()
       return
     }
+
+    discardQueuedRecognition()
 
     let event = WorkflowTriggerEvent(
       binding: .wakeWord,
@@ -385,8 +429,7 @@ public actor WakeWordTriggerSource: TriggerSource {
     guard activeRecognitionID == recognitionID else { return }
     recognitionTask = nil
     activeRecognitionID = nil
-    detector?.reset()
-    publishEffectiveListeningStatus()
+    startQueuedRecognitionOrPublishStatus()
   }
 
   private func candidateRecognitionFailed(
@@ -396,7 +439,7 @@ public actor WakeWordTriggerSource: TriggerSource {
     guard activeRecognitionID == recognitionID else { return }
     recognitionTask = nil
     activeRecognitionID = nil
-    detector?.reset()
+    discardQueuedRecognition()
     publish(.failed(error.localizedDescription))
   }
 
@@ -404,7 +447,8 @@ public actor WakeWordTriggerSource: TriggerSource {
     guard listeningTask != nil else { return }
     listeningTask = nil
     subscriptionID = nil
-    detector = nil
+    try? vadSession?.cancel()
+    vadSession = nil
     discardCandidate()
     guard
       let configuration,
@@ -447,6 +491,8 @@ public actor WakeWordTriggerSource: TriggerSource {
   private func stopListening(publishDisabled: Bool) async {
     inputRestartTask?.cancel()
     inputRestartTask = nil
+    activityTask?.cancel()
+    activityTask = nil
     let task = listeningTask
     listeningTask = nil
     task?.cancel()
@@ -455,7 +501,8 @@ public actor WakeWordTriggerSource: TriggerSource {
     }
     subscriptionID = nil
     resetGate(cancelRecognition: true)
-    detector = nil
+    try? vadSession?.cancel()
+    vadSession = nil
     workflow = nil
     configuration = nil
     pendingCommands.removeAll()
@@ -471,8 +518,8 @@ public actor WakeWordTriggerSource: TriggerSource {
       recognitionTask?.cancel()
       recognitionTask = nil
       activeRecognitionID = nil
+      discardQueuedRecognition()
     }
-    detector?.reset()
     preRoll.removeAll(keepingCapacity: true)
   }
 
@@ -481,6 +528,26 @@ public actor WakeWordTriggerSource: TriggerSource {
     self.candidate = nil
     candidate.writer.closeForDiscard()
     try? FileManager.default.removeItem(at: candidate.writer.fileURL)
+  }
+
+  private func replaceQueuedRecognition(with pending: PendingRecognition) {
+    discardQueuedRecognition()
+    queuedRecognition = pending
+  }
+
+  private func startQueuedRecognitionOrPublishStatus() {
+    guard suspensionReasons.isEmpty, let pending = queuedRecognition else {
+      publishEffectiveListeningStatus()
+      return
+    }
+    queuedRecognition = nil
+    startRecognition(pending)
+  }
+
+  private func discardQueuedRecognition() {
+    guard let queuedRecognition else { return }
+    self.queuedRecognition = nil
+    _ = try? queuedRecognition.capturedAudio.removeManagedTemporaryFile()
   }
 
   private func appendToPreRoll(_ samples: [Float]) {
@@ -503,10 +570,30 @@ public actor WakeWordTriggerSource: TriggerSource {
       .inputDeviceChanged,
       .speechPlayback,
       .busy,
+      .interactiveRecognition,
     ].first(where: suspensionReasons.contains) {
       publish(.suspended(reason))
-    } else if detector != nil, subscriptionID != nil {
+    } else if vadSession != nil, subscriptionID != nil {
       publish(.listening)
     }
+  }
+
+  private func voiceInputActivityChanged(_ activity: SharedVoiceInputActivity) {
+    apply(activity: activity)
+  }
+
+  private func apply(activity: SharedVoiceInputActivity) {
+    if activity.isInteractiveRecognitionActive {
+      let inserted = suspensionReasons.insert(.interactiveRecognition).inserted
+      if inserted {
+        resetGate(cancelRecognition: true)
+      }
+    } else {
+      let removed = suspensionReasons.remove(.interactiveRecognition) != nil
+      if removed {
+        resetGate(cancelRecognition: false)
+      }
+    }
+    publishEffectiveListeningStatus()
   }
 }

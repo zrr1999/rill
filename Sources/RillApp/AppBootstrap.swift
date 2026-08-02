@@ -61,25 +61,7 @@ enum AppBootstrap {
   }
 
   nonisolated static var distributableLocalSpeechModels: [LocalSpeechModelDescriptor] {
-    var models = [
-      LocalSpeechModelDescriptor(
-        id: SherpaOnnxModelID.qwen3ASR06BInt8.rawValue,
-        engine: .sherpaOnnx,
-        englishName: "Qwen3-ASR · 0.6B · INT8",
-        simplifiedChineseName: "Qwen3-ASR · 0.6B · INT8",
-        englishDetail:
-          "Best default for Simplified Chinese with some English mixing; suitable for 16 GB Macs · about 838 MB final-model download",
-        simplifiedChineseDetail:
-          "简体中文为主、夹少量英文的默认优选，适合 16 GB Mac · 最终模型下载约 838 MB",
-        forcesAutomaticLanguageDetection: true,
-        category: .intelligent,
-        parameterCountMillions: 600,
-        quantization: .int8,
-        minimumSystemMemoryGiB: 12,
-        recommendedSystemMemoryGiB: 16,
-        hardwareRecommendationPriority: 10
-      )
-    ]
+    var models: [LocalSpeechModelDescriptor] = []
     #if arch(arm64)
       models.append(
         LocalSpeechModelDescriptor(
@@ -97,7 +79,9 @@ enum AppBootstrap {
           quantization: .int8,
           minimumSystemMemoryGiB: 8,
           recommendedSystemMemoryGiB: 16,
-          hardwareRecommendationPriority: 20
+          hardwareRecommendationPriority: 20,
+          approximateDownloadByteCount:
+            MLXAudioModelCatalog.qwen3ASR06BInt8.approximateDownloadByteCount
         )
       )
       models.append(
@@ -116,7 +100,9 @@ enum AppBootstrap {
           quantization: .int8,
           minimumSystemMemoryGiB: 16,
           recommendedSystemMemoryGiB: 24,
-          hardwareRecommendationPriority: 30
+          hardwareRecommendationPriority: 30,
+          approximateDownloadByteCount:
+            MLXAudioModelCatalog.qwen3ASR17BInt8.approximateDownloadByteCount
         )
       )
     #endif
@@ -164,16 +150,6 @@ enum AppBootstrap {
     return values.isRegularFile == true && values.isSymbolicLink != true
   }
 
-  /// Model acquisition remains in the host, but native offline model creation
-  /// is exclusively owned by RillSpeechWorker.
-  nonisolated static func modelInstallationConfiguration(
-    from configuration: SherpaOnnxRecognizer.Configuration
-  ) -> SherpaOnnxRecognizer.Configuration {
-    var installationConfiguration = configuration
-    installationConfiguration.prewarm = false
-    return installationConfiguration
-  }
-
   nonisolated static func stopStartupTasks(
     coordinator: ApplicationStartupTaskCoordinator
   ) async {
@@ -197,49 +173,6 @@ enum AppBootstrap {
     }
     if let failure = error as? LocalSpeechPreparationFailure {
       return failure
-    }
-    if let failure = error as? SherpaOnnxModelInstallationError {
-      let stage: LocalSpeechPreparationFailure.Stage
-      switch failure {
-      case .invalidCatalogDescriptor:
-        stage = .trustRoot
-      case .downloadFailed,
-        .archiveInspectionFailed,
-        .extractionFailed,
-        .publicationFailed:
-        stage = .resolution
-      case .unsafeDestinationRoot,
-        .downloadedArchiveIsNotRegularFile,
-        .downloadedArchiveHasMultipleHardLinks,
-        .archiveByteCountMismatch,
-        .archiveDigestMismatch,
-        .unsafeArchiveEntry,
-        .requiredEntryMissing,
-        .requiredEntryTypeMismatch,
-        .extractedTreeInvalid,
-        .receiptInvalid:
-        stage = .integrity
-      }
-      return LocalSpeechPreparationFailure(stage: stage)
-    }
-    if let failure = error as? SherpaOnnxRecognizer.RecognizerError {
-      let stage: LocalSpeechPreparationFailure.Stage
-      switch failure {
-      case .unsupportedModelIdentifier:
-        stage = .trustRoot
-      case .modelNotInstalled:
-        stage = .resolution
-      case .missingCapturedAudio,
-        .fileBackedAudioRequired,
-        .invalidThreadCount,
-        .invalidAudioFile,
-        .emptyAudio,
-        .audioTooLong,
-        .nonFiniteAudioSample,
-        .audioConversionFailed:
-        stage = .runtime
-      }
-      return LocalSpeechPreparationFailure(stage: stage)
     }
     if error is LocalSpeechModelSelectionError {
       return LocalSpeechPreparationFailure(stage: .trustRoot)
@@ -359,7 +292,9 @@ enum AppBootstrap {
       if let issue = WorkflowExecutionPolicy.issue(for: workflow) {
         throw SessionCoordinator.SessionError.unsupportedWorkflow(issue)
       }
-      if workflow.plan.setup.speechRoute?.recognizerID == "sherpa-onnx.local" {
+      if ["local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming", "auto"]
+        .contains(workflow.plan.setup.speechRoute?.recognizerID ?? "")
+      {
         let settings = try await localSpeechSettingsProvider()
         let configuredModelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
           settings: settings
@@ -386,63 +321,14 @@ enum AppBootstrap {
     }
   }
 
-  nonisolated static func sherpaOnnxConfiguration(
-    settings: LocalSpeechSettings,
-    trustedModelIdentifiers: Set<String> =
-      SherpaOnnxModelCatalog.distributableModelIdentifiers,
-    defaultModelIdentifier: String = SherpaOnnxModelCatalog.defaultModelID.rawValue,
-    threadCount: Int = 2
-  ) throws -> SherpaOnnxRecognizer.Configuration {
-    guard trustedModelIdentifiers.contains(defaultModelIdentifier),
-      SherpaOnnxModelID(rawValue: defaultModelIdentifier) != nil
-    else {
-      throw SherpaOnnxModelInstallationError.invalidCatalogDescriptor
-    }
-    let requestedModel = settings.model.trimmingCharacters(in: .whitespacesAndNewlines)
-    let modelIdentifier =
-      trustedModelIdentifiers.contains(requestedModel)
-        && SherpaOnnxModelID(rawValue: requestedModel) != nil
-      ? requestedModel : defaultModelIdentifier
-    let language = settings.language.trimmingCharacters(in: .whitespacesAndNewlines)
-    return SherpaOnnxRecognizer.Configuration(
-      modelIdentifier: modelIdentifier,
-      language: language.isEmpty ? nil : language,
-      downloadIfNeeded: settings.downloadIfNeeded,
-      prewarm: settings.prewarm,
-      threadCount: threadCount
-    )
-  }
-
-  nonisolated static func currentSherpaOnnxConfiguration(
-    from source: LocalSpeechSettingsSource,
-    trustedModelIdentifiers: Set<String> =
-      SherpaOnnxModelCatalog.distributableModelIdentifiers,
-    defaultModelIdentifier: String = SherpaOnnxModelCatalog.defaultModelID.rawValue,
-    threadCount: Int = 2
-  ) throws -> SherpaOnnxRecognizer.Configuration {
-    try sherpaOnnxConfiguration(
-      settings: source.currentSettings(),
-      trustedModelIdentifiers: trustedModelIdentifiers,
-      defaultModelIdentifier: defaultModelIdentifier,
-      threadCount: threadCount
-    )
-  }
-
-  /// Keeps model readiness authoritative while opportunistically preparing the
-  /// already-authorized, stopped audio frontend. The frontend uses minimum
-  /// stopped-state ducking and is retained so the first recording does not pay
-  /// VoiceProcessingIO graph configuration latency.
-  nonisolated static func prepareLocalSpeechModelAndAudioFrontend(
-    prewarmAudioFrontend: Bool,
-    prepareModel: @Sendable () async throws -> String,
-    prepareAudioFrontend: @Sendable () async -> Void
+  /// Prepares only model resources. Microphone frontends stay fully detached
+  /// until an explicit capture so launching Rill or preloading a model cannot
+  /// affect another application's microphone eligibility.
+  nonisolated static func prepareLocalSpeechModel(
+    prepareModel: @Sendable () async throws -> String
   ) async throws -> String {
     let preparedModel = try await prepareModel()
     try Task.checkCancellation()
-    if prewarmAudioFrontend {
-      await prepareAudioFrontend()
-      try Task.checkCancellation()
-    }
     return preparedModel
   }
 
@@ -723,6 +609,7 @@ private struct PlatformServices {
   let pasteboard: PasteboardController
   let hotkeyTap: HotkeyEventTap
   let injectionEngine: TextInjectionEngine
+  let cursorTextPreviewCoordinator: CursorTextPreviewCoordinator
   let permissionGate: PermissionGate
   let contextProvider: BuiltinContextProvider
   let credentialStore: any SecureCredentialStore
@@ -734,19 +621,16 @@ private struct ProviderServices {
   let managedTemporaryAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner
   let markdownFileAppendCoordinator: MarkdownFileAppendCoordinator
   let localSpeechSettingsSource: LocalSpeechSettingsSource
-  let sherpaOnnxConfigurationProvider:
-    @Sendable () async throws -> SherpaOnnxRecognizer.Configuration
   let openAISettingsProvider: @Sendable () async throws -> OpenAISettings
   let localSpeechAvailability: LocalSpeechAvailability
   let trustedLocalSpeechModels: [LocalSpeechModelDescriptor]
   let defaultLocalSpeechModelIdentifier: String?
   let localSpeechStartupDiagnostic: DiagnosticEvent
-  let sherpaOnnxModelPreparer: SherpaOnnxRecognizer
   let speechWorkerSupervisor: SpeechWorkerSupervisor
-  let sherpaOnnxRecognizer: SherpaOnnxWorkerRecognizer
+  let ttsSpeechWorkerSupervisor: SpeechWorkerSupervisor
   let mlxAudioSwiftRecognizer: MLXAudioSwiftWorkerRecognizer
   let localSpeechRecognizer: RoutedLocalSpeechRecognizer
-  let streamingPreviewService: SherpaStreamingPreviewService
+  let streamingPreviewService: SpeechWorkerStreamingPreviewService
   let workflowAudioCaptureService: RealtimeAudioCaptureService
   let wakeWordTriggerSource: WakeWordTriggerSource?
   let speechOutputAction: any OutputAction
@@ -754,6 +638,7 @@ private struct ProviderServices {
   let ttsModelSelectionSource: SpeechSynthesisModelSelectionSource
   let speechPlaybackService: AVSpeechPlaybackService
   let ttsMemoryPressureSource: DispatchSourceMemoryPressure
+  let speechModelPoolPresentationBridge: SpeechModelPoolPresentationBridge
 }
 
 private struct Registries {
@@ -765,11 +650,13 @@ private struct Registries {
 private struct RuntimeServices {
   let coordinator: SessionCoordinator
   let capturedAudioProcessingQueue: CapturedAudioProcessingQueue
+  let assistantAudioProcessingQueue: CapturedAudioProcessingQueue
   let globalInputOwner: GlobalInputOwner
   let stackPasteController: StackPasteController
   let recordingSessionManager: RecordingSessionManager
   let workflowAudioRunController: WorkflowAudioRunController
   let wakeWordCoordinator: WakeWordCoordinator?
+  let cursorTextPreviewLifecycleCoordinator: CursorTextPreviewLifecycleCoordinator
   let failedAudioRecoveryController: FailedAudioRecoveryController?
   let clipboardGroupEventScheduler: ClipboardGroupEventScheduler
   let privacyRunGate: PrivacyRunGate
@@ -837,6 +724,38 @@ private final class SpeechPlaybackPresentationBridge {
 }
 
 @MainActor
+private final class SpeechModelPoolPresentationBridge {
+  weak var model: AppModel?
+  private var isDegraded = false
+  private var measuredPeakByteCounts: [String: UInt64] = [:]
+
+  func update(isDegraded: Bool) {
+    self.isDegraded = isDegraded
+    model?.updateSpeechModelPoolMemoryPressureDegradation(isDegraded)
+  }
+
+  func recordMeasuredPeak(modelID: String, peakByteCount: UInt64) {
+    guard peakByteCount > (measuredPeakByteCounts[modelID] ?? 0) else { return }
+    measuredPeakByteCounts[modelID] = peakByteCount
+    model?.recordMeasuredSpeechModelPeak(
+      modelID: modelID,
+      peakByteCount: peakByteCount
+    )
+  }
+
+  func attach(_ model: AppModel) {
+    self.model = model
+    model.updateSpeechModelPoolMemoryPressureDegradation(isDegraded)
+    for (modelID, peakByteCount) in measuredPeakByteCounts {
+      model.recordMeasuredSpeechModelPeak(
+        modelID: modelID,
+        peakByteCount: peakByteCount
+      )
+    }
+  }
+}
+
+@MainActor
 private final class CloudProcessingAuthorizationBridge {
   weak var model: AppModel?
 
@@ -864,6 +783,7 @@ private enum AppContainerFactory {
   static func makeContainer() -> AppContainer {
     let workflowSelectionBridge = WorkflowSelectionBridge()
     let speechPlaybackPresentationBridge = SpeechPlaybackPresentationBridge()
+    let speechModelPoolPresentationBridge = SpeechModelPoolPresentationBridge()
     let cloudProcessingAuthorizationBridge = CloudProcessingAuthorizationBridge()
     let core = makeCoreServices(
       workflowSelectionBridge: workflowSelectionBridge
@@ -872,7 +792,8 @@ private enum AppContainerFactory {
     let providers = makeProviderServices(
       core: core,
       platform: platform,
-      speechPlaybackPresentationBridge: speechPlaybackPresentationBridge
+      speechPlaybackPresentationBridge: speechPlaybackPresentationBridge,
+      speechModelPoolPresentationBridge: speechModelPoolPresentationBridge
     )
     let registries = makeRegistries(
       core: core,
@@ -898,6 +819,7 @@ private enum AppContainerFactory {
     runtime.clipboardCaptureControlBridge.model = model
     runtime.globalInputCapabilityBridge.attach(model)
     speechPlaybackPresentationBridge.attach(model)
+    speechModelPoolPresentationBridge.attach(model)
     cloudProcessingAuthorizationBridge.attach(model)
     model.installWorkflowLibraryChangedAction {
       Task {
@@ -1009,6 +931,27 @@ private enum AppContainerFactory {
       },
       hotkeyTap: hotkeyTap
     )
+    let cursorTextPreviewCoordinator = CursorTextPreviewCoordinator(
+      diagnosticReporter: { diagnostic in
+        var metadata = [
+          "resultCode": diagnostic.resultCode,
+          "textLength": String(diagnostic.textLength),
+        ]
+        if let reason = diagnostic.reason {
+          metadata["reason"] = reason
+        }
+        await core.diagnostics.record(
+          DiagnosticEvent(
+            runID: diagnostic.runID,
+            subsystem: .platform,
+            level: diagnostic.resultCode == "blocked" ? .warning : .debug,
+            event: "accessibility.cursor-preview",
+            message: "Updated the run-scoped cursor preview transaction.",
+            metadata: metadata
+          )
+        )
+      }
+    )
     let keychainStore = KeychainCredentialStore(service: keychainServiceIdentifier)
     let credentialStore = MigratingSecureCredentialStore(
       secureStore: keychainStore,
@@ -1022,6 +965,7 @@ private enum AppContainerFactory {
       pasteboard: pasteboard,
       hotkeyTap: hotkeyTap,
       injectionEngine: injectionEngine,
+      cursorTextPreviewCoordinator: cursorTextPreviewCoordinator,
       permissionGate: PermissionGate(),
       contextProvider: BuiltinContextProvider(focusTracker: focusTracker, pasteboard: pasteboard),
       credentialStore: credentialStore,
@@ -1032,7 +976,8 @@ private enum AppContainerFactory {
   private static func makeProviderServices(
     core: CoreServices,
     platform: PlatformServices,
-    speechPlaybackPresentationBridge: SpeechPlaybackPresentationBridge
+    speechPlaybackPresentationBridge: SpeechPlaybackPresentationBridge,
+    speechModelPoolPresentationBridge: SpeechModelPoolPresentationBridge
   ) -> ProviderServices
   {
     let managedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(
@@ -1061,81 +1006,52 @@ private enum AppContainerFactory {
       }
     )
     let trustedLocalSpeechModels = AppBootstrap.distributableLocalSpeechModels
-    let trustedModelIdentifiers = Set(trustedLocalSpeechModels.map(\.id))
-    let defaultTrustedModelIdentifier = SherpaOnnxModelCatalog.defaultModelID.rawValue
-    let bundledVoiceActivityDetectorIsAvailable: Bool
-    do {
-      try RealtimeAudioCaptureService.validateBundledVoiceActivityDetector()
-      bundledVoiceActivityDetectorIsAvailable = true
-    } catch {
-      bundledVoiceActivityDetectorIsAvailable = false
-    }
+    let defaultTrustedModelIdentifier = LocalSpeechModelCatalog.defaultModelIdentifier
     let speechWorkerExecutableURL = AppBootstrap.speechWorkerExecutableURL()
     let speechWorkerIsAvailable = AppBootstrap.speechWorkerExecutableIsAvailable(
       at: speechWorkerExecutableURL
     )
-    let localSpeechTrustMaterialIsAvailable =
-      bundledVoiceActivityDetectorIsAvailable && speechWorkerIsAvailable
+    let localSpeechTrustMaterialIsAvailable = speechWorkerIsAvailable
     let localSpeechAvailability: LocalSpeechAvailability =
       localSpeechTrustMaterialIsAvailable ? .available : .trustMaterialUnavailable
-    let localSpeechUnavailableReason =
-      bundledVoiceActivityDetectorIsAvailable
-      ? "speech-worker-unavailable"
-      : "trust-material-unavailable"
+    let localSpeechUnavailableReason = "speech-worker-unavailable"
     let localSpeechStartupDiagnostic = DiagnosticEvent(
       subsystem: .providers,
       level: localSpeechTrustMaterialIsAvailable ? .info : .warning,
       event:
         localSpeechTrustMaterialIsAvailable
-        ? "provider.sherpa-onnx.available" : "provider.sherpa-onnx.unavailable",
+        ? "provider.local-speech.available" : "provider.local-speech.unavailable",
       message:
         localSpeechTrustMaterialIsAvailable
-        ? "Release-pinned sherpa-onnx worker, Silero VAD, and model catalog are available."
+        ? "Release-pinned MLX speech worker, Silero VAD, and model catalog are available."
         : "Release-pinned local speech runtime material is unavailable.",
       metadata:
         localSpeechTrustMaterialIsAvailable
         ? [
-          "recognizerID": "sherpa-onnx.local",
+          "recognizerID": "local-speech",
           "modelCount": String(trustedLocalSpeechModels.count),
           "defaultModel": defaultTrustedModelIdentifier,
-          "vadModel": "silero-vad-v4",
+          "vadModel": "mlx-community/silero-vad-v6",
           "workerIsolation": "subprocess",
         ]
         : [
-          "recognizerID": "sherpa-onnx.local",
+          "recognizerID": "local-speech",
           "reason": localSpeechUnavailableReason,
-          "vadModel": "silero-vad-v4",
+          "vadModel": "mlx-community/silero-vad-v6",
         ]
     )
     let localSpeechSettingsSource = LocalSpeechSettingsSource()
-    let sherpaOnnxConfigurationProvider:
-      @Sendable () async throws -> SherpaOnnxRecognizer.Configuration =
-        {
-          try AppBootstrap.currentSherpaOnnxConfiguration(
-            from: localSpeechSettingsSource,
-            trustedModelIdentifiers: trustedModelIdentifiers,
-            defaultModelIdentifier: defaultTrustedModelIdentifier
-          )
-        }
     let openAISettingsProvider: @Sendable () async throws -> OpenAISettings = {
       try await AppSettingsLoader.loadOpenAISettings(
         from: core.persistence.settingsStore,
         credentialStore: platform.credentialStore
       )
     }
-    let sherpaOnnxModelPreparer = SherpaOnnxRecognizer(
-      configurationProvider: {
-        AppBootstrap.modelInstallationConfiguration(
-          from: try await sherpaOnnxConfigurationProvider()
-        )
-      }
-    )
     let speechWorkerSupervisor = SpeechWorkerSupervisor(
       configuration: .init(executableURL: speechWorkerExecutableURL)
     )
-    let sherpaOnnxRecognizer = SherpaOnnxWorkerRecognizer(
-      supervisor: speechWorkerSupervisor,
-      configurationProvider: sherpaOnnxConfigurationProvider
+    let ttsSpeechWorkerSupervisor = SpeechWorkerSupervisor(
+      configuration: .init(executableURL: speechWorkerExecutableURL)
     )
     let mlxAudioSwiftRecognizer = MLXAudioSwiftWorkerRecognizer(
       supervisor: speechWorkerSupervisor,
@@ -1148,15 +1064,26 @@ private enum AppContainerFactory {
         try localSpeechSettingsSource.currentSettings()
       },
       backends: [
-        sherpaOnnxRecognizer,
         mlxAudioSwiftRecognizer,
       ]
     )
-    let streamingPreviewService = SherpaStreamingPreviewService()
+    let streamingPreviewService = SpeechWorkerStreamingPreviewService(
+      supervisor: speechWorkerSupervisor,
+      settingsProvider: {
+        try localSpeechSettingsSource.currentSettings()
+      },
+      measuredPeakObserver: { modelID, peakByteCount in
+        await speechModelPoolPresentationBridge.recordMeasuredPeak(
+          modelID: modelID,
+          peakByteCount: peakByteCount
+        )
+      }
+    )
     let workflowAudioCaptureService = RealtimeAudioCaptureService(
       streamingPreviewService: streamingPreviewService,
       liveUpdateHandler: { snapshot in
-        await core.eventBus.publish(.liveSubtitleUpdated(snapshot))
+        let projected = await platform.cursorTextPreviewCoordinator.project(snapshot)
+        await core.eventBus.publish(.liveSubtitleUpdated(projected))
       },
       cleanupOwner: managedTemporaryAudioCleanupOwner,
       wakeWordSpeechStartedHandler: {
@@ -1167,18 +1094,27 @@ private enum AppContainerFactory {
     )
     let ttsModelSelectionSource = SpeechSynthesisModelSelectionSource()
     let qwen3TTSSynthesizer = Qwen3TTSSpeechSynthesizer(
-      supervisor: speechWorkerSupervisor,
-      selectionSource: ttsModelSelectionSource
+      supervisor: ttsSpeechWorkerSupervisor,
+      selectionSource: ttsModelSelectionSource,
+      enabledModelIDsProvider: {
+        try localSpeechSettingsSource.currentSettings().enabledModelIDs
+      },
+      residentModelIDsProvider: {
+        try localSpeechSettingsSource.currentSettings().residentModelIDs
+      }
     )
     let ttsMemoryPressureSource = DispatchSource.makeMemoryPressureSource(
       eventMask: [.warning, .critical],
       queue: .global(qos: .utility)
     )
     ttsMemoryPressureSource.setEventHandler {
+      let pressure = ttsMemoryPressureSource.data
       Task {
-        // ASR and TTS have independent worker instances; TTS is the first
-        // optional model released when the process receives memory pressure.
         await qwen3TTSSynthesizer.releaseResources()
+        guard pressure.contains(.critical) else { return }
+        try? await localSpeechRecognizer.releaseLoadedModel()
+        try? await streamingPreviewService.releaseLoadedModels()
+        speechModelPoolPresentationBridge.update(isDegraded: true)
       }
     }
     ttsMemoryPressureSource.resume()
@@ -1187,7 +1123,10 @@ private enum AppContainerFactory {
     if let sharedVoiceInputHub = workflowAudioCaptureService.sharedVoiceInputHub {
       wakeWordTriggerSource = WakeWordTriggerSource(
         hub: sharedVoiceInputHub,
-        recognizer: localSpeechRecognizer
+        recognizer: localSpeechRecognizer,
+        vadSessionFactory: {
+          await streamingPreviewService.makeVADSession()
+        }
       )
     } else {
       wakeWordTriggerSource = nil
@@ -1215,15 +1154,13 @@ private enum AppContainerFactory {
       managedTemporaryAudioCleanupOwner: managedTemporaryAudioCleanupOwner,
       markdownFileAppendCoordinator: markdownFileAppendCoordinator,
       localSpeechSettingsSource: localSpeechSettingsSource,
-      sherpaOnnxConfigurationProvider: sherpaOnnxConfigurationProvider,
       openAISettingsProvider: openAISettingsProvider,
       localSpeechAvailability: localSpeechAvailability,
       trustedLocalSpeechModels: trustedLocalSpeechModels,
       defaultLocalSpeechModelIdentifier: defaultTrustedModelIdentifier,
       localSpeechStartupDiagnostic: localSpeechStartupDiagnostic,
-      sherpaOnnxModelPreparer: sherpaOnnxModelPreparer,
       speechWorkerSupervisor: speechWorkerSupervisor,
-      sherpaOnnxRecognizer: sherpaOnnxRecognizer,
+      ttsSpeechWorkerSupervisor: ttsSpeechWorkerSupervisor,
       mlxAudioSwiftRecognizer: mlxAudioSwiftRecognizer,
       localSpeechRecognizer: localSpeechRecognizer,
       streamingPreviewService: streamingPreviewService,
@@ -1233,7 +1170,8 @@ private enum AppContainerFactory {
       qwen3TTSSynthesizer: qwen3TTSSynthesizer,
       ttsModelSelectionSource: ttsModelSelectionSource,
       speechPlaybackService: speechPlaybackService,
-      ttsMemoryPressureSource: ttsMemoryPressureSource
+      ttsMemoryPressureSource: ttsMemoryPressureSource,
+      speechModelPoolPresentationBridge: speechModelPoolPresentationBridge
     )
   }
 
@@ -1246,7 +1184,6 @@ private enum AppContainerFactory {
       recognizerRegistry: SpeechRecognizerRegistry(
         recognizers: [
           providers.localSpeechRecognizer,
-          SherpaStreamingCaptureRecognizer(),
           SelectionCaptureRecognizer(),
         ]
       ),
@@ -1266,7 +1203,10 @@ private enum AppContainerFactory {
           PushToStackAction(stack: core.deliveryStack),
           ClipboardCopyAction(
             pasteboard: platform.pasteboard, clipboardCapture: core.deliveryStack),
-          InjectTextAction(engine: platform.injectionEngine),
+          InjectTextAction(
+            engine: platform.injectionEngine,
+            cursorPreviewCoordinator: platform.cursorTextPreviewCoordinator
+          ),
           providers.speechOutputAction,
         ]
           + AppBootstrap.makeExternalOutputActions(
@@ -1308,6 +1248,13 @@ private enum AppContainerFactory {
       recognitionOptionsProvider: recognitionOptionsProvider,
       recognitionAudioCleanupOwner: providers.managedTemporaryAudioCleanupOwner
     )
+    let assistantCoordinator = makeCoordinator(
+      core: core,
+      platform: platform,
+      registries: registries,
+      recognitionOptionsProvider: recognitionOptionsProvider,
+      recognitionAudioCleanupOwner: providers.managedTemporaryAudioCleanupOwner
+    )
     let failedAudioRecoveryController = core.persistence.failedAudioRecoveryStore.map { store in
       FailedAudioRecoveryController(
         store: store,
@@ -1338,6 +1285,13 @@ private enum AppContainerFactory {
       eventBus: core.eventBus,
       diagnostics: core.diagnostics,
       failedAudioRecoveryController: failedAudioRecoveryController
+    )
+    let assistantQueue = CapturedAudioProcessingQueue(
+      sessionCoordinator: assistantCoordinator,
+      eventBus: core.eventBus,
+      diagnostics: core.diagnostics,
+      lane: .assistant,
+      publishesSnapshots: false
     )
     let manifestResult = WorkflowManifestResource.load(
       recognizerRegistry: registries.recognizerRegistry,
@@ -1388,7 +1342,7 @@ private enum AppContainerFactory {
     )
     let workflowAudioRunController = WorkflowAudioRunController(
       audioCaptureService: providers.workflowAudioCaptureService,
-      capturedAudioProcessingQueue: queue,
+      capturedAudioProcessingQueue: assistantQueue,
       diagnostics: core.diagnostics,
       eventBus: core.eventBus,
       contextProvider: {
@@ -1419,7 +1373,7 @@ private enum AppContainerFactory {
         diagnostics: core.diagnostics,
         runPrefilledCommand: { workflow, event, command in
           let authorizedContext = try await authorizeWorkflowRunAction(workflow)
-          await coordinator.runRecognizedText(
+          await assistantCoordinator.runRecognizedText(
             command,
             runID: event.id,
             triggerEvent: event,
@@ -1428,9 +1382,14 @@ private enum AppContainerFactory {
         }
       )
     }
+    let cursorTextPreviewLifecycleCoordinator = CursorTextPreviewLifecycleCoordinator(
+      eventBus: core.eventBus,
+      coordinator: platform.cursorTextPreviewCoordinator
+    )
     return RuntimeServices(
       coordinator: coordinator,
       capturedAudioProcessingQueue: queue,
+      assistantAudioProcessingQueue: assistantQueue,
       globalInputOwner: globalInputOwner,
       stackPasteController: makeStackPasteController(
         core: core,
@@ -1451,6 +1410,7 @@ private enum AppContainerFactory {
       ),
       workflowAudioRunController: workflowAudioRunController,
       wakeWordCoordinator: wakeWordCoordinator,
+      cursorTextPreviewLifecycleCoordinator: cursorTextPreviewLifecycleCoordinator,
       failedAudioRecoveryController: failedAudioRecoveryController,
       clipboardGroupEventScheduler: core.clipboardGroupEventScheduler,
       privacyRunGate: privacyRunGate,
@@ -1599,10 +1559,9 @@ private enum AppContainerFactory {
     providers: ProviderServices
   ) async -> String? {
     switch workflow.plan.setup.speechRoute?.recognizerID {
-    case "sherpa-onnx.local", SherpaStreamingCaptureRecognizer.recognizerID:
-      // Both shipped local models default to multilingual automatic detection.
-      // The recognizer still applies an explicit per-workflow language override
-      // for SenseVoice when one exists.
+    case "local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming", "auto":
+      // Qwen defaults to multilingual automatic detection. The worker still
+      // honors an explicit workflow override when one exists.
       return nil
     default:
       return AppSettingsLoader.trimmedNonEmpty(
@@ -1730,6 +1689,9 @@ private enum AppContainerFactory {
     let diagnostics = core.diagnostics
     return ApplicationStartupTaskCoordinator(
       operations: [
+        {
+          await runtime.cursorTextPreviewLifecycleCoordinator.start()
+        },
         {
           // Remove credentials and settings retained only for one-way cleanup
           // after the local-speech and cloud-ASR provider cutovers.
@@ -1895,6 +1857,7 @@ private enum AppContainerFactory {
             model
             .stopInteractiveWorkflowRunsForApplicationShutdown()
           _ = await (audioRunCancellation, interactiveRunCancellation)
+          await runtime.cursorTextPreviewLifecycleCoordinator.shutdown()
         },
         cancelFailedAudioRecoveryRetries: {
           await model.stopFailedAudioRecoveryRetriesForApplicationShutdown()
@@ -1904,12 +1867,17 @@ private enum AppContainerFactory {
           await model.stopLocalHistoryMaintenanceForApplicationShutdown()
         },
         shutdownAudioQueue: {
-          await runtime.capturedAudioProcessingQueue.shutdown()
+          async let interactiveQueueShutdown: Void =
+            runtime.capturedAudioProcessingQueue.shutdown()
+          async let assistantQueueShutdown: Void =
+            runtime.assistantAudioProcessingQueue.shutdown()
+          _ = await (interactiveQueueShutdown, assistantQueueShutdown)
         },
         shutdownSpeechPlayback: {
           providers.ttsMemoryPressureSource.cancel()
           await providers.speechPlaybackService.shutdown()
           await providers.qwen3TTSSynthesizer.releaseResources()
+          try? await providers.ttsSpeechWorkerSupervisor.shutdown()
         },
         drainTextInjectionClipboardRecovery: {
           await platform.injectionEngine
@@ -1940,6 +1908,7 @@ private enum AppContainerFactory {
         }
       ),
       cancelLiveAudio: { runID in
+        await platform.cursorTextPreviewCoordinator.finish(runID: runID)
         await model.markLiveAudioRunStoppedByUser(runID: runID)
         async let recordingCancellation: Void = runtime.recordingSessionManager
           .cancelCurrentRecording(runID: runID)
@@ -2090,54 +2059,13 @@ private enum AppModelFactory {
             settings: settings
           )
           let backend = try LocalSpeechModelCatalog.backend(for: modelIdentifier)
-          return try await AppBootstrap.prepareLocalSpeechModelAndAudioFrontend(
-            prewarmAudioFrontend: settings.prewarm,
+          return try await AppBootstrap.prepareLocalSpeechModel(
             prepareModel: {
-              try await AppBootstrap.prepareFinalModelAndStreamingPreview(
-                prepareFinalModel: {
-                  try await providers.localSpeechRecognizer.prepareForUse(of: backend)
-                  switch backend {
-                  case .sherpaOnnx:
-                    let configuration = try AppBootstrap.sherpaOnnxConfiguration(
-                      settings: settings,
-                      trustedModelIdentifiers:
-                        SherpaOnnxModelCatalog.distributableModelIdentifiers,
-                      defaultModelIdentifier: SherpaOnnxModelCatalog.defaultModelID.rawValue
-                    )
-                    return try await providers.sherpaOnnxModelPreparer.prepareModel(
-                      using: AppBootstrap.modelInstallationConfiguration(from: configuration)
-                    )
-                  case .mlxAudioSwift:
-                    return try await providers.mlxAudioSwiftRecognizer.prepareModel(
-                      modelIdentifier: modelIdentifier,
-                      downloadIfNeeded: settings.downloadIfNeeded
-                    )
-                  }
-                },
-                prepareStreamingPreview: {
-                  try await providers.streamingPreviewService.prepare(
-                    downloadIfNeeded: settings.downloadIfNeeded
-                  )
-                },
-                reportStreamingPreviewFailure: { _ in
-                  await core.diagnostics.record(
-                    DiagnosticEvent(
-                      subsystem: .providers,
-                      level: .warning,
-                      event: "provider.sherpa-onnx.streaming-preview-unavailable",
-                      message:
-                        "Fixed local streaming preview is unavailable; capture continues without subtitle hypotheses.",
-                      metadata: [
-                        "model": SherpaStreamingPreviewService.modelID
-                      ]
-                    )
-                  )
-                }
+              try await providers.localSpeechRecognizer.prepareForUse(of: backend)
+              return try await providers.mlxAudioSwiftRecognizer.prepareModel(
+                modelIdentifier: modelIdentifier,
+                downloadIfNeeded: settings.downloadIfNeeded
               )
-            },
-            prepareAudioFrontend: {
-              await providers.workflowAudioCaptureService
-                .prepareLocalSpeechAudioFrontendIfAuthorized()
             }
           )
         } catch {
@@ -2153,112 +2081,26 @@ private enum AppModelFactory {
             settings: settings
           )
           let backend = try LocalSpeechModelCatalog.backend(for: modelIdentifier)
-          return try await AppBootstrap.prepareLocalSpeechModelAndAudioFrontend(
-            prewarmAudioFrontend: settings.prewarm,
+          return try await AppBootstrap.prepareLocalSpeechModel(
             prepareModel: {
-              let previewModelByteCount =
-                SherpaOnnxModelCatalog.streamingZipformerBilingualPreviewInt8
-                .archiveByteCount
-              let finalModelByteCount: UInt64
-              switch backend {
-              case .sherpaOnnx:
-                guard let finalModelID = SherpaOnnxModelID(rawValue: modelIdentifier) else {
-                  throw SherpaOnnxModelInstallationError.invalidCatalogDescriptor
-                }
-                finalModelByteCount =
-                  SherpaOnnxModelCatalog.descriptor(
-                    for: finalModelID
-                  ).archiveByteCount
-              case .mlxAudioSwift:
-                guard let finalModelID = MLXAudioModelID(rawValue: modelIdentifier) else {
-                  throw LocalSpeechModelSelectionError.unsupportedModelIdentifier(modelIdentifier)
-                }
-                finalModelByteCount =
-                  MLXAudioModelCatalog.descriptor(
-                    for: finalModelID
-                  ).approximateDownloadByteCount
+              guard let finalModelID = MLXAudioModelID(rawValue: modelIdentifier) else {
+                throw LocalSpeechModelSelectionError.unsupportedModelIdentifier(modelIdentifier)
               }
-              let aggregateByteCount = finalModelByteCount + previewModelByteCount
-              let preparedModel =
-                try await AppBootstrap
-                .prepareFinalModelAndStreamingPreview(
-                  prepareFinalModel: {
-                    try await providers.localSpeechRecognizer.prepareForUse(of: backend)
-                    switch backend {
-                    case .sherpaOnnx:
-                      let configuration = try AppBootstrap.sherpaOnnxConfiguration(
-                        settings: settings,
-                        trustedModelIdentifiers:
-                          SherpaOnnxModelCatalog.distributableModelIdentifiers,
-                        defaultModelIdentifier: SherpaOnnxModelCatalog.defaultModelID.rawValue
-                      )
-                      return try await providers.sherpaOnnxModelPreparer.prepareModel(
-                        using: AppBootstrap.modelInstallationConfiguration(
-                          from: configuration
-                        ),
-                        progress: { update in
-                          let progress = Progress(
-                            totalUnitCount: Int64(aggregateByteCount)
-                          )
-                          progress.completedUnitCount = Int64(
-                            min(update.completedByteCount, finalModelByteCount)
-                          )
-                          progressCallback(progress)
-                        }
-                      )
-                    case .mlxAudioSwift:
-                      let initial = Progress(totalUnitCount: Int64(aggregateByteCount))
-                      progressCallback(initial)
-                      let prepared = try await providers.mlxAudioSwiftRecognizer.prepareModel(
-                        modelIdentifier: modelIdentifier,
-                        downloadIfNeeded: settings.downloadIfNeeded
-                      )
-                      let loaded = Progress(
-                        totalUnitCount: Int64(aggregateByteCount)
-                      )
-                      loaded.completedUnitCount = Int64(finalModelByteCount)
-                      progressCallback(loaded)
-                      return prepared
-                    }
-                  },
-                  prepareStreamingPreview: {
-                    try await providers.streamingPreviewService.prepare(
-                      downloadIfNeeded: settings.downloadIfNeeded,
-                      progress: { update in
-                        let progress = Progress(
-                          totalUnitCount: Int64(aggregateByteCount)
-                        )
-                        progress.completedUnitCount = Int64(
-                          finalModelByteCount
-                            + min(update.completedByteCount, previewModelByteCount)
-                        )
-                        progressCallback(progress)
-                      }
-                    )
-                  },
-                  reportStreamingPreviewFailure: { _ in
-                    await core.diagnostics.record(
-                      DiagnosticEvent(
-                        subsystem: .providers,
-                        level: .warning,
-                        event: "provider.sherpa-onnx.streaming-preview-unavailable",
-                        message:
-                          "Fixed local streaming preview is unavailable; capture continues without subtitle hypotheses.",
-                        metadata: [
-                          "model": SherpaStreamingPreviewService.modelID
-                        ]
-                      )
-                    )
-                  }
-                )
-              let completed = Progress(totalUnitCount: Int64(aggregateByteCount))
-              completed.completedUnitCount = Int64(aggregateByteCount)
+              let finalModelByteCount =
+                MLXAudioModelCatalog.descriptor(
+                  for: finalModelID
+                ).approximateDownloadByteCount
+              let initial = Progress(totalUnitCount: Int64(finalModelByteCount))
+              progressCallback(initial)
+              try await providers.localSpeechRecognizer.prepareForUse(of: backend)
+              let preparedModel = try await providers.mlxAudioSwiftRecognizer.prepareModel(
+                modelIdentifier: modelIdentifier,
+                downloadIfNeeded: settings.downloadIfNeeded
+              )
+              let completed = Progress(totalUnitCount: Int64(finalModelByteCount))
+              completed.completedUnitCount = Int64(finalModelByteCount)
               progressCallback(completed)
               return preparedModel
-            },
-            prepareAudioFrontend: {
-              await providers.workflowAudioCaptureService
-                .prepareLocalSpeechAudioFrontendIfAuthorized()
             }
           )
         } catch {
@@ -2268,18 +2110,106 @@ private enum AppModelFactory {
           throw failure
         }
       },
+      synchronizeResidentSpeechModelsAction: { addedModelIDs, removedModelIDs in
+        var hadFailure = false
+        for modelID in removedModelIDs.sorted() {
+          if MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelID) {
+            try? await providers.speechWorkerSupervisor.releaseModel(modelID: modelID)
+          } else if SpeechSynthesisModelCatalog.supportedModelIdentifiers.contains(modelID) {
+            try? await providers.ttsSpeechWorkerSupervisor.releaseTTSModel(modelID: modelID)
+          }
+        }
+
+        for modelID in addedModelIDs.sorted() {
+          do {
+            if MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelID) {
+              _ = try await providers.mlxAudioSwiftRecognizer.prepareModel(
+                modelIdentifier: modelID,
+                downloadIfNeeded: true
+              )
+            } else if SpeechSynthesisModelCatalog.supportedModelIdentifiers.contains(modelID) {
+              try await providers.qwen3TTSSynthesizer.prepare(
+                modelIdentifier: modelID,
+                downloadIfNeeded: true
+              )
+            }
+          } catch is CancellationError {
+            return
+          } catch {
+            hadFailure = true
+            await core.diagnostics.record(
+              DiagnosticEvent(
+                subsystem: .providers,
+                level: .warning,
+                event: "provider.speech-model.resident-load-failed",
+                message: "A resident speech model could not be loaded.",
+                metadata: ["modelID": modelID]
+              )
+            )
+          }
+        }
+        if !addedModelIDs.isEmpty, !hadFailure {
+          await providers.speechModelPoolPresentationBridge.update(isDegraded: false)
+        }
+      },
+      prepareEnabledSpeechModelAction: { modelID in
+        do {
+          if MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelID) {
+            _ = try await providers.mlxAudioSwiftRecognizer.prepareModel(
+              modelIdentifier: modelID,
+              downloadIfNeeded: true
+            )
+            let remainsResident =
+              (try? providers.localSpeechSettingsSource.currentSettings())?
+              .residentModelIDs.contains(modelID) == true
+            if !remainsResident {
+              try? await providers.speechWorkerSupervisor.releaseModel(modelID: modelID)
+            }
+          } else if SpeechSynthesisModelCatalog.supportedModelIdentifiers.contains(modelID) {
+            try await providers.qwen3TTSSynthesizer.prepare(
+              modelIdentifier: modelID,
+              downloadIfNeeded: true
+            )
+            let residentModelIDs =
+              (try? providers.localSpeechSettingsSource.currentSettings())?
+              .residentModelIDs ?? []
+            let remainsResident = residentModelIDs.contains(modelID)
+            if !remainsResident {
+              try? await providers.ttsSpeechWorkerSupervisor.releaseTTSModel(modelID: modelID)
+              let residentTTSModelIDs = residentModelIDs.intersection(
+                SpeechSynthesisModelCatalog.supportedModelIdentifiers
+              )
+              if residentTTSModelIDs.isEmpty {
+                try? await providers.ttsSpeechWorkerSupervisor.releaseLoadedModel()
+              }
+            }
+          }
+        } catch is CancellationError {
+          return
+        } catch {
+          await core.diagnostics.record(
+            DiagnosticEvent(
+              subsystem: .providers,
+              level: .warning,
+              event: "provider.speech-model.download-failed",
+              message: "An enabled speech model could not be downloaded.",
+              metadata: ["modelID": modelID]
+            )
+          )
+        }
+      },
       setLocalSpeechRuntimeEnabledAction: { isEnabled in
         if !isEnabled {
           Task {
             try? await providers.localSpeechRecognizer.releaseLoadedModel()
-            await providers.streamingPreviewService.releaseLoadedModel()
+            try? await providers.streamingPreviewService.releaseLoadedModels()
           }
         }
       },
       releaseLocalSpeechRuntimeAction: {
         Task {
           try? await providers.localSpeechRecognizer.releaseLoadedModel()
-          await providers.streamingPreviewService.releaseLoadedModel()
+          try? await providers.streamingPreviewService.releaseLoadedModels()
         }
       },
       stopLocalSpeechRuntimeAction: {
@@ -2296,7 +2226,7 @@ private enum AppModelFactory {
             )
           )
         }
-        await providers.streamingPreviewService.releaseLoadedModel()
+        try? await providers.streamingPreviewService.releaseLoadedModels()
       },
       startWorkflowAudioRunAction: { workflow, binding in
         try await runtime.workflowAudioRunController.startRun(workflow: workflow, binding: binding)
@@ -2406,37 +2336,15 @@ private enum AppModelFactory {
         )
         let backend = try LocalSpeechModelCatalog.backend(for: modelIdentifier)
         try await providers.localSpeechRecognizer.prepareForUse(of: backend)
-        switch backend {
-        case .sherpaOnnx:
-          var configuration = try AppBootstrap.sherpaOnnxConfiguration(
-            settings: settings,
-            trustedModelIdentifiers:
-              SherpaOnnxModelCatalog.distributableModelIdentifiers,
-            defaultModelIdentifier: SherpaOnnxModelCatalog.defaultModelID.rawValue
-          )
-          configuration.downloadIfNeeded = true
-          let prepared = try await providers.sherpaOnnxModelPreparer.prepareModel(
-            using: AppBootstrap.modelInstallationConfiguration(from: configuration),
-            progress: { update in
-              let total = max(update.totalByteCount, 1)
-              progressCallback(
-                min(max(Double(update.completedByteCount) / Double(total), 0), 1)
-              )
-            }
-          )
-          progressCallback(1)
-          return prepared
-        case .mlxAudioSwift:
-          let prepared = try await providers.mlxAudioSwiftRecognizer.prepareModel(
-            modelIdentifier: modelIdentifier,
-            downloadIfNeeded: true,
-            progress: { update in
-              progressCallback(update.fractionCompleted)
-            }
-          )
-          progressCallback(1)
-          return prepared
-        }
+        let prepared = try await providers.mlxAudioSwiftRecognizer.prepareModel(
+          modelIdentifier: modelIdentifier,
+          downloadIfNeeded: true,
+          progress: { update in
+            progressCallback(update.fractionCompleted)
+          }
+        )
+        progressCallback(1)
+        return prepared
       },
       prepareTTSModel: { modelIdentifier, progressCallback in
         try await providers.qwen3TTSSynthesizer.prepare(

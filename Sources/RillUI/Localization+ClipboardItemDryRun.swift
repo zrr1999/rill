@@ -230,6 +230,8 @@ extension UIStrings {
         case (.simplifiedChinese, .temporaryFileWrite): "创建临时文件"
         case (.english, .fileAppend): "Append a configured file"
         case (.simplifiedChinese, .fileAppend): "追加已配置文件"
+        case (.english, .speechPlayback): "Play speech"
+        case (.simplifiedChinese, .speechPlayback): "播放语音"
         case (.english, .unclassified): "Unclassified effect"
         case (.simplifiedChinese, .unclassified): "未分类影响"
         }

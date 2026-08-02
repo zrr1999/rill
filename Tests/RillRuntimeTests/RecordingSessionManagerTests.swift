@@ -1411,6 +1411,17 @@ final class RecordingSessionManagerTests: XCTestCase {
             privacyRunGate: makeRecordingTestPrivacyGate(),
             workflowProvider: { [workflow] }
         )
+        let preparingEventStream = await eventBus.stream()
+        let preparingEvent = Task { () -> LiveSubtitleSnapshot? in
+            for await event in preparingEventStream {
+                if case .liveSubtitleUpdated(let snapshot) = event,
+                   snapshot.phase == .preparing
+                {
+                    return snapshot
+                }
+            }
+            return nil
+        }
         let beginTask = Task {
             await manager.beginPushToTalk()
         }
@@ -1424,6 +1435,10 @@ final class RecordingSessionManagerTests: XCTestCase {
             await queue.shutdown()
             return XCTFail("Expected an assigned run to remain in capture preparation.")
         }
+        let preparingSnapshot = await preparingEvent.value
+        XCTAssertEqual(preparingSnapshot?.runID, runID)
+        XCTAssertEqual(preparingSnapshot?.workflow?.fallbackName, workflow.name)
+        XCTAssertEqual(preparingSnapshot?.providerID, "recording.recognizer")
 
         let marker = "recording.preparing-global-input-unavailable.\(UUID().uuidString)"
         let eventStream = await eventBus.stream()

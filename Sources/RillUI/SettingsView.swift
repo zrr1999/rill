@@ -199,7 +199,7 @@ public struct SettingsView: View {
           voiceAssistantResourcesSection
         } header: {
           settingsGroupHeader(
-            model.language == .english ? "Voice Input" : "语音输入",
+            model.language == .english ? "Voice & Models" : "语音与模型",
             systemImage: "waveform"
           )
         }
@@ -311,6 +311,10 @@ public struct SettingsView: View {
 
   private var voiceAssistantResourcesSection: some View {
     settingsDisclosure(.voiceAssistant) {
+      voiceAssistantSetupOverview
+
+      Divider()
+
       LabeledContent(
         model.language == .english ? "Wake-word listener" : "唤醒词监听"
       ) {
@@ -350,7 +354,8 @@ public struct SettingsView: View {
       )
       .disabled(
         isApplyingWakeWordSettings
-          || (!wakeListeningDraftEnabled && !wakeWordModelIsReady)
+          || (!wakeListeningDraftEnabled
+            && !model.voiceAssistantReadiness.canEnableListening)
       )
       .accessibilityIdentifier("settings.wake-word.enabled")
 
@@ -407,71 +412,16 @@ public struct SettingsView: View {
 
       Text(
         model.language == .english
-          ? "This edits the wake trigger only. Recognition, processing, output, and TTS remain part of the same workflow."
-          : "这里仅编辑唤醒触发；识别、处理、输出与 TTS 仍由同一个工作流负责。"
+          ? "This edits the ambient wake trigger only. Fn and other interactive recognition take microphone priority immediately; LLM and speech output continue on the assistant lane without blocking the next recognition."
+          : "这里仅编辑环境唤醒触发。Fn 和其他交互识别会立即取得麦克风优先级；LLM 与语音输出在独立助手通道继续处理，不阻塞下一次识别。"
       )
       .font(.caption)
       .foregroundStyle(.secondary)
 
-      Divider()
-
-      LabeledContent(
-        model.language == .english ? "Local TTS" : "本地 TTS"
-      ) {
-        Picker(
-          "",
-          selection: Binding(
-            get: { model.ttsModelIdentifier },
-            set: { _ = model.setPreferredTTSModel($0) }
-          )
-        ) {
-          ForEach(model.ttsModelOptions) { option in
-            Text(ttsModelOptionTitle(option))
-              .tag(option.id)
-          }
-        }
-        .labelsHidden()
-        .frame(minWidth: 320, alignment: .trailing)
-        .disabled(model.ttsResourceState.isPreparing)
-        .accessibilityIdentifier("settings.tts.model")
-      }
-      voiceResourceStatus(
-        state: model.ttsResourceState,
-        readyText: model.language == .english ? "TTS model ready" : "TTS 模型已就绪"
-      )
-
-      if voiceAssistantActionVisibility.showsTTSPreparation
-        || voiceAssistantActionVisibility.showsStopPlayback
-      {
-        HStack(spacing: 8) {
-          if voiceAssistantActionVisibility.showsTTSPreparation {
-            Button(
-              resourcePreparationButtonTitle(
-                state: model.ttsResourceState,
-                englishName: "TTS model",
-                simplifiedChineseName: "TTS 模型"
-              )
-            ) {
-              model.prepareTTSModel()
-            }
-            .accessibilityIdentifier("settings.tts.prepare")
-          }
-
-          if voiceAssistantActionVisibility.showsStopPlayback {
-            Button(
-              model.language == .english ? "Stop speech playback" : "停止语音播放"
-            ) {
-              model.stopSpeechPlaybackIfActive()
-            }
-            .accessibilityIdentifier("settings.tts.stop-playback")
-          }
-        }
-      }
-
       Text(
         model.language == .english
-          ? "Idle listening runs only local VAD. Complete speech candidates are checked by the selected local Qwen ASR and discarded unless they begin with a wake phrase. TTS falls back to the system voice when Qwen is unavailable."
-          : "空闲监听只运行本地 VAD；完整语音段由当前本地 Qwen ASR 检查，不以唤醒短语开头时立即丢弃。Qwen 不可用时 TTS 会退回系统语音。"
+          ? "Idle listening runs only local VAD. Complete candidates are checked locally and discarded unless they begin with a configured wake phrase."
+          : "空闲监听只运行本地 VAD；完整候选会在本地检查，不以已配置唤醒短语开头时立即丢弃。"
       )
       .font(.caption)
       .foregroundStyle(.secondary)
@@ -537,6 +487,184 @@ public struct SettingsView: View {
       ttsState: model.ttsResourceState,
       isSpeechPlaybackActive: model.isSpeechPlaybackActive
     )
+  }
+
+  private var voiceAssistantSetupOverview: some View {
+    let readiness = model.voiceAssistantReadiness
+    return VStack(alignment: .leading, spacing: 10) {
+      Label(
+        readiness.canEnableListening
+          ? (model.language == .english
+            ? "Assistant setup is ready"
+            : "语音助手已准备就绪")
+          : (model.language == .english
+            ? "Complete assistant setup"
+            : "请完成语音助手设置"),
+        systemImage: readiness.canEnableListening
+          ? "checkmark.seal.fill"
+          : "checklist"
+      )
+      .font(.subheadline.weight(.semibold))
+      .foregroundStyle(readiness.canEnableListening ? .green : .primary)
+
+      voiceAssistantReadinessRow(
+        title: model.language == .english ? "Microphone" : "麦克风",
+        detail: microphoneReadinessDetail(readiness.microphone),
+        isReady: readiness.microphone == .granted
+      )
+      voiceAssistantReadinessRow(
+        title: model.language == .english ? "Local recognition" : "本地识别",
+        detail: localSpeechReadinessDetail(readiness.localSpeech),
+        isReady: readiness.isLocalSpeechReady
+      )
+      voiceAssistantReadinessRow(
+        title: model.language == .english ? "LLM answer" : "LLM 回答",
+        detail: llmReadinessDetail(readiness.llm),
+        isReady: readiness.llm.permitsListening
+      )
+      voiceAssistantReadinessRow(
+        title: model.language == .english ? "Cloud privacy" : "云端隐私",
+        detail: privacyReadinessDetail(readiness.privacy),
+        isReady: readiness.privacy.permitsListening
+      )
+      voiceAssistantReadinessRow(
+        title: model.language == .english ? "Speech output" : "语音输出",
+        detail: speechOutputReadinessDetail(readiness.speechOutput),
+        isReady: true
+      )
+
+      HStack(spacing: 8) {
+        if readiness.microphone != .granted {
+          Button(model.language == .english ? "Review permissions" : "检查权限") {
+            model.showSettings(.permissions)
+          }
+          .accessibilityIdentifier("settings.voice-assistant.review-permissions")
+        }
+        if readiness.llm != .notRequired,
+          readiness.llm != .verified
+        {
+          Button(model.language == .english ? "Configure & verify LLM" : "配置并验证 LLM") {
+            model.showSettings(.speech)
+          }
+          .accessibilityIdentifier("settings.voice-assistant.configure-llm")
+        }
+        if readiness.privacy == .unavailable {
+          Button(model.language == .english ? "Repair privacy settings" : "修复隐私设置") {
+            model.showSettings(.privacy)
+          }
+          .accessibilityIdentifier("settings.voice-assistant.repair-privacy")
+        }
+      }
+      .buttonStyle(.bordered)
+    }
+    .padding(10)
+    .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+  }
+
+  private func voiceAssistantReadinessRow(
+    title: String,
+    detail: String,
+    isReady: Bool
+  ) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      Image(systemName: isReady ? "checkmark.circle.fill" : "circle.dashed")
+        .foregroundStyle(isReady ? .green : .orange)
+        .accessibilityHidden(true)
+      Text(title)
+        .font(.caption.weight(.medium))
+      Spacer(minLength: 12)
+      Text(detail)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.trailing)
+    }
+  }
+
+  private func microphoneReadinessDetail(_ state: PermissionState) -> String {
+    switch (model.language, state) {
+    case (.english, .granted): "Ready"
+    case (.simplifiedChinese, .granted): "已就绪"
+    case (.english, .unknown): "Permission not checked"
+    case (.simplifiedChinese, .unknown): "尚未检查权限"
+    case (.english, .denied): "Permission required"
+    case (.simplifiedChinese, .denied): "需要授权"
+    }
+  }
+
+  private func localSpeechReadinessDetail(
+    _ state: VoiceAssistantResourceState
+  ) -> String {
+    switch (model.language, state) {
+    case (.english, .ready): "Selected Qwen ASR is ready"
+    case (.simplifiedChinese, .ready): "当前 Qwen ASR 已就绪"
+    case (.english, .preparing): "Preparing model"
+    case (.simplifiedChinese, .preparing): "正在准备模型"
+    case (.english, .notInstalled): "Model required"
+    case (.simplifiedChinese, .notInstalled): "需要准备模型"
+    case (.english, .failed): "Preparation failed"
+    case (.simplifiedChinese, .failed): "模型准备失败"
+    case (.english, .unavailable): "Unavailable in this build"
+    case (.simplifiedChinese, .unavailable): "当前版本不可用"
+    }
+  }
+
+  private func llmReadinessDetail(_ state: VoiceAssistantLLMReadiness) -> String {
+    switch (model.language, state) {
+    case (.english, .notRequired): "Not used by this workflow"
+    case (.simplifiedChinese, .notRequired): "当前工作流不使用"
+    case (.english, .loading): "Loading secure settings"
+    case (.simplifiedChinese, .loading): "正在读取安全设置"
+    case (.english, .credentialMissing): "API key required"
+    case (.simplifiedChinese, .credentialMissing): "需要 API Key"
+    case (.english, .credentialInaccessible): "Keychain unavailable"
+    case (.simplifiedChinese, .credentialInaccessible): "无法访问钥匙串"
+    case (.english, .configurationInvalid): "Endpoint or model ID is invalid"
+    case (.simplifiedChinese, .configurationInvalid): "地址或模型 ID 无效"
+    case (.english, .configured): "Configured; verification recommended"
+    case (.simplifiedChinese, .configured): "已配置；建议验证"
+    case (.english, .verifying): "Verifying"
+    case (.simplifiedChinese, .verifying): "正在验证"
+    case (.english, .verified): "Verified"
+    case (.simplifiedChinese, .verified): "验证通过"
+    case (.english, .verificationFailed): "Verification failed"
+    case (.simplifiedChinese, .verificationFailed): "验证失败"
+    }
+  }
+
+  private func privacyReadinessDetail(
+    _ state: VoiceAssistantPrivacyReadiness
+  ) -> String {
+    switch (model.language, state) {
+    case (.english, .notRequired): "No cloud step"
+    case (.simplifiedChinese, .notRequired): "没有云端步骤"
+    case (.english, .loading): "Loading policy"
+    case (.simplifiedChinese, .loading): "正在读取策略"
+    case (.english, .unavailable): "Policy unavailable"
+    case (.simplifiedChinese, .unavailable): "策略不可用"
+    case (.english, .ready(cloudConfirmationRequired: true)):
+      "Confirmation required per run"
+    case (.simplifiedChinese, .ready(cloudConfirmationRequired: true)):
+      "每次运行需要确认"
+    case (.english, .ready(cloudConfirmationRequired: false)):
+      "Policy ready"
+    case (.simplifiedChinese, .ready(cloudConfirmationRequired: false)):
+      "策略已就绪"
+    }
+  }
+
+  private func speechOutputReadinessDetail(
+    _ state: VoiceAssistantSpeechOutputReadiness
+  ) -> String {
+    switch (model.language, state) {
+    case (.english, .notRequired): "Not used by this workflow"
+    case (.simplifiedChinese, .notRequired): "当前工作流不使用"
+    case (.english, .localVoice): "Local Qwen voice"
+    case (.simplifiedChinese, .localVoice): "本地 Qwen 音色"
+    case (.english, .preparingLocalVoice): "System voice until ready"
+    case (.simplifiedChinese, .preparingLocalVoice): "准备期间使用系统语音"
+    case (.english, .systemFallback): "System voice fallback ready"
+    case (.simplifiedChinese, .systemFallback): "系统语音回退已就绪"
+    }
   }
 
   private var wakeWordModelIsReady: Bool {
@@ -613,24 +741,6 @@ public struct SettingsView: View {
     }
   }
 
-  private func ttsModelOptionTitle(_ option: TTSModelOption) -> String {
-    var components = [
-      "Qwen3-TTS 0.6B CustomVoice",
-      option.precision,
-      ByteCountFormatter.string(
-        fromByteCount: Int64(option.approximateDownloadByteCount),
-        countStyle: .file
-      ),
-    ]
-    if option.isDefault {
-      components.append(model.language == .english ? "Default" : "默认")
-    }
-    if model.downloadedTTSModelIdentifiers.contains(option.id) {
-      components.append(model.language == .english ? "Downloaded" : "已下载")
-    }
-    return components.joined(separator: " · ")
-  }
-
   private var wakeWordRuntimeStatusText: String {
     switch model.wakeWordRuntimeState {
     case .disabled:
@@ -642,9 +752,37 @@ public struct SettingsView: View {
     case .listening:
       model.language == .english ? "Listening locally" : "正在本地监听"
     case .suspended(let reason):
-      (model.language == .english ? "Paused: " : "已暂停：") + reason
+      (model.language == .english ? "Paused: " : "已暂停：")
+        + wakeWordSuspensionReasonText(reason)
     case .failed:
       model.language == .english ? "Unavailable" : "不可用"
+    }
+  }
+
+  private func wakeWordSuspensionReasonText(_ reason: String) -> String {
+    switch (model.language, reason) {
+    case (.english, "interactiveRecognition"):
+      "interactive recognition has priority"
+    case (.simplifiedChinese, "interactiveRecognition"):
+      "交互识别优先"
+    case (.english, "speechPlayback"):
+      "speech playback"
+    case (.simplifiedChinese, "speechPlayback"):
+      "正在播放语音"
+    case (.english, "microphonePermission"):
+      "microphone permission"
+    case (.simplifiedChinese, "microphonePermission"):
+      "麦克风权限"
+    case (.english, "inputDeviceChanged"):
+      "input device changed"
+    case (.simplifiedChinese, "inputDeviceChanged"):
+      "输入设备已变化"
+    case (.english, "busy"):
+      "assistant workflow is running"
+    case (.simplifiedChinese, "busy"):
+      "助手工作流正在运行"
+    default:
+      reason
     }
   }
 
@@ -817,17 +955,17 @@ public struct SettingsView: View {
     case (.permissions, .simplifiedChinese):
       "麦克风、全局快捷键与系统访问"
     case (.speech, .english):
-      "Recognition engine, model, and text refinement"
+      "Provider configuration and available model pool"
     case (.speech, .simplifiedChinese):
-      "识别引擎、模型与文本润色"
+      "提供商配置与可用模型池"
     case (.input, .english):
       "Recording behavior, duration, and output"
     case (.input, .simplifiedChinese):
       "录音方式、时长与输出"
     case (.voiceAssistant, .english):
-      "Wake listening, local voices, and model resources"
+      "Readiness, wake listening, LLM answers, and speech output"
     case (.voiceAssistant, .simplifiedChinese):
-      "唤醒监听、本地音色与模型资源"
+      "就绪检查、唤醒监听、LLM 回答与语音输出"
     case (.clipboardPanel, .english):
       "Clipboard capture and panel shortcut"
     case (.clipboardPanel, .simplifiedChinese):
@@ -1111,28 +1249,6 @@ public struct SettingsView: View {
         unavailableScalarSettingsWarning(domain)
       }
 
-      Picker(
-        UIStrings.text(.settingsSpeechEngine, language: model.language),
-        selection: Binding(
-          get: { selectedSpeechEngineIdentifier },
-          set: { identifier in
-            selectSpeechEngine(identifier)
-          }
-        )
-      ) {
-        ForEach(availableLocalSpeechEngines) { engine in
-          Text(UIStrings.localSpeechEngine(engine, language: model.language))
-            .tag(engine.rawValue)
-            .disabled(
-              !model.localSpeechTrustMaterialAvailable
-                || !model.canMutateScalarSettings(in: .localSpeech)
-            )
-        }
-      }
-      .pickerStyle(.segmented)
-      .disabled(!model.canMutateScalarSettings(in: .speechRoute))
-      .accessibilityIdentifier("settings.speech-engine")
-
       if !model.localSpeechAvailability.isAvailable {
         Label(
           UIStrings.localSpeechAvailabilityDescription(
@@ -1146,7 +1262,11 @@ public struct SettingsView: View {
         .accessibilityIdentifier("settings.local-speech-unavailable")
       }
 
-      Text(L10n.privacySettingsSpeechRouteHint(preferredSpeechRoute, language: model.language))
+      Text(
+        model.language == .english
+          ? "Models are enabled here; each workflow chooses its STT model, TTS model, voice, language, prompt, and streaming style."
+          : "在这里启用模型；每个 workflow 独立选择 STT 模型、TTS 模型、音色、语言、提示词和流式风格。"
+      )
         .font(.caption)
         .foregroundStyle(.secondary)
 
@@ -1170,6 +1290,9 @@ public struct SettingsView: View {
             )
             .foregroundStyle(.secondary)
 
+            speechModelPoolSettings
+
+            if model.speechModelResourceCatalog.isEmpty {
             if !model.trustedLocalSpeechModels.isEmpty {
               Picker(
                 UIStrings.text(.localSpeechModel, language: model.language),
@@ -1227,8 +1350,8 @@ public struct SettingsView: View {
                 }
                 Text(
                   model.language == .english
-                    ? "Live preview uses the fixed bilingual Streaming Zipformer INT8 model (about 437 MiB additional first download); Speech Recognition uses the selected final tier."
-                    : "流式预览固定使用中英双语 Streaming Zipformer INT8（首次额外下载约 437 MiB）；“语音识别”使用所选最终档位。"
+                    ? "Live preview uses the workflow's Qwen model; the sealed WAV is always recognized offline for the authoritative final text."
+                    : "实时预览使用 workflow 选择的 Qwen 模型；录音封口后始终以 WAV 离线识别生成唯一正式文本。"
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -1247,10 +1370,7 @@ public struct SettingsView: View {
               .pickerStyle(.menu)
             }
 
-            Toggle(
-              UIStrings.text(.localSpeechPrewarm, language: model.language),
-              isOn: $model.localSpeechPrewarm
-            )
+            }
 
             if model.trustedLocalSpeechModels.isEmpty {
               if !model.downloadedLocalSpeechModels.isEmpty {
@@ -1859,10 +1979,6 @@ public struct SettingsView: View {
     )
   }
 
-  private var preferredSpeechRoute: WorkflowEditorDraft.RecognizerChoice {
-    .localSpeech
-  }
-
   private var availableLocalSpeechEngines: [LocalSpeechEngine] {
     LocalSpeechEngine.allCases.filter { engine in
       model.trustedLocalSpeechModels.contains(where: { $0.engine == engine })
@@ -1880,23 +1996,6 @@ public struct SettingsView: View {
     return model.trustedLocalSpeechModels.filter {
       $0.engine == selectedLocalSpeechEngine
     }
-  }
-
-  private var selectedSpeechEngineIdentifier: String {
-    selectedLocalSpeechEngine?.rawValue ?? LocalSpeechEngine.sherpaOnnx.rawValue
-  }
-
-  private func selectSpeechEngine(_ identifier: String) {
-    guard let engine = LocalSpeechEngine(rawValue: identifier) else { return }
-    let currentModel = model.trustedLocalSpeechModels.first(where: {
-      $0.id == model.selectedTrustedLocalSpeechModelIdentifier
-        && $0.engine == engine
-    })
-    let modelIdentifier =
-      currentModel?.id
-      ?? model.trustedLocalSpeechModels.first(where: { $0.engine == engine })?.id
-    guard let modelIdentifier else { return }
-    model.setPreferredLocalSpeechModel(modelIdentifier)
   }
 
   private var privacySection: some View {
@@ -2550,6 +2649,110 @@ public struct SettingsView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
     }
+  }
+
+  @ViewBuilder
+  private var speechModelPoolSettings: some View {
+    if !model.speechModelResourceCatalog.isEmpty {
+      VStack(alignment: .leading, spacing: 10) {
+        Text(model.language == .english ? "Available model pool" : "可用模型池")
+          .font(.caption.weight(.semibold))
+        Text(
+          model.language == .english
+            ? "Workflows choose models and voices. Enable models here, then optionally keep frequently used models resident."
+            : "模型和音色由各 workflow 选择。这里仅启用可用模型，并可选择让常用模型常驻。"
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+
+        if model.speechModelPoolDegradedByMemoryPressure {
+          Label(
+            model.language == .english
+              ? "Memory pressure unloaded resident models; they will reload on demand."
+              : "因系统内存压力，常驻模型已临时卸载；下次使用时会按需重载。",
+            systemImage: "memorychip"
+          )
+          .font(.caption)
+          .foregroundStyle(.orange)
+          .accessibilityIdentifier("settings.speech-model-pool.degraded")
+        }
+
+        ForEach(model.speechModelResourceCatalog) { descriptor in
+          VStack(alignment: .leading, spacing: 5) {
+            Toggle(
+              isOn: Binding(
+                get: { model.enabledSpeechModelIDs.contains(descriptor.id) },
+                set: { model.setSpeechModelEnabled(descriptor.id, enabled: $0) }
+              )
+            ) {
+              Text(speechModelDisplayName(descriptor))
+            }
+            .disabled(model.isLoadingSettings)
+
+            Toggle(
+              model.language == .english ? "Keep resident" : "保持常驻",
+              isOn: Binding(
+                get: { model.residentSpeechModelIDs.contains(descriptor.id) },
+                set: { model.setSpeechModelResident(descriptor.id, resident: $0) }
+              )
+            )
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+            .disabled(
+              model.isLoadingSettings
+                || !model.enabledSpeechModelIDs.contains(descriptor.id)
+            )
+          }
+          .padding(.vertical, 2)
+        }
+
+        if let budget = model.pendingResidentSpeechModelBudget {
+          VStack(alignment: .leading, spacing: 6) {
+            Label(
+              model.language == .english
+                ? "Estimated resident memory exceeds 20%"
+                : "预计常驻内存超过整机内存的 20%",
+              systemImage: "exclamationmark.triangle.fill"
+            )
+            .foregroundStyle(.orange)
+            Text(
+              String(
+                format: model.language == .english
+                  ? "Estimated %.2f GB (%.1f%%): %@"
+                  : "预计 %.2f GB（%.1f%%）：%@",
+                Double(budget.estimatedPeakByteCount) / 1_073_741_824,
+                budget.estimatedFraction * 100,
+                budget.models.map(\.id).joined(separator: ", ")
+              )
+            )
+            .font(.caption)
+            HStack {
+              Button(model.language == .english ? "Enable anyway" : "仍然启用") {
+                model.confirmPendingResidentSpeechModels()
+              }
+              Button(model.language == .english ? "Cancel" : "取消", role: .cancel) {
+                model.cancelPendingResidentSpeechModels()
+              }
+            }
+            .controlSize(.small)
+          }
+          .padding(8)
+          .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        }
+      }
+      .accessibilityIdentifier("settings.speech-model-pool")
+    }
+  }
+
+  private func speechModelDisplayName(
+    _ descriptor: SpeechModelResourceDescriptor
+  ) -> String {
+    let capability = descriptor.capability == .speechToText ? "STT" : "TTS"
+    let size = ByteCountFormatter.string(
+      fromByteCount: Int64(clamping: descriptor.downloadByteCount),
+      countStyle: .file
+    )
+    return "\(capability) · \(descriptor.id) · \(size)"
   }
 
   private func permissionColor(_ tone: SettingsPermissionTone) -> Color {

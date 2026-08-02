@@ -54,13 +54,13 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         var recognizerID: String {
             switch self {
             case .automatic, .localSpeech:
-                return "sherpa-onnx.local"
+                return "local-speech"
             }
         }
 
         init?(recognizerID: String) {
             switch recognizerID {
-            case "sherpa-onnx.local":
+            case "local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming":
                 self = .localSpeech
             default:
                 return nil
@@ -186,6 +186,9 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     public var recognizer: RecognizerChoice
     public var speechLanguageOverride: String
     public var localSpeechModelOverride: String
+    public var livePreviewEnabled: Bool
+    public var livePreviewPlacement: LivePreviewPlacement
+    public var streamingProfile: String
     public var vocabularyBindings: [VocabularyCollectionBinding]
     public var postProcessSteps: [PostProcessStepDraft]
     public var destination: DestinationChoice
@@ -197,6 +200,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     public var excludeFromWorkflowCapture: Bool
     public var speaksResult: Bool
     public var speechVoice: Qwen3TTSVoice
+    public var speechModelID: String
 
     // Action – group event
     public var groupActionKind: ClipboardGroupActionKind
@@ -213,6 +217,9 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         recognizer: RecognizerChoice = .automatic,
         speechLanguageOverride: String = "",
         localSpeechModelOverride: String = "",
+        livePreviewEnabled: Bool = true,
+        livePreviewPlacement: LivePreviewPlacement = .overlay,
+        streamingProfile: String = "realtime",
         vocabularyBindings: [VocabularyCollectionBinding] = [
             VocabularyCollectionBinding(collectionID: VocabularyCollection.personalID),
         ],
@@ -226,6 +233,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         excludeFromWorkflowCapture: Bool = true,
         speaksResult: Bool = false,
         speechVoice: Qwen3TTSVoice = .vivian,
+        speechModelID: String = "",
         groupActionKind: ClipboardGroupActionKind = .editItem,
         actionPrompt: String = ""
     ) {
@@ -237,6 +245,9 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         self.recognizer = recognizer
         self.speechLanguageOverride = speechLanguageOverride
         self.localSpeechModelOverride = localSpeechModelOverride
+        self.livePreviewEnabled = livePreviewEnabled
+        self.livePreviewPlacement = livePreviewPlacement
+        self.streamingProfile = streamingProfile
         self.vocabularyBindings = vocabularyBindings
         self.postProcessSteps = postProcessSteps
         self.destination = destination
@@ -248,6 +259,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         self.excludeFromWorkflowCapture = excludeFromWorkflowCapture
         self.speaksResult = speaksResult
         self.speechVoice = speechVoice
+        self.speechModelID = speechModelID
         self.groupActionKind = groupActionKind
         self.actionPrompt = actionPrompt
     }
@@ -318,10 +330,24 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             .configuration[SpeechOutputActionConfigurationKey.voice]
             .flatMap(Qwen3TTSVoice.init(rawValue:))
             ?? .vivian
+        self.speechModelID =
+            workflow.plan.output.actions
+            .first(where: { $0.id == SpeechOutputActionID.speak })?
+            .configuration[SpeechOutputActionConfigurationKey.model]
+            ?? ""
         self.localSpeechModelOverride =
             workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride]
             ?? workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride]
             ?? ""
+        self.livePreviewEnabled =
+            workflow.metadata[WorkflowMetadataKey.livePreviewEnabled] != "false"
+        self.livePreviewPlacement =
+            workflow.metadata[WorkflowMetadataKey.livePreviewPlacement]
+            .flatMap(LivePreviewPlacement.init(rawValue:))
+            ?? .overlay
+        self.streamingProfile =
+            workflow.metadata[WorkflowMetadataKey.streamingProfile]
+            ?? (workflow.trigger == .wakeWord ? "agent" : "realtime")
         self.targetGroupID = workflow.targetClipboardGroupID
         let outputConfiguration = workflow.plan.output.actions.first?.configuration ?? [:]
         self.webhookURL = outputConfiguration[ExternalOutputActionConfigurationKey.webhookURL] ?? ""
@@ -380,6 +406,10 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         }
         metadata[WorkflowMetadataKey.excludeOutputFromWorkflowCapture] = excludeFromWorkflowCapture ? "true" : "false"
         metadata[WorkflowMetadataKey.textStyle] = textStyle.rawValue
+        metadata[WorkflowMetadataKey.livePreviewEnabled] =
+            livePreviewEnabled ? "true" : "false"
+        metadata[WorkflowMetadataKey.livePreviewPlacement] = livePreviewPlacement.rawValue
+        metadata[WorkflowMetadataKey.streamingProfile] = streamingProfile
         if recognizer == .automatic {
             metadata[WorkflowMetadataKey.recognizerSelectionMode] = "auto"
         } else {
@@ -433,6 +463,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
                             SpeechSynthesisProvider.automatic.rawValue,
                         SpeechOutputActionConfigurationKey.voice:
                             speechVoice.rawValue,
+                        SpeechOutputActionConfigurationKey.model:
+                            speechModelID,
                     ]
                 )
             )
@@ -505,14 +537,16 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             }
         }
         if let unsupportedStep = postProcessSteps.first(where: {
-            $0.kind != .normalizeWhitespace && $0.kind != .llmRewrite
+            $0.kind != .normalizeWhitespace
+                && $0.kind != .llmRewrite
+                && $0.kind != .llmAnswer
         }) {
             return language == .english
                 ? "The \(unsupportedStep.kind.rawValue) step is not available without a configured production transformer."
                 : "尚未配置生产级 transformer，不能使用 \(unsupportedStep.kind.rawValue) 步骤。"
         }
         if postProcessSteps.contains(where: {
-            $0.kind == .llmRewrite
+            ($0.kind == .llmRewrite || $0.kind == .llmAnswer)
                 && $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }) {
             return language == .english
@@ -604,6 +638,8 @@ private extension WorkflowEditorDraft.DestinationChoice {
                     SpeechSynthesisProvider.automatic.rawValue,
                 SpeechOutputActionConfigurationKey.voice:
                     draft.speechVoice.rawValue,
+                SpeechOutputActionConfigurationKey.model:
+                    draft.speechModelID,
             ]
         case .sendToWebhook:
             var configuration: [String: String] = [:]
@@ -634,7 +670,7 @@ private extension WorkflowEditorDraft.RecognizerChoice {
         case .automatic:
             return "automatic"
         case .localSpeech:
-            return "sherpa-onnx"
+            return "local-speech"
         }
     }
 }

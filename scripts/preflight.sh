@@ -148,16 +148,13 @@ BUILD_DIR="$("$SCRIPT_DIR/build_xcode_release.sh" --show-bin-path)"
 
 info "Checking arm64 release executable architectures..."
 bash "$SCRIPT_DIR/verify_release_executable.sh" "$BUILD_DIR/RillApp"
-bash "$SCRIPT_DIR/verify_release_executable.sh" \
-  --require-sherpa \
-  "$BUILD_DIR/RillSpeechWorker"
+bash "$SCRIPT_DIR/verify_release_executable.sh" "$BUILD_DIR/RillSpeechWorker"
 
 info "Checking locked third-party license and notice provenance..."
 python3 "$SCRIPT_DIR/tests/third_party_notices_test.py"
 
 info "Checking relocatable SwiftPM resource accessors..."
 verify_xcode_resource_accessor "RillMacOS_RillApp"
-verify_xcode_resource_accessor "RillMacOS_RillSherpaRuntime"
 
 info "Smoke-testing unsigned app bundle assembly..."
 PACKAGE_SMOKE_ROOT="$(mktemp -d)"

@@ -37,6 +37,7 @@ public enum WorkflowExplanationTransformKind: String, Codable, Sendable, Equatab
     case vocabularyMapping
     case snippetReplacement
     case languageModelRewrite
+    case languageModelAnswer
     case whitespaceNormalization
 }
 
@@ -48,6 +49,7 @@ public enum WorkflowExplanationOutputEffect: String, Codable, Sendable, Equatabl
     case webhookRequest
     case shortcutInvocation
     case fileAppend
+    case speechPlayback
     case unclassified
 }
 

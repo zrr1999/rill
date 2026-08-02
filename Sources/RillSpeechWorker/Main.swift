@@ -23,6 +23,7 @@ enum RillSpeechWorkerMain {
     let protocolWriter = WorkerProtocolOutputWriter(
       output: standardIO.protocolOutput
     )
+    let requestTaskRegistry = WorkerRequestTaskRegistry()
 
     while true {
       let line: Data
@@ -32,6 +33,7 @@ enum RillSpeechWorkerMain {
             maximumByteCount: SpeechWorkerProtocol.maximumRequestByteCount
           )
         else {
+          await requestTaskRegistry.cancelAll()
           return 0
         }
         line = nextLine
@@ -40,48 +42,105 @@ enum RillSpeechWorkerMain {
         return EX_DATAERR
       }
 
-      let request: SpeechWorkerRequest
+      let frame: SpeechWorkerFrame
       do {
-        request = try SpeechWorkerProtocolCodec.decodeRequestLine(line)
+        frame = try SpeechWorkerFrameCodec.decodeCommandLine(line)
       } catch {
         log("request_rejected", to: standardIO.diagnosticOutput)
         return EX_DATAERR
       }
 
-      let response = await service.handle(request) { progress in
-        do {
-          let frame = try SpeechWorkerProtocolCodec.encodeResponseLine(
-            .progress(request: request, update: progress)
-          )
-          _ = protocolWriter.write(frame)
-        } catch {
-          protocolWriter.markFailed()
+      if case .command = frame.body {
+        if case .command(.cancelRequest(let requestID)) = frame.body {
+          await requestTaskRegistry.cancel(requestID: requestID)
+          continue
         }
-      }
-      guard !protocolWriter.hasFailed else {
-        log("parent_connection_lost", to: standardIO.diagnosticOutput)
-        return EX_IOERR
-      }
-      let encoded: Data
-      do {
-        encoded = try SpeechWorkerProtocolCodec.encodeResponseLine(response)
-      } catch {
-        let boundedFailure = SpeechWorkerResponse.failure(
-          request: request,
-          code: .recognitionFailed
-        )
-        do {
-          encoded = try SpeechWorkerProtocolCodec.encodeResponseLine(boundedFailure)
-        } catch {
-          log("response_encoding_failure", to: standardIO.diagnosticOutput)
-          return EX_SOFTWARE
+        await service.handleStreamingFrame(frame) { event in
+          do {
+            let encoded = try SpeechWorkerFrameCodec.encodeEventLine(event)
+            _ = protocolWriter.write(encoded)
+          } catch {
+            protocolWriter.markFailed()
+          }
         }
+        guard !protocolWriter.hasFailed else {
+          log("parent_connection_lost", to: standardIO.diagnosticOutput)
+          return EX_IOERR
+        }
+        continue
       }
 
-      guard protocolWriter.write(encoded) else {
-        log("parent_connection_lost", to: standardIO.diagnosticOutput)
-        return EX_IOERR
+      guard case .request(let payload) = frame.body else {
+        log("request_kind_rejected", to: standardIO.diagnosticOutput)
+        return EX_DATAERR
       }
+      let request = SpeechWorkerRequest(
+        protocolVersion: frame.protocolVersion,
+        requestID: frame.requestID,
+        generation: frame.generation,
+        payload: payload
+      )
+      let diagnosticOutput = standardIO.diagnosticOutput
+      let didStart = await requestTaskRegistry.start(requestID: request.requestID) {
+        await handleUnaryRequest(
+          request,
+          service: service,
+          protocolWriter: protocolWriter,
+          diagnosticOutput: diagnosticOutput
+        )
+      }
+      guard didStart else {
+        log("duplicate_request_id", to: standardIO.diagnosticOutput)
+        await requestTaskRegistry.cancelAll()
+        return EX_DATAERR
+      }
+    }
+  }
+
+  private static func handleUnaryRequest(
+    _ request: SpeechWorkerRequest,
+    service: RoutedSpeechWorkerService,
+    protocolWriter: WorkerProtocolOutputWriter,
+    diagnosticOutput: FileHandle
+  ) async {
+    let responseSequence = WorkerResponseSequence()
+    let response = await service.handle(request) { progress in
+      do {
+        var response = SpeechWorkerResponse.progress(request: request, update: progress)
+        response.sequence = responseSequence.next()
+        let frame = try SpeechWorkerProtocolCodec.encodeResponseLine(response)
+        _ = protocolWriter.write(frame)
+      } catch {
+        protocolWriter.markFailed()
+      }
+    }
+    guard !protocolWriter.hasFailed else {
+      log("parent_connection_lost", to: diagnosticOutput)
+      return
+    }
+    let encoded: Data
+    do {
+      var response = response
+      response.sequence = responseSequence.next()
+      encoded = try SpeechWorkerProtocolCodec.encodeResponseLine(response)
+    } catch {
+      var boundedFailure = SpeechWorkerResponse.failure(
+        request: request,
+        code: .recognitionFailed
+      )
+      boundedFailure.sequence = responseSequence.next()
+      do {
+        encoded = try SpeechWorkerProtocolCodec.encodeResponseLine(boundedFailure)
+      } catch {
+        log("response_encoding_failure", to: diagnosticOutput)
+        protocolWriter.markFailed()
+        return
+      }
+    }
+
+    guard protocolWriter.write(encoded) else {
+      log("parent_connection_lost", to: diagnosticOutput)
+      return
     }
   }
 
@@ -90,6 +149,48 @@ enum RillSpeechWorkerMain {
   private static func log(_ event: StaticString, to output: FileHandle) {
     let data = Data("RillSpeechWorker: \(event)\n".utf8)
     try? output.write(contentsOf: data)
+  }
+}
+
+private final class WorkerResponseSequence: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: UInt64 = 0
+
+  func next() -> UInt64 {
+    lock.withLock {
+      let current = value
+      value &+= 1
+      return current
+    }
+  }
+}
+
+private actor WorkerRequestTaskRegistry {
+  private var tasks: [UUID: Task<Void, Never>] = [:]
+
+  func start(
+    requestID: UUID,
+    operation: @escaping @Sendable () async -> Void
+  ) -> Bool {
+    guard tasks[requestID] == nil else { return false }
+    tasks[requestID] = Task { [weak self] in
+      await operation()
+      await self?.remove(requestID: requestID)
+    }
+    return true
+  }
+
+  func cancel(requestID: UUID) {
+    tasks[requestID]?.cancel()
+  }
+
+  func cancelAll() {
+    for task in tasks.values { task.cancel() }
+    tasks.removeAll()
+  }
+
+  private func remove(requestID: UUID) {
+    tasks.removeValue(forKey: requestID)
   }
 }
 

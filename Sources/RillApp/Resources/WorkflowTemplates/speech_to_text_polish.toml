@@ -13,7 +13,10 @@ accent = "purple"
 
 [setup.speech]
 selection = "automatic"
-recognizer = "sherpa-onnx.local"
+recognizer = "local-speech"
+local_model = "qwen3-asr-0.6b-mlx-8bit"
+live_preview = true
+streaming_profile = "realtime"
 
 [[process]]
 id = "D0000000-0000-4000-8000-000000000301"

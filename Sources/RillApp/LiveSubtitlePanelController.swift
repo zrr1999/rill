@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import SwiftUI
 import RillCore
 import RillUI
@@ -19,10 +20,24 @@ enum LiveSubtitlePanelGeometry {
     LiveSubtitleOverlayMetrics.maximumSurfaceWidth
   }
 
-  static func cornerRadius(prefersCompactLayout: Bool) -> CGFloat {
-    prefersCompactLayout
-      ? LiveSubtitleOverlayMetrics.compactCornerRadius
-      : LiveSubtitleOverlayMetrics.standardCornerRadius
+  static func preferredSurfaceSize(for snapshot: LiveSubtitleSnapshot) -> NSSize {
+    if !LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot) {
+      return NSSize(
+        width: LiveSubtitleOverlayMetrics.compactSurfaceWidth,
+        height: LiveSubtitleOverlayMetrics.compactSurfaceHeight
+      )
+    }
+    return NSSize(
+      width: LiveSubtitleOverlayMetrics.standardSurfaceWidth,
+      height: LiveSubtitleOverlayMetrics.standardSurfaceHeight
+    )
+  }
+
+  static func cornerRadius(for snapshot: LiveSubtitleSnapshot?) -> CGFloat {
+    guard let snapshot else { return LiveSubtitleOverlayMetrics.compactCornerRadius }
+    return LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot)
+      ? LiveSubtitleOverlayMetrics.standardCornerRadius
+      : LiveSubtitleOverlayMetrics.compactCornerRadius
   }
 
   static func constrainedSurfaceSize(
@@ -79,43 +94,6 @@ enum LiveSubtitlePanelGeometry {
   }
 }
 
-enum LiveSubtitlePanelResizePolicy {
-  static let growthTolerance: CGFloat = 0.5
-  static let widthThreshold: CGFloat = 48
-  static let heightThreshold: CGFloat = 20
-  static let shrinkDebounce: TimeInterval = 0.16
-  static let maximumShrinkDelay: TimeInterval = 0.65
-
-  static func immediateGrowthTarget(
-    currentSize: NSSize,
-    measuredSize: NSSize
-  ) -> NSSize? {
-    var target = currentSize
-    if measuredSize.width - currentSize.width > growthTolerance {
-      target.width = measuredSize.width
-    }
-    if measuredSize.height - currentSize.height > growthTolerance {
-      target.height = measuredSize.height
-    }
-    return target == currentSize ? nil : target
-  }
-
-  static func requiresShrink(currentSize: NSSize, measuredSize: NSSize) -> Bool {
-    currentSize.width - measuredSize.width >= widthThreshold
-      || currentSize.height - measuredSize.height >= heightThreshold
-  }
-
-  static func shrinkDeadline(
-    firstRequestAt: TimeInterval,
-    latestRequestAt: TimeInterval
-  ) -> TimeInterval {
-    min(
-      latestRequestAt + shrinkDebounce,
-      firstRequestAt + maximumShrinkDelay
-    )
-  }
-}
-
 struct LiveSubtitlePanelWindowState: Equatable {
   let isVisible: Bool
   let isOpaque: Bool
@@ -152,8 +130,7 @@ final class LiveSubtitlePanelController {
   )
 
   private let visibleFrameResolver: @MainActor () -> NSRect?
-  private let uptimeProvider: @MainActor () -> TimeInterval
-  private let waitForShrink: @Sendable (Duration) async throws -> Void
+  private let reduceMotionProvider: @MainActor () -> Bool
 
   private var panel: NSPanel?
   private var hostingController: NSHostingController<LiveSubtitleOverlay>?
@@ -167,23 +144,18 @@ final class LiveSubtitlePanelController {
   private var removeDurationLimitAction: (@Sendable (UUID) async -> Bool)?
   private var stopRequestedRunID: UUID?
   private var durationLimitRemovalRequestedRunID: UUID?
-  private var pendingShrinkTask: Task<Void, Never>?
-  private var firstShrinkRequestAt: TimeInterval?
+  private var visibilityGeneration: UInt64 = 0
 
   init(
     visibleFrameResolver: @escaping @MainActor () -> NSRect? = {
       LiveSubtitlePanelController.systemVisibleFrame()
     },
-    uptimeProvider: @escaping @MainActor () -> TimeInterval = {
-      ProcessInfo.processInfo.systemUptime
-    },
-    waitForShrink: @escaping @Sendable (Duration) async throws -> Void = { duration in
-      try await Task.sleep(for: duration)
+    reduceMotionProvider: @escaping @MainActor () -> Bool = {
+      NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
   ) {
     self.visibleFrameResolver = visibleFrameResolver
-    self.uptimeProvider = uptimeProvider
-    self.waitForShrink = waitForShrink
+    self.reduceMotionProvider = reduceMotionProvider
 
     let observer = NotificationCenter.default.addObserver(
       forName: Self.closeRequestedNotification,
@@ -278,20 +250,18 @@ final class LiveSubtitlePanelController {
 
   func update(snapshot: LiveSubtitleSnapshot?, language: AppLanguage) {
     guard let snapshot, snapshot.isVisible else {
-      hidePanel()
+      hidePanel(animated: true)
       visibleRunID = nil
       currentVisibleFrame = nil
       stopRequestedRunID = nil
       durationLimitRemovalRequestedRunID = nil
-      cancelPendingShrink()
       return
     }
 
     if dismissedRunID == snapshot.runID {
-      hidePanel()
+      hidePanel(animated: false)
       visibleRunID = nil
       currentVisibleFrame = nil
-      cancelPendingShrink()
       return
     }
     dismissedRunID = nil
@@ -324,40 +294,52 @@ final class LiveSubtitlePanelController {
 
     let visibleFrame = visibleFrameResolver()
     currentVisibleFrame = visibleFrame
-    let measuredSize = measureSurface(
-      for: hostingController,
+    let surfaceSize = LiveSubtitlePanelGeometry.constrainedSurfaceSize(
+      LiveSubtitlePanelGeometry.preferredSurfaceSize(for: snapshot),
       visibleFrame: visibleFrame
     )
     let isNewRun = visibleRunID != snapshot.runID || !panel.isVisible
 
     if isNewRun {
-      cancelPendingShrink()
-      panel.setContentSize(measuredSize)
+      visibilityGeneration &+= 1
+      panel.setContentSize(surfaceSize)
       position(panel, using: visibleFrame)
+      panel.alphaValue = reduceMotionProvider() ? 1 : 0
       panel.orderFrontRegardless()
+      if !reduceMotionProvider() {
+        NSAnimationContext.runAnimationGroup { context in
+          context.duration = 0.1
+          context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+          panel.animator().alphaValue = 1
+        }
+      }
       panel.invalidateShadow()
       visibleRunID = snapshot.runID
       return
     }
 
     let currentSize = panel.contentRect(forFrameRect: panel.frame).size
-    if let growthTarget = LiveSubtitlePanelResizePolicy.immediateGrowthTarget(
-      currentSize: currentSize,
-      measuredSize: measuredSize
-    ) {
-      panel.setContentSize(growthTarget)
-    }
-
-    let resizedSize = panel.contentRect(forFrameRect: panel.frame).size
-    if LiveSubtitlePanelResizePolicy.requiresShrink(
-      currentSize: resizedSize,
-      measuredSize: measuredSize
-    ) {
-      scheduleShrink(for: snapshot.runID)
+    if currentSize != surfaceSize {
+      if let visibleFrame {
+        let targetFrame = LiveSubtitlePanelGeometry.layout(
+          surfaceSize: surfaceSize,
+          visibleFrame: visibleFrame
+        ).windowFrame
+        if reduceMotionProvider() {
+          panel.setFrame(targetFrame, display: true)
+        } else {
+          NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(targetFrame, display: true)
+          }
+        }
+      } else {
+        panel.setContentSize(surfaceSize)
+      }
     } else {
-      cancelPendingShrink()
+      position(panel, using: visibleFrame)
     }
-    position(panel, using: visibleFrame)
     panel.invalidateShadow()
   }
 
@@ -390,104 +372,42 @@ final class LiveSubtitlePanelController {
     view.layer?.isOpaque = false
     view.layer?.masksToBounds = true
     view.layer?.cornerCurve = .continuous
-    view.layer?.cornerRadius = LiveSubtitlePanelGeometry.cornerRadius(
-      prefersCompactLayout: snapshot?.prefersCompactLayout == true
-    )
+    view.layer?.cornerRadius = LiveSubtitlePanelGeometry.cornerRadius(for: snapshot)
   }
 
   private func configureAccessibility(of panel: NSPanel, language: AppLanguage) {
-    let title = language == .english ? "Rill Live Subtitles" : "Rill 实时字幕"
+    let title = language == .english ? "Rill Dictation" : "Rill 语音输入"
     panel.title = title
     panel.setAccessibilityLabel(title)
-  }
-
-  private func measureSurface(
-    for hostingController: NSHostingController<LiveSubtitleOverlay>,
-    visibleFrame: NSRect?
-  ) -> NSSize {
-    hostingController.view.needsLayout = true
-    hostingController.view.layoutSubtreeIfNeeded()
-    return LiveSubtitlePanelGeometry.constrainedSurfaceSize(
-      hostingController.view.fittingSize,
-      visibleFrame: visibleFrame
-    )
-  }
-
-  private func scheduleShrink(for runID: UUID) {
-    let now = uptimeProvider()
-    let firstRequestAt = firstShrinkRequestAt ?? now
-    firstShrinkRequestAt = firstRequestAt
-    let deadline = LiveSubtitlePanelResizePolicy.shrinkDeadline(
-      firstRequestAt: firstRequestAt,
-      latestRequestAt: now
-    )
-    let delayMilliseconds = Int64(ceil(max(deadline - now, 0) * 1_000))
-    let delay = Duration.milliseconds(delayMilliseconds)
-    let waitForShrink = waitForShrink
-
-    pendingShrinkTask?.cancel()
-    pendingShrinkTask = Task { @MainActor [weak self] in
-      do {
-        try await waitForShrink(delay)
-      } catch {
-        return
-      }
-      guard !Task.isCancelled, let self else { return }
-      self.pendingShrinkTask = nil
-      self.firstShrinkRequestAt = nil
-      self.applyScheduledShrink(for: runID)
-    }
-  }
-
-  private func applyScheduledShrink(for runID: UUID) {
-    guard
-      visibleRunID == runID,
-      panel?.isVisible == true,
-      let panel,
-      let hostingController
-    else {
-      return
-    }
-
-    let visibleFrame = visibleFrameResolver()
-    currentVisibleFrame = visibleFrame
-    let measuredSize = measureSurface(
-      for: hostingController,
-      visibleFrame: visibleFrame
-    )
-    let currentSize = panel.contentRect(forFrameRect: panel.frame).size
-    guard
-      LiveSubtitlePanelResizePolicy.requiresShrink(
-        currentSize: currentSize,
-        measuredSize: measuredSize
-      )
-    else {
-      position(panel, using: visibleFrame)
-      panel.invalidateShadow()
-      return
-    }
-
-    panel.setContentSize(measuredSize)
-    position(panel, using: visibleFrame)
-    panel.invalidateShadow()
-  }
-
-  private func cancelPendingShrink() {
-    pendingShrinkTask?.cancel()
-    pendingShrinkTask = nil
-    firstShrinkRequestAt = nil
   }
 
   private func dismiss(runID: UUID) {
     dismissedRunID = runID
     visibleRunID = nil
     currentVisibleFrame = nil
-    cancelPendingShrink()
-    hidePanel()
+    hidePanel(animated: false)
   }
 
-  private func hidePanel() {
-    panel?.orderOut(nil)
+  private func hidePanel(animated: Bool) {
+    guard let panel, panel.isVisible else { return }
+    visibilityGeneration &+= 1
+    let generation = visibilityGeneration
+    guard animated, !reduceMotionProvider() else {
+      panel.alphaValue = 1
+      panel.orderOut(nil)
+      return
+    }
+    NSAnimationContext.runAnimationGroup { context in
+      context.duration = 0.1
+      context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+      panel.animator().alphaValue = 0
+    } completionHandler: { [weak self, weak panel] in
+      Task { @MainActor in
+        guard let self, self.visibilityGeneration == generation else { return }
+        panel?.orderOut(nil)
+        panel?.alphaValue = 1
+      }
+    }
   }
 
   private func position(_ panel: NSPanel, using visibleFrame: NSRect?) {

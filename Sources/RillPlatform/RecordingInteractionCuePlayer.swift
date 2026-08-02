@@ -17,10 +17,6 @@ enum RecordingInteractionCueToneRenderer {
       durationSeconds = 0.065
       startFrequency = 740
       endFrequency = 440
-    case .wakeDetected:
-      durationSeconds = 0.14
-      startFrequency = 620
-      endFrequency = 1_240
     }
 
     let sampleCount = Int(sampleRate * durationSeconds)
@@ -35,8 +31,7 @@ enum RecordingInteractionCueToneRenderer {
       let attack = min(1, progress / 0.12)
       let release = min(1, (1 - progress) / 0.28)
       let envelope = sin(Double.pi * min(attack, release) / 2)
-      let amplitude = cue == .wakeDetected ? 0.16 : 0.10
-      samples[index] = Float(sin(phase) * envelope * amplitude)
+      samples[index] = Float(sin(phase) * envelope * 0.10)
     }
 
     return samples
@@ -62,7 +57,6 @@ public final class RecordingInteractionCuePlayer {
       uniqueKeysWithValues: [
         RecordingInteractionCue.started,
         .stopped,
-        .wakeDetected,
       ].compactMap { cue in
         Self.makeBuffer(
           samples: RecordingInteractionCueToneRenderer.samples(for: cue),

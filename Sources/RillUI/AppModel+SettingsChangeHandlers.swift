@@ -178,6 +178,44 @@ extension AppModel {
     persistStringSetting(localSpeechPrewarm ? "true" : "false", for: .localSpeechPrewarm)
   }
 
+  func handleEnabledSpeechModelIDsChange(from oldValue: Set<String>) {
+    guard oldValue != enabledSpeechModelIDs else { return }
+    markSettingModifiedDuringInitialLoad(.enabledSpeechModels)
+    if !residentSpeechModelIDs.isSubset(of: enabledSpeechModelIDs) {
+      residentSpeechModelIDs.formIntersection(enabledSpeechModelIDs)
+    }
+    residentSpeechBudgetConfirmation = nil
+    publishCurrentLocalSpeechSettingsToRuntime()
+    persistSpeechModelIDSet(enabledSpeechModelIDs, for: .enabledSpeechModels)
+  }
+
+  func handleResidentSpeechModelIDsChange(from oldValue: Set<String>) {
+    guard oldValue != residentSpeechModelIDs else { return }
+    markSettingModifiedDuringInitialLoad(.residentSpeechModels)
+    publishCurrentLocalSpeechSettingsToRuntime()
+    persistSpeechModelIDSet(residentSpeechModelIDs, for: .residentSpeechModels)
+    synchronizeResidentSpeechModels(from: oldValue)
+  }
+
+  func handleResidentSpeechBudgetConfirmationChange(from oldValue: String?) {
+    guard oldValue != residentSpeechBudgetConfirmation else { return }
+    markSettingModifiedDuringInitialLoad(.residentSpeechBudgetConfirmation)
+    persistStringSetting(
+      residentSpeechBudgetConfirmation ?? "",
+      for: .residentSpeechBudgetConfirmation
+    )
+  }
+
+  private func persistSpeechModelIDSet(
+    _ modelIDs: Set<String>,
+    for key: AppSettingKey
+  ) {
+    guard let data = try? JSONEncoder().encode(modelIDs.sorted()),
+      let value = String(data: data, encoding: .utf8)
+    else { return }
+    persistStringSetting(value, for: key)
+  }
+
   func handleOpenAIAPIKeyChange(from oldValue: String) {
     guard oldValue != openAIAPIKey else { return }
     openAIVerificationTask?.cancel()
@@ -185,9 +223,13 @@ extension AppModel {
     openAIVerificationGeneration &+= 1
     openAIVerificationFailure = nil
     openAIConfigurationVerificationState = .idle
+    let previousAvailability = openAICredentialAvailability
     if !isRestoringSettings {
       openAICredentialLoadGeneration &+= 1
       openAICredentialAvailability = credentialStore == nil ? .inaccessible : .saving
+    }
+    if previousAvailability != openAICredentialAvailability {
+      workflowLibraryChangedAction()
     }
     persistSecureCredential(
       openAIAPIKey,
@@ -218,11 +260,26 @@ extension AppModel {
     key: AppSettingKey
   ) {
     guard oldValue != value else { return }
+    let verificationWasFailed = openAIConfigurationVerificationState == .failed
+    let validityChanged: Bool
+    switch key {
+    case .openAIBaseURL:
+      validityChanged = OpenAISettings.isValidBaseURL(oldValue)
+        != OpenAISettings.isValidBaseURL(value)
+    case .openAIModel:
+      validityChanged = OpenAISettings.isValidModelIdentifier(oldValue)
+        != OpenAISettings.isValidModelIdentifier(value)
+    default:
+      validityChanged = false
+    }
     openAIVerificationTask?.cancel()
     openAIVerificationTask = nil
     openAIVerificationGeneration &+= 1
     openAIVerificationFailure = nil
     openAIConfigurationVerificationState = .idle
+    if validityChanged || verificationWasFailed {
+      workflowLibraryChangedAction()
+    }
     persistStringSetting(value, for: key)
   }
 

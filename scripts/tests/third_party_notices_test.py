@@ -28,48 +28,11 @@ APP_ICON_SOURCE = (
 )
 PRIVACY_NOTICE = PROJECT_DIR / "PRIVACY.md"
 LOCAL_MODEL_NOTICES = PROJECT_DIR / "LOCAL_MODEL_NOTICES.md"
-WAKE_WORD_MODEL_CATALOG = (
-    PROJECT_DIR / "Sources" / "RillProviders" / "WakeWordModelCatalog.swift"
-)
 MLX_RESOURCE_BUNDLE_NAME = "mlx-swift_Cmlx.bundle"
 DEPENDENCY_MANIFEST = PROJECT_DIR / "scripts" / "third_party_notices_manifest.json"
 PACKAGE_MANIFEST = PROJECT_DIR / "Package.swift"
-SHERPA_BUILD_SCRIPT = PROJECT_DIR / "scripts" / "build_sherpa_onnx_runtime.sh"
-SHERPA_BUILD_PROVENANCE = (
-    PROJECT_DIR / "vendor" / "sherpa-onnx-v1.13.4" / "BUILD_PROVENANCE.md"
-)
-SHERPA_VENDOR_ROOT = PROJECT_DIR / "vendor" / "sherpa-onnx-v1.13.4"
-SHERPA_SOURCE_INPUTS = SHERPA_VENDOR_ROOT / "SOURCE_INPUTS.sha256"
-SHERPA_ARTIFACT_SUMS = SHERPA_VENDOR_ROOT / "SHA256SUMS"
-SHERPA_ARCHIVE = (
-    SHERPA_VENDOR_ROOT
-    / "sherpa-onnx.xcframework"
-    / "macos-arm64_x86_64"
-    / "libsherpa-onnx.a"
-)
-SILERO_VAD_SOURCE = (
-    "https://github.com/k2-fsa/sherpa-onnx/releases/download/"
-    "asr-models/silero_vad.onnx"
-)
-SILERO_VAD_SHA256 = (
-    "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
-)
-SILERO_VAD_SIZE = 643_854
-SILERO_VAD_ROOT = PROJECT_DIR / "Sources" / "RillSherpaRuntime" / "Resources"
-SILERO_VAD_RESOURCE = SILERO_VAD_ROOT / "silero_vad.onnx"
-SILERO_VAD_LICENSE = SILERO_VAD_ROOT / "LICENSE.silero-vad"
-SILERO_VAD_LICENSE_SHA256 = (
-    "51c19c8be941a3fb00ccf58f0bf9053de9f7237a0b37327896eabad32dffe873"
-)
-SILERO_VAD_UPSTREAM_LICENSE_SHA256 = (
-    "2e63e9a38b6e8fc0c7bc37ce174caca1862870856c6daf5697cfb785e925520b"
-)
-WAKE_WORD_ARCHIVE_SHA256 = (
-    "68447f4fbc67e70eee3a93961f36e81e98f47aef73ce7e7ca00885c6cd3616a6"
-)
-WAKE_WORD_LICENSE_REVISION = "541d04e28be57efc6fdf46a341da09e043a37b52"
-WAKE_WORD_LICENSE_SHA256 = (
-    "34d92bb4dc9fb259efb67f329d2cd68f6e0a6226121a694a3b6b4c748378559c"
+MLX_SILERO_RUNTIME = (
+    PROJECT_DIR / "Sources" / "RillMLXRuntime" / "MLXSileroVADRuntime.swift"
 )
 
 
@@ -166,8 +129,6 @@ class Fixture:
             str(self.manifest),
             "--checkouts-dir",
             str(self.checkouts),
-            "--project-dir",
-            str(self.root),
             "--output",
             str(self.output),
         ]
@@ -194,12 +155,6 @@ class Fixture:
             own_bundle / "Contents" / "Resources" / "BuiltinWorkflowManifest.json"
         )
         write_json(workflow_manifest, {"workflows": []})
-
-        sherpa_bundle = build_dir / "RillMacOS_RillSherpaRuntime.bundle"
-        create_bundle(sherpa_bundle, "dev.zrr.Rill.sherpa-resources")
-        sherpa_resources = sherpa_bundle / "Contents" / "Resources"
-        shutil.copy2(SILERO_VAD_RESOURCE, sherpa_resources / SILERO_VAD_RESOURCE.name)
-        shutil.copy2(SILERO_VAD_LICENSE, sherpa_resources / SILERO_VAD_LICENSE.name)
 
         mlx_bundle = build_dir / MLX_RESOURCE_BUNDLE_NAME
         create_bundle(mlx_bundle, "mlx-swift_Cmlx")
@@ -275,6 +230,15 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unreviewed locked packages: unreviewed", result.stderr)
 
+    def test_generator_rejects_vendored_manifest_entries(self) -> None:
+        manifest = json.loads(self.fixture.manifest.read_text(encoding="utf-8"))
+        manifest["packages"][0]["kind"] = "vendored"
+        write_json(self.fixture.manifest, manifest)
+
+        result = run(self.fixture.generator_command())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid kind: 'vendored'", result.stderr)
+
     def test_generator_accepts_license_added_on_a_descendant_evidence_revision(
         self,
     ) -> None:
@@ -339,62 +303,6 @@ class ThirdPartyNoticesTests(unittest.TestCase):
 
         self.assertIn(f"`LICENSE-LATER@{evidence_revision}`", content)
         self.assertIn("License granted on a descendant revision", content)
-
-    def test_generator_supports_vendored_only_without_lockfile_and_rejects_artifact_drift(
-        self,
-    ) -> None:
-        self.fixture.resolved.unlink()
-        vendor_root = self.fixture.root / "vendor" / "sample-runtime"
-        vendor_root.mkdir(parents=True)
-        artifact = vendor_root / "libsample.a"
-        artifact.write_bytes(b"reviewed static archive\n")
-        license_path = vendor_root / "LICENSE"
-        license_path.write_bytes(self.fixture.license_content)
-        write_json(
-            self.fixture.manifest,
-            {
-                "schemaVersion": 2,
-                "packages": [
-                    {
-                        "kind": "vendored",
-                        "identity": "sample-runtime",
-                        "version": "2.0.0",
-                        "source": "https://example.invalid/sample-runtime/v2.0.0",
-                        "sourceSHA256": "a" * 64,
-                        "root": "vendor/sample-runtime",
-                        "artifacts": [
-                            {
-                                "path": artifact.name,
-                                "sha256": hashlib.sha256(
-                                    artifact.read_bytes()
-                                ).hexdigest(),
-                            }
-                        ],
-                        "licenseExpression": "MIT",
-                        "evidence": [
-                            {
-                                "kind": "license",
-                                "path": license_path.name,
-                                "sha256": hashlib.sha256(
-                                    license_path.read_bytes()
-                                ).hexdigest(),
-                            }
-                        ],
-                    }
-                ],
-            },
-        )
-
-        self.fixture.generate()
-        content = self.fixture.output.read_text(encoding="utf-8")
-        self.assertIn("`sample-runtime` | vendored | 2.0.0", content)
-        checked = run(self.fixture.generator_command(check=True))
-        self.assertEqual(checked.returncode, 0, checked.stderr)
-
-        artifact.write_bytes(b"tampered static archive\n")
-        rejected = run(self.fixture.generator_command())
-        self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn("Artifact SHA-256 mismatch", rejected.stderr)
 
     def test_generator_rejects_missing_or_changed_evidence(self) -> None:
         self.fixture.license_path.unlink()
@@ -488,18 +396,6 @@ printf '%s\\n' arm64
             encoding="utf-8",
         )
         fake_lipo.chmod(0o755)
-        fake_nm = fake_bin / "nm"
-        fake_nm.write_text(
-            """#!/bin/sh
-cat <<'EOF'
-00000001 (__TEXT,__text) external _SherpaOnnxCreateOfflineRecognizer
-00000002 (__TEXT,__text) external _SherpaOnnxCreateVoiceActivityDetector
-00000003 (__TEXT,__text) external _SherpaOnnxOfflineStreamSetOption
-EOF
-""",
-            encoding="utf-8",
-        )
-        fake_nm.chmod(0o755)
         fake_xcrun = fake_bin / "xcrun"
         fake_xcrun.write_text(
             """#!/bin/sh
@@ -598,21 +494,8 @@ EOF
             packaged_local_model_notices.read_bytes(),
             copied_local_model_notices.read_bytes(),
         )
-        packaged_sherpa_resources = (
-            app_bundle
-            / "Contents"
-            / "Resources"
-            / "RillMacOS_RillSherpaRuntime.bundle"
-            / "Contents"
-            / "Resources"
-        )
-        self.assertEqual(
-            (packaged_sherpa_resources / SILERO_VAD_RESOURCE.name).read_bytes(),
-            SILERO_VAD_RESOURCE.read_bytes(),
-        )
-        self.assertEqual(
-            (packaged_sherpa_resources / SILERO_VAD_LICENSE.name).read_bytes(),
-            SILERO_VAD_LICENSE.read_bytes(),
+        self.assertFalse(
+            (app_bundle / "Contents" / "Resources" / "RillMacOS_RillSherpaRuntime.bundle").exists()
         )
 
         with (app_bundle / "Contents" / "Info.plist").open("rb") as source:
@@ -675,20 +558,6 @@ EOF
         self.assertEqual(extracted.returncode, 0, extracted.stderr)
         self.assertTrue((extracted_iconset / "icon_512x512@2x.png").is_file())
 
-        built_silero_model = (
-            build_dir
-            / "RillMacOS_RillSherpaRuntime.bundle"
-            / "Contents"
-            / "Resources"
-            / SILERO_VAD_RESOURCE.name
-        )
-        built_silero_model.write_bytes(b"drifted-model")
-        rejected = run(command, env=assembler_env)
-        self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn("Built Silero VAD model SHA-256 mismatch", rejected.stderr)
-        self.assertTrue(app_bundle.exists())
-        shutil.copy2(SILERO_VAD_RESOURCE, built_silero_model)
-
         self.fixture.output.unlink()
         rejected = run(command, env=assembler_env)
         self.assertNotEqual(rejected.returncode, 0)
@@ -745,237 +614,33 @@ EOF
         result = run(["python3", str(GENERATOR), "--check"])
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_repository_silero_vad_resource_is_pinned_and_packaged(self) -> None:
-        for resource in (SILERO_VAD_RESOURCE, SILERO_VAD_LICENSE):
-            self.assertTrue(resource.exists(), f"missing reviewed resource: {resource}")
-            self.assertFalse(resource.is_symlink(), f"resource is a symlink: {resource}")
-            self.assertTrue(resource.is_file(), f"resource is not regular: {resource}")
-
-        model_bytes = SILERO_VAD_RESOURCE.read_bytes()
-        self.assertEqual(len(model_bytes), SILERO_VAD_SIZE)
-        self.assertEqual(hashlib.sha256(model_bytes).hexdigest(), SILERO_VAD_SHA256)
-
-        license_bytes = SILERO_VAD_LICENSE.read_bytes()
-        self.assertEqual(
-            hashlib.sha256(license_bytes).hexdigest(), SILERO_VAD_LICENSE_SHA256
-        )
-        self.assertTrue(license_bytes.endswith(b"\n"))
-        self.assertEqual(
-            hashlib.sha256(license_bytes[:-1]).hexdigest(),
-            SILERO_VAD_UPSTREAM_LICENSE_SHA256,
-        )
-
+    def test_repository_has_no_retired_native_speech_inventory(self) -> None:
         manifest = json.loads(DEPENDENCY_MANIFEST.read_text(encoding="utf-8"))
-        silero = next(
-            package
-            for package in manifest["packages"]
-            if package["identity"] == "silero-vad"
+        self.assertFalse(
+            [package for package in manifest["packages"] if package["kind"] == "vendored"]
         )
-        self.assertEqual(silero["kind"], "vendored")
-        self.assertEqual(silero["source"], SILERO_VAD_SOURCE)
-        self.assertEqual(silero["sourceSHA256"], SILERO_VAD_SHA256)
-        self.assertEqual(silero["root"], "Sources/RillSherpaRuntime/Resources")
-        self.assertEqual(
-            silero["artifacts"],
-            [{"path": "silero_vad.onnx", "sha256": SILERO_VAD_SHA256}],
-        )
-        self.assertEqual(silero["licenseExpression"], "MIT")
-        self.assertEqual(
-            silero["evidence"],
-            [
-                {
-                    "kind": "license",
-                    "path": "LICENSE.silero-vad",
-                    "sha256": SILERO_VAD_LICENSE_SHA256,
-                }
-            ],
-        )
+        package_manifest = PACKAGE_MANIFEST.read_text(encoding="utf-8").casefold()
+        for retired_value in (
+            "sherpaonnxnative",
+            "onnxruntimenative",
+            "rillsherparuntime",
+            "csherpaonnx",
+        ):
+            self.assertNotIn(retired_value, package_manifest)
 
-        package_manifest = PACKAGE_MANIFEST.read_text(encoding="utf-8")
-        self.assertIn('.copy("Resources/silero_vad.onnx")', package_manifest)
-        self.assertIn('.copy("Resources/LICENSE.silero-vad")', package_manifest)
-
+    def test_repository_pins_mlx_silero_v6_without_packaged_onnx(self) -> None:
+        runtime = MLX_SILERO_RUNTIME.read_text(encoding="utf-8")
         local_notices = LOCAL_MODEL_NOTICES.read_text(encoding="utf-8")
         for pinned_value in (
-            SILERO_VAD_SOURCE,
-            SILERO_VAD_SHA256,
-            str(SILERO_VAD_SIZE),
+            "mlx-community/silero-vad-v6",
+            "2ebf4a5e10726a2e78ddd4d70eedfb6f1c33eb06",
+            "9fe1befb9692a0d4135adadc33f8075ef6d350bd2391b88d750f2c233f97fa0b",
+            "65b6c5f0293cbc44d109e58bef78b474d9c65dedbee814cf0b90ef5f0d9150ff",
         ):
-            self.assertIn(pinned_value, local_notices)
-        self.assertIn("does not suppress noise", local_notices)
-
-    def test_repository_wake_word_license_evidence_is_pinned_and_packaged(
-        self,
-    ) -> None:
-        catalog = WAKE_WORD_MODEL_CATALOG.read_text(encoding="utf-8")
-        local_notices = LOCAL_MODEL_NOTICES.read_text(encoding="utf-8")
-        third_party_notices = (PROJECT_DIR / "THIRD_PARTY_NOTICES.md").read_text(
-            encoding="utf-8"
-        )
-
-        for pinned_value in (
-            WAKE_WORD_ARCHIVE_SHA256,
-            WAKE_WORD_LICENSE_REVISION,
-            WAKE_WORD_LICENSE_SHA256,
-            "encoder-epoch-13-avg-2-chunk-8-left-64.int8.onnx",
-            "decoder-epoch-13-avg-2-chunk-8-left-64.onnx",
-            "joiner-epoch-13-avg-2-chunk-8-left-64.int8.onnx",
-            'licenseExpression: "Apache-2.0"',
-            "upstreamNotice: .notProvidedByPublisher",
-        ):
-            self.assertIn(pinned_value, catalog)
-
-        for pinned_value in (
-            WAKE_WORD_ARCHIVE_SHA256,
-            WAKE_WORD_LICENSE_REVISION,
-            WAKE_WORD_LICENSE_SHA256,
-            "Apache License 2.0",
-            "no `NOTICE` file was provided",
-            "`left-64`",
-        ):
-            self.assertIn(pinned_value, local_notices)
-        self.assertIn("Apache License", third_party_notices)
-
-    def test_repository_native_runtime_inventory_matches_reviewed_build(self) -> None:
-        manifest = json.loads(DEPENDENCY_MANIFEST.read_text(encoding="utf-8"))
-        packages = [
-            package
-            for package in manifest["packages"]
-            if package["kind"] == "vendored"
-        ]
-        by_identity = {package["identity"]: package for package in packages}
-        expected_identities = {
-            "eigen",
-            "kaldi-decoder",
-            "kaldi-native-fbank",
-            "kaldifst",
-            "kissfft",
-            "nlohmann-json",
-            "onnxruntime",
-            "openfst",
-            "sherpa-onnx",
-            "silero-vad",
-            "simple-sentencepiece",
-        }
-        self.assertEqual(set(by_identity), expected_identities)
-        self.assertEqual(len(packages), len(expected_identities))
-        self.assertTrue(all(package["kind"] == "vendored" for package in packages))
-
-        source_input_hashes = {
-            line.split(maxsplit=1)[0]
-            for line in SHERPA_SOURCE_INPUTS.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        }
-        native_runtime_identities = expected_identities - {"silero-vad"}
-        self.assertEqual(
-            source_input_hashes,
-            {
-                by_identity[identity]["sourceSHA256"]
-                for identity in native_runtime_identities
-            },
-        )
-
-        sherpa = by_identity["sherpa-onnx"]
-        self.assertEqual(
-            sherpa["source"],
-            "https://github.com/k2-fsa/sherpa-onnx/archive/"
-            "142807252687d81b40d6315f23470a1512a00de3.tar.gz",
-        )
-        self.assertEqual(
-            sherpa["sourceSHA256"],
-            "f0dc7c9b41b8691313daee671e826eb23946fa1320559a8d37e84f8774af76b2",
-        )
-        expected_archive_sha256 = (
-            "8950e345310f223d3be649c80de8059957a2a01f8553cca24c99071a6a292db6"
-        )
-        merged_artifact_path = (
-            "sherpa-onnx.xcframework/macos-arm64_x86_64/libsherpa-onnx.a"
-        )
-        for identity in native_runtime_identities - {"onnxruntime"}:
-            artifacts = {
-                artifact["path"]: artifact["sha256"]
-                for artifact in by_identity[identity]["artifacts"]
-            }
-            self.assertEqual(
-                artifacts[merged_artifact_path], expected_archive_sha256
-            )
-
-        serialized_manifest = json.dumps(manifest, sort_keys=True).casefold()
-        for forbidden_identity in ("espeak", "hclust", "piper"):
-            self.assertNotIn(forbidden_identity, serialized_manifest)
-
-        build_contract = (
-            SHERPA_BUILD_SCRIPT.read_text(encoding="utf-8")
-            + SHERPA_BUILD_PROVENANCE.read_text(encoding="utf-8")
-        )
-        for required_setting in (
-            "CMAKE_CXX_FLAGS=-DEIGEN_MPL2_ONLY",
-            "SHERPA_ONNX_ENABLE_TTS=OFF",
-            "SHERPA_ONNX_ENABLE_SPEAKER_DIARIZATION=OFF",
-            "SHERPA_ONNX_ENABLE_PORTAUDIO=OFF",
-        ):
-            self.assertIn(required_setting, build_contract)
-
-        build_script = SHERPA_BUILD_SCRIPT.read_text(encoding="utf-8")
-        for reproducibility_gate in (
-            "EXPECTED_SOURCE_ARCHIVE_SHA256=",
-            "-ffile-prefix-map=$WORK_ROOT=$REPRODUCIBLE_BUILD_ROOT",
-            "FETCHCONTENT_FULLY_DISCONNECTED=ON",
-            "EXPECTED_PATCHED_KALDI_NATIVE_FBANK_CMAKE_SHA256=",
-            'libtool -static -D -no_warning_for_no_symbols',
-            "SherpaOnnxOfflineStreamSetOption",
-        ):
-            self.assertIn(reproducibility_gate, build_script)
-
-        checked_artifacts = run(
-            ["shasum", "-a", "256", "-c", str(SHERPA_ARTIFACT_SUMS)],
-            cwd=SHERPA_VENDOR_ROOT,
-        )
-        self.assertEqual(
-            checked_artifacts.returncode,
-            0,
-            checked_artifacts.stdout + checked_artifacts.stderr,
-        )
-
-        for architecture in ("arm64", "x86_64"):
-            architecture_check = run(
-                ["lipo", str(SHERPA_ARCHIVE), "-verify_arch", architecture]
-            )
-            self.assertEqual(
-                architecture_check.returncode, 0, architecture_check.stderr
-            )
-            symbols = run(["nm", "-a", "-arch", architecture, str(SHERPA_ARCHIVE)])
-            self.assertEqual(symbols.returncode, 0, symbols.stderr)
-            self.assertIn("_SherpaOnnxCreateOfflineRecognizer", symbols.stdout)
-            self.assertIn("_SherpaOnnxCreateVoiceActivityDetector", symbols.stdout)
-            self.assertIn("_SherpaOnnxOfflineStreamSetOption", symbols.stdout)
-            lowered_symbols = symbols.stdout.casefold()
-            for forbidden_pattern in (
-                "_espeak_",
-                "piper",
-                "phonemiz",
-                "hclust",
-                "fastcluster",
-                "offline-tts-impl",
-                "offline-speaker-diarization-impl",
-            ):
-                self.assertNotIn(forbidden_pattern, lowered_symbols)
-
-        archive_strings = run(["strings", str(SHERPA_ARCHIVE)])
-        self.assertEqual(archive_strings.returncode, 0, archive_strings.stderr)
-        self.assertIn(
-            "/usr/src/voxtype/sherpa-runtime/", archive_strings.stdout
-        )
-        for private_path in (
-            "/Users/",
-            "/private/var/folders/",
-            "/var/folders/",
-            "/private/tmp/voxtype-sherpa",
-            "/tmp/voxtype-sherpa",
-            "/private/tmp/rill-sherpa",
-            "/tmp/rill-sherpa",
-        ):
-            self.assertNotIn(private_path, archive_strings.stdout)
+            self.assertIn(pinned_value, runtime)
+        self.assertIn("mlx-community/silero-vad-v6", local_notices)
+        self.assertIn("no ONNX VAD is packaged", local_notices)
+        self.assertNotIn("RillSherpaRuntime", PACKAGE_MANIFEST.read_text(encoding="utf-8"))
 
 
 def create_bundle(path: Path, identifier: str) -> None:

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Fail-closed security checks for SwiftPM and vendored dependencies.
+"""Fail-closed security checks for locked SwiftPM dependencies.
 
-The default offline check applies the reviewed Swift advisory baseline, binds
-every vendored native dependency to the notices inventory, and enforces the
-review window. ``--live-osv`` additionally submits every auditable Git commit
-to OSV's official batch API and fails when any advisory is returned.
+The default offline check applies the reviewed Swift advisory baseline and
+enforces its review window. ``--live-osv`` additionally submits every locked
+Git commit to OSV's official batch API and fails when any advisory is returned.
 """
 
 from __future__ import annotations
@@ -32,16 +31,11 @@ if sys.version_info < (3, 11):
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_LOCKFILE = PROJECT_DIR / "Package.resolved"
 DEFAULT_BASELINE = Path(__file__).resolve().parent / "dependency_security_baseline.json"
-DEFAULT_THIRD_PARTY_MANIFEST = (
-    Path(__file__).resolve().parent / "third_party_notices_manifest.json"
-)
 OSV_QUERY_BATCH_URL = "https://api.osv.dev/v1/querybatch"
 OSV_TIMEOUT_SECONDS = 30.0
 MAX_JSON_BYTES = 32 * 1024 * 1024
 MAX_PAGES_PER_QUERY = 100
 MAX_REVIEW_WINDOW = timedelta(days=90)
-REQUIRED_KISSFFT_REVISION = "8a8e66e33d692bad1376fe7904d87d767730537f"
-
 IDENTITY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 REVISION_PATTERN = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -87,38 +81,10 @@ class LockedPin:
 
 
 @dataclass(frozen=True)
-class VendoredManifestPin:
-    identity: str
-    version: str
-    source: str
-    source_sha256: str
-
-
-@dataclass(frozen=True)
-class VendoredCommitPin:
-    identity: str
-    location: str
-    version: str
-    revision: str
-
-
-@dataclass(frozen=True)
-class VendoredReview:
-    identity: str
-    source: str
-    source_sha256: str
-    osv_mode: str
-    repository: str | None = None
-    revision: str | None = None
-    unsupported_reason: str | None = None
-
-
-@dataclass(frozen=True)
 class SecurityPolicy:
-    reviewed_at: datetime | None
-    expires_at: datetime | None
+    reviewed_at: datetime
+    expires_at: datetime
     advisories: tuple[ReviewedAdvisory, ...]
-    vendored_reviews: tuple[VendoredReview, ...]
 
 
 @dataclass(frozen=True)
@@ -137,7 +103,7 @@ class ReviewedAdvisory:
 class SecurityFinding:
     source: str
     advisory_id: str
-    pin: LockedPin | VendoredCommitPin
+    pin: LockedPin
     modified: str | None = None
     introduced: SemanticVersion | None = None
     fixed: SemanticVersion | None = None
@@ -405,115 +371,13 @@ def _parse_utc_datetime(value: object, *, field: str) -> datetime:
     return parsed
 
 
-def _parse_vendored_reviews(raw_reviews: object) -> tuple[VendoredReview, ...]:
-    if not isinstance(raw_reviews, list):
-        raise DependencySecurityError("vendoredDependencies must be an array")
-
-    reviews: list[VendoredReview] = []
-    seen_identities: set[str] = set()
-    for index, raw_review in enumerate(raw_reviews):
-        field = f"vendoredDependencies[{index}]"
-        review = _require_object(raw_review, field=field)
-        _require_exact_keys(
-            review,
-            {"identity", "source", "sourceSHA256", "osv"},
-            field=field,
-        )
-        identity = _require_nonempty_string(
-            review["identity"], field=f"{field}.identity"
-        )
-        if IDENTITY_PATTERN.fullmatch(identity) is None:
-            raise DependencySecurityError(f"{field}.identity is invalid")
-        if identity in seen_identities:
-            raise DependencySecurityError(
-                f"dependency security baseline duplicates vendored identity: {identity}"
-            )
-        seen_identities.add(identity)
-        source = _require_https_url(review["source"], field=f"{field}.source")
-        source_sha256 = _require_nonempty_string(
-            review["sourceSHA256"],
-            field=f"{field}.sourceSHA256",
-            maximum_length=64,
-        )
-        if SHA256_PATTERN.fullmatch(source_sha256) is None:
-            raise DependencySecurityError(
-                f"{field}.sourceSHA256 must be 64 lowercase hex"
-            )
-
-        raw_osv = _require_object(review["osv"], field=f"{field}.osv")
-        mode = _require_nonempty_string(
-            raw_osv.get("mode"), field=f"{field}.osv.mode", maximum_length=32
-        )
-        if mode == "commit":
-            _require_exact_keys(
-                raw_osv, {"mode", "repository", "revision"}, field=f"{field}.osv"
-            )
-            repository = _require_https_url(
-                raw_osv["repository"], field=f"{field}.osv.repository"
-            )
-            revision = _require_nonempty_string(
-                raw_osv["revision"],
-                field=f"{field}.osv.revision",
-                maximum_length=64,
-            )
-            if REVISION_PATTERN.fullmatch(revision) is None:
-                raise DependencySecurityError(
-                    f"{field}.osv.revision must be a 40- or 64-character lowercase Git hash"
-                )
-            reviews.append(
-                VendoredReview(
-                    identity,
-                    source,
-                    source_sha256,
-                    mode,
-                    repository=repository,
-                    revision=revision,
-                )
-            )
-        elif mode == "unsupported":
-            _require_exact_keys(
-                raw_osv, {"mode", "reason"}, field=f"{field}.osv"
-            )
-            reason = _require_nonempty_string(
-                raw_osv["reason"], field=f"{field}.osv.reason", maximum_length=1024
-            )
-            reviews.append(
-                VendoredReview(
-                    identity,
-                    source,
-                    source_sha256,
-                    mode,
-                    unsupported_reason=reason,
-                )
-            )
-        else:
-            raise DependencySecurityError(
-                f"{field}.osv.mode must be commit or unsupported"
-            )
-    return tuple(reviews)
-
-
 def parse_security_policy(payload: object) -> SecurityPolicy:
     root = _require_object(payload, field="dependency security baseline")
     schema_version = _require_integer(
         root.get("schemaVersion"), field="dependency security baseline.schemaVersion"
     )
-    if schema_version == 1:
-        _require_exact_keys(
-            root,
-            {"schemaVersion", "reviewedAdvisories"},
-            field="dependency security baseline",
-        )
-        return SecurityPolicy(
-            None,
-            None,
-            _parse_reviewed_advisories(root["reviewedAdvisories"]),
-            (),
-        )
     if schema_version != 2:
-        raise DependencySecurityError(
-            "dependency security baseline schemaVersion must be 1 or 2"
-        )
+        raise DependencySecurityError("dependency security baseline schemaVersion must be 2")
     _require_exact_keys(
         root,
         {
@@ -521,7 +385,6 @@ def parse_security_policy(payload: object) -> SecurityPolicy:
             "reviewedAt",
             "expiresAt",
             "reviewedAdvisories",
-            "vendoredDependencies",
         },
         field="dependency security baseline",
     )
@@ -543,7 +406,6 @@ def parse_security_policy(payload: object) -> SecurityPolicy:
         reviewed_at,
         expires_at,
         _parse_reviewed_advisories(root["reviewedAdvisories"]),
-        _parse_vendored_reviews(root["vendoredDependencies"]),
     )
 
 
@@ -569,84 +431,9 @@ def load_security_policy(path: Path = DEFAULT_BASELINE) -> SecurityPolicy:
     )
 
 
-def parse_vendored_manifest(payload: object) -> tuple[VendoredManifestPin, ...]:
-    root = _require_object(payload, field="third-party notices manifest")
-    _require_exact_keys(
-        root, {"schemaVersion", "packages"}, field="third-party notices manifest"
-    )
-    if (
-        _require_integer(
-            root["schemaVersion"], field="third-party notices manifest.schemaVersion"
-        )
-        != 2
-    ):
-        raise DependencySecurityError(
-            "third-party notices manifest schemaVersion must be 2"
-        )
-    raw_packages = root["packages"]
-    if not isinstance(raw_packages, list):
-        raise DependencySecurityError("third-party notices manifest packages must be an array")
-
-    pins: list[VendoredManifestPin] = []
-    seen_identities: set[str] = set()
-    for index, raw_package in enumerate(raw_packages):
-        field = f"third-party notices manifest packages[{index}]"
-        package = _require_object(raw_package, field=field)
-        if "kind" not in package:
-            raise DependencySecurityError(f"{field} is missing kind")
-        kind = _require_nonempty_string(package["kind"], field=f"{field}.kind")
-        if kind == "sourceControl":
-            continue
-        if kind != "vendored":
-            raise DependencySecurityError(f"{field}.kind is unsupported: {kind}")
-        required_keys = {"kind", "identity", "version", "source", "sourceSHA256"}
-        missing_keys = required_keys - set(package)
-        if missing_keys:
-            raise DependencySecurityError(
-                f"{field} is missing security coordinates: {', '.join(sorted(missing_keys))}"
-            )
-        identity = _require_nonempty_string(
-            package["identity"], field=f"{field}.identity"
-        )
-        if IDENTITY_PATTERN.fullmatch(identity) is None:
-            raise DependencySecurityError(f"{field}.identity is invalid")
-        if identity in seen_identities:
-            raise DependencySecurityError(
-                f"third-party notices manifest duplicates vendored identity: {identity}"
-            )
-        seen_identities.add(identity)
-        version = _require_nonempty_string(
-            package["version"], field=f"{field}.version", maximum_length=256
-        )
-        source = _require_https_url(package["source"], field=f"{field}.source")
-        source_sha256 = _require_nonempty_string(
-            package["sourceSHA256"],
-            field=f"{field}.sourceSHA256",
-            maximum_length=64,
-        )
-        if SHA256_PATTERN.fullmatch(source_sha256) is None:
-            raise DependencySecurityError(
-                f"{field}.sourceSHA256 must be 64 lowercase hex"
-            )
-        pins.append(VendoredManifestPin(identity, version, source, source_sha256))
-    return tuple(pins)
-
-
-def load_vendored_manifest(
-    path: Path = DEFAULT_THIRD_PARTY_MANIFEST,
-) -> tuple[VendoredManifestPin, ...]:
-    return parse_vendored_manifest(
-        load_json_file(path, label="third-party notices manifest")
-    )
-
-
 def validate_policy_freshness(
     policy: SecurityPolicy, *, now: datetime | None = None
 ) -> None:
-    if policy.reviewed_at is None or policy.expires_at is None:
-        raise DependencySecurityError(
-            "dependency security baseline schemaVersion 2 is required for vendored review freshness"
-        )
     current = datetime.now(timezone.utc) if now is None else now
     if current.tzinfo is None or current.utcoffset() is None:
         raise DependencySecurityError("security review clock must include a timezone")
@@ -659,117 +446,6 @@ def validate_policy_freshness(
         raise DependencySecurityError(
             "dependency security baseline review has expired"
         )
-
-
-def _repository_for_archive_source(source: str) -> str | None:
-    parsed = urlsplit(source)
-    components = [component for component in parsed.path.split("/") if component]
-    if parsed.hostname == "github.com" and len(components) >= 4:
-        if components[2] == "archive":
-            return f"https://github.com/{components[0]}/{components[1]}"
-    if parsed.hostname == "gitlab.com" and "-" in components:
-        separator = components.index("-")
-        if separator >= 2 and components[separator + 1 : separator + 2] == ["archive"]:
-            return "https://gitlab.com/" + "/".join(components[:separator])
-    return None
-
-
-def _commit_encoded_in_archive_source(source: str) -> str | None:
-    parsed = urlsplit(source)
-    components = [component for component in parsed.path.split("/") if component]
-    if parsed.hostname != "github.com" or len(components) < 4:
-        return None
-    if components[2] != "archive" or components[3] == "refs":
-        return None
-    archive_name = components[3]
-    for suffix in (".tar.gz", ".zip"):
-        if archive_name.endswith(suffix):
-            archive_name = archive_name[: -len(suffix)]
-            break
-    return archive_name if REVISION_PATTERN.fullmatch(archive_name) else None
-
-
-def validate_vendored_inventory(
-    manifest_pins: Sequence[VendoredManifestPin],
-    reviews: Sequence[VendoredReview],
-) -> tuple[tuple[VendoredCommitPin, ...], tuple[VendoredReview, ...]]:
-    manifest_by_identity = {pin.identity: pin for pin in manifest_pins}
-    reviews_by_identity = {review.identity: review for review in reviews}
-    missing_reviews = sorted(set(manifest_by_identity) - set(reviews_by_identity))
-    extra_reviews = sorted(set(reviews_by_identity) - set(manifest_by_identity))
-    if missing_reviews or extra_reviews:
-        details: list[str] = []
-        if missing_reviews:
-            details.append("missing reviews for " + ", ".join(missing_reviews))
-        if extra_reviews:
-            details.append("reviews absent from manifest: " + ", ".join(extra_reviews))
-        raise DependencySecurityError(
-            "vendored security inventory does not exactly match notices manifest ("
-            + "; ".join(details)
-            + ")"
-        )
-
-    commits: list[VendoredCommitPin] = []
-    unsupported: list[VendoredReview] = []
-    for manifest_pin in manifest_pins:
-        review = reviews_by_identity[manifest_pin.identity]
-        if review.source != manifest_pin.source:
-            raise DependencySecurityError(
-                f"vendored source mismatch for {manifest_pin.identity}"
-            )
-        if review.source_sha256 != manifest_pin.source_sha256:
-            raise DependencySecurityError(
-                f"vendored source SHA-256 mismatch for {manifest_pin.identity}"
-            )
-
-        archive_repository = _repository_for_archive_source(manifest_pin.source)
-        if review.osv_mode == "unsupported":
-            if archive_repository is not None:
-                raise DependencySecurityError(
-                    f"vendored Git archive must have an OSV commit review: {manifest_pin.identity}"
-                )
-            unsupported.append(review)
-            continue
-        if review.repository is None or review.revision is None:
-            raise DependencySecurityError(
-                f"vendored commit review is incomplete for {manifest_pin.identity}"
-            )
-        if archive_repository is not None and review.repository != archive_repository:
-            raise DependencySecurityError(
-                f"vendored OSV repository does not match source archive for {manifest_pin.identity}"
-            )
-        encoded_commit = _commit_encoded_in_archive_source(manifest_pin.source)
-        if encoded_commit is not None and review.revision != encoded_commit:
-            raise DependencySecurityError(
-                f"vendored OSV revision does not match source archive for {manifest_pin.identity}"
-            )
-        commits.append(
-            VendoredCommitPin(
-                manifest_pin.identity,
-                review.repository,
-                manifest_pin.version,
-                review.revision,
-            )
-        )
-
-    kissfft = reviews_by_identity.get("kissfft")
-    if kissfft is None:
-        raise DependencySecurityError("vendored security inventory must include kissfft")
-    if kissfft.osv_mode != "commit" or kissfft.revision != REQUIRED_KISSFFT_REVISION:
-        raise DependencySecurityError(
-            "kissfft must use reviewed fixed commit " + REQUIRED_KISSFFT_REVISION
-        )
-    kissfft_manifest = manifest_by_identity["kissfft"]
-    if (
-        kissfft_manifest.version != REQUIRED_KISSFFT_REVISION
-        or _commit_encoded_in_archive_source(kissfft_manifest.source)
-        != REQUIRED_KISSFFT_REVISION
-    ):
-        raise DependencySecurityError(
-            "kissfft manifest must use reviewed fixed commit "
-            + REQUIRED_KISSFFT_REVISION
-        )
-    return tuple(commits), tuple(unsupported)
 
 
 def scan_offline_baseline(
@@ -961,11 +637,11 @@ def post_osv_querybatch(payload: dict[str, object]) -> object:
 
 
 def scan_live_osv(
-    pins: Sequence[LockedPin | VendoredCommitPin],
+    pins: Sequence[LockedPin],
     *,
     transport: BatchTransport = post_osv_querybatch,
 ) -> tuple[SecurityFinding, ...]:
-    pending: list[tuple[int, LockedPin | VendoredCommitPin, str | None]] = [
+    pending: list[tuple[int, LockedPin, str | None]] = [
         (index, pin, None) for index, pin in enumerate(pins)
     ]
     seen_page_tokens = [set[str]() for _ in pins]
@@ -992,9 +668,7 @@ def scan_live_osv(
             ) from error
         pages = parse_osv_batch_response(raw_response, expected_results=len(pending))
 
-        next_pending: list[
-            tuple[int, LockedPin | VendoredCommitPin, str | None]
-        ] = []
+        next_pending: list[tuple[int, LockedPin, str | None]] = []
         for (original_index, pin, _), page in zip(pending, pages, strict=True):
             for advisory in page.advisories:
                 if advisory.advisory_id in seen_advisory_ids[original_index]:
@@ -1060,18 +734,12 @@ def parse_arguments(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--baseline",
         type=Path,
         default=DEFAULT_BASELINE,
-        help="Reviewed Swift and vendored dependency security baseline",
-    )
-    parser.add_argument(
-        "--third-party-manifest",
-        type=Path,
-        default=DEFAULT_THIRD_PARTY_MANIFEST,
-        help="Reviewed third-party notices manifest containing vendored inputs",
+        help="Reviewed Swift dependency security baseline",
     )
     parser.add_argument(
         "--live-osv",
         action="store_true",
-        help="Also query OSV for every locked SwiftPM and reviewed vendored commit",
+        help="Also query OSV for every locked SwiftPM commit",
     )
     return parser.parse_args(argv)
 
@@ -1082,41 +750,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         pins = load_lockfile(arguments.lockfile)
         policy = load_security_policy(arguments.baseline)
         validate_policy_freshness(policy)
-        manifest_pins = load_vendored_manifest(arguments.third_party_manifest)
-        vendored_commits, unsupported_vendored = validate_vendored_inventory(
-            manifest_pins, policy.vendored_reviews
-        )
         offline_findings = scan_offline_baseline(pins, policy.advisories)
         if offline_findings:
             _print_findings(offline_findings)
             return 1
         if arguments.live_osv:
-            live_findings = scan_live_osv((*pins, *vendored_commits))
+            live_findings = scan_live_osv(pins)
             if live_findings:
                 _print_findings(live_findings)
                 return 1
-            for review in unsupported_vendored:
-                print(
-                    f"OSV unsupported for {review.identity}: "
-                    f"{review.unsupported_reason} (explicit review valid until "
-                    f"{policy.expires_at.isoformat() if policy.expires_at else 'unknown'})."
-                )
     except DependencySecurityError as error:
         print(f"Dependency security check failed: {error}", file=sys.stderr)
         return 1
 
     mode = "reviewed baseline + live OSV" if arguments.live_osv else "reviewed baseline"
-    audited_commits = len(pins) + len(vendored_commits)
+    audited_commits = len(pins)
     commit_label = "commit" if audited_commits == 1 else "commits"
     advisory_label = "advisory" if len(policy.advisories) == 1 else "advisories"
-    unsupported_label = (
-        "dependency" if len(unsupported_vendored) == 1 else "dependencies"
-    )
     print(
         f"Dependency security check passed ({mode}; {audited_commits} auditable "
         f"{commit_label}; {len(policy.advisories)} reviewed Swift {advisory_label}; "
-        f"{len(unsupported_vendored)} explicitly unsupported vendored "
-        f"{unsupported_label})."
+        f"review valid until {policy.expires_at.isoformat()})."
     )
     return 0
 

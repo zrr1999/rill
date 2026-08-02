@@ -47,7 +47,7 @@ public enum WorkflowPrivacyDestinationClassifier {
             switch step.kind {
             case .snippetReplacement, .normalizeWhitespace:
                 break
-            case .llmRewrite:
+            case .llmRewrite, .llmAnswer:
                 appendUnique(.cloudText, to: &destinations)
             }
         }
@@ -75,7 +75,7 @@ public enum WorkflowPrivacyDestinationClassifier {
         destinations: inout [PrivacyProcessingDestination]
     ) -> Bool {
         switch identifier {
-        case "sherpa-onnx.local", "sherpa-onnx.streaming":
+        case "local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming":
             appendUnique(.localSpeech, to: &destinations)
             return true
         case "context.selection":

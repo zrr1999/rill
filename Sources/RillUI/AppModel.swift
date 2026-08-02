@@ -240,6 +240,10 @@ public final class AppModel {
     .localSpeechModel,
     .localSpeechDownloadedModels,
     .localSpeechPrewarm,
+    .enabledSpeechModels,
+    .residentSpeechModels,
+    .residentSpeechBudgetConfirmation,
+    .speechModelMeasuredPeaks,
     .ttsModel,
     .legacyWhisperKitModel,
     .legacyWhisperKitDownloadedModels,
@@ -275,10 +279,13 @@ public final class AppModel {
   ]
 
   static let recognizerIDsRequiringCapturedAudio: Set<String> = [
-    sherpaOnnxRecognizerID
+    localSpeechRecognizerID,
+    sherpaOnnxRecognizerID,
+    sherpaStreamingRecognizerID,
   ]
   static let productionPostProcessStepKinds: Set<PostProcessStepKind> = [
     .llmRewrite,
+    .llmAnswer,
     .normalizeWhitespace
   ]
 
@@ -347,6 +354,18 @@ public final class AppModel {
     didSet { handleLegacyWhisperDownloadIfNeededChange(from: oldValue) }
   }
   public var localSpeechPrewarm: Bool { didSet { handleLocalSpeechPrewarmChange(from: oldValue) } }
+  public var enabledSpeechModelIDs: Set<String> {
+    didSet { handleEnabledSpeechModelIDsChange(from: oldValue) }
+  }
+  public var residentSpeechModelIDs: Set<String> {
+    didSet { handleResidentSpeechModelIDsChange(from: oldValue) }
+  }
+  public var residentSpeechBudgetConfirmation: String? {
+    didSet { handleResidentSpeechBudgetConfirmationChange(from: oldValue) }
+  }
+  public internal(set) var measuredSpeechModelPeakByteCounts: [String: UInt64] = [:]
+  public internal(set) var pendingResidentSpeechModelIDs: Set<String>?
+  public internal(set) var speechModelPoolDegradedByMemoryPressure = false
   public internal(set) var settingsSaveState: SettingsSaveState = .saved
   public internal(set) var unavailableScalarSettingKeys: Set<AppSettingKey> = []
   public internal(set) var retryingUnavailableScalarSettingsDomains: Set<ScalarSettingsDomain> = []
@@ -551,7 +570,7 @@ public final class AppModel {
     workflow.trigger = .manual
     workflow.plan.setup.speechRoute = WorkflowSpeechRoute(
       selection: .fixed,
-      recognizerID: Self.sherpaOnnxRecognizerID
+      recognizerID: Self.localSpeechRecognizerID
     )
     workflow.plan.output = WorkflowOutputPhase(
       actions: [OutputActionReference(id: "stack.push")],
@@ -642,6 +661,9 @@ public final class AppModel {
       LocalSpeechSettings,
       @escaping @Sendable (Progress) -> Void
     ) async throws -> String
+  let synchronizeResidentSpeechModelsAction:
+    @Sendable (_ added: Set<String>, _ removed: Set<String>) async -> Void
+  let prepareEnabledSpeechModelAction: @Sendable (_ modelID: String) async -> Void
   let setLocalSpeechRuntimeEnabledAction: @Sendable (Bool) -> Void
   let releaseLocalSpeechRuntimeAction: @Sendable () -> Void
   let stopLocalSpeechRuntimeAction: @Sendable () async -> Void
@@ -848,6 +870,9 @@ public final class AppModel {
   var localSpeechReadinessGeneration = 0
   var localSpeechPreparationGeneration = 0
   let localSpeechPreparationTaskOwner = LocalSpeechPreparationTaskOwner()
+  var residentSpeechModelSynchronizationTask: Task<Void, Never>?
+  var residentSpeechModelSynchronizationTasks: [UUID: Task<Void, Never>] = [:]
+  var enabledSpeechModelPreparationTasks: [String: Task<Void, Never>] = [:]
   var shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = false
   var openAICredentialLoadGeneration = 0
   var openAIVerificationGeneration = 0
@@ -918,6 +943,12 @@ public final class AppModel {
           userInfo: [NSLocalizedDescriptionKey: "Local speech preparation is not configured."]
         )
       },
+    synchronizeResidentSpeechModelsAction:
+      @escaping @Sendable (_ added: Set<String>, _ removed: Set<String>) async -> Void = {
+        _, _ in
+      },
+    prepareEnabledSpeechModelAction:
+      @escaping @Sendable (_ modelID: String) async -> Void = { _ in },
     setLocalSpeechRuntimeEnabledAction: @escaping @Sendable (Bool) -> Void = { _ in },
     releaseLocalSpeechRuntimeAction: @escaping @Sendable () -> Void = {},
     stopLocalSpeechRuntimeAction: @escaping @Sendable () async -> Void = {},
@@ -1074,6 +1105,18 @@ public final class AppModel {
     self.legacyWhisperKitLanguage = LocalSpeechSettings().language
     self.legacyWhisperKitDownloadIfNeeded = LocalSpeechSettings().downloadIfNeeded
     self.localSpeechPrewarm = LocalSpeechSettings().prewarm
+    let availableSpeechModelIDs = Set(trustedLocalSpeechModels.map(\.id))
+      .union(ttsModelOptions.map(\.id))
+    let defaultEnabledSpeechModelIDs = LocalSpeechSettings().enabledModelIDs
+      .intersection(availableSpeechModelIDs)
+    let resolvedEnabledSpeechModelIDs = defaultEnabledSpeechModelIDs.isEmpty
+      ? Set([resolvedDefaultTTSModelIdentifier].filter { !$0.isEmpty })
+      : defaultEnabledSpeechModelIDs
+    self.enabledSpeechModelIDs = resolvedEnabledSpeechModelIDs
+    self.residentSpeechModelIDs = LocalSpeechSettings().residentModelIDs
+      .intersection(resolvedEnabledSpeechModelIDs)
+    self.residentSpeechBudgetConfirmation = nil
+    self.pendingResidentSpeechModelIDs = nil
     self.openAIAPIKey = ""
     self.openAIBaseURL = OpenAISettings().baseURL
     self.openAIModel = OpenAISettings().model
@@ -1109,6 +1152,8 @@ public final class AppModel {
     self.localSpeechPhysicalMemoryGiB = max(1, localSpeechPhysicalMemoryGiB)
     self.warmLocalSpeechForCaptureAction = warmLocalSpeechForCaptureAction
     self.prepareLocalSpeechAction = prepareLocalSpeechAction
+    self.synchronizeResidentSpeechModelsAction = synchronizeResidentSpeechModelsAction
+    self.prepareEnabledSpeechModelAction = prepareEnabledSpeechModelAction
     self.setLocalSpeechRuntimeEnabledAction = setLocalSpeechRuntimeEnabledAction
     self.releaseLocalSpeechRuntimeAction = releaseLocalSpeechRuntimeAction
     self.stopLocalSpeechRuntimeAction = stopLocalSpeechRuntimeAction
@@ -1170,6 +1215,7 @@ struct PendingRunInfo {
 }
 
 extension AppModel {
+  nonisolated static let localSpeechRecognizerID = "local-speech"
   nonisolated static let sherpaOnnxRecognizerID = "sherpa-onnx.local"
   nonisolated static let sherpaStreamingRecognizerID = "sherpa-onnx.streaming"
   nonisolated static let workflowOriginMetadataKey = "workflow.origin"

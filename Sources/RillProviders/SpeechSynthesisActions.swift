@@ -91,6 +91,10 @@ public struct SpeakTextAction: OutputAction {
       runID: context.runID,
       text: text,
       provider: provider,
+      modelID: configuration[SpeechOutputActionConfigurationKey.model].flatMap {
+        let value = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+      },
       voice:
         configuration[SpeechOutputActionConfigurationKey.voice]
         ?? Qwen3TTSVoice.vivian.rawValue,

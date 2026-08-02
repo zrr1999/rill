@@ -37,6 +37,7 @@ extension AppModel {
         self.openAIVerificationFailure = nil
         self.openAIConfigurationVerificationState = .verified
         self.openAIVerificationTask = nil
+        self.workflowLibraryChangedAction()
       } catch is CancellationError {
         guard self.openAIVerificationGeneration == generation else { return }
         self.openAIVerificationFailure = nil
@@ -54,6 +55,7 @@ extension AppModel {
           ?? .unknown
         self.openAIConfigurationVerificationState = .failed
         self.openAIVerificationTask = nil
+        self.workflowLibraryChangedAction()
       }
     }
   }

@@ -60,23 +60,372 @@ protocol MLXAudioSwiftInferenceEngine: Sendable {
     keyterms: [String],
     downloadIfNeeded: Bool
   ) async throws -> MLXAudioSwiftInferenceOutput
+
+  func makeStreamingSession(
+    modelID: String,
+    language: String?,
+    profile: SpeechWorkerStreamingProfile,
+    downloadIfNeeded: Bool
+  ) async throws -> MLXAudioSwiftStreamingHandle
+
+  func release(modelID: String) async throws
 }
 
-public actor MLXAudioSwiftSpeechWorkerService: SpeechWorkerRequestHandling {
+extension MLXAudioSwiftInferenceEngine {
+  func release(modelID _: String) async throws {}
+
+  func makeStreamingSession(
+    modelID: String,
+    language _: String?,
+    profile _: SpeechWorkerStreamingProfile,
+    downloadIfNeeded _: Bool
+  ) async throws -> MLXAudioSwiftStreamingHandle {
+    throw MLXAudioSwiftRuntimeError.unsupportedModel(modelID)
+  }
+}
+
+enum MLXAudioSwiftStreamingEvent: Sendable, Equatable {
+  case transcript(confirmed: String, provisional: String)
+  case stats(SpeechWorkerStreamingStats)
+  case ended(fullText: String)
+}
+
+struct MLXAudioSwiftStreamingHandle: @unchecked Sendable {
+  let events: AsyncStream<MLXAudioSwiftStreamingEvent>
+  let feedAudio: @Sendable ([Float]) -> Void
+  let stop: @Sendable () -> Void
+  let cancel: @Sendable () -> Void
+}
+
+public actor MLXAudioSwiftSpeechWorkerService:
+  SpeechWorkerRequestHandling,
+  SpeechWorkerStreamingRequestHandling
+{
+  private struct ActiveStream {
+    let requestID: UUID
+    let generation: UInt64
+    let sessionID: UUID
+    let mode: SpeechWorkerStreamMode
+    let emit: @Sendable (SpeechWorkerFrame) -> Void
+    var nextCommandSequence: UInt64
+    var nextEventSequence: UInt64
+    var totalSampleCount: UInt64
+    var speechIsActive: Bool
+    var previewText: String
+    var handle: MLXAudioSwiftStreamingHandle?
+    var eventTask: Task<Void, Never>?
+  }
+
   private let engine: any MLXAudioSwiftInferenceEngine
   private let ttsEngine: any MLXAudioSwiftTTSInferenceEngine
+  private let vadRuntime: MLXSileroVADRuntime
+  private var activeStreams: [UUID: ActiveStream] = [:]
 
   public init() {
     self.engine = MLXAudioSwiftQwenEngine()
     self.ttsEngine = MLXAudioSwiftQwenTTSEngine()
+    self.vadRuntime = MLXSileroVADRuntime()
+  }
+
+  public func handleStreamingFrame(
+    _ frame: SpeechWorkerFrame,
+    emit: @escaping @Sendable (SpeechWorkerFrame) -> Void
+  ) async {
+    guard frame.protocolVersion == SpeechWorkerProtocol.version,
+      case .command(let command) = frame.body
+    else {
+      streamFailure(for: frame, code: .invalidRequest, emit: emit)
+      return
+    }
+
+    switch command {
+    case .cancelRequest:
+      streamFailure(for: frame, code: .invalidRequest, emit: emit)
+    case .start(let payload):
+      await startStream(frame: frame, payload: payload, emit: emit)
+    case .appendAudio(let chunk):
+      await appendStreamAudio(frame: frame, chunk: chunk, emit: emit)
+    case .finish:
+      await finishStream(frame: frame)
+    case .cancel:
+      await cancelStream(frame: frame)
+    }
+  }
+
+  private func startStream(
+    frame: SpeechWorkerFrame,
+    payload: SpeechWorkerStreamStart,
+    emit: @escaping @Sendable (SpeechWorkerFrame) -> Void
+  ) async {
+    guard activeStreams[frame.sessionID] == nil,
+      activeStreams.count < 8,
+      payload.mode == .vadOnly
+        || !activeStreams.values.contains(where: { $0.mode == .vadAndTranscription })
+    else {
+      streamFailure(for: frame, code: .streamBusy, emit: emit)
+      return
+    }
+    guard frame.sequence == 0 else {
+      streamFailure(for: frame, code: .invalidSequence, emit: emit)
+      return
+    }
+
+    activeStreams[frame.sessionID] = ActiveStream(
+      requestID: frame.requestID,
+      generation: frame.generation,
+      sessionID: frame.sessionID,
+      mode: payload.mode,
+      emit: emit,
+      nextCommandSequence: 1,
+      nextEventSequence: 0,
+      totalSampleCount: 0,
+      speechIsActive: false,
+      previewText: "",
+      handle: nil,
+      eventTask: nil
+    )
+    emitStreamEvent(.accepted(queuePosition: 0), sessionID: frame.sessionID)
+
+    do {
+      try await vadRuntime.start(
+        sessionID: frame.sessionID,
+        downloadIfNeeded: payload.downloadIfNeeded
+      )
+      if payload.mode == .vadAndTranscription {
+        let handle = try await engine.makeStreamingSession(
+          modelID: payload.modelID,
+          language: payload.language,
+          profile: payload.profile,
+          downloadIfNeeded: payload.downloadIfNeeded
+        )
+        guard activeStreams[frame.sessionID] != nil else {
+          handle.cancel()
+          return
+        }
+        activeStreams[frame.sessionID]?.handle = handle
+        let eventTask = Task { [weak self] in
+          for await event in handle.events {
+            guard !Task.isCancelled else { break }
+            await self?.forwardStreamingEvent(event, sessionID: frame.sessionID)
+          }
+        }
+        activeStreams[frame.sessionID]?.eventTask = eventTask
+        emitStreamEvent(.started(modelID: payload.modelID), sessionID: frame.sessionID)
+      } else {
+        emitStreamEvent(
+          .started(modelID: MLXSileroVADConstants.modelID),
+          sessionID: frame.sessionID
+        )
+      }
+    } catch {
+      emitStreamEvent(
+        .failure(Self.failureCode(for: error)),
+        sessionID: frame.sessionID
+      )
+      clearActiveStream(sessionID: frame.sessionID, cancelHandle: true)
+      await vadRuntime.cancel(sessionID: frame.sessionID)
+    }
+  }
+
+  private func appendStreamAudio(
+    frame: SpeechWorkerFrame,
+    chunk: SpeechWorkerAudioChunk,
+    emit: @escaping @Sendable (SpeechWorkerFrame) -> Void
+  ) async {
+    guard var stream = activeStreams[frame.sessionID],
+      stream.requestID == frame.requestID,
+      stream.generation == frame.generation
+    else {
+      streamFailure(for: frame, code: .invalidRequest, emit: emit)
+      return
+    }
+    guard frame.sequence == stream.nextCommandSequence else {
+      emitStreamEvent(.failure(.invalidSequence), sessionID: frame.sessionID)
+      clearActiveStream(sessionID: frame.sessionID, cancelHandle: true)
+      await vadRuntime.cancel(sessionID: frame.sessionID)
+      return
+    }
+    let samples: [Float]
+    do {
+      samples = try chunk.decodedSamples()
+    } catch {
+      emitStreamEvent(.failure(.invalidRequest), sessionID: frame.sessionID)
+      clearActiveStream(sessionID: frame.sessionID, cancelHandle: true)
+      await vadRuntime.cancel(sessionID: frame.sessionID)
+      return
+    }
+
+    stream.nextCommandSequence += 1
+    stream.totalSampleCount += UInt64(samples.count)
+    activeStreams[frame.sessionID] = stream
+    do {
+      let observations = try await vadRuntime.accept(
+        sessionID: frame.sessionID,
+        samples: samples
+      )
+      publishVADObservations(observations, sessionID: frame.sessionID)
+    } catch {
+      emitStreamEvent(.failure(.streamingFailed), sessionID: frame.sessionID)
+      clearActiveStream(sessionID: frame.sessionID, cancelHandle: true)
+      await vadRuntime.cancel(sessionID: frame.sessionID)
+      return
+    }
+    activeStreams[frame.sessionID]?.handle?.feedAudio(samples)
+  }
+
+  private func finishStream(frame: SpeechWorkerFrame) async {
+    guard let stream = activeStreams[frame.sessionID],
+      stream.requestID == frame.requestID,
+      stream.generation == frame.generation,
+      frame.sequence == stream.nextCommandSequence
+    else {
+      if activeStreams[frame.sessionID] != nil {
+        emitStreamEvent(.failure(.invalidSequence), sessionID: frame.sessionID)
+        clearActiveStream(sessionID: frame.sessionID, cancelHandle: true)
+        await vadRuntime.cancel(sessionID: frame.sessionID)
+      }
+      return
+    }
+    do {
+      publishVADObservations(
+        try await vadRuntime.finish(sessionID: frame.sessionID),
+        sessionID: frame.sessionID
+      )
+    } catch {
+      emitStreamEvent(.failure(.streamingFailed), sessionID: frame.sessionID)
+      clearActiveStream(sessionID: frame.sessionID, cancelHandle: true)
+      return
+    }
+    if activeStreams[frame.sessionID]?.speechIsActive == true {
+      emitStreamEvent(
+        .speechEnded(sampleOffset: stream.totalSampleCount),
+        sessionID: frame.sessionID
+      )
+      activeStreams[frame.sessionID]?.speechIsActive = false
+    }
+    if let handle = stream.handle {
+      // The upstream Qwen session performs a final encoder pass from a detached
+      // task. MLX Swift does not permit its lazy arrays to cross threads, and
+      // that pass can corrupt the compiler cache in release builds. Streaming
+      // is preview-only in Rill, so preserve the latest display projection and
+      // cancel the incremental session; the sealed WAV still receives the
+      // authoritative offline decode immediately afterwards.
+      handle.cancel()
+      // `StreamingInferenceSession.cancel()` cancels its detached decode task
+      // without joining it. Give the task one bounded token boundary to drain
+      // before completion permits model reuse or worker shutdown.
+      try? await Task.sleep(for: .milliseconds(250))
+      emitStreamEvent(
+        .completed(previewText: stream.previewText),
+        sessionID: frame.sessionID
+      )
+      clearActiveStream(sessionID: frame.sessionID, cancelHandle: false)
+    } else {
+      emitStreamEvent(.completed(previewText: ""), sessionID: frame.sessionID)
+      clearActiveStream(sessionID: frame.sessionID, cancelHandle: false)
+    }
+  }
+
+  private func cancelStream(frame: SpeechWorkerFrame) async {
+    guard let stream = activeStreams[frame.sessionID],
+      stream.requestID == frame.requestID,
+      stream.generation == frame.generation,
+      frame.sequence == stream.nextCommandSequence
+    else { return }
+    emitStreamEvent(.failure(.cancelled), sessionID: frame.sessionID)
+    clearActiveStream(sessionID: frame.sessionID, cancelHandle: true)
+    await vadRuntime.cancel(sessionID: frame.sessionID)
+  }
+
+  private func publishVADObservations(
+    _ observations: [MLXSileroVADObservation],
+    sessionID: UUID
+  ) {
+    for observation in observations {
+      emitStreamEvent(.vadActivity(observation.activity), sessionID: sessionID)
+      guard var stream = activeStreams[sessionID] else { return }
+      stream.speechIsActive = observation.activity.isSpeech
+      activeStreams[sessionID] = stream
+      switch observation.transition {
+      case .speechStarted:
+        emitStreamEvent(
+          .speechStarted(sampleOffset: observation.activity.sampleOffset),
+          sessionID: sessionID
+        )
+      case .speechEnded:
+        emitStreamEvent(
+          .speechEnded(sampleOffset: observation.activity.sampleOffset),
+          sessionID: sessionID
+        )
+      case nil:
+        break
+      }
+    }
+  }
+
+  private func forwardStreamingEvent(
+    _ event: MLXAudioSwiftStreamingEvent,
+    sessionID: UUID
+  ) {
+    guard activeStreams[sessionID] != nil else { return }
+    switch event {
+    case .transcript(let confirmed, let provisional):
+      let previewText = (confirmed + provisional).trimmingCharacters(
+        in: .whitespacesAndNewlines
+      )
+      if !previewText.isEmpty {
+        activeStreams[sessionID]?.previewText = previewText
+      }
+      emitStreamEvent(
+        .transcriptUpdate(
+          SpeechWorkerTranscriptUpdate(
+            confirmed: confirmed,
+            provisional: provisional
+          )
+        ),
+        sessionID: sessionID
+      )
+    case .stats(let stats):
+      emitStreamEvent(.stats(stats), sessionID: sessionID)
+    case .ended(let fullText):
+      emitStreamEvent(.completed(previewText: fullText), sessionID: sessionID)
+      clearActiveStream(sessionID: sessionID, cancelHandle: false)
+    }
+  }
+
+  private func emitStreamEvent(
+    _ event: SpeechWorkerStreamEvent,
+    sessionID: UUID
+  ) {
+    guard var stream = activeStreams[sessionID] else { return }
+    let frame = SpeechWorkerFrame(
+      requestID: stream.requestID,
+      generation: stream.generation,
+      sessionID: stream.sessionID,
+      sequence: stream.nextEventSequence,
+      body: .event(event)
+    )
+    stream.nextEventSequence += 1
+    activeStreams[sessionID] = stream
+    stream.emit(frame)
+  }
+
+  private func clearActiveStream(sessionID: UUID, cancelHandle: Bool) {
+    guard let stream = activeStreams.removeValue(forKey: sessionID) else { return }
+    stream.eventTask?.cancel()
+    if cancelHandle {
+      stream.handle?.cancel()
+    }
   }
 
   init(
     engine: any MLXAudioSwiftInferenceEngine,
-    ttsEngine: any MLXAudioSwiftTTSInferenceEngine = MLXAudioSwiftQwenTTSEngine()
+    ttsEngine: any MLXAudioSwiftTTSInferenceEngine = MLXAudioSwiftQwenTTSEngine(),
+    vadRuntime: MLXSileroVADRuntime = MLXSileroVADRuntime()
   ) {
     self.engine = engine
     self.ttsEngine = ttsEngine
+    self.vadRuntime = vadRuntime
   }
 
   public func handle(
@@ -142,6 +491,15 @@ public actor MLXAudioSwiftSpeechWorkerService: SpeechWorkerRequestHandling {
           processingDurationMillis: output.processingDurationMillis
         )
         return .success(request: request, result: result)
+      case .releaseModel:
+        guard request.recognitionPayload == nil,
+          request.synthesisPayload == nil,
+          let payload = request.modelPreparationPayload
+        else {
+          throw SpeechWorkerProtocolError.invalidRequest
+        }
+        try await engine.release(modelID: payload.modelID)
+        return .released(request: request, modelID: payload.modelID)
       case .prepareTTSModel:
         guard request.recognitionPayload == nil,
           request.synthesisPayload == nil,
@@ -188,6 +546,9 @@ public actor MLXAudioSwiftSpeechWorkerService: SpeechWorkerRequestHandling {
   }
 
   private static func failureCode(for error: Error) -> SpeechWorkerFailureCode {
+    if error is CancellationError {
+      return .requestPreempted
+    }
     if let error = error as? SpeechWorkerProtocolError {
       switch error {
       case .unsupportedVersion:
@@ -212,17 +573,6 @@ public actor MLXAudioSwiftSpeechWorkerService: SpeechWorkerRequestHandling {
         return .recognitionFailed
       }
     }
-    if let error = error as? SherpaOnnxRecognizer.RecognizerError {
-      switch error {
-      case .audioTooLong, .emptyAudio, .invalidAudioFile, .audioConversionFailed,
-        .fileBackedAudioRequired, .missingCapturedAudio, .nonFiniteAudioSample:
-        return .invalidAudio
-      case .unsupportedModelIdentifier, .invalidThreadCount:
-        return .unsupportedModel
-      case .modelNotInstalled:
-        return .modelUnavailable
-      }
-    }
     return .recognitionFailed
   }
 }
@@ -245,9 +595,82 @@ enum MLXAudioSwiftQwenOptions {
   }
 
   static func context(from keyterms: [String]) -> String {
-    let sanitized = SherpaOnnxRecognizer.sanitizedQwenHotwords(keyterms)
+    let sanitized = LocalSpeechRecognitionPolicy.sanitizedQwenHotwords(keyterms)
     guard !sanitized.isEmpty else { return "" }
     return "Keywords: \(sanitized.joined(separator: ", "))."
+  }
+}
+
+private final class MLXQwenDecodeLease: @unchecked Sendable {
+  private let lock = NSLock()
+  private var isReleased = false
+  private let releaseAction: @Sendable () -> Void
+
+  init(releaseAction: @escaping @Sendable () -> Void) {
+    self.releaseAction = releaseAction
+  }
+
+  func release() {
+    let shouldRelease = lock.withLock {
+      guard !isReleased else { return false }
+      isReleased = true
+      return true
+    }
+    if shouldRelease { releaseAction() }
+  }
+
+  deinit {
+    release()
+  }
+}
+
+private actor MLXQwenDecodeGate {
+  private struct Waiter {
+    let id: UUID
+    let continuation: CheckedContinuation<Bool, Never>
+  }
+
+  private var isHeld = false
+  private var waiters: [Waiter] = []
+
+  func acquire() async throws -> MLXQwenDecodeLease {
+    if !isHeld {
+      isHeld = true
+      return makeLease()
+    }
+    let id = UUID()
+    let acquired = await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        guard !Task.isCancelled else {
+          continuation.resume(returning: false)
+          return
+        }
+        waiters.append(Waiter(id: id, continuation: continuation))
+      }
+    } onCancel: {
+      Task { await self.cancelWaiter(id: id) }
+    }
+    guard acquired else { throw CancellationError() }
+    return makeLease()
+  }
+
+  private func makeLease() -> MLXQwenDecodeLease {
+    MLXQwenDecodeLease { [weak self] in
+      Task { await self?.release() }
+    }
+  }
+
+  private func cancelWaiter(id: UUID) {
+    guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+    waiters.remove(at: index).continuation.resume(returning: false)
+  }
+
+  private func release() {
+    guard !waiters.isEmpty else {
+      isHeld = false
+      return
+    }
+    waiters.removeFirst().continuation.resume(returning: true)
   }
 }
 
@@ -258,7 +681,8 @@ private actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
   }
 
   private let store: MLXAudioSwiftModelStore
-  private var loadedModel: LoadedModel?
+  private let decodeGate = MLXQwenDecodeGate()
+  private var loadedModels: [MLXAudioModelID: LoadedModel] = [:]
 
   init(store: MLXAudioSwiftModelStore = .init()) {
     self.store = store
@@ -277,7 +701,7 @@ private actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
       else {
         throw MLXAudioSwiftRuntimeError.unsupportedModel(modelID)
       }
-      if loadedModel?.id == id {
+      if loadedModels[id] != nil {
         return id.rawValue
       }
       let descriptor = MLXAudioModelCatalog.descriptor(for: id)
@@ -299,7 +723,7 @@ private actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
       } catch {
         throw MLXAudioSwiftRuntimeError.modelLoadFailed
       }
-      loadedModel = LoadedModel(id: id, model: model)
+      loadedModels[id] = LoadedModel(id: id, model: model)
       progress(
         SpeechWorkerProgress(
           phase: .loading,
@@ -323,29 +747,145 @@ private actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
       downloadIfNeeded: downloadIfNeeded,
       progress: { _ in }
     )
-    guard let loadedModel else {
+    guard let id = MLXAudioModelID(rawValue: modelID),
+      let loadedModel = loadedModels[id]
+    else {
       throw MLXAudioSwiftRuntimeError.modelLoadFailed
     }
     let resolvedLanguage = MLXAudioSwiftQwenOptions.resolvedLanguage(language)
     let context = MLXAudioSwiftQwenOptions.context(from: keyterms)
-    let output = try {
-      do {
-        let (_, audio) = try loadAudioArray(from: audioURL, sampleRate: 16_000)
-        return loadedModel.model.generate(
-          audio: audio,
-          temperature: 0,
-          context: context,
-          language: resolvedLanguage
-        )
-      } catch {
+    let lease = try await decodeGate.acquire()
+    defer { lease.release() }
+    let output: STTOutput
+    do {
+      try Task.checkCancellation()
+      let (_, audio) = try loadAudioArray(from: audioURL, sampleRate: 16_000)
+      var finalOutput: STTOutput?
+      for try await event in loadedModel.model.generateStream(
+        audio: audio,
+        temperature: 0,
+        context: context,
+        language: resolvedLanguage
+      ) {
+        try Task.checkCancellation()
+        if case .result(let result) = event {
+          finalOutput = result
+        }
+      }
+      try Task.checkCancellation()
+      guard let finalOutput else {
         throw MLXAudioSwiftRuntimeError.invalidAudio
       }
-    }()
+      output = finalOutput
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch let error as MLXAudioSwiftRuntimeError {
+      throw error
+    } catch {
+      throw MLXAudioSwiftRuntimeError.invalidAudio
+    }
     let durationMillis = max(0, Int(output.totalTime * 1_000))
     return MLXAudioSwiftInferenceOutput(
       text: output.text.trimmingCharacters(in: .whitespacesAndNewlines),
       detectedLanguage: output.language ?? resolvedLanguage,
       processingDurationMillis: durationMillis
+    )
+  }
+
+  func release(modelID: String) async throws {
+    guard let id = MLXAudioModelID(rawValue: modelID) else {
+      throw MLXAudioSwiftRuntimeError.unsupportedModel(modelID)
+    }
+    loadedModels.removeValue(forKey: id)
+  }
+
+  func makeStreamingSession(
+    modelID: String,
+    language: String?,
+    profile: SpeechWorkerStreamingProfile,
+    downloadIfNeeded: Bool
+  ) async throws -> MLXAudioSwiftStreamingHandle {
+    _ = try await prepare(
+      modelID: modelID,
+      downloadIfNeeded: downloadIfNeeded,
+      progress: { _ in }
+    )
+    guard let id = MLXAudioModelID(rawValue: modelID),
+      let loadedModel = loadedModels[id]
+    else {
+      throw MLXAudioSwiftRuntimeError.modelLoadFailed
+    }
+    let decodeLease = try await decodeGate.acquire()
+
+    let delayPreset: DelayPreset
+    switch profile {
+    case .realtime:
+      delayPreset = .realtime
+    case .agent:
+      delayPreset = .agent
+    case .subtitle:
+      delayPreset = .subtitle
+    }
+    let decodeInterval: Double = profile == .realtime ? 0.5 : 1.0
+    let session = StreamingInferenceSession(
+      model: loadedModel.model,
+      config: StreamingConfig(
+        decodeIntervalSeconds: decodeInterval,
+        delayPreset: delayPreset,
+        language: MLXAudioSwiftQwenOptions.resolvedLanguage(language),
+        temperature: 0,
+        maxDecodeWindows: 1,
+        finalizeCompletedWindows: true
+      )
+    )
+    let (events, continuation) = AsyncStream<MLXAudioSwiftStreamingEvent>.makeStream(
+      bufferingPolicy: .bufferingNewest(256)
+    )
+    let mappingTask = Task {
+      defer { decodeLease.release() }
+      for await event in session.events {
+        guard !Task.isCancelled else { break }
+        switch event {
+        case .provisional(let text):
+          continuation.yield(.transcript(confirmed: "", provisional: text))
+        case .confirmed(let text):
+          continuation.yield(.transcript(confirmed: text, provisional: ""))
+        case .displayUpdate(let confirmedText, let provisionalText):
+          continuation.yield(
+            .transcript(
+              confirmed: confirmedText,
+              provisional: provisionalText
+            )
+          )
+        case .stats(let stats):
+          continuation.yield(
+            .stats(
+              SpeechWorkerStreamingStats(
+                encodedWindowCount: stats.encodedWindowCount,
+                totalAudioSeconds: stats.totalAudioSeconds,
+                tokensPerSecond: stats.tokensPerSecond,
+                realTimeFactor: stats.realTimeFactor,
+                peakMemoryBytes: UInt64(max(stats.peakMemoryGB, 0) * 1_000_000_000)
+              )
+            )
+          )
+        case .ended(let fullText):
+          continuation.yield(.ended(fullText: fullText))
+          continuation.finish()
+        }
+      }
+      continuation.finish()
+    }
+    return MLXAudioSwiftStreamingHandle(
+      events: events,
+      feedAudio: { samples in session.feedAudio(samples: samples) },
+      stop: { session.stop() },
+      cancel: {
+        mappingTask.cancel()
+        session.cancel()
+        continuation.finish()
+        decodeLease.release()
+      }
     )
   }
 }

@@ -181,6 +181,7 @@ private extension WorkflowExplanationTransformKind {
         .vocabularyMapping,
         .snippetReplacement,
         .languageModelRewrite,
+        .languageModelAnswer,
         .whitespaceNormalization,
     ]
 }

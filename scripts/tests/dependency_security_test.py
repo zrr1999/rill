@@ -24,7 +24,6 @@ import check_dependency_security as security  # noqa: E402
 
 REVISION_A = "a" * 40
 REVISION_B = "b" * 40
-FIXED_KISSFFT_REVISION = security.REQUIRED_KISSFFT_REVISION
 
 
 def lock_payload(*pins: tuple[str, str, str]) -> dict[str, object]:
@@ -45,7 +44,9 @@ def lock_payload(*pins: tuple[str, str, str]) -> dict[str, object]:
 
 def baseline_payload() -> dict[str, object]:
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
+        "reviewedAt": "2026-07-01T00:00:00Z",
+        "expiresAt": "2026-09-29T00:00:00Z",
         "reviewedAdvisories": [
             {
                 "id": "CVE-2026-28815",
@@ -61,64 +62,10 @@ def baseline_payload() -> dict[str, object]:
     }
 
 
-def vendored_manifest_payload() -> dict[str, object]:
-    return {
-        "schemaVersion": 2,
-        "packages": [
-            {
-                "kind": "vendored",
-                "identity": "kissfft",
-                "version": FIXED_KISSFFT_REVISION,
-                "source": (
-                    "https://github.com/mborgerding/kissfft/archive/"
-                    f"{FIXED_KISSFFT_REVISION}.zip"
-                ),
-                "sourceSHA256": "d" * 64,
-            },
-            {
-                "kind": "vendored",
-                "identity": "onnxruntime",
-                "version": "1.27.0",
-                "source": (
-                    "https://github.com/example/onnxruntime-libs/releases/download/"
-                    "v1.27.0/runtime.zip"
-                ),
-                "sourceSHA256": "e" * 64,
-            },
-        ],
-    }
-
-
-def security_policy_payload() -> dict[str, object]:
-    manifest = vendored_manifest_payload()
-    kissfft, onnxruntime = manifest["packages"]
-    return {
-        "schemaVersion": 2,
-        "reviewedAt": "2026-07-01T00:00:00Z",
-        "expiresAt": "2026-09-29T00:00:00Z",
-        "reviewedAdvisories": [],
-        "vendoredDependencies": [
-            {
-                "identity": kissfft["identity"],
-                "source": kissfft["source"],
-                "sourceSHA256": kissfft["sourceSHA256"],
-                "osv": {
-                    "mode": "commit",
-                    "repository": "https://github.com/mborgerding/kissfft",
-                    "revision": FIXED_KISSFFT_REVISION,
-                },
-            },
-            {
-                "identity": onnxruntime["identity"],
-                "source": onnxruntime["source"],
-                "sourceSHA256": onnxruntime["sourceSHA256"],
-                "osv": {
-                    "mode": "unsupported",
-                    "reason": "No verifiable source commit mapping for this binary.",
-                },
-            },
-        ],
-    }
+def empty_policy_payload() -> dict[str, object]:
+    payload = baseline_payload()
+    payload["reviewedAdvisories"] = []
+    return payload
 
 
 class DependencySecurityTests(unittest.TestCase):
@@ -130,14 +77,7 @@ class DependencySecurityTests(unittest.TestCase):
         policy = security.load_security_policy(
             SCRIPTS_DIR / "dependency_security_baseline.json"
         )
-        manifest = security.load_vendored_manifest(
-            SCRIPTS_DIR / "third_party_notices_manifest.json"
-        )
-
         security.validate_policy_freshness(policy)
-        commits, unsupported = security.validate_vendored_inventory(
-            manifest, policy.vendored_reviews
-        )
         self.assertEqual(security.scan_offline_baseline(pins, policy.advisories), ())
         self.assertEqual(len(pins), 35)
         self.assertTrue(
@@ -152,24 +92,13 @@ class DependencySecurityTests(unittest.TestCase):
             }.issubset({pin.identity for pin in pins})
         )
         self.assertEqual(policy.advisories, ())
-        self.assertEqual(len(commits), 9)
-        self.assertEqual(
-            [review.identity for review in unsupported],
-            ["onnxruntime", "silero-vad"],
-        )
-        silero = next(
-            review for review in unsupported if review.identity == "silero-vad"
-        )
-        self.assertIn("standalone model release asset", silero.unsupported_reason)
-        kissfft = next(pin for pin in commits if pin.identity == "kissfft")
-        self.assertEqual(kissfft.revision, FIXED_KISSFFT_REVISION)
 
     def test_absent_lockfile_and_empty_inventories_are_valid(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             missing = Path(temporary_directory) / "Package.resolved"
             self.assertEqual(security.load_lockfile(missing), ())
         self.assertEqual(security.parse_lockfile(lock_payload()), ())
-        empty_baseline = {"schemaVersion": 1, "reviewedAdvisories": []}
+        empty_baseline = empty_policy_payload()
         self.assertEqual(security.parse_baseline(empty_baseline), ())
         self.assertEqual(security.scan_live_osv((), transport=lambda _: {}), ())
 
@@ -248,119 +177,8 @@ class DependencySecurityTests(unittest.TestCase):
         ):
             security.parse_baseline(wrong_type)
 
-    def test_vendored_policy_is_exact_and_exposes_only_reviewed_commits(self) -> None:
-        manifest = security.parse_vendored_manifest(vendored_manifest_payload())
-        policy = security.parse_security_policy(security_policy_payload())
-
-        security.validate_policy_freshness(
-            policy, now=datetime(2026, 7, 18, tzinfo=timezone.utc)
-        )
-        commits, unsupported = security.validate_vendored_inventory(
-            manifest, policy.vendored_reviews
-        )
-
-        self.assertEqual(
-            commits,
-            (
-                security.VendoredCommitPin(
-                    "kissfft",
-                    "https://github.com/mborgerding/kissfft",
-                    FIXED_KISSFFT_REVISION,
-                    FIXED_KISSFFT_REVISION,
-                ),
-            ),
-        )
-        self.assertEqual([review.identity for review in unsupported], ["onnxruntime"])
-        self.assertIn("No verifiable source commit", unsupported[0].unsupported_reason)
-
-    def test_vendored_inventory_rejects_drift_missing_and_extra_reviews(self) -> None:
-        manifest_payload = vendored_manifest_payload()
-        manifest = security.parse_vendored_manifest(manifest_payload)
-
-        drifted = security_policy_payload()
-        drifted["vendoredDependencies"][0]["sourceSHA256"] = "f" * 64
-        drifted_policy = security.parse_security_policy(drifted)
-        with self.assertRaisesRegex(
-            security.DependencySecurityError, "source SHA-256 mismatch for kissfft"
-        ):
-            security.validate_vendored_inventory(
-                manifest, drifted_policy.vendored_reviews
-            )
-
-        missing = security_policy_payload()
-        missing["vendoredDependencies"].pop()
-        missing_policy = security.parse_security_policy(missing)
-        with self.assertRaisesRegex(
-            security.DependencySecurityError, "missing reviews for onnxruntime"
-        ):
-            security.validate_vendored_inventory(
-                manifest, missing_policy.vendored_reviews
-            )
-
-        extra = security_policy_payload()
-        extra_review = copy.deepcopy(extra["vendoredDependencies"][1])
-        extra_review["identity"] = "unshipped-library"
-        extra["vendoredDependencies"].append(extra_review)
-        extra_policy = security.parse_security_policy(extra)
-        with self.assertRaisesRegex(
-            security.DependencySecurityError, "reviews absent from manifest"
-        ):
-            security.validate_vendored_inventory(manifest, extra_policy.vendored_reviews)
-
-    def test_git_archives_cannot_be_declared_osv_unsupported(self) -> None:
-        policy_payload = security_policy_payload()
-        policy_payload["vendoredDependencies"][0]["osv"] = {
-            "mode": "unsupported",
-            "reason": "Would hide a source commit.",
-        }
-        policy = security.parse_security_policy(policy_payload)
-        manifest = security.parse_vendored_manifest(vendored_manifest_payload())
-
-        with self.assertRaisesRegex(
-            security.DependencySecurityError,
-            "Git archive must have an OSV commit review: kissfft",
-        ):
-            security.validate_vendored_inventory(manifest, policy.vendored_reviews)
-
-    def test_kissfft_old_revision_is_rejected_even_when_other_coordinates_match(
-        self,
-    ) -> None:
-        policy_payload = security_policy_payload()
-        policy_payload["vendoredDependencies"][0]["osv"]["revision"] = (
-            "febd4caeed32e33ad8b2e0bb5ea77542c40f18ec"
-        )
-        policy = security.parse_security_policy(policy_payload)
-        manifest = security.parse_vendored_manifest(vendored_manifest_payload())
-
-        with self.assertRaisesRegex(
-            security.DependencySecurityError,
-            "does not match source archive for kissfft",
-        ):
-            security.validate_vendored_inventory(manifest, policy.vendored_reviews)
-
-        old_revision = "febd4caeed32e33ad8b2e0bb5ea77542c40f18ec"
-        old_source = (
-            "https://github.com/mborgerding/kissfft/archive/"
-            f"{old_revision}.zip"
-        )
-        old_manifest_payload = vendored_manifest_payload()
-        old_manifest_payload["packages"][0]["version"] = old_revision
-        old_manifest_payload["packages"][0]["source"] = old_source
-        old_policy_payload = security_policy_payload()
-        old_policy_payload["vendoredDependencies"][0]["source"] = old_source
-        old_policy_payload["vendoredDependencies"][0]["osv"]["revision"] = old_revision
-        old_manifest = security.parse_vendored_manifest(old_manifest_payload)
-        old_policy = security.parse_security_policy(old_policy_payload)
-        with self.assertRaisesRegex(
-            security.DependencySecurityError,
-            f"kissfft must use reviewed fixed commit {FIXED_KISSFFT_REVISION}",
-        ):
-            security.validate_vendored_inventory(
-                old_manifest, old_policy.vendored_reviews
-            )
-
     def test_review_freshness_rejects_future_expired_and_overlong_windows(self) -> None:
-        policy = security.parse_security_policy(security_policy_payload())
+        policy = security.parse_security_policy(empty_policy_payload())
         with self.assertRaisesRegex(
             security.DependencySecurityError, "reviewedAt is in the future"
         ):
@@ -374,20 +192,19 @@ class DependencySecurityTests(unittest.TestCase):
                 policy, now=datetime(2026, 9, 29, tzinfo=timezone.utc)
             )
 
-        overlong = security_policy_payload()
+        overlong = empty_policy_payload()
         overlong["expiresAt"] = "2026-09-30T00:00:01Z"
         with self.assertRaisesRegex(
             security.DependencySecurityError, "review window exceeds 90 days"
         ):
             security.parse_security_policy(overlong)
 
-    def test_schema_one_remains_parse_compatible_but_cannot_skip_freshness(self) -> None:
-        legacy = security.parse_security_policy(baseline_payload())
-        self.assertEqual(len(legacy.advisories), 1)
+    def test_legacy_schema_is_rejected(self) -> None:
+        legacy = {"schemaVersion": 1, "reviewedAdvisories": []}
         with self.assertRaisesRegex(
-            security.DependencySecurityError, "schemaVersion 2 is required"
+            security.DependencySecurityError, "schemaVersion must be 2"
         ):
-            security.validate_policy_freshness(legacy)
+            security.parse_security_policy(legacy)
 
     def test_json_file_loader_rejects_symlinks(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -435,38 +252,11 @@ class DependencySecurityTests(unittest.TestCase):
         self.assertEqual(findings[0].pin.identity, "second-package")
         self.assertEqual(findings[0].advisory_id, "GHSA-abcd-1234-efgh")
 
-    def test_live_osv_queries_vendored_commits_and_not_reviewed_unsupported_items(
-        self,
-    ) -> None:
-        policy = security.parse_security_policy(security_policy_payload())
-        manifest = security.parse_vendored_manifest(vendored_manifest_payload())
-        commits, unsupported = security.validate_vendored_inventory(
-            manifest, policy.vendored_reviews
-        )
-        requests: list[dict[str, object]] = []
-
-        def transport(payload: dict[str, object]) -> object:
-            requests.append(payload)
-            return {"results": [{}]}
-
-        self.assertEqual(security.scan_live_osv(commits, transport=transport), ())
-        self.assertEqual(
-            requests,
-            [{"queries": [{"commit": FIXED_KISSFFT_REVISION}]}],
-        )
-        self.assertEqual([review.identity for review in unsupported], ["onnxruntime"])
-
     def test_offline_command_never_invokes_live_transport(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             baseline = root / "baseline.json"
-            manifest = root / "manifest.json"
-            baseline.write_text(
-                json.dumps(security_policy_payload()), encoding="utf-8"
-            )
-            manifest.write_text(
-                json.dumps(vendored_manifest_payload()), encoding="utf-8"
-            )
+            baseline.write_text(json.dumps(empty_policy_payload()), encoding="utf-8")
             with (
                 mock.patch.object(security, "scan_live_osv") as live_scan,
                 mock.patch.object(
@@ -480,8 +270,6 @@ class DependencySecurityTests(unittest.TestCase):
                         str(root / "missing-Package.resolved"),
                         "--baseline",
                         str(baseline),
-                        "--third-party-manifest",
-                        str(manifest),
                     ]
                 )
 

@@ -114,7 +114,8 @@ final class HistoryRecordSanitizerTests: XCTestCase {
                 bundleIdentifier: "com.example.editor",
                 clipboardGroupID: UUID(),
                 locale: "en-US"
-            )
+            ),
+            languageModelInputTexts: ["actual LLM input"]
         )
         let record = HistoryRecord(
             runID: UUID(),
@@ -138,6 +139,22 @@ final class HistoryRecordSanitizerTests: XCTestCase {
         XCTAssertEqual(sanitized.failureMessage, HistoryFailureSanitizer.genericMessage)
         XCTAssertEqual(sanitized.correctionSource, correctionSource)
         XCTAssertEqual(sanitized.trigger, .failedAudioRecovery)
+    }
+
+    func testLegacyCorrectionSourceDecodesWithoutLanguageModelInputs() throws {
+        let legacy = Data(
+            """
+            {
+              "preMappingText": "legacy recognized text",
+              "context": {}
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(RecognitionCorrectionSource.self, from: legacy)
+
+        XCTAssertEqual(decoded.preMappingText, "legacy recognized text")
+        XCTAssertNil(decoded.languageModelInputTexts)
     }
 
     func testAuthoritativeTriggerRoundTripsWhileLegacyPayloadRemainsUnclassified() throws {

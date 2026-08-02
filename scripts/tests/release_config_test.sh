@@ -320,7 +320,7 @@ run_locked_dependency_policy_case() {
   fi
   if ! grep -Fq '"$THIRD_PARTY_NOTICES_GENERATOR" --check' \
     "$ASSEMBLER_SCRIPT"; then
-    echo "FAIL: bundle assembly does not verify vendored dependency provenance" >&2
+    echo "FAIL: bundle assembly does not verify dependency notice provenance" >&2
     exit 1
   fi
   if [[ "$(grep -Ec '^[[:space:]]*swift package clean$' "$PREFLIGHT_SCRIPT")" -ne 2 ]] \
@@ -371,7 +371,7 @@ run_locked_dependency_policy_case() {
   echo "PASS: release paths share policies, verify provenance, and isolate build configurations"
 }
 
-run_vendored_xcode_build_policy_case() {
+run_xcode_build_policy_case() {
   [[ -x "$XCODE_RELEASE_BUILD_SCRIPT" ]] || {
     echo "FAIL: Xcode release build wrapper is not executable" >&2
     exit 1
@@ -394,7 +394,7 @@ run_vendored_xcode_build_policy_case() {
   fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: Xcode release build consumes vendored dependencies without checkout mutation"
+  echo "PASS: Xcode release build uses the locked SwiftPM graph without checkout mutation"
 }
 
 run_executable_package_surface_policy_case() {
@@ -423,16 +423,10 @@ run_executable_package_surface_policy_case() {
   echo "PASS: SwiftPM publishes only the App and supervised speech worker executables"
 }
 
-run_vendored_sherpa_dependency_policy_case() {
-  if ! grep -Fq 'name: "SherpaOnnxNative"' "$PACKAGE_MANIFEST" \
-    || ! grep -Fq 'path: "vendor/sherpa-onnx-v1.13.4/sherpa-onnx.xcframework"' \
-      "$PACKAGE_MANIFEST" \
-    || ! grep -Fq 'name: "OnnxRuntimeNative"' "$PACKAGE_MANIFEST" \
-    || ! grep -Fq 'path: "vendor/sherpa-onnx-v1.13.4/onnxruntime.xcframework"' \
-      "$PACKAGE_MANIFEST" \
-    || ! grep -Fq '"-Ivendor/sherpa-onnx-v1.13.4/sherpa-onnx.xcframework/macos-arm64_x86_64/Headers"' \
+run_native_mlx_dependency_policy_case() {
+  if grep -Eqi 'SherpaOnnxNative|OnnxRuntimeNative|RillSherpaRuntime|CSherpaOnnx|sherpa-onnx\.xcframework|onnxruntime\.xcframework' \
       "$PACKAGE_MANIFEST"; then
-    echo "FAIL: sherpa-onnx native dependencies are not repository-vendored" >&2
+    echo "FAIL: Package.swift retains the retired Sherpa/ONNX runtime" >&2
     exit 1
   fi
   if ! grep -Fq 'url: "https://github.com/Blaizzy/mlx-audio-swift.git"' \
@@ -452,7 +446,7 @@ run_vendored_sherpa_dependency_policy_case() {
     echo "FAIL: native MLX Swift dependencies are not exactly constrained" >&2
     exit 1
   fi
-  if grep -Eqi 'argmax|whisperkit' "$PACKAGE_MANIFEST"; then
+  if grep -Eqi 'argmax|whisperkit|sherpa|onnxruntime' "$PACKAGE_MANIFEST"; then
     echo "FAIL: Package.swift retains an obsolete speech dependency" >&2
     exit 1
   fi
@@ -460,14 +454,13 @@ run_vendored_sherpa_dependency_policy_case() {
     echo "FAIL: remote SwiftPM graph must retain Package.resolved" >&2
     exit 1
   fi
-  if ! grep -Fq \
-    'verify_xcode_resource_accessor "RillMacOS_RillSherpaRuntime"' \
-    "$PREFLIGHT_SCRIPT"; then
-    echo "FAIL: preflight does not verify the relocatable Sherpa resource accessor" >&2
+  if grep -Eqi 'RillSherpaRuntime|require-sherpa|SherpaOnnx' \
+      "$PREFLIGHT_SCRIPT" "$ASSEMBLER_SCRIPT" "$EXECUTABLE_VERIFIER"; then
+    echo "FAIL: release scripts retain the retired Sherpa runtime gate" >&2
     exit 1
   fi
   PASSED=$((PASSED + 1))
-  echo "PASS: sherpa remains vendored and the native MLX Swift graph is exactly locked"
+  echo "PASS: Sherpa/ONNX are absent and the native MLX Swift graph is exactly locked"
 }
 
 run_shell_syntax_policy_case() {
@@ -1343,34 +1336,6 @@ printf '%s\n' "${FAKE_LIPO_ARCHS:-arm64}"
 exit "${FAKE_LIPO_STATUS:-0}"
 SH
   chmod +x "$fake_bin/lipo"
-  cat >"$fake_bin/nm" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-[[ "$#" -eq 4 && "$1" == "-m" && "$2" == "-arch" && "$3" == "arm64" ]] || {
-  echo "unexpected nm invocation: $*" >&2
-  exit 64
-}
-if [[ -n "${FAKE_NM_LOG:-}" ]]; then
-  printf '%s\n' "$3" >>"$FAKE_NM_LOG"
-fi
-if [[ "${FAKE_NM_MISSING_RECOGNIZER:-}" != "$3" ]]; then
-  printf '%s\n' \
-    '00000001 (__TEXT,__text) external _SherpaOnnxCreateOfflineRecognizer'
-fi
-if [[ "${FAKE_NM_MISSING_VAD:-}" != "$3" ]]; then
-  printf '%s\n' \
-    '00000002 (__TEXT,__text) external _SherpaOnnxCreateVoiceActivityDetector'
-fi
-if [[ "${FAKE_NM_MISSING_STREAM_OPTION:-}" != "$3" ]]; then
-  printf '%s\n' \
-    '00000003 (__TEXT,__text) external _SherpaOnnxOfflineStreamSetOption'
-fi
-if [[ "${FAKE_NM_FORBIDDEN:-}" == "$3" ]]; then
-  printf '%s\n' \
-    '00000004 (__TEXT,__text) external _espeak_Initialize'
-fi
-SH
-  chmod +x "$fake_bin/nm"
   cat >"$fake_bin/xcrun" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -1410,13 +1375,10 @@ SH
   chmod +x "$executable"
 
   : >"$vtool_invocation_log"
-  local nm_invocation_log="$fixture/nm-invocation.log"
-  : >"$nm_invocation_log"
   PATH="$fake_bin:$PATH" \
     FAKE_LIPO_LOG="$lipo_invocation_log" \
-    FAKE_NM_LOG="$nm_invocation_log" \
     FAKE_VTOOL_LOG="$vtool_invocation_log" \
-    bash "$EXECUTABLE_VERIFIER" --require-sherpa "$executable"
+    bash "$EXECUTABLE_VERIFIER" "$executable"
   expected_lipo_log="$(printf '%s\n' "$executable" -archs)"
   if [[ "$(<"$lipo_invocation_log")" != "$expected_lipo_log" ]]; then
     echo "FAIL: arm64 executable verifier did not inspect the exact architecture set" >&2
@@ -1432,24 +1394,6 @@ EOF
     cat "$vtool_invocation_log" >&2
     exit 1
   fi
-  if [[ "$(<"$nm_invocation_log")" != "arm64" ]]; then
-    echo "FAIL: arm64 executable verifier did not inspect sherpa linkage" >&2
-    cat "$nm_invocation_log" >&2
-    exit 1
-  fi
-
-  : >"$nm_invocation_log"
-  PATH="$fake_bin:$PATH" \
-    FAKE_LIPO_LOG="$lipo_invocation_log" \
-    FAKE_NM_LOG="$nm_invocation_log" \
-    FAKE_VTOOL_LOG="$vtool_invocation_log" \
-    bash "$EXECUTABLE_VERIFIER" "$executable"
-  if [[ -s "$nm_invocation_log" ]]; then
-    echo "FAIL: common app executable verification unexpectedly requires Sherpa linkage" >&2
-    cat "$nm_invocation_log" >&2
-    exit 1
-  fi
-
   local executable_symlink="$fixture/RillSpeechWorker-link"
   ln -s "$executable" "$executable_symlink"
   set +e
@@ -1527,73 +1471,6 @@ EOF
     exit 1
   fi
 
-  set +e
-  output="$(
-    PATH="$fake_bin:$PATH" \
-      FAKE_LIPO_LOG="$lipo_invocation_log" \
-      FAKE_VTOOL_LOG="$vtool_invocation_log" \
-      FAKE_NM_MISSING_RECOGNIZER=arm64 \
-      bash "$EXECUTABLE_VERIFIER" --require-sherpa "$executable" 2>&1
-  )"
-  status=$?
-  set -e
-  if [[ "$status" -eq 0 \
-    || "$output" != *"must statically define SherpaOnnxCreateOfflineRecognizer in the arm64 slice"* ]]; then
-    echo "FAIL: executable verifier accepts missing sherpa-onnx static linkage" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-
-  set +e
-  output="$(
-    PATH="$fake_bin:$PATH" \
-      FAKE_LIPO_LOG="$lipo_invocation_log" \
-      FAKE_VTOOL_LOG="$vtool_invocation_log" \
-      FAKE_NM_MISSING_VAD=arm64 \
-      bash "$EXECUTABLE_VERIFIER" --require-sherpa "$executable" 2>&1
-  )"
-  status=$?
-  set -e
-  if [[ "$status" -eq 0 \
-    || "$output" != *"must statically define SherpaOnnxCreateVoiceActivityDetector in the arm64 slice"* ]]; then
-    echo "FAIL: executable verifier accepts missing sherpa-onnx VAD static linkage" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-
-  set +e
-  output="$(
-    PATH="$fake_bin:$PATH" \
-      FAKE_LIPO_LOG="$lipo_invocation_log" \
-      FAKE_VTOOL_LOG="$vtool_invocation_log" \
-      FAKE_NM_MISSING_STREAM_OPTION=arm64 \
-      bash "$EXECUTABLE_VERIFIER" --require-sherpa "$executable" 2>&1
-  )"
-  status=$?
-  set -e
-  if [[ "$status" -eq 0 \
-    || "$output" != *"must statically define SherpaOnnxOfflineStreamSetOption in the arm64 slice"* ]]; then
-    echo "FAIL: executable verifier accepts missing sherpa-onnx stream-option linkage" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-
-  set +e
-  output="$(
-    PATH="$fake_bin:$PATH" \
-      FAKE_LIPO_LOG="$lipo_invocation_log" \
-      FAKE_VTOOL_LOG="$vtool_invocation_log" \
-      FAKE_NM_FORBIDDEN=arm64 \
-      bash "$EXECUTABLE_VERIFIER" --require-sherpa "$executable" 2>&1
-  )"
-  status=$?
-  set -e
-  if [[ "$status" -eq 0 \
-    || "$output" != *"must exclude Piper and eSpeak implementation code in the arm64 slice"* ]]; then
-    echo "FAIL: executable verifier accepts Piper or eSpeak implementation code" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
   if ! grep -Fq 'verify_release_executable.sh" "$BUILD_DIR/RillApp"' "$PREFLIGHT_SCRIPT" \
     || ! grep -Fq '"$BUILD_DIR/RillSpeechWorker"' "$PREFLIGHT_SCRIPT" \
     || ! grep -Fq 'verify_release_executable.sh" "$EXECUTABLE_SOURCE"' "$ASSEMBLER_SCRIPT" \
@@ -1606,7 +1483,7 @@ EOF
   fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: both executables require an arm64-only macOS 14 slice and the worker alone requires reviewed Sherpa linkage"
+  echo "PASS: both executables require an arm64-only macOS 14 slice"
 }
 
 run_local_build_identity_case() {
@@ -1711,13 +1588,13 @@ run_ci_prek_policy_case() {
     echo "FAIL: CI prek action must use an immutable commit" >&2
     exit 1
   fi
-  if [[ "$(grep -Ec '^[[:space:]]+lfs: true$' "$CI_WORKFLOW")" -ne 2 ]]; then
-    echo "FAIL: every CI checkout must materialize the vendored Git LFS runtime archives" >&2
+  if grep -Fq 'lfs: true' "$CI_WORKFLOW"; then
+    echo "FAIL: CI must not fetch Git LFS now that the repository has no LFS assets" >&2
     exit 1
   fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: CI pins reviewed prek code, fetches Git LFS runtimes, and executes the complete configuration"
+  echo "PASS: CI pins reviewed prek code and executes the complete configuration without Git LFS"
 }
 
 create_release_source_fixture() {
@@ -2444,9 +2321,9 @@ run_literal_plist_key_case
 run_speech_worker_bundle_signing_policy_case
 run_distribution_dmg_policy_case
 run_locked_dependency_policy_case
-run_vendored_xcode_build_policy_case
+run_xcode_build_policy_case
 run_executable_package_surface_policy_case
-run_vendored_sherpa_dependency_policy_case
+run_native_mlx_dependency_policy_case
 run_ci_prek_policy_case
 run_shell_syntax_policy_case
 run_release_artifact_hygiene_policy_case

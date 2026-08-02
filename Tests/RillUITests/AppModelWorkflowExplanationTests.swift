@@ -38,7 +38,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         let calls = await probe.snapshot()
         let captured = try XCTUnwrap(calls.first)
         XCTAssertEqual(calls.count, 1)
-        XCTAssertEqual(captured.pipeline.recognizerID, AppModel.sherpaOnnxRecognizerID)
+        XCTAssertEqual(captured.pipeline.recognizerID, AppModel.localSpeechRecognizerID)
         XCTAssertEqual(captured.pipeline.outputActions.map(\.id), ["inject.text"])
         guard case .loaded(let receipt) = harness.model.workflowExplanationState else {
             return XCTFail("Expected a loaded workflow explanation")

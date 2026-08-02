@@ -117,7 +117,7 @@ enum DiagnosticEventPresentation {
         "Webhook 凭据已受保护",
         language: language
       )
-    case "provider.sherpa-onnx.available":
+    case "provider.local-speech.available", "provider.sherpa-onnx.available":
       return localized(
         "On-device speech support is available",
         "本机语音能力已可用",

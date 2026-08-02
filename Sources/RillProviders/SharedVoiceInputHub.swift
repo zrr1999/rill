@@ -4,6 +4,48 @@ public enum SharedVoiceInputMetadata {
   public static let handoffID = "rill.voiceInput.handoffID"
 }
 
+/// Declares why a consumer is attached to Rill's process-wide microphone.
+/// Interactive recognition always owns the live frames while it is active;
+/// ambient wake-word listening resumes automatically after capture ends.
+public enum SharedVoiceInputChannel: String, Sendable, Equatable, Hashable {
+  case ambientWakeWord
+  case interactiveRecognition
+
+  fileprivate var priority: Int {
+    switch self {
+    case .ambientWakeWord:
+      0
+    case .interactiveRecognition:
+      100
+    }
+  }
+}
+
+public struct SharedVoiceInputActivity: Sendable, Equatable {
+  public let activeChannels: Set<SharedVoiceInputChannel>
+
+  public init(activeChannels: Set<SharedVoiceInputChannel>) {
+    self.activeChannels = activeChannels
+  }
+
+  public var highestPriorityChannel: SharedVoiceInputChannel? {
+    activeChannels.max { $0.priority < $1.priority }
+  }
+
+  public var isInteractiveRecognitionActive: Bool {
+    activeChannels.contains(.interactiveRecognition)
+  }
+}
+
+enum SharedVoiceInputArbitration {
+  static func shouldDeliver(
+    to subscriberChannel: SharedVoiceInputChannel,
+    activity: SharedVoiceInputActivity
+  ) -> Bool {
+    activity.highestPriorityChannel == subscriberChannel
+  }
+}
+
 /// One 16 kHz mono frame from Rill's process-wide microphone producer.
 public struct SharedVoiceInputFrame: Sendable, Equatable {
   public static let sampleRate = 16_000
@@ -23,6 +65,7 @@ public struct SharedVoiceInputFrame: Sendable, Equatable {
 
 public struct SharedVoiceInputSubscription: Sendable {
   public let id: UUID
+  public let channel: SharedVoiceInputChannel
   public let stream: AsyncThrowingStream<SharedVoiceInputFrame, Error>
 }
 
@@ -50,6 +93,11 @@ public enum SharedVoiceInputError: Error, LocalizedError, Equatable, Sendable {
 /// audio already received while the workflow starts without opening a second
 /// audio engine or writing pre-roll to disk.
 public actor SharedVoiceInputHub {
+  private struct Subscriber {
+    let channel: SharedVoiceInputChannel
+    let continuation: AsyncThrowingStream<SharedVoiceInputFrame, Error>.Continuation
+  }
+
   private struct Handoff: Sendable {
     let startSampleIndex: Int64
     let expiresAt: ContinuousClock.Instant
@@ -59,12 +107,19 @@ public actor SharedVoiceInputHub {
   private static let subscriberBufferCapacity = 48
   private static let handoffLifetime: Duration = .seconds(15)
 
-  private let processor: AppleVoiceProcessingAudioProcessor
-  private var subscribers:
-    [UUID: AsyncThrowingStream<SharedVoiceInputFrame, Error>.Continuation] = [:]
+  /// Ambient listening deliberately uses an ordinary AVAudioEngine input so
+  /// an enabled wake workflow does not leave VoiceProcessingIO attached to the
+  /// system's input/output devices for the whole application lifetime.
+  private let ambientProcessor: AppleVoiceProcessingAudioProcessor
+  private let interactiveProcessor: AppleVoiceProcessingAudioProcessor
+  private var subscribers: [UUID: Subscriber] = [:]
+  private nonisolated let activityStreamValue: AsyncStream<SharedVoiceInputActivity>
+  private nonisolated let activityContinuation:
+    AsyncStream<SharedVoiceInputActivity>.Continuation
   private var producerContinuation: AsyncThrowingStream<[Float], Error>.Continuation?
   private var producerTask: Task<Void, Never>?
   private var producerGeneration: UInt64 = 0
+  private var producerChannel: SharedVoiceInputChannel?
   private var ringSamples: [Float] = []
   private var ringStartSampleIndex: Int64 = 0
   private var nextSampleIndex: Int64 = 0
@@ -72,11 +127,42 @@ public actor SharedVoiceInputHub {
   private var terminated = false
 
   init(processor: AppleVoiceProcessingAudioProcessor) {
-    self.processor = processor
+    ambientProcessor = processor
+    interactiveProcessor = processor
+    let (activityStream, activityContinuation) =
+      AsyncStream<SharedVoiceInputActivity>.makeStream(
+        bufferingPolicy: .bufferingNewest(8)
+      )
+    activityStreamValue = activityStream
+    self.activityContinuation = activityContinuation
     ringSamples.reserveCapacity(Self.ringCapacity)
   }
 
+  init(
+    ambientProcessor: AppleVoiceProcessingAudioProcessor,
+    interactiveProcessor: AppleVoiceProcessingAudioProcessor
+  ) {
+    self.ambientProcessor = ambientProcessor
+    self.interactiveProcessor = interactiveProcessor
+    let (activityStream, activityContinuation) =
+      AsyncStream<SharedVoiceInputActivity>.makeStream(
+        bufferingPolicy: .bufferingNewest(8)
+      )
+    activityStreamValue = activityStream
+    self.activityContinuation = activityContinuation
+    ringSamples.reserveCapacity(Self.ringCapacity)
+  }
+
+  public nonisolated func activityStream() -> AsyncStream<SharedVoiceInputActivity> {
+    activityStreamValue
+  }
+
+  public func currentActivity() -> SharedVoiceInputActivity {
+    makeActivity()
+  }
+
   public func subscribe(
+    channel: SharedVoiceInputChannel = .interactiveRecognition,
     replaying handoffID: UUID? = nil
   ) throws -> SharedVoiceInputSubscription {
     guard !terminated else {
@@ -93,7 +179,6 @@ public actor SharedVoiceInputHub {
       replayStart = nil
     }
 
-    try ensureProducerStarted()
     let id = UUID()
     let (stream, continuation) =
       AsyncThrowingStream<SharedVoiceInputFrame, Error>.makeStream(
@@ -115,8 +200,10 @@ public actor SharedVoiceInputHub {
         }
       }
     }
-    subscribers[id] = continuation
-    return SharedVoiceInputSubscription(id: id, stream: stream)
+    subscribers[id] = Subscriber(channel: channel, continuation: continuation)
+    publishActivity()
+    reconcileProducer()
+    return SharedVoiceInputSubscription(id: id, channel: channel, stream: stream)
   }
 
   /// Creates a single-use transfer token. The requested boundary is clamped to
@@ -136,9 +223,10 @@ public actor SharedVoiceInputHub {
   }
 
   public func unsubscribe(id: UUID) {
-    guard let continuation = subscribers.removeValue(forKey: id) else { return }
-    continuation.finish()
-    stopProducerIfIdle()
+    guard let subscriber = subscribers.removeValue(forKey: id) else { return }
+    subscriber.continuation.finish()
+    publishActivity()
+    reconcileProducer()
   }
 
   public func resetHandoffs() {
@@ -148,7 +236,7 @@ public actor SharedVoiceInputHub {
   public func shutdown() {
     guard !terminated else { return }
     terminated = true
-    let continuations = Array(subscribers.values)
+    let continuations = subscribers.values.map(\.continuation)
     subscribers.removeAll()
     for continuation in continuations {
       continuation.finish()
@@ -157,20 +245,33 @@ public actor SharedVoiceInputHub {
     producerTask = nil
     producerContinuation?.finish()
     producerContinuation = nil
-    processor.shutdown()
+    producerChannel = nil
+    ambientProcessor.shutdown()
+    if ambientProcessor !== interactiveProcessor {
+      interactiveProcessor.shutdown()
+    }
     ringSamples.removeAll(keepingCapacity: false)
     handoffs.removeAll()
+    publishActivity()
+    activityContinuation.finish()
   }
 
-  private func ensureProducerStarted() throws {
-    guard producerTask == nil else { return }
+  private func reconcileProducer() {
+    let desiredChannel = makeActivity().highestPriorityChannel
+    guard desiredChannel != producerChannel || producerTask == nil else { return }
+
+    stopProducer(releaseFrontend: true)
+    guard let desiredChannel else { return }
+
     producerGeneration &+= 1
     let generation = producerGeneration
     let terminalState = AppleVoiceProcessingPCMStreamTerminalState()
+    let processor = processor(for: desiredChannel)
     let (stream, continuation) = processor.startStreamingRecordingLive(
       inputDeviceID: nil,
       terminalState: terminalState
     )
+    producerChannel = desiredChannel
     producerContinuation = continuation
     producerTask = Task { [weak self] in
       do {
@@ -195,35 +296,44 @@ public actor SharedVoiceInputHub {
     appendToRing(samples)
 
     var failedSubscribers: [UUID] = []
-    for (id, continuation) in subscribers {
-      switch continuation.yield(frame) {
+    let activity = makeActivity()
+    for (id, subscriber) in subscribers where SharedVoiceInputArbitration.shouldDeliver(
+      to: subscriber.channel,
+      activity: activity
+    ) {
+      switch subscriber.continuation.yield(frame) {
       case .enqueued:
         break
       case .dropped:
-        continuation.finish(throwing: SharedVoiceInputError.consumerTooSlow)
+        subscriber.continuation.finish(throwing: SharedVoiceInputError.consumerTooSlow)
         failedSubscribers.append(id)
       case .terminated:
         failedSubscribers.append(id)
       @unknown default:
-        continuation.finish(throwing: SharedVoiceInputError.consumerTooSlow)
+        subscriber.continuation.finish(throwing: SharedVoiceInputError.consumerTooSlow)
         failedSubscribers.append(id)
       }
     }
     for id in failedSubscribers {
       subscribers.removeValue(forKey: id)
     }
-    stopProducerIfIdle()
+    if !failedSubscribers.isEmpty {
+      publishActivity()
+    }
+    reconcileProducer()
   }
 
   private func producerEnded(generation: UInt64, error: Error?) {
     guard generation == producerGeneration else { return }
     producerTask = nil
     producerContinuation = nil
-    let continuations = Array(subscribers.values)
+    producerChannel = nil
+    let continuations = subscribers.values.map(\.continuation)
     subscribers.removeAll()
     for continuation in continuations {
       continuation.finish(throwing: error ?? SharedVoiceInputError.producerStopped)
     }
+    publishActivity()
   }
 
   private func appendToRing(_ samples: [Float]) {
@@ -235,19 +345,52 @@ public actor SharedVoiceInputHub {
     }
   }
 
-  private func stopProducerIfIdle() {
-    guard subscribers.isEmpty, producerTask != nil else { return }
+  private func stopProducer(releaseFrontend: Bool) {
+    guard producerTask != nil || producerChannel != nil else { return }
+    let processor = producerChannel.map(processor(for:))
     producerGeneration &+= 1
     producerTask?.cancel()
     producerTask = nil
+    if releaseFrontend {
+      // A configured, stopped VoiceProcessingIO graph can still affect other
+      // applications. Release the complete frontend whenever ownership moves
+      // away from this channel; the processor remains reusable on the next run.
+      // Tear it down before finishing the stream so the continuation's
+      // asynchronous termination callback cannot race shutdown and stop the
+      // same retained session twice.
+      processor?.shutdown()
+    } else {
+      processor?.stopRecording()
+    }
     producerContinuation?.finish()
     producerContinuation = nil
-    processor.stopRecording()
+    producerChannel = nil
+  }
+
+  private func processor(
+    for channel: SharedVoiceInputChannel
+  ) -> AppleVoiceProcessingAudioProcessor {
+    switch channel {
+    case .ambientWakeWord:
+      ambientProcessor
+    case .interactiveRecognition:
+      interactiveProcessor
+    }
   }
 
   private func pruneExpiredHandoffs() {
     let now = ContinuousClock.now
     handoffs = handoffs.filter { $0.value.expiresAt > now }
+  }
+
+  private func makeActivity() -> SharedVoiceInputActivity {
+    SharedVoiceInputActivity(
+      activeChannels: Set(subscribers.values.map(\.channel))
+    )
+  }
+
+  private func publishActivity() {
+    activityContinuation.yield(makeActivity())
   }
 }
 
@@ -299,7 +442,10 @@ final class SharedVoiceInputCaptureSource: LocalSpeechAudioCaptureSource,
         return
       }
       do {
-        let subscription = try await hub.subscribe(replaying: handoffID)
+        let subscription = try await hub.subscribe(
+          channel: .interactiveRecognition,
+          replaying: handoffID
+        )
         lock.withLock { subscriptionID = subscription.id }
         for try await frame in subscription.stream {
           guard !Task.isCancelled else { break }

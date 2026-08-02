@@ -31,14 +31,16 @@ private actor FailThenSucceedDiagnosticRepository: DiagnosticRepository {
 private func appModelTestTrustedLocalSpeechModels() -> [LocalSpeechModelDescriptor] {
     [
         LocalSpeechModelDescriptor(
-            id: "qwen3-asr-0.6b-int8",
+            id: "qwen3-asr-0.6b-mlx-8bit",
+            engine: .mlxAudioSwift,
             englishName: "Qwen3-ASR 0.6B INT8",
             simplifiedChineseName: "Qwen3-ASR 0.6B INT8"
         ),
         LocalSpeechModelDescriptor(
-            id: "sense-voice-small-int8",
-            englishName: "SenseVoiceSmall INT8",
-            simplifiedChineseName: "SenseVoiceSmall INT8"
+            id: "qwen3-asr-1.7b-mlx-8bit",
+            engine: .mlxAudioSwift,
+            englishName: "Qwen3-ASR 1.7B INT8",
+            simplifiedChineseName: "Qwen3-ASR 1.7B INT8"
         ),
     ]
 }
@@ -639,7 +641,7 @@ extension AppModelTests {
             name: "Stored Workflow",
             trigger: .hotkey,
             pipeline: PipelineDeclaration(
-                recognizerID: AppModel.sherpaOnnxRecognizerID,
+                recognizerID: AppModel.localSpeechRecognizerID,
                 postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
                 outputActions: [OutputActionReference(id: "inject.text")]
             ),
@@ -1128,7 +1130,7 @@ extension AppModelTests {
 
         let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
 
-        XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.recognizerID, AppModel.sherpaOnnxRecognizerID)
+        XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.recognizerID, AppModel.localSpeechRecognizerID)
     }
 
     func testBuiltinHotkeyWorkflowUsesConfiguredVoiceGroupOutputMode() async {

@@ -51,7 +51,7 @@ final class SpeechWorkerTTSProtocolTests: XCTestCase {
   }
 
   func testProtocolVersionAndTTSOperationsRoundTrip() throws {
-    XCTAssertEqual(SpeechWorkerProtocol.version, 4)
+    XCTAssertEqual(SpeechWorkerProtocol.version, 5)
     let modelID = SpeechSynthesisModelCatalog.qwen3TTS06BCustomVoiceInt8.id.rawValue
     let prepare = SpeechWorkerRequest(
       requestID: UUID(),

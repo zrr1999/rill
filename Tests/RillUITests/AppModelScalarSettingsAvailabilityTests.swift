@@ -547,7 +547,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     let whisperWorkflow = providerWorkflow(
       name: "Local",
-      recognizerID: AppModel.sherpaOnnxRecognizerID
+      recognizerID: AppModel.localSpeechRecognizerID
     )
     let harness = makeHarness(
       workflow: whisperWorkflow,

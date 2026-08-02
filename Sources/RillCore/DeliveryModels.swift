@@ -105,20 +105,28 @@ public struct ActionContext: Sendable, Equatable {
     }
 }
 
-/// The minimal recognition input needed to propose a future vocabulary correction.
+/// The minimal retained input provenance for a completed voice run.
 ///
 /// This deliberately excludes the full recognition result and captured application
 /// context so run history does not retain unrelated recognition or foreground-app data.
+/// Ordered LLM inputs are optional for backward compatibility and remain inside the
+/// same encrypted, privacy-gated history payload as vocabulary-correction provenance.
 public struct RecognitionCorrectionSource: Codable, Sendable, Equatable {
     public var preMappingText: String
     public var context: VocabularyRuleContext
+    public var languageModelInputTexts: [String]?
+    public var languageModelTraces: [LanguageModelTrace]?
 
     public init(
         preMappingText: String,
-        context: VocabularyRuleContext
+        context: VocabularyRuleContext,
+        languageModelInputTexts: [String]? = nil,
+        languageModelTraces: [LanguageModelTrace]? = nil
     ) {
         self.preMappingText = preMappingText
         self.context = context
+        self.languageModelInputTexts = languageModelInputTexts
+        self.languageModelTraces = languageModelTraces
     }
 }
 

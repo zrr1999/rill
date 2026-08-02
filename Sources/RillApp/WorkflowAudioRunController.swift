@@ -897,7 +897,8 @@ actor WorkflowAudioRunController {
           phase: phase,
           providerID: phase == .hidden
             ? nil
-            : workflow.plan.setup.speechRoute?.recognizerID
+            : workflow.plan.setup.speechRoute?.recognizerID,
+          livePreviewPlacement: workflow.resolvedLivePreviewPlacement
         )
       )
     )

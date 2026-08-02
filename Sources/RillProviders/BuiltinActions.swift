@@ -63,12 +63,33 @@ public struct ClipboardCopyAction: OutputAction {
 public struct InjectTextAction: OutputAction {
     public let id = "inject.text"
     private let engine: TextInjectionEngine
+    private let cursorPreviewCoordinator: CursorTextPreviewCoordinator?
 
-    public init(engine: TextInjectionEngine) {
+    public init(
+        engine: TextInjectionEngine,
+        cursorPreviewCoordinator: CursorTextPreviewCoordinator? = nil
+    ) {
         self.engine = engine
+        self.cursorPreviewCoordinator = cursorPreviewCoordinator
     }
 
     public func execute(text: String, context: ActionContext) async throws -> ActionResult {
+        if context.workflow.resolvedLivePreviewPlacement == .cursor,
+           let cursorPreviewCoordinator {
+            switch await cursorPreviewCoordinator.commit(
+                runID: context.runID,
+                finalText: text
+            ) {
+            case .committed:
+                return .injected
+            case .useStandardInjection:
+                break
+            case .blocked:
+                return .skipped(
+                    "The cursor preview target changed, so Rill did not overwrite its contents."
+                )
+            }
+        }
         try await engine.inject(text, targetFocus: context.contextSnapshot.focus)
         return .injected
     }

@@ -26,8 +26,9 @@ public struct BuiltinWorkflowCatalog: WorkflowCatalog {
                     plan: WorkflowPlan(
                         setup: WorkflowSetupPhase(
                             speechRoute: WorkflowSpeechRoute(
-                                selection: .automatic,
-                                recognizerID: "sherpa-onnx.local"
+                                selection: .fixed,
+                                recognizerID: "local-speech",
+                                localModel: "qwen3-asr-0.6b-mlx-8bit"
                             ),
                             vocabularyBindings: [
                                 VocabularyCollectionBinding(
@@ -68,7 +69,10 @@ public struct BuiltinWorkflowCatalog: WorkflowCatalog {
                         "interaction.mode": "press-and-hold",
                         "workflow.builtin-kind": "push-to-talk.dictation",
                         "workflow.exclusive-group": "builtin.push-to-talk",
-                        "recognizer.selection": "auto",
+                        "recognizer.local.model": "qwen3-asr-0.6b-mlx-8bit",
+                        "recognizer.live_preview": "true",
+                        "recognizer.live_preview_placement": "overlay",
+                        "recognizer.streaming_profile": "realtime",
                         "settings.expose.output-mode": "true",
                         "workflow.text-style": "cleanInput",
                     ]
@@ -81,8 +85,9 @@ public struct BuiltinWorkflowCatalog: WorkflowCatalog {
                     plan: WorkflowPlan(
                         setup: WorkflowSetupPhase(
                             speechRoute: WorkflowSpeechRoute(
-                                selection: .automatic,
-                                recognizerID: "sherpa-onnx.local"
+                                selection: .fixed,
+                                recognizerID: "local-speech",
+                                localModel: "qwen3-asr-0.6b-mlx-8bit"
                             ),
                             vocabularyBindings: [
                                 VocabularyCollectionBinding(
@@ -109,7 +114,7 @@ public struct BuiltinWorkflowCatalog: WorkflowCatalog {
                             ),
                             WorkflowProcessStep(
                                 id: staticUUID("fc11a9f1-5d79-55b8-a76a-4be174528db2"),
-                                kind: .llmRewrite,
+                                kind: .llmAnswer,
                                 prompt: "You are Rill, a concise voice assistant. Answer the user's request directly in the same language as the request. Keep the answer brief, natural, and suitable for speech. Preserve names, numbers, URLs, code, and facts. Do not mention the transcript or these instructions. Return only the answer to speak."
                             ),
                         ]),
@@ -135,7 +140,10 @@ public struct BuiltinWorkflowCatalog: WorkflowCatalog {
                         "workflow.default-enabled": "false",
                         "workflow.speech-mode": "voice-assistant",
                         "workflow.builtin-kind": "voice-assistant.basic",
-                        "recognizer.selection": "auto",
+                        "recognizer.local.model": "qwen3-asr-0.6b-mlx-8bit",
+                        "recognizer.live_preview": "true",
+                        "recognizer.live_preview_placement": "overlay",
+                        "recognizer.streaming_profile": "agent",
                     ]
                 ),
             ],

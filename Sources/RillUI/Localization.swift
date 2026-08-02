@@ -1240,12 +1240,12 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     simplifiedChinese: "还没有持久化诊断信息。"
   ),
   .settingsSpeechEngine: .init(
-    english: "Speech Engine",
-    simplifiedChinese: "语音引擎"
+    english: "Providers & Models",
+    simplifiedChinese: "提供商与模型"
   ),
   .settingsSpeechEngineDescription: .init(
-    english: "Choose the default engine for new workflows and the standard dictation templates.",
-    simplifiedChinese: "为新建工作流和标准听写模板选择默认语音引擎。"
+    english: "Configure shared recognition, language-model, and speech-synthesis providers. Workflow-specific behavior and voices stay in each workflow.",
+    simplifiedChinese: "配置共享的语音识别、大模型与语音合成提供商；工作流行为和音色仍由各工作流单独保存。"
   ),
   .settingsBuiltinPushToTalk: .init(
     english: "Built-in Fn Workflows",
@@ -1268,8 +1268,8 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   ),
   .localSpeechArchitectureUnsupported: .init(
     english:
-      "This build does not include a compatible sherpa-onnx runtime. Use a supported Rill build or cloud speech.",
-    simplifiedChinese: "此构建未包含兼容的 sherpa-onnx 运行时，请使用受支持的 Rill 构建或云端语音。"
+      "This build does not include a compatible MLX speech worker. Use a supported Rill build.",
+    simplifiedChinese: "此构建未包含兼容的 MLX 语音 worker，请使用受支持的 Rill 构建。"
   ),
   .localSpeechTrustMaterialUnavailable: .init(
     english:
@@ -1297,8 +1297,8 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     simplifiedChinese: "自定义模型 ID"
   ),
   .legacyWhisperKitCustomModelHint: .init(
-    english: "Only release-pinned sherpa-onnx models are accepted.",
-    simplifiedChinese: "仅接受由当前版本固定并校验的 sherpa-onnx 模型。"
+    english: "Only release-pinned MLX models are accepted.",
+    simplifiedChinese: "仅接受由当前版本固定并校验的 MLX 模型。"
   ),
   .legacyWhisperKitCustomModelRequired: .init(
     english: "Choose a supported local model first.",
@@ -1471,8 +1471,8 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     simplifiedChinese: "本地模型覆盖"
   ),
   .workflowGlobalModelDefault: .init(
-    english: "Use global default",
-    simplifiedChinese: "使用全局默认"
+    english: "Use default enabled model",
+    simplifiedChinese: "使用默认已启用模型"
   ),
   .workflowNormalizeWhitespace: .init(
     english: "Clean up spacing before delivery",

@@ -9,7 +9,7 @@ import RillCore
 /// unbounded buffer. Paths identify audio only; model locations never cross the
 /// process boundary.
 public enum SpeechWorkerProtocol {
-  public static let version = 4
+  public static let version = 5
   public static let maximumRequestByteCount = 64 * 1_024
   public static let maximumResponseByteCount = 1 * 1_024 * 1_024
   public static let maximumAudioPathByteCount = 4 * 1_024
@@ -24,6 +24,7 @@ public enum SpeechWorkerProtocol {
 public enum SpeechWorkerOperation: String, Codable, Sendable, Equatable {
   case prepareModel
   case recognizeOffline
+  case releaseModel
   case prepareTTSModel
   case synthesizeSpeech
   case releaseTTSModel
@@ -135,14 +136,95 @@ public struct SpeechWorkerSynthesisPayload: Codable, Sendable, Equatable {
   }
 }
 
-public struct SpeechWorkerRequest: Codable, Sendable, Equatable {
+public enum SpeechWorkerRequestPayload: Codable, Sendable, Equatable {
+  case prepareModel(SpeechWorkerModelPreparationPayload)
+  case recognizeOffline(SpeechWorkerRecognitionPayload)
+  case releaseModel(SpeechWorkerModelPreparationPayload)
+  case prepareTTSModel(SpeechWorkerModelPreparationPayload)
+  case synthesizeSpeech(SpeechWorkerSynthesisPayload)
+  case releaseTTSModel(SpeechWorkerModelPreparationPayload)
+}
+
+/// Internal unary request view. Its wire representation is always a v5
+/// `SpeechWorkerFrame`; the computed accessors keep engine handlers focused on
+/// one operation while the stored payload remains a closed, strong union.
+public struct SpeechWorkerRequest: Sendable, Equatable {
   public var protocolVersion: Int
   public var requestID: UUID
   public var generation: UInt64
-  public var operation: SpeechWorkerOperation
-  public var recognitionPayload: SpeechWorkerRecognitionPayload?
-  public var modelPreparationPayload: SpeechWorkerModelPreparationPayload?
-  public var synthesisPayload: SpeechWorkerSynthesisPayload?
+  public var payload: SpeechWorkerRequestPayload
+
+  public var operation: SpeechWorkerOperation {
+    switch payload {
+    case .prepareModel: .prepareModel
+    case .recognizeOffline: .recognizeOffline
+    case .releaseModel: .releaseModel
+    case .prepareTTSModel: .prepareTTSModel
+    case .synthesizeSpeech: .synthesizeSpeech
+    case .releaseTTSModel: .releaseTTSModel
+    }
+  }
+
+  public var recognitionPayload: SpeechWorkerRecognitionPayload? {
+    get {
+      guard case .recognizeOffline(let value) = payload else { return nil }
+      return value
+    }
+    set {
+      guard let newValue, case .recognizeOffline = payload else { return }
+      payload = .recognizeOffline(newValue)
+    }
+  }
+
+  public var modelPreparationPayload: SpeechWorkerModelPreparationPayload? {
+    get {
+      switch payload {
+      case .prepareModel(let value), .releaseModel(let value),
+        .prepareTTSModel(let value), .releaseTTSModel(let value):
+        value
+      case .recognizeOffline, .synthesizeSpeech:
+        nil
+      }
+    }
+    set {
+      guard let newValue else { return }
+      switch payload {
+      case .prepareModel:
+        payload = .prepareModel(newValue)
+      case .releaseModel:
+        payload = .releaseModel(newValue)
+      case .prepareTTSModel:
+        payload = .prepareTTSModel(newValue)
+      case .releaseTTSModel:
+        payload = .releaseTTSModel(newValue)
+      case .recognizeOffline, .synthesizeSpeech:
+        break
+      }
+    }
+  }
+
+  public var synthesisPayload: SpeechWorkerSynthesisPayload? {
+    get {
+      guard case .synthesizeSpeech(let value) = payload else { return nil }
+      return value
+    }
+    set {
+      guard let newValue, case .synthesizeSpeech = payload else { return }
+      payload = .synthesizeSpeech(newValue)
+    }
+  }
+
+  public init(
+    protocolVersion: Int = SpeechWorkerProtocol.version,
+    requestID: UUID,
+    generation: UInt64,
+    payload: SpeechWorkerRequestPayload
+  ) {
+    self.protocolVersion = protocolVersion
+    self.requestID = requestID
+    self.generation = generation
+    self.payload = payload
+  }
 
   public init(
     protocolVersion: Int = SpeechWorkerProtocol.version,
@@ -153,10 +235,7 @@ public struct SpeechWorkerRequest: Codable, Sendable, Equatable {
     self.protocolVersion = protocolVersion
     self.requestID = requestID
     self.generation = generation
-    self.operation = .recognizeOffline
-    self.recognitionPayload = payload
-    self.modelPreparationPayload = nil
-    self.synthesisPayload = nil
+    self.payload = .recognizeOffline(payload)
   }
 
   public init(
@@ -168,10 +247,7 @@ public struct SpeechWorkerRequest: Codable, Sendable, Equatable {
     self.protocolVersion = protocolVersion
     self.requestID = requestID
     self.generation = generation
-    self.operation = .prepareModel
-    self.recognitionPayload = nil
-    self.modelPreparationPayload = modelPreparationPayload
-    self.synthesisPayload = nil
+    self.payload = .prepareModel(modelPreparationPayload)
   }
 
   public init(
@@ -183,10 +259,7 @@ public struct SpeechWorkerRequest: Codable, Sendable, Equatable {
     self.protocolVersion = protocolVersion
     self.requestID = requestID
     self.generation = generation
-    self.operation = .prepareTTSModel
-    recognitionPayload = nil
-    modelPreparationPayload = ttsModelPreparationPayload
-    synthesisPayload = nil
+    payload = .prepareTTSModel(ttsModelPreparationPayload)
   }
 
   public init(
@@ -198,10 +271,7 @@ public struct SpeechWorkerRequest: Codable, Sendable, Equatable {
     self.protocolVersion = protocolVersion
     self.requestID = requestID
     self.generation = generation
-    self.operation = .synthesizeSpeech
-    recognitionPayload = nil
-    modelPreparationPayload = nil
-    self.synthesisPayload = synthesisPayload
+    payload = .synthesizeSpeech(synthesisPayload)
   }
 
   public init(
@@ -213,13 +283,29 @@ public struct SpeechWorkerRequest: Codable, Sendable, Equatable {
     self.protocolVersion = protocolVersion
     self.requestID = requestID
     self.generation = generation
-    operation = .releaseTTSModel
-    recognitionPayload = nil
-    modelPreparationPayload = SpeechWorkerModelPreparationPayload(
-      modelID: releaseTTSModelID,
-      downloadIfNeeded: false
+    payload = .releaseTTSModel(
+      SpeechWorkerModelPreparationPayload(
+        modelID: releaseTTSModelID,
+        downloadIfNeeded: false
+      )
     )
-    synthesisPayload = nil
+  }
+
+  public init(
+    protocolVersion: Int = SpeechWorkerProtocol.version,
+    requestID: UUID,
+    generation: UInt64,
+    releaseModelID: String
+  ) {
+    self.protocolVersion = protocolVersion
+    self.requestID = requestID
+    self.generation = generation
+    payload = .releaseModel(
+      SpeechWorkerModelPreparationPayload(
+        modelID: releaseModelID,
+        downloadIfNeeded: false
+      )
+    )
   }
 }
 
@@ -270,6 +356,11 @@ public enum SpeechWorkerFailureCode: String, Codable, Sendable, Equatable {
   case recognitionFailed
   case invalidText
   case synthesisFailed
+  case invalidSequence
+  case streamBusy
+  case streamingFailed
+  case requestPreempted
+  case cancelled
 }
 
 public enum SpeechWorkerResponseStatus: String, Codable, Sendable, Equatable {
@@ -304,17 +395,82 @@ public struct SpeechWorkerProgress: Codable, Sendable, Equatable {
   }
 }
 
-public struct SpeechWorkerResponse: Codable, Sendable, Equatable {
+public enum SpeechWorkerResponsePayload: Codable, Sendable, Equatable {
+  case progress(SpeechWorkerProgress)
+  case recognitionCompleted(SpeechWorkerRecognitionResult)
+  case synthesisCompleted(SpeechWorkerSynthesisResult)
+  case modelPrepared(String)
+  case modelReleased(String)
+  case failure(SpeechWorkerFailureCode)
+}
+
+/// Internal unary response view backed by a closed payload union. Responses
+/// share the same sequenced v5 frame envelope as streaming events.
+public struct SpeechWorkerResponse: Sendable, Equatable {
   public var protocolVersion: Int
   public var requestID: UUID
   public var generation: UInt64
-  public var status: SpeechWorkerResponseStatus
-  public var result: SpeechWorkerRecognitionResult?
-  public var synthesisResult: SpeechWorkerSynthesisResult?
-  public var preparedModelID: String?
-  public var releasedModelID: String?
-  public var progress: SpeechWorkerProgress?
-  public var failure: SpeechWorkerFailureCode?
+  public var sequence: UInt64
+  public var payload: SpeechWorkerResponsePayload
+
+  public var status: SpeechWorkerResponseStatus {
+    switch payload {
+    case .progress: .progress
+    case .failure: .failure
+    case .recognitionCompleted, .synthesisCompleted, .modelPrepared, .modelReleased:
+      .success
+    }
+  }
+
+  public var result: SpeechWorkerRecognitionResult? {
+    guard case .recognitionCompleted(let value) = payload else { return nil }
+    return value
+  }
+
+  public var synthesisResult: SpeechWorkerSynthesisResult? {
+    guard case .synthesisCompleted(let value) = payload else { return nil }
+    return value
+  }
+
+  public var preparedModelID: String? {
+    guard case .modelPrepared(let value) = payload else { return nil }
+    return value
+  }
+
+  public var releasedModelID: String? {
+    guard case .modelReleased(let value) = payload else { return nil }
+    return value
+  }
+
+  public var progress: SpeechWorkerProgress? {
+    get {
+      guard case .progress(let value) = payload else { return nil }
+      return value
+    }
+    set {
+      guard let newValue, case .progress = payload else { return }
+      payload = .progress(newValue)
+    }
+  }
+
+  public var failure: SpeechWorkerFailureCode? {
+    guard case .failure(let value) = payload else { return nil }
+    return value
+  }
+
+  public init(
+    protocolVersion: Int = SpeechWorkerProtocol.version,
+    requestID: UUID,
+    generation: UInt64,
+    sequence: UInt64 = 0,
+    payload: SpeechWorkerResponsePayload
+  ) {
+    self.protocolVersion = protocolVersion
+    self.requestID = requestID
+    self.generation = generation
+    self.sequence = sequence
+    self.payload = payload
+  }
 
   public static func success(
     request: SpeechWorkerRequest,
@@ -324,13 +480,7 @@ public struct SpeechWorkerResponse: Codable, Sendable, Equatable {
       protocolVersion: SpeechWorkerProtocol.version,
       requestID: request.requestID,
       generation: request.generation,
-      status: .success,
-      result: result,
-      synthesisResult: nil,
-      preparedModelID: nil,
-      releasedModelID: nil,
-      progress: nil,
-      failure: nil
+      payload: .recognitionCompleted(result)
     )
   }
 
@@ -342,13 +492,7 @@ public struct SpeechWorkerResponse: Codable, Sendable, Equatable {
       protocolVersion: SpeechWorkerProtocol.version,
       requestID: request.requestID,
       generation: request.generation,
-      status: .success,
-      result: nil,
-      synthesisResult: nil,
-      preparedModelID: modelID,
-      releasedModelID: nil,
-      progress: nil,
-      failure: nil
+      payload: .modelPrepared(modelID)
     )
   }
 
@@ -360,13 +504,7 @@ public struct SpeechWorkerResponse: Codable, Sendable, Equatable {
       protocolVersion: SpeechWorkerProtocol.version,
       requestID: request.requestID,
       generation: request.generation,
-      status: .success,
-      result: nil,
-      synthesisResult: result,
-      preparedModelID: nil,
-      releasedModelID: nil,
-      progress: nil,
-      failure: nil
+      payload: .synthesisCompleted(result)
     )
   }
 
@@ -378,13 +516,7 @@ public struct SpeechWorkerResponse: Codable, Sendable, Equatable {
       protocolVersion: SpeechWorkerProtocol.version,
       requestID: request.requestID,
       generation: request.generation,
-      status: .success,
-      result: nil,
-      synthesisResult: nil,
-      preparedModelID: nil,
-      releasedModelID: modelID,
-      progress: nil,
-      failure: nil
+      payload: .modelReleased(modelID)
     )
   }
 
@@ -396,13 +528,7 @@ public struct SpeechWorkerResponse: Codable, Sendable, Equatable {
       protocolVersion: SpeechWorkerProtocol.version,
       requestID: request.requestID,
       generation: request.generation,
-      status: .progress,
-      result: nil,
-      synthesisResult: nil,
-      preparedModelID: nil,
-      releasedModelID: nil,
-      progress: update,
-      failure: nil
+      payload: .progress(update)
     )
   }
 
@@ -414,13 +540,7 @@ public struct SpeechWorkerResponse: Codable, Sendable, Equatable {
       protocolVersion: SpeechWorkerProtocol.version,
       requestID: request.requestID,
       generation: request.generation,
-      status: .failure,
-      result: nil,
-      synthesisResult: nil,
-      preparedModelID: nil,
-      releasedModelID: nil,
-      progress: nil,
-      failure: code
+      payload: .failure(code)
     )
   }
 }
@@ -453,65 +573,70 @@ public enum SpeechWorkerProtocolError: Error, LocalizedError, Sendable, Equatabl
 
 public enum SpeechWorkerProtocolCodec {
   public static func encodeRequestLine(_ request: SpeechWorkerRequest) throws -> Data {
-    try validate(request)
-    return try encodeLine(request, maximumByteCount: SpeechWorkerProtocol.maximumRequestByteCount)
+    try validateRequest(request)
+    return try SpeechWorkerFrameCodec.encodeCommandLine(
+      SpeechWorkerFrame(
+        protocolVersion: request.protocolVersion,
+        requestID: request.requestID,
+        generation: request.generation,
+        sessionID: request.requestID,
+        sequence: 0,
+        body: .request(request.payload)
+      )
+    )
   }
 
   public static func decodeRequestLine(_ data: Data) throws -> SpeechWorkerRequest {
-    guard data.count <= SpeechWorkerProtocol.maximumRequestByteCount else {
-      throw SpeechWorkerProtocolError.frameTooLarge
+    let frame = try SpeechWorkerFrameCodec.decodeCommandLine(data)
+    guard frame.sessionID == frame.requestID,
+      frame.sequence == 0,
+      case .request(let payload) = frame.body
+    else {
+      throw SpeechWorkerProtocolError.invalidRequest
     }
-    let request: SpeechWorkerRequest = try decode(data)
-    try validate(request)
+    let request = SpeechWorkerRequest(
+      protocolVersion: frame.protocolVersion,
+      requestID: frame.requestID,
+      generation: frame.generation,
+      payload: payload
+    )
+    try validateRequest(request)
     return request
   }
 
   public static func encodeResponseLine(_ response: SpeechWorkerResponse) throws -> Data {
-    try validate(response)
-    return try encodeLine(
-      response,
-      maximumByteCount: SpeechWorkerProtocol.maximumResponseByteCount
+    try validateResponse(response)
+    return try SpeechWorkerFrameCodec.encodeEventLine(
+      SpeechWorkerFrame(
+        protocolVersion: response.protocolVersion,
+        requestID: response.requestID,
+        generation: response.generation,
+        sessionID: response.requestID,
+        sequence: response.sequence,
+        body: .response(response.payload)
+      )
     )
   }
 
   public static func decodeResponseLine(_ data: Data) throws -> SpeechWorkerResponse {
-    guard data.count <= SpeechWorkerProtocol.maximumResponseByteCount else {
-      throw SpeechWorkerProtocolError.frameTooLarge
+    let frame = try SpeechWorkerFrameCodec.decodeEventLine(data)
+    guard frame.sessionID == frame.requestID,
+      case .response(let payload) = frame.body
+    else {
+      throw SpeechWorkerProtocolError.invalidResponse
     }
-    let response: SpeechWorkerResponse = try decode(data)
-    try validate(response)
+    let response = SpeechWorkerResponse(
+      protocolVersion: frame.protocolVersion,
+      requestID: frame.requestID,
+      generation: frame.generation,
+      sequence: frame.sequence,
+      payload: payload
+    )
+    try validateResponse(response)
     return response
   }
 
-  private static func encodeLine<Value: Encodable>(
-    _ value: Value,
-    maximumByteCount: Int
-  ) throws -> Data {
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-    let frame: Data
-    do {
-      frame = try encoder.encode(value)
-    } catch {
-      throw SpeechWorkerProtocolError.invalidFrame
-    }
-    guard frame.count <= maximumByteCount else {
-      throw SpeechWorkerProtocolError.frameTooLarge
-    }
-    var line = frame
-    line.append(0x0A)
-    return line
-  }
-
-  private static func decode<Value: Decodable>(_ data: Data) throws -> Value {
-    do {
-      return try JSONDecoder().decode(Value.self, from: data)
-    } catch {
-      throw SpeechWorkerProtocolError.invalidFrame
-    }
-  }
-
-  private static func validate(_ request: SpeechWorkerRequest) throws {
+  static func validateRequest(_ request: SpeechWorkerRequest) throws {
     guard request.protocolVersion == SpeechWorkerProtocol.version else {
       throw SpeechWorkerProtocolError.unsupportedVersion
     }
@@ -519,11 +644,12 @@ public enum SpeechWorkerProtocolCodec {
       throw SpeechWorkerProtocolError.invalidRequest
     }
     switch request.operation {
-    case .prepareModel:
+    case .prepareModel, .releaseModel:
       guard request.recognitionPayload == nil,
         request.synthesisPayload == nil,
         let payload = request.modelPreparationPayload,
-        isBoundedPlainText(payload.modelID, maximumByteCount: 128)
+        isBoundedPlainText(payload.modelID, maximumByteCount: 128),
+        MLXAudioModelCatalog.distributableModelIdentifiers.contains(payload.modelID)
       else {
         throw SpeechWorkerProtocolError.invalidRequest
       }
@@ -536,12 +662,12 @@ public enum SpeechWorkerProtocolCodec {
         request.synthesisPayload == nil,
         let payload = request.recognitionPayload,
         isBoundedPlainText(payload.modelID, maximumByteCount: 128),
-        (1...SherpaOnnxRecognizer.maximumThreadCount).contains(payload.threadCount),
+        (1...LocalSpeechRecognitionPolicy.maximumThreadCount).contains(payload.threadCount),
         payload.audioDurationSeconds.isFinite,
         payload.audioDurationSeconds >= 0,
         acceptsLongAudio
           || payload.audioDurationSeconds
-            <= SherpaOnnxRecognizer.maximumAcceptedAudioDurationSeconds,
+            <= LocalSpeechRecognitionPolicy.maximumAcceptedAudioDurationSeconds,
         payload.audioFormat.sampleRateHz.isFinite,
         payload.audioFormat.sampleRateHz > 0,
         payload.audioFormat.channelCount > 0,
@@ -579,7 +705,7 @@ public enum SpeechWorkerProtocolCodec {
     }
   }
 
-  private static func validate(_ response: SpeechWorkerResponse) throws {
+  static func validateResponse(_ response: SpeechWorkerResponse) throws {
     guard response.protocolVersion == SpeechWorkerProtocol.version else {
       throw SpeechWorkerProtocolError.unsupportedVersion
     }

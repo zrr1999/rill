@@ -2,37 +2,6 @@ import AVFoundation
 import Foundation
 import RillCore
 import RillPlatform
-import RillSherpaRuntime
-
-/// Transfers one native VAD session into a single local-capture actor. The
-/// adapter is never shared after construction; that actor serializes accept,
-/// reset, and destruction of the recurrent native model state.
-private final class BundledSherpaVoiceActivityDetectorAdapter:
-  LocalSpeechVoiceActivityDetector,
-  @unchecked Sendable
-{
-  private let detector: SherpaVoiceActivityDetector
-
-  init(voiceActivityThreshold: Float) throws {
-    detector = try SherpaVoiceActivityDetector.bundled(
-      threshold: voiceActivityThreshold
-    )
-  }
-
-  func accept(samples: [Float]) throws -> [LocalSpeechVoiceActivityObservation] {
-    try detector.accept(samples: samples).map {
-      LocalSpeechVoiceActivityObservation(
-        isSpeech: $0.isSpeech,
-        durationSeconds: $0.durationSeconds,
-        normalizedRMS: $0.normalizedRMS
-      )
-    }
-  }
-
-  func reset() {
-    detector.reset()
-  }
-}
 
 public actor RealtimeAudioCaptureService: AudioCaptureService {
   public nonisolated let sharedVoiceInputHub: SharedVoiceInputHub?
@@ -41,9 +10,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
       _ unexpectedTerminationHandler: @escaping @Sendable () async -> Void
     ) -> LocalSpeechVoiceCaptureRuntime
 
-  private static let localSpeechRecognizerID = "sherpa-onnx.local"
-  private static let streamingSpeechRecognizerID =
-    SherpaStreamingCaptureRecognizer.recognizerID
+  private static let localSpeechRecognizerID = "local-speech"
 
   public enum CaptureError: Error, LocalizedError, Equatable {
     case alreadyCapturing
@@ -51,7 +18,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     case microphoneStartFailed
     case microphoneStartTimedOut
     case voiceActivityDetectionUnavailable
-    case streamingSpeechUnavailable
     case invalidEndpointControl
     case notCapturing
     case shuttingDown
@@ -68,8 +34,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         return "The microphone did not become ready in time."
       case .voiceActivityDetectionUnavailable:
         return "Local voice activity detection is unavailable."
-      case .streamingSpeechUnavailable:
-        return "The fixed local streaming speech model is unavailable."
       case .invalidEndpointControl:
         return "The audio endpoint control does not match the capture run."
       case .notCapturing:
@@ -130,7 +94,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
   private let cleanupOwner: ManagedTemporaryAudioCleanupOwner
   private let localSpeechCaptureRuntimeFactory: LocalSpeechCaptureRuntimeFactory
   private let localSpeechCaptureSource: (any LocalSpeechAudioCaptureSource)?
-  private let isMicrophoneAuthorizedForLocalSpeechPrewarm: @Sendable () -> Bool
   private let wakeWordSpeechStartedHandler: @Sendable () -> Void
 
   private var activeCapture: ActiveCapture?
@@ -139,7 +102,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
 
   public init(
     legacyCaptureService: (any AudioCaptureService)? = nil,
-    streamingPreviewService: SherpaStreamingPreviewService? = nil,
+    streamingPreviewService: SpeechWorkerStreamingPreviewService? = nil,
     liveUpdateHandler: @escaping @Sendable (LiveSubtitleSnapshot) async -> Void = { _ in },
     cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
     localSpeechStartupTimeout: Duration = .seconds(3),
@@ -153,11 +116,22 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
       ?? AVAudioCaptureService(cleanupOwner: cleanupOwner)
     self.liveUpdateHandler = liveUpdateHandler
     self.cleanupOwner = cleanupOwner
-    // Keep the process-wide producer on the validated VoiceProcessingIO
-    // frontend. Wake-word sensitivity is adjusted only in its consumer so a
-    // continuously enabled trigger cannot downgrade recording/STT to raw PCM.
-    let voiceInputProcessor = AppleVoiceProcessingAudioProcessor()
-    let sharedVoiceInputHub = SharedVoiceInputHub(processor: voiceInputProcessor)
+    // Both channels use the input-only frontend. Rebuilding VoiceProcessingIO
+    // on every push-to-talk run takes well over a second on real hardware and
+    // also attaches Rill to the output device even though local recognition
+    // only needs microphone PCM. The raw frontend still goes through the same
+    // conversion, metering, buffering, arbitration, and full teardown when the
+    // final subscriber leaves.
+    let ambientVoiceInputProcessor = AppleVoiceProcessingAudioProcessor(
+      sessionFactory: LiveRawMicrophoneAudioEngineSessionFactory()
+    )
+    let voiceInputProcessor = AppleVoiceProcessingAudioProcessor(
+      sessionFactory: LiveRawMicrophoneAudioEngineSessionFactory()
+    )
+    let sharedVoiceInputHub = SharedVoiceInputHub(
+      ambientProcessor: ambientVoiceInputProcessor,
+      interactiveProcessor: voiceInputProcessor
+    )
     self.sharedVoiceInputHub = sharedVoiceInputHub
     let localSpeechCaptureSource = SharedVoiceInputCaptureSource(
       hub: sharedVoiceInputHub,
@@ -165,9 +139,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     )
     self.localSpeechCaptureSource = localSpeechCaptureSource
     self.wakeWordSpeechStartedHandler = wakeWordSpeechStartedHandler
-    self.isMicrophoneAuthorizedForLocalSpeechPrewarm = {
-      AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-    }
     self.localSpeechCaptureRuntimeFactory = Self.makeLocalSpeechCaptureRuntimeFactory(
       captureSource: localSpeechCaptureSource,
       streamingPreviewService: streamingPreviewService,
@@ -192,7 +163,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     self.localSpeechCaptureRuntimeFactory = localSpeechCaptureRuntimeFactory
     self.localSpeechCaptureSource = nil
     self.wakeWordSpeechStartedHandler = {}
-    self.isMicrophoneAuthorizedForLocalSpeechPrewarm = { false }
   }
 
   /// Internal production-shaped seam for proving that sequential local runs
@@ -212,8 +182,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     self.sharedVoiceInputHub = nil
     self.localSpeechCaptureSource = localSpeechCaptureSource
     self.wakeWordSpeechStartedHandler = {}
-    self.isMicrophoneAuthorizedForLocalSpeechPrewarm =
-      isMicrophoneAuthorizedForLocalSpeechPrewarm
+    _ = isMicrophoneAuthorizedForLocalSpeechPrewarm
     self.localSpeechCaptureRuntimeFactory = Self.makeLocalSpeechCaptureRuntimeFactory(
       captureSource: localSpeechCaptureSource,
       streamingPreviewService: nil,
@@ -227,7 +196,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
 
   private static func makeLocalSpeechCaptureRuntimeFactory(
     captureSource: any LocalSpeechAudioCaptureSource,
-    streamingPreviewService: SherpaStreamingPreviewService?,
+    streamingPreviewService: SpeechWorkerStreamingPreviewService?,
     liveUpdateHandler: @escaping @Sendable (LiveSubtitleSnapshot) async -> Void,
     cleanupOwner: ManagedTemporaryAudioCleanupOwner,
     startupTimeout: Duration,
@@ -237,13 +206,8 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     { unexpectedTerminationHandler in
       LocalSpeechVoiceCaptureRuntime(
         sourceFactory: { captureSource },
-        voiceActivityDetectorFactory: { voiceActivityThreshold in
-          try BundledSherpaVoiceActivityDetectorAdapter(
-            voiceActivityThreshold: voiceActivityThreshold
-          )
-        },
-        streamingPreviewSessionFactory: {
-          await streamingPreviewService?.makeSessionIfReady()
+        streamingPreviewSessionFactory: { request in
+          await streamingPreviewService?.makeSession(for: request)
         },
         liveUpdateHandler: liveUpdateHandler,
         cleanupOwner: cleanupOwner,
@@ -256,23 +220,14 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
   }
 
   public nonisolated static func validateBundledVoiceActivityDetector() throws {
-    _ = try BundledSherpaVoiceActivityDetectorAdapter(
-      voiceActivityThreshold: SpeechEndpointPolicy.shortDictation.voiceActivityThreshold
-    )
+    guard MLXSileroVADConstants.chunkSampleCount == 512 else {
+      throw CaptureError.voiceActivityDetectionUnavailable
+    }
   }
 
-  /// Best-effort preparation for the local stopped-state VPIO frontend. The
-  /// authorization provider only reads current TCC state; this path never asks
-  /// for permission, starts capture, or publishes a readiness snapshot.
+  /// Kept as a source-compatible no-op. Model residency is worker-only and
+  /// must never allocate or initialize a microphone frontend.
   public func prepareLocalSpeechAudioFrontendIfAuthorized() {
-    guard lifecycle == .accepting,
-      activeCapture == nil,
-      isMicrophoneAuthorizedForLocalSpeechPrewarm(),
-      let localSpeechCaptureSource
-    else {
-      return
-    }
-    try? localSpeechCaptureSource.prepareStoppedFrontend()
   }
 
   private func makeLocalSpeechCaptureRuntime(
@@ -358,7 +313,9 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
 
   private static let localSpeechRecognizerIDs: Set<String> = [
     localSpeechRecognizerID,
-    streamingSpeechRecognizerID,
+    "sherpa-onnx.local",
+    "sherpa-onnx.streaming",
+    "auto",
   ]
 
   public func finishCapture() async throws -> CapturedAudio {
@@ -450,7 +407,8 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
             LiveSubtitleSnapshot(
               runID: request.runID,
               workflow: request.workflow.presentation,
-              phase: .hidden
+              phase: .hidden,
+              livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
             )
           )
           return capturedAudio
@@ -652,7 +610,8 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         runID: request.runID,
         workflow: request.workflow.presentation,
         phase: .failed,
-        providerID: request.workflow.plan.setup.speechRoute?.recognizerID
+        providerID: request.workflow.plan.setup.speechRoute?.recognizerID,
+        livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
       )
     )
   }
@@ -662,7 +621,8 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
       LiveSubtitleSnapshot(
         runID: request.runID,
         workflow: request.workflow.presentation,
-        phase: .hidden
+        phase: .hidden,
+        livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
       )
     )
   }
@@ -673,7 +633,8 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         runID: request.runID,
         workflow: request.workflow.presentation,
         phase: .recording,
-        providerID: request.workflow.plan.setup.speechRoute?.recognizerID
+        providerID: request.workflow.plan.setup.speechRoute?.recognizerID,
+        livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
       )
     )
   }

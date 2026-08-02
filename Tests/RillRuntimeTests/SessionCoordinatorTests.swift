@@ -74,6 +74,57 @@ private struct MockTransformer: TextTransformer {
     }
 }
 
+private enum RecoverableRewriteError: SpeechTextFallbackEligibleError {
+    case unavailable
+
+    var allowsSpeechTextFallback: Bool { true }
+}
+
+private struct RecoverableFailingRewriteTransformer: TextTransformer {
+    let id = "mock.transformer"
+    let supportedKinds: [PostProcessStepKind] = [.llmRewrite]
+
+    func transform(
+        text _: String,
+        step _: PostProcessStep,
+        context _: TransformContext
+    ) async throws -> String {
+        throw RecoverableRewriteError.unavailable
+    }
+}
+
+private struct ChainedLanguageModelTransformer: TracedTextTransformer {
+    let id = "mock.language-model.transformer"
+    let supportedKinds: [PostProcessStepKind] = [.llmRewrite, .llmAnswer]
+
+    func transform(
+        text: String,
+        step: PostProcessStep,
+        context _: TransformContext
+    ) async throws -> String {
+        text + " | " + (step.prompt ?? step.kind.rawValue)
+    }
+
+    func transformWithTrace(
+        text: String,
+        step: PostProcessStep,
+        context _: TransformContext
+    ) async throws -> TracedTextTransformation {
+        let output = text + " | " + (step.prompt ?? step.kind.rawValue)
+        return TracedTextTransformation(
+            text: output,
+            trace: LanguageModelTrace(
+                providerID: "test.provider",
+                modelID: "test-model",
+                systemPrompt: "system contract",
+                workflowPrompt: step.prompt ?? "",
+                messages: [.init(role: .user, content: text)],
+                responseText: output
+            )
+        )
+    }
+}
+
 private actor ActionProbe {
     private(set) var values: [String] = []
 
@@ -528,6 +579,72 @@ final class SessionCoordinatorTests: XCTestCase {
             if case .runCompleted = event { return true }
             return false
         })
+    }
+
+    func testCompletionRetainsOrderedInputsSentToLanguageModelSteps() async {
+        let eventBus = EventBus()
+        let probe = ActionProbe()
+        let workflow = WorkflowDefinition(
+            name: "Composable Assistant",
+            pipeline: PipelineDeclaration(
+                recognizerID: "mock.recognizer",
+                postProcessSteps: [
+                    PostProcessStep(kind: .llmRewrite, prompt: "first"),
+                    PostProcessStep(kind: .llmAnswer, prompt: "second"),
+                ],
+                outputActions: [OutputActionReference(id: "probe.action")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "sparkles", accentColorName: "purple")
+        )
+        let coordinator = SessionCoordinator(
+            contextProvider: MockContextProvider(),
+            recognizerRegistry: SpeechRecognizerRegistry(
+                recognizers: [
+                    MockRecognizer(
+                        result: RecognitionResult(rawText: "question", bestText: "question")
+                    ),
+                ]
+            ),
+            transformerRegistry: TextTransformerRegistry(
+                transformers: [ChainedLanguageModelTransformer()]
+            ),
+            actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
+            candidateResolver: CandidateResolver(eventBus: eventBus),
+            deliveryStack: DeliveryStack(eventBus: eventBus),
+            eventBus: eventBus
+        )
+
+        let result = await coordinator.runReportingOutcome(
+            workflow: workflow,
+            contextSnapshot: .empty
+        )
+
+        guard case .completed(let summary) = result else {
+            return XCTFail("Expected the composed workflow to complete")
+        }
+        XCTAssertEqual(
+            summary.correctionSource?.languageModelInputTexts,
+            ["question", "question | first"]
+        )
+        XCTAssertEqual(summary.correctionSource?.languageModelTraces?.count, 2)
+        XCTAssertEqual(
+            summary.correctionSource?.languageModelTraces?.map(\.workflowPrompt),
+            ["first", "second"]
+        )
+        XCTAssertEqual(
+            summary.correctionSource?.languageModelTraces?.map(\.messages),
+            [
+                [.init(role: .user, content: "question")],
+                [.init(role: .user, content: "question | first")],
+            ]
+        )
+        XCTAssertEqual(
+            summary.correctionSource?.languageModelTraces?.last?.responseText,
+            "question | first | second"
+        )
+        XCTAssertEqual(summary.finalText, "question | first | second")
+        let deliveredValues = await probe.snapshot()
+        XCTAssertEqual(deliveredValues, ["question | first | second"])
     }
 
     func testWhitespaceOnlyRecognitionFailsBeforeCompletionTransformOrDelivery() async throws {
@@ -1368,6 +1485,119 @@ final class SessionCoordinatorTests: XCTestCase {
             event.event == "session.failure"
                 && event.message == DiagnosticEventSanitizer.sanitizedMessage
         })
+    }
+
+    func testRecoverableRewriteFailurePreservesRecognizedSpeechText() async throws {
+        let eventBus = EventBus()
+        let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
+        let probe = ActionProbe()
+        let workflow = WorkflowDefinition(
+            name: "Recoverable Rewrite",
+            pipeline: PipelineDeclaration(
+                recognizerID: "mock.recognizer",
+                postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Polish")],
+                outputActions: [OutputActionReference(id: "probe.action")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
+        )
+        let coordinator = SessionCoordinator(
+            contextProvider: MockContextProvider(),
+            recognizerRegistry: SpeechRecognizerRegistry(
+                recognizers: [
+                    MockRecognizer(
+                        result: RecognitionResult(rawText: "recognized", bestText: "recognized")
+                    ),
+                ]
+            ),
+            transformerRegistry: TextTransformerRegistry(
+                transformers: [RecoverableFailingRewriteTransformer()]
+            ),
+            actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
+            candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
+            deliveryStack: DeliveryStack(eventBus: eventBus, diagnostics: diagnostics),
+            eventBus: eventBus,
+            diagnostics: diagnostics
+        )
+        let capturedAudio = try CapturedAudio(
+            durationSeconds: 15,
+            format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .float32),
+            inlineData: Data([0])
+        )
+
+        let result = await coordinator.runReportingOutcome(
+            workflow: workflow,
+            capturedAudio: capturedAudio,
+            contextSnapshot: .empty
+        )
+
+        guard case .completed(let summary) = result else {
+            return XCTFail("Expected recognized speech text to be delivered")
+        }
+        XCTAssertEqual(summary.finalText, "recognized")
+        let deliveredValues = await probe.snapshot()
+        XCTAssertEqual(deliveredValues, ["recognized"])
+        let events = await diagnostics.snapshot(matching: DiagnosticQuery(subsystem: .session))
+        XCTAssertTrue(events.contains { event in
+            event.event == "session.transform.fallback"
+                && event.metadata["stepKind"] == "llmRewrite"
+                && event.metadata["outcome"] == "preserved"
+        })
+    }
+
+    func testVoiceAssistantDoesNotEchoRecognizedTextWhenRewriteFails() async throws {
+        let eventBus = EventBus()
+        let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
+        let probe = ActionProbe()
+        let workflow = WorkflowDefinition(
+            name: "Voice Assistant",
+            pipeline: PipelineDeclaration(
+                recognizerID: "mock.recognizer",
+                postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Answer")],
+                outputActions: [OutputActionReference(id: "probe.action")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "sparkles", accentColorName: "purple"),
+            metadata: [
+                WorkflowMetadataKey.speechMode: SpeechWorkflowMode.voiceAssistant.rawValue,
+            ]
+        )
+        let coordinator = SessionCoordinator(
+            contextProvider: MockContextProvider(),
+            recognizerRegistry: SpeechRecognizerRegistry(
+                recognizers: [
+                    MockRecognizer(
+                        result: RecognitionResult(rawText: "question", bestText: "question")
+                    ),
+                ]
+            ),
+            transformerRegistry: TextTransformerRegistry(
+                transformers: [RecoverableFailingRewriteTransformer()]
+            ),
+            actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
+            candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
+            deliveryStack: DeliveryStack(eventBus: eventBus, diagnostics: diagnostics),
+            eventBus: eventBus,
+            diagnostics: diagnostics
+        )
+        let capturedAudio = try CapturedAudio(
+            durationSeconds: 15,
+            format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .float32),
+            inlineData: Data([0])
+        )
+
+        let result = await coordinator.runReportingOutcome(
+            workflow: workflow,
+            capturedAudio: capturedAudio,
+            contextSnapshot: .empty
+        )
+
+        guard case .failed(let summary) = result else {
+            return XCTFail("Expected voice assistant rewrite failure to remain strict")
+        }
+        XCTAssertEqual(summary.stage, .transforming)
+        let deliveredValues = await probe.snapshot()
+        XCTAssertTrue(deliveredValues.isEmpty)
+        let events = await diagnostics.snapshot(matching: DiagnosticQuery(subsystem: .session))
+        XCTAssertFalse(events.contains { $0.event == "session.transform.fallback" })
     }
 
     func testUnregisteredOutputActionFailsBeforeRecognitionStarts() async {

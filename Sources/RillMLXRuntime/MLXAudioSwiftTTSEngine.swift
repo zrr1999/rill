@@ -34,7 +34,7 @@ actor MLXAudioSwiftQwenTTSEngine: MLXAudioSwiftTTSInferenceEngine {
   }
 
   private let store: MLXAudioSwiftTTSModelStore
-  private var loadedModel: LoadedModel?
+  private var loadedModels: [SpeechSynthesisModelID: LoadedModel] = [:]
 
   init(store: MLXAudioSwiftTTSModelStore = .init()) {
     self.store = store
@@ -54,12 +54,8 @@ actor MLXAudioSwiftQwenTTSEngine: MLXAudioSwiftTTSInferenceEngine {
       else {
         throw MLXAudioSwiftRuntimeError.unsupportedModel(modelID)
       }
-      if loadedModel?.id == id {
+      if loadedModels[id] != nil {
         return id.rawValue
-      }
-      if loadedModel != nil {
-        loadedModel = nil
-        Memory.clearCache()
       }
       let descriptor = SpeechSynthesisModelCatalog.descriptor(for: id)
       let modelDirectory = try await store.modelDirectory(
@@ -74,7 +70,7 @@ actor MLXAudioSwiftQwenTTSEngine: MLXAudioSwiftTTSInferenceEngine {
       } catch {
         throw MLXAudioSwiftRuntimeError.modelLoadFailed
       }
-      loadedModel = LoadedModel(id: id, model: model)
+      loadedModels[id] = LoadedModel(id: id, model: model)
       progress(.init(phase: .loading, completedUnitCount: 1, totalUnitCount: 1))
       return id.rawValue
     #endif
@@ -88,7 +84,9 @@ actor MLXAudioSwiftQwenTTSEngine: MLXAudioSwiftTTSInferenceEngine {
       downloadIfNeeded: payload.downloadIfNeeded,
       progress: { _ in }
     )
-    guard let loadedModel else {
+    guard let modelID = SpeechSynthesisModelID(rawValue: payload.modelID),
+      let loadedModel = loadedModels[modelID]
+    else {
       throw MLXAudioSwiftRuntimeError.modelLoadFailed
     }
     guard
@@ -145,12 +143,12 @@ actor MLXAudioSwiftQwenTTSEngine: MLXAudioSwiftTTSInferenceEngine {
   }
 
   func releaseTTS(modelID: String) async throws {
-    guard
+    guard let id = SpeechSynthesisModelID(rawValue: modelID),
       SpeechSynthesisModelCatalog.supportedModelIdentifiers.contains(modelID)
     else {
       throw MLXAudioSwiftRuntimeError.unsupportedModel(modelID)
     }
-    loadedModel = nil
+    loadedModels.removeValue(forKey: id)
     Memory.clearCache()
   }
 

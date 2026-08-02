@@ -169,6 +169,8 @@ extension UIStrings {
         case (.simplifiedChinese, .snippetReplacement): "片段替换"
         case (.english, .languageModelRewrite): "Language-model rewrite"
         case (.simplifiedChinese, .languageModelRewrite): "语言模型改写"
+        case (.english, .languageModelAnswer): "Language-model answer"
+        case (.simplifiedChinese, .languageModelAnswer): "语言模型回答"
         case (.english, .whitespaceNormalization): "Whitespace normalization"
         case (.simplifiedChinese, .whitespaceNormalization): "空白规范化"
         }
@@ -193,6 +195,8 @@ extension UIStrings {
         case (.simplifiedChinese, .shortcutInvocation): "运行快捷指令"
         case (.english, .fileAppend): "Append local file"
         case (.simplifiedChinese, .fileAppend): "追加本地文件"
+        case (.english, .speechPlayback): "Play speech"
+        case (.simplifiedChinese, .speechPlayback): "播放语音"
         case (.english, .unclassified): "Unclassified output"
         case (.simplifiedChinese, .unclassified): "未分类输出"
         }

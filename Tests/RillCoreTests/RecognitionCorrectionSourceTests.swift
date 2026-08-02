@@ -46,4 +46,38 @@ final class RecognitionCorrectionSourceTests: XCTestCase {
         XCTAssertNil(summaryWithoutSource.correctionSource)
         XCTAssertEqual(summaryWithSource.correctionSource, source)
     }
+
+    func testLanguageModelTraceUsesClosedCredentialFreeSchema() throws {
+        let source = RecognitionCorrectionSource(
+            preMappingText: "question",
+            context: VocabularyRuleContext(),
+            languageModelTraces: [
+                LanguageModelTrace(
+                    providerID: "openai.responses",
+                    modelID: "model",
+                    systemPrompt: "system",
+                    workflowPrompt: "workflow",
+                    messages: [.init(role: .user, content: "question")],
+                    responseText: "answer"
+                ),
+            ]
+        )
+
+        let data = try JSONEncoder().encode(source)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let traces = try XCTUnwrap(object["languageModelTraces"] as? [[String: Any]])
+        let trace = try XCTUnwrap(traces.first)
+
+        XCTAssertEqual(
+            Set(trace.keys),
+            [
+                "providerID", "modelID", "systemPrompt", "workflowPrompt", "messages",
+                "responseText",
+            ]
+        )
+        XCTAssertNil(trace["apiKey"])
+        XCTAssertNil(trace["baseURL"])
+        XCTAssertNil(trace["headers"])
+        XCTAssertEqual(try JSONDecoder().decode(RecognitionCorrectionSource.self, from: data), source)
+    }
 }

@@ -36,11 +36,49 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
     XCTAssertTrue(source.contains("enabled = false"))
     XCTAssertTrue(source.contains("[setup.speech]"))
     XCTAssertTrue(source.contains("[[process]]"))
+    XCTAssertTrue(source.contains("kind = \"llm-answer\""))
     XCTAssertTrue(source.contains("[[output.actions]]"))
 
     let decoded = try XDGWorkflowFileStore.decode(source)
     XCTAssertEqual(decoded.workflow, workflow)
     XCTAssertFalse(decoded.isEnabled)
+  }
+
+  func testLivePreviewPlacementDefaultsToOverlayAndRoundTripsCursor() throws {
+    let legacy = try XDGWorkflowFileStore.decode(
+      String(decoding: try XDGWorkflowFileStore.encode(
+        workflow: makeWorkflow(),
+        isEnabled: true
+      ), as: UTF8.self)
+    )
+    XCTAssertEqual(
+      legacy.workflow.metadata[WorkflowMetadataKey.livePreviewPlacement]
+        .flatMap(LivePreviewPlacement.init(rawValue:)) ?? .overlay,
+      .overlay
+    )
+
+    var cursorWorkflow = makeWorkflow()
+    cursorWorkflow.metadata[WorkflowMetadataKey.livePreviewPlacement] = "cursor"
+    let encoded = try XDGWorkflowFileStore.encode(workflow: cursorWorkflow, isEnabled: true)
+    let roundTrip = try XDGWorkflowFileStore.decode(
+      try XCTUnwrap(String(data: encoded, encoding: .utf8))
+    )
+    XCTAssertEqual(
+      roundTrip.workflow.metadata[WorkflowMetadataKey.livePreviewPlacement],
+      "cursor"
+    )
+  }
+
+  func testInvalidLivePreviewPlacementIsRejected() throws {
+    var workflow = makeWorkflow()
+    workflow.metadata[WorkflowMetadataKey.livePreviewPlacement] = "cursor"
+    let data = try XDGWorkflowFileStore.encode(workflow: workflow, isEnabled: true)
+    let source = String(decoding: data, as: UTF8.self).replacingOccurrences(
+      of: "live_preview_placement = \"cursor\"",
+      with: "live_preview_placement = \"nearby-window\""
+    )
+
+    XCTAssertThrowsError(try XDGWorkflowFileStore.decode(source))
   }
 
   func testSaveCreatesPrivateFileAndLoadPreservesItsURL() async throws {
@@ -157,7 +195,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
         setup: WorkflowSetupPhase(
           speechRoute: WorkflowSpeechRoute(
             selection: .automatic,
-            recognizerID: "sherpa-onnx.local",
+            recognizerID: "local-speech",
             language: "zh-CN"
           ),
           vocabularyBindings: [
@@ -176,6 +214,11 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
           WorkflowProcessStep(
             id: UUID(uuidString: "88888888-2222-3333-4444-555555555555")!,
             kind: .applyVocabulary
+          ),
+          WorkflowProcessStep(
+            id: UUID(uuidString: "AAAAAAAA-2222-3333-4444-555555555555")!,
+            kind: .llmAnswer,
+            prompt: "Answer directly."
           ),
         ]),
         output: WorkflowOutputPhase(

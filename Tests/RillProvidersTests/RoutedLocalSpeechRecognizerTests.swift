@@ -4,13 +4,9 @@ import XCTest
 @testable import RillProviders
 
 final class RoutedLocalSpeechRecognizerTests: XCTestCase {
-  func testRouterSwitchesByCatalogBackendAndReleasesPreviousBackend() async throws {
+  func testMultipleQwenModelsReuseOneMLXBackendWithoutReloadingTheRouter() async throws {
     let selection = LocalSpeechSelection(
-      modelID: SherpaOnnxModelCatalog.defaultModelID.rawValue
-    )
-    let sherpa = RecordingLocalSpeechBackend(
-      backend: .sherpaOnnx,
-      resultText: "sherpa"
+      modelID: MLXAudioModelID.qwen3ASR06BInt8.rawValue
     )
     let mlx = RecordingLocalSpeechBackend(
       backend: .mlxAudioSwift,
@@ -20,33 +16,26 @@ final class RoutedLocalSpeechRecognizerTests: XCTestCase {
       settingsProvider: {
         LocalSpeechSettings(model: await selection.modelID())
       },
-      backends: [sherpa, mlx]
+      backends: [mlx]
     )
 
     let first = try await router.recognize(makeRequest())
     await selection.setModelID(MLXAudioModelID.qwen3ASR17BInt8.rawValue)
     let second = try await router.recognize(makeRequest())
 
-    XCTAssertEqual(first.bestText, "sherpa")
+    XCTAssertEqual(first.bestText, "mlx")
     XCTAssertEqual(second.bestText, "mlx")
-    let sherpaSnapshot = await sherpa.snapshot()
     let mlxSnapshot = await mlx.snapshot()
-    XCTAssertEqual(sherpaSnapshot.recognitions, 1)
-    XCTAssertEqual(sherpaSnapshot.releases, 1)
-    XCTAssertEqual(mlxSnapshot.recognitions, 1)
+    XCTAssertEqual(mlxSnapshot.recognitions, 2)
     XCTAssertEqual(mlxSnapshot.releases, 0)
   }
 
   func testRouterReportsARegisteredCatalogBackendThatHasNoImplementation() async {
-    let sherpa = RecordingLocalSpeechBackend(
-      backend: .sherpaOnnx,
-      resultText: "sherpa"
-    )
     let router = RoutedLocalSpeechRecognizer(
       settingsProvider: {
         LocalSpeechSettings(model: MLXAudioModelID.qwen3ASR17BInt8.rawValue)
       },
-      backends: [sherpa]
+      backends: []
     )
 
     do {
@@ -61,29 +50,22 @@ final class RoutedLocalSpeechRecognizerTests: XCTestCase {
   }
 
   func testRouterLifecycleFansOutAcrossRegisteredBackends() async throws {
-    let sherpa = RecordingLocalSpeechBackend(
-      backend: .sherpaOnnx,
-      resultText: "sherpa"
-    )
     let mlx = RecordingLocalSpeechBackend(
       backend: .mlxAudioSwift,
       resultText: "mlx"
     )
     let router = RoutedLocalSpeechRecognizer(
       settingsProvider: {
-        LocalSpeechSettings(model: SherpaOnnxModelCatalog.defaultModelID.rawValue)
+        LocalSpeechSettings(model: MLXAudioModelID.qwen3ASR06BInt8.rawValue)
       },
-      backends: [sherpa, mlx]
+      backends: [mlx]
     )
 
     try await router.releaseLoadedModel()
     try await router.stopRuntime()
 
-    let sherpaSnapshot = await sherpa.snapshot()
     let mlxSnapshot = await mlx.snapshot()
-    XCTAssertEqual(sherpaSnapshot.releases, 1)
     XCTAssertEqual(mlxSnapshot.releases, 1)
-    XCTAssertEqual(sherpaSnapshot.stops, 1)
     XCTAssertEqual(mlxSnapshot.stops, 1)
   }
 
@@ -93,7 +75,7 @@ final class RoutedLocalSpeechRecognizerTests: XCTestCase {
       workflow: WorkflowDefinition(
         name: "Local speech",
         pipeline: PipelineDeclaration(
-          recognizerID: "sherpa-onnx.local",
+          recognizerID: "local-speech",
           outputActions: []
         ),
         ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "accent")

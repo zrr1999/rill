@@ -6,6 +6,27 @@ import XCTest
 @testable import RillProviders
 
 final class OpenAITextRewriteTransformerTests: XCTestCase {
+  func testOnlyRecoverableProviderFailuresPermitSpeechTextFallback() {
+    for error in [
+      OpenAITextRewriteError.rateLimited,
+      .timedOut,
+      .networkFailed,
+      .incomplete,
+      .invalidResponse,
+    ] {
+      XCTAssertTrue(error.allowsSpeechTextFallback)
+    }
+
+    for error in [
+      OpenAITextRewriteError.credentialUnavailable,
+      .configurationInvalid,
+      .authenticationFailed,
+      .refused,
+    ] {
+      XCTAssertFalse(error.allowsSpeechTextFallback)
+    }
+  }
+
   func testTransformerBuildsContentMinimalRequestAndReturnsCompletedText() async throws {
     let client = OpenAIResponsesClientStub(
       result: .success(
@@ -51,6 +72,104 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       invocation.request.maxOutputTokens,
       OpenAITextRewriteTransformer.maximumOutputTokens
     )
+  }
+
+  func testAnswerStepUsesAssistantContractInsteadOfRewriteContract() async throws {
+    let client = OpenAIResponsesClientStub(
+      result: .success(
+        .init(
+          status: .completed,
+          outputText: "直接回答",
+          containsRefusal: false,
+          httpStatusCode: 200
+        )
+      )
+    )
+    let transformer = OpenAITextRewriteTransformer(
+      settingsProvider: { OpenAISettings(apiKey: "test-key") },
+      clientFactory: { client }
+    )
+
+    _ = try await transformer.transform(
+      text: "为什么天空是蓝色？",
+      step: PostProcessStep(kind: .llmAnswer, prompt: "Answer briefly."),
+      context: makeTransformContext()
+    )
+
+    let capturedInvocation = await client.lastInvocation()
+    let invocation = try XCTUnwrap(capturedInvocation)
+    XCTAssertTrue(invocation.request.instructions.contains("Answer the supplied user request"))
+    XCTAssertTrue(invocation.request.instructions.contains("Answer briefly."))
+    XCTAssertFalse(invocation.request.instructions.contains("Transform only the supplied transcript"))
+  }
+
+  func testTraceContainsExactCredentialFreeRequestAndResponse() async throws {
+    let client = OpenAIResponsesClientStub(
+      result: .success(
+        .init(
+          status: .completed,
+          outputText: "actual answer",
+          containsRefusal: false,
+          httpStatusCode: 200
+        )
+      )
+    )
+    let transformer = OpenAITextRewriteTransformer(
+      settingsProvider: {
+        OpenAISettings(
+          apiKey: "secret-key-canary",
+          baseURL: "https://private-gateway.example/v1",
+          model: "vendor/answer-model"
+        )
+      },
+      clientFactory: { client }
+    )
+
+    let result = try await transformer.transformWithTrace(
+      text: "actual question",
+      step: PostProcessStep(kind: .llmAnswer, prompt: "Answer in one sentence."),
+      context: makeTransformContext(selectedText: "unrelated-context-canary")
+    )
+
+    XCTAssertEqual(result.text, "actual answer")
+    XCTAssertEqual(result.trace.providerID, "openai.responses")
+    XCTAssertEqual(result.trace.modelID, "vendor/answer-model")
+    XCTAssertEqual(result.trace.workflowPrompt, "Answer in one sentence.")
+    XCTAssertTrue(result.trace.systemPrompt.contains("Answer the supplied user request"))
+    XCTAssertTrue(result.trace.systemPrompt.contains("Answer in one sentence."))
+    XCTAssertEqual(
+      result.trace.messages,
+      [.init(role: .user, content: "actual question")]
+    )
+    XCTAssertEqual(result.trace.responseText, "actual answer")
+
+    let encodedTrace = String(decoding: try JSONEncoder().encode(result.trace), as: UTF8.self)
+    XCTAssertFalse(encodedTrace.contains("secret-key-canary"))
+    XCTAssertFalse(encodedTrace.contains("private-gateway"))
+    XCTAssertFalse(encodedTrace.contains("unrelated-context-canary"))
+  }
+
+  func testLegacyVoiceAssistantRewriteUsesAssistantContract() async throws {
+    let client = OpenAIResponsesClientStub(
+      result: .success(
+        .init(status: .completed, outputText: "回答", containsRefusal: false, httpStatusCode: 200)
+      )
+    )
+    let transformer = OpenAITextRewriteTransformer(
+      settingsProvider: { OpenAISettings(apiKey: "test-key") },
+      clientFactory: { client }
+    )
+
+    _ = try await transformer.transform(
+      text: "问题",
+      step: PostProcessStep(kind: .llmRewrite, prompt: "Answer."),
+      context: makeTransformContext(speechMode: .voiceAssistant)
+    )
+
+    let capturedInvocation = await client.lastInvocation()
+    let invocation = try XCTUnwrap(capturedInvocation)
+    XCTAssertTrue(invocation.request.instructions.contains("Answer the supplied user request"))
+    XCTAssertFalse(invocation.request.instructions.contains("Transform only the supplied transcript"))
   }
 
   func testTransformerRejectsMissingCredentialAndInvalidConfigurationBeforeTransport() async {
@@ -612,8 +731,15 @@ private final class OpenAIRequestCaptureState: @unchecked Sendable {
   }
 }
 
-private func makeTransformContext(selectedText: String = "") -> TransformContext {
-  TransformContext(
+private func makeTransformContext(
+  selectedText: String = "",
+  speechMode: SpeechWorkflowMode? = nil
+) -> TransformContext {
+  var metadata: [String: String] = [:]
+  if let speechMode {
+    metadata[WorkflowMetadataKey.speechMode] = speechMode.rawValue
+  }
+  return TransformContext(
     runID: UUID(),
     workflow: WorkflowDefinition(
       name: "Rewrite",
@@ -621,7 +747,8 @@ private func makeTransformContext(selectedText: String = "") -> TransformContext
         recognizerID: "sherpa-onnx.local",
         outputActions: [OutputActionReference(id: "inject.text")]
       ),
-      ui: WorkflowUIConfig(symbolName: "wand.and.stars", accentColorName: "purple")
+      ui: WorkflowUIConfig(symbolName: "wand.and.stars", accentColorName: "purple"),
+      metadata: metadata
     ),
     contextSnapshot: ContextSnapshot(
       focus: FocusSnapshot(

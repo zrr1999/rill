@@ -54,7 +54,7 @@ public enum WorkflowExecutionPlanResolver {
 
         switch (workflow.prefersAutomaticRecognizerSelection, recognizer) {
         case (true, .localSpeech):
-            resolvedWorkflow.plan.setup.speechRoute?.recognizerID = "sherpa-onnx.local"
+            resolvedWorkflow.plan.setup.speechRoute?.recognizerID = "local-speech"
         case (false, _):
             break
         case (true, .declared),
@@ -265,6 +265,15 @@ public struct WorkflowComponentProfileRegistry: Sendable {
     /// registered for their identifier.
     public init() {
         recognizers = [
+            "local-speech": RecognizerProfile(
+                inputs: [
+                    InputProfile(
+                        category: .microphoneAudio,
+                        usage: .required,
+                        destination: .onDevice
+                    ),
+                ]
+            ),
             "sherpa-onnx.local": RecognizerProfile(
                 inputs: [
                     InputProfile(
@@ -307,6 +316,11 @@ public struct WorkflowComponentProfileRegistry: Sendable {
             .llmRewrite: TransformerProfile(
                 componentID: "transformer.openai.responses.rewrite",
                 kind: .languageModelRewrite,
+                destination: .cloudService
+            ),
+            .llmAnswer: TransformerProfile(
+                componentID: "transformer.openai.responses.rewrite",
+                kind: .languageModelAnswer,
                 destination: .cloudService
             ),
         ]
@@ -370,6 +384,15 @@ public struct WorkflowComponentProfileRegistry: Sendable {
                     ),
                 ],
                 configurationRequirement: .markdownFile
+            ),
+            SpeechOutputActionID.speak: OutputProfile(
+                effects: [
+                    OutputEffectProfile(
+                        effect: .speechPlayback,
+                        destination: .onDevice
+                    ),
+                ],
+                configurationRequirement: .none
             ),
         ]
     }
@@ -923,6 +946,7 @@ public struct WorkflowExplainService: Sendable {
         switch kind {
         case .snippetReplacement: .snippetReplacement
         case .llmRewrite: .languageModelRewrite
+        case .llmAnswer: .languageModelAnswer
         case .normalizeWhitespace: .whitespaceNormalization
         }
     }

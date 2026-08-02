@@ -14,12 +14,7 @@ APP_EXECUTABLE_PRODUCT="RillApp"
 SPEECH_WORKER_PRODUCT="RillSpeechWorker"
 MIN_MACOS="14.0"
 OWN_RESOURCE_BUNDLE="RillMacOS_RillApp.bundle"
-SHERPA_RESOURCE_BUNDLE="RillMacOS_RillSherpaRuntime.bundle"
 MLX_RESOURCE_BUNDLE="mlx-swift_Cmlx.bundle"
-SILERO_VAD_MODEL_NAME="silero_vad.onnx"
-SILERO_VAD_MODEL_SHA256="9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
-SILERO_VAD_LICENSE_NAME="LICENSE.silero-vad"
-SILERO_VAD_LICENSE_SHA256="51c19c8be941a3fb00ccf58f0bf9053de9f7237a0b37327896eabad32dffe873"
 WORKFLOW_MANIFEST="BuiltinWorkflowManifest.json"
 THIRD_PARTY_NOTICES_NAME="THIRD_PARTY_NOTICES.md"
 LOCAL_MODEL_NOTICES_NAME="LOCAL_MODEL_NOTICES.md"
@@ -113,23 +108,6 @@ require_command diff
 require_command cmp
 require_command plutil
 require_command python3
-require_command shasum
-
-verify_sha256() {
-  local artifact="$1"
-  local expected="$2"
-  local description="$3"
-  local output=""
-  local actual=""
-
-  [[ -f "$artifact" && ! -L "$artifact" ]] \
-    || error "$description is missing or not a regular file: $artifact"
-  output="$(shasum -a 256 "$artifact")" \
-    || error "Cannot hash $description: $artifact"
-  actual="${output%% *}"
-  [[ "$actual" == "$expected" ]] \
-    || error "$description SHA-256 mismatch: expected $expected, found $actual"
-}
 
 THIRD_PARTY_NOTICES_SOURCE="$PROJECT_DIR/$THIRD_PARTY_NOTICES_NAME"
 LOCAL_MODEL_NOTICES_SOURCE="$PROJECT_DIR/$LOCAL_MODEL_NOTICES_NAME"
@@ -179,9 +157,7 @@ SPEECH_WORKER_SOURCE="$BUILD_DIR/$SPEECH_WORKER_PRODUCT"
 [[ -x "$SPEECH_WORKER_SOURCE" ]] \
   || error "Speech worker not found or not executable: $SPEECH_WORKER_SOURCE"
 bash "$SCRIPT_DIR/verify_release_executable.sh" "$EXECUTABLE_SOURCE"
-bash "$SCRIPT_DIR/verify_release_executable.sh" \
-  --require-sherpa \
-  "$SPEECH_WORKER_SOURCE"
+bash "$SCRIPT_DIR/verify_release_executable.sh" "$SPEECH_WORKER_SOURCE"
 
 shopt -s nullglob
 RESOURCE_SOURCES=("$BUILD_DIR"/*.bundle)
@@ -189,7 +165,6 @@ shopt -u nullglob
 [[ "${#RESOURCE_SOURCES[@]}" -gt 0 ]] || error "No SwiftPM resource bundles found in: $BUILD_DIR"
 
 own_bundle_found=false
-sherpa_bundle_found=false
 mlx_bundle_found=false
 dependency_bundle_count=0
 for source_bundle in "${RESOURCE_SOURCES[@]}"; do
@@ -201,9 +176,6 @@ for source_bundle in "${RESOURCE_SOURCES[@]}"; do
     || error "Invalid resource bundle Info.plist: $bundle_name"
   if [[ "$bundle_name" == "$OWN_RESOURCE_BUNDLE" ]]; then
     own_bundle_found=true
-  elif [[ "$bundle_name" == "$SHERPA_RESOURCE_BUNDLE" ]]; then
-    sherpa_bundle_found=true
-    ((dependency_bundle_count += 1))
   elif [[ "$bundle_name" == "$MLX_RESOURCE_BUNDLE" ]]; then
     mlx_bundle_found=true
     ((dependency_bundle_count += 1))
@@ -213,20 +185,8 @@ for source_bundle in "${RESOURCE_SOURCES[@]}"; do
 done
 
 $own_bundle_found || error "Required app resource bundle not found: $OWN_RESOURCE_BUNDLE"
-$sherpa_bundle_found \
-  || error "Required Sherpa resource bundle not found: $SHERPA_RESOURCE_BUNDLE"
 $mlx_bundle_found \
   || error "Required MLX resource bundle not found: $MLX_RESOURCE_BUNDLE"
-
-SILERO_VAD_BUILD_RESOURCE_ROOT="$BUILD_DIR/$SHERPA_RESOURCE_BUNDLE/Contents/Resources"
-verify_sha256 \
-  "$SILERO_VAD_BUILD_RESOURCE_ROOT/$SILERO_VAD_MODEL_NAME" \
-  "$SILERO_VAD_MODEL_SHA256" \
-  "Built Silero VAD model"
-verify_sha256 \
-  "$SILERO_VAD_BUILD_RESOURCE_ROOT/$SILERO_VAD_LICENSE_NAME" \
-  "$SILERO_VAD_LICENSE_SHA256" \
-  "Built Silero VAD license"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p \
@@ -245,7 +205,6 @@ ditto \
 bash "$SCRIPT_DIR/verify_release_executable.sh" \
   "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 bash "$SCRIPT_DIR/verify_release_executable.sh" \
-  --require-sherpa \
   "$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"
 
 for source_bundle in "${RESOURCE_SOURCES[@]}"; do
@@ -372,16 +331,6 @@ for source_bundle in "${RESOURCE_SOURCES[@]}"; do
   diff -qr "$source_bundle" "$resource_destination" >/dev/null \
     || error "Packaged resource bundle differs from build output: $bundle_name"
 done
-
-SILERO_VAD_PACKAGED_RESOURCE_ROOT="$APP_BUNDLE/Contents/Resources/$SHERPA_RESOURCE_BUNDLE/Contents/Resources"
-verify_sha256 \
-  "$SILERO_VAD_PACKAGED_RESOURCE_ROOT/$SILERO_VAD_MODEL_NAME" \
-  "$SILERO_VAD_MODEL_SHA256" \
-  "Packaged Silero VAD model"
-verify_sha256 \
-  "$SILERO_VAD_PACKAGED_RESOURCE_ROOT/$SILERO_VAD_LICENSE_NAME" \
-  "$SILERO_VAD_LICENSE_SHA256" \
-  "Packaged Silero VAD license"
 
 MANIFEST_SOURCE="$BUILD_DIR/$OWN_RESOURCE_BUNDLE/Contents/Resources/$WORKFLOW_MANIFEST"
 MANIFEST_DESTINATION="$APP_BUNDLE/Contents/Resources/$OWN_RESOURCE_BUNDLE/Contents/Resources/$WORKFLOW_MANIFEST"

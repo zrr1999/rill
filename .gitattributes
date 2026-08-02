@@ -1,3 +1,0 @@
-vendor/**/*.a filter=lfs diff=lfs merge=lfs -text
-vendor/** whitespace=-trailing-space
-Sources/RillSherpaRuntime/Resources/*.onnx filter=lfs diff=lfs merge=lfs -text

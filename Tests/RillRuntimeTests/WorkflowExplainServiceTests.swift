@@ -85,8 +85,43 @@ final class WorkflowExplainServiceTests: XCTestCase {
             )
         )
         XCTAssertTrue(receipt.processingDestinations.contains(.cloudService))
-        await assertProbeWasNotInvoked(probe)
-    }
+    await assertProbeWasNotInvoked(probe)
+  }
+
+  func testOpenAIAnswerProfileIsClassifiedSeparatelyAsCloudTextProcessing() async {
+    let probe = WorkflowExplainProbe()
+    let service = makeService(
+      probe: probe,
+      recognizerIDs: ["sherpa-onnx.local"],
+      transformers: [
+        ("transformer.openai.responses.rewrite", [.llmRewrite, .llmAnswer]),
+      ],
+      actionIDs: ["speech.speak"]
+    )
+    let workflow = makeWorkflow(
+      recognizerID: "sherpa-onnx.local",
+      steps: [PostProcessStep(kind: .llmAnswer, prompt: "Answer")],
+      actions: [OutputActionReference(id: "speech.speak")]
+    )
+
+    let receipt = service.explainResolved(
+      resolvedPlan(for: workflow),
+      privacyEvaluation: PrivacyRunEvaluation(status: .ready)
+    )
+
+    XCTAssertEqual(receipt.status, .ready)
+    XCTAssertEqual(
+      receipt.transforms.first { $0.kind == .languageModelAnswer },
+      WorkflowExplanationTransform(
+        kind: .languageModelAnswer,
+        availability: .available,
+        usage: .required,
+        processingDestination: .cloudService
+      )
+    )
+    XCTAssertTrue(receipt.processingDestinations.contains(.cloudService))
+    await assertProbeWasNotInvoked(probe)
+  }
 
     func testKnownLocalWorkflowProducesAccurateContentFreeStaticPlan() async throws {
         let probe = WorkflowExplainProbe()

@@ -10,6 +10,74 @@ private let speechWorkerTestRequestID = UUID(
 )!
 
 final class SpeechWorkerSupervisorTests: XCTestCase {
+  func testInteractiveRecognitionPreemptsAndRequeuesActiveBackgroundRequest() async throws {
+    let backgroundID = UUID(uuidString: "10000000-0000-4000-8000-000000000001")!
+    let interactiveID = UUID(uuidString: "10000000-0000-4000-8000-000000000002")!
+    let retryID = UUID(uuidString: "10000000-0000-4000-8000-000000000003")!
+    let identifiers = SequentialSpeechWorkerRequestIDGenerator(
+      identifiers: [backgroundID, interactiveID, retryID]
+    )
+    let preempted = makeFailureResponse(
+      requestID: backgroundID,
+      generation: 1,
+      code: .requestPreempted
+    )
+    let interactive = makeSuccessResponse(
+      requestID: interactiveID,
+      generation: 1,
+      text: "interactive"
+    )
+    let resumed = makeSuccessResponse(
+      requestID: retryID,
+      generation: 1,
+      text: "background-resumed"
+    )
+    let script = """
+      count=0
+      while IFS= read -r frame; do
+        case "$frame" in
+          *cancelRequest*) printf '%s' "$1" ;;
+          *)
+            count=$((count + 1))
+            if [ "$count" -eq 2 ]; then
+              printf '%s' "$2"
+            elif [ "$count" -eq 3 ]; then
+              printf '%s' "$3"
+            fi
+            ;;
+        esac
+      done
+      """
+    let supervisor = SpeechWorkerSupervisor(
+      configuration: .init(
+        executableURL: URL(fileURLWithPath: "/bin/sh"),
+        arguments: ["-c", script, "rill-fake", preempted, interactive, resumed]
+      ),
+      requestIDGenerator: { identifiers.next() }
+    )
+
+    let backgroundPayload = makePayload()
+    let interactivePayload = makePayload()
+    let backgroundTask = Task {
+      try await supervisor.recognize(
+        backgroundPayload,
+        timeout: .seconds(2),
+        priority: .background
+      )
+    }
+    try await Task.sleep(for: .milliseconds(50))
+    let interactiveResult = try await supervisor.recognize(
+      interactivePayload,
+      timeout: .seconds(2),
+      priority: .interactive
+    )
+    let backgroundResult = try await backgroundTask.value
+
+    XCTAssertEqual(interactiveResult.bestText, "interactive")
+    XCTAssertEqual(backgroundResult.bestText, "background-resumed")
+    try await supervisor.shutdown()
+  }
+
   func testModelPreparationUsesPersistentWorkerProtocol() async throws {
     let response = makePreparationResponse(
       requestID: speechWorkerTestRequestID,
@@ -38,7 +106,8 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     )
     let finalResponse = makePreparationResponse(
       requestID: speechWorkerTestRequestID,
-      generation: 1
+      generation: 1,
+      sequence: 1
     )
     let recorder = WorkerProgressRecorder()
     let supervisor = makeSupervisor(
@@ -88,6 +157,57 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     try await supervisor.shutdown()
   }
 
+  func testTenMixedPriorityRequestsShareOneWorkerAndOneUnaryLane() async throws {
+    let response = makeSuccessResponse(
+      requestID: speechWorkerTestRequestID,
+      generation: 1
+    )
+    let supervisor = makeSupervisor(
+      script: "while IFS= read -r request; do sleep 0.02; printf '%s' \"$1\"; done",
+      response: response
+    )
+    let payload = makePayload()
+    let leadingInteractive = Task {
+      try await supervisor.recognize(
+        payload,
+        timeout: .seconds(3),
+        priority: .interactive
+      )
+    }
+    let originalPID = try await waitForPID(supervisor)
+    try await Task.sleep(for: .milliseconds(10))
+    let priorities: [SpeechWorkerTaskPriority] = [
+      .background, .wakeCandidate, .foregroundFinal,
+      .background, .wakeCandidate, .foregroundFinal,
+      .background, .wakeCandidate, .foregroundFinal,
+    ]
+
+    let queuedResults = try await withThrowingTaskGroup(
+      of: SpeechWorkerRecognitionResult.self,
+      returning: [SpeechWorkerRecognitionResult].self
+    ) { group in
+      for priority in priorities {
+        group.addTask {
+          try await supervisor.recognize(
+            payload,
+            timeout: .seconds(3),
+            priority: priority
+          )
+        }
+      }
+      var results: [SpeechWorkerRecognitionResult] = []
+      for try await result in group { results.append(result) }
+      return results
+    }
+    let leadingResult = try await leadingInteractive.value
+
+    XCTAssertEqual(queuedResults.count + 1, 10)
+    XCTAssertTrue((queuedResults + [leadingResult]).allSatisfy { $0.bestText == "worker result" })
+    let finalPID = await supervisor.activeProcessIdentifier()
+    XCTAssertEqual(finalPID, originalPID)
+    try await supervisor.shutdown()
+  }
+
   func testCancellingAQueuedRecognitionDoesNotCancelTheActiveRequest() async throws {
     let response = makeSuccessResponse(
       requestID: speechWorkerTestRequestID,
@@ -132,9 +252,14 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
   func testRecognizerAdapterUsesWorkerResultWithoutInProcessFallback() async throws {
     let response = makeSuccessResponse(requestID: speechWorkerTestRequestID, generation: 1)
     let supervisor = makeSupervisor(script: persistentResponseScript, response: response)
-    let recognizer = SherpaOnnxWorkerRecognizer(
+    let recognizer = MLXAudioSwiftWorkerRecognizer(
       supervisor: supervisor,
-      configuration: .init(downloadIfNeeded: false),
+      settingsProvider: {
+        LocalSpeechSettings(
+          model: MLXAudioModelID.qwen3ASR06BInt8.rawValue,
+          downloadIfNeeded: false
+        )
+      },
       workerTimeout: .seconds(2)
     )
     let audioURL = try makeManagedAudioFile()
@@ -160,10 +285,85 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     )
 
     XCTAssertEqual(result.bestText, "worker result")
-    XCTAssertEqual(result.metadata["provider.kind"], "sherpa-onnx")
+    XCTAssertEqual(result.metadata["provider.kind"], "mlx-audio-swift")
     try await recognizer.stopRuntime()
     let activePID = await supervisor.activeProcessIdentifier()
     XCTAssertNil(activePID)
+  }
+
+  func testRecognizerRestartsWorkerAndRetriesOnceAfterRecognitionFailure() async throws {
+    let markerURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "rill-worker-retry-marker-\(UUID().uuidString)"
+    )
+    defer { try? FileManager.default.removeItem(at: markerURL) }
+    let firstFailure = makeFailureResponse(
+      requestID: speechWorkerTestRequestID,
+      generation: 1,
+      code: .recognitionFailed
+    )
+    let recoveredResponse = makeSuccessResponse(
+      requestID: speechWorkerTestRequestID,
+      generation: 3
+    )
+    let script = """
+      if [ -e "$1" ]; then
+        while IFS= read -r request; do printf '%s' "$3"; done
+      else
+        : > "$1"
+        while IFS= read -r request; do printf '%s' "$2"; done
+      fi
+      """
+    let supervisor = SpeechWorkerSupervisor(
+      configuration: .init(
+        executableURL: URL(fileURLWithPath: "/bin/sh"),
+        arguments: ["-c", script, "rill-fake", markerURL.path, firstFailure, recoveredResponse]
+      ),
+      requestIDGenerator: { speechWorkerTestRequestID }
+    )
+    let diagnostics = WorkerDiagnosticRecorder()
+    let recognizer = MLXAudioSwiftWorkerRecognizer(
+      supervisor: supervisor,
+      settingsProvider: {
+        LocalSpeechSettings(
+          model: MLXAudioModelID.qwen3ASR06BInt8.rawValue,
+          downloadIfNeeded: false
+        )
+      },
+      workerTimeout: .seconds(2),
+      diagnosticReporter: { event in
+        diagnostics.record(event)
+      }
+    )
+    let audioURL = try makeManagedAudioFile()
+    defer { try? FileManager.default.removeItem(at: audioURL) }
+    let audio = try CapturedAudio(
+      durationSeconds: 15,
+      format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .float32),
+      fileURL: audioURL,
+      fileOwnership: .managedTemporary
+    )
+
+    let result = try await recognizer.recognize(
+      RecognitionRequest(
+        runID: UUID(),
+        workflow: makeWorkflow(),
+        contextSnapshot: .empty,
+        capturedAudio: audio
+      )
+    )
+
+    XCTAssertEqual(result.bestText, "worker result")
+    let events = diagnostics.snapshot()
+    let retryOutcomes = Set(
+      events
+        .filter { $0.event == "provider.local-speech.recognition.retry" }
+        .compactMap { $0.metadata["outcome"] }
+    )
+    XCTAssertEqual(retryOutcomes, ["pending", "completed"])
+    XCTAssertTrue(events.allSatisfy { event in
+      event.metadata["failureCode"] == "recognitionFailed"
+    })
+    try await recognizer.stopRuntime()
   }
 
   func testTimeoutWaitsForTermThenKillAndReapsPID() async throws {
@@ -411,7 +611,7 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
   private func makePayload() -> SpeechWorkerRecognitionPayload {
     SpeechWorkerRecognitionPayload(
       runID: UUID(),
-      modelID: SherpaOnnxModelCatalog.defaultModelID.rawValue,
+      modelID: MLXAudioModelID.qwen3ASR06BInt8.rawValue,
       language: "zh-CN",
       keyterms: ["Rill"],
       threadCount: 2,
@@ -421,7 +621,11 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     )
   }
 
-  private func makeSuccessResponse(requestID: UUID, generation: UInt64) -> String {
+  private func makeSuccessResponse(
+    requestID: UUID,
+    generation: UInt64,
+    text: String = "worker result"
+  ) -> String {
     let request = SpeechWorkerRequest(
       requestID: requestID,
       generation: generation,
@@ -430,9 +634,9 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     let response = SpeechWorkerResponse.success(
       request: request,
       result: SpeechWorkerRecognitionResult(
-        rawText: "worker result",
-        bestText: "worker result",
-        metadata: ["provider.kind": "sherpa-onnx"],
+        rawText: text,
+        bestText: text,
+        metadata: ["provider.kind": "mlx-audio-swift"],
         processingDurationMillis: 10
       )
     )
@@ -440,7 +644,26 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     return String(data: data, encoding: .utf8)!
   }
 
-  private func makePreparationResponse(requestID: UUID, generation: UInt64) -> String {
+  private func makeFailureResponse(
+    requestID: UUID,
+    generation: UInt64,
+    code: SpeechWorkerFailureCode
+  ) -> String {
+    let request = SpeechWorkerRequest(
+      requestID: requestID,
+      generation: generation,
+      payload: makePayload()
+    )
+    let response = SpeechWorkerResponse.failure(request: request, code: code)
+    let data = try! SpeechWorkerProtocolCodec.encodeResponseLine(response)
+    return String(data: data, encoding: .utf8)!
+  }
+
+  private func makePreparationResponse(
+    requestID: UUID,
+    generation: UInt64,
+    sequence: UInt64 = 0
+  ) -> String {
     let request = SpeechWorkerRequest(
       requestID: requestID,
       generation: generation,
@@ -449,10 +672,11 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
         downloadIfNeeded: true
       )
     )
-    let response = SpeechWorkerResponse.prepared(
+    var response = SpeechWorkerResponse.prepared(
       request: request,
       modelID: MLXAudioModelID.qwen3ASR17BInt8.rawValue
     )
+    response.sequence = sequence
     let data = try! SpeechWorkerProtocolCodec.encodeResponseLine(response)
     return String(data: data, encoding: .utf8)!
   }
@@ -495,7 +719,7 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     WorkflowDefinition(
       name: "Worker Adapter Test",
       pipeline: PipelineDeclaration(
-        recognizerID: "sherpa-onnx.local",
+        recognizerID: "local-speech",
         outputActions: []
       ),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "accent")
@@ -535,6 +759,24 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
   }
 }
 
+private final class SequentialSpeechWorkerRequestIDGenerator: @unchecked Sendable {
+  private let lock = NSLock()
+  private let identifiers: [UUID]
+  private var index = 0
+
+  init(identifiers: [UUID]) {
+    precondition(!identifiers.isEmpty)
+    self.identifiers = identifiers
+  }
+
+  func next() -> UUID {
+    lock.withLock {
+      defer { index += 1 }
+      return identifiers[min(index, identifiers.count - 1)]
+    }
+  }
+}
+
 private final class WorkerProgressRecorder: @unchecked Sendable {
   private let lock = NSLock()
   private var values: [SpeechWorkerProgress] = []
@@ -546,6 +788,21 @@ private final class WorkerProgressRecorder: @unchecked Sendable {
   }
 
   func snapshot() -> [SpeechWorkerProgress] {
+    lock.withLock { values }
+  }
+}
+
+private final class WorkerDiagnosticRecorder: @unchecked Sendable {
+  private let lock = NSLock()
+  private var values: [DiagnosticEvent] = []
+
+  func record(_ event: DiagnosticEvent) {
+    lock.withLock {
+      values.append(event)
+    }
+  }
+
+  func snapshot() -> [DiagnosticEvent] {
     lock.withLock { values }
   }
 }

@@ -22,7 +22,7 @@ public actor RoutedLocalSpeechRecognizer: SpeechRecognizer {
   private var activeBackend: LocalSpeechModelBackend?
 
   public init(
-    id: String = "sherpa-onnx.local",
+    id: String = "local-speech",
     settingsProvider: @escaping @Sendable () async throws -> LocalSpeechSettings,
     backends: [any LocalSpeechBackendRecognizer]
   ) {
@@ -30,7 +30,6 @@ public actor RoutedLocalSpeechRecognizer: SpeechRecognizer {
     for backend in backends {
       precondition(indexed.updateValue(backend, forKey: backend.backend) == nil)
     }
-    precondition(!indexed.isEmpty)
     self.id = id
     self.settingsProvider = settingsProvider
     self.backends = indexed

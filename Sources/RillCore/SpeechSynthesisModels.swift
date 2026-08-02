@@ -25,6 +25,7 @@ public struct SpeechSynthesisRequest: Sendable, Equatable {
     public var runID: UUID
     public var text: String
     public var provider: SpeechSynthesisProvider
+    public var modelID: String?
     public var voice: String
     public var language: String?
 
@@ -32,12 +33,14 @@ public struct SpeechSynthesisRequest: Sendable, Equatable {
         runID: UUID,
         text: String,
         provider: SpeechSynthesisProvider = .automatic,
+        modelID: String? = nil,
         voice: String = Qwen3TTSVoice.vivian.rawValue,
         language: String? = nil
     ) {
         self.runID = runID
         self.text = text
         self.provider = provider
+        self.modelID = modelID
         self.voice = voice
         self.language = language
     }
@@ -52,6 +55,7 @@ public struct SpeechSynthesisRequest: Sendable, Equatable {
             && !trimmedVoice.isEmpty
             && trimmedVoice.utf8.count <= 128
             && !trimmedVoice.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+            && (modelID?.utf8.count ?? 0) <= 256
             && (language?.utf8.count ?? 0) <= 64
     }
 }
@@ -148,6 +152,7 @@ public enum SpeechOutputActionID {
 
 public enum SpeechOutputActionConfigurationKey {
     public static let provider = "speech.provider"
+    public static let model = "speech.model"
     public static let voice = "speech.voice"
     public static let language = "speech.language"
 }

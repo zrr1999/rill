@@ -23,6 +23,19 @@ final class GlobalSearchIndexTests: XCTestCase {
         )
     }
 
+    func testSharedModelsArePresentedAsProvidersInsteadOfAssistantPersonality() {
+        XCTAssertEqual(
+            SettingsSection.speech.title(language: .english),
+            "Providers & Models"
+        )
+        XCTAssertEqual(
+            SettingsSection.speech.title(language: .simplifiedChinese),
+            "提供商与模型"
+        )
+        XCTAssertTrue(SettingsSection.speech.searchKeywords.contains("tts"))
+        XCTAssertFalse(SettingsSection.voiceAssistant.searchKeywords.contains("tts"))
+    }
+
     func testHistoryRetryCopyIsFixedInBothLanguages() {
         XCTAssertEqual(GlobalSearchText.historyRetry(language: .english), "Retry")
         XCTAssertEqual(GlobalSearchText.historyRetry(language: .simplifiedChinese), "重试")

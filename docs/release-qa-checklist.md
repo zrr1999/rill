@@ -241,7 +241,7 @@ hash from one clean, uniquely tagged candidate still need to be attached.
 
 | Required automated evidence | Result / evidence path |
 | --- | --- |
-| `scripts/preflight.sh` passes from the candidate source, including the zero-remote-package policy, fixed vendored-dependency provenance, secret scanning, the complete release-policy suite, arm64-only Release build, App assembly, signing-policy checks, and the complete Swift suite | **Working-source complete; candidate pending.** Rerun after the sherpa-onnx migration and attach the candidate's exact log and SHA-256. |
+| `scripts/preflight.sh` passes from the candidate source, including locked-dependency notice provenance, secret scanning, the complete release-policy suite, arm64-only Release build, App assembly, signing-policy checks, and the complete Swift suite | **Working-source complete; candidate pending.** Rerun after the local-speech migration and attach the candidate's exact log and SHA-256. |
 | `prek validate-config prek.toml` and `prek -c prek.toml run --all-files` pass against the same source tree | **Working-source complete; candidate pending.** Both commands passed against the dirty development source; attach the clean candidate's exact log and SHA-256. |
 | `TrustedLocalSpeechCatalogTests`, `SherpaOnnxModelInstallerTests`, `SherpaOnnxRecognizerTests`, `SherpaOfflineRecognizerTests`, and `SessionCoordinatorTests` prove the fixed public Qwen catalog, public rejection of the internal SenseVoice identity, exact archive and installed-tree verification, typed no-speech handling, bounded Qwen hotwords, native runtime configuration, and persisted local speech selection | **Working-source complete; candidate pending.** Focused migration suites passed; rerun from the final candidate. Installed first-capture, silence, and quality behavior remain separate manual checks below. |
 | `RealtimeAudioCaptureServiceTests` and `LocalSpeechVoiceCaptureRuntimeTests` prove the realtime local path waits for its first accepted microphone buffer; `AVAudioCaptureServiceReadinessTests` proves the diagnostics fallback waits for `AVAudioRecorder.currentTime > 0`, a recorder-progress gate rather than a strict buffer signal; `RecordingSessionManagerTimingTests` and `ApplicationStartupTaskCoordinatorTests` prove startup cancellation drains late audio-engine work, the recording consumer is subscribed before the shared event tap starts, diagnostics cannot delay hotkey capture or cues, stopped runs never promote live subtitle hypotheses to final text, finalization drains the live task before handing a file-backed complete-sample capture to batch recognition, and start/stop cues cannot reverse across cancellation or replacement | **Working-source complete; candidate pending.** Rerun against and attach evidence for the clean candidate. |
@@ -276,7 +276,7 @@ required below.
 - Candidate version:
 - Commit SHA:
 - Source tree SHA-256:
-- Vendored dependency manifest SHA-256 (`scripts/third_party_notices_manifest.json`):
+- Dependency notice manifest SHA-256 (`scripts/third_party_notices_manifest.json`):
 - Speech scope (`cloud-only` or `cloud + trusted local`):
 - Local catalog maturity (`technical-preview`, `production-ready`, or `N/A`):
 - Catalog model IDs and order:
@@ -517,6 +517,15 @@ Complete the pass in both App languages.
       microphone use, requires the selected local Qwen ASR, exposes model and
       listening status, and provides an immediate stop control. After model
       preparation, an offline relaunch starts listening without network access.
+      With wake listening enabled, start and record from another microphone App:
+      it must remain eligible to acquire input. Rill uses the coexistence-friendly
+      input-only frontend while idle, switches to VoiceProcessingIO only for an
+      explicit recognition run, and fully releases VPIO when that run ends.
+      The in-app readiness card must also agree with the activation gate for
+      microphone permission, local ASR, LLM configuration, cloud privacy, and
+      system/local speech output. A known-invalid or failed-verification LLM
+      configuration must leave listening off; missing local TTS must remain an
+      explicit system-voice fallback rather than a blocker.
 - [ ] In quiet and repeatable everyday-noise conditions, the configured default
       wake phrase triggers on at least 90% of first attempts. Record phrase,
       speaker, distance, input route, background source, attempt count, hits,
@@ -527,14 +536,30 @@ Complete the pass in both App languages.
       STT pass. Separately verify phrase-only activation: speech during or after
       the cue preserves the perceptual first syllable, 12 s initial silence
       cancels cleanly, and 1.4 s trailing silence finishes exactly once.
+- [ ] While a non-matching wake candidate is still being recognized, speak the
+      configured wake phrase again. The listener remains truthful and eventually
+      evaluates the newest complete candidate; it retains at most one queued
+      managed WAV, removes any displaced candidate, and never replays stale audio.
 - [ ] Run an eight-hour negative set containing ordinary conversation, music,
       television, and silence. Record the exact audio environment and allow at
       most one false wake; do not substitute upstream fixtures or synthetic
       noise for this candidate gate.
 - [ ] While capture is busy, TTS is playing, microphone permission is revoked,
       or the input route changes, no new wake is emitted. The VAD/ASR gate resets rather than
-      replaying buffered audio and automatically resumes only after the owning
-      operation or route transition has completed.
+      replaying buffered audio. Fn/interactive capture preempts ambient wake
+      listening immediately and ambient listening resumes when microphone
+      capture ownership ends, without waiting for recognition, LLM, delivery,
+      or playback to finish.
+- [ ] With wake listening enabled, run 30 ordinary Fn dictations that do not
+      begin with a configured wake phrase. None starts an assistant run or cue.
+      While one assistant LLM request is still pending, complete another Fn
+      recording and verify its STT result proceeds on the interactive lane;
+      diagnostics identify `interactive` and `assistant` processing lanes, and
+      TTS model work never queues on the ASR worker supervisor.
+- [ ] During a long streaming hypothesis, the live-subtitle panel keeps its
+      standard fixed frame; text preserves the latest two lines without width
+      or height growth. Preparing/processing compact states use their own fixed
+      frame and neither layout steals key focus from the foreground App.
 - [ ] Record wake-listening idle CPU and memory, cold model preparation time,
       warm startup time, and detection latency on every supported Mac tier.
       Repeat the chain with built-in microphone/speaker and headphones, on the
@@ -543,6 +568,11 @@ Complete the pass in both App languages.
       final result once with Qwen3-TTS in Chinese and English using reviewed
       preset voices. Stopping from UI and Esc cancels playback, cleans the
       managed WAV, and restores wake listening without replaying the text.
+- [ ] With macOS output unmuted and at an audible level, Fn capture and wake-word
+      activation use the same start cue. A voice-assistant run speaks its LLM
+      answer once; History shows the recognized input for older records and the
+      exact ordered text sent to each LLM step for new records, without exposing
+      those bodies when history preview is restricted or disabled.
 - [ ] With Qwen TTS absent, unsupported, damaged, or failing before playback,
       system speech is used once. A failure after playback begins never repeats
       the result with system speech; action receipts and temporary-file cleanup

@@ -223,7 +223,7 @@ extension AppModelTests {
         let calls = await probe.snapshot()
         let captured = try XCTUnwrap(calls.first)
         XCTAssertEqual(captured.binding, .hotkey)
-        XCTAssertEqual(captured.workflow.pipeline.recognizerID, AppModel.sherpaOnnxRecognizerID)
+        XCTAssertEqual(captured.workflow.pipeline.recognizerID, AppModel.localSpeechRecognizerID)
         XCTAssertEqual(captured.workflow.pipeline.outputActions.first?.id, "stack.push")
         XCTAssertEqual(
             captured.workflow.metadata[WorkflowMetadataKey.targetClipboardGroupID],
@@ -237,7 +237,7 @@ extension AppModelTests {
             name: "Auto Cloud Mandarin",
             trigger: .manual,
             pipeline: PipelineDeclaration(
-                recognizerID: AppModel.sherpaOnnxRecognizerID,
+                recognizerID: AppModel.localSpeechRecognizerID,
                 outputActions: [OutputActionReference(id: "stack.push")],
                 deliveryPolicy: .init(strategy: .stackFirst)
             ),
@@ -258,7 +258,7 @@ extension AppModelTests {
 
         let calls = await probe.snapshot()
         let captured = try XCTUnwrap(calls.first)
-        XCTAssertEqual(captured.workflow.pipeline.recognizerID, AppModel.sherpaOnnxRecognizerID)
+        XCTAssertEqual(captured.workflow.pipeline.recognizerID, AppModel.localSpeechRecognizerID)
         XCTAssertEqual(captured.workflow.metadata[WorkflowMetadataKey.languageOverride], "zh-CN")
     }
 
@@ -854,7 +854,7 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
         XCTAssertEqual(
             harness.model.lastFailure,
-            "This workflow cannot run because this build does not include a compatible sherpa-onnx runtime. Choose Cloud speech and retry."
+            "This workflow cannot run because the compatible local speech worker is unavailable. Enable a supported local model and retry."
         )
         XCTAssertFalse(harness.model.lastFailure?.contains("reviewed local speech model") == true)
     }
@@ -866,7 +866,7 @@ extension AppModelTests {
             WorkflowEditorDraft(
                 name: "Local Override",
                 recognizer: .localSpeech,
-                localSpeechModelOverride: "qwen3-asr-0.6b-int8",
+                localSpeechModelOverride: "qwen3-asr-0.6b-mlx-8bit",
                 postProcessSteps: [.init(kind: .normalizeWhitespace)],
                 destination: .pasteIntoApp
             )
@@ -878,9 +878,9 @@ extension AppModelTests {
         }
         XCTAssertEqual(
             savedWorkflow.metadata[WorkflowMetadataKey.localSpeechModelOverride],
-            "qwen3-asr-0.6b-int8"
+            "qwen3-asr-0.6b-mlx-8bit"
         )
-        XCTAssertEqual(savedWorkflow.metadata["provider"], "sherpa-onnx")
+        XCTAssertEqual(savedWorkflow.metadata["provider"], "local-speech")
         XCTAssertNil(savedWorkflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
     }
 
@@ -951,7 +951,7 @@ extension AppModelTests {
         let loaded = try AppModel.loadCustomWorkflows(from: String(decoding: data, as: UTF8.self))
 
         let legacyOnly = try XCTUnwrap(loaded.first(where: { $0.id == legacyOnlyID }))
-        XCTAssertEqual(legacyOnly.pipeline.recognizerID, "sherpa-onnx.local")
+        XCTAssertEqual(legacyOnly.pipeline.recognizerID, "local-speech")
         XCTAssertEqual(
             legacyOnly.metadata[WorkflowMetadataKey.localSpeechModelOverride],
             "sense-voice-small-int8"
@@ -959,7 +959,7 @@ extension AppModelTests {
         XCTAssertNil(legacyOnly.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
 
         let bothKeys = try XCTUnwrap(loaded.first(where: { $0.id == bothKeysID }))
-        XCTAssertEqual(bothKeys.pipeline.recognizerID, "sherpa-onnx.local")
+        XCTAssertEqual(bothKeys.pipeline.recognizerID, "local-speech")
         XCTAssertEqual(
             bothKeys.metadata[WorkflowMetadataKey.localSpeechModelOverride],
             "qwen3-asr-0.6b-int8"

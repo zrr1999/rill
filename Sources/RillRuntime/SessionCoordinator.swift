@@ -480,12 +480,27 @@ public extension SessionCoordinator {
             }
             failureStage = .resolving
             let resolvedRecognition = await resolveIfNeeded(recognition, in: session)
+            failureStage = .transforming
+            let transformation = try await transformText(
+                from: resolvedRecognition,
+                in: session,
+                allowsSpeechTextFallback:
+                    (capturedAudio != nil || preRecognizedText != nil)
+                    && workflow.speechMode != .voiceAssistant
+            )
+            let finalText = transformation.finalText
             let correctionSource = RecognitionCorrectionSource(
                 preMappingText: resolvedRecognition.bestText,
-                context: vocabularyContext(in: session)
+                context: vocabularyContext(in: session),
+                languageModelInputTexts:
+                    transformation.languageModelInputTexts.isEmpty
+                    ? nil
+                    : transformation.languageModelInputTexts,
+                languageModelTraces:
+                    transformation.languageModelTraces.isEmpty
+                    ? nil
+                    : transformation.languageModelTraces
             )
-            failureStage = .transforming
-            let finalText = try await transformText(from: resolvedRecognition, in: session)
             failureStage = .delivering
             let deliverySummary = try await deliver(
                 finalText: finalText,
@@ -1095,7 +1110,10 @@ public extension SessionCoordinator {
                 candidateSets: []
             )
             await eventBus.publish(.recognitionCompleted(replayRecognition))
-            let finalText = try await transformText(from: replayRecognition, in: session)
+            let finalText = try await transformText(
+                from: replayRecognition,
+                in: session
+            ).finalText
             if let authorizedInvocation,
                case .clipboardItem(let subject, _) = authorizedInvocation,
                !(await deliveryStack.matchesClipboardItemDryRunSubject(subject)) {
@@ -1769,9 +1787,12 @@ private extension SessionCoordinator {
 
     private func transformText(
         from recognition: RecognitionResult,
-        in session: RunSession
-    ) async throws -> String {
+        in session: RunSession,
+        allowsSpeechTextFallback: Bool = false
+    ) async throws -> TextTransformationResult {
         var finalText = recognition.bestText
+        var languageModelInputTexts: [String] = []
+        var languageModelTraces: [LanguageModelTrace] = []
         var didRecordTransformStage = false
         for processStep in session.resolvedPlan.declaration.process.steps {
             switch processStep.kind {
@@ -1802,7 +1823,7 @@ private extension SessionCoordinator {
                     await recordVocabularyApplication(result, in: session)
                 }
                 continue
-            case .snippetReplacement, .llmRewrite, .normalizeWhitespace:
+            case .snippetReplacement, .llmRewrite, .llmAnswer, .normalizeWhitespace:
                 break
             }
             guard let step = processStep.postProcessStep else { continue }
@@ -1822,16 +1843,47 @@ private extension SessionCoordinator {
             guard let transformer = transformerRegistry.transformer(for: step.kind) else {
                 throw SessionError.missingTransformer(step.kind)
             }
-            finalText = try await transformer.transform(
-                text: finalText,
-                step: step,
-                context: TransformContext(
+            if step.kind == .llmRewrite || step.kind == .llmAnswer {
+                languageModelInputTexts.append(finalText)
+            }
+            do {
+                let context = TransformContext(
                     runID: session.runID,
                     workflow: session.workflow,
                     contextSnapshot: session.contextSnapshot,
                     recognitionResult: recognition
                 )
-            )
+                if let tracedTransformer = transformer as? any TracedTextTransformer,
+                   step.kind == .llmRewrite || step.kind == .llmAnswer {
+                    let result = try await tracedTransformer.transformWithTrace(
+                        text: finalText,
+                        step: step,
+                        context: context
+                    )
+                    finalText = result.text
+                    languageModelTraces.append(result.trace)
+                } else {
+                    finalText = try await transformer.transform(
+                        text: finalText,
+                        step: step,
+                        context: context
+                    )
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as any SpeechTextFallbackEligibleError
+                where allowsSpeechTextFallback
+                    && step.kind == .llmRewrite
+                    && error.allowsSpeechTextFallback
+            {
+                await recordSpeechTextTransformFallback(
+                    runID: session.runID,
+                    workflow: session.presentation,
+                    step: step,
+                    transformerID: transformer.id
+                )
+                continue
+            }
             try Task.checkCancellation()
             await eventBus.publish(.transformationApplied(stepID: step.id, text: finalText))
             await recordTransformStep(
@@ -1842,7 +1894,36 @@ private extension SessionCoordinator {
             )
         }
 
-        return finalText
+        return TextTransformationResult(
+            finalText: finalText,
+            languageModelInputTexts: languageModelInputTexts,
+            languageModelTraces: languageModelTraces
+        )
+    }
+
+    private func recordSpeechTextTransformFallback(
+        runID: UUID,
+        workflow: WorkflowPresentation,
+        step: PostProcessStep,
+        transformerID: String
+    ) async {
+        guard let diagnostics else { return }
+        await diagnostics.record(
+            DiagnosticEvent(
+                runID: runID,
+                subsystem: .session,
+                level: .warning,
+                event: "session.transform.fallback",
+                message: "A recoverable speech-text transform failed; recognized text was retained.",
+                metadata: [
+                    "workflow": workflow.fallbackName,
+                    "stepKind": step.kind.rawValue,
+                    "transformerID": transformerID,
+                    "outcome": "preserved",
+                    "reason": "request-failed",
+                ]
+            )
+        )
     }
 
     private func vocabularyContext(in session: RunSession) -> VocabularyRuleContext {
@@ -2028,6 +2109,12 @@ private extension SessionCoordinator {
         state = .idle
         return summary
     }
+}
+
+private struct TextTransformationResult: Sendable, Equatable {
+    let finalText: String
+    let languageModelInputTexts: [String]
+    let languageModelTraces: [LanguageModelTrace]
 }
 
 private enum RunReceiptRegistration: Sendable, Equatable {

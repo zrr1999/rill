@@ -32,6 +32,9 @@ public enum WorkflowMetadataKey {
     public static let excludeOutputFromWorkflowCapture = "clipboard.excludeOutputFromWorkflowCapture"
     public static let recognizerSelectionMode = "recognizer.selection"
     public static let localSpeechModelOverride = "recognizer.local.model"
+    public static let livePreviewEnabled = "recognizer.live_preview"
+    public static let livePreviewPlacement = "recognizer.live_preview_placement"
+    public static let streamingProfile = "recognizer.streaming_profile"
     /// Read-only migration key for workflows created before sherpa-onnx became
     /// the local speech engine.
     public static let legacyWhisperKitModelOverride = "recognizer.whisperkit.model"
@@ -48,6 +51,32 @@ public enum WorkflowMetadataKey {
     public static let legacySourceGroupID = "sourceGroupID"
     public static let legacyExcludePolishTag = "excludePolishTag"
     public static let legacyGroupActionKind = "groupActionKind"
+}
+
+public enum LivePreviewPlacement: String, Codable, CaseIterable, Identifiable, Sendable, Equatable {
+    case overlay
+    case cursor
+
+    public var id: String { rawValue }
+}
+
+public extension WorkflowDefinition {
+    var livePreviewIsEnabled: Bool {
+        let value = metadata[WorkflowMetadataKey.livePreviewEnabled]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard let value else { return true }
+        return !["false", "no", "0", "off"].contains(value)
+    }
+
+    /// The run-time placement. A disabled preview deliberately resolves to the
+    /// overlay so cursor mutation can never be armed by a retained preference.
+    var resolvedLivePreviewPlacement: LivePreviewPlacement {
+        guard livePreviewIsEnabled else { return .overlay }
+        return metadata[WorkflowMetadataKey.livePreviewPlacement]
+            .flatMap(LivePreviewPlacement.init(rawValue:))
+            ?? .overlay
+    }
 }
 
 public enum WorkflowAvailability: String, Codable, Sendable, Equatable {
@@ -310,6 +339,7 @@ public struct DeliveryPolicy: Codable, Sendable, Equatable {
 public enum PostProcessStepKind: String, Codable, Sendable, Equatable {
     case snippetReplacement
     case llmRewrite
+    case llmAnswer
     case normalizeWhitespace
 }
 

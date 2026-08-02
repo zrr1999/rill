@@ -178,6 +178,7 @@ public enum WorkflowProcessStepKind: String, Codable, Sendable, Equatable, CaseI
     case applyVocabulary
     case snippetReplacement
     case llmRewrite
+    case llmAnswer
     case normalizeWhitespace
 
     public var postProcessKind: PostProcessStepKind? {
@@ -186,6 +187,8 @@ public enum WorkflowProcessStepKind: String, Codable, Sendable, Equatable, CaseI
             return .snippetReplacement
         case .llmRewrite:
             return .llmRewrite
+        case .llmAnswer:
+            return .llmAnswer
         case .normalizeWhitespace:
             return .normalizeWhitespace
         case .recognizeSpeech, .resolveUncertainty, .applyVocabulary:
@@ -199,6 +202,8 @@ public enum WorkflowProcessStepKind: String, Codable, Sendable, Equatable, CaseI
             self = .snippetReplacement
         case .llmRewrite:
             self = .llmRewrite
+        case .llmAnswer:
+            self = .llmAnswer
         case .normalizeWhitespace:
             self = .normalizeWhitespace
         }

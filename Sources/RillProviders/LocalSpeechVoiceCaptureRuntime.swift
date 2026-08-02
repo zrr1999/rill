@@ -46,7 +46,7 @@ struct LocalSpeechStreamingPreviewProjection: Sendable, Equatable {
   private var pendingReplacementObservations = 0
 
   mutating func observe(_ rawCandidate: String) {
-    let trimmedCandidate = rawCandidate.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedCandidate = Self.sanitizingQwenStreamingControlText(rawCandidate)
     guard !trimmedCandidate.isEmpty else { return }
     let candidate = Self.projectingCumulativeCandidate(
       trimmedCandidate,
@@ -98,6 +98,66 @@ struct LocalSpeechStreamingPreviewProjection: Sendable, Equatable {
   private mutating func clearPendingReplacement() {
     pendingReplacement = ""
     pendingReplacementObservations = 0
+  }
+
+  /// Qwen's automatic-language streaming path currently decodes its response
+  /// envelope as ordinary text (`language None<asr_text>`). The offline API
+  /// parses that envelope, but the upstream incremental session does not. Keep
+  /// protocol markers out of the user-visible projection, including a second
+  /// partial envelope emitted while a window is being restarted.
+  private static func sanitizingQwenStreamingControlText(_ rawCandidate: String) -> String {
+    var candidate = rawCandidate
+    var removedEnvelope = false
+    let completeEnvelope = try? NSRegularExpression(
+      pattern: #"(?i)(?:^|\s)language\s+[^<\r\n]{0,64}<asr_text>"#
+    )
+    if let completeEnvelope {
+      let range = NSRange(candidate.startIndex..., in: candidate)
+      if completeEnvelope.firstMatch(in: candidate, range: range) != nil {
+        removedEnvelope = true
+        candidate = completeEnvelope.stringByReplacingMatches(
+          in: candidate,
+          range: range,
+          withTemplate: " "
+        )
+      }
+    }
+
+    if candidate.contains("<asr_text>") {
+      removedEnvelope = true
+      candidate = candidate.replacingOccurrences(of: "<asr_text>", with: " ")
+    }
+    if let specialToken = try? NSRegularExpression(
+      pattern: #"<\|[^|\r\n]{1,64}\|>"#
+    ) {
+      let range = NSRange(candidate.startIndex..., in: candidate)
+      candidate = specialToken.stringByReplacingMatches(
+        in: candidate,
+        range: range,
+        withTemplate: " "
+      )
+    }
+
+    if removedEnvelope,
+      let partialEnvelope = try? NSRegularExpression(
+        pattern: #"(?i)(?:^|\s)language(?:\s+[^<\r\n]{0,64})?$"#
+      )
+    {
+      let range = NSRange(candidate.startIndex..., in: candidate)
+      candidate = partialEnvelope.stringByReplacingMatches(
+        in: candidate,
+        range: range,
+        withTemplate: ""
+      )
+    }
+    let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.range(
+      of: #"(?i)^language\s+(?:none|auto|chinese|english|cantonese)$"#,
+      options: .regularExpression
+    ) != nil {
+      return ""
+    }
+    return trimmed
   }
 
   private static func isCompatibleProgression(
@@ -259,7 +319,8 @@ actor LocalSpeechVoiceCaptureRuntime {
   typealias ReadinessSleep = @Sendable (Duration) async throws -> Void
   typealias PCMInactivitySleep = @Sendable (Duration) async throws -> Void
   typealias StreamingPreviewSessionFactory =
-    @Sendable () async -> (any LocalSpeechStreamingPreviewSession)?
+    @Sendable (_ request: AudioCaptureRequest) async ->
+      (any LocalSpeechStreamingPreviewSession)?
 
   private struct PreparingCapture: Sendable {
     let request: AudioCaptureRequest
@@ -308,7 +369,9 @@ actor LocalSpeechVoiceCaptureRuntime {
   private var pendingStartupTermination: LocalSpeechCaptureReadinessGate.Failure?
   private var endpointDetector: SpeechEndpointDetector?
   private var voiceActivityDetector: (any LocalSpeechVoiceActivityDetector)?
+  private var streamingPreviewStartupTask: Task<Void, Never>?
   private var streamingPreviewSession: (any LocalSpeechStreamingPreviewSession)?
+  private var pendingStreamingPreviewSamples: [Float] = []
   private var streamingPreviewProjection = LocalSpeechStreamingPreviewProjection()
   private var recordingStartedAt: Date?
   private var recordingDurationLimitRemoved = false
@@ -318,6 +381,8 @@ actor LocalSpeechVoiceCaptureRuntime {
 
   private static let wakeWordPreRollFrameCount =
     Int(Double(SharedVoiceInputFrame.sampleRate) * 0.2)
+  private static let streamingPreviewPreRollFrameCount =
+    Int(Double(SharedVoiceInputFrame.sampleRate) * 3)
 
   init(
     permissionRequester: @escaping PermissionRequester =
@@ -334,7 +399,7 @@ actor LocalSpeechVoiceCaptureRuntime {
     voiceActivityDetectorFactory: @escaping LocalSpeechVoiceActivityDetectorFactory = { _ in
       throw RealtimeAudioCaptureService.CaptureError.voiceActivityDetectionUnavailable
     },
-    streamingPreviewSessionFactory: @escaping StreamingPreviewSessionFactory = { nil },
+    streamingPreviewSessionFactory: @escaping StreamingPreviewSessionFactory = { _ in nil },
     liveUpdateHandler: @escaping @Sendable (LiveSubtitleSnapshot) async -> Void = { _ in },
     cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
     startupTimeout: Duration = .seconds(3),
@@ -395,6 +460,13 @@ actor LocalSpeechVoiceCaptureRuntime {
         newVoiceActivityDetector = detector
       } catch is CancellationError {
         throw CancellationError()
+      } catch let error as RealtimeAudioCaptureService.CaptureError
+        where error == .voiceActivityDetectionUnavailable
+      {
+        // The product runtime keeps Silero in the worker. Its streaming
+        // session is attached after the microphone starts so model/process
+        // setup never extends the Fn critical path.
+        newVoiceActivityDetector = nil
       } catch {
         throw RealtimeAudioCaptureService.CaptureError.voiceActivityDetectionUnavailable
       }
@@ -402,13 +474,6 @@ actor LocalSpeechVoiceCaptureRuntime {
       newVoiceActivityDetector = nil
     }
     try throwIfPreparationCancelled(request: request, generation: generation)
-    let newStreamingPreviewSession = await streamingPreviewSessionFactory()
-    if request.workflow.plan.setup.speechRoute?.recognizerID
-      == SherpaStreamingCaptureRecognizer.recognizerID,
-      newStreamingPreviewSession == nil
-    {
-      throw RealtimeAudioCaptureService.CaptureError.streamingSpeechUnavailable
-    }
     try throwIfPreparationCancelled(request: request, generation: generation)
     let outputURL = Self.makeTemporaryRecordingURL(for: request.runID)
     let recordingWriter: any LocalSpeechRecordingWriting
@@ -450,7 +515,9 @@ actor LocalSpeechVoiceCaptureRuntime {
     pendingStartupTermination = nil
     endpointDetector = request.endpointControl.map { SpeechEndpointDetector(policy: $0.policy) }
     voiceActivityDetector = newVoiceActivityDetector
-    streamingPreviewSession = newStreamingPreviewSession
+    streamingPreviewStartupTask = nil
+    streamingPreviewSession = nil
+    pendingStreamingPreviewSamples.removeAll(keepingCapacity: true)
     streamingPreviewProjection.reset()
     recordingStartedAt = nil
     recordingDurationLimitRemoved = false
@@ -487,6 +554,7 @@ actor LocalSpeechVoiceCaptureRuntime {
       }
     }
     activeStreamTask = streamTask
+    startStreamingPreview(request: request, generation: generation)
 
     do {
       try await readinessGate.wait(timeout: startupTimeout, sleep: readinessSleep)
@@ -562,9 +630,10 @@ actor LocalSpeechVoiceCaptureRuntime {
     continuation.finish()
     await streamTask.value
 
-    // Seal streaming decode before detaching the session. A streaming-direct
-    // workflow consumes this text without running the offline recognizer.
-    let streamingResult = finishStreamingPreview()
+    // Seal streaming decode before detaching the session. The returned text is
+    // preview-only; every workflow still runs authoritative offline recognition
+    // against the finalized managed WAV below.
+    let streamingResult = await finishStreamingPreview()
 
     guard let resources = detach(request: request) else {
       throw RealtimeAudioCaptureService.CaptureError.notCapturing
@@ -580,12 +649,9 @@ actor LocalSpeechVoiceCaptureRuntime {
     }
     var metadata = request.metadata
     metadata["runID"] = request.runID.uuidString
-    metadata["live.provider"] = "sherpa-onnx.capture"
+    metadata["live.provider"] = "local-speech.streaming-preview"
     if let streamingResult {
-      metadata[SherpaStreamingCaptureRecognizer.rawTextMetadataKey] = streamingResult
-      metadata[SherpaStreamingCaptureRecognizer.bestTextMetadataKey] = streamingResult
-      metadata[SherpaStreamingCaptureRecognizer.modelMetadataKey] =
-        SherpaStreamingPreviewService.modelID
+      metadata["streaming.preview.final"] = streamingResult
     }
     let capturedAudio: CapturedAudio
     do {
@@ -693,6 +759,20 @@ actor LocalSpeechVoiceCaptureRuntime {
         )
       }
     }
+    if let previewSession = streamingPreviewSession {
+      do {
+        streamingPreviewProjection.observe(
+          try previewSession.accept(samples: buffer)
+        )
+      } catch {
+        // A preview failure must not discard the managed recording. Endpoint
+        // control simply stops receiving fresh VAD events for this run.
+        try? previewSession.cancel()
+        streamingPreviewSession = nil
+      }
+    } else if streamingPreviewStartupTask != nil {
+      appendPendingStreamingPreviewSamples(buffer)
+    }
     let observedSpeech: Bool
     do {
       observedSpeech = try observeEndpointSamples(
@@ -725,17 +805,6 @@ actor LocalSpeechVoiceCaptureRuntime {
       await failActiveStream(generation: generation)
       return
     }
-    if let previewSession = streamingPreviewSession {
-      do {
-        streamingPreviewProjection.observe(
-          try previewSession.accept(samples: samplesForRecording)
-        )
-      } catch {
-        // Subtitle hypotheses are optional. A damaged or unavailable preview
-        // runtime must never terminate capture or final offline recognition.
-        streamingPreviewSession = nil
-      }
-    }
     switch readiness {
     case .waiting:
       break
@@ -764,13 +833,30 @@ actor LocalSpeechVoiceCaptureRuntime {
       let request = activeRequest,
       let endpointControl = request.endpointControl,
       var detector = endpointDetector,
-      let voiceActivityDetector
+      streamingPreviewSession?.providesVoiceActivity == true || voiceActivityDetector != nil
     else {
       return false
     }
 
     var observedSpeech = false
-    for activity in try voiceActivityDetector.accept(samples: samples) {
+    let activities: [LocalSpeechVoiceActivityObservation]
+    if let previewSession = streamingPreviewSession,
+      previewSession.providesVoiceActivity
+    {
+      let normalizedRMS = Self.normalizedRMS(samples)
+      activities = previewSession.drainVoiceActivity().map {
+        LocalSpeechVoiceActivityObservation(
+          isSpeech: $0.isSpeech,
+          durationSeconds: Double(MLXSileroVADConstants.chunkSampleCount) / 16_000,
+          normalizedRMS: normalizedRMS
+        )
+      }
+    } else if let voiceActivityDetector {
+      activities = try voiceActivityDetector.accept(samples: samples)
+    } else {
+      activities = []
+    }
+    for activity in activities {
       guard terminalState.terminalFailure == nil else {
         throw RealtimeAudioCaptureService.CaptureError.microphoneStartFailed
       }
@@ -815,6 +901,15 @@ actor LocalSpeechVoiceCaptureRuntime {
     }
     endpointDetector = detector
     return observedSpeech
+  }
+
+  private static func normalizedRMS(_ samples: [Float]) -> Float {
+    guard !samples.isEmpty else { return 0 }
+    let squareSum = samples.reduce(Float.zero) { partial, sample in
+      let bounded = min(max(sample, -1), 1)
+      return partial + bounded * bounded
+    }
+    return sqrt(squareSum / Float(samples.count))
   }
 
   private func failActiveStream(generation: UInt64) async {
@@ -936,7 +1031,11 @@ actor LocalSpeechVoiceCaptureRuntime {
     endpointDetector = nil
     voiceActivityDetector?.reset()
     voiceActivityDetector = nil
+    streamingPreviewStartupTask?.cancel()
+    streamingPreviewStartupTask = nil
+    try? streamingPreviewSession?.cancel()
     streamingPreviewSession = nil
+    pendingStreamingPreviewSamples.removeAll(keepingCapacity: false)
     streamingPreviewProjection.reset()
     recordingStartedAt = nil
     recordingDurationLimitRemoved = false
@@ -953,7 +1052,10 @@ actor LocalSpeechVoiceCaptureRuntime {
     )
   }
 
-  private func finishStreamingPreview() -> String? {
+  private func finishStreamingPreview() async -> String? {
+    streamingPreviewStartupTask?.cancel()
+    streamingPreviewStartupTask = nil
+    pendingStreamingPreviewSamples.removeAll(keepingCapacity: false)
     let lastHypothesis = streamingPreviewProjection.text.trimmingCharacters(
       in: .whitespacesAndNewlines
     )
@@ -961,12 +1063,81 @@ actor LocalSpeechVoiceCaptureRuntime {
       return lastHypothesis.isEmpty ? nil : lastHypothesis
     }
     do {
-      let finalText = try streamingPreviewSession.finish().trimmingCharacters(
+      let finalText = try await streamingPreviewSession.finish().trimmingCharacters(
         in: .whitespacesAndNewlines
       )
       return finalText.isEmpty ? (lastHypothesis.isEmpty ? nil : lastHypothesis) : finalText
     } catch {
       return lastHypothesis.isEmpty ? nil : lastHypothesis
+    }
+  }
+
+  private func startStreamingPreview(
+    request: AudioCaptureRequest,
+    generation: UInt64
+  ) {
+    let factory = streamingPreviewSessionFactory
+    streamingPreviewStartupTask = Task { [weak self] in
+      let session = await factory(request)
+      guard !Task.isCancelled else {
+        try? session?.cancel()
+        return
+      }
+      await self?.attachStreamingPreviewSession(
+        session,
+        request: request,
+        generation: generation
+      )
+    }
+  }
+
+  private func attachStreamingPreviewSession(
+    _ session: (any LocalSpeechStreamingPreviewSession)?,
+    request: AudioCaptureRequest,
+    generation: UInt64
+  ) async {
+    guard captureGeneration == generation,
+      activeRequest?.runID == request.runID,
+      finishingGeneration != generation,
+      streamingPreviewStartupTask != nil
+    else {
+      try? session?.cancel()
+      return
+    }
+    streamingPreviewStartupTask = nil
+    guard let session else {
+      pendingStreamingPreviewSamples.removeAll(keepingCapacity: false)
+      return
+    }
+
+    streamingPreviewSession = session
+    let preRoll = pendingStreamingPreviewSamples
+    pendingStreamingPreviewSamples.removeAll(keepingCapacity: false)
+    guard !preRoll.isEmpty else { return }
+    do {
+      streamingPreviewProjection.observe(
+        try session.accept(samples: preRoll)
+      )
+      if recordingGeneration == generation, let activeRequest {
+        await publish(
+          phase: .recording,
+          request: activeRequest,
+          hypothesisText: streamingPreviewProjection.text,
+          levelMeter: Self.levelMeter(from: activeSource?.endpointRMS ?? [])
+        )
+      }
+    } catch {
+      try? session.cancel()
+      streamingPreviewSession = nil
+    }
+  }
+
+  private func appendPendingStreamingPreviewSamples(_ samples: [Float]) {
+    pendingStreamingPreviewSamples.append(contentsOf: samples)
+    let overflow =
+      pendingStreamingPreviewSamples.count - Self.streamingPreviewPreRollFrameCount
+    if overflow > 0 {
+      pendingStreamingPreviewSamples.removeFirst(overflow)
     }
   }
 
@@ -1053,6 +1224,7 @@ actor LocalSpeechVoiceCaptureRuntime {
         providerID: phase == .hidden
           ? nil
           : request.workflow.plan.setup.speechRoute?.recognizerID,
+        livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement,
         recordingStartedAt: phase == .hidden ? nil : recordingStartedAt,
         maximumRecordingDurationSeconds:
           phase == .hidden || recordingDurationLimitRemoved

@@ -6,6 +6,7 @@ public struct WorkflowsView: View {
     static let availableStepKinds: [PostProcessStepKind] = [
         .normalizeWhitespace,
         .llmRewrite,
+        .llmAnswer,
     ]
 
     @Bindable var model: AppModel
@@ -249,21 +250,37 @@ extension WorkflowsView {
                         .foregroundStyle(.secondary)
 
                     if let selectedWorkflow {
-                        Button {
-                            guard canExplainSelectedWorkflow else { return }
-                            model.explainWorkflowBeforeRun(selectedWorkflow)
-                            presentedWorkflowExplanation = WorkflowExplanationSheetRequest(
-                                workflowID: selectedWorkflow.id
-                            )
-                        } label: {
-                            Label(
-                                UIStrings.workflowExplanationCopy(.button, language: model.language),
-                                systemImage: "doc.text.magnifyingglass"
-                            )
+                        HStack(spacing: 8) {
+                            Button {
+                                guard canExplainSelectedWorkflow else { return }
+                                model.explainWorkflowBeforeRun(selectedWorkflow)
+                                presentedWorkflowExplanation = WorkflowExplanationSheetRequest(
+                                    workflowID: selectedWorkflow.id
+                                )
+                            } label: {
+                                Label(
+                                    UIStrings.workflowExplanationCopy(.button, language: model.language),
+                                    systemImage: "doc.text.magnifyingglass"
+                                )
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(!canExplainSelectedWorkflow)
+                            .accessibilityIdentifier("workflow-explanation.open")
+
+                            if let fileURL = model.workflowFileURLsByID[selectedWorkflow.id] {
+                                Button {
+                                    NSWorkspace.shared.open(fileURL)
+                                } label: {
+                                    Label(
+                                        model.language == .english ? "Edit TOML" : "编辑 TOML",
+                                        systemImage: "doc.text"
+                                    )
+                                }
+                                .buttonStyle(.bordered)
+                                .help(fileURL.path)
+                                .accessibilityIdentifier("workflow.open-toml")
+                            }
                         }
-                        .buttonStyle(.bordered)
-                        .disabled(!canExplainSelectedWorkflow)
-                        .accessibilityIdentifier("workflow-explanation.open")
 
                         Text(
                             UIStrings.workflowExplanationCopy(
@@ -730,6 +747,38 @@ extension WorkflowsView {
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .font(.caption)
+
+                Toggle(
+                    model.language == .english ? "Live preview" : "实时预览",
+                    isOn: $draft.livePreviewEnabled
+                )
+                .toggleStyle(.checkbox)
+
+                if draft.livePreviewEnabled {
+                    Picker(
+                        model.language == .english ? "Preview location" : "预览位置",
+                        selection: $draft.livePreviewPlacement
+                    ) {
+                        Text(model.language == .english ? "Overlay" : "浮层")
+                            .tag(LivePreviewPlacement.overlay)
+                        Text(model.language == .english ? "Cursor" : "光标")
+                            .tag(LivePreviewPlacement.cursor)
+                    }
+                    .pickerStyle(.segmented)
+                    .font(.caption)
+                    .accessibilityIdentifier("workflow.live-preview-placement")
+                }
+
+                Picker(
+                    model.language == .english ? "Streaming style" : "流式风格",
+                    selection: $draft.streamingProfile
+                ) {
+                    Text("Realtime").tag("realtime")
+                    Text("Agent").tag("agent")
+                    Text("Subtitle").tag("subtitle")
+                }
+                .pickerStyle(.segmented)
+                .font(.caption)
             }
 
             actionStepRow(
@@ -845,7 +894,7 @@ extension WorkflowsView {
                     icon: postProcessStepSystemSymbol(step.kind).rawValue,
                     label: postProcessStepKindLabel(step.kind)
                 ) {
-                    if step.kind == .llmRewrite {
+                    if step.kind == .llmRewrite || step.kind == .llmAnswer {
                         TextField(
                             model.language == .english ? "LLM prompt…" : "LLM 提示词…",
                             text: Binding(
@@ -939,9 +988,18 @@ extension WorkflowsView {
             workflowPhaseHeader(
                 .output,
                 subtitle: model.language == .english
-                    ? "Deliver the final text through one explicit destination."
-                    : "通过一个明确的目标投递最终文本。"
+                    ? "Choose a primary destination and optionally add speech playback."
+                    : "选择主要输出目标，并可追加语音朗读。"
             )
+
+            Text(
+                model.language == .english
+                    ? "For fully ordered output.actions, edit the workflow TOML and reload."
+                    : "如需自由编排多个 output.actions，可直接编辑工作流 TOML 后重新加载。"
+            )
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.leading, 24)
 
             actionStepRow(
                 number: draft.postProcessSteps.count + 6,
@@ -1047,7 +1105,20 @@ extension WorkflowsView {
                 }
                 if draft.speaksResult || draft.destination == .speakOnly {
                     Picker(
-                        model.language == .english ? "Preset voice" : "预置音色",
+                        model.language == .english ? "Workflow TTS model" : "工作流 TTS 模型",
+                        selection: $draft.speechModelID
+                    ) {
+                        Text(model.language == .english ? "Default enabled model" : "默认已启用模型")
+                            .tag("")
+                        ForEach(model.workflowSelectableTTSModels, id: \.self) { modelID in
+                            Text(modelID).tag(modelID)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("workflow.tts.model")
+
+                    Picker(
+                        model.language == .english ? "Workflow voice" : "工作流音色",
                         selection: $draft.speechVoice
                     ) {
                         ForEach(Qwen3TTSVoice.allCases, id: \.self) { voice in
@@ -1059,8 +1130,8 @@ extension WorkflowsView {
                 }
                 Text(
                     model.language == .english
-                        ? "Uses the selected Qwen3-TTS voice when ready, with the system voice as a fallback. Voices do not switch automatically by sentence."
-                        : "Qwen3-TTS 已就绪时使用所选音色，否则回退到系统语音；不会按句子自动切换音色。"
+                        ? "The TTS model and voice are saved in this workflow. Settings only controls which models are available and resident."
+                        : "TTS 模型与音色均保存在此 workflow 中；设置页只控制模型是否可用及是否常驻。"
                 )
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -1203,11 +1274,12 @@ extension WorkflowsView {
         case .localSpeech:
             resolvedRecognizerID =
                 selectedWorkflow?.plan.setup.speechRoute?.recognizerID
-                ?? "sherpa-onnx.local"
+                ?? "local-speech"
         case .automatic:
-            resolvedRecognizerID = "sherpa-onnx.local"
+            resolvedRecognizerID = "local-speech"
         }
-        let supportsHotwords = resolvedRecognizerID == "sherpa-onnx.local"
+        let supportsHotwords = ["local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming"]
+            .contains(resolvedRecognizerID)
         if supportsHotwords {
             return model.language == .english
                 ? "Recognition hotwords are supported by the current engine; replacements run after recognition."
@@ -1313,6 +1385,8 @@ extension WorkflowsView {
             return model.language == .english ? "Normalize Whitespace" : "标准化空白"
         case .llmRewrite:
             return model.language == .english ? "LLM Polish / Rewrite" : "LLM 润色 / 改写"
+        case .llmAnswer:
+            return model.language == .english ? "LLM Answer" : "LLM 回答"
         case .snippetReplacement:
             return model.language == .english ? "Snippet Replacement" : "片段替换"
         }
@@ -1322,6 +1396,7 @@ extension WorkflowsView {
         switch kind {
         case .normalizeWhitespace: return .textAlignLeft
         case .llmRewrite: return .wandAndStars
+        case .llmAnswer: return .questionmarkBubble
         case .snippetReplacement: return .textInsert
         }
     }

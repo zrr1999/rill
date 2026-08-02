@@ -38,6 +38,52 @@ enum HistoryPreviewPresentation: Equatable {
     }
 }
 
+enum HistoryLanguageModelInputProvenance: Equatable {
+    case exact
+    case legacyRecognition
+}
+
+struct HistoryLanguageModelTracePresentation: Equatable {
+    let inputTexts: [String]
+    let inputProvenance: HistoryLanguageModelInputProvenance
+    let outputText: String?
+    let traces: [LanguageModelTrace]
+
+    init?(record: HistoryRecord) {
+        guard let source = record.correctionSource else { return nil }
+        let exactTraces = source.languageModelTraces ?? []
+        if !exactTraces.isEmpty {
+            traces = exactTraces
+            inputTexts = exactTraces.flatMap { trace in
+                trace.messages.map(\.content)
+            }
+            inputProvenance = .exact
+            outputText = exactTraces.last?.responseText
+            return
+        }
+        let exactInputs = source.languageModelInputTexts?
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            ?? []
+        if !exactInputs.isEmpty {
+            traces = []
+            inputTexts = exactInputs
+            inputProvenance = .exact
+            outputText = record.finalText
+            return
+        }
+        guard record.trigger == .wakeWord || record.workflow.titleKey == .voiceAssistant else {
+            return nil
+        }
+        let legacyInput = source.preMappingText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !legacyInput.isEmpty else { return nil }
+        traces = []
+        inputTexts = [legacyInput]
+        inputProvenance = .legacyRecognition
+        outputText = record.finalText
+    }
+}
+
 struct HistoryPreviewContent<VisibleContent: View>: View {
     private let presentation: HistoryPreviewPresentation?
     private let visibleContent: (String, Int?) -> VisibleContent
@@ -552,7 +598,10 @@ public struct HistoryView: View {
     }
 
     private func historyRow(_ entry: HistoryTimelineEntry, title: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let languageModelTrace = entry.record.flatMap {
+            HistoryLanguageModelTracePresentation(record: $0)
+        }
+        return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: entry.status.systemSymbol.rawValue)
                     .foregroundStyle(statusColor(entry.status))
@@ -582,10 +631,14 @@ public struct HistoryView: View {
             .accessibilityLabel(historyAccessibilityLabel(entry, title: title))
             .accessibilityValue(Text(entry.timestamp, style: .relative))
 
-            historyPreview(
-                entry.record?.finalText,
-                hasProtectedPreview: entry.hasProtectedPreview
-            )
+            if let languageModelTrace {
+                languageModelTracePreview(languageModelTrace)
+            } else {
+                historyPreview(
+                    entry.record?.finalText,
+                    hasProtectedPreview: entry.hasProtectedPreview
+                )
+            }
 
             if let record = entry.record {
                 if VocabularyCorrectionDraft.isEligible(
@@ -843,6 +896,114 @@ public struct HistoryView: View {
 
     private func localizedActionResult(_ result: WorkflowActionResultCode) -> String {
         L10n.workflowActionResult(result, language: model.language)
+    }
+
+    @ViewBuilder
+    private func languageModelTracePreview(
+        _ trace: HistoryLanguageModelTracePresentation
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if trace.traces.isEmpty {
+                ForEach(Array(trace.inputTexts.enumerated()), id: \.offset) { index, text in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(languageModelInputLabel(trace, index: index))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        historyPreview(text, hasProtectedPreview: false)
+                    }
+                }
+                if let outputText = trace.outputText {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.language == .english ? "LLM answer" : "LLM 回答")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        historyPreview(outputText, hasProtectedPreview: false)
+                    }
+                }
+            } else {
+                ForEach(Array(trace.traces.enumerated()), id: \.offset) { index, item in
+                    languageModelTraceStep(item, index: index, count: trace.traces.count)
+                }
+            }
+        }
+        .padding(10)
+        .background(.background.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("history.llm-trace")
+    }
+
+    @ViewBuilder
+    private func languageModelTraceStep(
+        _ trace: LanguageModelTrace,
+        index: Int,
+        count: Int
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(
+                count > 1
+                    ? (model.language == .english
+                        ? "LLM request · Step \(index + 1)"
+                        : "LLM 请求 · 第 \(index + 1) 步")
+                    : (model.language == .english ? "LLM request" : "LLM 请求")
+            )
+            .font(.callout.weight(.semibold))
+
+            LabeledContent(model.language == .english ? "Provider" : "提供商") {
+                Text(trace.providerID).textSelection(.enabled)
+            }
+            LabeledContent(model.language == .english ? "Model" : "模型") {
+                Text(trace.modelID).textSelection(.enabled)
+            }
+
+            languageModelTraceText(
+                model.language == .english ? "System prompt" : "系统提示词",
+                text: trace.systemPrompt
+            )
+            languageModelTraceText(
+                model.language == .english ? "Workflow prompt" : "工作流提示词",
+                text: trace.workflowPrompt
+            )
+            ForEach(Array(trace.messages.enumerated()), id: \.offset) { messageIndex, message in
+                languageModelTraceText(
+                    model.language == .english
+                        ? "Sent message · \(message.role.rawValue) \(messageIndex + 1)"
+                        : "发送消息 · \(message.role.rawValue) \(messageIndex + 1)",
+                    text: message.content
+                )
+            }
+            languageModelTraceText(
+                model.language == .english ? "Returned text" : "返回文本",
+                text: trace.responseText
+            )
+        }
+        .padding(.vertical, 3)
+    }
+
+    @ViewBuilder
+    private func languageModelTraceText(_ label: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            historyPreview(text, hasProtectedPreview: false)
+        }
+    }
+
+    private func languageModelInputLabel(
+        _ trace: HistoryLanguageModelTracePresentation,
+        index: Int
+    ) -> String {
+        if trace.inputProvenance == .legacyRecognition {
+            return model.language == .english
+                ? "Recognized input (older record)"
+                : "识别输入（旧记录）"
+        }
+        guard trace.inputTexts.count > 1 else {
+            return model.language == .english ? "Sent to LLM" : "发送给 LLM"
+        }
+        return model.language == .english
+            ? "Sent to LLM · Step \(index + 1)"
+            : "发送给 LLM · 第 \(index + 1) 步"
     }
 
     @ViewBuilder

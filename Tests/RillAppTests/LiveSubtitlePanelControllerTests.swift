@@ -5,6 +5,7 @@ import XCTest
 
 @testable import RillApp
 @testable import RillCore
+@testable import RillUI
 
 private actor DurationLimitRemovalProbe {
   private var runIDs: [UUID] = []
@@ -29,7 +30,8 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
     let keyWindowBeforeUpdate = NSApp.keyWindow
     let mainWindowBeforeUpdate = NSApp.mainWindow
     let controller = LiveSubtitlePanelController(
-      visibleFrameResolver: { self.visibleFrame }
+      visibleFrameResolver: { self.visibleFrame },
+      reduceMotionProvider: { true }
     )
     defer {
       controller.update(snapshot: nil, language: .english)
@@ -53,7 +55,7 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
     XCTAssertTrue(state.contentMasksToBounds)
     XCTAssertEqual(
       state.contentCornerRadius,
-      LiveSubtitlePanelGeometry.cornerRadius(prefersCompactLayout: false),
+      LiveSubtitlePanelGeometry.cornerRadius(for: snapshot),
       accuracy: 0.001
     )
     XCTAssertFalse(state.ignoresMouseEvents)
@@ -85,8 +87,7 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
       )
 
       let accessibleContent = accessibilityText(including: liveSubtitleWindow)
-      XCTAssertTrue(accessibleContent.contains("Stop recording"))
-      XCTAssertTrue(accessibleContent.contains("Listening"))
+      XCTAssertTrue(accessibleContent.contains("Cancel and discard"))
     } else {
       // Xcode 27 beta's SwiftPM XCTest host can expose the added NSPanel as a
       // second AXApplication element with the title "xctest", hiding the
@@ -129,56 +130,44 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
     XCTAssertTrue(smallVisibleFrame.contains(layout.windowFrame))
   }
 
-  func testResizePolicyGrowsImmediatelyButBoundsDebouncedShrink() {
-    let currentSize = NSSize(width: 400, height: 120)
-    let growthTarget = LiveSubtitlePanelResizePolicy.immediateGrowthTarget(
-      currentSize: currentSize,
-      measuredSize: NSSize(width: 480, height: 130)
+  func testPreferredSurfaceSizesAreStableForEachLayoutMode() {
+    XCTAssertEqual(LiveSubtitleOverlayMetrics.expandedSurfaceWidth, 360)
+    XCTAssertEqual(LiveSubtitleOverlayMetrics.expandedSurfaceHeight, 96)
+    XCTAssertEqual(LiveSubtitleOverlayMetrics.compactSurfaceWidth, 184)
+    XCTAssertEqual(LiveSubtitleOverlayMetrics.compactSurfaceHeight, 48)
+    let expanded = LiveSubtitleSnapshot(
+      runID: UUID(),
+      phase: .transcribing,
+      hypothesisText: "Preview",
+      livePreviewPlacement: .overlay
     )
-
-    XCTAssertEqual(growthTarget, NSSize(width: 480, height: 130))
-    XCTAssertNil(
-      LiveSubtitlePanelResizePolicy.immediateGrowthTarget(
-        currentSize: currentSize,
-        measuredSize: NSSize(width: 400.4, height: 120.4)
-      )
-    )
-    XCTAssertTrue(
-      LiveSubtitlePanelResizePolicy.requiresShrink(
-        currentSize: currentSize,
-        measuredSize: NSSize(width: 340, height: 96)
-      )
-    )
-    XCTAssertFalse(
-      LiveSubtitlePanelResizePolicy.requiresShrink(
-        currentSize: currentSize,
-        measuredSize: NSSize(width: 370, height: 105)
-      )
-    )
-
-    let firstRequestAt: TimeInterval = 10
-    XCTAssertEqual(
-      LiveSubtitlePanelResizePolicy.shrinkDeadline(
-        firstRequestAt: firstRequestAt,
-        latestRequestAt: firstRequestAt
-      ),
-      firstRequestAt + LiveSubtitlePanelResizePolicy.shrinkDebounce,
-      accuracy: 0.001
+    let compact = LiveSubtitleSnapshot(
+      runID: UUID(),
+      phase: .transcribing,
+      hypothesisText: "Preview",
+      livePreviewPlacement: .cursor
     )
     XCTAssertEqual(
-      LiveSubtitlePanelResizePolicy.shrinkDeadline(
-        firstRequestAt: firstRequestAt,
-        latestRequestAt: firstRequestAt + 0.62
-      ),
-      firstRequestAt + LiveSubtitlePanelResizePolicy.maximumShrinkDelay,
-      accuracy: 0.001
+      LiveSubtitlePanelGeometry.preferredSurfaceSize(for: expanded),
+      NSSize(
+        width: LiveSubtitleOverlayMetrics.expandedSurfaceWidth,
+        height: LiveSubtitleOverlayMetrics.expandedSurfaceHeight
+      )
+    )
+    XCTAssertEqual(
+      LiveSubtitlePanelGeometry.preferredSurfaceSize(for: compact),
+      NSSize(
+        width: LiveSubtitleOverlayMetrics.compactSurfaceWidth,
+        height: LiveSubtitleOverlayMetrics.compactSurfaceHeight
+      )
     )
   }
 
   func testCloseRequestDismissesTheSingleAccessiblePanelForTheCurrentRun() async throws {
     prepareApplicationForAccessibilityTesting()
     let controller = LiveSubtitlePanelController(
-      visibleFrameResolver: { self.visibleFrame }
+      visibleFrameResolver: { self.visibleFrame },
+      reduceMotionProvider: { true }
     )
     defer {
       controller.update(snapshot: nil, language: .english)
@@ -210,7 +199,8 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
   func testDurationLimitRemovalIsRoutedOnceToTheCurrentRunOnly() async {
     _ = NSApplication.shared
     let controller = LiveSubtitlePanelController(
-      visibleFrameResolver: { self.visibleFrame }
+      visibleFrameResolver: { self.visibleFrame },
+      reduceMotionProvider: { true }
     )
     defer {
       controller.update(snapshot: nil, language: .english)
@@ -249,11 +239,11 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
     XCTAssertEqual(routedRunIDs, [runID])
   }
 
-  func testSameRunContentShrinksAfterDebounce() async throws {
+  func testSameRunExpandsForOverlayTextAndCompactsAfterCapture() throws {
     _ = NSApplication.shared
     let controller = LiveSubtitlePanelController(
       visibleFrameResolver: { self.visibleFrame },
-      waitForShrink: { _ in }
+      reduceMotionProvider: { true }
     )
     defer {
       controller.update(snapshot: nil, language: .english)
@@ -272,7 +262,7 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
       ),
       language: .english
     )
-    let expandedSize = try XCTUnwrap(controller.windowState).contentSize
+    let initialSize = try XCTUnwrap(controller.windowState).contentSize
 
     controller.update(
       snapshot: LiveSubtitleSnapshot(
@@ -283,14 +273,15 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
       language: .english
     )
 
-    var shrunkenSize = try XCTUnwrap(controller.windowState).contentSize
-    for _ in 0..<20 where shrunkenSize.height >= expandedSize.height {
-      await Task.yield()
-      shrunkenSize = try XCTUnwrap(controller.windowState).contentSize
-    }
-
-    XCTAssertLessThan(shrunkenSize.height, expandedSize.height)
     let state = try XCTUnwrap(controller.windowState)
+    XCTAssertNotEqual(state.contentSize, initialSize)
+    XCTAssertEqual(
+      state.contentSize,
+      NSSize(
+        width: LiveSubtitleOverlayMetrics.compactSurfaceWidth,
+        height: LiveSubtitleOverlayMetrics.compactSurfaceHeight
+      )
+    )
     XCTAssertEqual(state.contentSize, state.windowFrame.size)
     XCTAssertTrue(visibleFrame.contains(state.windowFrame))
 
@@ -337,7 +328,7 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
     accessibilityString(element, attribute: kAXIdentifierAttribute as CFString)
       == LiveSubtitlePanelController.accessibilityIdentifier
       || accessibilityString(element, attribute: kAXTitleAttribute as CFString)
-        == "Rill Live Subtitles"
+        == "Rill Dictation"
   }
 
   private func accessibilityChildren(of element: AXUIElement) -> [AXUIElement] {
