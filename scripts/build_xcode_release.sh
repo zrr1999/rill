@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build every arm64 Release product with SwiftPM's default build system.
+# Build every arm64 Release product with SwiftPM's Swift Build engine.
 # The unfiltered build intentionally produces both RillApp and the bundled
 # RillSpeechWorker helper from one reviewed package graph.
 #
@@ -56,6 +56,7 @@ done
 
 build_arguments=(
   build
+  --build-system swiftbuild
   --manifest-cache none
   --configuration release
   --arch arm64

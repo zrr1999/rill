@@ -380,7 +380,8 @@ run_xcode_build_policy_case() {
     echo "FAIL: Xcode release build wrapper is not executable" >&2
     exit 1
   }
-  if ! grep -Fq -- '--manifest-cache none' "$XCODE_RELEASE_BUILD_SCRIPT" \
+  if ! grep -Fq -- '--build-system swiftbuild' "$XCODE_RELEASE_BUILD_SCRIPT" \
+    || ! grep -Fq -- '--manifest-cache none' "$XCODE_RELEASE_BUILD_SCRIPT" \
     || ! grep -Fq -- '--arch arm64' "$XCODE_RELEASE_BUILD_SCRIPT" \
     || ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh"' "$XCODE_RELEASE_BUILD_SCRIPT" \
     || ! grep -Fq 'xcrun metal -v' \
