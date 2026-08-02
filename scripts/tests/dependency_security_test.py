@@ -413,7 +413,9 @@ class DependencySecurityTests(unittest.TestCase):
     ) -> None:
         preflight = (SCRIPTS_DIR / "preflight.sh").read_text(encoding="utf-8")
         prek = (PROJECT_DIR / "prek.toml").read_text(encoding="utf-8")
-        ci = (PROJECT_DIR / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        ci = (PROJECT_DIR / ".github/workflows/ci-verify.yml").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn(
             'python3 "$SCRIPT_DIR/tests/dependency_security_test.py"', preflight

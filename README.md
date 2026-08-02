@@ -150,7 +150,7 @@ just install
 just ci
 ```
 
-`.github/dependabot.yml` 会每周分组检查 Swift 与 GitHub Actions 更新；自动依赖 PR 仍必须经过同一套锁文件、CI 和人工审核门禁。
+`.github/renovate.json` 复用 `github>zrr1999/renovate-config`，统一安排 Swift 与 GitHub Actions 更新。共享 preset 会分组非 major 更新，并仅在全部必需检查通过后 squash 自动合并；major 更新仍保持独立 PR。所有依赖变更继续经过同一套锁文件、OSV、NOTICE 与 CI 门禁。
 
 ### 构建 macOS 应用
 

@@ -26,20 +26,7 @@ jobs:
           persist-credentials: false
 
       - name: Check PR title
-        uses: zendev-lab/zendev/actions/validate-title@v0.0.7
+        if: github.event.pull_request.user.login != 'renovate[bot]'
+        uses: zrr1999/zendev/actions/validate-title@v0.0.7
         with:
           text: ${{ github.event.pull_request.title }}
-
-  body:
-    name: PR body
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-
-      - name: Check PR body
-        uses: zendev-lab/zendev/actions/validate-body@v0.0.7
-        with:
-          body: ${{ github.event.pull_request.body }}
-          template: .github/pull_request_template.md

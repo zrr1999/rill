@@ -24,7 +24,11 @@ unset \
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
-CI_WORKFLOW="$PROJECT_DIR/.github/workflows/ci.yml"
+CI_WORKFLOW="$PROJECT_DIR/.github/workflows/ci-verify.yml"
+PR_CHECKS_WORKFLOW="$PROJECT_DIR/.github/workflows/ci-pr-checks.yml"
+RENOVATE_CONFIG="$PROJECT_DIR/.github/renovate.json"
+DEPENDABOT_CONFIG="$PROJECT_DIR/.github/dependabot.yml"
+PR_TEMPLATE="$PROJECT_DIR/.github/pull_request_template.md"
 RELEASE_SCRIPT="$PROJECT_DIR/scripts/release.sh"
 ASSEMBLER_SCRIPT="$PROJECT_DIR/scripts/assemble_app_bundle.sh"
 PREFLIGHT_SCRIPT="$PROJECT_DIR/scripts/preflight.sh"
@@ -1597,6 +1601,38 @@ run_ci_prek_policy_case() {
   echo "PASS: CI pins reviewed prek code and executes the complete configuration without Git LFS"
 }
 
+run_github_governance_policy_case() {
+  if [[ ! -f "$RENOVATE_CONFIG" || -e "$DEPENDABOT_CONFIG" || -e "$PR_TEMPLATE" ]]; then
+    echo "FAIL: GitHub governance must use Renovate without Dependabot or a mandatory PR body template" >&2
+    exit 1
+  fi
+  python3 - "$RENOVATE_CONFIG" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as config_file:
+    config = json.load(config_file)
+
+expected = {
+    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+    "extends": ["github>zrr1999/renovate-config"],
+}
+if config != expected:
+    raise SystemExit("Renovate config must match the shared zrr1999 preset entrypoint")
+PY
+  if ! grep -Fq "if: github.event.pull_request.user.login != 'renovate[bot]'" \
+    "$PR_CHECKS_WORKFLOW" \
+    || ! grep -Fq 'uses: zrr1999/zendev/actions/validate-title@v0.0.7' \
+      "$PR_CHECKS_WORKFLOW" \
+    || grep -Fq 'validate-body' "$PR_CHECKS_WORKFLOW"; then
+    echo "FAIL: PR checks must match the shared Renovate-aware title policy" >&2
+    exit 1
+  fi
+
+  PASSED=$((PASSED + 1))
+  echo "PASS: GitHub governance uses the shared Renovate and PR title policy"
+}
+
 create_release_source_fixture() {
   local repository="$1"
 
@@ -2325,6 +2361,7 @@ run_xcode_build_policy_case
 run_executable_package_surface_policy_case
 run_native_mlx_dependency_policy_case
 run_ci_prek_policy_case
+run_github_governance_policy_case
 run_shell_syntax_policy_case
 run_release_artifact_hygiene_policy_case
 run_release_output_staging_policy_case
