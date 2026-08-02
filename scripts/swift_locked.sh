@@ -12,8 +12,11 @@ error() {
 subcommand="$1"
 shift
 case "$subcommand" in
-build | test)
-  exec swift "$subcommand" \
+build)
+  exec swift build --force-resolved-versions "$@"
+  ;;
+test)
+  exec swift test \
     --force-resolved-versions \
     -Xswiftc -warnings-as-errors \
     "$@"

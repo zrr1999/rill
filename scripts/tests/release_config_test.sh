@@ -299,9 +299,9 @@ run_locked_dependency_policy_case() {
     "$LOCKED_SWIFT_SCRIPT" build --show-bin-path
   PATH="$FAKE_BIN:$PATH" FAKE_SWIFT_LOG="$invocation_log" \
     "$LOCKED_SWIFT_SCRIPT" test --parallel
-  expected_log=$'CALL\nbuild\n--force-resolved-versions\n-Xswiftc\n-warnings-as-errors\n--show-bin-path\nCALL\ntest\n--force-resolved-versions\n-Xswiftc\n-warnings-as-errors\n--parallel'
+  expected_log=$'CALL\nbuild\n--force-resolved-versions\n--show-bin-path\nCALL\ntest\n--force-resolved-versions\n-Xswiftc\n-warnings-as-errors\n--parallel'
   if [[ "$(<"$invocation_log")" != "$expected_log" ]]; then
-    echo "FAIL: locked SwiftPM wrapper injects dependency and warning policies" >&2
+    echo "FAIL: locked SwiftPM wrapper injects dependency and test warning policies" >&2
     cat "$invocation_log" >&2
     exit 1
   fi
