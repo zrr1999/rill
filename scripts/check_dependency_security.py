@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """Fail-closed security checks for locked SwiftPM dependencies.
 
 The default offline check applies the reviewed Swift advisory baseline and
@@ -22,10 +26,6 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
-
-
-if sys.version_info < (3, 11):
-    raise SystemExit("Python 3.11 or newer is required")
 
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -66,7 +66,13 @@ class SemanticVersion:
             raise DependencySecurityError(
                 f"{field} must use stable MAJOR.MINOR.PATCH syntax"
             )
-        return cls(*(int(component) for component in match.groups()))
+        try:
+            components = tuple(int(component) for component in match.groups())
+        except ValueError as error:
+            raise DependencySecurityError(
+                f"{field} contains an invalid integer"
+            ) from error
+        return cls(*components)
 
     def __str__(self) -> str:
         return f"{self.major}.{self.minor}.{self.patch}"
@@ -377,7 +383,9 @@ def parse_security_policy(payload: object) -> SecurityPolicy:
         root.get("schemaVersion"), field="dependency security baseline.schemaVersion"
     )
     if schema_version != 2:
-        raise DependencySecurityError("dependency security baseline schemaVersion must be 2")
+        raise DependencySecurityError(
+            "dependency security baseline schemaVersion must be 2"
+        )
     _require_exact_keys(
         root,
         {
@@ -443,9 +451,7 @@ def validate_policy_freshness(
             "dependency security baseline reviewedAt is in the future"
         )
     if current >= policy.expires_at:
-        raise DependencySecurityError(
-            "dependency security baseline review has expired"
-        )
+        raise DependencySecurityError("dependency security baseline review has expired")
 
 
 def scan_offline_baseline(
@@ -562,12 +568,12 @@ def parse_osv_batch_response(
 class _RejectRedirects(HTTPRedirectHandler):
     def redirect_request(
         self,
-        request: Request,
-        file_pointer: Any,
+        req: Request,
+        fp: Any,
         code: int,
-        message: str,
+        msg: str,
         headers: Any,
-        new_url: str,
+        newurl: str,
     ) -> Request | None:
         raise DependencySecurityError(
             f"OSV querybatch unexpectedly redirected with HTTP {code}"

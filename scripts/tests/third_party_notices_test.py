@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """Black-box tests for third-party notice provenance and app packaging."""
 
 from __future__ import annotations
@@ -18,6 +22,8 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 GENERATOR = PROJECT_DIR / "scripts" / "generate_third_party_notices.py"
 ASSEMBLER = PROJECT_DIR / "scripts" / "assemble_app_bundle.sh"
 EXECUTABLE_VERIFIER = PROJECT_DIR / "scripts" / "verify_release_executable.sh"
+VALIDATE_MANIFEST = PROJECT_DIR / "scripts" / "validate_builtin_workflow_manifest.py"
+WRITE_INFO_PLIST = PROJECT_DIR / "scripts" / "write_info_plist.py"
 APP_ICON_GENERATOR = PROJECT_DIR / "scripts" / "generate_app_icon.sh"
 APP_ICON_RENDITION_RENDERER = (
     PROJECT_DIR / "scripts" / "render_app_icon_renditions.swift"
@@ -121,7 +127,9 @@ class Fixture:
 
     def generator_command(self, check: bool = False) -> list[str]:
         command = [
-            "python3",
+            "uv",
+            "run",
+            "--script",
             str(GENERATOR),
             "--resolved",
             str(self.resolved),
@@ -363,6 +371,10 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         copied_generator = self.fixture.root / "scripts" / GENERATOR.name
         copied_assembler = self.fixture.root / "scripts" / ASSEMBLER.name
         copied_verifier = self.fixture.root / "scripts" / EXECUTABLE_VERIFIER.name
+        copied_manifest_validator = (
+            self.fixture.root / "scripts" / VALIDATE_MANIFEST.name
+        )
+        copied_info_plist_writer = self.fixture.root / "scripts" / WRITE_INFO_PLIST.name
         copied_icon_generator = self.fixture.root / "scripts" / APP_ICON_GENERATOR.name
         copied_icon_renderer = (
             self.fixture.root / "scripts" / APP_ICON_RENDITION_RENDERER.name
@@ -370,6 +382,8 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         shutil.copy2(GENERATOR, copied_generator)
         shutil.copy2(ASSEMBLER, copied_assembler)
         shutil.copy2(EXECUTABLE_VERIFIER, copied_verifier)
+        shutil.copy2(VALIDATE_MANIFEST, copied_manifest_validator)
+        shutil.copy2(WRITE_INFO_PLIST, copied_info_plist_writer)
         shutil.copy2(APP_ICON_GENERATOR, copied_icon_generator)
         shutil.copy2(APP_ICON_RENDITION_RENDERER, copied_icon_renderer)
         copied_app_bundle_resources = self.fixture.root / "Resources" / "AppBundle"
@@ -462,9 +476,7 @@ EOF
         )
         self.assertTrue(packaged_mlx_bundle.is_dir())
         self.assertFalse(
-            (
-                app_bundle / "Contents" / "Resources" / MLX_RESOURCE_BUNDLE_NAME
-            ).exists()
+            (app_bundle / "Contents" / "Resources" / MLX_RESOURCE_BUNDLE_NAME).exists()
         )
         self.assertEqual(
             (
@@ -495,7 +507,12 @@ EOF
             copied_local_model_notices.read_bytes(),
         )
         self.assertFalse(
-            (app_bundle / "Contents" / "Resources" / "RillMacOS_RillSherpaRuntime.bundle").exists()
+            (
+                app_bundle
+                / "Contents"
+                / "Resources"
+                / "RillMacOS_RillSherpaRuntime.bundle"
+            ).exists()
         )
 
         with (app_bundle / "Contents" / "Info.plist").open("rb") as source:
@@ -611,13 +628,17 @@ EOF
         self.assertTrue(app_bundle.exists())
 
     def test_repository_notice_is_current(self) -> None:
-        result = run(["python3", str(GENERATOR), "--check"])
+        result = run(["uv", "run", "--script", str(GENERATOR), "--check"])
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_repository_has_no_retired_native_speech_inventory(self) -> None:
         manifest = json.loads(DEPENDENCY_MANIFEST.read_text(encoding="utf-8"))
         self.assertFalse(
-            [package for package in manifest["packages"] if package["kind"] == "vendored"]
+            [
+                package
+                for package in manifest["packages"]
+                if package["kind"] == "vendored"
+            ]
         )
         package_manifest = PACKAGE_MANIFEST.read_text(encoding="utf-8").casefold()
         for retired_value in (
@@ -640,7 +661,9 @@ EOF
             self.assertIn(pinned_value, runtime)
         self.assertIn("mlx-community/silero-vad-v6", local_notices)
         self.assertIn("no ONNX VAD is packaged", local_notices)
-        self.assertNotIn("RillSherpaRuntime", PACKAGE_MANIFEST.read_text(encoding="utf-8"))
+        self.assertNotIn(
+            "RillSherpaRuntime", PACKAGE_MANIFEST.read_text(encoding="utf-8")
+        )
 
 
 def create_bundle(path: Path, identifier: str) -> None:

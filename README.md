@@ -14,6 +14,7 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 ## ✨ 核心特性
 
 ### 🎤 语音转文字
+
 - **统一本地语音边界** — 稳定的 `local-speech` recognizer 由独立 worker 中的原生 [mlx-audio-swift](https://github.com/Blaizzy/mlx-audio-swift) 实现；默认启用并常驻 Qwen3-ASR 0.6B 8bit，也可在模型池加入 1.7B 8bit。Qwen v5 流式结果只用于预览，封口 WAV 的离线结果始终是正式文本
 - **按住说话（Push-to-Talk）** — 按住 `Fn` 开始录音，松开自动识别并输入
 - **本地语音端点** — 主窗口和菜单栏触发的单次听写使用固定 revision/hash 的 MLX Silero VAD v6 判断语音起止；`Fn` 按住说话仍由松键结束，切换式录音由第二次按键结束
@@ -28,6 +29,7 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 - **失败录音恢复（可选）** — 默认关闭；符合条件的投递前失败录音可加密保留最多 24 小时，并从历史页手动重试或删除。重试在解密前和解密后、provider 调用前都重新检查当前隐私与配置，只生成新的运行历史，不重复输出动作。App 退出会拒绝新重试、取消并等待所有活动重试恢复 durable receipt，并执行最终全局恢复明文 sweep；无法证明全部托管明文已清理时会阻止本次退出，让清理继续完成
 
 ### 📋 剪贴板管理系统
+
 - **默认不监听** — 新安装默认关闭系统剪贴板捕获和浮动面板全局快捷键；只有用户在设置或菜单栏明确开启后才建立新的捕获基线，关闭期间的变化不会在重新开启时补录
 - **分组路由** — 为不同应用分配独立的剪贴板组（Stack / Queue / List 三种模式）
 - **置顶与快速检索** — 正文、来源 App、标签和分组支持多关键词联合搜索；合并条目可原子置顶并一键只看置顶内容。置顶只影响历史展示、自动留存和容量逐出，不会伪装成 Stack / Queue / List 活动项；显式删除或“清除历史”仍按用户命令执行
@@ -43,6 +45,7 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 - **本地静态数据保护** — 运行正文、纠错来源、剪贴板状态、设置和导出元数据使用 Keychain 根密钥与 AES-256-GCM 保护；错误或缺失密钥会 fail-closed
 
 ### ⚡ 可观察工作流
+
 - **可视化编辑器** — 配置触发方式、识别路径、确定性文本处理和输出位置
 - **真实能力优先** — 任何包含 `llmRewrite` 的内置或自定义语音工作流只在 OpenAI 凭据可读取时可启用；Snippet 与组事件动作仍不会出现在生产入口中
 - **多种触发方式** — 快捷键、菜单栏和手动触发
@@ -54,6 +57,7 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 - **剪贴板零副作用预演** — 当前/历史条目可从详情或右键菜单打开 `Paste / Replay / Replace` 影响预演，查看固定的读取类别、处理步骤、潜在副作用、目的地、替换计划与隐私条件；界面只有刷新和关闭，不提供运行入口。Runtime 以 per-item generation + revision 原子解析精确条目，replay/replace 与真实授权共用 invocation-aware 目的地分类；同类型正文漂移、分组/标签变化和删除后同 ID 重建都会使旧结果失效
 
 ### 🖥 桌面体验
+
 - **原生 macOS 应用** — SwiftUI + AppKit，系统级集成
 - **菜单栏常驻** — 状态指示 + 快捷操作，不占 Dock 空间
 - **浮动剪贴板面板** — 独立窗口，可边工作边管理剪贴板
@@ -71,7 +75,7 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 以下是截至 2026-07-18 的 Rill 公开能力快照，不把未核验或路线图能力写成现状。Type4Me 一栏仍以 2026-07-11 固定 commit 的 [README 与 provider registry](https://github.com/joewongjc/type4me/tree/5a899d9cdad89a9ee47c53f01edaa701d385b17b) 为依据。
 
 | 功能 | Rill | Type4Me |
-|------|---------|---------|
+| ------ | --------- | --------- |
 | 本地 ASR | 原生 MLX Swift Qwen3-ASR 0.6B 默认 + 1.7B 可选 | SenseVoice + Qwen3-ASR 校准 |
 | 云端 ASR | 不提供 | 多家；以当前 provider registry 为准 |
 | **剪贴板路由模型** | App / 组路由 + Stack / Queue / List | 本次源码快照未见同类路由模型 |
@@ -91,13 +95,14 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 ## 🚀 快速开始
 
 ### 系统要求
+
 - macOS 14.0 (Sonoma) 或更高版本，仅支持 Apple Silicon（arm64）；发布产物必须是单一 arm64 slice
 - 原生 MLX 本地 runtime 随 arm64 App 提供；每个候选版本必须在声明支持的 Apple Silicon 硬件上完成录音、模型准备和转写验收
 - 可选的 Qwen3-ASR 1.7B 8bit 使用随辅助进程编译的原生 mlx-audio-swift 0.1.3 与 MLX/Metal GPU；用户无需安装 Python 或 `uv`，该路径不使用 ANE/NPU
 - Xcode 26 或更高版本，并选择包含 Swift 6.2+ 的 Command Line Tools；本地
   默认开发工具链为 Xcode 27
 - 从源码生成发布包还需要与当前 Xcode 兼容的独立 Metal Toolchain；可用 `xcodebuild -downloadComponent MetalToolchain` 安装，并用 `xcrun metal -v` 验证。不要强制 `--toolchain XcodeDefault`，否则 `xcrun` 会排除已下载并挂载的 Metal Toolchain。若组件下载后仍失败，请用 `DEVELOPER_DIR` 临时选择一个验证通过的并存 Xcode，不要修改 Xcode.app 内部文件
-- Git、`codesign` 与 macOS 标准发布工具，以及 Python 3.11 或更高版本
+- Git、`codesign` 与 macOS 标准发布工具，以及 [uv](https://docs.astral.sh/uv/guides/scripts/)；发布脚本通过 PEP 723 单文件脚本模式运行 Python 3.11 或更高版本
 
 ### 从源码验证
 
@@ -123,7 +128,7 @@ plugin target GUID；消费方没有关闭传递插件的开关。上游修复�
 底层版本绕过锁文件或修改 checkout。
 
 | model ID | 角色 / 后端 | 固定来源 | 大小 / 固定身份 |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `qwen3-asr-0.6b-mlx-8bit` | 默认最终模型与流式预览；Apple Silicon；MLX/Metal GPU | [`mlx-community/Qwen3-ASR-0.6B-8bit`](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit) | 约 1.01 GB；commit `89e96d92ba34aca20b3e29fb10cc284097d1219f` |
 | `qwen3-asr-1.7b-mlx-8bit` | 可选较大最终模型；Apple Silicon；MLX/Metal GPU | [`mlx-community/Qwen3-ASR-1.7B-8bit`](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit) | 约 2.46 GB；commit `a8379a2e2f9e313c9292cdf1af4055ab56d50d55` |
 
@@ -195,6 +200,7 @@ SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
 公证模式会在构建前 fail-closed：工作树（含未跟踪文件）必须干净，并且当前 `HEAD` 必须精确且唯一地标记一个 `vMAJOR.MINOR.PATCH` 标签；只有声明了 SwiftPM 源码依赖时才要求将真实 `Package.resolved` 纳入版本控制。脚本随后从该 commit 创建临时 detached worktree，用全新的依赖 checkout 构建，并在签名与公证提交前再次核对 commit、tree，以及存在时的锁文件。普通本地签名和安装仍可在开发工作树中使用。
 
 ### 首次使用
+
 1. 打开 Rill，按 Dashboard 的“完成语音设置”清单授权 **输入监控** 与 **麦克风**；只有事件监听真正启动后，`Fn` 和全局剪贴板快捷键才会显示就绪；使用直接输入时还需授权 **辅助功能**
 2. 在 Settings 选择本地语音模型或使用硬件推荐。1.7B 选项仅在 Apple Silicon 可见，不需要额外 Python 环境；首次准备需要联网，之后本地转写离线运行。App 不会回退到未知模型、内部预览或未固定来源
 3. 按住 `Fn` 开始说话，松开后文字按当前输出模式输入活动 App 或保存到语音剪贴板组
@@ -204,13 +210,15 @@ SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
 ## 📖 使用指南
 
 ### 语音输入
+
 | 操作 | 说明 |
-|------|------|
+| ------ | ------ |
 | 按住 `Fn` | 开始录音；浮窗显示录音状态、音量和本地实时 partial text |
 | 松开 `Fn` | 停止录音，识别结果自动输入到当前应用 |
 | `Cmd-F` | 搜索页面、工作流、运行历史和设置分区 |
 
 ### 剪贴板分组
+
 - **默认组** — 所有未分配的应用共享此组
 - **语音识别组** — 语音识别结果自动进入此组
 - **自定义组** — 为特定应用创建专属组，支持 Stack（后进先出）、Queue（先进先出）、List（持久列表）三种模式
@@ -218,7 +226,9 @@ SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
 从详情、右键菜单或 Delete 删除剪贴板条目都会先确认；合并展示的条目会明确实际删除数量和不可撤销性。文本框或输入法仍在编辑、已有 sheet 或删除确认显示期间，页面级 Delete 与其他快捷键不会越过当前交互。
 
 ### 工作流
+
 内置两个生产可用工作流：
+
 1. **语音识别** — `Fn` 按住说话 → STT → 热词与替换词 → 输出文字
 2. **语音助手** — `Hey Rill` → STT → 热词与替换词 → LLM 回答 → TTS
 

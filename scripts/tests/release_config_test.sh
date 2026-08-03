@@ -310,10 +310,10 @@ run_locked_dependency_policy_case() {
     echo "FAIL: release scripts contain an unlocked SwiftPM build or test path" >&2
     exit 1
   fi
-  if ! grep -Fq 'build_xcode_release.sh"' "$PREFLIGHT_SCRIPT" \
-    || ! grep -Fq 'swift_locked.sh" test' "$PREFLIGHT_SCRIPT" \
-    || ! grep -Fq 'build_xcode_release.sh" --show-bin-path' "$RELEASE_SCRIPT" \
-    || ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh"' "$XCODE_RELEASE_BUILD_SCRIPT"; then
+  if ! grep -Fq 'build_xcode_release.sh"' "$PREFLIGHT_SCRIPT" ||
+    ! grep -Fq 'swift_locked.sh" test' "$PREFLIGHT_SCRIPT" ||
+    ! grep -Fq 'build_xcode_release.sh" --show-bin-path' "$RELEASE_SCRIPT" ||
+    ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh"' "$XCODE_RELEASE_BUILD_SCRIPT"; then
     echo "FAIL: release scripts do not route every build and test through the locked wrapper" >&2
     exit 1
   fi
@@ -327,46 +327,46 @@ run_locked_dependency_policy_case() {
     echo "FAIL: bundle assembly does not verify dependency notice provenance" >&2
     exit 1
   fi
-  if [[ "$(grep -Ec '^[[:space:]]*swift package clean$' "$PREFLIGHT_SCRIPT")" -ne 2 ]] \
-    || [[ "$(grep -Ec '^[[:space:]]*swift package clean$' "$RELEASE_SCRIPT")" -ne 1 ]]; then
+  if [[ "$(grep -Ec '^[[:space:]]*swift package clean$' "$PREFLIGHT_SCRIPT")" -ne 2 ]] ||
+    [[ "$(grep -Ec '^[[:space:]]*swift package clean$' "$RELEASE_SCRIPT")" -ne 1 ]]; then
     echo "FAIL: release scripts must isolate every Release/Debug configuration transition" >&2
     exit 1
   fi
   preflight_release_build_line="$(
-    grep -n -m1 '^"\$SCRIPT_DIR/build_xcode_release.sh"$' "$PREFLIGHT_SCRIPT" \
-      | cut -d: -f1
+    grep -n -m1 '^"\$SCRIPT_DIR/build_xcode_release.sh"$' "$PREFLIGHT_SCRIPT" |
+      cut -d: -f1
   )"
   preflight_transition_clean_line="$(
-    grep -n '^[[:space:]]*swift package clean$' "$PREFLIGHT_SCRIPT" \
-      | tail -n 1 \
-      | cut -d: -f1
+    grep -n '^[[:space:]]*swift package clean$' "$PREFLIGHT_SCRIPT" |
+      tail -n 1 |
+      cut -d: -f1
   )"
   preflight_test_line="$(
-    grep -n -m1 '^"\$SCRIPT_DIR/swift_locked.sh" test$' "$PREFLIGHT_SCRIPT" \
-      | cut -d: -f1
+    grep -n -m1 '^"\$SCRIPT_DIR/swift_locked.sh" test$' "$PREFLIGHT_SCRIPT" |
+      cut -d: -f1
   )"
   release_preflight_line="$(
-    grep -n -m1 '^"\$SCRIPT_DIR/preflight.sh"$' "$RELEASE_SCRIPT" \
-      | cut -d: -f1
+    grep -n -m1 '^"\$SCRIPT_DIR/preflight.sh"$' "$RELEASE_SCRIPT" |
+      cut -d: -f1
   )"
   release_transition_clean_line="$(
-    grep -n -m1 '^[[:space:]]*swift package clean$' "$RELEASE_SCRIPT" \
-      | cut -d: -f1
+    grep -n -m1 '^[[:space:]]*swift package clean$' "$RELEASE_SCRIPT" |
+      cut -d: -f1
   )"
   release_build_line="$(
-    grep -n -m1 '^"\$SCRIPT_DIR/build_xcode_release.sh"$' "$RELEASE_SCRIPT" \
-      | cut -d: -f1
+    grep -n -m1 '^"\$SCRIPT_DIR/build_xcode_release.sh"$' "$RELEASE_SCRIPT" |
+      cut -d: -f1
   )"
-  if [[ -z "$preflight_release_build_line" \
-      || -z "$preflight_transition_clean_line" \
-      || -z "$preflight_test_line" \
-      || "$preflight_transition_clean_line" -le "$preflight_release_build_line" \
-      || "$preflight_transition_clean_line" -ge "$preflight_test_line" \
-      || -z "$release_preflight_line" \
-      || -z "$release_transition_clean_line" \
-      || -z "$release_build_line" \
-      || "$release_transition_clean_line" -le "$release_preflight_line" \
-      || "$release_transition_clean_line" -ge "$release_build_line" ]]; then
+  if [[ -z "$preflight_release_build_line" ||
+    -z "$preflight_transition_clean_line" ||
+    -z "$preflight_test_line" ||
+    "$preflight_transition_clean_line" -le "$preflight_release_build_line" ||
+    "$preflight_transition_clean_line" -ge "$preflight_test_line" ||
+    -z "$release_preflight_line" ||
+    -z "$release_transition_clean_line" ||
+    -z "$release_build_line" ||
+    "$release_transition_clean_line" -le "$release_preflight_line" ||
+    "$release_transition_clean_line" -ge "$release_build_line" ]]; then
     echo "FAIL: Release/Debug configuration cleanup is not ordered at the transition boundary" >&2
     exit 1
   fi
@@ -380,13 +380,13 @@ run_xcode_build_policy_case() {
     echo "FAIL: Xcode release build wrapper is not executable" >&2
     exit 1
   }
-  if ! grep -Fq -- '--build-system swiftbuild' "$XCODE_RELEASE_BUILD_SCRIPT" \
-    || ! grep -Fq -- '--manifest-cache none' "$XCODE_RELEASE_BUILD_SCRIPT" \
-    || ! grep -Fq -- '--arch arm64' "$XCODE_RELEASE_BUILD_SCRIPT" \
-    || ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh"' "$XCODE_RELEASE_BUILD_SCRIPT" \
-    || ! grep -Fq 'xcrun metal -v' \
-      "$XCODE_RELEASE_BUILD_SCRIPT" \
-    || ! grep -Fq 'xcodebuild -downloadComponent MetalToolchain' \
+  if ! grep -Fq -- '--build-system swiftbuild' "$XCODE_RELEASE_BUILD_SCRIPT" ||
+    ! grep -Fq -- '--manifest-cache none' "$XCODE_RELEASE_BUILD_SCRIPT" ||
+    ! grep -Fq -- '--arch arm64' "$XCODE_RELEASE_BUILD_SCRIPT" ||
+    ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh"' "$XCODE_RELEASE_BUILD_SCRIPT" ||
+    ! grep -Fq 'xcrun metal -v' \
+      "$XCODE_RELEASE_BUILD_SCRIPT" ||
+    ! grep -Fq 'xcodebuild -downloadComponent MetalToolchain' \
       "$XCODE_RELEASE_BUILD_SCRIPT"; then
     echo "FAIL: Xcode release build does not use the reviewed locked wrapper" >&2
     exit 1
@@ -412,10 +412,10 @@ run_executable_package_surface_policy_case() {
   published_product_count="$(grep -Ec '^[[:space:]]*\.[[:alnum:]_]+\(' <<<"$product_block" || true)"
   executable_product_count="$(grep -Ec '^[[:space:]]*\.executable\(' <<<"$product_block" || true)"
   library_product_count="$(grep -Ec '^[[:space:]]*\.library\(' <<<"$product_block" || true)"
-  if [[ "$published_product_count" -ne 2 ]] \
-    || [[ "$executable_product_count" -ne 2 ]] \
-    || ! grep -Fq '.executable(name: "RillApp", targets: ["RillApp"])' "$PACKAGE_MANIFEST" \
-    || ! grep -Fq '.executable(name: "RillSpeechWorker", targets: ["RillSpeechWorker"])' "$PACKAGE_MANIFEST"; then
+  if [[ "$published_product_count" -ne 2 ]] ||
+    [[ "$executable_product_count" -ne 2 ]] ||
+    ! grep -Fq '.executable(name: "RillApp", targets: ["RillApp"])' "$PACKAGE_MANIFEST" ||
+    ! grep -Fq '.executable(name: "RillSpeechWorker", targets: ["RillSpeechWorker"])' "$PACKAGE_MANIFEST"; then
     echo "FAIL: Package.swift must publish exactly the RillApp and RillSpeechWorker executable products" >&2
     exit 1
   fi
@@ -430,23 +430,23 @@ run_executable_package_surface_policy_case() {
 
 run_native_mlx_dependency_policy_case() {
   if grep -Eqi 'SherpaOnnxNative|OnnxRuntimeNative|RillSherpaRuntime|CSherpaOnnx|sherpa-onnx\.xcframework|onnxruntime\.xcframework' \
-      "$PACKAGE_MANIFEST"; then
+    "$PACKAGE_MANIFEST"; then
     echo "FAIL: Package.swift retains the retired Sherpa/ONNX runtime" >&2
     exit 1
   fi
   if ! grep -Fq 'url: "https://github.com/Blaizzy/mlx-audio-swift.git"' \
-      "$PACKAGE_MANIFEST" \
-    || ! grep -Fq 'exact: "0.1.3"' "$PACKAGE_MANIFEST" \
-    || ! grep -Fq 'url: "https://github.com/huggingface/swift-huggingface.git"' \
-      "$PACKAGE_MANIFEST" \
-    || ! grep -Fq 'exact: "0.8.1"' "$PACKAGE_MANIFEST" \
-    || ! grep -Fq 'url: "https://github.com/ml-explore/mlx-swift.git"' \
-      "$PACKAGE_MANIFEST" \
-    || ! grep -Fq 'exact: "0.31.4"' "$PACKAGE_MANIFEST" \
-    || ! grep -Fq 'name: "RillMLXRuntime"' "$PACKAGE_MANIFEST" \
-    || ! grep -Fq '.product(name: "MLXAudioSTT", package: "mlx-audio-swift")' \
-      "$PACKAGE_MANIFEST" \
-    || ! grep -Fq '.product(name: "MLX", package: "mlx-swift")' \
+    "$PACKAGE_MANIFEST" ||
+    ! grep -Fq 'exact: "0.1.3"' "$PACKAGE_MANIFEST" ||
+    ! grep -Fq 'url: "https://github.com/huggingface/swift-huggingface.git"' \
+      "$PACKAGE_MANIFEST" ||
+    ! grep -Fq 'exact: "0.8.1"' "$PACKAGE_MANIFEST" ||
+    ! grep -Fq 'url: "https://github.com/ml-explore/mlx-swift.git"' \
+      "$PACKAGE_MANIFEST" ||
+    ! grep -Fq 'exact: "0.31.4"' "$PACKAGE_MANIFEST" ||
+    ! grep -Fq 'name: "RillMLXRuntime"' "$PACKAGE_MANIFEST" ||
+    ! grep -Fq '.product(name: "MLXAudioSTT", package: "mlx-audio-swift")' \
+      "$PACKAGE_MANIFEST" ||
+    ! grep -Fq '.product(name: "MLX", package: "mlx-swift")' \
       "$PACKAGE_MANIFEST"; then
     echo "FAIL: native MLX Swift dependencies are not exactly constrained" >&2
     exit 1
@@ -460,7 +460,7 @@ run_native_mlx_dependency_policy_case() {
     exit 1
   fi
   if grep -Eqi 'RillSherpaRuntime|require-sherpa|SherpaOnnx' \
-      "$PREFLIGHT_SCRIPT" "$ASSEMBLER_SCRIPT" "$EXECUTABLE_VERIFIER"; then
+    "$PREFLIGHT_SCRIPT" "$ASSEMBLER_SCRIPT" "$EXECUTABLE_VERIFIER"; then
     echo "FAIL: release scripts retain the retired Sherpa runtime gate" >&2
     exit 1
   fi
@@ -526,9 +526,9 @@ run_release_artifact_hygiene_policy_case() {
     output="$(bash "$RELEASE_ARTIFACT_HYGIENE_SCRIPT" "$fixture" 2>&1)"
     status=$?
     set -e
-    if [[ "$status" -eq 0 \
-      || "$output" != *"Repository-root release artifacts are forbidden"* \
-      || "$output" != *"$artifact"* ]]; then
+    if [[ "$status" -eq 0 ||
+      "$output" != *"Repository-root release artifacts are forbidden"* ||
+      "$output" != *"$artifact"* ]]; then
       echo "FAIL: repository-root $artifact is rejected" >&2
       printf '%s\n' "$output" >&2
       exit 1
@@ -536,8 +536,8 @@ run_release_artifact_hygiene_policy_case() {
     rm -rf "$fixture/$artifact"
   done
 
-  if git -C "$PROJECT_DIR" check-ignore -q --no-index Rill.app \
-    || git -C "$PROJECT_DIR" check-ignore -q --no-index Rill.dmg; then
+  if git -C "$PROJECT_DIR" check-ignore -q --no-index Rill.app ||
+    git -C "$PROJECT_DIR" check-ignore -q --no-index Rill.dmg; then
     echo "FAIL: repository-root release-looking artifacts are hidden by .gitignore" >&2
     exit 1
   fi
@@ -549,10 +549,10 @@ run_release_artifact_hygiene_policy_case() {
 
   if ! grep -Fq \
     'RELEASE_OUTPUT_DIR="${RELEASE_OUTPUT_DIR-$PROJECT_DIR/.artifacts/release}"' \
-    "$RELEASE_SCRIPT" \
-    || ! grep -Fq 'validate_release_output_location "$RELEASE_OUTPUT_DIR"' \
-      "$RELEASE_SCRIPT" \
-    || ! grep -Fq 'bash "$SCRIPT_DIR/check_release_artifact_hygiene.sh"' \
+    "$RELEASE_SCRIPT" ||
+    ! grep -Fq 'validate_release_output_location "$RELEASE_OUTPUT_DIR"' \
+      "$RELEASE_SCRIPT" ||
+    ! grep -Fq 'bash "$SCRIPT_DIR/check_release_artifact_hygiene.sh"' \
       "$PREFLIGHT_SCRIPT"; then
     echo "FAIL: release output isolation is not enforced by release and preflight" >&2
     exit 1
@@ -578,9 +578,9 @@ run_release_output_staging_policy_case() {
     APP_NAME="Rill"
     prepare_release_output_staging
 
-    if [[ -e "$FINAL_APP_BUNDLE" \
-      || -e "$FINAL_DMG_PATH" \
-      || -e "$FINAL_DMG_SHA256_PATH" ]]; then
+    if [[ -e "$FINAL_APP_BUNDLE" ||
+      -e "$FINAL_DMG_PATH" ||
+      -e "$FINAL_DMG_SHA256_PATH" ]]; then
       echo "FAIL: release start did not invalidate stale output artifacts" >&2
       exit 1
     fi
@@ -599,12 +599,12 @@ run_release_output_staging_policy_case() {
     publish_staged_app
     publish_staged_dmg
 
-    [[ -f "$FINAL_APP_BUNDLE/marker" \
-      && -f "$FINAL_DMG_PATH" \
-      && -f "$FINAL_DMG_SHA256_PATH" \
-      && ! -e "$RELEASE_TEMP_DIR/Rill.app" \
-      && ! -e "$RELEASE_TEMP_DIR/Rill.dmg" ]] \
-      || {
+    [[ -f "$FINAL_APP_BUNDLE/marker" &&
+      -f "$FINAL_DMG_PATH" &&
+      -f "$FINAL_DMG_SHA256_PATH" &&
+      ! -e "$RELEASE_TEMP_DIR/Rill.app" &&
+      ! -e "$RELEASE_TEMP_DIR/Rill.dmg" ]] ||
+      {
         echo "FAIL: verified release artifacts were not atomically published" >&2
         exit 1
       }
@@ -662,11 +662,11 @@ run_install_quit_policy_case() {
   set -e
 
   waited_seconds="$(awk '{ total += $1 } END { printf "%.2f", total }' "$sleep_log")"
-  if [[ "$status" -eq 0 \
-    || "$output" != *"未强制终止进程"* \
-    || "$(wc -l <"$quit_log" | xargs)" -ne 1 \
-    || -s "$forced_termination_log" ]] \
-    || ! awk -v waited="$waited_seconds" 'BEGIN { exit !(waited >= 20) }'; then
+  if [[ "$status" -eq 0 ||
+    "$output" != *"未强制终止进程"* ||
+    "$(wc -l <"$quit_log" | xargs)" -ne 1 ||
+    -s "$forced_termination_log" ]] ||
+    ! awk -v waited="$waited_seconds" 'BEGIN { exit !(waited >= 20) }'; then
     echo "FAIL: installation requests a graceful quit and waits at least 20 seconds" >&2
     printf 'status=%s waited=%s\n%s\n' "$status" "$waited_seconds" "$output" >&2
     [[ ! -s "$forced_termination_log" ]] || cat "$forced_termination_log" >&2
@@ -726,11 +726,11 @@ run_orphaned_speech_worker_install_policy_case() {
   status=$?
   set -e
 
-  if [[ "$status" -eq 0 \
-    || "$output" != *"未强制终止进程"* \
-    || "$(wc -l <"$quit_log" | xargs)" -ne 1 \
-    || -s "$forced_termination_log" \
-    || -s "$install_log" ]]; then
+  if [[ "$status" -eq 0 ||
+    "$output" != *"未强制终止进程"* ||
+    "$(wc -l <"$quit_log" | xargs)" -ne 1 ||
+    -s "$forced_termination_log" ||
+    -s "$install_log" ]]; then
     echo "FAIL: orphaned speech worker must block installation without force termination" >&2
     printf '%s\n' "$output" >&2
     exit 1
@@ -777,11 +777,11 @@ run_install_staging_verification_failure_case() {
   status=$?
   set -e
 
-  if [[ "$status" -eq 0 \
-    || "$output" != *"安装 staging 中的 App 验证失败；旧版保持不变"* \
-    || "$(<"$target_app/version")" != "old" \
-    || -s "$swap_log" ]] \
-    || find "$applications_dir" -maxdepth 1 -type d \
+  if [[ "$status" -eq 0 ||
+    "$output" != *"安装 staging 中的 App 验证失败；旧版保持不变"* ||
+    "$(<"$target_app/version")" != "old" ||
+    -s "$swap_log" ]] ||
+    find "$applications_dir" -maxdepth 1 -type d \
       -name '.rill-install.*' -print -quit | grep -q .; then
     echo "FAIL: staging verification failure preserves the installed app" >&2
     printf '%s\n' "$output" >&2
@@ -838,14 +838,14 @@ run_install_post_swap_rollback_case() {
   status=$?
   set -e
 
-  if [[ "$status" -eq 0 \
-    || "$output" != *"安装后验证失败；已原子恢复旧版 App"* \
-    || "$(<"$target_app/version")" != "old" \
-    || "$(wc -l <"$swap_log" | xargs)" -ne 2 ]] \
-    || [[ "$(sed -n '1p' "$swap_log")" != "$(sed -n '2p' "$swap_log")" ]] \
-    || find "$applications_dir" -maxdepth 1 -type d \
-      -name '.rill-install.*' -print -quit | grep -q . \
-    || ! grep -Fq 'renamex_np(argv[1], argv[2], RENAME_SWAP)' "$RELEASE_SCRIPT"; then
+  if [[ "$status" -eq 0 ||
+    "$output" != *"安装后验证失败；已原子恢复旧版 App"* ||
+    "$(<"$target_app/version")" != "old" ||
+    "$(wc -l <"$swap_log" | xargs)" -ne 2 ]] ||
+    [[ "$(sed -n '1p' "$swap_log")" != "$(sed -n '2p' "$swap_log")" ]] ||
+    find "$applications_dir" -maxdepth 1 -type d \
+      -name '.rill-install.*' -print -quit | grep -q . ||
+    ! grep -Fq 'renamex_np(argv[1], argv[2], RENAME_SWAP)' "$RELEASE_SCRIPT"; then
     echo "FAIL: post-swap verification failure atomically restores the old app" >&2
     printf '%s\n' "$output" >&2
     cat "$swap_log" >&2
@@ -896,9 +896,9 @@ run_install_success_case() {
     [[ -z "$INSTALL_STAGING_ROOT" ]]
   )
 
-  if [[ "$(<"$target_app/version")" != "new" \
-    || "$(wc -l <"$swap_log" | xargs)" -ne 1 ]] \
-    || find "$applications_dir" -maxdepth 1 -type d \
+  if [[ "$(<"$target_app/version")" != "new" ||
+  "$(wc -l <"$swap_log" | xargs)" -ne 1 ]] ||
+    find "$applications_dir" -maxdepth 1 -type d \
       -name '.rill-install.*' -print -quit | grep -q .; then
     echo "FAIL: a verified app replaces the old app and removes staging" >&2
     cat "$swap_log" >&2
@@ -943,7 +943,7 @@ run_install_interruption_recovery_case() {
       verify_install_candidate() {
         local count=""
 
-        count="$(( $(<"$verification_count") + 1 ))"
+        count="$(($(<"$verification_count") + 1))"
         printf '%s\n' "$count" >"$verification_count"
         if [[ "$count" -eq 2 ]]; then
           /bin/sh -c 'kill -s "$1" "$PPID"' rill-install-test "$signal"
@@ -979,10 +979,10 @@ run_install_interruption_recovery_case() {
         '*/.rill-install.*/Rill.app/version' -type f -exec cat {} \; \
         -quit
     )"
-    if [[ "$status" -eq 0 \
-      || "$(<"$verification_count")" -ne 2 \
-      || "$(wc -l <"$swap_log" | xargs)" -lt 1 ]] \
-      || [[ "$target_version" != "old" && "$recovery_version" != "old" ]]; then
+    if [[ "$status" -eq 0 ||
+      "$(<"$verification_count")" -ne 2 ||
+      "$(wc -l <"$swap_log" | xargs)" -lt 1 ]] ||
+      [[ "$target_version" != "old" && "$recovery_version" != "old" ]]; then
       echo "FAIL: $signal after swap restores or preserves the old app" >&2
       printf 'status=%s target=%s recovery=%s\n%s\n' \
         "$status" "$target_version" "$recovery_version" "$output" >&2
@@ -1115,12 +1115,12 @@ run_first_install_concurrent_target_case() {
   status=$?
   set -e
 
-  if [[ "$status" -eq 0 \
-    || ! -s "$publish_log" \
-    || ! -f "$target_app/version" \
-    || "$(<"$target_app/version")" != "concurrent" \
-    || -e "$target_app/Rill.app" ]] \
-    || ! grep -Fq 'RENAME_EXCL' "$RELEASE_SCRIPT"; then
+  if [[ "$status" -eq 0 ||
+    ! -s "$publish_log" ||
+    ! -f "$target_app/version" ||
+    "$(<"$target_app/version")" != "concurrent" ||
+    -e "$target_app/Rill.app" ]] ||
+    ! grep -Fq 'RENAME_EXCL' "$RELEASE_SCRIPT"; then
     echo "FAIL: first install must use RENAME_EXCL and preserve a concurrent target" >&2
     printf '%s\n' "$output" >&2
     cat "$publish_log" >&2
@@ -1167,7 +1167,7 @@ run_existing_install_concurrent_identity_case() {
       local temporary="$applications_dir/.test-swap.$$"
       local count=""
 
-      count="$(( $(<"$swap_count") + 1 ))"
+      count="$(($(<"$swap_count") + 1))"
       printf '%s\n' "$count" >"$swap_count"
       printf '%s|%s\n' "$left" "$right" >>"$swap_log"
       if [[ "$count" -eq 1 ]]; then
@@ -1188,16 +1188,16 @@ run_existing_install_concurrent_identity_case() {
   status=$?
   set -e
 
-  if [[ "$status" -eq 0 \
-    || "$output" != *"安装目标在原子替换期间发生并发变化；已恢复原坐标"* \
-    || "$(wc -l <"$swap_log" | xargs)" -ne 2 \
-    || "$(sed -n '1p' "$swap_log")" != "$(sed -n '2p' "$swap_log")" \
-    || ! -f "$target_app/version" \
-    || "$(<"$target_app/version")" != "concurrent" \
-    || -e "$target_app/Rill.app" ]] \
-    || find "$applications_dir" -maxdepth 1 -type d \
-      -name '.rill-install.*' -print -quit | grep -q . \
-    || find "$applications_dir" -type f -name version \
+  if [[ "$status" -eq 0 ||
+    "$output" != *"安装目标在原子替换期间发生并发变化；已恢复原坐标"* ||
+    "$(wc -l <"$swap_log" | xargs)" -ne 2 ||
+    "$(sed -n '1p' "$swap_log")" != "$(sed -n '2p' "$swap_log")" ||
+    ! -f "$target_app/version" ||
+    "$(<"$target_app/version")" != "concurrent" ||
+    -e "$target_app/Rill.app" ]] ||
+    find "$applications_dir" -maxdepth 1 -type d \
+      -name '.rill-install.*' -print -quit | grep -q . ||
+    find "$applications_dir" -type f -name version \
       -exec grep -l '^new$' {} \; -quit | grep -q .; then
     echo "FAIL: an existing-target identity race restores the concurrent target" >&2
     printf '%s\n' "$output" >&2
@@ -1212,7 +1212,7 @@ run_existing_install_concurrent_identity_case() {
 
 assert_preflight_toolchain_case() {
   local name="$1"
-  local python_version="$2"
+  local uv_version="$2"
   local swift_version="$3"
   local expected_status="$4"
   local expected_fragment="$5"
@@ -1225,9 +1225,12 @@ assert_preflight_toolchain_case() {
       set --
       # shellcheck source=/dev/null
       source "$PREFLIGHT_SCRIPT"
-      python3() {
-        [[ "$*" == "--version" ]] || return 64
-        printf 'Python %s\n' "$python_version"
+      uv() {
+        if [[ "${1-}" == "--version" ]]; then
+          printf 'uv %s (test)\n' "$uv_version"
+        else
+          printf '3.11.0\n'
+        fi
       }
       swift() {
         [[ "$*" == "--version" ]] || return 64
@@ -1251,34 +1254,34 @@ run_preflight_toolchain_policy_case() {
   local project_work_line=""
 
   assert_preflight_toolchain_case \
-    "preflight accepts its documented minimum toolchain" \
-    "3.11.0" \
+    "uv-managed Python 3.11" \
+    "0.11.14" \
     "6.2.0" \
     0 \
-    "Swift toolchain: 6.2.0"
+    "Python runtime: 3.11.0"
   assert_preflight_toolchain_case \
-    "preflight rejects Python below 3.11" \
-    "3.10.13" \
+    "preflight reports uv version" \
+    "0.11.14" \
     "6.2.0" \
-    1 \
-    "Python 3.11 or newer is required (found 3.10.13)"
+    0 \
+    "uv toolchain: uv 0.11.14"
   assert_preflight_toolchain_case \
     "preflight rejects Swift below 6.2" \
-    "3.11.0" \
+    "0.11.14" \
     "6.1.2" \
     1 \
     "Swift 6.2 or newer is required (found 6.1.2)"
 
   toolchain_check_line="$(grep -n -m1 '^verify_toolchain_versions$' "$PREFLIGHT_SCRIPT" | cut -d: -f1)"
   project_work_line="$(grep -n -m1 '^cd "$PROJECT_DIR"$' "$PREFLIGHT_SCRIPT" | cut -d: -f1)"
-  if [[ -z "$toolchain_check_line" || -z "$project_work_line" \
-    || "$toolchain_check_line" -ge "$project_work_line" ]]; then
+  if [[ -z "$toolchain_check_line" || -z "$project_work_line" ||
+    "$toolchain_check_line" -ge "$project_work_line" ]]; then
     echo "FAIL: preflight must enforce toolchain minimums before repository work" >&2
     exit 1
   fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: preflight enforces Python 3.11+ and Swift 6.2+"
+  echo "PASS: preflight enforces uv and Swift 6.2+"
 }
 
 run_preflight_evidence_policy_case() {
@@ -1297,9 +1300,9 @@ run_preflight_evidence_policy_case() {
       report_preflight_evidence
     )
   )"
-  if [[ "$output" != *"class=working-source"* \
-    || "$output" != *"source_revision=$revision"* \
-    || "$output" != *"source_dirty=true"* ]]; then
+  if [[ "$output" != *"class=working-source"* ||
+    "$output" != *"source_revision=$revision"* ||
+    "$output" != *"source_dirty=true"* ]]; then
     echo "FAIL: preflight evidence must identify working source revision and dirty state" >&2
     printf '%s\n' "$output" >&2
     exit 1
@@ -1390,10 +1393,11 @@ SH
     cat "$lipo_invocation_log" >&2
     exit 1
   fi
-  expected_vtool_log="$(cat <<EOF
+  expected_vtool_log="$(
+    cat <<EOF
 vtool -arch arm64 -show-build $executable
 EOF
-)"
+  )"
   if [[ "$(<"$vtool_invocation_log")" != "$expected_vtool_log" ]]; then
     echo "FAIL: arm64 executable verifier did not inspect the build-version slice" >&2
     cat "$vtool_invocation_log" >&2
@@ -1405,8 +1409,8 @@ EOF
   output="$(bash "$EXECUTABLE_VERIFIER" "$executable_symlink" 2>&1)"
   status=$?
   set -e
-  if [[ "$status" -eq 0 \
-    || "$output" != *"executable regular non-symlink file"* ]]; then
+  if [[ "$status" -eq 0 ||
+    "$output" != *"executable regular non-symlink file"* ]]; then
     echo "FAIL: executable verifier accepts a symlinked build product" >&2
     printf '%s\n' "$output" >&2
     exit 1
@@ -1476,12 +1480,12 @@ EOF
     exit 1
   fi
 
-  if ! grep -Fq 'verify_release_executable.sh" "$BUILD_DIR/RillApp"' "$PREFLIGHT_SCRIPT" \
-    || ! grep -Fq '"$BUILD_DIR/RillSpeechWorker"' "$PREFLIGHT_SCRIPT" \
-    || ! grep -Fq 'verify_release_executable.sh" "$EXECUTABLE_SOURCE"' "$ASSEMBLER_SCRIPT" \
-    || ! grep -Fq '"$SPEECH_WORKER_SOURCE"' "$ASSEMBLER_SCRIPT" \
-    || ! grep -Fq '"$APP_BUNDLE/Contents/MacOS/$APP_NAME"' "$ASSEMBLER_SCRIPT" \
-    || ! grep -Fq '"$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"' \
+  if ! grep -Fq 'verify_release_executable.sh" "$BUILD_DIR/RillApp"' "$PREFLIGHT_SCRIPT" ||
+    ! grep -Fq '"$BUILD_DIR/RillSpeechWorker"' "$PREFLIGHT_SCRIPT" ||
+    ! grep -Fq 'verify_release_executable.sh" "$EXECUTABLE_SOURCE"' "$ASSEMBLER_SCRIPT" ||
+    ! grep -Fq '"$SPEECH_WORKER_SOURCE"' "$ASSEMBLER_SCRIPT" ||
+    ! grep -Fq '"$APP_BUNDLE/Contents/MacOS/$APP_NAME"' "$ASSEMBLER_SCRIPT" ||
+    ! grep -Fq '"$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"' \
       "$ASSEMBLER_SCRIPT"; then
     echo "FAIL: preflight and app assembly do not verify both release executables" >&2
     exit 1
@@ -1582,11 +1586,11 @@ run_local_build_identity_case() {
 }
 
 run_ci_prek_policy_case() {
-  if ! grep -Fq 'uses: j178/prek-action@e98a699c41eb69ab013a45817a0406469a748f8d # v2.0.5' "$CI_WORKFLOW" \
-    || ! grep -Fq 'prek-version: "0.3.10"' "$CI_WORKFLOW" \
-    || ! grep -Fq 'prek validate-config prek.toml' "$CI_WORKFLOW" \
-    || ! grep -Fq 'prek -c prek.toml run --all-files' "$CI_WORKFLOW" \
-    || ! grep -Fq 'run: scripts/swift_locked.sh test' "$CI_WORKFLOW"; then
+  if ! grep -Fq 'uses: j178/prek-action@e98a699c41eb69ab013a45817a0406469a748f8d # v2.0.5' "$CI_WORKFLOW" ||
+    ! grep -Fq 'prek-version: "0.3.10"' "$CI_WORKFLOW" ||
+    ! grep -Fq 'prek validate-config prek.toml' "$CI_WORKFLOW" ||
+    ! grep -Fq 'prek -c prek.toml run --all-files' "$CI_WORKFLOW" ||
+    ! grep -Fq 'run: scripts/swift_locked.sh test' "$CI_WORKFLOW"; then
     echo "FAIL: CI must install the reviewed prek action and version, then run the complete config" >&2
     exit 1
   fi
@@ -1612,25 +1616,12 @@ run_github_governance_policy_case() {
     echo "FAIL: GitHub governance must use Renovate without Dependabot or a mandatory PR body template" >&2
     exit 1
   fi
-  python3 - "$RENOVATE_CONFIG" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], encoding="utf-8") as config_file:
-    config = json.load(config_file)
-
-expected = {
-    "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-    "extends": ["github>zrr1999/renovate-config"],
-}
-if config != expected:
-    raise SystemExit("Renovate config must match the shared zrr1999 preset entrypoint")
-PY
+  uv run --script "$PROJECT_DIR/scripts/validate_renovate_config.py" "$RENOVATE_CONFIG"
   if ! grep -Fq "if: github.event.pull_request.user.login != 'renovate[bot]'" \
-    "$PR_CHECKS_WORKFLOW" \
-    || ! grep -Fq 'uses: zrr1999/zendev/actions/validate-title@v0.0.7' \
-      "$PR_CHECKS_WORKFLOW" \
-    || grep -Fq 'validate-body' "$PR_CHECKS_WORKFLOW"; then
+    "$PR_CHECKS_WORKFLOW" ||
+    ! grep -Fq 'uses: zrr1999/zendev/actions/validate-title@v0.0.7' \
+      "$PR_CHECKS_WORKFLOW" ||
+    grep -Fq 'validate-body' "$PR_CHECKS_WORKFLOW"; then
     echo "FAIL: PR checks must match the shared Renovate-aware title policy" >&2
     exit 1
   fi
@@ -1707,10 +1698,10 @@ run_notarized_output_symlink_policy_case() {
   status=$?
   set -e
 
-  if [[ "$status" -eq 0 \
-    || "$output" != *"仓库内发布输出必须位于 .artifacts/ 下"* \
-    || -e "$repository/release" \
-    || -e "$probe" ]]; then
+  if [[ "$status" -eq 0 ||
+    "$output" != *"仓库内发布输出必须位于 .artifacts/ 下"* ||
+    -e "$repository/release" ||
+    -e "$probe" ]]; then
     echo "FAIL: notarized release accepts output symlinked into its source tree" >&2
     printf '%s\n' "$output" >&2
     exit 1
@@ -1758,9 +1749,9 @@ run_release_snapshot_case() {
 
   snapshot_project="$(sed -n '1p' "$probe")"
   snapshot_commit="$(sed -n '2p' "$probe")"
-  if [[ "$snapshot_project" == "$repository" \
-    || -e "$snapshot_project" \
-    || "$snapshot_commit" != "$expected_commit" ]]; then
+  if [[ "$snapshot_project" == "$repository" ||
+    -e "$snapshot_project" ||
+    "$snapshot_commit" != "$expected_commit" ]]; then
     echo "FAIL: notarized release executes from a cleaned detached snapshot" >&2
     printf 'project=%s\ncommit=%s\n' "$snapshot_project" "$snapshot_commit" >&2
     exit 1
@@ -1926,8 +1917,8 @@ PLIST
   status=$?
   set -e
   output="$(<"$fixture/microphone-entitlement.out")"
-  if [[ "$status" -eq 0 \
-    || "$output" != *"com.apple.security.device.audio-input"* ]]; then
+  if [[ "$status" -eq 0 ||
+    "$output" != *"com.apple.security.device.audio-input"* ]]; then
     echo "FAIL: speech worker signature accepts the app's microphone entitlement" >&2
     printf '%s\n' "$output" >&2
     exit 1
@@ -1964,8 +1955,8 @@ DETAILS
   status=$?
   set -e
   output="$(<"$fixture/identity.out")"
-  if [[ "$status" -eq 0 \
-    || "$output" != *"签名标识不匹配"* ]]; then
+  if [[ "$status" -eq 0 ||
+    "$output" != *"签名标识不匹配"* ]]; then
     echo "FAIL: speech worker signature accepts a mismatched identifier or Team" >&2
     printf '%s\n' "$output" >&2
     exit 1
@@ -2002,19 +1993,19 @@ DETAILS
   status=$?
   set -e
   output="$(<"$fixture/team.out")"
-  if [[ "$status" -eq 0 \
-    || "$output" != *"TeamIdentifier"* ]]; then
+  if [[ "$status" -eq 0 ||
+    "$output" != *"TeamIdentifier"* ]]; then
     echo "FAIL: speech worker signature accepts a missing TeamIdentifier" >&2
     printf '%s\n' "$output" >&2
     exit 1
   fi
 
   if ! grep -Fq '"$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"' \
-    "$ASSEMBLER_SCRIPT" \
-    || ! grep -Fq 'ditto \' "$ASSEMBLER_SCRIPT" \
-    || ! grep -Fq 'codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"' \
-      "$RELEASE_SCRIPT" \
-    || ! grep -Fq 'codesign --verify --deep --strict --verbose=2 "$candidate"' \
+    "$ASSEMBLER_SCRIPT" ||
+    ! grep -Fq 'ditto \' "$ASSEMBLER_SCRIPT" ||
+    ! grep -Fq 'codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"' \
+      "$RELEASE_SCRIPT" ||
+    ! grep -Fq 'codesign --verify --deep --strict --verbose=2 "$candidate"' \
       "$RELEASE_SCRIPT"; then
     echo "FAIL: bundle assembly or release verification omits the nested speech worker" >&2
     exit 1
@@ -2028,18 +2019,18 @@ DETAILS
   outer_entitlements_line="$(grep -n -m1 -- '--entitlements "$ENTITLEMENTS"' \
     <<<"$main_flow" | cut -d: -f1)"
   verification_line="$(grep -n -m1 '^verify_signed_app$' <<<"$main_flow" | cut -d: -f1)"
-  if [[ -z "$mlx_bundle_signing_line" \
-    || -z "$helper_identifier_line" \
-    || -z "$outer_entitlements_line" \
-    || -z "$verification_line" \
-    || "$mlx_bundle_signing_line" -ge "$helper_identifier_line" \
-    || "$helper_identifier_line" -ge "$outer_entitlements_line" \
-    || "$outer_entitlements_line" -ge "$verification_line" ]]; then
+  if [[ -z "$mlx_bundle_signing_line" ||
+    -z "$helper_identifier_line" ||
+    -z "$outer_entitlements_line" ||
+    -z "$verification_line" ||
+    "$mlx_bundle_signing_line" -ge "$helper_identifier_line" ||
+    "$helper_identifier_line" -ge "$outer_entitlements_line" ||
+    "$outer_entitlements_line" -ge "$verification_line" ]]; then
     echo "FAIL: release must sign MLX resources and the helper before the outer app, then verify the nested graph" >&2
     exit 1
   fi
-  if sed -n '1,/^info "签名外层应用/p' <<<"$main_flow" \
-    | grep -Fq -- '--entitlements'; then
+  if sed -n '1,/^info "签名外层应用/p' <<<"$main_flow" |
+    grep -Fq -- '--entitlements'; then
     echo "FAIL: speech worker signing inherits the main app entitlement file" >&2
     exit 1
   fi
@@ -2109,7 +2100,8 @@ run_distribution_dmg_policy_case() {
     publish_distribution_dmg_sidecar
   )
 
-  expected_log="$(cat <<EOF
+  expected_log="$(
+    cat <<EOF
 codesign --force --timestamp --sign BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB $fixture/Rill.dmg
 codesign --verify --strict --verbose=2 $fixture/Rill.dmg
 hdiutil verify $fixture/Rill.dmg
@@ -2123,7 +2115,7 @@ codesign --verify --strict --verbose=2 $fixture/Rill.dmg
 hdiutil verify $fixture/Rill.dmg
 spctl --assess --type open --context context:primary-signature --verbose=4 $fixture/Rill.dmg
 EOF
-)"
+  )"
   if [[ "$(<"$invocation_log")" != "$expected_log" ]]; then
     echo "FAIL: final DMG is signed, submitted, stapled, and verified in order" >&2
     cat "$invocation_log" >&2
@@ -2132,8 +2124,8 @@ EOF
 
   expected_checksum="$(shasum -a 256 "$fixture/Rill.dmg" | awk '{ print tolower($1) }')"
   expected_sidecar_content="$expected_checksum  Rill.dmg"
-  if [[ ! -f "$fixture/Rill.dmg.sha256" \
-    || "$(<"$fixture/Rill.dmg.sha256")" != "$expected_sidecar_content" ]]; then
+  if [[ ! -f "$fixture/Rill.dmg.sha256" ||
+    "$(<"$fixture/Rill.dmg.sha256")" != "$expected_sidecar_content" ]]; then
     echo "FAIL: final DMG sidecar does not use the standard stable SHA-256 format" >&2
     [[ -e "$fixture/Rill.dmg.sha256" ]] && cat "$fixture/Rill.dmg.sha256" >&2
     exit 1
@@ -2169,18 +2161,18 @@ EOF
   sidecar_line="$(grep -n -m1 '^  publish_distribution_dmg_sidecar$' <<<"$main_flow" | cut -d: -f1)"
   publish_app_line="$(grep -n '^  publish_staged_app$' <<<"$main_flow" | tail -1 | cut -d: -f1)"
   publish_dmg_line="$(grep -n -m1 '^  publish_staged_dmg$' <<<"$main_flow" | cut -d: -f1)"
-  if [[ -z "$create_line" || -z "$finalize_line" || -z "$sidecar_line" \
-    || -z "$publish_app_line" || -z "$publish_dmg_line" \
-    || "$create_line" -ge "$finalize_line" \
-    || "$finalize_line" -ge "$sidecar_line" \
-    || "$sidecar_line" -ge "$publish_app_line" \
-    || "$publish_app_line" -ge "$publish_dmg_line" ]]; then
+  if [[ -z "$create_line" || -z "$finalize_line" || -z "$sidecar_line" ||
+    -z "$publish_app_line" || -z "$publish_dmg_line" ||
+    "$create_line" -ge "$finalize_line" ||
+    "$finalize_line" -ge "$sidecar_line" ||
+    "$sidecar_line" -ge "$publish_app_line" ||
+    "$publish_app_line" -ge "$publish_dmg_line" ]]; then
     echo "FAIL: the release flow must verify the DMG and sidecar before publishing staged artifacts" >&2
     exit 1
   fi
-  if [[ "$(grep -Ec '^[[:space:]]+write_sha256_sidecar ' "$RELEASE_SCRIPT")" -ne 1 ]] \
-    || ! grep -Fq 'prepare_release_output_staging' "$RELEASE_SCRIPT" \
-    || ! grep -Fq 'rm -f "$FINAL_DMG_PATH" "$FINAL_DMG_SHA256_PATH"' "$RELEASE_SCRIPT"; then
+  if [[ "$(grep -Ec '^[[:space:]]+write_sha256_sidecar ' "$RELEASE_SCRIPT")" -ne 1 ]] ||
+    ! grep -Fq 'prepare_release_output_staging' "$RELEASE_SCRIPT" ||
+    ! grep -Fq 'rm -f "$FINAL_DMG_PATH" "$FINAL_DMG_SHA256_PATH"' "$RELEASE_SCRIPT"; then
     echo "FAIL: only the verified DMG may publish a sidecar, and stale release pairs must fail closed early" >&2
     exit 1
   fi

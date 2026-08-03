@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ import unittest
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 
@@ -42,7 +47,7 @@ def lock_payload(*pins: tuple[str, str, str]) -> dict[str, object]:
     }
 
 
-def baseline_payload() -> dict[str, object]:
+def baseline_payload() -> dict[str, Any]:
     return {
         "schemaVersion": 2,
         "reviewedAt": "2026-07-01T00:00:00Z",
@@ -62,7 +67,7 @@ def baseline_payload() -> dict[str, object]:
     }
 
 
-def empty_policy_payload() -> dict[str, object]:
+def empty_policy_payload() -> dict[str, Any]:
     payload = baseline_payload()
     payload["reviewedAdvisories"] = []
     return payload
@@ -408,6 +413,24 @@ class DependencySecurityTests(unittest.TestCase):
         ):
             security.scan_live_osv(pins, transport=failing_transport)
 
+    def test_repository_python_scripts_use_uv_inline_metadata(self) -> None:
+        expected_header = (
+            "#!/usr/bin/env -S uv run --script\n"
+            "# /// script\n"
+            '# requires-python = ">=3.11"\n'
+            "# dependencies = []\n"
+            "# ///\n"
+        )
+        script_paths = sorted(SCRIPTS_DIR.glob("*.py")) + sorted(
+            (SCRIPTS_DIR / "tests").glob("*.py")
+        )
+        self.assertTrue(script_paths)
+        for script_path in script_paths:
+            with self.subTest(script=script_path.relative_to(PROJECT_DIR)):
+                self.assertTrue(
+                    script_path.read_text(encoding="utf-8").startswith(expected_header)
+                )
+
     def test_repository_wires_offline_policy_and_live_ci_as_separate_gates(
         self,
     ) -> None:
@@ -418,15 +441,17 @@ class DependencySecurityTests(unittest.TestCase):
         )
 
         self.assertIn(
-            'python3 "$SCRIPT_DIR/tests/dependency_security_test.py"', preflight
+            'uv run --script "$SCRIPT_DIR/tests/dependency_security_test.py"', preflight
         )
-        self.assertIn('python3 "$SCRIPT_DIR/check_dependency_security.py"', preflight)
+        self.assertIn(
+            'uv run --script "$SCRIPT_DIR/check_dependency_security.py"', preflight
+        )
         self.assertNotIn("--live-osv", preflight)
         self.assertIn('id = "dependency-security-policy"', prek)
         self.assertIn('id = "dependency-security-baseline"', prek)
         self.assertNotIn("--live-osv", prek)
         self.assertIn(
-            "python3 scripts/check_dependency_security.py --live-osv",
+            "uv run --script scripts/check_dependency_security.py --live-osv",
             ci,
         )
 

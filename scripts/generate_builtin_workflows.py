@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 
 from __future__ import annotations
 
@@ -6,7 +10,7 @@ import argparse
 import difflib
 import json
 import sys
-import tomllib
+import tomllib  # type: ignore[import-not-found]
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
@@ -191,9 +195,7 @@ def build_workflow(
     metadata: dict[str, str] = {"catalog": catalog}
     default_enabled = optional_bool(entry, "default_enabled", location)
     if default_enabled is not None:
-        metadata["workflow.default-enabled"] = (
-            "true" if default_enabled else "false"
-        )
+        metadata["workflow.default-enabled"] = "true" if default_enabled else "false"
     availability = optional_string(entry, "availability", location) or "active"
     validate_member(availability, SUPPORTED_AVAILABILITY, f"{location}.availability")
     if availability != "active":
@@ -227,9 +229,7 @@ def build_workflow(
     live_preview = optional_bool(entry, "live_preview", location)
     if live_preview is not None:
         metadata["recognizer.live_preview"] = "true" if live_preview else "false"
-    live_preview_placement = optional_string(
-        entry, "live_preview_placement", location
-    )
+    live_preview_placement = optional_string(entry, "live_preview_placement", location)
     if live_preview_placement is not None:
         validate_member(
             live_preview_placement,
@@ -361,10 +361,10 @@ def build_workflow(
             },
             "output": {
                 "actions": [
-                {
-                    "id": output_id,
-                    "configuration": output_configuration,
-                }
+                    {
+                        "id": output_id,
+                        "configuration": output_configuration,
+                    }
                 ],
                 "deliveryPolicy": {"strategy": delivery},
             },
@@ -528,7 +528,9 @@ def render_swift_workflow(workflow: Mapping[str, Any], indent: int) -> list[str]
         configuration = action["configuration"]
         if configuration:
             lines.append(f"{prefix}                OutputActionReference(")
-            lines.append(f"{prefix}                    id: {swift_string(action['id'])},")
+            lines.append(
+                f"{prefix}                    id: {swift_string(action['id'])},"
+            )
             lines.append(f"{prefix}                    configuration: [")
             lines.extend(render_swift_mapping(configuration, indent=indent + 24))
             lines.append(f"{prefix}                    ]")

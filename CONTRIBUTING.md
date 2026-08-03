@@ -8,18 +8,17 @@
 - Xcode 26 或更高版本，并选择包含 Swift 6.2+ 的 Command Line Tools；本地
   默认开发工具链为 Xcode 27
 - 与所选 Xcode build version 匹配的 Metal Toolchain；运行 `xcodebuild -downloadComponent MetalToolchain` 安装，`xcrun --toolchain XcodeDefault metal -v` 必须成功。若组件已安装但验证仍失败，请通过 `DEVELOPER_DIR` 临时选择一个组件可用的并存稳定版 Xcode
-- Python 3.11 或更高版本
+- [uv](https://docs.astral.sh/uv/guides/scripts/)；发布脚本通过 PEP 723 单文件脚本模式运行 Python 3.11 或更高版本
 - Git；运行完整发布预检还需要 macOS 自带的 `codesign`、`lipo`、`otool` 和磁盘映像工具
 - Gitleaks 8.30.1；仓库安装脚本会按当前 Mac 架构下载并校验固定 SHA-256
-- [just](https://just.systems/)、[uv](https://docs.astral.sh/uv/) 与
-  [prek](https://prek.j178.dev/)，用于运行与 CI 相同的仓库门禁
+- [just](https://just.systems/) 与 [prek](https://prek.j178.dev/)，用于运行与 CI 相同的仓库门禁
 
 先确认工具链，再使用锁定依赖的包装脚本：
 
 ```bash
 swift --version
 xcrun --toolchain XcodeDefault metal -v
-python3 --version
+uv run --script scripts/report_python_version.py
 scripts/swift_locked.sh build
 scripts/swift_locked.sh test --parallel
 ```
@@ -40,11 +39,11 @@ just ci
 package graph，且 SwiftPM 消费方不能关闭传递插件；只有上游发布修复或仓库引入
 受审 fork 后才升级这个底层 pin。
 
-`scripts/check_dependency_security.py` 只使用 Python 3.11+ 标准库。本地默认模式对照 `scripts/dependency_security_baseline.json` 做确定性离线检查；baseline 只记录已经复核来源和受影响版本边界的 advisory，删除或放宽已固定的 required policy 会失败。需要联网复核全部 exact lock commit 时运行：
+`scripts/check_dependency_security.py` 及其他发布辅助脚本使用 [uv 的单文件脚本模式](https://docs.astral.sh/uv/guides/scripts/)和 PEP 723 inline script metadata，只使用 Python 3.11+ 标准库。脚本顶部的 `requires-python = ">=3.11"` 会让 uv 自动选择或下载兼容的 Python；因此本机不需要单独安装或配置 `python3`。本地默认模式对照 `scripts/dependency_security_baseline.json` 做确定性离线检查；baseline 只记录已经复核来源和受影响版本边界的 advisory，删除或放宽已固定的 required policy 会失败。首次运行时，如果 uv 缓存中没有兼容的 Python，uv 可能需要联网下载解释器。需要联网复核全部 exact lock commit 时运行：
 
 ```bash
-python3 scripts/check_dependency_security.py
-python3 scripts/check_dependency_security.py --live-osv
+uv run --script scripts/check_dependency_security.py
+uv run --script scripts/check_dependency_security.py --live-osv
 ```
 
 live 模式固定调用 OSV 官方 `https://api.osv.dev/v1/querybatch`；响应按 lock 顺序映射，只有返回独立 `next_page_token` 的条目会继续分页。网络、重定向、JSON/字段、结果数量、重复 advisory 或分页异常都必须 fail-closed，任何 advisory 都会阻断。依赖变化必须同步锁文件测试与第三方 NOTICE 证据；baseline 变化必须保留受审来源并更新 policy tests，不能用 baseline 忽略 live 结果。
@@ -108,15 +107,15 @@ git diff --cached --check
 - 内建工作流以 `Sources/RillApp/Resources/BuiltinWorkflows.toml` 为事实源。修改后运行：
 
   ```bash
-  python3 scripts/generate_builtin_workflows.py
-  python3 scripts/generate_builtin_workflows.py --check
+  uv run --script scripts/generate_builtin_workflows.py
+  uv run --script scripts/generate_builtin_workflows.py --check
   ```
 
 - `THIRD_PARTY_NOTICES.md` 由锁文件和脚本内受审证据生成。依赖变化后运行：
 
   ```bash
-  python3 scripts/generate_third_party_notices.py
-  python3 scripts/generate_third_party_notices.py --check
+  uv run --script scripts/generate_third_party_notices.py
+  uv run --script scripts/generate_third_party_notices.py --check
   ```
 
 - App 图标的受审源文件是 `Resources/AppIcon/AppIcon-1024-routed-voice-cursor.png`；`scripts/render_app_icon_renditions.swift` 生成包含透明圆角和小尺寸光学调整的传统 macOS renditions，`scripts/generate_app_icon.sh` 再装配 ICNS。图标来源与受审 SHA-256 记录在同目录 `README.md` 中。`scripts/release.sh` 默认把本地产物写入被忽略的 `.artifacts/release/`；仓库根目录禁止出现 `Rill.app`、`Rill.dmg` 或 `Rill.dmg.sha256`，也不应提交临时装配目录、本地发布产物或 `.rill-release.*` 私有 staging。

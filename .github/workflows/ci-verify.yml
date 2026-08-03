@@ -52,6 +52,12 @@ jobs:
           install-only: true
           prek-version: "0.3.10"
 
+      - name: Install pinned uv
+        # v9.0.0
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: "0.11.14"
+
       - name: Install pinned Gitleaks
         run: |
           tool_dir="$RUNNER_TEMP/gitleaks-bin"
@@ -72,11 +78,12 @@ jobs:
 
       - name: Show toolchain versions
         run: |
+          uv --version
           swift --version
-          python3 --version
+          uv run --script scripts/report_python_version.py
 
       - name: Query live OSV for locked SwiftPM commits
-        run: python3 scripts/check_dependency_security.py --live-osv
+        run: uv run --script scripts/check_dependency_security.py --live-osv
 
       - name: Run preflight
         run: bash scripts/preflight.sh
@@ -90,6 +97,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Require every verification lane
-        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
+        # v1.2.2
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe
         with:
           jobs: ${{ toJSON(needs) }}

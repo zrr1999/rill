@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """Generate distributable notices from locked SwiftPM dependencies.
 
 The reviewed manifest records license evidence for every dependency. SwiftPM's
@@ -267,9 +271,7 @@ def load_manifest(path: Path) -> dict[str, dict[str, Any]]:
                     raise NoticeError(
                         f"Package {identity} has an invalid evidence line range"
                     )
-                checked_item.update(
-                    {"lineStart": line_start, "lineEnd": line_end}
-                )
+                checked_item.update({"lineStart": line_start, "lineEnd": line_end})
             checked_evidence.append(checked_item)
         if not has_license:
             raise NoticeError(f"Package {identity} must include license evidence")
@@ -440,6 +442,7 @@ def load_evidence(
     result: list[dict[str, Any]] = []
     for item in package["evidence"]:
         evidence_revision = package.get("evidenceRevision")
+        display_path = item["path"]
         if evidence_revision is None:
             resolved = resolve_reviewed_file(
                 root,
@@ -455,7 +458,9 @@ def load_evidence(
                     )
                 content = resolved.read_bytes()
             except OSError as error:
-                raise NoticeError(f"Cannot read evidence at {resolved}: {error}") from error
+                raise NoticeError(
+                    f"Cannot read evidence at {resolved}: {error}"
+                ) from error
             display_path = item["path"]
         else:
             try:
@@ -525,10 +530,8 @@ def load_evidence(
         try:
             text = content.decode("utf-8")
         except UnicodeDecodeError as error:
-            raise NoticeError(f"Evidence is not UTF-8: {resolved}") from error
-        result.append(
-            {**item, "path": display_path, "content": content, "text": text}
-        )
+            raise NoticeError(f"Evidence is not UTF-8: {display_path}") from error
+        result.append({**item, "path": display_path, "content": content, "text": text})
     return result
 
 
