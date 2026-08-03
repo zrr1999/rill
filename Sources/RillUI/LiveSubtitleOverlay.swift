@@ -20,8 +20,32 @@ public enum LiveSubtitleOverlayMetrics {
   public static let shadowInsets = EdgeInsets(top: 16, leading: 16, bottom: 20, trailing: 16)
 }
 
+enum LiveSubtitleSurfaceMaterial: Equatable {
+  case thin
+  case regular
+}
+
+struct LiveSubtitleSurfaceStyle: Equatable {
+  let material: LiveSubtitleSurfaceMaterial
+  let tintOpacity: Double
+
+  static func resolve(
+    reduceTransparency: Bool,
+    increasedContrast: Bool
+  ) -> LiveSubtitleSurfaceStyle {
+    if reduceTransparency {
+      return LiveSubtitleSurfaceStyle(material: .regular, tintOpacity: 0.28)
+    }
+    return LiveSubtitleSurfaceStyle(
+      material: .thin,
+      tintOpacity: increasedContrast ? 0.16 : 0.08
+    )
+  }
+}
+
 public struct LiveSubtitleOverlay: View {
   @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+  @Environment(\.accessibilityReduceTransparency) private var accessibilityReduceTransparency
   @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
   public let snapshot: LiveSubtitleSnapshot
@@ -68,12 +92,32 @@ public struct LiveSubtitleOverlay: View {
         compactBody
       }
     }
-    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    .background { surfaceBackground }
     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     .overlay(
       RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         .strokeBorder(borderColor, lineWidth: 0.75)
     )
+  }
+
+  @ViewBuilder
+  private var surfaceBackground: some View {
+    let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    let style = LiveSubtitleSurfaceStyle.resolve(
+      reduceTransparency: accessibilityReduceTransparency,
+      increasedContrast: colorSchemeContrast == .increased
+    )
+
+    switch style.material {
+    case .thin:
+      shape
+        .fill(.thinMaterial)
+        .overlay(shape.fill(surfaceTint.opacity(style.tintOpacity)))
+    case .regular:
+      shape
+        .fill(.regularMaterial)
+        .overlay(shape.fill(surfaceTint.opacity(style.tintOpacity)))
+    }
   }
 
   private var compactBody: some View {
@@ -311,6 +355,7 @@ public struct LiveSubtitleOverlay: View {
     snapshot.phase == .failed ? .red : Color(nsColor: .labelColor)
   }
 
+  private var surfaceTint: Color { Color(nsColor: .windowBackgroundColor) }
   private var primaryTextColor: Color { Color(nsColor: .labelColor) }
   private var secondaryTextColor: Color { Color(nsColor: .secondaryLabelColor) }
   private var borderColor: Color {

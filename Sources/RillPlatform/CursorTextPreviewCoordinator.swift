@@ -425,6 +425,16 @@ private final class SystemCursorTextPreviewTarget: CursorTextPreviewTarget, @unc
     }
 
     func isFocused() -> Bool {
+        var focusedAttributeValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(
+            element,
+            kAXFocusedAttribute as CFString,
+            &focusedAttributeValue
+        ) == .success,
+        let isFocused = focusedAttributeValue as? Bool {
+            return isFocused
+        }
+
         let systemWide = AXUIElementCreateSystemWide()
         var focusedValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(
@@ -465,14 +475,34 @@ private final class SystemCursorTextPreviewTarget: CursorTextPreviewTarget, @unc
     }
 
     func selectedText(in range: NSRange) -> String? {
-        guard let savedRange = selectedRange(), setSelectedRange(range) else { return nil }
+        guard range.location >= 0, range.length >= 0 else { return nil }
+
+        var cfRange = CFRange(location: range.location, length: range.length)
+        if let rangeValue = AXValueCreate(.cfRange, &cfRange) {
+            var rangedValue: CFTypeRef?
+            if AXUIElementCopyParameterizedAttributeValue(
+                element,
+                kAXStringForRangeParameterizedAttribute as CFString,
+                rangeValue,
+                &rangedValue
+            ) == .success,
+            let rangedText = rangedValue as? String {
+                return rangedText
+            }
+        }
+
+        if let fullText = Self.copyString(kAXValueAttribute as CFString, from: element),
+           let rangedText = Self.utf16Substring(fullText, in: range) {
+            return rangedText
+        }
+
+        guard selectedRange() == range else { return nil }
         var value: CFTypeRef?
-        let status = AXUIElementCopyAttributeValue(
+        guard AXUIElementCopyAttributeValue(
             element,
             kAXSelectedTextAttribute as CFString,
             &value
-        )
-        guard setSelectedRange(savedRange), status == .success else { return nil }
+        ) == .success else { return nil }
         return value as? String
     }
 
@@ -516,5 +546,17 @@ private final class SystemCursorTextPreviewTarget: CursorTextPreviewTarget, @unc
             return nil
         }
         return value as? String
+    }
+
+    private static func utf16Substring(_ text: String, in range: NSRange) -> String? {
+        let units = Array(text.utf16)
+        guard range.location >= 0,
+              range.length >= 0,
+              range.location + range.length <= units.count
+        else { return nil }
+        return String(
+            decoding: units[range.location..<(range.location + range.length)],
+            as: UTF16.self
+        )
     }
 }

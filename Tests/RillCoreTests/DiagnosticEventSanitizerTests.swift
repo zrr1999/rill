@@ -722,6 +722,33 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     }
   }
 
+  func testCursorPreviewDiagnosticRetainsOnlyClosedCoordinates() {
+    let event = DiagnosticEvent(
+      subsystem: .platform,
+      level: .warning,
+      event: "accessibility.cursor-preview",
+      message: "private target detail",
+      metadata: [
+        "resultCode": "blocked",
+        "textLengthBucket": "1-16",
+        "reason": "target-content-changed",
+        "targetText": "private text",
+      ]
+    )
+
+    let sanitized = DiagnosticEventSanitizer.sanitize(event)
+
+    XCTAssertEqual(sanitized.event, "accessibility.cursor-preview")
+    XCTAssertEqual(
+      sanitized.metadata,
+      [
+        "resultCode": "blocked",
+        "textLengthBucket": "1-16",
+        "reason": "target-content-changed",
+      ]
+    )
+  }
+
   func testSherpaRecognitionRecoveryDiagnosticsRetainOnlyClosedCoordinates() {
     for outcome in ["pending", "completed", "failed"] {
       let event = DiagnosticEvent(

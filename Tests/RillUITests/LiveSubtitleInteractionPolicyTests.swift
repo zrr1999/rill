@@ -4,6 +4,30 @@ import XCTest
 @testable import RillUI
 
 final class LiveSubtitleInteractionPolicyTests: XCTestCase {
+  func testSurfaceUsesComfortableTransparencyWithAccessibleFallbacks() {
+    XCTAssertEqual(
+      LiveSubtitleSurfaceStyle.resolve(
+        reduceTransparency: false,
+        increasedContrast: false
+      ),
+      LiveSubtitleSurfaceStyle(material: .thin, tintOpacity: 0.08)
+    )
+    XCTAssertEqual(
+      LiveSubtitleSurfaceStyle.resolve(
+        reduceTransparency: false,
+        increasedContrast: true
+      ),
+      LiveSubtitleSurfaceStyle(material: .thin, tintOpacity: 0.16)
+    )
+    XCTAssertEqual(
+      LiveSubtitleSurfaceStyle.resolve(
+        reduceTransparency: true,
+        increasedContrast: false
+      ),
+      LiveSubtitleSurfaceStyle(material: .regular, tintOpacity: 0.28)
+    )
+  }
+
   func testAudioCaptureActivityIsLimitedToRecordingLifecyclePhases() {
     for phase in [
       LiveSubtitlePhase.preparing,

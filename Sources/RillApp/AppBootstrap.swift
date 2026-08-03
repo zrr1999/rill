@@ -949,9 +949,16 @@ private enum AppContainerFactory {
     )
     let cursorTextPreviewCoordinator = CursorTextPreviewCoordinator(
       diagnosticReporter: { diagnostic in
+        let textLengthBucket = switch diagnostic.textLength {
+        case 0: "empty"
+        case 1...16: "1-16"
+        case 17...64: "17-64"
+        case 65...256: "65-256"
+        default: "257+"
+        }
         var metadata = [
           "resultCode": diagnostic.resultCode,
-          "textLength": String(diagnostic.textLength),
+          "textLengthBucket": textLengthBucket,
         ]
         if let reason = diagnostic.reason {
           metadata["reason"] = reason
