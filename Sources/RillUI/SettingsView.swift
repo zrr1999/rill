@@ -1421,21 +1421,22 @@ public struct SettingsView: View {
             }
 
             if model.localSpeechPreparationState == .preparing {
+              let preparationStage = LocalSpeechPreparationPresentation.stage(
+                displayedProgress: model.localSpeechPreparationProgress
+              )
               VStack(alignment: .leading, spacing: 6) {
                 HStack {
                   Text(
                     UIStrings.text(
-                      model.localSpeechPreparationProgress >= 1
-                        ? .localSpeechFinalizing
-                        : .localSpeechPreparing,
+                      preparationStage.localizedKey,
                       language: model.language
                     )
                   )
                   .foregroundStyle(.secondary)
                   Spacer()
-                  if model.localSpeechPreparationProgress < 1 {
+                  if let downloadFraction = preparationStage.downloadFraction {
                     Text(
-                      model.localSpeechPreparationProgress,
+                      downloadFraction,
                       format: .percent.precision(.fractionLength(0))
                     )
                     .font(.caption.monospacedDigit())
@@ -1448,13 +1449,13 @@ public struct SettingsView: View {
                   .controlSize(.small)
                   .accessibilityIdentifier("settings.local-speech.cancel-preparation")
                 }
-                if model.localSpeechPreparationProgress >= 1 {
-                  ProgressView()
-                    .controlSize(.small)
-                } else {
-                  ProgressView(value: model.localSpeechPreparationProgress, total: 1)
+                if let downloadFraction = preparationStage.downloadFraction {
+                  ProgressView(value: downloadFraction, total: 1)
                     .controlSize(.small)
                     .progressViewStyle(.linear)
+                } else {
+                  ProgressView()
+                    .controlSize(.small)
                 }
               }
             } else if model.localSpeechPreparationState == .ready {

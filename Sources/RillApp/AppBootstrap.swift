@@ -2112,23 +2112,14 @@ private enum AppModelFactory {
           let backend = try LocalSpeechModelCatalog.backend(for: modelIdentifier)
           return try await AppBootstrap.prepareLocalSpeechModel(
             prepareModel: {
-              guard let finalModelID = MLXAudioModelID(rawValue: modelIdentifier) else {
-                throw LocalSpeechModelSelectionError.unsupportedModelIdentifier(modelIdentifier)
-              }
-              let finalModelByteCount =
-                MLXAudioModelCatalog.descriptor(
-                  for: finalModelID
-                ).approximateDownloadByteCount
-              let initial = Progress(totalUnitCount: Int64(finalModelByteCount))
-              progressCallback(initial)
               try await providers.localSpeechRecognizer.prepareForUse(of: backend)
               let preparedModel = try await providers.mlxAudioSwiftRecognizer.prepareModel(
                 modelIdentifier: modelIdentifier,
-                downloadIfNeeded: settings.downloadIfNeeded
+                downloadIfNeeded: settings.downloadIfNeeded,
+                progress: { update in
+                  progressCallback(AppBootstrap.localSpeechPreparationProgress(update))
+                }
               )
-              let completed = Progress(totalUnitCount: Int64(finalModelByteCount))
-              completed.completedUnitCount = Int64(finalModelByteCount)
-              progressCallback(completed)
               return preparedModel
             }
           )

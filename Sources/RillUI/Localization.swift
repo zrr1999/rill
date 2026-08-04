@@ -318,6 +318,7 @@ public enum UIStrings {
     case localSpeechPrewarm
     case localSpeechPrepare
     case localSpeechPreparing
+    case localSpeechValidating
     case localSpeechFinalizing
     case localSpeechCancelPreparation
     case localSpeechPreparationReady
@@ -1333,12 +1334,16 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     simplifiedChinese: "准备本地模型"
   ),
   .localSpeechPreparing: .init(
-    english: "Downloading and preparing local model...",
-    simplifiedChinese: "正在下载并准备本地模型..."
+    english: "Downloading local model...",
+    simplifiedChinese: "正在下载本地模型..."
+  ),
+  .localSpeechValidating: .init(
+    english: "Download complete. Verifying model files...",
+    simplifiedChinese: "下载完成，正在校验模型文件..."
   ),
   .localSpeechFinalizing: .init(
-    english: "Download verified. Loading the local model...",
-    simplifiedChinese: "下载已验证，正在加载本地模型..."
+    english: "Loading the model and compiling first-run Metal resources...",
+    simplifiedChinese: "正在加载模型并编译首次运行所需的 Metal 资源..."
   ),
   .localSpeechCancelPreparation: .init(
     english: "Cancel",
