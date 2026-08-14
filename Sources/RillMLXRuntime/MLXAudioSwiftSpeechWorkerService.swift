@@ -791,11 +791,15 @@ actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
       throw MLXAudioSwiftRuntimeError.invalidAudio
     }
     let durationMillis = max(0, Int(output.totalTime * 1_000))
-    return MLXAudioSwiftInferenceOutput(
+    let result = MLXAudioSwiftInferenceOutput(
       text: output.text.trimmingCharacters(in: .whitespacesAndNewlines),
       detectedLanguage: output.language ?? resolvedLanguage,
       processingDurationMillis: durationMillis
     )
+    // The Sendable output owns no MLX buffers. Reclaim decode intermediates only
+    // after it is complete so cancellation and streaming model lifetimes remain intact.
+    clearMemoryCache()
+    return result
   }
 
   func release(modelID: String) async throws {
