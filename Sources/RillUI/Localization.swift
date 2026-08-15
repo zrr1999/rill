@@ -141,7 +141,7 @@ public enum UIStrings {
     case workflowPreparingAudio
     case workflowStopAndTranscribe
     case workflowTranscribing
-    case pasteTopOfStack
+    case deliverNextRecord
     case deliveryStack
     case latestOutput
     case eventFeed
@@ -196,6 +196,8 @@ public enum UIStrings {
     case copy
     case sidebarDashboard
     case sidebarWorkflows
+    case sidebarRecords
+    case recordCollections
     case sidebarClipboard
     case sidebarHistory
     case sidebarDiagnostics
@@ -252,9 +254,9 @@ public enum UIStrings {
     case clipboardEmpty
     case clipboardNoResults
     case clipboardSelectItem
-    case clipboardReplayWithWorkflow
+    case recordReplayWithWorkflow
     case clipboardReplaceWithWorkflow
-    case clipboardUseItem
+    case recordUseItem
     case clipboardDeleteItem
     case clipboardPinItem
     case clipboardUnpinItem
@@ -273,18 +275,18 @@ public enum UIStrings {
     case clipboardWorkflowSourceFallback
     case settingsLanguage
     case settingsLanguageDescription
-    case settingsClipboardPanel
-    case settingsClipboardPanelDescription
+    case settingsRecordPanel
+    case settingsRecordPanelDescription
     case settingsClipboardCaptureEnabled
     case settingsClipboardCaptureEnabledDescription
     case clipboardCaptureDisabledTitle
     case clipboardCaptureDisabledDescription
     case clipboardCaptureEnable
-    case clipboardPanelHotkeyRecord
-    case clipboardPanelHotkeyRecording
-    case clipboardPanelHotkeyReset
-    case clipboardPanelHotkeyHint
-    case clipboardPanelHotkeyDefault
+    case recordPanelHotkeyRecord
+    case recordPanelHotkeyRecording
+    case recordPanelHotkeyReset
+    case recordPanelHotkeyHint
+    case recordPanelHotkeyDefault
     case settingsStackDelivery
     case settingsStackDescription
     case settingsStackStatus
@@ -344,7 +346,7 @@ public enum UIStrings {
     case workflowRecognizer
     case workflowDestination
     case workflowTrigger
-    case workflowSourceGroup
+    case workflowSourceCollection
     case workflowTargetGroup
     case workflowGroupAction
     case workflowMoveStepUp
@@ -395,8 +397,8 @@ public enum UIStrings {
     switch (language, category) {
     case (.english, .interface): "Interface"
     case (.simplifiedChinese, .interface): "界面"
-    case (.english, .clipboard): "Clipboard"
-    case (.simplifiedChinese, .clipboard): "剪贴板"
+    case (.english, .systemClipboard): "System Clipboard"
+    case (.simplifiedChinese, .systemClipboard): "系统剪贴板"
     case (.english, .speech): "Speech"
     case (.simplifiedChinese, .speech): "语音"
     case (.english, .input): "Input"
@@ -462,12 +464,12 @@ public enum UIStrings {
     switch language {
     case .english:
       return itemCount == 1
-        ? "Delete this clipboard item?"
-        : "Delete these \(itemCount) merged clipboard items?"
+        ? "Delete this record?"
+        : "Delete these \(itemCount) merged records?"
     case .simplifiedChinese:
       return itemCount == 1
-        ? "删除这个剪贴板条目？"
-        : "删除这 \(itemCount) 个已合并的剪贴板条目？"
+        ? "删除这条记录？"
+        : "删除这 \(itemCount) 条已合并的记录？"
     }
   }
 
@@ -478,12 +480,12 @@ public enum UIStrings {
     switch language {
     case .english:
       return itemCount == 1
-        ? "This permanently removes the saved item. This action can't be undone."
-        : "This permanently removes all \(itemCount) saved items represented by this row. This action can't be undone."
+        ? "This permanently removes the saved record. This action can't be undone."
+        : "This permanently removes all \(itemCount) saved records represented by this row. This action can't be undone."
     case .simplifiedChinese:
       return itemCount == 1
-        ? "这会永久移除已保存的条目，且无法撤销。"
-        : "这会永久移除该行所代表的全部 \(itemCount) 个已保存条目，且无法撤销。"
+        ? "这会永久移除已保存的记录，且无法撤销。"
+        : "这会永久移除该行所代表的全部 \(itemCount) 条已保存记录，且无法撤销。"
     }
   }
 
@@ -595,13 +597,13 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     english: "Transcribing...",
     simplifiedChinese: "转写中..."
   ),
-  .pasteTopOfStack: .init(
-    english: "Paste Next Clipboard Item",
-    simplifiedChinese: "粘贴下一个剪贴板条目"
+  .deliverNextRecord: .init(
+    english: "Deliver Next Record",
+    simplifiedChinese: "投递下一条记录"
   ),
   .deliveryStack: .init(
-    english: "Clipboard Queue",
-    simplifiedChinese: "剪贴板队列"
+    english: "Record Queue",
+    simplifiedChinese: "记录队列"
   ),
   .latestOutput: .init(
     english: "Recent Results",
@@ -616,8 +618,8 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     simplifiedChinese: "暂无事件。运行工作流后，活动将显示在此处。"
   ),
   .stackEmpty: .init(
-    english: "Clipboard queue is empty",
-    simplifiedChinese: "剪贴板队列为空"
+    english: "Record queue is empty",
+    simplifiedChinese: "记录队列为空"
   ),
   .noCompletedOutput: .init(
     english: "No results yet",
@@ -825,6 +827,14 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   .sidebarWorkflows: .init(
     english: "Workflows",
     simplifiedChinese: "工作流"
+  ),
+  .sidebarRecords: .init(
+    english: "Records",
+    simplifiedChinese: "记录"
+  ),
+  .recordCollections: .init(
+    english: "Collections",
+    simplifiedChinese: "记录集"
   ),
   .sidebarClipboard: .init(
     english: "Clipboard",
@@ -1047,18 +1057,18 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     simplifiedChinese: "相似合并"
   ),
   .clipboardEmpty: .init(
-    english: "Clipboard history is empty.",
-    simplifiedChinese: "剪贴板历史为空。"
+    english: "No records yet.",
+    simplifiedChinese: "暂无记录。"
   ),
   .clipboardNoResults: .init(
-    english: "No clipboard items match this search.",
-    simplifiedChinese: "没有匹配当前搜索的剪贴板条目。"
+    english: "No records match this search.",
+    simplifiedChinese: "没有匹配当前搜索的记录。"
   ),
   .clipboardSelectItem: .init(
     english: "Select an item to preview it, run a workflow, or paste it.",
     simplifiedChinese: "选择一个条目即可预览、运行工作流或直接粘贴。"
   ),
-  .clipboardReplayWithWorkflow: .init(
+  .recordReplayWithWorkflow: .init(
     english: "Replay with Workflow",
     simplifiedChinese: "用工作流重放"
   ),
@@ -1066,7 +1076,7 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     english: "Replace with Workflow",
     simplifiedChinese: "用工作流覆盖"
   ),
-  .clipboardUseItem: .init(
+  .recordUseItem: .init(
     english: "Paste",
     simplifiedChinese: "粘贴"
   ),
@@ -1091,20 +1101,20 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     simplifiedChinese: "仅显示置顶条目"
   ),
   .clipboardSearch: .init(
-    english: "Search clipboard",
-    simplifiedChinese: "搜索剪贴板"
+    english: "Search records",
+    simplifiedChinese: "搜索记录"
   ),
   .clipboardClearSearch: .init(
-    english: "Clear clipboard search",
-    simplifiedChinese: "清除剪贴板搜索"
+    english: "Clear record search",
+    simplifiedChinese: "清除记录搜索"
   ),
   .clipboardNoPinnedItems: .init(
-    english: "No pinned clipboard items match the current filters.",
-    simplifiedChinese: "没有匹配当前筛选条件的置顶剪贴板条目。"
+    english: "No pinned records match the current filters.",
+    simplifiedChinese: "没有匹配当前筛选条件的置顶记录。"
   ),
   .clipboardSection: .init(
-    english: "Clipboard section",
-    simplifiedChinese: "剪贴板页面区域"
+    english: "Records section",
+    simplifiedChinese: "记录页面区域"
   ),
   .clipboardAddTag: .init(
     english: "Add tag",
@@ -1142,11 +1152,11 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     english: "Switch the app interface between English and Simplified Chinese.",
     simplifiedChinese: "在英文和简体中文之间切换应用界面。"
   ),
-  .settingsClipboardPanel: .init(
+  .settingsRecordPanel: .init(
     english: "Clipboard Capture & History",
     simplifiedChinese: "剪贴板捕获与历史"
   ),
-  .settingsClipboardPanelDescription: .init(
+  .settingsRecordPanelDescription: .init(
     english:
       "Turning capture off stops new automatic captures and the global panel shortcut. Existing "
       + "history remains available from the main window.",
@@ -1176,37 +1186,37 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     english: "Turn On Capture",
     simplifiedChinese: "开启捕获"
   ),
-  .clipboardPanelHotkeyRecord: .init(
+  .recordPanelHotkeyRecord: .init(
     english: "Record Shortcut",
     simplifiedChinese: "录制快捷键"
   ),
-  .clipboardPanelHotkeyRecording: .init(
+  .recordPanelHotkeyRecording: .init(
     english: "Press shortcut...",
     simplifiedChinese: "请按下快捷键…"
   ),
-  .clipboardPanelHotkeyReset: .init(
+  .recordPanelHotkeyReset: .init(
     english: "Use Double Command",
     simplifiedChinese: "改回双击 Command"
   ),
-  .clipboardPanelHotkeyHint: .init(
+  .recordPanelHotkeyHint: .init(
     english: "Use a non-system shortcut with at least two modifiers. Press Esc to cancel.",
     simplifiedChinese: "请使用至少包含两个修饰键且不与系统冲突的快捷键。按 Esc 取消。"
   ),
-  .clipboardPanelHotkeyDefault: .init(
+  .recordPanelHotkeyDefault: .init(
     english: "Double Command",
     simplifiedChinese: "双击 Command"
   ),
   .settingsStackDelivery: .init(
-    english: "Clipboard Delivery",
-    simplifiedChinese: "剪贴板投递"
+    english: "Record Delivery",
+    simplifiedChinese: "记录投递"
   ),
   .settingsStackDescription: .init(
     english:
-      "Workflow output and external clipboard copies flow into clipboard groups. Each app belongs "
-      + "to one group, every group keeps an independent stack/queue/list state, and the active "
-      + "routed item is mirrored to the clipboard.",
+      "Workflow output and external system clipboard copies flow into record collections. Capture "
+      + "and delivery routes can target multiple collections, while each collection controls "
+      + "selection and consumption independently.",
     simplifiedChinese:
-      "工作流输出和外部复制的内容都会进入剪贴板分组。每个应用都归属于唯一分组，每个分组都有独立的栈 / 队列 / 列表状态，当前路由命中的条目会被镜像到系统剪贴板。"
+      "工作流输出和外部系统剪切板内容都会进入记录集。采集与投递路由可关联多个记录集，每个记录集独立控制选取与消费策略。"
   ),
   .settingsStackStatus: .init(
     english: "Current routed item count:",
@@ -1386,8 +1396,8 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     simplifiedChinese: "可用工作流及其生产管线配置。"
   ),
   .stackPasteRequiresAccessibility: .init(
-    english: "Grant Accessibility access before injecting clipboard items.",
-    simplifiedChinese: "请先授予辅助功能权限，再执行剪贴板条目注入。"
+    english: "Grant Accessibility access before delivering records.",
+    simplifiedChinese: "请先授予辅助功能权限，再投递记录。"
   ),
   .diagnosticsTitle: .init(
     english: "Diagnostics",
@@ -1447,9 +1457,9 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     english: "Trigger",
     simplifiedChinese: "触发方式"
   ),
-  .workflowSourceGroup: .init(
-    english: "Source Group",
-    simplifiedChinese: "来源组"
+  .workflowSourceCollection: .init(
+    english: "Source Collection",
+    simplifiedChinese: "来源记录集"
   ),
   .workflowTargetGroup: .init(
     english: "Target Group",

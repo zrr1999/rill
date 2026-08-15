@@ -69,7 +69,9 @@ public actor SessionCoordinator {
     private let actionRegistry: OutputActionRegistry
     private let workflowPlanCompiler: WorkflowPlanCompiler
     private let candidateResolver: CandidateResolver
-    private let deliveryStack: DeliveryStack
+    private let recordStore: RecordStore
+    private let recordDeliveryCoordinator: RecordDeliveryCoordinator
+    private let recordDeliverySettlementTaskOwner: RecordDeliverySettlementTaskOwner
     private let eventBus: EventBus
     private let diagnostics: DiagnosticsRecorder?
     private let runReceiptRecorder: WorkflowRunReceiptRecorder?
@@ -81,7 +83,7 @@ public actor SessionCoordinator {
     ) async -> SpeechRecognitionRequestOptions
     private let recognitionTimeoutPolicy: RecognitionTimeoutPolicy
     private let recognitionTimeoutExecutor: RecognitionTimeoutExecutor
-    private let defaultStackDeliveryActionID: String
+    private let defaultRecordDeliveryActionID: String
 
     private struct RunSession: Sendable {
         let runID: UUID
@@ -105,7 +107,8 @@ public actor SessionCoordinator {
         transformerRegistry: TextTransformerRegistry,
         actionRegistry: OutputActionRegistry,
         candidateResolver: CandidateResolver,
-        deliveryStack: DeliveryStack,
+        recordStore: RecordStore = RecordStore(),
+        recordDeliveryCoordinator: RecordDeliveryCoordinator? = nil,
         eventBus: EventBus,
         diagnostics: DiagnosticsRecorder? = nil,
         runReceiptRecorder: WorkflowRunReceiptRecorder? = nil,
@@ -119,7 +122,7 @@ public actor SessionCoordinator {
         recognitionTimeoutPolicy: RecognitionTimeoutPolicy = .standard,
         recognitionAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner =
             ManagedTemporaryAudioCleanupOwner(),
-        defaultStackDeliveryActionID: String = "clipboard.copy"
+        defaultRecordDeliveryActionID: String = "system-clipboard.copy"
     ) {
         self.privacyContextProvider = privacyContextProvider
         self.recognizerRegistry = recognizerRegistry
@@ -131,7 +134,13 @@ public actor SessionCoordinator {
             actionRegistry: actionRegistry
         )
         self.candidateResolver = candidateResolver
-        self.deliveryStack = deliveryStack
+        self.recordStore = recordStore
+        let resolvedRecordDeliveryCoordinator =
+            recordDeliveryCoordinator ?? RecordDeliveryCoordinator(store: recordStore)
+        self.recordDeliveryCoordinator = resolvedRecordDeliveryCoordinator
+        self.recordDeliverySettlementTaskOwner = RecordDeliverySettlementTaskOwner(
+            deliveryCoordinator: resolvedRecordDeliveryCoordinator
+        )
         self.eventBus = eventBus
         self.diagnostics = diagnostics
         self.runReceiptRecorder = runReceiptRecorder
@@ -148,11 +157,15 @@ public actor SessionCoordinator {
         self.recognitionTimeoutExecutor = RecognitionTimeoutExecutor(
             cleanupOwner: recognitionAudioCleanupOwner
         )
-        self.defaultStackDeliveryActionID = defaultStackDeliveryActionID
+        self.defaultRecordDeliveryActionID = defaultRecordDeliveryActionID
     }
 
     public func currentState() -> State {
         state
+    }
+
+    public func shutdownRecordDeliverySettlements() async {
+        await recordDeliverySettlementTaskOwner.shutdown()
     }
 
     /// Reserves the coordinator before any receipt, registry, or provider
@@ -584,18 +597,45 @@ public extension SessionCoordinator {
         }
     }
 
-    func deliverTopOfStack(actionID: String? = nil) async {
-        await deliverNextClipboardItem(for: ClipboardRouteContext(), actionID: actionID)
+    func deliverNextRecord(actionID: String? = nil) async {
+        await deliverNextRecord(for: FocusedApplicationIdentity(), actionID: actionID)
     }
 
-    func deliverNextClipboardItem(
-        for routeContext: ClipboardRouteContext,
+    func deliverNextRecord(
+        for targetApplication: FocusedApplicationIdentity,
         actionID: String? = nil
     ) async {
-        let selectedActionID = actionID ?? defaultStackDeliveryActionID
-        let workflow = WorkflowDefinition(
-            name: "Stack Delivery",
-            titleKey: .stackDelivery,
+        await deliverRecord(
+            for: targetApplication,
+            actionID: actionID,
+            exactSubject: nil,
+            expectedTarget: nil
+        )
+    }
+
+    func deliverRecord(
+        matching subject: RecordDeliverySubject,
+        to target: FocusedApplicationTargetIdentity,
+        actionID: String? = nil
+    ) async {
+        await deliverRecord(
+            for: FocusedApplicationIdentity(bundleIdentifier: target.bundleIdentifier),
+            actionID: actionID,
+            exactSubject: subject,
+            expectedTarget: target
+        )
+    }
+
+    private func deliverRecord(
+        for targetApplication: FocusedApplicationIdentity,
+        actionID: String?,
+        exactSubject: RecordDeliverySubject?,
+        expectedTarget: FocusedApplicationTargetIdentity?
+    ) async {
+        var selectedActionID = actionID ?? defaultRecordDeliveryActionID
+        var workflow = WorkflowDefinition(
+            name: "Record Delivery",
+            titleKey: .recordDelivery,
             plan: WorkflowPlan(
                 setup: WorkflowSetupPhase(),
                 process: WorkflowProcessPhase(),
@@ -603,19 +643,22 @@ public extension SessionCoordinator {
                     actions: [OutputActionReference(id: selectedActionID)]
                 )
             ),
-            ui: WorkflowUIConfig(symbolName: "square.stack.3d.up.fill", accentColorName: "indigo")
+            ui: WorkflowUIConfig(
+                symbolName: WorkflowUISymbol.squareStack3dUpFill.rawValue,
+                accentColorName: "indigo"
+            )
         )
-        let stackWorkflow = workflow.presentation
+        let recordDeliveryWorkflow = workflow.presentation
         let runID = UUID()
         let receiptRegistration = await beginRunReceipt(
             runID: runID,
             workflowID: workflow.id,
-            trigger: .stackDelivery
+            trigger: .recordDelivery
         )
         if receiptRegistration == .duplicate {
             await publishFailure(
                 runID: runID,
-                workflow: stackWorkflow,
+                workflow: recordDeliveryWorkflow,
                 message: SessionError.alreadyRunning.localizedDescription
             )
             return
@@ -630,7 +673,7 @@ public extension SessionCoordinator {
             )
             await publishFailure(
                 runID: runID,
-                workflow: stackWorkflow,
+                workflow: recordDeliveryWorkflow,
                 message: SessionError.alreadyRunning.localizedDescription
             )
             return
@@ -639,24 +682,128 @@ public extension SessionCoordinator {
         state = .delivering(runID)
         defer { state = .idle }
 
-        guard let lease = await deliveryStack.beginDeliveryLease(for: routeContext) else {
+        let preparation: RecordDeliveryCoordinator.Preparation
+        do {
+            if let exactSubject {
+                let sink = Self.sinkIdentity(for: selectedActionID) ?? .focusedApplication
+                let lease = try await recordDeliveryCoordinator.beginDelivery(
+                    matching: exactSubject,
+                    sink: sink
+                )
+                preparation = .init(lease: lease, route: nil)
+            } else {
+                preparation = try await recordDeliveryCoordinator.beginDelivery(
+                    to: targetApplication,
+                    requestedSink: Self.sinkIdentity(for: selectedActionID)
+                )
+            }
+        } catch let error as RecordStoreError
+        where error == .membershipUnavailable || error == .manualSelectionRequired {
             await finishRunReceipt(
                 runID: runID,
                 isActive: receiptIsActive,
-                termination: .skipped(reason: .itemMissing)
+                termination: .skipped(reason: .recordMissing)
+            )
+            return
+        } catch {
+            await finishRunReceipt(
+                runID: runID,
+                isActive: receiptIsActive,
+                termination: .failed(stage: .delivering, code: .processing)
+            )
+            await publishFailure(
+                runID: runID,
+                workflow: recordDeliveryWorkflow,
+                message: HistoryFailureSanitizer.genericMessage
             )
             return
         }
-        let item = lease.item
+        let route = preparation.route
+        if let route {
+            selectedActionID = Self.actionID(for: route.sink)
+            workflow.plan.output.actions = [OutputActionReference(id: selectedActionID)]
+        }
+        let deliverySink = preparation.sink
+        let lease = preparation.lease
+        let recordText = lease.record.payload.textValue ?? ""
+        if deliverySink == .recordCollection {
+            guard let collectionID = route?.sinkCollectionID else {
+                try? await recordDeliveryCoordinator.failDelivery(lease.id)
+                await finishRunReceipt(
+                    runID: runID,
+                    isActive: receiptIsActive,
+                    termination: .failed(stage: .delivering, code: .configuration)
+                )
+                return
+            }
+            await recordStage(.delivering, runID: runID, workflow: recordDeliveryWorkflow)
+            do {
+                if receiptIsActive, let runReceiptRecorder {
+                    try await runReceiptRecorder.beginAction(runID: runID, actionIndex: 0)
+                }
+                _ = try await recordStore.addMembership(
+                    recordID: lease.record.id,
+                    to: collectionID
+                )
+                await finishRecordedAction(
+                    runID: runID,
+                    actionIndex: 0,
+                    result: .storedRecord,
+                    receiptIsActive: receiptIsActive
+                )
+                await eventBus.publish(.actionExecuted(actionID: selectedActionID, result: .storedRecord))
+                await recordAction(
+                    runID: runID,
+                    workflow: workflow.presentation,
+                    actionID: selectedActionID,
+                    result: .storedRecord
+                )
+                _ = try await recordDeliveryCoordinator.completeDelivery(lease.id)
+                await finishRunReceipt(
+                    runID: runID,
+                    isActive: receiptIsActive,
+                    termination: .completed
+                )
+                await eventBus.publish(
+                    .runCompleted(
+                        WorkflowRunSummary(
+                            runID: runID,
+                            workflowID: workflow.id,
+                            workflow: workflow.presentation,
+                            trigger: .recordDelivery,
+                            finalText: recordText
+                        )
+                    )
+                )
+                await recordStage(.completed, runID: runID, workflow: workflow.presentation)
+            } catch {
+                await finishRecordedAction(
+                    runID: runID,
+                    actionIndex: 0,
+                    result: .failed,
+                    receiptIsActive: receiptIsActive
+                )
+                try? await recordDeliveryCoordinator.failDelivery(lease.id)
+                await finishRunReceipt(
+                    runID: runID,
+                    isActive: receiptIsActive,
+                    termination: .failed(stage: .delivering, code: .processing)
+                )
+                await recordStage(.failed, runID: runID, workflow: workflow.presentation)
+                await publishFailure(
+                    runID: runID,
+                    workflow: workflow.presentation,
+                    message: error.localizedDescription
+                )
+            }
+            return
+        }
         state = .delivering(runID)
-        await recordStage(.delivering, runID: runID, workflow: stackWorkflow)
+        await recordStage(.delivering, runID: runID, workflow: recordDeliveryWorkflow)
 
         guard let action = actionRegistry.action(for: selectedActionID) else {
-            await deliveryStack.failDelivery(
-                leaseID: lease.leaseID,
-                error: SessionError.missingAction(selectedActionID).localizedDescription
-            )
-            await recordStage(.failed, runID: runID, workflow: stackWorkflow)
+            try? await recordDeliveryCoordinator.failDelivery(lease.id)
+            await recordStage(.failed, runID: runID, workflow: recordDeliveryWorkflow)
             await finishRunReceipt(
                 runID: runID,
                 isActive: receiptIsActive,
@@ -664,7 +811,7 @@ public extension SessionCoordinator {
             )
             await publishFailure(
                 runID: runID,
-                workflow: stackWorkflow,
+                workflow: recordDeliveryWorkflow,
                 message: SessionError.missingAction(selectedActionID).localizedDescription
             )
             state = .idle
@@ -672,53 +819,115 @@ public extension SessionCoordinator {
         }
 
         let context = await privacyContextProvider()
+        if let expectedTarget, !expectedTarget.matches(context.focus) {
+            try? await recordDeliveryCoordinator.failDelivery(lease.id)
+            await finishRunReceipt(
+                runID: runID,
+                isActive: receiptIsActive,
+                termination: .failed(stage: .delivering, code: .processing)
+            )
+            await recordStage(.failed, runID: runID, workflow: workflow.presentation)
+            await publishFailure(
+                runID: runID,
+                workflow: workflow.presentation,
+                message: HistoryFailureSanitizer.genericMessage
+            )
+            return
+        }
         let actionContext = ActionContext(
             runID: runID,
             workflow: workflow,
             contextSnapshot: context,
-            recognitionResult: RecognitionResult(rawText: item.text, bestText: item.text),
-            finalText: item.text,
-            startedAt: item.createdAt,
+            recognitionResult: RecognitionResult(rawText: recordText, bestText: recordText),
+            finalText: recordText,
+            startedAt: lease.record.createdAt,
             finishedAt: Date()
         )
 
         do {
-            let result = try await executeRecordedAction(
-                action,
-                actionID: selectedActionID,
-                actionIndex: 0,
-                text: item.text,
-                context: actionContext,
-                runID: runID,
-                workflow: workflow.presentation,
-                receiptIsActive: receiptIsActive
-            )
             let deliverySummary: DeliveryExecutionSummary
-            switch result {
-            case .injected, .copiedToClipboard, .pushedToStack, .externalOutput:
-                deliverySummary = DeliveryExecutionSummary(successfulActionCount: 1)
-            case .skipped:
-                deliverySummary = DeliveryExecutionSummary(skippedActionCount: 1)
-            case .failed(let message):
-                throw OutputActionExecutionFailure(
-                    message: message,
-                    successfulActionCount: 0
+            var committedOutputFailure: CommittedOutputFailure?
+            do {
+                let result = try await executeRecordedAction(
+                    action,
+                    actionID: selectedActionID,
+                    actionIndex: 0,
+                    text: recordText,
+                    recordDraft: RecordDraft(
+                        payload: lease.record.payload,
+                        provenance: lease.record.provenance,
+                        createdAt: lease.record.createdAt
+                    ),
+                    context: actionContext,
+                    runID: runID,
+                    workflow: workflow.presentation,
+                    receiptIsActive: receiptIsActive
                 )
+                switch result {
+                case .injected, .copiedToClipboard, .storedRecord, .externalOutput:
+                    deliverySummary = DeliveryExecutionSummary(successfulActionCount: 1)
+                case .skipped:
+                    deliverySummary = DeliveryExecutionSummary(skippedActionCount: 1)
+                case .failed(let message):
+                    throw OutputActionExecutionFailure(
+                        message: message,
+                        successfulActionCount: 0
+                    )
+                }
+            } catch let failure as CommittedOutputFailure {
+                // The irreversible action completed even though its local
+                // recovery work did not. Settle the Record as delivered and
+                // preserve a fixed do-not-repeat failure for the user.
+                deliverySummary = DeliveryExecutionSummary(successfulActionCount: 1)
+                committedOutputFailure = failure
+            }
+            do {
+                _ = try await recordDeliveryCoordinator.completeDelivery(lease.id)
+            } catch where deliverySummary.successfulActionCount > 0 {
+                await recordDeliverySettlementTaskOwner.schedule(leaseID: lease.id)
+                await finishRunReceipt(
+                    runID: runID,
+                    isActive: receiptIsActive,
+                    termination: .partiallyCompleted(code: .processing)
+                )
+                await recordStage(.failed, runID: runID, workflow: workflow.presentation)
+                await publishFailure(
+                    runID: runID,
+                    workflow: workflow.presentation,
+                    message: committedOutputFailure?.message
+                        ?? Self.committedOutputSettlementMessage
+                )
+                return
+            } catch {
+                throw error
+            }
+            if let committedOutputFailure {
+                await finishRunReceipt(
+                    runID: runID,
+                    isActive: receiptIsActive,
+                    termination: .partiallyCompleted(code: .processing)
+                )
+                await recordStage(.failed, runID: runID, workflow: workflow.presentation)
+                await publishFailure(
+                    runID: runID,
+                    workflow: workflow.presentation,
+                    message: committedOutputFailure.message
+                )
+                return
             }
             await finishRunReceipt(
                 runID: runID,
                 isActive: receiptIsActive,
                 termination: deliverySummary.terminalReceipt
             )
-            await deliveryStack.completeDelivery(leaseID: lease.leaseID)
             await eventBus.publish(
                 .runCompleted(
                     WorkflowRunSummary(
                         runID: runID,
                         workflowID: workflow.id,
                         workflow: workflow.presentation,
-                        trigger: .stackDelivery,
-                        finalText: item.text
+                        trigger: .recordDelivery,
+                        finalText: recordText
                     )
                 )
             )
@@ -735,7 +944,7 @@ public extension SessionCoordinator {
                     isActive: receiptIsActive,
                     termination: cancellation.termination
                 )
-                await deliveryStack.failDelivery(leaseID: lease.leaseID, error: nil)
+                try? await recordDeliveryCoordinator.cancelDelivery(lease.id)
                 await publishCancellation(cancellation)
                 return
             }
@@ -748,427 +957,7 @@ public extension SessionCoordinator {
                     code: .processing
                 )
             )
-            await deliveryStack.failDelivery(leaseID: lease.leaseID, error: error.localizedDescription)
-            await recordStage(.failed, runID: runID, workflow: workflow.presentation)
-            await publishFailure(runID: runID, workflow: workflow.presentation, message: error.localizedDescription)
-            state = .idle
-        }
-    }
-
-    func deliverClipboardItem(
-        subject: ClipboardItemDryRunSubject,
-        actionID: String? = nil,
-        contextSnapshot: ContextSnapshot
-    ) async {
-        let selectedActionID = actionID ?? defaultStackDeliveryActionID
-        let workflow = WorkflowDefinition(
-            name: "Clipboard Item",
-            plan: WorkflowPlan(
-                setup: WorkflowSetupPhase(),
-                process: WorkflowProcessPhase(),
-                output: WorkflowOutputPhase(
-                    actions: [OutputActionReference(id: selectedActionID)]
-                )
-            ),
-            ui: WorkflowUIConfig(symbolName: "doc.on.clipboard", accentColorName: "indigo")
-        )
-        let clipboardWorkflow = workflow.presentation
-        let runID = UUID()
-        let receiptRegistration = await beginRunReceipt(
-            runID: runID,
-            workflowID: workflow.id,
-            trigger: .clipboardUse
-        )
-        if receiptRegistration == .duplicate {
-            await publishFailure(
-                runID: runID,
-                workflow: clipboardWorkflow,
-                message: SessionError.alreadyRunning.localizedDescription
-            )
-            return
-        }
-        let receiptIsActive = receiptRegistration == .active
-
-        guard case .idle = state else {
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: .skipped(reason: .busy)
-            )
-            await publishFailure(
-                runID: runID,
-                workflow: clipboardWorkflow,
-                message: SessionError.alreadyRunning.localizedDescription
-            )
-            return
-        }
-
-        state = .delivering(runID)
-        defer { state = .idle }
-
-        let itemLease: ClipboardItemUseLease
-        do {
-            itemLease = try await deliveryStack.beginClipboardItemUseLease(
-                matching: subject
-            )
-        } catch let error as ClipboardItemUseLeaseError {
-            let reason: WorkflowRunSkipCode = error == .sourceUnavailable
-                ? .itemMissing
-                : .itemChanged
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: .skipped(reason: reason)
-            )
-            await publishFailure(
-                runID: runID,
-                workflow: clipboardWorkflow,
-                message: error.localizedDescription
-            )
-            return
-        } catch {
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: .skipped(reason: .itemChanged)
-            )
-            await publishFailure(
-                runID: runID,
-                workflow: clipboardWorkflow,
-                message: "The selected clipboard item could not be claimed safely."
-            )
-            return
-        }
-        let item = itemLease.item
-
-        state = .delivering(runID)
-        await recordStage(.delivering, runID: runID, workflow: clipboardWorkflow)
-
-        guard let action = actionRegistry.action(for: selectedActionID) else {
-            await deliveryStack.failDelivery(leaseID: itemLease.leaseID, error: nil)
-            await recordStage(.failed, runID: runID, workflow: clipboardWorkflow)
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: .failed(stage: .delivering, code: .configuration)
-            )
-            await publishFailure(
-                runID: runID,
-                workflow: clipboardWorkflow,
-                message: SessionError.missingAction(selectedActionID).localizedDescription
-            )
-            state = .idle
-            return
-        }
-
-        let actionContext = ActionContext(
-            runID: runID,
-            workflow: workflow,
-            contextSnapshot: contextSnapshot,
-            recognitionResult: RecognitionResult(rawText: item.text, bestText: item.text),
-            finalText: item.text,
-            startedAt: item.createdAt,
-            finishedAt: Date()
-        )
-
-        do {
-            let result = try await executeRecordedAction(
-                action,
-                actionID: selectedActionID,
-                actionIndex: 0,
-                text: item.text,
-                context: actionContext,
-                runID: runID,
-                workflow: workflow.presentation,
-                receiptIsActive: receiptIsActive
-            )
-            let deliverySummary: DeliveryExecutionSummary
-            switch result {
-            case .injected, .copiedToClipboard, .pushedToStack, .externalOutput:
-                deliverySummary = DeliveryExecutionSummary(successfulActionCount: 1)
-            case .skipped:
-                deliverySummary = DeliveryExecutionSummary(skippedActionCount: 1)
-            case .failed(let message):
-                throw OutputActionExecutionFailure(
-                    message: message,
-                    successfulActionCount: 0
-                )
-            }
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: deliverySummary.terminalReceipt
-            )
-            await deliveryStack.completeDelivery(leaseID: itemLease.leaseID)
-            await eventBus.publish(
-                .runCompleted(
-                    WorkflowRunSummary(
-                        runID: runID,
-                        workflowID: workflow.id,
-                        workflow: workflow.presentation,
-                        trigger: .clipboardUse,
-                        finalText: item.text
-                    )
-                )
-            )
-            await recordStage(.completed, runID: runID, workflow: workflow.presentation)
-            state = .idle
-        } catch {
-            await deliveryStack.failDelivery(leaseID: itemLease.leaseID, error: nil)
-            if let cancellation = workflowRunCancellationSummary(
-                for: error,
-                runID: runID,
-                stage: .delivering
-            ) {
-                await finishRunReceipt(
-                    runID: runID,
-                    isActive: receiptIsActive,
-                    termination: cancellation.termination
-                )
-                await publishCancellation(cancellation)
-                return
-            }
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: terminalReceiptForFailure(
-                    error,
-                    stage: .delivering,
-                    code: .processing
-                )
-            )
-            await recordStage(.failed, runID: runID, workflow: workflow.presentation)
-            await publishFailure(runID: runID, workflow: workflow.presentation, message: error.localizedDescription)
-            state = .idle
-        }
-    }
-
-    func replayClipboardItem(
-        itemID: UUID,
-        authorizedContext: AuthorizedWorkflowRunContext,
-        replacingSourceItem: Bool = false
-    ) async {
-        let runID = UUID()
-        do {
-            try await authorizedContext.consume()
-        } catch {
-            await rejectAuthorizedInvocation(
-                runID: runID,
-                workflow: authorizedContext.workflow,
-                trigger: .clipboardReplay,
-                message: error.localizedDescription
-            )
-            return
-        }
-        await replayClipboardItem(
-            itemID: itemID,
-            runID: runID,
-            workflow: authorizedContext.workflow,
-            contextSnapshot: authorizedContext.contextSnapshot,
-            recognitionOptions: authorizedContext.recognitionOptions,
-            replacingSourceItem: replacingSourceItem,
-            authorizedInvocation: authorizedContext.invocation
-        )
-    }
-
-    internal func replayClipboardItem(
-        itemID: UUID,
-        runID providedRunID: UUID? = nil,
-        workflow: WorkflowDefinition,
-        contextSnapshot: ContextSnapshot,
-        recognitionOptions: SpeechRecognitionRequestOptions,
-        replacingSourceItem: Bool = false,
-        authorizedInvocation: WorkflowRunInvocation? = nil
-    ) async {
-        let runID = providedRunID ?? UUID()
-        let receiptRegistration = await beginRunReceipt(
-            runID: runID,
-            workflowID: workflow.id,
-            trigger: .clipboardReplay
-        )
-        if receiptRegistration == .duplicate {
-            await publishFailure(
-                runID: runID,
-                workflow: workflow.presentation,
-                message: SessionError.alreadyRunning.localizedDescription
-            )
-            return
-        }
-        let receiptIsActive = receiptRegistration == .active
-
-        guard case .idle = state else {
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: .skipped(reason: .busy)
-            )
-            await publishFailure(runID: runID, workflow: workflow.presentation, message: SessionError.alreadyRunning.localizedDescription)
-            return
-        }
-
-        state = .running(runID)
-        defer { state = .idle }
-
-        if let issue = WorkflowExecutionPolicy.issue(for: workflow) {
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: .skipped(reason: .unsupported)
-            )
-            await publishFailure(
-                runID: runID,
-                workflow: workflow.presentation,
-                message: SessionError.unsupportedWorkflow(issue).localizedDescription
-            )
-            return
-        }
-
-        let item: ClipboardHistoryItem?
-        var exactSubjectMismatch = false
-        if let authorizedInvocation,
-           case .clipboardItem(let subject, let operation) = authorizedInvocation {
-            let requestedOperation: ClipboardItemDryRunOperation = replacingSourceItem
-                ? .replace
-                : .replay
-            guard subject.itemID == itemID, operation == requestedOperation else {
-                await finishRunReceipt(
-                    runID: runID,
-                    isActive: receiptIsActive,
-                    termination: .skipped(reason: .privacyBlocked)
-                )
-                await publishFailure(
-                    runID: runID,
-                    workflow: workflow.presentation,
-                    message: SessionError.authorizationInvocationMismatch.localizedDescription
-                )
-                return
-            }
-            item = await deliveryStack.item(matching: subject)
-            if item == nil {
-                exactSubjectMismatch = await deliveryStack.item(id: itemID) != nil
-            }
-        } else {
-            item = await deliveryStack.item(id: itemID)
-        }
-
-        guard let item else {
-            if exactSubjectMismatch {
-                await finishRunReceipt(
-                    runID: runID,
-                    isActive: receiptIsActive,
-                    termination: .skipped(reason: .itemChanged)
-                )
-                await publishFailure(
-                    runID: runID,
-                    workflow: workflow.presentation,
-                    message: "The selected clipboard item changed before it could run."
-                )
-                return
-            }
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: .skipped(reason: .itemMissing)
-            )
-            await publishFailure(runID: runID, workflow: workflow.presentation, message: "The selected clipboard item is no longer available.")
-            return
-        }
-
-        if let authorizedInvocation,
-           !authorizedInvocation.authorizesClipboardItem(
-               item,
-               requestedItemID: itemID,
-               replacingSourceItem: replacingSourceItem
-           ) {
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: .skipped(reason: .privacyBlocked)
-            )
-            await publishFailure(
-                runID: runID,
-                workflow: workflow.presentation,
-                message: SessionError.authorizationInvocationMismatch.localizedDescription
-            )
-            return
-        }
-
-        var failureStage = WorkflowRunStage.transforming
-        do {
-            let session = try await startRunSession(
-                for: workflow,
-                runID: runID,
-                trigger: .clipboardReplay,
-                contextSnapshot: contextSnapshot,
-                recognitionOptions: recognitionOptions,
-                compilationInput: .text,
-                receiptIsActive: receiptIsActive
-            )
-            let replayRecognition = RecognitionResult(
-                rawText: item.text,
-                bestText: item.text,
-                candidateSets: []
-            )
-            await eventBus.publish(.recognitionCompleted(replayRecognition))
-            let finalText = try await transformText(
-                from: replayRecognition,
-                in: session
-            ).finalText
-            if let authorizedInvocation,
-               case .clipboardItem(let subject, _) = authorizedInvocation,
-               !(await deliveryStack.matchesClipboardItemDryRunSubject(subject)) {
-                await finishRunReceipt(
-                    runID: runID,
-                    isActive: receiptIsActive,
-                    termination: .skipped(reason: .itemChanged)
-                )
-                await publishFailure(
-                    runID: runID,
-                    workflow: workflow.presentation,
-                    message: "The selected clipboard item changed while the workflow was preparing its result."
-                )
-                state = .idle
-                return
-            }
-            failureStage = .delivering
-            let deliverySummary = try await deliver(
-                finalText: finalText,
-                recognition: replayRecognition,
-                in: session,
-                sourceClipboardItemSubject: replacingSourceItem
-                    ? authorizedInvocation?.clipboardItemSubject ?? clipboardItemSubject(for: item)
-                    : nil
-            )
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: deliverySummary.terminalReceipt
-            )
-            await complete(session: session, finalText: finalText)
-        } catch {
-            if let cancellation = workflowRunCancellationSummary(
-                for: error,
-                runID: runID,
-                stage: failureStage
-            ) {
-                await finishRunReceipt(
-                    runID: runID,
-                    isActive: receiptIsActive,
-                    termination: cancellation.termination
-                )
-                await publishCancellation(cancellation)
-                return
-            }
-            let code = workflowRunFailureCode(for: error)
-            await finishRunReceipt(
-                runID: runID,
-                isActive: receiptIsActive,
-                termination: terminalReceiptForFailure(
-                    error,
-                    stage: failureStage,
-                    code: code
-                )
-            )
+            try? await recordDeliveryCoordinator.failDelivery(lease.id)
             await recordStage(.failed, runID: runID, workflow: workflow.presentation)
             await publishFailure(runID: runID, workflow: workflow.presentation, message: error.localizedDescription)
             state = .idle
@@ -1178,17 +967,24 @@ public extension SessionCoordinator {
 }
 
 private extension SessionCoordinator {
-    func clipboardItemSubject(
-        for item: ClipboardHistoryItem
-    ) -> ClipboardItemDryRunSubject {
-        ClipboardItemDryRunSubject(
-            itemID: item.id,
-            itemVersion: item.version,
-            groupID: item.groupID,
-            contentKind: item.contentKind,
-            captureTags: item.captureTags,
-            hasTransferableContent: item.supportsDirectPaste
-        )
+    static let committedOutputSettlementMessage =
+        "The output may already have been delivered. Rill is retrying local bookkeeping; do not repeat this action."
+
+    static func actionID(for sink: RecordSinkIdentity) -> String {
+        switch sink {
+        case .focusedApplication: RecordActionID.focusedApplicationInsert
+        case .systemClipboard: RecordActionID.systemClipboardCopy
+        case .recordCollection: RecordActionID.collectionRoute
+        }
+    }
+
+    static func sinkIdentity(for actionID: String) -> RecordSinkIdentity? {
+        switch actionID {
+        case RecordActionID.focusedApplicationInsert: .focusedApplication
+        case RecordActionID.systemClipboardCopy: .systemClipboard
+        case RecordActionID.collectionRoute: .recordCollection
+        default: nil
+        }
     }
 
     func rejectAuthorizedInvocation(
@@ -1353,6 +1149,7 @@ private extension SessionCoordinator {
         actionID: String,
         actionIndex: Int,
         text: String,
+        recordDraft: RecordDraft? = nil,
         context: ActionContext,
         runID: UUID,
         workflow: WorkflowPresentation,
@@ -1377,7 +1174,41 @@ private extension SessionCoordinator {
         let result: ActionResult
         do {
             try Task.checkCancellation()
-            result = try await action.execute(text: text, context: context)
+            let record = recordDraft ?? RecordDraft(
+                payload: .text(text),
+                provenance: RecordProvenance(
+                    source: RecordSourceIdentity(kind: .workflow),
+                    sourceApplicationName: context.contextSnapshot.focus.applicationName,
+                    sourceBundleIdentifier: context.contextSnapshot.focus.bundleIdentifier,
+                    workflowID: context.workflow.id,
+                    workflowRunID: context.runID,
+                    workflow: context.workflow.presentation,
+                    captureTags: context.workflow.excludesOutputFromRecordCapture
+                        ? [.excludeFromWorkflowCapture]
+                        : [],
+                    alternatives: context.recognitionResult.candidateSets.flatMap { set in
+                        set.candidates.map(\.text)
+                    }
+                ),
+                createdAt: context.finishedAt
+            )
+            result = try await action.execute(record: record, context: context)
+        } catch let failure as CommittedOutputFailure {
+            let result = ActionResult.injected
+            await finishRecordedAction(
+                runID: runID,
+                actionIndex: actionIndex,
+                result: WorkflowActionResultCode(result),
+                receiptIsActive: receiptIsActive
+            )
+            await eventBus.publish(.actionExecuted(actionID: actionID, result: result))
+            await recordAction(
+                runID: runID,
+                workflow: workflow,
+                actionID: actionID,
+                result: result
+            )
+            throw failure
         } catch is CancellationError {
             await finishRecordedAction(
                 runID: runID,
@@ -1565,8 +1396,8 @@ private extension SessionCoordinator {
             return "injected"
         case .copiedToClipboard:
             return "copiedToClipboard"
-        case .pushedToStack:
-            return "pushedToStack"
+        case .storedRecord:
+            return "storedRecord"
         case .externalOutput:
             return "externalOutput"
         case .skipped:
@@ -1617,7 +1448,7 @@ private extension SessionCoordinator {
         }
         let vocabularyContext = VocabularyRuleContext(
             contextSnapshot: contextSnapshot,
-            clipboardGroupID: workflow.targetClipboardGroupID,
+            recordCollectionID: workflow.legacyTargetRecordCollectionID,
             locale: recognitionOptions.language
                 ?? workflow.plan.setup.speechRoute?.language
                 ?? workflow.metadata[WorkflowMetadataKey.languageOverride]
@@ -1929,7 +1760,7 @@ private extension SessionCoordinator {
     private func vocabularyContext(in session: RunSession) -> VocabularyRuleContext {
         VocabularyRuleContext(
             contextSnapshot: session.contextSnapshot,
-            clipboardGroupID: session.workflow.targetClipboardGroupID,
+            recordCollectionID: session.workflow.legacyTargetRecordCollectionID,
             locale: session.recognitionOptions.language
                 ?? session.workflow.metadata[WorkflowMetadataKey.languageOverride]
         )
@@ -2012,16 +1843,12 @@ private extension SessionCoordinator {
     private func deliver(
         finalText: String,
         recognition: RecognitionResult,
-        in session: RunSession,
-        sourceClipboardItemSubject: ClipboardItemDryRunSubject? = nil
+        in session: RunSession
     ) async throws -> DeliveryExecutionSummary {
         state = .delivering(session.runID)
-        var deliveryMetadata = [
+        let deliveryMetadata = [
             "actionCount": String(session.resolvedPlan.declaration.output.actions.count),
         ]
-        if let sourceClipboardItemSubject {
-            deliveryMetadata["sourceClipboardItemID"] = sourceClipboardItemSubject.itemID.uuidString
-        }
         await recordStage(
             .delivering,
             runID: session.runID,
@@ -2034,7 +1861,6 @@ private extension SessionCoordinator {
             contextSnapshot: session.contextSnapshot,
             recognitionResult: recognition,
             finalText: finalText,
-            sourceClipboardItemSubject: sourceClipboardItemSubject,
             startedAt: session.startedAt,
             finishedAt: Date()
         )
@@ -2062,6 +1888,11 @@ private extension SessionCoordinator {
                 throw OutputActionCancellation(
                     successfulActionCount: summary.successfulActionCount
                 )
+            } catch let failure as CommittedOutputFailure {
+                throw OutputActionExecutionFailure(
+                    message: failure.message,
+                    successfulActionCount: summary.successfulActionCount + 1
+                )
             } catch {
                 throw OutputActionExecutionFailure(
                     message: error.localizedDescription,
@@ -2069,7 +1900,7 @@ private extension SessionCoordinator {
                 )
             }
             switch result {
-            case .injected, .copiedToClipboard, .pushedToStack, .externalOutput:
+            case .injected, .copiedToClipboard, .storedRecord, .externalOutput:
                 summary.successfulActionCount += 1
             case .skipped:
                 summary.skippedActionCount += 1

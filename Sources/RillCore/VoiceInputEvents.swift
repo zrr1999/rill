@@ -35,10 +35,7 @@ public enum RillEvent: Sendable, Equatable {
     case candidateResolutionFinished(caseID: UUID, resolvedText: String)
     case transformationApplied(stepID: UUID, text: String)
     case actionExecuted(actionID: String, result: ActionResult)
-    case stackUpdated(DeliveryStackSnapshot)
-    case clipboardUpdated(ClipboardStoreSnapshot)
-    case clipboardGroupEvent(ClipboardGroupEventDescriptor)
-    case clipboardPanelRequested
+    case recordPanelRequested
     /// Invalidates subscriber snapshots after a terminal receipt is accepted.
     /// Repository membership may already have changed again by delivery time.
     case runReceiptRepositoryChanged(WorkflowRunReceiptRepositoryChange)

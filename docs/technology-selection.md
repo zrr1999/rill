@@ -6,7 +6,7 @@
 
 当前结论是：
 
-- 本地 ASR 主方案：[`sherpa-onnx`](https://github.com/k2-fsa/sherpa-onnx)
+- 本地 ASR 主方案：原生 [`mlx-audio-swift`](https://github.com/Blaizzy/mlx-audio-swift)
 - 语音后处理 / 会议洞察候选：[`AssemblyAI`](https://www.assemblyai.com/docs)（未接入）
 - 本地持久化：[`SQLite3 C API`](https://www.sqlite.org/c3ref/intro.html)（直接使用系统 SQLite3）
 - 云端文本润色：OpenAI-compatible Responses API；[`MacPaw/OpenAI`](https://github.com/MacPaw/OpenAI) 0.5.1
@@ -21,14 +21,14 @@
 
 | 领域 | 当前选型 | 状态 | 备注 |
 |---|---|---|---|
-| 本地语音识别 | [`sherpa-onnx`](https://github.com/k2-fsa/sherpa-onnx) | 已选 | 本地优先主路径；模型准备后离线运行 |
+| 本地语音识别 | 原生 [`mlx-audio-swift`](https://github.com/Blaizzy/mlx-audio-swift) | 已选 | Apple Silicon 默认主路径；独立 worker，模型准备后离线运行 |
 | 云端实时识别扩展 | 不提供 | 已移除 | 麦克风音频不发送到云端 ASR |
 | 云端语音洞察扩展 | [`AssemblyAI`](https://www.assemblyai.com/docs) | 候选，未接入 | 只在真实会议/批处理需求成立后重新评估 |
 | 数据库存储 | [`SQLite3 C API`](https://www.sqlite.org/c3ref/intro.html) | 已选 | 本地历史、配置、诊断数据 |
 | 云端文本工作流 | OpenAI-compatible Responses API + MacPaw/OpenAI 0.5.1 | 已选 | 内置与自定义语音工作流、可配置 endpoint、用户自带 Key |
 | 润色模型 | `gpt-5.6-terra` 默认，Terra / Sol / Luna 快捷项或自定义 ID | 已选 | 非流式、reasoning `none`、`store: false` |
-| sherpa-onnx 最终转写模型 | Qwen3-ASR 0.6B INT8 | 已选 | 当前只公开推荐 16 GB Mac 的单一模型；其他容量只进入候选清单 |
-| sherpa-onnx 流式预览 | Streaming Zipformer small bilingual INT8 | 已选 | 固定中英双语增量模型，不随最终档位切换；失败时退化为音量状态 |
+| MLX 最终转写模型 | Qwen3-ASR 0.6B 8bit | 已选 | 默认并常驻；1.7B 8bit 是用户可选的大档位 |
+| MLX 流式预览 | Qwen3-ASR v5 streaming | 已选 | 只产生预览；封口 WAV 的离线 decode 裁决正式文本 |
 
 ## 选型目标
 
@@ -59,21 +59,17 @@ Rill 当前选择“分层的模块化单体”：同一 macOS 进程中按 `Cor
 4. `App` 是唯一组合根，UI 不直接持有 provider 密钥、端点或可读的授权上下文。
 5. 若未来拆分 XPC 或后端，先把这些合同变成有版本的消息边界，不让跨进程类型直接泄漏到 UI。
 
-## 1. 本地 ASR 选型：为什么是 sherpa-onnx
+## 1. 本地 ASR 选型：为什么默认是原生 MLX Swift
 
 ### 结论
 
-当前本地 ASR 默认路径选择
-[`sherpa-onnx`](https://github.com/k2-fsa/sherpa-onnx)，Apple Silicon 另提供原生
-[`mlx-audio-swift`](https://github.com/Blaizzy/mlx-audio-swift) 可选后端。sherpa 路径固定使用
-1.13.4 的 source-built macOS 静态 XCFramework：构建关闭 TTS、说话人分离和
-PortAudio，全局启用 `EIGEN_MPL2_ONLY`，最终只合并受审的 ASR archive allowlist。
-小型 C/Swift adapter 对外暴露离线识别合同；Core、Runtime 和 UI 不依赖 sherpa
-专有返回结构。完整 source graph、工具链和二进制摘要见
-[`BUILD_PROVENANCE.md`](../vendor/sherpa-onnx-v1.13.4/BUILD_PROVENANCE.md)。
+当前公开产品默认路径是 Apple Silicon 上的原生
+[`mlx-audio-swift`](https://github.com/Blaizzy/mlx-audio-swift)：Qwen3-ASR 0.6B 8bit
+默认并常驻，1.7B 8bit 可选。ASR 位于独立 worker，Core、Runtime、UI 和 workflow
+只依赖稳定的 `local-speech` 合同，不依赖 MLX 的专有返回结构。仓库中的 sherpa-onnx
+adapter 和固定制品只服务旧数据兼容与历史评测，不再是默认产品路径。
 
-模型权重不随 App 捆绑。公开构建首次准备最终模型和固定流式预览时需要联网；
-sherpa 下载器只接受目录中的固定 archive 身份，MLX worker 则原生链接固定的
+模型权重不随 App 捆绑。公开构建首次准备模型时需要联网；MLX worker 原生链接固定的
 mlx-audio-swift 0.1.3，并下载精确 Hugging Face commit；模型由受审目录直接加载，
 自动语言识别和有界 keyterm context 也在同一 worker 边界内完成。准备完成后的识别
 完全从本地目录运行，不需要网络或 Python 环境。底层 `mlx-swift` 暂固定在 0.31.4，
@@ -81,16 +77,14 @@ mlx-audio-swift 0.1.3，并下载精确 Hugging Face commit；模型由受审目
 
 | model ID | 角色 | 固定 archive | bytes | SHA-256 |
 |---|---|---|---:|---|
-| `qwen3-asr-0.6b-int8` | 默认公开最终模型；中文均衡；16 GB | [Qwen3-ASR 0.6B INT8](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2) | `878702423` | `393f8a14e2f5fb96746aaab342997a40641001fbd5bf9592a080a8329178ee96` |
-| `qwen3-asr-0.6b-mlx-8bit` | Apple Silicon 可选轻量最终模型；建议 16 GB | [MLX community model](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit) | `1010771234` | commit `89e96d92ba34aca20b3e29fb10cc284097d1219f` |
+| `qwen3-asr-0.6b-int8` | sherpa 兼容与历史评测身份 | [Qwen3-ASR 0.6B INT8](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2) | `878702423` | `393f8a14e2f5fb96746aaab342997a40641001fbd5bf9592a080a8329178ee96` |
+| `qwen3-asr-0.6b-mlx-8bit` | Apple Silicon 默认最终模型与流式预览；建议 16 GB | [MLX community model](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit) | `1010771234` | commit `89e96d92ba34aca20b3e29fb10cc284097d1219f` |
 | `qwen3-asr-1.7b-mlx-8bit` | Apple Silicon 可选较大最终模型；建议 24 GB | [MLX community model](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit) | 约 `2460000000` | commit `a8379a2e2f9e313c9292cdf1af4055ab56d50d55` |
-| `streaming-zipformer-small-bilingual-zh-en-preview-int8` | 固定流式预览；稳定旧存储 ID；不参与最终档位选择 | [Streaming Zipformer bilingual INT8](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2) | `511274346` | `27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8` |
+| `streaming-zipformer-small-bilingual-zh-en-preview-int8` | sherpa 兼容与历史评测身份 | [Streaming Zipformer bilingual INT8](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2) | `511274346` | `27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8` |
 
-Qwen3-ASR 上游同时定义离线和流式推理，但其当前开源流式路径只在
-[`qwen-asr` 的 vLLM backend](https://github.com/QwenLM/Qwen3-ASR#streaming-inference)
-中提供。Rill 的 MLX Swift runtime 没有等价的增量状态 API，因此不通过周期性重跑
-完整离线音频来伪装流式；该做法会与唤醒和最终识别争用同一模型资源。实时字幕继续
-使用固定的真流式 Zipformer，最终文本由用户选择的 Qwen 档位裁决。
+Rill 使用 mlx-audio-swift 的 Qwen3-ASR v5 流式状态生成 confirmed / provisional
+预览；流式结果不直接进入输出 action。录音封口后，同一模型档位对完整受管 WAV
+执行离线 decode 并裁决正式文本。流式失败只降级预览，不改变最终识别路径。
 
 sherpa-onnx API 接受 ONNX Runtime 的 `coreml` execution provider，Core ML 可把兼容
 子图调度到 Apple GPU/ANE，但这不是一种独立的 Metal 模型。当前 Rill C adapter
@@ -115,25 +109,25 @@ SenseVoiceSmall 的固定来源身份，仅供内部兼容与未来评估；公�
 
 ### 选择理由
 
-1. **稳定 recognizer ID，精确模型 ID 选择后端**
-   - Qwen3-ASR 0.6B INT8 是 16 GB 默认；Qwen3-ASR 1.7B 8bit 是 Apple Silicon 可选档位；Omnilingual 300M/1B 和 MiMo 仍只记录在候选清单。
-   - Streaming Zipformer 只承担实时 hypothesis；基础“语音识别”工作流的最终文本由当前所选最终档位生成。
+1. **稳定 recognizer ID，精确模型 ID 选择档位**
+   - Qwen3-ASR 0.6B 8bit 是 16 GB 默认；Qwen3-ASR 1.7B 8bit 是 Apple Silicon 可选档位；Omnilingual 300M/1B 和 MiMo 仍只记录在候选清单。
+   - Qwen v5 streaming 只承担实时 hypothesis；最终文本由同一档位的封口 WAV 离线 decode 生成。
    - Fun-ASR/FP16/Cohere 只保留 trust anchor 与旧安装迁移兼容，不进入公开安装器或设置表面。
 
 2. **离线边界清楚**
-   - 网络只用于用户显式触发的最终档位与固定预览模型准备；转写阶段不联网。
-   - sherpa 使用 URL、字节数、SHA-256 和文件清单；MLX 使用精确模型 commit 与 `Package.resolved`。未知 ID 或不匹配来源直接失败。
+   - 网络只用于用户显式触发的模型准备；转写阶段不联网。
+   - MLX 使用精确模型 commit、文件大小 / SHA-256 inventory 与 `Package.resolved`。未知 ID 或不匹配来源直接失败。
 
 3. **平台与模型的耦合更低**
-   - 同一 C API adapter 服务当前唯一受支持的 arm64 App slice。
-   - 后续更换 sherpa 支持的 ONNX 模型时，可复用下载、生命周期和 provider 边界；不必把新模型的专有结构扩散到 UI 或工作流。
+   - 独立 worker 服务当前唯一受支持的 arm64 App slice。
+   - 后续更换 MLX 模型时复用下载、生命周期和 provider 边界，不把新模型的专有结构扩散到 UI 或 workflow。
 
 ### 语音工作流预设
 
 识别时机、转写模型和输出方式被声明在工作流数据中，而不是写死在录音层：
 
-1. `streaming-direct`：固定 Streaming Zipformer 在捕获期间增量解码，结束时直接复用最终 hypothesis，不启动离线二次转写。
-2. `dedicated-transcription`：录音结束后使用所选最终档位模型，再执行轻量文本规范化。
+1. `streaming-direct`：Qwen v5 在捕获期间增量预览，录音结束后仍由封口 WAV 离线 decode 生成正式文本。
+2. `dedicated-transcription`：录音结束后使用所选 Qwen 档位，再执行轻量文本规范化。
 3. `transcription-with-rewrite`：在专用转写之后追加 OpenAI `llmRewrite` transformer；预设已开放但默认禁用，只有 Keychain 凭据可读取且模型设置有效时才可选择。
 
 三个预设继续通过同一 `recognizer -> transformer -> action` 执行合同。流式捕获不直接调用文本注入，避免把 provider 和 UI/系统输出耦合在一起。
@@ -144,21 +138,21 @@ SenseVoiceSmall 的固定来源身份，仅供内部兼容与未来评估；公�
 |---|---|---|
 | `Speech.framework` | <https://developer.apple.com/documentation/speech> | Apple 原生、维护成本最低，但本地可用性与模型身份受系统控制，不满足固定模型和可复现 archive 的产品边界 |
 | `WhisperKit` | <https://github.com/argmaxinc/argmax-oss-swift> | Apple/Core ML 集成直接，但当前简中/英文混输默认模型与轻量模型会形成另一套 Whisper 专用模型信任、tokenizer 和加载面；迁移后不再是生产主路线 |
-| `mlx-audio-swift` | <https://github.com/Blaizzy/mlx-audio-swift> | 已作为窄范围原生 Swift 可选后端接入，当前产品目录只承载固定 Qwen3-ASR 1.7B 8bit。锁定的 0.1.3 上游也支持 Qwen3-ASR 0.6B 的 BF16/8/6/4-bit 变体，但 Rill 尚未为 0.6B 增加受信模型描述、安装清单与运行时验收；与 Python `mlx-audio` 是受其启发的独立实现，不是绑定层，也不扩展为通用模型插件系统 |
+| `mlx-audio-swift` | <https://github.com/Blaizzy/mlx-audio-swift> | 当前原生 Swift 默认后端；产品目录固定 Qwen3-ASR 0.6B / 1.7B 8bit，不扩展为通用模型插件系统 |
 | `Vosk` | <https://alphacephei.com/vosk/> | 小模型、CPU-only、动态词表不错，但质量上限和现代模型选择不匹配当前默认质量目标 |
 
 ### 这里的取舍
 
-sherpa-onnx 增加了 ONNX Runtime 二进制体积和 C ABI 维护责任，但换来一个同时覆盖
-默认质量档与轻量档、离线边界明确且不绑定 Core ML 模型布局的 runtime。当前不再
-并行维护 WhisperKit 生产路径；只有实测证明 sherpa 无法满足明确场景时，才重新
-评估第二套本地引擎。
+MLX 路径与 Apple Silicon 发布范围一致，避免默认 App 同时承担 ONNX Runtime 与
+MLX 两套生产引擎的体积、生命周期和质量矩阵。独立 worker 隔离模型资源，稳定
+recognizer 合同隔离模型专有结构；只有实测证明现役 MLX 档位无法满足明确场景时，
+才重新评估第二套生产引擎。
 
 ## 2. 云端识别：当前不提供
 
 ### 结论
 
-Rill 已移除云端 ASR。语音识别只由本地 sherpa-onnx 或 Apple Silicon 上的原生 MLX Swift 引擎完成。
+Rill 已移除云端 ASR。当前生产识别由 Apple Silicon 上的原生 MLX Swift worker 完成。
 
 这项边界不影响可选的 OpenAI-compatible 文本润色：文本工作流只在用户显式配置并授权后发送最终转写正文，不发送麦克风音频。
 
@@ -250,7 +244,7 @@ reasoning `none`。最终转写正文进入 `input`，固定数据边界合同�
 - 是否提供共享额度；若需要，必须单独设计后端代理
 - sherpa-onnx 本地路径的真人质量阈值与支持机型范围
 
-本地默认已经确定为 sherpa-onnx + Qwen3-ASR 0.6B INT8，Apple Silicon 可选 mlx-audio-swift + Qwen3-ASR 1.7B 8bit；待定的是两个现役档位的同语料真人 benchmark 和支持机型门禁，以及是否在完成受信模型描述、安装清单与运行时验收后为 MLX 暴露 0.6B。SenseVoiceSmall 只是固定的内部兼容/未来评估身份。
+本地默认已经确定为 mlx-audio-swift + Qwen3-ASR 0.6B 8bit，1.7B 8bit 是 Apple Silicon 可选大档位；待定的是两个现役档位的同语料真人 benchmark 和支持机型门禁。sherpa 与 SenseVoiceSmall 只保留兼容和历史评测身份。
 
 ### 原因
 
@@ -274,7 +268,7 @@ reasoning `none`。最终转写正文进入 `input`，固定数据边界合同�
 
 ### 1. 本地优先
 
-- 默认识别路径走 `sherpa-onnx` + Qwen3-ASR 0.6B INT8
+- 默认识别路径走 `mlx-audio-swift` + Qwen3-ASR 0.6B 8bit
 - 保证离线、隐私和基础体验
 
 ### 2. 云端语音不进入当前范围
@@ -312,7 +306,7 @@ reasoning `none`。最终转写正文进入 `input`，固定数据边界合同�
 
 当前阶段的推荐组合是：
 
-- **本地 ASR 默认路径**：[`sherpa-onnx`](https://github.com/k2-fsa/sherpa-onnx) + Qwen3-ASR 0.6B INT8；Apple Silicon 可选原生 mlx-audio-swift + Qwen3-ASR 1.7B 8bit
+- **本地 ASR 默认路径**：原生 [`mlx-audio-swift`](https://github.com/Blaizzy/mlx-audio-swift) + Qwen3-ASR 0.6B 8bit；Apple Silicon 可选 1.7B 8bit
 - **云端 ASR**：不提供
 - **语音洞察候选**：[`AssemblyAI`](https://www.assemblyai.com/docs)（未接入）
 - **本地数据层**：[`SQLite3 C API`](https://www.sqlite.org/c3ref/intro.html)
@@ -320,4 +314,4 @@ reasoning `none`。最终转写正文进入 `input`，固定数据边界合同�
 
 一句话总结：
 
-> 用 `sherpa-onnx + Qwen3-ASR 0.6B INT8` 保持 16 GB 默认，以窄范围原生 `mlx-audio-swift + Qwen3-ASR 1.7B 8bit` 提供 Apple Silicon 大档位，不提供云端 ASR，并用隔离在 Providers 内的 MacPaw/OpenAI adapter 落地可选的 BYOK 转写润色。
+> 用原生 `mlx-audio-swift + Qwen3-ASR 0.6B 8bit` 保持 16 GB 默认，以同一 worker 边界提供 1.7B 8bit 大档位，不提供云端 ASR，并用隔离在 Providers 内的 MacPaw/OpenAI adapter 落地可选的 BYOK 转写润色。

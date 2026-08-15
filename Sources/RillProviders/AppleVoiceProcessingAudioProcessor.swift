@@ -1008,7 +1008,7 @@ private final class LiveAppleVoiceProcessingAudioEngineSession:
 /// `AudioCaptureService`; this type deliberately has no speech-model or
 /// tokenizer responsibilities.
 protocol AppleVoiceProcessingAudioCapturing: AnyObject, Sendable {
-  var endpointRMS: [Float] { get }
+  var meterRMS: [Float] { get }
 
   func startStreamingRecordingLive(
     inputDeviceID: AppleVoiceProcessingInputDeviceID?
@@ -1033,7 +1033,9 @@ final class AppleVoiceProcessingAudioProcessor:
   /// At the largest supported 16 kHz callback this bounds queued PCM to about
   /// 200 KiB. A full queue is a capture failure, never permission to lose PCM.
   static let maximumBufferedPCMChunkCount = 32
-  static let maximumRetainedEndpointRMSSampleCount = 20
+  /// Forty milliseconds at the fixed 16 kHz capture rate.
+  static let meterFrameSampleCount = 640
+  static let maximumRetainedMeterRMSSampleCount = 20
 
   private struct RetainedSession {
     let inputDeviceID: AppleVoiceProcessingInputDeviceID?
@@ -1047,9 +1049,9 @@ final class AppleVoiceProcessingAudioProcessor:
   private let stateLock = NSLock()
   private let lifecycleLock = NSLock()
 
-  private var pendingEnergySquaredSum = Double.zero
-  private var pendingEnergySampleCount = 0
-  private var endpointRMSSamples: [Float] = []
+  private var pendingMeterSquaredSum = Double.zero
+  private var pendingMeterSampleCount = 0
+  private var meterRMSSamples: [Float] = []
   private var captureGeneration: UInt64 = 0
   private var bufferCallback:
     (@Sendable ([Float]) -> AppleVoiceProcessingPCMStreamTerminalState.YieldDisposition)?
@@ -1079,12 +1081,12 @@ final class AppleVoiceProcessingAudioProcessor:
     }
   }
 
-  var endpointRMS: [Float] {
-    withStateLock { endpointRMSSamples }
+  var meterRMS: [Float] {
+    withStateLock { meterRMSSamples }
   }
 
-  var retainedEnergySampleCount: Int {
-    withStateLock { pendingEnergySampleCount }
+  var retainedMeterSampleCount: Int {
+    withStateLock { pendingMeterSampleCount }
   }
 
   /// Configures and retains the VoiceProcessingIO graph while its engine is
@@ -1166,9 +1168,9 @@ final class AppleVoiceProcessingAudioProcessor:
     activeSessionTeardownToken = nil
     withStateLock {
       captureGeneration &+= 1
-      pendingEnergySquaredSum = 0
-      pendingEnergySampleCount = 0
-      endpointRMSSamples.removeAll(keepingCapacity: false)
+      pendingMeterSquaredSum = 0
+      pendingMeterSampleCount = 0
+      meterRMSSamples.removeAll(keepingCapacity: false)
       bufferCallback = nil
       streamTerminalState = nil
       streamFailureCallback = nil
@@ -1195,9 +1197,9 @@ final class AppleVoiceProcessingAudioProcessor:
     stopSession()
     let teardownToken = SessionTeardownToken()
     let generation = withStateLock { () -> UInt64 in
-      pendingEnergySquaredSum = 0
-      pendingEnergySampleCount = 0
-      endpointRMSSamples.removeAll(keepingCapacity: true)
+      pendingMeterSquaredSum = 0
+      pendingMeterSampleCount = 0
+      meterRMSSamples.removeAll(keepingCapacity: true)
       bufferCallback = callback
       streamTerminalState = terminalState
       streamFailureCallback = failureCallback
@@ -1313,27 +1315,25 @@ final class AppleVoiceProcessingAudioProcessor:
 
       // The AVAudioEngine tap's requested frame count is expressed in the
       // device input format. A 1,600-frame tap at 48 kHz therefore produces
-      // only about 533 samples after conversion to 16 kHz. Endpoint timing
-      // must be derived from exact 16 kHz output frames, not callback count.
-      let energyFrameLength = Int(
-        AppleVoiceProcessingCaptureFormat.speechRecognition.bufferFrameCount
-      )
+      // only about 533 samples after conversion to 16 kHz. Accumulate exact
+      // 40 ms display-meter frames across callbacks so waveform targets arrive
+      // at a stable 25 Hz instead of inheriting the 100 ms recognition buffer.
       for sample in buffer {
         let value = Double(sample)
-        pendingEnergySquaredSum += value * value
-        pendingEnergySampleCount += 1
-        if pendingEnergySampleCount == energyFrameLength {
+        pendingMeterSquaredSum += value * value
+        pendingMeterSampleCount += 1
+        if pendingMeterSampleCount == Self.meterFrameSampleCount {
           let rms = Float(
-            (pendingEnergySquaredSum / Double(pendingEnergySampleCount)).squareRoot()
+            (pendingMeterSquaredSum / Double(pendingMeterSampleCount)).squareRoot()
           )
-          endpointRMSSamples.append(rms.isFinite ? rms : 0)
-          pendingEnergySquaredSum = 0
-          pendingEnergySampleCount = 0
+          meterRMSSamples.append(rms.isFinite ? rms : 0)
+          pendingMeterSquaredSum = 0
+          pendingMeterSampleCount = 0
         }
       }
-      if endpointRMSSamples.count > Self.maximumRetainedEndpointRMSSampleCount {
-        endpointRMSSamples.removeFirst(
-          endpointRMSSamples.count - Self.maximumRetainedEndpointRMSSampleCount
+      if meterRMSSamples.count > Self.maximumRetainedMeterRMSSampleCount {
+        meterRMSSamples.removeFirst(
+          meterRMSSamples.count - Self.maximumRetainedMeterRMSSampleCount
         )
       }
       return bufferCallback

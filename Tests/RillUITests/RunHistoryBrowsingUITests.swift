@@ -153,7 +153,7 @@ private actor PrivacyAwareRunHistoryBrowser: RunHistoryBrowsing {
                 indexedFullText
             }
             let record = projectedText.map { text in
-                HistoryRecord(
+                WorkflowResultRecord(
                     id: recordID,
                     runID: runID,
                     workflowID: workflow.id,
@@ -169,7 +169,7 @@ private actor PrivacyAwareRunHistoryBrowser: RunHistoryBrowsing {
                 runID: runID,
                 workflowID: workflow.id,
                 timestamp: timestamp,
-                isStackRelated: false,
+                isRecordRelated: false,
                 outcome: .completed,
                 trigger: .manual,
                 hasNonemptyFinalText: true
@@ -323,7 +323,7 @@ private actor OutOfOrderRunHistoryBrowser: RunHistoryBrowsing {
         case .full: text
         }
         let record = projectedText.map {
-            HistoryRecord(
+            WorkflowResultRecord(
                 id: recordID,
                 runID: runID,
                 workflowID: workflow.id,
@@ -339,7 +339,7 @@ private actor OutOfOrderRunHistoryBrowser: RunHistoryBrowsing {
             runID: runID,
             workflowID: workflow.id,
             timestamp: timestamp,
-            isStackRelated: false,
+            isRecordRelated: false,
             outcome: .completed,
             trigger: .manual,
             hasNonemptyFinalText: true
@@ -650,7 +650,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
                 runID: runID,
                 workflowID: UUID(),
                 timestamp: timestamp,
-                isStackRelated: false,
+                isRecordRelated: false,
                 outcome: .completed,
                 trigger: trigger,
                 hasNonemptyFinalText: true
@@ -665,7 +665,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         }
 
         XCTAssertTrue(try entry(trigger: .manual).hasProtectedPreview)
-        XCTAssertFalse(try entry(trigger: .clipboardUse).hasProtectedPreview)
+        XCTAssertFalse(try entry(trigger: .recordUse).hasProtectedPreview)
     }
 
     func testRecordIDDeepLinkAliasMapsToVisibleRunRowIdentity() async throws {
@@ -740,7 +740,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         let recordID = UUID()
         let date = Date(timeIntervalSince1970: timestamp)
         let workflowID = UUID()
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             id: recordID,
             runID: runID,
             workflowID: workflowID,
@@ -755,7 +755,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
             runID: runID,
             workflowID: workflowID,
             timestamp: date,
-            isStackRelated: false,
+            isRecordRelated: false,
             outcome: .completed,
             trigger: .manual,
             hasNonemptyFinalText: true

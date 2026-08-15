@@ -6,7 +6,8 @@
 # 用法:
 #   ./scripts/release.sh                  # 构建 + 签名 + DMG
 #   ./scripts/release.sh --notarize       # 构建 + 签名 + 公证 + DMG
-#   ./scripts/release.sh --install        # 构建 + 安装到 /Applications
+#   ./scripts/release.sh --install        # 增量构建 + 安装到 /Applications
+#   ./scripts/release.sh --preflight      # 完整预检后构建 + 签名 + DMG
 #   ./scripts/release.sh --validate-config # 仅验证发布签名配置
 #   RELEASE_OUTPUT_DIR=/tmp/rill-release ./scripts/release.sh # 输出到仓库外目录
 #
@@ -57,6 +58,7 @@ INSTALL_TRANSACTION_NEW_IDENTITY=""
 DO_NOTARIZE=false
 DO_INSTALL=false
 DO_VALIDATE_CONFIG=false
+DO_PREFLIGHT=false
 VALIDATED_RELEASE_TAG=""
 VALIDATED_RELEASE_COMMIT=""
 VALIDATED_RELEASE_TREE=""
@@ -77,11 +79,13 @@ for arg in "$@"; do
   case "$arg" in
   --notarize) DO_NOTARIZE=true ;;
   --install) DO_INSTALL=true ;;
+  --preflight) DO_PREFLIGHT=true ;;
   --validate-config) DO_VALIDATE_CONFIG=true ;;
   --help | -h)
-    echo "用法: $0 [--notarize] [--install] [--validate-config]"
+    echo "用法: $0 [--notarize] [--install] [--preflight] [--validate-config]"
     echo "  --notarize   签名后提交 Apple 公证（需要 Developer ID Application 证书）"
     echo "  --install    构建后安装到 /Applications"
+    echo "  --preflight  构建前运行完整仓库检查和全量测试"
     echo "  --validate-config  仅验证签名身份和公证参数，不构建、不签名"
     echo "  RELEASE_OUTPUT_DIR  可选输出目录；默认 .artifacts/release"
     exit 0
@@ -93,6 +97,12 @@ for arg in "$@"; do
   esac
 done
 
+# A notarized distribution candidate must retain the complete release gate.
+# Local build/install stays incremental unless the caller opts into it.
+if $DO_NOTARIZE; then
+  DO_PREFLIGHT=true
+fi
+
 # ─── 辅助函数 ────────────────────────────────────────────────────
 info() { echo "▸ $*"; }
 error() {
@@ -102,6 +112,19 @@ error() {
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || error "未找到发布所需命令: $1"
+}
+
+validate_project_worktree_alignment() {
+  local repository_root=""
+
+  repository_root="$(git -C "$PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null)" \
+    || error "无法解析发布源码目录对应的 Git 工作树"
+  repository_root="$(cd "$repository_root" && pwd -P)"
+  if [[ "$repository_root" != "$PROJECT_DIR" ]]; then
+    error \
+      "发布脚本目录与 Git 工作树不一致：脚本=${PROJECT_DIR}，工作树=${repository_root}。" \
+      "请从工作树目录运行 ./scripts/release.sh，避免旧源码覆盖已安装应用"
+  fi
 }
 
 validate_release_output_location() {
@@ -1386,6 +1409,7 @@ if $DO_VALIDATE_CONFIG; then
   info "发布配置验证通过（未执行构建、签名或公证）"
   exit 0
 fi
+validate_project_worktree_alignment
 if $DO_NOTARIZE && [[ -z "$SOURCE_SNAPSHOT_CAPABILITY" ]]; then
   run_notarized_release_from_snapshot "$@"
 fi
@@ -1405,17 +1429,16 @@ trap 'handle_release_interrupt TERM' TERM
 info "发布输出目录: $RELEASE_OUTPUT_DIR"
 
 # ─── 步骤 1: 构建 ────────────────────────────────────────────────
-info "运行发布预检..."
 cd "$PROJECT_DIR"
 purge_stale_module_caches_if_needed
-"$SCRIPT_DIR/preflight.sh"
-info "发布预检通过"
-
-# Preflight ends with a Debug test build. Release and Debug artifacts share the
-# same SwiftPM scratch path, so crossing configurations without a clean can
-# leave stale module-validation state behind on newer Xcode toolchains.
-info "清理 Debug 构建产物并重新构建 Release..."
-swift package clean
+if $DO_PREFLIGHT; then
+  info "运行完整发布预检和全量测试..."
+  "$SCRIPT_DIR/preflight.sh"
+  info "完整发布预检通过"
+else
+  info "跳过完整预检；如需全量测试请运行 scripts/preflight.sh 或传入 --preflight"
+  info "增量构建 Release..."
+fi
 "$SCRIPT_DIR/build_xcode_release.sh"
 BUILD_DIR="$(
   "$SCRIPT_DIR/build_xcode_release.sh" --show-bin-path

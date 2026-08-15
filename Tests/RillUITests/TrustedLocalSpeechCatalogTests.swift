@@ -36,7 +36,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
       trigger: .hotkey,
       pipeline: PipelineDeclaration(
         recognizerID: AppModel.localSpeechRecognizerID,
-        outputActions: [OutputActionReference(id: "inject.text")]
+        outputActions: [OutputActionReference(id: "focused-application.insert")]
       ),
       ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red"),
       metadata: [
@@ -57,9 +57,9 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
       testWorkflow.plan.setup.speechRoute?.recognizerID,
       AppModel.localSpeechRecognizerID
     )
-    XCTAssertEqual(testWorkflow.plan.output.actions.map(\.id), ["stack.push"])
-    XCTAssertEqual(testWorkflow.targetClipboardGroupID, ClipboardGroup.voiceGroupID)
-    XCTAssertNil(speechRecognition.targetClipboardGroupID)
+    XCTAssertEqual(testWorkflow.plan.output.actions.map(\.id), ["record.store"])
+    XCTAssertEqual(testWorkflow.targetRecordCollectionIDs, [RecordCollection.voiceInputID])
+    XCTAssertTrue(speechRecognition.targetRecordCollectionIDs.isEmpty)
     XCTAssertNil(testWorkflow.metadata[WorkflowMetadataKey.catalog])
   }
 

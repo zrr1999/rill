@@ -8,7 +8,7 @@ final class InMemoryRepositoryTests: XCTestCase {
         let unsafeMessage = "provider response body contains private transcript"
         let repository = InMemoryHistoryRepository()
         try await repository.save(
-            HistoryRecord(
+            WorkflowResultRecord(
                 workflow: WorkflowPresentation(fallbackName: "Unsafe failure"),
                 failureMessage: unsafeMessage,
                 outcome: .failed
@@ -26,7 +26,7 @@ final class InMemoryRepositoryTests: XCTestCase {
         let otherWorkflowID = UUID()
         let repository = InMemoryHistoryRepository(
             records: [
-                HistoryRecord(
+                WorkflowResultRecord(
                     runID: UUID(),
                     workflowID: workflowID,
                     workflow: WorkflowPresentation(fallbackName: "Primary"),
@@ -34,7 +34,7 @@ final class InMemoryRepositoryTests: XCTestCase {
                     timestamp: Date(timeIntervalSince1970: 10),
                     outcome: .completed
                 ),
-                HistoryRecord(
+                WorkflowResultRecord(
                     runID: UUID(),
                     workflowID: workflowID,
                     workflow: WorkflowPresentation(fallbackName: "Primary"),
@@ -42,7 +42,7 @@ final class InMemoryRepositoryTests: XCTestCase {
                     timestamp: Date(timeIntervalSince1970: 20),
                     outcome: .completed
                 ),
-                HistoryRecord(
+                WorkflowResultRecord(
                     runID: UUID(),
                     workflowID: otherWorkflowID,
                     workflow: WorkflowPresentation(fallbackName: "Other"),
@@ -215,8 +215,8 @@ final class InMemoryRepositoryTests: XCTestCase {
         XCTAssertEqual(stored, [DiagnosticEventSanitizer.sanitize(afterClockRollback)])
     }
 
-    private func historyRecord(text: String, timestamp: TimeInterval) -> HistoryRecord {
-        HistoryRecord(
+    private func historyRecord(text: String, timestamp: TimeInterval) -> WorkflowResultRecord {
+        WorkflowResultRecord(
             workflow: WorkflowPresentation(fallbackName: "History"),
             finalText: text,
             timestamp: Date(timeIntervalSince1970: timestamp),

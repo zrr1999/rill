@@ -108,7 +108,7 @@ public struct RunHistoryRecordMetadata: Sendable, Equatable {
     public let runID: UUID?
     public let workflowID: UUID?
     public let timestamp: Date
-    public let isStackRelated: Bool
+    public let isRecordRelated: Bool
     public let outcome: HistoryOutcome
     public let trigger: WorkflowRunTriggerKind?
     public let hasNonemptyFinalText: Bool
@@ -118,7 +118,7 @@ public struct RunHistoryRecordMetadata: Sendable, Equatable {
         runID: UUID?,
         workflowID: UUID?,
         timestamp: Date,
-        isStackRelated: Bool,
+        isRecordRelated: Bool,
         outcome: HistoryOutcome,
         trigger: WorkflowRunTriggerKind?,
         hasNonemptyFinalText: Bool
@@ -127,7 +127,7 @@ public struct RunHistoryRecordMetadata: Sendable, Equatable {
         self.runID = runID
         self.workflowID = workflowID
         self.timestamp = timestamp
-        self.isStackRelated = isStackRelated
+        self.isRecordRelated = isRecordRelated
         self.outcome = outcome
         self.trigger = trigger
         self.hasNonemptyFinalText = hasNonemptyFinalText
@@ -141,14 +141,14 @@ public struct RunHistoryEntry: Identifiable, Sendable, Equatable {
     public let id: UUID
     public let timestamp: Date
     public let recordMetadata: RunHistoryRecordMetadata?
-    public let record: HistoryRecord?
+    public let record: WorkflowResultRecord?
     public let receipt: WorkflowRunReceipt?
 
     public init(
         id: UUID,
         timestamp: Date,
         recordMetadata: RunHistoryRecordMetadata? = nil,
-        record: HistoryRecord? = nil,
+        record: WorkflowResultRecord? = nil,
         receipt: WorkflowRunReceipt? = nil
     ) throws {
         guard recordMetadata != nil || receipt != nil else {

@@ -472,7 +472,7 @@ public enum PrivacyPolicy {
         if context.clipboard.excludesWorkflowCapture {
             builder.addDecision(.skipWorkflowCapture, reason: .itemTaggedExcludeFromWorkflowCapture)
             builder.redact(.clipboard)
-            builder.metadata["privacy.clipboard.tag"] = ClipboardCaptureTag.excludeFromWorkflowCapture.rawValue
+            builder.metadata["privacy.clipboard.tag"] = SystemClipboardCaptureTag.excludeFromWorkflowCapture.rawValue
         }
 
         if let matchingRule {

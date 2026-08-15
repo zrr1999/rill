@@ -1,36 +1,36 @@
 import Foundation
 import RillCore
 
-public protocol ClipboardHistoryMaintaining: Sendable {
-    func pruneHistory(olderThan cutoff: Date) async throws -> ClipboardCleanupResult
-    func clearHistory(through upperBound: Date) async throws -> ClipboardCleanupResult
+public protocol RecordHistoryMaintaining: Sendable {
+    func pruneHistory(olderThan cutoff: Date) async throws -> RecordCleanupResult
+    func clearHistory(through upperBound: Date) async throws -> RecordCleanupResult
 }
 
-extension DeliveryStack: ClipboardHistoryMaintaining {}
+extension RecordStore: RecordHistoryMaintaining {}
 
 public struct LocalHistoryMaintenanceCounts: Sendable, Equatable {
-    public var clipboardRemovedCount: Int
+    public var recordRemovedCount: Int
     public var runRemovedCount: Int
     public var runReceiptRemovedCount: Int
     public var diagnosticRemovedCount: Int
-    public var preservedActiveClipboardCount: Int
+    public var preservedActiveRecordCount: Int
 
     public init(
-        clipboardRemovedCount: Int = 0,
+        recordRemovedCount: Int = 0,
         runRemovedCount: Int = 0,
         runReceiptRemovedCount: Int = 0,
         diagnosticRemovedCount: Int = 0,
-        preservedActiveClipboardCount: Int = 0
+        preservedActiveRecordCount: Int = 0
     ) {
-        self.clipboardRemovedCount = clipboardRemovedCount
+        self.recordRemovedCount = recordRemovedCount
         self.runRemovedCount = runRemovedCount
         self.runReceiptRemovedCount = runReceiptRemovedCount
         self.diagnosticRemovedCount = diagnosticRemovedCount
-        self.preservedActiveClipboardCount = preservedActiveClipboardCount
+        self.preservedActiveRecordCount = preservedActiveRecordCount
     }
 
     public var totalRemovedCount: Int {
-        clipboardRemovedCount + runRemovedCount + runReceiptRemovedCount + diagnosticRemovedCount
+        recordRemovedCount + runRemovedCount + runReceiptRemovedCount + diagnosticRemovedCount
     }
 }
 
@@ -81,23 +81,23 @@ public struct LocalHistoryMaintenanceEvent: Sendable, Equatable {
 
 public protocol LocalHistoryMaintaining: Sendable {
     func performRetention(
-        clipboardRetention: HistoryRetentionPeriod,
+        recordRetention: HistoryRetentionPeriod,
         runRetention: HistoryRetentionPeriod,
         now: Date
     ) async -> LocalHistoryMaintenanceResult
 
-    func clearClipboardHistory() async -> LocalHistoryMaintenanceResult
+    func clearRecordHistory() async -> LocalHistoryMaintenanceResult
     func clearRunHistory() async -> LocalHistoryMaintenanceResult
     func retryPendingMaintenance() async -> LocalHistoryMaintenanceResult
 }
 
 public extension LocalHistoryMaintaining {
     func performRetention(
-        clipboardRetention: HistoryRetentionPeriod,
+        recordRetention: HistoryRetentionPeriod,
         runRetention: HistoryRetentionPeriod
     ) async -> LocalHistoryMaintenanceResult {
         await performRetention(
-            clipboardRetention: clipboardRetention,
+            recordRetention: recordRetention,
             runRetention: runRetention,
             now: Date()
         )
@@ -114,7 +114,7 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
         case blocked(LocalHistoryMaintenanceBlockReason)
     }
 
-    private let clipboardHistory: any ClipboardHistoryMaintaining
+    private let recordHistory: any RecordHistoryMaintaining
     private let runHistory: any HistoryRepository
     private let runReceipts: any WorkflowRunReceiptRepository
     private let diagnosticHistory: any DiagnosticHistoryMaintaining
@@ -127,7 +127,7 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
     private var operationWaiters: [CheckedContinuation<Void, Never>] = []
 
     public init(
-        clipboardHistory: any ClipboardHistoryMaintaining,
+        recordHistory: any RecordHistoryMaintaining,
         runHistory: any HistoryRepository,
         runReceipts: any WorkflowRunReceiptRepository = InMemoryWorkflowRunReceiptRepository(),
         diagnosticHistory: any DiagnosticHistoryMaintaining,
@@ -136,7 +136,7 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
         eventReporter: @escaping EventReporter = { _ in },
         wallClock: @escaping WallClock = { Date() }
     ) {
-        self.clipboardHistory = clipboardHistory
+        self.recordHistory = recordHistory
         self.runHistory = runHistory
         self.runReceipts = runReceipts
         self.diagnosticHistory = diagnosticHistory
@@ -147,13 +147,13 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
     }
 
     public func performRetention(
-        clipboardRetention: HistoryRetentionPeriod,
+        recordRetention: HistoryRetentionPeriod,
         runRetention: HistoryRetentionPeriod,
         now: Date
     ) async -> LocalHistoryMaintenanceResult {
         await acquireOperationAccess()
         let state = LocalHistoryMaintenanceState(
-            clipboardOperation: clipboardRetention.cutoffDate(relativeTo: now).map {
+            clipboardOperation: recordRetention.cutoffDate(relativeTo: now).map {
                 .prune(olderThan: $0)
             },
             runOperation: runRetention.cutoffDate(relativeTo: now).map {
@@ -166,7 +166,7 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
         return result
     }
 
-    public func clearClipboardHistory() async -> LocalHistoryMaintenanceResult {
+    public func clearRecordHistory() async -> LocalHistoryMaintenanceResult {
         await acquireOperationAccess()
         let upperBound = wallClock()
         let result = await performNewMaintenance(
@@ -297,8 +297,8 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
                         operation,
                         clearThrough: state.clearThrough
                     )
-                    counts.clipboardRemovedCount = result.removedCount
-                    counts.preservedActiveClipboardCount = result.preservedActiveCount
+                    counts.recordRemovedCount = result.removedCount
+                    counts.preservedActiveRecordCount = result.preservedActiveCount
                 } catch {
                     logicalDeletionFailed = true
                 }
@@ -379,15 +379,15 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
     private func executeClipboard(
         _ operation: LocalHistoryMaintenanceOperation,
         clearThrough: Date?
-    ) async throws -> ClipboardCleanupResult {
+    ) async throws -> RecordCleanupResult {
         switch operation {
         case .prune(let cutoff):
-            return try await clipboardHistory.pruneHistory(olderThan: cutoff)
+            return try await recordHistory.pruneHistory(olderThan: cutoff)
         case .clearAll:
             guard let clearThrough else {
                 throw HistoryRepositoryMaintenanceError.boundedDeletionUnsupported
             }
-            return try await clipboardHistory.clearHistory(through: clearThrough)
+            return try await recordHistory.clearHistory(through: clearThrough)
         }
     }
 

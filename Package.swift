@@ -114,6 +114,7 @@ let package = Package(
       name: "RillProvidersTests",
       dependencies: [
         "RillCore",
+        "RillPlatform",
         "RillProviders",
       ]
     ),

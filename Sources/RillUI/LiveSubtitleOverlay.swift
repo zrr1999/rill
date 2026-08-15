@@ -44,22 +44,24 @@ struct LiveSubtitleSurfaceStyle: Equatable {
 }
 
 public struct LiveSubtitleOverlay: View {
-  @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
   @Environment(\.accessibilityReduceTransparency) private var accessibilityReduceTransparency
   @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
   public let snapshot: LiveSubtitleSnapshot
   public let language: AppLanguage
   private let includesShadow: Bool
+  private let meterModel: VoiceActivityMeterModel?
 
   public init(
     snapshot: LiveSubtitleSnapshot,
     language: AppLanguage,
-    includesShadow: Bool = true
+    includesShadow: Bool = true,
+    meterModel: VoiceActivityMeterModel? = nil
   ) {
     self.snapshot = snapshot
     self.language = language
     self.includesShadow = includesShadow
+    self.meterModel = meterModel
   }
 
   public var body: some View {
@@ -77,10 +79,6 @@ public struct LiveSubtitleOverlay: View {
         surface
       }
     }
-    .animation(
-      accessibilityReduceMotion ? nil : .easeInOut(duration: 0.16),
-      value: LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot)
-    )
     .accessibilityElement(children: .contain)
   }
 
@@ -167,17 +165,26 @@ public struct LiveSubtitleOverlay: View {
     )
   }
 
+  @ViewBuilder
   private var waveform: some View {
-    VoiceActivityIndicator(
-      levelMeter: snapshot.levelMeter,
-      isActive: isAudioCaptureActive,
-      accentColor: meterColor,
-      barCount: 12,
-      barWidth: 2,
-      barSpacing: 2,
-      minHeight: 3,
-      maxHeight: 20
-    )
+    if let meterModel {
+      LiveSubtitleObservedWaveform(
+        meterModel: meterModel,
+        isActive: isAudioCaptureActive,
+        accentColor: meterColor
+      )
+    } else {
+      VoiceActivityIndicator(
+        levelMeter: snapshot.levelMeter,
+        isActive: isAudioCaptureActive,
+        accentColor: meterColor,
+        barCount: 12,
+        barWidth: 2,
+        barSpacing: 2,
+        minHeight: 3,
+        maxHeight: 20
+      )
+    }
   }
 
   private var networkUsageDisclosure: some View {
@@ -263,7 +270,7 @@ public struct LiveSubtitleOverlay: View {
             snapshot.canRemoveRecordingDurationLimit == true
           {
             Button(action: requestUnlimitedRecording) {
-              Image(systemName: "infinity")
+              Image(systemName: RillSystemSymbol.infinity.rawValue)
                 .font(.system(size: 10, weight: .bold))
                 .frame(width: 20, height: 20)
             }
@@ -375,6 +382,25 @@ public struct LiveSubtitleOverlay: View {
   )
 }
 
+private struct LiveSubtitleObservedWaveform: View {
+  @ObservedObject var meterModel: VoiceActivityMeterModel
+  let isActive: Bool
+  let accentColor: Color
+
+  var body: some View {
+    VoiceActivityIndicator(
+      levelMeter: meterModel.levels,
+      isActive: isActive,
+      accentColor: accentColor,
+      barCount: 12,
+      barWidth: 2,
+      barSpacing: 2,
+      minHeight: 3,
+      maxHeight: 20
+    )
+  }
+}
+
 enum LiveSubtitleInteractionPolicy {
   static func networkDisclosureTitle(
     _ usage: LiveSubtitleNetworkUsage,
@@ -412,9 +438,9 @@ enum LiveSubtitleInteractionPolicy {
 
   static func networkDisclosureSymbolName(_ usage: LiveSubtitleNetworkUsage) -> String {
     switch usage {
-    case .offline: "lock.fill"
-    case .online: "network"
-    case .unknown: "questionmark"
+    case .offline: RillSystemSymbol.lockFill.rawValue
+    case .online: RillSystemSymbol.network.rawValue
+    case .unknown: RillSystemSymbol.questionmark.rawValue
     }
   }
 }

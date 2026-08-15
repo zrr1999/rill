@@ -3,7 +3,7 @@ import RillCore
 public enum WorkflowExecutionSurface: Sendable, Equatable {
     case interactiveCapture
     case clipboardItemReplay
-    case clipboardGroupEvent
+    case recordCollectionEvent
 }
 
 public enum WorkflowExecutionSurfaceDecision: Sendable, Equatable {
@@ -66,13 +66,13 @@ public enum WorkflowExecutionPolicy {
             return .invalidConfiguration
         }
         guard let eventType = workflow.metadata[WorkflowMetadataKey.legacyEventType] else {
-            return surface == .clipboardGroupEvent ? .wrongSurface : .supported
+            return surface == .recordCollectionEvent ? .wrongSurface : .supported
         }
 
         if legacyClipboardEventTypes.contains(eventType) {
-            guard surface == .clipboardGroupEvent else { return .wrongSurface }
+            guard surface == .recordCollectionEvent else { return .wrongSurface }
             do {
-                guard try workflow.parseClipboardGroupAutomationConfiguration() != nil else {
+                guard try workflow.parseRecordCollectionAutomationConfiguration() != nil else {
                     return .invalidConfiguration
                 }
                 return .supported
@@ -84,6 +84,6 @@ public enum WorkflowExecutionPolicy {
         guard supportedInteractiveEventTypes.contains(eventType) else {
             return .invalidConfiguration
         }
-        return surface == .clipboardGroupEvent ? .wrongSurface : .supported
+        return surface == .recordCollectionEvent ? .wrongSurface : .supported
     }
 }

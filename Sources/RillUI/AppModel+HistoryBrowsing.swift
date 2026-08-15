@@ -236,7 +236,7 @@ extension AppModel {
     }
 
     /// Maps every durable deep-link alias onto the single row identity used by
-    /// SwiftUI. Receipt run IDs, orphan-record run IDs, and HistoryRecord IDs
+    /// SwiftUI. Receipt run IDs, orphan-record run IDs, and WorkflowResultRecord IDs
     /// can all address the same visible timeline row.
     func visibleRunHistoryEntryID(matching requestedID: UUID) -> UUID? {
         displayedRunHistoryEntries.first { entry in

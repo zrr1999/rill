@@ -12,7 +12,7 @@ final class SelectionCaptureRecognizerTests: XCTestCase {
                 workflow: makeWorkflow(),
                 contextSnapshot: makeContext(
                     selectedText: "",
-                    clipboard: ClipboardSnapshot(plainText: "clipboard text", changeCount: 1)
+                    clipboard: SystemClipboardSnapshot(plainText: "clipboard text", changeCount: 1)
                 )
             )
         )
@@ -30,7 +30,7 @@ final class SelectionCaptureRecognizerTests: XCTestCase {
                     workflow: makeWorkflow(),
                     contextSnapshot: makeContext(
                         selectedText: "",
-                        clipboard: ClipboardSnapshot(
+                        clipboard: SystemClipboardSnapshot(
                             plainText: "loop me",
                             changeCount: 2,
                             captureTags: [.excludeFromWorkflowCapture]
@@ -55,7 +55,7 @@ final class SelectionCaptureRecognizerTests: XCTestCase {
                 workflow: makeWorkflow(),
                 contextSnapshot: makeContext(
                     selectedText: "selected text",
-                    clipboard: ClipboardSnapshot(
+                    clipboard: SystemClipboardSnapshot(
                         plainText: "loop me",
                         changeCount: 3,
                         captureTags: [.excludeFromWorkflowCapture]
@@ -73,13 +73,13 @@ private func makeWorkflow() -> WorkflowDefinition {
         name: "Capture",
         pipeline: PipelineDeclaration(
             recognizerID: "context.selection",
-            outputActions: [OutputActionReference(id: "clipboard.copy")]
+            outputActions: [OutputActionReference(id: "system-clipboard.copy")]
         ),
         ui: WorkflowUIConfig(symbolName: "doc.on.clipboard", accentColorName: "blue")
     )
 }
 
-private func makeContext(selectedText: String, clipboard: ClipboardSnapshot) -> ContextSnapshot {
+private func makeContext(selectedText: String, clipboard: SystemClipboardSnapshot) -> ContextSnapshot {
     ContextSnapshot(
         focus: FocusSnapshot(
             applicationName: "Notes",

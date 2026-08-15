@@ -9,7 +9,7 @@ struct LocalSpeechAudioStream: Sendable {
 }
 
 protocol LocalSpeechAudioCaptureSource: AnyObject, Sendable {
-  var endpointRMS: [Float] { get }
+  var meterRMS: [Float] { get }
 
   func prepareStoppedFrontend() throws
   func setPendingHandoffID(_ id: UUID?)
@@ -106,7 +106,10 @@ struct LocalSpeechStreamingPreviewProjection: Sendable, Equatable {
   /// protocol markers out of the user-visible projection, including a second
   /// partial envelope emitted while a window is being restarted.
   private static func sanitizingQwenStreamingControlText(_ rawCandidate: String) -> String {
-    var candidate = rawCandidate
+    let trimmedRawCandidate = rawCandidate.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !isIncompleteQwenLanguageEnvelope(trimmedRawCandidate) else { return "" }
+
+    var candidate = trimmedRawCandidate
     var removedEnvelope = false
     let completeEnvelope = try? NSRegularExpression(
       pattern: #"(?i)(?:^|\s)language\s+[^<\r\n]{0,64}<asr_text>"#
@@ -158,6 +161,26 @@ struct LocalSpeechStreamingPreviewProjection: Sendable, Equatable {
       return ""
     }
     return trimmed
+  }
+
+  /// Incremental decoding exposes the automatic-language response envelope one
+  /// token at a time: `language`, `language Chi`, then
+  /// `language Chinese<asr_text>`. Until the marker is complete, none of that
+  /// prefix is transcript text. Bound the hold to the envelope's 64-character
+  /// language field so a genuine longer utterance cannot be hidden forever if
+  /// an upstream decoder stops emitting the protocol marker.
+  private static func isIncompleteQwenLanguageEnvelope(_ candidate: String) -> Bool {
+    guard candidate.count <= 96 else { return false }
+    guard candidate.range(
+      of: #"(?i)^language(?:\s|$)"#,
+      options: .regularExpression
+    ) != nil else {
+      return false
+    }
+    return candidate.range(
+      of: #"(?i)<asr_text>"#,
+      options: .regularExpression
+    ) == nil
   }
 
   private static func isCompatibleProgression(
@@ -283,8 +306,8 @@ final class AppleVoiceProcessingCaptureSource: LocalSpeechAudioCaptureSource,
     self.processor = processor
   }
 
-  var endpointRMS: [Float] {
-    processor.endpointRMS
+  var meterRMS: [Float] {
+    processor.meterRMS
   }
 
   func prepareStoppedFrontend() throws {
@@ -579,7 +602,7 @@ actor LocalSpeechVoiceCaptureRuntime {
         phase: .recording,
         request: request,
         hypothesisText: streamingPreviewProjection.text,
-        levelMeter: Self.levelMeter(from: source.endpointRMS)
+        levelMeter: Self.levelMeter(from: source.meterRMS)
       )
     } catch is CancellationError {
       await abandonCapture(request: request, generation: generation, publishHidden: true)
@@ -706,7 +729,7 @@ actor LocalSpeechVoiceCaptureRuntime {
         phase: .recording,
         request: request,
         hypothesisText: streamingPreviewProjection.text,
-        levelMeter: Self.levelMeter(from: activeSource?.endpointRMS ?? [])
+        levelMeter: Self.levelMeter(from: activeSource?.meterRMS ?? [])
       )
     }
     return true
@@ -818,7 +841,7 @@ actor LocalSpeechVoiceCaptureRuntime {
         phase: .recording,
         request: request,
         hypothesisText: streamingPreviewProjection.text,
-        levelMeter: Self.levelMeter(from: source.endpointRMS)
+        levelMeter: Self.levelMeter(from: source.meterRMS)
       )
     }
   }
@@ -1123,7 +1146,7 @@ actor LocalSpeechVoiceCaptureRuntime {
           phase: .recording,
           request: activeRequest,
           hypothesisText: streamingPreviewProjection.text,
-          levelMeter: Self.levelMeter(from: activeSource?.endpointRMS ?? [])
+          levelMeter: Self.levelMeter(from: activeSource?.meterRMS ?? [])
         )
       }
     } catch {

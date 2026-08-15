@@ -19,29 +19,29 @@ public extension AppModel {
         retryGlobalInputAction()
     }
 
-    func installClipboardPanelShortcutRecordingActions(
+    func installRecordPanelShortcutRecordingActions(
         begin: @escaping () -> UUID,
         end: @escaping (UUID) -> Void,
         commit: @escaping (UUID, UInt16) -> Void
     ) {
-        beginClipboardPanelShortcutRecordingAction = begin
-        endClipboardPanelShortcutRecordingAction = end
-        commitClipboardPanelShortcutRecordingAction = commit
+        beginRecordPanelShortcutRecordingAction = begin
+        endRecordPanelShortcutRecordingAction = end
+        commitRecordPanelShortcutRecordingAction = commit
     }
 
-    func beginClipboardPanelShortcutRecording() -> UUID {
-        beginClipboardPanelShortcutRecordingAction()
+    func beginRecordPanelShortcutRecording() -> UUID {
+        beginRecordPanelShortcutRecordingAction()
     }
 
-    func endClipboardPanelShortcutRecording(_ suspensionID: UUID) {
-        endClipboardPanelShortcutRecordingAction(suspensionID)
+    func endRecordPanelShortcutRecording(_ suspensionID: UUID) {
+        endRecordPanelShortcutRecordingAction(suspensionID)
     }
 
-    func commitClipboardPanelShortcutRecording(
+    func commitRecordPanelShortcutRecording(
         _ suspensionID: UUID,
         keyCode: UInt16
     ) {
-        commitClipboardPanelShortcutRecordingAction(suspensionID, keyCode)
+        commitRecordPanelShortcutRecordingAction(suspensionID, keyCode)
     }
 
     func updateGlobalInputCapability(_ capability: GlobalInputCapability) {

@@ -125,22 +125,44 @@ public enum WorkflowRunTriggerKind: String, Codable, Sendable, Equatable, CaseIt
     case menuBar
     case hotkey
     case wakeWord
-    case clipboardGroupEvent
-    case stackDelivery
-    case clipboardUse
-    case clipboardReplay
+    case recordCollectionEvent
+    case recordDelivery
+    case recordUse
+    case recordReplay
     case failedAudioRecovery
+
+    public init(from decoder: any Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        let canonicalValue = switch value {
+        case "stackDelivery": "recordDelivery"
+        case "clipboardUse": "recordUse"
+        case "clipboardReplay": "recordReplay"
+        default: value
+        }
+        guard let trigger = Self(rawValue: canonicalValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: try decoder.singleValueContainer(),
+                debugDescription: "Unknown workflow run trigger."
+            )
+        }
+        self = trigger
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 
     /// Whether this invocation obtains its body from a voice capture.
     ///
-    /// Clipboard-derived invocations can reuse a workflow that declares a
+    /// Record-derived invocations can reuse a workflow that declares a
     /// recognizer, so workflow configuration is not a safe proxy for whether
     /// a history body may be retained or displayed.
     public var isVoiceCapture: Bool {
         switch self {
         case .manual, .menuBar, .hotkey, .wakeWord, .failedAudioRecovery:
             return true
-        case .clipboardGroupEvent, .stackDelivery, .clipboardUse, .clipboardReplay:
+        case .recordCollectionEvent, .recordDelivery, .recordUse, .recordReplay:
             return false
         }
     }
@@ -153,14 +175,36 @@ public enum WorkflowRunSkipCode: String, Codable, Sendable, Equatable, CaseItera
     case unsupported
     case privacyBlocked
     case eventKindMismatch
-    case sourceGroupMismatch
+    case sourceCollectionMismatch
     case excludedByCaptureTag
     case conditionFailed
-    case itemMissing
-    case itemChanged
+    case recordMissing
+    case recordChanged
     case loopPrevented
     case allActionsSkipped
     case unclassified
+
+    public init(from decoder: any Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        let canonicalValue = switch value {
+        case "sourceGroupMismatch": "sourceCollectionMismatch"
+        case "itemMissing": "recordMissing"
+        case "itemChanged": "recordChanged"
+        default: value
+        }
+        guard let code = Self(rawValue: canonicalValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: try decoder.singleValueContainer(),
+                debugDescription: "Unknown workflow run skip code."
+            )
+        }
+        self = code
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 public enum WorkflowRunOutcome: String, Codable, Sendable, Equatable, CaseIterable {
@@ -200,7 +244,7 @@ public enum WorkflowRunTermination: Codable, Sendable, Equatable {
 public enum WorkflowActionResultCode: String, Codable, Sendable, Equatable, CaseIterable {
     case injected
     case copiedToClipboard
-    case pushedToStack
+    case storedRecord
     case externalOutput
     case skipped
     case cancelled
@@ -212,8 +256,8 @@ public enum WorkflowActionResultCode: String, Codable, Sendable, Equatable, Case
             self = .injected
         case .copiedToClipboard:
             self = .copiedToClipboard
-        case .pushedToStack:
-            self = .pushedToStack
+        case .storedRecord:
+            self = .storedRecord
         case .externalOutput:
             self = .externalOutput
         case .skipped:
@@ -221,6 +265,20 @@ public enum WorkflowActionResultCode: String, Codable, Sendable, Equatable, Case
         case .failed:
             self = .failed
         }
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        if value == "pushedToStack" {
+            self = .storedRecord
+            return
+        }
+        guard let result = Self(rawValue: value) else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: decoder.codingPath, debugDescription: "Unknown action result code.")
+            )
+        }
+        self = result
     }
 }
 

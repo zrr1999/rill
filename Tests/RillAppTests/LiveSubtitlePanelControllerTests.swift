@@ -200,6 +200,7 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
 
     XCTAssertEqual(LiveSubtitlePanelAnimationPolicy.fadeInDuration, 0.1)
     XCTAssertEqual(LiveSubtitlePanelAnimationPolicy.fadeOutDuration, 0.1)
+    XCTAssertEqual(LiveSubtitlePanelAnimationPolicy.resizeDuration, 0.16)
 
     controller.update(snapshot: preparing, language: .english)
     let hostIdentity = try XCTUnwrap(controller.presentationHostIdentity)
@@ -214,6 +215,103 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
       try XCTUnwrap(controller.windowState).contentSize,
       LiveSubtitlePanelGeometry.preferredSurfaceSize(for: recording)
     )
+  }
+
+  func testMeterFramesDoNotMutateStructuralPanelPresentation() {
+    let runID = UUID()
+    let first = LiveSubtitleSnapshot(
+      runID: runID,
+      phase: .recording,
+      levelMeter: [0.2],
+      updatedAt: Date(timeIntervalSince1970: 1)
+    )
+    let second = LiveSubtitleSnapshot(
+      runID: runID,
+      phase: .recording,
+      levelMeter: [0.8],
+      updatedAt: Date(timeIntervalSince1970: 2)
+    )
+
+    XCTAssertEqual(
+      LiveSubtitlePanelPresentationPolicy.structuralSnapshot(first),
+      LiveSubtitlePanelPresentationPolicy.structuralSnapshot(second)
+    )
+  }
+
+  func testMeterFramesStayOnTheWaveformFastPath() throws {
+    _ = NSApplication.shared
+    var visibleFrameResolutionCount = 0
+    let controller = LiveSubtitlePanelController(
+      visibleFrameResolver: {
+        visibleFrameResolutionCount += 1
+        return self.visibleFrame
+      },
+      reduceMotionProvider: { true }
+    )
+    defer {
+      controller.update(snapshot: nil, language: .english)
+    }
+    let runID = UUID()
+    controller.update(
+      snapshot: LiveSubtitleSnapshot(runID: runID, phase: .recording),
+      language: .english
+    )
+    let hostIdentity = try XCTUnwrap(controller.presentationHostIdentity)
+    let shadowInvalidationCount = controller.shadowInvalidationCount
+    let windowFrameAssignmentCount = controller.windowFrameAssignmentCount
+
+    for frame in 1...100 {
+      controller.update(
+        snapshot: LiveSubtitleSnapshot(
+          runID: runID,
+          phase: .recording,
+          levelMeter: [Float(frame) / 100]
+        ),
+        language: .english
+      )
+    }
+
+    XCTAssertEqual(visibleFrameResolutionCount, 1)
+    XCTAssertEqual(controller.presentationHostIdentity, hostIdentity)
+    XCTAssertEqual(controller.shadowInvalidationCount, shadowInvalidationCount)
+    XCTAssertEqual(controller.windowFrameAssignmentCount, windowFrameAssignmentCount)
+  }
+
+  func testRepeatedTextUpdatesDoNotRestartExpansionTowardSameSize() {
+    _ = NSApplication.shared
+    let controller = LiveSubtitlePanelController(
+      visibleFrameResolver: { self.visibleFrame },
+      reduceMotionProvider: { false }
+    )
+    defer {
+      controller.update(snapshot: nil, language: .english)
+    }
+    let runID = UUID()
+    controller.update(
+      snapshot: LiveSubtitleSnapshot(runID: runID, phase: .recording),
+      language: .english
+    )
+    let initialFrameAssignments = controller.windowFrameAssignmentCount
+
+    controller.update(
+      snapshot: LiveSubtitleSnapshot(
+        runID: runID,
+        phase: .transcribing,
+        hypothesisText: "First live hypothesis"
+      ),
+      language: .english
+    )
+    XCTAssertEqual(controller.windowFrameAssignmentCount, initialFrameAssignments + 1)
+
+    controller.update(
+      snapshot: LiveSubtitleSnapshot(
+        runID: runID,
+        phase: .transcribing,
+        hypothesisText: "A newer live hypothesis"
+      ),
+      language: .english
+    )
+    XCTAssertEqual(controller.windowFrameAssignmentCount, initialFrameAssignments + 1)
   }
 
   func testNonCaptureEntranceStillHonorsMotionPreference() {

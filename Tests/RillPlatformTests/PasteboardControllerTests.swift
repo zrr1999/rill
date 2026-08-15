@@ -8,7 +8,7 @@ final class PasteboardControllerTests: XCTestCase {
     func testWritePlainTextMarksWrittenChangeAsOwned() {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
-        let controller = PasteboardController(pasteboard: pasteboard)
+        let controller = SystemClipboardPort(pasteboard: pasteboard)
 
         let changeCount = controller.writePlainText("owned by Rill")
 
@@ -17,7 +17,7 @@ final class PasteboardControllerTests: XCTestCase {
     }
 
     func testPasteboardProtectionTypesAreClassifiedWithoutReadingPayload() {
-        let protections = PasteboardController.protections(
+        let protections = SystemClipboardPort.protections(
             forPasteboardTypeNames: [
                 "public.utf8-plain-text",
                 "org.nspasteboard.ConcealedType",
@@ -30,7 +30,7 @@ final class PasteboardControllerTests: XCTestCase {
     }
 
     func testOrdinaryPasteboardTypesHaveNoProtectionFlags() {
-        let protections = PasteboardController.protections(
+        let protections = SystemClipboardPort.protections(
             forPasteboardTypeNames: [
                 "public.utf8-plain-text",
                 "public.png",
@@ -44,9 +44,9 @@ final class PasteboardControllerTests: XCTestCase {
     func testPlainTextCaptureEnforcesUTF8BudgetBeforeSnapshotProjection() async throws {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
-        var limits = ClipboardStorageLimits.productDefault
+        var limits = SystemClipboardStorageLimits.productDefault
         limits.maximumTextUTF8ByteCount = 4
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             storageLimits: limits
         )
@@ -74,9 +74,9 @@ final class PasteboardControllerTests: XCTestCase {
     func testFileURLCaptureEnforcesCountBudgetBeforeSnapshotProjection() async throws {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
-        var limits = ClipboardStorageLimits.productDefault
+        var limits = SystemClipboardStorageLimits.productDefault
         limits.maximumFileURLCount = 1
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             storageLimits: limits
         )
@@ -104,7 +104,7 @@ final class PasteboardControllerTests: XCTestCase {
         let pngData = try makePNGData()
         pasteboard.clearContents()
         XCTAssertTrue(pasteboard.setData(pngData, forType: .png))
-        let controller = PasteboardController(pasteboard: pasteboard)
+        let controller = SystemClipboardPort(pasteboard: pasteboard)
 
         let readSnapshot = await controller.readSnapshot(
             ifChangeCountIs: pasteboard.changeCount
@@ -123,7 +123,7 @@ final class PasteboardControllerTests: XCTestCase {
         XCTAssertTrue(pasteboard.setData(pngData, forType: .png))
         let expectedChangeCount = pasteboard.changeCount
         let workerGate = PasteboardImageWorkerGate()
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             imageProcessingGate: {
                 await workerGate.blockWorker()
@@ -151,7 +151,7 @@ final class PasteboardControllerTests: XCTestCase {
         XCTAssertTrue(pasteboard.setData(pngData, forType: .png))
         let expectedChangeCount = pasteboard.changeCount
         let workerGate = PasteboardImageWorkerGate()
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             imageProcessingGate: {
                 await workerGate.blockWorker()
@@ -190,7 +190,7 @@ final class PasteboardControllerTests: XCTestCase {
         XCTAssertTrue(pasteboard.setData(oldPNGData, forType: .png))
         let oldChangeCount = pasteboard.changeCount
         let workerGate = PasteboardImageWorkerGate()
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             imageProcessingGate: {
                 await workerGate.blockWorker()
@@ -234,9 +234,9 @@ final class PasteboardControllerTests: XCTestCase {
         let pngData = try makePNGData()
         pasteboard.clearContents()
         XCTAssertTrue(pasteboard.setData(pngData, forType: .png))
-        var limits = ClipboardStorageLimits.productDefault
+        var limits = SystemClipboardStorageLimits.productDefault
         limits.maximumImageByteCount = pngData.count - 1
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             storageLimits: limits
         )
@@ -256,7 +256,7 @@ final class PasteboardControllerTests: XCTestCase {
         defer { pasteboard.releaseGlobally() }
         pasteboard.clearContents()
         XCTAssertTrue(pasteboard.setData(Data("not-a-png".utf8), forType: .png))
-        let controller = PasteboardController(pasteboard: pasteboard)
+        let controller = SystemClipboardPort(pasteboard: pasteboard)
 
         let readSnapshot = await controller.readSnapshot(
             ifChangeCountIs: pasteboard.changeCount
@@ -273,7 +273,7 @@ final class PasteboardControllerTests: XCTestCase {
         let jpegData = try makeImageData(using: .jpeg)
         pasteboard.clearContents()
         XCTAssertTrue(pasteboard.setData(jpegData, forType: .png))
-        let controller = PasteboardController(pasteboard: pasteboard)
+        let controller = SystemClipboardPort(pasteboard: pasteboard)
 
         let readSnapshot = await controller.readSnapshot(
             ifChangeCountIs: pasteboard.changeCount
@@ -289,7 +289,7 @@ final class PasteboardControllerTests: XCTestCase {
         defer { pasteboard.releaseGlobally() }
         pasteboard.clearContents()
         XCTAssertTrue(pasteboard.setData(Data("not-a-tiff".utf8), forType: .tiff))
-        let controller = PasteboardController(pasteboard: pasteboard)
+        let controller = SystemClipboardPort(pasteboard: pasteboard)
 
         let readSnapshot = await controller.readSnapshot(
             ifChangeCountIs: pasteboard.changeCount
@@ -306,7 +306,7 @@ final class PasteboardControllerTests: XCTestCase {
         let tiffData = try makeImageData(using: .tiff)
         pasteboard.clearContents()
         XCTAssertTrue(pasteboard.setData(tiffData, forType: .tiff))
-        let controller = PasteboardController(pasteboard: pasteboard)
+        let controller = SystemClipboardPort(pasteboard: pasteboard)
 
         let readSnapshot = await controller.readSnapshot(
             ifChangeCountIs: pasteboard.changeCount
@@ -324,10 +324,10 @@ final class PasteboardControllerTests: XCTestCase {
         let pngData = try makeImageData(using: .png, width: 64, height: 64)
         pasteboard.clearContents()
         XCTAssertTrue(pasteboard.setData(pngData, forType: .png))
-        var limits = ClipboardStorageLimits.productDefault
+        var limits = SystemClipboardStorageLimits.productDefault
         limits.maximumImageByteCount = pngData.count
         limits.maximumDecodedImageByteCount = max(pngData.count, 4_096)
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             storageLimits: limits
         )
@@ -342,7 +342,7 @@ final class PasteboardControllerTests: XCTestCase {
     }
 
     func testImageWorkspaceBudgetKeepsUHD4KWithinDefaultAndRejectsLargerDCI4K() throws {
-        let limits = ClipboardStorageLimits.productDefault
+        let limits = SystemClipboardStorageLimits.productDefault
         let uhd4KByteCount = PasteboardImageBudget.decodedWorkspaceByteCount(
             width: 3_840,
             height: 2_160,
@@ -391,10 +391,10 @@ final class PasteboardControllerTests: XCTestCase {
         XCTAssertEqual((properties[kCGImagePropertyDepth] as? NSNumber)?.intValue, 16)
         pasteboard.clearContents()
         XCTAssertTrue(pasteboard.setData(tiffData, forType: .tiff))
-        var limits = ClipboardStorageLimits.productDefault
+        var limits = SystemClipboardStorageLimits.productDefault
         limits.maximumImageByteCount = tiffData.count
         limits.maximumDecodedImageByteCount = width * height * 16 - 1
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             storageLimits: limits
         )
@@ -418,9 +418,9 @@ final class PasteboardControllerTests: XCTestCase {
         XCTAssertTrue(item.setData(pngData, forType: .png))
         pasteboard.clearContents()
         XCTAssertTrue(pasteboard.writeObjects([item]))
-        var limits = ClipboardStorageLimits.productDefault
+        var limits = SystemClipboardStorageLimits.productDefault
         limits.maximumImageByteCount = 1
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             storageLimits: limits
         )
@@ -438,7 +438,7 @@ final class PasteboardControllerTests: XCTestCase {
     func testTemporaryWriteRestoresEveryItemRepresentationAndOrderLosslessly() throws {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
-        let controller = PasteboardController(pasteboard: pasteboard)
+        let controller = SystemClipboardPort(pasteboard: pasteboard)
         let firstItem = NSPasteboardItem()
         firstItem.setData(
             Data("{\\rtf1 preserved}".utf8),
@@ -464,7 +464,7 @@ final class PasteboardControllerTests: XCTestCase {
         let expectedContents = rawContents(of: pasteboard)
 
         let transaction = try controller.beginTemporaryWrite(
-            ClipboardSnapshot(plainText: "temporary", changeCount: 0),
+            SystemClipboardSnapshot(plainText: "temporary", changeCount: 0),
             ifChangeCountIs: expectedChangeCount
         )
 
@@ -489,13 +489,13 @@ final class PasteboardControllerTests: XCTestCase {
         limits.maximumRepresentationByteCount = 4
         limits.maximumItemByteCount = 8
         limits.maximumTotalByteCount = 8
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             temporaryPreservationLimits: limits
         )
 
         let transaction = try controller.beginTemporaryWrite(
-            ClipboardSnapshot(plainText: "temporary", changeCount: 0),
+            SystemClipboardSnapshot(plainText: "temporary", changeCount: 0),
             ifChangeCountIs: pasteboard.changeCount
         )
 
@@ -506,10 +506,10 @@ final class PasteboardControllerTests: XCTestCase {
     func testTemporaryRestoreNeverOverwritesAnExternalClipboardChange() throws {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
-        let controller = PasteboardController(pasteboard: pasteboard)
+        let controller = SystemClipboardPort(pasteboard: pasteboard)
         let expectedChangeCount = controller.writePlainText("preserved")
         let transaction = try controller.beginTemporaryWrite(
-            ClipboardSnapshot(plainText: "temporary", changeCount: 0),
+            SystemClipboardSnapshot(plainText: "temporary", changeCount: 0),
             ifChangeCountIs: expectedChangeCount
         )
         pasteboard.clearContents()
@@ -522,18 +522,18 @@ final class PasteboardControllerTests: XCTestCase {
     func testTemporaryWriteRejectsChangedPasteboardWithoutOverwritingIt() {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
-        let controller = PasteboardController(pasteboard: pasteboard)
+        let controller = SystemClipboardPort(pasteboard: pasteboard)
         let staleChangeCount = controller.writePlainText("stale")
         _ = controller.writePlainText("external winner")
 
         XCTAssertThrowsError(
             try controller.beginTemporaryWrite(
-                ClipboardSnapshot(plainText: "must not win", changeCount: 0),
+                SystemClipboardSnapshot(plainText: "must not win", changeCount: 0),
                 ifChangeCountIs: staleChangeCount
             )
         ) { error in
             XCTAssertEqual(
-                error as? PasteboardController.ConditionalWriteError,
+                error as? SystemClipboardPort.ConditionalWriteError,
                 .changeCountChanged
             )
         }
@@ -543,9 +543,9 @@ final class PasteboardControllerTests: XCTestCase {
     func testTemporaryWriteRejectsProtectedPasteboardWithoutOverwritingIt() {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
-        let controller = PasteboardController(pasteboard: pasteboard)
+        let controller = SystemClipboardPort(pasteboard: pasteboard)
         let expectedChangeCount = controller.writeSnapshot(
-            ClipboardSnapshot(
+            SystemClipboardSnapshot(
                 plainText: "protected winner",
                 changeCount: 0,
                 protections: [.concealed]
@@ -554,12 +554,12 @@ final class PasteboardControllerTests: XCTestCase {
 
         XCTAssertThrowsError(
             try controller.beginTemporaryWrite(
-                ClipboardSnapshot(plainText: "must not win", changeCount: 0),
+                SystemClipboardSnapshot(plainText: "must not win", changeCount: 0),
                 ifChangeCountIs: expectedChangeCount
             )
         ) { error in
             XCTAssertEqual(
-                error as? PasteboardController.ConditionalWriteError,
+                error as? SystemClipboardPort.ConditionalWriteError,
                 .protectedClipboard([.concealed])
             )
         }
@@ -569,7 +569,7 @@ final class PasteboardControllerTests: XCTestCase {
     func testTemporaryWriteRejectsAnUnreadableRepresentationBeforeOverwrite() {
         let pasteboard = NSPasteboard.withUniqueName()
         defer { pasteboard.releaseGlobally() }
-        let controller = PasteboardController(pasteboard: pasteboard)
+        let controller = SystemClipboardPort(pasteboard: pasteboard)
         let provider = UnreadablePasteboardDataProvider()
         let item = NSPasteboardItem()
         let promisedType = NSPasteboard.PasteboardType("com.example.unreadable")
@@ -578,14 +578,14 @@ final class PasteboardControllerTests: XCTestCase {
         XCTAssertTrue(pasteboard.writeObjects([item]))
         let expectedChangeCount = pasteboard.changeCount
 
-        var observedError: PasteboardController.ConditionalWriteError?
+        var observedError: SystemClipboardPort.ConditionalWriteError?
         XCTAssertThrowsError(
             try controller.beginTemporaryWrite(
-                ClipboardSnapshot(plainText: "must not win", changeCount: 0),
+                SystemClipboardSnapshot(plainText: "must not win", changeCount: 0),
                 ifChangeCountIs: expectedChangeCount
             )
         ) { error in
-            observedError = error as? PasteboardController.ConditionalWriteError
+            observedError = error as? SystemClipboardPort.ConditionalWriteError
         }
         switch observedError {
         case .unreadableRepresentation(
@@ -741,7 +741,7 @@ final class PasteboardControllerTests: XCTestCase {
         defer { pasteboard.releaseGlobally() }
         var limits = preservationLimits()
         limits.maximumMetadataByteCount = 32
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             temporaryPreservationLimits: limits
         )
@@ -762,7 +762,7 @@ final class PasteboardControllerTests: XCTestCase {
         defer { pasteboard.releaseGlobally() }
         var limits = preservationLimits()
         limits.maximumMetadataCaptureTagCount = 1
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             temporaryPreservationLimits: limits
         )
@@ -783,13 +783,13 @@ final class PasteboardControllerTests: XCTestCase {
         defer { pasteboard.releaseGlobally() }
         var limits = preservationLimits()
         limits.maximumMetadataCaptureTagCount = 1
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             temporaryPreservationLimits: limits
         )
 
         let changeCount = controller.writeSnapshot(
-            ClipboardSnapshot(
+            SystemClipboardSnapshot(
                 plainText: "bounded metadata",
                 changeCount: 0,
                 captureTags: [.excludeFromWorkflowCapture, .polishGenerated]
@@ -818,12 +818,12 @@ final class PasteboardControllerTests: XCTestCase {
 
     private func assertTemporaryWriteRejected(
         on pasteboard: NSPasteboard,
-        limits: PasteboardController.TemporaryPreservationLimits,
-        expectedLimit: PasteboardController.TemporaryPreservationLimit,
+        limits: SystemClipboardPort.TemporaryPreservationLimits,
+        expectedLimit: SystemClipboardPort.TemporaryPreservationLimit,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let controller = PasteboardController(
+        let controller = SystemClipboardPort(
             pasteboard: pasteboard,
             temporaryPreservationLimits: limits
         )
@@ -831,14 +831,14 @@ final class PasteboardControllerTests: XCTestCase {
 
         XCTAssertThrowsError(
             try controller.beginTemporaryWrite(
-                ClipboardSnapshot(plainText: "must not win", changeCount: 0),
+                SystemClipboardSnapshot(plainText: "must not win", changeCount: 0),
                 ifChangeCountIs: expectedChangeCount
             ),
             file: file,
             line: line
         ) { error in
             XCTAssertEqual(
-                error as? PasteboardController.ConditionalWriteError,
+                error as? SystemClipboardPort.ConditionalWriteError,
                 .preservationLimitExceeded(expectedLimit),
                 file: file,
                 line: line
@@ -857,8 +857,8 @@ final class PasteboardControllerTests: XCTestCase {
         return item
     }
 
-    private func preservationLimits() -> PasteboardController.TemporaryPreservationLimits {
-        PasteboardController.TemporaryPreservationLimits(
+    private func preservationLimits() -> SystemClipboardPort.TemporaryPreservationLimits {
+        SystemClipboardPort.TemporaryPreservationLimits(
             maximumItemCount: 8,
             maximumRepresentationCountPerItem: 4,
             maximumTotalRepresentationCount: 16,

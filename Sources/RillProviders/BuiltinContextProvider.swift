@@ -3,9 +3,9 @@ import RillPlatform
 
 public struct BuiltinContextProvider: ContextProvider {
     private let focusTracker: FocusTracker
-    private let pasteboard: PasteboardController
+    private let pasteboard: SystemClipboardPort
 
-    public init(focusTracker: FocusTracker, pasteboard: PasteboardController) {
+    public init(focusTracker: FocusTracker, pasteboard: SystemClipboardPort) {
         self.focusTracker = focusTracker
         self.pasteboard = pasteboard
     }
@@ -33,7 +33,7 @@ public struct BuiltinContextProvider: ContextProvider {
                 ? focusTracker.capturePrivacyIdentity()
                 : focusTracker.captureCurrent()
         }
-        let clipboard: ClipboardSnapshot
+        let clipboard: SystemClipboardSnapshot
         if decision.redactedPromptVariables.contains(.clipboard) {
             let descriptor = await pasteboard.currentDescriptor()
             clipboard = descriptor.policySnapshot
@@ -59,7 +59,7 @@ public struct BuiltinContextProvider: ContextProvider {
         }
         guard let focus else { return nil }
 
-        let clipboard: ClipboardSnapshot
+        let clipboard: SystemClipboardSnapshot
         if decision.redactedPromptVariables.contains(.clipboard) {
             let descriptor = await pasteboard.currentDescriptor()
             clipboard = descriptor.policySnapshot

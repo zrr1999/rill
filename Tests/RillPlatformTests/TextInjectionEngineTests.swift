@@ -5,7 +5,7 @@ import XCTest
 
 final class TextInjectionEngineTests: XCTestCase {
     func testInjectFailsWhenAccessibilityPermissionIsMissing() async {
-        let pasteboard = await MainActor.run { PasteboardController() }
+        let pasteboard = await MainActor.run { SystemClipboardPort() }
         let engine = TextInjectionEngine(
             pasteboard: pasteboard,
             accessibilityChecker: { false }
@@ -32,10 +32,10 @@ final class TextInjectionEngineTests: XCTestCase {
             )
             systemPasteboard.clearContents()
             XCTAssertTrue(systemPasteboard.writeObjects([item]))
-            var limits = PasteboardController.TemporaryPreservationLimits.productDefault
+            var limits = SystemClipboardPort.TemporaryPreservationLimits.productDefault
             limits.maximumRepresentationByteCount = 1
             return LosslessPasteboardFixture(
-                controller: PasteboardController(
+                controller: SystemClipboardPort(
                     pasteboard: systemPasteboard,
                     temporaryPreservationLimits: limits
                 ),
@@ -80,7 +80,7 @@ final class TextInjectionEngineTests: XCTestCase {
     func testProtectedClipboardKeyboardFallbackRestoresAndVerifiesTarget() async throws {
         let pasteboard = await makePasteboard()
         _ = await pasteboard.writeSnapshot(
-            ClipboardSnapshot(
+            SystemClipboardSnapshot(
                 plainText: "protected clipboard",
                 changeCount: 0,
                 protections: [.concealed]
@@ -342,7 +342,7 @@ final class TextInjectionEngineTests: XCTestCase {
             diagnosticReporter: { event in
                 guard event.event == "clipboard.inject.text.prepare" else { return }
                 _ = await pasteboard.writeSnapshot(
-                    ClipboardSnapshot(
+                    SystemClipboardSnapshot(
                         plainText: "protected winner",
                         changeCount: 0,
                         protections: [.concealed]
@@ -387,7 +387,7 @@ final class TextInjectionEngineTests: XCTestCase {
 
         do {
             try await engine.injectClipboardSnapshot(
-                ClipboardSnapshot(
+                SystemClipboardSnapshot(
                     plainText: "",
                     imagePNGData: Data([0x89, 0x50, 0x4E, 0x47]),
                     changeCount: 0
@@ -700,7 +700,7 @@ final class TextInjectionEngineTests: XCTestCase {
 
         do {
             try await engine.injectClipboardSnapshot(
-                ClipboardSnapshot(
+                SystemClipboardSnapshot(
                     plainText: "temporary rich injection",
                     imagePNGData: Data([0x01, 0x02]),
                     changeCount: 0
@@ -812,13 +812,13 @@ final class TextInjectionEngineTests: XCTestCase {
         XCTAssertEqual(restored.plainText, "original clipboard")
     }
 
-    private func makePasteboard() async -> PasteboardController {
+    private func makePasteboard() async -> SystemClipboardPort {
         await MainActor.run {
             let systemPasteboard = NSPasteboard(
                 name: NSPasteboard.Name("dev.rill.tests.\(UUID().uuidString)")
             )
             systemPasteboard.clearContents()
-            return PasteboardController(pasteboard: systemPasteboard)
+            return SystemClipboardPort(pasteboard: systemPasteboard)
         }
     }
 
@@ -841,7 +841,7 @@ final class TextInjectionEngineTests: XCTestCase {
             systemPasteboard.clearContents()
             XCTAssertTrue(systemPasteboard.writeObjects([firstItem, secondItem]))
             return LosslessPasteboardFixture(
-                controller: PasteboardController(pasteboard: systemPasteboard),
+                controller: SystemClipboardPort(pasteboard: systemPasteboard),
                 name: name,
                 originalContents: Self.rawContents(of: systemPasteboard)
             )
@@ -910,7 +910,7 @@ final class TextInjectionEngineTests: XCTestCase {
 
     private func waitForClipboardText(
         _ expectedText: String,
-        on pasteboard: PasteboardController
+        on pasteboard: SystemClipboardPort
     ) async throws {
         for _ in 0..<100 {
             let snapshot = await pasteboard.currentSnapshot()
@@ -924,7 +924,7 @@ final class TextInjectionEngineTests: XCTestCase {
 }
 
 private struct LosslessPasteboardFixture: Sendable {
-    let controller: PasteboardController
+    let controller: SystemClipboardPort
     let name: String
     let originalContents: [LosslessPasteboardItem]
 }

@@ -20,7 +20,7 @@ struct GlobalSearchResultsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
+                Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
 
@@ -60,7 +60,7 @@ struct GlobalSearchResultsView: View {
                 HStack(spacing: 12) {
                     Label(
                         GlobalSearchText.historyUnavailable(language: language),
-                        systemImage: "exclamationmark.triangle"
+                        systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
                     )
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -85,7 +85,7 @@ struct GlobalSearchResultsView: View {
                     if results.isEmpty {
                         ContentUnavailableView(
                             GlobalSearchText.noResultsTitle(language: language),
-                            systemImage: "magnifyingglass",
+                            systemImage: RillSystemSymbol.magnifyingglass.rawValue,
                             description: Text(
                                 GlobalSearchText.noResultsDescription(language: language)
                             )
@@ -299,7 +299,7 @@ private struct GlobalSearchResultRow: View {
                 }
 
                 Spacer(minLength: 8)
-                Image(systemName: "arrow.forward")
+                Image(systemName: RillSystemSymbol.arrowForward.rawValue)
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }

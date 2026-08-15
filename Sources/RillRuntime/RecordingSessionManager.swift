@@ -256,6 +256,18 @@ public actor RecordingSessionManager {
     await waitForStartOperationsToDrain()
   }
 
+  func waitForHotkeyLifecycleTasksToDrainForTesting() async {
+    while true {
+      let tasks = Array(livePushToTalkStartTasks.values)
+        + Array(livePushToTalkReleaseTasks.values)
+        + finishingRecordings.values.compactMap(\.task)
+      guard !tasks.isEmpty else { return }
+      for task in tasks {
+        await task.value
+      }
+    }
+  }
+
   public func start() async {
     guard !started, !hasBegunApplicationShutdown else { return }
     started = true
@@ -358,7 +370,7 @@ public actor RecordingSessionManager {
       await handleGlobalInputUnavailable(
         waitsForCancellationCompletion: waitsForFinishingCompletion
       )
-    case .manualPasteInterceptRequested, .clipboardPanelRequested,
+    case .manualPasteInterceptRequested, .recordPanelRequested,
       .liveAudioCancellationRequested, .customHotkey(_):
       break
     }
@@ -448,7 +460,7 @@ public actor RecordingSessionManager {
     case .globalInputUnavailable:
       await handleGlobalInputUnavailable(waitsForCancellationCompletion: false)
 
-    case .manualPasteInterceptRequested, .clipboardPanelRequested,
+    case .manualPasteInterceptRequested, .recordPanelRequested,
       .liveAudioCancellationRequested, .customHotkey:
       break
     }

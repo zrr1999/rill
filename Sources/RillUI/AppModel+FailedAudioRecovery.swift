@@ -99,27 +99,55 @@ public extension AppModel {
 
     func loadFailedAudioRecoveryReceipts() {
         guard !hasBegunApplicationShutdown else { return }
+        failedAudioRecoveryLoadGeneration &+= 1
+        let generation = failedAudioRecoveryLoadGeneration
+        failedAudioRecoveryLoadTask?.cancel()
         guard failedAudioRecoveryEnabled else {
             failedAudioRecoveryReceipts = []
+            failedAudioRecoveryLoadTask = nil
             return
         }
         let loadAction = loadFailedAudioRecoveryReceiptsAction
-        Task { [weak self] in
+        let task = Task { @MainActor [weak self, loadAction] in
+            guard let self else { return }
+            defer {
+                if self.failedAudioRecoveryLoadGeneration == generation {
+                    self.failedAudioRecoveryLoadTask = nil
+                }
+            }
             do {
                 let receipts = try await loadAction()
-                await MainActor.run {
-                    self?.failedAudioRecoveryReceipts = receipts
-                    self?.failedAudioRecoveryError = nil
-                }
+                try Task.checkCancellation()
+                guard !self.hasBegunApplicationShutdown,
+                      self.failedAudioRecoveryLoadGeneration == generation else { return }
+                self.failedAudioRecoveryReceipts = receipts
+                self.failedAudioRecoveryError = nil
+            } catch is CancellationError {
+                return
             } catch {
-                await MainActor.run {
-                    guard let self else { return }
-                    self.failedAudioRecoveryReceipts = []
-                    self.failedAudioRecoveryError = self.localizedRecoveryMessage(
-                        english: "Failed recordings could not be loaded. \(self.localizedRecoveryErrorDetail(error))",
-                        simplifiedChinese: "无法加载失败录音。\(self.localizedRecoveryErrorDetail(error))"
-                    )
-                }
+                guard !self.hasBegunApplicationShutdown,
+                      self.failedAudioRecoveryLoadGeneration == generation else { return }
+                self.failedAudioRecoveryReceipts = []
+                self.failedAudioRecoveryError = self.localizedRecoveryMessage(
+                    english: "Failed recordings could not be loaded. \(self.localizedRecoveryErrorDetail(error))",
+                    simplifiedChinese: "无法加载失败录音。\(self.localizedRecoveryErrorDetail(error))"
+                )
+            }
+        }
+        failedAudioRecoveryLoadTask = task
+    }
+
+    func waitForFailedAudioRecoveryLoad() async {
+        while let task = failedAudioRecoveryLoadTask {
+            await task.value
+        }
+    }
+
+    func waitForFailedAudioRecoveryRetries() async {
+        while !failedAudioRecoveryRetryTasks.isEmpty {
+            let tasks = Array(failedAudioRecoveryRetryTasks.values)
+            for task in tasks {
+                await task.value
             }
         }
     }
@@ -181,11 +209,17 @@ public extension AppModel {
         failedAudioRecoveryRetryTasks[receipt.id] = task
     }
 
-    /// Prevents new retries, cancels every active retry, and waits until the
-    /// runtime has restored its durable receipt and cleaned decrypted audio.
+    /// Prevents new operations, cancels the active index load and every retry,
+    /// and waits until the runtime has restored durable state and cleaned any
+    /// decrypted audio.
     /// Call this before draining events or flushing persistence during quit.
     func stopFailedAudioRecoveryRetriesForApplicationShutdown() async {
         hasBegunApplicationShutdown = true
+        failedAudioRecoveryLoadGeneration &+= 1
+        let loadTask = failedAudioRecoveryLoadTask
+        failedAudioRecoveryLoadTask = nil
+        loadTask?.cancel()
+        await loadTask?.value
         let tasks = Array(failedAudioRecoveryRetryTasks.values)
         tasks.forEach { $0.cancel() }
         for task in tasks {

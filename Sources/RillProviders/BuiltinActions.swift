@@ -3,65 +3,50 @@ import Foundation
 import RillCore
 import RillPlatform
 
-public struct ClipboardCopyAction: OutputAction {
-    public let id = "clipboard.copy"
-    private let pasteboard: PasteboardController
-    private let clipboardCapture: (any ClipboardCaptureSink)?
+public enum BuiltinRecordActionID {
+    public static let store = RecordActionID.store
+    public static let systemClipboardCopy = RecordActionID.systemClipboardCopy
+    public static let focusedApplicationInsert = RecordActionID.focusedApplicationInsert
+}
 
-    public init(
-        pasteboard: PasteboardController,
-        clipboardCapture: (any ClipboardCaptureSink)? = nil
-    ) {
+public struct SystemClipboardCopyAction: OutputAction {
+    public let id = BuiltinRecordActionID.systemClipboardCopy
+    private let pasteboard: SystemClipboardPort
+
+    public init(pasteboard: SystemClipboardPort) {
         self.pasteboard = pasteboard
-        self.clipboardCapture = clipboardCapture
     }
 
-    public func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        let captureTags: [ClipboardCaptureTag] = context.workflow.excludesOutputFromWorkflowCapture
-            ? [.excludeFromWorkflowCapture]
-            : []
-        let alternatives = context.recognitionResult.candidateSets.flatMap { set in
-            set.candidates.map(\.text)
+    public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        var captureTags = record.provenance.captureTags
+        if context.workflow.excludesOutputFromRecordCapture,
+           !captureTags.contains(.excludeFromWorkflowCapture) {
+            captureTags.append(.excludeFromWorkflowCapture)
         }
-        let routeContext = ClipboardRouteContext(
-            applicationName: context.contextSnapshot.focus.applicationName,
-            bundleIdentifier: context.contextSnapshot.focus.bundleIdentifier
-        )
-        if let sourceSubject = context.sourceClipboardItemSubject {
-            guard let clipboardCapture else {
-                return .failed("The source clipboard item could not be replaced safely.")
-            }
-            let replacement = await clipboardCapture.replaceWorkflowClipboardCopy(
-                text: text,
-                workflowID: context.workflow.id,
-                workflow: context.workflow.presentation,
-                context: routeContext,
-                alternatives: alternatives,
-                captureTags: captureTags,
-                replacing: sourceSubject
+        let snapshot: SystemClipboardSnapshot
+        switch record.payload {
+        case .text(let text):
+            snapshot = SystemClipboardSnapshot(plainText: text, changeCount: 0)
+        case .image(let data):
+            snapshot = SystemClipboardSnapshot(
+                plainText: "",
+                imagePNGData: data,
+                changeCount: 0
             )
-            guard replacement == .replaced else {
-                return .failed(replacement.failureMessage)
-            }
-            _ = await pasteboard.writePlainText(text, captureTags: captureTags)
-            return .copiedToClipboard
+        case .files(let files):
+            snapshot = SystemClipboardSnapshot(
+                plainText: "",
+                fileURLs: files,
+                changeCount: 0
+            )
         }
-
-        _ = await pasteboard.writePlainText(text, captureTags: captureTags)
-        _ = await clipboardCapture?.captureWorkflowClipboardCopy(
-            text: text,
-            workflowID: context.workflow.id,
-            workflow: context.workflow.presentation,
-            context: routeContext,
-            alternatives: alternatives,
-            captureTags: captureTags
-        )
+        _ = await pasteboard.writeSnapshot(snapshot, captureTags: captureTags)
         return .copiedToClipboard
     }
 }
 
-public struct InjectTextAction: OutputAction {
-    public let id = "inject.text"
+public struct FocusedApplicationInsertAction: OutputAction {
+    public let id = BuiltinRecordActionID.focusedApplicationInsert
     private let engine: TextInjectionEngine
     private let cursorPreviewCoordinator: CursorTextPreviewCoordinator?
 
@@ -73,8 +58,9 @@ public struct InjectTextAction: OutputAction {
         self.cursorPreviewCoordinator = cursorPreviewCoordinator
     }
 
-    public func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        if context.workflow.resolvedLivePreviewPlacement == .cursor,
+    public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        if case .text(let text) = record.payload,
+           context.workflow.resolvedLivePreviewPlacement == .cursor,
            let cursorPreviewCoordinator {
             switch await cursorPreviewCoordinator.commit(
                 runID: context.runID,
@@ -90,47 +76,58 @@ public struct InjectTextAction: OutputAction {
                 )
             }
         }
-        try await engine.inject(text, targetFocus: context.contextSnapshot.focus)
+        do {
+            switch record.payload {
+            case .text(let text):
+                try await engine.inject(text, targetFocus: context.contextSnapshot.focus)
+            case .image(let data):
+                try await engine.injectClipboardSnapshot(
+                    SystemClipboardSnapshot(
+                        plainText: "",
+                        imagePNGData: data,
+                        changeCount: 0,
+                        captureTags: record.provenance.captureTags
+                    ),
+                    targetFocus: context.contextSnapshot.focus
+                )
+            case .files(let files):
+                try await engine.injectClipboardSnapshot(
+                    SystemClipboardSnapshot(
+                        plainText: "",
+                        fileURLs: files,
+                        changeCount: 0,
+                        captureTags: record.provenance.captureTags
+                    ),
+                    targetFocus: context.contextSnapshot.focus
+                )
+            }
+        } catch let error as TextInjectionEngine.InjectionError
+        where error == .deliveredButClipboardRestorationFailed {
+            // The paste command has already committed. Preserve that semantic
+            // across the Providers -> Runtime boundary so callers never turn a
+            // clipboard-recovery problem into a retryable output failure.
+            throw CommittedOutputFailure.clipboardRestorationFailedAfterInjection
+        }
         return .injected
     }
 }
 
-public struct PushToStackAction: OutputAction {
-    public let id = "stack.push"
-    private let stack: any DeliveryStackSink
+public struct RecordStoreAction: OutputAction {
+    public let id = BuiltinRecordActionID.store
+    private let ingestion: any RecordIngestionSink
 
-    public init(stack: any DeliveryStackSink) {
-        self.stack = stack
+    public init(ingestion: any RecordIngestionSink) {
+        self.ingestion = ingestion
     }
 
-    public func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        let alternatives = context.recognitionResult.candidateSets.flatMap { set in
-            set.candidates.map(\.text)
-        }
-        let item = DeliveryItem(
-            workflowID: context.workflow.id,
-            workflow: context.workflow.presentation,
-            text: text,
-            alternatives: alternatives,
-            sourceApplicationName: context.contextSnapshot.focus.applicationName,
-            sourceBundleIdentifier: context.contextSnapshot.focus.bundleIdentifier,
-            targetGroupID: context.workflow.targetClipboardGroupID,
-            captureTags: context.workflow.excludesOutputFromWorkflowCapture
-                ? [.excludeFromWorkflowCapture]
-                : []
+    public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try await ingestion.ingest(
+            RecordCaptureEnvelope(
+                draft: record,
+                requestedCollectionIDs: context.workflow.targetRecordCollectionIDs
+            )
         )
-        if let sourceSubject = context.sourceClipboardItemSubject {
-            let replacement = await stack.replace(item, replacing: sourceSubject)
-            guard replacement == .replaced else {
-                return .failed(replacement.failureMessage)
-            }
-            return .pushedToStack
-        }
-        let storageResult = await stack.push(item)
-        guard storageResult.wasAccepted else {
-            return .failed(storageResult.failureMessage)
-        }
-        return .pushedToStack
+        return .storedRecord
     }
 }
 
@@ -1765,49 +1762,5 @@ private extension URL {
     var isMarkdownFilePath: Bool {
         let normalizedExtension = pathExtension.lowercased()
         return normalizedExtension == "md" || normalizedExtension == "markdown"
-    }
-}
-
-private extension ClipboardItemReplacementResult {
-    var failureMessage: String {
-        switch self {
-        case .replaced:
-            return ""
-        case .sourceUnavailable:
-            return "The source clipboard item is no longer available."
-        case .sourceChanged:
-            return "The source clipboard item changed before replacement."
-        case .storageRejected(let reason):
-            return reason.failureMessage
-        }
-    }
-}
-
-private extension ClipboardStorageMutationResult {
-    var failureMessage: String {
-        rejectionReason?.failureMessage ?? "Clipboard content could not be stored."
-    }
-}
-
-private extension ClipboardStorageRejectionReason {
-    var failureMessage: String {
-        switch self {
-        case .itemTooLarge:
-            return "The clipboard item exceeds the local per-item storage limit."
-        case .imageRepresentationInvalid:
-            return "The clipboard image representation is malformed or unsupported."
-        case .activeItemLimitReached:
-            return "The local clipboard is full of active or in-use items."
-        case .activeItemInUse:
-            return "The clipboard assignment cannot change while an affected item is in use."
-        case .historyItemLimitReached:
-            return "The local clipboard history is full."
-        case .totalByteLimitReached:
-            return "The local clipboard storage byte limit has been reached."
-        case .itemEncodingFailed:
-            return "The clipboard item could not be encoded for local storage."
-        case .metadataLimitReached:
-            return "The clipboard group or application routing limit has been reached."
-        }
     }
 }

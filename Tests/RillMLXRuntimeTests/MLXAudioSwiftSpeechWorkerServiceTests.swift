@@ -192,6 +192,35 @@ final class MLXAudioSwiftSpeechWorkerServiceTests: XCTestCase {
     XCTAssertEqual(mlxRequestCount, 1)
   }
 
+  func testReleasingASRModelClearsMLXMemoryCache() async throws {
+    let cacheClearRecorder = CacheClearRecorder()
+    let engine = MLXAudioSwiftQwenEngine(
+      clearMemoryCache: cacheClearRecorder.record
+    )
+
+    try await engine.release(modelID: MLXAudioModelID.qwen3ASR17BInt8.rawValue)
+
+    XCTAssertEqual(cacheClearRecorder.count, 1)
+  }
+
+  func testRejectingUnknownASRModelDoesNotClearMLXMemoryCache() async {
+    let cacheClearRecorder = CacheClearRecorder()
+    let engine = MLXAudioSwiftQwenEngine(
+      clearMemoryCache: cacheClearRecorder.record
+    )
+
+    do {
+      try await engine.release(modelID: "unknown-model")
+      XCTFail("Expected the unknown model to be rejected.")
+    } catch {
+      XCTAssertEqual(
+        error as? MLXAudioSwiftRuntimeError,
+        .unsupportedModel("unknown-model")
+      )
+    }
+    XCTAssertEqual(cacheClearRecorder.count, 0)
+  }
+
   func testModelStoreAuthenticatesExactPinnedInventoryAndDigests() throws {
     let root = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -462,6 +491,21 @@ final class MLXAudioSwiftSpeechWorkerServiceTests: XCTestCase {
         )
       }
     )
+  }
+}
+
+private final class CacheClearRecorder: @unchecked Sendable {
+  private let lock = NSLock()
+  private var recordedCount = 0
+
+  var count: Int {
+    lock.withLock { recordedCount }
+  }
+
+  func record() {
+    lock.withLock {
+      recordedCount += 1
+    }
   }
 }
 

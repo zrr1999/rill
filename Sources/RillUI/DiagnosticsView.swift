@@ -26,7 +26,7 @@ public struct DiagnosticsView: View {
                 HStack {
                     Label(
                         UIStrings.text(.diagnosticsTimeline, language: model.language),
-                        systemImage: "clock.badge.checkmark"
+                        systemImage: RillSystemSymbol.clockBadgeCheckmark.rawValue
                     )
                     .font(.headline)
                     Spacer()
@@ -64,7 +64,7 @@ public struct DiagnosticsView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Label(
                             UIStrings.text(.diagnosticsLoadFailed, language: model.language),
-                            systemImage: "exclamationmark.triangle.fill"
+                            systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
                         )
                         .font(.callout)
                         .foregroundStyle(.red)
@@ -154,7 +154,7 @@ public struct DiagnosticsView: View {
                 .monospaced()
                 .foregroundStyle(.secondary)
         }
-        .rillCard(cornerRadius: 10, opacity: 0.2, padding: 10)
+        .rillCard(.subdued, cornerRadius: 10, padding: 10)
     }
 
     private func diagnosticColor(_ level: DiagnosticLevel) -> Color {

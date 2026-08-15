@@ -117,7 +117,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
       defaultLocalSpeechModelIdentifier: defaultModel
     )
 
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertFalse(harness.model.isLoadingSettings)
@@ -168,7 +168,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
       trustedLocalSpeechModels: models,
       defaultLocalSpeechModelIdentifier: "trusted-multilingual"
     )
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
     XCTAssertEqual(try source.currentSettings().model, "trusted-multilingual")
 
     harness.model.localSpeechModel = "trusted-cantonese"
@@ -191,7 +191,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
     )
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
 
     let updatedLanguage: AppLanguage =
       harness.model.language == .english
@@ -260,7 +260,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
     )
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
 
     harness.model.addVocabularyRule(
       kind: .mapping,
@@ -311,7 +311,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
     )
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
     let updatedLanguage: AppLanguage =
       harness.model.language == .english
       ? .simplifiedChinese
@@ -335,7 +335,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
     )
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
     let updatedLanguage: AppLanguage =
       harness.model.language == .english
       ? .simplifiedChinese
@@ -374,7 +374,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
     )
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
     harness.model.language =
       harness.model.language == .english
       ? .simplifiedChinese

@@ -13,9 +13,9 @@ extension AppModel {
     }
 
     @discardableResult
-    public func setClipboardCaptureEnabled(_ isEnabled: Bool) -> Bool {
-        guard canMutateScalarSettings(in: .clipboard) else { return false }
-        clipboardCaptureEnabled = isEnabled
+    public func setSystemClipboardCaptureEnabled(_ isEnabled: Bool) -> Bool {
+        guard canMutateScalarSettings(in: .systemClipboard) else { return false }
+        systemClipboardCaptureEnabled = isEnabled
         return true
     }
 

@@ -23,7 +23,8 @@ enum SQLiteAuthenticatedSchemaFloorError: Error, Equatable, Sendable {
 /// the marker lives in the same file, whole-file snapshot rollback remains a
 /// separate threat that would require a monotonic record outside SQLite.
 enum SQLiteAuthenticatedSchemaFloor {
-  static let installedSchemaFloor = 11
+  static let installedSchemaFloor = 12
+  static let legacySchemaFloor = 11
   static let tableName = "rill_authenticated_schema_floor"
 
   private static let formatVersion = 2
@@ -51,16 +52,20 @@ enum SQLiteAuthenticatedSchemaFloor {
     ) STRICT
     """
 
-  /// Installs the v11 floor. The caller must already own a write transaction.
+  /// Installs an authenticated floor. The caller must already own a write transaction.
   static func install(
     on database: OpaquePointer?,
     databaseID: UUID,
+    schemaFloor: Int = installedSchemaFloor,
     localDataProtector: any LocalDataProtector
   ) throws {
     guard let database else {
       throw SQLiteAuthenticatedSchemaFloorError.invalidDatabase
     }
-    guard sqlite3_get_autocommit(database) == 0 else {
+    guard sqlite3_get_autocommit(database) == 0,
+      schemaFloor >= legacySchemaFloor,
+      schemaFloor <= installedSchemaFloor
+    else {
       throw SQLiteAuthenticatedSchemaFloorError.installationFailed
     }
 
@@ -75,7 +80,7 @@ enum SQLiteAuthenticatedSchemaFloor {
       verification = try localDataProtector.seal(
         verificationPlaintext(
           databaseID: canonicalDatabaseID,
-          schemaFloor: installedSchemaFloor,
+          schemaFloor: schemaFloor,
           schemaFingerprint: fingerprint
         ),
         context: protectionContext(databaseID: canonicalDatabaseID)
@@ -94,7 +99,7 @@ enum SQLiteAuthenticatedSchemaFloor {
         """
         INSERT INTO main.rill_authenticated_schema_floor (
           id, database_id, schema_floor, verification
-        ) VALUES (1, ?, 11, ?);
+        ) VALUES (1, ?, ?, ?);
         """,
         -1,
         &statement,
@@ -107,7 +112,8 @@ enum SQLiteAuthenticatedSchemaFloor {
     defer { sqlite3_finalize(statement) }
 
     guard bindText(canonicalDatabaseID, at: 1, in: statement),
-      bindText(verification, at: 2, in: statement),
+      sqlite3_bind_int64(statement, 2, Int64(schemaFloor)) == SQLITE_OK,
+      bindText(verification, at: 3, in: statement),
       sqlite3_step(statement) == SQLITE_DONE
     else {
       throw SQLiteAuthenticatedSchemaFloorError.installationFailed
@@ -155,7 +161,8 @@ enum SQLiteAuthenticatedSchemaFloor {
       isCanonicalDatabaseID(databaseID),
       sqlite3_column_type(statement, 2) == SQLITE_INTEGER,
       let schemaFloor = Int(exactly: sqlite3_column_int64(statement, 2)),
-      schemaFloor >= installedSchemaFloor,
+      schemaFloor >= legacySchemaFloor,
+      schemaFloor <= installedSchemaFloor,
       sqlite3_column_type(statement, 3) == SQLITE_TEXT,
       sqlite3_column_bytes(statement, 3) <= maximumVerificationByteCount,
       let verification = textColumn(statement, index: 3),
@@ -185,6 +192,84 @@ enum SQLiteAuthenticatedSchemaFloor {
       throw SQLiteAuthenticatedSchemaFloorError.validationFailed
     }
     return schemaFloor
+  }
+
+  /// Captures the authenticated database identity before a schema-changing
+  /// transaction updates the fingerprint.
+  static func validatedDatabaseID(
+    on database: OpaquePointer?,
+    localDataProtector: any LocalDataProtector
+  ) throws -> UUID {
+    _ = try readAndValidate(on: database, localDataProtector: localDataProtector)
+    var statement: OpaquePointer?
+    guard sqlite3_prepare_v2(
+      database,
+      "SELECT database_id FROM main.rill_authenticated_schema_floor WHERE id = 1;",
+      -1,
+      &statement,
+      nil
+    ) == SQLITE_OK, let statement else {
+      throw SQLiteAuthenticatedSchemaFloorError.validationFailed
+    }
+    defer { sqlite3_finalize(statement) }
+    guard sqlite3_step(statement) == SQLITE_ROW,
+      let rawID = textColumn(statement, index: 0),
+      let databaseID = UUID(uuidString: rawID),
+      databaseID.uuidString.lowercased() == rawID,
+      sqlite3_step(statement) == SQLITE_DONE
+    else {
+      throw SQLiteAuthenticatedSchemaFloorError.validationFailed
+    }
+    return databaseID
+  }
+
+  /// Re-signs the schema floor after DDL has changed the authenticated
+  /// fingerprint. The database ID must have been validated earlier in the same
+  /// write transaction.
+  static func upgrade(
+    on database: OpaquePointer?,
+    validatedDatabaseID databaseID: UUID,
+    localDataProtector: any LocalDataProtector
+  ) throws {
+    guard let database, sqlite3_get_autocommit(database) == 0 else {
+      throw SQLiteAuthenticatedSchemaFloorError.installationFailed
+    }
+    let canonicalDatabaseID = databaseID.uuidString.lowercased()
+    let verification: String
+    do {
+      verification = try localDataProtector.seal(
+        verificationPlaintext(
+          databaseID: canonicalDatabaseID,
+          schemaFloor: installedSchemaFloor,
+          schemaFingerprint: try schemaFingerprint(on: database)
+        ),
+        context: protectionContext(databaseID: canonicalDatabaseID)
+      )
+    } catch {
+      throw SQLiteAuthenticatedSchemaFloorError.installationFailed
+    }
+    guard verification.utf8.count <= maximumVerificationByteCount else {
+      throw SQLiteAuthenticatedSchemaFloorError.installationFailed
+    }
+    var statement: OpaquePointer?
+    guard sqlite3_prepare_v2(
+      database,
+      "UPDATE main.rill_authenticated_schema_floor SET schema_floor = ?, verification = ? WHERE id = 1 AND database_id = ?;",
+      -1,
+      &statement,
+      nil
+    ) == SQLITE_OK, let statement else {
+      throw SQLiteAuthenticatedSchemaFloorError.installationFailed
+    }
+    defer { sqlite3_finalize(statement) }
+    guard sqlite3_bind_int64(statement, 1, Int64(installedSchemaFloor)) == SQLITE_OK,
+      bindText(verification, at: 2, in: statement),
+      bindText(canonicalDatabaseID, at: 3, in: statement),
+      sqlite3_step(statement) == SQLITE_DONE,
+      sqlite3_changes(database) == 1
+    else {
+      throw SQLiteAuthenticatedSchemaFloorError.installationFailed
+    }
   }
 
   private static func installedTableSQL(on database: OpaquePointer?) throws -> String? {

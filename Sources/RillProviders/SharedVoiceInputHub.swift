@@ -349,19 +349,19 @@ public actor SharedVoiceInputHub {
     guard producerTask != nil || producerChannel != nil else { return }
     let processor = producerChannel.map(processor(for:))
     producerGeneration &+= 1
-    let task = producerTask
+    producerTask?.cancel()
     producerTask = nil
     if releaseFrontend {
       // A configured, stopped VoiceProcessingIO graph can still affect other
       // applications. Release the complete frontend whenever ownership moves
       // away from this channel; the processor remains reusable on the next run.
-      // Tear it down before cancelling the consumer or finishing the stream so
-      // asynchronous termination cannot stop the same retained session twice.
+      // Tear it down before finishing the stream so the continuation's
+      // asynchronous termination callback cannot race shutdown and stop the
+      // same retained session twice.
       processor?.shutdown()
     } else {
       processor?.stopRecording()
     }
-    task?.cancel()
     producerContinuation?.finish()
     producerContinuation = nil
     producerChannel = nil
@@ -410,8 +410,8 @@ final class SharedVoiceInputCaptureSource: LocalSpeechAudioCaptureSource,
     self.processor = processor
   }
 
-  var endpointRMS: [Float] {
-    processor.endpointRMS
+  var meterRMS: [Float] {
+    processor.meterRMS
   }
 
   func prepareStoppedFrontend() throws {

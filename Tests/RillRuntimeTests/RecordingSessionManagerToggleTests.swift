@@ -120,7 +120,6 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
   func testToggleModeStartsOnPressIgnoresReleaseAndStopsOnNextPress() async throws {
     let eventBus = EventBus()
     let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-    let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
     let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
     let requestProbe = ToggleRecognitionProbe()
     let actionProbe = ToggleActionProbe()
@@ -151,7 +150,6 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: [ToggleAction(probe: actionProbe)]),
       candidateResolver: resolver,
-      deliveryStack: deliveryStack,
       eventBus: eventBus,
       diagnostics: diagnostics
     )

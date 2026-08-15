@@ -3,7 +3,7 @@ import RillCore
 
 public actor InMemoryHistoryRepository: HistoryRepository {
     private struct StoredRecord: Sendable {
-        var record: HistoryRecord
+        var record: WorkflowResultRecord
         var generation: RunHistoryWriteGeneration
     }
 
@@ -11,7 +11,7 @@ public actor InMemoryHistoryRepository: HistoryRepository {
     private var currentGeneration: RunHistoryWriteGeneration = .initial
     private var lastClearIntentID: UUID?
 
-    public init(records: [HistoryRecord] = []) {
+    public init(records: [WorkflowResultRecord] = []) {
         self.storage = records
             .map(HistoryRecordSanitizer.sanitize)
             .map { StoredRecord(record: $0, generation: .initial) }
@@ -22,12 +22,12 @@ public actor InMemoryHistoryRepository: HistoryRepository {
         currentGeneration
     }
 
-    public func save(_ record: HistoryRecord) async throws {
+    public func save(_ record: WorkflowResultRecord) async throws {
         try await save(record, generation: currentGeneration)
     }
 
     public func save(
-        _ record: HistoryRecord,
+        _ record: WorkflowResultRecord,
         generation: RunHistoryWriteGeneration
     ) async throws {
         let record = HistoryRecordSanitizer.sanitize(record)
@@ -38,7 +38,7 @@ public actor InMemoryHistoryRepository: HistoryRepository {
         storage.sort { $0.record.timestamp > $1.record.timestamp }
     }
 
-    public func records(matching query: HistoryQuery) async throws -> [HistoryRecord] {
+    public func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
         var records = storage.map(\.record)
 
         if let runID = query.runID {
@@ -57,8 +57,8 @@ public actor InMemoryHistoryRepository: HistoryRepository {
             records = records.filter { $0.timestamp >= since }
         }
 
-        if query.stackRelatedOnly == true {
-            records = records.filter(\.isStackRelated)
+        if query.recordRelatedOnly == true {
+            records = records.filter(\.isRecordRelated)
         }
 
         if let limit = query.limit, limit >= 0 {

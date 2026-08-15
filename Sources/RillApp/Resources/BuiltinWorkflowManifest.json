@@ -46,7 +46,7 @@
         "output": {
           "actions": [
             {
-              "id": "inject.text",
+              "id": "focused-application.insert",
               "configuration": {}
             }
           ],

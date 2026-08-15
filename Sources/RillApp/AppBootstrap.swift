@@ -12,22 +12,17 @@ import RillUI
 struct AppContainer {
   let model: AppModel
   let globalInputOwner: GlobalInputOwner
-  let stackPasteController: StackPasteController
+  let systemClipboardCaptureController: SystemClipboardCaptureController
   let recordingSessionManager: RecordingSessionManager
   let shutdown: @Sendable () async -> Void
   let setLiveAudioEscapeCancellationRunID: @Sendable (UUID?) -> Void
   let removeLiveAudioDurationLimit: @Sendable (UUID) async -> Bool
-  let useClipboardItem:
-    @Sendable (
-      ClipboardHistoryItem,
-      ClipboardPasteTargetIdentity
-    ) async -> Void
-  let setClipboardCaptureEnabled: @Sendable (Bool, UInt64) -> Void
+  let setSystemClipboardCaptureEnabled: @Sendable (Bool, UInt64) -> Void
   let ignoreNextExternalClipboardChange: @Sendable () -> Void
-  let updateClipboardPanelHotkey: @Sendable (HotkeyBindingDescriptor) -> Void
-  let beginClipboardPanelShortcutRecording: @Sendable () -> UUID
-  let endClipboardPanelShortcutRecording: @Sendable (UUID) -> Void
-  let commitClipboardPanelShortcutRecording: @Sendable (UUID, UInt16) -> Void
+  let updateRecordPanelHotkey: @Sendable (HotkeyBindingDescriptor) -> Void
+  let beginRecordPanelShortcutRecording: @Sendable () -> UUID
+  let endRecordPanelShortcutRecording: @Sendable (UUID) -> Void
+  let commitRecordPanelShortcutRecording: @Sendable (UUID, UInt16) -> Void
 }
 
 @MainActor
@@ -236,51 +231,6 @@ enum AppBootstrap {
     }
   }
 
-  nonisolated static func makeClipboardItemRunAuthorization(
-    deliveryStack: DeliveryStack,
-    privacyRunGate: PrivacyRunGate,
-    privacyContextProvider: @escaping @Sendable () async -> ContextSnapshot,
-    authorizedContextProvider:
-      @escaping @Sendable (
-        PrivacyPolicyDecision
-      ) async -> ContextSnapshot
-  )
-    -> @Sendable (
-      UUID,
-      ClipboardItemVersion,
-      ClipboardItemDryRunOperation,
-      WorkflowDefinition
-    ) async throws -> AuthorizedWorkflowRunContext
-  {
-    { itemID, expectedItemVersion, operation, workflow in
-      guard let subject = await deliveryStack.clipboardItemDryRunSubject(itemID: itemID) else {
-        throw PrivacyRunGate.GateError.clipboardItemUnavailable
-      }
-      guard subject.itemVersion == expectedItemVersion else {
-        throw PrivacyRunGate.GateError.clipboardItemChangedDuringAuthorization
-      }
-      guard
-        let source = await deliveryStack.clipboardItemRunAuthorizationSource(
-          itemID: itemID,
-          expectedItemVersion: expectedItemVersion
-        )
-      else {
-        throw PrivacyRunGate.GateError.clipboardItemChangedDuringAuthorization
-      }
-      let authorized = try await privacyRunGate.captureAuthorizedClipboardItemRunContext(
-        source: source,
-        operation: operation,
-        privacyContextProvider: privacyContextProvider,
-        contextProvider: authorizedContextProvider,
-        workflow: workflow
-      )
-      guard await deliveryStack.matchesClipboardItemRunAuthorizationSource(source) else {
-        throw PrivacyRunGate.GateError.clipboardItemChangedDuringAuthorization
-      }
-      return authorized
-    }
-  }
-
   nonisolated static func makeRecognitionRunPreflight(
     trustedLocalModelIdentifiers: Set<String> =
       LocalSpeechModelCatalog.distributableModelIdentifiers,
@@ -353,27 +303,8 @@ enum AppBootstrap {
     return preparedModel
   }
 
-  nonisolated static func makeClipboardGroupWorkflowRegistration(
-    for workflow: WorkflowDefinition,
-    isEnabled: Bool
-  ) -> ClipboardGroupWorkflowRegistration? {
-    guard
-      let configuration =
-        try? workflow
-        .parseClipboardGroupAutomationConfiguration()
-    else {
-      return nil
-    }
-    return ClipboardGroupWorkflowRegistration(
-      workflowID: workflow.id,
-      triggerRule: configuration.rule,
-      isEnabled: isEnabled,
-      isExecutionSupported: false
-    )
-  }
-
   nonisolated static func makeLocalHistoryMaintenance(
-    clipboardHistory: any ClipboardHistoryMaintaining,
+    recordHistory: any RecordHistoryMaintaining,
     historyRepository: any HistoryRepository,
     runReceiptRepository: any WorkflowRunReceiptRepository,
     diagnosticRepository: any DiagnosticHistoryMaintaining,
@@ -383,13 +314,28 @@ enum AppBootstrap {
   ) -> (any LocalHistoryMaintaining)? {
     guard let settingsStore, let residuePurger else { return nil }
     return LocalHistoryMaintenance(
-      clipboardHistory: clipboardHistory,
+      recordHistory: recordHistory,
       runHistory: historyRepository,
       runReceipts: runReceiptRepository,
       diagnosticHistory: diagnosticRepository,
       settingsStore: settingsStore,
       physicalPurger: residuePurger,
       eventReporter: eventReporter
+    )
+  }
+
+  nonisolated static func makeRecordCollectionWorkflowRegistration(
+    for workflow: WorkflowDefinition,
+    isEnabled: Bool
+  ) -> RecordCollectionWorkflowRegistration? {
+    guard let configuration = try? workflow.parseRecordCollectionAutomationConfiguration() else {
+      return nil
+    }
+    return RecordCollectionWorkflowRegistration(
+      workflowID: workflow.id,
+      triggerRule: configuration.rule,
+      isEnabled: isEnabled,
+      isExecutionSupported: false
     )
   }
 
@@ -412,11 +358,11 @@ enum AppBootstrap {
 
     var metadata = [
       "outcome": event.outcome.rawValue,
-      "clipboardRemovedCount": String(event.counts.clipboardRemovedCount),
+      "recordRemovedCount": String(event.counts.recordRemovedCount),
       "runRemovedCount": String(event.counts.runRemovedCount),
       "runReceiptRemovedCount": String(event.counts.runReceiptRemovedCount),
       "diagnosticRemovedCount": String(event.counts.diagnosticRemovedCount),
-      "preservedActiveClipboardCount": String(event.counts.preservedActiveClipboardCount),
+      "preservedActiveRecordCount": String(event.counts.preservedActiveRecordCount),
       "totalRemovedCount": String(event.counts.totalRemovedCount),
     ]
     if let pendingReason = event.pendingReason {
@@ -473,69 +419,6 @@ enum AppBootstrap {
     )
   }
 
-  nonisolated static func useClipboardItem(
-    _ item: ClipboardHistoryItem,
-    target: ClipboardPasteTargetIdentity,
-    capturePrivacyContext: @escaping @Sendable () async -> ContextSnapshot,
-    deliverText:
-      @escaping @Sendable (
-        ClipboardItemDryRunSubject,
-        ContextSnapshot
-      ) async -> Void,
-    claimRichItem:
-      @escaping @Sendable (
-        ClipboardItemDryRunSubject
-      ) async throws -> ClipboardItemUseLease,
-    injectClipboardSnapshot:
-      @escaping @Sendable (
-        ClipboardSnapshot,
-        FocusSnapshot
-      ) async throws -> Void,
-    completeUse: @escaping @Sendable (UUID) async -> Void,
-    failUse: @escaping @Sendable (UUID) async -> Void,
-    reportFailure: @escaping @Sendable (String) async -> Void
-  ) async {
-    let subject = ClipboardItemDryRunSubject(
-      itemID: item.id,
-      itemVersion: item.version,
-      groupID: item.groupID,
-      contentKind: item.contentKind,
-      captureTags: item.captureTags,
-      hasTransferableContent: item.supportsDirectPaste
-    )
-    let privacyContext = await capturePrivacyContext()
-    guard target.matches(privacyContext.focus) else {
-      await reportFailure(
-        "Clipboard paste was blocked because the restored target application changed."
-      )
-      return
-    }
-
-    if item.contentKind == .text {
-      await deliverText(subject, privacyContext)
-      return
-    }
-
-    var lease: ClipboardItemUseLease?
-    do {
-      let claimedLease = try await claimRichItem(subject)
-      lease = claimedLease
-      try await injectClipboardSnapshot(
-        claimedLease.item.clipboardSnapshot,
-        privacyContext.focus
-      )
-      await completeUse(claimedLease.leaseID)
-    } catch {
-      if let lease {
-        await failUse(lease.leaseID)
-      }
-      let safeMessage =
-        (error as? ClipboardItemUseLeaseError)?.errorDescription
-        ?? HistoryFailureSanitizer.genericMessage
-      await reportFailure(safeMessage)
-    }
-  }
-
   private nonisolated static func uniqueSortedCodes(_ values: [String]) -> [String] {
     Array(Set(values)).sorted()
   }
@@ -554,9 +437,7 @@ private struct PersistenceBackends {
   /// not substitute an ephemeral repository and publish it as durable truth.
   let runReceiptRepository: (any WorkflowRunReceiptRepository)?
   let settingsStore: (any SettingsStore)?
-  /// Dedicated atomic boundary for the protected clipboard metadata/blob graph.
-  /// It is intentionally not routed through the generic settings facade.
-  let clipboardPersistenceStore: (any ClipboardPersistenceStore)?
+  let recordGraphPersistenceStore: (any RecordGraphPersistenceStore)?
   let residuePurger: (any StorageResiduePurging)?
   let temporaryFileCleanupService: RillTemporaryFileCleanupService
   let failedAudioRecoveryStore: (any FailedAudioRecoveryStore)?
@@ -596,8 +477,10 @@ private struct CoreServices {
   let persistence: PersistenceBackends
   let diagnostics: DiagnosticsRecorder
   let runReceiptRecorder: WorkflowRunReceiptRecorder?
-  let clipboardGroupEventScheduler: ClipboardGroupEventScheduler
-  let deliveryStack: DeliveryStack
+  let recordCollectionEventScheduler: RecordCollectionEventScheduler
+  let recordStore: RecordStore
+  let recordIngestion: RecordIngestionCoordinator
+  let recordDelivery: RecordDeliveryCoordinator
   let localHistoryMaintenance: (any LocalHistoryMaintaining)?
   let candidateResolver: CandidateResolver
   let vocabularyRuleSource: VocabularyRuleSource
@@ -606,7 +489,7 @@ private struct CoreServices {
 
 private struct PlatformServices {
   let focusTracker: FocusTracker
-  let pasteboard: PasteboardController
+  let pasteboard: SystemClipboardPort
   let hotkeyTap: HotkeyEventTap
   let injectionEngine: TextInjectionEngine
   let cursorTextPreviewCoordinator: CursorTextPreviewCoordinator
@@ -652,42 +535,34 @@ private struct RuntimeServices {
   let capturedAudioProcessingQueue: CapturedAudioProcessingQueue
   let assistantAudioProcessingQueue: CapturedAudioProcessingQueue
   let globalInputOwner: GlobalInputOwner
-  let stackPasteController: StackPasteController
+  let systemClipboardCaptureController: SystemClipboardCaptureController
   let recordingSessionManager: RecordingSessionManager
   let workflowAudioRunController: WorkflowAudioRunController
   let wakeWordCoordinator: WakeWordCoordinator?
   let cursorTextPreviewLifecycleCoordinator: CursorTextPreviewLifecycleCoordinator
   let failedAudioRecoveryController: FailedAudioRecoveryController?
-  let clipboardGroupEventScheduler: ClipboardGroupEventScheduler
   let privacyRunGate: PrivacyRunGate
   let authorizeWorkflowRunAction:
     @Sendable (
       WorkflowDefinition
     ) async throws -> AuthorizedWorkflowRunContext
-  let authorizeClipboardItemRunAction:
-    @Sendable (
-      UUID,
-      ClipboardItemVersion,
-      ClipboardItemDryRunOperation,
-      WorkflowDefinition
-    ) async throws -> AuthorizedWorkflowRunContext
   let workflowSelectionBridge: WorkflowSelectionBridge
-  let clipboardCaptureControlBridge: ClipboardCaptureControlBridge
+  let systemClipboardCaptureControlBridge: SystemClipboardCaptureControlBridge
   let globalInputCapabilityBridge: GlobalInputCapabilityBridge
   let workflowManifestStartupDiagnostic: DiagnosticEvent
   let workflows: [WorkflowDefinition]
 }
 
 @MainActor
-private final class ClipboardCaptureControlBridge {
+private final class SystemClipboardCaptureControlBridge {
   weak var model: AppModel?
   private var latestRevision: UInt64?
 
-  func update(_ snapshot: ClipboardCaptureControlSnapshot) {
+  func update(_ snapshot: SystemClipboardCaptureControlSnapshot) {
     guard let model else { return }
     if let latestRevision, snapshot.revision <= latestRevision { return }
     latestRevision = snapshot.revision
-    model.updateClipboardCaptureControlState(snapshot)
+    model.updateSystemClipboardCaptureControlState(snapshot)
   }
 }
 
@@ -831,7 +706,7 @@ private enum AppContainerFactory {
       runtime: runtime
     )
     runtime.workflowSelectionBridge.model = model
-    runtime.clipboardCaptureControlBridge.model = model
+    runtime.systemClipboardCaptureControlBridge.model = model
     runtime.globalInputCapabilityBridge.attach(model)
     speechPlaybackPresentationBridge.attach(model)
     speechModelPoolPresentationBridge.attach(model)
@@ -892,24 +767,24 @@ private enum AppContainerFactory {
         diagnostics: diagnostics
       )
     }
-    let clipboardGroupEventScheduler = ClipboardGroupEventScheduler(
+    let recordCollectionEventScheduler = RecordCollectionEventScheduler(
       receiptRecorder: runReceiptRecorder,
       diagnostics: diagnostics,
       registrationProvider: {
         await MainActor.run {
-          workflowSelectionBridge.clipboardGroupWorkflowRegistrations()
+          workflowSelectionBridge.recordCollectionWorkflowRegistrations()
         }
       }
     )
-    let deliveryStack = DeliveryStack(
-      eventBus: eventBus,
-      diagnostics: diagnostics,
-      clipboardPersistenceStore: persistence.clipboardPersistenceStore,
-      clipboardGroupEventSink: clipboardGroupEventScheduler
+    let recordStore = RecordStore(
+      persistence: persistence.recordGraphPersistenceStore,
+      collectionEventSink: recordCollectionEventScheduler
     )
+    let recordIngestion = RecordIngestionCoordinator(store: recordStore)
+    let recordDelivery = RecordDeliveryCoordinator(store: recordStore)
     let localHistoryMaintenance = persistence.runReceiptRepository.flatMap { repository in
       AppBootstrap.makeLocalHistoryMaintenance(
-        clipboardHistory: deliveryStack,
+        recordHistory: recordStore,
         historyRepository: persistence.historyRepository,
         runReceiptRepository: repository,
         diagnosticRepository: diagnostics,
@@ -927,8 +802,10 @@ private enum AppContainerFactory {
       persistence: persistence,
       diagnostics: diagnostics,
       runReceiptRecorder: runReceiptRecorder,
-      clipboardGroupEventScheduler: clipboardGroupEventScheduler,
-      deliveryStack: deliveryStack,
+      recordCollectionEventScheduler: recordCollectionEventScheduler,
+      recordStore: recordStore,
+      recordIngestion: recordIngestion,
+      recordDelivery: recordDelivery,
       localHistoryMaintenance: localHistoryMaintenance,
       candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
       vocabularyRuleSource: VocabularyRuleSource(),
@@ -938,7 +815,7 @@ private enum AppContainerFactory {
 
   private static func makePlatformServices(core: CoreServices) -> PlatformServices {
     let focusTracker = FocusTracker()
-    let pasteboard = PasteboardController()
+    let pasteboard = SystemClipboardPort()
     let hotkeyTap = HotkeyEventTap()
     let injectionEngine = TextInjectionEngine(
       pasteboard: pasteboard,
@@ -1223,10 +1100,9 @@ private enum AppContainerFactory {
       ),
       actionRegistry: OutputActionRegistry(
         actions: [
-          PushToStackAction(stack: core.deliveryStack),
-          ClipboardCopyAction(
-            pasteboard: platform.pasteboard, clipboardCapture: core.deliveryStack),
-          InjectTextAction(
+          RecordStoreAction(ingestion: core.recordIngestion),
+          SystemClipboardCopyAction(pasteboard: platform.pasteboard),
+          FocusedApplicationInsertAction(
             engine: platform.injectionEngine,
             cursorPreviewCoordinator: platform.cursorTextPreviewCoordinator
           ),
@@ -1323,7 +1199,7 @@ private enum AppContainerFactory {
       actionRegistry: registries.actionRegistry
     )
     let bridge = workflowSelectionBridge
-    let clipboardCaptureControlBridge = ClipboardCaptureControlBridge()
+    let systemClipboardCaptureControlBridge = SystemClipboardCaptureControlBridge()
     let globalInputCapabilityBridge = GlobalInputCapabilityBridge()
     let authorizeWorkflowRunAction:
       @Sendable (
@@ -1344,16 +1220,6 @@ private enum AppContainerFactory {
           workflow: workflow
         )
       }
-    let authorizeClipboardItemRunAction = AppBootstrap.makeClipboardItemRunAuthorization(
-      deliveryStack: core.deliveryStack,
-      privacyRunGate: privacyRunGate,
-      privacyContextProvider: {
-        await platform.contextProvider.capturePrivacyContext()
-      },
-      authorizedContextProvider: { decision in
-        await platform.contextProvider.captureContext(applying: decision)
-      }
-    )
     let workflowAudioRunController = WorkflowAudioRunController(
       audioCaptureService: providers.workflowAudioCaptureService,
       capturedAudioProcessingQueue: assistantQueue,
@@ -1436,23 +1302,21 @@ private enum AppContainerFactory {
       capturedAudioProcessingQueue: queue,
       assistantAudioProcessingQueue: assistantQueue,
       globalInputOwner: globalInputOwner,
-      stackPasteController: makeStackPasteController(
+      systemClipboardCaptureController: makeSystemClipboardCaptureController(
         core: core,
         platform: platform,
         coordinator: coordinator,
-        captureControlBridge: clipboardCaptureControlBridge
+        captureControlBridge: systemClipboardCaptureControlBridge
       ),
       recordingSessionManager: recordingSessionManager,
       workflowAudioRunController: workflowAudioRunController,
       wakeWordCoordinator: wakeWordCoordinator,
       cursorTextPreviewLifecycleCoordinator: cursorTextPreviewLifecycleCoordinator,
       failedAudioRecoveryController: failedAudioRecoveryController,
-      clipboardGroupEventScheduler: core.clipboardGroupEventScheduler,
       privacyRunGate: privacyRunGate,
       authorizeWorkflowRunAction: authorizeWorkflowRunAction,
-      authorizeClipboardItemRunAction: authorizeClipboardItemRunAction,
       workflowSelectionBridge: bridge,
-      clipboardCaptureControlBridge: clipboardCaptureControlBridge,
+      systemClipboardCaptureControlBridge: systemClipboardCaptureControlBridge,
       globalInputCapabilityBridge: globalInputCapabilityBridge,
       workflowManifestStartupDiagnostic: manifestResult.diagnostic,
       workflows: manifestResult.manifest.workflows
@@ -1475,7 +1339,8 @@ private enum AppContainerFactory {
       transformerRegistry: registries.transformerRegistry,
       actionRegistry: registries.actionRegistry,
       candidateResolver: core.candidateResolver,
-      deliveryStack: core.deliveryStack,
+      recordStore: core.recordStore,
+      recordDeliveryCoordinator: core.recordDelivery,
       eventBus: core.eventBus,
       diagnostics: core.diagnostics,
       runReceiptRecorder: core.runReceiptRecorder,
@@ -1487,21 +1352,22 @@ private enum AppContainerFactory {
       },
       recognitionOptionsProvider: recognitionOptionsProvider,
       recognitionAudioCleanupOwner: recognitionAudioCleanupOwner,
-      defaultStackDeliveryActionID: "inject.text"
+      defaultRecordDeliveryActionID: "focused-application.insert"
     )
   }
 
-  private static func makeStackPasteController(
+  private static func makeSystemClipboardCaptureController(
     core: CoreServices,
     platform: PlatformServices,
     coordinator: SessionCoordinator,
-    captureControlBridge: ClipboardCaptureControlBridge
-  ) -> StackPasteController {
-    StackPasteController(
+    captureControlBridge: SystemClipboardCaptureControlBridge
+  ) -> SystemClipboardCaptureController {
+    SystemClipboardCaptureController(
       hotkeyTap: platform.hotkeyTap,
       pasteboard: platform.pasteboard,
       contextProvider: platform.contextProvider,
-      deliveryStack: core.deliveryStack,
+      recordStore: core.recordStore,
+      recordDeliveryCoordinator: core.recordDelivery,
       sessionCoordinator: coordinator,
       eventBus: core.eventBus,
       diagnostics: core.diagnostics,
@@ -1831,9 +1697,9 @@ private enum AppContainerFactory {
             waitForVoiceConfiguration: {
               await model.waitForInitialVoiceConfiguration()
             },
-            startClipboardConsumer: { clipboardCaptureEnabled in
-              await runtime.stackPasteController.start(
-                initialClipboardCaptureEnabled: clipboardCaptureEnabled,
+            startClipboardConsumer: { systemClipboardCaptureEnabled in
+              await runtime.systemClipboardCaptureController.start(
+                initialClipboardCaptureEnabled: systemClipboardCaptureEnabled,
                 preferenceRevision: 0
               )
             },
@@ -1862,14 +1728,14 @@ private enum AppContainerFactory {
     AppContainer(
       model: model,
       globalInputOwner: runtime.globalInputOwner,
-      stackPasteController: runtime.stackPasteController,
+      systemClipboardCaptureController: runtime.systemClipboardCaptureController,
       recordingSessionManager: runtime.recordingSessionManager,
       shutdown: ApplicationShutdownOperation.make(
         sealMarkdownPostCommitCleanups: {
           await providers.markdownFileAppendCoordinator.seal()
         },
-        sealClipboardMutations: {
-          await model.sealClipboardMutationsForApplicationShutdown()
+        sealRecordMutations: {
+          await model.sealRecordMutationsForApplicationShutdown()
         },
         stopStartupTasks: {
           await AppBootstrap.stopStartupTasks(
@@ -1879,8 +1745,8 @@ private enum AppContainerFactory {
         stopSettingsReads: {
           await model.stopSettingsReadTasksForApplicationShutdown()
         },
-        drainClipboardMutations: {
-          await model.drainClipboardMutationsForApplicationShutdown()
+        drainRecordMutations: {
+          await model.drainRecordMutationsForApplicationShutdown()
         },
         cancelRecording: {
           await runtime.recordingSessionManager.stopForApplicationShutdown()
@@ -1914,19 +1780,20 @@ private enum AppContainerFactory {
           await providers.qwen3TTSSynthesizer.releaseResources()
           try? await providers.ttsSpeechWorkerSupervisor.shutdown()
         },
-        drainTextInjectionClipboardRecovery: {
+        drainTextInjectionSystemClipboardRecovery: {
           await platform.injectionEngine
             .drainPendingClipboardRecoveryForApplicationShutdown()
         },
-        stopStackPaste: {
-          await runtime.stackPasteController.stop()
+        stopSystemClipboardCapture: {
+          await runtime.systemClipboardCaptureController.stop()
+          await runtime.coordinator.shutdownRecordDeliverySettlements()
         },
         stopGlobalInputOwner: {
           await runtime.globalInputOwner.stop()
         },
-        stopClipboardGroupScheduler: {
-          await core.deliveryStack.removeClipboardGroupEventSink()
-          await runtime.clipboardGroupEventScheduler.shutdown()
+        stopRecordCollectionScheduler: {
+          await core.recordStore.setRecordCollectionEventSink(nil)
+          await core.recordCollectionEventScheduler.shutdown()
         },
         drainMarkdownPostCommitCleanups: {
           await providers.markdownFileAppendCoordinator.sealAndDrain()
@@ -1939,7 +1806,6 @@ private enum AppContainerFactory {
         },
         flushPersistence: {
           await model.drainPendingSettingsWritesForApplicationShutdown()
-          await core.deliveryStack.drainPersistenceForApplicationShutdown()
         }
       ),
       setLiveAudioEscapeCancellationRunID: { runID in
@@ -1953,20 +1819,9 @@ private enum AppContainerFactory {
         let results = await (recordingRemoval, workflowRemoval)
         return results.0 || results.1
       },
-      useClipboardItem: { item, target in
-        await runtime.stackPasteController.performProgrammaticPaste {
-          await useClipboardItem(
-            item,
-            target: target,
-            core: core,
-            platform: platform,
-            coordinator: runtime.coordinator
-          )
-        }
-      },
-      setClipboardCaptureEnabled: { isEnabled, preferenceRevision in
+      setSystemClipboardCaptureEnabled: { isEnabled, preferenceRevision in
         Task {
-          await runtime.stackPasteController.setClipboardCaptureEnabled(
+          await runtime.systemClipboardCaptureController.setSystemClipboardCaptureEnabled(
             isEnabled,
             preferenceRevision: preferenceRevision
           )
@@ -1974,67 +1829,22 @@ private enum AppContainerFactory {
       },
       ignoreNextExternalClipboardChange: {
         Task {
-          await runtime.stackPasteController.ignoreNextExternalClipboardChange()
+          await runtime.systemClipboardCaptureController.ignoreNextExternalClipboardChange()
         }
       },
-      updateClipboardPanelHotkey: { binding in
-        platform.hotkeyTap.setClipboardPanelHotkeyBinding(binding)
+      updateRecordPanelHotkey: { binding in
+        platform.hotkeyTap.setRecordPanelHotkeyBinding(binding)
       },
-      beginClipboardPanelShortcutRecording: {
-        platform.hotkeyTap.beginClipboardPanelShortcutRecording()
+      beginRecordPanelShortcutRecording: {
+        platform.hotkeyTap.beginRecordPanelShortcutRecording()
       },
-      endClipboardPanelShortcutRecording: { suspensionID in
-        platform.hotkeyTap.endClipboardPanelShortcutRecording(suspensionID)
+      endRecordPanelShortcutRecording: { suspensionID in
+        platform.hotkeyTap.endRecordPanelShortcutRecording(suspensionID)
       },
-      commitClipboardPanelShortcutRecording: { suspensionID, keyCode in
-        platform.hotkeyTap.commitClipboardPanelShortcutRecording(
+      commitRecordPanelShortcutRecording: { suspensionID, keyCode in
+        platform.hotkeyTap.commitRecordPanelShortcutRecording(
           suspensionID,
           keyCode: keyCode
-        )
-      }
-    )
-  }
-
-  private static func useClipboardItem(
-    _ item: ClipboardHistoryItem,
-    target: ClipboardPasteTargetIdentity,
-    core: CoreServices,
-    platform: PlatformServices,
-    coordinator: SessionCoordinator
-  ) async {
-    await AppBootstrap.useClipboardItem(
-      item,
-      target: target,
-      capturePrivacyContext: {
-        await platform.contextProvider.capturePrivacyContext()
-      },
-      deliverText: { subject, contextSnapshot in
-        await coordinator.deliverClipboardItem(
-          subject: subject,
-          actionID: "inject.text",
-          contextSnapshot: contextSnapshot
-        )
-      },
-      claimRichItem: { subject in
-        try await core.deliveryStack.beginClipboardItemUseLease(
-          matching: subject
-        )
-      },
-      injectClipboardSnapshot: { snapshot, targetFocus in
-        try await platform.injectionEngine.injectClipboardSnapshot(
-          snapshot,
-          targetFocus: targetFocus
-        )
-      },
-      completeUse: { leaseID in
-        await core.deliveryStack.completeDelivery(leaseID: leaseID)
-      },
-      failUse: { leaseID in
-        await core.deliveryStack.failDelivery(leaseID: leaseID, error: nil)
-      },
-      reportFailure: { message in
-        await core.eventBus.publish(
-          .runFailed(runID: nil, workflow: nil, message: message)
         )
       }
     )
@@ -2050,20 +1860,13 @@ private enum AppModelFactory {
     registries: Registries,
     runtime: RuntimeServices
   ) -> AppModel {
-    let clipboardItemDryRunPreparer = ClipboardItemDryRunPreparer(
-      deliveryStack: core.deliveryStack,
-      privacyRunGate: runtime.privacyRunGate,
-      privacyContextProvider: {
-        await platform.contextProvider.capturePrivacyContext()
-      }
-    )
     var model: AppModel?
     model = AppModel(
       workflows: runtime.workflows,
       eventBus: core.eventBus,
       sessionCoordinator: runtime.coordinator,
       outputActionRegistry: registries.actionRegistry,
-      deliveryStack: core.deliveryStack,
+      recordWorkspace: RecordWorkspaceModel(store: core.recordStore),
       candidateResolver: core.candidateResolver,
       historyRepository: core.persistence.historyRepository,
       runHistoryBrowser: core.persistence.runHistoryBrowser,
@@ -2293,7 +2096,6 @@ private enum AppModelFactory {
         return try await controller.currentReceipts()
       },
       authorizeWorkflowRunAction: runtime.authorizeWorkflowRunAction,
-      authorizeClipboardItemRunAction: runtime.authorizeClipboardItemRunAction,
       explainResolvedWorkflowAction: AppBootstrap.makeWorkflowExplanationAction(
         service: WorkflowExplainService(
           recognizerRegistry: registries.recognizerRegistry,
@@ -2305,18 +2107,11 @@ private enum AppModelFactory {
           await platform.contextProvider.capturePrivacyContext()
         }
       ),
-      previewClipboardItemAction: { itemID, operation, workflow in
-        try await clipboardItemDryRunPreparer.preview(
-          itemID: itemID,
-          operation: operation,
-          workflow: workflow
-        )
-      },
       writeClipboardTextAction: { text in
         _ = platform.pasteboard.writePlainText(text)
       },
-      pasteTopOfStackAction: {
-        Task { await runtime.stackPasteController.pasteTopOfStack() }
+      deliverNextRecordAction: {
+        Task { await runtime.systemClipboardCaptureController.deliverNextRecord() }
       },
       permissionSnapshot: platform.permissionGate.snapshot,
       refreshPermissionsAction: {
@@ -2533,7 +2328,7 @@ private enum AppPersistence {
         runHistoryBrowser: store,
         runReceiptRepository: store,
         settingsStore: protectedSettingsStore,
-        clipboardPersistenceStore: store,
+        recordGraphPersistenceStore: store,
         residuePurger: RillStorageResiduePurger(
           rawStoragePurger: store,
           temporaryFileCleanupService: temporaryFileCleanupService
@@ -2584,7 +2379,7 @@ private enum AppPersistence {
       runHistoryBrowser: UnavailableRunHistoryBrowser(),
       runReceiptRepository: nil,
       settingsStore: nil,
-      clipboardPersistenceStore: nil,
+      recordGraphPersistenceStore: nil,
       residuePurger: nil,
       temporaryFileCleanupService: temporaryFileCleanupService,
       failedAudioRecoveryStore: nil,
@@ -3024,13 +2819,14 @@ final class WorkflowSelectionBridge {
     model?.longRecordingModeEnabled ?? false
   }
 
-  func clipboardGroupWorkflowRegistrations() -> [ClipboardGroupWorkflowRegistration] {
+  func recordCollectionWorkflowRegistrations() -> [RecordCollectionWorkflowRegistration] {
     guard let model else { return [] }
     return model.workflows.compactMap { workflow in
-      AppBootstrap.makeClipboardGroupWorkflowRegistration(
+      AppBootstrap.makeRecordCollectionWorkflowRegistration(
         for: workflow,
         isEnabled: model.isWorkflowEnabled(workflow)
       )
     }
   }
+
 }

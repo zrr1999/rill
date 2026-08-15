@@ -5,7 +5,7 @@ import RillCore
 public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
     case dashboard
     case workflows
-    case clipboard
+    case records
     case history
     case diagnostics
     case settings
@@ -16,7 +16,7 @@ public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .dashboard: return "gauge.with.dots.needle.33percent"
         case .workflows: return "point.3.connected.trianglepath.dotted"
-        case .clipboard: return "doc.on.clipboard"
+        case .records: return "square.stack.3d.up"
         case .history: return "clock.arrow.circlepath"
         case .diagnostics: return "stethoscope"
         case .settings: return "gearshape"
@@ -27,22 +27,12 @@ public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .dashboard: return .sidebarDashboard
         case .workflows: return .sidebarWorkflows
-        case .clipboard: return .sidebarClipboard
+        case .records: return .sidebarRecords
         case .history: return .sidebarHistory
         case .diagnostics: return .sidebarDiagnostics
         case .settings: return .sidebarSettings
         }
     }
-}
-
-private enum SidebarDestination: Hashable {
-    case section(SidebarSection)
-    case clipboardGroup(UUID)
-}
-
-private enum SidebarRouteFocusClaimOrigin {
-    case list
-    case programmatic
 }
 
 private struct SidebarFocusTaskIdentity: Hashable {
@@ -186,14 +176,9 @@ public struct MainShellView: View {
     @State private var sidebarFocusRequestGeneration = 0
     @State private var sidebarFocusCoordinator = SidebarFocusCoordinator()
     private let sidebarFocusTurnWaiter: @MainActor @Sendable () async -> Void
-    private static let primarySections: [SidebarSection] = [
-        .dashboard,
-        .clipboard,
-        .history,
-        .workflows,
-        .diagnostics,
-        .settings,
-    ]
+    private static let leadingSections: [SidebarSection] = [.dashboard]
+    private static let historySections: [SidebarSection] = [.history]
+    private static let utilitySections: [SidebarSection] = [.diagnostics, .settings]
 
     public init(model: AppModel) {
         self.model = model
@@ -214,36 +199,42 @@ public struct MainShellView: View {
         NavigationSplitView {
             List(selection: sidebarSelection) {
                 Section {
-                    ForEach(Self.primarySections) { section in
-                        Label(
-                            UIStrings.text(section.titleKey, language: model.language),
-                            systemImage: section.symbolName
-                        )
-                        .tag(SidebarDestination.section(section))
-                        .accessibilityLabel(UIStrings.text(section.titleKey, language: model.language))
-                        .accessibilityIdentifier("sidebar.\(section.rawValue)")
-                        .accessibilityFocused(
-                            $accessibilityFocusedSidebarDestination,
-                            equals: .section(section)
-                        )
+                    ForEach(Self.leadingSections) { section in
+                        sidebarSectionRow(section)
                     }
                 }
 
-                Section(UIStrings.text(.clipboardGroups, language: model.language)) {
-                    sidebarGroupRow(model.clipboardDefaultGroup)
-                        .tag(SidebarDestination.clipboardGroup(model.clipboardDefaultGroup.group.id))
-                        .accessibilityFocused(
-                            $accessibilityFocusedSidebarDestination,
-                            equals: .clipboardGroup(model.clipboardDefaultGroup.group.id)
-                        )
-
-                    ForEach(model.clipboardGroups) { group in
-                        sidebarGroupRow(group)
-                            .tag(SidebarDestination.clipboardGroup(group.group.id))
+                Section(UIStrings.text(.recordCollections, language: model.language)) {
+                    ForEach(model.recordWorkspace.snapshot.collections) { collection in
+                        sidebarCollectionRow(collection)
+                            .tag(SidebarDestination.recordCollection(collection.id))
                             .accessibilityFocused(
                                 $accessibilityFocusedSidebarDestination,
-                                equals: .clipboardGroup(group.group.id)
+                                equals: .recordCollection(collection.id)
                             )
+                    }
+                }
+
+                Section {
+                    ForEach(Self.historySections) { section in
+                        sidebarSectionRow(section)
+                    }
+                }
+
+                Section(UIStrings.text(.sidebarWorkflows, language: model.language)) {
+                    ForEach(model.workflows) { workflow in
+                        sidebarWorkflowRow(workflow)
+                            .tag(SidebarDestination.workflow(workflow.id))
+                            .accessibilityFocused(
+                                $accessibilityFocusedSidebarDestination,
+                                equals: .workflow(workflow.id)
+                            )
+                    }
+                }
+
+                Section {
+                    ForEach(Self.utilitySections) { section in
+                        sidebarSectionRow(section)
                     }
                 }
             }
@@ -359,7 +350,7 @@ public struct MainShellView: View {
         .toolbar {
             ToolbarItem {
                 Button(action: presentGlobalSearch) {
-                    Image(systemName: "magnifyingglass")
+                    Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
                 }
                 .help(GlobalSearchText.searchCommand(language: model.language))
                 .accessibilityLabel(GlobalSearchText.searchCommand(language: model.language))
@@ -379,7 +370,7 @@ public struct MainShellView: View {
                 Button {
                     model.openWorkflowEditor()
                 } label: {
-                    Image(systemName: "square.and.pencil")
+                    Image(systemName: RillSystemSymbol.squareAndPencil.rawValue)
                 }
                 .help(UIStrings.text(.openWorkflowEditor, language: model.language))
                 .accessibilityLabel(UIStrings.text(.openWorkflowEditor, language: model.language))
@@ -398,6 +389,12 @@ public struct MainShellView: View {
         .onAppear {
             model.refreshPermissions()
         }
+        .task {
+            // Sidebar collections are navigation, so load their projection
+            // with the shell instead of waiting until a collection detail is
+            // already open.
+            await model.recordWorkspace.refresh()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 model.refreshPermissions()
@@ -414,126 +411,15 @@ public struct MainShellView: View {
             await updateGlobalHistorySearch(for: request)
         }
         .task(id: sidebarFocusRequestGeneration) {
-            guard sidebarFocusRequestGeneration > 0 else { return }
-            let requestedDestination = currentSidebarDestination
-            let routeFocusClaim = sidebarFocusCoordinator.activeRouteFocusClaim
-            guard
-                MainShellInteractionPolicy.shouldRestoreSidebarFocus(
-                    isGlobalSearchPresented: isGlobalSearchPresented,
-                    detailOwnsFocus: typedDetailOwnsFocus(for: requestedDestination)
-                )
-            else {
-                if let routeFocusClaim {
-                    sidebarFocusCoordinator.completeRouteFocusClaim(routeFocusClaim)
-                }
-                return
-            }
-            await sidebarFocusTurnWaiter()
-            guard !Task.isCancelled,
-                requestedDestination == currentSidebarDestination,
-                MainShellInteractionPolicy.shouldRestoreSidebarFocus(
-                    isGlobalSearchPresented: isGlobalSearchPresented,
-                    detailOwnsFocus: typedDetailOwnsFocus(for: requestedDestination)
-                )
-            else {
-                if let routeFocusClaim {
-                    sidebarFocusCoordinator.completeRouteFocusClaim(routeFocusClaim)
-                }
-                return
-            }
-            let focusRestoration = sidebarFocusCoordinator.restoreFocus(
-                routeClaimID: routeFocusClaim,
-                phase: .protectNewFocus
-            )
-            restoreAccessibilitySidebarFocusIfOwned(
-                requestedDestination,
-                didRestoreKeyboardFocus: focusRestoration == .sidebar
-            )
-            if let routeFocusClaim {
-                guard sidebarFocusCoordinator.activeRouteFocusClaim == routeFocusClaim else {
-                    return
-                }
-                // SwiftUI can still detach or clear the responder after the
-                // first default-mode layout. Recheck a genuine focus vacuum
-                // once, while preserving any live responder acquired after
-                // the initial repair, and then retire this route claim.
-                await sidebarFocusTurnWaiter()
-                guard !Task.isCancelled,
-                    requestedDestination == currentSidebarDestination,
-                    MainShellInteractionPolicy.shouldRestoreSidebarFocus(
-                        isGlobalSearchPresented: isGlobalSearchPresented,
-                        detailOwnsFocus: typedDetailOwnsFocus(for: requestedDestination)
-                    )
-                else {
-                    sidebarFocusCoordinator.completeRouteFocusClaim(routeFocusClaim)
-                    return
-                }
-                _ = sidebarFocusCoordinator.restoreFocus(routeClaimID: routeFocusClaim)
-                sidebarFocusCoordinator.completeRouteFocusClaim(routeFocusClaim)
-            }
+            await restoreSidebarFocusForRequestGeneration()
         }
         .task(id: sidebarFocusTaskIdentity) {
-            let requestedDestination = currentSidebarDestination
-            // A List-originated route has a stronger native responder claim
-            // and is handled by sidebarFocusRequestGeneration. Avoid two
-            // independent repair tasks racing over the same transition. A
-            // claim for an older destination must not suppress this route.
-            guard
-                !sidebarFocusCoordinator.hasActiveListRouteFocusClaim(
-                    for: requestedDestination
-                )
-            else { return }
-            let detailOwnsFocus = typedDetailOwnsFocus(for: requestedDestination)
-            guard
-                MainShellInteractionPolicy.shouldRestoreSidebarFocus(
-                    isGlobalSearchPresented: isGlobalSearchPresented,
-                    detailOwnsFocus: detailOwnsFocus
-                )
-            else { return }
-
-            // Claim the persistent sidebar before the old detail can detach.
-            // Removing a no-longer-current responder cannot create a later
-            // focus vacuum, so this is state ownership rather than a bounded
-            // guess at how many layout turns an AppKit host may survive.
-            let routeFocusClaim = sidebarFocusCoordinator.claimSidebarFocusForRoute(
-                origin: .programmatic,
-                destination: requestedDestination
-            )
-            defer {
-                if let routeFocusClaim {
-                    sidebarFocusCoordinator.completeRouteFocusClaim(routeFocusClaim)
-                }
-            }
-            if routeFocusClaim != nil {
-                restoreAccessibilitySidebarFocusIfOwned(
-                    requestedDestination,
-                    didRestoreKeyboardFocus: true
-                )
-            }
-
-            // SwiftUI may reconcile its responder once more when the new
-            // detail commits. Repair only a vacuum; preserve any live focus
-            // acquired in the committed detail while this task was waiting.
-            await sidebarFocusTurnWaiter()
-            guard !Task.isCancelled,
-                requestedDestination == currentSidebarDestination,
-                MainShellInteractionPolicy.shouldRestoreSidebarFocus(
-                    isGlobalSearchPresented: isGlobalSearchPresented,
-                    detailOwnsFocus: typedDetailOwnsFocus(for: requestedDestination)
-                )
-            else {
-                return
-            }
-            let focusRestoration = sidebarFocusCoordinator.restoreFocus(
-                routeClaimID: routeFocusClaim
-            )
-            restoreAccessibilitySidebarFocusIfOwned(
-                requestedDestination,
-                didRestoreKeyboardFocus: focusRestoration == .sidebar
-            )
+            await restoreSidebarFocusForTaskIdentity()
         }
     }
+}
 
+extension MainShellView {
     @ViewBuilder
     private var detailContent: some View {
         switch model.selectedSidebarSection {
@@ -541,12 +427,8 @@ public struct MainShellView: View {
             DashboardView(model: model)
         case .workflows:
             WorkflowsView(model: model)
-        case .clipboard:
-            ClipboardView(
-                model: model,
-                focusedGroupID: model.selectedClipboardSidebarGroupID,
-                preferredSection: model.selectedClipboardSidebarGroupID == nil ? .history : .routing
-            )
+        case .records:
+            RecordWorkspaceView(workspace: model.recordWorkspace, language: model.language)
         case .history:
             HistoryView(model: model)
         case .diagnostics:
@@ -576,8 +458,10 @@ public struct MainShellView: View {
                 switch destination {
                 case .section(let section):
                     model.selectSidebarSection(section)
-                case .clipboardGroup(let groupID):
-                    model.showClipboardManagement(groupID: groupID)
+                case .recordCollection(let collectionID):
+                    model.showRecordCollection(collectionID)
+                case .workflow(let workflowID):
+                    model.showWorkflow(workflowID)
                 }
                 guard let routeFocusClaim else { return }
                 _ = sidebarFocusCoordinator.restoreFocus(
@@ -596,10 +480,16 @@ public struct MainShellView: View {
     }
 
     private var currentSidebarDestination: SidebarDestination {
-        if model.selectedSidebarSection == .clipboard,
-            let groupID = model.selectedClipboardSidebarGroupID
+        if model.selectedSidebarSection == .records,
+            let collectionID = model.recordWorkspace.selectedCollectionID
         {
-            return .clipboardGroup(groupID)
+            return .recordCollection(collectionID)
+        }
+        if model.selectedSidebarSection == .workflows,
+            let workflowID = model.workflowEditorNavigationRequest?.workflowID,
+            model.workflows.contains(where: { $0.id == workflowID })
+        {
+            return .workflow(workflowID)
         }
         return .section(model.selectedSidebarSection)
     }
@@ -612,7 +502,7 @@ public struct MainShellView: View {
                 model.settingsNavigationRequest?.id
             case .section(.history):
                 model.historyNavigationRequest?.id
-            case .section, .clipboardGroup:
+            case .section, .recordCollection, .workflow:
                 nil
             }
         return SidebarFocusTaskIdentity(
@@ -832,7 +722,7 @@ public struct MainShellView: View {
             case .idle, .resolving, .resolved:
                 return true
             }
-        case .section, .clipboardGroup:
+        case .section, .recordCollection, .workflow:
             return false
         }
     }
@@ -853,368 +743,172 @@ public struct MainShellView: View {
         accessibilityFocusedSidebarDestination = destination
     }
 
-    private func sidebarGroupRow(_ summary: ClipboardGroupSummary) -> some View {
+    private func sidebarCollectionRow(_ collection: RecordCollection) -> some View {
         HStack(spacing: 10) {
-            Label(groupTitle(for: summary), systemImage: "square.stack.3d.up")
+            Label(collection.name, systemImage: RillSystemSymbol.squareStack3dUp.rawValue)
             Spacer(minLength: 8)
-            Text("\(summary.count)")
+            Text("\(collectionRecordCount(collection.id))")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(.quaternary.opacity(0.18), in: Capsule())
         }
-        .accessibilityLabel(groupTitle(for: summary))
-        .accessibilityIdentifier("sidebar.clipboard-group.\(summary.group.id.uuidString)")
+        .accessibilityLabel(collection.name)
+        .accessibilityIdentifier("sidebar.record-collection.\(collection.id.rawValue.uuidString)")
     }
 
-    private func groupTitle(for summary: ClipboardGroupSummary) -> String {
-        summary.group.id == ClipboardGroup.defaultGroupID
-            ? UIStrings.text(.clipboardDefaultGroup, language: model.language)
-            : summary.group.name
-    }
-}
-
-@MainActor
-private final class SidebarFocusCoordinator {
-    typealias RouteFocusClaim = UInt64
-
-    enum FocusRestoration: Equatable {
-        case none
-        case sidebar
-        case detail
+    private func sidebarWorkflowRow(_ workflow: WorkflowDefinition) -> some View {
+        Label(
+            model.localizedWorkflowName(for: workflow),
+            systemImage: RillSystemSymbol.resolvedName(workflow.ui.symbolName)
+        )
+        .accessibilityLabel(model.localizedWorkflowName(for: workflow))
+        .accessibilityIdentifier("sidebar.workflow.\(workflow.id.uuidString)")
     }
 
-    enum RouteFocusRepairPhase: Equatable {
-        case routeReconciliation
-        case protectNewFocus
+    private func sidebarSectionRow(_ section: SidebarSection) -> some View {
+        Label(
+            UIStrings.text(section.titleKey, language: model.language),
+            systemImage: section.symbolName
+        )
+        .tag(SidebarDestination.section(section))
+        .accessibilityLabel(UIStrings.text(section.titleKey, language: model.language))
+        .accessibilityIdentifier("sidebar.\(section.rawValue)")
+        .accessibilityFocused(
+            $accessibilityFocusedSidebarDestination,
+            equals: .section(section)
+        )
     }
 
-    weak var anchorView: NSView?
-    weak var detailAnchorView: NSView?
-    private var nextRouteFocusClaim: RouteFocusClaim = 0
-    private(set) var activeRouteFocusClaim: RouteFocusClaim?
-    private var activeRouteFocusClaimOrigin: SidebarRouteFocusClaimOrigin?
-    private var activeRouteFocusClaimDestination: SidebarDestination?
-
-    func hasActiveListRouteFocusClaim(for destination: SidebarDestination) -> Bool {
-        activeRouteFocusClaim != nil
-            && activeRouteFocusClaimOrigin == .list
-            && activeRouteFocusClaimDestination == destination
-    }
-
-    func claimSidebarFocusForRoute(
-        origin: SidebarRouteFocusClaimOrigin,
-        destination: SidebarDestination
-    ) -> RouteFocusClaim? {
-        guard let (window, sidebar) = sidebarContext() else { return nil }
-
-        nextRouteFocusClaim &+= 1
-        let claim = nextRouteFocusClaim
-        activeRouteFocusClaim = claim
-        activeRouteFocusClaimOrigin = origin
-        activeRouteFocusClaimDestination = destination
-        guard window.makeFirstResponder(sidebar) else {
-            completeRouteFocusClaim(claim)
-            return nil
-        }
-        return claim
-    }
-
-    @discardableResult
-    func restoreFocus(
-        routeClaimID: RouteFocusClaim? = nil,
-        phase: RouteFocusRepairPhase = .protectNewFocus
-    ) -> FocusRestoration {
-        if let routeClaimID, activeRouteFocusClaim != routeClaimID {
-            return .none
-        }
-        if let (window, sidebar) = sidebarContext() {
-            if Self.isResponder(window.firstResponder, inside: sidebar) {
-                return .sidebar
+    private func collectionRecordCount(_ collectionID: RecordCollectionID) -> Int {
+        model.recordWorkspace.snapshot.records.reduce(into: 0) { count, record in
+            if record.memberships.contains(where: { $0.collectionID == collectionID }) {
+                count += 1
             }
-            if phase == .routeReconciliation, routeClaimID != nil {
-                // No independent detail interaction can legally occur inside the
-                // same sidebar mouse-selection turn. Rehome unconditionally so a
-                // departing detail responder cannot masquerade as newer focus.
-                return window.makeFirstResponder(sidebar) ? .sidebar : .none
-            }
-            // A delayed post-route repair must never override a newer, valid user
-            // focus in the committed detail (for example Clipboard search). Object
-            // identity is deliberately irrelevant: a persistent control can be
-            // focused again after the route commits, and that is a new interaction
-            // even when it is the same responder seen before the route. Keep the
-            // route claim alive for its bounded recheck; only a later detached or
-            // empty responder state represents focus loss this coordinator owns.
-            if phase == .protectNewFocus,
-                Self.isLiveInteractiveResponder(window.firstResponder, in: window)
-            {
-                return .none
-            }
-            return window.makeFirstResponder(sidebar) ? .sidebar : .none
         }
+    }
 
-        // A collapsed NavigationSplitView has no stable sidebar responder.
-        // Repair only a genuine vacuum after the new detail has committed;
-        // every live responder, including a field editor, represents newer
-        // user/detail ownership and must win. The anchor is intentionally not
-        // an accessibility element, so this keyboard fallback cannot move an
-        // independent VoiceOver focus.
-        guard phase == .protectNewFocus,
-            let (window, detailAnchor) = detailContext(),
-            Self.isKeyboardFocusVacuum(window.firstResponder, in: window)
+    private func restoreSidebarFocusForRequestGeneration() async {
+
+        guard sidebarFocusRequestGeneration > 0 else { return }
+        let requestedDestination = currentSidebarDestination
+        let routeFocusClaim = sidebarFocusCoordinator.activeRouteFocusClaim
+        guard
+            MainShellInteractionPolicy.shouldRestoreSidebarFocus(
+                isGlobalSearchPresented: isGlobalSearchPresented,
+                detailOwnsFocus: typedDetailOwnsFocus(for: requestedDestination)
+            )
         else {
-            return .none
-        }
-        return window.makeFirstResponder(detailAnchor) ? .detail : .none
-    }
-
-    func completeRouteFocusClaim(_ claim: RouteFocusClaim) {
-        guard activeRouteFocusClaim == claim else { return }
-        activeRouteFocusClaim = nil
-        activeRouteFocusClaimOrigin = nil
-        activeRouteFocusClaimDestination = nil
-    }
-
-    func cancelActiveRouteFocusClaim() {
-        guard let activeRouteFocusClaim else { return }
-        completeRouteFocusClaim(activeRouteFocusClaim)
-    }
-
-    private func sidebarContext() -> (window: NSWindow, sidebar: NSTableView)? {
-        guard let window = anchorView?.window,
-            let contentView = window.contentView,
-            let sidebar = Self.sidebarTable(anchor: anchorView, in: contentView),
-            sidebar.window === window,
-            !sidebar.isHiddenOrHasHiddenAncestor,
-            !sidebar.visibleRect.isEmpty
-        else {
-            return nil
-        }
-        return (window, sidebar)
-    }
-
-    private func detailContext() -> (window: NSWindow, anchor: NSView)? {
-        guard let detailAnchorView,
-            let window = detailAnchorView.window,
-            !detailAnchorView.isHiddenOrHasHiddenAncestor
-        else {
-            return nil
-        }
-        return (window, detailAnchorView)
-    }
-
-    private static func sidebarTable(anchor: NSView?, in root: NSView) -> NSTableView? {
-        var ancestor = anchor
-        while let view = ancestor {
-            if let table = view as? NSTableView {
-                return table
+            if let routeFocusClaim {
+                sidebarFocusCoordinator.completeRouteFocusClaim(routeFocusClaim)
             }
-            if let table = view.enclosingScrollView?.documentView as? NSTableView {
-                return table
-            }
-            ancestor = view.superview
-        }
-        return descendantTables(in: root).min { lhs, rhs in
-            let lhsFrame = lhs.convert(lhs.bounds, to: nil)
-            let rhsFrame = rhs.convert(rhs.bounds, to: nil)
-            if lhsFrame.minX != rhsFrame.minX {
-                return lhsFrame.minX < rhsFrame.minX
-            }
-            return lhsFrame.height > rhsFrame.height
-        }
-    }
-
-    private static func descendantTables(in root: NSView) -> [NSTableView] {
-        var result: [NSTableView] = []
-        if let table = root as? NSTableView {
-            result.append(table)
-        }
-        for child in root.subviews {
-            result.append(contentsOf: descendantTables(in: child))
-        }
-        return result
-    }
-
-    private static func isResponder(_ responder: NSResponder?, inside view: NSView) -> Bool {
-        guard let responder = normalizedResponder(responder) else { return false }
-        if responder === view { return true }
-        guard let responderView = responder as? NSView else { return false }
-        return responderView.isDescendant(of: view)
-    }
-
-    private static func normalizedResponder(_ responder: NSResponder?) -> NSResponder? {
-        if let fieldEditor = responder as? NSTextView,
-            fieldEditor.isFieldEditor,
-            let control = fieldEditor.delegate as? NSResponder
-        {
-            return control
-        }
-        return responder
-    }
-
-    private static func isLiveInteractiveResponder(
-        _ responder: NSResponder?,
-        in window: NSWindow
-    ) -> Bool {
-        if let fieldEditor = responder as? NSTextView,
-            fieldEditor.isFieldEditor,
-            let control = fieldEditor.delegate as? NSView
-        {
-            return control.window === window && !control.isHiddenOrHasHiddenAncestor
-        }
-        guard let view = responder as? NSView,
-            view.window === window,
-            !view.isHiddenOrHasHiddenAncestor
-        else {
-            return false
-        }
-        return true
-    }
-
-    private static func isKeyboardFocusVacuum(
-        _ responder: NSResponder?,
-        in window: NSWindow
-    ) -> Bool {
-        guard let responder = normalizedResponder(responder) else { return true }
-        if responder === window { return true }
-        guard let responderView = responder as? NSView else { return false }
-        return responderView.window !== window || responderView.isHiddenOrHasHiddenAncestor
-    }
-}
-
-private struct SidebarFocusAnchor: NSViewRepresentable {
-    let coordinator: SidebarFocusCoordinator
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        coordinator.anchorView = view
-        return view
-    }
-
-    func updateNSView(_ view: NSView, context: Context) {
-        coordinator.anchorView = view
-    }
-}
-
-private struct DetailFocusAnchor: NSViewRepresentable {
-    let coordinator: SidebarFocusCoordinator
-
-    func makeNSView(context: Context) -> DetailKeyboardFocusAnchorView {
-        let view = DetailKeyboardFocusAnchorView(frame: .zero)
-        coordinator.detailAnchorView = view
-        return view
-    }
-
-    func updateNSView(_ view: DetailKeyboardFocusAnchorView, context: Context) {
-        coordinator.detailAnchorView = view
-    }
-}
-
-private final class DetailKeyboardFocusAnchorView: NSView {
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        identifier = NSUserInterfaceItemIdentifier("main-detail-focus-anchor")
-        setAccessibilityElement(false)
-        focusRingType = .none
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override var acceptsFirstResponder: Bool { true }
-    override var canBecomeKeyView: Bool { false }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
-    }
-
-    override func keyDown(with event: NSEvent) {
-        let unsupportedModifiers = event.modifierFlags.intersection([.command, .control, .option])
-        guard event.keyCode == 48, unsupportedModifiers.isEmpty, let window else {
-            super.keyDown(with: event)
             return
         }
+        await sidebarFocusTurnWaiter()
+        guard !Task.isCancelled,
+            requestedDestination == currentSidebarDestination,
+            MainShellInteractionPolicy.shouldRestoreSidebarFocus(
+                isGlobalSearchPresented: isGlobalSearchPresented,
+                detailOwnsFocus: typedDetailOwnsFocus(for: requestedDestination)
+            )
+        else {
+            if let routeFocusClaim {
+                sidebarFocusCoordinator.completeRouteFocusClaim(routeFocusClaim)
+            }
+            return
+        }
+        let focusRestoration = sidebarFocusCoordinator.restoreFocus(
+            routeClaimID: routeFocusClaim,
+            phase: .protectNewFocus
+        )
+        restoreAccessibilitySidebarFocusIfOwned(
+            requestedDestination,
+            didRestoreKeyboardFocus: focusRestoration == .sidebar
+        )
+        if let routeFocusClaim {
+            guard sidebarFocusCoordinator.activeRouteFocusClaim == routeFocusClaim else {
+                return
+            }
+            // SwiftUI can still detach or clear the responder after the
+            // first default-mode layout. Recheck a genuine focus vacuum
+            // once, while preserving any live responder acquired after
+            // the initial repair, and then retire this route claim.
+            await sidebarFocusTurnWaiter()
+            guard !Task.isCancelled,
+                requestedDestination == currentSidebarDestination,
+                MainShellInteractionPolicy.shouldRestoreSidebarFocus(
+                    isGlobalSearchPresented: isGlobalSearchPresented,
+                    detailOwnsFocus: typedDetailOwnsFocus(for: requestedDestination)
+                )
+            else {
+                sidebarFocusCoordinator.completeRouteFocusClaim(routeFocusClaim)
+                return
+            }
+            _ = sidebarFocusCoordinator.restoreFocus(routeClaimID: routeFocusClaim)
+            sidebarFocusCoordinator.completeRouteFocusClaim(routeFocusClaim)
+        }
 
-        let previousResponder = window.firstResponder
-        window.recalculateKeyViewLoop()
-        if event.modifierFlags.contains(.shift) {
-            window.selectPreviousKeyView(self)
-        } else {
-            window.selectNextKeyView(self)
-        }
-        if window.firstResponder === previousResponder {
-            super.keyDown(with: event)
-        }
     }
-}
+    private func restoreSidebarFocusForTaskIdentity() async {
 
-@MainActor
-private func waitForMainRunLoopDefaultMode() async {
-    let waiter = MainRunLoopTurnWaiter()
-    await withTaskCancellationHandler {
-        await withCheckedContinuation { continuation in
-            waiter.install(continuation)
-            scheduleOnMainRunLoopDefaultMode {
-                waiter.resume()
+        let requestedDestination = currentSidebarDestination
+        // A List-originated route has a stronger native responder claim
+        // and is handled by sidebarFocusRequestGeneration. Avoid two
+        // independent repair tasks racing over the same transition. A
+        // claim for an older destination must not suppress this route.
+        guard
+            !sidebarFocusCoordinator.hasActiveListRouteFocusClaim(
+                for: requestedDestination
+            )
+        else { return }
+        let detailOwnsFocus = typedDetailOwnsFocus(for: requestedDestination)
+        guard
+            MainShellInteractionPolicy.shouldRestoreSidebarFocus(
+                isGlobalSearchPresented: isGlobalSearchPresented,
+                detailOwnsFocus: detailOwnsFocus
+            )
+        else { return }
+
+        // Claim the persistent sidebar before the old detail can detach.
+        // Removing a no-longer-current responder cannot create a later
+        // focus vacuum, so this is state ownership rather than a bounded
+        // guess at how many layout turns an AppKit host may survive.
+        let routeFocusClaim = sidebarFocusCoordinator.claimSidebarFocusForRoute(
+            origin: .programmatic,
+            destination: requestedDestination
+        )
+        defer {
+            if let routeFocusClaim {
+                sidebarFocusCoordinator.completeRouteFocusClaim(routeFocusClaim)
             }
         }
-    } onCancel: {
-        waiter.resume()
-    }
-}
-
-@MainActor
-func scheduleOnMainRunLoopDefaultMode(
-    _ operation: @escaping @MainActor @Sendable () -> Void
-) {
-    RunLoop.main.perform(inModes: [.default]) {
-        MainActor.assumeIsolated {
-            operation()
+        if routeFocusClaim != nil {
+            restoreAccessibilitySidebarFocusIfOwned(
+                requestedDestination,
+                didRestoreKeyboardFocus: true
+            )
         }
-    }
-}
 
-@MainActor
-func scheduleOnMainRunLoopInteractiveModes(
-    _ operation: @escaping @MainActor @Sendable () -> Void
-) {
-    RunLoop.main.perform(inModes: [.eventTracking, .common]) {
-        MainActor.assumeIsolated {
-            operation()
-        }
-    }
-}
-
-private final class MainRunLoopTurnWaiter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<Void, Never>?
-    private var isCompleted = false
-
-    func install(_ continuation: CheckedContinuation<Void, Never>) {
-        lock.lock()
-        if isCompleted {
-            lock.unlock()
-            continuation.resume()
+        // SwiftUI may reconcile its responder once more when the new
+        // detail commits. Repair only a vacuum; preserve any live focus
+        // acquired in the committed detail while this task was waiting.
+        await sidebarFocusTurnWaiter()
+        guard !Task.isCancelled,
+            requestedDestination == currentSidebarDestination,
+            MainShellInteractionPolicy.shouldRestoreSidebarFocus(
+                isGlobalSearchPresented: isGlobalSearchPresented,
+                detailOwnsFocus: typedDetailOwnsFocus(for: requestedDestination)
+            )
+        else {
             return
         }
-        self.continuation = continuation
-        lock.unlock()
-    }
-
-    func resume() {
-        let continuation: CheckedContinuation<Void, Never>?
-        lock.lock()
-        guard !isCompleted else {
-            lock.unlock()
-            return
-        }
-        isCompleted = true
-        continuation = self.continuation
-        self.continuation = nil
-        lock.unlock()
-        continuation?.resume()
+        let focusRestoration = sidebarFocusCoordinator.restoreFocus(
+            routeClaimID: routeFocusClaim
+        )
+        restoreAccessibilitySidebarFocusIfOwned(
+            requestedDestination,
+            didRestoreKeyboardFocus: focusRestoration == .sidebar
+        )
     }
 }

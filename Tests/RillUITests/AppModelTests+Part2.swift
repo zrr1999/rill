@@ -9,7 +9,7 @@ extension AppModelTests {
         let historyRepository = InMemoryHistoryRepository()
         let voiceWorkflow = makeBuiltinPushToTalkWorkflow()
         let harness = makeHarness(workflows: [voiceWorkflow], historyRepository: historyRepository)
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
         let runID = UUID()
 
         await harness.eventBus.publish(
@@ -25,7 +25,7 @@ extension AppModelTests {
         await harness.eventBus.publish(
             .recognitionCompleted(RecognitionResult(rawText: "draft voice", bestText: "draft voice"))
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertEqual(harness.model.lastCompletedText, "draft voice")
 
@@ -49,7 +49,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         let storedRecords = try await historyRepository.records(matching: HistoryQuery(runID: runID))
         XCTAssertEqual(harness.model.lastCompletedText, "final voice")
@@ -69,7 +69,7 @@ extension AppModelTests {
             workflows: [voiceWorkflow],
             historyRepository: historyRepository
         )
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
         let runID = UUID()
         let payloadCanary = "clipboard-replay-payload-canary"
 
@@ -79,7 +79,7 @@ extension AppModelTests {
                     runID: runID,
                     workflowID: voiceWorkflow.id,
                     workflow: voiceWorkflow.presentation,
-                    trigger: .clipboardReplay,
+                    trigger: .recordReplay,
                     finalText: payloadCanary,
                     correctionSource: RecognitionCorrectionSource(
                         preMappingText: payloadCanary,
@@ -88,7 +88,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         let storedRecords = try await historyRepository.records(
             matching: HistoryQuery(runID: runID)
@@ -111,7 +111,7 @@ extension AppModelTests {
             workflows: [voiceWorkflow],
             historyRepository: historyRepository
         )
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
         let runID = UUID()
 
         await harness.eventBus.publish(
@@ -133,7 +133,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertTrue(harness.model.isRunning)
         XCTAssertNotNil(harness.model.pendingRuns[runID])
         XCTAssertEqual(harness.model.pendingResolution?.runID, runID)
@@ -147,7 +147,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         let storedRecords = try await historyRepository.records(
             matching: HistoryQuery(runID: runID)
@@ -168,14 +168,14 @@ extension AppModelTests {
             name: "Save to Voice Group",
             pipeline: PipelineDeclaration(
                 recognizerID: "ui.test.recognizer",
-                outputActions: [OutputActionReference(id: "stack.push")],
-                deliveryPolicy: DeliveryPolicy(strategy: .stackFirst)
+                outputActions: [OutputActionReference(id: "record.store")],
+                deliveryPolicy: DeliveryPolicy(strategy: .collectionFirst)
             ),
             ui: WorkflowUIConfig(symbolName: "tray.and.arrow.down", accentColorName: "purple"),
-            metadata: [WorkflowMetadataKey.targetClipboardGroupID: ClipboardGroup.voiceGroupID.uuidString]
+            metadata: [WorkflowMetadataKey.legacyTargetRecordCollectionID: RecordCollection.voiceInputID.rawValue.uuidString]
         )
         let harness = makeHarness(workflows: [workflow])
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
         let runID = UUID()
 
         await harness.eventBus.publish(
@@ -199,11 +199,11 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertEqual(harness.model.recentVoiceResultRecords.first?.runID, runID)
         XCTAssertEqual(harness.model.recentVoiceResultRecords.first?.finalText, "saved voice group text")
-        XCTAssertEqual(harness.model.recentVoiceResultRecords.first?.isStackRelated, true)
+        XCTAssertEqual(harness.model.recentVoiceResultRecords.first?.isRecordRelated, true)
     }
 
     func testRunWorkflowPassesResolvedAutomaticWorkflowToAudioCapture() async throws {
@@ -218,16 +218,16 @@ extension AppModelTests {
         harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
 
         harness.model.runWorkflow(workflow, initiatedBy: .hotkey)
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         let calls = await probe.snapshot()
         let captured = try XCTUnwrap(calls.first)
         XCTAssertEqual(captured.binding, .hotkey)
         XCTAssertEqual(captured.workflow.pipeline.recognizerID, AppModel.localSpeechRecognizerID)
-        XCTAssertEqual(captured.workflow.pipeline.outputActions.first?.id, "stack.push")
+        XCTAssertEqual(captured.workflow.pipeline.outputActions.first?.id, "record.store")
         XCTAssertEqual(
-            captured.workflow.metadata[WorkflowMetadataKey.targetClipboardGroupID],
-            ClipboardGroup.voiceGroupID.uuidString
+            captured.workflow.targetRecordCollectionIDs,
+            [RecordCollection.voiceInputID]
         )
     }
 
@@ -238,8 +238,8 @@ extension AppModelTests {
             trigger: .manual,
             pipeline: PipelineDeclaration(
                 recognizerID: AppModel.localSpeechRecognizerID,
-                outputActions: [OutputActionReference(id: "stack.push")],
-                deliveryPolicy: .init(strategy: .stackFirst)
+                outputActions: [OutputActionReference(id: "record.store")],
+                deliveryPolicy: .init(strategy: .collectionFirst)
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue"),
             metadata: [
@@ -254,7 +254,7 @@ extension AppModelTests {
             }
         )
         harness.model.runWorkflow(workflow)
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         let calls = await probe.snapshot()
         let captured = try XCTUnwrap(calls.first)
@@ -265,7 +265,7 @@ extension AppModelTests {
     func testSavingAndDeletingCustomWorkflowPersistsLibrary() async throws {
         let settingsStore = UITestSettingsStore()
         let harness = makeHarness(settingsStore: settingsStore)
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         await harness.model.saveWorkflowDraft(
             WorkflowEditorDraft(
@@ -275,11 +275,11 @@ extension AppModelTests {
                 destination: .copyToClipboard
             )
         )
-        await waitForEventProcessing()
+        await harness.model.flushPendingPersistenceWrites()
 
         XCTAssertEqual(harness.model.customWorkflows.count, 1)
         XCTAssertEqual(harness.model.customWorkflows.first?.name, "Follow-up Draft")
-        XCTAssertTrue(harness.model.customWorkflows.first?.excludesOutputFromWorkflowCapture ?? false)
+        XCTAssertTrue(harness.model.customWorkflows.first?.excludesOutputFromRecordCapture ?? false)
 
         let storedValue = try await settingsStore.string(forKey: .workflowLibrary)
         let storedData = try XCTUnwrap(storedValue?.data(using: .utf8))
@@ -290,12 +290,12 @@ extension AppModelTests {
         XCTAssertEqual(storedLibrary.customWorkflows.count, 1)
         XCTAssertEqual(storedLibrary.customWorkflows.first?.name, "Follow-up Draft")
         XCTAssertTrue(
-            storedLibrary.customWorkflows.first?.excludesOutputFromWorkflowCapture ?? false
+            storedLibrary.customWorkflows.first?.excludesOutputFromRecordCapture ?? false
         )
 
         let savedWorkflow = try XCTUnwrap(harness.model.customWorkflows.first)
         await harness.model.deleteCustomWorkflow(savedWorkflow)
-        await waitForEventProcessing()
+        await harness.model.flushPendingPersistenceWrites()
 
         XCTAssertTrue(harness.model.customWorkflows.isEmpty)
         let removedValue = try await settingsStore.string(forKey: .workflowLibrary)
@@ -314,7 +314,7 @@ extension AppModelTests {
             settingsStore: settingsStore,
             workflowFileStore: workflowFileStore
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         await harness.model.saveWorkflowDraft(
             WorkflowEditorDraft(
@@ -324,7 +324,7 @@ extension AppModelTests {
                 destination: .copyToClipboard
             )
         )
-        await waitForEventProcessing()
+        await harness.model.flushPendingPersistenceWrites()
 
         let savedRecords = await workflowFileStore.records()
         let savedRecord = try XCTUnwrap(savedRecords.first)
@@ -352,7 +352,7 @@ extension AppModelTests {
             workflows: [builtInWorkflow],
             workflowFileStore: workflowFileStore
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         var draft = try XCTUnwrap(WorkflowEditorDraft(workflow: builtInWorkflow))
         draft.name = "Focused Dictation"
@@ -404,7 +404,7 @@ extension AppModelTests {
             settingsStore: settingsStore,
             workflowFileStore: workflowFileStore
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         let migratedRecords = await workflowFileStore.records()
         let migrated = try XCTUnwrap(migratedRecords.first)
@@ -442,7 +442,7 @@ extension AppModelTests {
             settingsStore: settingsStore,
             workflowFileStore: workflowFileStore
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(harness.model.customWorkflows.map(\.id), [legacyWorkflow.id])
         await harness.model.reloadWorkflowFiles()
@@ -469,8 +469,9 @@ extension AppModelTests {
             }
         )
 
+        await harness.model.waitForInitialVoiceConfiguration()
         harness.model.localSpeechModelOption = .distilLargeV3Compact
-        await waitForEventProcessing()
+        await harness.model.waitForLocalSpeechPreparation()
 
         let snapshot = await probe.snapshot()
         XCTAssertEqual(snapshot.prepareCount, 1)
@@ -497,8 +498,9 @@ extension AppModelTests {
             }
         )
 
+        await harness.model.waitForInitialVoiceConfiguration()
         harness.model.prepareLocalSpeechModel()
-        await waitForEventProcessing()
+        await harness.model.waitForLocalSpeechPreparation()
 
         let expected = L10n.localSpeechPreparationFailure(.generic)
         XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
@@ -529,8 +531,9 @@ extension AppModelTests {
             }
         )
 
+        await harness.model.waitForInitialVoiceConfiguration()
         harness.model.prepareLocalSpeechModel()
-        await waitForEventProcessing()
+        await harness.model.waitForLocalSpeechPreparation()
 
         let expected = L10n.localSpeechPreparationFailure(.integrity)
         XCTAssertEqual(
@@ -675,7 +678,7 @@ extension AppModelTests {
             )
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertTrue(harness.model.isWorkflowEnabled(speechRecognition))
         XCTAssertNil(harness.model.workflowEnabledStates[retiredStreamingID])
@@ -684,7 +687,7 @@ extension AppModelTests {
     func testSavingWorkflowCanDisableCaptureExclusionAndUseMenuBarTrigger() async throws {
         let settingsStore = UITestSettingsStore()
         let harness = makeHarness(settingsStore: settingsStore)
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         await harness.model.saveWorkflowDraft(
             WorkflowEditorDraft(
@@ -696,11 +699,11 @@ extension AppModelTests {
                 excludeFromWorkflowCapture: false
             )
         )
-        await waitForEventProcessing()
+        await harness.model.flushPendingPersistenceWrites()
 
         let savedWorkflow = try XCTUnwrap(harness.model.customWorkflows.first)
         XCTAssertEqual(savedWorkflow.trigger, .menuBar)
-        XCTAssertFalse(savedWorkflow.excludesOutputFromWorkflowCapture)
+        XCTAssertFalse(savedWorkflow.excludesOutputFromRecordCapture)
     }
 
     func testEnablingWorkflowRejectsTriggerConflict() async {
@@ -735,7 +738,7 @@ extension AppModelTests {
             workflows: [hotkeyA, hotkeyB],
             settingsStore: settingsStore
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         harness.model.setWorkflowEnabled(true, for: hotkeyB.id)
 
@@ -759,7 +762,7 @@ extension AppModelTests {
             workflows: [dictation, polish],
             settingsStore: settingsStore
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
         harness.model.language = .english
 
         harness.model.setWorkflowEnabled(true, for: polish.id)
@@ -768,39 +771,8 @@ extension AppModelTests {
         XCTAssertFalse(harness.model.isWorkflowEnabled(polish))
         XCTAssertEqual(
             harness.model.workflowLibraryError,
-            "Clipboard event workflows remain disabled until production actions and execution receipts are available."
+            "Legacy collection-event workflows remain disabled; use record routes for production delivery."
         )
-    }
-
-    func testLegacyClipboardWorkflowDefaultsDisabledAndGroupEventCannotExecuteIt() async {
-        let legacyWorkflow = WorkflowDefinition(
-            name: "Legacy Clipboard Automation",
-            trigger: .manual,
-            pipeline: PipelineDeclaration(
-                recognizerID: "ui.test.recognizer",
-                outputActions: [OutputActionReference(id: "ui.test.action")]
-            ),
-            ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
-            metadata: ["eventType": WorkflowEditorDraft.EventType.groupItemCreated.rawValue]
-        )
-        let harness = makeHarness(workflows: [legacyWorkflow])
-        await waitForListenerSetup()
-
-        await harness.eventBus.publish(
-            .clipboardGroupEvent(
-                ClipboardGroupEventDescriptor(
-                    kind: .itemCreated,
-                    groupID: ClipboardGroup.defaultGroupID,
-                    itemID: UUID()
-                )
-            )
-        )
-        await waitForEventProcessing()
-
-        let actionCount = await harness.actionLog.snapshot()
-        XCTAssertFalse(harness.model.isWorkflowEnabled(legacyWorkflow))
-        XCTAssertEqual(actionCount, 0)
-        XCTAssertFalse(harness.model.eventFeed.contains { $0.english.contains("Event trigger") })
     }
 
     func testUnknownWorkflowEventTypeCannotBeEnabled() async {
@@ -815,7 +787,7 @@ extension AppModelTests {
             metadata: [WorkflowMetadataKey.legacyEventType: "groupItemCopied"]
         )
         let harness = makeHarness(workflows: [workflow])
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
         harness.model.language = .english
 
         harness.model.setWorkflowEnabled(true, for: workflow.id)
@@ -853,7 +825,7 @@ extension AppModelTests {
             workflow: workflow,
             localSpeechTrustMaterialAvailable: false
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
         harness.model.language = .english
 
         XCTAssertFalse(harness.model.canTriggerWorkflow(workflow))
@@ -881,7 +853,7 @@ extension AppModelTests {
             workflow: workflow,
             localSpeechAvailability: .architectureUnsupported
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
         harness.model.language = .english
 
         XCTAssertFalse(harness.model.canTriggerWorkflow(workflow))
@@ -1017,10 +989,11 @@ extension AppModelTests {
             }
         )
 
+        await harness.model.waitForInitialVoiceConfiguration()
         harness.model.localSpeechModelOption = .custom
         harness.model.legacyWhisperKitCustomModel = "openai_whisper-large-v3-v20240930_turbo"
         harness.model.prepareLocalSpeechModel()
-        await waitForEventProcessing()
+        await harness.model.waitForLocalSpeechPreparation()
 
         let snapshot = await probe.snapshot()
         XCTAssertEqual(snapshot.prepareCount, 1)
@@ -1030,300 +1003,44 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, "openai_whisper-large-v3-v20240930_turbo")
     }
 
-    func testClipboardUpdatedPopulatesClipboardState() async {
-        let harness = makeHarness()
-        await waitForListenerSetup()
-        let group = ClipboardGroup.defaultGroup
-
-        await harness.eventBus.publish(
-            .clipboardUpdated(
-                ClipboardStoreSnapshot(
-                    items: [
-                        ClipboardHistoryItem(
-                            groupID: group.id,
-                            text: "saved item",
-                            sourceKind: .system,
-                            sourceApplicationName: "Safari",
-                            sourceBundleIdentifier: "com.apple.Safari"
-                        )
-                    ],
-                    groups: [],
-                    defaultGroup: ClipboardGroupSummary(
-                        group: group,
-                        count: 1,
-                        previewText: "saved item"
-                    ),
-                    appAssignments: [
-                        ClipboardAppAssignment(
-                            bundleIdentifier: "com.apple.Safari",
-                            applicationName: "Safari",
-                            groupID: nil
-                        )
-                    ]
-                )
-            )
-        )
-        await waitForEventProcessing()
-
-        XCTAssertEqual(harness.model.clipboardItems.first?.text, "saved item")
-        XCTAssertEqual(harness.model.clipboardDefaultGroup.count, 1)
-        XCTAssertEqual(harness.model.clipboardAppAssignments.first?.bundleIdentifier, "com.apple.Safari")
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.representativeItem.text, "saved item")
-    }
-
-    func testClipboardUpdatedPreservesExplicitGroupSummariesAlongsideDefaultFallback() async {
-        let harness = makeHarness()
-        await waitForListenerSetup()
-        let defaultGroup = ClipboardGroup.defaultGroup
-        let explicitGroup = ClipboardGroup(name: "Browser")
-
-        await harness.eventBus.publish(
-            .clipboardUpdated(
-                ClipboardStoreSnapshot(
-                    items: [
-                        ClipboardHistoryItem(
-                            groupID: defaultGroup.id,
-                            text: "default item",
-                            sourceKind: .system
-                        ),
-                        ClipboardHistoryItem(
-                            groupID: explicitGroup.id,
-                            text: "browser item",
-                            sourceKind: .system
-                        )
-                    ],
-                    groups: [
-                        ClipboardGroupSummary(
-                            group: explicitGroup,
-                            count: 1,
-                            previewText: "browser item"
-                        )
-                    ],
-                    defaultGroup: ClipboardGroupSummary(
-                        group: defaultGroup,
-                        count: 1,
-                        previewText: "default item"
-                    ),
-                    appAssignments: []
-                )
-            )
-        )
-        await waitForEventProcessing()
-
-        XCTAssertEqual(harness.model.clipboardGroups.first?.group.id, explicitGroup.id)
-        XCTAssertEqual(harness.model.clipboardDefaultGroup.count, 1)
-    }
-
-    func testClipboardHistoryEntriesDeduplicateCopiesAndPasteCounts() async {
-        let harness = makeHarness()
-        await waitForListenerSetup()
-        let group = ClipboardGroup.defaultGroup
-        let now = Date()
-        let laterUse = now.addingTimeInterval(120)
-
-        await harness.eventBus.publish(
-            .clipboardUpdated(
-                ClipboardStoreSnapshot(
-                    items: [
-                        ClipboardHistoryItem(
-                            groupID: group.id,
-                            text: "alpha",
-                            alternatives: ["A"],
-                            createdAt: now,
-                            sourceKind: .system,
-                            useCount: 1,
-                            lastUsedAt: laterUse,
-                            tags: ["primary"]
-                        ),
-                        ClipboardHistoryItem(
-                            groupID: group.id,
-                            text: "alpha",
-                            alternatives: ["B"],
-                            createdAt: now.addingTimeInterval(-60),
-                            sourceKind: .system,
-                            useCount: 2,
-                            lastUsedAt: now,
-                            tags: ["secondary"]
-                        ),
-                        ClipboardHistoryItem(
-                            groupID: group.id,
-                            text: "beta",
-                            createdAt: now.addingTimeInterval(-120),
-                            sourceKind: .system
-                        ),
-                    ],
-                    groups: [],
-                    defaultGroup: ClipboardGroupSummary(
-                        group: group,
-                        count: 3,
-                        previewText: "alpha"
-                    ),
-                    appAssignments: []
-                )
-            )
-        )
-        await waitForEventProcessing()
-
-        XCTAssertEqual(harness.model.clipboardDefaultGroup.count, 3)
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.count, 2)
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.copyCount, 2)
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.pasteCount, 3)
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.alternatives, ["A", "B"])
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.tags, ["primary", "secondary"])
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.first?.lastUsedAt, laterUse)
-    }
-
-    func testClipboardHistoryEntriesDoNotMergeSimilarTextWhileFeatureIsDisabled() async {
-        let harness = makeHarness()
-        await waitForListenerSetup()
-        let group = ClipboardGroup.defaultGroup
-        let now = Date()
-
-        await harness.eventBus.publish(
-            .clipboardUpdated(
-                ClipboardStoreSnapshot(
-                    items: [
-                        ClipboardHistoryItem(
-                            groupID: group.id,
-                            text: "Hello, world!",
-                            createdAt: now,
-                            sourceKind: .system
-                        ),
-                        ClipboardHistoryItem(
-                            groupID: group.id,
-                            text: "hello world",
-                            createdAt: now.addingTimeInterval(-60),
-                            sourceKind: .system
-                        ),
-                        ClipboardHistoryItem(
-                            groupID: group.id,
-                            text: "Completely different",
-                            createdAt: now.addingTimeInterval(-120),
-                            sourceKind: .system
-                        ),
-                    ],
-                    groups: [],
-                    defaultGroup: ClipboardGroupSummary(
-                        group: group,
-                        count: 3,
-                        previewText: "Hello, world!"
-                    ),
-                    appAssignments: []
-                )
-            )
-        )
-        await waitForEventProcessing()
-
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.count, 3)
-        XCTAssertFalse(harness.model.mergeSimilarClipboardItems)
-    }
-
-    func testClipboardHistoryEntriesMergeSimilarTextWhenFeatureIsEnabled() async {
-        let settingsStore = UITestSettingsStore(
-            storage: [.clipboardMergeSimilarItems: "true"]
-        )
-        let harness = makeHarness(settingsStore: settingsStore)
-        await waitForListenerSetup()
-        let group = ClipboardGroup.defaultGroup
-        let now = Date()
-
-        await harness.eventBus.publish(
-            .clipboardUpdated(
-                ClipboardStoreSnapshot(
-                    items: [
-                        ClipboardHistoryItem(
-                            groupID: group.id,
-                            text: "Hello, world!",
-                            createdAt: now,
-                            sourceKind: .system
-                        ),
-                        ClipboardHistoryItem(
-                            groupID: group.id,
-                            text: "hello world",
-                            createdAt: now.addingTimeInterval(-60),
-                            sourceKind: .system
-                        ),
-                        ClipboardHistoryItem(
-                            groupID: group.id,
-                            text: "Completely different",
-                            createdAt: now.addingTimeInterval(-120),
-                            sourceKind: .system
-                        ),
-                    ],
-                    groups: [],
-                    defaultGroup: ClipboardGroupSummary(
-                        group: group,
-                        count: 3,
-                        previewText: "Hello, world!"
-                    ),
-                    appAssignments: []
-                )
-            )
-        )
-        await waitForEventProcessing()
-
-        XCTAssertEqual(harness.model.clipboardHistoryEntries.count, 2)
-        XCTAssertTrue(harness.model.mergeSimilarClipboardItems)
-        XCTAssertTrue(harness.model.clipboardHistoryEntries.first?.includesSimilarText == true)
-    }
-
-    func testClipboardPanelRequestedOpensClipboardPanel() async {
-        let probe = ClipboardPanelProbe()
-        let harness = makeHarness(showClipboardPanelAction: {
+    func testRecordPanelRequestedOpensRecordPanel() async {
+        let probe = RecordPanelProbe()
+        let harness = makeHarness(showRecordPanelAction: {
             await probe.recordShow()
         })
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
 
-        await harness.eventBus.publish(.clipboardPanelRequested)
-        await waitForEventProcessing()
+        await harness.eventBus.publish(.recordPanelRequested)
+        await waitForEventProcessing(harness)
 
         let showCount = await probe.snapshot()
         XCTAssertEqual(showCount, 1)
     }
 
-    func testUseClipboardItemInvokesInstalledAction() async {
-        let probe = ClipboardUseProbe()
-        let harness = makeHarness()
-        let item = ClipboardHistoryItem(
-            groupID: ClipboardGroup.defaultGroup.id,
-            text: "saved item",
-            sourceKind: .system
-        )
-
-        harness.model.installUseClipboardItemAction { item in
-            Task {
-                await probe.record(itemID: item.id)
-            }
-        }
-        harness.model.useClipboardItem(item)
-        await waitForEventProcessing()
-
-        let usedItemIDs = await probe.snapshot()
-        XCTAssertEqual(usedItemIDs, [item.id])
-    }
-
-    func testUpdatingClipboardPanelHotkeyPersistsSetting() async throws {
+    func testUpdatingRecordPanelHotkeyPersistsSetting() async throws {
         let settingsStore = UITestSettingsStore()
         let harness = makeHarness(settingsStore: settingsStore)
         let shortcut = KeyboardShortcut(keyCode: 9, modifiers: [.command, .option])
 
-        harness.model.setClipboardPanelHotkeyShortcut(shortcut)
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
+        harness.model.setRecordPanelHotkeyShortcut(shortcut)
+        await harness.model.flushPendingPersistenceWrites()
 
-        let storedValue = try await settingsStore.string(forKey: .clipboardPanelHotkey)
+        let storedValue = try await settingsStore.string(forKey: .recordPanelHotkey)
         XCTAssertEqual(storedValue, shortcut.storageString)
     }
 
-    func testUpdatingClipboardPanelHotkeyRejectsUnsafeShortcutBeforePersistence() async throws {
+    func testUpdatingRecordPanelHotkeyRejectsUnsafeShortcutBeforePersistence() async throws {
         let settingsStore = UITestSettingsStore()
         let harness = makeHarness(settingsStore: settingsStore)
         let commandQ = KeyboardShortcut(keyCode: 12, modifiers: [.command])
 
-        harness.model.setClipboardPanelHotkeyShortcut(commandQ)
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
+        harness.model.setRecordPanelHotkeyShortcut(commandQ)
+        await harness.model.flushPendingPersistenceWrites()
 
-        XCTAssertEqual(harness.model.clipboardPanelHotkeyBinding, .doubleCommand)
-        let storedValue = try await settingsStore.string(forKey: .clipboardPanelHotkey)
+        XCTAssertEqual(harness.model.recordPanelHotkeyBinding, .doubleCommand)
+        let storedValue = try await settingsStore.string(forKey: .recordPanelHotkey)
         XCTAssertNil(storedValue)
     }
 
@@ -1338,25 +1055,38 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.runHistoryScope, .recentRuns)
     }
 
-    func testShowClipboardManagementSelectsClipboardSidebarAndGroup() {
+    func testShowRecordCollectionSelectsRecordsSidebarAndCollection() {
         let harness = makeHarness()
-        let groupID = UUID()
+        let collectionID = RecordCollectionID()
 
-        harness.model.showClipboardManagement(groupID: groupID)
+        harness.model.showRecordCollection(collectionID)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
-        XCTAssertEqual(harness.model.selectedClipboardSidebarGroupID, groupID)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
+        XCTAssertEqual(harness.model.recordWorkspace.selectedCollectionID, collectionID)
 
-        harness.model.selectSidebarSection(.clipboard)
+        harness.model.selectSidebarSection(.records)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
-        XCTAssertNil(harness.model.selectedClipboardSidebarGroupID)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
+        XCTAssertEqual(
+            harness.model.recordWorkspace.selectedCollectionID,
+            harness.model.recordWorkspace.snapshot.collections.first?.id
+        )
 
-        harness.model.showClipboardManagement(groupID: groupID)
+        harness.model.showRecordCollection(collectionID)
         harness.model.selectSidebarSection(.settings)
 
         XCTAssertEqual(harness.model.selectedSidebarSection, .settings)
-        XCTAssertNil(harness.model.selectedClipboardSidebarGroupID)
+        XCTAssertEqual(harness.model.recordWorkspace.selectedCollectionID, collectionID)
+    }
+
+    func testShowWorkflowSelectsWorkflowSidebarDestination() throws {
+        let harness = makeHarness()
+        let workflow = try XCTUnwrap(harness.model.workflows.first)
+
+        harness.model.showWorkflow(workflow.id)
+
+        XCTAssertEqual(harness.model.selectedSidebarSection, .workflows)
+        XCTAssertEqual(harness.model.workflowEditorNavigationRequest?.workflowID, workflow.id)
     }
 }
 

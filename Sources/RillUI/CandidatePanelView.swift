@@ -79,12 +79,15 @@ public struct CandidatePanelView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(10)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.gray.opacity(0.1))
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.08))
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(isSelected ? Color.accentColor : Color.gray.opacity(0.25), lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(
+                                            isSelected ? Color.accentColor : Color.secondary.opacity(0.35),
+                                            lineWidth: 1
+                                        )
                                 )
                                 .animation(.easeInOut(duration: 0.15), value: isSelected)
                             }
@@ -166,24 +169,24 @@ private struct FlowLayout: Layout {
     ) -> (positions: [CGPoint], size: CGSize) {
         let maxWidth = proposal.width ?? .infinity
         var positions: [CGPoint] = []
-        var x: CGFloat = 0
-        var y: CGFloat = 0
+        var cursorX: CGFloat = 0
+        var cursorY: CGFloat = 0
         var rowHeight: CGFloat = 0
         var maxX: CGFloat = 0
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > maxWidth, x > 0 {
-                x = 0
-                y += rowHeight + spacing
+            if cursorX + size.width > maxWidth, cursorX > 0 {
+                cursorX = 0
+                cursorY += rowHeight + spacing
                 rowHeight = 0
             }
-            positions.append(CGPoint(x: x, y: y))
+            positions.append(CGPoint(x: cursorX, y: cursorY))
             rowHeight = max(rowHeight, size.height)
-            x += size.width + spacing
-            maxX = max(maxX, x - spacing)
+            cursorX += size.width + spacing
+            maxX = max(maxX, cursorX - spacing)
         }
 
-        return (positions, CGSize(width: maxX, height: y + rowHeight))
+        return (positions, CGSize(width: maxX, height: cursorY + rowHeight))
     }
 }

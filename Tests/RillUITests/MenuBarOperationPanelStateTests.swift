@@ -41,9 +41,9 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let symbol = MenuBarSystemSymbolPolicy.symbol(
       isVoiceRunActive: true,
       globalInputCapability: .installationFailed,
-      clipboardCaptureEnabled: false,
+      systemClipboardCaptureEnabled: false,
       clipboardCaptureState: .paused,
-      stackCount: 3
+      recordCount: 3
     )
 
     XCTAssertEqual(symbol.rawValue, RillSystemSymbol.micFill.rawValue)
@@ -57,9 +57,9 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       let symbol = MenuBarSystemSymbolPolicy.symbol(
         isVoiceRunActive: false,
         globalInputCapability: capability,
-        clipboardCaptureEnabled: true,
+        systemClipboardCaptureEnabled: true,
         clipboardCaptureState: .active,
-        stackCount: 4
+        recordCount: 4
       )
 
       XCTAssertEqual(
@@ -73,9 +73,9 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let symbol = MenuBarSystemSymbolPolicy.symbol(
       isVoiceRunActive: false,
       globalInputCapability: .checking,
-      clipboardCaptureEnabled: false,
+      systemClipboardCaptureEnabled: false,
       clipboardCaptureState: .paused,
-      stackCount: 0
+      recordCount: 0
     )
 
     XCTAssertEqual(symbol.rawValue, RillSystemSymbol.questionmarkBubble.rawValue)
@@ -85,9 +85,9 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let symbol = MenuBarSystemSymbolPolicy.symbol(
       isVoiceRunActive: false,
       globalInputCapability: .available,
-      clipboardCaptureEnabled: false,
+      systemClipboardCaptureEnabled: false,
       clipboardCaptureState: .paused,
-      stackCount: 0
+      recordCount: 0
     )
 
     XCTAssertEqual(symbol.rawValue, RillSystemSymbol.waveform.rawValue)
@@ -99,9 +99,9 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       MenuBarSystemSymbolPolicy.symbol(
         isVoiceRunActive: false,
         globalInputCapability: .available,
-        clipboardCaptureEnabled: true,
+        systemClipboardCaptureEnabled: true,
         clipboardCaptureState: .active,
-        stackCount: 2
+        recordCount: 2
       ).rawValue,
       RillSystemSymbol.squareStack3dUpFill.rawValue
     )
@@ -109,9 +109,9 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       MenuBarSystemSymbolPolicy.symbol(
         isVoiceRunActive: false,
         globalInputCapability: .available,
-        clipboardCaptureEnabled: true,
+        systemClipboardCaptureEnabled: true,
         clipboardCaptureState: .ignoringNextExternalChange,
-        stackCount: 2
+        recordCount: 2
       ).rawValue,
       RillSystemSymbol.eyeSlashFill.rawValue
     )
@@ -135,8 +135,8 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let state = MenuBarOperationPanelState(
       language: .english,
       isRunning: false,
-      stackCount: 4,
-      canDeliverTopOfStack: true,
+      recordCount: 4,
+      canDeliverNextRecord: true,
       preferredSpeechEngine: .local,
       outputMode: .pasteIntoApp,
       voiceSetupStatus: .incomplete
@@ -154,8 +154,8 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let state = MenuBarOperationPanelState(
       language: .simplifiedChinese,
       isRunning: false,
-      stackCount: 0,
-      canDeliverTopOfStack: false,
+      recordCount: 0,
+      canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
       outputMode: .saveToVoiceGroup,
       voiceSetupStatus: .loading
@@ -171,8 +171,8 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       language: .english,
       isRunning: false,
       lastCompletedText: "  hello menu  \n",
-      stackCount: 0,
-      canDeliverTopOfStack: false,
+      recordCount: 0,
+      canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
       outputMode: .pasteIntoApp
     )
@@ -188,8 +188,8 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       isRunning: true,
       lastCompletedText: "old result",
       lastFailure: "Microphone access is unavailable.",
-      stackCount: 3,
-      canDeliverTopOfStack: true,
+      recordCount: 3,
+      canDeliverNextRecord: true,
       preferredSpeechEngine: .local,
       outputMode: .saveToVoiceGroup
     )
@@ -205,8 +205,8 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let state = MenuBarOperationPanelState(
       language: .english,
       isRunning: false,
-      stackCount: 2,
-      canDeliverTopOfStack: true,
+      recordCount: 2,
+      canDeliverNextRecord: true,
       preferredSpeechEngine: .local,
       outputMode: .pasteIntoApp
     )
@@ -220,8 +220,8 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let state = MenuBarOperationPanelState(
       language: .english,
       isRunning: false,
-      stackCount: 0,
-      canDeliverTopOfStack: false,
+      recordCount: 0,
+      canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
       outputMode: .pasteIntoApp,
       longRecordingModeEnabled: true
@@ -234,8 +234,8 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let state = MenuBarOperationPanelState(
       language: .english,
       isRunning: true,
-      stackCount: 0,
-      canDeliverTopOfStack: false,
+      recordCount: 0,
+      canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
       outputMode: .saveToVoiceGroup
     )
@@ -249,11 +249,11 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let state = MenuBarOperationPanelState(
       language: .simplifiedChinese,
       isRunning: false,
-      stackCount: 0,
-      canDeliverTopOfStack: false,
+      recordCount: 0,
+      canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
       outputMode: .pasteIntoApp,
-      clipboardCaptureEnabled: false,
+      systemClipboardCaptureEnabled: false,
       clipboardCaptureState: .paused
     )
 
@@ -267,8 +267,8 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let state = MenuBarOperationPanelState(
       language: .english,
       isRunning: false,
-      stackCount: 0,
-      canDeliverTopOfStack: false,
+      recordCount: 0,
+      canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
       outputMode: .pasteIntoApp,
       clipboardCaptureState: .ignoringNextExternalChange
@@ -284,8 +284,8 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let state = MenuBarOperationPanelState(
       language: .english,
       isRunning: false,
-      stackCount: 0,
-      canDeliverTopOfStack: false,
+      recordCount: 0,
+      canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
       outputMode: .pasteIntoApp,
       clipboardCaptureState: .pausing
@@ -300,11 +300,11 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     let state = MenuBarOperationPanelState(
       language: .english,
       isRunning: false,
-      stackCount: 0,
-      canDeliverTopOfStack: false,
+      recordCount: 0,
+      canDeliverNextRecord: false,
       preferredSpeechEngine: .local,
       outputMode: .pasteIntoApp,
-      clipboardCaptureEnabled: false,
+      systemClipboardCaptureEnabled: false,
       clipboardSettingsAvailable: false,
       clipboardCaptureState: .paused
     )

@@ -47,7 +47,7 @@ final class VocabularyCorrectionDraftTests: XCTestCase {
             text: "open aaa now",
             context: VocabularyRuleContext(
                 bundleIdentifier: "com.example.editor",
-                clipboardGroupID: groupID,
+                recordCollectionID: groupID,
                 locale: "en-US"
             )
         )
@@ -82,16 +82,16 @@ final class VocabularyCorrectionDraftTests: XCTestCase {
         draft.updateCorrectedText("launch NewName")
         draft.selectOption(id: .mapping)
 
-        XCTAssertEqual(draft.unknownScopeFields, [.clipboardGroupID, .locale])
+        XCTAssertEqual(draft.unknownScopeFields, [.recordCollectionID, .locale])
         XCTAssertNil(draft.proposedRule)
 
-        draft.setAnyScopeConfirmed(true, for: .clipboardGroupID)
+        draft.setAnyScopeConfirmed(true, for: .recordCollectionID)
         XCTAssertNil(draft.proposedRule)
 
         draft.setAnyScopeConfirmed(true, for: .locale)
         let rule = try XCTUnwrap(draft.proposedRule)
         XCTAssertEqual(rule.scope.bundleIdentifier, "com.example.editor")
-        XCTAssertNil(rule.scope.clipboardGroupID)
+        XCTAssertNil(rule.scope.recordCollectionID)
         XCTAssertNil(rule.scope.locale)
 
         draft.setAnyScopeConfirmed(false, for: .locale)
@@ -101,7 +101,7 @@ final class VocabularyCorrectionDraftTests: XCTestCase {
     func testKnownScopeIsPreservedAndCannotBeConfirmedAsUnknown() throws {
         let context = VocabularyRuleContext(
             bundleIdentifier: "  com.example.editor  ",
-            clipboardGroupID: groupID,
+            recordCollectionID: groupID,
             locale: nil
         )
         var draft = VocabularyCorrectionDraft(source: correctionSource(text: "foo", context: context))
@@ -115,7 +115,7 @@ final class VocabularyCorrectionDraftTests: XCTestCase {
         draft.setAnyScopeConfirmed(true, for: .locale)
         let rule = try XCTUnwrap(draft.proposedRule)
         XCTAssertEqual(rule.scope.bundleIdentifier, "com.example.editor")
-        XCTAssertEqual(rule.scope.clipboardGroupID, groupID)
+        XCTAssertEqual(rule.scope.recordCollectionID, groupID)
         XCTAssertNil(rule.scope.locale)
     }
 
@@ -191,8 +191,8 @@ final class VocabularyCorrectionDraftTests: XCTestCase {
     private func historyRecord(
         outcome: HistoryOutcome,
         includesSource: Bool
-    ) -> HistoryRecord {
-        HistoryRecord(
+    ) -> WorkflowResultRecord {
+        WorkflowResultRecord(
             workflow: WorkflowPresentation(fallbackName: "Dictation"),
             finalText: outcome == .completed ? "Rill" : nil,
             failureMessage: outcome == .failed ? "Failed" : nil,

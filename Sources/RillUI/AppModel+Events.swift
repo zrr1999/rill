@@ -81,8 +81,8 @@ private func actionResultPresentation(_ result: ActionResult) -> LocalizedText {
         LocalizedText(english: "Text was inserted.", simplifiedChinese: "文本已输入。")
     case .copiedToClipboard:
         LocalizedText(english: "Text was copied to the clipboard.", simplifiedChinese: "文本已复制到剪贴板。")
-    case .pushedToStack:
-        LocalizedText(english: "Text was added to the delivery stack.", simplifiedChinese: "文本已加入传递栈。")
+    case .storedRecord:
+        LocalizedText(english: "Text was stored as a record.", simplifiedChinese: "文本已存为记录。")
     case .externalOutput:
         LocalizedText(english: "External output completed.", simplifiedChinese: "外部输出已完成。")
     case .skipped:
@@ -164,6 +164,22 @@ extension AppModel {
         }
     }
 
+    /// Waits until the UI projection has handled every event accepted by the
+    /// lifecycle stream before this call. This is a synchronization contract,
+    /// not a time-based readiness guess, and is also useful to callers that
+    /// need a consistent presentation snapshot without stopping the listener.
+    public func synchronizeEventListener() async {
+        guard listenerTask != nil, !hasStoppedEventListener else { return }
+
+        let barrierID = UUID()
+        await withCheckedContinuation { continuation in
+            eventListenerBarrierContinuations[barrierID] = continuation
+            Task { [eventBus] in
+                await eventBus.publishBarrier(barrierID)
+            }
+        }
+    }
+
     /// Stops the UI event projection only after every event accepted before
     /// the barrier has been handled. Call this after all runtime producers have
     /// stopped and before flushing tracked persistence writes.
@@ -190,13 +206,7 @@ extension AppModel {
             return
         }
 
-        let barrierID = UUID()
-        await withCheckedContinuation { continuation in
-            eventListenerBarrierContinuations[barrierID] = continuation
-            Task { [eventBus] in
-                await eventBus.publishBarrier(barrierID)
-            }
-        }
+        await synchronizeEventListener()
 
         listenerTask.cancel()
         await listenerTask.value
@@ -217,12 +227,12 @@ extension AppModel {
             workflowAudioRunState = .idle
             lastFailure = nil
             let wf = workflows.first(where: { $0.id == run.workflowID })
-            let isStack = wf?.plan.output.deliveryPolicy.strategy == .stackFirst
+            let isStack = wf?.plan.output.deliveryPolicy.strategy == .collectionFirst
             pendingRuns[run.runID] = PendingRunInfo(
                 workflowID: run.workflowID,
                 workflow: run.workflow,
                 trigger: run.trigger,
-                isStackRelated: isStack
+                isRecordRelated: isStack
             )
             append(
                 english: "Run started: \(UIStrings.workflowName(run.workflow, language: .english))",
@@ -303,20 +313,8 @@ extension AppModel {
                 english: presentation.english,
                 simplifiedChinese: presentation.simplifiedChinese
             )
-        case .stackUpdated(let snapshot):
-            stackCount = snapshot.count
-            stackPreview = snapshot.topPreview
-        case .clipboardUpdated(let snapshot):
-            clipboardUpdateDebounceTask?.cancel()
-            clipboardUpdateDebounceTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .milliseconds(16))
-                guard !Task.isCancelled else { return }
-                self?.applyClipboardStoreSnapshot(snapshot)
-            }
-        case .clipboardGroupEvent:
-            break
-        case .clipboardPanelRequested:
-            showClipboardPanel()
+        case .recordPanelRequested:
+            showRecordPanel()
         case .runCompleted(let summary):
             let completedWorkflowAudioCapture = retireWorkflowAudioCapture(
                 matching: summary.runID
@@ -331,13 +329,13 @@ extension AppModel {
             let completedPending = pendingRuns.removeValue(forKey: summary.runID)
             if summary.trigger.isVoiceCapture {
                 lastCompletedText = summary.finalText
-                let isStackRelated =
-                    completedPending?.isStackRelated
+                let isRecordRelated =
+                    completedPending?.isRecordRelated
                     ?? (
-                        summary.workflow.titleKey == .stackDelivery
-                            || (workflows.first(where: { $0.id == summary.workflowID })?.plan.output.deliveryPolicy.strategy == .stackFirst)
+                        summary.workflow.titleKey == .recordDelivery
+                            || (workflows.first(where: { $0.id == summary.workflowID })?.plan.output.deliveryPolicy.strategy == .collectionFirst)
                     )
-                recordHistory(HistoryRecord(
+                recordHistory(WorkflowResultRecord(
                     runID: summary.runID,
                     workflowID: summary.workflowID,
                     workflow: summary.workflow,
@@ -346,7 +344,7 @@ extension AppModel {
                         for: summary.runID,
                         fallback: summary.finishedAt
                     ),
-                    isStackRelated: isStackRelated,
+                    isRecordRelated: isRecordRelated,
                     outcome: .completed,
                     correctionSource: summary.correctionSource,
                     trigger: summary.trigger
@@ -357,7 +355,7 @@ extension AppModel {
                     kind: .runCompleted
                 )
             } else {
-                // Clipboard and stack payloads already have their own stores.
+                // Record payloads already have their own store.
                 // Their closed invocation kind is authoritative even when the
                 // selected workflow happens to declare a speech recognizer.
                 append(
@@ -409,7 +407,7 @@ extension AppModel {
                 }
             }
             if let failedRunID, let failedPending = pendingRuns.removeValue(forKey: failedRunID) {
-                recordHistory(HistoryRecord(
+                recordHistory(WorkflowResultRecord(
                     runID: failedRunID,
                     workflowID: failedPending.workflowID,
                     workflow: workflow ?? failedPending.workflow,
@@ -418,12 +416,12 @@ extension AppModel {
                         for: failedRunID,
                         fallback: Date()
                     ),
-                    isStackRelated: failedPending.isStackRelated,
+                    isRecordRelated: failedPending.isRecordRelated,
                     outcome: .failed,
                     trigger: failedPending.trigger
                 ))
             } else if let failedRunID, let workflow {
-                recordHistory(HistoryRecord(
+                recordHistory(WorkflowResultRecord(
                     runID: failedRunID,
                     workflow: workflow,
                     failureMessage: message,
@@ -431,7 +429,7 @@ extension AppModel {
                         for: failedRunID,
                         fallback: Date()
                     ),
-                    isStackRelated: workflow.titleKey == .stackDelivery,
+                    isRecordRelated: workflow.titleKey == .recordDelivery,
                     outcome: .failed
                 ))
             }
@@ -500,7 +498,7 @@ extension AppModel {
         }
     }
 
-    func recordHistory(_ record: HistoryRecord) {
+    func recordHistory(_ record: WorkflowResultRecord) {
         let record = HistoryRecordSanitizer.sanitize(record)
         let terminalWriteGeneration = record.runID.flatMap {
             terminalReceiptWriteGenerationByRunID.removeValue(forKey: $0)
@@ -546,7 +544,7 @@ extension AppModel {
         registerPersistenceWrite(task)
     }
 
-    private func cacheHistoryRecord(_ record: HistoryRecord) {
+    private func cacheHistoryRecord(_ record: WorkflowResultRecord) {
         noteNewRunAvailableForHistoryBrowsing()
         historyRecords.insert(record, at: 0)
         if historyRecords.count > 50 {
@@ -714,12 +712,24 @@ extension AppModel {
         historyProjectionLoadTasks.removeValue(forKey: id)
     }
 
+    /// Waits until history, receipt, and diagnostic projections have reached
+    /// a stable state. A completed history read may enqueue a receipt read, so
+    /// the owner is checked again after every batch.
+    func waitForHistoryProjectionLoads() async {
+        while !historyProjectionLoadTasks.isEmpty {
+            let tasks = Array(historyProjectionLoadTasks.values)
+            for task in tasks {
+                await task.value
+            }
+        }
+    }
+
     public func workflowRunReceipt(for runID: UUID?) -> WorkflowRunReceipt? {
         guard let runID else { return nil }
         return workflowRunReceiptsByRunID[runID]
     }
 
-    private func reconcileRunDerivedPresentation(with records: [HistoryRecord]) {
+    private func reconcileRunDerivedPresentation(with records: [WorkflowResultRecord]) {
         lastCompletedText = records.first(where: { record in
             record.outcome == .completed &&
                 !(record.finalText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
@@ -742,7 +752,7 @@ extension AppModel {
         pendingLiveSubtitleHideTask = nil
     }
 
-    func isVoiceHistoryRecord(_ record: HistoryRecord) -> Bool {
+    func isVoiceHistoryRecord(_ record: WorkflowResultRecord) -> Bool {
         let receiptTrigger = record.runID.flatMap {
             workflowRunReceiptsByRunID[$0]?.trigger
         }

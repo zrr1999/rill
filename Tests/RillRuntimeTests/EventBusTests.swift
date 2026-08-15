@@ -39,145 +39,9 @@ final class EventBusTests: XCTestCase {
     XCTAssertEqual(secondDelivery, .event(second))
   }
 
-  func testLifecycleDeliveryCoalescesAcrossSnapshotDiagnosticsButNotSemanticBoundaries() async {
-    let eventBus = EventBus()
-    var iterator = eventBus.lifecycleDeliveryStream.makeAsyncIterator()
-    let firstSnapshot = ClipboardStoreSnapshot(
-      items: [],
-      groups: [],
-      appAssignments: []
-    )
-    var secondSnapshot = firstSnapshot
-    secondSnapshot.lastStorageRejection = .itemTooLarge
-    let diagnostic = RillEvent.runFailed(
-      runID: nil,
-      workflow: nil,
-      message: "ordered boundary"
-    )
-    let snapshotDiagnostic = RillEvent.diagnostic(
-      DiagnosticEvent(
-        subsystem: .clipboard,
-        level: .debug,
-        event: "clipboard.snapshot",
-        message: "Clipboard store updated."
-      )
-    )
-    var thirdSnapshot = firstSnapshot
-    thirdSnapshot.lastStorageRejection = .activeItemLimitReached
 
-    await eventBus.publish(.clipboardUpdated(firstSnapshot))
-    await eventBus.publish(snapshotDiagnostic)
-    await eventBus.publish(.clipboardUpdated(secondSnapshot))
-    await eventBus.publish(diagnostic)
-    await eventBus.publish(.clipboardUpdated(firstSnapshot))
-    await eventBus.publish(snapshotDiagnostic)
-    await eventBus.publish(.clipboardUpdated(thirdSnapshot))
 
-    let newestFirstRun = await iterator.next()
-    let preservedFirstDiagnostic = await iterator.next()
-    let orderedDiagnostic = await iterator.next()
-    let newestSecondRun = await iterator.next()
-    let preservedSecondDiagnostic = await iterator.next()
 
-    XCTAssertEqual(newestFirstRun, .event(.clipboardUpdated(secondSnapshot)))
-    XCTAssertEqual(preservedFirstDiagnostic, .event(snapshotDiagnostic))
-    XCTAssertEqual(orderedDiagnostic, .event(diagnostic))
-    XCTAssertEqual(newestSecondRun, .event(.clipboardUpdated(thirdSnapshot)))
-    XCTAssertEqual(preservedSecondDiagnostic, .event(snapshotDiagnostic))
-  }
-
-  func testOrdinaryEventStreamCoalescesClipboardSnapshotsAcrossSnapshotDiagnostics() async {
-    let eventBus = EventBus()
-    let eventStream = await eventBus.stream()
-    var iterator = eventStream.makeAsyncIterator()
-    let baseSnapshot = ClipboardStoreSnapshot(
-      items: [],
-      groups: [],
-      appAssignments: []
-    )
-    var newestSnapshot = baseSnapshot
-    newestSnapshot.lastStorageRejection = .totalByteLimitReached
-    let snapshotDiagnostic = RillEvent.diagnostic(
-      DiagnosticEvent(
-        subsystem: .clipboard,
-        level: .debug,
-        event: "clipboard.snapshot",
-        message: "Clipboard store updated."
-      )
-    )
-    let semanticBoundary = RillEvent.runFailed(
-      runID: nil,
-      workflow: nil,
-      message: "preserved boundary"
-    )
-
-    await eventBus.publish(.clipboardUpdated(baseSnapshot))
-    await eventBus.publish(snapshotDiagnostic)
-    await eventBus.publish(.clipboardUpdated(newestSnapshot))
-    await eventBus.publish(semanticBoundary)
-
-    let deliveredSnapshot = await iterator.next()
-    let deliveredDiagnostic = await iterator.next()
-    let deliveredBoundary = await iterator.next()
-
-    XCTAssertEqual(deliveredSnapshot, .clipboardUpdated(newestSnapshot))
-    XCTAssertEqual(deliveredDiagnostic, snapshotDiagnostic)
-    XCTAssertEqual(deliveredBoundary, semanticBoundary)
-  }
-
-  func testOrdinaryDiagnosticRemainsFIFOClipboardCoalescingBoundary() async {
-    let eventBus = EventBus()
-    let eventStream = await eventBus.stream()
-    var iterator = eventStream.makeAsyncIterator()
-    let baseSnapshot = ClipboardStoreSnapshot(
-      items: [],
-      groups: [],
-      appAssignments: []
-    )
-    var newestSnapshot = baseSnapshot
-    newestSnapshot.lastStorageRejection = .itemTooLarge
-    let diagnostic = RillEvent.diagnostic(
-      DiagnosticEvent(
-        subsystem: .clipboard,
-        level: .info,
-        event: "clipboard.maintenance",
-        message: "Maintenance completed."
-      )
-    )
-
-    await eventBus.publish(.clipboardUpdated(baseSnapshot))
-    await eventBus.publish(diagnostic)
-    await eventBus.publish(.clipboardUpdated(newestSnapshot))
-
-    let deliveredFirstSnapshot = await iterator.next()
-    let deliveredDiagnostic = await iterator.next()
-    let deliveredSecondSnapshot = await iterator.next()
-
-    XCTAssertEqual(deliveredFirstSnapshot, .clipboardUpdated(baseSnapshot))
-    XCTAssertEqual(deliveredDiagnostic, diagnostic)
-    XCTAssertEqual(deliveredSecondSnapshot, .clipboardUpdated(newestSnapshot))
-  }
-
-  func testClipboardInvalidationStreamRetainsOnlyNewestContentFreeRevision() async {
-    let eventBus = EventBus()
-    var iterator = eventBus.clipboardInvalidationStream.makeAsyncIterator()
-    let snapshot = ClipboardStoreSnapshot(
-      items: [],
-      groups: [],
-      appAssignments: []
-    )
-
-    await eventBus.publish(.clipboardUpdated(snapshot))
-    await eventBus.publish(.clipboardUpdated(snapshot))
-    await eventBus.publish(.clipboardUpdated(snapshot))
-
-    let firstInvalidation = await iterator.next()
-    XCTAssertEqual(firstInvalidation, ClipboardStoreInvalidation(revision: 3))
-
-    await eventBus.publish(.clipboardUpdated(snapshot))
-    let secondInvalidation = await iterator.next()
-    XCTAssertEqual(secondInvalidation, ClipboardStoreInvalidation(revision: 4))
-  }
 
   func testOrdinaryStreamCoalescesEveryHighFrequencyStateProjectionByType() async {
     let eventBus = EventBus()
@@ -197,8 +61,6 @@ final class EventBusTests: XCTestCase {
     let firstAudioQueue = AudioProcessingQueueSnapshot(pendingCount: 1)
     let newestAudioQueue = AudioProcessingQueueSnapshot(pendingCount: 4)
     let recoveryReceipt = makeFailedAudioRecoveryReceipt()
-    let firstStack = DeliveryStackSnapshot(count: 1, topPreview: "first")
-    let newestStack = DeliveryStackSnapshot(count: 2, topPreview: "newest")
 
     await eventBus.publish(.liveSubtitleUpdated(firstLiveSubtitle))
     await eventBus.publish(.liveSubtitleUpdated(newestLiveSubtitle))
@@ -206,18 +68,14 @@ final class EventBusTests: XCTestCase {
     await eventBus.publish(.audioProcessingQueueUpdated(newestAudioQueue))
     await eventBus.publish(.failedAudioRecoveryUpdated([recoveryReceipt]))
     await eventBus.publish(.failedAudioRecoveryUpdated([]))
-    await eventBus.publish(.stackUpdated(firstStack))
-    await eventBus.publish(.stackUpdated(newestStack))
 
     let deliveredLiveSubtitle = await iterator.next()
     let deliveredAudioQueue = await iterator.next()
     let deliveredRecoveries = await iterator.next()
-    let deliveredStack = await iterator.next()
 
     XCTAssertEqual(deliveredLiveSubtitle, .liveSubtitleUpdated(newestLiveSubtitle))
     XCTAssertEqual(deliveredAudioQueue, .audioProcessingQueueUpdated(newestAudioQueue))
     XCTAssertEqual(deliveredRecoveries, .failedAudioRecoveryUpdated([]))
-    XCTAssertEqual(deliveredStack, .stackUpdated(newestStack))
   }
 
   func testTerminalHiddenPreservesLatestVisibleSubtitleForStalledConsumers() async {
@@ -275,7 +133,7 @@ final class EventBusTests: XCTestCase {
     )
     let diagnostic = RillEvent.diagnostic(
       DiagnosticEvent(
-        subsystem: .clipboard,
+        subsystem: .systemClipboard,
         level: .debug,
         event: "clipboard.snapshot",
         message: "Clipboard store updated."
@@ -360,93 +218,7 @@ final class EventBusTests: XCTestCase {
     XCTAssertEqual(deliveredAfterBarrier, .event(.liveSubtitleUpdated(newestAfterBarrier)))
   }
 
-  func testLifecycleBarrierSeparatesClipboardCoalescingSegments() async {
-    let eventBus = EventBus()
-    var iterator = eventBus.lifecycleDeliveryStream.makeAsyncIterator()
-    let barrierID = UUID()
-    let baseSnapshot = ClipboardStoreSnapshot(
-      items: [],
-      groups: [],
-      appAssignments: []
-    )
-    var beforeBarrier = baseSnapshot
-    beforeBarrier.lastStorageRejection = .itemTooLarge
-    var afterBarrier = baseSnapshot
-    afterBarrier.lastStorageRejection = .historyItemLimitReached
-    var latestAfterBarrier = baseSnapshot
-    latestAfterBarrier.lastStorageRejection = .totalByteLimitReached
 
-    await eventBus.publish(.clipboardUpdated(baseSnapshot))
-    await eventBus.publish(.clipboardUpdated(beforeBarrier))
-    await eventBus.publishBarrier(barrierID)
-    await eventBus.publish(.clipboardUpdated(baseSnapshot))
-    await eventBus.publish(.clipboardUpdated(afterBarrier))
-
-    let deliveredBeforeBarrier = await iterator.next()
-    let deliveredBarrier = await iterator.next()
-    await eventBus.publish(.clipboardUpdated(latestAfterBarrier))
-    let deliveredAfterBarrier = await iterator.next()
-
-    XCTAssertEqual(deliveredBeforeBarrier, .event(.clipboardUpdated(beforeBarrier)))
-    XCTAssertEqual(deliveredBarrier, .barrier(barrierID))
-    XCTAssertEqual(deliveredAfterBarrier, .event(.clipboardUpdated(latestAfterBarrier)))
-  }
-
-  func testSlowLifecycleConsumerRetainsOnlyNewestClipboardSnapshotAndDiagnosticPerSegment()
-    async
-  {
-    let eventBus = EventBus()
-    var iterator = eventBus.lifecycleDeliveryStream.makeAsyncIterator()
-    let barrierID = UUID()
-    let baseSnapshot = ClipboardStoreSnapshot(
-      items: [],
-      groups: [],
-      appAssignments: []
-    )
-    var newestBeforeBarrier = baseSnapshot
-    newestBeforeBarrier.lastStorageRejection = .itemTooLarge
-    var newestAfterBarrier = baseSnapshot
-    newestAfterBarrier.lastStorageRejection = .totalByteLimitReached
-    let burstCount = 512
-
-    for index in 0..<burstCount {
-      let snapshot = index == burstCount - 1 ? newestBeforeBarrier : baseSnapshot
-      await eventBus.publish(.clipboardUpdated(snapshot))
-      await eventBus.publish(makeClipboardSnapshotDiagnostic(sequence: index))
-    }
-    await eventBus.publishBarrier(barrierID)
-    for index in 0..<burstCount {
-      let snapshot = index == burstCount - 1 ? newestAfterBarrier : baseSnapshot
-      await eventBus.publish(.clipboardUpdated(snapshot))
-      await eventBus.publish(makeClipboardSnapshotDiagnostic(sequence: burstCount + index))
-    }
-    let terminalBoundary = RillEvent.runFailed(
-      runID: nil,
-      workflow: nil,
-      message: "terminal boundary"
-    )
-    await eventBus.publish(terminalBoundary)
-
-    let deliveredBeforeBarrier = await iterator.next()
-    let diagnosticBeforeBarrier = await iterator.next()
-    let deliveredBarrier = await iterator.next()
-    let deliveredAfterBarrier = await iterator.next()
-    let diagnosticAfterBarrier = await iterator.next()
-    let deliveredTerminal = await iterator.next()
-
-    XCTAssertEqual(deliveredBeforeBarrier, .event(.clipboardUpdated(newestBeforeBarrier)))
-    XCTAssertEqual(
-      diagnosticBeforeBarrier,
-      .event(makeClipboardSnapshotDiagnostic(sequence: burstCount - 1))
-    )
-    XCTAssertEqual(deliveredBarrier, .barrier(barrierID))
-    XCTAssertEqual(deliveredAfterBarrier, .event(.clipboardUpdated(newestAfterBarrier)))
-    XCTAssertEqual(
-      diagnosticAfterBarrier,
-      .event(makeClipboardSnapshotDiagnostic(sequence: (burstCount * 2) - 1))
-    )
-    XCTAssertEqual(deliveredTerminal, .event(terminalBoundary))
-  }
 
   func testOrdinaryEventQueuePreservesFIFOAcrossConsumedPrefixCompaction() async {
     let eventBus = EventBus()
@@ -475,18 +247,6 @@ final class EventBusTests: XCTestCase {
       XCTAssertEqual(delivered, expected)
     }
   }
-}
-
-private func makeClipboardSnapshotDiagnostic(sequence: Int) -> RillEvent {
-  .diagnostic(
-    DiagnosticEvent(
-      timestamp: Date(timeIntervalSince1970: TimeInterval(sequence)),
-      subsystem: .clipboard,
-      level: .debug,
-      event: "clipboard.snapshot",
-      message: "Clipboard store update \(sequence)."
-    )
-  )
 }
 
 private func makeFailedAudioRecoveryReceipt() -> FailedAudioRecoveryReceipt {

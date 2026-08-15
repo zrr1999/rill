@@ -24,7 +24,7 @@ final class LocalSpeechRuntimeLifecycleTests: XCTestCase {
         probe.recordRelease()
       }
     )
-    await waitForEventProcessing()
+    await waitForEventProcessing(harness)
 
     harness.model.releaseLocalSpeechModelMemory()
 
@@ -40,7 +40,7 @@ final class LocalSpeechRuntimeLifecycleTests: XCTestCase {
         probe.recordStop()
       }
     )
-    await waitForEventProcessing()
+    await waitForEventProcessing(harness)
 
     await harness.model.stopLocalSpeechPreparationForApplicationShutdown()
 

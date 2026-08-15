@@ -16,14 +16,14 @@ private actor ShutdownBlockingLocalHistoryMaintenance: LocalHistoryMaintaining {
     private var observedCancellation = false
 
     func performRetention(
-        clipboardRetention: HistoryRetentionPeriod,
+        recordRetention: HistoryRetentionPeriod,
         runRetention: HistoryRetentionPeriod,
         now: Date
     ) async -> LocalHistoryMaintenanceResult {
-        await recordAndWait(.performRetention(clipboardRetention, runRetention))
+        await recordAndWait(.performRetention(recordRetention, runRetention))
     }
 
-    func clearClipboardHistory() async -> LocalHistoryMaintenanceResult {
+    func clearRecordHistory() async -> LocalHistoryMaintenanceResult {
         await recordAndWait(.clearClipboard)
     }
 
@@ -187,9 +187,9 @@ private final class ShutdownProjectionReadLatch: @unchecked Sendable {
 private struct ShutdownProjectionHistoryRepository: HistoryRepository {
     let readLatch: ShutdownProjectionReadLatch
 
-    func save(_ record: HistoryRecord) async throws {}
+    func save(_ record: WorkflowResultRecord) async throws {}
 
-    func records(matching query: HistoryQuery) async throws -> [HistoryRecord] {
+    func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
         await readLatch.performRead()
         return []
     }
@@ -279,16 +279,16 @@ extension AppModelTests {
     func testHistoryRetentionDefaultsToThirtyDaysWhenSettingsAreUnset() async {
         let harness = makeHarness(settingsStore: UITestSettingsStore())
 
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
 
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .thirtyDays)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
         XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .thirtyDays)
     }
 
     func testRetentionMutationIsRejectedWhileInitialSettingsReadIsPending() async {
         let settingsStore = UITestSettingsStore(
             storage: [
-                .clipboardHistoryRetentionPeriod: HistoryRetentionPeriod.oneDay.rawValue,
+                .recordRetentionPeriod: HistoryRetentionPeriod.oneDay.rawValue,
                 .runHistoryRetentionPeriod: HistoryRetentionPeriod.thirtyDays.rawValue,
             ],
             suspendBatchReads: true
@@ -301,22 +301,22 @@ extension AppModelTests {
         await settingsStore.waitUntilBatchReadIsSuspended()
         XCTAssertTrue(harness.model.isLoadingSettings)
 
-        harness.model.setClipboardHistoryRetentionPeriod(.forever)
+        harness.model.setRecordRetentionPeriod(.forever)
         await Task.yield()
 
         let activityBeforeResume = await settingsStore.activitySnapshot()
         let maintenanceBeforeResume = await maintenance.callSnapshot()
-        XCTAssertNil(activityBeforeResume.setCounts[.clipboardHistoryRetentionPeriod])
+        XCTAssertNil(activityBeforeResume.setCounts[.recordRetentionPeriod])
         XCTAssertTrue(maintenanceBeforeResume.isEmpty)
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .thirtyDays)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
 
         await settingsStore.resumeBatchRead()
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
 
         XCTAssertFalse(harness.model.isLoadingSettings)
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .oneDay)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .oneDay)
         let storedValue = try? await settingsStore.string(
-            forKey: .clipboardHistoryRetentionPeriod
+            forKey: .recordRetentionPeriod
         )
         XCTAssertEqual(storedValue, HistoryRetentionPeriod.oneDay.rawValue)
     }
@@ -324,15 +324,15 @@ extension AppModelTests {
     func testInvalidHistoryRetentionFailsSafeToForever() async {
         let settingsStore = UITestSettingsStore(
             storage: [
-                .clipboardHistoryRetentionPeriod: "invalid-clipboard-retention",
+                .recordRetentionPeriod: "invalid-clipboard-retention",
                 .runHistoryRetentionPeriod: "invalid-run-retention",
             ]
         )
         let harness = makeHarness(settingsStore: settingsStore)
 
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
 
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .forever)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .forever)
         XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .forever)
         XCTAssertTrue(harness.model.areHistoryRetentionSettingsAvailable)
         XCTAssertNotNil(harness.model.historyRetentionSettingsError)
@@ -345,26 +345,26 @@ extension AppModelTests {
     func testUnreadableRetentionSettingPausesOnlyItsDomain() async {
         let settingsStore = UITestSettingsStore(
             storage: [
-                .clipboardHistoryRetentionPeriod: "damaged-protected-value",
+                .recordRetentionPeriod: "damaged-protected-value",
                 .runHistoryRetentionPeriod: HistoryRetentionPeriod.oneWeek.rawValue,
             ],
-            unavailableKeys: [.clipboardHistoryRetentionPeriod]
+            unavailableKeys: [.recordRetentionPeriod]
         )
         let harness = makeHarness(settingsStore: settingsStore)
 
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
 
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .forever)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .forever)
         XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .oneWeek)
         XCTAssertTrue(harness.model.areHistoryRetentionSettingsAvailable)
         XCTAssertNotNil(harness.model.historyRetentionSettingsError)
         let activity = await settingsStore.activitySnapshot()
         XCTAssertEqual(
-            activity.storage[.clipboardHistoryRetentionPeriod],
+            activity.storage[.recordRetentionPeriod],
             "damaged-protected-value"
         )
-        XCTAssertNil(activity.setCounts[.clipboardHistoryRetentionPeriod])
-        XCTAssertNil(activity.removeCounts[.clipboardHistoryRetentionPeriod])
+        XCTAssertNil(activity.setCounts[.recordRetentionPeriod])
+        XCTAssertNil(activity.removeCounts[.recordRetentionPeriod])
     }
 
     func testSettingsReadFailurePausesCleanupWithoutPresentingForeverAsUserChoice() async {
@@ -376,10 +376,10 @@ extension AppModelTests {
             localHistoryMaintenance: maintenance
         )
 
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
         try? await Task.sleep(for: .milliseconds(80))
 
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .thirtyDays)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
         XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .thirtyDays)
         XCTAssertFalse(harness.model.areHistoryRetentionSettingsAvailable)
         XCTAssertNotNil(harness.model.historyRetentionSettingsError)
@@ -397,10 +397,10 @@ extension AppModelTests {
             localHistoryMaintenance: maintenance
         )
 
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
         try? await Task.sleep(for: .milliseconds(80))
 
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .thirtyDays)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
         XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .thirtyDays)
         XCTAssertFalse(harness.model.areHistoryRetentionSettingsAvailable)
         XCTAssertNotNil(harness.model.historyRetentionSettingsError)
@@ -413,16 +413,16 @@ extension AppModelTests {
         let harness = makeHarness(
             settingsStore: UITestSettingsStore(
                 storage: [
-                    .clipboardHistoryRetentionPeriod: HistoryRetentionPeriod.forever.rawValue,
+                    .recordRetentionPeriod: HistoryRetentionPeriod.forever.rawValue,
                     .runHistoryRetentionPeriod: HistoryRetentionPeriod.forever.rawValue,
                 ]
             ),
             localHistoryMaintenance: UITestLocalHistoryMaintenance()
         )
 
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
 
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .forever)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .forever)
         XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .forever)
         XCTAssertTrue(harness.model.areHistoryRetentionSettingsAvailable)
         XCTAssertNil(harness.model.historyRetentionSettingsError)
@@ -431,7 +431,7 @@ extension AppModelTests {
     func testSavingDisplayedForeverRepairsInvalidRetentionState() async {
         let settingsStore = UITestSettingsStore(
             storage: [
-                .clipboardHistoryRetentionPeriod: "damaged-value",
+                .recordRetentionPeriod: "damaged-value",
                 .runHistoryRetentionPeriod: HistoryRetentionPeriod.thirtyDays.rawValue,
             ]
         )
@@ -439,13 +439,14 @@ extension AppModelTests {
             settingsStore: settingsStore,
             localHistoryMaintenance: UITestLocalHistoryMaintenance()
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
+        await harness.model.waitForLocalHistoryMaintenance()
         XCTAssertTrue(harness.model.clipboardHistoryRetentionSettingIsInvalid)
 
-        harness.model.setClipboardHistoryRetentionPeriod(.forever)
-        await waitForEventProcessing()
+        harness.model.setRecordRetentionPeriod(.forever)
+        await harness.model.flushPendingPersistenceWrites()
 
-        let storedValue = try? await settingsStore.string(forKey: .clipboardHistoryRetentionPeriod)
+        let storedValue = try? await settingsStore.string(forKey: .recordRetentionPeriod)
         XCTAssertEqual(storedValue, HistoryRetentionPeriod.forever.rawValue)
         XCTAssertFalse(harness.model.clipboardHistoryRetentionSettingIsInvalid)
         XCTAssertNil(harness.model.historyRetentionSettingsError)
@@ -458,16 +459,16 @@ extension AppModelTests {
             settingsStore: settingsStore,
             localHistoryMaintenance: maintenance
         )
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
         await maintenance.resetCalls()
 
-        harness.model.setClipboardHistoryRetentionPeriod(.oneWeek)
-        await waitForEventProcessing()
+        harness.model.setRecordRetentionPeriod(.oneWeek)
+        await waitForHistoryMaintenance(harness)
 
-        let storedValue = try? await settingsStore.string(forKey: .clipboardHistoryRetentionPeriod)
+        let storedValue = try? await settingsStore.string(forKey: .recordRetentionPeriod)
         let maintenanceCalls = await maintenance.callSnapshot()
         XCTAssertEqual(storedValue, HistoryRetentionPeriod.oneWeek.rawValue)
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .oneWeek)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .oneWeek)
         XCTAssertEqual(
             maintenanceCalls,
             [.performRetention(.oneWeek, .thirtyDays)]
@@ -478,32 +479,33 @@ extension AppModelTests {
             settingsStore: settingsStore,
             localHistoryMaintenance: reloadedMaintenance
         )
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
 
-        XCTAssertEqual(reloadedHarness.model.clipboardHistoryRetentionPeriod, .oneWeek)
+        XCTAssertEqual(reloadedHarness.model.recordRetentionPeriod, .oneWeek)
         XCTAssertEqual(reloadedHarness.model.runHistoryRetentionPeriod, .thirtyDays)
     }
 
     func testRetentionPersistenceFailureDoesNotChangeSettingOrStartCleanup() async {
         let settingsStore = UITestSettingsStore(
-            failingSetKeys: [.clipboardHistoryRetentionPeriod]
+            failingSetKeys: [.recordRetentionPeriod]
         )
         let maintenance = UITestLocalHistoryMaintenance()
         let harness = makeHarness(
             settingsStore: settingsStore,
             localHistoryMaintenance: maintenance
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
+        await harness.model.waitForLocalHistoryMaintenance()
         await maintenance.resetCalls()
 
-        harness.model.setClipboardHistoryRetentionPeriod(.oneWeek)
-        await waitForEventProcessing()
+        harness.model.setRecordRetentionPeriod(.oneWeek)
+        await harness.model.flushPendingPersistenceWrites()
 
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .thirtyDays)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
         XCTAssertNotNil(harness.model.historyRetentionSettingsError)
         let maintenanceCalls = await maintenance.callSnapshot()
         XCTAssertTrue(maintenanceCalls.isEmpty)
-        let storedValue = try? await settingsStore.string(forKey: .clipboardHistoryRetentionPeriod)
+        let storedValue = try? await settingsStore.string(forKey: .recordRetentionPeriod)
         XCTAssertNil(storedValue)
     }
 
@@ -513,14 +515,14 @@ extension AppModelTests {
             settingsStore: settingsStore,
             historyRetentionMaintenanceInterval: .milliseconds(40)
         )
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
 
-        harness.model.setClipboardHistoryRetentionPeriod(.oneWeek)
-        await waitForEventProcessing()
+        harness.model.setRecordRetentionPeriod(.oneWeek)
+        await waitForHistoryMaintenance(harness)
 
-        let storedValue = try? await settingsStore.string(forKey: .clipboardHistoryRetentionPeriod)
+        let storedValue = try? await settingsStore.string(forKey: .recordRetentionPeriod)
         XCTAssertEqual(storedValue, HistoryRetentionPeriod.oneWeek.rawValue)
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .oneWeek)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .oneWeek)
         let blockedReason = harness.model.localHistoryMaintenanceBlockedReason ?? ""
         XCTAssertFalse(blockedReason.isEmpty)
         XCTAssertTrue(
@@ -535,8 +537,8 @@ extension AppModelTests {
                 .completed(LocalHistoryMaintenanceCounts()),
                 .completed(
                     LocalHistoryMaintenanceCounts(
-                        clipboardRemovedCount: 2,
-                        preservedActiveClipboardCount: 1
+                        recordRemovedCount: 2,
+                        preservedActiveRecordCount: 1
                     )
                 ),
                 .completed(
@@ -551,16 +553,16 @@ extension AppModelTests {
             settingsStore: UITestSettingsStore(),
             localHistoryMaintenance: maintenance
         )
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
         await maintenance.resetCalls()
 
-        harness.model.clearClipboardHistory()
-        await waitForEventProcessing()
+        harness.model.clearRecordHistory()
+        await waitForHistoryMaintenance(harness)
 
         let clipboardCalls = await maintenance.callSnapshot()
         XCTAssertEqual(clipboardCalls, [.clearClipboard])
         XCTAssertEqual(harness.model.lastLocalHistoryRemovedCount, 2)
-        XCTAssertEqual(harness.model.lastPreservedActiveClipboardCount, 1)
+        XCTAssertEqual(harness.model.lastPreservedActiveRecordCount, 1)
         XCTAssertNil(harness.model.localHistoryMaintenancePendingReason)
         XCTAssertNil(harness.model.localHistoryMaintenanceBlockedReason)
 
@@ -586,12 +588,12 @@ extension AppModelTests {
             confirmedText: "subtitle-before-clear"
         )
         harness.model.clearRunHistory()
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
 
         let allCalls = await maintenance.callSnapshot()
         XCTAssertEqual(allCalls, [.clearClipboard, .clearRun])
         XCTAssertEqual(harness.model.lastLocalHistoryRemovedCount, 5)
-        XCTAssertEqual(harness.model.lastPreservedActiveClipboardCount, 0)
+        XCTAssertEqual(harness.model.lastPreservedActiveRecordCount, 0)
         XCTAssertTrue(harness.model.diagnosticEvents.isEmpty)
         XCTAssertNil(harness.model.lastCompletedText)
         XCTAssertNil(harness.model.lastFailure)
@@ -604,7 +606,7 @@ extension AppModelTests {
             results: [
                 .completed(LocalHistoryMaintenanceCounts()),
                 .pending(
-                    LocalHistoryMaintenanceCounts(clipboardRemovedCount: 1),
+                    LocalHistoryMaintenanceCounts(recordRemovedCount: 1),
                     .physicalPurgeFailed
                 ),
                 .completed(LocalHistoryMaintenanceCounts()),
@@ -614,17 +616,17 @@ extension AppModelTests {
             settingsStore: UITestSettingsStore(),
             localHistoryMaintenance: maintenance
         )
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
         await maintenance.resetCalls()
 
-        harness.model.clearClipboardHistory()
-        await waitForEventProcessing()
+        harness.model.clearRecordHistory()
+        await waitForHistoryMaintenance(harness)
 
         XCTAssertNotNil(harness.model.localHistoryMaintenancePendingReason)
         XCTAssertNil(harness.model.localHistoryMaintenanceBlockedReason)
 
         harness.model.retryPendingLocalHistoryMaintenance()
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
 
         let maintenanceCalls = await maintenance.callSnapshot()
         XCTAssertEqual(maintenanceCalls, [.clearClipboard, .retryPending])
@@ -638,7 +640,7 @@ extension AppModelTests {
             settingsStore: UITestSettingsStore(),
             localHistoryMaintenance: maintenance
         )
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
         await maintenance.resetCalls()
         harness.model.isRunning = true
 
@@ -656,7 +658,7 @@ extension AppModelTests {
             settingsStore: UITestSettingsStore(),
             localHistoryMaintenance: maintenance
         )
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
         await maintenance.resetCalls()
         harness.model.audioProcessingQueueSnapshot = AudioProcessingQueueSnapshot(
             processingRunID: UUID(),
@@ -683,17 +685,17 @@ extension AppModelTests {
             settingsStore: UITestSettingsStore(),
             localHistoryMaintenance: maintenance
         )
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
         await maintenance.resetCalls()
 
-        harness.model.clearClipboardHistory()
-        await waitForEventProcessing()
+        harness.model.clearRecordHistory()
+        await waitForHistoryMaintenance(harness)
 
         XCTAssertNil(harness.model.localHistoryMaintenancePendingReason)
         XCTAssertNotNil(harness.model.localHistoryMaintenanceBlockedReason)
 
         harness.model.retryPendingLocalHistoryMaintenance()
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
 
         XCTAssertNil(harness.model.localHistoryMaintenancePendingReason)
         XCTAssertNil(harness.model.localHistoryMaintenanceBlockedReason)
@@ -785,7 +787,7 @@ extension AppModelTests {
         let didObserveCancellation = await maintenance.didObserveCancellation()
         XCTAssertFalse(didObserveCancellation)
 
-        harness.model.clearClipboardHistory()
+        harness.model.clearRecordHistory()
         harness.model.retryPendingLocalHistoryMaintenance()
         harness.model.performLocalHistoryRetention()
         let calls = await maintenance.callSnapshot()
@@ -875,7 +877,7 @@ extension AppModelTests {
         await harness.model.stopLocalHistoryMaintenanceForApplicationShutdown()
         await settingsStore.resumeBatchRead()
         await settingsReadStop.value
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
 
         XCTAssertFalse(harness.model.isLoadingSettings)
         XCTAssertTrue(harness.model.localHistoryMaintenanceTasks.isEmpty)
@@ -891,7 +893,8 @@ extension AppModelTests {
             historyRetentionMaintenanceInterval: .seconds(60),
             localHistoryMaintenance: maintenance
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
+        await harness.model.waitForLocalHistoryMaintenance()
         XCTAssertNotNil(harness.model.periodicHistoryRetentionMaintenanceTask)
 
         await harness.model.stopLocalHistoryMaintenanceForApplicationShutdown()

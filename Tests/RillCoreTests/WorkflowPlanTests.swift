@@ -29,7 +29,7 @@ final class WorkflowPlanTests: XCTestCase {
             "recognizerID": "legacy.recognizer",
             "postProcessSteps": [],
             "outputActions": [
-                ["id": "clipboard.copy", "configuration": [:]],
+                ["id": "system-clipboard.copy", "configuration": [:]],
             ],
             "uncertaintyPolicy": [
                 "mode": "off",
@@ -49,7 +49,7 @@ final class WorkflowPlanTests: XCTestCase {
             decoded.plan.process.steps.map(\.kind),
             [.recognizeSpeech, .applyVocabulary]
         )
-        XCTAssertEqual(decoded.plan.output.actions.map(\.id), ["clipboard.copy"])
+        XCTAssertEqual(decoded.plan.output.actions.map(\.id), ["system-clipboard.copy"])
     }
 
     func testValidatorRejectsRecognitionOutsideFirstPosition() {
@@ -76,7 +76,7 @@ final class WorkflowPlanTests: XCTestCase {
                 steps: [WorkflowProcessStep(kind: .applyVocabulary)]
             ),
             output: WorkflowOutputPhase(
-                actions: [OutputActionReference(id: "clipboard.copy")]
+                actions: [OutputActionReference(id: "system-clipboard.copy")]
             )
         )
 
@@ -192,8 +192,8 @@ final class WorkflowPlanTests: XCTestCase {
                     ]
                 ),
                 output: WorkflowOutputPhase(
-                    actions: [OutputActionReference(id: "clipboard.copy")],
-                    deliveryPolicy: DeliveryPolicy(strategy: .clipboardOnly)
+                    actions: [OutputActionReference(id: "system-clipboard.copy")],
+                    deliveryPolicy: DeliveryPolicy(strategy: .systemClipboardOnly)
                 )
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")

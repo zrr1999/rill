@@ -112,19 +112,19 @@ final class HistoryRecordSanitizerTests: XCTestCase {
             preMappingText: "recognized text",
             context: VocabularyRuleContext(
                 bundleIdentifier: "com.example.editor",
-                clipboardGroupID: UUID(),
+                recordCollectionID: UUID(),
                 locale: "en-US"
             ),
             languageModelInputTexts: ["actual LLM input"]
         )
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             runID: UUID(),
             workflowID: UUID(),
             workflow: WorkflowPresentation(fallbackName: "Dictation"),
             finalText: "delivered text",
             failureMessage: "provider body must not persist",
             timestamp: Date(timeIntervalSince1970: 42),
-            isStackRelated: true,
+            isRecordRelated: true,
             outcome: .failed,
             correctionSource: correctionSource,
             trigger: .failedAudioRecovery
@@ -158,7 +158,7 @@ final class HistoryRecordSanitizerTests: XCTestCase {
     }
 
     func testAuthoritativeTriggerRoundTripsWhileLegacyPayloadRemainsUnclassified() throws {
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             runID: UUID(),
             workflowID: UUID(),
             workflow: WorkflowPresentation(fallbackName: "Custom Dictation"),
@@ -169,14 +169,14 @@ final class HistoryRecordSanitizerTests: XCTestCase {
         let encoder = JSONEncoder()
         let encoded = try encoder.encode(record)
 
-        XCTAssertEqual(try JSONDecoder().decode(HistoryRecord.self, from: encoded), record)
+        XCTAssertEqual(try JSONDecoder().decode(WorkflowResultRecord.self, from: encoded), record)
 
         var legacyObject = try XCTUnwrap(
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
         legacyObject.removeValue(forKey: "trigger")
         let legacyData = try JSONSerialization.data(withJSONObject: legacyObject)
-        let legacyRecord = try JSONDecoder().decode(HistoryRecord.self, from: legacyData)
+        let legacyRecord = try JSONDecoder().decode(WorkflowResultRecord.self, from: legacyData)
 
         XCTAssertNil(legacyRecord.trigger)
         XCTAssertEqual(legacyRecord.finalText, record.finalText)

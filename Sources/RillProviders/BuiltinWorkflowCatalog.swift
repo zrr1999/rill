@@ -53,13 +53,13 @@ public struct BuiltinWorkflowCatalog: WorkflowCatalog {
                         ]),
                         output: WorkflowOutputPhase(
                             actions: [
-                                OutputActionReference(id: "inject.text"),
+                                OutputActionReference(id: "focused-application.insert"),
                             ],
                             deliveryPolicy: DeliveryPolicy(strategy: .immediate)
                         )
                     ),
                     ui: WorkflowUIConfig(
-                        symbolName: "mic.fill",
+                        symbolName: WorkflowUISymbol.micFill.rawValue,
                         accentColorName: "red"
                     ),
                     metadata: [
@@ -132,7 +132,7 @@ public struct BuiltinWorkflowCatalog: WorkflowCatalog {
                         )
                     ),
                     ui: WorkflowUIConfig(
-                        symbolName: "sparkles",
+                        symbolName: WorkflowUISymbol.sparkles.rawValue,
                         accentColorName: "purple"
                     ),
                     metadata: [

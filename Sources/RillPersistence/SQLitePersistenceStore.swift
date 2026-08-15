@@ -82,7 +82,8 @@ private enum SQLiteBinding {
 public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptRepository,
   RunHistoryBrowsing,
   DiagnosticRepository,
-  SensitiveSettingsStore, ExportMetadataRepository, ClipboardPersistenceStore
+  SensitiveSettingsStore, ExportMetadataRepository,
+  RecordGraphPersistenceStore
 {
   private static let logger = Logger(
     subsystem: "dev.zrr.Rill",
@@ -96,7 +97,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
   private let decoder = JSONDecoder()
   private let localDataProtector: any LocalDataProtector
 
-  private static let clipboardStorageLimits = ClipboardStorageLimits.productDefault
+  private static let clipboardStorageLimits = SystemClipboardStorageLimits.productDefault
   private static let maximumClipboardBlobCount =
     clipboardStorageLimits.maximumActiveItemCount
     + clipboardStorageLimits.maximumHistoryOnlyItemCount
@@ -262,54 +263,77 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       : .unsafeOrUninspectable
   }
 
-  public func loadClipboardPersistence() async throws -> ClipboardPersistenceReadSnapshot {
+
+  public func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot {
     do {
       return try withDeferredTransaction {
-        let current = try storedClipboardMetadata()
+        let current = try storedRecordGraphMetadata()
+        let legacyCurrent = try storedClipboardMetadata()
         let legacyEnvelope = try storedLegacyClipboardEnvelope()
-        guard current == nil || legacyEnvelope == nil else {
+        let legacySourceCount = [
+          current != nil,
+          legacyCurrent != nil,
+          legacyEnvelope != nil,
+        ].filter { $0 }.count
+        guard legacySourceCount <= 1 else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
 
         if let current {
-          let metadata = try localDataProtector.openBinary(
-            current.protectedMetadata,
-            context: Self.clipboardMetadataProtectionContext
+          let graph = try localDataProtector.openBinary(
+            current.protectedGraph,
+            context: Self.recordGraphProtectionContext
           )
-          guard !metadata.isEmpty,
-            metadata.count <= Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount
+          guard !graph.isEmpty,
+            graph.count <= Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount
           else {
             throw SQLitePersistenceError.clipboardPersistenceUnavailable
           }
-          let remainingPlaintextByteCount =
-            Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount - metadata.count
           return .current(
             revision: current.revision,
-            metadata: metadata,
-            imageBlobs: try storedClipboardImageBlobs(
-              maximumTotalPlaintextByteCount: remainingPlaintextByteCount
+            graph: graph,
+            payloadBlobs: try storedRecordPayloadBlobs(
+              maximumTotalPlaintextByteCount:
+                Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount - graph.count
             )
           )
         }
 
-        let coordinates = try storedClipboardBlobCoordinates()
-        guard coordinates.isEmpty else {
+        guard try storedRecordPayloadBlobCoordinates().isEmpty else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+        if let legacyCurrent {
+          let metadata = try localDataProtector.openBinary(
+            legacyCurrent.protectedMetadata,
+            context: Self.clipboardMetadataProtectionContext
+          )
+          guard !metadata.isEmpty else {
+            throw SQLitePersistenceError.clipboardPersistenceUnavailable
+          }
+          return .legacyClipboard(
+            metadata: metadata,
+            imageBlobs: try storedClipboardImageBlobs(
+              maximumTotalPlaintextByteCount:
+                Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount - metadata.count
+            )
+          )
+        }
+        guard (try storedClipboardBlobCoordinates()).isEmpty else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
         guard let legacyEnvelope else { return .empty }
-        let legacyMetadata = try localDataProtector.open(
+        let metadata = try localDataProtector.open(
           legacyEnvelope,
           context: Self.settingsProtectionContext(
-            keyRawValue: AppSettingKey.clipboardPersistedState.rawValue
+            keyRawValue: AppSettingKey.legacyClipboardPersistedState.rawValue
           )
         )
-        guard !legacyMetadata.isEmpty,
-          legacyMetadata.count
-            <= Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount
+        guard !metadata.isEmpty,
+          metadata.count <= Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount
         else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
-        return .legacy(metadata: legacyMetadata)
+        return .legacyClipboard(metadata: metadata, imageBlobs: [])
       }
     } catch let error as SQLitePersistenceError {
       switch error {
@@ -323,23 +347,63 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  public func replaceClipboardPersistence(
-    with snapshot: ClipboardPersistenceWriteSnapshot
-  ) async throws -> Int64 {
-    let prepared: PreparedClipboardWrite
-    do {
-      prepared = try prepareClipboardWrite(snapshot)
-    } catch let error as SQLitePersistenceError {
-      throw error
-    } catch {
-      throw SQLitePersistenceError.clipboardPersistenceUnavailable
+  /// Seeds the immediately previous encrypted graph shape for migration
+  /// fixtures. Product code never writes this representation.
+  func seedLegacyRecordGraphForMigrationTesting(
+    metadata: Data,
+    imageBlobs: [LegacyRecordGraphImageBlob]
+  ) async throws {
+    try withImmediateTransaction {
+      guard try storedRecordGraphMetadata() == nil,
+        try storedClipboardMetadata() == nil,
+        try storedLegacyClipboardEnvelope() == nil
+      else {
+        throw SQLitePersistenceError.clipboardPersistenceRevisionConflict
+      }
+      let protectedMetadata = try localDataProtector.sealBinary(
+        metadata,
+        context: Self.clipboardMetadataProtectionContext
+      )
+      try upsertClipboardMetadata(protectedMetadata: protectedMetadata, revision: 1)
+      for blob in imageBlobs {
+        let protectedPayload = try localDataProtector.sealBinary(
+          blob.payload,
+          context: Self.clipboardBlobProtectionContext(reference: blob.reference)
+        )
+        let statement = try prepare(
+          """
+          INSERT INTO clipboard_image_blobs (
+              blob_id, item_id, payload, plaintext_size, state_id
+          ) VALUES (?, ?, ?, ?, 1);
+          """
+        )
+        defer { sqlite3_finalize(statement) }
+        try bind(
+          [
+            .text(blob.reference.blobID.uuidString),
+            .text(blob.reference.itemID.uuidString),
+            .blob(protectedPayload),
+            .int(Int64(blob.reference.byteCount)),
+          ],
+          to: statement
+        )
+        try step(statement, expecting: SQLITE_DONE)
+      }
     }
+  }
 
+  public func replaceRecordGraph(
+    with snapshot: RecordGraphPersistenceWriteSnapshot
+  ) async throws -> Int64 {
+    let prepared = try prepareRecordGraphWrite(snapshot)
     do {
       return try withImmediateTransaction {
-        let storedRevision = try storedClipboardRevision()
-        let legacyExists = try legacyClipboardRowExists()
-        guard storedRevision == nil || !legacyExists else {
+        let storedRevision = try storedRecordGraphRevision()
+        let hasLegacyCurrent = try storedClipboardRevision() != nil
+        let hasLegacySettings = try legacyClipboardRowExists()
+        guard !(hasLegacyCurrent && hasLegacySettings),
+          storedRevision == nil || (!hasLegacyCurrent && !hasLegacySettings)
+        else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
         switch (snapshot.expectedRevision, storedRevision) {
@@ -352,16 +416,15 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
         }
 
         let nextRevision: Int64
-        if let expectedRevision = snapshot.expectedRevision {
-          guard expectedRevision < Int64.max else {
+        if let expected = snapshot.expectedRevision {
+          guard expected < .max else {
             throw SQLitePersistenceError.clipboardPersistenceRevisionConflict
           }
-          nextRevision = expectedRevision + 1
+          nextRevision = expected + 1
         } else {
           nextRevision = 1
         }
-
-        let storedCoordinates = try storedClipboardBlobCoordinates()
+        let storedCoordinates = try storedRecordPayloadBlobCoordinates()
         if storedRevision == nil, !storedCoordinates.isEmpty {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
@@ -371,26 +434,61 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
         for blob in prepared.newBlobs where storedByBlobID[blob.reference.blobID] != nil {
           throw SQLitePersistenceError.clipboardPersistenceBlobConflict
         }
-        for reference in snapshot.retainedImageBlobReferences {
-          guard storedByBlobID[reference.blobID] == StoredClipboardBlobCoordinate(reference) else {
+        for reference in snapshot.retainedPayloadBlobReferences {
+          guard storedByBlobID[reference.blobID] == StoredRecordPayloadBlobCoordinate(reference)
+          else {
             throw SQLitePersistenceError.clipboardPersistenceBlobConflict
           }
         }
 
-        try upsertClipboardMetadata(
-          protectedMetadata: prepared.protectedMetadata,
+        try upsertRecordGraphMetadata(
+          protectedGraph: prepared.protectedGraph,
           revision: nextRevision
         )
         for coordinate in storedCoordinates
         where !prepared.expectedBlobIDs.contains(coordinate.blobID) {
-          try deleteClipboardBlob(blobID: coordinate.blobID)
+          try deleteRecordPayloadBlob(blobID: coordinate.blobID)
         }
-        for blob in prepared.newBlobs {
-          try insertClipboardBlob(blob)
-        }
-        guard Set(try storedClipboardBlobCoordinates()) == prepared.expectedCoordinates else {
+        for blob in prepared.newBlobs { try insertRecordPayloadBlob(blob) }
+        guard Set(try storedRecordPayloadBlobCoordinates()) == prepared.expectedCoordinates else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
+
+        // Read the protected graph and every payload back through the normal
+        // decryption path before removing the legacy graph. Any key, reference,
+        // size, or ciphertext problem aborts this transaction and leaves the
+        // old representation authoritative.
+        guard let readbackMetadata = try storedRecordGraphMetadata(),
+          readbackMetadata.revision == nextRevision,
+          try localDataProtector.openBinary(
+            readbackMetadata.protectedGraph,
+            context: Self.recordGraphProtectionContext
+          ) == snapshot.graph
+        else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+        let readbackBlobs = try storedRecordPayloadBlobs(
+          maximumTotalPlaintextByteCount:
+            Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount - snapshot.graph.count
+        )
+        guard Set(readbackBlobs.map { StoredRecordPayloadBlobCoordinate($0.reference) })
+                == prepared.expectedCoordinates
+        else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+        let readbackByBlobID = Dictionary(
+          uniqueKeysWithValues: readbackBlobs.map { ($0.reference.blobID, $0) }
+        )
+        guard snapshot.newPayloadBlobs.allSatisfy({ blob in
+          readbackByBlobID[blob.reference.blobID] == blob
+        }) else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+
+        // The validated Record graph becomes authoritative in the same commit
+        // that removes every legacy clipboard representation.
+        try execute("DELETE FROM clipboard_image_blobs;")
+        try execute("DELETE FROM clipboard_metadata WHERE id = 1;")
         try deleteLegacyClipboardRow()
         return nextRevision
       }
@@ -409,9 +507,11 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  public func removeClipboardPersistence() async throws -> ClipboardPersistenceRemovalResult {
+  public func removeRecordGraph() async throws -> RecordGraphRemovalResult {
     do {
       try withImmediateTransaction {
+        try execute("DELETE FROM record_payload_blobs;")
+        try execute("DELETE FROM record_graph_metadata WHERE id = 1;")
         try execute("DELETE FROM clipboard_image_blobs;")
         try execute("DELETE FROM clipboard_metadata WHERE id = 1;")
         try deleteLegacyClipboardRow()
@@ -420,7 +520,6 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     } catch {
       throw SQLitePersistenceError.clipboardPersistenceUnavailable
     }
-
     do {
       try ensureSecureDeleteEnabled()
       try truncateWriteAheadLog()
@@ -437,20 +536,20 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     try currentRunHistoryWriteGeneration()
   }
 
-  public func save(_ record: HistoryRecord) async throws {
+  public func save(_ record: WorkflowResultRecord) async throws {
     let generation = try currentRunHistoryWriteGeneration()
     try saveHistoryRecord(record, generation: generation)
   }
 
   public func save(
-    _ record: HistoryRecord,
+    _ record: WorkflowResultRecord,
     generation: RunHistoryWriteGeneration
   ) async throws {
     try saveHistoryRecord(record, generation: generation)
   }
 
   private func saveHistoryRecord(
-    _ record: HistoryRecord,
+    _ record: WorkflowResultRecord,
     generation: RunHistoryWriteGeneration
   ) throws {
     let record = HistoryRecordSanitizer.sanitize(record)
@@ -535,7 +634,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
           protectedFinalText.map(SQLiteBinding.text) ?? .null,
           record.failureMessage.map(SQLiteBinding.text) ?? .null,
           .double(record.timestamp.timeIntervalSince1970),
-          .int(record.isStackRelated ? 1 : 0),
+          .int(record.isRecordRelated ? 1 : 0),
           .text(record.outcome.rawValue),
           correctionSourceJSON.map(SQLiteBinding.text) ?? .null,
           record.trigger.map { .text($0.rawValue) } ?? .null,
@@ -554,20 +653,20 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     let runID: UUID?
     let workflowID: UUID?
     let timestamp: Date
-    let isStackRelated: Bool
+    let isRecordRelated: Bool
     let outcome: HistoryOutcome
     let trigger: WorkflowRunTriggerKind?
     let generation: RunHistoryWriteGeneration
     let hasNonemptyFinalText: Bool
 
     func matches(
-      _ record: HistoryRecord,
+      _ record: WorkflowResultRecord,
       generation requestedGeneration: RunHistoryWriteGeneration
     ) -> Bool {
       runID == record.runID
         && workflowID == record.workflowID
         && timestamp == record.timestamp
-        && isStackRelated == record.isStackRelated
+        && isRecordRelated == record.isRecordRelated
         && outcome == record.outcome
         && trigger == record.trigger
         && generation == requestedGeneration
@@ -644,7 +743,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
         runID: runID,
         workflowID: workflowID,
         timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
-        isStackRelated: sqlite3_column_int64(statement, 3) != 0,
+        isRecordRelated: sqlite3_column_int64(statement, 3) != 0,
         outcome: outcome,
         trigger: trigger,
         generation: generation,
@@ -656,7 +755,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
   }
 
   private func updateHistoryRecordContent(
-    _ record: HistoryRecord,
+    _ record: WorkflowResultRecord,
     protectedFallbackName: String,
     protectedFinalText: String?,
     correctionSourceJSON: String?
@@ -689,7 +788,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  public func records(matching query: HistoryQuery) async throws -> [HistoryRecord] {
+  public func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
     if query.limit == 0 { return [] }
     let resultLimit = query.limit.flatMap { $0 >= 0 ? $0 : nil }
     let currentGeneration = try currentRunHistoryWriteGeneration()
@@ -716,12 +815,12 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       bindings.append(.double(since.timeIntervalSince1970))
     }
 
-    if let stackRelatedOnly = query.stackRelatedOnly {
+    if let recordRelatedOnly = query.recordRelatedOnly {
       clauses.append("is_stack_related = ?")
-      bindings.append(.int(stackRelatedOnly ? 1 : 0))
+      bindings.append(.int(recordRelatedOnly ? 1 : 0))
     }
 
-    var records: [HistoryRecord] = []
+    var records: [WorkflowResultRecord] = []
     var scanOffset: Int64 = 0
     var skippedCorruptRowCount = 0
     let scanBatchSize: Int64
@@ -1410,7 +1509,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       runID: runID,
       workflowID: workflowID,
       timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
-      isStackRelated: sqlite3_column_int64(statement, 9) != 0,
+      isRecordRelated: sqlite3_column_int64(statement, 9) != 0,
       outcome: outcome,
       trigger: trigger,
       hasNonemptyFinalText: trigger?.isVoiceCapture == true
@@ -1505,7 +1604,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
             runID: try optionalUUIDColumn(in: statement, index: 1),
             workflowID: try optionalUUIDColumn(in: statement, index: 2),
             timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
-            isStackRelated: sqlite3_column_int64(statement, 4) != 0,
+            isRecordRelated: sqlite3_column_int64(statement, 4) != 0,
             outcome: outcome,
             trigger: trigger,
             hasNonemptyFinalText: sqlite3_column_int64(statement, 7) != 0
@@ -1525,7 +1624,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     session: RunHistoryReadSession,
     bodyRequired: Bool,
     corruptCount: inout Int
-  ) throws -> HistoryRecord? {
+  ) throws -> WorkflowResultRecord? {
     guard let metadata,
       authoritativeTrigger?.isVoiceCapture == true,
       metadata.trigger == authoritativeTrigger,
@@ -1533,7 +1632,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     else {
       return nil
     }
-    let fullRecord: HistoryRecord
+    let fullRecord: WorkflowResultRecord
     do {
       guard
         let opened = try openedHistoryRecord(
@@ -1552,20 +1651,20 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       return nil
     }
     guard session.contentAccess == .restrictedPreview else { return fullRecord }
-    return HistoryRecord(
+    return WorkflowResultRecord(
       id: fullRecord.id,
       runID: fullRecord.runID,
       workflowID: fullRecord.workflowID,
       workflow: fullRecord.workflow,
       finalText: fullRecord.finalText.map {
-        ClipboardTextFormatting.previewText(
+        RecordTextFormatting.previewText(
           $0,
           limit: RunHistoryContentAccess.restrictedPreviewCharacterLimit
         )
       },
       failureMessage: fullRecord.failureMessage,
       timestamp: fullRecord.timestamp,
-      isStackRelated: fullRecord.isStackRelated,
+      isRecordRelated: fullRecord.isRecordRelated,
       outcome: fullRecord.outcome,
       correctionSource: nil,
       trigger: fullRecord.trigger
@@ -1575,7 +1674,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
   private func openedHistoryRecord(
     recordID: UUID,
     session: RunHistoryReadSession
-  ) throws -> HistoryRecord? {
+  ) throws -> WorkflowResultRecord? {
     let correctionProjection =
       session.contentAccess == .full
       ? "correction_source_json"
@@ -1953,7 +2052,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       self.byteCount = byteCount
     }
 
-    init(_ reference: ClipboardPersistenceBlobReference) {
+    init(_ reference: LegacyRecordGraphBlobReference) {
       self.init(
         blobID: reference.blobID,
         itemID: reference.itemID,
@@ -1962,100 +2061,6 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private struct PreparedClipboardBlob {
-    let reference: ClipboardPersistenceBlobReference
-    let protectedPayload: Data
-  }
-
-  private struct PreparedClipboardWrite {
-    let protectedMetadata: Data
-    let newBlobs: [PreparedClipboardBlob]
-    let expectedCoordinates: Set<StoredClipboardBlobCoordinate>
-
-    var expectedBlobIDs: Set<UUID> {
-      Set(expectedCoordinates.map(\.blobID))
-    }
-  }
-
-  private func prepareClipboardWrite(
-    _ snapshot: ClipboardPersistenceWriteSnapshot
-  ) throws -> PreparedClipboardWrite {
-    guard snapshot.expectedRevision.map({ $0 >= 1 }) ?? true,
-      !snapshot.metadata.isEmpty,
-      snapshot.metadata.count
-        <= Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount
-    else {
-      throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
-    }
-
-    let allReferences =
-      snapshot.newImageBlobs.map(\.reference)
-      + snapshot.retainedImageBlobReferences
-    guard allReferences.count <= Self.maximumClipboardBlobCount else {
-      throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
-    }
-    var blobIDs: Set<UUID> = []
-    var itemIDs: Set<UUID> = []
-    var totalByteCount = 0
-    for reference in allReferences {
-      guard reference.byteCount > 0,
-        reference.byteCount <= Self.clipboardStorageLimits.maximumImageByteCount,
-        blobIDs.insert(reference.blobID).inserted,
-        itemIDs.insert(reference.itemID).inserted
-      else {
-        throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
-      }
-      let (nextTotal, overflowed) = totalByteCount.addingReportingOverflow(reference.byteCount)
-      guard !overflowed,
-        nextTotal <= Self.clipboardStorageLimits.maximumTotalEncodedItemByteCount
-      else {
-        throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
-      }
-      totalByteCount = nextTotal
-    }
-    let (totalStoredPlaintext, overflowed) = snapshot.metadata.count.addingReportingOverflow(
-      totalByteCount
-    )
-    guard !overflowed,
-      totalStoredPlaintext
-        <= Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount,
-      snapshot.newImageBlobs.allSatisfy({
-        $0.payload.count == $0.reference.byteCount
-      })
-    else {
-      throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
-    }
-
-    let protectedMetadata = try localDataProtector.sealBinary(
-      snapshot.metadata,
-      context: Self.clipboardMetadataProtectionContext
-    )
-    guard !protectedMetadata.isEmpty,
-      protectedMetadata.count <= Self.maximumProtectedClipboardMetadataByteCount
-    else {
-      throw SQLitePersistenceError.clipboardPersistenceUnavailable
-    }
-    let newBlobs = try snapshot.newImageBlobs.map { blob in
-      let protectedPayload = try localDataProtector.sealBinary(
-        blob.payload,
-        context: Self.clipboardBlobProtectionContext(reference: blob.reference)
-      )
-      guard !protectedPayload.isEmpty,
-        protectedPayload.count <= Self.maximumProtectedClipboardImageByteCount
-      else {
-        throw SQLitePersistenceError.clipboardPersistenceUnavailable
-      }
-      return PreparedClipboardBlob(
-        reference: blob.reference,
-        protectedPayload: protectedPayload
-      )
-    }
-    return PreparedClipboardWrite(
-      protectedMetadata: protectedMetadata,
-      newBlobs: newBlobs,
-      expectedCoordinates: Set(allReferences.map(StoredClipboardBlobCoordinate.init))
-    )
-  }
 
   private func storedClipboardMetadata() throws -> StoredClipboardMetadata? {
     let statement = try prepare(
@@ -2106,7 +2111,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
   private func storedLegacyClipboardEnvelope() throws -> String? {
     let statement = try prepare("SELECT value FROM app_settings WHERE key = ?;")
     defer { sqlite3_finalize(statement) }
-    try bind([.text(AppSettingKey.clipboardPersistedState.rawValue)], to: statement)
+    try bind([.text(AppSettingKey.legacyClipboardPersistedState.rawValue)], to: statement)
     switch sqlite3_step(statement) {
     case SQLITE_DONE:
       return nil
@@ -2128,7 +2133,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
   private func legacyClipboardRowExists() throws -> Bool {
     let statement = try prepare("SELECT 1 FROM app_settings WHERE key = ?;")
     defer { sqlite3_finalize(statement) }
-    try bind([.text(AppSettingKey.clipboardPersistedState.rawValue)], to: statement)
+    try bind([.text(AppSettingKey.legacyClipboardPersistedState.rawValue)], to: statement)
     switch sqlite3_step(statement) {
     case SQLITE_ROW:
       guard sqlite3_step(statement) == SQLITE_DONE else {
@@ -2207,7 +2212,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
 
   private func storedClipboardImageBlobs(
     maximumTotalPlaintextByteCount: Int
-  ) throws -> [ClipboardPersistenceImageBlob] {
+  ) throws -> [LegacyRecordGraphImageBlob] {
     // Validate the complete declared graph before copying or opening any blob
     // payload. This keeps a corrupt snapshot from exceeding the repository's
     // metadata-plus-image plaintext budget during materialization.
@@ -2222,7 +2227,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       """
     )
     defer { sqlite3_finalize(statement) }
-    var blobs: [ClipboardPersistenceImageBlob] = []
+    var blobs: [LegacyRecordGraphImageBlob] = []
     var itemIDs: Set<UUID> = []
     var totalByteCount = 0
     while true {
@@ -2250,7 +2255,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
         else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
-        let reference = ClipboardPersistenceBlobReference(
+        let reference = LegacyRecordGraphBlobReference(
           blobID: blobID,
           itemID: itemID,
           byteCount: Int(byteCount64)
@@ -2270,7 +2275,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
         totalByteCount = nextTotal
-        blobs.append(ClipboardPersistenceImageBlob(reference: reference, payload: payload))
+        blobs.append(LegacyRecordGraphImageBlob(reference: reference, payload: payload))
       default:
         throw SQLitePersistenceError.clipboardPersistenceUnavailable
       }
@@ -2295,19 +2300,351 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     try step(statement, expecting: SQLITE_DONE)
   }
 
-  private func insertClipboardBlob(_ blob: PreparedClipboardBlob) throws {
+  private func deleteClipboardBlob(blobID: UUID) throws {
+    let statement = try prepare("DELETE FROM clipboard_image_blobs WHERE blob_id = ?;")
+    defer { sqlite3_finalize(statement) }
+    try bind([.text(blobID.uuidString)], to: statement)
+    try step(statement, expecting: SQLITE_DONE)
+  }
+
+  private func deleteLegacyClipboardRow() throws {
+    let statement = try prepare("DELETE FROM app_settings WHERE key = ?;")
+    defer { sqlite3_finalize(statement) }
+    try bind([.text(AppSettingKey.legacyClipboardPersistedState.rawValue)], to: statement)
+    try step(statement, expecting: SQLITE_DONE)
+  }
+
+  private struct StoredRecordGraphMetadata {
+    let revision: Int64
+    let protectedGraph: Data
+  }
+
+  private struct StoredRecordPayloadBlobCoordinate: Hashable {
+    let blobID: UUID
+    let recordID: RecordID
+    let kind: RecordPayloadKind
+    let byteCount: Int
+
+    init(
+      blobID: UUID,
+      recordID: RecordID,
+      kind: RecordPayloadKind,
+      byteCount: Int
+    ) {
+      self.blobID = blobID
+      self.recordID = recordID
+      self.kind = kind
+      self.byteCount = byteCount
+    }
+
+    init(_ reference: RecordGraphPersistenceBlobReference) {
+      self.init(
+        blobID: reference.blobID,
+        recordID: reference.recordID,
+        kind: reference.kind,
+        byteCount: reference.byteCount
+      )
+    }
+  }
+
+  private struct PreparedRecordPayloadBlob {
+    let reference: RecordGraphPersistenceBlobReference
+    let protectedPayload: Data
+  }
+
+  private struct PreparedRecordGraphWrite {
+    let protectedGraph: Data
+    let newBlobs: [PreparedRecordPayloadBlob]
+    let expectedCoordinates: Set<StoredRecordPayloadBlobCoordinate>
+
+    var expectedBlobIDs: Set<UUID> {
+      Set(expectedCoordinates.map(\.blobID))
+    }
+  }
+
+  private func prepareRecordGraphWrite(
+    _ snapshot: RecordGraphPersistenceWriteSnapshot
+  ) throws -> PreparedRecordGraphWrite {
+    guard snapshot.expectedRevision.map({ $0 >= 1 }) ?? true,
+      !snapshot.graph.isEmpty,
+      snapshot.graph.count <= Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount
+    else {
+      throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
+    }
+    let allReferences = snapshot.newPayloadBlobs.map(\.reference)
+      + snapshot.retainedPayloadBlobReferences
+    guard allReferences.count <= Self.maximumClipboardBlobCount else {
+      throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
+    }
+    var blobIDs: Set<UUID> = []
+    var recordIDs: Set<RecordID> = []
+    var totalByteCount = 0
+    for reference in allReferences {
+      guard reference.byteCount > 0,
+        reference.byteCount <= maximumRecordPayloadByteCount(for: reference.kind),
+        blobIDs.insert(reference.blobID).inserted,
+        recordIDs.insert(reference.recordID).inserted
+      else {
+        throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
+      }
+      let (nextTotal, overflowed) = totalByteCount.addingReportingOverflow(reference.byteCount)
+      guard !overflowed,
+        nextTotal <= Self.clipboardStorageLimits.maximumTotalEncodedItemByteCount
+      else {
+        throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
+      }
+      totalByteCount = nextTotal
+    }
+    let (totalStoredPlaintext, overflowed) = snapshot.graph.count.addingReportingOverflow(
+      totalByteCount
+    )
+    guard !overflowed,
+      totalStoredPlaintext <= Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount,
+      snapshot.newPayloadBlobs.allSatisfy({ $0.payload.count == $0.reference.byteCount })
+    else {
+      throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
+    }
+
+    let protectedGraph = try localDataProtector.sealBinary(
+      snapshot.graph,
+      context: Self.recordGraphProtectionContext
+    )
+    guard !protectedGraph.isEmpty,
+      protectedGraph.count <= Self.maximumProtectedClipboardMetadataByteCount
+    else {
+      throw SQLitePersistenceError.clipboardPersistenceUnavailable
+    }
+    let newBlobs = try snapshot.newPayloadBlobs.map { blob in
+      let protectedPayload = try localDataProtector.sealBinary(
+        blob.payload,
+        context: Self.recordPayloadProtectionContext(reference: blob.reference)
+      )
+      guard !protectedPayload.isEmpty,
+        protectedPayload.count <= Self.clipboardStorageLimits.maximumTotalEncodedItemByteCount * 2
+      else {
+        throw SQLitePersistenceError.clipboardPersistenceUnavailable
+      }
+      return PreparedRecordPayloadBlob(
+        reference: blob.reference,
+        protectedPayload: protectedPayload
+      )
+    }
+    return PreparedRecordGraphWrite(
+      protectedGraph: protectedGraph,
+      newBlobs: newBlobs,
+      expectedCoordinates: Set(allReferences.map(StoredRecordPayloadBlobCoordinate.init))
+    )
+  }
+
+  private func storedRecordGraphMetadata() throws -> StoredRecordGraphMetadata? {
+    let statement = try prepare(
+      "SELECT revision, payload FROM record_graph_metadata WHERE id = 1;"
+    )
+    defer { sqlite3_finalize(statement) }
+    switch sqlite3_step(statement) {
+    case SQLITE_DONE:
+      return nil
+    case SQLITE_ROW:
+      let revision = sqlite3_column_int64(statement, 0)
+      guard revision >= 1,
+        let protectedGraph = try dataColumn(
+          in: statement,
+          index: 1,
+          maximumByteCount: Self.maximumProtectedClipboardMetadataByteCount
+        ),
+        sqlite3_step(statement) == SQLITE_DONE
+      else {
+        throw SQLitePersistenceError.clipboardPersistenceUnavailable
+      }
+      return StoredRecordGraphMetadata(revision: revision, protectedGraph: protectedGraph)
+    default:
+      throw SQLitePersistenceError.clipboardPersistenceUnavailable
+    }
+  }
+
+  private func storedRecordGraphRevision() throws -> Int64? {
+    let statement = try prepare("SELECT revision FROM record_graph_metadata WHERE id = 1;")
+    defer { sqlite3_finalize(statement) }
+    switch sqlite3_step(statement) {
+    case SQLITE_DONE:
+      return nil
+    case SQLITE_ROW:
+      let revision = sqlite3_column_int64(statement, 0)
+      guard revision >= 1, sqlite3_step(statement) == SQLITE_DONE else {
+        throw SQLitePersistenceError.clipboardPersistenceUnavailable
+      }
+      return revision
+    default:
+      throw SQLitePersistenceError.clipboardPersistenceUnavailable
+    }
+  }
+
+  private func storedRecordPayloadBlobCoordinates(
+    maximumTotalPlaintextByteCount: Int? = nil
+  ) throws -> [StoredRecordPayloadBlobCoordinate] {
+    let maximumTotal = maximumTotalPlaintextByteCount
+      ?? Self.clipboardStorageLimits.maximumTotalEncodedItemByteCount
     let statement = try prepare(
       """
-      INSERT INTO clipboard_image_blobs (
-          blob_id, item_id, payload, plaintext_size, state_id
-      ) VALUES (?, ?, ?, ?, 1);
+      SELECT blob_id, record_id, payload_kind, plaintext_size
+      FROM record_payload_blobs
+      ORDER BY blob_id ASC;
+      """
+    )
+    defer { sqlite3_finalize(statement) }
+    var coordinates: [StoredRecordPayloadBlobCoordinate] = []
+    var recordIDs: Set<RecordID> = []
+    var totalByteCount = 0
+    while true {
+      switch sqlite3_step(statement) {
+      case SQLITE_DONE:
+        return coordinates
+      case SQLITE_ROW:
+        guard coordinates.count < Self.maximumClipboardBlobCount,
+          let blobText = textColumn(in: statement, index: 0),
+          let blobID = UUID(uuidString: blobText),
+          let recordText = textColumn(in: statement, index: 1),
+          let rawRecordID = UUID(uuidString: recordText),
+          let kindText = textColumn(in: statement, index: 2),
+          let kind = RecordPayloadKind(rawValue: kindText)
+        else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+        let recordID = RecordID(rawRecordID)
+        guard recordIDs.insert(recordID).inserted else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+        let byteCount64 = sqlite3_column_int64(statement, 3)
+        guard byteCount64 > 0,
+          byteCount64 <= Int64(maximumRecordPayloadByteCount(for: kind))
+        else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+        let byteCount = Int(byteCount64)
+        let (nextTotal, overflowed) = totalByteCount.addingReportingOverflow(byteCount)
+        guard !overflowed,
+          nextTotal <= Self.clipboardStorageLimits.maximumTotalEncodedItemByteCount,
+          nextTotal <= maximumTotal
+        else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+        totalByteCount = nextTotal
+        coordinates.append(
+          StoredRecordPayloadBlobCoordinate(
+            blobID: blobID,
+            recordID: recordID,
+            kind: kind,
+            byteCount: byteCount
+          )
+        )
+      default:
+        throw SQLitePersistenceError.clipboardPersistenceUnavailable
+      }
+    }
+  }
+
+  private func storedRecordPayloadBlobs(
+    maximumTotalPlaintextByteCount: Int
+  ) throws -> [RecordGraphPersistenceBlob] {
+    _ = try storedRecordPayloadBlobCoordinates(
+      maximumTotalPlaintextByteCount: maximumTotalPlaintextByteCount
+    )
+    let statement = try prepare(
+      """
+      SELECT blob_id, record_id, payload_kind, payload, plaintext_size
+      FROM record_payload_blobs
+      ORDER BY blob_id ASC;
+      """
+    )
+    defer { sqlite3_finalize(statement) }
+    var blobs: [RecordGraphPersistenceBlob] = []
+    var totalByteCount = 0
+    while true {
+      switch sqlite3_step(statement) {
+      case SQLITE_DONE:
+        return blobs
+      case SQLITE_ROW:
+        guard blobs.count < Self.maximumClipboardBlobCount,
+          let blobText = textColumn(in: statement, index: 0),
+          let blobID = UUID(uuidString: blobText),
+          let recordText = textColumn(in: statement, index: 1),
+          let rawRecordID = UUID(uuidString: recordText),
+          let kindText = textColumn(in: statement, index: 2),
+          let kind = RecordPayloadKind(rawValue: kindText)
+        else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+        let byteCount64 = sqlite3_column_int64(statement, 4)
+        guard byteCount64 > 0,
+          byteCount64 <= Int64(maximumRecordPayloadByteCount(for: kind)),
+          let protectedPayload = try dataColumn(
+            in: statement,
+            index: 3,
+            maximumByteCount: Self.clipboardStorageLimits.maximumTotalEncodedItemByteCount * 2
+          )
+        else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+        let reference = RecordGraphPersistenceBlobReference(
+          blobID: blobID,
+          recordID: RecordID(rawRecordID),
+          kind: kind,
+          byteCount: Int(byteCount64)
+        )
+        let payload = try localDataProtector.openBinary(
+          protectedPayload,
+          context: Self.recordPayloadProtectionContext(reference: reference)
+        )
+        guard payload.count == reference.byteCount else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+        let (nextTotal, overflowed) = totalByteCount.addingReportingOverflow(payload.count)
+        guard !overflowed,
+          nextTotal <= Self.clipboardStorageLimits.maximumTotalEncodedItemByteCount,
+          nextTotal <= maximumTotalPlaintextByteCount
+        else {
+          throw SQLitePersistenceError.clipboardPersistenceUnavailable
+        }
+        totalByteCount = nextTotal
+        blobs.append(RecordGraphPersistenceBlob(reference: reference, payload: payload))
+      default:
+        throw SQLitePersistenceError.clipboardPersistenceUnavailable
+      }
+    }
+  }
+
+  private func upsertRecordGraphMetadata(
+    protectedGraph: Data,
+    revision: Int64
+  ) throws {
+    let statement = try prepare(
+      """
+      INSERT INTO record_graph_metadata (id, revision, payload)
+      VALUES (1, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+          revision = excluded.revision,
+          payload = excluded.payload;
+      """
+    )
+    defer { sqlite3_finalize(statement) }
+    try bind([.int(revision), .blob(protectedGraph)], to: statement)
+    try step(statement, expecting: SQLITE_DONE)
+  }
+
+  private func insertRecordPayloadBlob(_ blob: PreparedRecordPayloadBlob) throws {
+    let statement = try prepare(
+      """
+      INSERT INTO record_payload_blobs (
+          blob_id, record_id, payload_kind, payload, plaintext_size, state_id
+      ) VALUES (?, ?, ?, ?, ?, 1);
       """
     )
     defer { sqlite3_finalize(statement) }
     try bind(
       [
         .text(blob.reference.blobID.uuidString),
-        .text(blob.reference.itemID.uuidString),
+        .text(blob.reference.recordID.rawValue.uuidString),
+        .text(blob.reference.kind.rawValue),
         .blob(blob.protectedPayload),
         .int(Int64(blob.reference.byteCount)),
       ],
@@ -2320,18 +2657,22 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func deleteClipboardBlob(blobID: UUID) throws {
-    let statement = try prepare("DELETE FROM clipboard_image_blobs WHERE blob_id = ?;")
+  private func deleteRecordPayloadBlob(blobID: UUID) throws {
+    let statement = try prepare("DELETE FROM record_payload_blobs WHERE blob_id = ?;")
     defer { sqlite3_finalize(statement) }
     try bind([.text(blobID.uuidString)], to: statement)
     try step(statement, expecting: SQLITE_DONE)
   }
 
-  private func deleteLegacyClipboardRow() throws {
-    let statement = try prepare("DELETE FROM app_settings WHERE key = ?;")
-    defer { sqlite3_finalize(statement) }
-    try bind([.text(AppSettingKey.clipboardPersistedState.rawValue)], to: statement)
-    try step(statement, expecting: SQLITE_DONE)
+  private func maximumRecordPayloadByteCount(for kind: RecordPayloadKind) -> Int {
+    switch kind {
+    case .text:
+      Self.clipboardStorageLimits.maximumTextUTF8ByteCount
+    case .image:
+      Self.clipboardStorageLimits.maximumImageByteCount
+    case .files:
+      Self.clipboardStorageLimits.maximumTotalFileURLUTF8ByteCount
+    }
   }
 
   private func markDataProtectionCleanupPending() throws {
@@ -2836,7 +3177,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private static let currentSchemaVersion = 11
+  private static let currentSchemaVersion = 12
   private static let writerBarrierTableNames = [
     "app_settings",
     "clipboard_image_blobs",
@@ -2845,6 +3186,8 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     "export_metadata",
     "history_records",
     "local_data_protection",
+    "record_graph_metadata",
+    "record_payload_blobs",
     "run_history_generation",
     "run_history_write_sequence",
     SQLiteAuthenticatedSchemaFloor.tableName,
@@ -2890,13 +3233,34 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       localDataProtector: localDataProtector
     )
     if let authenticatedSchemaFloor {
-      guard authenticatedSchemaFloor == SQLiteAuthenticatedSchemaFloor.installedSchemaFloor,
+      guard authenticatedSchemaFloor >= SQLiteAuthenticatedSchemaFloor.legacySchemaFloor,
+        authenticatedSchemaFloor <= SQLiteAuthenticatedSchemaFloor.installedSchemaFloor,
         authenticatedSchemaFloor <= currentSchemaVersion,
-        storedVersion <= authenticatedSchemaFloor
+        storedVersion <= currentSchemaVersion
       else {
         throw SQLitePersistenceError.migrationFailed(
           "The stored schema version conflicts with its authenticated floor."
         )
+      }
+      if authenticatedSchemaFloor == SQLiteAuthenticatedSchemaFloor.legacySchemaFloor {
+        guard storedVersion == SQLiteAuthenticatedSchemaFloor.legacySchemaFloor else {
+          throw SQLitePersistenceError.migrationFailed(
+            "The legacy authenticated schema metadata conflicts with its version."
+          )
+        }
+        let cleanupIsPending = try validateDataProtectionKey(
+          on: handle,
+          localDataProtector: localDataProtector
+        )
+        try SQLiteWriterBarrier.validateTriggers(
+          on: handle,
+          tableNames: writerBarrierTableNames.filter {
+            $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
+          }
+        )
+        try migrateToV12(on: handle, localDataProtector: localDataProtector)
+        try requireQuickCheck(on: handle)
+        return cleanupIsPending
       }
       if storedVersion < authenticatedSchemaFloor {
         return try recoverAuthenticatedSchemaFloor(
@@ -2909,7 +3273,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
         on: handle,
         localDataProtector: localDataProtector
       )
-      try validateV11StorageBoundary(
+      try validateAuthenticatedStorageBoundary(
         on: handle,
         localDataProtector: localDataProtector
       )
@@ -2977,6 +3341,12 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
     if effectiveVersion < 11 {
       try migrateToV11(
+        on: handle,
+        localDataProtector: localDataProtector
+      )
+    }
+    if effectiveVersion < 12 {
+      try migrateToV12(
         on: handle,
         localDataProtector: localDataProtector
       )
@@ -4002,30 +4372,100 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       try SQLiteAuthenticatedSchemaFloor.install(
         on: handle,
         databaseID: UUID(),
+        schemaFloor: SQLiteAuthenticatedSchemaFloor.legacySchemaFloor,
         localDataProtector: localDataProtector
       )
       try SQLiteWriterBarrier.installTriggers(
         on: handle,
-        tableNames: writerBarrierTableNames
+        tableNames: writerBarrierTableNames.filter {
+          $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
+        }
       )
       guard
         try SQLiteAuthenticatedSchemaFloor.readAndValidate(
           on: handle,
           localDataProtector: localDataProtector
-        ) == SQLiteAuthenticatedSchemaFloor.installedSchemaFloor
+        ) == SQLiteAuthenticatedSchemaFloor.legacySchemaFloor
       else {
         throw SQLitePersistenceError.migrationFailed(
           "Authenticated schema metadata could not be verified after installation."
         )
       }
       try setSchemaVersion(11, on: handle)
-      try validateV11StorageBoundary(
+      try validateLegacyV11StorageBoundary(
         on: handle,
         localDataProtector: localDataProtector
       )
     } catch {
       throw SQLitePersistenceError.migrationFailed(
         "Authenticated schema and writer protection could not be installed."
+      )
+    }
+  }
+
+  private static func migrateToV12(
+    on handle: OpaquePointer?,
+    localDataProtector: any LocalDataProtector
+  ) throws {
+    do {
+      guard try schemaVersion(on: handle) == 11,
+        try authenticatedSchemaFloor(
+          on: handle,
+          localDataProtector: localDataProtector
+        ) == SQLiteAuthenticatedSchemaFloor.legacySchemaFloor
+      else {
+        throw SQLitePersistenceError.migrationFailed(
+          "Record graph migration requires an authenticated schema 11 database."
+        )
+      }
+      let databaseID = try SQLiteAuthenticatedSchemaFloor.validatedDatabaseID(
+        on: handle,
+        localDataProtector: localDataProtector
+      )
+      try execute(
+        """
+        CREATE TABLE IF NOT EXISTS record_graph_metadata (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            revision INTEGER NOT NULL CHECK (revision >= 1),
+            payload BLOB NOT NULL CHECK (
+                typeof(payload) = 'blob'
+                AND length(payload) BETWEEN 1 AND 167772160
+            )
+        );
+
+        CREATE TABLE IF NOT EXISTS record_payload_blobs (
+            blob_id TEXT PRIMARY KEY,
+            record_id TEXT NOT NULL UNIQUE,
+            payload_kind TEXT NOT NULL CHECK (payload_kind IN ('text', 'image', 'files')),
+            payload BLOB NOT NULL CHECK (
+                typeof(payload) = 'blob'
+                AND length(payload) BETWEEN 1 AND 134217728
+            ),
+            plaintext_size INTEGER NOT NULL
+                CHECK (plaintext_size > 0 AND plaintext_size <= 67108864),
+            state_id INTEGER NOT NULL DEFAULT 1 CHECK (state_id = 1),
+            FOREIGN KEY (state_id) REFERENCES record_graph_metadata(id) ON DELETE CASCADE
+        );
+        """,
+        on: handle
+      )
+      try SQLiteWriterBarrier.installTriggers(
+        on: handle,
+        tableNames: writerBarrierTableNames
+      )
+      try SQLiteAuthenticatedSchemaFloor.upgrade(
+        on: handle,
+        validatedDatabaseID: databaseID,
+        localDataProtector: localDataProtector
+      )
+      try setSchemaVersion(12, on: handle)
+      try validateAuthenticatedStorageBoundary(
+        on: handle,
+        localDataProtector: localDataProtector
+      )
+    } catch {
+      throw SQLitePersistenceError.migrationFailed(
+        "Record graph storage and authenticated schema 12 could not be installed."
       )
     }
   }
@@ -4053,7 +4493,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
         on: handle,
         localDataProtector: localDataProtector
       )
-      try validateV11StorageBoundary(
+      try validateAuthenticatedStorageBoundary(
         on: handle,
         localDataProtector: localDataProtector
       )
@@ -4069,7 +4509,27 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private static func validateV11StorageBoundary(
+  private static func validateLegacyV11StorageBoundary(
+    on handle: OpaquePointer?,
+    localDataProtector: any LocalDataProtector
+  ) throws {
+    guard try authenticatedSchemaFloor(
+      on: handle,
+      localDataProtector: localDataProtector
+    ) == SQLiteAuthenticatedSchemaFloor.legacySchemaFloor else {
+      throw SQLitePersistenceError.migrationFailed(
+        "Legacy authenticated schema metadata is unavailable."
+      )
+    }
+    try SQLiteWriterBarrier.validateTriggers(
+      on: handle,
+      tableNames: writerBarrierTableNames.filter {
+        $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
+      }
+    )
+  }
+
+  private static func validateAuthenticatedStorageBoundary(
     on handle: OpaquePointer?,
     localDataProtector: any LocalDataProtector
   ) throws {
@@ -4983,12 +5443,30 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
   }
 
   private static func clipboardBlobProtectionContext(
-    reference: ClipboardPersistenceBlobReference
+    reference: LegacyRecordGraphBlobReference
   ) -> LocalDataProtectionContext {
     LocalDataProtectionContext(
       namespace: "clipboard_image_blobs",
       recordID: reference.blobID.uuidString,
       field: "item:\(reference.itemID.uuidString):payload"
+    )
+  }
+
+  private static var recordGraphProtectionContext: LocalDataProtectionContext {
+    LocalDataProtectionContext(
+      namespace: "record_graph_metadata",
+      recordID: "1",
+      field: "payload"
+    )
+  }
+
+  private static func recordPayloadProtectionContext(
+    reference: RecordGraphPersistenceBlobReference
+  ) -> LocalDataProtectionContext {
+    LocalDataProtectionContext(
+      namespace: "record_payload_blobs",
+      recordID: reference.blobID.uuidString,
+      field: "record:\(reference.recordID.rawValue.uuidString):\(reference.kind.rawValue):payload"
     )
   }
 
@@ -5171,7 +5649,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func decodeHistoryRecord(from statement: OpaquePointer?) throws -> HistoryRecord {
+  private func decodeHistoryRecord(from statement: OpaquePointer?) throws -> WorkflowResultRecord {
     guard
       let idText = textColumn(in: statement, index: 0),
       let id = UUID(uuidString: idText),
@@ -5200,7 +5678,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
     let failureMessage = HistoryFailureSanitizer.sanitize(textColumn(in: statement, index: 6))
     let timestamp = Date(timeIntervalSince1970: sqlite3_column_double(statement, 7))
-    let isStackRelated = sqlite3_column_int64(statement, 8) != 0
+    let isRecordRelated = sqlite3_column_int64(statement, 8) != 0
     let trigger: WorkflowRunTriggerKind?
     if let triggerText = textColumn(in: statement, index: 11) {
       guard let decodedTrigger = WorkflowRunTriggerKind(rawValue: triggerText) else {
@@ -5235,7 +5713,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       correctionSource = nil
     }
 
-    return HistoryRecord(
+    return WorkflowResultRecord(
       id: id,
       runID: runID,
       workflowID: workflowID,
@@ -5243,7 +5721,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       finalText: finalText,
       failureMessage: failureMessage,
       timestamp: timestamp,
-      isStackRelated: isStackRelated,
+      isRecordRelated: isRecordRelated,
       outcome: outcome,
       correctionSource: correctionSource,
       trigger: trigger

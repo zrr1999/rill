@@ -1,22 +1,22 @@
 import XCTest
 @testable import RillCore
 
-final class ClipboardPasteTargetIdentityTests: XCTestCase {
+final class FocusedApplicationTargetIdentityTests: XCTestCase {
     func testIdentityRequiresANonzeroProcessIdentifier() {
         XCTAssertNil(
-            ClipboardPasteTargetIdentity(
+            FocusedApplicationTargetIdentity(
                 processIdentifier: 0,
                 bundleIdentifier: "com.example.Editor"
             )
         )
         XCTAssertNil(
-            ClipboardPasteTargetIdentity(
+            FocusedApplicationTargetIdentity(
                 processIdentifier: -1,
                 bundleIdentifier: "com.example.Editor"
             )
         )
         XCTAssertNil(
-            ClipboardPasteTargetIdentity(
+            FocusedApplicationTargetIdentity(
                 focus: FocusSnapshot(
                     applicationName: nil,
                     bundleIdentifier: "com.example.Editor",
@@ -31,7 +31,7 @@ final class ClipboardPasteTargetIdentityTests: XCTestCase {
 
     func testIdentityMatchesProcessAndNonemptyBundleExactly() throws {
         let target = try XCTUnwrap(
-            ClipboardPasteTargetIdentity(
+            FocusedApplicationTargetIdentity(
                 processIdentifier: 42,
                 bundleIdentifier: "com.example.Editor"
             )
@@ -45,7 +45,7 @@ final class ClipboardPasteTargetIdentityTests: XCTestCase {
 
     func testEmptyBundleFallsBackToExactProcessMatching() throws {
         let target = try XCTUnwrap(
-            ClipboardPasteTargetIdentity(
+            FocusedApplicationTargetIdentity(
                 processIdentifier: 42,
                 bundleIdentifier: ""
             )

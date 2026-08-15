@@ -48,6 +48,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
             }
         )
 
+        await harness.model.waitForInitialVoiceConfiguration()
         harness.model.runWorkflow(workflow)
         await startGate.waitUntilStarted()
         let runID = UUID()
@@ -59,7 +60,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         XCTAssertEqual(harness.model.workflowAudioCaptureRunID, runID)
 
         await startGate.fail(message: "Microphone unavailable")
-        await waitForEventProcessing()
+        await harness.model.waitForWorkflowAudioActions()
 
         XCTAssertFalse(harness.model.isRunning)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
@@ -82,7 +83,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         )
 
         harness.model.runWorkflow(workflow)
-        await waitForEventProcessing()
+        await harness.model.waitForWorkflowAudioActions()
 
         XCTAssertFalse(harness.model.isRunning)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)

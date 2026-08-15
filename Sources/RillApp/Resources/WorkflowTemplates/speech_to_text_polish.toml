@@ -36,10 +36,10 @@ kind = "llm-rewrite"
 prompt = "Polish into a concise final message while preserving meaning and language."
 
 [output]
-strategy = "stack-first"
+strategy = "collection-first"
 
 [[output.actions]]
-id = "stack.push"
+id = "record.store"
 
 [metadata]
 "workflow.origin" = "user"

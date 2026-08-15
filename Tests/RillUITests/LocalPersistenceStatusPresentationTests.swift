@@ -34,11 +34,11 @@ final class LocalPersistenceStatusPresentationTests: XCTestCase {
     )
 
     XCTAssertTrue(english.bannerMessage.contains("History"))
-    XCTAssertTrue(english.bannerMessage.contains("clipboard"))
+    XCTAssertTrue(english.bannerMessage.contains("records and collections"))
     XCTAssertTrue(english.bannerMessage.contains("settings"))
     XCTAssertTrue(english.bannerMessage.contains("Existing saved data was not reset or deleted"))
-    XCTAssertTrue(simplifiedChinese.bannerMessage.contains("历史记录"))
-    XCTAssertTrue(simplifiedChinese.bannerMessage.contains("剪贴板"))
+    XCTAssertTrue(simplifiedChinese.bannerMessage.contains("运行历史"))
+    XCTAssertTrue(simplifiedChinese.bannerMessage.contains("记录与记录集"))
     XCTAssertTrue(simplifiedChinese.bannerMessage.contains("设置"))
 
     for presentation in [english, simplifiedChinese] {
@@ -129,8 +129,8 @@ final class LocalPersistenceStatusPresentationTests: XCTestCase {
     let state = MenuBarOperationPanelState(
       language: .english,
       isRunning: true,
-      stackCount: 2,
-      canDeliverTopOfStack: true,
+      recordCount: 2,
+      canDeliverNextRecord: true,
       preferredSpeechEngine: .local,
       outputMode: .pasteIntoApp,
       localPersistenceStatus: sessionOnly

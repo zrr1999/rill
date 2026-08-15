@@ -2,11 +2,11 @@ import XCTest
 @testable import RillApp
 @testable import RillCore
 
-private actor ClipboardPanelPasteProbe {
+private actor RecordPanelPasteProbe {
     struct Snapshot: Sendable {
-        var restoredTargets: [ClipboardPasteTargetIdentity] = []
-        var currentTarget: ClipboardPasteTargetIdentity?
-        var actionTargets: [ClipboardPasteTargetIdentity] = []
+        var restoredTargets: [FocusedApplicationTargetIdentity] = []
+        var currentTarget: FocusedApplicationTargetIdentity?
+        var actionTargets: [FocusedApplicationTargetIdentity] = []
         var abortCount = 0
         var shutdownCount = 0
     }
@@ -14,14 +14,14 @@ private actor ClipboardPanelPasteProbe {
     private var state = Snapshot()
 
     func restore(
-        _ restoredTarget: ClipboardPasteTargetIdentity,
-        thenCurrentTarget: ClipboardPasteTargetIdentity
+        _ restoredTarget: FocusedApplicationTargetIdentity,
+        thenCurrentTarget: FocusedApplicationTargetIdentity
     ) {
         state.restoredTargets.append(restoredTarget)
         state.currentTarget = thenCurrentTarget
     }
 
-    func recordAction(_ target: ClipboardPasteTargetIdentity) {
+    func recordAction(_ target: FocusedApplicationTargetIdentity) {
         state.actionTargets.append(target)
     }
 
@@ -38,7 +38,7 @@ private actor ClipboardPanelPasteProbe {
     }
 }
 
-private actor ClipboardPanelOperationGate {
+private actor RecordPanelOperationGate {
     private var isStarted = false
     private var startWaiters: [CheckedContinuation<Void, Never>] = []
     private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
@@ -68,29 +68,29 @@ private actor ClipboardPanelOperationGate {
 }
 
 @MainActor
-final class ClipboardPanelControllerTests: XCTestCase {
+final class RecordPanelControllerTests: XCTestCase {
     func testModalGateClosesSheetPresentationAndAttachedSheetOwnsFirstEscape() {
-        XCTAssertFalse(ClipboardPanelModalPolicy.allowsSheetPresentation)
+        XCTAssertFalse(RecordPanelModalPolicy.allowsSheetPresentation)
         XCTAssertFalse(
-            ClipboardPanelModalPolicy.shouldAutoHide(
+            RecordPanelModalPolicy.shouldAutoHide(
                 isVisible: true,
                 hasAttachedSheet: true,
                 isSuppressed: false
             )
         )
         XCTAssertEqual(
-            ClipboardPanelModalPolicy.escapeDestination(hasAttachedSheet: true),
+            RecordPanelModalPolicy.escapeDestination(hasAttachedSheet: true),
             .attachedSheet
         )
         XCTAssertEqual(
-            ClipboardPanelModalPolicy.escapeDestination(hasAttachedSheet: false),
+            RecordPanelModalPolicy.escapeDestination(hasAttachedSheet: false),
             .panel
         )
     }
 
     func testCancelledFocusLossDelayCannotContinueToAutoHideDecision() async {
         let delayTask = Task {
-            await ClipboardPanelModalPolicy.waitForAutoHideDelay(.seconds(5))
+            await RecordPanelModalPolicy.waitForAutoHideDelay(.seconds(5))
         }
 
         await Task.yield()
@@ -103,8 +103,8 @@ final class ClipboardPanelControllerTests: XCTestCase {
     func testPasteCallbackKeepsLockedTargetWhenAnotherAppStealsFocusAfterRestore() async throws {
         let targetA = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.EditorA")
         let targetB = try makeTarget(processIdentifier: 84, bundleIdentifier: "com.example.EditorB")
-        let probe = ClipboardPanelPasteProbe()
-        let controller = ClipboardPanelController(
+        let probe = RecordPanelPasteProbe()
+        let controller = RecordPanelController(
             pasteTargetProvider: { targetA },
             pasteTargetRestorer: { restoredTarget in
                 await probe.restore(restoredTarget, thenCurrentTarget: targetB)
@@ -114,7 +114,7 @@ final class ClipboardPanelControllerTests: XCTestCase {
 
         controller.useSelectedItem(
             { target in await probe.recordAction(target) },
-            onAbort: { Task { await probe.recordAbort() } }
+            onAbort: { await probe.recordAbort() }
         )
         await waitForPasteWork()
 
@@ -127,8 +127,8 @@ final class ClipboardPanelControllerTests: XCTestCase {
 
     func testPasteAbortsBeforeRestorationWhenNoTargetCanBeLocked() async throws {
         let fallback = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.Editor")
-        let probe = ClipboardPanelPasteProbe()
-        let controller = ClipboardPanelController(
+        let probe = RecordPanelPasteProbe()
+        let controller = RecordPanelController(
             pasteTargetProvider: { nil },
             pasteTargetRestorer: { restoredTarget in
                 await probe.restore(restoredTarget, thenCurrentTarget: fallback)
@@ -138,7 +138,7 @@ final class ClipboardPanelControllerTests: XCTestCase {
 
         controller.useSelectedItem(
             { target in await probe.recordAction(target) },
-            onAbort: { Task { await probe.recordAbort() } }
+            onAbort: { await probe.recordAbort() }
         )
         await waitForPasteWork()
 
@@ -150,8 +150,8 @@ final class ClipboardPanelControllerTests: XCTestCase {
 
     func testPasteAbortsWhenLockedTargetCannotBeRestored() async throws {
         let target = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.Editor")
-        let probe = ClipboardPanelPasteProbe()
-        let controller = ClipboardPanelController(
+        let probe = RecordPanelPasteProbe()
+        let controller = RecordPanelController(
             pasteTargetProvider: { target },
             pasteTargetRestorer: { restoredTarget in
                 await probe.restore(restoredTarget, thenCurrentTarget: target)
@@ -161,7 +161,7 @@ final class ClipboardPanelControllerTests: XCTestCase {
 
         controller.useSelectedItem(
             { actionTarget in await probe.recordAction(actionTarget) },
-            onAbort: { Task { await probe.recordAbort() } }
+            onAbort: { await probe.recordAbort() }
         )
         await waitForPasteWork()
 
@@ -173,9 +173,9 @@ final class ClipboardPanelControllerTests: XCTestCase {
 
     func testShutdownSealsNewPasteWorkAndDrainsAcceptedTargetRestore() async throws {
         let target = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.Editor")
-        let probe = ClipboardPanelPasteProbe()
-        let restoreGate = ClipboardPanelOperationGate()
-        let controller = ClipboardPanelController(
+        let probe = RecordPanelPasteProbe()
+        let restoreGate = RecordPanelOperationGate()
+        let controller = RecordPanelController(
             pasteTargetProvider: { target },
             pasteTargetRestorer: { restoredTarget in
                 await probe.restore(restoredTarget, thenCurrentTarget: target)
@@ -186,13 +186,13 @@ final class ClipboardPanelControllerTests: XCTestCase {
 
         controller.useSelectedItem(
             { actionTarget in await probe.recordAction(actionTarget) },
-            onAbort: { Task { await probe.recordAbort() } }
+            onAbort: { await probe.recordAbort() }
         )
         await restoreGate.waitUntilStarted()
 
         controller.useSelectedItem(
             { actionTarget in await probe.recordAction(actionTarget) },
-            onAbort: { Task { await probe.recordAbort() } }
+            onAbort: { await probe.recordAbort() }
         )
         let shutdownTask = Task { @MainActor in
             await controller.shutdown()
@@ -212,13 +212,13 @@ final class ClipboardPanelControllerTests: XCTestCase {
 
     func testReservedPasteRejectsASecondSubmissionAndSettlesBothExactlyOnce() async throws {
         let target = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.Editor")
-        let probe = ClipboardPanelPasteProbe()
-        let owner = ClipboardPanelPasteTaskOwner()
+        let probe = RecordPanelPasteProbe()
+        let owner = RecordPanelPasteTaskOwner()
         let firstReservation = try XCTUnwrap(
             owner.reserve(
                 prepare: { true },
                 action: { await probe.recordAction(target) },
-                onAbort: { Task { await probe.recordAbort() } }
+                onAbort: { await probe.recordAbort() }
             )
         )
 
@@ -226,7 +226,7 @@ final class ClipboardPanelControllerTests: XCTestCase {
             owner.reserve(
                 prepare: { true },
                 action: { await probe.recordAction(target) },
-                onAbort: { Task { await probe.recordAbort() } }
+                onAbort: { await probe.recordAbort() }
             )
         )
         owner.start(firstReservation)
@@ -240,13 +240,13 @@ final class ClipboardPanelControllerTests: XCTestCase {
 
     func testShutdownAbortsAnAnimationWindowReservationExactlyOnce() async throws {
         let target = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.Editor")
-        let probe = ClipboardPanelPasteProbe()
-        let owner = ClipboardPanelPasteTaskOwner()
+        let probe = RecordPanelPasteProbe()
+        let owner = RecordPanelPasteTaskOwner()
         let reservation = try XCTUnwrap(
             owner.reserve(
                 prepare: { true },
                 action: { await probe.recordAction(target) },
-                onAbort: { Task { await probe.recordAbort() } }
+                onAbort: { await probe.recordAbort() }
             )
         )
 
@@ -261,9 +261,9 @@ final class ClipboardPanelControllerTests: XCTestCase {
 
     func testShutdownWaitsForAnActionThatAlreadyStarted() async throws {
         let target = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.Editor")
-        let probe = ClipboardPanelPasteProbe()
-        let actionGate = ClipboardPanelOperationGate()
-        let owner = ClipboardPanelPasteTaskOwner()
+        let probe = RecordPanelPasteProbe()
+        let actionGate = RecordPanelOperationGate()
+        let owner = RecordPanelPasteTaskOwner()
         let reservation = try XCTUnwrap(
             owner.reserve(
                 prepare: { true },
@@ -271,7 +271,7 @@ final class ClipboardPanelControllerTests: XCTestCase {
                     await actionGate.hold()
                     await probe.recordAction(target)
                 },
-                onAbort: { Task { await probe.recordAbort() } }
+                onAbort: { await probe.recordAbort() }
             )
         )
         owner.start(reservation)
@@ -298,9 +298,9 @@ final class ClipboardPanelControllerTests: XCTestCase {
     private func makeTarget(
         processIdentifier: Int32,
         bundleIdentifier: String
-    ) throws -> ClipboardPasteTargetIdentity {
+    ) throws -> FocusedApplicationTargetIdentity {
         try XCTUnwrap(
-            ClipboardPasteTargetIdentity(
+            FocusedApplicationTargetIdentity(
                 processIdentifier: processIdentifier,
                 bundleIdentifier: bundleIdentifier
             )

@@ -405,87 +405,26 @@ final class SessionCoordinatorReceiptTests: XCTestCase {
         })
     }
 
-    func testDirectClipboardCancellationReturnsLeaseWithoutFailureSignals() async throws {
-        let eventBus = EventBus()
-        let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let repository = InMemoryWorkflowRunReceiptRepository()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
-        let probe = ReceiptActionProbe()
-        let coordinator = makeCoordinator(
-            actions: [ReceiptCancellingAction(id: "cancel", probe: probe)],
-            eventBus: eventBus,
-            repository: repository,
-            diagnostics: diagnostics,
-            deliveryStack: deliveryStack
-        )
-        let itemID = UUID()
-        await deliveryStack.push(
-            DeliveryItem(id: itemID, workflowID: UUID(), text: "clipboard cancellation")
-        )
-        let resolvedSubject = await deliveryStack.clipboardItemDryRunSubject(itemID: itemID)
-        let subject = try XCTUnwrap(resolvedSubject)
-        let stream = await eventBus.stream()
-        let lifecycle = Task { () -> (WorkflowRunCancelledSummary?, [RillEvent]) in
-            var events: [RillEvent] = []
-            for await event in stream {
-                events.append(event)
-                if case .runCancelled(let summary) = event {
-                    return (summary, events)
-                }
-            }
-            return (nil, events)
-        }
-        await Task.yield()
-
-        await coordinator.deliverClipboardItem(
-            subject: subject,
-            actionID: "cancel",
-            contextSnapshot: .empty
-        )
-        let (cancellation, published) = await lifecycle.value
-
-        XCTAssertEqual(cancellation?.stage, .delivering)
-        XCTAssertEqual(cancellation?.wasPartiallyCompleted, false)
-        let storedItem = await deliveryStack.item(id: itemID)
-        let finalState = await coordinator.currentState()
-        let executedActionIDs = await probe.snapshot()
-        XCTAssertEqual(storedItem?.useCount, 0)
-        XCTAssertNil(storedItem?.lastUsedAt)
-        XCTAssertNil(storedItem?.latestError)
-        XCTAssertEqual(finalState, .idle)
-        XCTAssertEqual(executedActionIDs, ["cancel"])
-        let receipts = try await repository.receipts(matching: .all)
-        let storedReceipt = try XCTUnwrap(receipts.first { $0.trigger == .clipboardUse })
-        XCTAssertEqual(storedReceipt.termination, .cancelled(stage: .delivering))
-        XCTAssertEqual(storedReceipt.actionDetails.map(\.result), [.cancelled])
-        XCTAssertFalse(published.contains { event in
-            if case .runFailed = event { return true }
-            return false
-        })
-        let recordedDiagnostics = await diagnostics.snapshot()
-        XCTAssertTrue(recordedDiagnostics.contains { $0.event == "session.cancelled" })
-        XCTAssertFalse(recordedDiagnostics.contains { $0.event == "session.failure" })
-        XCTAssertFalse(recordedDiagnostics.contains { event in
-            event.event == "session.stage" && event.metadata["stage"] == "failed"
-        })
-    }
 
     func testDirectStackCancellationReturnsLeaseWithoutFailureSignals() async throws {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
         let repository = InMemoryWorkflowRunReceiptRepository()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
+        let recordStore = RecordStore()
         let probe = ReceiptActionProbe()
         let coordinator = makeCoordinator(
             actions: [ReceiptCancellingAction(id: "cancel", probe: probe)],
             eventBus: eventBus,
             repository: repository,
             diagnostics: diagnostics,
-            deliveryStack: deliveryStack
+            recordStore: recordStore
         )
-        let itemID = UUID()
-        await deliveryStack.push(
-            DeliveryItem(id: itemID, workflowID: UUID(), text: "stack cancellation")
+        let inserted = try await recordStore.ingest(
+            RecordDraft(
+                payload: .text("stack cancellation"),
+                provenance: .init(source: .init(kind: .workflow))
+            ),
+            into: [RecordCollection.inboxID]
         )
         let stream = await eventBus.stream()
         let lifecycle = Task { () -> (WorkflowRunCancelledSummary?, [RillEvent]) in
@@ -500,19 +439,20 @@ final class SessionCoordinatorReceiptTests: XCTestCase {
         }
         await Task.yield()
 
-        await coordinator.deliverTopOfStack(actionID: "cancel")
+        await coordinator.deliverNextRecord(actionID: "cancel")
         let (cancellation, published) = await lifecycle.value
 
         XCTAssertEqual(cancellation?.stage, .delivering)
         XCTAssertEqual(cancellation?.wasPartiallyCompleted, false)
-        let storedItem = await deliveryStack.item(id: itemID)
+        let storedItem = try await recordStore.record(id: inserted.id)
         let finalState = await coordinator.currentState()
-        XCTAssertEqual(storedItem?.useCount, 0)
-        XCTAssertNil(storedItem?.lastUsedAt)
-        XCTAssertNil(storedItem?.latestError)
+        XCTAssertEqual(storedItem?.activity.useCount, 0)
+        XCTAssertNil(storedItem?.activity.lastDeliveredAt)
+        XCTAssertNil(storedItem?.activity.latestFailure)
+        XCTAssertEqual(storedItem?.memberships.first?.state, .active)
         XCTAssertEqual(finalState, .idle)
         let receipts = try await repository.receipts(matching: .all)
-        let storedReceipt = try XCTUnwrap(receipts.first { $0.trigger == .stackDelivery })
+        let storedReceipt = try XCTUnwrap(receipts.first { $0.trigger == .recordDelivery })
         XCTAssertEqual(storedReceipt.termination, .cancelled(stage: .delivering))
         XCTAssertEqual(storedReceipt.actionDetails.map(\.result), [.cancelled])
         XCTAssertFalse(published.contains { event in
@@ -527,63 +467,6 @@ final class SessionCoordinatorReceiptTests: XCTestCase {
         })
     }
 
-    func testClipboardReplayCancellationUsesTypedLifecycleWithoutFailureSignals() async throws {
-        let eventBus = EventBus()
-        let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let repository = InMemoryWorkflowRunReceiptRepository()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
-        let probe = ReceiptActionProbe()
-        let coordinator = makeCoordinator(
-            actions: [ReceiptCancellingAction(id: "cancel", probe: probe)],
-            eventBus: eventBus,
-            repository: repository,
-            diagnostics: diagnostics,
-            deliveryStack: deliveryStack
-        )
-        let itemID = UUID()
-        let runID = UUID()
-        await deliveryStack.push(
-            DeliveryItem(id: itemID, workflowID: UUID(), text: "replay cancellation")
-        )
-        let stream = await eventBus.stream()
-        let lifecycle = Task { () -> [RillEvent] in
-            var events: [RillEvent] = []
-            for await event in stream {
-                events.append(event)
-                if case .runCancelled(let summary) = event, summary.runID == runID {
-                    return events
-                }
-            }
-            return events
-        }
-        await Task.yield()
-
-        await coordinator.replayClipboardItem(
-            itemID: itemID,
-            runID: runID,
-            workflow: makeWorkflow(actionIDs: ["cancel"]),
-            contextSnapshot: .empty,
-            recognitionOptions: .empty
-        )
-        let published = await lifecycle.value
-
-        let storedReceipt = try await receipt(runID: runID, repository: repository)
-        let finalState = await coordinator.currentState()
-        XCTAssertEqual(storedReceipt.trigger, .clipboardReplay)
-        XCTAssertEqual(storedReceipt.termination, .cancelled(stage: .delivering))
-        XCTAssertEqual(storedReceipt.actionDetails.map(\.result), [.cancelled])
-        XCTAssertEqual(finalState, .idle)
-        XCTAssertFalse(published.contains { event in
-            if case .runFailed = event { return true }
-            return false
-        })
-        let recordedDiagnostics = await diagnostics.snapshot()
-        XCTAssertTrue(recordedDiagnostics.contains { $0.event == "session.cancelled" })
-        XCTAssertFalse(recordedDiagnostics.contains { $0.event == "session.failure" })
-        XCTAssertFalse(recordedDiagnostics.contains { event in
-            event.event == "session.stage" && event.metadata["stage"] == "failed"
-        })
-    }
 
     func testDuplicateRunIDBlocksBeforeASecondAction() async throws {
         let eventBus = EventBus()
@@ -686,65 +569,6 @@ final class SessionCoordinatorReceiptTests: XCTestCase {
         )
     }
 
-    func testEntryPointsUseDistinctClosedTriggerKinds() async throws {
-        let eventBus = EventBus()
-        let repository = InMemoryWorkflowRunReceiptRepository()
-        let probe = ReceiptActionProbe()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
-        let recorder = WorkflowRunReceiptRecorder(repository: repository, eventBus: eventBus)
-        let coordinator = makeCoordinator(
-            actions: [ReceiptResultAction(id: "success", result: .injected, probe: probe)],
-            eventBus: eventBus,
-            repository: repository,
-            deliveryStack: deliveryStack,
-            recorder: recorder
-        )
-
-        await deliveryStack.push(DeliveryItem(workflowID: UUID(), text: "stack"))
-        await coordinator.deliverTopOfStack(actionID: "success")
-
-        let useItemID = UUID()
-        await deliveryStack.push(
-            DeliveryItem(id: useItemID, workflowID: UUID(), text: "clipboard use")
-        )
-        let resolvedUseSubject = await deliveryStack.clipboardItemDryRunSubject(
-            itemID: useItemID
-        )
-        let useSubject = try XCTUnwrap(resolvedUseSubject)
-        await coordinator.deliverClipboardItem(
-            subject: useSubject,
-            actionID: "success",
-            contextSnapshot: .empty
-        )
-
-        let replayItemID = UUID()
-        await deliveryStack.push(
-            DeliveryItem(id: replayItemID, workflowID: UUID(), text: "replay")
-        )
-        await coordinator.replayClipboardItem(
-            itemID: replayItemID,
-            workflow: makeWorkflow(actionIDs: ["success"]),
-            contextSnapshot: .empty,
-            recognitionOptions: .empty
-        )
-
-        let recoveryRunID = UUID()
-        _ = await coordinator.runReportingOutcome(
-            workflow: makeWorkflow(actionIDs: []),
-            runID: recoveryRunID,
-            contextSnapshot: .empty,
-            receiptTrigger: .failedAudioRecovery
-        )
-
-        let receipts = try await repository.receipts(matching: .all)
-        XCTAssertTrue(receipts.contains { $0.trigger == .stackDelivery })
-        XCTAssertTrue(receipts.contains { $0.trigger == .clipboardUse })
-        XCTAssertTrue(receipts.contains { $0.trigger == .clipboardReplay })
-        XCTAssertEqual(
-            receipts.first(where: { $0.runID == recoveryRunID })?.trigger,
-            .failedAudioRecovery
-        )
-    }
 
     func testReceiptPersistenceFailureDoesNotReverseSuccessfulLifecycle() async throws {
         let eventBus = EventBus()
@@ -840,10 +664,9 @@ final class SessionCoordinatorReceiptTests: XCTestCase {
         eventBus: EventBus,
         repository: any WorkflowRunReceiptRepository,
         diagnostics: DiagnosticsRecorder? = nil,
-        deliveryStack: DeliveryStack? = nil,
+        recordStore: RecordStore? = nil,
         recorder providedRecorder: WorkflowRunReceiptRecorder? = nil
     ) -> SessionCoordinator {
-        let stack = deliveryStack ?? DeliveryStack(eventBus: eventBus)
         let recorder = providedRecorder ?? WorkflowRunReceiptRecorder(
             repository: repository,
             eventBus: eventBus,
@@ -855,7 +678,7 @@ final class SessionCoordinatorReceiptTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: actions),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: stack,
+            recordStore: recordStore ?? RecordStore(),
             eventBus: eventBus,
             diagnostics: diagnostics,
             runReceiptRecorder: recorder

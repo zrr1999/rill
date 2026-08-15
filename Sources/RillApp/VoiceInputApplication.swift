@@ -10,41 +10,42 @@ struct RillApplication: App {
     @NSApplicationDelegateAdaptor(VoiceInputApplicationDelegate.self)
     private var applicationDelegate
     @State private var container: AppContainer
-    private let clipboardPanelController: ClipboardPanelController
+    private let recordPanelController: RecordPanelController
     private let liveSubtitlePanelController: LiveSubtitlePanelController
 
     @MainActor
     init() {
         let container = AppBootstrap.makeContainer()
-        let clipboardPanelController = ClipboardPanelController()
+        let recordPanelController = RecordPanelController()
         let liveSubtitlePanelController = LiveSubtitlePanelController()
-        let useClipboardItem = container.useClipboardItem
 
-        container.model.installClipboardPanelAction { [clipboardPanelController, model = container.model] in
-            clipboardPanelController.show(model: model)
-        }
-        container.model.installClipboardCaptureControlActions(
-            setEnabled: container.setClipboardCaptureEnabled,
-            ignoreNextExternalChange: container.ignoreNextExternalClipboardChange
-        )
-        container.model.installClipboardPanelHotkeyAction { binding in
-            container.updateClipboardPanelHotkey(binding)
-        }
-        container.model.installClipboardPanelShortcutRecordingActions(
-            begin: container.beginClipboardPanelShortcutRecording,
-            end: container.endClipboardPanelShortcutRecording,
-            commit: container.commitClipboardPanelShortcutRecording
-        )
-        container.model.installUseClipboardItemAction { [clipboardPanelController, model = container.model] item in
-            clipboardPanelController.useSelectedItem(
-                { target in
-                    await useClipboardItem(item, target)
+        container.model.installRecordPanelAction { [recordPanelController, model = container.model] in
+            recordPanelController.show(
+                model: model,
+                deliverSelection: { subject, target in
+                    await container.systemClipboardCaptureController.deliverSelectedRecord(
+                        subject,
+                        to: target
+                    )
                 },
-                onAbort: {
-                    model.reportClipboardPanelPasteFailure()
+                onDeliveryAbort: {
+                    await container.systemClipboardCaptureController
+                        .reportSelectedRecordDeliveryUnavailable()
                 }
             )
         }
+        container.model.installSystemClipboardCaptureControlActions(
+            setEnabled: container.setSystemClipboardCaptureEnabled,
+            ignoreNextExternalChange: container.ignoreNextExternalClipboardChange
+        )
+        container.model.installRecordPanelHotkeyAction { binding in
+            container.updateRecordPanelHotkey(binding)
+        }
+        container.model.installRecordPanelShortcutRecordingActions(
+            begin: container.beginRecordPanelShortcutRecording,
+            end: container.endRecordPanelShortcutRecording,
+            commit: container.commitRecordPanelShortcutRecording
+        )
         container.model.installLiveSubtitlePanelAction { [liveSubtitlePanelController] snapshot, language in
             let cancellableRunID = snapshot.flatMap { snapshot in
                 LiveSubtitlePresentationPolicy.isAudioCaptureActive(phase: snapshot.phase)
@@ -59,14 +60,14 @@ struct RillApplication: App {
         )
 
         self._container = State(initialValue: container)
-        self.clipboardPanelController = clipboardPanelController
+        self.recordPanelController = recordPanelController
         self.liveSubtitlePanelController = liveSubtitlePanelController
         let shutdown = container.shutdown
         applicationDelegate.installEscapeAction {
             container.model.stopSpeechPlaybackIfActive()
         }
         applicationDelegate.installCleanupOperation {
-            await clipboardPanelController.shutdown()
+            await recordPanelController.shutdown()
             await shutdown()
         }
     }
@@ -98,9 +99,9 @@ struct RillApplication: App {
         MenuBarSystemSymbolPolicy.symbol(
             isVoiceRunActive: container.model.isRunning,
             globalInputCapability: container.model.globalInputCapability,
-            clipboardCaptureEnabled: container.model.clipboardCaptureEnabled,
-            clipboardCaptureState: container.model.clipboardCaptureControlSnapshot.state,
-            stackCount: container.model.stackCount
+            systemClipboardCaptureEnabled: container.model.systemClipboardCaptureEnabled,
+            clipboardCaptureState: container.model.systemClipboardCaptureControlSnapshot.state,
+            recordCount: container.model.recordCount
         )
     }
 }

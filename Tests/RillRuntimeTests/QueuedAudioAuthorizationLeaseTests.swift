@@ -327,6 +327,6 @@ private func makeLeaseContext() -> ContextSnapshot {
             selectedText: "",
             secureInput: false
         ),
-        clipboard: ClipboardSnapshot(plainText: "", changeCount: 1)
+        clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 1)
     )
 }

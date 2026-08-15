@@ -39,7 +39,10 @@ extension AppModel {
         case .resolved(let plan):
             workflowExplanationState = .loading(workflowID: workflow.id)
             let explain = explainResolvedWorkflowAction
-            let task = Task { @MainActor [weak self, explain] in
+            let taskID = UUID()
+            let taskOwner = workflowExplanationTaskOwner
+            let task = Task { @MainActor [weak self, explain, taskOwner] in
+                defer { taskOwner.finish(id: taskID) }
                 do {
                     let receipt = try await explain(plan)
                     try Task.checkCancellation()
@@ -58,7 +61,7 @@ extension AppModel {
                     )
                 }
             }
-            workflowExplanationTaskOwner.replace(with: task)
+            workflowExplanationTaskOwner.replace(id: taskID, with: task)
         }
     }
 
@@ -72,13 +75,16 @@ extension AppModel {
         cancelWorkflowExplanation()
     }
 
+    func waitForWorkflowExplanationTasks() async {
+        await workflowExplanationTaskOwner.waitUntilIdle()
+    }
+
     private func finishWorkflowExplanation(
         _ receipt: WorkflowExplanationReceipt,
         workflowID: UUID,
         generation: Int
     ) {
         guard generation == workflowExplanationGeneration else { return }
-        workflowExplanationTaskOwner.clear()
 
         guard workflows.contains(where: { $0.id == workflowID }) else {
             workflowExplanationState = .failed(
@@ -103,7 +109,6 @@ extension AppModel {
         reason: WorkflowExplanationFailure
     ) {
         guard generation == workflowExplanationGeneration else { return }
-        workflowExplanationTaskOwner.clear()
         workflowExplanationState = .failed(workflowID: workflowID, reason: reason)
     }
 

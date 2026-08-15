@@ -341,7 +341,7 @@ final class PrivacyModelsTests: XCTestCase {
     }
 
     func testProtectedClipboardsSkipAllCaptureAndRedactEveryPayloadKind() {
-        for protection in ClipboardProtection.allCases {
+        for protection in SystemClipboardProtection.allCases {
             let decision = PrivacyPolicy.evaluate(
                 context: makeContext(
                     clipboardText: "secret text",
@@ -373,8 +373,8 @@ private func makeContext(
     clipboardImage: Data? = nil,
     clipboardFiles: [URL] = [],
     secureInput: Bool = false,
-    captureTags: [ClipboardCaptureTag] = [],
-    protections: [ClipboardProtection] = []
+    captureTags: [SystemClipboardCaptureTag] = [],
+    protections: [SystemClipboardProtection] = []
 ) -> ContextSnapshot {
     ContextSnapshot(
         focus: FocusSnapshot(
@@ -385,7 +385,7 @@ private func makeContext(
             selectedText: selectedText,
             secureInput: secureInput
         ),
-        clipboard: ClipboardSnapshot(
+        clipboard: SystemClipboardSnapshot(
             plainText: clipboardText,
             imagePNGData: clipboardImage,
             fileURLs: clipboardFiles,

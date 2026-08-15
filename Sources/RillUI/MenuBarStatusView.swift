@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 import RillCore
 
-private struct ClipboardHistoryKeyboardShortcutModifier: ViewModifier {
+private struct RecordPanelKeyboardShortcutModifier: ViewModifier {
   let isVisible: Bool
 
   @ViewBuilder
@@ -50,9 +50,9 @@ public enum MenuBarSystemSymbolPolicy {
   public static func symbol(
     isVoiceRunActive: Bool,
     globalInputCapability: GlobalInputCapability,
-    clipboardCaptureEnabled: Bool,
-    clipboardCaptureState: ClipboardCaptureControlState,
-    stackCount: Int
+    systemClipboardCaptureEnabled: Bool,
+    clipboardCaptureState: SystemClipboardCaptureControlState,
+    recordCount: Int
   ) -> RillSystemSymbol {
     if isVoiceRunActive {
       return .micFill
@@ -67,7 +67,7 @@ public enum MenuBarSystemSymbolPolicy {
       break
     }
 
-    guard clipboardCaptureEnabled else {
+    guard systemClipboardCaptureEnabled else {
       return .waveform
     }
     switch clipboardCaptureState {
@@ -78,7 +78,7 @@ public enum MenuBarSystemSymbolPolicy {
     case .armingIgnoreNextExternalChange, .ignoringNextExternalChange:
       return .eyeSlashFill
     case .active:
-      return stackCount > 0 ? .squareStack3dUpFill : .waveform
+      return recordCount > 0 ? .squareStack3dUpFill : .waveform
     }
   }
 }
@@ -107,14 +107,14 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
   public let isRunning: Bool
   public let lastCompletedText: String?
   public let lastFailure: String?
-  public let stackCount: Int
-  public let canDeliverTopOfStack: Bool
+  public let recordCount: Int
+  public let canDeliverNextRecord: Bool
   public let preferredSpeechEngine: PreferredSpeechEngine
   public let outputMode: BuiltinPushToTalkOutputMode
   public let longRecordingModeEnabled: Bool
-  public let clipboardCaptureEnabled: Bool
+  public let systemClipboardCaptureEnabled: Bool
   public let clipboardSettingsAvailable: Bool
-  public let clipboardCaptureState: ClipboardCaptureControlState
+  public let clipboardCaptureState: SystemClipboardCaptureControlState
   public let voiceSetupStatus: MenuBarVoiceSetupStatus
   public let localPersistenceStatus: LocalPersistenceStatus
 
@@ -123,14 +123,14 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     isRunning: Bool,
     lastCompletedText: String? = nil,
     lastFailure: String? = nil,
-    stackCount: Int,
-    canDeliverTopOfStack: Bool,
+    recordCount: Int,
+    canDeliverNextRecord: Bool,
     preferredSpeechEngine: PreferredSpeechEngine,
     outputMode: BuiltinPushToTalkOutputMode,
     longRecordingModeEnabled: Bool = false,
-    clipboardCaptureEnabled: Bool = true,
+    systemClipboardCaptureEnabled: Bool = true,
     clipboardSettingsAvailable: Bool = true,
-    clipboardCaptureState: ClipboardCaptureControlState = .active,
+    clipboardCaptureState: SystemClipboardCaptureControlState = .active,
     voiceSetupStatus: MenuBarVoiceSetupStatus = .ready,
     localPersistenceStatus: LocalPersistenceStatus = .ready
   ) {
@@ -138,12 +138,12 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     self.isRunning = isRunning
     self.lastCompletedText = lastCompletedText
     self.lastFailure = lastFailure
-    self.stackCount = stackCount
-    self.canDeliverTopOfStack = canDeliverTopOfStack
+    self.recordCount = recordCount
+    self.canDeliverNextRecord = canDeliverNextRecord
     self.preferredSpeechEngine = preferredSpeechEngine
     self.outputMode = outputMode
     self.longRecordingModeEnabled = longRecordingModeEnabled
-    self.clipboardCaptureEnabled = clipboardCaptureEnabled
+    self.systemClipboardCaptureEnabled = systemClipboardCaptureEnabled
     self.clipboardSettingsAvailable = clipboardSettingsAvailable
     self.clipboardCaptureState = clipboardCaptureState
     self.voiceSetupStatus = voiceSetupStatus
@@ -181,7 +181,7 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
 
   public var statusDetail: String? {
     if let failure = trimmedFailure {
-      return ClipboardTextFormatting.previewText(failure, limit: 96)
+      return RecordTextFormatting.previewText(failure, limit: 96)
     }
 
     if isRunning {
@@ -197,8 +197,8 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
       break
     }
 
-    if stackCount > 0 {
-      return L10n.menuClipboardReadyStatus(stackCount, language: language)
+    if recordCount > 0 {
+      return L10n.menuClipboardReadyStatus(recordCount, language: language)
     }
 
     return nil
@@ -206,27 +206,27 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
 
   public var statusSystemImage: String {
     if trimmedFailure != nil {
-      return "exclamationmark.triangle.fill"
+      return RillSystemSymbol.exclamationmarkTriangleFill.rawValue
     }
 
     if isRunning {
-      return "waveform.circle.fill"
+      return RillSystemSymbol.waveformCircleFill.rawValue
     }
 
     switch voiceSetupStatus {
     case .loading:
-      return "hourglass.circle"
+      return RillSystemSymbol.hourglassCircle.rawValue
     case .incomplete:
-      return "exclamationmark.circle.fill"
+      return RillSystemSymbol.exclamationmarkCircleFill.rawValue
     case .ready:
       break
     }
 
-    if stackCount > 0 {
-      return "square.stack.3d.up.fill"
+    if recordCount > 0 {
+      return RillSystemSymbol.squareStack3dUpFill.rawValue
     }
 
-    return "checkmark.circle"
+    return RillSystemSymbol.checkmarkCircle.rawValue
   }
 
   public var speechEngineTitle: String {
@@ -249,7 +249,7 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
   }
 
   public var clipboardCaptureStatusTitle: String {
-    guard clipboardCaptureEnabled else {
+    guard systemClipboardCaptureEnabled else {
       return L10n.string(.menuClipboardCaptureOff, language: language)
     }
     return switch clipboardCaptureState {
@@ -265,27 +265,27 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
   }
 
   public var clipboardCaptureStatusSystemImage: String {
-    guard clipboardCaptureEnabled else { return "power.circle.fill" }
+    guard systemClipboardCaptureEnabled else { return RillSystemSymbol.powerCircleFill.rawValue }
     return switch clipboardCaptureState {
     case .active:
-      "checkmark.shield"
+      RillSystemSymbol.checkmarkShield.rawValue
     case .pausing, .paused, .resuming:
-      "play.circle.fill"
+      RillSystemSymbol.playCircleFill.rawValue
     case .armingIgnoreNextExternalChange, .ignoringNextExternalChange:
-      "eye.slash.fill"
+      RillSystemSymbol.eyeSlashFill.rawValue
     }
   }
 
   public var clipboardCaptureToggleTitle: String {
     let key: L10n.Key =
-      clipboardCaptureEnabled
+      systemClipboardCaptureEnabled
       ? .menuTurnOffClipboardCapture
       : .menuTurnOnClipboardCapture
     return L10n.string(key, language: language)
   }
 
   public var clipboardCaptureToggleSystemImage: String {
-    clipboardCaptureEnabled ? "power" : "play.circle"
+    systemClipboardCaptureEnabled ? RillSystemSymbol.power.rawValue : RillSystemSymbol.playCircle.rawValue
   }
 
   public var canToggleClipboardCapture: Bool {
@@ -294,7 +294,7 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
 
   public var canIgnoreNextExternalCopy: Bool {
     clipboardSettingsAvailable
-      && clipboardCaptureEnabled
+      && systemClipboardCaptureEnabled
       && clipboardCaptureState == .active
   }
 
@@ -309,7 +309,7 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
   public var persistenceStatusSystemImage: String? {
     persistencePresentation == nil
       ? nil
-      : "externaldrive.badge.exclamationmark"
+      : RillSystemSymbol.externaldriveBadgeExclamationmark.rawValue
   }
 
   private var trimmedFailure: String? {
@@ -362,7 +362,7 @@ public struct MenuBarStatusView: View {
         } label: {
           Label(
             L10n.string(.menuOpenMainWindow, language: model.language),
-            systemImage: "macwindow"
+            systemImage: RillSystemSymbol.macwindow.rawValue
           )
         }
         .keyboardShortcut("o", modifiers: [.command, .shift])
@@ -373,22 +373,22 @@ public struct MenuBarStatusView: View {
         } label: {
           Label(
             UIStrings.text(.historyScopeAll, language: model.language),
-            systemImage: "clock.arrow.circlepath")
+            systemImage: RillSystemSymbol.clockArrowCirclepath.rawValue)
         }
 
         Button {
-          model.showClipboardManagement()
+          model.selectSidebarSection(.records)
           openMainWindow()
         } label: {
           Label(
-            UIStrings.text(.clipboardTitle, language: model.language),
-            systemImage: "doc.on.clipboard"
+            UIStrings.text(.sidebarRecords, language: model.language),
+            systemImage: RillSystemSymbol.squareStack3dUp.rawValue
           )
         }
         .modifier(
-          ClipboardHistoryKeyboardShortcutModifier(
-            isVisible: ClipboardPanelShortcutPresentationPolicy.surfaceVisibility(
-              clipboardCaptureEnabled: model.clipboardCaptureEnabled
+          RecordPanelKeyboardShortcutModifier(
+            isVisible: RecordPanelShortcutPresentationPolicy.surfaceVisibility(
+              systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled
             ).menuShortcutAnnotation
           )
         )
@@ -398,14 +398,14 @@ public struct MenuBarStatusView: View {
           copyLastCompletedText()
         } label: {
           Label(
-            L10n.string(.menuCopyLastResult, language: model.language), systemImage: "doc.on.doc")
+            L10n.string(.menuCopyLastResult, language: model.language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
         }
         .keyboardShortcut("v", modifiers: [.command, .shift])
         .disabled(!panelState.canCopyLastResult)
 
         Divider()
 
-        scalarSettingsUnavailableNotice(.clipboard)
+        scalarSettingsUnavailableNotice(.systemClipboard)
 
         Button {
           model.toggleClipboardCaptureEnabled()
@@ -423,7 +423,7 @@ public struct MenuBarStatusView: View {
         } label: {
           Label(
             L10n.string(.menuIgnoreNextExternalCopy, language: model.language),
-            systemImage: "eye.slash"
+            systemImage: RillSystemSymbol.eyeSlash.rawValue
           )
         }
         .disabled(!panelState.canIgnoreNextExternalCopy)
@@ -434,27 +434,27 @@ public struct MenuBarStatusView: View {
         Menu {
           languageMenu
         } label: {
-          Label(L10n.string(.menuInterfaceLanguage, language: model.language), systemImage: "globe")
+          Label(L10n.string(.menuInterfaceLanguage, language: model.language), systemImage: RillSystemSymbol.globe.rawValue)
         }
 
         Menu {
           textStyleMenu
         } label: {
           Label(
-            L10n.string(.menuTextStyles, language: model.language), systemImage: "wand.and.stars")
+            L10n.string(.menuTextStyles, language: model.language), systemImage: RillSystemSymbol.wandAndStars.rawValue)
         }
 
         Menu {
           textOutputMenu
         } label: {
-          Label(L10n.string(.menuTextOutput, language: model.language), systemImage: "textformat")
+          Label(L10n.string(.menuTextOutput, language: model.language), systemImage: RillSystemSymbol.textformat.rawValue)
         }
 
         Menu {
           longRecordingMenu
         } label: {
           Label(
-            L10n.string(.menuLongRecording, language: model.language), systemImage: "record.circle")
+            L10n.string(.menuLongRecording, language: model.language), systemImage: RillSystemSymbol.recordCircle.rawValue)
         }
 
         Menu {
@@ -462,7 +462,7 @@ public struct MenuBarStatusView: View {
         } label: {
           Label(
             L10n.string(.menuWorkflows, language: model.language),
-            systemImage: "square.stack.3d.up"
+            systemImage: RillSystemSymbol.squareStack3dUp.rawValue
           )
         }
 
@@ -472,14 +472,14 @@ public struct MenuBarStatusView: View {
           model.selectSidebarSection(.settings)
           openMainWindow()
         } label: {
-          Label(UIStrings.text(.settingsTitle, language: model.language), systemImage: "gearshape")
+          Label(UIStrings.text(.settingsTitle, language: model.language), systemImage: RillSystemSymbol.gearshape.rawValue)
         }
         .keyboardShortcut(",", modifiers: .command)
 
         Button {
           openAbout()
         } label: {
-          Label(L10n.string(.menuAbout, language: model.language), systemImage: "info.circle")
+          Label(L10n.string(.menuAbout, language: model.language), systemImage: RillSystemSymbol.infoCircle.rawValue)
         }
 
         Divider()
@@ -487,7 +487,7 @@ public struct MenuBarStatusView: View {
         Button(role: .destructive) {
           quitApplication()
         } label: {
-          Label(L10n.string(.menuQuit, language: model.language), systemImage: "xmark.square")
+          Label(L10n.string(.menuQuit, language: model.language), systemImage: RillSystemSymbol.xmarkSquare.rawValue)
         }
         .keyboardShortcut("q", modifiers: .command)
       }
@@ -499,7 +499,7 @@ public struct MenuBarStatusView: View {
     if model.isApplicationShuttingDown {
       Label(
         L10n.string(.applicationShutdownTitle, language: model.language),
-        systemImage: "hourglass.circle"
+        systemImage: RillSystemSymbol.hourglassCircle.rawValue
       )
       .accessibilityIdentifier("menu.status.shutdown")
 
@@ -540,10 +540,10 @@ public struct MenuBarStatusView: View {
         .accessibilityIdentifier("menu.status.persistence-detail")
     }
 
-    Label(panelState.outputModeTitle, systemImage: "textformat")
+    Label(panelState.outputModeTitle, systemImage: RillSystemSymbol.textformat.rawValue)
       .accessibilityIdentifier("menu.status.output-mode")
 
-    Label(panelState.longRecordingModeTitle, systemImage: "record.circle")
+    Label(panelState.longRecordingModeTitle, systemImage: RillSystemSymbol.recordCircle.rawValue)
       .accessibilityIdentifier("menu.status.long-recording")
 
     Label(
@@ -553,8 +553,64 @@ public struct MenuBarStatusView: View {
     .accessibilityIdentifier("menu.status.clipboard-capture")
   }
 
+  func openStorageSettings() {
+    model.showSettings(.storage)
+    openMainWindow()
+  }
+
+
+  private var panelState: MenuBarOperationPanelState {
+    MenuBarOperationPanelState(
+      language: model.language,
+      isRunning: model.isRunning,
+      lastCompletedText: model.lastCompletedText,
+      lastFailure: model.lastFailure,
+      recordCount: model.recordCount,
+      canDeliverNextRecord: model.canDeliverNextRecord,
+      preferredSpeechEngine: model.preferredSpeechEngine,
+      outputMode: model.builtinPushToTalkOutputMode,
+      longRecordingModeEnabled: model.longRecordingModeEnabled,
+      systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled,
+      clipboardSettingsAvailable: model.canMutateScalarSettings(in: .systemClipboard),
+      clipboardCaptureState: model.systemClipboardCaptureControlSnapshot.state,
+      voiceSetupStatus: MenuBarVoiceSetupStatus(readiness: model.voiceSetupReadiness),
+      localPersistenceStatus: model.localPersistenceStatus
+    )
+  }
+
+  private func copyLastCompletedText() {
+    guard let text = panelState.trimmedLastResult else { return }
+    model.copyTextToClipboard(text)
+  }
+
+  private func selectionLabel(_ title: String, isSelected: Bool) -> some View {
+    Label(
+      title,
+      systemImage: isSelected
+        ? RillSystemSymbol.checkmark.rawValue
+        : RillSystemSymbol.circle.rawValue
+    )
+  }
+
   @ViewBuilder
-  private var languageMenu: some View {
+  private func scalarSettingsUnavailableNotice(
+    _ domain: ScalarSettingsDomain
+  ) -> some View {
+    if model.hasUnavailableScalarSettings(in: domain) {
+      MenuBarFixedWidthLabel(
+        title: domain.unavailableWarning(language: model.language),
+        systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
+      )
+      .accessibilityIdentifier("menu.settings-unavailable.\(domain.rawValue)")
+
+      Divider()
+    }
+  }
+}
+
+extension MenuBarStatusView {
+  @ViewBuilder
+  var languageMenu: some View {
     scalarSettingsUnavailableNotice(.interface)
 
     ForEach(AppLanguage.allCases) { language in
@@ -568,7 +624,7 @@ public struct MenuBarStatusView: View {
   }
 
   @ViewBuilder
-  private var textStyleMenu: some View {
+  var textStyleMenu: some View {
     if model.enabledTextStyleWorkflows.isEmpty {
       Text(L10n.string(.menuNoTextStyleWorkflows, language: model.language))
     } else {
@@ -596,12 +652,12 @@ public struct MenuBarStatusView: View {
     } label: {
       Label(
         UIStrings.text(.openWorkflowEditor, language: model.language),
-        systemImage: "square.and.pencil")
+        systemImage: RillSystemSymbol.squareAndPencil.rawValue)
     }
   }
 
   @ViewBuilder
-  private var textOutputMenu: some View {
+  var textOutputMenu: some View {
     scalarSettingsUnavailableNotice(.input)
 
     Button {
@@ -629,26 +685,21 @@ public struct MenuBarStatusView: View {
     Button {
       copyLastCompletedText()
     } label: {
-      Label(L10n.string(.menuCopyLastResult, language: model.language), systemImage: "doc.on.doc")
+      Label(L10n.string(.menuCopyLastResult, language: model.language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
     }
     .disabled(!panelState.canCopyLastResult)
 
     Button {
-      model.deliverTopOfStack()
+      model.deliverNextRecord()
     } label: {
       Label(
-        L10n.string(.menuPasteTopOfStack, language: model.language), systemImage: "arrow.down.doc")
+        L10n.string(.menuDeliverNextRecord, language: model.language), systemImage: RillSystemSymbol.arrowDownDoc.rawValue)
     }
-    .disabled(!panelState.canDeliverTopOfStack)
-  }
-
-  func openStorageSettings() {
-    model.showSettings(.storage)
-    openMainWindow()
+    .disabled(!panelState.canDeliverNextRecord)
   }
 
   @ViewBuilder
-  private var longRecordingMenu: some View {
+  var longRecordingMenu: some View {
     scalarSettingsUnavailableNotice(.input)
 
     Button {
@@ -685,7 +736,7 @@ public struct MenuBarStatusView: View {
   }
 
   @ViewBuilder
-  private var workflowMenu: some View {
+  var workflowMenu: some View {
     if model.enabledManualWorkflows.isEmpty {
       Text(L10n.string(.menuNoManualWorkflows, language: model.language))
     } else {
@@ -709,55 +760,7 @@ public struct MenuBarStatusView: View {
     } label: {
       Label(
         UIStrings.text(.openWorkflowEditor, language: model.language),
-        systemImage: "square.and.pencil")
-    }
-  }
-
-  private var panelState: MenuBarOperationPanelState {
-    MenuBarOperationPanelState(
-      language: model.language,
-      isRunning: model.isRunning,
-      lastCompletedText: model.lastCompletedText,
-      lastFailure: model.lastFailure,
-      stackCount: model.stackCount,
-      canDeliverTopOfStack: model.canDeliverTopOfStack,
-      preferredSpeechEngine: model.preferredSpeechEngine,
-      outputMode: model.builtinPushToTalkOutputMode,
-      longRecordingModeEnabled: model.longRecordingModeEnabled,
-      clipboardCaptureEnabled: model.clipboardCaptureEnabled,
-      clipboardSettingsAvailable: model.canMutateScalarSettings(in: .clipboard),
-      clipboardCaptureState: model.clipboardCaptureControlSnapshot.state,
-      voiceSetupStatus: MenuBarVoiceSetupStatus(readiness: model.voiceSetupReadiness),
-      localPersistenceStatus: model.localPersistenceStatus
-    )
-  }
-
-  private func copyLastCompletedText() {
-    guard let text = panelState.trimmedLastResult else { return }
-    model.copyTextToClipboard(text)
-  }
-
-  private func selectionLabel(_ title: String, isSelected: Bool) -> some View {
-    Label(
-      title,
-      systemImage: isSelected
-        ? RillSystemSymbol.checkmark.rawValue
-        : RillSystemSymbol.circle.rawValue
-    )
-  }
-
-  @ViewBuilder
-  private func scalarSettingsUnavailableNotice(
-    _ domain: ScalarSettingsDomain
-  ) -> some View {
-    if model.hasUnavailableScalarSettings(in: domain) {
-      MenuBarFixedWidthLabel(
-        title: domain.unavailableWarning(language: model.language),
-        systemImage: "exclamationmark.triangle.fill"
-      )
-      .accessibilityIdentifier("menu.settings-unavailable.\(domain.rawValue)")
-
-      Divider()
+        systemImage: RillSystemSymbol.squareAndPencil.rawValue)
     }
   }
 }

@@ -5,9 +5,9 @@ User workflows are standard TOML files under
 `$HOME/.config/rill/workflows`). The separate Workflow window is a visual
 editor for those files; see [the workflow TOML specification](docs/workflow-toml.md).
 
-**本地优先的语音输入 + 剪贴板路由工作站** — 一款原生 macOS 应用，将语音识别、应用级剪贴板分组和可观察语音工作流合为一体。
+**本地优先的记录流与记录路由工作站** — 一款原生 macOS 应用，将语音识别、系统剪切板采集、跨应用投递和可观察工作流统一为一条 Record 流。
 
-> 🎙 按住 Fn 说话，松开即输入 · 📋 剪贴板分组路由 · ⚡ 可观察语音工作流 · 🔄 语音状态浮窗
+> 🎙 按住 Fn 说话，松开即输入 · 🗂 多记录集路由 · ⚡ 可观察语音工作流 · 🔄 语音状态浮窗
 
 ---
 
@@ -28,20 +28,18 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 - **有界本地录音** — 同一份 16 kHz 单声道 PCM 同时送往 v5 流式预览和权限为 `0600` 的受管 WAV；实时层只保留有界 PCM/音量状态。流式失败只关闭预览，正常停止会排空尾帧并继续离线 final，异常、取消或超时会先关闭文件再清理
 - **失败录音恢复（可选）** — 默认关闭；符合条件的投递前失败录音可加密保留最多 24 小时，并从历史页手动重试或删除。重试在解密前和解密后、provider 调用前都重新检查当前隐私与配置，只生成新的运行历史，不重复输出动作。App 退出会拒绝新重试、取消并等待所有活动重试恢复 durable receipt，并执行最终全局恢复明文 sweep；无法证明全部托管明文已清理时会阻止本次退出，让清理继续完成
 
-### 📋 剪贴板管理系统
+### 🗂 记录流与记录路由
 
 - **默认不监听** — 新安装默认关闭系统剪贴板捕获和浮动面板全局快捷键；只有用户在设置或菜单栏明确开启后才建立新的捕获基线，关闭期间的变化不会在重新开启时补录
-- **分组路由** — 为不同应用分配独立的剪贴板组（Stack / Queue / List 三种模式）
-- **置顶与快速检索** — 正文、来源 App、标签和分组支持多关键词联合搜索；合并条目可原子置顶并一键只看置顶内容。置顶只影响历史展示、自动留存和容量逐出，不会伪装成 Stack / Queue / List 活动项；显式删除或“清除历史”仍按用户命令执行
-- **语音识别组** — 可将语音识别结果保存到专属组，每个条目可打标签
-- **跨组回退** — 当当前组为空时自动从优先级更高的组获取内容
-- **智能粘贴** — `Cmd-V` 自动感知当前应用所属组，递送对应内容
-- **历史记录** — 捕获允许保存的文本、图片和文件；跳过系统保护内容与敏感 App，支持回放、搜索和独立留存策略。运行历史以 receipt 为主时间线，用同一 SQLite 快照和稳定 keyset 分页浏览全部留存记录；Dashboard 仍只保留轻量最近投影。文件条目通过历史或浮动面板手动回放，不进入 Stack / Queue 自动消费
-- **有界且原子的本地存储** — schema 8 将受保护 metadata 与 immutable image blobs 分离，并最多保留 1000 个活动项、每组 500 个活动项和 500 个仅历史项；单项文本上限 1 MiB、图片上限 32 MiB，全部条目的内容总量上限 64 MiB；自定义组最多 256 个、App 路由最多 1024 条，名称、Bundle ID、capture tag 和来源元数据也在编码前校验。超限时只逐出最旧的仅历史项；活动项或已取得粘贴租约的条目不会被静默丢弃，App 分配与新建组在完整校验后原子提交，失败不会产生半移动、幽灵组或把已消费条目重新激活
+- **记录只存一次** — 文本、图片和文件是不可变 Record；标签、置顶、活动状态和记录集成员关系独立保存。一条 Record 可以同时属于多个记录集，也可以没有任何成员关系并继续出现在虚拟的“所有记录”时间线中
+- **正交记录集策略** — Stack、Queue、List 只是快捷预设；每个记录集可独立选择 newest / oldest / manual 与 retain / successful-delivery 后消费。只有发起投递的 membership 会被消费
+- **双向路由** — capture rule 按来源、来源 App 和 workflow 将一次采集稳定并集到最多 32 个记录集；delivery rule 按目标 App 选择有序来源记录集和 sink。系统剪切板只是 `SystemClipboardSource` / `SystemClipboardSink`，不是领域所有者
+- **显式替换语义** — Replace 创建带 `derivedFrom` / `supersedes` 的新 Record；默认只交换当前记录集的 membership，也可明确选择在所有记录集中替换。原始 Record 继续保留在 All Records
+- **有界且原子的本地存储** — schema 12 将不可变 payload blob 与 metadata / activity / membership / route 图分开保护；保留 1 MiB 文本、32 MiB 图片、64 MiB 总内容、每 Record 32 memberships 和总计 8192 memberships 的上限。metadata 修改不重写 payload 密文
 - **竞态安全的捕获与镜像** — Secure Input 与未知焦点会遮蔽选区和剪贴板输入，排除工作流捕获的标签只遮蔽工作流可见的剪贴板；Stack 路由预览与外部剪贴板捕获会在载荷读取和条件镜像写入前后复核焦点、Secure Input、设置与 change count，边界变化时 fail-closed 且不覆盖外部新剪贴板
 - **有界富内容投递** — 临时替换系统剪贴板前，Rill 最多保存 128 个 item、每项 32 个 representation、总计 256 个 representation / 64 MiB；任一表示不可读或超限都会在替换前失败。图片的 ImageIO 解码、完整性检查和 TIFF → PNG 转换在主线程外 single-flight 串行执行，并在提交前复核 change count。精确写回失败会保留原 archive，只重试恢复而不重复粘贴；退出会排空内外两层临时事务，无法证明恢复完成时拒绝本次正常退出
-- **安全清理** — 剪贴板、运行历史及相关诊断默认保留 30 天，可按域设为 1 天 / 1 周 / 30 天 / 1 年 / 永久；自动清理不会误删已置顶或仍在 Stack / Queue / List 中待使用的内容，Rill 遗留临时音频也会在启动和周期维护时回收
-- **可恢复的状态持久化** — 分组、路由规则和历史记录跨重启保持；schema 7 图片会原子迁移到 schema 8 metadata/blob graph。不可读、损坏或超出 schema 8 边界的状态进入 `loadUnavailable`，保留原始存储且不以空状态覆盖。主窗口 Clipboard 提供明确、不可撤销的 Reset Storage 确认，用于同时删除受保护旧状态和本次会话的条目、分组与 App 路由；取消或删除失败不会产生半重置
+- **安全清理** — Record、运行历史及相关诊断默认保留 30 天；自动清理保护 pinned Record 和任何 active membership，consumed membership 本身不构成永久保护
+- **前向迁移** — 旧剪切板图在一个事务中转为 Record graph v1；新图结构、数量、顺序和 payload 解密回读全部通过后才删除旧图。失败会完整回滚，不双写，也不承诺旧版 App 降级
 - **本地静态数据保护** — 运行正文、纠错来源、剪贴板状态、设置和导出元数据使用 Keychain 根密钥与 AES-256-GCM 保护；错误或缺失密钥会 fail-closed
 
 ### ⚡ 可观察工作流
@@ -165,6 +163,8 @@ just ci
 SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 ```
 
+这个本地安装入口使用独立的 Release scratch path，只做增量构建、装配、签名、验证和原子安装，不再隐式运行全量测试，也不会与 Debug 测试复用 module graph。需要完整门禁时单独运行 `just ci` / `bash scripts/preflight.sh`，或显式使用 `bash scripts/release.sh --preflight --install`。公证发布仍强制执行完整预检。
+
 发布脚本默认把 App、DMG 和可能生成的校验 sidecar 写入仓库内的 `.artifacts/release/`。它在昂贵构建前先使旧 App/DMG/sidecar 失效，再在输出目录所在文件系统的私有 staging 中生成并验证新产物，成功后才原子替换。仓库内输出必须位于 `.artifacts/`，路径会解析到物理祖先并把公证快照 capability 绑定到物理输出位置，因此不能用 traversal 或 symlink 绕过；仓库外目录仍可显式指定。预检会拒绝遗留在仓库根目录的发布产物；完整发布策略测试覆盖这些边界、App-only SwiftPM 产品面、本地 ASR 生产接线、arm64-only 产物与失败不遗留旧产物的行为。
 
 使用默认隔离目录验证完整签名与 DMG 流程：
@@ -217,13 +217,13 @@ SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
 | 松开 `Fn` | 停止录音，识别结果自动输入到当前应用 |
 | `Cmd-F` | 搜索页面、工作流、运行历史和设置分区 |
 
-### 剪贴板分组
+### 记录与记录集
 
-- **默认组** — 所有未分配的应用共享此组
-- **语音识别组** — 语音识别结果自动进入此组
-- **自定义组** — 为特定应用创建专属组，支持 Stack（后进先出）、Queue（先进先出）、List（持久列表）三种模式
+- **所有记录** — 去重展示留存期内的全部记录；它是虚拟时间线，不是特殊记录集
+- **收件箱 / 语音输入** — 新安装创建的普通记录集，可重命名、删除或被路由替换
+- **自定义记录集** — Stack（最新优先并消费）、Queue（最旧优先并消费）、List（手动选取并保留）只是快捷预设；选取策略与消费策略可独立调整
 
-从详情、右键菜单或 Delete 删除剪贴板条目都会先确认；合并展示的条目会明确实际删除数量和不可撤销性。文本框或输入法仍在编辑、已有 sheet 或删除确认显示期间，页面级 Delete 与其他快捷键不会越过当前交互。
+一条记录可属于多个记录集，也可以不属于任何记录集。移除成员关系不会删除记录；只有明确的全局删除才会删除记录及其全部成员关系。采集路由可把一次输入稳定地加入多个记录集，投递路由则按目标 App 选择有序来源记录集与输出端口。系统剪切板只是首批输入和输出端口之一。
 
 ### 工作流
 
@@ -246,13 +246,11 @@ ASR 未准备、LLM 配置无效或云端隐私策略不可用时开启监听；
 你也可以创建自定义语音工作流，选择本地/云端识别、输出目标和确定性文本处理。
 保存工作流且当前编辑草稿与已保存版本一致后，可在 Workflows 页选择“运行前解释”。预览会按当前路由和隐私设置显示 `ready`、`requires confirmation` 或 `blocked`；它不会读取选区/剪贴板正文，也不会替代运行时的重新检查与云端确认。
 
-剪贴板条目详情与右键菜单提供只读“预览影响”：生成预演不会粘贴、修改、发送、运行自动化、写入文件、更新历史或请求确认；实际运行仍会重新检查精确条目、工作流、隐私、权限、凭据与目标位置，且当前预演不提供 Run / Apply / Replace 执行按钮。
-
-真实条目使用与预演凭证彼此独立：每个运行授权只能消费一次；文字和富内容粘贴会原子 claim 预览对应的 exact generation/revision；来源替换使用 CAS，条目删除、内容漂移或同 ID 重建时不会覆盖或复活旧版本。Replay/Replace 的来源身份由 `DeliveryStack` 与 exact item subject 一起原子解析，不进入 dry-run 收据或组 scheduler descriptor。
+记录投递使用 exact `RecordID + MembershipID + revision` 租约；成功时只消费发起记录集的成员关系，失败或取消会恢复租约，其他记录集不受影响。Replace 创建派生记录而不覆盖不可变正文；默认只交换当前记录集的成员关系，也可由用户明确选择在所有记录集中替换。
 
 “最近结果”与“运行历史”已合并为同一页面：侧栏只保留“运行历史”，可在“最近运行 / 最近结果”之间切换，并明确显示当前已加载条数；菜单栏和仪表盘的“最近结果”入口会直接打开结果筛选。正文资格绑定运行时持久化的 closed trigger，并与同 run receipt 交叉验证；来源缺失或冲突时 fail-closed，不再根据当前工作流配置猜测。Dashboard、历史页和活动流共用 `full / restricted / disabled` 正文预览策略；受限内容传给界面与辅助功能树前已在 presentation 层截断为最多 96 个字符，禁用时活动项只保留无正文状态。筛选只改变展示范围，不改变本地留存、清理或隐私策略。
 
-旧版剪贴板组事件配置会经过严格、无正文的调度决策，并可在 History 中查看 unsupported、excluded 或 loop-prevented 等固定原因；只有执行能力存在但被用户停用时才会显示 disabled。descriptor 现绑定 exact item generation/revision，并携带只在内存中流转的 root lineage、已访问 workflow 路径和 8-hop 上限；重复 workflow 或超限链在任何执行能力判断前固定阻断。Runtime 另有来源 App 感知、绝不弹确认的非交互隐私 preflight，但它只返回判定，不发执行 capability。组事件动作仍未开放；缺少 revision-bound 持久授权与 one-shot group action lease 时，不会在后台读取正文、执行文本处理或调用输出动作。
+旧版剪切板动作 ID、输出策略和 metadata 只在 TOML 加载与 SQLite 前向迁移边界读取；内建资源、编辑器与后续保存只输出 `record.store`、`system-clipboard.copy`、`focused-application.insert` 及 Record metadata。迁移完成后不保留双运行时，也不支持旧版 App 降级。
 
 ---
 
@@ -263,7 +261,7 @@ RillCore        — 领域模型和服务协议
 RillPlatform    — macOS 系统集成（焦点追踪、剪贴板控制、权限、文字注入）
 RillProviders   — 稳定 ASR/TTS 合同、Speech Worker v5、确定性文本处理与输出动作
 RillMLXRuntime  — 仅由语音辅助进程链接的原生 MLX/Metal 推理实现
-RillRuntime     — 事件总线、剪贴板存储、候选解析、会话协调器
+RillRuntime     — RecordStore、记录路由与投递、事件总线、候选解析、会话协调器
 RillPersistence — 数据持久化
 RillUI          — SwiftUI 视图和 AppModel
 RillApp         — 组合根和应用入口

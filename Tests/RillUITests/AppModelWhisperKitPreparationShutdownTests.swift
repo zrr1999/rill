@@ -192,7 +192,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     XCTAssertEqual(replacementSettings?.prewarm, false)
 
     await firstProvider.release(returning: firstModel)
-    await waitForEventProcessing()
+    await waitForEventProcessing(harness)
     XCTAssertEqual(harness.model.localSpeechPreparationState, .preparing)
     XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
     XCTAssertFalse(harness.model.downloadedLocalSpeechModels.contains(firstModel))
@@ -218,7 +218,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
         await provider.prepare(progressCallback: progressCallback)
       }
     )
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
 
     harness.model.prepareLocalSpeechModel()
     harness.model.cancelLocalSpeechModelPreparation()
@@ -230,6 +230,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     XCTAssertEqual(callCount, 0)
     XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
     XCTAssertEqual(harness.model.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
+    await harness.model.drainAndStopEventListenerForApplicationShutdown()
   }
 
   func testUserCancelReturnsToIdleAndRejectsCancellationIgnoringLateCallbacks() async {
@@ -243,7 +244,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
         await provider.prepare(progressCallback: progressCallback)
       }
     )
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
 
     harness.model.prepareLocalSpeechModel()
     await provider.waitUntilStarted()
@@ -260,7 +261,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
 
     await provider.emitProgress(completed: 1, total: 1)
     await provider.release(returning: "cancelled-late-model")
-    await waitForEventProcessing()
+    await waitForEventProcessing(harness)
     await harness.model.flushPendingPersistenceWrites()
 
     let settings = await settingsStore.activitySnapshot()
@@ -273,6 +274,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
       harness.model.eventFeed.contains { $0.english.contains("cancelled-late-model") }
     )
     XCTAssertEqual(harness.model.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
+    await harness.model.drainAndStopEventListenerForApplicationShutdown()
   }
 
   func testSettingsResetRetiresOldTaskAndItsCompletionCannotClearReplacement() async {
@@ -291,7 +293,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
         await providerQueue.prepare(progressCallback: progressCallback)
       }
     )
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
 
     harness.model.prepareLocalSpeechModel()
     await firstProvider.waitUntilStarted()
@@ -301,7 +303,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     await secondProvider.waitUntilStarted()
 
     await firstProvider.release(returning: "retired-model")
-    await waitForEventProcessing()
+    await waitForEventProcessing(harness)
     XCTAssertEqual(harness.model.localSpeechPreparationState, .preparing)
     XCTAssertEqual(harness.model.localSpeechPreparationProgress, 0)
     XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
@@ -322,6 +324,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
       harness.model.eventFeed.contains { $0.english.contains("retired-model") }
     )
     XCTAssertEqual(harness.model.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
+    await harness.model.drainAndStopEventListenerForApplicationShutdown()
   }
 
   func testShutdownDoesNotWaitForRetiredOrActiveCancellationIgnoringPreparations() async {
@@ -340,7 +343,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
         await providerQueue.prepare(progressCallback: progressCallback)
       }
     )
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
 
     harness.model.prepareLocalSpeechModel()
     await retiredProvider.waitUntilStarted()
@@ -365,7 +368,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     await activeProvider.release(returning: "active-late-model")
     await retiredProvider.release(returning: "retired-late-model")
     await shutdownTask.value
-    await waitForEventProcessing()
+    await waitForEventProcessing(harness)
 
     let didComplete = await completion.isCompleted()
     XCTAssertTrue(didComplete)
@@ -384,7 +387,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
         await provider.prepare(progressCallback: progressCallback)
       }
     )
-    await waitForEventProcessing()
+    await harness.model.waitForInitialVoiceConfiguration()
 
     harness.model.prepareLocalSpeechModel()
     await provider.waitUntilStarted()
@@ -421,6 +424,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     XCTAssertFalse(
       harness.model.eventFeed.contains { $0.english.contains("late-manual-model") }
     )
+    await harness.model.drainAndStopEventListenerForApplicationShutdown()
   }
 
   func testShutdownReleasesCancellationIgnoringBackgroundReadinessWithPrewarmDisabled() async {

@@ -164,7 +164,6 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
         let eventBus = EventBus()
         let repository = StageBlockingDiagnosticRepository(blockedStage: .failed)
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus, repository: repository)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let actionProbe = RegressionActionProbe()
         let coordinator = SessionCoordinator(
@@ -175,7 +174,6 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RegressionProbeAction(probe: actionProbe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -217,7 +215,6 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
     func testCapturedAudioProcessingQueueKeepsLaterJobsQueuedBehindBlockedActiveJob() async throws {
         let eventBus = EventBus()
         let actionProbe = RegressionActionProbe()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
         let resolver = CandidateResolver(eventBus: eventBus)
         let coordinator = SessionCoordinator(
             contextProvider: RegressionContextProvider(),
@@ -227,7 +224,6 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RegressionProbeAction(probe: actionProbe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus
         )
         let queue = CapturedAudioProcessingQueue(

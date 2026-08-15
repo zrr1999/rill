@@ -73,83 +73,9 @@ extension AppModelTests {
         XCTAssertEqual(coordinatorState, .idle)
     }
 
-    func testClipboardReplayUsesDedicatedAuthorizationBoundary() async {
-        struct GenericAuthorizationReached: Error {}
-        let genericAuthorizationProbe = ProbeActionLog()
-        let clipboardAuthorizationProbe = ProbeActionLog()
-        let harness = makeHarness(
-            authorizeWorkflowRunAction: { _ in
-                await genericAuthorizationProbe.increment()
-                throw GenericAuthorizationReached()
-            },
-            authorizeClipboardItemRunAction: { itemID, itemVersion, operation, workflow in
-                await clipboardAuthorizationProbe.increment()
-                let subject = ClipboardItemDryRunSubject(
-                    itemID: itemID,
-                    itemVersion: itemVersion,
-                    groupID: ClipboardGroup.defaultGroupID,
-                    contentKind: .text,
-                    hasTransferableContent: true
-                )
-                return AuthorizedWorkflowRunContext(
-                    workflow: workflow,
-                    contextSnapshot: .empty,
-                    recognitionOptions: .empty,
-                    invocation: .clipboardItem(subject: subject, operation: operation)
-                )
-            }
-        )
-        let item = ClipboardHistoryItem(
-            groupID: ClipboardGroup.defaultGroup.id,
-            text: "replay source",
-            sourceKind: .system
-        )
-
-        harness.model.replayClipboardItem(item, with: harness.workflow)
-        for _ in 0..<100 where harness.model.isRunning {
-            await Task.yield()
-        }
-
-        let genericAuthorizationCount = await genericAuthorizationProbe.snapshot()
-        let clipboardAuthorizationCount = await clipboardAuthorizationProbe.snapshot()
-        XCTAssertEqual(genericAuthorizationCount, 0)
-        XCTAssertEqual(clipboardAuthorizationCount, 1)
-    }
-
-    func testClipboardReplayAuthorizationFailureDoesNotReachCoordinatorOrAction() async {
-        struct AuthorizationDenied: Error, LocalizedError {
-            var errorDescription: String? { "Replay privacy authorization denied." }
-        }
-        let harness = makeHarness(
-            authorizeClipboardItemRunAction: { _, _, _, _ in throw AuthorizationDenied() }
-        )
-        let item = ClipboardHistoryItem(
-            groupID: ClipboardGroup.defaultGroup.id,
-            text: "CANARY-REPLAY-TEXT",
-            sourceKind: .system
-        )
-
-        harness.model.replayClipboardItem(item, with: harness.workflow)
-        for _ in 0..<20 where harness.model.isRunning {
-            await Task.yield()
-        }
-
-        let actionCount = await harness.actionLog.snapshot()
-        let coordinatorState = await harness.model.sessionCoordinator.currentState()
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertEqual(
-            harness.model.lastFailure,
-            harness.model.language == .english
-                ? "The clipboard item could not be replayed. Review Privacy and workflow settings, then retry."
-                : "无法重新运行这个剪贴板项目。请检查隐私与工作流设置后重试。"
-        )
-        XCTAssertEqual(actionCount, 0)
-        XCTAssertEqual(coordinatorState, .idle)
-    }
-
     func testRunFailedWithoutRunIDDoesNotClearActiveRunOrCreateHistory() async {
         let harness = makeHarness()
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
         let runID = UUID()
         let started = RunSnapshot(
             runID: runID,
@@ -159,9 +85,9 @@ extension AppModelTests {
         )
 
         await harness.eventBus.publish(.runStarted(started))
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         await harness.eventBus.publish(.runFailed(runID: nil, workflow: nil, message: "Stack injection failed"))
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertTrue(harness.model.isRunning)
         XCTAssertEqual(harness.model.historyRecords.count, 0)
@@ -175,11 +101,11 @@ extension AppModelTests {
 
     func testNewRunAndSuccessClearStaleFailure() async {
         let harness = makeHarness()
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
         let runID = UUID()
 
         await harness.eventBus.publish(.runFailed(runID: nil, workflow: nil, message: "Old failure"))
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertEqual(
             harness.model.lastFailure,
             harness.model.language == .english
@@ -197,7 +123,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertNil(harness.model.lastFailure)
 
         await harness.eventBus.publish(
@@ -211,7 +137,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertFalse(harness.model.isRunning)
         XCTAssertNil(harness.model.lastFailure)
@@ -220,7 +146,7 @@ extension AppModelTests {
 
     func testRunWorkflowGuardsAgainstDoubleClickBeforeEventsArrive() async {
         let harness = makeHarness(delay: .milliseconds(150))
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
         let stream = await harness.eventBus.stream()
         let collector = Task { () -> [RillEvent] in
             var events: [RillEvent] = []
@@ -298,9 +224,10 @@ extension AppModelTests {
             }
         )
         await eventBusHolder.set(harness.eventBus)
+        await harness.model.waitForInitialVoiceConfiguration()
 
         harness.model.runWorkflow(workflow)
-        await waitForEventProcessing()
+        await harness.model.waitForWorkflowAudioActions()
 
         let startedSnapshot = await probe.snapshot()
         XCTAssertEqual(startedSnapshot.startCalls.count, 1)
@@ -314,7 +241,8 @@ extension AppModelTests {
         XCTAssertTrue(harness.model.canTriggerWorkflow(workflow))
 
         harness.model.runWorkflow(workflow)
-        await waitForEventProcessing()
+        await harness.model.waitForWorkflowAudioActions()
+        await waitForEventProcessing(harness)
 
         let finishedSnapshot = await probe.snapshot()
         XCTAssertEqual(finishedSnapshot.finishCount, 1)
@@ -361,7 +289,7 @@ extension AppModelTests {
         XCTAssertEqual(preparingSnapshot.finishCount, 0)
 
         await startGate.succeed()
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertEqual(harness.model.workflowAudioRunState, .recording(workflowID: workflow.id))
         XCTAssertEqual(
@@ -394,7 +322,7 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.workflowAudioRunState, .preparing(workflowID: workflow.id))
 
         await startGate.fail(message: "Microphone unavailable")
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertFalse(harness.model.isRunning)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
@@ -429,8 +357,8 @@ extension AppModelTests {
 
     func testStackDeliveryFailureWithRunIDRecordsHistory() async {
         let harness = makeHarness()
-        await waitForListenerSetup()
-        let stackWorkflow = WorkflowPresentation(fallbackName: "Stack Delivery", titleKey: .stackDelivery)
+        await waitForListenerSetup(harness)
+        let stackWorkflow = WorkflowPresentation(fallbackName: "Stack Delivery", titleKey: .recordDelivery)
 
         await harness.eventBus.publish(
             .runFailed(
@@ -439,11 +367,11 @@ extension AppModelTests {
                 message: "Accessibility permission is required for text injection."
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertEqual(harness.model.historyRecords.count, 1)
         XCTAssertEqual(harness.model.historyRecords.first?.outcome, .failed)
-        XCTAssertTrue(harness.model.historyRecords.first?.isStackRelated == true)
+        XCTAssertTrue(harness.model.historyRecords.first?.isRecordRelated == true)
     }
 
     func testLoadsPersistedLanguageWhileIgnoringLegacyWorkflowSelection() async {
@@ -467,7 +395,7 @@ extension AppModelTests {
             settingsStore: settingsStore
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(harness.model.language, .simplifiedChinese)
         XCTAssertEqual(harness.model.enabledManualWorkflows.map(\.id), [harness.workflow.id, secondaryWorkflow.id])
@@ -500,8 +428,7 @@ extension AppModelTests {
             settingsWriteDebounceDuration: .milliseconds(5)
         )
 
-        await waitForEventProcessing()
-        try? await Task.sleep(for: .milliseconds(30))
+        await harness.model.waitForInitialVoiceConfiguration()
 
         let activity = await settingsStore.activitySnapshot()
 
@@ -546,7 +473,7 @@ extension AppModelTests {
         XCTAssertNil(activity.setCounts[.legacyWhisperKitLanguage])
 
         await settingsStore.resumeBatchRead()
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         activity = await settingsStore.activitySnapshot()
         XCTAssertFalse(harness.model.isLoadingSettings)
@@ -594,7 +521,7 @@ extension AppModelTests {
         }
 
         await settingsStore.resumeBatchRead()
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertFalse(harness.model.isLoadingSettings)
         XCTAssertEqual(
@@ -627,7 +554,7 @@ extension AppModelTests {
         XCTAssertEqual(activity.setCounts[.localSpeechModel], 1)
 
         await settingsStore.resumeBatchRead()
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         activity = await settingsStore.activitySnapshot()
         XCTAssertEqual(harness.model.localSpeechModelOption, .custom)
@@ -643,7 +570,7 @@ extension AppModelTests {
             pipeline: PipelineDeclaration(
                 recognizerID: AppModel.localSpeechRecognizerID,
                 postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
-                outputActions: [OutputActionReference(id: "inject.text")]
+                outputActions: [OutputActionReference(id: "focused-application.insert")]
             ),
             ui: WorkflowUIConfig(symbolName: "text.cursor", accentColorName: "teal"),
             metadata: [AppModel.workflowOriginMetadataKey: AppModel.userWorkflowOriginMetadataValue]
@@ -711,7 +638,7 @@ extension AppModelTests {
         XCTAssertNil(activity.setCounts[.localSpeechDownloadedModels])
 
         await settingsStore.resumeBatchRead()
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         activity = await settingsStore.activitySnapshot()
         preparation = await preparationProbe.snapshot()
@@ -751,7 +678,8 @@ extension AppModelTests {
         XCTAssertEqual(preparation.prepareCount, 0)
 
         await settingsStore.resumeBatchRead()
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
+        await harness.model.waitForLocalSpeechPreparation()
         await harness.model.flushPendingPersistenceWrites()
 
         preparation = await preparationProbe.snapshot()
@@ -786,9 +714,10 @@ extension AppModelTests {
             settingsStore: settingsStore
         )
 
+        await harness.model.waitForInitialVoiceConfiguration()
         let expectedLanguage: AppLanguage = harness.model.language == .english ? .simplifiedChinese : .english
         harness.model.language = expectedLanguage
-        await waitForEventProcessing()
+        await harness.model.flushPendingPersistenceWrites()
 
         let storedLanguage = try await settingsStore.string(forKey: .interfaceLanguage)
         let storedWorkflowID = try await settingsStore.string(forKey: .selectedWorkflowID)
@@ -799,54 +728,52 @@ extension AppModelTests {
 
     func testLoadSettingsRestoresClipboardMergeSimilarPreferenceWithoutRewrite() async {
         let settingsStore = UITestSettingsStore(
-            storage: [.clipboardMergeSimilarItems: "true"]
+            storage: [.recordMergeSimilar: "true"]
         )
         let harness = makeHarness(
             settingsStore: settingsStore,
             settingsWriteDebounceDuration: .milliseconds(5)
         )
 
-        await waitForEventProcessing()
-        try? await Task.sleep(for: .milliseconds(30))
+        await harness.model.waitForInitialVoiceConfiguration()
 
         let activity = await settingsStore.activitySnapshot()
 
-        XCTAssertTrue(harness.model.mergeSimilarClipboardItems)
+        XCTAssertTrue(harness.model.mergeSimilarRecords)
         XCTAssertTrue(activity.setCounts.isEmpty)
     }
 
-    func testLoadSettingsRestoresClipboardHistoryVisibilityPreference() async {
+    func testLoadSettingsRestoresRecordHistoryVisibilityPreference() async {
         let settingsStore = UITestSettingsStore(
-            storage: [.clipboardHistoryVisibility: ClipboardHistoryVisibility.all.rawValue]
+            storage: [.recordHistoryVisibility: RecordHistoryVisibility.all.rawValue]
         )
         let harness = makeHarness(
             settingsStore: settingsStore,
             settingsWriteDebounceDuration: .milliseconds(5)
         )
 
-        await waitForEventProcessing()
-        try? await Task.sleep(for: .milliseconds(30))
+        await harness.model.waitForInitialVoiceConfiguration()
 
         let activity = await settingsStore.activitySnapshot()
 
-        XCTAssertEqual(harness.model.clipboardHistoryVisibility, .all)
+        XCTAssertEqual(harness.model.recordHistoryVisibility, .all)
         XCTAssertTrue(activity.setCounts.isEmpty)
     }
 
-    func testUpdatingClipboardHistoryVisibilityPersistsSetting() async throws {
+    func testUpdatingRecordHistoryVisibilityPersistsSetting() async throws {
         let settingsStore = UITestSettingsStore()
         let harness = makeHarness(settingsStore: settingsStore)
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
-        harness.model.clipboardHistoryVisibility = .all
-        await waitForEventProcessing()
+        harness.model.recordHistoryVisibility = .all
+        await harness.model.flushPendingPersistenceWrites()
 
-        let storedValue = try await settingsStore.string(forKey: .clipboardHistoryVisibility)
+        let storedValue = try await settingsStore.string(forKey: .recordHistoryVisibility)
         let activity = await settingsStore.activitySnapshot()
 
-        XCTAssertEqual(storedValue, ClipboardHistoryVisibility.all.rawValue)
-        XCTAssertEqual(activity.setCounts[.clipboardHistoryVisibility], 1)
+        XCTAssertEqual(storedValue, RecordHistoryVisibility.all.rawValue)
+        XCTAssertEqual(activity.setCounts[.recordHistoryVisibility], 1)
     }
 
 
@@ -862,7 +789,7 @@ extension AppModelTests {
             defaultLocalSpeechModelIdentifier: trustedModels[0].id
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         harness.model.legacyWhisperKitCustomModel = "retired-custom-model"
         harness.model.legacyWhisperKitModelRepo = "retired/repository"
@@ -870,8 +797,6 @@ extension AppModelTests {
         harness.model.legacyWhisperKitModelFolder = "/tmp/retired-model"
         harness.model.legacyWhisperKitLanguage = "fr"
         harness.model.legacyWhisperKitDownloadIfNeeded = false
-
-        try? await Task.sleep(for: .milliseconds(50))
 
         let activity = await settingsStore.activitySnapshot()
         let credentialActivity = await credentialStore.activitySnapshot()
@@ -917,7 +842,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(diagnosticRepository: diagnosticRepository)
 
-        await waitForEventProcessing()
+        await harness.model.waitForHistoryProjectionLoads()
         XCTAssertEqual(
             harness.model.diagnosticEvents.map(\.event),
             ["diagnostic.stored.newer", "diagnostic.stored.older"]
@@ -934,7 +859,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertEqual(
             harness.model.diagnosticEvents.map(\.event),
@@ -955,7 +880,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(diagnosticRepository: diagnosticRepository)
 
-        await waitForEventProcessing()
+        await harness.model.waitForHistoryProjectionLoads()
 
         XCTAssertEqual(harness.model.diagnosticsLoadState, .failed)
         guard case .failed(let entries) = DiagnosticsView.timelineContent(
@@ -967,7 +892,7 @@ extension AppModelTests {
         XCTAssertTrue(entries.isEmpty)
 
         harness.model.refreshDiagnostics()
-        await waitForEventProcessing()
+        await harness.model.waitForHistoryProjectionLoads()
 
         XCTAssertEqual(harness.model.diagnosticsLoadState, .loaded)
         XCTAssertEqual(harness.model.diagnosticEvents, [recoveredEvent])
@@ -985,7 +910,7 @@ extension AppModelTests {
             matchMode: .wordBoundary,
             scope: VocabularyRuleScope(
                 bundleIdentifier: "com.apple.Notes",
-                clipboardGroupID: groupID,
+                recordCollectionID: groupID,
                 locale: "en-US"
             ),
             priority: 7
@@ -1018,7 +943,7 @@ extension AppModelTests {
             vocabularyRuleSource: source
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(try source.currentRules(), [loadedRule])
         harness.model.addVocabularyRule(
@@ -1045,7 +970,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(settingsStore: settingsStore)
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(harness.model.localSpeechModelOption, .distilLargeV3Compact)
         XCTAssertEqual(harness.model.localSpeechModel, "distil-whisper_distil-large-v3_594MB")
@@ -1066,7 +991,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(settingsStore: settingsStore)
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(
             harness.model.downloadedLocalSpeechModels,
@@ -1082,7 +1007,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(settingsStore: settingsStore)
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(harness.model.localSpeechModelOption, .custom)
         XCTAssertEqual(harness.model.legacyWhisperKitCustomModel, "distil-whisper_distil-large-v3_turbo_600MB-custom")
@@ -1097,7 +1022,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(settingsStore: settingsStore)
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
         XCTAssertEqual(harness.model.defaultWorkflowDraft().recognizer, .localSpeech)
@@ -1109,7 +1034,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(settingsStore: settingsStore)
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertTrue(harness.model.longRecordingModeEnabled)
     }
@@ -1118,8 +1043,9 @@ extension AppModelTests {
         let settingsStore = UITestSettingsStore()
         let harness = makeHarness(settingsStore: settingsStore)
 
+        await harness.model.waitForInitialVoiceConfiguration()
         harness.model.longRecordingModeEnabled = true
-        await waitForEventProcessing()
+        await harness.model.flushPendingPersistenceWrites()
 
         let snapshot = await settingsStore.activitySnapshot()
         XCTAssertEqual(snapshot.storage[.longRecordingModeEnabled], "true")
@@ -1140,10 +1066,10 @@ extension AppModelTests {
 
         let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
 
-        XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.outputActions.first?.id, "stack.push")
+        XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.outputActions.first?.id, "record.store")
         XCTAssertEqual(
-            resolvedHotkeyWorkflow?.metadata[WorkflowMetadataKey.targetClipboardGroupID],
-            ClipboardGroup.voiceGroupID.uuidString
+            resolvedHotkeyWorkflow?.targetRecordCollectionIDs,
+            [RecordCollection.voiceInputID]
         )
     }
 
@@ -1187,9 +1113,9 @@ extension AppModelTests {
         let harness = makeHarness(liveSubtitlePreparingHideDelay: .milliseconds(80))
         let snapshot = LiveSubtitleSnapshot(runID: UUID(), phase: .preparing, providerID: "whisperkit.stream")
 
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         await harness.eventBus.publish(.liveSubtitleUpdated(snapshot))
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertEqual(harness.model.liveSubtitleSnapshot?.phase, .preparing)
 
         try? await Task.sleep(for: .milliseconds(140))
@@ -1205,7 +1131,7 @@ extension AppModelTests {
         harness.model.installLiveSubtitlePanelAction { snapshot, language in
             Task { await probe.record(snapshot: snapshot, language: language) }
         }
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         await harness.eventBus.publish(
             .liveSubtitleUpdated(
@@ -1217,14 +1143,14 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         var updates = await probe.snapshot()
         XCTAssertEqual(updates.last?.snapshot?.runID, runID)
         XCTAssertEqual(updates.last?.snapshot?.phase, .transcribing)
 
         harness.model.language = .english
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         updates = await probe.snapshot()
         XCTAssertEqual(updates.last?.snapshot?.runID, runID)
@@ -1246,7 +1172,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         await harness.eventBus.publish(
             .liveSubtitleUpdated(
@@ -1257,7 +1183,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         await harness.eventBus.publish(
             .liveSubtitleUpdated(
@@ -1267,7 +1193,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertEqual(harness.model.liveSubtitleSnapshot?.runID, currentRunID)
         XCTAssertEqual(harness.model.liveSubtitleSnapshot?.phase, .preparing)
@@ -1277,7 +1203,7 @@ extension AppModelTests {
         let harness = makeHarness()
         let queuedRunID = UUID()
 
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         await harness.eventBus.publish(
             .audioProcessingQueueUpdated(
                 AudioProcessingQueueSnapshot(
@@ -1287,7 +1213,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertNil(harness.model.liveSubtitleSnapshot)
         XCTAssertTrue(harness.model.hasActiveOrQueuedVoiceRun)
@@ -1297,7 +1223,7 @@ extension AppModelTests {
         let harness = makeHarness()
         let liveRunID = UUID()
 
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         await harness.eventBus.publish(
             .audioProcessingQueueUpdated(
                 AudioProcessingQueueSnapshot(
@@ -1318,7 +1244,7 @@ extension AppModelTests {
                 )
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertEqual(harness.model.liveSubtitleSnapshot?.runID, liveRunID)
         XCTAssertEqual(harness.model.liveSubtitleSnapshot?.phase, .transcribing)
@@ -1330,7 +1256,7 @@ extension AppModelTests {
                 LiveSubtitleSnapshot(runID: liveRunID, phase: .hidden)
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertNil(harness.model.liveSubtitleSnapshot)
         XCTAssertTrue(harness.model.hasActiveOrQueuedVoiceRun)
@@ -1391,19 +1317,19 @@ extension AppModelTests {
         )
     }
 
-    func testLoadsPersistedClipboardPanelHotkeyBinding() async {
+    func testLoadsPersistedRecordPanelHotkeyBinding() async {
         let shortcut = KeyboardShortcut(keyCode: 8, modifiers: [.command, .shift])
         let settingsStore = UITestSettingsStore(
             storage: [
-                .clipboardPanelHotkey: shortcut.storageString,
+                .recordPanelHotkey: shortcut.storageString,
             ]
         )
         let harness = makeHarness(settingsStore: settingsStore)
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(
-            harness.model.clipboardPanelHotkeyBinding,
+            harness.model.recordPanelHotkeyBinding,
             .keyboardShortcut(shortcut)
         )
     }
@@ -1434,7 +1360,7 @@ extension AppModelTests {
             settingsStore: settingsStore
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertTrue(harness.model.isWorkflowEnabled(primaryWorkflow))
         XCTAssertFalse(harness.model.isWorkflowEnabled(secondaryWorkflow))
@@ -1448,7 +1374,7 @@ extension AppModelTests {
             pipeline: PipelineDeclaration(
                 recognizerID: "sherpa-onnx.local",
                 postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
-                outputActions: [OutputActionReference(id: "inject.text")],
+                outputActions: [OutputActionReference(id: "focused-application.insert")],
                 uncertaintyPolicy: UncertaintyPolicy(mode: .off, confidenceThreshold: 0, timeoutSeconds: 0),
                 deliveryPolicy: DeliveryPolicy(strategy: .immediate)
             ),
@@ -1464,7 +1390,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(settingsStore: settingsStore)
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(harness.model.customWorkflows.count, 1)
         XCTAssertEqual(harness.model.customWorkflows.first?.name, "Custom Follow-up")

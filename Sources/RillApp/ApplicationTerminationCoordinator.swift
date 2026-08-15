@@ -114,20 +114,20 @@ final class ApplicationTerminationCoordinator {
 enum ApplicationShutdownOperation {
   static func make(
     sealMarkdownPostCommitCleanups: @escaping @Sendable () async -> Void = {},
-    sealClipboardMutations: @escaping @Sendable () async -> Void = {},
+    sealRecordMutations: @escaping @Sendable () async -> Void = {},
     stopStartupTasks: @escaping @Sendable () async -> Void = {},
     stopSettingsReads: @escaping @Sendable () async -> Void = {},
-    drainClipboardMutations: @escaping @Sendable () async -> Void = {},
+    drainRecordMutations: @escaping @Sendable () async -> Void = {},
     cancelRecording: @escaping @Sendable () async -> Void,
     cancelWorkflowRun: @escaping @Sendable () async -> Void,
     cancelFailedAudioRecoveryRetries: @escaping @Sendable () async -> Void,
     stopLocalHistoryMaintenance: @escaping @Sendable () async -> Void,
     shutdownAudioQueue: @escaping @Sendable () async -> Void,
     shutdownSpeechPlayback: @escaping @Sendable () async -> Void = {},
-    drainTextInjectionClipboardRecovery: @escaping @Sendable () async -> Void = {},
-    stopStackPaste: @escaping @Sendable () async -> Void,
+    drainTextInjectionSystemClipboardRecovery: @escaping @Sendable () async -> Void = {},
+    stopSystemClipboardCapture: @escaping @Sendable () async -> Void,
     stopGlobalInputOwner: @escaping @Sendable () async -> Void = {},
-    stopClipboardGroupScheduler: @escaping @Sendable () async -> Void,
+    stopRecordCollectionScheduler: @escaping @Sendable () async -> Void,
     drainMarkdownPostCommitCleanups: @escaping @Sendable () async -> Void = {},
     stopLocalSpeechPreparation: @escaping @Sendable () async -> Void,
     stopEventListener: @escaping @Sendable () async -> Void,
@@ -137,7 +137,7 @@ enum ApplicationShutdownOperation {
       // Establish the terminal UI mutation boundary before waiting for
       // startup work, which could otherwise leave a window for new writes.
       await sealMarkdownPostCommitCleanups()
-      await sealClipboardMutations()
+      await sealRecordMutations()
       // Startup work and model-owned settings reads may activate producers,
       // migrate credentials, or write diagnostics. Drain both before the
       // producer phase so nothing publishes behind later barriers.
@@ -151,7 +151,7 @@ enum ApplicationShutdownOperation {
       }
       await withTaskGroup(of: Void.self) { group in
         group.addTask {
-          await drainClipboardMutations()
+          await drainRecordMutations()
         }
         group.addTask {
           await cancelRecording()
@@ -172,16 +172,16 @@ enum ApplicationShutdownOperation {
           await shutdownSpeechPlayback()
         }
       }
-      // A text injection can temporarily sit on top of a StackPaste
-      // preview. Restore that inner transaction first, then let StackPaste
-      // restore the original system clipboard. Running these drains in
+      // A focused-application insertion can temporarily sit on top of a
+      // system-clipboard capture transaction. Restore that inner transaction
+      // first, then restore the original system clipboard. Running these drains in
       // parallel can make the outer archive look like an external loser.
-      await drainTextInjectionClipboardRecovery()
-      await stopStackPaste()
+      await drainTextInjectionSystemClipboardRecovery()
+      await stopSystemClipboardCapture()
       // Every typed-stream consumer is now stopped. The application-level
       // owner is the only component allowed to uninstall the shared tap.
       await stopGlobalInputOwner()
-      await stopClipboardGroupScheduler()
+      await stopRecordCollectionScheduler()
       // Output producers are stopped and the coordinator was sealed
       // before teardown began. Finish descriptor-bound cleanup while
       // diagnostics and persistence are still available.

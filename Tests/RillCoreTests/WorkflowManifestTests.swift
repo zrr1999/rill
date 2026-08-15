@@ -7,7 +7,7 @@ final class WorkflowManifestTests: XCTestCase {
             name: "Streaming",
             pipeline: PipelineDeclaration(
                 recognizerID: "sherpa-onnx.streaming",
-                outputActions: [OutputActionReference(id: "inject.text")]
+                outputActions: [OutputActionReference(id: "focused-application.insert")]
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "orange"),
             metadata: [
@@ -26,7 +26,7 @@ final class WorkflowManifestTests: XCTestCase {
             name: "Default Enabled",
             pipeline: PipelineDeclaration(
                 recognizerID: "sherpa-onnx.local",
-                outputActions: [OutputActionReference(id: "inject.text")]
+                outputActions: [OutputActionReference(id: "focused-application.insert")]
             ),
             ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red")
         )
@@ -48,7 +48,7 @@ final class WorkflowManifestTests: XCTestCase {
             trigger: .wakeWord,
             pipeline: PipelineDeclaration(
                 recognizerID: "demo.direct",
-                outputActions: [OutputActionReference(id: "clipboard.copy")]
+                outputActions: [OutputActionReference(id: "system-clipboard.copy")]
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue"),
             metadata: ["owner": "tests"]

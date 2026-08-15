@@ -6,6 +6,13 @@ private struct MockContextProvider: ContextProvider {
     func captureContext() async -> ContextSnapshot { .empty }
 }
 
+private func makeStoredRecordDraft(_ text: String) -> RecordDraft {
+    RecordDraft(
+        payload: .text(text),
+        provenance: RecordProvenance(source: .init(kind: .workflow))
+    )
+}
+
 private struct MockRecognizer: SpeechRecognizer {
     let id = "mock.recognizer"
     let result: RecognitionResult
@@ -190,6 +197,26 @@ private struct ProbeAction: OutputAction {
     }
 }
 
+private struct InjectingProbeAction: OutputAction {
+    let id = "selected.record.action"
+    let probe: ActionProbe
+
+    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+        await probe.record(text)
+        return .injected
+    }
+}
+
+private struct CommittedOutputProbeAction: OutputAction {
+    let id = "selected.record.action"
+    let probe: ActionProbe
+
+    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+        await probe.record(text)
+        throw CommittedOutputFailure.clipboardRestorationFailedAfterInjection
+    }
+}
+
 private struct ResultAction: OutputAction {
     let id: String
     let result: ActionResult
@@ -198,45 +225,6 @@ private struct ResultAction: OutputAction {
     func execute(text: String, context: ActionContext) async throws -> ActionResult {
         await probe.record(id)
         return result
-    }
-}
-
-private struct ReplaceAwareStackAction: OutputAction {
-    let id = "replace.stack.action"
-    let stack: DeliveryStack
-
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        let item = DeliveryItem(
-            workflowID: context.workflow.id,
-            workflow: context.workflow.presentation,
-            text: text
-        )
-        if let sourceSubject = context.sourceClipboardItemSubject {
-            let replacement = await stack.replace(item, replacing: sourceSubject)
-            guard replacement == .replaced else {
-                return .failed("source replacement rejected")
-            }
-            return .pushedToStack
-        }
-        await stack.push(item)
-        return .pushedToStack
-    }
-}
-
-private struct GroupAwareStackAction: OutputAction {
-    let id = "group.stack.action"
-    let stack: DeliveryStack
-
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        let item = DeliveryItem(
-            workflowID: context.workflow.id,
-            workflow: context.workflow.presentation,
-            text: text,
-            alternatives: context.recognitionResult.candidateSets.flatMap { $0.candidates.map(\.text) },
-            targetGroupID: context.workflow.targetClipboardGroupID
-        )
-        await stack.push(item)
-        return .pushedToStack
     }
 }
 
@@ -264,7 +252,7 @@ private actor BlockingGate {
     }
 }
 
-private actor BlockingInitializationSettingsStore: SettingsStore, ClipboardPersistenceStore {
+private actor BlockingInitializationSettingsStore: SettingsStore {
     private let loadStarted: BlockingGate
     private let releaseLoad: BlockingGate
 
@@ -285,20 +273,90 @@ private actor BlockingInitializationSettingsStore: SettingsStore, ClipboardPersi
 
     func removeValue(forKey _: AppSettingKey) async throws {}
 
-    func loadClipboardPersistence() async throws -> ClipboardPersistenceReadSnapshot {
+}
+
+private actor BlockingRecordGraphPersistenceStore: RecordGraphPersistenceStore {
+    private let loadStarted: BlockingGate
+    private let releaseLoad: BlockingGate
+
+    init(loadStarted: BlockingGate, releaseLoad: BlockingGate) {
+        self.loadStarted = loadStarted
+        self.releaseLoad = releaseLoad
+    }
+
+    func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot {
         await loadStarted.resume()
         await releaseLoad.wait()
         return .empty
     }
 
-    func replaceClipboardPersistence(
-        with _: ClipboardPersistenceWriteSnapshot
+    func replaceRecordGraph(
+        with snapshot: RecordGraphPersistenceWriteSnapshot
     ) async throws -> Int64 {
-        1
+        _ = snapshot
+        return 1
     }
 
-    func removeClipboardPersistence() async throws -> ClipboardPersistenceRemovalResult {
+    func removeRecordGraph() async throws -> RecordGraphRemovalResult {
         .removed
+    }
+}
+
+private enum RecoveringRecordGraphPersistenceError: Error {
+    case rejected
+}
+
+private actor RecoveringRecordGraphPersistenceStore: RecordGraphPersistenceStore {
+    private struct WriteWaiter {
+        var targetCount: Int
+        var continuation: CheckedContinuation<Void, Never>
+    }
+
+    private var rejectsWrites = false
+    private var writeAttemptCount = 0
+    private var repositoryRevision: Int64 = 0
+    private var writeWaiters: [WriteWaiter] = []
+
+    func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot {
+        .empty
+    }
+
+    func replaceRecordGraph(
+        with snapshot: RecordGraphPersistenceWriteSnapshot
+    ) async throws -> Int64 {
+        _ = snapshot
+        writeAttemptCount += 1
+        resumeSatisfiedWriteWaiters()
+        guard !rejectsWrites else {
+            throw RecoveringRecordGraphPersistenceError.rejected
+        }
+        repositoryRevision += 1
+        return repositoryRevision
+    }
+
+    func removeRecordGraph() async throws -> RecordGraphRemovalResult {
+        .removed
+    }
+
+    func setRejectsWrites(_ rejectsWrites: Bool) {
+        self.rejectsWrites = rejectsWrites
+    }
+
+    func waitForWriteAttempts(_ targetCount: Int) async {
+        guard writeAttemptCount < targetCount else { return }
+        await withCheckedContinuation { continuation in
+            writeWaiters.append(
+                WriteWaiter(targetCount: targetCount, continuation: continuation)
+            )
+        }
+    }
+
+    private func resumeSatisfiedWriteWaiters() {
+        let satisfied = writeWaiters.filter { $0.targetCount <= writeAttemptCount }
+        writeWaiters.removeAll { $0.targetCount <= writeAttemptCount }
+        for waiter in satisfied {
+            waiter.continuation.resume()
+        }
     }
 }
 
@@ -409,7 +467,6 @@ private struct BlockingQueueAction: OutputAction {
 final class SessionCoordinatorTests: XCTestCase {
     func testCoordinatorResolvesAndPassesTypedRecognitionOptions() async {
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
         let requestProbe = RecognitionRequestProbe()
         let actionProbe = ActionProbe()
         let vocabularyMigration = VocabularyLegacyMigrator.migrate([
@@ -442,7 +499,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: actionProbe)]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             vocabularyCollectionProvider: { vocabularyMigration.collections },
             recognitionOptionsProvider: { _, _ in expectedOptions }
@@ -490,7 +546,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: actionProbe)]),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            deliveryStack: DeliveryStack(eventBus: eventBus, diagnostics: diagnostics),
             eventBus: eventBus,
             diagnostics: diagnostics,
             vocabularyCollectionProvider: { vocabularyMigration.collections }
@@ -518,7 +573,6 @@ final class SessionCoordinatorTests: XCTestCase {
     func testCoordinatorRunsPipelineAndExecutesActions() async {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let probe = ActionProbe()
 
@@ -542,7 +596,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: [MockTransformer()]),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -610,7 +663,6 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
 
@@ -651,7 +703,6 @@ final class SessionCoordinatorTests: XCTestCase {
         let eventBus = EventBus()
         let repository = InMemoryWorkflowRunReceiptRepository()
         let recorder = WorkflowRunReceiptRecorder(repository: repository, eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
         let actionProbe = ActionProbe()
         let workflow = WorkflowDefinition(
             name: "No Speech Workflow",
@@ -676,7 +727,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: [MockTransformer()]),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: actionProbe)]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             runReceiptRecorder: recorder
         )
@@ -777,7 +827,6 @@ final class SessionCoordinatorTests: XCTestCase {
                 actions: [ProbeAction(probe: actionProbe)]
             ),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let triggerEvent = WorkflowTriggerEvent(
@@ -806,7 +855,7 @@ final class SessionCoordinatorTests: XCTestCase {
 
     func testDeliverTopOfStackPublishesCompletionSummary() async {
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
+        let recordStore = RecordStore()
         let resolver = CandidateResolver(eventBus: eventBus)
         let probe = ActionProbe()
 
@@ -816,15 +865,13 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
+            recordStore: recordStore,
             eventBus: eventBus
         )
 
-        await deliveryStack.push(
-            DeliveryItem(
-                workflowID: UUID(),
-                text: "stack item"
-            )
+        _ = try? await recordStore.ingest(
+            makeStoredRecordDraft("stack item"),
+            into: [RecordCollection.inboxID]
         )
 
         let stream = await eventBus.stream()
@@ -840,7 +887,7 @@ final class SessionCoordinatorTests: XCTestCase {
         }
         await Task.yield()
 
-        await coordinator.deliverTopOfStack(actionID: "probe.action")
+        await coordinator.deliverNextRecord(actionID: "probe.action")
         let events = await collector.value
 
         XCTAssertTrue(events.contains { event in
@@ -851,8 +898,8 @@ final class SessionCoordinatorTests: XCTestCase {
         })
         XCTAssertTrue(events.contains { event in
             if case .runCompleted(let summary) = event {
-                return summary.workflow.titleKey == .stackDelivery
-                    && summary.trigger == .stackDelivery
+                return summary.workflow.titleKey == .recordDelivery
+                    && summary.trigger == .recordDelivery
                     && summary.finalText == "stack item"
             }
             return false
@@ -866,7 +913,7 @@ final class SessionCoordinatorTests: XCTestCase {
 
     func testClipboardDeliveryPreservesOnlyPrivacySafeFocusIdentity() async {
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
+        let recordStore = RecordStore()
         let contextProbe = ActionContextProbe()
         let identityContext = ContextSnapshot(
             focus: FocusSnapshot(
@@ -877,7 +924,7 @@ final class SessionCoordinatorTests: XCTestCase {
                 selectedText: "",
                 secureInput: false
             ),
-            clipboard: ClipboardSnapshot(plainText: "", changeCount: 7)
+            clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 7)
         )
         let coordinator = SessionCoordinator(
             contextProvider: MockContextProvider(),
@@ -888,14 +935,15 @@ final class SessionCoordinatorTests: XCTestCase {
                 actions: [ContextProbeAction(probe: contextProbe)]
             ),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: deliveryStack,
+            recordStore: recordStore,
             eventBus: eventBus
         )
-        await deliveryStack.push(
-            DeliveryItem(workflowID: UUID(), text: "CANARY-DELIVERY")
+        _ = try? await recordStore.ingest(
+            makeStoredRecordDraft("CANARY-DELIVERY"),
+            into: [RecordCollection.inboxID]
         )
 
-        await coordinator.deliverTopOfStack(actionID: "focus.probe")
+        await coordinator.deliverNextRecord(actionID: "focus.probe")
 
         let contexts = await contextProbe.snapshot()
         XCTAssertEqual(contexts.map(\.focus.bundleIdentifier), ["com.example.Editor"])
@@ -904,72 +952,346 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(contexts.allSatisfy { $0.clipboard.plainText.isEmpty })
     }
 
-    func testExplicitClipboardContextBypassesProviderAndFailureDoesNotMarkItemUsed() async {
+    func testExactManualRecordDeliveryUsesSelectedSubjectRetainsMembershipAndWritesReceipt() async throws {
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
-        let providerProbe = PrivacyContextCaptureProbe()
-        let actionProbe = ActionContextProbe()
-        let fallbackContext = ContextSnapshot(
-            focus: FocusSnapshot(
-                applicationName: "Wrong Target",
-                bundleIdentifier: "com.example.Wrong",
-                processIdentifier: 84,
-                focusedRole: nil,
-                selectedText: "",
-                secureInput: false
-            ),
-            clipboard: ClipboardSnapshot(plainText: "", changeCount: 1)
+        let repository = InMemoryWorkflowRunReceiptRepository()
+        let recorder = WorkflowRunReceiptRecorder(repository: repository, eventBus: eventBus)
+        let recordStore = RecordStore()
+        let list = try await recordStore.createCollection(name: "Reusable", preset: .list)
+        let selected = try await recordStore.ingest(
+            makeStoredRecordDraft("selected record"),
+            into: [list.id]
         )
-        let explicitContext = ContextSnapshot(
+        let routed = try await recordStore.ingest(
+            makeStoredRecordDraft("automatic route record"),
+            into: [RecordCollection.inboxID]
+        )
+        let membership = try XCTUnwrap(selected.memberships.first)
+        let subject = RecordDeliverySubject(
+            recordID: selected.id,
+            membershipID: membership.id,
+            membershipRevision: membership.revision,
+            collectionID: membership.collectionID,
+            payloadKind: selected.record.payload.kind,
+            captureTags: selected.record.provenance.captureTags
+        )
+        let target = try XCTUnwrap(
+            FocusedApplicationTargetIdentity(
+                processIdentifier: 42,
+                bundleIdentifier: "com.example.Editor"
+            )
+        )
+        let context = ContextSnapshot(
             focus: FocusSnapshot(
-                applicationName: "Locked Target",
-                bundleIdentifier: "com.example.Locked",
+                applicationName: "Editor",
+                bundleIdentifier: "com.example.Editor",
                 processIdentifier: 42,
                 focusedRole: "AXTextArea",
                 selectedText: "",
                 secureInput: false
             ),
-            clipboard: ClipboardSnapshot(plainText: "", changeCount: 2)
+            clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
         )
-        let item = DeliveryItem(workflowID: UUID(), text: "saved text")
-        await deliveryStack.push(item)
+        let probe = ActionProbe()
         let coordinator = SessionCoordinator(
             contextProvider: MockContextProvider(),
-            privacyContextProvider: { await providerProbe.capture(fallbackContext) },
+            privacyContextProvider: { context },
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
+            transformerRegistry: TextTransformerRegistry(transformers: []),
+            actionRegistry: OutputActionRegistry(actions: [InjectingProbeAction(probe: probe)]),
+            candidateResolver: CandidateResolver(eventBus: eventBus),
+            recordStore: recordStore,
+            eventBus: eventBus,
+            runReceiptRecorder: recorder
+        )
+
+        await coordinator.deliverRecord(
+            matching: subject,
+            to: target,
+            actionID: "selected.record.action"
+        )
+
+        let deliveredValues = await probe.snapshot()
+        XCTAssertEqual(deliveredValues, ["selected record"])
+        let selectedStored = try await recordStore.record(id: selected.id)
+        let routedStored = try await recordStore.record(id: routed.id)
+        let selectedAfter = try XCTUnwrap(selectedStored)
+        let routedAfter = try XCTUnwrap(routedStored)
+        XCTAssertEqual(selectedAfter.memberships.first?.state, .active)
+        XCTAssertEqual(selectedAfter.activity.useCount, 1)
+        XCTAssertEqual(routedAfter.memberships.first?.state, .active)
+        XCTAssertEqual(routedAfter.activity.useCount, 0)
+        let receipts = try await repository.receipts(matching: .all)
+        let receipt = try XCTUnwrap(receipts.first { $0.trigger == .recordDelivery })
+        XCTAssertEqual(receipt.termination, .completed)
+        XCTAssertEqual(receipt.actionDetails.map(\.result), [.injected])
+    }
+
+    func testCommittedOutputFailureSettlesExactRecordWithoutMarkingItRetryable() async throws {
+        let eventBus = EventBus()
+        let repository = InMemoryWorkflowRunReceiptRepository()
+        let recorder = WorkflowRunReceiptRecorder(repository: repository, eventBus: eventBus)
+        let recordStore = RecordStore()
+        let list = try await recordStore.createCollection(name: "Reusable", preset: .list)
+        let selected = try await recordStore.ingest(
+            makeStoredRecordDraft("selected record"),
+            into: [list.id]
+        )
+        let membership = try XCTUnwrap(selected.memberships.first)
+        let subject = RecordDeliverySubject(
+            recordID: selected.id,
+            membershipID: membership.id,
+            membershipRevision: membership.revision,
+            collectionID: membership.collectionID,
+            payloadKind: selected.record.payload.kind,
+            captureTags: selected.record.provenance.captureTags
+        )
+        let target = try XCTUnwrap(
+            FocusedApplicationTargetIdentity(
+                processIdentifier: 42,
+                bundleIdentifier: "com.example.Editor"
+            )
+        )
+        let context = ContextSnapshot(
+            focus: FocusSnapshot(
+                applicationName: "Editor",
+                bundleIdentifier: "com.example.Editor",
+                processIdentifier: 42,
+                focusedRole: "AXTextArea",
+                selectedText: "",
+                secureInput: false
+            ),
+            clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
+        )
+        let probe = ActionProbe()
+        let coordinator = SessionCoordinator(
+            contextProvider: MockContextProvider(),
+            privacyContextProvider: { context },
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(
-                actions: [FailingContextProbeAction(probe: actionProbe)]
+                actions: [CommittedOutputProbeAction(probe: probe)]
             ),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: deliveryStack,
-            eventBus: eventBus
+            recordStore: recordStore,
+            eventBus: eventBus,
+            runReceiptRecorder: recorder
         )
-        guard let subject = await deliveryStack.clipboardItemDryRunSubject(itemID: item.id) else {
-            return XCTFail("Expected an exact clipboard item subject.")
+        let stream = await eventBus.stream()
+        let collector = Task { () -> [RillEvent] in
+            var events: [RillEvent] = []
+            for await event in stream {
+                events.append(event)
+                if case .runFailed = event { break }
+            }
+            return events
+        }
+        await Task.yield()
+
+        await coordinator.deliverRecord(
+            matching: subject,
+            to: target,
+            actionID: "selected.record.action"
+        )
+
+        let events = await collector.value
+        let deliveredValues = await probe.snapshot()
+        let storedProjection = try await recordStore.record(id: selected.id)
+        let stored = try XCTUnwrap(storedProjection)
+        let receipts = try await repository.receipts(matching: .all)
+        let receipt = try XCTUnwrap(receipts.first { $0.trigger == .recordDelivery })
+
+        XCTAssertEqual(deliveredValues, ["selected record"])
+        XCTAssertEqual(stored.memberships.first?.state, .active)
+        XCTAssertEqual(stored.activity.useCount, 1)
+        XCTAssertNil(stored.activity.latestFailure)
+        XCTAssertEqual(receipt.termination, .partiallyCompleted(code: .processing))
+        XCTAssertEqual(receipt.actionDetails.map(\.result), [.injected])
+        XCTAssertTrue(events.contains { event in
+            if case .runFailed(_, _, let message) = event {
+                return message == CommittedOutputFailure
+                    .clipboardRestorationFailedAfterInjection
+                    .message
+            }
+            return false
+        })
+        XCTAssertFalse(events.contains { event in
+            if case .runCompleted = event { return true }
+            return false
+        })
+    }
+
+    func testCommittedOutputRetriesSettlementWithoutReleasingLeaseOrRepeatingAction() async throws {
+        let eventBus = EventBus()
+        let repository = InMemoryWorkflowRunReceiptRepository()
+        let recorder = WorkflowRunReceiptRecorder(repository: repository, eventBus: eventBus)
+        let persistence = RecoveringRecordGraphPersistenceStore()
+        let recordStore = RecordStore(persistence: persistence)
+        let list = try await recordStore.createCollection(name: "Reusable", preset: .list)
+        let selected = try await recordStore.ingest(
+            makeStoredRecordDraft("selected record"),
+            into: [list.id]
+        )
+        let membership = try XCTUnwrap(selected.memberships.first)
+        let subject = RecordDeliverySubject(
+            recordID: selected.id,
+            membershipID: membership.id,
+            membershipRevision: membership.revision,
+            collectionID: membership.collectionID,
+            payloadKind: selected.record.payload.kind,
+            captureTags: selected.record.provenance.captureTags
+        )
+        let target = try XCTUnwrap(
+            FocusedApplicationTargetIdentity(
+                processIdentifier: 42,
+                bundleIdentifier: "com.example.Editor"
+            )
+        )
+        let context = ContextSnapshot(
+            focus: FocusSnapshot(
+                applicationName: "Editor",
+                bundleIdentifier: "com.example.Editor",
+                processIdentifier: 42,
+                focusedRole: "AXTextArea",
+                selectedText: "",
+                secureInput: false
+            ),
+            clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
+        )
+        let probe = ActionProbe()
+        let coordinator = SessionCoordinator(
+            contextProvider: MockContextProvider(),
+            privacyContextProvider: { context },
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
+            transformerRegistry: TextTransformerRegistry(transformers: []),
+            actionRegistry: OutputActionRegistry(actions: [InjectingProbeAction(probe: probe)]),
+            candidateResolver: CandidateResolver(eventBus: eventBus),
+            recordStore: recordStore,
+            eventBus: eventBus,
+            runReceiptRecorder: recorder
+        )
+        let stream = await eventBus.stream()
+        let collector = Task { () -> [RillEvent] in
+            var events: [RillEvent] = []
+            for await event in stream {
+                events.append(event)
+                if case .runFailed = event { break }
+            }
+            return events
+        }
+        await Task.yield()
+        await persistence.setRejectsWrites(true)
+
+        await coordinator.deliverRecord(
+            matching: subject,
+            to: target,
+            actionID: "selected.record.action"
+        )
+        let events = await collector.value
+        await persistence.waitForWriteAttempts(4)
+
+        do {
+            _ = try await recordStore.beginDelivery(
+                matching: subject,
+                sink: .focusedApplication
+            )
+            XCTFail("Committed output must keep the exact membership leased while settlement retries.")
+        } catch let error as RecordStoreError {
+            XCTAssertEqual(error, .membershipAlreadyInUse)
         }
 
-        await coordinator.deliverClipboardItem(
-            subject: subject,
-            actionID: "failing.context.probe",
-            contextSnapshot: explicitContext
+        await persistence.setRejectsWrites(false)
+        await persistence.waitForWriteAttempts(5)
+        let stored = try await recordStore.record(id: selected.id)
+        let selectedAfter = try XCTUnwrap(stored)
+        let receipts = try await repository.receipts(matching: .all)
+        let receipt = try XCTUnwrap(receipts.first { $0.trigger == .recordDelivery })
+        let deliveredValues = await probe.snapshot()
+
+        XCTAssertEqual(deliveredValues, ["selected record"])
+        XCTAssertEqual(selectedAfter.memberships.first?.state, .active)
+        XCTAssertEqual(selectedAfter.activity.useCount, 1)
+        XCTAssertNil(selectedAfter.activity.latestFailure)
+        XCTAssertEqual(receipt.termination, .partiallyCompleted(code: .processing))
+        XCTAssertEqual(receipt.actionDetails.map(\.result), [.injected])
+        XCTAssertTrue(events.contains { event in
+            if case .runFailed(_, _, let message) = event {
+                return message.contains("may already have been delivered")
+                    && message.contains("do not repeat this action")
+            }
+            return false
+        })
+        XCTAssertFalse(events.contains { event in
+            if case .runCompleted = event { return true }
+            return false
+        })
+        await coordinator.shutdownRecordDeliverySettlements()
+    }
+
+    func testExactManualRecordDeliveryFailsClosedWhenRestoredTargetChanges() async throws {
+        let eventBus = EventBus()
+        let recordStore = RecordStore()
+        let list = try await recordStore.createCollection(name: "Reusable", preset: .list)
+        let selected = try await recordStore.ingest(
+            makeStoredRecordDraft("must not deliver"),
+            into: [list.id]
+        )
+        let membership = try XCTUnwrap(selected.memberships.first)
+        let subject = RecordDeliverySubject(
+            recordID: selected.id,
+            membershipID: membership.id,
+            membershipRevision: membership.revision,
+            collectionID: membership.collectionID,
+            payloadKind: .text
+        )
+        let target = try XCTUnwrap(
+            FocusedApplicationTargetIdentity(
+                processIdentifier: 42,
+                bundleIdentifier: "com.example.Editor"
+            )
+        )
+        let changedContext = ContextSnapshot(
+            focus: FocusSnapshot(
+                applicationName: "Other",
+                bundleIdentifier: "com.example.Other",
+                processIdentifier: 84,
+                focusedRole: "AXTextArea",
+                selectedText: "",
+                secureInput: false
+            ),
+            clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
+        )
+        let probe = ActionProbe()
+        let coordinator = SessionCoordinator(
+            contextProvider: MockContextProvider(),
+            privacyContextProvider: { changedContext },
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
+            transformerRegistry: TextTransformerRegistry(transformers: []),
+            actionRegistry: OutputActionRegistry(actions: [InjectingProbeAction(probe: probe)]),
+            candidateResolver: CandidateResolver(eventBus: eventBus),
+            recordStore: recordStore,
+            eventBus: eventBus
         )
 
-        let providerCaptureCount = await providerProbe.count()
-        let recordedContexts = await actionProbe.snapshot()
-        let storedItem = await deliveryStack.item(id: item.id)
-        let finalState = await coordinator.currentState()
-        XCTAssertEqual(providerCaptureCount, 0)
-        XCTAssertEqual(recordedContexts, [explicitContext])
-        XCTAssertEqual(storedItem?.useCount, 0)
-        XCTAssertNil(storedItem?.lastUsedAt)
-        XCTAssertEqual(finalState, .idle)
+        await coordinator.deliverRecord(
+            matching: subject,
+            to: target,
+            actionID: "selected.record.action"
+        )
+
+        let deliveredValues = await probe.snapshot()
+        XCTAssertTrue(deliveredValues.isEmpty)
+        let selectedStored = try await recordStore.record(id: selected.id)
+        let selectedAfter = try XCTUnwrap(selectedStored)
+        XCTAssertEqual(selectedAfter.memberships.first?.state, .active)
+        XCTAssertEqual(selectedAfter.activity.useCount, 0)
+        XCTAssertEqual(selectedAfter.activity.latestFailure, .deliveryFailed)
     }
+
 
     func testCoordinatorRecordsStageDiagnostics() async {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let probe = ActionProbe()
 
@@ -993,7 +1315,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: [MockTransformer()]),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -1037,7 +1358,6 @@ final class SessionCoordinatorTests: XCTestCase {
 
     func testCoordinatorUsesProvidedRunIDWhenSupplied() async {
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
         let resolver = CandidateResolver(eventBus: eventBus)
         let probe = ActionProbe()
         let expectedRunID = UUID()
@@ -1059,7 +1379,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus
         )
 
@@ -1097,51 +1416,10 @@ final class SessionCoordinatorTests: XCTestCase {
         })
     }
 
-    func testCoordinatorPushesVoiceResultIntoTargetClipboardGroup() async {
-        let eventBus = EventBus()
-        let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
-        let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
-        let workflow = WorkflowDefinition(
-            name: "Voice Group Workflow",
-            pipeline: PipelineDeclaration(
-                recognizerID: "mock.recognizer",
-                outputActions: [OutputActionReference(id: "group.stack.action")],
-                uncertaintyPolicy: UncertaintyPolicy(mode: .off, confidenceThreshold: 0, timeoutSeconds: 0),
-                deliveryPolicy: DeliveryPolicy(strategy: .stackFirst)
-            ),
-            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple"),
-            metadata: [WorkflowMetadataKey.targetClipboardGroupID: ClipboardGroup.voiceGroupID.uuidString]
-        )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
-            recognizerRegistry: SpeechRecognizerRegistry(
-                recognizers: [MockRecognizer(result: RecognitionResult(rawText: "voice result", bestText: "voice result"))]
-            ),
-            transformerRegistry: TextTransformerRegistry(transformers: []),
-            actionRegistry: OutputActionRegistry(actions: [GroupAwareStackAction(stack: deliveryStack)]),
-            candidateResolver: resolver,
-            deliveryStack: deliveryStack,
-            eventBus: eventBus,
-            diagnostics: diagnostics
-        )
-
-        await coordinator.run(workflow: workflow, contextSnapshot: .empty)
-        let snapshot = await deliveryStack.clipboardSnapshot()
-        let sessionDiagnostics = await diagnostics.snapshot(matching: DiagnosticQuery(subsystem: .session))
-
-        XCTAssertEqual(snapshot.items.first?.text, "voice result")
-        XCTAssertEqual(snapshot.items.first?.groupID, ClipboardGroup.voiceGroupID)
-        XCTAssertEqual(snapshot.remainingItemIDs, snapshot.items.map(\.id))
-        XCTAssertTrue(sessionDiagnostics.contains { event in
-            event.event == "session.action" && event.metadata["actionID"] == "group.stack.action"
-        })
-    }
 
     func testRecognizerFailurePublishesFailureEventAndDiagnostics() async {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let actionProbe = ActionProbe()
         let expectedRunID = UUID()
@@ -1161,7 +1439,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: actionProbe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -1210,7 +1487,6 @@ final class SessionCoordinatorTests: XCTestCase {
     func testCoordinatorAppliesScopedVocabularyMappingsBeforePostProcessing() async {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let probe = ActionProbe()
         var workflow = WorkflowDefinition(
@@ -1222,7 +1498,7 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "text.badge.checkmark", accentColorName: "green"),
             metadata: [
-                WorkflowMetadataKey.targetClipboardGroupID: ClipboardGroup.voiceGroupID.uuidString,
+                WorkflowMetadataKey.legacyTargetRecordCollectionID: RecordCollection.voiceInputID.rawValue.uuidString,
                 WorkflowMetadataKey.languageOverride: "zh",
             ]
         )
@@ -1235,7 +1511,7 @@ final class SessionCoordinatorTests: XCTestCase {
                 selectedText: "",
                 secureInput: false
             ),
-            clipboard: ClipboardSnapshot(plainText: "", changeCount: 0)
+            clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
         )
         let rules = [
             VocabularyRule(
@@ -1243,7 +1519,7 @@ final class SessionCoordinatorTests: XCTestCase {
                 replacement: "Rill",
                 scope: VocabularyRuleScope(
                     bundleIdentifier: "com.example.editor",
-                    clipboardGroupID: ClipboardGroup.voiceGroupID,
+                    recordCollectionID: RecordCollection.voiceInputID.rawValue,
                     locale: "zh"
                 )
             ),
@@ -1271,7 +1547,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: [MockTransformer()]),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics,
             vocabularyCollectionProvider: { vocabularyMigration.collections }
@@ -1290,7 +1565,6 @@ final class SessionCoordinatorTests: XCTestCase {
 
     func testCompletionCarriesResolvedPreMappingTextAndVocabularyContext() async throws {
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
         let resolver = CandidateResolver(eventBus: eventBus)
         let probe = ActionProbe()
         let targetGroupID = UUID(uuidString: "00000000-0000-0000-0000-000000000042")!
@@ -1330,7 +1604,7 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue"),
             metadata: [
-                WorkflowMetadataKey.targetClipboardGroupID: targetGroupID.uuidString,
+                WorkflowMetadataKey.legacyTargetRecordCollectionID: targetGroupID.uuidString,
                 WorkflowMetadataKey.languageOverride: "en-US",
             ]
         )
@@ -1340,7 +1614,7 @@ final class SessionCoordinatorTests: XCTestCase {
                 replacement: "Rill",
                 scope: VocabularyRuleScope(
                     bundleIdentifier: "com.example.editor",
-                    clipboardGroupID: targetGroupID,
+                    recordCollectionID: targetGroupID,
                     locale: "zh-CN"
                 )
             ),
@@ -1355,7 +1629,7 @@ final class SessionCoordinatorTests: XCTestCase {
                 selectedText: "unrelated selected text",
                 secureInput: false
             ),
-            clipboard: ClipboardSnapshot(plainText: "unrelated clipboard text", changeCount: 7)
+            clipboard: SystemClipboardSnapshot(plainText: "unrelated clipboard text", changeCount: 7)
         )
         let coordinator = SessionCoordinator(
             contextProvider: MockContextProvider(),
@@ -1365,7 +1639,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: [MockTransformer()]),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             vocabularyCollectionProvider: { vocabularyMigration.collections }
         )
@@ -1405,7 +1678,7 @@ final class SessionCoordinatorTests: XCTestCase {
             summary.correctionSource?.context,
             VocabularyRuleContext(
                 bundleIdentifier: "com.example.editor",
-                clipboardGroupID: targetGroupID,
+                recordCollectionID: targetGroupID,
                 locale: "zh-CN"
             )
         )
@@ -1416,7 +1689,6 @@ final class SessionCoordinatorTests: XCTestCase {
 
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let probe = ActionProbe()
         let workflow = WorkflowDefinition(
@@ -1435,7 +1707,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics,
             vocabularyRuleProvider: { throw LoadFailure() }
@@ -1452,7 +1723,6 @@ final class SessionCoordinatorTests: XCTestCase {
     func testMissingTransformerFailsInsteadOfSilentlyReturningUnprocessedText() async {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let probe = ActionProbe()
         let workflow = WorkflowDefinition(
             name: "Unsupported Rewrite",
@@ -1471,7 +1741,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -1514,7 +1783,6 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            deliveryStack: DeliveryStack(eventBus: eventBus, diagnostics: diagnostics),
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -1574,7 +1842,6 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            deliveryStack: DeliveryStack(eventBus: eventBus, diagnostics: diagnostics),
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -1619,7 +1886,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            deliveryStack: DeliveryStack(eventBus: eventBus, diagnostics: diagnostics),
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -1660,7 +1926,6 @@ final class SessionCoordinatorTests: XCTestCase {
                 actions: [ProbeAction(probe: actionProbe)]
             ),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let runID = UUID()
@@ -1713,7 +1978,6 @@ final class SessionCoordinatorTests: XCTestCase {
                 ResultAction(id: "must.not.run", result: .copiedToClipboard, probe: actionProbe),
             ]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let stream = await eventBus.stream()
@@ -1752,11 +2016,93 @@ final class SessionCoordinatorTests: XCTestCase {
         })
     }
 
+    func testCommittedOutputFailureMarksWorkflowActionInjectedAndRunPartial() async throws {
+        let eventBus = EventBus()
+        let repository = InMemoryWorkflowRunReceiptRepository()
+        let recorder = WorkflowRunReceiptRecorder(repository: repository, eventBus: eventBus)
+        let probe = ActionProbe()
+        let workflow = WorkflowDefinition(
+            name: "Committed Output",
+            pipeline: PipelineDeclaration(
+                recognizerID: "mock.recognizer",
+                outputActions: [OutputActionReference(id: "selected.record.action")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "checkmark", accentColorName: "orange")
+        )
+        let coordinator = SessionCoordinator(
+            contextProvider: MockContextProvider(),
+            recognizerRegistry: SpeechRecognizerRegistry(
+                recognizers: [
+                    MockRecognizer(
+                        result: RecognitionResult(rawText: "input", bestText: "input")
+                    ),
+                ]
+            ),
+            transformerRegistry: TextTransformerRegistry(transformers: []),
+            actionRegistry: OutputActionRegistry(
+                actions: [CommittedOutputProbeAction(probe: probe)]
+            ),
+            candidateResolver: CandidateResolver(eventBus: eventBus),
+            eventBus: eventBus,
+            runReceiptRecorder: recorder
+        )
+        let runID = UUID()
+        let stream = await eventBus.stream()
+        let collector = Task { () -> [RillEvent] in
+            var events: [RillEvent] = []
+            for await event in stream {
+                events.append(event)
+                if case .runFailed = event { break }
+            }
+            return events
+        }
+        await Task.yield()
+
+        let outcome = await coordinator.runReportingOutcome(
+            workflow: workflow,
+            runID: runID,
+            contextSnapshot: .empty
+        )
+
+        let events = await collector.value
+        let receipts = try await repository.receipts(matching: .init(runID: runID))
+        let receipt = try XCTUnwrap(receipts.first)
+        let deliveredValues = await probe.snapshot()
+
+        guard case .failed(let failure) = outcome else {
+            return XCTFail("Expected committed recovery failure to keep a failed run outcome.")
+        }
+        XCTAssertEqual(failure.stage, .delivering)
+        XCTAssertEqual(deliveredValues, ["input"])
+        XCTAssertEqual(receipt.termination, .partiallyCompleted(code: .processing))
+        XCTAssertEqual(receipt.actionDetails.map(\.result), [.injected])
+        XCTAssertTrue(events.contains { event in
+            if case .actionExecuted(
+                actionID: "selected.record.action",
+                result: .injected
+            ) = event {
+                return true
+            }
+            return false
+        })
+        XCTAssertTrue(events.contains { event in
+            if case .runFailed(_, _, let message) = event {
+                return message == CommittedOutputFailure
+                    .clipboardRestorationFailedAfterInjection
+                    .message
+            }
+            return false
+        })
+        XCTAssertFalse(events.contains { event in
+            if case .runCompleted = event { return true }
+            return false
+        })
+    }
+
     func testReturnedStackActionFailureDoesNotConsumeLeasedItem() async {
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
+        let recordStore = RecordStore()
         let actionProbe = ActionProbe()
-        let itemID = UUID()
         let coordinator = SessionCoordinator(
             contextProvider: MockContextProvider(),
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
@@ -1769,20 +2115,25 @@ final class SessionCoordinatorTests: XCTestCase {
                 ),
             ]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: deliveryStack,
+            recordStore: recordStore,
             eventBus: eventBus
         )
-        await deliveryStack.push(
-            DeliveryItem(id: itemID, workflowID: UUID(), text: "retain me")
+        let inserted = try? await recordStore.ingest(
+            RecordDraft(
+                payload: .text("retain me"),
+                provenance: .init(source: .init(kind: .workflow))
+            ),
+            into: [RecordCollection.inboxID]
         )
 
-        await coordinator.deliverTopOfStack(actionID: "reported.failure")
+        await coordinator.deliverNextRecord(actionID: "reported.failure")
 
-        let snapshot = await deliveryStack.clipboardSnapshot()
+        let stored = try? await recordStore.record(id: inserted?.id ?? RecordID())
         let executedActionIDs = await actionProbe.snapshot()
         XCTAssertEqual(executedActionIDs, ["reported.failure"])
-        XCTAssertTrue(snapshot.remainingItemIDs.contains(itemID))
-        XCTAssertEqual(snapshot.items.first(where: { $0.id == itemID })?.useCount, 0)
+        XCTAssertEqual(stored?.memberships.first?.state, .active)
+        XCTAssertEqual(stored?.activity.useCount, 0)
+        XCTAssertEqual(stored?.activity.latestFailure, .deliveryFailed)
     }
 
     func testReportedConfigurationFailureIsClassifiedBeforeRecognition() async {
@@ -1803,7 +2154,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let runID = UUID()
@@ -1851,7 +2201,6 @@ final class SessionCoordinatorTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: actionProbe)]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let runID = UUID()
@@ -1885,16 +2234,12 @@ extension SessionCoordinatorTests {
     func testStackDeliveryReservesCoordinatorBeforeAwaitingStackInitialization() async {
         let loadStarted = BlockingGate()
         let releaseLoad = BlockingGate()
-        let settingsStore = BlockingInitializationSettingsStore(
+        let persistence = BlockingRecordGraphPersistenceStore(
             loadStarted: loadStarted,
             releaseLoad: releaseLoad
         )
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(
-            eventBus: eventBus,
-            clipboardPersistenceStore: settingsStore
-        )
-        await loadStarted.wait()
+        let recordStore = RecordStore(persistence: persistence)
 
         let coordinator = SessionCoordinator(
             contextProvider: MockContextProvider(),
@@ -1902,12 +2247,13 @@ extension SessionCoordinatorTests {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: deliveryStack,
+            recordStore: recordStore,
             eventBus: eventBus
         )
         let firstDelivery = Task {
-            await coordinator.deliverTopOfStack()
+            await coordinator.deliverNextRecord()
         }
+        await loadStarted.wait()
 
         var reservedBeforeStackLoad = false
         for _ in 0..<200 {
@@ -1924,7 +2270,7 @@ extension SessionCoordinatorTests {
 
         let secondCompletion = CompletionProbe()
         let secondDelivery = Task {
-            await coordinator.deliverTopOfStack()
+            await coordinator.deliverNextRecord()
             await secondCompletion.complete()
         }
         for _ in 0..<200 {
@@ -1934,7 +2280,7 @@ extension SessionCoordinatorTests {
         let rejectedWhileFirstWasBlocked = await secondCompletion.snapshot()
         XCTAssertTrue(
             rejectedWhileFirstWasBlocked,
-            "A concurrent delivery must be rejected instead of entering the blocked stack call."
+            "A concurrent delivery must be rejected instead of entering the blocked record-store call."
         )
 
         await releaseLoad.resume()
@@ -1974,7 +2320,6 @@ extension SessionCoordinatorTests {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: actionProbe)]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus,
             recognitionOptionsProvider: { _, _ in
                 SpeechRecognitionRequestOptions(
@@ -2034,7 +2379,6 @@ extension SessionCoordinatorTests {
                 ]
             ),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let firstWorkflow = WorkflowDefinition(
@@ -2124,15 +2468,13 @@ extension SessionCoordinatorTests {
         let gate = BlockingGate()
         let repository = BlockingDiagnosticRepository(target: .completedStage, gate: gate)
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus, repository: repository)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
+        let recordStore = RecordStore()
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let probe = ActionProbe()
 
-        await deliveryStack.push(
-            DeliveryItem(
-                workflowID: UUID(),
-                text: "stack item"
-            )
+        _ = try? await recordStore.ingest(
+            makeStoredRecordDraft("stack item"),
+            into: [RecordCollection.inboxID]
         )
 
         let coordinator = SessionCoordinator(
@@ -2143,13 +2485,13 @@ extension SessionCoordinatorTests {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
+            recordStore: recordStore,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
 
         let task = Task {
-            await coordinator.deliverTopOfStack(actionID: "probe.action")
+            await coordinator.deliverNextRecord(actionID: "probe.action")
         }
 
         var sawCompletedStage = false
@@ -2184,7 +2526,6 @@ extension SessionCoordinatorTests {
         let gate = BlockingGate()
         let repository = BlockingDiagnosticRepository(target: .failureEvent, gate: gate)
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus, repository: repository)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let actionProbe = ActionProbe()
         let workflow = WorkflowDefinition(
@@ -2201,7 +2542,6 @@ extension SessionCoordinatorTests {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: actionProbe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -2238,7 +2578,6 @@ extension SessionCoordinatorTests {
 
     func testCapturedAudioProcessingQueueProcessesJobsSequentially() async throws {
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
         let resolver = CandidateResolver(eventBus: eventBus)
         let gate = BlockingGate()
         let probe = QueueActionProbe()
@@ -2273,7 +2612,6 @@ extension SessionCoordinatorTests {
                 BlockingQueueAction(probe: probe, gate: gate)
             ]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus
         )
         let queue = CapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
@@ -2351,127 +2689,6 @@ extension SessionCoordinatorTests {
         XCTAssertEqual(finalQueueSnapshot.pendingCount, 0)
     }
 
-    func testReplayClipboardItemBypassesRecognitionAndUsesStoredText() async throws {
-        let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
-        let resolver = CandidateResolver(eventBus: eventBus)
-        let probe = ActionProbe()
 
-        await deliveryStack.captureSystemClipboard(
-            snapshot: ClipboardSnapshot(plainText: "saved item", changeCount: 1),
-            context: ClipboardRouteContext(
-                applicationName: "Safari",
-                bundleIdentifier: "com.apple.Safari"
-            )
-        )
-        let clipboardSnapshot = await deliveryStack.clipboardSnapshot()
-        let itemID = try XCTUnwrap(clipboardSnapshot.items.first?.id)
 
-        let workflow = WorkflowDefinition(
-            name: "Replay Workflow",
-            pipeline: PipelineDeclaration(
-                recognizerID: "missing.recognizer",
-                postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
-                outputActions: [OutputActionReference(id: "probe.action")],
-                uncertaintyPolicy: UncertaintyPolicy(mode: .off, confidenceThreshold: 0.0, timeoutSeconds: 0),
-                deliveryPolicy: DeliveryPolicy(strategy: .immediate)
-            ),
-            ui: WorkflowUIConfig(symbolName: "testtube.2", accentColorName: "green")
-        )
-
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
-            recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
-            transformerRegistry: TextTransformerRegistry(transformers: [MockTransformer()]),
-            actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
-            candidateResolver: resolver,
-            deliveryStack: deliveryStack,
-            eventBus: eventBus
-        )
-
-        let stream = await eventBus.stream()
-        let completionTask = Task { () -> WorkflowRunSummary? in
-            for await event in stream {
-                if case .runCompleted(let summary) = event {
-                    return summary
-                }
-            }
-            return nil
-        }
-        await Task.yield()
-
-        await coordinator.replayClipboardItem(
-            itemID: itemID,
-            workflow: workflow,
-            contextSnapshot: .empty,
-            recognitionOptions: .empty
-        )
-        let probeValues = await probe.snapshot()
-        let completion = await completionTask.value
-
-        XCTAssertEqual(probeValues, ["saved item transformed"])
-        XCTAssertEqual(completion?.trigger, .clipboardReplay)
-        XCTAssertNil(completion?.correctionSource)
-    }
-
-    func testReplayClipboardItemCanReplaceSourceItemInPlace() async throws {
-        let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
-        let resolver = CandidateResolver(eventBus: eventBus)
-
-        await deliveryStack.captureSystemClipboard(
-            snapshot: ClipboardSnapshot(plainText: "saved item", changeCount: 1),
-            context: ClipboardRouteContext(
-                applicationName: "Safari",
-                bundleIdentifier: "com.apple.Safari"
-            )
-        )
-        let originalSnapshot = await deliveryStack.clipboardSnapshot()
-        let originalItem = try XCTUnwrap(originalSnapshot.items.first)
-
-        let workflow = WorkflowDefinition(
-            name: "Replace Workflow",
-            pipeline: PipelineDeclaration(
-                recognizerID: "missing.recognizer",
-                postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
-                outputActions: [OutputActionReference(id: "replace.stack.action")],
-                uncertaintyPolicy: UncertaintyPolicy(mode: .off, confidenceThreshold: 0.0, timeoutSeconds: 0),
-                deliveryPolicy: DeliveryPolicy(strategy: .immediate)
-            ),
-            ui: WorkflowUIConfig(symbolName: "testtube.2", accentColorName: "green")
-        )
-
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
-            recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
-            transformerRegistry: TextTransformerRegistry(transformers: [MockTransformer()]),
-            actionRegistry: OutputActionRegistry(actions: [ReplaceAwareStackAction(stack: deliveryStack)]),
-            candidateResolver: resolver,
-            deliveryStack: deliveryStack,
-            eventBus: eventBus
-        )
-
-        await coordinator.replayClipboardItem(
-            itemID: originalItem.id,
-            workflow: workflow,
-            contextSnapshot: .empty,
-            recognitionOptions: .empty,
-            replacingSourceItem: true
-        )
-
-        let updatedSnapshot = await deliveryStack.clipboardSnapshot()
-        let updatedRoute = await deliveryStack.routeSnapshot(
-            for: ClipboardRouteContext(
-                applicationName: "Safari",
-                bundleIdentifier: "com.apple.Safari"
-            )
-        )
-        XCTAssertEqual(updatedSnapshot.items.count, 1)
-        XCTAssertEqual(updatedSnapshot.items.first?.id, originalItem.id)
-        XCTAssertEqual(updatedSnapshot.items.first?.groupID, originalItem.groupID)
-        XCTAssertEqual(updatedSnapshot.items.first?.text, "saved item transformed")
-        XCTAssertEqual(updatedRoute.count, 1)
-        XCTAssertEqual(updatedRoute.previewText, "saved item transformed")
-        XCTAssertNil(updatedSnapshot.groups.first(where: { $0.group.id == originalItem.groupID }))
-    }
 }

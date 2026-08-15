@@ -61,12 +61,12 @@ final class WorkflowExplainServiceTests: XCTestCase {
             transformers: [
                 ("transformer.openai.responses.rewrite", [.llmRewrite]),
             ],
-            actionIDs: ["inject.text"]
+            actionIDs: ["focused-application.insert"]
         )
         let workflow = makeWorkflow(
             recognizerID: "sherpa-onnx.local",
             steps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
-            actions: [OutputActionReference(id: "inject.text")]
+            actions: [OutputActionReference(id: "focused-application.insert")]
         )
 
         let receipt = service.explainResolved(
@@ -129,12 +129,12 @@ final class WorkflowExplainServiceTests: XCTestCase {
             probe: probe,
             recognizerIDs: ["sherpa-onnx.local"],
             transformers: [("transformer.normalize", [.normalizeWhitespace])],
-            actionIDs: ["inject.text"]
+            actionIDs: ["focused-application.insert"]
         )
         let workflow = makeWorkflow(
             recognizerID: "sherpa-onnx.local",
             steps: [PostProcessStep(kind: .normalizeWhitespace, prompt: "must not escape")],
-            actions: [OutputActionReference(id: "inject.text")]
+            actions: [OutputActionReference(id: "focused-application.insert")]
         )
 
         let receipt = service.explainResolved(resolvedPlan(for: workflow))
@@ -200,12 +200,12 @@ final class WorkflowExplainServiceTests: XCTestCase {
         let service = makeService(
             probe: probe,
             recognizerIDs: ["context.selection"],
-            actionIDs: ["clipboard.copy", "unknown.CANARY-ACTION"]
+            actionIDs: ["system-clipboard.copy", "unknown.CANARY-ACTION"]
         )
         let workflow = makeWorkflow(
             recognizerID: "context.selection",
             actions: [
-                OutputActionReference(id: "clipboard.copy"),
+                OutputActionReference(id: "system-clipboard.copy"),
                 OutputActionReference(id: "unknown.CANARY-ACTION"),
             ]
         )
@@ -221,13 +221,6 @@ final class WorkflowExplainServiceTests: XCTestCase {
                     availability: .available,
                     configurationState: .notRequired,
                     processingDestination: .clipboard
-                ),
-                WorkflowExplanationOutput(
-                    sourceActionIndex: 0,
-                    effect: .clipboardHistoryWrite,
-                    availability: .available,
-                    configurationState: .notRequired,
-                    processingDestination: .localStorage
                 ),
                 WorkflowExplanationOutput(
                     sourceActionIndex: 1,
@@ -248,7 +241,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
         XCTAssertEqual(receipt.transforms.map(\.kind), [.vocabularyMapping])
         XCTAssertEqual(receipt.transforms.map(\.usage), [.conditional])
         XCTAssertTrue(receipt.processingDestinations.contains(.clipboard))
-        XCTAssertTrue(receipt.processingDestinations.contains(.localStorage))
+        XCTAssertFalse(receipt.processingDestinations.contains(.localStorage))
         await assertProbeWasNotInvoked(probe)
     }
 
@@ -347,7 +340,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
     func testLegacyWorkflowIsBlockedBySharedExecutionPolicy() {
         var workflow = makeWorkflow(
             recognizerID: "context.selection",
-            actions: [OutputActionReference(id: "clipboard.copy")]
+            actions: [OutputActionReference(id: "system-clipboard.copy")]
         )
         workflow.metadata["eventType"] = "groupItemCreated"
 
@@ -378,7 +371,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
     func testOutputModeDoesNotRewriteManualInvocationOrCustomMetadata() {
         var builtinWorkflow = makeWorkflow(
             recognizerID: "sherpa-onnx.local",
-            actions: [OutputActionReference(id: "inject.text")]
+            actions: [OutputActionReference(id: "focused-application.insert")]
         )
         builtinWorkflow.metadata[WorkflowMetadataKey.catalog] = BuiltinWorkflowRoutingValue.catalog
         builtinWorkflow.metadata[WorkflowMetadataKey.triggerGesture] =
@@ -390,11 +383,11 @@ final class WorkflowExplainServiceTests: XCTestCase {
             initiatedBy: .manual,
             output: .builtinSaveToVoiceGroup
         ).executionWorkflow
-        XCTAssertEqual(manuallyInitiated.pipeline.outputActions.map(\.id), ["inject.text"])
+        XCTAssertEqual(manuallyInitiated.pipeline.outputActions.map(\.id), ["focused-application.insert"])
 
         var customWorkflow = makeWorkflow(
             recognizerID: "sherpa-onnx.local",
-            actions: [OutputActionReference(id: "clipboard.copy")]
+            actions: [OutputActionReference(id: "system-clipboard.copy")]
         )
         customWorkflow.metadata[WorkflowMetadataKey.settingsExposeOutputMode] = "true"
         customWorkflow.metadata[WorkflowMetadataKey.catalog] = "custom"
@@ -407,7 +400,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
             initiatedBy: .hotkey,
             output: .builtinSaveToVoiceGroup
         ).executionWorkflow
-        XCTAssertEqual(customResolved.pipeline.outputActions.map(\.id), ["clipboard.copy"])
+        XCTAssertEqual(customResolved.pipeline.outputActions.map(\.id), ["system-clipboard.copy"])
     }
 
     func testManualInvocationOfHotkeyWorkflowControlsResolvedAndBlockedReceiptTrigger() async {
@@ -415,11 +408,11 @@ final class WorkflowExplainServiceTests: XCTestCase {
         let service = makeService(
             probe: probe,
             recognizerIDs: ["sherpa-onnx.local"],
-            actionIDs: ["inject.text"]
+            actionIDs: ["focused-application.insert"]
         )
         var workflow = makeWorkflow(
             recognizerID: "sherpa-onnx.local",
-            actions: [OutputActionReference(id: "inject.text")]
+            actions: [OutputActionReference(id: "focused-application.insert")]
         )
         workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode] = "auto"
         workflow.metadata[WorkflowMetadataKey.catalog] = BuiltinWorkflowRoutingValue.catalog
@@ -450,7 +443,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
     func testUnresolvedAutomaticSelectionsReturnTypedBlockedReceiptWithoutStaleClaims() throws {
         var workflow = makeWorkflow(
             recognizerID: "sherpa-onnx.local",
-            actions: [OutputActionReference(id: "inject.text")]
+            actions: [OutputActionReference(id: "focused-application.insert")]
         )
         workflow.name = "CANARY-UNRESOLVED-WORKFLOW"
         workflow.metadata[WorkflowMetadataKey.recognizerSelectionMode] = "auto"
@@ -502,7 +495,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
         let workflow = makeWorkflow(
             recognizerID: "sherpa-onnx.local",
             steps: [PostProcessStep(kind: .normalizeWhitespace)],
-            actions: [OutputActionReference(id: "stack.push")]
+            actions: [OutputActionReference(id: "record.store")]
         )
 
         let receipt = service.explainResolved(resolvedPlan(for: workflow))
@@ -525,11 +518,11 @@ final class WorkflowExplainServiceTests: XCTestCase {
         let service = makeService(
             probe: probe,
             recognizerIDs: ["sherpa-onnx.local"],
-            actionIDs: ["inject.text"]
+            actionIDs: ["focused-application.insert"]
         )
         let workflow = makeWorkflow(
             recognizerID: "sherpa-onnx.local",
-            actions: [OutputActionReference(id: "inject.text")]
+            actions: [OutputActionReference(id: "focused-application.insert")]
         )
 
         let receipt = service.explainResolved(
@@ -553,11 +546,11 @@ final class WorkflowExplainServiceTests: XCTestCase {
         let service = makeService(
             probe: probe,
             recognizerIDs: ["context.selection"],
-            actionIDs: ["clipboard.copy"]
+            actionIDs: ["system-clipboard.copy"]
         )
         let workflow = makeWorkflow(
             recognizerID: "context.selection",
-            actions: [OutputActionReference(id: "clipboard.copy")]
+            actions: [OutputActionReference(id: "system-clipboard.copy")]
         )
         var context = makeWorkflowPrivacyContext()
         context.focus.secureInput = true
@@ -609,7 +602,7 @@ final class WorkflowExplainServiceTests: XCTestCase {
         )
         let workflow = makeWorkflow(
             recognizerID: "sherpa-onnx.local",
-            actions: [OutputActionReference(id: "inject.text")]
+            actions: [OutputActionReference(id: "focused-application.insert")]
         )
         let plan = resolvedPlan(for: workflow)
 
@@ -757,6 +750,6 @@ private func makeWorkflowPrivacyContext() -> ContextSnapshot {
             selectedText: "selected",
             secureInput: false
         ),
-        clipboard: ClipboardSnapshot(plainText: "clipboard", changeCount: 1)
+        clipboard: SystemClipboardSnapshot(plainText: "clipboard", changeCount: 1)
     )
 }

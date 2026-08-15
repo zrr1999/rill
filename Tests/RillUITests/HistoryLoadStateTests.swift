@@ -7,10 +7,10 @@ private actor FailThenSucceedHistoryRepository: HistoryRepository {
         case unavailable
     }
 
-    private var stored: [HistoryRecord]
+    private var stored: [WorkflowResultRecord]
     private var readsAreAvailable = false
 
-    init(records: [HistoryRecord]) {
+    init(records: [WorkflowResultRecord]) {
         stored = records
     }
 
@@ -18,11 +18,11 @@ private actor FailThenSucceedHistoryRepository: HistoryRepository {
         readsAreAvailable = true
     }
 
-    func save(_ record: HistoryRecord) async throws {
+    func save(_ record: WorkflowResultRecord) async throws {
         stored.append(record)
     }
 
-    func records(matching query: HistoryQuery) async throws -> [HistoryRecord] {
+    func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
         guard readsAreAvailable else {
             throw LoadError.unavailable
         }
@@ -53,7 +53,7 @@ private actor FailThenSucceedHistoryRepository: HistoryRepository {
 @MainActor
 final class HistoryLoadStateTests: XCTestCase {
     func testFailedLoadRemainsVisibleUntilRetrySucceeds() async {
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             runID: UUID(),
             workflow: WorkflowPresentation(fallbackName: "Recovered history"),
             finalText: "Recovered result",

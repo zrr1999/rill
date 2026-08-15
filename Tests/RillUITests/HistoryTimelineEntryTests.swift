@@ -19,9 +19,9 @@ final class HistoryTimelineEntryTests: XCTestCase {
         )
         let stackReceipt = try makeReceipt(
             runID: stackRunID,
-            trigger: .stackDelivery,
+            trigger: .recordDelivery,
             timestamp: Date(timeIntervalSince1970: 12),
-            termination: .skipped(reason: .itemMissing)
+            termination: .skipped(reason: .recordMissing)
         )
 
         let entries = HistoryTimelineBuilder.allRuns(
@@ -40,7 +40,7 @@ final class HistoryTimelineEntryTests: XCTestCase {
         let record = makeRecord(runID: runID, outcome: .completed)
         let receipt = try makeReceipt(
             runID: runID,
-            trigger: .clipboardReplay,
+            trigger: .recordReplay,
             termination: .partiallyCompleted(code: .processing)
         )
 
@@ -62,7 +62,7 @@ final class HistoryTimelineEntryTests: XCTestCase {
         )
         let receiptOnly = try makeReceipt(
             runID: receiptOnlyRunID,
-            trigger: .clipboardUse,
+            trigger: .recordUse,
             termination: .completed
         )
 
@@ -80,10 +80,10 @@ final class HistoryTimelineEntryTests: XCTestCase {
 
     func testClipboardAndStackReceiptsCannotExposeMisclassifiedRecordBodies() throws {
         let contentFreeTriggers: [WorkflowRunTriggerKind] = [
-            .clipboardGroupEvent,
-            .stackDelivery,
-            .clipboardUse,
-            .clipboardReplay,
+            .recordCollectionEvent,
+            .recordDelivery,
+            .recordUse,
+            .recordReplay,
         ]
         for (index, trigger) in contentFreeTriggers.enumerated() {
             let runID = UUID()
@@ -193,8 +193,8 @@ final class HistoryTimelineEntryTests: XCTestCase {
         runID: UUID,
         timestamp: Date = Date(timeIntervalSince1970: 10),
         outcome: HistoryOutcome
-    ) -> HistoryRecord {
-        HistoryRecord(
+    ) -> WorkflowResultRecord {
+        WorkflowResultRecord(
             runID: runID,
             workflow: WorkflowPresentation(fallbackName: "Dictation"),
             finalText: outcome == .completed ? "result" : nil,

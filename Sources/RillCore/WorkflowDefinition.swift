@@ -27,6 +27,8 @@ public enum TriggerBinding: String, Codable, Sendable, Equatable {
 }
 
 public enum WorkflowMetadataKey {
+    public static let targetRecordCollectionIDs = "record.target-collection-ids"
+    public static let excludeOutputFromRecordCapture = "record.exclude-output-from-capture"
     public static let catalog = "catalog"
     public static let triggerGesture = "trigger.gesture"
     public static let excludeOutputFromWorkflowCapture = "clipboard.excludeOutputFromWorkflowCapture"
@@ -44,11 +46,11 @@ public enum WorkflowMetadataKey {
     public static let defaultEnabled = "workflow.default-enabled"
     public static let availability = "workflow.availability"
     public static let speechMode = "workflow.speech-mode"
-    public static let targetClipboardGroupID = "clipboard.target-group-id"
+    public static let legacyTargetRecordCollectionID = "clipboard.target-group-id"
     public static let settingsExposeOutputMode = "settings.expose.output-mode"
     public static let textStyle = "workflow.text-style"
     public static let legacyEventType = "eventType"
-    public static let legacySourceGroupID = "sourceGroupID"
+    public static let legacySourceCollectionID = "sourceGroupID"
     public static let legacyExcludePolishTag = "excludePolishTag"
     public static let legacyGroupActionKind = "groupActionKind"
 }
@@ -91,22 +93,22 @@ public enum SpeechWorkflowMode: String, Codable, Sendable, Equatable {
     case voiceAssistant = "voice-assistant"
 }
 
-/// A validated, content-free clipboard group automation declaration.
-public struct ClipboardGroupAutomationConfiguration: Sendable, Equatable {
-    public var rule: ClipboardGroupTriggerRule
-    public var actionKind: ClipboardGroupActionKind
+/// A validated, content-free record collection automation declaration.
+public struct RecordCollectionAutomationConfiguration: Sendable, Equatable {
+    public var rule: RecordCollectionTriggerRule
+    public var actionKind: RecordCollectionActionKind
 
-    public init(rule: ClipboardGroupTriggerRule, actionKind: ClipboardGroupActionKind) {
+    public init(rule: RecordCollectionTriggerRule, actionKind: RecordCollectionActionKind) {
         self.rule = rule
         self.actionKind = actionKind
     }
 }
 
-/// Fixed parse failures for the legacy metadata-backed group automation format.
-public enum ClipboardGroupAutomationConfigurationError: Error, Sendable, Equatable {
+/// Fixed parse failures for the legacy metadata-backed record collection automation format.
+public enum RecordCollectionAutomationConfigurationError: Error, Sendable, Equatable {
     case invalidEventType
-    case missingSourceGroupID
-    case invalidSourceGroupID
+    case missingSourceCollectionID
+    case invalidSourceCollectionID
     case missingExcludePolishTag
     case invalidExcludePolishTag
     case missingActionKind
@@ -143,6 +145,16 @@ public struct WorkflowUIConfig: Codable, Sendable, Equatable {
     }
 }
 
+/// Closed SF Symbol values emitted by Rill-owned workflow definitions.
+///
+/// User-authored workflow files may still provide arbitrary symbol names; the
+/// UI validates those open values and falls back before rendering them.
+public enum WorkflowUISymbol: String, CaseIterable, Sendable {
+    case micFill = "mic.fill"
+    case sparkles = "sparkles"
+    case squareStack3dUpFill = "square.stack.3d.up.fill"
+}
+
 public extension WorkflowDefinition {
     var availability: WorkflowAvailability {
         guard let rawValue = metadata[WorkflowMetadataKey.availability] else {
@@ -163,8 +175,10 @@ public extension WorkflowDefinition {
         return rawValue == "true"
     }
 
-    var excludesOutputFromWorkflowCapture: Bool {
-        guard let rawValue = metadata[WorkflowMetadataKey.excludeOutputFromWorkflowCapture] else {
+    var excludesOutputFromRecordCapture: Bool {
+        guard let rawValue = metadata[WorkflowMetadataKey.excludeOutputFromRecordCapture]
+            ?? metadata[WorkflowMetadataKey.excludeOutputFromWorkflowCapture]
+        else {
             return true
         }
         return rawValue != "false"
@@ -180,11 +194,28 @@ public extension WorkflowDefinition {
             .nilIfEmpty
     }
 
-    var targetClipboardGroupID: UUID? {
-        guard let rawValue = metadata[WorkflowMetadataKey.targetClipboardGroupID] else {
+    var legacyTargetRecordCollectionID: UUID? {
+        guard let rawValue = metadata[WorkflowMetadataKey.legacyTargetRecordCollectionID] else {
             return nil
         }
         return UUID(uuidString: rawValue)
+    }
+
+    var targetRecordCollectionIDs: [RecordCollectionID] {
+        if let rawValue = metadata[WorkflowMetadataKey.targetRecordCollectionIDs] {
+            var seen: Set<RecordCollectionID> = []
+            return rawValue
+                .split(separator: ",", omittingEmptySubsequences: true)
+                .compactMap { component in
+                    let value = component.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard let uuid = UUID(uuidString: value) else { return nil }
+                    let id = RecordCollectionID(uuid)
+                    return seen.insert(id).inserted ? id : nil
+                }
+                .prefix(RecordGraphLimits.maximumRouteCollections)
+                .map { $0 }
+        }
+        return legacyTargetRecordCollectionID.map { [RecordCollectionID($0)] } ?? []
     }
 
     func usesBuiltinPushToTalkOutputRouting(
@@ -199,46 +230,48 @@ public extension WorkflowDefinition {
                 .hasPrefix(BuiltinWorkflowRoutingValue.pushToTalkKindPrefix) == true
     }
 
-    /// Strictly parses the legacy metadata representation of a group automation.
+    /// Strictly parses the legacy metadata representation of a record collection automation.
     ///
-    /// Non-group workflows return `nil`. A declaration that names a group event
+    /// Non-collection workflows return `nil`. A declaration that names a record collection event
     /// must include every policy field and every value must be valid. In
-    /// particular, absent source groups do not become wildcards and absent
+    /// particular, absent source collections do not become wildcards and absent
     /// action kinds do not silently become edit actions.
-    func parseClipboardGroupAutomationConfiguration()
-        throws -> ClipboardGroupAutomationConfiguration? {
+    func parseRecordCollectionAutomationConfiguration()
+        throws -> RecordCollectionAutomationConfiguration? {
         guard let rawEventType = metadata[WorkflowMetadataKey.legacyEventType] else {
             return nil
         }
 
-        let eventKind: ClipboardGroupEventKind
+        let eventKind: RecordCollectionEventKind
         switch rawEventType {
         case "groupItemCreated":
-            eventKind = .itemCreated
+            eventKind = .recordCreated
         case "groupItemEdited":
-            eventKind = .itemEdited
+            eventKind = .recordEdited
         case "groupItemRemoved":
-            eventKind = .itemRemoved
+            eventKind = .recordRemoved
         case TriggerBinding.manual.rawValue,
              TriggerBinding.hotkey.rawValue,
              TriggerBinding.menuBar.rawValue,
              TriggerBinding.wakeWord.rawValue:
             return nil
         default:
-            throw ClipboardGroupAutomationConfigurationError.invalidEventType
+            throw RecordCollectionAutomationConfigurationError.invalidEventType
         }
 
-        guard let rawSourceGroupID = metadata[WorkflowMetadataKey.legacySourceGroupID] else {
-            throw ClipboardGroupAutomationConfigurationError.missingSourceGroupID
+        guard let rawSourceCollectionID = metadata["sourceCollectionID"]
+            ?? metadata[WorkflowMetadataKey.legacySourceCollectionID] else {
+            throw RecordCollectionAutomationConfigurationError.missingSourceCollectionID
         }
-        guard let sourceGroupID = UUID(uuidString: rawSourceGroupID) else {
-            throw ClipboardGroupAutomationConfigurationError.invalidSourceGroupID
+        guard let rawCollectionID = UUID(uuidString: rawSourceCollectionID) else {
+            throw RecordCollectionAutomationConfigurationError.invalidSourceCollectionID
         }
+        let sourceCollectionID = RecordCollectionID(rawCollectionID)
 
         guard let rawExcludePolishTag = metadata[
             WorkflowMetadataKey.legacyExcludePolishTag
         ] else {
-            throw ClipboardGroupAutomationConfigurationError.missingExcludePolishTag
+            throw RecordCollectionAutomationConfigurationError.missingExcludePolishTag
         }
         let excludePolishTag: Bool
         switch rawExcludePolishTag {
@@ -247,23 +280,23 @@ public extension WorkflowDefinition {
         case "false":
             excludePolishTag = false
         default:
-            throw ClipboardGroupAutomationConfigurationError.invalidExcludePolishTag
+            throw RecordCollectionAutomationConfigurationError.invalidExcludePolishTag
         }
 
         guard let rawActionKind = metadata[WorkflowMetadataKey.legacyGroupActionKind] else {
-            throw ClipboardGroupAutomationConfigurationError.missingActionKind
+            throw RecordCollectionAutomationConfigurationError.missingActionKind
         }
-        guard let actionKind = ClipboardGroupActionKind(rawValue: rawActionKind) else {
-            throw ClipboardGroupAutomationConfigurationError.invalidActionKind
+        guard let actionKind = RecordCollectionActionKind(rawValue: rawActionKind) else {
+            throw RecordCollectionAutomationConfigurationError.invalidActionKind
         }
 
-        let conditions: [ClipboardGroupTriggerCondition] = excludePolishTag
+        let conditions: [RecordCollectionTriggerCondition] = excludePolishTag
             ? [.excludingTag(.polishGenerated)]
             : []
-        return ClipboardGroupAutomationConfiguration(
-            rule: ClipboardGroupTriggerRule(
+        return RecordCollectionAutomationConfiguration(
+            rule: RecordCollectionTriggerRule(
                 eventKind: eventKind,
-                sourceGroupID: sourceGroupID,
+                sourceCollectionID: sourceCollectionID,
                 conditions: conditions
             ),
             actionKind: actionKind
@@ -285,9 +318,26 @@ public enum WorkflowTitleKey: String, Codable, Sendable, Equatable {
     case commandMode
     case localDictation
     case cloudDictation
-    case stackDelivery
+    case recordDelivery
     case streamingInput
     case voiceAssistant
+
+    public init(from decoder: any Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        let canonicalValue = value == "stackDelivery" ? "recordDelivery" : value
+        guard let key = Self(rawValue: canonicalValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: try decoder.singleValueContainer(),
+                debugDescription: "Unknown workflow title key."
+            )
+        }
+        self = key
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 public struct WorkflowPresentation: Codable, Sendable, Equatable {
@@ -324,8 +374,24 @@ public struct UncertaintyPolicy: Codable, Sendable, Equatable {
 
 public enum DeliveryStrategy: String, Codable, Sendable, Equatable {
     case immediate
-    case stackFirst
-    case clipboardOnly
+    case collectionFirst
+    case systemClipboardOnly
+
+    public init(from decoder: any Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        switch value {
+        case "stackFirst", "stack-first", "collection-first", "collectionFirst":
+            self = .collectionFirst
+        case "clipboardOnly", "clipboard-only", "system-clipboard-only", "systemClipboardOnly":
+            self = .systemClipboardOnly
+        case "immediate":
+            self = .immediate
+        default:
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: decoder.codingPath, debugDescription: "Unknown delivery strategy.")
+            )
+        }
+    }
 }
 
 public struct DeliveryPolicy: Codable, Sendable, Equatable {

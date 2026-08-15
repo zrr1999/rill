@@ -2,6 +2,7 @@ import CryptoKit
 import Darwin
 import Foundation
 import HuggingFace
+import MLX
 import MLXAudioCore
 import MLXAudioSTT
 import MLXAudioTTS
@@ -674,18 +675,23 @@ private actor MLXQwenDecodeGate {
   }
 }
 
-private actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
+actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
   private struct LoadedModel {
     let id: MLXAudioModelID
     let model: Qwen3ASRModel
   }
 
   private let store: MLXAudioSwiftModelStore
+  private let clearMemoryCache: @Sendable () -> Void
   private let decodeGate = MLXQwenDecodeGate()
   private var loadedModels: [MLXAudioModelID: LoadedModel] = [:]
 
-  init(store: MLXAudioSwiftModelStore = .init()) {
+  init(
+    store: MLXAudioSwiftModelStore = .init(),
+    clearMemoryCache: @escaping @Sendable () -> Void = { Memory.clearCache() }
+  ) {
     self.store = store
+    self.clearMemoryCache = clearMemoryCache
   }
 
   func prepare(
@@ -797,6 +803,7 @@ private actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
       throw MLXAudioSwiftRuntimeError.unsupportedModel(modelID)
     }
     loadedModels.removeValue(forKey: id)
+    clearMemoryCache()
   }
 
   func makeStreamingSession(

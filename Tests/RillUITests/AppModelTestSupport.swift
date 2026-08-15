@@ -338,7 +338,7 @@ actor EventBusHolder {
   }
 }
 
-actor ClipboardPanelProbe {
+actor RecordPanelProbe {
   private(set) var showCount = 0
 
   func recordShow() {
@@ -400,16 +400,16 @@ actor UITestLocalHistoryMaintenance: LocalHistoryMaintaining {
   }
 
   func performRetention(
-    clipboardRetention: HistoryRetentionPeriod,
+    recordRetention: HistoryRetentionPeriod,
     runRetention: HistoryRetentionPeriod,
     now: Date
   ) async -> LocalHistoryMaintenanceResult {
-    calls.append(.performRetention(clipboardRetention, runRetention))
+    calls.append(.performRetention(recordRetention, runRetention))
     try? await Task.sleep(for: delay)
     return nextResult()
   }
 
-  func clearClipboardHistory() async -> LocalHistoryMaintenanceResult {
+  func clearRecordHistory() async -> LocalHistoryMaintenanceResult {
     calls.append(.clearClipboard)
     try? await Task.sleep(for: delay)
     return nextResult()
@@ -450,7 +450,6 @@ struct AppModelTestHarness {
   let workflow: WorkflowDefinition
   let eventBus: EventBus
   let actionLog: ProbeActionLog
-  let deliveryStack: DeliveryStack
 }
 
 private enum UITestWorkflowFileStoreError: Error {
@@ -544,7 +543,6 @@ func makeHarness(
   runReceiptRepository: (any WorkflowRunReceiptRepository)? = nil,
   localHistoryMaintenance: (any LocalHistoryMaintaining)? = nil,
   diagnosticRepository: (any DiagnosticRepository)? = nil,
-  deliveryStackFactory: ((EventBus) -> DeliveryStack)? = nil,
   permissionSnapshot: PermissionSnapshot = PermissionSnapshot(
     accessibility: .granted, microphone: .unknown),
   globalInputCapability: GlobalInputCapability = .available,
@@ -597,27 +595,6 @@ func makeHarness(
         recognitionOptions: .empty
       )
     },
-  authorizeClipboardItemRunAction:
-    @escaping @Sendable (
-      UUID,
-      ClipboardItemVersion,
-      ClipboardItemDryRunOperation,
-      WorkflowDefinition
-    ) async throws -> AuthorizedWorkflowRunContext = { itemID, itemVersion, operation, workflow in
-      let subject = ClipboardItemDryRunSubject(
-        itemID: itemID,
-        itemVersion: itemVersion,
-        groupID: ClipboardGroup.defaultGroupID,
-        contentKind: .text,
-        hasTransferableContent: true
-      )
-      return AuthorizedWorkflowRunContext(
-        workflow: workflow,
-        contextSnapshot: .empty,
-        recognitionOptions: .empty,
-        invocation: .clipboardItem(subject: subject, operation: operation)
-      )
-    },
   explainResolvedWorkflowAction:
     @escaping @Sendable (
       WorkflowResolvedExecutionPlan
@@ -625,13 +602,10 @@ func makeHarness(
       AppModel.unavailableWorkflowExplanation(for: plan)
     },
   writeClipboardTextAction: @escaping @MainActor (String) -> Void = { _ in },
-  showClipboardPanelAction: @escaping @Sendable () async -> Void = {}
+  showRecordPanelAction: @escaping @Sendable () async -> Void = {}
 ) -> AppModelTestHarness {
   let eventBus = EventBus()
   let actionLog = ProbeActionLog()
-  let deliveryStack =
-    deliveryStackFactory?(eventBus)
-    ?? DeliveryStack(eventBus: eventBus)
   let resolver = CandidateResolver(eventBus: eventBus)
   let defaultWorkflow = workflow ?? makeDefaultWorkflow()
   let resolvedWorkflows = workflows ?? [defaultWorkflow]
@@ -640,9 +614,9 @@ func makeHarness(
   let outputActionRegistry = OutputActionRegistry(
     actions: [
       UITestAction(log: actionLog),
-      UITestAction(id: "inject.text", log: actionLog),
-      UITestAction(id: "clipboard.copy", log: actionLog),
-      UITestAction(id: "stack.push", log: actionLog),
+      UITestAction(id: "focused-application.insert", log: actionLog),
+      UITestAction(id: "system-clipboard.copy", log: actionLog),
+      UITestAction(id: "record.store", log: actionLog),
       UITestAction(id: SpeechOutputActionID.speak, log: actionLog),
       UITestAction(id: ExternalOutputActionID.shortcutsRun, log: actionLog),
       UITestAction(id: ExternalOutputActionID.markdownAppend, log: actionLog),
@@ -661,7 +635,6 @@ func makeHarness(
     transformerRegistry: TextTransformerRegistry(transformers: []),
     actionRegistry: outputActionRegistry,
     candidateResolver: resolver,
-    deliveryStack: deliveryStack,
     eventBus: eventBus
   )
 
@@ -680,7 +653,6 @@ func makeHarness(
     eventBus: eventBus,
     sessionCoordinator: coordinator,
     outputActionRegistry: outputActionRegistry,
-    deliveryStack: deliveryStack,
     candidateResolver: resolver,
     historyRepository: historyRepository,
     runHistoryBrowser: runHistoryBrowser,
@@ -721,10 +693,9 @@ func makeHarness(
     refreshFailedAudioRecoveryAction: refreshFailedAudioRecoveryAction,
     loadFailedAudioRecoveryReceiptsAction: loadFailedAudioRecoveryReceiptsAction,
     authorizeWorkflowRunAction: authorizeWorkflowRunAction,
-    authorizeClipboardItemRunAction: authorizeClipboardItemRunAction,
     explainResolvedWorkflowAction: explainResolvedWorkflowAction,
     writeClipboardTextAction: writeClipboardTextAction,
-    pasteTopOfStackAction: {},
+    deliverNextRecordAction: {},
     permissionSnapshot: permissionSnapshot,
     refreshPermissionsAction: {},
     requestAccessibilityAction: {},
@@ -732,9 +703,9 @@ func makeHarness(
     openAccessibilitySettingsAction: {},
     openMicrophoneSettingsAction: {}
   )
-  model.installClipboardPanelAction {
+  model.installRecordPanelAction {
     Task {
-      await showClipboardPanelAction()
+      await showRecordPanelAction()
     }
   }
   model.updateGlobalInputCapability(globalInputCapability)
@@ -743,8 +714,7 @@ func makeHarness(
     model: model,
     workflow: primaryWorkflow,
     eventBus: eventBus,
-    actionLog: actionLog,
-    deliveryStack: deliveryStack
+    actionLog: actionLog
   )
 }
 
@@ -781,7 +751,7 @@ func makeBuiltinPushToTalkWorkflow() -> WorkflowDefinition {
     pipeline: PipelineDeclaration(
       recognizerID: AppModel.localSpeechRecognizerID,
       postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
-      outputActions: [OutputActionReference(id: "inject.text")]
+      outputActions: [OutputActionReference(id: "focused-application.insert")]
     ),
     ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red"),
     metadata: [
@@ -808,26 +778,41 @@ func makeBuiltinPushToTalkPolishWorkflow() -> WorkflowDefinition {
           kind: .llmRewrite,
           prompt: "Polish into a concise final message while preserving meaning and language."),
       ],
-      outputActions: [OutputActionReference(id: "stack.push")],
-      deliveryPolicy: .init(strategy: .stackFirst)
+      outputActions: [OutputActionReference(id: "record.store")],
+      deliveryPolicy: .init(strategy: .collectionFirst)
     ),
     ui: WorkflowUIConfig(symbolName: "wand.and.stars", accentColorName: "purple"),
     metadata: [
       AppModel.workflowCatalogMetadataKey: AppModel.builtinWorkflowCatalogValue,
       WorkflowMetadataKey.builtinKind: AppModel.builtinPushToTalkPolishKindValue,
       "eventType": WorkflowEditorDraft.EventType.groupItemCreated.rawValue,
-      "sourceGroupID": ClipboardGroup.voiceGroupID.uuidString,
+      "sourceGroupID": RecordCollection.voiceInputID.rawValue.uuidString,
       "excludePolishTag": "true",
-      "groupActionKind": ClipboardGroupActionKind.editItem.rawValue,
+      "groupActionKind": RecordCollectionActionKind.editRecord.rawValue,
       "actionPrompt": "Polish into a concise final message while preserving meaning and language.",
     ]
   )
 }
 
-func waitForListenerSetup() async {
-  try? await Task.sleep(for: .milliseconds(60))
+func waitForListenerSetup(_ harness: AppModelTestHarness) async {
+  await harness.model.synchronizeEventListener()
 }
 
-func waitForEventProcessing() async {
-  try? await Task.sleep(for: .milliseconds(60))
+func waitForEventProcessing(_ harness: AppModelTestHarness) async {
+  await harness.model.synchronizeEventListener()
+}
+
+func waitForHistoryMaintenance(_ harness: AppModelTestHarness) async {
+  await harness.model.waitForInitialVoiceConfiguration()
+  await harness.model.flushPendingPersistenceWrites()
+  await harness.model.waitForLocalHistoryMaintenance()
+  await harness.model.synchronizeEventListener()
+}
+
+func waitForFailedAudioRecovery(_ harness: AppModelTestHarness) async {
+  await harness.model.waitForInitialVoiceConfiguration()
+  await harness.model.waitForFailedAudioRecoveryLoad()
+  await harness.model.flushPendingPersistenceWrites()
+  await harness.model.waitForFailedAudioRecoveryRetries()
+  await harness.model.synchronizeEventListener()
 }

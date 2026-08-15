@@ -22,7 +22,7 @@ builtin_kind = "push-to-talk.dictation"
 gesture = "fn-hold"
 interaction_mode = "press-and-hold"
 delivery = "immediate"
-output = "inject.text"
+output = "focused-application.insert"
 settings_expose = ["output_mode"]
 text_style = "cleanInput"
 

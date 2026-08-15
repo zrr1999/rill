@@ -282,7 +282,7 @@ public enum VocabularyLegacyMigrator {
                     collectionID: collectionID,
                     condition: WorkflowBindingCondition(
                         bundleIdentifier: scope.bundleIdentifier,
-                        clipboardGroupID: scope.clipboardGroupID,
+                        recordCollectionID: scope.recordCollectionID,
                         locale: scope.locale
                     )
                 )
@@ -313,7 +313,7 @@ public enum VocabularyLegacyMigrator {
     private static func scopeKey(_ scope: VocabularyRuleScope) -> String {
         [
             scope.bundleIdentifier ?? "*",
-            scope.clipboardGroupID?.uuidString ?? "*",
+            scope.recordCollectionID?.uuidString ?? "*",
             scope.locale ?? "*",
         ].joined(separator: "\u{1F}")
     }
@@ -321,7 +321,7 @@ public enum VocabularyLegacyMigrator {
     private static func collectionName(for scope: VocabularyRuleScope) -> String {
         let parts = [
             scope.bundleIdentifier,
-            scope.clipboardGroupID.map { "Group \($0.uuidString.prefix(8))" },
+            scope.recordCollectionID.map { "Group \($0.uuidString.prefix(8))" },
             scope.locale,
         ].compactMap { $0 }
         return parts.isEmpty ? "Personal Vocabulary" : parts.joined(separator: " · ")

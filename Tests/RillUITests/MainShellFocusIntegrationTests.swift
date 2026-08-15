@@ -186,6 +186,9 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(sidebar))
         let dashboardRow = sidebar.selectedRow
         XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let recordCollectionRow = try XCTUnwrap(
+            nextSelectableRow(after: dashboardRow, in: sidebar)
+        )
         let searchToolbarItem = try XCTUnwrap(
             window.toolbar?.items.first { item in
                 item.view != nil
@@ -201,12 +204,12 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(
             runMainEventTrackingTurn {
                 sidebar.selectRowIndexes(
-                    IndexSet(integer: dashboardRow + 1),
+                    IndexSet(integer: recordCollectionRow),
                     byExtendingSelection: false
                 )
             }
         )
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         click(searchToolbarView, in: window)
         XCTAssertTrue(runMainEventTrackingTurn {})
         await settle(window)
@@ -283,9 +286,17 @@ final class MainShellFocusIntegrationTests: XCTestCase {
 
         sidebar.keyDown(with: downArrow)
         await settle(window)
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
+        let firstCollectionID = harness.model.recordWorkspace.selectedCollectionID
+        XCTAssertNotNil(firstCollectionID)
         XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
         XCTAssertFalse(window.firstResponder === detailFocusAnchor)
+
+        sidebar.keyDown(with: downArrow)
+        await settle(window)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
+        XCTAssertNotEqual(harness.model.recordWorkspace.selectedCollectionID, firstCollectionID)
+        XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
 
         sidebar.keyDown(with: downArrow)
         await settle(window)
@@ -308,14 +319,17 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(sidebar))
         let dashboardRow = sidebar.selectedRow
         XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let recordCollectionRow = try XCTUnwrap(
+            nextSelectableRow(after: dashboardRow, in: sidebar)
+        )
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: dashboardRow + 1),
+            IndexSet(integer: recordCollectionRow),
             byExtendingSelection: false
         )
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "Replacing the detail through List selection must keep keyboard focus in the sidebar."
@@ -352,15 +366,14 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(sidebar))
         let dashboardRow = sidebar.selectedRow
         XCTAssertGreaterThanOrEqual(dashboardRow, 0)
-        let clipboardRow = dashboardRow + 1
-        XCTAssertLessThan(clipboardRow, sidebar.numberOfRows)
+        let clipboardRow = try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))
         let didRunTrackingSelection = runMainEventTrackingTurn {
             XCTAssertEqual(RunLoop.current.currentMode, .eventTracking)
             sidebar.selectRowIndexes(
                 IndexSet(integer: clipboardRow),
                 byExtendingSelection: false
             )
-            XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+            XCTAssertEqual(harness.model.selectedSidebarSection, .records)
             XCTAssertTrue(
                 self.isResponder(window.firstResponder, inside: sidebar),
                 "The sidebar must own focus when its mouse selection setter returns."
@@ -378,7 +391,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
             }
         )
         await fulfillment(of: [clipboardFocusWait], timeout: 1)
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "Blocking the default-mode fallback must not expose a responder gap."
@@ -387,7 +400,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await focusTurnGate.release(through: 3)
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "A selection committed during mouse tracking must restore focus once the default run loop resumes."
@@ -405,6 +418,9 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(sidebar))
         let dashboardRow = sidebar.selectedRow
         XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let recordCollectionRow = try XCTUnwrap(
+            nextSelectableRow(after: dashboardRow, in: sidebar)
+        )
 
         let detailFocusProbe = FocusProbeView(frame: .zero)
         let detailHost = NSHostingView(
@@ -416,7 +432,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(
             runMainEventTrackingTurn {
                 sidebar.selectRowIndexes(
-                    IndexSet(integer: dashboardRow + 1),
+                    IndexSet(integer: recordCollectionRow),
                     byExtendingSelection: false
                 )
                 window.contentView?.addSubview(detailHost)
@@ -424,7 +440,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
                 XCTAssertTrue(window.makeFirstResponder(detailFocusProbe))
             }
         )
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertTrue(window.firstResponder === detailFocusProbe)
 
         // The repair scheduled by the sidebar selection is allowed to run in a
@@ -477,18 +493,21 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(sidebar))
         let dashboardRow = sidebar.selectedRow
         XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let recordCollectionRow = try XCTUnwrap(
+            nextSelectableRow(after: dashboardRow, in: sidebar)
+        )
 
         XCTAssertTrue(
             runMainEventTrackingTurn {
                 sidebar.selectRowIndexes(
-                    IndexSet(integer: dashboardRow + 1),
+                    IndexSet(integer: recordCollectionRow),
                     byExtendingSelection: false
                 )
             }
         )
         await fulfillment(of: [clipboardFocusWait], timeout: 1)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "A post-tracking repair request must not proactively clear a sidebar that still owns focus."
@@ -533,7 +552,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         let dashboardRow = sidebar.selectedRow
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: dashboardRow + 1),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [clipboardFocusWait], timeout: 1)
@@ -594,11 +613,11 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(dashboardRow, 0)
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: dashboardRow + 1),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [clipboardFocusWait], timeout: 1)
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
 
         let newDetailFocusProbe = FocusProbeView(frame: .zero)
         window.contentView?.addSubview(newDetailFocusProbe)
@@ -662,7 +681,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(persistentDetailFocusProbe))
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: dashboardRow + 1),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [firstRouteRepair], timeout: 1)
@@ -732,7 +751,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(persistentDetailFocusProbe))
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: dashboardRow + 1),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [firstRouteRepair], timeout: 1)
@@ -789,7 +808,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(dashboardRow, 0)
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: dashboardRow + 1),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [firstRouteRepair], timeout: 1)
@@ -845,7 +864,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(departingFocusProbe))
 
         sidebarScrollView.isHidden = true
-        harness.model.selectSidebarSection(.clipboard)
+        harness.model.selectSidebarSection(.records)
         await fulfillment(of: [routeFocusWait], timeout: 1)
 
         departingHost.removeFromSuperview()
@@ -854,7 +873,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
 
         let detailFocusAnchor = try XCTUnwrap(detailFocusAnchor(in: window))
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertTrue(
             window.firstResponder === detailFocusAnchor
                 || isResponder(window.firstResponder, withinVisualBoundsOf: detailFocusAnchor),
@@ -919,7 +938,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(departingFocusProbe))
 
         sidebarScrollView.isHidden = true
-        harness.model.selectSidebarSection(.clipboard)
+        harness.model.selectSidebarSection(.records)
         await fulfillment(of: [routeFocusWait], timeout: 1)
         departingHost.removeFromSuperview()
 
@@ -936,7 +955,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await focusTurnGate.release(through: 2)
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertTrue(
             window.firstResponder === committedFocusProbe,
             "Collapsed-route repair must preserve focus acquired by the committed detail."
@@ -1083,7 +1102,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         departingHost.layoutSubtreeIfNeeded()
         XCTAssertTrue(window.makeFirstResponder(departingFocusProbe))
 
-        harness.model.selectSidebarSection(.clipboard)
+        harness.model.selectSidebarSection(.records)
         await fulfillment(of: [routeCheck], timeout: 1)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
@@ -1100,7 +1119,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         departingHost.removeFromSuperview()
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "A departing host that detaches after route repair must not create a focus vacuum."
@@ -1144,7 +1163,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         departingHost.layoutSubtreeIfNeeded()
         XCTAssertTrue(window.makeFirstResponder(departingFocusProbe))
 
-        harness.model.selectSidebarSection(.clipboard)
+        harness.model.selectSidebarSection(.records)
         await fulfillment(of: [routeCheck], timeout: 1)
         XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
 
@@ -1162,7 +1181,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await focusTurnGate.release(through: 2)
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .clipboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertTrue(
             window.firstResponder === committedFocusProbe,
             "The post-claim repair must preserve a responder acquired in the committed hosted detail."
@@ -1214,7 +1233,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         clipboardHost.layoutSubtreeIfNeeded()
 
         XCTAssertTrue(window.makeFirstResponder(clipboardFocusProbe))
-        harness.model.selectSidebarSection(.clipboard)
+        harness.model.selectSidebarSection(.records)
         await fulfillment(of: [clipboardRouteWait], timeout: 1)
         XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
 
@@ -1278,7 +1297,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(dashboardRow, 0)
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: dashboardRow + 1),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [clipboardListWait], timeout: 1)
@@ -1452,7 +1471,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
 
     func testTypedHistoryRouteSupersedesPendingPlainSidebarFocusRequest() async throws {
         _ = NSApplication.shared
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             workflow: WorkflowPresentation(fallbackName: "Focused history run"),
             finalText: "Focused history result",
             outcome: .completed,
@@ -1607,6 +1626,13 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         return descendantTables(in: contentView).min { lhs, rhs in
             lhs.convert(lhs.bounds, to: nil).minX < rhs.convert(rhs.bounds, to: nil).minX
         }
+    }
+
+    private func nextSelectableRow(after row: Int, in table: NSTableView) -> Int? {
+        // SwiftUI materializes the following Section header as the next
+        // AppKit table row. The first collection is the row after that header.
+        let candidate = row + 2
+        return candidate < table.numberOfRows ? candidate : nil
     }
 
     private func detailFocusAnchor(in window: NSWindow) -> NSView? {

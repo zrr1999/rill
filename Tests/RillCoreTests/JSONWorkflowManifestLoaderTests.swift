@@ -19,7 +19,7 @@ final class JSONWorkflowManifestLoaderTests: XCTestCase {
                 "postProcessSteps": [],
                 "outputActions": [
                   {
-                    "id": "clipboard.copy",
+                    "id": "system-clipboard.copy",
                     "configuration": {}
                   }
                 ],

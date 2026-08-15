@@ -7,12 +7,12 @@ final class WorkflowDefinitionMetadataTests: XCTestCase {
             name: "Default Policy",
             pipeline: PipelineDeclaration(
                 recognizerID: "context.selection",
-                outputActions: [OutputActionReference(id: "clipboard.copy")]
+                outputActions: [OutputActionReference(id: "system-clipboard.copy")]
             ),
             ui: WorkflowUIConfig(symbolName: "doc.on.clipboard", accentColorName: "blue")
         )
 
-        XCTAssertTrue(workflow.excludesOutputFromWorkflowCapture)
+        XCTAssertTrue(workflow.excludesOutputFromRecordCapture)
     }
 
     func testWorkflowCaptureExclusionCanBeDisabledViaMetadata() {
@@ -20,13 +20,13 @@ final class WorkflowDefinitionMetadataTests: XCTestCase {
             name: "Chainable",
             pipeline: PipelineDeclaration(
                 recognizerID: "context.selection",
-                outputActions: [OutputActionReference(id: "clipboard.copy")]
+                outputActions: [OutputActionReference(id: "system-clipboard.copy")]
             ),
             ui: WorkflowUIConfig(symbolName: "doc.on.clipboard", accentColorName: "blue"),
             metadata: [WorkflowMetadataKey.excludeOutputFromWorkflowCapture: "false"]
         )
 
-        XCTAssertFalse(workflow.excludesOutputFromWorkflowCapture)
+        XCTAssertFalse(workflow.excludesOutputFromRecordCapture)
     }
 
     func testCursorPlacementIsIgnoredWhenLivePreviewIsDisabled() {
@@ -50,7 +50,7 @@ final class WorkflowDefinitionMetadataTests: XCTestCase {
             trigger: .hotkey,
             pipeline: PipelineDeclaration(
                 recognizerID: "sherpa-onnx.local",
-                outputActions: [OutputActionReference(id: "inject.text")]
+                outputActions: [OutputActionReference(id: "focused-application.insert")]
             ),
             ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red"),
             metadata: [
@@ -81,33 +81,36 @@ final class WorkflowDefinitionMetadataTests: XCTestCase {
     }
 
     func testStrictGroupAutomationParserMapsEveryLegacyEventKind() throws {
-        let sourceGroupID = UUID()
-        let cases: [(String, ClipboardGroupEventKind)] = [
-            ("groupItemCreated", .itemCreated),
-            ("groupItemEdited", .itemEdited),
-            ("groupItemRemoved", .itemRemoved),
+        let sourceCollectionID = UUID()
+        let cases: [(String, RecordCollectionEventKind)] = [
+            ("groupItemCreated", .recordCreated),
+            ("groupItemEdited", .recordEdited),
+            ("groupItemRemoved", .recordRemoved),
         ]
 
         for (rawEventType, expectedKind) in cases {
             let workflow = makeWorkflow(metadata: [
                 WorkflowMetadataKey.legacyEventType: rawEventType,
-                WorkflowMetadataKey.legacySourceGroupID: sourceGroupID.uuidString,
+                WorkflowMetadataKey.legacySourceCollectionID: sourceCollectionID.uuidString,
                 WorkflowMetadataKey.legacyExcludePolishTag: "true",
                 WorkflowMetadataKey.legacyGroupActionKind:
-                    ClipboardGroupActionKind.removeItem.rawValue,
+                    RecordCollectionActionKind.removeRecord.rawValue,
             ])
 
             let configuration = try XCTUnwrap(
-                workflow.parseClipboardGroupAutomationConfiguration()
+                workflow.parseRecordCollectionAutomationConfiguration()
             )
 
             XCTAssertEqual(configuration.rule.eventKind, expectedKind)
-            XCTAssertEqual(configuration.rule.sourceGroupID, sourceGroupID)
+            XCTAssertEqual(
+                configuration.rule.sourceCollectionID,
+                RecordCollectionID(sourceCollectionID)
+            )
             XCTAssertEqual(
                 configuration.rule.conditions,
                 [.excludingTag(.polishGenerated)]
             )
-            XCTAssertEqual(configuration.actionKind, .removeItem)
+            XCTAssertEqual(configuration.actionKind, .removeRecord)
         }
     }
 
@@ -117,7 +120,7 @@ final class WorkflowDefinitionMetadataTests: XCTestCase {
         ))
 
         let configuration = try XCTUnwrap(
-            workflow.parseClipboardGroupAutomationConfiguration()
+            workflow.parseRecordCollectionAutomationConfiguration()
         )
 
         XCTAssertEqual(configuration.rule.conditions, [])
@@ -132,15 +135,15 @@ final class WorkflowDefinitionMetadataTests: XCTestCase {
 
             XCTAssertNil(
                 try makeWorkflow(metadata: metadata)
-                    .parseClipboardGroupAutomationConfiguration()
+                    .parseRecordCollectionAutomationConfiguration()
             )
         }
     }
 
     func testStrictGroupAutomationParserRejectsMalformedValues() {
         assertGroupParseError(
-            metadata: validGroupMetadata(sourceGroupID: "not-a-uuid"),
-            equals: .invalidSourceGroupID
+            metadata: validGroupMetadata(sourceCollectionID: "not-a-uuid"),
+            equals: .invalidSourceCollectionID
         )
         assertGroupParseError(
             metadata: validGroupMetadata(excludePolishTag: "TRUE"),
@@ -157,8 +160,8 @@ final class WorkflowDefinitionMetadataTests: XCTestCase {
     }
 
     func testStrictGroupAutomationParserDoesNotDefaultRequiredPolicyFields() {
-        let requiredFields: [(String, ClipboardGroupAutomationConfigurationError)] = [
-            (WorkflowMetadataKey.legacySourceGroupID, .missingSourceGroupID),
+        let requiredFields: [(String, RecordCollectionAutomationConfigurationError)] = [
+            (WorkflowMetadataKey.legacySourceCollectionID, .missingSourceCollectionID),
             (WorkflowMetadataKey.legacyExcludePolishTag, .missingExcludePolishTag),
             (WorkflowMetadataKey.legacyGroupActionKind, .missingActionKind),
         ]
@@ -175,7 +178,7 @@ final class WorkflowDefinitionMetadataTests: XCTestCase {
             name: "Metadata Policy",
             pipeline: PipelineDeclaration(
                 recognizerID: "context.selection",
-                outputActions: [OutputActionReference(id: "clipboard.copy")]
+                outputActions: [OutputActionReference(id: "system-clipboard.copy")]
             ),
             ui: WorkflowUIConfig(
                 symbolName: "doc.on.clipboard",
@@ -187,13 +190,13 @@ final class WorkflowDefinitionMetadataTests: XCTestCase {
 
     private func validGroupMetadata(
         eventType: String = "groupItemCreated",
-        sourceGroupID: String = UUID().uuidString,
+        sourceCollectionID: String = UUID().uuidString,
         excludePolishTag: String = "true",
-        actionKind: String = ClipboardGroupActionKind.editItem.rawValue
+        actionKind: String = RecordCollectionActionKind.editRecord.rawValue
     ) -> [String: String] {
         [
             WorkflowMetadataKey.legacyEventType: eventType,
-            WorkflowMetadataKey.legacySourceGroupID: sourceGroupID,
+            WorkflowMetadataKey.legacySourceCollectionID: sourceCollectionID,
             WorkflowMetadataKey.legacyExcludePolishTag: excludePolishTag,
             WorkflowMetadataKey.legacyGroupActionKind: actionKind,
         ]
@@ -201,18 +204,18 @@ final class WorkflowDefinitionMetadataTests: XCTestCase {
 
     private func assertGroupParseError(
         metadata: [String: String],
-        equals expectedError: ClipboardGroupAutomationConfigurationError,
+        equals expectedError: RecordCollectionAutomationConfigurationError,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
         XCTAssertThrowsError(
             try makeWorkflow(metadata: metadata)
-                .parseClipboardGroupAutomationConfiguration(),
+                .parseRecordCollectionAutomationConfiguration(),
             file: file,
             line: line
         ) { error in
             XCTAssertEqual(
-                error as? ClipboardGroupAutomationConfigurationError,
+                error as? RecordCollectionAutomationConfigurationError,
                 expectedError,
                 file: file,
                 line: line

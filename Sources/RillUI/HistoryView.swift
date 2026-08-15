@@ -21,7 +21,7 @@ enum HistoryPreviewPresentation: Equatable {
             self = .visible(text: text, lineLimit: nil)
         case .restricted:
             self = .visible(
-                text: ClipboardTextFormatting.previewText(
+                text: RecordTextFormatting.previewText(
                     text,
                     limit: Self.restrictedCharacterLimit
                 ),
@@ -49,7 +49,7 @@ struct HistoryLanguageModelTracePresentation: Equatable {
     let outputText: String?
     let traces: [LanguageModelTrace]
 
-    init?(record: HistoryRecord) {
+    init?(record: WorkflowResultRecord) {
         guard let source = record.correctionSource else { return nil }
         let exactTraces = source.languageModelTraces ?? []
         if !exactTraces.isEmpty {
@@ -109,7 +109,7 @@ struct HistoryPreviewContent<VisibleContent: View>: View {
             case .visible(let text, let lineLimit):
                 visibleContent(text, lineLimit)
             case .hidden(let message):
-                Label(message, systemImage: "eye.slash")
+                Label(message, systemImage: RillSystemSymbol.eyeSlash.rawValue)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -206,7 +206,7 @@ public struct HistoryView: View {
     private static let topAnchorID = "history.top"
 
     @Bindable private var model: AppModel
-    @State private var correctionRecord: HistoryRecord?
+    @State private var correctionRecord: WorkflowResultRecord?
     @State private var pendingFailedAudioDeletion: FailedAudioRecoveryReceipt?
     @FocusState private var focusedTarget: HistoryViewFocusTarget?
     @AccessibilityFocusState private var accessibilityFocusedTarget: HistoryViewFocusTarget?
@@ -254,7 +254,7 @@ public struct HistoryView: View {
                     )
 
                     if let error = model.failedAudioRecoveryError {
-                        Label(error, systemImage: "exclamationmark.triangle")
+                        Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
                             .font(.callout)
                             .foregroundStyle(.red)
                     }
@@ -278,7 +278,7 @@ public struct HistoryView: View {
                                 .font(.callout)
                             }
                         } icon: {
-                            Image(systemName: "clock.badge.exclamationmark")
+                            Image(systemName: RillSystemSymbol.clockBadgeExclamationmark.rawValue)
                         }
                         .foregroundStyle(.orange)
                         .padding(12)
@@ -290,7 +290,7 @@ public struct HistoryView: View {
                         HStack(spacing: 10) {
                             Label(
                                 UIStrings.text(.historyPaginationFailed, language: model.language),
-                                systemImage: "exclamationmark.triangle"
+                                systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
                             )
                             .font(.callout)
                             .foregroundStyle(.orange)
@@ -446,7 +446,7 @@ public struct HistoryView: View {
             language: model.language
         )
         return VStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: RillSystemSymbol.exclamationmarkTriangleFill.rawValue)
                 .font(.system(size: 44))
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
@@ -490,7 +490,7 @@ public struct HistoryView: View {
             } label: {
                 Label(
                     UIStrings.text(.historyNewerPage, language: model.language),
-                    systemImage: "chevron.left"
+                    systemImage: RillSystemSymbol.chevronLeft.rawValue
                 )
             }
             .disabled(
@@ -512,7 +512,7 @@ public struct HistoryView: View {
             } label: {
                 Label(
                     UIStrings.text(.historyOlderPage, language: model.language),
-                    systemImage: "chevron.right"
+                    systemImage: RillSystemSymbol.chevronRight.rawValue
                 )
                 .labelStyle(.titleAndIcon)
             }
@@ -529,7 +529,7 @@ public struct HistoryView: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            Image(systemName: "clock.arrow.circlepath")
+            Image(systemName: RillSystemSymbol.clockArrowCirclepath.rawValue)
                 .font(.system(size: 48))
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
@@ -609,10 +609,10 @@ public struct HistoryView: View {
                 Text(title)
                     .font(.headline)
 
-                if entry.isStackRelated || entry.receipt?.trigger == .stackDelivery {
+                if entry.isRecordRelated || entry.receipt?.trigger == .recordDelivery {
                     Label(
                         UIStrings.text(.historyStackBadge, language: model.language),
-                        systemImage: "square.stack.3d.up"
+                        systemImage: RillSystemSymbol.squareStack3dUp.rawValue
                     )
                     .font(.caption)
                     .padding(.horizontal, 6)
@@ -650,7 +650,7 @@ public struct HistoryView: View {
                     } label: {
                         Label(
                             L10n.string(.vocabularyCorrectionAction, language: model.language),
-                            systemImage: "text.badge.checkmark"
+                            systemImage: RillSystemSymbol.textBadgeCheckmark.rawValue
                         )
                     }
                     .buttonStyle(.borderless)
@@ -663,7 +663,7 @@ public struct HistoryView: View {
                                 for: failure,
                                 language: model.language
                             ),
-                            systemImage: "exclamationmark.triangle"
+                            systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
                         )
                             .font(.callout)
                             .foregroundStyle(.red)
@@ -694,7 +694,7 @@ public struct HistoryView: View {
                     model.language == .english
                         ? "Execution details are unavailable for this older run."
                         : "这条较早的运行没有可用的执行详情。",
-                    systemImage: "info.circle"
+                    systemImage: RillSystemSymbol.infoCircle.rawValue
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -704,7 +704,7 @@ public struct HistoryView: View {
                let reason = model.failedAudioRecoveryUnavailableReasonsByRunID[runID] {
                 Label(
                     model.failedAudioRecoveryUnavailableMessage(reason),
-                    systemImage: "exclamationmark.triangle"
+                    systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
                 )
                 .font(.callout)
                 .foregroundStyle(.orange)
@@ -734,7 +734,7 @@ public struct HistoryView: View {
                         .historyFailedAudioOutcomeUnknown,
                         language: model.language
                     ),
-                    systemImage: "exclamationmark.triangle.fill"
+                    systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
                 )
                 .font(.caption)
                 .foregroundStyle(.orange)
@@ -751,7 +751,7 @@ public struct HistoryView: View {
                                     .historyFailedAudioRetrying,
                                     language: model.language
                                 ),
-                                systemImage: "arrow.triangle.2.circlepath"
+                                systemImage: RillSystemSymbol.arrowTriangle2Circlepath.rawValue
                             )
                         } else {
                             Label(
@@ -759,7 +759,7 @@ public struct HistoryView: View {
                                     .historyFailedAudioRetry,
                                     language: model.language
                                 ),
-                                systemImage: "arrow.clockwise.circle"
+                                systemImage: RillSystemSymbol.arrowClockwiseCircle.rawValue
                             )
                         }
                     }
@@ -805,7 +805,7 @@ public struct HistoryView: View {
             Divider()
                 .accessibilityHidden(true)
             HStack(spacing: 8) {
-                Label(localizedTrigger(receipt.trigger), systemImage: "bolt.horizontal.circle")
+                Label(localizedTrigger(receipt.trigger), systemImage: RillSystemSymbol.boltHorizontalCircle.rawValue)
                 Text("·")
                     .accessibilityHidden(true)
                 Text(localizedTermination(receipt.termination))
@@ -839,7 +839,7 @@ public struct HistoryView: View {
                     model.language == .english
                         ? "Additional action details were omitted."
                         : "其余动作详情已省略。",
-                    systemImage: "ellipsis.circle"
+                    systemImage: RillSystemSymbol.ellipsisCircle.rawValue
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -858,14 +858,14 @@ public struct HistoryView: View {
         case (.simplifiedChinese, .hotkey): "快捷键"
         case (.english, .wakeWord): "Wake word"
         case (.simplifiedChinese, .wakeWord): "唤醒词"
-        case (.english, .clipboardGroupEvent): "Clipboard event"
-        case (.simplifiedChinese, .clipboardGroupEvent): "剪贴板事件"
-        case (.english, .stackDelivery): "Stack delivery"
-        case (.simplifiedChinese, .stackDelivery): "堆栈投递"
-        case (.english, .clipboardUse): "Clipboard paste"
-        case (.simplifiedChinese, .clipboardUse): "剪贴板粘贴"
-        case (.english, .clipboardReplay): "Clipboard replay"
-        case (.simplifiedChinese, .clipboardReplay): "剪贴板重放"
+        case (.english, .recordCollectionEvent): "Collection event"
+        case (.simplifiedChinese, .recordCollectionEvent): "记录集事件"
+        case (.english, .recordDelivery): "Record delivery"
+        case (.simplifiedChinese, .recordDelivery): "记录投递"
+        case (.english, .recordUse): "Record use"
+        case (.simplifiedChinese, .recordUse): "记录使用"
+        case (.english, .recordReplay): "Record replay"
+        case (.simplifiedChinese, .recordReplay): "记录重放"
         case (.english, .failedAudioRecovery): "Audio recovery"
         case (.simplifiedChinese, .failedAudioRecovery): "录音恢复"
         }
@@ -1018,7 +1018,7 @@ public struct HistoryView: View {
                     PrivacySettingsTextKey.historyPreviewHidden,
                     language: model.language
                 ),
-                systemImage: "eye.slash"
+                systemImage: RillSystemSymbol.eyeSlash.rawValue
             )
             .font(.callout)
             .foregroundStyle(.secondary)

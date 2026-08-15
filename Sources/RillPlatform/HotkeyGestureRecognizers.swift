@@ -83,12 +83,12 @@ struct DoubleCommandTapRecognizer {
     }
 }
 
-enum ClipboardPanelShortcutRecognizerOutput: Equatable {
+enum RecordPanelShortcutRecognizerOutput: Equatable {
     case passThrough
     case swallow(shouldEmit: Bool)
 }
 
-struct ClipboardPanelShortcutRecognizer {
+struct RecordPanelShortcutRecognizer {
     private var activeKeyCode: CGKeyCode?
 
     mutating func reset() {
@@ -100,7 +100,7 @@ struct ClipboardPanelShortcutRecognizer {
         keyCode: CGKeyCode,
         flags: CGEventFlags,
         binding: HotkeyBindingDescriptor
-    ) -> ClipboardPanelShortcutRecognizerOutput {
+    ) -> RecordPanelShortcutRecognizerOutput {
         if type == .keyUp {
             if activeKeyCode == keyCode {
                 activeKeyCode = nil

@@ -15,6 +15,7 @@ final class LocalSpeechPreparationTaskOwner {
   private(set) var state: State = .accepting
   private(set) var activeID: UUID?
   private var tasks: [UUID: Task<Void, Never>] = [:]
+  private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
   var trackedTaskCount: Int {
     tasks.count
@@ -53,6 +54,16 @@ final class LocalSpeechPreparationTaskOwner {
     if activeID == id {
       activeID = nil
     }
+    resumeIdleWaitersIfNeeded()
+  }
+
+  /// Waits for active and retired provider work to release ownership.
+  /// Cancellation alone is not completion because providers may finish late.
+  func waitUntilIdle() async {
+    guard !tasks.isEmpty else { return }
+    await withCheckedContinuation { continuation in
+      idleWaiters.append(continuation)
+    }
   }
 
   /// Rejects future tasks and cancels all active and retired preparations.
@@ -69,6 +80,16 @@ final class LocalSpeechPreparationTaskOwner {
     self.tasks.removeAll()
     for task in tasks {
       task.cancel()
+    }
+    resumeIdleWaitersIfNeeded()
+  }
+
+  private func resumeIdleWaitersIfNeeded() {
+    guard tasks.isEmpty else { return }
+    let waiters = idleWaiters
+    idleWaiters.removeAll()
+    for waiter in waiters {
+      waiter.resume()
     }
   }
 }

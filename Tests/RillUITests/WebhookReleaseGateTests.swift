@@ -77,7 +77,7 @@ final class WebhookReleaseGateTests: XCTestCase {
         let settingsStore = UITestSettingsStore(storage: [.customWorkflows: encoded])
         let harness = makeHarness(settingsStore: settingsStore)
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         let loadedAction = try XCTUnwrap(harness.model.customWorkflows.first?.pipeline.outputActions.first)
         XCTAssertEqual(loadedAction.id, ExternalOutputActionID.webhookPost)

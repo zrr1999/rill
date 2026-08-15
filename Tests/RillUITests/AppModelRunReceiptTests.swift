@@ -191,7 +191,7 @@ private actor SuspendedAcceptedInsertRunReceiptRepository: WorkflowRunReceiptRep
 
 private actor ClearInterleavingHistoryRepository: HistoryRepository {
     private let rejectsObsoleteWrites: Bool
-    private var stored: [HistoryRecord] = []
+    private var stored: [WorkflowResultRecord] = []
     private var clearThrough: Date?
     private var saveStarted = false
     private var saveFinished = false
@@ -201,7 +201,7 @@ private actor ClearInterleavingHistoryRepository: HistoryRepository {
         self.rejectsObsoleteWrites = rejectsObsoleteWrites
     }
 
-    func save(_ record: HistoryRecord) async throws {
+    func save(_ record: WorkflowResultRecord) async throws {
         saveStarted = true
         await withCheckedContinuation { continuation in
             saveContinuation = continuation
@@ -213,7 +213,7 @@ private actor ClearInterleavingHistoryRepository: HistoryRepository {
         stored.append(record)
     }
 
-    func records(matching query: HistoryQuery) async throws -> [HistoryRecord] {
+    func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
         stored.sorted { $0.timestamp > $1.timestamp }
     }
 
@@ -250,7 +250,7 @@ private actor ClearInterleavingHistoryRepository: HistoryRepository {
 @MainActor
 final class AppModelRunReceiptTests: XCTestCase {
     func testAppModelLoadsDurableRunReceiptsWithoutEventReplay() async throws {
-        let receipt = try makeReceipt(trigger: .clipboardReplay)
+        let receipt = try makeReceipt(trigger: .recordReplay)
         let repository = try InMemoryWorkflowRunReceiptRepository(receipts: [receipt])
         let harness = makeHarness(runReceiptRepository: repository)
 
@@ -280,7 +280,7 @@ final class AppModelRunReceiptTests: XCTestCase {
     func testRepositoryChangeInvalidatesOlderInFlightRepositorySnapshot() async throws {
         let repository = SuspendedFirstRunReceiptRepository()
         let harness = makeHarness(runReceiptRepository: repository)
-        let receipt = try makeReceipt(trigger: .clipboardReplay)
+        let receipt = try makeReceipt(trigger: .recordReplay)
 
         let firstQueryStarted = await waitUntilAsync {
             await repository.didCaptureFirstSnapshot()
@@ -313,7 +313,7 @@ final class AppModelRunReceiptTests: XCTestCase {
         let highTrafficReceipts = try (0..<101).map { offset in
             try makeReceipt(
                 runID: UUID(),
-                trigger: .clipboardUse,
+                trigger: .recordUse,
                 timestamp: now.addingTimeInterval(-Double(offset))
             )
         }
@@ -321,7 +321,7 @@ final class AppModelRunReceiptTests: XCTestCase {
             receipts: highTrafficReceipts + [requiredReceipt]
         )
         let historyRepository = InMemoryHistoryRepository(records: [
-            HistoryRecord(
+            WorkflowResultRecord(
                 runID: requiredRunID,
                 workflow: WorkflowPresentation(fallbackName: "Visible run"),
                 finalText: "result",
@@ -343,7 +343,7 @@ final class AppModelRunReceiptTests: XCTestCase {
 
     func testPersistedVoiceTriggerKeepsCustomResultVisibleAfterWorkflowRemoval() async {
         let runID = UUID()
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             runID: runID,
             workflowID: UUID(),
             workflow: WorkflowPresentation(fallbackName: "Removed Custom Dictation"),
@@ -371,18 +371,18 @@ final class AppModelRunReceiptTests: XCTestCase {
             name: "Legacy Group Rewrite",
             pipeline: PipelineDeclaration(
                 recognizerID: "context.selection",
-                outputActions: [OutputActionReference(id: "stack.push")]
+                outputActions: [OutputActionReference(id: "record.store")]
             ),
             ui: WorkflowUIConfig(symbolName: "bolt", accentColorName: "orange"),
             metadata: [
                 WorkflowMetadataKey.legacyEventType: "groupItemCreated",
-                WorkflowMetadataKey.legacySourceGroupID: ClipboardGroup.voiceGroupID.uuidString,
+                WorkflowMetadataKey.legacySourceCollectionID: RecordCollection.voiceInputID.rawValue.uuidString,
                 WorkflowMetadataKey.legacyExcludePolishTag: "true",
-                WorkflowMetadataKey.legacyGroupActionKind: ClipboardGroupActionKind.editItem.rawValue,
+                WorkflowMetadataKey.legacyGroupActionKind: RecordCollectionActionKind.editRecord.rawValue,
             ]
         )
         let runID = UUID()
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             runID: runID,
             workflowID: workflow.id,
             workflow: workflow.presentation,
@@ -407,14 +407,14 @@ final class AppModelRunReceiptTests: XCTestCase {
     func testLegacyReceiptFallbackIsVoiceButTriggerConflictFailsClosed() async throws {
         let legacyVoiceRunID = UUID()
         let conflictingRunID = UUID()
-        let legacyVoice = HistoryRecord(
+        let legacyVoice = WorkflowResultRecord(
             runID: legacyVoiceRunID,
             workflow: WorkflowPresentation(fallbackName: "Legacy Voice"),
             finalText: "voice body",
             timestamp: Date(),
             outcome: .completed
         )
-        let conflicting = HistoryRecord(
+        let conflicting = WorkflowResultRecord(
             runID: conflictingRunID,
             workflow: WorkflowPresentation(fallbackName: "Conflicting Body"),
             finalText: "must stay hidden",
@@ -428,7 +428,7 @@ final class AppModelRunReceiptTests: XCTestCase {
         )
         let conflictingReceipt = try makeReceipt(
             runID: conflictingRunID,
-            trigger: .clipboardReplay
+            trigger: .recordReplay
         )
         let receiptRepository = try InMemoryWorkflowRunReceiptRepository(
             receipts: [voiceReceipt, conflictingReceipt]
@@ -454,7 +454,7 @@ final class AppModelRunReceiptTests: XCTestCase {
     }
 
     func testCompletedExplicitClearRemovesCachedReceiptWhenReloadFails() async throws {
-        let receipt = try makeReceipt(trigger: .clipboardUse)
+        let receipt = try makeReceipt(trigger: .recordUse)
         let repository = SwitchableRunReceiptRepository(receipts: [receipt])
         let maintenance = UITestLocalHistoryMaintenance(
             fallbackResult: .completed(
@@ -481,7 +481,7 @@ final class AppModelRunReceiptTests: XCTestCase {
     }
 
     func testLateRepositoryChangeCannotResurrectClearedReceiptWhenReloadFails() async throws {
-        let receipt = try makeReceipt(trigger: .clipboardUse)
+        let receipt = try makeReceipt(trigger: .recordUse)
         let repository = SwitchableRunReceiptRepository(receipts: [receipt])
         let maintenance = UITestLocalHistoryMaintenance(
             fallbackResult: .completed(
@@ -744,65 +744,6 @@ final class AppModelRunReceiptTests: XCTestCase {
         XCTAssertTrue(harness.model.historyRecords.contains { $0.runID == runID })
     }
 
-    func testGroupSchedulerReceiptReachesHistoryProjectionWithoutClipboardBody() async throws {
-        let privateBody = "private-group-scheduler-body-canary"
-        let workflow = makeBuiltinPushToTalkPolishWorkflow()
-        let configuration = try XCTUnwrap(
-            workflow.parseClipboardGroupAutomationConfiguration()
-        )
-        let repository = InMemoryWorkflowRunReceiptRepository()
-        let harness = makeHarness(
-            workflows: [workflow],
-            runReceiptRepository: repository
-        )
-        await waitForListenerSetup()
-        let registration = ClipboardGroupWorkflowRegistration(
-            workflowID: workflow.id,
-            triggerRule: configuration.rule,
-            isEnabled: false,
-            isExecutionSupported: false
-        )
-        let scheduler = ClipboardGroupEventScheduler(
-            receiptRecorder: WorkflowRunReceiptRecorder(
-                repository: repository,
-                eventBus: harness.eventBus
-            ),
-            registrationProvider: { [registration] }
-        )
-        let deliveryStack = DeliveryStack(
-            eventBus: harness.eventBus,
-            clipboardGroupEventSink: scheduler
-        )
-
-        await deliveryStack.push(
-            DeliveryItem(
-                workflowID: UUID(),
-                text: privateBody,
-                targetGroupID: ClipboardGroup.voiceGroupID
-            )
-        )
-        await scheduler.waitUntilIdle()
-        let didLoadReceipt = await waitUntil {
-            harness.model.workflowRunReceiptsByRunID.count == 1
-        }
-
-        XCTAssertTrue(didLoadReceipt)
-        let receipt = try XCTUnwrap(
-            harness.model.workflowRunReceiptsByRunID.values.first
-        )
-        XCTAssertEqual(receipt.workflowID, workflow.id)
-        XCTAssertEqual(receipt.trigger, .clipboardGroupEvent)
-        XCTAssertEqual(receipt.termination, .skipped(reason: .unsupported))
-        XCTAssertTrue(harness.model.historyRecords.isEmpty)
-        let entries = HistoryTimelineBuilder.allRuns(
-            records: harness.model.historyRecords,
-            receipts: [receipt]
-        )
-        XCTAssertEqual(entries.count, 1)
-        XCTAssertNil(entries[0].record)
-        XCTAssertFalse(String(describing: entries).contains(privateBody))
-    }
-
     private func makeReceipt(
         runID: UUID = UUID(),
         trigger: WorkflowRunTriggerKind,
@@ -857,4 +798,5 @@ final class AppModelRunReceiptTests: XCTestCase {
         }
         return await predicate()
     }
+
 }

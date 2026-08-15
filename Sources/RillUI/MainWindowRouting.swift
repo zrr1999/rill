@@ -6,7 +6,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     case speech
     case input
     case voiceAssistant
-    case clipboardPanel
+    case recordPanel
     case vocabulary
     case language
     case privacy
@@ -18,8 +18,8 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .language:
             UIStrings.text(.settingsLanguage, language: language)
-        case .clipboardPanel:
-            UIStrings.text(.settingsClipboardPanel, language: language)
+        case .recordPanel:
+            UIStrings.text(.settingsRecordPanel, language: language)
         case .permissions:
             UIStrings.text(.permissions, language: language)
         case .privacy:
@@ -40,7 +40,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     public var symbolName: String {
         switch self {
         case .language: "globe"
-        case .clipboardPanel: "doc.on.clipboard"
+        case .recordPanel: "doc.on.clipboard"
         case .permissions: "lock.shield"
         case .privacy: "hand.raised"
         case .storage: "externaldrive"
@@ -55,7 +55,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .language:
             "language interface locale 语言 界面 中文 english"
-        case .clipboardPanel:
+        case .recordPanel:
             "clipboard capture history panel shortcut hotkey double command 剪贴板 剪切板 捕获 历史 面板 快捷键 双击 开启 关闭"
         case .permissions:
             "permissions microphone accessibility privacy system 权限 麦克风 辅助功能"

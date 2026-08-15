@@ -70,14 +70,14 @@ final class SQLitePersistenceStoreTests: XCTestCase {
   func testHistoryRoundTrip() async throws {
     let store = try makeStore()
     let workflowID = UUID()
-    let record = HistoryRecord(
+    let record = WorkflowResultRecord(
       runID: UUID(),
       workflowID: workflowID,
       workflow: WorkflowPresentation(
         fallbackName: "Persisted Workflow", titleKey: .directDemoClipboard),
       finalText: "hello persistence",
       timestamp: Date(timeIntervalSince1970: 42),
-      isStackRelated: true,
+      isRecordRelated: true,
       outcome: .completed,
       trigger: .hotkey
     )
@@ -87,14 +87,14 @@ final class SQLitePersistenceStoreTests: XCTestCase {
 
     XCTAssertEqual(records, [record])
 
-    let updated = HistoryRecord(
+    let updated = WorkflowResultRecord(
       id: record.id,
       runID: record.runID,
       workflowID: workflowID,
       workflow: record.workflow,
       finalText: "updated persistence",
       timestamp: record.timestamp,
-      isStackRelated: record.isStackRelated,
+      isRecordRelated: record.isRecordRelated,
       outcome: .completed,
       trigger: .hotkey
     )
@@ -269,7 +269,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let boundary = try WorkflowRunReceipt(
       runID: UUID(),
       workflowID: nil,
-      trigger: .stackDelivery,
+      trigger: .recordDelivery,
       timestamp: Date(timeIntervalSince1970: 20),
       duration: .under250ms,
       termination: .skipped(reason: .allActionsSkipped)
@@ -679,7 +679,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let receipt = try WorkflowRunReceipt(
       runID: UUID(),
       workflowID: UUID(),
-      trigger: .clipboardReplay,
+      trigger: .recordReplay,
       timestamp: Date(timeIntervalSince1970: 73),
       duration: .s1To4,
       termination: .failed(stage: .delivering, code: .processing),
@@ -699,7 +699,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       rawRunReceiptPayload(runID: receipt.runID, at: databaseURL)
     )
     XCTAssertTrue(envelope.hasPrefix("rill:v1:"))
-    for sentinel in ["clipboardReplay", "delivering", "processing", "ms250To999"] {
+    for sentinel in ["recordReplay", "delivering", "processing", "ms250To999"] {
       let data = Data(sentinel.utf8)
       for file in try persistedDatabaseBytes(at: databaseURL) {
         XCTAssertNil(
@@ -729,7 +729,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
     let receipts = try await migrated.receipts(matching: .all)
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     XCTAssertTrue(try runReceiptTableExists(at: databaseURL))
     XCTAssertTrue(try runHistoryGenerationTableExists(at: databaseURL))
     XCTAssertTrue(receipts.isEmpty)
@@ -753,7 +753,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       localDataProtector: protector
     )
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     XCTAssertTrue(try runHistoryGenerationTableExists(at: databaseURL))
     XCTAssertEqual(try runHistoryGeneration(at: databaseURL), 0)
   }
@@ -765,7 +765,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: directoryURL) }
     let databaseURL = directoryURL.appendingPathComponent("rill-v6-to-v11.sqlite")
     let protector = try testProtector(byte: 0x4F)
-    let legacyRecord = HistoryRecord(
+    let legacyRecord = WorkflowResultRecord(
       runID: UUID(),
       workflowID: UUID(),
       workflow: WorkflowPresentation(fallbackName: "Legacy unclassified run"),
@@ -792,7 +792,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
     let records = try await migrated.records(matching: .all)
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     XCTAssertTrue(try historyColumnNames(at: databaseURL).contains("trigger_kind"))
     XCTAssertEqual(records, [legacyRecord])
     XCTAssertNil(records.first?.trigger)
@@ -836,7 +836,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       localDataProtector: protector
     )
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     XCTAssertEqual(try runHistoryGeneration(at: databaseURL), 0)
     for tableName in ["history_records", "workflow_run_receipts", "diagnostic_events"] {
       XCTAssertTrue(try columnNames(in: tableName, at: databaseURL).contains("write_generation"))
@@ -884,12 +884,12 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       preMappingText: "Vox Type keeps provenance",
       context: VocabularyRuleContext(
         bundleIdentifier: "com.example.editor",
-        clipboardGroupID: UUID(),
+        recordCollectionID: UUID(),
         locale: "en-US"
       ),
       languageModelInputTexts: ["normalized question", "second LLM input"]
     )
-    let correctedRecord = HistoryRecord(
+    let correctedRecord = WorkflowResultRecord(
       id: id,
       runID: UUID(),
       workflowID: UUID(),
@@ -905,7 +905,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
 
     XCTAssertEqual(persistedCorrectedRecords, [correctedRecord])
 
-    let uncorrectedRecord = HistoryRecord(
+    let uncorrectedRecord = WorkflowResultRecord(
       id: id,
       runID: correctedRecord.runID,
       workflowID: correctedRecord.workflowID,
@@ -930,7 +930,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let sentinel = "provider-private-response-" + UUID().uuidString
 
     try await store.save(
-      HistoryRecord(
+      WorkflowResultRecord(
         workflow: WorkflowPresentation(fallbackName: "Failure"),
         failureMessage: sentinel,
         outcome: .failed
@@ -987,7 +987,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     XCTAssertEqual(records.first?.id, legacyID)
     XCTAssertEqual(records.first?.finalText, "legacy v2 history")
     XCTAssertNil(records.first?.correctionSource)
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     XCTAssertTrue(try historyColumnNames(at: databaseURL).contains("correction_source_json"))
   }
 
@@ -1010,9 +1010,9 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     XCTAssertEqual(migratedRecords.count, 1)
     XCTAssertEqual(migratedRecords.first?.id, legacyID)
     XCTAssertNil(migratedRecords.first?.correctionSource)
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
 
-    let correctedRecord = HistoryRecord(
+    let correctedRecord = WorkflowResultRecord(
       workflow: WorkflowPresentation(fallbackName: "Recovered migration"),
       finalText: "corrected text",
       timestamp: Date(timeIntervalSince1970: 3),
@@ -1043,7 +1043,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let provenanceText = "protected-provenance-" + UUID().uuidString
     let fallbackName = "protected-workflow-" + UUID().uuidString
     let clipboardState = "protected-clipboard-" + UUID().uuidString
-    let record = HistoryRecord(
+    let record = WorkflowResultRecord(
       workflow: WorkflowPresentation(fallbackName: fallbackName),
       finalText: finalText,
       timestamp: Date(timeIntervalSince1970: 8),
@@ -1055,11 +1055,11 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
 
     try await store.save(record)
-    try await store.setString(clipboardState, forKey: .clipboardPersistedState)
+    try await store.setString(clipboardState, forKey: .legacyClipboardPersistedState)
     try await store.purgeSensitiveStorageResidue()
 
     let persistedRecords = try await store.records(matching: .all)
-    let persistedClipboardState = try await store.string(forKey: .clipboardPersistedState)
+    let persistedClipboardState = try await store.string(forKey: .legacyClipboardPersistedState)
     XCTAssertEqual(persistedRecords, [record])
     XCTAssertEqual(persistedClipboardState, clipboardState)
     for column in ["workflow_fallback_name", "final_text", "correction_source_json"] {
@@ -1070,7 +1070,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     }
     XCTAssertTrue(
       try XCTUnwrap(
-        rawSettingValue(forKey: .clipboardPersistedState, at: databaseURL)
+        rawSettingValue(forKey: .legacyClipboardPersistedState, at: databaseURL)
       ).hasPrefix("rill:v1:")
     )
     for sentinel in [finalText, provenanceText, fallbackName, clipboardState] {
@@ -1082,7 +1082,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         )
       }
     }
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     XCTAssertTrue(
       try SQLitePersistenceStore.requiresExistingDataProtectionKey(
         databaseURL: databaseURL
@@ -1102,7 +1102,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let diagnosticSentinel = "legacy-diagnostic-" + UUID().uuidString
     let exportDestination = "/tmp/legacy-export-\(UUID().uuidString).json"
     let exportMetadataSentinel = "legacy-export-metadata-" + UUID().uuidString
-    let record = HistoryRecord(
+    let record = WorkflowResultRecord(
       workflow: WorkflowPresentation(fallbackName: "Legacy protected migration"),
       finalText: finalText,
       timestamp: Date(timeIntervalSince1970: 7),
@@ -1115,7 +1115,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     try createV3Database(
       at: databaseURL,
       records: [record],
-      settingKey: .clipboardPersistedState,
+      settingKey: .legacyClipboardPersistedState,
       settingValue: settingValue
     )
     try insertLegacyDiagnostic(
@@ -1143,7 +1143,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
 
     let migratedRecords = try await store.records(matching: .all)
-    let migratedSetting = try await store.string(forKey: .clipboardPersistedState)
+    let migratedSetting = try await store.string(forKey: .legacyClipboardPersistedState)
     let migratedDiagnostics = try await store.events(matching: .init())
     let migratedExports = try await store.exports(limit: nil)
     XCTAssertEqual(migratedRecords, [record])
@@ -1151,7 +1151,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     XCTAssertEqual(migratedDiagnostics.first?.message, DiagnosticEventSanitizer.sanitizedMessage)
     XCTAssertEqual(migratedDiagnostics.first?.metadata, [:])
     XCTAssertEqual(migratedExports, [legacyExport])
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     for sentinel in [
       finalText,
       provenanceText,
@@ -1246,7 +1246,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       localDataProtector: testProtector(byte: 0x3E)
     )
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     XCTAssertEqual(try cleanupPendingValue(at: databaseURL), 0)
     for file in try persistedDatabaseBytes(at: databaseURL) {
       XCTAssertNil(
@@ -1325,13 +1325,13 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: directoryURL) }
     let databaseURL = directoryURL.appendingPathComponent("rill-interrupted-v4.sqlite")
     let records = [
-      HistoryRecord(
+      WorkflowResultRecord(
         workflow: WorkflowPresentation(fallbackName: "First legacy workflow"),
         finalText: "first-legacy-final",
         timestamp: Date(timeIntervalSince1970: 1),
         outcome: .completed
       ),
-      HistoryRecord(
+      WorkflowResultRecord(
         workflow: WorkflowPresentation(fallbackName: "Second legacy workflow"),
         finalText: "second-legacy-final",
         timestamp: Date(timeIntervalSince1970: 2),
@@ -1341,7 +1341,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     try createV3Database(
       at: databaseURL,
       records: records,
-      settingKey: .clipboardPersistedState,
+      settingKey: .legacyClipboardPersistedState,
       settingValue: "legacy-clipboard-state"
     )
     let baseProtector = try testProtector(byte: 0x36)
@@ -1373,11 +1373,11 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
     let recovered = try await recoveredStore.records(matching: .all)
     let recoveredClipboardState = try await recoveredStore.string(
-      forKey: .clipboardPersistedState
+      forKey: .legacyClipboardPersistedState
     )
     XCTAssertEqual(recovered, records.sorted { $0.timestamp > $1.timestamp })
     XCTAssertEqual(recoveredClipboardState, "legacy-clipboard-state")
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
   }
 
   func testPendingV4ResidueCleanupSurvivesBusyCheckpointAndRetriesOnNextOpen() async throws {
@@ -1387,7 +1387,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: directoryURL) }
     let databaseURL = directoryURL.appendingPathComponent("rill-pending-cleanup.sqlite")
     let sentinel = "pending-cleanup-plaintext-" + UUID().uuidString
-    let record = HistoryRecord(
+    let record = WorkflowResultRecord(
       workflow: WorkflowPresentation(fallbackName: "Pending cleanup"),
       finalText: sentinel,
       timestamp: Date(timeIntervalSince1970: 11),
@@ -1396,7 +1396,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     try createV3Database(
       at: databaseURL,
       records: [record],
-      settingKey: .clipboardPersistedState,
+      settingKey: .legacyClipboardPersistedState,
       settingValue: "pending-cleanup-setting"
     )
     try enableWALMode(at: databaseURL)
@@ -1427,7 +1427,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       XCTAssertTrue(message.contains("busy"))
     }
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     XCTAssertEqual(try cleanupPendingValue(at: databaseURL), 1)
     XCTAssertEqual(sqlite3_exec(reader, "ROLLBACK;", nil, nil, nil), SQLITE_OK)
     sqlite3_close(reader)
@@ -1611,7 +1611,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       localDataProtector: originalProtector
     )
     let recoveredRecords = try await recovered.records(matching: .all)
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     XCTAssertEqual(recoveredRecords, [record])
     XCTAssertEqual(try rawKeyVerificationEnvelope(at: databaseURL), markerBefore)
     XCTAssertEqual(
@@ -1824,7 +1824,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let recoveredDiagnostics = try await recovered.events(matching: .init())
     let recoveredSetting = try await recovered.string(forKey: .interfaceLanguage)
     let recoveredExports = try await recovered.exports(limit: nil)
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     XCTAssertEqual(recoveredHistory, [history])
     XCTAssertEqual(
       recoveredDiagnostics,
@@ -1858,7 +1858,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       localDataProtector: protector
     )
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 11)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 12)
     XCTAssertEqual(try cleanupPendingValue(at: databaseURL), 0)
     XCTAssertEqual(try rawKeyVerificationEnvelope(at: databaseURL), fixture.markerEnvelope)
     XCTAssertEqual(
@@ -2223,7 +2223,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     }
     let diagnostic = DiagnosticEvent(
       timestamp: Date(timeIntervalSince1970: 15),
-      subsystem: .stack,
+      subsystem: .records,
       level: .info,
       event: "persistence.must-remain",
       message: "History cleanup must not remove diagnostics."
@@ -2257,7 +2257,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let databaseURL = directoryURL.appendingPathComponent("rill-test.sqlite")
     let store = try SQLitePersistenceStore(databaseURL: databaseURL)
     let provenanceSentinel = "expired-pre-mapping-" + UUID().uuidString
-    let expiredRecord = HistoryRecord(
+    let expiredRecord = WorkflowResultRecord(
       workflow: WorkflowPresentation(fallbackName: "Expired correction"),
       finalText: "expired corrected text",
       timestamp: Date(timeIntervalSince1970: 10),
@@ -2267,7 +2267,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         context: VocabularyRuleContext(locale: "en-US")
       )
     )
-    let retainedRecord = HistoryRecord(
+    let retainedRecord = WorkflowResultRecord(
       workflow: WorkflowPresentation(fallbackName: "Boundary correction"),
       finalText: "retained corrected text",
       timestamp: Date(timeIntervalSince1970: 20),
@@ -2717,7 +2717,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let historySentinel = "history-sensitive-sentinel-" + UUID().uuidString
     let diagnostic = DiagnosticEvent(
       timestamp: Date(timeIntervalSince1970: 200),
-      subsystem: .stack,
+      subsystem: .records,
       level: .warning,
       event: "persistence.sentinel-control",
       message: "Diagnostic control remains after history cleanup."
@@ -2931,7 +2931,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
     let clipboardReceipt = try browsingReceipt(
       runID: clipboardRunID,
-      trigger: .clipboardReplay,
+      trigger: .recordReplay,
       timestamp: Date(timeIntervalSince1970: 200)
     )
     let mismatchedVoiceReceipt = try browsingReceipt(
@@ -2949,7 +2949,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let clipboardRecord = browsingRecord(
       id: deterministicUUID(212),
       runID: clipboardRunID,
-      trigger: .clipboardReplay,
+      trigger: .recordReplay,
       text: "clipboard secret",
       timestamp: 199
     )
@@ -3033,7 +3033,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       localDataProtector: protector
     )
     let body = String(repeating: "private body ", count: 20)
-    let record = HistoryRecord(
+    let record = WorkflowResultRecord(
       id: deterministicUUID(301),
       runID: deterministicUUID(302),
       workflow: WorkflowPresentation(fallbackName: "Private workflow"),
@@ -3072,7 +3072,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let restricted = try XCTUnwrap(restrictedPage.entries.first?.record)
     XCTAssertEqual(
       restricted.finalText,
-      ClipboardTextFormatting.previewText(
+      RecordTextFormatting.previewText(
         body,
         limit: RunHistoryContentAccess.restrictedPreviewCharacterLimit
       )
@@ -3277,14 +3277,14 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       )
     )
     let originalOrdinal = try historyWriteOrdinal(recordID: recordID, at: databaseURL)
-    let revised = HistoryRecord(
+    let revised = WorkflowResultRecord(
       id: original.id,
       runID: original.runID,
       workflowID: original.workflowID,
       workflow: WorkflowPresentation(fallbackName: "Revised workflow"),
       finalText: "revised body",
       timestamp: original.timestamp,
-      isStackRelated: original.isStackRelated,
+      isRecordRelated: original.isRecordRelated,
       outcome: original.outcome,
       correctionSource: RecognitionCorrectionSource(
         preMappingText: "original body",
@@ -3305,17 +3305,17 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let located = try XCTUnwrap(locatedValue)
     XCTAssertEqual(located.entries.first?.record, revised)
 
-    let conflicting = HistoryRecord(
+    let conflicting = WorkflowResultRecord(
       id: revised.id,
       runID: revised.runID,
       workflowID: revised.workflowID,
       workflow: revised.workflow,
       finalText: revised.finalText,
       timestamp: revised.timestamp,
-      isStackRelated: revised.isStackRelated,
+      isRecordRelated: revised.isRecordRelated,
       outcome: revised.outcome,
       correctionSource: revised.correctionSource,
-      trigger: .clipboardReplay
+      trigger: .recordReplay
     )
     do {
       try await store.save(conflicting)
@@ -3374,8 +3374,8 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     trigger: WorkflowRunTriggerKind?,
     text: String,
     timestamp: TimeInterval
-  ) -> HistoryRecord {
-    HistoryRecord(
+  ) -> WorkflowResultRecord {
+    WorkflowResultRecord(
       id: id,
       runID: runID,
       workflowID: deterministicUUID(999),
@@ -3445,8 +3445,8 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     }
   }
 
-  private func historyRecord(text: String, timestamp: TimeInterval) -> HistoryRecord {
-    HistoryRecord(
+  private func historyRecord(text: String, timestamp: TimeInterval) -> WorkflowResultRecord {
+    WorkflowResultRecord(
       workflow: WorkflowPresentation(fallbackName: "History"),
       finalText: text,
       timestamp: Date(timeIntervalSince1970: timestamp),
@@ -3957,7 +3957,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
 
   private func createV3Database(
     at databaseURL: URL,
-    records: [HistoryRecord],
+    records: [WorkflowResultRecord],
     settingKey: AppSettingKey,
     settingValue: String
   ) throws {
@@ -4045,7 +4045,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         sqlite3_bind_double(statement, 4, record.timestamp.timeIntervalSince1970),
         SQLITE_OK
       )
-      XCTAssertEqual(sqlite3_bind_int(statement, 5, record.isStackRelated ? 1 : 0), SQLITE_OK)
+      XCTAssertEqual(sqlite3_bind_int(statement, 5, record.isRecordRelated ? 1 : 0), SQLITE_OK)
       record.outcome.rawValue.withCString {
         XCTAssertEqual(sqlite3_bind_text(statement, 6, $0, -1, transient), SQLITE_OK)
       }

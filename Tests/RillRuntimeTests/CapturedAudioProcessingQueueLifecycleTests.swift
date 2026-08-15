@@ -926,7 +926,6 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         let executionProbe = providedExecutionProbe ?? AudioLifecycleExecutionProbe()
         let eventBus = EventBus()
         let diagnostics = providedDiagnostics ?? DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let coordinator = SessionCoordinator(
             contextProvider: AudioLifecycleContextProvider(probe: executionProbe),
             recognizerRegistry: SpeechRecognizerRegistry(
@@ -942,7 +941,6 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
                 actions: [AudioLifecycleAction(probe: executionProbe)]
             ),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )

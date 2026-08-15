@@ -5,7 +5,7 @@ import XCTest
 final class LocalHistoryMaintenanceTests: XCTestCase {
     func testFreshZeroDeletionClearsIntentWithoutPhysicalPurge() async throws {
         let clipboard = HistoryMaintenanceClipboardStore(
-            clearResults: [ClipboardCleanupResult(removedCount: 0, preservedActiveCount: 2)]
+            clearResults: [RecordCleanupResult(removedCount: 0, preservedActiveCount: 2)]
         )
         let runHistory = HistoryMaintenanceRunRepository()
         let settings = HistoryMaintenanceSettingsStore()
@@ -17,13 +17,13 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
             purger: purger
         )
 
-        let result = await maintenance.clearClipboardHistory()
+        let result = await maintenance.clearRecordHistory()
 
         XCTAssertEqual(
             result,
             .completed(
                 LocalHistoryMaintenanceCounts(
-                    preservedActiveClipboardCount: 2
+                    preservedActiveRecordCount: 2
                 )
             )
         )
@@ -40,7 +40,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
             phase: .logicalPending
         )
         let clipboard = HistoryMaintenanceClipboardStore(
-            clearResults: [ClipboardCleanupResult(removedCount: 0, preservedActiveCount: 0)]
+            clearResults: [RecordCleanupResult(removedCount: 0, preservedActiveCount: 0)]
         )
         let runHistory = HistoryMaintenanceRunRepository()
         let settings = HistoryMaintenanceSettingsStore(
@@ -67,8 +67,8 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 10_000)
         let clipboard = HistoryMaintenanceClipboardStore(
             pruneResults: [
-                ClipboardCleanupResult(removedCount: 3, preservedActiveCount: 1),
-                ClipboardCleanupResult(removedCount: 0, preservedActiveCount: 1),
+                RecordCleanupResult(removedCount: 3, preservedActiveCount: 1),
+                RecordCleanupResult(removedCount: 0, preservedActiveCount: 1),
             ]
         )
         let runHistory = HistoryMaintenanceRunRepository(
@@ -84,7 +84,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
         )
 
         let firstResult = await maintenance.performRetention(
-            clipboardRetention: .oneDay,
+            recordRetention: .oneDay,
             runRetention: .oneWeek,
             now: now
         )
@@ -93,8 +93,8 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
             firstResult,
             .pending(
                 LocalHistoryMaintenanceCounts(
-                    clipboardRemovedCount: 3,
-                    preservedActiveClipboardCount: 1
+                    recordRemovedCount: 3,
+                    preservedActiveRecordCount: 1
                 ),
                 .logicalDeletionFailed
             )
@@ -116,7 +116,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
             .completed(
                 LocalHistoryMaintenanceCounts(
                     runRemovedCount: 2,
-                    preservedActiveClipboardCount: 1
+                    preservedActiveRecordCount: 1
                 )
             )
         )
@@ -180,7 +180,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
 
     func testPhysicalPurgeFailureLeavesResiduePhaseAndRetryDoesNotRepeatDeletion() async throws {
         let clipboard = HistoryMaintenanceClipboardStore(
-            clearResults: [ClipboardCleanupResult(removedCount: 1, preservedActiveCount: 0)]
+            clearResults: [RecordCleanupResult(removedCount: 1, preservedActiveCount: 0)]
         )
         let runHistory = HistoryMaintenanceRunRepository()
         let settings = HistoryMaintenanceSettingsStore()
@@ -192,12 +192,12 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
             purger: purger
         )
 
-        let firstResult = await maintenance.clearClipboardHistory()
+        let firstResult = await maintenance.clearRecordHistory()
 
         XCTAssertEqual(
             firstResult,
             .pending(
-                LocalHistoryMaintenanceCounts(clipboardRemovedCount: 1),
+                LocalHistoryMaintenanceCounts(recordRemovedCount: 1),
                 .physicalPurgeFailed
             )
         )
@@ -224,7 +224,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
 
     func testConcurrentRequestsAreFIFOAndDoNotInterleaveIntents() async throws {
         let clipboard = HistoryMaintenanceClipboardStore(
-            clearResults: [ClipboardCleanupResult(removedCount: 1, preservedActiveCount: 0)],
+            clearResults: [RecordCleanupResult(removedCount: 1, preservedActiveCount: 0)],
             blockFirstClear: true
         )
         let runHistory = HistoryMaintenanceRunRepository(clearResults: [.success(1)])
@@ -237,7 +237,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
             purger: purger
         )
 
-        let clipboardTask = Task { await maintenance.clearClipboardHistory() }
+        let clipboardTask = Task { await maintenance.clearRecordHistory() }
         await clipboard.waitUntilClearStarted()
         let runTask = Task { await maintenance.clearRunHistory() }
         try await Task.sleep(for: .milliseconds(25))
@@ -251,7 +251,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
 
         XCTAssertEqual(
             clipboardResult,
-            .completed(LocalHistoryMaintenanceCounts(clipboardRemovedCount: 1))
+            .completed(LocalHistoryMaintenanceCounts(recordRemovedCount: 1))
         )
         XCTAssertEqual(
             runResult,
@@ -333,7 +333,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
             try WorkflowRunReceipt(
                 runID: UUID(),
                 workflowID: nil,
-                trigger: .clipboardUse,
+                trigger: .recordUse,
                 timestamp: Date(timeIntervalSince1970: 2),
                 duration: .under250ms,
                 termination: .skipped(reason: .allActionsSkipped)
@@ -368,13 +368,13 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
         let upperBound = Date(timeIntervalSince1970: 100)
         let oldTimestamp = Date(timeIntervalSince1970: 90)
         let newTimestamp = Date(timeIntervalSince1970: 110)
-        let oldHistory = HistoryRecord(
+        let oldHistory = WorkflowResultRecord(
             workflow: WorkflowPresentation(fallbackName: "Old history"),
             finalText: "old",
             timestamp: oldTimestamp,
             outcome: .completed
         )
-        let newHistory = HistoryRecord(
+        let newHistory = WorkflowResultRecord(
             workflow: WorkflowPresentation(fallbackName: "New history"),
             finalText: "new",
             timestamp: newTimestamp,
@@ -426,7 +426,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
             storage: [.localHistoryMaintenanceState: try encode(pendingState)]
         )
         let maintenance = LocalHistoryMaintenance(
-            clipboardHistory: HistoryMaintenanceClipboardStore(),
+            recordHistory: HistoryMaintenanceClipboardStore(),
             runHistory: history,
             runReceipts: receipts,
             diagnosticHistory: diagnostics,
@@ -466,7 +466,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
         let runID = UUID()
         try await recorder.begin(runID: runID, workflowID: UUID(), trigger: .hotkey)
         let maintenance = LocalHistoryMaintenance(
-            clipboardHistory: HistoryMaintenanceClipboardStore(),
+            recordHistory: HistoryMaintenanceClipboardStore(),
             runHistory: history,
             runReceipts: receipts,
             diagnosticHistory: HistoryMaintenanceDiagnosticRepository(),
@@ -647,7 +647,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
         )
 
         let firstResult = await maintenance.performRetention(
-            clipboardRetention: .forever,
+            recordRetention: .forever,
             runRetention: .oneWeek,
             now: now
         )
@@ -691,7 +691,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
         purger: HistoryMaintenancePurger
     ) -> LocalHistoryMaintenance {
         LocalHistoryMaintenance(
-            clipboardHistory: clipboard,
+            recordHistory: clipboard,
             runHistory: runHistory,
             runReceipts: runReceipts,
             diagnosticHistory: diagnostics,
@@ -711,9 +711,9 @@ private enum HistoryMaintenanceTestError: Error, Sendable {
     case requested
 }
 
-private actor HistoryMaintenanceClipboardStore: ClipboardHistoryMaintaining {
-    private var pruneResults: [ClipboardCleanupResult]
-    private var clearResults: [ClipboardCleanupResult]
+private actor HistoryMaintenanceClipboardStore: RecordHistoryMaintaining {
+    private var pruneResults: [RecordCleanupResult]
+    private var clearResults: [RecordCleanupResult]
     private let blockFirstClear: Bool
     private var didBlockFirstClear = false
     private var clearStarted = false
@@ -722,8 +722,8 @@ private actor HistoryMaintenanceClipboardStore: ClipboardHistoryMaintaining {
     private var callCount = 0
 
     init(
-        pruneResults: [ClipboardCleanupResult] = [],
-        clearResults: [ClipboardCleanupResult] = [],
+        pruneResults: [RecordCleanupResult] = [],
+        clearResults: [RecordCleanupResult] = [],
         blockFirstClear: Bool = false
     ) {
         self.pruneResults = pruneResults
@@ -731,14 +731,14 @@ private actor HistoryMaintenanceClipboardStore: ClipboardHistoryMaintaining {
         self.blockFirstClear = blockFirstClear
     }
 
-    func pruneHistory(olderThan cutoff: Date) async throws -> ClipboardCleanupResult {
+    func pruneHistory(olderThan cutoff: Date) async throws -> RecordCleanupResult {
         callCount += 1
         return pruneResults.isEmpty
-            ? ClipboardCleanupResult(removedCount: 0, preservedActiveCount: 0)
+            ? RecordCleanupResult(removedCount: 0, preservedActiveCount: 0)
             : pruneResults.removeFirst()
     }
 
-    func clearHistory() async throws -> ClipboardCleanupResult {
+    func clearHistory() async throws -> RecordCleanupResult {
         callCount += 1
         if blockFirstClear, !didBlockFirstClear {
             didBlockFirstClear = true
@@ -753,11 +753,11 @@ private actor HistoryMaintenanceClipboardStore: ClipboardHistoryMaintaining {
             }
         }
         return clearResults.isEmpty
-            ? ClipboardCleanupResult(removedCount: 0, preservedActiveCount: 0)
+            ? RecordCleanupResult(removedCount: 0, preservedActiveCount: 0)
             : clearResults.removeFirst()
     }
 
-    func clearHistory(through upperBound: Date) async throws -> ClipboardCleanupResult {
+    func clearHistory(through upperBound: Date) async throws -> RecordCleanupResult {
         try await clearHistory()
     }
 
@@ -796,13 +796,13 @@ private actor HistoryMaintenanceRunRepository: HistoryRepository {
         self.clearResults = clearResults
     }
 
-    func save(_ record: HistoryRecord) async throws {}
+    func save(_ record: WorkflowResultRecord) async throws {}
 
     func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration {
         generation
     }
 
-    func records(matching query: HistoryQuery) async throws -> [HistoryRecord] {
+    func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
         []
     }
 
@@ -860,13 +860,13 @@ private actor BlockingBoundedHistoryRepository: HistoryRepository {
     private var generation: RunHistoryWriteGeneration = .initial
     private var lastClearIntentID: UUID?
 
-    func save(_ record: HistoryRecord) async throws {}
+    func save(_ record: WorkflowResultRecord) async throws {}
 
     func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration {
         generation
     }
 
-    func records(matching query: HistoryQuery) async throws -> [HistoryRecord] { [] }
+    func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] { [] }
 
     func deleteRecords(olderThan cutoff: Date) async throws -> Int { 0 }
 

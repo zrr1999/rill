@@ -67,14 +67,16 @@ public enum WorkflowExecutionPlanResolver {
         )
         switch (outputDependsOnSettings, output) {
         case (true, .builtinPasteIntoApplication):
-            resolvedWorkflow.plan.output.actions = [OutputActionReference(id: "inject.text")]
+            resolvedWorkflow.plan.output.actions = [OutputActionReference(id: "focused-application.insert")]
             resolvedWorkflow.plan.output.deliveryPolicy = .init(strategy: .immediate)
-            resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.targetClipboardGroupID)
+            resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.targetRecordCollectionIDs)
+            resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
         case (true, .builtinSaveToVoiceGroup):
-            resolvedWorkflow.plan.output.actions = [OutputActionReference(id: "stack.push")]
-            resolvedWorkflow.plan.output.deliveryPolicy = .init(strategy: .stackFirst)
-            resolvedWorkflow.metadata[WorkflowMetadataKey.targetClipboardGroupID] =
-                ClipboardGroup.voiceGroupID.uuidString
+            resolvedWorkflow.plan.output.actions = [OutputActionReference(id: "record.store")]
+            resolvedWorkflow.plan.output.deliveryPolicy = .init(strategy: .collectionFirst)
+            resolvedWorkflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] =
+                RecordCollection.voiceInputID.rawValue.uuidString
+            resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
         case (false, _):
             break
         case (true, .declared),
@@ -325,21 +327,16 @@ public struct WorkflowComponentProfileRegistry: Sendable {
             ),
         ]
         outputs = [
-            "clipboard.copy": OutputProfile(
+            "system-clipboard.copy": OutputProfile(
                 effects: [
                     OutputEffectProfile(
                         effect: .clipboardWrite,
                         destination: .clipboard
-                    ),
-                    OutputEffectProfile(
-                        effect: .clipboardHistoryWrite,
-                        destination: .localStorage
-                    ),
+                    )
                 ],
-                configurationRequirement: .none,
-                sourceItemReplacement: .replacesSourceItem
+                configurationRequirement: .none
             ),
-            "inject.text": OutputProfile(
+            "focused-application.insert": OutputProfile(
                 effects: [
                     OutputEffectProfile(
                         effect: .focusedApplicationWrite,
@@ -348,15 +345,14 @@ public struct WorkflowComponentProfileRegistry: Sendable {
                 ],
                 configurationRequirement: .none
             ),
-            "stack.push": OutputProfile(
+            "record.store": OutputProfile(
                 effects: [
                     OutputEffectProfile(
-                        effect: .deliveryStackWrite,
+                        effect: .recordStoreWrite,
                         destination: .localStorage
                     ),
                 ],
-                configurationRequirement: .none,
-                sourceItemReplacement: .replacesSourceItem
+                configurationRequirement: .none
             ),
             ExternalOutputActionID.webhookPost: OutputProfile(
                 effects: [
@@ -440,26 +436,6 @@ public struct WorkflowComponentProfileRegistry: Sendable {
             ),
             sourceItemReplacement: profile.sourceItemReplacement
         )
-    }
-
-    /// Returns the same closed source-replacement cardinality used by preview
-    /// and live clipboard authorization. Unknown actions do not gain an
-    /// implicit replacement capability.
-    public func clipboardItemSourceReplacementPlan(
-        for workflow: WorkflowDefinition,
-        operation: ClipboardItemDryRunOperation
-    ) -> ClipboardItemDryRunSourceReplacementPlan {
-        guard operation == .replace else { return .notRequested }
-        let replacementCount = workflow.plan.output.actions.reduce(into: 0) { count, reference in
-            if closedOutputCapability(for: reference)?.sourceItemReplacement == .replacesSourceItem {
-                count += 1
-            }
-        }
-        return switch replacementCount {
-        case 0: .unavailable
-        case 1: .exactlyOne
-        default: .ambiguous
-        }
     }
 
     private func closedConfigurationState(

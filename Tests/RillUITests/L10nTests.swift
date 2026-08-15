@@ -33,22 +33,22 @@ final class L10nTests: XCTestCase {
     XCTAssertEqual(L10n.string(textStylesKey, language: .simplifiedChinese), "文字风格")
   }
 
-  func testClipboardSectionStringsUseUnifiedLookup() {
+  func testRecordSectionStringsUseUnifiedLookup() {
     XCTAssertEqual(
       L10n.string(.clipboardCurrentTitle, language: .english),
-      "Current Clipboard"
+      "Collection Records"
     )
     XCTAssertEqual(
       L10n.string(.clipboardCurrentTitle, language: .simplifiedChinese),
-      "当前剪贴板"
+      "记录集内容"
     )
     XCTAssertEqual(
       L10n.string(.clipboardHistoryDescription, language: .english),
-      "All captured and generated items, including already used stack or queue entries."
+      "All captured and generated records, including records with no collection membership."
     )
     XCTAssertEqual(
       L10n.string(.clipboardRoutingTitle, language: .simplifiedChinese),
-      "分组"
+      "记录集"
     )
   }
 
@@ -102,10 +102,10 @@ final class L10nTests: XCTestCase {
     XCTAssertEqual(
       L10n.historyMaintenanceResult(
         removedCount: 2,
-        preservedActiveClipboardCount: 1,
+        preservedActiveRecordCount: 1,
         language: .simplifiedChinese
       ),
-      "已移除 2 条本地历史记录；保留 1 条仍在使用的剪贴板内容。"
+      "已移除 2 条本地记录；保留 1 条活跃记录。"
     )
   }
 
@@ -150,7 +150,7 @@ final class L10nTests: XCTestCase {
       .clipboardAddTag,
       .clipboardRemoveTag,
       .clipboardPasteMode,
-      .workflowSourceGroup,
+      .workflowSourceCollection,
       .workflowTargetGroup,
       .workflowGroupAction,
       .workflowMoveStepUp,
@@ -310,42 +310,42 @@ final class L10nTests: XCTestCase {
         itemCount: 1,
         language: .english
       ),
-      "Delete this clipboard item?"
+      "Delete this record?"
     )
     XCTAssertEqual(
       UIStrings.clipboardDeleteConfirmationTitle(
         itemCount: 1,
         language: .simplifiedChinese
       ),
-      "删除这个剪贴板条目？"
+      "删除这条记录？"
     )
     XCTAssertEqual(
       UIStrings.clipboardDeleteConfirmationDescription(
         itemCount: 1,
         language: .english
       ),
-      "This permanently removes the saved item. This action can't be undone."
+      "This permanently removes the saved record. This action can't be undone."
     )
     XCTAssertEqual(
       UIStrings.clipboardDeleteConfirmationDescription(
         itemCount: 1,
         language: .simplifiedChinese
       ),
-      "这会永久移除已保存的条目，且无法撤销。"
+      "这会永久移除已保存的记录，且无法撤销。"
     )
     XCTAssertEqual(
       UIStrings.clipboardDeleteConfirmationTitle(
         itemCount: 3,
         language: .english
       ),
-      "Delete these 3 merged clipboard items?"
+      "Delete these 3 merged records?"
     )
     XCTAssertEqual(
       UIStrings.clipboardDeleteConfirmationTitle(
         itemCount: 3,
         language: .simplifiedChinese
       ),
-      "删除这 3 个已合并的剪贴板条目？"
+      "删除这 3 条已合并的记录？"
     )
     XCTAssertTrue(
       UIStrings.clipboardDeleteConfirmationDescription(

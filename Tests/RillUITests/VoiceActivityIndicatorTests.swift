@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 
 @testable import RillUI
@@ -49,6 +50,39 @@ final class VoiceActivityIndicatorTests: XCTestCase {
   func testReduceMotionDisablesMeterAnimation() {
     XCTAssertNil(VoiceActivityIndicator.meterAnimation(reduceMotion: true))
     XCTAssertNotNil(VoiceActivityIndicator.meterAnimation(reduceMotion: false))
+    XCTAssertEqual(VoiceActivityIndicator.meterTargetInterval, 0.04, accuracy: 0.001)
+    XCTAssertEqual(VoiceActivityIndicator.meterAnimationDuration, 0.08, accuracy: 0.001)
+    XCTAssertGreaterThan(
+      VoiceActivityIndicator.meterAnimationDuration,
+      VoiceActivityIndicator.meterTargetInterval
+    )
+  }
+
+  func testMeterWidthMatchesBarGeometry() {
+    XCTAssertEqual(
+      VoiceActivityIndicator.meterWidth(barCount: 12, barWidth: 2, barSpacing: 2),
+      46
+    )
+    XCTAssertEqual(
+      VoiceActivityIndicator.meterWidth(barCount: 0, barWidth: 2, barSpacing: 2),
+      0
+    )
+  }
+
+  func testMeterModelPublishesOnlyChangedTargets() {
+    let model = VoiceActivityMeterModel(levels: [0.2])
+    var publicationCount = 0
+    let observation = model.objectWillChange.sink {
+      publicationCount += 1
+    }
+
+    model.update(levels: [0.2])
+    XCTAssertEqual(publicationCount, 0)
+
+    model.update(levels: [0.8])
+    XCTAssertEqual(publicationCount, 1)
+    XCTAssertEqual(model.levels, [0.8])
+    withExtendedLifetime(observation) {}
   }
 
   func testMeterOpacityFadesMeasuredEnergyWithoutHidingNeutralTicks() {

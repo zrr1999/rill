@@ -36,9 +36,9 @@ final class WorkflowRunReceiptTests: XCTestCase {
     }
 
     func testTriggerKindsDistinguishExplicitClipboardUse() {
-        XCTAssertTrue(WorkflowRunTriggerKind.allCases.contains(.clipboardUse))
-        XCTAssertNotEqual(WorkflowRunTriggerKind.clipboardUse, .stackDelivery)
-        XCTAssertNotEqual(WorkflowRunTriggerKind.clipboardUse, .clipboardReplay)
+        XCTAssertTrue(WorkflowRunTriggerKind.allCases.contains(.recordUse))
+        XCTAssertNotEqual(WorkflowRunTriggerKind.recordUse, .recordDelivery)
+        XCTAssertNotEqual(WorkflowRunTriggerKind.recordUse, .recordReplay)
     }
 
     func testOnlyCaptureDerivedTriggersPermitVoiceHistoryBodies() {
@@ -48,7 +48,31 @@ final class WorkflowRunReceiptTests: XCTestCase {
         )
         XCTAssertEqual(
             Set(WorkflowRunTriggerKind.allCases.filter { !$0.isVoiceCapture }),
-            Set([.clipboardGroupEvent, .stackDelivery, .clipboardUse, .clipboardReplay])
+            Set([.recordCollectionEvent, .recordDelivery, .recordUse, .recordReplay])
+        )
+    }
+
+    func testLegacyRunClassificationsDecodeButCanonicalValuesEncode() throws {
+        let decoder = JSONDecoder()
+        XCTAssertEqual(
+            try decoder.decode(WorkflowRunTriggerKind.self, from: Data("\"stackDelivery\"".utf8)),
+            .recordDelivery
+        )
+        XCTAssertEqual(
+            try decoder.decode(WorkflowRunTriggerKind.self, from: Data("\"clipboardUse\"".utf8)),
+            .recordUse
+        )
+        XCTAssertEqual(
+            try decoder.decode(WorkflowRunTriggerKind.self, from: Data("\"clipboardReplay\"".utf8)),
+            .recordReplay
+        )
+        XCTAssertEqual(
+            try decoder.decode(WorkflowRunSkipCode.self, from: Data("\"itemMissing\"".utf8)),
+            .recordMissing
+        )
+        XCTAssertEqual(
+            String(decoding: try JSONEncoder().encode(WorkflowRunTriggerKind.recordReplay), as: UTF8.self),
+            "\"recordReplay\""
         )
     }
 
@@ -56,7 +80,7 @@ final class WorkflowRunReceiptTests: XCTestCase {
         let receipt = try WorkflowRunReceipt(
             runID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
             workflowID: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
-            trigger: .clipboardReplay,
+            trigger: .recordReplay,
             timestamp: Date(timeIntervalSince1970: 123),
             duration: .s1To4,
             termination: .partiallyCompleted(code: .processing),

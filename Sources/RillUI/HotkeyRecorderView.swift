@@ -62,9 +62,9 @@ enum HotkeyCaptureFocusMove {
 struct HotkeyRecorderView: View {
     let binding: HotkeyBindingDescriptor
     let language: AppLanguage
-    let beginClipboardPanelShortcutRecording: () -> UUID
-    let endClipboardPanelShortcutRecording: (UUID) -> Void
-    let commitClipboardPanelShortcutRecording: (UUID, UInt16) -> Void
+    let beginRecordPanelShortcutRecording: () -> UUID
+    let endRecordPanelShortcutRecording: (UUID) -> Void
+    let commitRecordPanelShortcutRecording: (UUID, UInt16) -> Void
     let onRecord: (RillCore.KeyboardShortcut) -> Void
     let onReset: () -> Void
 
@@ -85,8 +85,8 @@ struct HotkeyRecorderView: View {
                 Button(
                     UIStrings.text(
                         isRecording
-                            ? .clipboardPanelHotkeyRecording
-                            : .clipboardPanelHotkeyRecord,
+                            ? .recordPanelHotkeyRecording
+                            : .recordPanelHotkeyRecord,
                         language: language
                     )
                 ) {
@@ -94,14 +94,14 @@ struct HotkeyRecorderView: View {
                 }
                 .accessibilityIdentifier("settings.clipboard-hotkey.record")
 
-                Button(UIStrings.text(.clipboardPanelHotkeyReset, language: language)) {
+                Button(UIStrings.text(.recordPanelHotkeyReset, language: language)) {
                     cancelRecording()
                     onReset()
                 }
                 .accessibilityIdentifier("settings.clipboard-hotkey.reset")
             }
 
-            Text(UIStrings.text(.clipboardPanelHotkeyHint, language: language))
+            Text(UIStrings.text(.recordPanelHotkeyHint, language: language))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -122,12 +122,12 @@ struct HotkeyRecorderView: View {
 
     private var currentBindingLabel: String {
         if isRecording {
-            return UIStrings.text(.clipboardPanelHotkeyRecording, language: language)
+            return UIStrings.text(.recordPanelHotkeyRecording, language: language)
         }
 
         switch binding {
         case .doubleCommand:
-            return UIStrings.text(.clipboardPanelHotkeyDefault, language: language)
+            return UIStrings.text(.recordPanelHotkeyDefault, language: language)
         case .keyboardShortcut(let shortcut):
             return format(shortcut)
         }
@@ -135,7 +135,7 @@ struct HotkeyRecorderView: View {
 
     private func startRecording() {
         guard !isRecording else { return }
-        recordingSuspensionID = beginClipboardPanelShortcutRecording()
+        recordingSuspensionID = beginRecordPanelShortcutRecording()
         isRecording = true
         focusRequest &+= 1
     }
@@ -148,7 +148,7 @@ struct HotkeyRecorderView: View {
         isRecording = false
         guard let recordingSuspensionID else { return }
         self.recordingSuspensionID = nil
-        endClipboardPanelShortcutRecording(recordingSuspensionID)
+        endRecordPanelShortcutRecording(recordingSuspensionID)
     }
 
     private func handleRecordingDecision(_ decision: HotkeyRecorderInputDecision) {
@@ -166,7 +166,7 @@ struct HotkeyRecorderView: View {
             // until its matching key-up and keeps new global voice presses from
             // racing the recorder's focus restoration.
             onRecord(shortcut)
-            commitClipboardPanelShortcutRecording(
+            commitRecordPanelShortcutRecording(
                 recordingSuspensionID,
                 shortcut.keyCode
             )

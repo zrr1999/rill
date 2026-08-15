@@ -712,7 +712,7 @@ private func makeRunContext(bundleIdentifier: String = "com.apple.Notes") -> Con
             selectedText: "selected",
             secureInput: false
         ),
-        clipboard: ClipboardSnapshot(plainText: "clipboard", changeCount: 1)
+        clipboard: SystemClipboardSnapshot(plainText: "clipboard", changeCount: 1)
     )
 }
 

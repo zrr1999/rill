@@ -69,7 +69,7 @@ final class HistoryPreviewPresentationTests: XCTestCase {
     }
 
     func testLanguageModelTracePrefersExactOrderedInputs() throws {
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             workflow: WorkflowPresentation(fallbackName: "Assistant"),
             finalText: "answer",
             outcome: .completed,
@@ -90,7 +90,7 @@ final class HistoryPreviewPresentationTests: XCTestCase {
     }
 
     func testOlderWakeRecordShowsRecognizedInputWithoutClaimingExactLLMTrace() throws {
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             workflow: WorkflowPresentation(fallbackName: "Assistant"),
             finalText: "answer",
             outcome: .completed,
@@ -117,7 +117,7 @@ final class HistoryPreviewPresentationTests: XCTestCase {
             messages: [.init(role: .user, content: "actual question")],
             responseText: "actual answer"
         )
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             workflow: WorkflowPresentation(fallbackName: "Assistant"),
             finalText: "actual answer",
             outcome: .completed,
@@ -138,7 +138,7 @@ final class HistoryPreviewPresentationTests: XCTestCase {
     }
 
     func testOlderNonAssistantRecordDoesNotInventLLMTrace() {
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             workflow: WorkflowPresentation(fallbackName: "Dictation"),
             finalText: "output",
             outcome: .completed,

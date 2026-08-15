@@ -210,13 +210,13 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
             shutdownAudioQueue: {
                 await invocations.record("audio-queue")
             },
-            drainTextInjectionClipboardRecovery: {
+            drainTextInjectionSystemClipboardRecovery: {
                 await invocations.record("text-injection-clipboard")
             },
-            stopStackPaste: {
+            stopSystemClipboardCapture: {
                 await invocations.record("stack")
             },
-            stopClipboardGroupScheduler: {
+            stopRecordCollectionScheduler: {
                 await invocations.record("group-scheduler")
             },
             stopLocalSpeechPreparation: {
@@ -251,7 +251,7 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
         let textInjectionClipboardCount = await invocations.count(
             for: "text-injection-clipboard"
         )
-        let stackCount = await invocations.count(for: "stack")
+        let recordCount = await invocations.count(for: "stack")
         let groupSchedulerCount = await invocations.count(for: "group-scheduler")
         let preparationCount = await invocations.count(for: "preparation")
         let eventListenerCount = await invocations.count(for: "event-listener")
@@ -262,7 +262,7 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
         XCTAssertEqual(historyMaintenanceCount, 1)
         XCTAssertEqual(audioQueueCount, 1)
         XCTAssertEqual(textInjectionClipboardCount, 0)
-        XCTAssertEqual(stackCount, 0)
+        XCTAssertEqual(recordCount, 0)
         XCTAssertEqual(
             groupSchedulerCount,
             0,
@@ -362,7 +362,7 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
         let mutationDrainLatch = TerminationLatch()
         let producerLatch = TerminationLatch()
         let shutdown = ApplicationShutdownOperation.make(
-            sealClipboardMutations: {
+            sealRecordMutations: {
                 await invocations.record("seal-mutations")
             },
             stopStartupTasks: {
@@ -373,7 +373,7 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
                 await invocations.record("stop-settings-reads")
                 await settingsReadLatch.wait()
             },
-            drainClipboardMutations: {
+            drainRecordMutations: {
                 await invocations.record("drain-mutations")
                 await mutationDrainLatch.wait()
             },
@@ -385,8 +385,8 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
             cancelFailedAudioRecoveryRetries: {},
             stopLocalHistoryMaintenance: {},
             shutdownAudioQueue: {},
-            stopStackPaste: {},
-            stopClipboardGroupScheduler: {
+            stopSystemClipboardCapture: {},
+            stopRecordCollectionScheduler: {
                 await invocations.record("stop-scheduler")
             },
             stopLocalSpeechPreparation: {
@@ -466,8 +466,8 @@ final class ApplicationTerminationCoordinatorTests: XCTestCase {
             cancelFailedAudioRecoveryRetries: {},
             stopLocalHistoryMaintenance: {},
             shutdownAudioQueue: {},
-            stopStackPaste: {},
-            stopClipboardGroupScheduler: {
+            stopSystemClipboardCapture: {},
+            stopRecordCollectionScheduler: {
                 await invocations.record("stop-scheduler")
             },
             drainMarkdownPostCommitCleanups: {

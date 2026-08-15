@@ -82,12 +82,12 @@ final class VocabularyRecognitionHintsTests: XCTestCase {
     func testResolverIncludesOnlyEnabledScopedHotwords() {
         let matchingScope = VocabularyRuleScope(
             bundleIdentifier: "com.example.editor",
-            clipboardGroupID: Self.groupID,
+            recordCollectionID: Self.groupID,
             locale: "zh-CN"
         )
         let context = VocabularyRuleContext(
             bundleIdentifier: "com.example.editor",
-            clipboardGroupID: Self.groupID,
+            recordCollectionID: Self.groupID,
             locale: "zh-CN"
         )
         let rules = [
@@ -100,7 +100,7 @@ final class VocabularyRecognitionHintsTests: XCTestCase {
             ),
             Self.rule(
                 pattern: "wrong group",
-                scope: VocabularyRuleScope(clipboardGroupID: UUID())
+                scope: VocabularyRuleScope(recordCollectionID: UUID())
             ),
             Self.rule(
                 pattern: "wrong locale",

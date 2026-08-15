@@ -347,6 +347,18 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
   func testStreamingPreviewProjectionRemovesQwenLanguageEnvelopeAndRestartFragments() {
     var projection = LocalSpeechStreamingPreviewProjection()
 
+    projection.observe("language")
+    XCTAssertEqual(projection.text, "")
+
+    projection.observe("language Ch")
+    XCTAssertEqual(projection.text, "")
+
+    projection.observe("language Chinese<")
+    XCTAssertEqual(projection.text, "")
+
+    projection.observe("language Chinese<asr_text")
+    XCTAssertEqual(projection.text, "")
+
     projection.observe("language None")
     XCTAssertEqual(projection.text, "")
 
@@ -1542,7 +1554,7 @@ final class TestLocalSpeechAudioCaptureSource: LocalSpeechAudioCaptureSource,
   private var shutdowns = 0
   private var preparationError: Error?
 
-  var endpointRMS: [Float] {
+  var meterRMS: [Float] {
     lock.withLock { rms }
   }
 

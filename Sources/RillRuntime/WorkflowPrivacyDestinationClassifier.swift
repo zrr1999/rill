@@ -44,13 +44,12 @@ public enum WorkflowPrivacyDestinationClassifier {
             ) else {
                 return .unavailable
             }
-        case .clipboardItem(let subject, let operation):
-            guard subject.contentKind == .text,
-                  !subject.excludesWorkflowCapture,
-                  operation == .replay || operation == .replace else {
+        case .record(let subject, _):
+            guard subject.payloadKind == .text,
+                  !subject.captureTags.contains(.excludeFromWorkflowCapture) else {
                 return .unavailable
             }
-            // Clipboard replay supplies the stored item as the recognition
+            // Record replay supplies the stored payload as the recognition
             // result and therefore never invokes or classifies the recognizer.
         }
 
@@ -65,7 +64,7 @@ public enum WorkflowPrivacyDestinationClassifier {
 
         for action in workflow.plan.output.actions {
             switch action.id {
-            case "clipboard.copy", "inject.text", "stack.push",
+            case "system-clipboard.copy", "focused-application.insert", "record.store",
                  ExternalOutputActionID.shortcutsRun,
                  ExternalOutputActionID.markdownAppend:
                 break

@@ -745,7 +745,7 @@ private func makeTransformContext(
       name: "Rewrite",
       pipeline: PipelineDeclaration(
         recognizerID: "sherpa-onnx.local",
-        outputActions: [OutputActionReference(id: "inject.text")]
+        outputActions: [OutputActionReference(id: "focused-application.insert")]
       ),
       ui: WorkflowUIConfig(symbolName: "wand.and.stars", accentColorName: "purple"),
       metadata: metadata
@@ -759,7 +759,7 @@ private func makeTransformContext(
         selectedText: selectedText,
         secureInput: false
       ),
-      clipboard: ClipboardSnapshot(
+      clipboard: SystemClipboardSnapshot(
         plainText: "private-clipboard-canary",
         changeCount: 1
       )

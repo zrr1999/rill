@@ -141,7 +141,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
             var draft = harness.model.defaultWorkflowDraft()
             draft.name = "Must not overwrite"
             await harness.model.saveWorkflowDraft(draft)
-            await waitForEventProcessing()
+            await waitForEventProcessing(harness)
 
             XCTAssertTrue(harness.model.customWorkflows.isEmpty)
             XCTAssertNotNil(harness.model.workflowEditorError)
@@ -198,7 +198,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
             caseSensitive: false,
             scope: .init()
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertTrue(harness.model.vocabularyRules.isEmpty)
         var activity = await settingsStore.activitySnapshot()
@@ -248,7 +248,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
         XCTAssertNotNil(harness.model.downloadedLocalSpeechModelsError)
 
         harness.model.recordDownloadedLocalSpeechModel("must-not-overwrite")
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         XCTAssertTrue(harness.model.downloadedLocalSpeechModels.isEmpty)
         var activity = await settingsStore.activitySnapshot()

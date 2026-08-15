@@ -3,40 +3,44 @@ import XCTest
 @testable import RillUI
 
 final class PrivacyNoticeDocumentTests: XCTestCase {
-    func testRepositoryPrivacyNoticeIsValidAndBilingual() throws {
-        let projectRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let markdown = try String(
-            contentsOf: projectRoot.appendingPathComponent("PRIVACY.md"),
-            encoding: .utf8
-        )
+    func testRepositoryPrivacyNoticeSatisfiesTheProductionDocumentContract() throws {
+        _ = try PrivacyNoticeDocument(markdown: repositoryMarkdown())
+    }
 
-        let document = try PrivacyNoticeDocument(markdown: markdown)
+    func testBundleLoaderReturnsTheValidatedPrivacyNoticeShownBySettings() throws {
+        let markdown = try repositoryMarkdown()
+        let bundle = try makeBundle(privacyNoticeData: Data(markdown.utf8))
+
+        let document = try PrivacyNoticeDocument.load(from: bundle)
 
         XCTAssertEqual(document.markdown, markdown)
-        XCTAssertFalse(markdown.localizedCaseInsensitiveContains("deepgram"))
-        XCTAssertTrue(markdown.contains("OpenAI Responses API"))
-        XCTAssertTrue(markdown.contains("store: false"))
-        XCTAssertTrue(markdown.contains("does not silently fall back"))
-        XCTAssertTrue(markdown.contains("不会静默回退"))
-        XCTAssertTrue(markdown.contains("github.com"))
-        XCTAssertTrue(markdown.contains("release-assets.githubusercontent.com"))
-        XCTAssertFalse(markdown.contains("huggingface.co"))
-        XCTAssertFalse(markdown.contains("cas-bridge.xethub.hf.co"))
-        XCTAssertFalse(markdown.contains("WhisperKit local speech"))
-        XCTAssertFalse(markdown.contains("WhisperKit 本地语音"))
-        XCTAssertTrue(
-            markdown.contains("Model download sends no microphone audio or recognized text")
-        )
-        XCTAssertTrue(
-            markdown.contains("模型下载不会发送麦克风音频或识别文本")
-        )
-        XCTAssertTrue(markdown.contains("Qwen3-ASR 0.6B INT8"))
-        XCTAssertTrue(markdown.contains("SenseVoiceSmall INT8"))
-        XCTAssertTrue(markdown.contains("Apple Shortcuts"))
-        XCTAssertTrue(markdown.contains("Apple 快捷指令"))
+    }
+
+    func testBundleLoaderDistinguishesMissingInvalidAndOversizedResources() throws {
+        XCTAssertThrowsError(
+            try PrivacyNoticeDocument.load(from: makeBundle(privacyNoticeData: nil))
+        ) { error in
+            XCTAssertEqual(error as? PrivacyNoticeDocumentError, .missingResource)
+        }
+        XCTAssertThrowsError(
+            try PrivacyNoticeDocument.load(
+                from: makeBundle(privacyNoticeData: Data([0xFF]))
+            )
+        ) { error in
+            XCTAssertEqual(error as? PrivacyNoticeDocumentError, .invalidEncoding)
+        }
+        XCTAssertThrowsError(
+            try PrivacyNoticeDocument.load(
+                from: makeBundle(
+                    privacyNoticeData: Data(
+                        repeating: 0x61,
+                        count: PrivacyNoticeDocument.maximumByteCount + 1
+                    )
+                )
+            )
+        ) { error in
+            XCTAssertEqual(error as? PrivacyNoticeDocumentError, .documentTooLarge)
+        }
     }
 
     func testDocumentRejectsMissingRequiredSection() {
@@ -59,5 +63,50 @@ final class PrivacyNoticeDocumentTests: XCTestCase {
         ) { error in
             XCTAssertEqual(error as? PrivacyNoticeDocumentError, .documentTooLarge)
         }
+    }
+
+    private func repositoryMarkdown() throws -> String {
+        let projectRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(
+            contentsOf: projectRoot.appendingPathComponent("PRIVACY.md"),
+            encoding: .utf8
+        )
+    }
+
+    private func makeBundle(privacyNoticeData: Data?) throws -> Bundle {
+        let bundleURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("bundle")
+        let contentsURL = bundleURL.appendingPathComponent("Contents", isDirectory: true)
+        let resourcesURL = contentsURL.appendingPathComponent("Resources", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: resourcesURL,
+            withIntermediateDirectories: true
+        )
+        let info: [String: Any] = [
+            "CFBundleIdentifier": "dev.rill.tests.privacy-notice.\(UUID().uuidString)",
+            "CFBundleName": "PrivacyNoticeFixture",
+            "CFBundlePackageType": "BNDL",
+            "CFBundleShortVersionString": "1.0",
+            "CFBundleVersion": "1",
+        ]
+        let infoData = try PropertyListSerialization.data(
+            fromPropertyList: info,
+            format: .xml,
+            options: 0
+        )
+        try infoData.write(to: contentsURL.appendingPathComponent("Info.plist"))
+        if let privacyNoticeData {
+            try privacyNoticeData.write(
+                to: resourcesURL.appendingPathComponent("PRIVACY.md")
+            )
+        }
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: bundleURL)
+        }
+        return try XCTUnwrap(Bundle(url: bundleURL))
     }
 }

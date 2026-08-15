@@ -159,14 +159,12 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
         let coordinator = SessionCoordinator(
             contextProvider: RecordingCleanupContextProvider(),
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: deliveryStack,
             eventBus: eventBus
         )
         let manager = RecordingSessionManager(
@@ -233,7 +231,6 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let queue = CapturedAudioProcessingQueue(

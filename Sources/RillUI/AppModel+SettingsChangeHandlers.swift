@@ -10,15 +10,15 @@ extension AppModel {
   }
 
   func handleClipboardCaptureEnabledChange(from oldValue: Bool) {
-    guard oldValue != clipboardCaptureEnabled else { return }
+    guard oldValue != systemClipboardCaptureEnabled else { return }
     clipboardCapturePreferenceRevision &+= 1
     persistClipboardCaptureEnabledPreference()
     publishClipboardCapturePreferenceToRuntime()
   }
 
   func applyResolvedClipboardCapturePreference(enabled: Bool) {
-    guard clipboardCaptureEnabled == enabled else {
-      clipboardCaptureEnabled = enabled
+    guard systemClipboardCaptureEnabled == enabled else {
+      systemClipboardCaptureEnabled = enabled
       return
     }
     clipboardCapturePreferenceRevision &+= 1
@@ -26,16 +26,16 @@ extension AppModel {
   }
 
   private func publishClipboardCapturePreferenceToRuntime() {
-    setClipboardCaptureEnabledAction(
-      clipboardCaptureEnabled,
+    setSystemClipboardCaptureEnabledAction(
+      systemClipboardCaptureEnabled,
       clipboardCapturePreferenceRevision
     )
   }
 
-  func handleClipboardPanelHotkeyChange(from oldValue: HotkeyBindingDescriptor) {
-    guard oldValue != clipboardPanelHotkeyBinding else { return }
-    persistClipboardPanelHotkeyPreference()
-    updateClipboardPanelHotkeyAction(clipboardPanelHotkeyBinding)
+  func handleRecordPanelHotkeyChange(from oldValue: HotkeyBindingDescriptor) {
+    guard oldValue != recordPanelHotkeyBinding else { return }
+    persistRecordPanelHotkeyPreference()
+    updateRecordPanelHotkeyAction(recordPanelHotkeyBinding)
   }
 
   func handlePreferredSpeechEngineChange(from oldValue: PreferredSpeechEngine) {

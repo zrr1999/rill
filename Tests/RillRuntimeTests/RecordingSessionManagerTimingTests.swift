@@ -557,7 +557,6 @@ private func makeManager(
         transformerRegistry: TextTransformerRegistry(transformers: []),
         actionRegistry: OutputActionRegistry(actions: []),
         candidateResolver: CandidateResolver(eventBus: eventBus),
-        deliveryStack: DeliveryStack(eventBus: eventBus),
         eventBus: eventBus,
         diagnostics: diagnostics
     )

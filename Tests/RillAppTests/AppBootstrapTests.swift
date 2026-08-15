@@ -98,7 +98,7 @@ private struct AppBootstrapExplanationTransformer: TextTransformer {
 }
 
 private struct AppBootstrapExplanationAction: OutputAction {
-  let id = "inject.text"
+  let id = "focused-application.insert"
 
   func execute(text: String, context: ActionContext) async throws -> ActionResult {
     .injected
@@ -236,22 +236,22 @@ private actor AppBootstrapSecureWebhookStore: SecureWebhookConfigurationStore {
   }
 }
 
-private actor AppBootstrapClipboardHistory: ClipboardHistoryMaintaining {
-  private let clearResult: ClipboardCleanupResult
+private actor AppBootstrapClipboardHistory: RecordHistoryMaintaining {
+  private let clearResult: RecordCleanupResult
 
-  init(clearResult: ClipboardCleanupResult) {
+  init(clearResult: RecordCleanupResult) {
     self.clearResult = clearResult
   }
 
-  func pruneHistory(olderThan cutoff: Date) async throws -> ClipboardCleanupResult {
+  func pruneHistory(olderThan cutoff: Date) async throws -> RecordCleanupResult {
     clearResult
   }
 
-  func clearHistory() async throws -> ClipboardCleanupResult {
+  func clearHistory() async throws -> RecordCleanupResult {
     clearResult
   }
 
-  func clearHistory(through upperBound: Date) async throws -> ClipboardCleanupResult {
+  func clearHistory(through upperBound: Date) async throws -> RecordCleanupResult {
     clearResult
   }
 }
@@ -265,13 +265,13 @@ private actor AppBootstrapHistoryRepository: HistoryRepository {
     self.clearCount = clearCount
   }
 
-  func save(_ record: HistoryRecord) async throws {}
+  func save(_ record: WorkflowResultRecord) async throws {}
 
   func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration {
     currentGeneration
   }
 
-  func records(matching query: HistoryQuery) async throws -> [HistoryRecord] {
+  func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
     []
   }
 
@@ -373,7 +373,7 @@ private actor AppBootstrapRichPasteProbe {
     var captureCount: Int
     var deliveredItemIDs: [UUID]
     var deliveredContexts: [ContextSnapshot]
-    var injectedSnapshot: ClipboardSnapshot?
+    var injectedSnapshot: SystemClipboardSnapshot?
     var targetFocus: FocusSnapshot?
     var markedItemIDs: [UUID]
     var failures: [String]
@@ -382,7 +382,7 @@ private actor AppBootstrapRichPasteProbe {
   private var captureCount = 0
   private var deliveredItemIDs: [UUID] = []
   private var deliveredContexts: [ContextSnapshot] = []
-  private var injectedSnapshot: ClipboardSnapshot?
+  private var injectedSnapshot: SystemClipboardSnapshot?
   private var targetFocus: FocusSnapshot?
   private var markedItemIDs: [UUID] = []
   private var failures: [String] = []
@@ -397,7 +397,7 @@ private actor AppBootstrapRichPasteProbe {
     deliveredContexts.append(context)
   }
 
-  func inject(_ snapshot: ClipboardSnapshot, targetFocus: FocusSnapshot) {
+  func inject(_ snapshot: SystemClipboardSnapshot, targetFocus: FocusSnapshot) {
     injectedSnapshot = snapshot
     self.targetFocus = targetFocus
   }
@@ -421,12 +421,6 @@ private actor AppBootstrapRichPasteProbe {
       failures: failures
     )
   }
-}
-
-private func makeClipboardItemUseLease(
-  for item: ClipboardHistoryItem
-) -> ClipboardItemUseLease {
-  ClipboardItemUseLease(leaseID: UUID(), item: item)
 }
 
 final class AppBootstrapTests: XCTestCase {
@@ -461,233 +455,6 @@ final class AppBootstrapTests: XCTestCase {
     )
   }
 
-  func testFileHistoryItemUsesPanelRichPasteWithPrivacyFocusTarget() async throws {
-    let item = ClipboardHistoryItem(
-      groupID: ClipboardGroup.defaultGroupID,
-      contentKind: .files,
-      text: "",
-      fileURLs: [URL(fileURLWithPath: "/tmp/report.pdf")],
-      sourceKind: .system
-    )
-    let targetFocus = FocusSnapshot(
-      applicationName: "Notes",
-      bundleIdentifier: "com.apple.Notes",
-      processIdentifier: 42,
-      focusedRole: "AXTextArea",
-      selectedText: "",
-      secureInput: false
-    )
-    let privacyContext = ContextSnapshot(
-      focus: targetFocus,
-      clipboard: ClipboardSnapshot(plainText: "", changeCount: 7)
-    )
-    let probe = AppBootstrapRichPasteProbe()
-    let target = try XCTUnwrap(ClipboardPasteTargetIdentity(focus: targetFocus))
-
-    await AppBootstrap.useClipboardItem(
-      item,
-      target: target,
-      capturePrivacyContext: {
-        await probe.capture(privacyContext)
-      },
-      deliverText: { subject, context in
-        await probe.deliver(subject.itemID, context: context)
-      },
-      claimRichItem: { _ in makeClipboardItemUseLease(for: item) },
-      injectClipboardSnapshot: { snapshot, focus in
-        await probe.inject(snapshot, targetFocus: focus)
-      },
-      completeUse: { _ in
-        await probe.markUsed(item.id)
-      },
-      failUse: { _ in },
-      reportFailure: { message in
-        await probe.recordFailure(message)
-      }
-    )
-
-    let result = await probe.snapshot()
-    XCTAssertEqual(result.captureCount, 1)
-    XCTAssertTrue(result.deliveredItemIDs.isEmpty)
-    XCTAssertTrue(result.deliveredContexts.isEmpty)
-    XCTAssertEqual(result.injectedSnapshot, item.clipboardSnapshot)
-    XCTAssertEqual(result.targetFocus, targetFocus)
-    XCTAssertEqual(result.markedItemIDs, [item.id])
-    XCTAssertTrue(result.failures.isEmpty)
-  }
-
-  func testRichHistoryItemDoesNotInjectWhenExactClaimFindsItemDrift() async throws {
-    let item = ClipboardHistoryItem(
-      groupID: ClipboardGroup.defaultGroupID,
-      contentKind: .files,
-      text: "",
-      fileURLs: [URL(fileURLWithPath: "/tmp/stale.pdf")],
-      sourceKind: .system
-    )
-    let targetFocus = FocusSnapshot(
-      applicationName: "Notes",
-      bundleIdentifier: "com.apple.Notes",
-      processIdentifier: 42,
-      focusedRole: "AXTextArea",
-      selectedText: "",
-      secureInput: false
-    )
-    let privacyContext = ContextSnapshot(
-      focus: targetFocus,
-      clipboard: ClipboardSnapshot(plainText: "", changeCount: 7)
-    )
-    let probe = AppBootstrapRichPasteProbe()
-    let target = try XCTUnwrap(ClipboardPasteTargetIdentity(focus: targetFocus))
-
-    await AppBootstrap.useClipboardItem(
-      item,
-      target: target,
-      capturePrivacyContext: { await probe.capture(privacyContext) },
-      deliverText: { subject, context in
-        await probe.deliver(subject.itemID, context: context)
-      },
-      claimRichItem: { _ in
-        throw ClipboardItemUseLeaseError.sourceChanged
-      },
-      injectClipboardSnapshot: { snapshot, focus in
-        await probe.inject(snapshot, targetFocus: focus)
-      },
-      completeUse: { _ in await probe.markUsed(item.id) },
-      failUse: { _ in },
-      reportFailure: { message in await probe.recordFailure(message) }
-    )
-
-    let result = await probe.snapshot()
-    XCTAssertEqual(result.captureCount, 1)
-    XCTAssertTrue(result.deliveredItemIDs.isEmpty)
-    XCTAssertNil(result.injectedSnapshot)
-    XCTAssertTrue(result.markedItemIDs.isEmpty)
-    XCTAssertEqual(
-      result.failures,
-      ["The selected clipboard item changed before it could be used."]
-    )
-  }
-
-  func testTextHistoryItemUsesTheValidatedPrivacyContext() async throws {
-    let item = ClipboardHistoryItem(
-      groupID: ClipboardGroup.defaultGroupID,
-      text: "saved text",
-      sourceKind: .system
-    )
-    let targetFocus = FocusSnapshot(
-      applicationName: "Editor",
-      bundleIdentifier: "com.example.Editor",
-      processIdentifier: 42,
-      focusedRole: "AXTextArea",
-      selectedText: "",
-      secureInput: false
-    )
-    let privacyContext = ContextSnapshot(
-      focus: targetFocus,
-      clipboard: ClipboardSnapshot(plainText: "", changeCount: 9)
-    )
-    let target = try XCTUnwrap(ClipboardPasteTargetIdentity(focus: targetFocus))
-    let probe = AppBootstrapRichPasteProbe()
-
-    await AppBootstrap.useClipboardItem(
-      item,
-      target: target,
-      capturePrivacyContext: { await probe.capture(privacyContext) },
-      deliverText: { subject, context in
-        await probe.deliver(subject.itemID, context: context)
-      },
-      claimRichItem: { _ in makeClipboardItemUseLease(for: item) },
-      injectClipboardSnapshot: { snapshot, focus in
-        await probe.inject(snapshot, targetFocus: focus)
-      },
-      completeUse: { _ in await probe.markUsed(item.id) },
-      failUse: { _ in },
-      reportFailure: { message in await probe.recordFailure(message) }
-    )
-
-    let result = await probe.snapshot()
-    XCTAssertEqual(result.captureCount, 1)
-    XCTAssertEqual(result.deliveredItemIDs, [item.id])
-    XCTAssertEqual(result.deliveredContexts, [privacyContext])
-    XCTAssertNil(result.injectedSnapshot)
-    XCTAssertNil(result.targetFocus)
-    XCTAssertTrue(result.markedItemIDs.isEmpty)
-    XCTAssertTrue(result.failures.isEmpty)
-  }
-
-  func testTextHistoryItemDoesNothingWhenRestoredTargetChanged() async throws {
-    try await assertClipboardPasteIsBlockedAfterTargetChange(
-      item: ClipboardHistoryItem(
-        groupID: ClipboardGroup.defaultGroupID,
-        text: "saved text",
-        sourceKind: .system
-      )
-    )
-  }
-
-  func testRichHistoryItemDoesNothingWhenRestoredTargetChanged() async throws {
-    try await assertClipboardPasteIsBlockedAfterTargetChange(
-      item: ClipboardHistoryItem(
-        groupID: ClipboardGroup.defaultGroupID,
-        contentKind: .files,
-        text: "",
-        fileURLs: [URL(fileURLWithPath: "/tmp/private-file.pdf")],
-        sourceKind: .system
-      )
-    )
-  }
-
-  private func assertClipboardPasteIsBlockedAfterTargetChange(
-    item: ClipboardHistoryItem
-  ) async throws {
-    let lockedTarget = try XCTUnwrap(
-      ClipboardPasteTargetIdentity(
-        processIdentifier: 42,
-        bundleIdentifier: "com.example.EditorA"
-      )
-    )
-    let changedContext = ContextSnapshot(
-      focus: FocusSnapshot(
-        applicationName: "Editor B",
-        bundleIdentifier: "com.example.EditorB",
-        processIdentifier: 84,
-        focusedRole: "AXTextArea",
-        selectedText: "",
-        secureInput: false
-      ),
-      clipboard: ClipboardSnapshot(plainText: "", changeCount: 10)
-    )
-    let probe = AppBootstrapRichPasteProbe()
-
-    await AppBootstrap.useClipboardItem(
-      item,
-      target: lockedTarget,
-      capturePrivacyContext: { await probe.capture(changedContext) },
-      deliverText: { subject, context in
-        await probe.deliver(subject.itemID, context: context)
-      },
-      claimRichItem: { _ in makeClipboardItemUseLease(for: item) },
-      injectClipboardSnapshot: { snapshot, focus in
-        await probe.inject(snapshot, targetFocus: focus)
-      },
-      completeUse: { _ in await probe.markUsed(item.id) },
-      failUse: { _ in },
-      reportFailure: { message in await probe.recordFailure(message) }
-    )
-
-    let result = await probe.snapshot()
-    XCTAssertEqual(result.captureCount, 1)
-    XCTAssertTrue(result.deliveredItemIDs.isEmpty)
-    XCTAssertTrue(result.deliveredContexts.isEmpty)
-    XCTAssertNil(result.injectedSnapshot)
-    XCTAssertNil(result.targetFocus)
-    XCTAssertTrue(result.markedItemIDs.isEmpty)
-    XCTAssertEqual(
-      result.failures,
-      ["Clipboard paste was blocked because the restored target application changed."]
-    )
-  }
-
   func testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation() async throws {
     let selectionCanary = "PRIVATE-SELECTION-CANARY"
     let clipboardCanary = "PRIVATE-CLIPBOARD-CANARY"
@@ -701,7 +468,7 @@ final class AppBootstrapTests: XCTestCase {
         selectedText: selectionCanary,
         secureInput: true
       ),
-      clipboard: ClipboardSnapshot(
+      clipboard: SystemClipboardSnapshot(
         plainText: clipboardCanary,
         changeCount: 7
       )
@@ -735,7 +502,7 @@ final class AppBootstrapTests: XCTestCase {
       pipeline: PipelineDeclaration(
         recognizerID: "sherpa-onnx.local",
         postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")],
-        outputActions: [OutputActionReference(id: "inject.text")]
+        outputActions: [OutputActionReference(id: "focused-application.insert")]
       ),
       ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
@@ -958,7 +725,7 @@ final class AppBootstrapTests: XCTestCase {
       speechRecognition.plan.setup.vocabularyBindings.first?.uses,
       Set(VocabularyBindingUse.allCases)
     )
-    XCTAssertEqual(speechRecognition.plan.output.actions.map(\.id), ["inject.text"])
+    XCTAssertEqual(speechRecognition.plan.output.actions.map(\.id), ["focused-application.insert"])
     XCTAssertTrue(speechRecognition.isEnabledByDefault)
 
     let voiceAssistant = try XCTUnwrap(
@@ -1291,39 +1058,6 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertEqual(retainedModel, localModel)
   }
 
-  func testClipboardGroupRegistrationKeepsExecutionSupportSeparateFromEnabledState() throws {
-    let workflow = WorkflowDefinition(
-      name: "Group Automation",
-      pipeline: PipelineDeclaration(
-        recognizerID: "context.selection",
-        outputActions: [OutputActionReference(id: "clipboard.copy")]
-      ),
-      ui: WorkflowUIConfig(
-        symbolName: "doc.on.clipboard",
-        accentColorName: "blue"
-      ),
-      metadata: [
-        WorkflowMetadataKey.legacyEventType: "groupItemCreated",
-        WorkflowMetadataKey.legacySourceGroupID:
-          ClipboardGroup.voiceGroupID.uuidString,
-        WorkflowMetadataKey.legacyExcludePolishTag: "true",
-        WorkflowMetadataKey.legacyGroupActionKind:
-          ClipboardGroupActionKind.editItem.rawValue,
-      ]
-    )
-
-    let registration = try XCTUnwrap(
-      AppBootstrap.makeClipboardGroupWorkflowRegistration(
-        for: workflow,
-        isEnabled: false
-      )
-    )
-
-    XCTAssertEqual(registration.workflowID, workflow.id)
-    XCTAssertFalse(registration.isEnabled)
-    XCTAssertFalse(registration.isExecutionSupported)
-  }
-
   func testLocalHistoryMaintenanceUsesProtectedSettingsAndSeparateResiduePurger() async throws {
     let rawStore = AppBootstrapSettingsStore(storage: [:])
     let secureWebhookStore = AppBootstrapSecureWebhookStore()
@@ -1334,8 +1068,8 @@ final class AppBootstrapTests: XCTestCase {
     let eventRecorder = AppBootstrapMaintenanceEventRecorder()
     let maintenance = try XCTUnwrap(
       AppBootstrap.makeLocalHistoryMaintenance(
-        clipboardHistory: AppBootstrapClipboardHistory(
-          clearResult: ClipboardCleanupResult(
+        recordHistory: AppBootstrapClipboardHistory(
+          clearResult: RecordCleanupResult(
             removedCount: 2,
             preservedActiveCount: 1
           )
@@ -1351,7 +1085,7 @@ final class AppBootstrapTests: XCTestCase {
       )
     )
 
-    let result = await maintenance.clearClipboardHistory()
+    let result = await maintenance.clearRecordHistory()
     let stateWriteCount = await rawStore.writeCount(for: .localHistoryMaintenanceState)
     let stateRemovalCount = await rawStore.removalCount(for: .localHistoryMaintenanceState)
     let rawPurgeCount = await rawStore.purgeCount()
@@ -1362,8 +1096,8 @@ final class AppBootstrapTests: XCTestCase {
       result,
       .completed(
         LocalHistoryMaintenanceCounts(
-          clipboardRemovedCount: 2,
-          preservedActiveClipboardCount: 1
+          recordRemovedCount: 2,
+          preservedActiveRecordCount: 1
         )
       )
     )
@@ -1376,7 +1110,7 @@ final class AppBootstrapTests: XCTestCase {
 
   func testLocalHistoryMaintenanceRequiresBothLogicalSettingsAndResiduePurger() {
     let clipboardHistory = AppBootstrapClipboardHistory(
-      clearResult: ClipboardCleanupResult(removedCount: 0, preservedActiveCount: 0)
+      clearResult: RecordCleanupResult(removedCount: 0, preservedActiveCount: 0)
     )
     let historyRepository = AppBootstrapHistoryRepository()
     let diagnosticRepository = AppBootstrapDiagnosticRepository()
@@ -1384,7 +1118,7 @@ final class AppBootstrapTests: XCTestCase {
 
     XCTAssertNil(
       AppBootstrap.makeLocalHistoryMaintenance(
-        clipboardHistory: clipboardHistory,
+        recordHistory: clipboardHistory,
         historyRepository: historyRepository,
         runReceiptRepository: InMemoryWorkflowRunReceiptRepository(),
         diagnosticRepository: diagnosticRepository,
@@ -1394,7 +1128,7 @@ final class AppBootstrapTests: XCTestCase {
     )
     XCTAssertNil(
       AppBootstrap.makeLocalHistoryMaintenance(
-        clipboardHistory: clipboardHistory,
+        recordHistory: clipboardHistory,
         historyRepository: historyRepository,
         runReceiptRepository: InMemoryWorkflowRunReceiptRepository(),
         diagnosticRepository: diagnosticRepository,
@@ -1408,8 +1142,8 @@ final class AppBootstrapTests: XCTestCase {
     let store = AppBootstrapSettingsStore(storage: [:])
     let maintenance = try XCTUnwrap(
       AppBootstrap.makeLocalHistoryMaintenance(
-        clipboardHistory: AppBootstrapClipboardHistory(
-          clearResult: ClipboardCleanupResult(
+        recordHistory: AppBootstrapClipboardHistory(
+          clearResult: RecordCleanupResult(
             removedCount: 0,
             preservedActiveCount: 0
           )
@@ -1440,11 +1174,11 @@ final class AppBootstrapTests: XCTestCase {
       for: LocalHistoryMaintenanceEvent(
         outcome: .pending,
         counts: LocalHistoryMaintenanceCounts(
-          clipboardRemovedCount: 3,
+          recordRemovedCount: 3,
           runRemovedCount: 4,
           runReceiptRemovedCount: 6,
           diagnosticRemovedCount: 5,
-          preservedActiveClipboardCount: 2
+          preservedActiveRecordCount: 2
         ),
         pendingReason: .physicalPurgeFailed
       )
@@ -1456,11 +1190,11 @@ final class AppBootstrapTests: XCTestCase {
       diagnostic.metadata,
       [
         "outcome": "pending",
-        "clipboardRemovedCount": "3",
+        "recordRemovedCount": "3",
         "runRemovedCount": "4",
         "runReceiptRemovedCount": "6",
         "diagnosticRemovedCount": "5",
-        "preservedActiveClipboardCount": "2",
+        "preservedActiveRecordCount": "2",
         "totalRemovedCount": "18",
         "pendingReason": "physical-purge-failed",
       ]

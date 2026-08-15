@@ -380,7 +380,7 @@ private struct WorkflowTOMLDocument: Codable {
     )
     process = workflow.plan.process.steps.map(WorkflowTOMLProcessStep.init)
     output = WorkflowTOMLOutput(phase: workflow.plan.output)
-    metadata = workflow.metadata
+    metadata = Self.canonicalMetadata(workflow.metadata)
   }
 
   init(from decoder: any Decoder) throws {
@@ -405,6 +405,7 @@ private struct WorkflowTOMLDocument: Codable {
       throw WorkflowFileStoreError.invalidWorkflow("Unknown trigger '\(trigger)'.")
     }
     var normalizedMetadata = metadata
+    normalizedMetadata = Self.canonicalMetadata(normalizedMetadata)
     try setup.speech?.applyMetadata(to: &normalizedMetadata)
     return try WorkflowDefinition(
       id: id,
@@ -419,6 +420,23 @@ private struct WorkflowTOMLDocument: Codable {
       ui: ui.config,
       metadata: normalizedMetadata
     )
+  }
+
+  private static func canonicalMetadata(_ metadata: [String: String]) -> [String: String] {
+    var metadata = metadata
+    if metadata[WorkflowMetadataKey.targetRecordCollectionIDs] == nil,
+      let legacyID = metadata[WorkflowMetadataKey.legacyTargetRecordCollectionID]
+    {
+      metadata[WorkflowMetadataKey.targetRecordCollectionIDs] = legacyID
+    }
+    if metadata[WorkflowMetadataKey.excludeOutputFromRecordCapture] == nil,
+      let legacyValue = metadata[WorkflowMetadataKey.excludeOutputFromWorkflowCapture]
+    {
+      metadata[WorkflowMetadataKey.excludeOutputFromRecordCapture] = legacyValue
+    }
+    metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
+    metadata.removeValue(forKey: WorkflowMetadataKey.excludeOutputFromWorkflowCapture)
+    return metadata
   }
 }
 
@@ -613,14 +631,14 @@ private struct WorkflowTOMLBindingCondition: Codable {
 
   init(condition: WorkflowBindingCondition) {
     appBundleID = condition.bundleIdentifier
-    clipboardGroup = condition.clipboardGroupID
+    clipboardGroup = condition.recordCollectionID
     locale = condition.locale
   }
 
   var condition: WorkflowBindingCondition {
     WorkflowBindingCondition(
       bundleIdentifier: appBundleID,
-      clipboardGroupID: clipboardGroup,
+      recordCollectionID: clipboardGroup,
       locale: locale
     )
   }
@@ -724,7 +742,7 @@ private struct WorkflowTOMLAction: Codable {
   var config: [String: String]
 
   init(action: OutputActionReference) {
-    id = action.id
+    id = Self.canonicalActionID(action.id)
     config = action.configuration
   }
 
@@ -738,7 +756,16 @@ private struct WorkflowTOMLAction: Codable {
   }
 
   var action: OutputActionReference {
-    OutputActionReference(id: id, configuration: config)
+    OutputActionReference(id: Self.canonicalActionID(id), configuration: config)
+  }
+
+  private static func canonicalActionID(_ id: String) -> String {
+    switch id {
+    case "stack.push": "record.store"
+    case "clipboard.copy": "system-clipboard.copy"
+    case "inject.text": "focused-application.insert"
+    default: id
+    }
   }
 }
 
@@ -830,16 +857,16 @@ private extension DeliveryStrategy {
   var tomlValue: String {
     switch self {
     case .immediate: "immediate"
-    case .stackFirst: "stack-first"
-    case .clipboardOnly: "clipboard-only"
+    case .collectionFirst: "collection-first"
+    case .systemClipboardOnly: "system-clipboard-only"
     }
   }
 
   init?(tomlValue: String) {
     switch tomlValue {
     case "immediate": self = .immediate
-    case "stack-first": self = .stackFirst
-    case "clipboard-only": self = .clipboardOnly
+    case "stack-first", "collection-first": self = .collectionFirst
+    case "clipboard-only", "system-clipboard-only": self = .systemClipboardOnly
     default: return nil
     }
   }

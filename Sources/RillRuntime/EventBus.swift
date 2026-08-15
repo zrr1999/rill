@@ -8,28 +8,14 @@ public enum EventBusDelivery: Sendable, Equatable {
   case barrier(UUID)
 }
 
-/// A content-free coordinate for consumers that only need to reload derived
-/// clipboard state. The stream carrying this value retains at most the newest
-/// invalidation, so it never queues `ClipboardStoreSnapshot` payloads.
-public struct ClipboardStoreInvalidation: Sendable, Equatable {
-  public let revision: UInt64
-
-  public init(revision: UInt64) {
-    self.revision = revision
-  }
-}
-
 private enum EventBusStateProjectionKey: Sendable, Equatable {
-  case clipboard
   case liveSubtitle(UUID)
   case audioProcessingQueue
   case failedAudioRecovery
-  case deliveryStack
 }
 
 private enum EventBusCoalescingDisposition: Sendable {
   case replaceableState(EventBusStateProjectionKey)
-  case transparentToClipboard
   case boundary
 }
 
@@ -41,7 +27,6 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
   private var bufferedHeadIndex = 0
   private var replaceableStateIndex: Int?
   private var replaceableStateKey: EventBusStateProjectionKey?
-  private var transparentClipboardDiagnosticIndex: Int?
   private var waiter: CheckedContinuation<Element?, Never>?
   private var isFinished = false
 
@@ -68,29 +53,11 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
           bufferedElements.append(element)
           replaceableStateIndex = bufferedElements.index(before: bufferedElements.endIndex)
           replaceableStateKey = key
-          transparentClipboardDiagnosticIndex = nil
-        }
-      case .transparentToClipboard:
-        if replaceableStateKey == .clipboard {
-          if let transparentClipboardDiagnosticIndex {
-            bufferedElements[transparentClipboardDiagnosticIndex] = element
-          } else {
-            bufferedElements.append(element)
-            transparentClipboardDiagnosticIndex = bufferedElements.index(
-              before: bufferedElements.endIndex
-            )
-          }
-        } else {
-          bufferedElements.append(element)
-          replaceableStateIndex = nil
-          replaceableStateKey = nil
-          transparentClipboardDiagnosticIndex = nil
         }
       case .boundary:
         bufferedElements.append(element)
         replaceableStateIndex = nil
         replaceableStateKey = nil
-        transparentClipboardDiagnosticIndex = nil
       }
       return nil
     }
@@ -107,9 +74,6 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
             if replaceableStateIndex == bufferedHeadIndex {
               replaceableStateIndex = nil
               replaceableStateKey = nil
-            }
-            if transparentClipboardDiagnosticIndex == bufferedHeadIndex {
-              transparentClipboardDiagnosticIndex = nil
             }
             bufferedHeadIndex += 1
             compactConsumedPrefixIfNeeded()
@@ -137,7 +101,6 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
       bufferedHeadIndex = 0
       replaceableStateIndex = nil
       replaceableStateKey = nil
-      transparentClipboardDiagnosticIndex = nil
       let waiter = waiter
       self.waiter = nil
       return waiter
@@ -155,7 +118,6 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
       bufferedHeadIndex = 0
       replaceableStateIndex = nil
       replaceableStateKey = nil
-      transparentClipboardDiagnosticIndex = nil
       return
     }
 
@@ -170,10 +132,6 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
     bufferedHeadIndex = 0
     if let replaceableStateIndex {
       self.replaceableStateIndex = replaceableStateIndex - consumedCount
-    }
-    if let transparentClipboardDiagnosticIndex {
-      self.transparentClipboardDiagnosticIndex =
-        transparentClipboardDiagnosticIndex - consumedCount
     }
   }
 }
@@ -190,35 +148,22 @@ extension RillEvent {
     if let key = stateProjectionKey {
       return .replaceableState(key)
     }
-    return allowsClipboardSnapshotCoalescingAcrossEvent
-      ? .transparentToClipboard
-      : .boundary
+    return .boundary
   }
 
   fileprivate var stateProjectionKey: EventBusStateProjectionKey? {
     switch self {
-    case .clipboardUpdated:
-      return .clipboard
     case .liveSubtitleUpdated(let snapshot):
       return .liveSubtitle(snapshot.runID)
     case .audioProcessingQueueUpdated:
       return .audioProcessingQueue
     case .failedAudioRecoveryUpdated:
       return .failedAudioRecovery
-    case .stackUpdated:
-      return .deliveryStack
     default:
       return nil
     }
   }
 
-  /// The per-publication debug record is replaceable observability traffic,
-  /// not an event ordering boundary for clipboard state projection. Other
-  /// events remain barriers.
-  fileprivate var allowsClipboardSnapshotCoalescingAcrossEvent: Bool {
-    guard case .diagnostic(let event) = self else { return false }
-    return event.subsystem == .clipboard && event.event == "clipboard.snapshot"
-  }
 }
 
 extension EventBusDelivery {
@@ -234,26 +179,13 @@ public actor EventBus {
   /// lifecycle consumer cannot miss events before its Task begins iterating.
   /// This stream is intentionally single-consumer.
   public nonisolated let lifecycleDeliveryStream: AsyncStream<EventBusDelivery>
-  /// Reserved during initialization for the single StackPaste consumer.
-  /// `.bufferingNewest(1)` makes invalidation bursts constant-space and the
-  /// element deliberately contains no clipboard content.
-  public nonisolated let clipboardInvalidationStream: AsyncStream<ClipboardStoreInvalidation>
   private let lifecycleDeliveryChannel: EventBusBufferedChannel<EventBusDelivery>
-  private let clipboardInvalidationContinuation:
-    AsyncStream<ClipboardStoreInvalidation>.Continuation
-  private var clipboardInvalidationRevision: UInt64 = 0
 
   public init() {
     let channel = EventBusBufferedChannel<EventBusDelivery> { incoming in
       incoming.eventBusCoalescingDisposition
     }
-    let invalidations = AsyncStream.makeStream(
-      of: ClipboardStoreInvalidation.self,
-      bufferingPolicy: .bufferingNewest(1)
-    )
     lifecycleDeliveryChannel = channel
-    clipboardInvalidationStream = invalidations.stream
-    clipboardInvalidationContinuation = invalidations.continuation
     lifecycleDeliveryStream = AsyncStream(
       unfolding: { await channel.next() },
       onCancel: { channel.finish() }
@@ -279,12 +211,6 @@ public actor EventBus {
   }
 
   public func publish(_ event: RillEvent) async {
-    if event.stateProjectionKey == .clipboard {
-      clipboardInvalidationRevision &+= 1
-      clipboardInvalidationContinuation.yield(
-        ClipboardStoreInvalidation(revision: clipboardInvalidationRevision)
-      )
-    }
     for channel in eventDeliveryChannels.values {
       channel.send(event)
     }

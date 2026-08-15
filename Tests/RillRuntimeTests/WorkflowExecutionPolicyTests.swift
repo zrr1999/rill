@@ -105,7 +105,7 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
             .supported
         )
         XCTAssertEqual(
-            WorkflowExecutionPolicy.decision(for: interactive, on: .clipboardGroupEvent),
+            WorkflowExecutionPolicy.decision(for: interactive, on: .recordCollectionEvent),
             .wrongSurface
         )
         XCTAssertEqual(
@@ -117,13 +117,13 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
             .wrongSurface
         )
         XCTAssertEqual(
-            WorkflowExecutionPolicy.decision(for: group, on: .clipboardGroupEvent),
+            WorkflowExecutionPolicy.decision(for: group, on: .recordCollectionEvent),
             .supported
         )
         XCTAssertEqual(
             WorkflowExecutionPolicy.decision(
                 for: malformedGroup,
-                on: .clipboardGroupEvent
+                on: .recordCollectionEvent
             ),
             .invalidConfiguration
         )
@@ -154,7 +154,6 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
                     actions: [WorkflowPolicyAction(probe: probe)]
                 ),
                 candidateResolver: CandidateResolver(eventBus: eventBus),
-                deliveryStack: DeliveryStack(eventBus: eventBus),
                 eventBus: eventBus
             )
 
@@ -191,7 +190,6 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
                 actions: [WorkflowPolicyAction(probe: probe)]
             ),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus,
             recognitionOptionsProvider: { _, _ in await optionsProbe.record() }
         )
@@ -231,11 +229,11 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
 
     private func makeStrictGroupWorkflow() -> WorkflowDefinition {
         var workflow = makeWorkflow(eventType: "groupItemCreated")
-        workflow.metadata[WorkflowMetadataKey.legacySourceGroupID] =
-            ClipboardGroup.voiceGroupID.uuidString
+        workflow.metadata[WorkflowMetadataKey.legacySourceCollectionID] =
+            RecordCollection.voiceInputID.rawValue.uuidString
         workflow.metadata[WorkflowMetadataKey.legacyExcludePolishTag] = "true"
         workflow.metadata[WorkflowMetadataKey.legacyGroupActionKind] =
-            ClipboardGroupActionKind.editItem.rawValue
+            RecordCollectionActionKind.editRecord.rawValue
         return workflow
     }
 }

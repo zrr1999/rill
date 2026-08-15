@@ -10,7 +10,7 @@ enum HistoryTimelineStatus: Sendable, Equatable {
 
     init(
         receipt: WorkflowRunReceipt?,
-        record: HistoryRecord?,
+        record: WorkflowResultRecord?,
         recordMetadata: RunHistoryRecordMetadata? = nil
     ) {
         if let receipt {
@@ -36,13 +36,13 @@ enum HistoryTimelineStatus: Sendable, Equatable {
 
 struct HistoryTimelineEntry: Identifiable, Sendable {
     let id: UUID
-    let record: HistoryRecord?
+    let record: WorkflowResultRecord?
     let recordMetadata: RunHistoryRecordMetadata?
     let receipt: WorkflowRunReceipt?
 
     init(
         id: UUID,
-        record: HistoryRecord?,
+        record: WorkflowResultRecord?,
         receipt: WorkflowRunReceipt?,
         recordMetadata: RunHistoryRecordMetadata? = nil
     ) {
@@ -79,8 +79,8 @@ struct HistoryTimelineEntry: Identifiable, Sendable {
         receipt?.runID ?? record?.runID ?? recordMetadata?.runID
     }
 
-    var isStackRelated: Bool {
-        record?.isStackRelated == true || recordMetadata?.isStackRelated == true
+    var isRecordRelated: Bool {
+        record?.isRecordRelated == true || recordMetadata?.isRecordRelated == true
     }
 
     var hasProtectedPreview: Bool {
@@ -95,7 +95,7 @@ enum HistoryTimelineBuilder {
     /// Uses durable receipts as the primary timeline and left-joins any richer
     /// history record. Legacy records without a receipt remain visible.
     static func allRuns(
-        records: [HistoryRecord],
+        records: [WorkflowResultRecord],
         receipts: [WorkflowRunReceipt]
     ) -> [HistoryTimelineEntry] {
         let records = deduplicatedRecords(records)
@@ -131,7 +131,7 @@ enum HistoryTimelineBuilder {
     /// Results remain a body-bearing voice view. A matching receipt enriches
     /// status/details but cannot introduce a receipt-only result row.
     static func results(
-        records: [HistoryRecord],
+        records: [WorkflowResultRecord],
         receiptsByRunID: [UUID: WorkflowRunReceipt]
     ) -> [HistoryTimelineEntry] {
         sorted(deduplicatedRecords(records).compactMap { record in
@@ -162,10 +162,10 @@ enum HistoryTimelineBuilder {
     /// HistoryRecords for the same run ID, retain the newest record with a
     /// deterministic ID tie-breaker. Records without a run ID remain distinct.
     private static func deduplicatedRecords(
-        _ records: [HistoryRecord]
-    ) -> [HistoryRecord] {
-        var recordsByRunID: [UUID: HistoryRecord] = [:]
-        var recordsWithoutRunID: [HistoryRecord] = []
+        _ records: [WorkflowResultRecord]
+    ) -> [WorkflowResultRecord] {
+        var recordsByRunID: [UUID: WorkflowResultRecord] = [:]
+        var recordsWithoutRunID: [WorkflowResultRecord] = []
         for record in records {
             guard let runID = record.runID else {
                 recordsWithoutRunID.append(record)

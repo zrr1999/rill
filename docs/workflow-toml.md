@@ -68,7 +68,7 @@ kind = "normalize-whitespace"
 strategy = "immediate"
 
 [[output.actions]]
-id = "inject.text"
+id = "focused-application.insert"
 
 [metadata]
 "workflow.origin" = "user"
@@ -96,7 +96,18 @@ removed on the next visual save.
   `apply-vocabulary`, `snippet-replacement`, `llm-rewrite`,
   `normalize-whitespace`
 - uncertainty `mode`: `off`, `non-blocking`, `blocking`
-- output `strategy`: `immediate`, `stack-first`, `clipboard-only`
+- output `strategy`: `immediate`, `collection-first`, `system-clipboard-only`
+
+Canonical output action IDs are `record.store`, `system-clipboard.copy`, and
+`focused-application.insert`. `record.store` accepts up to 32 comma-separated
+collection UUIDs in metadata key `record.target-collection-ids`; one workflow
+result creates one immutable Record and memberships for every target.
+
+For forward compatibility, the loader still accepts `stack.push`,
+`clipboard.copy`, `inject.text`, `stack-first`, `clipboard-only`, and
+`clipboard.target-group-id`. They are normalized in memory immediately. Rill
+never rewrites a user file merely because it was loaded, but the visual editor
+and every later save emit only the canonical names above.
 
 Optional vocabulary conditions use a `when` subtable with `app_bundle_id`,
 `clipboard_group`, and/or `locale`. Wake-word workflows use

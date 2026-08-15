@@ -440,7 +440,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let queue = CapturedAudioProcessingQueue(
@@ -509,7 +508,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let queue = CapturedAudioProcessingQueue(
@@ -586,7 +584,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let queue = CapturedAudioProcessingQueue(
@@ -663,7 +660,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let queue = CapturedAudioProcessingQueue(
@@ -741,7 +737,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let queue = CapturedAudioProcessingQueue(
@@ -856,7 +851,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let queue = CapturedAudioProcessingQueue(
@@ -932,7 +926,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let queue = CapturedAudioProcessingQueue(
@@ -984,7 +977,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let contexts = WorkflowLiveContextStore(makeWorkflowLiveContext())
@@ -1053,7 +1045,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let contexts = WorkflowLiveContextStore(makeWorkflowLiveContext())
@@ -1113,7 +1104,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let queue = CapturedAudioProcessingQueue(
@@ -1176,7 +1166,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let transferGate = WorkflowQueueTransferGate()
@@ -1265,7 +1254,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let queue = CapturedAudioProcessingQueue(
@@ -1310,8 +1298,8 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       cancelFailedAudioRecoveryRetries: {},
       stopLocalHistoryMaintenance: {},
       shutdownAudioQueue: { await queue.shutdown() },
-      stopStackPaste: {},
-      stopClipboardGroupScheduler: {},
+      stopSystemClipboardCapture: {},
+      stopRecordCollectionScheduler: {},
       stopLocalSpeechPreparation: {},
       stopEventListener: {},
       flushPersistence: {}
@@ -1344,7 +1332,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let queue = CapturedAudioProcessingQueue(
@@ -1411,7 +1398,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let optionsProbe = WorkflowRecognitionOptionsProbe()
@@ -1463,7 +1449,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-    let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
     let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
     let coordinator = SessionCoordinator(
       contextProvider: TestContextProvider(),
@@ -1471,7 +1456,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: resolver,
-      deliveryStack: deliveryStack,
       eventBus: eventBus,
       diagnostics: diagnostics
     )
@@ -1560,14 +1544,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-    let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
     let coordinator = SessionCoordinator(
       contextProvider: TestContextProvider(),
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-      deliveryStack: deliveryStack,
       eventBus: eventBus,
       diagnostics: diagnostics
     )
@@ -1592,7 +1574,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
         selectedText: "",
         secureInput: false
       ),
-      clipboard: ClipboardSnapshot(plainText: "", changeCount: 1)
+      clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 1)
     )
     let controller = WorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
@@ -1646,7 +1628,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let ordering = WorkflowRunOrderingProbe()
@@ -1706,7 +1687,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let ordering = WorkflowRunOrderingProbe()
@@ -1773,7 +1753,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus
     )
     let queue = CapturedAudioProcessingQueue(
@@ -1789,7 +1768,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
         selectedText: "",
         secureInput: false
       ),
-      clipboard: ClipboardSnapshot(plainText: "", changeCount: 0)
+      clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
     )
     let expectedOptions = SpeechRecognitionRequestOptions(
       language: "zh-CN",
@@ -1872,6 +1851,6 @@ private func makeWorkflowLiveContext(
       selectedText: "",
       secureInput: false
     ),
-    clipboard: ClipboardSnapshot(plainText: "", changeCount: 0)
+    clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
   )
 }

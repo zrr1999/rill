@@ -98,6 +98,7 @@ enum LiveSubtitlePanelGeometry {
 enum LiveSubtitlePanelAnimationPolicy {
   static let fadeInDuration: TimeInterval = 0.1
   static let fadeOutDuration: TimeInterval = 0.1
+  static let resizeDuration: TimeInterval = 0.16
 
   static func shouldAnimateEntrance(
     for _: LiveSubtitleSnapshot,
@@ -112,16 +113,45 @@ private struct LiveSubtitlePanelPresentation {
   let language: AppLanguage
 }
 
+enum LiveSubtitlePanelPresentationPolicy {
+  static func structuralSnapshot(_ snapshot: LiveSubtitleSnapshot) -> LiveSubtitleSnapshot {
+    var snapshot = snapshot
+    // These high-frequency transport fields are rendered by the dedicated
+    // meter model or not rendered at all, so they must not invalidate the
+    // structural SwiftUI tree.
+    snapshot.levelMeter = []
+    snapshot.updatedAt = .distantPast
+    return snapshot
+  }
+}
+
 @MainActor
 private final class LiveSubtitlePanelPresentationModel: ObservableObject {
   @Published private(set) var presentation: LiveSubtitlePanelPresentation
+  let meterModel: VoiceActivityMeterModel
 
   init(snapshot: LiveSubtitleSnapshot, language: AppLanguage) {
-    presentation = LiveSubtitlePanelPresentation(snapshot: snapshot, language: language)
+    presentation = LiveSubtitlePanelPresentation(
+      snapshot: LiveSubtitlePanelPresentationPolicy.structuralSnapshot(snapshot),
+      language: language
+    )
+    meterModel = VoiceActivityMeterModel(levels: snapshot.levelMeter)
   }
 
-  func update(snapshot: LiveSubtitleSnapshot, language: AppLanguage) {
-    presentation = LiveSubtitlePanelPresentation(snapshot: snapshot, language: language)
+  @discardableResult
+  func update(snapshot: LiveSubtitleSnapshot, language: AppLanguage) -> Bool {
+    meterModel.update(levels: snapshot.levelMeter)
+    let nextPresentation = LiveSubtitlePanelPresentation(
+      snapshot: LiveSubtitlePanelPresentationPolicy.structuralSnapshot(snapshot),
+      language: language
+    )
+    guard presentation.snapshot != nextPresentation.snapshot
+      || presentation.language != nextPresentation.language
+    else {
+      return false
+    }
+    presentation = nextPresentation
+    return true
   }
 }
 
@@ -132,7 +162,8 @@ private struct LiveSubtitlePanelRootView: View {
     LiveSubtitleOverlay(
       snapshot: model.presentation.snapshot,
       language: model.presentation.language,
-      includesShadow: false
+      includesShadow: false,
+      meterModel: model.meterModel
     )
   }
 }
@@ -178,6 +209,8 @@ final class LiveSubtitlePanelController {
   private var removeDurationLimitAction: (@Sendable (UUID) async -> Bool)?
   private var durationLimitRemovalRequestedRunID: UUID?
   private var visibilityGeneration: UInt64 = 0
+  private var geometryGeneration: UInt64 = 0
+  private var targetSurfaceSize: NSSize?
   private(set) var shadowInvalidationCount = 0
   private(set) var windowFrameAssignmentCount = 0
 
@@ -256,6 +289,7 @@ final class LiveSubtitlePanelController {
       hidePanel(animated: true)
       visibleRunID = nil
       currentVisibleFrame = nil
+      targetSurfaceSize = nil
       durationLimitRemovalRequestedRunID = nil
       return
     }
@@ -267,14 +301,17 @@ final class LiveSubtitlePanelController {
     }
 
     let panel = panel ?? makePanel()
+    let previousLanguage = self.presentationModel?.presentation.language
     let presentationModel: LiveSubtitlePanelPresentationModel
+    let presentationDidChange: Bool
     if let existingModel = self.presentationModel {
-      existingModel.update(snapshot: snapshot, language: language)
+      presentationDidChange = existingModel.update(snapshot: snapshot, language: language)
       presentationModel = existingModel
     } else {
       let newModel = LiveSubtitlePanelPresentationModel(snapshot: snapshot, language: language)
       self.presentationModel = newModel
       presentationModel = newModel
+      presentationDidChange = true
     }
     let hostingController: NSHostingController<LiveSubtitlePanelRootView>
     if let existingController = self.hostingController {
@@ -287,20 +324,23 @@ final class LiveSubtitlePanelController {
       panel.contentViewController = newController
       hostingController = newController
     }
-    configureHostingView(hostingController.view, snapshot: snapshot)
-    configureAccessibility(of: panel, language: language)
     self.panel = panel
 
-    let visibleFrame = visibleFrameResolver()
-    currentVisibleFrame = visibleFrame
+    let isNewRun = visibleRunID != snapshot.runID || !panel.isVisible
+    guard isNewRun || presentationDidChange else { return }
+    let visibleFrame = isNewRun ? visibleFrameResolver() : currentVisibleFrame
     let surfaceSize = LiveSubtitlePanelGeometry.constrainedSurfaceSize(
       LiveSubtitlePanelGeometry.preferredSurfaceSize(for: snapshot),
       visibleFrame: visibleFrame
     )
-    let isNewRun = visibleRunID != snapshot.runID || !panel.isVisible
 
     if isNewRun {
       visibilityGeneration &+= 1
+      geometryGeneration &+= 1
+      currentVisibleFrame = visibleFrame
+      targetSurfaceSize = surfaceSize
+      configureHostingView(hostingController.view, snapshot: snapshot)
+      configureAccessibility(of: panel, language: language)
       panel.setContentSize(surfaceSize)
       position(panel, using: visibleFrame)
       hostingController.view.layoutSubtreeIfNeeded()
@@ -323,8 +363,15 @@ final class LiveSubtitlePanelController {
       return
     }
 
-    let currentSize = panel.contentRect(forFrameRect: panel.frame).size
-    if currentSize != surfaceSize {
+    if previousLanguage != language {
+      configureAccessibility(of: panel, language: language)
+    }
+
+    if targetSurfaceSize != surfaceSize {
+      geometryGeneration &+= 1
+      let generation = geometryGeneration
+      targetSurfaceSize = surfaceSize
+      configureHostingView(hostingController.view, snapshot: snapshot)
       if let visibleFrame {
         let targetFrame = LiveSubtitlePanelGeometry.layout(
           surfaceSize: surfaceSize,
@@ -337,12 +384,18 @@ final class LiveSubtitlePanelController {
         } else {
           windowFrameAssignmentCount += 1
           NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.16
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            panel.animator().setFrame(targetFrame, display: true)
+            context.duration = LiveSubtitlePanelAnimationPolicy.resizeDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            // The SwiftUI tree has already rendered the new structural state.
+            // Let WindowServer composite that surface during the frame tween
+            // instead of forcing a full material redraw on every animation
+            // tick; redraw once at the settled geometry below.
+            panel.animator().setFrame(targetFrame, display: false)
           } completionHandler: { [weak self, weak panel] in
             Task { @MainActor in
-              guard let self, let panel else { return }
+              guard let self, let panel, self.geometryGeneration == generation else { return }
+              panel.contentView?.needsDisplay = true
+              panel.contentView?.displayIfNeeded()
               self.invalidateShadow(of: panel)
             }
           }
@@ -351,8 +404,6 @@ final class LiveSubtitlePanelController {
         panel.setContentSize(surfaceSize)
         invalidateShadow(of: panel)
       }
-    } else {
-      position(panel, using: visibleFrame)
     }
   }
 
@@ -402,6 +453,7 @@ final class LiveSubtitlePanelController {
   private func hidePanel(animated: Bool) {
     guard let panel, panel.isVisible else { return }
     visibilityGeneration &+= 1
+    geometryGeneration &+= 1
     let generation = visibilityGeneration
     guard animated, !reduceMotionProvider() else {
       panel.alphaValue = 1

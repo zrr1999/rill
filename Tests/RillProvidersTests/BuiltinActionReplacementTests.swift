@@ -1,135 +1,97 @@
 import XCTest
+
 @testable import RillCore
 @testable import RillProviders
 
-private actor ReplacementStackSpy: DeliveryStackSink {
-    struct Snapshot: Equatable {
-        var pushes = 0
-        var replacementSubjects: [ClipboardItemDryRunSubject] = []
+private actor RecordIngestionSpy: RecordIngestionSink {
+    private var envelopes: [RecordCaptureEnvelope] = []
+
+    func ingest(_ envelope: RecordCaptureEnvelope) async throws -> RecordProjection {
+        envelopes.append(envelope)
+        let record = Record(payload: envelope.draft.payload, provenance: envelope.draft.provenance)
+        return RecordProjection(
+            record: record,
+            metadata: RecordMetadata(recordID: record.id),
+            activity: RecordActivity(recordID: record.id),
+            memberships: []
+        )
     }
 
-    private let replacementResult: ClipboardItemReplacementResult
-    private let pushResult: ClipboardStorageMutationResult
-    private var state = Snapshot()
-
-    init(
-        replacementResult: ClipboardItemReplacementResult,
-        pushResult: ClipboardStorageMutationResult = .accepted(evictedHistoryItemCount: 0)
-    ) {
-        self.replacementResult = replacementResult
-        self.pushResult = pushResult
-    }
-
-    @discardableResult
-    func push(_: DeliveryItem) async -> ClipboardStorageMutationResult {
-        state.pushes += 1
-        return pushResult
-    }
-
-    func replace(
-        _: DeliveryItem,
-        replacing subject: ClipboardItemDryRunSubject
-    ) async -> ClipboardItemReplacementResult {
-        state.replacementSubjects.append(subject)
-        return replacementResult
-    }
-
-    func popNext() async -> DeliveryItem? { nil }
-
-    func snapshot() async -> DeliveryStackSnapshot {
-        DeliveryStackSnapshot(count: state.pushes, topPreview: nil)
-    }
-
-    func current() -> Snapshot { state }
+    func captured() -> [RecordCaptureEnvelope] { envelopes }
 }
 
 final class BuiltinActionReplacementTests: XCTestCase {
-    func testPushToStackReplacementUsesExactSubjectAndFailsClosedOnDrift() async throws {
-        let subject = makeReplacementSubject()
-        let stack = ReplacementStackSpy(replacementResult: .sourceChanged)
-        let action = PushToStackAction(stack: stack)
-
-        let result = try await action.execute(
-            text: "replacement",
-            context: makeReplacementContext(subject: subject)
+    func testRecordStoreActionForwardsDraftAndMultipleCollectionTargets() async throws {
+        let first = RecordCollectionID()
+        let second = RecordCollectionID()
+        let ingestion = RecordIngestionSpy()
+        let action = RecordStoreAction(ingestion: ingestion)
+        var context = makeContext()
+        context.workflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] =
+            "\(first.rawValue.uuidString),\(second.rawValue.uuidString)"
+        let draft = RecordDraft(
+            payload: .text("stored text"),
+            provenance: RecordProvenance(
+                source: RecordSourceIdentity(kind: .workflow),
+                workflowID: context.workflow.id,
+                workflowRunID: context.runID
+            )
         )
 
-        guard case .failed(let message) = result else {
-            return XCTFail("Expected a failed exact replacement, got \(result)")
-        }
-        XCTAssertTrue(message.contains("changed before replacement"))
-        let snapshot = await stack.current()
-        XCTAssertEqual(snapshot.pushes, 0)
-        XCTAssertEqual(snapshot.replacementSubjects, [subject])
+        let result = try await action.execute(record: draft, context: context)
+
+        XCTAssertEqual(result, .storedRecord)
+        let captured = await ingestion.captured()
+        let envelope = try XCTUnwrap(captured.first)
+        XCTAssertEqual(envelope.draft, draft)
+        XCTAssertEqual(envelope.requestedCollectionIDs, [first, second])
     }
 
-    func testPushToStackReplacementReportsSuccessOnlyAfterCASCommits() async throws {
-        let subject = makeReplacementSubject()
-        let stack = ReplacementStackSpy(replacementResult: .replaced)
-        let action = PushToStackAction(stack: stack)
+    func testTextOnlyActionBridgeRejectsNonTextPayload() async throws {
+        let action = TextOnlyProbeAction()
 
-        let result = try await action.execute(
-            text: "replacement",
-            context: makeReplacementContext(subject: subject)
-        )
-
-        XCTAssertEqual(result, .pushedToStack)
-        let snapshot = await stack.current()
-        XCTAssertEqual(snapshot.pushes, 0)
-        XCTAssertEqual(snapshot.replacementSubjects, [subject])
-    }
-
-    func testPushToStackDoesNotReportSuccessWhenStorageRejectsIngress() async throws {
-        let stack = ReplacementStackSpy(
-            replacementResult: .replaced,
-            pushResult: .rejected(.activeItemLimitReached)
-        )
-        let action = PushToStackAction(stack: stack)
-        var context = makeReplacementContext(subject: makeReplacementSubject())
-        context.sourceClipboardItemSubject = nil
-
-        let result = try await action.execute(text: "new item", context: context)
-
-        guard case .failed(let message) = result else {
-            return XCTFail("Expected storage rejection, got \(result)")
+        do {
+            _ = try await action.execute(
+                record: RecordDraft(
+                    payload: .image(Data([1, 2, 3])),
+                    provenance: RecordProvenance(
+                        source: RecordSourceIdentity(kind: .workflow)
+                    )
+                ),
+                context: makeContext()
+            )
+            XCTFail("Expected unsupported payload rejection")
+        } catch let error as OutputActionPayloadError {
+            XCTAssertEqual(
+                error,
+                .unsupportedPayload(actionID: "text-only", payloadKind: .image)
+            )
         }
-        let snapshot = await stack.current()
-        XCTAssertEqual(message, "The local clipboard is full of active or in-use items.")
-        XCTAssertEqual(snapshot.pushes, 1)
     }
 }
 
-private func makeReplacementSubject() -> ClipboardItemDryRunSubject {
-    ClipboardItemDryRunSubject(
-        itemID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
-        itemVersion: ClipboardItemVersion(
-            generationID: UUID(uuidString: "BBBBBBBB-CCCC-DDDD-EEEE-FFFFFFFFFFFF")!,
-            revision: 7
-        ),
-        groupID: ClipboardGroup.defaultGroupID,
-        contentKind: .text,
-        hasTransferableContent: true
-    )
+private struct TextOnlyProbeAction: OutputAction {
+    let id = "text-only"
+
+    func execute(text: String, context _: ActionContext) async throws -> ActionResult {
+        .externalOutput(text)
+    }
 }
 
-private func makeReplacementContext(
-    subject: ClipboardItemDryRunSubject
-) -> ActionContext {
-    let workflow = WorkflowDefinition(
-        name: "Replace source",
-        pipeline: PipelineDeclaration(
-            recognizerID: "test.recognizer",
-            outputActions: [OutputActionReference(id: "stack.push")]
-        ),
-        ui: WorkflowUIConfig(symbolName: "square.stack.3d.up", accentColorName: "blue")
-    )
-    return ActionContext(
+private func makeContext() -> ActionContext {
+    ActionContext(
         runID: UUID(),
-        workflow: workflow,
+        workflow: WorkflowDefinition(
+            name: "Store Record",
+            pipeline: PipelineDeclaration(
+                recognizerID: "test.recognizer",
+                outputActions: [OutputActionReference(id: BuiltinRecordActionID.store)]
+            ),
+            ui: WorkflowUIConfig(symbolName: "tray.full", accentColorName: "blue")
+        ),
         contextSnapshot: .empty,
         recognitionResult: RecognitionResult(rawText: "source", bestText: "source"),
-        finalText: "replacement",
-        sourceClipboardItemSubject: subject,
+        finalText: "stored text",
         startedAt: Date(timeIntervalSince1970: 1),
         finishedAt: Date(timeIntervalSince1970: 2)
     )

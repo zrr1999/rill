@@ -31,7 +31,7 @@ struct WorkflowExplanationSheet: View {
 
             Label(
                 UIStrings.workflowExplanationCopy(.previewNotice, language: model.language),
-                systemImage: "lock.shield"
+                systemImage: RillSystemSymbol.lockShield.rawValue
             )
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -51,7 +51,7 @@ struct WorkflowExplanationSheet: View {
                 } label: {
                     Label(
                         UIStrings.workflowExplanationCopy(.refresh, language: model.language),
-                        systemImage: "arrow.clockwise"
+                        systemImage: RillSystemSymbol.arrowClockwise.rawValue
                     )
                 }
                 .disabled(isLoading)
@@ -114,7 +114,7 @@ struct WorkflowExplanationSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Label(
                 UIStrings.workflowExplanationFailure(failure, language: model.language),
-                systemImage: "exclamationmark.shield"
+                systemImage: RillSystemSymbol.exclamationmarkShield.rawValue
             )
             .foregroundStyle(.orange)
 

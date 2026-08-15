@@ -82,8 +82,8 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
             pipeline: PipelineDeclaration(
                 recognizerID: "sherpa-onnx.local",
                 postProcessSteps: VoiceTextStyle.translateInput.workflowSteps,
-                outputActions: [OutputActionReference(id: "stack.push")],
-                deliveryPolicy: DeliveryPolicy(strategy: .stackFirst)
+                outputActions: [OutputActionReference(id: "record.store")],
+                deliveryPolicy: DeliveryPolicy(strategy: .collectionFirst)
             ),
             ui: WorkflowUIConfig(symbolName: "globe", accentColorName: "blue"),
             metadata: [WorkflowMetadataKey.textStyle: VoiceTextStyle.translateInput.rawValue]
@@ -157,7 +157,7 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
             pipeline: PipelineDeclaration(
                 recognizerID: "sherpa-onnx.local",
                 postProcessSteps: VoiceTextStyle.cleanInput.workflowSteps,
-                outputActions: [OutputActionReference(id: "inject.text")]
+                outputActions: [OutputActionReference(id: "focused-application.insert")]
             ),
             ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red"),
             metadata: [WorkflowMetadataKey.textStyle: VoiceTextStyle.cleanInput.rawValue]
@@ -168,7 +168,7 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
             pipeline: PipelineDeclaration(
                 recognizerID: "sherpa-onnx.local",
                 postProcessSteps: VoiceTextStyle.formalWriting.workflowSteps,
-                outputActions: [OutputActionReference(id: "stack.push")]
+                outputActions: [OutputActionReference(id: "record.store")]
             ),
             ui: WorkflowUIConfig(symbolName: "wand.and.stars", accentColorName: "purple")
         )

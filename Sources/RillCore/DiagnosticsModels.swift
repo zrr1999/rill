@@ -24,12 +24,33 @@ public extension DiagnosticLevel {
 
 public enum SubsystemTag: String, Codable, Sendable, Equatable {
     case session
-    case stack
-    case clipboard
+    case records
+    case systemClipboard
     case resolver
     case platform
     case providers
     case ui
+
+    public init(from decoder: any Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        let canonicalValue = switch value {
+        case "stack": "records"
+        case "clipboard": "systemClipboard"
+        default: value
+        }
+        guard let tag = Self(rawValue: canonicalValue) else {
+            throw DecodingError.dataCorruptedError(
+                in: try decoder.singleValueContainer(),
+                debugDescription: "Unknown diagnostic subsystem."
+            )
+        }
+        self = tag
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 public struct DiagnosticEvent: Codable, Sendable, Equatable {

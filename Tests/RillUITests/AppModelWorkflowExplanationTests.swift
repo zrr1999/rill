@@ -16,6 +16,82 @@ private actor WorkflowExplanationProviderProbe {
     }
 }
 
+private actor WorkflowExplanationProviderGate {
+    private let cooperativeWorkflowIDs: Set<UUID>
+    private var requestedWorkflowIDs: Set<UUID> = []
+    private var cancelledWorkflowIDs: Set<UUID> = []
+    private var pendingResults: [
+        UUID: CheckedContinuation<WorkflowExplanationReceipt, any Error>
+    ] = [:]
+    private var requestWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+    private var cancellationWaiters: [UUID: [CheckedContinuation<Void, Never>]] = [:]
+
+    init(cooperativeWorkflowIDs: Set<UUID> = []) {
+        self.cooperativeWorkflowIDs = cooperativeWorkflowIDs
+    }
+
+    func explain(
+        _ plan: WorkflowResolvedExecutionPlan
+    ) async throws -> WorkflowExplanationReceipt {
+        let workflowID = plan.executionWorkflow.id
+        requestedWorkflowIDs.insert(workflowID)
+        resumeWaiters(for: workflowID, in: &requestWaiters)
+
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                if cooperativeWorkflowIDs.contains(workflowID),
+                   cancelledWorkflowIDs.contains(workflowID) {
+                    continuation.resume(throwing: CancellationError())
+                } else {
+                    pendingResults[workflowID] = continuation
+                }
+            }
+        } onCancel: {
+            Task { await self.observeCancellation(of: workflowID) }
+        }
+    }
+
+    func waitUntilRequested(_ workflowID: UUID) async {
+        guard !requestedWorkflowIDs.contains(workflowID) else { return }
+        await withCheckedContinuation { continuation in
+            requestWaiters[workflowID, default: []].append(continuation)
+        }
+    }
+
+    func waitUntilCancelled(_ workflowID: UUID) async {
+        guard !cancelledWorkflowIDs.contains(workflowID) else { return }
+        await withCheckedContinuation { continuation in
+            cancellationWaiters[workflowID, default: []].append(continuation)
+        }
+    }
+
+    func resolve(_ workflowID: UUID) {
+        pendingResults.removeValue(forKey: workflowID)?.resume(
+            returning: makeExplanationReceipt(workflowID: workflowID, status: .ready)
+        )
+    }
+
+    private func observeCancellation(of workflowID: UUID) {
+        cancelledWorkflowIDs.insert(workflowID)
+        resumeWaiters(for: workflowID, in: &cancellationWaiters)
+        if cooperativeWorkflowIDs.contains(workflowID) {
+            pendingResults.removeValue(forKey: workflowID)?.resume(
+                throwing: CancellationError()
+            )
+        }
+    }
+
+    private func resumeWaiters(
+        for workflowID: UUID,
+        in waiters: inout [UUID: [CheckedContinuation<Void, Never>]]
+    ) {
+        let continuations = waiters.removeValue(forKey: workflowID) ?? []
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
+}
+
 @MainActor
 final class AppModelWorkflowExplanationTests: XCTestCase {
     func testProviderReceivesCurrentResolvedRouteAndManualInvocation() async throws {
@@ -29,17 +105,17 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
                 return service.explainResolved(plan)
             }
         )
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
         harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
 
         harness.model.explainWorkflowBeforeRun(workflow)
-        await waitForWorkflowExplanation(model: harness.model)
+        await harness.model.waitForWorkflowExplanationTasks()
 
         let calls = await probe.snapshot()
         let captured = try XCTUnwrap(calls.first)
         XCTAssertEqual(calls.count, 1)
         XCTAssertEqual(captured.pipeline.recognizerID, AppModel.localSpeechRecognizerID)
-        XCTAssertEqual(captured.pipeline.outputActions.map(\.id), ["inject.text"])
+        XCTAssertEqual(captured.pipeline.outputActions.map(\.id), ["focused-application.insert"])
         guard case .loaded(let receipt) = harness.model.workflowExplanationState else {
             return XCTFail("Expected a loaded workflow explanation")
         }
@@ -50,28 +126,25 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
     func testRapidWorkflowSwitchRejectsStaleAsyncResult() async {
         let first = makeExplanationWorkflow(name: "First")
         let second = makeExplanationWorkflow(name: "Second")
+        let gate = WorkflowExplanationProviderGate()
         let harness = makeHarness(
             workflows: [first, second],
-            explainResolvedWorkflowAction: { plan in
-                if plan.executionWorkflow.id == first.id {
-                    try? await Task.sleep(for: .milliseconds(160))
-                } else {
-                    try? await Task.sleep(for: .milliseconds(10))
-                }
-                return makeExplanationReceipt(workflowID: plan.executionWorkflow.id, status: .ready)
-            }
+            explainResolvedWorkflowAction: { try await gate.explain($0) }
         )
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
 
         harness.model.explainWorkflowBeforeRun(first)
+        await gate.waitUntilRequested(first.id)
         guard case .loading(let loadingID) = harness.model.workflowExplanationState else {
             return XCTFail("Expected loading state")
         }
         XCTAssertEqual(loadingID, first.id)
-        await Task.yield()
         harness.model.explainWorkflowBeforeRun(second)
-        await waitForWorkflowExplanation(model: harness.model)
-        try? await Task.sleep(for: .milliseconds(190))
+        await gate.waitUntilCancelled(first.id)
+        await gate.waitUntilRequested(second.id)
+        await gate.resolve(second.id)
+        await gate.resolve(first.id)
+        await harness.model.waitForWorkflowExplanationTasks()
 
         guard case .loaded(let receipt) = harness.model.workflowExplanationState else {
             return XCTFail("Expected the second workflow explanation")
@@ -81,19 +154,19 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
 
     func testRoutingSettingChangeCancelsPendingPreview() async {
         let workflow = makeExplanationWorkflow(name: "Pending")
+        let gate = WorkflowExplanationProviderGate(cooperativeWorkflowIDs: [workflow.id])
         let harness = makeHarness(
             workflows: [workflow],
-            explainResolvedWorkflowAction: { plan in
-                try? await Task.sleep(for: .milliseconds(100))
-                return makeExplanationReceipt(workflowID: plan.executionWorkflow.id, status: .ready)
-            }
+            explainResolvedWorkflowAction: { try await gate.explain($0) }
         )
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
         harness.model.builtinPushToTalkOutputMode = .pasteIntoApp
 
         harness.model.explainWorkflowBeforeRun(workflow)
+        await gate.waitUntilRequested(workflow.id)
         harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
-        try? await Task.sleep(for: .milliseconds(140))
+        await gate.waitUntilCancelled(workflow.id)
+        await harness.model.waitForWorkflowExplanationTasks()
 
         XCTAssertEqual(harness.model.workflowExplanationState, .idle)
     }
@@ -109,7 +182,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
                 return makeExplanationReceipt(workflowID: plan.executionWorkflow.id, status: .ready)
             }
         )
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
 
         harness.model.explainWorkflowBeforeRun(legacy)
 
@@ -136,10 +209,10 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
                 )
             }
         )
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
 
         harness.model.explainWorkflowBeforeRun(workflow)
-        await waitForWorkflowExplanation(model: harness.model)
+        await harness.model.waitForWorkflowExplanationTasks()
         guard case .failed(let failedID, let reason) = harness.model.workflowExplanationState else {
             return XCTFail("Expected a typed provider failure")
         }
@@ -160,18 +233,18 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
 
     func testExplicitCancellationPreventsDismissedPreviewFromWritingBack() async {
         let workflow = makeExplanationWorkflow(name: "Dismissed")
+        let gate = WorkflowExplanationProviderGate(cooperativeWorkflowIDs: [workflow.id])
         let harness = makeHarness(
             workflows: [workflow],
-            explainResolvedWorkflowAction: { plan in
-                try? await Task.sleep(for: .milliseconds(80))
-                return makeExplanationReceipt(workflowID: plan.executionWorkflow.id, status: .ready)
-            }
+            explainResolvedWorkflowAction: { try await gate.explain($0) }
         )
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
 
         harness.model.explainWorkflowBeforeRun(workflow)
+        await gate.waitUntilRequested(workflow.id)
         harness.model.cancelWorkflowExplanation()
-        try? await Task.sleep(for: .milliseconds(120))
+        await gate.waitUntilCancelled(workflow.id)
+        await harness.model.waitForWorkflowExplanationTasks()
 
         XCTAssertEqual(harness.model.workflowExplanationState, .idle)
     }
@@ -218,13 +291,6 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
                     processingDestination: .clipboard
                 ),
                 WorkflowExplanationOutput(
-                    sourceActionIndex: 0,
-                    effect: .clipboardHistoryWrite,
-                    availability: .available,
-                    configurationState: .notRequired,
-                    processingDestination: .localStorage
-                ),
-                WorkflowExplanationOutput(
                     sourceActionIndex: 1,
                     effect: .shortcutInvocation,
                     availability: .available,
@@ -232,7 +298,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
                     processingDestination: .localAutomation
                 ),
             ],
-            processingDestinations: [.cloudService, .clipboard, .localStorage, .localAutomation],
+            processingDestinations: [.cloudService, .clipboard, .localAutomation],
             status: .requiresConfirmation,
             issues: [
                 WorkflowExplanationIssue(
@@ -264,8 +330,8 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
 
         XCTAssertEqual(english.statusTitle, "Will ask at runtime")
         XCTAssertEqual(chinese.statusTitle, "运行时将询问")
-        XCTAssertEqual(english.outputs.count, 3)
-        XCTAssertEqual(chinese.outputs.count, 3)
+        XCTAssertEqual(english.outputs.count, 2)
+        XCTAssertEqual(chinese.outputs.count, 2)
         XCTAssertEqual(english.privacyReasons.count, 2)
         XCTAssertTrue(english.inputs[0].detail.contains("Omitted by the current privacy preview"))
         XCTAssertTrue(english.inputs[1].detail.contains("Pipeline component unavailable"))
@@ -348,16 +414,6 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         )
     }
 
-    private func waitForWorkflowExplanation(model: AppModel) async {
-        for _ in 0..<80 {
-            switch model.workflowExplanationState {
-            case .loaded, .failed:
-                return
-            case .idle, .loading:
-                try? await Task.sleep(for: .milliseconds(5))
-            }
-        }
-    }
 }
 
 private func makeExplanationWorkflow(name: String) -> WorkflowDefinition {

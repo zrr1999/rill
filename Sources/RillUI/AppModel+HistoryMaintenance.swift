@@ -3,12 +3,12 @@ import RillCore
 import RillRuntime
 
 extension AppModel {
-    public func setClipboardHistoryRetentionPeriod(_ period: HistoryRetentionPeriod) {
+    public func setRecordRetentionPeriod(_ period: HistoryRetentionPeriod) {
         updateHistoryRetentionPeriod(
             period,
-            currentPeriod: clipboardHistoryRetentionPeriod,
-            key: .clipboardHistoryRetentionPeriod,
-            isClipboardSetting: true
+            currentPeriod: recordRetentionPeriod,
+            key: .recordRetentionPeriod,
+            isRecordSetting: true
         )
     }
 
@@ -17,11 +17,11 @@ extension AppModel {
             period,
             currentPeriod: runHistoryRetentionPeriod,
             key: .runHistoryRetentionPeriod,
-            isClipboardSetting: false
+            isRecordSetting: false
         )
     }
 
-    public func clearClipboardHistory() {
+    public func clearRecordHistory() {
         guard beginLocalHistoryMaintenance() else { return }
         guard let localHistoryMaintenance else {
             finishWithUnavailableMaintenanceService()
@@ -30,12 +30,12 @@ extension AppModel {
 
         let taskID = UUID()
         let task = Task { @MainActor [weak self, localHistoryMaintenance] in
-            let result = await localHistoryMaintenance.clearClipboardHistory()
+            let result = await localHistoryMaintenance.clearRecordHistory()
             guard let self else { return }
             defer { self.finishLocalHistoryMaintenanceTask(id: taskID) }
             await self.finishLocalHistoryMaintenance(
                 result,
-                refreshClipboard: true,
+                refreshRecords: true,
                 refreshRunHistory: false,
                 refreshDiagnostics: false
             )
@@ -65,7 +65,7 @@ extension AppModel {
             let result = await localHistoryMaintenance.clearRunHistory()
             await self.finishLocalHistoryMaintenance(
                 result,
-                refreshClipboard: false,
+                refreshRecords: false,
                 refreshRunHistory: true,
                 refreshDiagnostics: true,
                 clearDiagnosticCacheBeforeRefresh: true,
@@ -98,7 +98,7 @@ extension AppModel {
             defer { self.finishLocalHistoryMaintenanceTask(id: taskID) }
             await self.finishLocalHistoryMaintenance(
                 result,
-                refreshClipboard: true,
+                refreshRecords: true,
                 refreshRunHistory: true,
                 refreshDiagnostics: true,
                 clearRunReceiptCacheBeforeRefresh: true
@@ -128,7 +128,7 @@ extension AppModel {
         }
         guard let localHistoryMaintenance else {
             shouldStartPeriodicHistoryRetentionMaintenance = false
-            guard clipboardHistoryRetentionPeriod != .forever ||
+            guard recordRetentionPeriod != .forever ||
                 runHistoryRetentionPeriod != .forever else {
                 return
             }
@@ -142,13 +142,13 @@ extension AppModel {
             return
         }
         guard beginLocalHistoryMaintenance() else { return }
-        let clipboardRetention = clipboardHistoryRetentionPeriod
+        let recordRetention = recordRetentionPeriod
         let runRetention = runHistoryRetentionPeriod
 
         let taskID = UUID()
         let task = Task { @MainActor [weak self, localHistoryMaintenance] in
             let result = await localHistoryMaintenance.performRetention(
-                clipboardRetention: clipboardRetention,
+                recordRetention: recordRetention,
                 runRetention: runRetention,
                 now: now
             )
@@ -156,7 +156,7 @@ extension AppModel {
             defer { self.finishLocalHistoryMaintenanceTask(id: taskID) }
             await self.finishLocalHistoryMaintenance(
                 result,
-                refreshClipboard: true,
+                refreshRecords: true,
                 refreshRunHistory: true,
                 refreshDiagnostics: true
             )
@@ -208,13 +208,24 @@ extension AppModel {
         }
     }
 
+    /// Waits for the current maintenance generation to reach a stable result
+    /// without disabling future maintenance or the periodic scheduler.
+    func waitForLocalHistoryMaintenance() async {
+        while !localHistoryMaintenanceTasks.isEmpty {
+            let tasks = Array(localHistoryMaintenanceTasks.values)
+            for task in tasks {
+                await task.value
+            }
+        }
+    }
+
     private func updateHistoryRetentionPeriod(
         _ period: HistoryRetentionPeriod,
         currentPeriod: HistoryRetentionPeriod,
         key: AppSettingKey,
-        isClipboardSetting: Bool
+        isRecordSetting: Bool
     ) {
-        let settingIsInvalid = isClipboardSetting
+        let settingIsInvalid = isRecordSetting
             ? clipboardHistoryRetentionSettingIsInvalid
             : runHistoryRetentionSettingIsInvalid
         guard !hasBegunApplicationShutdown else { return }
@@ -246,8 +257,8 @@ extension AppModel {
                     return
                 }
                 let shouldPrune = Self.isShorterRetention(period, than: currentPeriod)
-                if isClipboardSetting {
-                    self.clipboardHistoryRetentionPeriod = period
+                if isRecordSetting {
+                    self.recordRetentionPeriod = period
                     self.clipboardHistoryRetentionSettingIsInvalid = false
                 } else {
                     self.runHistoryRetentionPeriod = period
@@ -258,7 +269,7 @@ extension AppModel {
 
                 if shouldPrune {
                     self.performLocalHistoryRetention()
-                } else if !isClipboardSetting {
+                } else if !isRecordSetting {
                     self.loadHistory()
                 }
             } catch {
@@ -312,7 +323,7 @@ extension AppModel {
 
     private func finishLocalHistoryMaintenance(
         _ result: LocalHistoryMaintenanceResult,
-        refreshClipboard: Bool,
+        refreshRecords: Bool,
         refreshRunHistory: Bool,
         refreshDiagnostics: Bool,
         clearDiagnosticCacheBeforeRefresh: Bool = false,
@@ -324,10 +335,10 @@ extension AppModel {
             applyLocalHistoryMaintenanceCounts(counts)
             localHistoryMaintenancePendingReason = nil
             localHistoryMaintenanceBlockedReason = nil
-            if counts.totalRemovedCount > 0 || counts.preservedActiveClipboardCount > 0 {
+            if counts.totalRemovedCount > 0 || counts.preservedActiveRecordCount > 0 {
                 append(
-                    english: "Local history updated: removed \(counts.totalRemovedCount), preserved \(counts.preservedActiveClipboardCount) active clipboard item(s).",
-                    simplifiedChinese: "本地历史已更新：移除 \(counts.totalRemovedCount) 条，保留 \(counts.preservedActiveClipboardCount) 条仍在使用的剪贴板内容。"
+                    english: "Local history updated: removed \(counts.totalRemovedCount), preserved \(counts.preservedActiveRecordCount) active clipboard item(s).",
+                    simplifiedChinese: "本地历史已更新：移除 \(counts.totalRemovedCount) 条，保留 \(counts.preservedActiveRecordCount) 条仍在使用的剪贴板内容。"
                 )
             }
         case .pending(let counts, let reason):
@@ -336,7 +347,7 @@ extension AppModel {
             localHistoryMaintenanceBlockedReason = nil
         case .blocked(let reason):
             lastLocalHistoryRemovedCount = 0
-            lastPreservedActiveClipboardCount = 0
+            lastPreservedActiveRecordCount = 0
             localHistoryMaintenancePendingReason = nil
             localHistoryMaintenanceBlockedReason = localizedBlockReason(reason)
         }
@@ -357,7 +368,7 @@ extension AppModel {
             // A blocked result did not mutate history, so there are no caches to refresh.
         } else {
             await refreshHistoryCaches(
-                clipboard: refreshClipboard,
+                clipboard: refreshRecords,
                 runHistory: refreshRunHistory,
                 diagnostics: refreshDiagnostics,
                 clearDiagnosticCacheBeforeRefresh: clearDiagnosticCacheBeforeRefresh,
@@ -408,7 +419,7 @@ extension AppModel {
 
     private func applyLocalHistoryMaintenanceCounts(_ counts: LocalHistoryMaintenanceCounts) {
         lastLocalHistoryRemovedCount = counts.totalRemovedCount
-        lastPreservedActiveClipboardCount = counts.preservedActiveClipboardCount
+        lastPreservedActiveRecordCount = counts.preservedActiveRecordCount
     }
 
     private func refreshHistoryCaches(
@@ -420,11 +431,7 @@ extension AppModel {
         reconcileRunPresentation: Bool
     ) async {
         guard !hasBegunApplicationShutdown else { return }
-        if clipboard, let deliveryStack {
-            let snapshot = await deliveryStack.clipboardSnapshot()
-            guard !hasBegunApplicationShutdown else { return }
-            applyClipboardStoreSnapshot(snapshot)
-        }
+        _ = clipboard
         guard !hasBegunApplicationShutdown else { return }
         if runHistory {
             // Invalidate an older read before changing the local projection.

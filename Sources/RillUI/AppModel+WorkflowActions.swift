@@ -21,7 +21,7 @@ private enum WorkflowOperationFailureStage {
   case workflowStart
   case audioCaptureStart
   case audioTranscription
-  case clipboardReplay
+  case recordReplay
 
   var presentation: LocalizedText {
     switch self {
@@ -42,11 +42,11 @@ private enum WorkflowOperationFailureStage {
           "The recorded workflow could not be transcribed. Check provider settings, then retry.",
         simplifiedChinese: "无法转写这段工作流录音。请检查服务商设置后重试。"
       )
-    case .clipboardReplay:
+    case .recordReplay:
       LocalizedText(
         english:
-          "The clipboard item could not be replayed. Review Privacy and workflow settings, then retry.",
-        simplifiedChinese: "无法重新运行这个剪贴板项目。请检查隐私与工作流设置后重试。"
+          "The record could not be replayed. Review Privacy and workflow settings, then retry.",
+        simplifiedChinese: "无法重新运行这条记录。请检查隐私与工作流设置后重试。"
       )
     }
   }
@@ -184,17 +184,6 @@ extension AppModel {
 
     return workflows.filter { candidate in
       candidate.id != workflow.id && conflictWorkflowIDs.contains(candidate.id)
-    }
-  }
-
-  @discardableResult
-  func deleteClipboardHistoryEntry(_ entry: ClipboardHistoryEntry) -> Bool {
-    submitClipboardMutation { [weak self] deliveryStack in
-      await deliveryStack.deleteItems(ids: entry.mergedItemIDs)
-      self?.append(
-        english: "Removed clipboard history entry",
-        simplifiedChinese: "已移除剪贴板历史项"
-      )
     }
   }
 
@@ -344,7 +333,7 @@ extension AppModel {
     writeClipboardTextAction(text)
   }
 
-  public func copyHistoryFailure(_ record: HistoryRecord) {
+  public func copyHistoryFailure(_ record: WorkflowResultRecord) {
     guard let failureMessage = record.failureMessage else { return }
     let payload = [
       "workflow: \(UIStrings.workflowName(record.workflow, language: language))",
@@ -545,9 +534,9 @@ extension AppModel {
     switch (language, issue) {
     case (.english, .legacyClipboardAutomationUnsupported):
       return
-        "Clipboard event workflows remain disabled until production actions and execution receipts are available."
+        "Legacy collection-event workflows remain disabled; use record routes for production delivery."
     case (.simplifiedChinese, .legacyClipboardAutomationUnsupported):
-      return "剪贴板事件工作流将在生产级动作与执行收据完成后开放。"
+      return "旧版记录集事件工作流已停用；生产投递请使用记录路由。"
     case (.english, .invalidEventType):
       return "This workflow declares an invalid event type and remains disabled."
     case (.simplifiedChinese, .invalidEventType):
@@ -601,7 +590,7 @@ extension AppModel {
     case (.english, .legacyClipboardAutomationUnsupported):
       return "This legacy clipboard event workflow is disabled and cannot run."
     case (.simplifiedChinese, .legacyClipboardAutomationUnsupported):
-      return "此旧版剪贴板事件工作流已停用，无法运行。"
+      return "此旧版记录集事件工作流已停用，无法运行。"
     case (.english, .invalidEventType):
       return "This workflow cannot run because its event type is invalid."
     case (.simplifiedChinese, .invalidEventType):
@@ -781,8 +770,10 @@ extension AppModel {
     lastFailure = nil
     workflowAudioRunState = .preparing(workflowID: workflow.id)
 
-    Task { [weak self, startWorkflowAudioRunAction] in
+    let taskID = UUID()
+    let task = Task { [weak self, startWorkflowAudioRunAction] in
       guard let self else { return }
+      defer { self.finishWorkflowAudioActionTask(id: taskID) }
       do {
         try await self.persistProviderSettingsForRun(workflow)
         try await startWorkflowAudioRunAction(workflow, binding)
@@ -817,14 +808,17 @@ extension AppModel {
         }
       }
     }
+    workflowAudioActionTasks[taskID] = task
   }
 
   func finishCapturedAudioWorkflowRun(for workflow: WorkflowDefinition) {
     guard isRecordingWorkflowAudioRun(for: workflow) else { return }
     workflowAudioRunState = .transcribing(workflowID: workflow.id)
 
-    Task { [weak self, finishWorkflowAudioRunAction] in
+    let taskID = UUID()
+    let task = Task { [weak self, finishWorkflowAudioRunAction] in
       guard let self else { return }
+      defer { self.finishWorkflowAudioActionTask(id: taskID) }
       do {
         try await finishWorkflowAudioRunAction()
         await MainActor.run {
@@ -844,6 +838,11 @@ extension AppModel {
         }
       }
     }
+    workflowAudioActionTasks[taskID] = task
+  }
+
+  func finishWorkflowAudioActionTask(id: UUID) {
+    workflowAudioActionTasks.removeValue(forKey: id)
   }
 
   func requiresCapturedAudioForInteractiveRun(_ workflow: WorkflowDefinition) -> Bool {
@@ -905,8 +904,8 @@ extension AppModel {
     }
   }
 
-  public func deliverTopOfStack() {
-    pasteTopOfStackAction()
+  public func deliverNextRecord() {
+    deliverNextRecordAction()
   }
 
   public func refreshPermissions() {
@@ -929,21 +928,21 @@ extension AppModel {
     openMicrophoneSettingsAction()
   }
 
-  public func installClipboardPanelAction(_ action: @escaping () -> Void) {
-    showClipboardPanelAction = action
+  public func installRecordPanelAction(_ action: @escaping () -> Void) {
+    showRecordPanelAction = action
   }
 
-  public func installClipboardCaptureControlActions(
+  public func installSystemClipboardCaptureControlActions(
     setEnabled: @escaping (Bool, UInt64) -> Void,
     ignoreNextExternalChange: @escaping () -> Void
   ) {
-    setClipboardCaptureEnabledAction = setEnabled
+    setSystemClipboardCaptureEnabledAction = setEnabled
     ignoreNextExternalClipboardChangeAction = ignoreNextExternalChange
-    setEnabled(clipboardCaptureEnabled, clipboardCapturePreferenceRevision)
+    setEnabled(systemClipboardCaptureEnabled, clipboardCapturePreferenceRevision)
   }
 
   public func toggleClipboardCaptureEnabled() {
-    _ = setClipboardCaptureEnabled(!clipboardCaptureEnabled)
+    _ = setSystemClipboardCaptureEnabled(!systemClipboardCaptureEnabled)
   }
 
   @available(*, deprecated, message: "Use toggleClipboardCaptureEnabled().")
@@ -952,37 +951,33 @@ extension AppModel {
   }
 
   public func ignoreNextExternalClipboardChange() {
-    guard clipboardCaptureEnabled,
-      clipboardCaptureControlSnapshot.state == .active
+    guard systemClipboardCaptureEnabled,
+      systemClipboardCaptureControlSnapshot.state == .active
     else { return }
     ignoreNextExternalClipboardChangeAction()
   }
 
-  public func updateClipboardCaptureControlState(_ snapshot: ClipboardCaptureControlSnapshot) {
+  public func updateSystemClipboardCaptureControlState(_ snapshot: SystemClipboardCaptureControlSnapshot) {
     guard
-      snapshot.revision > clipboardCaptureControlSnapshot.revision
-        || snapshot == clipboardCaptureControlSnapshot
+      snapshot.revision > systemClipboardCaptureControlSnapshot.revision
+        || snapshot == systemClipboardCaptureControlSnapshot
     else { return }
-    clipboardCaptureControlSnapshot = snapshot
+    systemClipboardCaptureControlSnapshot = snapshot
   }
 
   public func installOpenWorkflowEditorAction(_ action: @escaping () -> Void) {
     openWorkflowEditorAction = action
   }
 
-  public func installClipboardPanelHotkeyAction(
+  public func installRecordPanelHotkeyAction(
     _ action: @escaping (HotkeyBindingDescriptor) -> Void
   ) {
-    updateClipboardPanelHotkeyAction = action
-    action(clipboardPanelHotkeyBinding)
+    updateRecordPanelHotkeyAction = action
+    action(recordPanelHotkeyBinding)
   }
 
-  public func installUseClipboardItemAction(_ action: @escaping (ClipboardHistoryItem) -> Void) {
-    useClipboardItemAction = action
-  }
-
-  public func showClipboardPanel() {
-    showClipboardPanelAction()
+  public func showRecordPanel() {
+    showRecordPanelAction()
   }
 
   public func selectSidebarSection(_ section: SidebarSection) {
@@ -992,17 +987,34 @@ extension AppModel {
     settingsNavigationRequest = nil
     historyNavigationRequest = nil
     selectedSidebarSection = section
-    selectedClipboardSidebarGroupID = nil
+    if section == .records {
+      recordWorkspace.selectCollection(recordWorkspace.snapshot.collections.first?.id)
+    }
+    if section == .workflows, let workflowID = workflows.first?.id {
+      workflowEditorNavigationRequest = WorkflowEditorNavigationRequest(
+        workflowID: workflowID
+      )
+    }
     if section == .history {
       runHistoryScope = .recentRuns
     }
   }
 
-  public func showClipboardManagement(groupID: UUID? = nil) {
+  public func showRecordCollection(_ collectionID: RecordCollectionID) {
     settingsNavigationRequest = nil
     historyNavigationRequest = nil
-    selectedSidebarSection = .clipboard
-    selectedClipboardSidebarGroupID = groupID
+    selectedSidebarSection = .records
+    recordWorkspace.selectCollection(collectionID)
+  }
+
+  public func showWorkflow(_ workflowID: UUID) {
+    guard workflows.contains(where: { $0.id == workflowID }) else { return }
+    settingsNavigationRequest = nil
+    historyNavigationRequest = nil
+    selectedSidebarSection = .workflows
+    workflowEditorNavigationRequest = WorkflowEditorNavigationRequest(
+      workflowID: workflowID
+    )
   }
 
   public func showRunHistory() {
@@ -1012,14 +1024,12 @@ extension AppModel {
   public func showSettings(_ section: SettingsSection) {
     historyNavigationRequest = nil
     selectedSidebarSection = .settings
-    selectedClipboardSidebarGroupID = nil
     settingsNavigationRequest = SettingsNavigationRequest(section: section)
   }
 
   public func showHistoryEntry(_ entryID: UUID) {
     settingsNavigationRequest = nil
     selectedSidebarSection = .history
-    selectedClipboardSidebarGroupID = nil
     runHistoryScope = .recentRuns
     runHistoryDeepLinkState = .idle
     historyNavigationRequest = HistoryNavigationRequest(
@@ -1045,25 +1055,20 @@ extension AppModel {
     openWorkflowEditorAction()
   }
 
-  public func setClipboardPanelHotkeyShortcut(_ shortcut: KeyboardShortcut) {
+  public func setRecordPanelHotkeyShortcut(_ shortcut: KeyboardShortcut) {
     guard GlobalHotkeyPolicy.accepts(shortcut) else { return }
-    clipboardPanelHotkeyBinding = .keyboardShortcut(shortcut)
+    recordPanelHotkeyBinding = .keyboardShortcut(shortcut)
   }
 
-  public func resetClipboardPanelHotkeyBinding() {
-    clipboardPanelHotkeyBinding = .doubleCommand
+  public func resetRecordPanelHotkeyBinding() {
+    recordPanelHotkeyBinding = .doubleCommand
   }
 
-  public func useClipboardItem(_ item: ClipboardHistoryItem) {
-    lastFailure = nil
-    useClipboardItemAction(item)
-  }
-
-  public func reportClipboardPanelPasteFailure() {
+  public func reportRecordPanelPasteFailure() {
     lastFailure =
       language == .english
-      ? "Clipboard paste was aborted because Rill could not return focus to the target app."
-      : "剪贴板粘贴已中止，因为 Rill 未能把焦点切回目标 App。"
+      ? "Record delivery was aborted because Rill could not return focus to the target app."
+      : "记录投递已中止，因为 Rill 未能把焦点切回目标 App。"
   }
 
   public func updatePermissionSnapshot(_ snapshot: PermissionSnapshot) {
@@ -1466,153 +1471,16 @@ extension AppModel {
     )
   }
 
-  public func replayClipboardItem(
-    _ item: ClipboardHistoryItem,
-    with workflow: WorkflowDefinition,
-    replacingSourceItem: Bool = false
-  ) {
-    guard !hasBegunApplicationShutdown, !isRunning else { return }
-    isRunning = true
-    lastFailure = nil
-    let operation =
-      replacingSourceItem
-      ? ClipboardItemDryRunOperation.replace
-      : .replay
-    interactiveWorkflowTaskGeneration &+= 1
-    let generation = interactiveWorkflowTaskGeneration
-    let task = Task { [weak self, sessionCoordinator, authorizeClipboardItemRunAction] in
-      guard let self else { return }
-      defer { self.finishInteractiveWorkflowTask(generation: generation) }
-      do {
-        try Task.checkCancellation()
-        let authorized = try await authorizeClipboardItemRunAction(
-          item.id,
-          item.version,
-          operation,
-          workflow
-        )
-        try Task.checkCancellation()
-        await sessionCoordinator.replayClipboardItem(
-          itemID: item.id,
-          authorizedContext: authorized,
-          replacingSourceItem: replacingSourceItem
-        )
-      } catch is CancellationError {
-        self.isRunning = false
-      } catch {
-        self.isRunning = false
-        let failure = WorkflowOperationFailureStage.clipboardReplay.presentation
-        self.lastFailure = failure.string(for: self.language)
-        self.append(
-          english: failure.english,
-          simplifiedChinese: failure.simplifiedChinese
-        )
-      }
-    }
-    pendingInteractiveWorkflowTask = task
-  }
-
-  @discardableResult
-  public func deleteClipboardItem(_ item: ClipboardHistoryItem) -> Bool {
-    submitClipboardMutation { deliveryStack in
-      await deliveryStack.deleteItem(id: item.id)
-    }
-  }
-
-  @discardableResult
-  public func setClipboardMode(_ mode: ClipboardPasteMode, forGroup groupID: UUID) -> Bool {
-    submitClipboardMutation { deliveryStack in
-      await deliveryStack.setMode(mode, forGroup: groupID)
-    }
-  }
-
-  @discardableResult
-  public func setClipboardAllowsCrossGroupPaste(
-    _ allowsCrossGroupPaste: Bool,
-    forGroup groupID: UUID
-  ) -> Bool {
-    submitClipboardMutation { deliveryStack in
-      await deliveryStack.setAllowsCrossGroupPaste(allowsCrossGroupPaste, forGroup: groupID)
-    }
-  }
-
-  @discardableResult
-  public func createClipboardGroup(
-    named name: String,
-    assigning assignment: ClipboardAppAssignment? = nil
-  ) -> Bool {
-    submitClipboardMutation { deliveryStack in
-      if let assignment {
-        _ = await deliveryStack.createGroup(named: name, assigning: assignment)
-      } else {
-        _ = await deliveryStack.createGroup(named: name)
-      }
-    }
-  }
-
-  @discardableResult
-  public func assignApplication(
-    _ assignment: ClipboardAppAssignment,
-    toGroup groupID: UUID?
-  ) -> Bool {
-    submitClipboardMutation { deliveryStack in
-      await deliveryStack.assignApplication(
-        bundleIdentifier: assignment.bundleIdentifier,
-        applicationName: assignment.applicationName,
-        toGroup: groupID
-      )
-    }
-  }
-
-  @discardableResult
-  public func setClipboardFallbackPriority(
-    _ fallbackPriority: Int,
-    forGroup groupID: UUID
-  ) -> Bool {
-    submitClipboardMutation { deliveryStack in
-      _ = await deliveryStack.setFallbackPriority(fallbackPriority, forGroup: groupID)
-    }
-  }
-
-  @discardableResult
-  public func setClipboardItemTags(_ tags: [String], forItem itemID: UUID) -> Bool {
-    submitClipboardMutation { deliveryStack in
-      await deliveryStack.updateItemTags(itemID, tags: tags)
-    }
-  }
-
-  @discardableResult
-  func setClipboardHistoryEntryPinned(
-    _ isPinned: Bool,
-    entry: ClipboardHistoryEntry
-  ) -> Bool {
-    submitClipboardMutation { deliveryStack in
-      await deliveryStack.setItemsPinned(isPinned, itemIDs: entry.mergedItemIDs)
-    }
-  }
-
-  @discardableResult
-  private func submitClipboardMutation(
-    _ operation: @escaping @MainActor @Sendable (DeliveryStack) async -> Void
-  ) -> Bool {
-    guard !hasBegunApplicationShutdown, let deliveryStack else { return false }
-    return clipboardMutationTaskOwner.submit {
-      await operation(deliveryStack)
-    }
-  }
-
   /// Starts the irreversible clipboard-mutation shutdown boundary.
-  public func sealClipboardMutationsForApplicationShutdown() {
+  public func sealRecordMutationsForApplicationShutdown() {
     hasBegunApplicationShutdown = true
     cancelResidentSpeechModelSynchronizationForApplicationShutdown()
-    clipboardMutationTaskOwner.seal()
   }
 
   /// Waits for mutations accepted before the shutdown boundary. Accepted
   /// writes are never cancelled because they may already own durable state.
-  public func drainClipboardMutationsForApplicationShutdown() async {
+  public func drainRecordMutationsForApplicationShutdown() async {
     hasBegunApplicationShutdown = true
-    await clipboardMutationTaskOwner.drainAndStop()
   }
 
   public func acceptResolution(selections: [UUID: UUID]) {

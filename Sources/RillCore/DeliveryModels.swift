@@ -1,70 +1,9 @@
 import Foundation
 
-public enum DeliveryItemState: String, Codable, Sendable {
-    case pending
-    case delivering
-    case delivered
-    case failed
-    case expired
-}
-
-public struct DeliveryItem: Identifiable, Codable, Sendable, Equatable {
-    public var id: UUID
-    public var workflowID: UUID
-    public var workflow: WorkflowPresentation?
-    public var text: String
-    public var alternatives: [String]
-    public var createdAt: Date
-    public var state: DeliveryItemState
-    public var latestError: String?
-    public var sourceApplicationName: String?
-    public var sourceBundleIdentifier: String?
-    public var targetGroupID: UUID?
-    public var captureTags: [ClipboardCaptureTag]
-
-    public init(
-        id: UUID = UUID(),
-        workflowID: UUID,
-        workflow: WorkflowPresentation? = nil,
-        text: String,
-        alternatives: [String] = [],
-        createdAt: Date = Date(),
-        state: DeliveryItemState = .pending,
-        latestError: String? = nil,
-        sourceApplicationName: String? = nil,
-        sourceBundleIdentifier: String? = nil,
-        targetGroupID: UUID? = nil,
-        captureTags: [ClipboardCaptureTag] = []
-    ) {
-        self.id = id
-        self.workflowID = workflowID
-        self.workflow = workflow
-        self.text = text
-        self.alternatives = alternatives
-        self.createdAt = createdAt
-        self.state = state
-        self.latestError = latestError
-        self.sourceApplicationName = sourceApplicationName
-        self.sourceBundleIdentifier = sourceBundleIdentifier
-        self.targetGroupID = targetGroupID
-        self.captureTags = captureTags
-    }
-}
-
-public struct DeliveryStackSnapshot: Sendable, Equatable {
-    public var count: Int
-    public var topPreview: String?
-
-    public init(count: Int, topPreview: String?) {
-        self.count = count
-        self.topPreview = topPreview
-    }
-}
-
 public enum ActionResult: Sendable, Equatable {
     case injected
     case copiedToClipboard
-    case pushedToStack
+    case storedRecord
     case externalOutput(String)
     case skipped(String)
     case failed(String)
@@ -76,12 +15,12 @@ public struct ActionContext: Sendable, Equatable {
     public var contextSnapshot: ContextSnapshot
     public var recognitionResult: RecognitionResult
     public var finalText: String
-    public var sourceClipboardItemSubject: ClipboardItemDryRunSubject?
+    public var sourceRecordSubject: RecordDeliverySubject?
     public var startedAt: Date
     public var finishedAt: Date
 
-    public var sourceClipboardItemID: UUID? {
-        sourceClipboardItemSubject?.itemID
+    public var sourceRecordID: RecordID? {
+        sourceRecordSubject?.recordID
     }
 
     public init(
@@ -90,7 +29,7 @@ public struct ActionContext: Sendable, Equatable {
         contextSnapshot: ContextSnapshot,
         recognitionResult: RecognitionResult,
         finalText: String,
-        sourceClipboardItemSubject: ClipboardItemDryRunSubject? = nil,
+        sourceRecordSubject: RecordDeliverySubject? = nil,
         startedAt: Date,
         finishedAt: Date
     ) {
@@ -99,7 +38,7 @@ public struct ActionContext: Sendable, Equatable {
         self.contextSnapshot = contextSnapshot
         self.recognitionResult = recognitionResult
         self.finalText = finalText
-        self.sourceClipboardItemSubject = sourceClipboardItemSubject
+        self.sourceRecordSubject = sourceRecordSubject
         self.startedAt = startedAt
         self.finishedAt = finishedAt
     }

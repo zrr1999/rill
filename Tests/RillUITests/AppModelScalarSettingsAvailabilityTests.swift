@@ -8,10 +8,10 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
   func testInvalidClosedScalarValuesRemainUnavailableWithoutMutation() async {
     let invalidValues: [AppSettingKey: String] = [
       .interfaceLanguage: "klingon",
-      .clipboardCaptureEnabled: "maybe",
-      .clipboardHistoryVisibility: "everything",
-      .clipboardMergeSimilarItems: "sometimes",
-      .clipboardPanelHotkey: "unknown",
+      .systemClipboardCaptureEnabled: "maybe",
+      .recordHistoryVisibility: "everything",
+      .recordMergeSimilar: "sometimes",
+      .recordPanelHotkey: "unknown",
       .preferredSpeechEngine: "hybrid",
       .localSpeechPrewarm: "later",
       .builtinPushToTalkOutputMode: "teleport",
@@ -27,7 +27,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       Set(invalidValues.keys)
     )
     XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .interface))
-    XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .clipboard))
+    XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
     XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .speechRoute))
     XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .localSpeech))
     XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .input))
@@ -64,7 +64,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
   func testUnavailableProductionScalarCommandsRejectMemoryAndStorageMutation() async {
     let storedValues: [AppSettingKey: String] = [
       .interfaceLanguage: AppLanguage.english.rawValue,
-      .clipboardCaptureEnabled: "true",
+      .systemClipboardCaptureEnabled: "true",
       .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
       .builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode.pasteIntoApp.rawValue,
       .longRecordingModeEnabled: "false",
@@ -80,20 +80,20 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await waitUntil { !harness.model.isLoadingSettings }
 
     let initialLanguage = harness.model.language
-    let initialClipboardCaptureEnabled = harness.model.clipboardCaptureEnabled
+    let initialClipboardCaptureEnabled = harness.model.systemClipboardCaptureEnabled
     let initialEngine = harness.model.preferredSpeechEngine
     let initialOutputMode = harness.model.builtinPushToTalkOutputMode
     let initialLongRecordingMode = harness.model.longRecordingModeEnabled
 
     XCTAssertFalse(harness.model.setInterfaceLanguage(.simplifiedChinese))
-    XCTAssertFalse(harness.model.setClipboardCaptureEnabled(!initialClipboardCaptureEnabled))
+    XCTAssertFalse(harness.model.setSystemClipboardCaptureEnabled(!initialClipboardCaptureEnabled))
     XCTAssertFalse(harness.model.setPreferredSpeechEngine(.local))
     XCTAssertFalse(harness.model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup))
     XCTAssertFalse(harness.model.setLongRecordingModeEnabled(true))
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.language, initialLanguage)
-    XCTAssertEqual(harness.model.clipboardCaptureEnabled, initialClipboardCaptureEnabled)
+    XCTAssertEqual(harness.model.systemClipboardCaptureEnabled, initialClipboardCaptureEnabled)
     XCTAssertEqual(harness.model.preferredSpeechEngine, initialEngine)
     XCTAssertEqual(harness.model.builtinPushToTalkOutputMode, initialOutputMode)
     XCTAssertEqual(harness.model.longRecordingModeEnabled, initialLongRecordingMode)
@@ -106,7 +106,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
   func testRecoveredScalarDomainsAcceptProductionCommandsAndPersist() async {
     let storedValues: [AppSettingKey: String] = [
       .interfaceLanguage: AppLanguage.english.rawValue,
-      .clipboardCaptureEnabled: "false",
+      .systemClipboardCaptureEnabled: "false",
       .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
       .builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode.pasteIntoApp.rawValue,
       .longRecordingModeEnabled: "false",
@@ -124,7 +124,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await store.setUnavailableKeys([])
     for domain in [
       ScalarSettingsDomain.interface,
-      .clipboard,
+      .systemClipboard,
       .speechRoute,
       .input,
     ] {
@@ -136,26 +136,26 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     }
 
     XCTAssertTrue(harness.model.setInterfaceLanguage(.simplifiedChinese))
-    XCTAssertTrue(harness.model.setClipboardCaptureEnabled(true))
+    XCTAssertTrue(harness.model.setSystemClipboardCaptureEnabled(true))
     XCTAssertTrue(harness.model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup))
     XCTAssertTrue(harness.model.setLongRecordingModeEnabled(true))
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.language, .simplifiedChinese)
-    XCTAssertTrue(harness.model.clipboardCaptureEnabled)
+    XCTAssertTrue(harness.model.systemClipboardCaptureEnabled)
     XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
     XCTAssertEqual(harness.model.builtinPushToTalkOutputMode, .saveToVoiceGroup)
     XCTAssertTrue(harness.model.longRecordingModeEnabled)
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.storage[.interfaceLanguage], AppLanguage.simplifiedChinese.rawValue)
-    XCTAssertEqual(activity.storage[.clipboardCaptureEnabled], "true")
+    XCTAssertEqual(activity.storage[.systemClipboardCaptureEnabled], "true")
     XCTAssertEqual(
       activity.storage[.builtinPushToTalkOutputMode],
       BuiltinPushToTalkOutputMode.saveToVoiceGroup.rawValue
     )
     XCTAssertEqual(activity.storage[.longRecordingModeEnabled], "true")
     XCTAssertEqual(activity.setCounts[.interfaceLanguage], 1)
-    XCTAssertEqual(activity.setCounts[.clipboardCaptureEnabled], 1)
+    XCTAssertEqual(activity.setCounts[.systemClipboardCaptureEnabled], 1)
     XCTAssertEqual(activity.setCounts[.builtinPushToTalkOutputMode], 1)
     XCTAssertEqual(activity.setCounts[.longRecordingModeEnabled], 1)
   }
@@ -168,7 +168,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     await waitUntil { !harness.model.isLoadingSettings }
     let initialLanguage = harness.model.language
-    let initialClipboardCaptureEnabled = harness.model.clipboardCaptureEnabled
+    let initialClipboardCaptureEnabled = harness.model.systemClipboardCaptureEnabled
     let initialEngine = harness.model.preferredSpeechEngine
     let initialOutputMode = harness.model.builtinPushToTalkOutputMode
     let initialLongRecordingMode = harness.model.longRecordingModeEnabled
@@ -181,7 +181,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       )
     )
     XCTAssertFalse(
-      harness.model.setClipboardCaptureEnabled(!initialClipboardCaptureEnabled)
+      harness.model.setSystemClipboardCaptureEnabled(!initialClipboardCaptureEnabled)
     )
     XCTAssertFalse(
       harness.model.setPreferredSpeechEngine(.local)
@@ -197,7 +197,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.language, initialLanguage)
-    XCTAssertEqual(harness.model.clipboardCaptureEnabled, initialClipboardCaptureEnabled)
+    XCTAssertEqual(harness.model.systemClipboardCaptureEnabled, initialClipboardCaptureEnabled)
     XCTAssertEqual(harness.model.preferredSpeechEngine, initialEngine)
     XCTAssertEqual(harness.model.builtinPushToTalkOutputMode, initialOutputMode)
     XCTAssertEqual(harness.model.longRecordingModeEnabled, initialLongRecordingMode)

@@ -510,7 +510,6 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
         actions: [TimeoutProbeAction(probe: actionProbe)]
       ),
       candidateResolver: CandidateResolver(eventBus: eventBus),
-      deliveryStack: DeliveryStack(eventBus: eventBus),
       eventBus: eventBus,
       diagnostics: diagnostics,
       recognitionTimeoutPolicy: RecognitionTimeoutPolicy(

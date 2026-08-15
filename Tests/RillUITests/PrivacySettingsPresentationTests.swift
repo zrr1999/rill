@@ -32,7 +32,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
             privacySettingsSource: privacySettingsSource
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(
             Array(harness.model.privacyPolicySettings.sensitiveAppRules.prefix(SensitiveAppRule.recommendedDefaults.count)),
@@ -75,7 +75,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
             settingsStore: settingsStore,
             privacySettingsSource: privacySettingsSource
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         try harness.model.addSensitiveAppRule(
             bundleIdentifier: "  com.example.Vault  ",
@@ -96,7 +96,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
                 selectedText: "secret",
                 secureInput: false
             ),
-            clipboard: ClipboardSnapshot(plainText: "secret", changeCount: 1)
+            clipboard: SystemClipboardSnapshot(plainText: "secret", changeCount: 1)
         )
         let runtimeSettings = try privacySettingsSource.currentSettings()
         let runtimeDecision = PrivacyPolicy.evaluate(
@@ -174,15 +174,13 @@ final class PrivacySettingsPresentationTests: XCTestCase {
             settingsStore: settingsStore,
             privacySettingsSource: privacySettingsSource
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         harness.model.setPrivacyCloudConfirmationRequired(false)
         XCTAssertFalse(try privacySettingsSource.currentSettings().cloudConfirmationRequired)
         await settingsStore.waitForFirstAtomicWrite()
         harness.model.setPrivacyCloudConfirmationRequired(true)
         XCTAssertTrue(try privacySettingsSource.currentSettings().cloudConfirmationRequired)
-        await waitForEventProcessing()
-
         let callCountBeforeRelease = await settingsStore.atomicWriteCallCount()
         XCTAssertEqual(callCountBeforeRelease, 1)
         await settingsStore.releaseFirstAtomicWrite()
@@ -216,7 +214,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
             privacySettingsSource: privacySettingsSource
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(
             harness.model.privacyPolicySettings.cloudProcessingAuthorizations,
@@ -251,7 +249,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
             settingsStore: settingsStore,
             privacySettingsSource: privacySettingsSource
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         harness.model.setPrivacyCloudConfirmationRequired(false)
         await harness.model.waitForPendingPrivacySettingsWrite()
@@ -285,7 +283,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
             privacySettingsSource: privacySettingsSource
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(harness.model.privacyPolicySettings, .defaults)
         XCTAssertEqual(harness.model.language, .simplifiedChinese)
@@ -317,7 +315,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
             privacySettingsSource: privacySettingsSource
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertNil(harness.model.privacySettingsLoadError)
         XCTAssertEqual(try privacySettingsSource.currentSettings(), .defaults)
@@ -336,7 +334,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
             privacySettingsSource: privacySettingsSource
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertNotNil(harness.model.privacySettingsLoadError)
         XCTAssertThrowsError(try privacySettingsSource.currentSettings()) { error in
@@ -367,7 +365,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
                 postProcessSteps: [
                     PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
                 ],
-                outputActions: [OutputActionReference(id: "clipboard.copy")]
+                outputActions: [OutputActionReference(id: "system-clipboard.copy")]
             ),
             ui: WorkflowUIConfig(symbolName: "cloud", accentColorName: "blue")
         )

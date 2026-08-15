@@ -30,7 +30,7 @@ public enum VocabularyCorrectionSaveOutcome: Sendable, Equatable {
 
 public enum SettingsSaveCategory: String, CaseIterable, Sendable, Equatable {
   case interface
-  case clipboard
+  case systemClipboard
   case speech
   case input
   case vocabulary
@@ -72,7 +72,7 @@ public enum SettingsSaveState: Sendable, Equatable {
 
 public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, Hashable {
   case interface
-  case clipboard
+  case systemClipboard
   case speechRoute
   case localSpeech
   case openAI
@@ -84,12 +84,12 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
     switch self {
     case .interface:
       [.interfaceLanguage]
-    case .clipboard:
+    case .systemClipboard:
       [
-        .clipboardCaptureEnabled,
-        .clipboardHistoryVisibility,
-        .clipboardPanelHotkey,
-        .clipboardMergeSimilarItems,
+        .systemClipboardCaptureEnabled,
+        .recordHistoryVisibility,
+        .recordPanelHotkey,
+        .recordMergeSimilar,
       ]
     case .speechRoute:
       [.preferredSpeechEngine, .ttsModel]
@@ -125,7 +125,7 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
   private var englishName: String {
     switch self {
     case .interface: "interface"
-    case .clipboard: "clipboard"
+    case .systemClipboard: "clipboard"
     case .speechRoute: "speech routing"
     case .localSpeech: "local speech"
     case .openAI: "OpenAI"
@@ -136,7 +136,7 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
   private var simplifiedChineseName: String {
     switch self {
     case .interface: "界面"
-    case .clipboard: "剪贴板"
+    case .systemClipboard: "剪贴板"
     case .speechRoute: "语音路由"
     case .localSpeech: "本地语音"
     case .openAI: "OpenAI"
@@ -237,10 +237,10 @@ struct StoredAppSettingsSnapshot {
   let workflowCustomizations: [WorkflowCustomization]
   let workflowLibraryNeedsMigration: Bool
   let workflowEnabledStates: [UUID: Bool]
-  let clipboardCaptureEnabled: String?
-  let clipboardMergeSimilarItems: String?
-  let clipboardHistoryVisibility: String?
-  let clipboardPanelHotkey: String?
+  let systemClipboardCaptureEnabled: String?
+  let recordMergeSimilar: String?
+  let recordHistoryVisibility: String?
+  let recordPanelHotkey: String?
   let preferredSpeechEngine: String?
   let ttsModel: String?
   let localSpeechModel: String?
@@ -266,7 +266,7 @@ struct StoredAppSettingsSnapshot {
   let vocabularyLibraryNeedsMigration: Bool
   let privacyPolicySettings: PrivacyPolicySettings
   let privacySettingsWereInvalid: Bool
-  let clipboardHistoryRetentionPeriod: String?
+  let recordRetentionPeriod: String?
   let runHistoryRetentionPeriod: String?
   let failedAudioRecoveryEnabled: String?
   let builtinPushToTalkOutputMode: String?
@@ -776,10 +776,14 @@ extension AppModel {
         storedSettings[Self.workflowLibrarySettingKey] == nil
           && storedSettings[.customWorkflows] != nil,
       workflowEnabledStates: workflowEnabledStates,
-      clipboardCaptureEnabled: storedSettings[.clipboardCaptureEnabled],
-      clipboardMergeSimilarItems: storedSettings[.clipboardMergeSimilarItems],
-      clipboardHistoryVisibility: storedSettings[.clipboardHistoryVisibility],
-      clipboardPanelHotkey: storedSettings[.clipboardPanelHotkey],
+      systemClipboardCaptureEnabled: storedSettings[.systemClipboardCaptureEnabled]
+        ?? storedSettings[.legacyClipboardCaptureEnabled],
+      recordMergeSimilar: storedSettings[.recordMergeSimilar]
+        ?? storedSettings[.legacyClipboardMergeSimilarItems],
+      recordHistoryVisibility: storedSettings[.recordHistoryVisibility]
+        ?? storedSettings[.legacyClipboardHistoryVisibility],
+      recordPanelHotkey: storedSettings[.recordPanelHotkey]
+        ?? storedSettings[.legacyClipboardPanelHotkey],
       preferredSpeechEngine: storedSettings[.preferredSpeechEngine],
       ttsModel: storedSettings[.ttsModel],
       localSpeechModel: storedSettings[.localSpeechModel],
@@ -808,7 +812,8 @@ extension AppModel {
           && storedSettings[Self.vocabularyRulesSettingKey] != nil,
       privacyPolicySettings: privacyPolicySettings,
       privacySettingsWereInvalid: privacySettingsWereInvalid,
-      clipboardHistoryRetentionPeriod: storedSettings[.clipboardHistoryRetentionPeriod],
+      recordRetentionPeriod: storedSettings[.recordRetentionPeriod]
+        ?? storedSettings[.legacyClipboardHistoryRetentionPeriod],
       runHistoryRetentionPeriod: storedSettings[.runHistoryRetentionPeriod],
       failedAudioRecoveryEnabled: storedSettings[.failedAudioRecoveryEnabled],
       builtinPushToTalkOutputMode: storedSettings[.builtinPushToTalkOutputMode],
@@ -839,7 +844,6 @@ extension AppModel {
     applyStoredFailedAudioRecoverySetting(settings)
     applyPreferredSpeechEngineSelectionIfNeeded()
     rebuildWorkflowLibrary()
-    rebuildClipboardHistoryEntries()
     isRestoringSettings = false
     synchronizeLocalSpeechSettingsSource()
     setLocalSpeechRuntimeEnabledAction(preferredSpeechEngine == .local)
@@ -908,16 +912,16 @@ extension AppModel {
     historyRetentionSettingsWriteError = nil
     clipboardHistoryRetentionSettingIsInvalid = false
     runHistoryRetentionSettingIsInvalid = false
-    clipboardHistoryRetentionPeriod = resolvedHistoryRetentionPeriod(
-      settings.clipboardHistoryRetentionPeriod,
-      isClipboardSetting: true,
+    recordRetentionPeriod = resolvedHistoryRetentionPeriod(
+      settings.recordRetentionPeriod,
+      isRecordSetting: true,
       settingWasUnavailable: settings.unavailableSettingKeys.contains(
-        .clipboardHistoryRetentionPeriod
+        .recordRetentionPeriod
       )
     )
     runHistoryRetentionPeriod = resolvedHistoryRetentionPeriod(
       settings.runHistoryRetentionPeriod,
-      isClipboardSetting: false,
+      isRecordSetting: false,
       settingWasUnavailable: settings.unavailableSettingKeys.contains(
         .runHistoryRetentionPeriod
       )
@@ -947,19 +951,19 @@ extension AppModel {
 
   private func resolvedHistoryRetentionPeriod(
     _ rawValue: String?,
-    isClipboardSetting: Bool,
+    isRecordSetting: Bool,
     settingWasUnavailable: Bool = false
   ) -> HistoryRetentionPeriod {
     if settingWasUnavailable {
-      if isClipboardSetting {
+      if isRecordSetting {
         clipboardHistoryRetentionSettingIsInvalid = true
       } else {
         runHistoryRetentionSettingIsInvalid = true
       }
       append(
         english:
-          "A stored \(isClipboardSetting ? "clipboard" : "run and diagnostic") history retention setting could not be read; cleanup for that domain is paused.",
-        simplifiedChinese: "无法读取已保存的\(isClipboardSetting ? "剪贴板" : "运行与诊断")历史留存设置；该域清理已暂停。"
+          "A stored \(isRecordSetting ? "clipboard" : "run and diagnostic") history retention setting could not be read; cleanup for that domain is paused.",
+        simplifiedChinese: "无法读取已保存的\(isRecordSetting ? "剪贴板" : "运行与诊断")历史留存设置；该域清理已暂停。"
       )
       return .forever
     }
@@ -967,15 +971,15 @@ extension AppModel {
       return .defaultPeriod
     }
     guard let period = HistoryRetentionPeriod(rawValue: rawValue) else {
-      if isClipboardSetting {
+      if isRecordSetting {
         clipboardHistoryRetentionSettingIsInvalid = true
       } else {
         runHistoryRetentionSettingIsInvalid = true
       }
       append(
         english:
-          "Invalid \(isClipboardSetting ? "clipboard" : "run and diagnostic") history retention setting was ignored; cleanup for that domain is paused.",
-        simplifiedChinese: "\(isClipboardSetting ? "剪贴板" : "运行与诊断")历史留存设置无效；该域清理已暂停。"
+          "Invalid \(isRecordSetting ? "clipboard" : "run and diagnostic") history retention setting was ignored; cleanup for that domain is paused.",
+        simplifiedChinese: "\(isRecordSetting ? "剪贴板" : "运行与诊断")历史留存设置无效；该域清理已暂停。"
       )
       return .forever
     }
@@ -1131,30 +1135,30 @@ extension AppModel {
       self.language = language
     }
 
-    if settings.unavailableSettingKeys.contains(.clipboardCaptureEnabled) {
+    if settings.unavailableSettingKeys.contains(.systemClipboardCaptureEnabled) {
       applyResolvedClipboardCapturePreference(enabled: false)
-    } else if shouldApplyStoredSetting(.clipboardCaptureEnabled) {
+    } else if shouldApplyStoredSetting(.systemClipboardCaptureEnabled) {
       applyResolvedClipboardCapturePreference(
-        enabled: settings.clipboardCaptureEnabled.flatMap(Self.storedBooleanIfValid) ?? false
+        enabled: settings.systemClipboardCaptureEnabled.flatMap(Self.storedBooleanIfValid) ?? false
       )
     }
 
-    if shouldApplyStoredSetting(.clipboardHistoryVisibility),
-      let rawVisibility = settings.clipboardHistoryVisibility,
-      let visibility = ClipboardHistoryVisibility(rawValue: rawVisibility)
+    if shouldApplyStoredSetting(.recordHistoryVisibility),
+      let rawVisibility = settings.recordHistoryVisibility,
+      let visibility = RecordHistoryVisibility(rawValue: rawVisibility)
     {
-      clipboardHistoryVisibility = visibility
+      recordHistoryVisibility = visibility
     }
 
-    if shouldApplyStoredSetting(.clipboardMergeSimilarItems),
-      let mergeSimilar = settings.clipboardMergeSimilarItems
+    if shouldApplyStoredSetting(.recordMergeSimilar),
+      let mergeSimilar = settings.recordMergeSimilar
     {
-      mergeSimilarClipboardItems = Self.storedBoolean(mergeSimilar, defaultValue: false)
+      mergeSimilarRecords = Self.storedBoolean(mergeSimilar, defaultValue: false)
     }
 
-    if shouldApplyStoredSetting(.clipboardPanelHotkey) {
-      clipboardPanelHotkeyBinding = HotkeyBindingDescriptor(
-        storageString: settings.clipboardPanelHotkey
+    if shouldApplyStoredSetting(.recordPanelHotkey) {
+      recordPanelHotkeyBinding = HotkeyBindingDescriptor(
+        storageString: settings.recordPanelHotkey
       )
     }
   }
@@ -1627,22 +1631,22 @@ extension AppModel {
       {
         language = recoveredLanguage
       }
-    case .clipboard:
+    case .systemClipboard:
       applyResolvedClipboardCapturePreference(
-        enabled: values[.clipboardCaptureEnabled].flatMap(Self.storedBooleanIfValid) ?? false
+        enabled: values[.systemClipboardCaptureEnabled].flatMap(Self.storedBooleanIfValid) ?? false
       )
-      if let rawValue = values[.clipboardHistoryVisibility],
-        let visibility = ClipboardHistoryVisibility(rawValue: rawValue)
+      if let rawValue = values[.recordHistoryVisibility],
+        let visibility = RecordHistoryVisibility(rawValue: rawValue)
       {
-        clipboardHistoryVisibility = visibility
+        recordHistoryVisibility = visibility
       }
-      if let rawValue = values[.clipboardMergeSimilarItems],
+      if let rawValue = values[.recordMergeSimilar],
         let mergeSimilar = Self.storedBooleanIfValid(rawValue)
       {
-        mergeSimilarClipboardItems = mergeSimilar
+        mergeSimilarRecords = mergeSimilar
       }
-      if let rawValue = values[.clipboardPanelHotkey] {
-        clipboardPanelHotkeyBinding = HotkeyBindingDescriptor(storageString: rawValue)
+      if let rawValue = values[.recordPanelHotkey] {
+        recordPanelHotkeyBinding = HotkeyBindingDescriptor(storageString: rawValue)
       }
     case .speechRoute:
       if let rawValue = values[.preferredSpeechEngine],
@@ -2068,24 +2072,24 @@ extension AppModel {
     )
   }
 
-  func persistClipboardPanelHotkeyPreference() {
+  func persistRecordPanelHotkeyPreference() {
     persistStringSetting(
-      clipboardPanelHotkeyBinding.storageString,
-      for: .clipboardPanelHotkey
+      recordPanelHotkeyBinding.storageString,
+      for: .recordPanelHotkey
     )
   }
 
   func persistClipboardCaptureEnabledPreference() {
     persistStringSetting(
-      clipboardCaptureEnabled ? "true" : "false",
-      for: .clipboardCaptureEnabled
+      systemClipboardCaptureEnabled ? "true" : "false",
+      for: .systemClipboardCaptureEnabled
     )
   }
 
-  func persistClipboardHistoryVisibilityPreference() {
+  func persistRecordHistoryVisibilityPreference() {
     persistStringSetting(
-      clipboardHistoryVisibility.rawValue,
-      for: .clipboardHistoryVisibility
+      recordHistoryVisibility.rawValue,
+      for: .recordHistoryVisibility
     )
   }
 
@@ -2346,11 +2350,11 @@ extension AppModel {
     switch key {
     case .interfaceLanguage:
       .interface
-    case .clipboardCaptureEnabled,
-      .clipboardHistoryVisibility,
-      .clipboardPanelHotkey,
-      .clipboardMergeSimilarItems:
-      .clipboard
+    case .systemClipboardCaptureEnabled,
+      .recordHistoryVisibility,
+      .recordPanelHotkey,
+      .recordMergeSimilar:
+      .systemClipboard
     case .preferredSpeechEngine,
       .ttsModel,
       .localSpeechModel,
@@ -2390,14 +2394,19 @@ extension AppModel {
       .privacyCloudProcessingAuthorizations,
       .privacyHistoryPreviewMode,
       .privacySecureInputConservativeMode,
-      .clipboardHistoryRetentionPeriod,
+      .recordRetentionPeriod,
       .runHistoryRetentionPeriod,
       .localHistoryMaintenanceState,
       .failedAudioRecoveryEnabled,
-      .clipboardGlobalMode,
-      .clipboardAppModes,
-      .clipboardRoutePreferences,
-      .clipboardPersistedState:
+      .legacyClipboardGlobalMode,
+      .legacyClipboardAppModes,
+      .legacyClipboardRoutePreferences,
+      .legacyClipboardPersistedState,
+      .legacyClipboardHistoryRetentionPeriod,
+      .legacyClipboardCaptureEnabled,
+      .legacyClipboardMergeSimilarItems,
+      .legacyClipboardHistoryVisibility,
+      .legacyClipboardPanelHotkey:
       nil
     }
   }
@@ -2507,9 +2516,45 @@ extension AppModel {
     task?.cancel()
     await task?.value
     pendingInteractiveWorkflowTask = nil
+    let audioTasks = Array(workflowAudioActionTasks.values)
+    for audioTask in audioTasks {
+      audioTask.cancel()
+    }
+    for audioTask in audioTasks {
+      await audioTask.value
+    }
+    workflowAudioActionTasks.removeAll()
     isRunning = false
     workflowAudioRunState = .idle
     workflowAudioCaptureRunID = nil
+  }
+
+  /// Waits for the interactive workflow accepted before this call to finish.
+  ///
+  /// Unlike the application-shutdown drain, this does not cancel the run or
+  /// mutate presentation state. It is a deterministic completion boundary for
+  /// callers that need to observe the result of an explicitly launched run.
+  public func waitForInteractiveWorkflowRun() async {
+    while let task = pendingInteractiveWorkflowTask {
+      await task.value
+    }
+  }
+
+  /// Waits for accepted start/finish actions for an interactive captured-audio
+  /// workflow without changing the run state.
+  public func waitForWorkflowAudioActions() async {
+    while !workflowAudioActionTasks.isEmpty {
+      let tasks = Array(workflowAudioActionTasks.values)
+      for task in tasks {
+        await task.value
+      }
+    }
+  }
+
+  /// Waits for local speech preparation, including cancelled provider work
+  /// that is still unwinding, without changing the selected model or state.
+  public func waitForLocalSpeechPreparation() async {
+    await localSpeechPreparationTaskOwner.waitUntilIdle()
   }
 
   public func stopLocalSpeechPreparationForApplicationShutdown() async {
@@ -2538,22 +2583,6 @@ extension AppModel {
       releaseLocalSpeechRuntimeAction()
     }
     queueLocalSpeechReadinessIfNeeded()
-  }
-
-  func updateClipboardSnapshot(_ snapshot: ClipboardStoreSnapshot) {
-    hasReceivedClipboardSnapshot = true
-    clipboardItems = snapshot.items
-    clipboardGroups = snapshot.groups
-    clipboardDefaultGroup = snapshot.defaultGroup
-    clipboardAppAssignments = snapshot.appAssignments
-    clipboardRemainingItemIDs = Set(snapshot.remainingItemIDs)
-    if let selectedClipboardSidebarGroupID,
-      selectedClipboardSidebarGroupID != clipboardDefaultGroup.group.id,
-      clipboardGroups.contains(where: { $0.group.id == selectedClipboardSidebarGroupID }) == false
-    {
-      self.selectedClipboardSidebarGroupID = nil
-    }
-    rebuildClipboardHistoryEntries()
   }
 
   func hasLiveSubtitleSemanticChange(
@@ -2735,13 +2764,6 @@ extension AppModel {
 
   static func sortedDiagnosticEvents(_ events: [DiagnosticEvent]) -> [DiagnosticEvent] {
     events.sorted { $0.timestamp > $1.timestamp }
-  }
-
-  func rebuildClipboardHistoryEntries() {
-    clipboardHistoryEntries = ClipboardHistoryEntryBuilder.build(
-      from: clipboardItems,
-      mergeSimilarText: mergeSimilarClipboardItems
-    )
   }
 
   func updateLocalSpeechPreparationProgress(
@@ -3344,7 +3366,7 @@ extension AppModel {
           binding.collectionID,
           VocabularyRuleScope(
             bundleIdentifier: binding.condition.bundleIdentifier,
-            clipboardGroupID: binding.condition.clipboardGroupID,
+            recordCollectionID: binding.condition.recordCollectionID,
             locale: binding.condition.locale
           )
         )
@@ -3405,7 +3427,7 @@ extension AppModel {
     if let targetCollectionID {
       let condition = WorkflowBindingCondition(
         bundleIdentifier: rule.scope.bundleIdentifier,
-        clipboardGroupID: rule.scope.clipboardGroupID,
+        recordCollectionID: rule.scope.recordCollectionID,
         locale: rule.scope.locale
       )
       guard vocabularyCollections.contains(where: { $0.id == targetCollectionID }),
@@ -3424,7 +3446,7 @@ extension AppModel {
   func vocabularyCollectionIDs(compatibleWith scope: VocabularyRuleScope) -> [UUID] {
     let condition = WorkflowBindingCondition(
       bundleIdentifier: scope.bundleIdentifier,
-      clipboardGroupID: scope.clipboardGroupID,
+      recordCollectionID: scope.recordCollectionID,
       locale: scope.locale
     )
     let compatibleIDs = Set(
@@ -3469,7 +3491,7 @@ extension AppModel {
   ) {
     let condition = WorkflowBindingCondition(
       bundleIdentifier: rule.scope.bundleIdentifier,
-      clipboardGroupID: rule.scope.clipboardGroupID,
+      recordCollectionID: rule.scope.recordCollectionID,
       locale: rule.scope.locale
     )
     let collectionID: UUID
@@ -3961,21 +3983,21 @@ extension AppModel {
     if let value = values[.interfaceLanguage], AppLanguage(rawValue: value) == nil {
       invalidKeys.insert(.interfaceLanguage)
     }
-    if let value = values[.clipboardHistoryVisibility],
-      ClipboardHistoryVisibility(rawValue: value) == nil
+    if let value = values[.recordHistoryVisibility],
+      RecordHistoryVisibility(rawValue: value) == nil
     {
-      invalidKeys.insert(.clipboardHistoryVisibility)
+      invalidKeys.insert(.recordHistoryVisibility)
     }
-    if let value = values[.clipboardCaptureEnabled], storedBooleanIfValid(value) == nil {
-      invalidKeys.insert(.clipboardCaptureEnabled)
+    if let value = values[.systemClipboardCaptureEnabled], storedBooleanIfValid(value) == nil {
+      invalidKeys.insert(.systemClipboardCaptureEnabled)
     }
-    if let value = values[.clipboardMergeSimilarItems], storedBooleanIfValid(value) == nil {
-      invalidKeys.insert(.clipboardMergeSimilarItems)
+    if let value = values[.recordMergeSimilar], storedBooleanIfValid(value) == nil {
+      invalidKeys.insert(.recordMergeSimilar)
     }
-    if let value = values[.clipboardPanelHotkey],
+    if let value = values[.recordPanelHotkey],
       HotkeyBindingDescriptor(storageString: value).storageString != value
     {
-      invalidKeys.insert(.clipboardPanelHotkey)
+      invalidKeys.insert(.recordPanelHotkey)
     }
     if let value = values[.preferredSpeechEngine],
       PreferredSpeechEngine(rawValue: value) == nil

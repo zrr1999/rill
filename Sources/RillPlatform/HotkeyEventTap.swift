@@ -34,7 +34,7 @@ public final class HotkeyEventTap: @unchecked Sendable {
 
     public enum Event: Sendable, Equatable {
         case manualPasteInterceptRequested
-        case clipboardPanelRequested
+        case recordPanelRequested
         case pushToTalkPressed(PushToTalkGesture)
         case pushToTalkReleased(PushToTalkGesture)
         case liveAudioCancellationRequested(UUID)
@@ -66,12 +66,12 @@ public final class HotkeyEventTap: @unchecked Sendable {
     private var retainedSelfPointer: UnsafeMutableRawPointer?
     private var pasteInterceptEnabled = false
     private var skippedPasteEvents = 0
-    private var clipboardPanelShortcutEnabled = false
-    private var clipboardPanelShortcutRecordingSuspensions: Set<UUID> = []
-    private var clipboardPanelShortcutRecordingCommitKeyCodes: [UUID: CGKeyCode] = [:]
-    private var clipboardPanelHotkeyBinding: HotkeyBindingDescriptor = .doubleCommand
+    private var recordPanelShortcutEnabled = false
+    private var recordPanelShortcutRecordingSuspensions: Set<UUID> = []
+    private var recordPanelShortcutRecordingCommitKeyCodes: [UUID: CGKeyCode] = [:]
+    private var recordPanelHotkeyBinding: HotkeyBindingDescriptor = .doubleCommand
     private var doubleCommandTapRecognizer = DoubleCommandTapRecognizer()
-    private var clipboardPanelShortcutRecognizer = ClipboardPanelShortcutRecognizer()
+    private var recordPanelShortcutRecognizer = RecordPanelShortcutRecognizer()
     private var pushToTalkRecognizer = PushToTalkGestureRecognizer()
     private var liveAudioEscapeRecognizer = LiveAudioEscapeRecognizer()
     private let monotonicClock = ContinuousClock()
@@ -164,29 +164,29 @@ public final class HotkeyEventTap: @unchecked Sendable {
         withLock { skippedPasteEvents }
     }
 
-    public func setClipboardPanelHotkeyBinding(_ binding: HotkeyBindingDescriptor) {
+    public func setRecordPanelHotkeyBinding(_ binding: HotkeyBindingDescriptor) {
         withLock {
             switch binding {
             case .doubleCommand:
-                clipboardPanelHotkeyBinding = binding
+                recordPanelHotkeyBinding = binding
             case .keyboardShortcut(let shortcut) where GlobalHotkeyPolicy.accepts(shortcut):
-                clipboardPanelHotkeyBinding = binding
+                recordPanelHotkeyBinding = binding
             case .keyboardShortcut:
-                clipboardPanelHotkeyBinding = .doubleCommand
+                recordPanelHotkeyBinding = .doubleCommand
             }
-            clipboardPanelShortcutRecognizer.reset()
+            recordPanelShortcutRecognizer.reset()
             doubleCommandTapRecognizer.reset()
         }
     }
 
-    /// Enables only the clipboard-panel shortcut route. The shared event tap and
-    /// push-to-talk recognizer remain active so turning clipboard capture off does
-    /// not disable voice input.
-    public func setClipboardPanelShortcutEnabled(_ enabled: Bool) {
+    /// Enables only the record-panel shortcut route. The shared event tap and
+    /// push-to-talk recognizer remain active so turning system clipboard capture
+    /// off does not disable voice input.
+    public func setRecordPanelShortcutEnabled(_ enabled: Bool) {
         withLock {
-            clipboardPanelShortcutEnabled = enabled
+            recordPanelShortcutEnabled = enabled
             if !enabled {
-                clipboardPanelShortcutRecognizer.reset()
+                recordPanelShortcutRecognizer.reset()
                 doubleCommandTapRecognizer.reset()
             }
         }
@@ -195,12 +195,12 @@ public final class HotkeyEventTap: @unchecked Sendable {
     /// Temporarily gives an in-app shortcut recorder ownership of new global
     /// shortcut presses. A push-to-talk gesture that was already active keeps
     /// its release route so opening the recorder can never strand a capture.
-    public func beginClipboardPanelShortcutRecording() -> UUID {
+    public func beginRecordPanelShortcutRecording() -> UUID {
         let suspensionID = UUID()
         withLock {
-            clipboardPanelShortcutRecordingSuspensions.insert(suspensionID)
-            clipboardPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
-            clipboardPanelShortcutRecognizer.reset()
+            recordPanelShortcutRecordingSuspensions.insert(suspensionID)
+            recordPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
+            recordPanelShortcutRecognizer.reset()
             doubleCommandTapRecognizer.reset()
         }
         return suspensionID
@@ -208,13 +208,13 @@ public final class HotkeyEventTap: @unchecked Sendable {
 
     /// Releases one recorder lease. Repeated or stale releases are harmless,
     /// and the capture preference remains the authoritative feature-level gate.
-    public func endClipboardPanelShortcutRecording(_ suspensionID: UUID) {
+    public func endRecordPanelShortcutRecording(_ suspensionID: UUID) {
         withLock {
-            guard clipboardPanelShortcutRecordingSuspensions.remove(suspensionID) != nil else {
+            guard recordPanelShortcutRecordingSuspensions.remove(suspensionID) != nil else {
                 return
             }
-            clipboardPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
-            clipboardPanelShortcutRecognizer.reset()
+            recordPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
+            recordPanelShortcutRecognizer.reset()
             doubleCommandTapRecognizer.reset()
         }
     }
@@ -222,25 +222,25 @@ public final class HotkeyEventTap: @unchecked Sendable {
     /// Transfers a recorder lease to the event tap until the physical commit
     /// key is released. Repeats and the matching key-up are consumed by this
     /// latch, and new push-to-talk presses remain suspended until it retires.
-    public func commitClipboardPanelShortcutRecording(
+    public func commitRecordPanelShortcutRecording(
         _ suspensionID: UUID,
         keyCode: UInt16
     ) {
         withLock {
-            guard clipboardPanelShortcutRecordingSuspensions.contains(suspensionID) else {
+            guard recordPanelShortcutRecordingSuspensions.contains(suspensionID) else {
                 return
             }
             let commitKeyCode = CGKeyCode(keyCode)
             if physicalKeyStateProvider(commitKeyCode) {
-                clipboardPanelShortcutRecordingCommitKeyCodes[suspensionID] = commitKeyCode
+                recordPanelShortcutRecordingCommitKeyCodes[suspensionID] = commitKeyCode
             } else {
                 // The event tap can observe a fast key-up before the main thread
                 // commits the recorder decision. Retire that lease immediately;
                 // no later key-up exists to release a commit latch safely.
-                clipboardPanelShortcutRecordingSuspensions.remove(suspensionID)
-                clipboardPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
+                recordPanelShortcutRecordingSuspensions.remove(suspensionID)
+                recordPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
             }
-            clipboardPanelShortcutRecognizer.reset()
+            recordPanelShortcutRecognizer.reset()
             doubleCommandTapRecognizer.reset()
         }
     }
@@ -425,9 +425,9 @@ extension HotkeyEventTap {
         // Once this tap is gone, retaining that lease would disable the panel
         // route forever after reinstall. Keep still-active UI recorder leases,
         // whose owner can end them explicitly, but retire every committed one.
-        releaseCommittedClipboardPanelShortcutRecordingSuspensions { _ in true }
+        releaseCommittedRecordPanelShortcutRecordingSuspensions { _ in true }
         doubleCommandTapRecognizer.reset()
-        clipboardPanelShortcutRecognizer.reset()
+        recordPanelShortcutRecognizer.reset()
         skippedPasteEvents = 0
         liveAudioEscapeRecognizer.reset()
         _ = pushToTalkRecognizer.interrupt()
@@ -439,10 +439,10 @@ extension HotkeyEventTap {
         // trigger the newly installed panel binding after the tap is re-enabled.
         // A second check after re-enabling closes the interval between this sample
         // and `CGEvent.tapEnable`, where a release would otherwise remain unseen.
-        releaseCommittedClipboardPanelShortcutRecordingSuspensions {
+        releaseCommittedRecordPanelShortcutRecordingSuspensions {
             !physicalKeyStateProvider($0)
         }
-        clipboardPanelShortcutRecognizer.reset()
+        recordPanelShortcutRecognizer.reset()
         doubleCommandTapRecognizer.reset()
         skippedPasteEvents = 0
         liveAudioEscapeRecognizer.resetLatch()
@@ -462,7 +462,7 @@ extension HotkeyEventTap {
         // already published the push-to-talk release; clearing that latch here must
         // remain silent. Still-held inputs stay latched until the recovered tap
         // observes their future key-up.
-        releaseCommittedClipboardPanelShortcutRecordingSuspensions {
+        releaseCommittedRecordPanelShortcutRecordingSuspensions {
             !physicalKeyStateProvider($0)
         }
         guard let interruptedGesture = pushToTalkRecognizer.interruptedActiveGesture else { return }
@@ -470,18 +470,18 @@ extension HotkeyEventTap {
         pushToTalkRecognizer.clearInterruptedActiveTrigger()
     }
 
-    private func releaseCommittedClipboardPanelShortcutRecordingSuspensions(
+    private func releaseCommittedRecordPanelShortcutRecordingSuspensions(
         where shouldRelease: (CGKeyCode) -> Bool
     ) {
-        let releasableSuspensions = clipboardPanelShortcutRecordingCommitKeyCodes
+        let releasableSuspensions = recordPanelShortcutRecordingCommitKeyCodes
             .compactMap { suspensionID, keyCode in
                 shouldRelease(keyCode) ? suspensionID : nil
             }
         for suspensionID in releasableSuspensions {
-            clipboardPanelShortcutRecordingCommitKeyCodes.removeValue(
+            recordPanelShortcutRecordingCommitKeyCodes.removeValue(
                 forKey: suspensionID
             )
-            clipboardPanelShortcutRecordingSuspensions.remove(suspensionID)
+            recordPanelShortcutRecordingSuspensions.remove(suspensionID)
         }
     }
 }
@@ -516,20 +516,20 @@ extension HotkeyEventTap {
         }
 
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-        if handleClipboardPanelShortcutRecordingCommitKey(
+        if handleRecordPanelShortcutRecordingCommitKey(
             type: type,
             keyCode: keyCode
         ) {
             return nil
         }
-        let shouldOpenClipboardPanel = handleDoubleCommandPanelShortcut(
+        let shouldOpenRecordPanel = handleDoubleCommandPanelShortcut(
             type: type,
             keyCode: keyCode,
             flags: event.flags,
             at: monotonicClock.now
         )
-        if shouldOpenClipboardPanel {
-            emit(.clipboardPanelRequested)
+        if shouldOpenRecordPanel {
+            emit(.recordPanelRequested)
         }
 
         let escapeHandling = handleLiveAudioEscape(
@@ -558,17 +558,17 @@ extension HotkeyEventTap {
             return nil
         }
 
-        let clipboardPanelHandling = handleClipboardPanelShortcut(
+        let recordPanelHandling = handleRecordPanelShortcut(
             type: type,
             keyCode: keyCode,
             flags: event.flags
         )
-        switch clipboardPanelHandling {
+        switch recordPanelHandling {
         case .passThrough:
             break
         case .swallow(let shouldEmit):
             if shouldEmit {
-                emit(.clipboardPanelRequested)
+                emit(.recordPanelRequested)
             }
             return nil
         }
@@ -616,8 +616,8 @@ extension HotkeyEventTap {
         at instant: ContinuousClock.Instant
     ) -> Bool {
         withLock {
-            guard isClipboardPanelShortcutRouteEnabled,
-                  clipboardPanelHotkeyBinding == .doubleCommand
+            guard isRecordPanelShortcutRouteEnabled,
+                  recordPanelHotkeyBinding == .doubleCommand
             else {
                 doubleCommandTapRecognizer.reset()
                 return false
@@ -637,7 +637,7 @@ extension HotkeyEventTap {
         flags: CGEventFlags
     ) -> PushToTalkGestureRecognizerOutput {
         withLock {
-            if !clipboardPanelShortcutRecordingSuspensions.isEmpty,
+            if !recordPanelShortcutRecordingSuspensions.isEmpty,
                pushToTalkRecognizer.activeGesture == nil {
                 // The app-local recorder must receive ordinary key events so
                 // it can reject reserved voice chords with its normal feedback.
@@ -649,32 +649,32 @@ extension HotkeyEventTap {
         }
     }
 
-    private func handleClipboardPanelShortcut(
+    private func handleRecordPanelShortcut(
         type: CGEventType,
         keyCode: CGKeyCode,
         flags: CGEventFlags
-    ) -> ClipboardPanelShortcutRecognizerOutput {
+    ) -> RecordPanelShortcutRecognizerOutput {
         withLock {
-            guard isClipboardPanelShortcutRouteEnabled else {
-                clipboardPanelShortcutRecognizer.reset()
+            guard isRecordPanelShortcutRouteEnabled else {
+                recordPanelShortcutRecognizer.reset()
                 return .passThrough
             }
-            return clipboardPanelShortcutRecognizer.handle(
+            return recordPanelShortcutRecognizer.handle(
                 type: type,
                 keyCode: keyCode,
                 flags: flags,
-                binding: clipboardPanelHotkeyBinding
+                binding: recordPanelHotkeyBinding
             )
         }
     }
 
-    private func handleClipboardPanelShortcutRecordingCommitKey(
+    private func handleRecordPanelShortcutRecordingCommitKey(
         type: CGEventType,
         keyCode: CGKeyCode
     ) -> Bool {
         withLock {
             guard type == .keyDown || type == .keyUp else { return false }
-            let matchingSuspensions = clipboardPanelShortcutRecordingCommitKeyCodes
+            let matchingSuspensions = recordPanelShortcutRecordingCommitKeyCodes
                 .compactMap { suspensionID, commitKeyCode in
                     commitKeyCode == keyCode ? suspensionID : nil
                 }
@@ -682,12 +682,12 @@ extension HotkeyEventTap {
 
             if type == .keyUp {
                 for suspensionID in matchingSuspensions {
-                    clipboardPanelShortcutRecordingCommitKeyCodes.removeValue(
+                    recordPanelShortcutRecordingCommitKeyCodes.removeValue(
                         forKey: suspensionID
                     )
-                    clipboardPanelShortcutRecordingSuspensions.remove(suspensionID)
+                    recordPanelShortcutRecordingSuspensions.remove(suspensionID)
                 }
-                clipboardPanelShortcutRecognizer.reset()
+                recordPanelShortcutRecognizer.reset()
                 doubleCommandTapRecognizer.reset()
             }
             return true
@@ -717,8 +717,8 @@ extension HotkeyEventTap {
         }
     }
 
-    func testingIsClipboardPanelShortcutEnabled() -> Bool {
-        withLock { isClipboardPanelShortcutRouteEnabled }
+    func testingIsRecordPanelShortcutEnabled() -> Bool {
+        withLock { isRecordPanelShortcutRouteEnabled }
     }
 
     func testingHandleDoubleCommandPanelShortcut(
@@ -751,19 +751,19 @@ extension HotkeyEventTap {
         handleLiveAudioEscape(type: type, keyCode: keyCode, flags: flags)
     }
 
-    func testingHandleClipboardPanelShortcut(
+    func testingHandleRecordPanelShortcut(
         type: CGEventType,
         keyCode: CGKeyCode,
         flags: CGEventFlags
-    ) -> ClipboardPanelShortcutRecognizerOutput {
-        handleClipboardPanelShortcut(type: type, keyCode: keyCode, flags: flags)
+    ) -> RecordPanelShortcutRecognizerOutput {
+        handleRecordPanelShortcut(type: type, keyCode: keyCode, flags: flags)
     }
 
-    func testingHandleClipboardPanelShortcutRecordingCommitKey(
+    func testingHandleRecordPanelShortcutRecordingCommitKey(
         type: CGEventType,
         keyCode: CGKeyCode
     ) -> Bool {
-        handleClipboardPanelShortcutRecordingCommitKey(type: type, keyCode: keyCode)
+        handleRecordPanelShortcutRecordingCommitKey(type: type, keyCode: keyCode)
     }
 
     func testingEmit(_ event: Event) {
@@ -806,7 +806,7 @@ extension HotkeyEventTap {
         return body()
     }
 
-    private var isClipboardPanelShortcutRouteEnabled: Bool {
-        clipboardPanelShortcutEnabled && clipboardPanelShortcutRecordingSuspensions.isEmpty
+    private var isRecordPanelShortcutRouteEnabled: Bool {
+        recordPanelShortcutEnabled && recordPanelShortcutRecordingSuspensions.isEmpty
     }
 }

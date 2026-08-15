@@ -10,7 +10,7 @@ final class SQLiteAuthenticatedSchemaFloorTests: XCTestCase {
     UUID(uuidString: "123e4567-e89b-12d3-a456-426614174000")
   )
 
-  func testInstallAndValidateV11InsideCallerTransaction() throws {
+  func testInstallAndValidateV12InsideCallerTransaction() throws {
     let database = try makeDatabase()
     defer { sqlite3_close(database) }
     let protector = try makeProtector(byte: 0x11)
@@ -41,7 +41,7 @@ final class SQLiteAuthenticatedSchemaFloorTests: XCTestCase {
         on: database,
         localDataProtector: protector
       ),
-      11
+      12
     )
     XCTAssertEqual(
       try integerQuery(
@@ -136,7 +136,7 @@ final class SQLiteAuthenticatedSchemaFloorTests: XCTestCase {
         on: database,
         localDataProtector: makeProtector(byte: 0x55)
       ),
-      11
+      12
     )
   }
 
@@ -215,7 +215,7 @@ private enum Mutation: CaseIterable {
       )
     case .schemaFloor:
       try execute(
-        "UPDATE rill_authenticated_schema_floor SET schema_floor = 12;",
+        "UPDATE rill_authenticated_schema_floor SET schema_floor = 11;",
         on: database
       )
     case .envelope:

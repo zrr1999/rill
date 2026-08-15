@@ -35,7 +35,7 @@ final class VocabularyCorrectionPlannerTests: XCTestCase {
         )
         XCTAssertEqual(scope.knownConstraints.bundleIdentifier, "com.example.editor")
         XCTAssertEqual(scope.knownConstraints.locale, "zh-CN")
-        XCTAssertEqual(scope.unknownFields, [.clipboardGroupID])
+        XCTAssertEqual(scope.unknownFields, [.recordCollectionID])
         XCTAssertNil(scope.confirmedRuleScope)
     }
 
@@ -159,7 +159,7 @@ final class VocabularyCorrectionPlannerTests: XCTestCase {
         let groupID = UUID(uuidString: "00000000-0000-0000-0000-000000000100")!
         let context = VocabularyRuleContext(
             bundleIdentifier: "com.example.editor",
-            clipboardGroupID: groupID,
+            recordCollectionID: groupID,
             locale: "en-US"
         )
         let assessment = VocabularyCorrectionScopeAssessment(context: context)
@@ -170,7 +170,7 @@ final class VocabularyCorrectionPlannerTests: XCTestCase {
             assessment.confirmedRuleScope,
             VocabularyRuleScope(
                 bundleIdentifier: "com.example.editor",
-                clipboardGroupID: groupID,
+                recordCollectionID: groupID,
                 locale: "en-US"
             )
         )
@@ -182,7 +182,7 @@ final class VocabularyCorrectionPlannerTests: XCTestCase {
         XCTAssertTrue(assessment.containsUnknownFields)
         XCTAssertEqual(
             assessment.unknownFields,
-            [.bundleIdentifier, .clipboardGroupID, .locale]
+            [.bundleIdentifier, .recordCollectionID, .locale]
         )
         XCTAssertEqual(assessment.knownConstraints, VocabularyRuleScope())
         XCTAssertNil(assessment.confirmedRuleScope)

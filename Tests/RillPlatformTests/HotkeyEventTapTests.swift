@@ -622,14 +622,14 @@ final class HotkeyEventTapTests: XCTestCase {
         XCTAssertEqual(tap.testingSkippedPasteEventCount(), 0)
     }
 
-    func testClipboardPanelShortcutDefaultsDisabledButKeepsFunctionPushToTalk() {
+    func testRecordPanelShortcutDefaultsDisabledButKeepsFunctionPushToTalk() {
         let tap = HotkeyEventTap()
         let shortcut = KeyboardShortcut(keyCode: 8, modifiers: [.control, .option])
-        tap.setClipboardPanelHotkeyBinding(.keyboardShortcut(shortcut))
+        tap.setRecordPanelHotkeyBinding(.keyboardShortcut(shortcut))
 
-        XCTAssertFalse(tap.testingIsClipboardPanelShortcutEnabled())
+        XCTAssertFalse(tap.testingIsRecordPanelShortcutEnabled())
         XCTAssertEqual(
-            tap.testingHandleClipboardPanelShortcut(
+            tap.testingHandleRecordPanelShortcut(
                 type: .keyDown,
                 keyCode: 8,
                 flags: [.maskControl, .maskAlternate]
@@ -657,15 +657,15 @@ final class HotkeyEventTapTests: XCTestCase {
     func testShortcutRecordingLeasesSuspendNewPanelAndPushToTalkPressesUntilEveryLeaseEnds() {
         let tap = HotkeyEventTap()
         let shortcut = KeyboardShortcut(keyCode: 8, modifiers: [.control, .option])
-        tap.setClipboardPanelHotkeyBinding(.keyboardShortcut(shortcut))
-        tap.setClipboardPanelShortcutEnabled(true)
+        tap.setRecordPanelHotkeyBinding(.keyboardShortcut(shortcut))
+        tap.setRecordPanelShortcutEnabled(true)
 
-        let firstLease = tap.beginClipboardPanelShortcutRecording()
-        let secondLease = tap.beginClipboardPanelShortcutRecording()
+        let firstLease = tap.beginRecordPanelShortcutRecording()
+        let secondLease = tap.beginRecordPanelShortcutRecording()
 
-        XCTAssertFalse(tap.testingIsClipboardPanelShortcutEnabled())
+        XCTAssertFalse(tap.testingIsRecordPanelShortcutEnabled())
         XCTAssertEqual(
-            tap.testingHandleClipboardPanelShortcut(
+            tap.testingHandleRecordPanelShortcut(
                 type: .keyDown,
                 keyCode: 8,
                 flags: [.maskControl, .maskAlternate]
@@ -690,14 +690,14 @@ final class HotkeyEventTapTests: XCTestCase {
             "The reserved legacy chord must reach the app-local recorder for rejection."
         )
 
-        tap.endClipboardPanelShortcutRecording(firstLease)
-        tap.endClipboardPanelShortcutRecording(firstLease)
-        XCTAssertFalse(tap.testingIsClipboardPanelShortcutEnabled())
+        tap.endRecordPanelShortcutRecording(firstLease)
+        tap.endRecordPanelShortcutRecording(firstLease)
+        XCTAssertFalse(tap.testingIsRecordPanelShortcutEnabled())
 
-        tap.endClipboardPanelShortcutRecording(secondLease)
-        XCTAssertTrue(tap.testingIsClipboardPanelShortcutEnabled())
+        tap.endRecordPanelShortcutRecording(secondLease)
+        XCTAssertTrue(tap.testingIsRecordPanelShortcutEnabled())
         XCTAssertEqual(
-            tap.testingHandleClipboardPanelShortcut(
+            tap.testingHandleRecordPanelShortcut(
                 type: .keyDown,
                 keyCode: 8,
                 flags: [.maskControl, .maskAlternate]
@@ -733,7 +733,7 @@ final class HotkeyEventTapTests: XCTestCase {
             .swallow(.pushToTalkPressed(.fnHold))
         )
 
-        let lease = tap.beginClipboardPanelShortcutRecording()
+        let lease = tap.beginRecordPanelShortcutRecording()
 
         XCTAssertEqual(
             tap.testingHandlePushToTalk(
@@ -753,7 +753,7 @@ final class HotkeyEventTapTests: XCTestCase {
             .passThrough,
             "After the old gesture releases, the lease must block a new press."
         )
-        tap.endClipboardPanelShortcutRecording(lease)
+        tap.endRecordPanelShortcutRecording(lease)
     }
 
     func testShortcutRecordingLeasePreservesReleaseForLegacyGestureActiveBeforeLease() {
@@ -767,7 +767,7 @@ final class HotkeyEventTapTests: XCTestCase {
             .swallow(.pushToTalkPressed(.controlOptionShiftSpace))
         )
 
-        let lease = tap.beginClipboardPanelShortcutRecording()
+        let lease = tap.beginRecordPanelShortcutRecording()
 
         XCTAssertEqual(
             tap.testingHandlePushToTalk(
@@ -786,39 +786,39 @@ final class HotkeyEventTapTests: XCTestCase {
             ),
             .passThrough
         )
-        tap.endClipboardPanelShortcutRecording(lease)
+        tap.endRecordPanelShortcutRecording(lease)
     }
 
     func testShortcutRecordingLeaseDoesNotOverrideDisabledCapturePreference() {
         let tap = HotkeyEventTap()
-        tap.setClipboardPanelShortcutEnabled(true)
-        let lease = tap.beginClipboardPanelShortcutRecording()
+        tap.setRecordPanelShortcutEnabled(true)
+        let lease = tap.beginRecordPanelShortcutRecording()
 
-        tap.setClipboardPanelShortcutEnabled(false)
-        tap.endClipboardPanelShortcutRecording(lease)
+        tap.setRecordPanelShortcutEnabled(false)
+        tap.endRecordPanelShortcutRecording(lease)
 
-        XCTAssertFalse(tap.testingIsClipboardPanelShortcutEnabled())
+        XCTAssertFalse(tap.testingIsRecordPanelShortcutEnabled())
     }
 
     func testCommittedShortcutRecordingLeaseConsumesRepeatsUntilMatchingKeyUp() {
         let tap = HotkeyEventTap(physicalKeyStateProvider: { $0 == 8 })
         let shortcut = KeyboardShortcut(keyCode: 8, modifiers: [.control, .option])
-        tap.setClipboardPanelHotkeyBinding(.keyboardShortcut(shortcut))
-        tap.setClipboardPanelShortcutEnabled(true)
-        let lease = tap.beginClipboardPanelShortcutRecording()
+        tap.setRecordPanelHotkeyBinding(.keyboardShortcut(shortcut))
+        tap.setRecordPanelShortcutEnabled(true)
+        let lease = tap.beginRecordPanelShortcutRecording()
 
-        tap.commitClipboardPanelShortcutRecording(lease, keyCode: shortcut.keyCode)
+        tap.commitRecordPanelShortcutRecording(lease, keyCode: shortcut.keyCode)
 
-        XCTAssertFalse(tap.testingIsClipboardPanelShortcutEnabled())
+        XCTAssertFalse(tap.testingIsRecordPanelShortcutEnabled())
         XCTAssertTrue(
-            tap.testingHandleClipboardPanelShortcutRecordingCommitKey(
+            tap.testingHandleRecordPanelShortcutRecordingCommitKey(
                 type: .keyDown,
                 keyCode: 8
             ),
             "Autorepeat from the physical commit press must stay inside its recorder latch."
         )
         XCTAssertFalse(
-            tap.testingHandleClipboardPanelShortcutRecordingCommitKey(
+            tap.testingHandleRecordPanelShortcutRecordingCommitKey(
                 type: .flagsChanged,
                 keyCode: 63
             ),
@@ -833,22 +833,22 @@ final class HotkeyEventTapTests: XCTestCase {
             .passThrough
         )
         XCTAssertFalse(
-            tap.testingHandleClipboardPanelShortcutRecordingCommitKey(
+            tap.testingHandleRecordPanelShortcutRecordingCommitKey(
                 type: .keyUp,
                 keyCode: 7
             )
         )
-        XCTAssertFalse(tap.testingIsClipboardPanelShortcutEnabled())
+        XCTAssertFalse(tap.testingIsRecordPanelShortcutEnabled())
 
         XCTAssertTrue(
-            tap.testingHandleClipboardPanelShortcutRecordingCommitKey(
+            tap.testingHandleRecordPanelShortcutRecordingCommitKey(
                 type: .keyUp,
                 keyCode: 8
             )
         )
-        XCTAssertTrue(tap.testingIsClipboardPanelShortcutEnabled())
+        XCTAssertTrue(tap.testingIsRecordPanelShortcutEnabled())
         XCTAssertEqual(
-            tap.testingHandleClipboardPanelShortcut(
+            tap.testingHandleRecordPanelShortcut(
                 type: .keyDown,
                 keyCode: 8,
                 flags: [.maskControl, .maskAlternate]
@@ -869,21 +869,21 @@ final class HotkeyEventTapTests: XCTestCase {
 
     func testCommitAfterKeyUpReleasesRecorderLeaseAndAllowsNextFunctionGesture() {
         let tap = HotkeyEventTap(physicalKeyStateProvider: { _ in false })
-        tap.setClipboardPanelShortcutEnabled(true)
-        let lease = tap.beginClipboardPanelShortcutRecording()
+        tap.setRecordPanelShortcutEnabled(true)
+        let lease = tap.beginRecordPanelShortcutRecording()
         XCTAssertFalse(
-            tap.testingHandleClipboardPanelShortcutRecordingCommitKey(
+            tap.testingHandleRecordPanelShortcutRecordingCommitKey(
                 type: .keyUp,
                 keyCode: 8
             ),
             "The tap can observe key-up before the main-thread recorder decision."
         )
 
-        tap.commitClipboardPanelShortcutRecording(lease, keyCode: 8)
+        tap.commitRecordPanelShortcutRecording(lease, keyCode: 8)
 
-        XCTAssertTrue(tap.testingIsClipboardPanelShortcutEnabled())
+        XCTAssertTrue(tap.testingIsRecordPanelShortcutEnabled())
         XCTAssertFalse(
-            tap.testingHandleClipboardPanelShortcutRecordingCommitKey(
+            tap.testingHandleRecordPanelShortcutRecordingCommitKey(
                 type: .keyUp,
                 keyCode: 8
             ),
@@ -912,13 +912,13 @@ final class HotkeyEventTapTests: XCTestCase {
         let tap = HotkeyEventTap(physicalKeyStateProvider: { _ in
             physicalKeyState.next()
         })
-        tap.setClipboardPanelShortcutEnabled(true)
-        let lease = tap.beginClipboardPanelShortcutRecording()
-        tap.commitClipboardPanelShortcutRecording(lease, keyCode: 8)
+        tap.setRecordPanelShortcutEnabled(true)
+        let lease = tap.beginRecordPanelShortcutRecording()
+        tap.commitRecordPanelShortcutRecording(lease, keyCode: 8)
 
         XCTAssertNil(tap.testingPrepareRecognizersForEventTapRecovery())
         XCTAssertFalse(
-            tap.testingIsClipboardPanelShortcutEnabled(),
+            tap.testingIsRecordPanelShortcutEnabled(),
             "The initial disabled-tap sample must retain a commit whose key is still held."
         )
 
@@ -929,11 +929,11 @@ final class HotkeyEventTapTests: XCTestCase {
 
         XCTAssertEqual(physicalKeyState.sampleCount, 3)
         XCTAssertTrue(
-            tap.testingIsClipboardPanelShortcutEnabled(),
+            tap.testingIsRecordPanelShortcutEnabled(),
             "The post-enable sample must retire a commit whose key-up was lost during recovery."
         )
         XCTAssertFalse(
-            tap.testingHandleClipboardPanelShortcutRecordingCommitKey(
+            tap.testingHandleRecordPanelShortcutRecordingCommitKey(
                 type: .keyUp,
                 keyCode: 8
             )
@@ -1028,15 +1028,15 @@ final class HotkeyEventTapTests: XCTestCase {
 
     func testEventTapRecoveryKeepsHeldCommitLatchedAndBlocksNewFnUntilKeyUp() {
         let tap = HotkeyEventTap(physicalKeyStateProvider: { $0 == 8 })
-        tap.setClipboardPanelShortcutEnabled(true)
-        let lease = tap.beginClipboardPanelShortcutRecording()
-        tap.commitClipboardPanelShortcutRecording(lease, keyCode: 8)
+        tap.setRecordPanelShortcutEnabled(true)
+        let lease = tap.beginRecordPanelShortcutRecording()
+        tap.commitRecordPanelShortcutRecording(lease, keyCode: 8)
 
         XCTAssertNil(tap.testingPrepareRecognizersForEventTapRecovery())
         tap.testingCompleteRecognizersForEventTapRecovery()
-        XCTAssertFalse(tap.testingIsClipboardPanelShortcutEnabled())
+        XCTAssertFalse(tap.testingIsRecordPanelShortcutEnabled())
         XCTAssertFalse(
-            tap.testingHandleClipboardPanelShortcutRecordingCommitKey(
+            tap.testingHandleRecordPanelShortcutRecordingCommitKey(
                 type: .flagsChanged,
                 keyCode: 63
             )
@@ -1050,12 +1050,12 @@ final class HotkeyEventTapTests: XCTestCase {
             .passThrough
         )
         XCTAssertTrue(
-            tap.testingHandleClipboardPanelShortcutRecordingCommitKey(
+            tap.testingHandleRecordPanelShortcutRecordingCommitKey(
                 type: .keyUp,
                 keyCode: 8
             )
         )
-        XCTAssertTrue(tap.testingIsClipboardPanelShortcutEnabled())
+        XCTAssertTrue(tap.testingIsRecordPanelShortcutEnabled())
         XCTAssertEqual(
             tap.testingHandlePushToTalk(
                 type: .flagsChanged,
@@ -1069,10 +1069,10 @@ final class HotkeyEventTapTests: XCTestCase {
 
     func testEventTapTeardownClearsCommittedLeaseButPreservesActiveRecorderOwner() {
         let tap = HotkeyEventTap(physicalKeyStateProvider: { $0 == 8 })
-        tap.setClipboardPanelShortcutEnabled(true)
-        let activeRecorderLease = tap.beginClipboardPanelShortcutRecording()
-        let committedLease = tap.beginClipboardPanelShortcutRecording()
-        tap.commitClipboardPanelShortcutRecording(committedLease, keyCode: 8)
+        tap.setRecordPanelShortcutEnabled(true)
+        let activeRecorderLease = tap.beginRecordPanelShortcutRecording()
+        let committedLease = tap.beginRecordPanelShortcutRecording()
+        tap.commitRecordPanelShortcutRecording(committedLease, keyCode: 8)
 
         XCTAssertEqual(
             tap.testingResetRecognizersForEventTapTeardown(),
@@ -1080,43 +1080,43 @@ final class HotkeyEventTapTests: XCTestCase {
         )
 
         XCTAssertFalse(
-            tap.testingHandleClipboardPanelShortcutRecordingCommitKey(
+            tap.testingHandleRecordPanelShortcutRecordingCommitKey(
                 type: .keyUp,
                 keyCode: 8
             ),
             "Teardown cannot wait for a key-up that the retired tap can no longer observe."
         )
         XCTAssertFalse(
-            tap.testingIsClipboardPanelShortcutEnabled(),
+            tap.testingIsRecordPanelShortcutEnabled(),
             "A still-visible recorder remains the owner of its explicit suspension."
         )
 
-        tap.endClipboardPanelShortcutRecording(activeRecorderLease)
-        XCTAssertTrue(tap.testingIsClipboardPanelShortcutEnabled())
+        tap.endRecordPanelShortcutRecording(activeRecorderLease)
+        XCTAssertTrue(tap.testingIsRecordPanelShortcutEnabled())
     }
 
     func testExplicitRecorderLeaseEndCancelsPendingCommitLatchIdempotently() {
         let tap = HotkeyEventTap(physicalKeyStateProvider: { $0 == 8 })
-        tap.setClipboardPanelShortcutEnabled(true)
-        let lease = tap.beginClipboardPanelShortcutRecording()
-        tap.commitClipboardPanelShortcutRecording(lease, keyCode: 8)
+        tap.setRecordPanelShortcutEnabled(true)
+        let lease = tap.beginRecordPanelShortcutRecording()
+        tap.commitRecordPanelShortcutRecording(lease, keyCode: 8)
 
-        tap.endClipboardPanelShortcutRecording(lease)
-        tap.endClipboardPanelShortcutRecording(lease)
+        tap.endRecordPanelShortcutRecording(lease)
+        tap.endRecordPanelShortcutRecording(lease)
 
-        XCTAssertTrue(tap.testingIsClipboardPanelShortcutEnabled())
+        XCTAssertTrue(tap.testingIsRecordPanelShortcutEnabled())
         XCTAssertFalse(
-            tap.testingHandleClipboardPanelShortcutRecordingCommitKey(
+            tap.testingHandleRecordPanelShortcutRecordingCommitKey(
                 type: .keyUp,
                 keyCode: 8
             )
         )
     }
 
-    func testDisablingClipboardPanelShortcutSuppressesAndResetsDoubleCommandRecognition() {
+    func testDisablingRecordPanelShortcutSuppressesAndResetsDoubleCommandRecognition() {
         let tap = HotkeyEventTap()
         let start = ContinuousClock().now
-        tap.setClipboardPanelShortcutEnabled(true)
+        tap.setRecordPanelShortcutEnabled(true)
         XCTAssertFalse(
             tap.testingHandleDoubleCommandPanelShortcut(
                 type: .flagsChanged,
@@ -1125,7 +1125,7 @@ final class HotkeyEventTapTests: XCTestCase {
                 at: start
             )
         )
-        tap.setClipboardPanelShortcutEnabled(false)
+        tap.setRecordPanelShortcutEnabled(false)
 
         XCTAssertFalse(
             tap.testingHandleDoubleCommandPanelShortcut(
@@ -1152,8 +1152,8 @@ final class HotkeyEventTapTests: XCTestCase {
             )
         )
 
-        tap.setClipboardPanelShortcutEnabled(true)
-        XCTAssertTrue(tap.testingIsClipboardPanelShortcutEnabled())
+        tap.setRecordPanelShortcutEnabled(true)
+        XCTAssertTrue(tap.testingIsRecordPanelShortcutEnabled())
         XCTAssertFalse(
             tap.testingHandleDoubleCommandPanelShortcut(
                 type: .flagsChanged,
@@ -1188,8 +1188,8 @@ final class HotkeyEventTapTests: XCTestCase {
         )
     }
 
-    func testClipboardPanelShortcutEmitsOnceUntilMatchingKeyUp() {
-        var recognizer = ClipboardPanelShortcutRecognizer()
+    func testRecordPanelShortcutEmitsOnceUntilMatchingKeyUp() {
+        var recognizer = RecordPanelShortcutRecognizer()
         let shortcut = KeyboardShortcut(keyCode: 8, modifiers: [.control, .option])
         let binding = HotkeyBindingDescriptor.keyboardShortcut(shortcut)
         let flags: CGEventFlags = [.maskControl, .maskAlternate]
@@ -1225,8 +1225,8 @@ final class HotkeyEventTapTests: XCTestCase {
         XCTAssertEqual(nextPress, .swallow(shouldEmit: true))
     }
 
-    func testClipboardPanelShortcutKeepsRepeatSwallowedAfterModifierDrift() {
-        var recognizer = ClipboardPanelShortcutRecognizer()
+    func testRecordPanelShortcutKeepsRepeatSwallowedAfterModifierDrift() {
+        var recognizer = RecordPanelShortcutRecognizer()
         let binding = HotkeyBindingDescriptor.keyboardShortcut(
             KeyboardShortcut(keyCode: 8, modifiers: [.control, .option])
         )
@@ -1247,8 +1247,8 @@ final class HotkeyEventTapTests: XCTestCase {
         XCTAssertEqual(repeatAfterModifierRelease, .swallow(shouldEmit: false))
     }
 
-    func testClipboardPanelShortcutRecognizerRejectsUnsafeDirectBinding() {
-        var recognizer = ClipboardPanelShortcutRecognizer()
+    func testRecordPanelShortcutRecognizerRejectsUnsafeDirectBinding() {
+        var recognizer = RecordPanelShortcutRecognizer()
         let unsafeBinding = HotkeyBindingDescriptor.keyboardShortcut(
             KeyboardShortcut(keyCode: 12, modifiers: [.command])
         )
@@ -1263,8 +1263,8 @@ final class HotkeyEventTapTests: XCTestCase {
         XCTAssertEqual(result, .passThrough)
     }
 
-    func testClipboardPanelShortcutResetReopensLatchAfterEventTapRecovery() {
-        var recognizer = ClipboardPanelShortcutRecognizer()
+    func testRecordPanelShortcutResetReopensLatchAfterEventTapRecovery() {
+        var recognizer = RecordPanelShortcutRecognizer()
         let binding = HotkeyBindingDescriptor.keyboardShortcut(
             KeyboardShortcut(keyCode: 8, modifiers: [.control, .option])
         )

@@ -8,7 +8,7 @@ final class RecognitionCorrectionSourceTests: XCTestCase {
             preMappingText: "vux type",
             context: VocabularyRuleContext(
                 bundleIdentifier: "com.example.editor",
-                clipboardGroupID: UUID(uuidString: "00000000-0000-0000-0000-000000000042"),
+                recordCollectionID: UUID(uuidString: "00000000-0000-0000-0000-000000000042"),
                 locale: "zh-CN"
             )
         )

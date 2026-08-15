@@ -73,6 +73,15 @@ hooks = [
     pass_filenames = false,
   },
   {
+    id = "record-domain-boundary",
+    name = "check Record domain boundary",
+    language = "system",
+    entry = "bash scripts/check_record_domain_boundary.sh",
+    files = "^(Sources/|scripts/check_record_domain_boundary\\.sh)",
+    always_run = true,
+    pass_filenames = false,
+  },
+  {
     id = "third-party-notices",
     name = "check reviewed third-party notices",
     language = "system",

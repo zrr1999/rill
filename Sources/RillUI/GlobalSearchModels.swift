@@ -166,7 +166,7 @@ enum GlobalSearchIndex {
     static func makeResults(
         language: AppLanguage,
         workflows: [WorkflowDefinition],
-        historyRecords: [HistoryRecord],
+        historyRecords: [WorkflowResultRecord],
         receipts: [WorkflowRunReceipt],
         historyPreviewMode: PrivacyHistoryPreviewMode
     ) -> [GlobalSearchResult] {

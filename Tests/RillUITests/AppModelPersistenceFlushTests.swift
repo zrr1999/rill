@@ -112,13 +112,13 @@ private actor PersistenceFlushCompletionProbe {
 }
 
 private actor PersistenceFlushHistoryRepository: HistoryRepository {
-    private var storedRecords: [HistoryRecord] = []
+    private var storedRecords: [WorkflowResultRecord] = []
     private var shouldBlockWrites = false
     private var saveStarted = false
     private var saveStartedWaiters: [CheckedContinuation<Void, Never>] = []
     private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
 
-    func save(_ record: HistoryRecord) async throws {
+    func save(_ record: WorkflowResultRecord) async throws {
         saveStarted = true
         let observations = saveStartedWaiters
         saveStartedWaiters.removeAll()
@@ -131,7 +131,7 @@ private actor PersistenceFlushHistoryRepository: HistoryRepository {
         storedRecords.append(record)
     }
 
-    func records(matching query: HistoryQuery) async throws -> [HistoryRecord] {
+    func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
         storedRecords.filter { record in
             query.runID.map { record.runID == $0 } ?? true
         }
@@ -183,7 +183,7 @@ final class AppModelPersistenceFlushTests: XCTestCase {
             credentialStore: store,
             settingsWriteDebounceDuration: .zero
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         await store.blockWrites()
 
         let expectedLanguage: AppLanguage = harness.model.language == .english

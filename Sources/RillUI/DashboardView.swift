@@ -8,27 +8,27 @@ private enum DashboardViewMetrics {
     static let activityPreviewLimit = 6
 }
 
-struct ClipboardPanelShortcutSurfaceVisibility: Sendable, Equatable {
+struct RecordPanelShortcutSurfaceVisibility: Sendable, Equatable {
     let dashboardCard: Bool
     let settingsRecorder: Bool
     let menuShortcutAnnotation: Bool
 }
 
-enum ClipboardPanelShortcutPresentationPolicy {
+enum RecordPanelShortcutPresentationPolicy {
     static func surfaceVisibility(
-        clipboardCaptureEnabled: Bool
-    ) -> ClipboardPanelShortcutSurfaceVisibility {
-        ClipboardPanelShortcutSurfaceVisibility(
-            dashboardCard: clipboardCaptureEnabled,
-            settingsRecorder: clipboardCaptureEnabled,
-            menuShortcutAnnotation: clipboardCaptureEnabled
+        systemClipboardCaptureEnabled: Bool
+    ) -> RecordPanelShortcutSurfaceVisibility {
+        RecordPanelShortcutSurfaceVisibility(
+            dashboardCard: systemClipboardCaptureEnabled,
+            settingsRecorder: systemClipboardCaptureEnabled,
+            menuShortcutAnnotation: systemClipboardCaptureEnabled
         )
     }
 
     static func globalInputReadyDetail(
-        clipboardCaptureEnabled: Bool
+        systemClipboardCaptureEnabled: Bool
     ) -> UIStrings.Key {
-        clipboardCaptureEnabled
+        systemClipboardCaptureEnabled
             ? .voiceSetupGlobalInputReady
             : .voiceSetupGlobalInputVoiceOnlyReady
     }
@@ -77,277 +77,27 @@ public struct DashboardView: View {
         .navigationTitle(UIStrings.text(.appTitle, language: model.language))
     }
 
-    private func voiceSetupCard(_ readiness: VoiceSetupReadiness) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(
-                UIStrings.text(.voiceSetupTitle, language: model.language),
-                systemImage: "checklist"
-            )
-            .font(.headline)
-
-            Text(UIStrings.text(.voiceSetupDescription, language: model.language))
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            setupPermissionRows(readiness)
-            providerSetupRows(readiness.provider)
-            privacySetupRows(readiness)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .rillCard(opacity: 0.45)
-    }
-
-    @ViewBuilder
-    private func setupPermissionRows(_ readiness: VoiceSetupReadiness) -> some View {
-        globalInputSetupRow(readiness.globalInput)
-
-        permissionSetupRow(
-            title: UIStrings.text(.microphone, language: model.language),
-            state: readiness.microphone,
-            isRequired: true,
-            readyDetail: .voiceSetupMicrophoneReady,
-            neededDetail: .voiceSetupMicrophoneNeeded,
-            requestAction: model.requestMicrophonePermission,
-            openSettingsAction: model.openMicrophoneSettings
-        )
-
-        permissionSetupRow(
-            title: UIStrings.text(.accessibility, language: model.language),
-            state: readiness.accessibility,
-            isRequired: readiness.accessibilityRequired,
-            readyDetail: .voiceSetupAccessibilityReady,
-            neededDetail: readiness.accessibilityRequired
-                ? .voiceSetupAccessibilityNeeded
-                : .voiceSetupAccessibilityOptional,
-            requestAction: model.requestAccessibilityPermission,
-            openSettingsAction: model.openAccessibilitySettings
-        )
-    }
-
-    @ViewBuilder
-    private func globalInputSetupRow(_ capability: GlobalInputCapability) -> some View {
-        let title = UIStrings.text(.globalInput, language: model.language)
-        switch capability {
-        case .checking:
-            setupRow(
-                title: title,
-                detail: .voiceSetupGlobalInputChecking,
-                symbol: "hourglass",
-                color: .secondary
-            )
-        case .available:
-            setupRow(
-                title: title,
-                detail: ClipboardPanelShortcutPresentationPolicy.globalInputReadyDetail(
-                    clipboardCaptureEnabled: model.clipboardCaptureEnabled
-                ),
-                symbol: "checkmark.circle.fill",
-                color: .green
-            )
-        case .permissionRequired:
-            setupRow(
-                title: title,
-                detail: .voiceSetupGlobalInputPermissionNeeded,
-                symbol: "exclamationmark.circle.fill",
-                color: .orange,
-                actionTitle: UIStrings.text(.requestAccess, language: model.language),
-                actionIdentifier: "dashboard.global-input.request",
-                action: model.requestGlobalInputPermission
-            )
-        case .installationFailed:
-            setupRow(
-                title: title,
-                detail: .voiceSetupGlobalInputInstallationFailed,
-                symbol: "xmark.circle.fill",
-                color: .red,
-                actionTitle: UIStrings.text(.retryGlobalInput, language: model.language),
-                actionIdentifier: "dashboard.global-input.retry",
-                action: model.retryGlobalInputInstallation
-            )
-        }
-    }
-
-    @ViewBuilder
-    private func permissionSetupRow(
-        title: String,
-        state: PermissionState,
-        isRequired: Bool,
-        readyDetail: UIStrings.Key,
-        neededDetail: UIStrings.Key,
-        requestAction: @escaping () -> Void,
-        openSettingsAction: @escaping () -> Void
-    ) -> some View {
-        if state == .granted {
-            setupRow(title: title, detail: readyDetail, symbol: "checkmark.circle.fill", color: .green)
-        } else if !isRequired {
-            setupRow(title: title, detail: neededDetail, symbol: "circle.dashed", color: .secondary)
-        } else if state == .unknown {
-            setupRow(
-                title: title,
-                detail: neededDetail,
-                symbol: "exclamationmark.circle.fill",
-                color: .orange,
-                actionTitle: UIStrings.text(.requestAccess, language: model.language),
-                action: requestAction
-            )
-        } else {
-            setupRow(
-                title: title,
-                detail: neededDetail,
-                symbol: "xmark.circle.fill",
-                color: .red,
-                actionTitle: UIStrings.text(.openSettings, language: model.language),
-                action: openSettingsAction
-            )
-        }
-    }
-
-    @ViewBuilder
-    private func providerSetupRows(_ state: VoiceSetupProviderReadiness) -> some View {
-        switch state {
-        case .loading:
-            setupRow(
-                title: UIStrings.text(.settingsSpeechEngine, language: model.language),
-                detail: .voiceSetupLoading,
-                symbol: "hourglass",
-                color: .secondary
-            )
-        case .localPreparing(let progress):
-            VStack(alignment: .leading, spacing: 6) {
-                setupRow(
-                    title: UIStrings.text(.settingsLocalSpeech, language: model.language),
-                    detail: .voiceSetupLocalPreparing,
-                    symbol: "arrow.down.circle.fill",
-                    color: .blue
-                )
-                ProgressView(value: progress, total: 1)
-                    .controlSize(.small)
-            }
-        case .localReady:
-            setupRow(
-                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
-                detail: .voiceSetupLocalReady,
-                symbol: "checkmark.circle.fill",
-                color: .green
-            )
-        case .localUnavailable(let availability):
-            setupRow(
-                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
-                detail: availability == .architectureUnsupported
-                    ? .voiceSetupLocalArchitectureUnsupported
-                    : .voiceSetupLocalTrustMaterialUnavailable,
-                symbol: "exclamationmark.triangle.fill",
-                color: .red,
-                actionTitle: UIStrings.text(.openSettings, language: model.language),
-                actionIdentifier: "dashboard.local-speech.open-settings",
-                action: { model.showSettings(.speech) }
-            )
-        case .localPreviouslyPrepared:
-            setupRow(
-                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
-                detail: .voiceSetupLocalPreviouslyPrepared,
-                symbol: "questionmark.circle.fill",
-                color: .orange,
-                actionTitle: UIStrings.text(.localSpeechPrepare, language: model.language),
-                action: model.prepareLocalSpeechModel
-            )
-        case .localNeedsPreparation(let downloadIfNeeded):
-            setupRow(
-                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
-                detail: downloadIfNeeded ? .voiceSetupLocalWillDownload : .voiceSetupLocalNeedsPreparation,
-                symbol: "arrow.down.circle.fill",
-                color: .orange,
-                actionTitle: UIStrings.text(.localSpeechPrepare, language: model.language),
-                action: model.prepareLocalSpeechModel
-            )
-        case .localPreparationFailed:
-            setupRow(
-                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
-                detail: .voiceSetupLocalFailed,
-                symbol: "xmark.circle.fill",
-                color: .red,
-                actionTitle: UIStrings.text(.openSettings, language: model.language),
-                actionIdentifier: "dashboard.local-speech.open-settings",
-                action: { model.showSettings(.speech) }
-            )
-        }
-    }
-
-    @ViewBuilder
-    private func privacySetupRows(_ readiness: VoiceSetupReadiness) -> some View {
-        switch readiness.privacy {
-        case .loading:
-            setupRow(
-                title: UIStrings.text(.permissions, language: model.language),
-                detail: .voiceSetupPrivacyLoading,
-                symbol: "lock.circle",
-                color: .secondary
-            )
-        case .unavailable:
-            setupRow(
-                title: UIStrings.text(.permissions, language: model.language),
-                detail: .voiceSetupPrivacyUnavailable,
-                symbol: "lock.trianglebadge.exclamationmark",
-                color: .red,
-                actionTitle: UIStrings.text(.openSettings, language: model.language),
-                actionIdentifier: "dashboard.privacy.open-settings",
-                action: { model.showSettings(.privacy) }
-            )
-        case .available:
-            EmptyView()
-        }
-    }
-
-    private func setupRow(
-        title: String,
-        detail: UIStrings.Key,
-        symbol: String,
-        color: Color,
-        actionTitle: String? = nil,
-        actionIdentifier: String? = nil,
-        action: (() -> Void)? = nil
-    ) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: symbol)
-                .foregroundStyle(color)
-                .frame(width: 20)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.subheadline.weight(.medium))
-                Text(UIStrings.text(detail, language: model.language))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 12)
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityIdentifier(actionIdentifier ?? "")
-            }
-        }
-    }
 
     private var statusCards: some View {
         HStack(alignment: .top, spacing: 16) {
-            if ClipboardPanelShortcutPresentationPolicy.surfaceVisibility(
-                clipboardCaptureEnabled: model.clipboardCaptureEnabled
+            if RecordPanelShortcutPresentationPolicy.surfaceVisibility(
+                systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled
             ).dashboardCard {
                 Button {
-                    model.showClipboardPanel()
+                    model.showRecordPanel()
                 } label: {
                     statusCard(
                         title: UIStrings.text(.deliveryStack, language: model.language),
-                        primary: UIStrings.stackCountSummary(model.stackCount, language: model.language),
-                        secondary: model.stackPreview ?? UIStrings.text(.stackEmpty, language: model.language)
+                        primary: UIStrings.recordCountSummary(model.recordCount, language: model.language),
+                        secondary: model.recordPreview ?? UIStrings.text(.stackEmpty, language: model.language)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RillCardButtonStyle())
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(
                     "\(UIStrings.text(.deliveryStack, language: model.language)): "
-                        + UIStrings.stackCountSummary(model.stackCount, language: model.language)
+                        + UIStrings.recordCountSummary(model.recordCount, language: model.language)
                 )
                 .accessibilityIdentifier("dashboard.clipboard-panel")
             }
@@ -357,7 +107,7 @@ public struct DashboardView: View {
             } label: {
                 recentRunsCard
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RillCardButtonStyle())
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
@@ -371,8 +121,8 @@ public struct DashboardView: View {
             )
             .accessibilityIdentifier("dashboard.recent-runs")
         }
-        .animation(.easeInOut(duration: 0.2), value: model.clipboardCaptureEnabled)
-        .animation(.easeInOut(duration: 0.2), value: model.stackCount)
+        .animation(.easeInOut(duration: 0.2), value: model.systemClipboardCaptureEnabled)
+        .animation(.easeInOut(duration: 0.2), value: model.recordCount)
         .animation(.easeInOut(duration: 0.2), value: recentRunEntries.map(\.id))
     }
 
@@ -391,7 +141,7 @@ public struct DashboardView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, minHeight: DashboardViewMetrics.summaryCardHeight, alignment: .topLeading)
-        .rillCard(opacity: 0.35)
+        .rillCard()
     }
 
     private var recentRunsCard: some View {
@@ -434,7 +184,7 @@ public struct DashboardView: View {
                                     mode: model.privacyPolicySettings.historyPreviewMode,
                                     language: model.language
                                 ) { text, privacyLineLimit in
-                                    Text(ClipboardTextFormatting.previewText(text, limit: 260))
+                                    Text(RecordTextFormatting.previewText(text, limit: 260))
                                         .font(.body.weight(.medium))
                                         .lineLimit(
                                             min(
@@ -461,7 +211,7 @@ public struct DashboardView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, minHeight: DashboardViewMetrics.summaryCardHeight, alignment: .topLeading)
-        .rillCard(opacity: 0.35)
+        .rillCard()
     }
 
     private var recentRunEntries: [HistoryTimelineEntry] {
@@ -495,7 +245,7 @@ public struct DashboardView: View {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Label(
                     UIStrings.text(.sidebarDiagnostics, language: model.language),
-                    systemImage: "exclamationmark.triangle.fill"
+                    systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
                 )
                 .font(.headline)
                 .foregroundStyle(.orange)
@@ -523,7 +273,7 @@ public struct DashboardView: View {
 
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .rillCard(opacity: 0.45)
+        .rillCard(.prominent)
     }
 
     private func failureSummary(for message: String) -> String {
@@ -550,7 +300,7 @@ public struct DashboardView: View {
             }
             if model.eventFeed.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "text.bubble")
+                    Image(systemName: RillSystemSymbol.textBubble.rawValue)
                         .font(.system(size: 32))
                         .foregroundStyle(.tertiary)
                     Text(UIStrings.text(.eventFeedEmpty, language: model.language))
@@ -581,6 +331,260 @@ public struct DashboardView: View {
             .lineLimit(presentation.lineLimit)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(presentation.accessibilityLabel)
-            .rillCard(cornerRadius: 10, opacity: 0.2, padding: 10)
+            .rillCard(.subdued, cornerRadius: 10, padding: 10)
+    }
+}
+
+
+extension DashboardView {
+    private func voiceSetupCard(_ readiness: VoiceSetupReadiness) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label(
+                UIStrings.text(.voiceSetupTitle, language: model.language),
+                systemImage: RillSystemSymbol.checklist.rawValue
+            )
+            .font(.headline)
+
+            Text(UIStrings.text(.voiceSetupDescription, language: model.language))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            setupPermissionRows(readiness)
+            providerSetupRows(readiness.provider)
+            privacySetupRows(readiness)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .rillCard(.prominent)
+    }
+
+    @ViewBuilder
+    private func setupPermissionRows(_ readiness: VoiceSetupReadiness) -> some View {
+        globalInputSetupRow(readiness.globalInput)
+
+        permissionSetupRow(
+            title: UIStrings.text(.microphone, language: model.language),
+            state: readiness.microphone,
+            isRequired: true,
+            readyDetail: .voiceSetupMicrophoneReady,
+            neededDetail: .voiceSetupMicrophoneNeeded,
+            requestAction: model.requestMicrophonePermission,
+            openSettingsAction: model.openMicrophoneSettings
+        )
+
+        permissionSetupRow(
+            title: UIStrings.text(.accessibility, language: model.language),
+            state: readiness.accessibility,
+            isRequired: readiness.accessibilityRequired,
+            readyDetail: .voiceSetupAccessibilityReady,
+            neededDetail: readiness.accessibilityRequired
+                ? .voiceSetupAccessibilityNeeded
+                : .voiceSetupAccessibilityOptional,
+            requestAction: model.requestAccessibilityPermission,
+            openSettingsAction: model.openAccessibilitySettings
+        )
+    }
+
+    @ViewBuilder
+    private func globalInputSetupRow(_ capability: GlobalInputCapability) -> some View {
+        let title = UIStrings.text(.globalInput, language: model.language)
+        switch capability {
+        case .checking:
+            setupRow(
+                title: title,
+                detail: .voiceSetupGlobalInputChecking,
+                symbol: RillSystemSymbol.hourglass.rawValue,
+                color: .secondary
+            )
+        case .available:
+            setupRow(
+                title: title,
+                detail: RecordPanelShortcutPresentationPolicy.globalInputReadyDetail(
+                    systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled
+                ),
+                symbol: RillSystemSymbol.checkmarkCircleFill.rawValue,
+                color: .green
+            )
+        case .permissionRequired:
+            setupRow(
+                title: title,
+                detail: .voiceSetupGlobalInputPermissionNeeded,
+                symbol: RillSystemSymbol.exclamationmarkCircleFill.rawValue,
+                color: .orange,
+                actionTitle: UIStrings.text(.requestAccess, language: model.language),
+                actionIdentifier: "dashboard.global-input.request",
+                action: model.requestGlobalInputPermission
+            )
+        case .installationFailed:
+            setupRow(
+                title: title,
+                detail: .voiceSetupGlobalInputInstallationFailed,
+                symbol: RillSystemSymbol.xmarkCircleFill.rawValue,
+                color: .red,
+                actionTitle: UIStrings.text(.retryGlobalInput, language: model.language),
+                actionIdentifier: "dashboard.global-input.retry",
+                action: model.retryGlobalInputInstallation
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func permissionSetupRow(
+        title: String,
+        state: PermissionState,
+        isRequired: Bool,
+        readyDetail: UIStrings.Key,
+        neededDetail: UIStrings.Key,
+        requestAction: @escaping () -> Void,
+        openSettingsAction: @escaping () -> Void
+    ) -> some View {
+        if state == .granted {
+            setupRow(title: title, detail: readyDetail, symbol: RillSystemSymbol.checkmarkCircleFill.rawValue, color: .green)
+        } else if !isRequired {
+            setupRow(title: title, detail: neededDetail, symbol: RillSystemSymbol.circleDashed.rawValue, color: .secondary)
+        } else if state == .unknown {
+            setupRow(
+                title: title,
+                detail: neededDetail,
+                symbol: RillSystemSymbol.exclamationmarkCircleFill.rawValue,
+                color: .orange,
+                actionTitle: UIStrings.text(.requestAccess, language: model.language),
+                action: requestAction
+            )
+        } else {
+            setupRow(
+                title: title,
+                detail: neededDetail,
+                symbol: RillSystemSymbol.xmarkCircleFill.rawValue,
+                color: .red,
+                actionTitle: UIStrings.text(.openSettings, language: model.language),
+                action: openSettingsAction
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func providerSetupRows(_ state: VoiceSetupProviderReadiness) -> some View {
+        switch state {
+        case .loading:
+            setupRow(
+                title: UIStrings.text(.settingsSpeechEngine, language: model.language),
+                detail: .voiceSetupLoading,
+                symbol: RillSystemSymbol.hourglass.rawValue,
+                color: .secondary
+            )
+        case .localPreparing(let progress):
+            VStack(alignment: .leading, spacing: 6) {
+                setupRow(
+                    title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                    detail: .voiceSetupLocalPreparing,
+                    symbol: RillSystemSymbol.arrowDownCircleFill.rawValue,
+                    color: .blue
+                )
+                ProgressView(value: progress, total: 1)
+                    .controlSize(.small)
+            }
+        case .localReady:
+            setupRow(
+                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                detail: .voiceSetupLocalReady,
+                symbol: RillSystemSymbol.checkmarkCircleFill.rawValue,
+                color: .green
+            )
+        case .localUnavailable(let availability):
+            setupRow(
+                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                detail: availability == .architectureUnsupported
+                    ? .voiceSetupLocalArchitectureUnsupported
+                    : .voiceSetupLocalTrustMaterialUnavailable,
+                symbol: RillSystemSymbol.exclamationmarkTriangleFill.rawValue,
+                color: .red,
+                actionTitle: UIStrings.text(.openSettings, language: model.language),
+                actionIdentifier: "dashboard.local-speech.open-settings",
+                action: { model.showSettings(.speech) }
+            )
+        case .localPreviouslyPrepared:
+            setupRow(
+                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                detail: .voiceSetupLocalPreviouslyPrepared,
+                symbol: RillSystemSymbol.questionmarkCircleFill.rawValue,
+                color: .orange,
+                actionTitle: UIStrings.text(.localSpeechPrepare, language: model.language),
+                action: model.prepareLocalSpeechModel
+            )
+        case .localNeedsPreparation(let downloadIfNeeded):
+            setupRow(
+                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                detail: downloadIfNeeded ? .voiceSetupLocalWillDownload : .voiceSetupLocalNeedsPreparation,
+                symbol: RillSystemSymbol.arrowDownCircleFill.rawValue,
+                color: .orange,
+                actionTitle: UIStrings.text(.localSpeechPrepare, language: model.language),
+                action: model.prepareLocalSpeechModel
+            )
+        case .localPreparationFailed:
+            setupRow(
+                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                detail: .voiceSetupLocalFailed,
+                symbol: RillSystemSymbol.xmarkCircleFill.rawValue,
+                color: .red,
+                actionTitle: UIStrings.text(.openSettings, language: model.language),
+                actionIdentifier: "dashboard.local-speech.open-settings",
+                action: { model.showSettings(.speech) }
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func privacySetupRows(_ readiness: VoiceSetupReadiness) -> some View {
+        switch readiness.privacy {
+        case .loading:
+            setupRow(
+                title: UIStrings.text(.permissions, language: model.language),
+                detail: .voiceSetupPrivacyLoading,
+                symbol: RillSystemSymbol.lockCircle.rawValue,
+                color: .secondary
+            )
+        case .unavailable:
+            setupRow(
+                title: UIStrings.text(.permissions, language: model.language),
+                detail: .voiceSetupPrivacyUnavailable,
+                symbol: RillSystemSymbol.lockTrianglebadgeExclamationmark.rawValue,
+                color: .red,
+                actionTitle: UIStrings.text(.openSettings, language: model.language),
+                actionIdentifier: "dashboard.privacy.open-settings",
+                action: { model.showSettings(.privacy) }
+            )
+        case .available:
+            EmptyView()
+        }
+    }
+
+    private func setupRow(
+        title: String,
+        detail: UIStrings.Key,
+        symbol: String,
+        color: Color,
+        actionTitle: String? = nil,
+        actionIdentifier: String? = nil,
+        action: (() -> Void)? = nil
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: symbol)
+                .foregroundStyle(color)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                Text(UIStrings.text(detail, language: model.language))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityIdentifier(actionIdentifier ?? "")
+            }
+        }
     }
 }

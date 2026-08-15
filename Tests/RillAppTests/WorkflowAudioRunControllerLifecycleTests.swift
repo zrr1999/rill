@@ -56,7 +56,6 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let queue = CapturedAudioProcessingQueue(
@@ -97,14 +96,12 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fileURL) }
         let captureService = ManagedFileAudioCaptureService(fileURL: fileURL)
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
         let coordinator = SessionCoordinator(
             contextProvider: WorkflowAudioCleanupContextProvider(),
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: deliveryStack,
             eventBus: eventBus
         )
         let queue = CapturedAudioProcessingQueue(
@@ -140,14 +137,12 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fileURL) }
         let captureService = ManagedFileAudioCaptureService(fileURL: fileURL)
         let eventBus = EventBus()
-        let deliveryStack = DeliveryStack(eventBus: eventBus)
         let coordinator = SessionCoordinator(
             contextProvider: WorkflowAudioCleanupContextProvider(),
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: deliveryStack,
             eventBus: eventBus
         )
         let controller = WorkflowAudioRunController(

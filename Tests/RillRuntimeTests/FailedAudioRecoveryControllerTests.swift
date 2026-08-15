@@ -758,7 +758,6 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
                 actions: [RecoveryProbeAction(probe: outputProbe)]
             ),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            deliveryStack: DeliveryStack(eventBus: eventBus, diagnostics: diagnostics),
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -881,7 +880,6 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            deliveryStack: DeliveryStack(eventBus: eventBus, diagnostics: diagnostics),
             eventBus: eventBus,
             diagnostics: diagnostics,
             runReceiptRecorder: runReceiptRecorder
@@ -1176,7 +1174,6 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
                 actions: [RecoveryProbeAction(probe: outputProbe)]
             ),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            deliveryStack: DeliveryStack(eventBus: eventBus, diagnostics: diagnostics),
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -1659,7 +1656,6 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
                 actions: [RecoveryProbeAction(probe: outputProbe)]
             ),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            deliveryStack: DeliveryStack(eventBus: eventBus, diagnostics: diagnostics),
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -1720,6 +1716,6 @@ private func makeRecoveryPrivacyContext() -> ContextSnapshot {
             selectedText: "",
             secureInput: false
         ),
-        clipboard: ClipboardSnapshot(plainText: "", changeCount: 1)
+        clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 1)
     )
 }

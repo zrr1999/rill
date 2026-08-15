@@ -10,6 +10,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+RELEASE_SCRATCH_PATH="$PROJECT_DIR/.build/rill-release"
 
 SHOW_BIN_PATH=false
 
@@ -60,6 +62,7 @@ build_arguments=(
   --manifest-cache none
   --configuration release
   --arch arm64
+  --scratch-path "$RELEASE_SCRATCH_PATH"
 )
 $SHOW_BIN_PATH && build_arguments+=(--show-bin-path)
 

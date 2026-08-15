@@ -722,7 +722,6 @@ private func makeRecordingFocusTargetFixture(
         transformerRegistry: TextTransformerRegistry(transformers: []),
         actionRegistry: OutputActionRegistry(actions: []),
         candidateResolver: CandidateResolver(eventBus: eventBus),
-        deliveryStack: DeliveryStack(eventBus: eventBus),
         eventBus: eventBus
     )
     let queue = makeCapturedAudioProcessingQueue(
@@ -781,7 +780,6 @@ private func makeStreamHotkeyFinishingFixture(
         transformerRegistry: TextTransformerRegistry(transformers: []),
         actionRegistry: OutputActionRegistry(actions: []),
         candidateResolver: CandidateResolver(eventBus: eventBus),
-        deliveryStack: DeliveryStack(eventBus: eventBus),
         eventBus: eventBus
     )
     let queue = makeCapturedAudioProcessingQueue(
@@ -842,7 +840,6 @@ private func makeStreamHotkeyPreparationFixture(
         transformerRegistry: TextTransformerRegistry(transformers: []),
         actionRegistry: OutputActionRegistry(actions: []),
         candidateResolver: CandidateResolver(eventBus: eventBus),
-        deliveryStack: DeliveryStack(eventBus: eventBus),
         eventBus: eventBus
     )
     let queue = makeCapturedAudioProcessingQueue(
@@ -902,7 +899,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let queue = makeCapturedAudioProcessingQueue(
@@ -967,7 +963,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let queue = makeCapturedAudioProcessingQueue(
@@ -1461,7 +1456,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let queue = makeCapturedAudioProcessingQueue(
@@ -1743,7 +1737,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let queue = makeCapturedAudioProcessingQueue(
@@ -1913,7 +1906,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let transferGate = RecordingQueueTransferGate()
@@ -2026,7 +2018,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let ordering = RecordingRunOrderingProbe()
@@ -2108,7 +2099,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let ordering = RecordingRunOrderingProbe()
@@ -2307,7 +2297,6 @@ final class RecordingSessionManagerTests: XCTestCase {
     func testCloudPrivacyBlockPreventsAudioCaptureFromStarting() async throws {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let workflow = WorkflowDefinition(
             name: "Blocked Cloud Workflow",
             trigger: .hotkey,
@@ -2326,7 +2315,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -2363,7 +2351,7 @@ final class RecordingSessionManagerTests: XCTestCase {
                         selectedText: "",
                         secureInput: false
                     ),
-                    clipboard: ClipboardSnapshot(plainText: "", changeCount: 1)
+                    clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 1)
                 )
             },
             recognitionOptionsProvider: { _, _ in
@@ -2394,7 +2382,6 @@ final class RecordingSessionManagerTests: XCTestCase {
     func testPushToTalkReturnsToIdleBeforeBackgroundRunCompletes() async throws {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let requestProbe = RecordingRequestProbe()
         let actionProbe = RecordingActionProbe()
@@ -2422,7 +2409,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: actionProbe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -2464,7 +2450,6 @@ final class RecordingSessionManagerTests: XCTestCase {
     func testPushToTalkRunsHotkeyWorkflowWithCapturedAudio() async throws {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let requestProbe = RecordingRequestProbe()
         let actionProbe = RecordingActionProbe()
@@ -2499,7 +2484,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: actionProbe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics,
             vocabularyCollectionProvider: { vocabularyMigration.collections }
@@ -2583,7 +2567,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let manager = RecordingSessionManager(
@@ -2638,7 +2621,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let manager = RecordingSessionManager(
@@ -2683,7 +2665,6 @@ final class RecordingSessionManagerTests: XCTestCase {
     func testPushToTalkCanPreserveLegacyGestureMetadata() async throws {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let requestProbe = RecordingRequestProbe()
         let workflow = WorkflowDefinition(
@@ -2707,7 +2688,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: RecordingActionProbe())]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -2752,7 +2732,6 @@ final class RecordingSessionManagerTests: XCTestCase {
     func testPushToTalkReleaseDuringPreparationFinishesAfterStartupCompletes() async throws {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let requestProbe = RecordingRequestProbe()
         let actionProbe = RecordingActionProbe()
@@ -2777,7 +2756,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: actionProbe)]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -2795,6 +2773,12 @@ final class RecordingSessionManagerTests: XCTestCase {
             workflowProvider: { [workflow] },
             pushToTalkGestureStateProvider: { _ in false }
         )
+        let eventStream = await eventBus.stream()
+        let completionCollector = Task {
+            for await event in eventStream {
+                if case .runCompleted = event { return }
+            }
+        }
 
         let beginTask = Task {
             await manager.beginPushToTalk()
@@ -2807,8 +2791,9 @@ final class RecordingSessionManagerTests: XCTestCase {
         let stateDuringPreparation = await manager.currentState()
         await manager.endPushToTalk()
         await audioCaptureService.allowStartToFinish()
-        try? await Task.sleep(for: .milliseconds(180))
+        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
         _ = await beginTask.result
+        _ = await completionCollector.result
 
         let recognitionRequest = await requestProbe.snapshot()
         let actionValues = await actionProbe.snapshot()
@@ -2831,7 +2816,6 @@ final class RecordingSessionManagerTests: XCTestCase {
     func testHotkeyEventReleaseDuringPreparationFinishesAfterStartupCompletes() async throws {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let workflow = WorkflowDefinition(
             name: "Preparing Hotkey Workflow",
@@ -2854,7 +2838,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: RecordingActionProbe())]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -2892,7 +2875,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             HotkeyEventTap.Event.pushToTalkReleased(.fnHold)
         )
         await audioCaptureService.allowStartToFinish()
-        try? await Task.sleep(for: .milliseconds(180))
+        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
 
         let cancelCallCount = await audioCaptureService.cancelCallCount
         let finishCallCount = await audioCaptureService.finishCallCount
@@ -2906,7 +2889,6 @@ final class RecordingSessionManagerTests: XCTestCase {
     func testHotkeyEventRepeatedPressDuringPreparationCancelsDeferredRelease() async throws {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let workflow = WorkflowDefinition(
             name: "Deferred Release Workflow",
@@ -2929,7 +2911,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: RecordingActionProbe())]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -2963,7 +2944,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             HotkeyEventTap.Event.pushToTalkPressed(.fnHold)
         )
         await audioCaptureService.allowStartToFinish()
-        try? await Task.sleep(for: .milliseconds(180))
+        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
 
         let cancelCallCount = await audioCaptureService.cancelCallCount
         let currentState = await manager.currentState()
@@ -2996,7 +2977,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let queue = makeCapturedAudioProcessingQueue(
@@ -3066,7 +3046,6 @@ final class RecordingSessionManagerTests: XCTestCase {
     func testDeferredReleaseIgnoresTransientFnUpWhenGestureStillActive() async throws {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let deliveryStack = DeliveryStack(eventBus: eventBus, diagnostics: diagnostics)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let workflow = WorkflowDefinition(
             name: "Fn Jitter Workflow",
@@ -3090,7 +3069,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: RecordingActionProbe())]),
             candidateResolver: resolver,
-            deliveryStack: deliveryStack,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -3123,7 +3101,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             HotkeyEventTap.Event.pushToTalkReleased(.fnHold)
         )
         await audioCaptureService.allowStartToFinish()
-        try? await Task.sleep(for: .milliseconds(180))
+        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
 
         let cancelCallCount = await audioCaptureService.cancelCallCount
         let currentState = await manager.currentState()
@@ -3151,7 +3129,6 @@ final class RecordingSessionManagerTests: XCTestCase {
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus,
             diagnostics: diagnostics
         )
@@ -3245,6 +3222,6 @@ private func makeRecordingLiveContext(
             selectedText: "",
             secureInput: false
         ),
-        clipboard: ClipboardSnapshot(plainText: "", changeCount: 0)
+        clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
     )
 }

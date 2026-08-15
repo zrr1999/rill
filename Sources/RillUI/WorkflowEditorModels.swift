@@ -3,7 +3,7 @@ import RillCore
 
 public struct WorkflowEditorDraft: Equatable, Sendable {
 
-    // MARK: - Event Type (unified: voice triggers + group events)
+    // MARK: - Event Type (unified: voice triggers + record collection events)
 
     public enum EventType: String, CaseIterable, Identifiable, Codable, Sendable {
         case hotkey
@@ -33,12 +33,12 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             }
         }
 
-        var groupEventKind: ClipboardGroupEventKind? {
+        var groupEventKind: RecordCollectionEventKind? {
             switch self {
             case .hotkey, .manual, .menuBar, .wakeWord: return nil
-            case .groupItemCreated: return .itemCreated
-            case .groupItemEdited: return .itemEdited
-            case .groupItemRemoved: return .itemRemoved
+            case .groupItemCreated: return .recordCreated
+            case .groupItemEdited: return .recordEdited
+            case .groupItemRemoved: return .recordRemoved
             }
         }
     }
@@ -91,11 +91,11 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         var outputActionID: String {
             switch self {
             case .pasteIntoApp:
-                return "inject.text"
+                return "focused-application.insert"
             case .copyToClipboard:
-                return "clipboard.copy"
+                return "system-clipboard.copy"
             case .saveToQueue:
-                return "stack.push"
+                return "record.store"
             case .speakOnly:
                 return SpeechOutputActionID.speak
             case .sendToWebhook:
@@ -112,9 +112,9 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             case .pasteIntoApp:
                 return .immediate
             case .copyToClipboard:
-                return .clipboardOnly
+                return .systemClipboardOnly
             case .saveToQueue:
-                return .stackFirst
+                return .collectionFirst
             case .speakOnly, .sendToWebhook, .runShortcut, .appendToMarkdown:
                 return .immediate
             }
@@ -122,11 +122,11 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
 
         init?(workflow: WorkflowDefinition) {
             switch workflow.plan.output.actions.first?.id {
-            case "inject.text":
+            case "focused-application.insert":
                 self = .pasteIntoApp
-            case "clipboard.copy":
+            case "system-clipboard.copy":
                 self = .copyToClipboard
-            case "stack.push":
+            case "record.store":
                 self = .saveToQueue
             case SpeechOutputActionID.speak:
                 self = .speakOnly
@@ -176,7 +176,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
 
     // Event
     public var eventType: EventType
-    public var sourceGroupID: UUID?
+    public var sourceCollectionID: UUID?
     public var wakePhrasesText: String
 
     // Condition
@@ -202,8 +202,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     public var speechVoice: Qwen3TTSVoice
     public var speechModelID: String
 
-    // Action – group event
-    public var groupActionKind: ClipboardGroupActionKind
+    // Action – record collection event
+    public var groupActionKind: RecordCollectionActionKind
     public var actionPrompt: String
 
     // MARK: - Init
@@ -211,7 +211,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     public init(
         name: String = "",
         eventType: EventType = .hotkey,
-        sourceGroupID: UUID? = nil,
+        sourceCollectionID: UUID? = nil,
         wakePhrasesText: String = WakeWordConfiguration.defaultPhrases.joined(separator: "\n"),
         excludePolishTag: Bool = true,
         recognizer: RecognizerChoice = .localSpeech,
@@ -234,12 +234,12 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         speaksResult: Bool = false,
         speechVoice: Qwen3TTSVoice = .vivian,
         speechModelID: String = "",
-        groupActionKind: ClipboardGroupActionKind = .editItem,
+        groupActionKind: RecordCollectionActionKind = .editRecord,
         actionPrompt: String = ""
     ) {
         self.name = name
         self.eventType = eventType
-        self.sourceGroupID = sourceGroupID
+        self.sourceCollectionID = sourceCollectionID
         self.wakePhrasesText = wakePhrasesText
         self.excludePolishTag = excludePolishTag
         self.recognizer = recognizer
@@ -301,10 +301,12 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             workflow.plan.setup.wakeWord?.phrases.joined(separator: "\n")
             ?? WakeWordConfiguration.defaultPhrases.joined(separator: "\n")
 
-        if let sgid = workflow.metadata["sourceGroupID"], let uuid = UUID(uuidString: sgid) {
-            self.sourceGroupID = uuid
+        if let sgid = workflow.metadata["sourceCollectionID"]
+            ?? workflow.metadata[WorkflowMetadataKey.legacySourceCollectionID],
+           let uuid = UUID(uuidString: sgid) {
+            self.sourceCollectionID = uuid
         } else {
-            self.sourceGroupID = nil
+            self.sourceCollectionID = nil
         }
 
         self.excludePolishTag = workflow.metadata["excludePolishTag"] != "false"
@@ -315,7 +317,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         self.postProcessSteps = workflow.plan.process.steps
             .compactMap(\.postProcessStep)
             .map { PostProcessStepDraft(step: $0) }
-        self.excludeFromWorkflowCapture = workflow.excludesOutputFromWorkflowCapture
+        self.excludeFromWorkflowCapture = workflow.excludesOutputFromRecordCapture
         self.speaksResult = workflow.plan.output.actions.contains {
             $0.id == SpeechOutputActionID.speak
         }
@@ -343,7 +345,7 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         self.streamingProfile =
             workflow.metadata[WorkflowMetadataKey.streamingProfile]
             ?? (workflow.trigger == .wakeWord ? "agent" : "realtime")
-        self.targetGroupID = workflow.targetClipboardGroupID
+        self.targetGroupID = workflow.targetRecordCollectionIDs.first?.rawValue
         let outputConfiguration = workflow.plan.output.actions.first?.configuration ?? [:]
         self.webhookURL = outputConfiguration[ExternalOutputActionConfigurationKey.webhookURL] ?? ""
         self.webhookHeadersJSON = outputConfiguration[ExternalOutputActionConfigurationKey.webhookHeadersJSON] ?? ""
@@ -351,10 +353,10 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         self.markdownAppendPath = outputConfiguration[ExternalOutputActionConfigurationKey.markdownAppendPath] ?? ""
 
         if let gak = workflow.metadata["groupActionKind"],
-           let kind = ClipboardGroupActionKind(rawValue: gak) {
+           let kind = RecordCollectionActionKind(rawValue: gak) {
             self.groupActionKind = kind
         } else {
-            self.groupActionKind = .editItem
+            self.groupActionKind = .editRecord
         }
         self.actionPrompt = workflow.metadata["actionPrompt"] ?? ""
     }
@@ -376,10 +378,10 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         // Event metadata
         metadata["eventType"] = eventType.rawValue
         if !eventType.isVoiceEvent {
-            if let sourceGroupID {
-                metadata["sourceGroupID"] = sourceGroupID.uuidString
+            if let sourceCollectionID {
+                metadata["sourceCollectionID"] = sourceCollectionID.uuidString
             } else {
-                metadata.removeValue(forKey: "sourceGroupID")
+                metadata.removeValue(forKey: "sourceCollectionID")
             }
             metadata["groupActionKind"] = groupActionKind.rawValue
             let trimmedPrompt = actionPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -399,7 +401,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         } else {
             metadata.removeValue(forKey: "trigger.gesture")
         }
-        metadata[WorkflowMetadataKey.excludeOutputFromWorkflowCapture] = excludeFromWorkflowCapture ? "true" : "false"
+        metadata[WorkflowMetadataKey.excludeOutputFromRecordCapture] = excludeFromWorkflowCapture ? "true" : "false"
+        metadata.removeValue(forKey: WorkflowMetadataKey.excludeOutputFromWorkflowCapture)
         metadata[WorkflowMetadataKey.textStyle] = textStyle.rawValue
         metadata[WorkflowMetadataKey.livePreviewEnabled] =
             livePreviewEnabled ? "true" : "false"
@@ -419,10 +422,11 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             metadata.removeValue(forKey: WorkflowMetadataKey.legacyWhisperKitModelOverride)
         }
         if destination == .saveToQueue, let targetGroupID {
-            metadata[WorkflowMetadataKey.targetClipboardGroupID] = targetGroupID.uuidString
+            metadata[WorkflowMetadataKey.targetRecordCollectionIDs] = targetGroupID.uuidString
         } else {
-            metadata.removeValue(forKey: WorkflowMetadataKey.targetClipboardGroupID)
+            metadata.removeValue(forKey: WorkflowMetadataKey.targetRecordCollectionIDs)
         }
+        metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
 
         let route = WorkflowSpeechRoute(
             selection: .fixed,
@@ -487,11 +491,11 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         )
     }
 
-    // MARK: - Build ClipboardGroupTrigger (for group events)
+    // MARK: - Build RecordCollectionTrigger (for record collection events)
 
-    func makeGroupTrigger(id: UUID) -> ClipboardGroupTrigger? {
+    func makeGroupTrigger(id: UUID) -> RecordCollectionTrigger? {
         guard let eventKind = eventType.groupEventKind else { return nil }
-        var conditions: [ClipboardGroupTriggerCondition] = []
+        var conditions: [RecordCollectionTriggerCondition] = []
         if excludePolishTag {
             conditions.append(.excludingTag(.polishGenerated))
         }
@@ -501,11 +505,11 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             config["prompt"] = trimmedPrompt
             config["action"] = "llmRewrite"
         }
-        return ClipboardGroupTrigger(
+        return RecordCollectionTrigger(
             id: id,
             name: name,
             eventKind: eventKind,
-            sourceGroupID: sourceGroupID,
+            sourceCollectionID: sourceCollectionID.map { RecordCollectionID($0) },
             conditions: conditions,
             actionKind: groupActionKind,
             actionConfiguration: config
@@ -515,8 +519,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
     func outputValidationError(language: AppLanguage) -> String? {
         guard eventType.isVoiceEvent else {
             return language == .english
-                ? "Clipboard event workflows are unavailable until production actions and receipts are implemented."
-                : "剪贴板事件工作流将在生产级动作与执行收据完成后开放。"
+                ? "Record collection event workflows are unavailable until production actions and receipts are implemented."
+                : "旧版记录集事件工作流已停用；生产投递请使用记录路由。"
         }
         if eventType == .wakeWord {
             do {

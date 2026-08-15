@@ -69,6 +69,57 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
     )
   }
 
+  func testLegacyRecordActionsStrategyAndMetadataNormalizeWithoutRewritingSource() async throws {
+    let collectionID = UUID(uuidString: "12345678-1234-1234-1234-123456789ABC")!
+    var workflow = makeWorkflow()
+    workflow.plan.output = WorkflowOutputPhase(
+      actions: [OutputActionReference(id: "record.store")],
+      deliveryPolicy: DeliveryPolicy(strategy: .collectionFirst)
+    )
+    workflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] = collectionID.uuidString
+    workflow.metadata[WorkflowMetadataKey.excludeOutputFromRecordCapture] = "true"
+    let canonical = String(
+      decoding: try XDGWorkflowFileStore.encode(workflow: workflow, isEnabled: true),
+      as: UTF8.self
+    )
+    let legacy = canonical
+      .replacingOccurrences(of: "record.store", with: "stack.push")
+      .replacingOccurrences(of: "collection-first", with: "stack-first")
+      .replacingOccurrences(
+        of: WorkflowMetadataKey.targetRecordCollectionIDs,
+        with: WorkflowMetadataKey.legacyTargetRecordCollectionID
+      )
+      .replacingOccurrences(
+        of: WorkflowMetadataKey.excludeOutputFromRecordCapture,
+        with: WorkflowMetadataKey.excludeOutputFromWorkflowCapture
+      )
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let fileURL = directory.appendingPathComponent("legacy.toml")
+    try Data(legacy.utf8).write(to: fileURL)
+
+    let store = XDGWorkflowFileStore(configurationDirectoryURL: directory)
+    let result = await store.load()
+    let loaded = try XCTUnwrap(result.records.first?.workflow)
+
+    XCTAssertEqual(loaded.plan.output.actions.map(\.id), ["record.store"])
+    XCTAssertEqual(loaded.plan.output.deliveryPolicy.strategy, .collectionFirst)
+    XCTAssertEqual(loaded.targetRecordCollectionIDs, [RecordCollectionID(collectionID)])
+    XCTAssertTrue(loaded.excludesOutputFromRecordCapture)
+    XCTAssertEqual(try String(contentsOf: fileURL, encoding: .utf8), legacy)
+
+    let saved = String(
+      decoding: try XDGWorkflowFileStore.encode(workflow: loaded, isEnabled: true),
+      as: UTF8.self
+    )
+    XCTAssertTrue(saved.contains("record.store"))
+    XCTAssertTrue(saved.contains("collection-first"))
+    XCTAssertFalse(saved.contains("stack.push"))
+    XCTAssertFalse(saved.contains("stack-first"))
+    XCTAssertFalse(saved.contains(WorkflowMetadataKey.legacyTargetRecordCollectionID))
+  }
+
   func testInvalidLivePreviewPlacementIsRejected() throws {
     var workflow = makeWorkflow()
     workflow.metadata[WorkflowMetadataKey.livePreviewPlacement] = "cursor"
@@ -222,7 +273,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
           ),
         ]),
         output: WorkflowOutputPhase(
-          actions: [OutputActionReference(id: "inject.text")],
+          actions: [OutputActionReference(id: "focused-application.insert")],
           deliveryPolicy: DeliveryPolicy(strategy: .immediate)
         )
       ),

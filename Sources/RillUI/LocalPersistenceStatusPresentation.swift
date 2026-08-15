@@ -50,7 +50,7 @@ struct LocalPersistenceStatusPresentation: Sendable, Equatable {
       return LocalPersistenceStatusPresentation(
         bannerTitle: "Local data is session-only",
         bannerMessage:
-          "History, clipboard items and groups, settings, and other local changes "
+          "History, records and collections, settings, and other local changes "
           + "from this session will not be saved after Rill quits. Existing saved "
           + "data was not reset or deleted.",
         actionTitle: "View Storage Settings",
@@ -64,7 +64,7 @@ struct LocalPersistenceStatusPresentation: Sendable, Equatable {
       return LocalPersistenceStatusPresentation(
         bannerTitle: "本地数据仅在本次会话中可用",
         bannerMessage:
-          "本次会话中的历史记录、剪贴板条目与分组、设置及其他本地更改不会在 Rill "
+          "本次会话中的运行历史、记录与记录集、设置及其他本地更改不会在 Rill "
           + "退出后保存；已有数据未被重置或删除。",
         actionTitle: "查看存储设置",
         menuTitle: "存储仅限本次会话",
@@ -78,7 +78,7 @@ struct LocalPersistenceStatusPresentation: Sendable, Equatable {
         bannerTitle: "Unlock your Mac to restore local storage",
         bannerMessage:
           "Rill could not access its local data protection key. This session's "
-          + "history, clipboard items and groups, settings, and other local changes "
+          + "history, records and collections, settings, and other local changes "
           + "will not be saved. Unlock your Mac, then quit and reopen Rill. "
           + "Existing saved data was not reset or deleted.",
         actionTitle: "View Storage Settings",
@@ -92,7 +92,7 @@ struct LocalPersistenceStatusPresentation: Sendable, Equatable {
       return LocalPersistenceStatusPresentation(
         bannerTitle: "解锁 Mac 以恢复本地存储",
         bannerMessage:
-          "Rill 无法访问本地数据保护密钥。本次会话中的历史记录、剪贴板条目与分组、设置"
+          "Rill 无法访问本地数据保护密钥。本次会话中的运行历史、记录与记录集、设置"
           + "及其他本地更改不会保存。请解锁 Mac，然后退出并重新打开 Rill；已有数据未被"
           + "重置或删除。",
         actionTitle: "查看存储设置",
@@ -118,7 +118,7 @@ struct LocalPersistenceStatusBanner: View {
 
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
-      Image(systemName: "externaldrive.badge.exclamationmark")
+      Image(systemName: RillSystemSymbol.externaldriveBadgeExclamationmark.rawValue)
         .font(.title3)
         .foregroundStyle(.orange)
         .accessibilityHidden(true)

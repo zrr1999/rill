@@ -108,8 +108,8 @@ public enum HistoryFailureSanitizer {
 }
 
 public enum HistoryRecordSanitizer {
-    public static func sanitize(_ record: HistoryRecord) -> HistoryRecord {
-        HistoryRecord(
+    public static func sanitize(_ record: WorkflowResultRecord) -> WorkflowResultRecord {
+        WorkflowResultRecord(
             id: record.id,
             runID: record.runID,
             workflowID: record.workflowID,
@@ -117,7 +117,7 @@ public enum HistoryRecordSanitizer {
             finalText: record.finalText,
             failureMessage: HistoryFailureSanitizer.sanitize(record.failureMessage),
             timestamp: record.timestamp,
-            isStackRelated: record.isStackRelated,
+            isRecordRelated: record.isRecordRelated,
             outcome: record.outcome,
             correctionSource: record.correctionSource,
             trigger: record.trigger

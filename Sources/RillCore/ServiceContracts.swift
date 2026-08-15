@@ -257,40 +257,48 @@ public protocol SpeechTextFallbackEligibleError: Error {
 
 public protocol OutputAction: Sendable {
     var id: String { get }
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult
     func execute(text: String, context: ActionContext) async throws -> ActionResult
 }
 
-public protocol DeliveryStackSink: Sendable {
-    @discardableResult
-    func push(_ item: DeliveryItem) async -> ClipboardStorageMutationResult
-    func replace(
-        _ item: DeliveryItem,
-        replacing subject: ClipboardItemDryRunSubject
-    ) async -> ClipboardItemReplacementResult
-    func popNext() async -> DeliveryItem?
-    func snapshot() async -> DeliveryStackSnapshot
+public enum OutputActionPayloadError: Error, LocalizedError, Sendable, Equatable {
+    case unsupportedPayload(actionID: String, payloadKind: RecordPayloadKind)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsupportedPayload(let actionID, let payloadKind):
+            "Action \(actionID) does not support \(payloadKind.rawValue) records."
+        }
+    }
 }
 
-public protocol ClipboardCaptureSink: Sendable {
-    @discardableResult
-    func captureWorkflowClipboardCopy(
-        text: String,
-        workflowID: UUID,
-        workflow: WorkflowPresentation,
-        context: ClipboardRouteContext,
-        alternatives: [String],
-        captureTags: [ClipboardCaptureTag]
-    ) async -> ClipboardStorageMutationResult
+public extension OutputAction {
+    /// Compatibility for text-only actions. The orchestration boundary always
+    /// sends a RecordDraft and rejects unsupported payloads explicitly.
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        guard case .text(let text) = record.payload else {
+            throw OutputActionPayloadError.unsupportedPayload(
+                actionID: id,
+                payloadKind: record.payload.kind
+            )
+        }
+        return try await execute(text: text, context: context)
+    }
 
-    func replaceWorkflowClipboardCopy(
-        text: String,
-        workflowID: UUID,
-        workflow: WorkflowPresentation,
-        context: ClipboardRouteContext,
-        alternatives: [String],
-        captureTags: [ClipboardCaptureTag],
-        replacing subject: ClipboardItemDryRunSubject
-    ) async -> ClipboardItemReplacementResult
+    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+        let draft = RecordDraft(
+            payload: .text(text),
+            provenance: RecordProvenance(
+                source: RecordSourceIdentity(kind: .workflow),
+                sourceApplicationName: context.contextSnapshot.focus.applicationName,
+                sourceBundleIdentifier: context.contextSnapshot.focus.bundleIdentifier,
+                workflowID: context.workflow.id,
+                workflowRunID: context.runID,
+                workflow: context.workflow.presentation
+            )
+        )
+        return try await execute(record: draft, context: context)
+    }
 }
 
 public protocol WorkflowCatalog: Sendable {
@@ -316,12 +324,12 @@ public extension RunHistoryGenerationSource {
 }
 
 public protocol HistoryRepository: RunHistoryGenerationSource {
-    func save(_ record: HistoryRecord) async throws
+    func save(_ record: WorkflowResultRecord) async throws
     func save(
-        _ record: HistoryRecord,
+        _ record: WorkflowResultRecord,
         generation: RunHistoryWriteGeneration
     ) async throws
-    func records(matching query: HistoryQuery) async throws -> [HistoryRecord]
+    func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord]
     /// Deletes records strictly older than `cutoff` and returns the number removed.
     func deleteRecords(olderThan cutoff: Date) async throws -> Int
     /// Compatibility bridge for a timestamp-bounded clear. New clear intents
@@ -352,7 +360,7 @@ public enum HistoryRepositoryMaintenanceError: Error, Sendable, Equatable {
 
 public extension HistoryRepository {
     func save(
-        _ record: HistoryRecord,
+        _ record: WorkflowResultRecord,
         generation: RunHistoryWriteGeneration
     ) async throws {
         try await save(record)

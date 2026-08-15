@@ -8,7 +8,7 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
         let harness = makeHarness()
         let scope = VocabularyRuleScope(
             bundleIdentifier: "com.example.Editor",
-            clipboardGroupID: UUID(),
+            recordCollectionID: UUID(),
             locale: "en-US"
         )
         let rule = VocabularyRule(

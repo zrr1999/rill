@@ -79,7 +79,7 @@ public enum L10n {
     case menuNoTextStyleWorkflows
     case menuOpenMainWindow
     case menuPasteIntoApp
-    case menuPasteTopOfStack
+    case menuDeliverNextRecord
     case menuTurnOffClipboardCapture
     case menuQuit
     case menuRecentResults
@@ -197,28 +197,28 @@ public enum L10n {
       simplifiedChinese: "正在安全退出 Rill…"
     ),
     .clipboardCurrentDescription: .init(
-      english: "Items still available for stack, queue, or list delivery.",
-      simplifiedChinese: "仍在栈、队列或列表中可被粘贴的当前状态。"
+      english: "Active memberships available for delivery from record collections.",
+      simplifiedChinese: "记录集中可用于投递的活跃成员关系。"
     ),
     .clipboardCurrentTitle: .init(
-      english: "Current Clipboard",
-      simplifiedChinese: "当前剪贴板"
+      english: "Collection Records",
+      simplifiedChinese: "记录集内容"
     ),
     .clipboardHistoryDescription: .init(
-      english: "All captured and generated items, including already used stack or queue entries.",
-      simplifiedChinese: "所有加入过的条目，包括已经出栈或出队的内容。"
+      english: "All captured and generated records, including records with no collection membership.",
+      simplifiedChinese: "所有采集和生成的记录，包括不属于任何记录集的记录。"
     ),
     .clipboardHistoryTitle: .init(
-      english: "History",
-      simplifiedChinese: "历史"
+      english: "All Records",
+      simplifiedChinese: "所有记录"
     ),
     .clipboardRoutingDescription: .init(
-      english: "Groups, paste modes, and app routing rules.",
-      simplifiedChinese: "分组、粘贴模式和 App 路由规则。"
+      english: "Collections, independent policies, and app routing rules.",
+      simplifiedChinese: "记录集、独立策略和 App 路由规则。"
     ),
     .clipboardRoutingTitle: .init(
-      english: "Groups",
-      simplifiedChinese: "分组"
+      english: "Collections",
+      simplifiedChinese: "记录集"
     ),
     .menuAbout: .init(
       english: "About Rill",
@@ -296,7 +296,7 @@ public enum L10n {
       english: "Type Directly into Current App",
       simplifiedChinese: "直接输入到当前 App"
     ),
-    .menuPasteTopOfStack: .init(
+    .menuDeliverNextRecord: .init(
       english: "Paste Top Clipboard Queue Item",
       simplifiedChinese: "粘贴队列顶部条目"
     ),
@@ -1081,30 +1081,30 @@ public enum L10n {
 
   static func historyMaintenanceResult(
     removedCount: Int,
-    preservedActiveClipboardCount: Int,
+    preservedActiveRecordCount: Int,
     language: AppLanguage
   ) -> String {
     switch language {
     case .english:
       return
-        "Removed \(removedCount) local history record(s); preserved \(preservedActiveClipboardCount) active clipboard item(s)."
+        "Removed \(removedCount) local record(s); preserved \(preservedActiveRecordCount) active record(s)."
     case .simplifiedChinese:
-      return "已移除 \(removedCount) 条本地历史记录；保留 \(preservedActiveClipboardCount) 条仍在使用的剪贴板内容。"
+      return "已移除 \(removedCount) 条本地记录；保留 \(preservedActiveRecordCount) 条活跃记录。"
     }
   }
 
   private static var historySettingsTextTable: [HistorySettingsTextKey: LocalizedText] {
     [
       .cancel: .init(english: "Cancel", simplifiedChinese: "取消"),
-      .clearClipboard: .init(english: "Clear Clipboard History…", simplifiedChinese: "清除剪贴板历史…"),
+      .clearClipboard: .init(english: "Clear Record History…", simplifiedChinese: "清除记录历史…"),
       .clearClipboardConfirmation: .init(
-        english: "Remove eligible clipboard history now?",
-        simplifiedChinese: "现在移除可清理的剪贴板历史吗？"
+        english: "Remove eligible records now?",
+        simplifiedChinese: "现在移除可清理的记录吗？"
       ),
       .clearClipboardConfirmationDetail: .init(
         english:
-          "History-only entries are removed. Items still active in a stack, queue, list, or delivery lease remain available.",
-        simplifiedChinese: "将移除仅存在于历史中的条目；仍在栈、队列、列表或投递租约中的条目会继续保留。"
+          "Unprotected records are removed. Pinned records and records with an active membership or delivery lease remain available.",
+        simplifiedChinese: "将移除未受保护的记录；置顶记录及拥有活跃成员关系或投递租约的记录会继续保留。"
       ),
       .clearRun: .init(
         english: "Clear Run & Diagnostic History…",
@@ -1116,14 +1116,14 @@ public enum L10n {
       ),
       .clearRunConfirmationDetail: .init(
         english:
-          "Run records and diagnostics are removed. Items in the Voice Clipboard group are not changed.",
-        simplifiedChinese: "将移除运行记录与诊断；语音剪贴板分组中的条目不会改变。"
+          "Run records and diagnostics are removed. Records and collections are not changed.",
+        simplifiedChinese: "将移除运行记录与诊断；记录和记录集不会改变。"
       ),
-      .clipboardRetention: .init(english: "Clipboard history", simplifiedChinese: "剪贴板历史"),
+      .recordRetention: .init(english: "Records", simplifiedChinese: "记录"),
       .description: .init(
         english:
-          "Choose how long local clipboard, run, and diagnostic records are kept. Cleanup can be retried if storage is temporarily unavailable.",
-        simplifiedChinese: "分别设置本地剪贴板、运行与诊断记录的保留时长；存储暂时不可用时可以重试清理。"
+          "Choose how long local records, run history, and diagnostics are kept. Cleanup can be retried if storage is temporarily unavailable.",
+        simplifiedChinese: "分别设置本地记录、运行历史与诊断的保留时长；存储暂时不可用时可以重试清理。"
       ),
       .maintenancePending: .init(
         english: "Local history cleanup is pending.",
@@ -1135,12 +1135,12 @@ public enum L10n {
       ),
       .preservedClipboardDetail: .init(
         english:
-          "Clearing does not remove items still used by the current stack, queue, list, or an active delivery lease.",
-        simplifiedChinese: "清除操作不会移除当前栈、队列、列表或活跃投递租约仍在使用的条目。"
+          "Clearing does not remove pinned records or records with an active membership or delivery lease.",
+        simplifiedChinese: "清除操作不会移除置顶记录，以及拥有活跃成员关系或投递租约的记录。"
       ),
       .preservedRunDetail: .init(
-        english: "Run and diagnostic history is independent from the Voice Clipboard group.",
-        simplifiedChinese: "运行与诊断历史和语音剪贴板分组相互独立。"
+        english: "Run and diagnostic history is independent from Records and Collections.",
+        simplifiedChinese: "运行与诊断历史和记录、记录集相互独立。"
       ),
       .retry: .init(english: "Retry Cleanup", simplifiedChinese: "重试清理"),
       .runActiveHint: .init(
@@ -1179,7 +1179,7 @@ enum HistorySettingsTextKey: String, CaseIterable, Sendable {
   case clearRun
   case clearRunConfirmation
   case clearRunConfirmationDetail
-  case clipboardRetention
+  case recordRetention
   case description
   case maintenancePending
   case maintenanceRunning
@@ -1200,7 +1200,7 @@ extension UIStrings {
     }
   }
 
-  public static func stackCountSummary(_ count: Int, language: AppLanguage) -> String {
+  public static func recordCountSummary(_ count: Int, language: AppLanguage) -> String {
     switch language {
     case .english:
       return "\(count) item(s)"
@@ -1252,7 +1252,7 @@ extension UIStrings {
       .commandMode: .init(english: "Command Mode", simplifiedChinese: "命令模式"),
       .localDictation: .init(english: "Local Dictation", simplifiedChinese: "本地听写"),
       .cloudDictation: .init(english: "Cloud Dictation", simplifiedChinese: "云端听写"),
-      .stackDelivery: .init(english: "Clipboard Delivery", simplifiedChinese: "剪贴板投递"),
+      .recordDelivery: .init(english: "Record Delivery", simplifiedChinese: "记录投递"),
       .streamingInput: .init(english: "Streaming Direct", simplifiedChinese: "流式直出"),
       .voiceAssistant: .init(english: "Voice Assistant", simplifiedChinese: "语音助手"),
     ]
@@ -1321,14 +1321,14 @@ extension UIStrings {
       return "Session"
     case (.simplifiedChinese, .session):
       return "会话"
-    case (.english, .stack):
-      return "Queue"
-    case (.simplifiedChinese, .stack):
-      return "队列"
-    case (.english, .clipboard):
-      return "Clipboard"
-    case (.simplifiedChinese, .clipboard):
-      return "剪贴板"
+    case (.english, .records):
+      return "Records"
+    case (.simplifiedChinese, .records):
+      return "记录"
+    case (.english, .systemClipboard):
+      return "System Clipboard"
+    case (.simplifiedChinese, .systemClipboard):
+      return "系统剪贴板"
     case (.english, .resolver):
       return "Resolution"
     case (.simplifiedChinese, .resolver):
@@ -1404,47 +1404,6 @@ extension UIStrings {
     }
   }
 
-  public static func clipboardMode(_ mode: ClipboardPasteMode, language: AppLanguage) -> String {
-    switch (language, mode) {
-    case (.english, .stack):
-      return "Stack"
-    case (.simplifiedChinese, .stack):
-      return "栈"
-    case (.english, .queue):
-      return "Queue"
-    case (.simplifiedChinese, .queue):
-      return "队列"
-    case (.english, .list):
-      return "List"
-    case (.simplifiedChinese, .list):
-      return "列表"
-    }
-  }
-
-  public static func clipboardSystemSource(
-    applicationName: String,
-    language: AppLanguage
-  ) -> String {
-    switch language {
-    case .english:
-      return "Copied from \(applicationName)"
-    case .simplifiedChinese:
-      return "来自 \(applicationName) 的复制"
-    }
-  }
-
-  public static func clipboardWorkflowSource(
-    _ workflow: WorkflowPresentation,
-    language: AppLanguage
-  ) -> String {
-    switch language {
-    case .english:
-      return "Produced by \(workflowName(workflow, language: language))"
-    case .simplifiedChinese:
-      return "由 \(workflowName(workflow, language: language)) 产生"
-    }
-  }
-
   public static func workflowTrigger(
     _ trigger: TriggerBinding,
     metadata: [String: String] = [:],
@@ -1491,9 +1450,9 @@ extension UIStrings {
 
   public static func actionName(_ id: String, language: AppLanguage) -> String {
     switch id {
-    case "inject.text": return language == .english ? "Paste into App" : "输入到当前应用"
-    case "clipboard.copy": return language == .english ? "Copy to Clipboard" : "复制到剪贴板"
-    case "stack.push": return language == .english ? "Save to Queue" : "保存到队列"
+    case "focused-application.insert": return language == .english ? "Paste into App" : "输入到当前应用"
+    case "system-clipboard.copy": return language == .english ? "Copy to Clipboard" : "复制到剪贴板"
+    case "record.store": return language == .english ? "Save to Queue" : "保存到队列"
     case ExternalOutputActionID.webhookPost: return "Webhook"
     case ExternalOutputActionID.shortcutsRun:
       return language == .english ? "Run Shortcut" : "运行快捷指令"

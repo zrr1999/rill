@@ -73,7 +73,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             privacySettingsSource: source
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertFalse(harness.model.areHistoryRetentionSettingsAvailable)
         XCTAssertNotNil(harness.model.historyRetentionSettingsError)
@@ -85,7 +85,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
     func testSingleUnreadablePrivacySettingKeepsOtherSettingsAndFailsClosedWithoutMutation() async {
         let store = UITestSettingsStore(
             storage: [
-                .clipboardMergeSimilarItems: "true",
+                .recordMergeSimilar: "true",
                 .privacyCloudConfirmationRequired: sentinel,
             ],
             unavailableKeys: [.privacyCloudConfirmationRequired]
@@ -96,9 +96,9 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             privacySettingsSource: source
         )
 
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertTrue(harness.model.mergeSimilarClipboardItems)
+        XCTAssertTrue(harness.model.mergeSimilarRecords)
         XCTAssertFalse(source.hasAvailableSettings)
         XCTAssertNotNil(harness.model.privacySettingsLoadError)
         let activity = await store.activitySnapshot()
@@ -114,7 +114,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             settingsStore: store,
             privacySettingsSource: PrivacyPolicySettingsSource(initialSettings: .defaults)
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         harness.model.setPrivacyCloudConfirmationRequired(false)
         await harness.model.waitForPendingPrivacySettingsWrite()
@@ -127,20 +127,20 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
 
     func testRetentionWriteFailureDoesNotPruneOrLeakBackendDetail() async {
         let store = UserVisibleErrorPrivacySettingsStore(
-            failingSetKeys: [.clipboardHistoryRetentionPeriod]
+            failingSetKeys: [.recordRetentionPeriod]
         )
         let maintenance = UITestLocalHistoryMaintenance()
         let harness = makeHarness(
             settingsStore: store,
             localHistoryMaintenance: maintenance
         )
-        await waitForEventProcessing()
+        await waitForHistoryMaintenance(harness)
         await maintenance.resetCalls()
 
-        harness.model.setClipboardHistoryRetentionPeriod(.oneWeek)
-        await waitForEventProcessing()
+        harness.model.setRecordRetentionPeriod(.oneWeek)
+        await waitForHistoryMaintenance(harness)
 
-        XCTAssertEqual(harness.model.clipboardHistoryRetentionPeriod, .thirtyDays)
+        XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
         XCTAssertNotNil(harness.model.historyRetentionSettingsError)
         let maintenanceCalls = await maintenance.callSnapshot()
         XCTAssertTrue(maintenanceCalls.isEmpty)
@@ -154,12 +154,10 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted),
             authorizeWorkflowRunAction: { _ in throw UserVisibleErrorPrivacySentinel.backend }
         )
-        await waitForEventProcessing()
+        await harness.model.waitForInitialVoiceConfiguration()
 
         harness.model.runWorkflow(harness.workflow)
-        for _ in 0..<50 where harness.model.isRunning {
-            await Task.yield()
-        }
+        await harness.model.waitForInteractiveWorkflowRun()
         XCTAssertNotNil(harness.model.lastFailure)
         XCTAssertFalse(harness.model.isRunning)
         assertSentinelIsAbsent(from: harness.model)
@@ -167,12 +165,12 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
 
     func testRuntimeFailureAndActionResultAreSanitizedBeforeReachingUIState() async throws {
         let harness = makeHarness()
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
 
         await harness.eventBus.publish(
             .runFailed(runID: nil, workflow: nil, message: sentinel)
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         let expectedFailure = harness.model.language == .english
             ? HistoryFailureSanitizer.genericMessage
             : "工作流失败。请在诊断中查看安全摘要后重试。"
@@ -184,7 +182,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         await harness.eventBus.publish(
             .actionExecuted(actionID: "provider.action", result: .failed(sentinel))
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         let entry = try XCTUnwrap(harness.model.eventFeed.last)
         XCTAssertEqual(entry.english, "An output action failed. Open Diagnostics for a safe summary, then retry.")
@@ -193,7 +191,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
 
     func testNoSpeechFailureKeepsAnActionableBilingualMessage() async {
         let harness = makeHarness()
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
 
         harness.model.language = .english
         await harness.eventBus.publish(
@@ -203,7 +201,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
                 message: HistoryFailureSanitizer.noSpeechMessage
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertEqual(harness.model.lastFailure, HistoryFailureSanitizer.noSpeechMessage)
 
         harness.model.language = .simplifiedChinese
@@ -214,13 +212,13 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
                 message: HistoryFailureSanitizer.noSpeechMessage
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertEqual(harness.model.lastFailure, "未检测到语音。请重试。")
     }
 
     func testGlobalInputUnavailableFailureKeepsABilingualMessage() async {
         let harness = makeHarness()
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
 
         harness.model.language = .english
         await harness.eventBus.publish(
@@ -230,7 +228,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
                 message: HistoryFailureSanitizer.globalInputUnavailableMessage
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertEqual(
             harness.model.lastFailure,
             HistoryFailureSanitizer.globalInputUnavailableMessage
@@ -244,13 +242,13 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
                 message: HistoryFailureSanitizer.globalInputUnavailableMessage
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertEqual(harness.model.lastFailure, "全局键盘输入不可用，语音录制已停止。")
     }
 
     func testRecognitionTimeoutFailureKeepsAnActionableBilingualMessage() async {
         let harness = makeHarness()
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
 
         harness.model.language = .english
         await harness.eventBus.publish(
@@ -260,7 +258,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
                 message: HistoryFailureSanitizer.recognitionTimeoutMessage
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertEqual(
             harness.model.lastFailure,
             HistoryFailureSanitizer.recognitionTimeoutMessage
@@ -274,7 +272,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
                 message: HistoryFailureSanitizer.recognitionTimeoutMessage
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertEqual(
             harness.model.lastFailure,
             "语音识别耗时过长，本次运行已停止。请重试。"
@@ -283,7 +281,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
 
     func testRecognitionRecoveryPendingFailureKeepsAnActionableBilingualMessage() async {
         let harness = makeHarness()
-        await waitForListenerSetup()
+        await waitForListenerSetup(harness)
 
         harness.model.language = .english
         await harness.eventBus.publish(
@@ -293,7 +291,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
                 message: HistoryFailureSanitizer.recognitionRecoveryPendingMessage
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertEqual(
             harness.model.lastFailure,
             HistoryFailureSanitizer.recognitionRecoveryPendingMessage
@@ -307,7 +305,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
                 message: HistoryFailureSanitizer.recognitionRecoveryPendingMessage
             )
         )
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
         XCTAssertEqual(
             harness.model.lastFailure,
             "上次识别操作仍在结束中。请稍候，或切换识别引擎。"

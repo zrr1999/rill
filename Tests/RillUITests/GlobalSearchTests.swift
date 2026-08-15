@@ -14,7 +14,7 @@ final class GlobalSearchIndexTests: XCTestCase {
                 .speech,
                 .input,
                 .voiceAssistant,
-                .clipboardPanel,
+                .recordPanel,
                 .vocabulary,
                 .language,
                 .privacy,
@@ -134,7 +134,7 @@ final class GlobalSearchIndexTests: XCTestCase {
         let body = visiblePrefix
             + String(repeating: "x", count: HistoryPreviewPresentation.restrictedCharacterLimit)
             + tailCanary
-        let record = HistoryRecord(
+        let record = WorkflowResultRecord(
             runID: UUID(),
             workflowID: workflow.id,
             workflow: workflow.presentation,
@@ -285,7 +285,7 @@ final class GlobalSearchIndexTests: XCTestCase {
 
     private func makeResults(
         workflow: WorkflowDefinition,
-        record: HistoryRecord,
+        record: WorkflowResultRecord,
         previewMode: PrivacyHistoryPreviewMode
     ) -> [GlobalSearchResult] {
         GlobalSearchIndex.makeResults(
@@ -337,7 +337,7 @@ extension AppModelTests {
     func testTypedGlobalSearchDestinationsCreateFreshSupersedableRouteRequests() async throws {
         let workflow = makeDefaultWorkflow()
         let harness = makeHarness(workflow: workflow)
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         harness.model.showSettings(.speech)
         let firstSettingsRequest = try XCTUnwrap(harness.model.settingsNavigationRequest)
@@ -376,7 +376,7 @@ extension AppModelTests {
 
     func testPlainAndSupersedingRoutesDiscardStaleDetailRequests() async throws {
         let harness = makeHarness(workflow: makeDefaultWorkflow())
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         harness.model.showSettings(.speech)
         XCTAssertNotNil(harness.model.settingsNavigationRequest)
@@ -392,7 +392,7 @@ extension AppModelTests {
         harness.model.showHistoryEntry(UUID())
         XCTAssertNil(harness.model.settingsNavigationRequest)
         XCTAssertNotNil(harness.model.historyNavigationRequest)
-        harness.model.showClipboardManagement()
+        harness.model.selectSidebarSection(.records)
         XCTAssertNil(harness.model.historyNavigationRequest)
     }
 }

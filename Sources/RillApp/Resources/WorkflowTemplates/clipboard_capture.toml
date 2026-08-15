@@ -29,11 +29,11 @@ id = "D0000000-0000-4000-8000-000000000203"
 kind = "normalize-whitespace"
 
 [output]
-strategy = "stack-first"
+strategy = "collection-first"
 
 [[output.actions]]
-id = "stack.push"
+id = "record.store"
 
 [metadata]
 "workflow.origin" = "user"
-"clipboard.target-group-id" = "4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"
+"record.target-collection-ids" = "4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"

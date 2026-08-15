@@ -174,7 +174,7 @@ private struct QueuedWhitespaceRecognizer: SpeechRecognizer {
 }
 
 private struct QueuedNoopAction: OutputAction {
-    let id = "stack.push"
+    let id = "record.store"
 
     func execute(text: String, context: ActionContext) async throws -> ActionResult {
         .skipped("queue-policy-test")
@@ -271,7 +271,6 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
             ),
             actionRegistry: OutputActionRegistry(actions: [QueuedNoopAction()]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let recoveryStore = QueuedRecoveryStoreProbe()
@@ -363,7 +362,6 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
             ),
             actionRegistry: OutputActionRegistry(actions: [QueuedNoopAction()]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
-            deliveryStack: DeliveryStack(eventBus: eventBus),
             eventBus: eventBus
         )
         let recoveryStore = QueuedRecoveryStoreProbe()
@@ -582,7 +580,6 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
         ),
         actionRegistry: OutputActionRegistry(actions: [QueuedNoopAction()]),
         candidateResolver: CandidateResolver(eventBus: eventBus),
-        deliveryStack: DeliveryStack(eventBus: eventBus),
         eventBus: eventBus,
         vocabularyCollectionProvider: {
             [
@@ -668,7 +665,7 @@ private func queuedWorkflow(name: String, recognizerID: String) -> WorkflowDefin
             postProcessSteps: usesCloudTextFixture
                 ? [PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")]
                 : [],
-            outputActions: [OutputActionReference(id: "stack.push")]
+            outputActions: [OutputActionReference(id: "record.store")]
         ),
         ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
@@ -688,7 +685,7 @@ private func queuedPrivacyContext() -> ContextSnapshot {
             selectedText: "",
             secureInput: false
         ),
-        clipboard: ClipboardSnapshot(plainText: "", changeCount: 1)
+        clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 1)
     )
 }
 

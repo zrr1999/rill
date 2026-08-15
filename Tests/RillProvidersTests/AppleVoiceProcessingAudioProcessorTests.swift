@@ -490,24 +490,23 @@ final class AppleVoiceProcessingAudioProcessorTests: XCTestCase {
     withExtendedLifetime(stream) {}
   }
 
-  func testProcessorMeasuresEnergyInExactHundredMillisecondOutputFrames() {
+  func testProcessorMeasuresDisplayEnergyInExactFortyMillisecondOutputFrames() {
     let session = TestVoiceProcessingAudioEngineSession()
     let processor = AppleVoiceProcessingAudioProcessor(
       sessionFactory: TestVoiceProcessingAudioEngineSessionFactory(session: session)
     )
 
     let (stream, continuation) = processor.startStreamingRecordingLive(inputDeviceID: nil)
-    session.emit(Array(repeating: 0.1, count: 533))
-    session.emit(Array(repeating: 0.1, count: 533))
-    XCTAssertTrue(processor.endpointRMS.isEmpty)
+    session.emit(Array(repeating: 0.1, count: 639))
+    XCTAssertTrue(processor.meterRMS.isEmpty)
 
-    session.emit(Array(repeating: 0.1, count: 534))
-    XCTAssertEqual(processor.endpointRMS.count, 1)
-    XCTAssertEqual(processor.retainedEnergySampleCount, 0)
+    session.emit([0.1])
+    XCTAssertEqual(processor.meterRMS.count, 1)
+    XCTAssertEqual(processor.retainedMeterSampleCount, 0)
 
-    session.emit(Array(repeating: 0.1, count: 3_201))
-    XCTAssertEqual(processor.endpointRMS.count, 3)
-    XCTAssertEqual(processor.retainedEnergySampleCount, 1)
+    session.emit(Array(repeating: 0.1, count: 1_281))
+    XCTAssertEqual(processor.meterRMS.count, 3)
+    XCTAssertEqual(processor.retainedMeterSampleCount, 1)
     continuation.finish()
     processor.stopRecording()
     withExtendedLifetime(stream) {}
@@ -530,23 +529,29 @@ final class AppleVoiceProcessingAudioProcessorTests: XCTestCase {
     }
 
     let totalFrameCount = chunk.count * chunkCount
-    XCTAssertEqual(processor.retainedEnergySampleCount, totalFrameCount % 1_600)
-    XCTAssertLessThan(processor.retainedEnergySampleCount, 1_600)
     XCTAssertEqual(
-      processor.endpointRMS.count,
-      AppleVoiceProcessingAudioProcessor.maximumRetainedEndpointRMSSampleCount
+      processor.retainedMeterSampleCount,
+      totalFrameCount % AppleVoiceProcessingAudioProcessor.meterFrameSampleCount
+    )
+    XCTAssertLessThan(
+      processor.retainedMeterSampleCount,
+      AppleVoiceProcessingAudioProcessor.meterFrameSampleCount
+    )
+    XCTAssertEqual(
+      processor.meterRMS.count,
+      AppleVoiceProcessingAudioProcessor.maximumRetainedMeterRMSSampleCount
     )
     continuation.finish()
     processor.stopRecording()
   }
 
-  func testProcessorReportsUnthresholdedRMSForAdaptiveEndpointing() {
+  func testProcessorReportsUnthresholdedRMSForTheDisplayMeter() {
     let harness = makeStartedProcessor()
 
-    harness.session.emit(constantEnergyFrame(amplitude: 0.02))
-    harness.session.emit(constantEnergyFrame(amplitude: 0.005))
+    harness.session.emit(constantMeterFrame(amplitude: 0.02))
+    harness.session.emit(constantMeterFrame(amplitude: 0.005))
 
-    let rms = harness.processor.endpointRMS
+    let rms = harness.processor.meterRMS
     XCTAssertEqual(rms.count, 2)
     XCTAssertEqual(rms[0], 0.02, accuracy: 0.0001)
     XCTAssertEqual(rms[1], 0.005, accuracy: 0.0001)
@@ -708,7 +713,7 @@ final class AppleVoiceProcessingAudioProcessorTests: XCTestCase {
 
     let secondStreamedSamples = try await secondIterator.next()
     XCTAssertEqual(secondStreamedSamples, [0.2])
-    XCTAssertEqual(processor.retainedEnergySampleCount, 1)
+    XCTAssertEqual(processor.retainedMeterSampleCount, 1)
     XCTAssertEqual(firstSession.events, [.configure, .start, .stop])
     XCTAssertEqual(secondSession.events, [.configure, .start])
     firstContinuation.finish()
@@ -962,7 +967,7 @@ final class AppleVoiceProcessingAudioProcessorTests: XCTestCase {
     processor.stopRecording()
     session.emit([0.9])
 
-    XCTAssertEqual(processor.retainedEnergySampleCount, 1)
+    XCTAssertEqual(processor.retainedMeterSampleCount, 1)
     XCTAssertEqual(session.events.filter { $0 == .stop }.count, 1)
     continuation.finish()
     withExtendedLifetime(stream) {}
@@ -972,10 +977,10 @@ final class AppleVoiceProcessingAudioProcessorTests: XCTestCase {
     StartedProcessorHarness()
   }
 
-  private func constantEnergyFrame(amplitude: Float) -> [Float] {
+  private func constantMeterFrame(amplitude: Float) -> [Float] {
     Array(
       repeating: amplitude,
-      count: Int(AppleVoiceProcessingCaptureFormat.speechRecognition.bufferFrameCount)
+      count: AppleVoiceProcessingAudioProcessor.meterFrameSampleCount
     )
   }
 

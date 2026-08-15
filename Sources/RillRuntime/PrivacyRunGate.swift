@@ -11,70 +11,6 @@ public struct AuthorizedPrivacyContext: Sendable, Equatable {
     }
 }
 
-extension PrivacyRunGate {
-    /// Evaluates a group run without ever invoking the confirmation provider.
-    /// Source identity comes from the exact actor-owned item snapshot rather
-    /// than whichever application happens to be frontmost later.
-    public func evaluateNonInteractiveClipboardGroupRun(
-        source: ClipboardGroupRunAuthorizationSource,
-        workflow: WorkflowDefinition
-    ) async -> ClipboardGroupRunAuthorizationEvaluation {
-        guard WorkflowExecutionPolicy.decision(
-            for: workflow,
-            on: .clipboardGroupEvent
-        ) == .supported,
-            let configuration = try? workflow
-                .parseClipboardGroupAutomationConfiguration()
-        else {
-            return .blocked(reason: .executionSurfaceUnsupported)
-        }
-        guard configuration.rule.matchResult(for: source.descriptor).matched else {
-            return .blocked(reason: .triggerMismatch)
-        }
-        guard configuration.actionKind == .editItem,
-              workflow.plan.output.actions.count == 1,
-              workflow.plan.output.actions[0].id == "stack.push" else {
-            return .blocked(reason: .actionPlanUnsupported)
-        }
-        guard source.subject.contentKind == .text,
-              source.subject.hasTransferableContent else {
-            return .blocked(reason: .sourceContentUnsupported)
-        }
-        guard !source.subject.excludesWorkflowCapture else {
-            return .blocked(reason: .sourceExcludedFromWorkflowCapture)
-        }
-
-        let policy: EvaluatedPolicy
-        do {
-            policy = try await evaluatePolicy(
-                context: source.privacyContext,
-                workflow: workflow,
-                invocation: .clipboardItem(
-                    subject: source.subject,
-                    operation: .replace
-                )
-            )
-        } catch GateError.settingsUnavailable {
-            return .blocked(reason: .privacySettingsUnavailable)
-        } catch GateError.processingDestinationUnavailable {
-            return .blocked(reason: .processingDestinationUnavailable)
-        } catch {
-            return .blocked(reason: .privacySettingsUnavailable)
-        }
-
-        guard policy.decision.allowsWorkflowCapture else {
-            return .blocked(reason: .workflowCaptureBlocked)
-        }
-        guard !policy.decision.blocksCloudProcessing else {
-            return .blocked(reason: .cloudProcessingBlocked)
-        }
-        guard !policy.decision.requiresCloudConfirmation else {
-            return .blocked(reason: .cloudConfirmationRequired)
-        }
-        return .ready(processingDestinations: policy.processingDestinations)
-    }
-}
-
 public struct PrivacyRunGate: Sendable {
     public enum GateError: Error, LocalizedError, Equatable {
         case settingsUnavailable
@@ -83,15 +19,15 @@ public struct PrivacyRunGate: Sendable {
         case cloudConfirmationDeclined
         case policyChangedDuringAuthorization
         case contextChangedDuringAuthorization
-        case clipboardItemOperationUnsupported
-        case clipboardItemContentUnsupported
-        case clipboardItemContentUnavailable
-        case clipboardItemExcludedFromWorkflowCapture
-        case clipboardItemSourceReplacementUnavailable
-        case clipboardItemSourceReplacementAmbiguous
-        case clipboardItemSourcePrivacyBlocked
-        case clipboardItemUnavailable
-        case clipboardItemChangedDuringAuthorization
+        case recordOperationUnsupported
+        case recordContentUnsupported
+        case recordContentUnavailable
+        case recordExcludedFromWorkflowCapture
+        case recordSourceReplacementUnavailable
+        case recordSourceReplacementAmbiguous
+        case recordSourcePrivacyBlocked
+        case recordUnavailable
+        case recordChangedDuringAuthorization
         case workflowRunAuthorizationAlreadyConsumed
         case audioProcessingAuthorizationInvalid
         case audioProcessingAuthorizationAlreadyConsumed
@@ -110,24 +46,24 @@ public struct PrivacyRunGate: Sendable {
                 return "Privacy settings changed during authorization. Please try again."
             case .contextChangedDuringAuthorization:
                 return "The active application or clipboard changed during privacy authorization. Please try again."
-            case .clipboardItemOperationUnsupported:
-                return "The clipboard item operation cannot run as a workflow."
-            case .clipboardItemContentUnsupported:
+            case .recordOperationUnsupported:
+                return "The record operation cannot run as a workflow."
+            case .recordContentUnsupported:
                 return "Only stored text items can be replayed through a workflow."
-            case .clipboardItemContentUnavailable:
-                return "The stored clipboard item no longer has transferable content."
-            case .clipboardItemExcludedFromWorkflowCapture:
-                return "The stored clipboard item is excluded from workflow processing."
-            case .clipboardItemSourceReplacementUnavailable:
-                return "The workflow does not contain an action that can replace the source clipboard item."
-            case .clipboardItemSourceReplacementAmbiguous:
-                return "The workflow contains more than one action that would replace the source clipboard item."
-            case .clipboardItemSourcePrivacyBlocked:
+            case .recordContentUnavailable:
+                return "The stored record no longer has transferable content."
+            case .recordExcludedFromWorkflowCapture:
+                return "The stored record is excluded from workflow processing."
+            case .recordSourceReplacementUnavailable:
+                return "The workflow does not contain an action that can replace the source record."
+            case .recordSourceReplacementAmbiguous:
+                return "The workflow contains more than one action that would replace the source record."
+            case .recordSourcePrivacyBlocked:
                 return "Privacy rules for the source application block workflow processing of this stored item."
-            case .clipboardItemUnavailable:
-                return "The stored clipboard item is no longer available."
-            case .clipboardItemChangedDuringAuthorization:
-                return "The stored clipboard item changed during authorization. Please try again."
+            case .recordUnavailable:
+                return "The stored record is no longer available."
+            case .recordChangedDuringAuthorization:
+                return "The stored record changed during authorization. Please try again."
             case .workflowRunAuthorizationAlreadyConsumed:
                 return "The workflow authorization was already used, so this run was blocked."
             case .audioProcessingAuthorizationInvalid:
@@ -427,119 +363,37 @@ public struct PrivacyRunGate: Sendable {
         )
     }
 
-    /// Authorizes a stored text item for replay/replace without consulting the
-    /// workflow recognizer or deriving recognition options. The returned
-    /// context is bound to the exact content-free item subject and operation.
-    public func captureAuthorizedClipboardItemRunContext(
-        subject: ClipboardItemDryRunSubject,
-        operation: ClipboardItemDryRunOperation,
+    public func captureAuthorizedRecordRunContext(
+        subject: RecordDeliverySubject,
+        operation: RecordWorkflowOperation,
         privacyContextProvider: @Sendable () async -> ContextSnapshot,
         contextProvider: @Sendable (PrivacyPolicyDecision) async -> ContextSnapshot,
         workflow: WorkflowDefinition
     ) async throws -> AuthorizedWorkflowRunContext {
-        let invocation = try validatedClipboardItemRunInvocation(
-            subject: subject,
-            operation: operation,
-            workflow: workflow
-        )
-        let capture = try await captureAuthorizedPolicyContext(
-            privacyContextProvider: privacyContextProvider,
-            contextProvider: contextProvider,
-            workflow: workflow,
-            invocation: invocation
-        )
-        return AuthorizedWorkflowRunContext(
-            workflow: workflow,
-            contextSnapshot: capture.authorizedContext,
-            recognitionOptions: .empty,
-            invocation: invocation
-        )
-    }
-
-    /// Authorizes a stored item against both its exact source application and
-    /// the current action target. The source policy is checked before any cloud
-    /// confirmation and again after target authorization.
-    public func captureAuthorizedClipboardItemRunContext(
-        source: ClipboardItemRunAuthorizationSource,
-        operation: ClipboardItemDryRunOperation,
-        privacyContextProvider: @Sendable () async -> ContextSnapshot,
-        contextProvider: @Sendable (PrivacyPolicyDecision) async -> ContextSnapshot,
-        workflow: WorkflowDefinition
-    ) async throws -> AuthorizedWorkflowRunContext {
-        let invocation = try validatedClipboardItemRunInvocation(
-            subject: source.subject,
-            operation: operation,
-            workflow: workflow
-        )
-        let sourcePolicy = try await evaluatePolicy(
-            context: source.privacyContext,
-            workflow: workflow,
-            invocation: invocation
-        )
-        guard sourcePolicy.decision.allowsWorkflowCapture else {
-            throw GateError.clipboardItemSourcePrivacyBlocked
+        guard subject.payloadKind == .text else {
+            throw GateError.recordContentUnsupported
         }
-        guard !sourcePolicy.decision.blocksCloudProcessing else {
-            throw GateError.cloudProcessingBlocked
-        }
-
-        let capture = try await captureAuthorizedPolicyContext(
-            privacyContextProvider: privacyContextProvider,
-            contextProvider: contextProvider,
-            workflow: workflow,
-            invocation: invocation
-        )
-        let currentSourcePolicy = try await evaluatePolicy(
-            context: source.privacyContext,
-            workflow: workflow,
-            invocation: invocation
-        )
-        guard currentSourcePolicy == sourcePolicy else {
-            throw GateError.policyChangedDuringAuthorization
-        }
-        return AuthorizedWorkflowRunContext(
-            workflow: workflow,
-            contextSnapshot: capture.authorizedContext,
-            recognitionOptions: .empty,
-            invocation: invocation
-        )
-    }
-
-    private func validatedClipboardItemRunInvocation(
-        subject: ClipboardItemDryRunSubject,
-        operation: ClipboardItemDryRunOperation,
-        workflow: WorkflowDefinition
-    ) throws -> WorkflowRunInvocation {
-        guard operation == .replay || operation == .replace else {
-            throw GateError.clipboardItemOperationUnsupported
-        }
-        guard subject.contentKind == .text else {
-            throw GateError.clipboardItemContentUnsupported
-        }
-        guard subject.hasTransferableContent else {
-            throw GateError.clipboardItemContentUnavailable
-        }
-        guard !subject.excludesWorkflowCapture else {
-            throw GateError.clipboardItemExcludedFromWorkflowCapture
+        guard !subject.captureTags.contains(.excludeFromWorkflowCapture) else {
+            throw GateError.recordExcludedFromWorkflowCapture
         }
         if let issue = WorkflowExecutionPolicy.issue(for: workflow) {
             throw SessionCoordinator.SessionError.unsupportedWorkflow(issue)
         }
-        switch WorkflowComponentProfileRegistry().clipboardItemSourceReplacementPlan(
-            for: workflow,
-            operation: operation
-        ) {
-        case .notRequested, .exactlyOne:
-            break
-        case .unavailable:
-            throw GateError.clipboardItemSourceReplacementUnavailable
-        case .ambiguous:
-            throw GateError.clipboardItemSourceReplacementAmbiguous
-        }
-
-        return WorkflowRunInvocation.clipboardItem(
+        let invocation = WorkflowRunInvocation.record(
             subject: subject,
             operation: operation
+        )
+        let capture = try await captureAuthorizedPolicyContext(
+            privacyContextProvider: privacyContextProvider,
+            contextProvider: contextProvider,
+            workflow: workflow,
+            invocation: invocation
+        )
+        return AuthorizedWorkflowRunContext(
+            workflow: workflow,
+            contextSnapshot: capture.authorizedContext,
+            recognitionOptions: .empty,
+            invocation: invocation
         )
     }
 

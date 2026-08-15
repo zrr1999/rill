@@ -43,7 +43,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
 
         harness.model.prepareLocalSpeechModel()
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         let prepareSnapshot = await prepareProbe.snapshot()
         XCTAssertEqual(prepareSnapshot.prepareCount, 0)
@@ -155,7 +155,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
                 trigger: .manual,
                 pipeline: PipelineDeclaration(
                     recognizerID: "local-speech",
-                    outputActions: [OutputActionReference(id: "stack.push")]
+                    outputActions: [OutputActionReference(id: "record.store")]
                 ),
                 ui: WorkflowUIConfig(symbolName: "cursorarrow.rays", accentColorName: "blue"),
                 metadata: [
@@ -188,7 +188,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         harness.model.downloadedLocalSpeechModels = ["openai_whisper-tiny"]
 
         harness.model.useDownloadedLocalSpeechModel("openai_whisper-tiny")
-        await waitForEventProcessing()
+        await waitForEventProcessing(harness)
 
         let snapshot = await probe.snapshot()
         XCTAssertEqual(snapshot.prepareCount, 1)

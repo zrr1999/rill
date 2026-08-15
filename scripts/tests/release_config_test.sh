@@ -287,8 +287,8 @@ run_locked_dependency_policy_case() {
   local preflight_transition_clean_line=""
   local preflight_test_line=""
   local release_preflight_line=""
-  local release_transition_clean_line=""
   local release_build_line=""
+  local release_preflight_guard_line=""
 
   : >"$invocation_log"
   [[ -x "$LOCKED_SWIFT_SCRIPT" ]] || {
@@ -328,8 +328,8 @@ run_locked_dependency_policy_case() {
     exit 1
   fi
   if [[ "$(grep -Ec '^[[:space:]]*swift package clean$' "$PREFLIGHT_SCRIPT")" -ne 2 ]] ||
-    [[ "$(grep -Ec '^[[:space:]]*swift package clean$' "$RELEASE_SCRIPT")" -ne 1 ]]; then
-    echo "FAIL: release scripts must isolate every Release/Debug configuration transition" >&2
+    grep -Eq '^[[:space:]]*swift package clean$' "$RELEASE_SCRIPT"; then
+    echo "FAIL: preflight must clean its Debug graph while release keeps the isolated graph incremental" >&2
     exit 1
   fi
   preflight_release_build_line="$(
@@ -346,11 +346,11 @@ run_locked_dependency_policy_case() {
       cut -d: -f1
   )"
   release_preflight_line="$(
-    grep -n -m1 '^"\$SCRIPT_DIR/preflight.sh"$' "$RELEASE_SCRIPT" |
+    grep -n -m1 '^[[:space:]]*"\$SCRIPT_DIR/preflight.sh"$' "$RELEASE_SCRIPT" |
       cut -d: -f1
   )"
-  release_transition_clean_line="$(
-    grep -n -m1 '^[[:space:]]*swift package clean$' "$RELEASE_SCRIPT" |
+  release_preflight_guard_line="$(
+    grep -n -m1 '^if \$DO_PREFLIGHT; then$' "$RELEASE_SCRIPT" |
       cut -d: -f1
   )"
   release_build_line="$(
@@ -362,17 +362,28 @@ run_locked_dependency_policy_case() {
     -z "$preflight_test_line" ||
     "$preflight_transition_clean_line" -le "$preflight_release_build_line" ||
     "$preflight_transition_clean_line" -ge "$preflight_test_line" ||
+    -z "$release_preflight_guard_line" ||
     -z "$release_preflight_line" ||
-    -z "$release_transition_clean_line" ||
     -z "$release_build_line" ||
-    "$release_transition_clean_line" -le "$release_preflight_line" ||
-    "$release_transition_clean_line" -ge "$release_build_line" ]]; then
+    "$release_preflight_guard_line" -ge "$release_preflight_line" ||
+    "$release_preflight_line" -ge "$release_build_line" ]]; then
     echo "FAIL: Release/Debug configuration cleanup is not ordered at the transition boundary" >&2
+    exit 1
+  fi
+  if ! grep -Fq 'DO_PREFLIGHT=false' "$RELEASE_SCRIPT" ||
+    ! grep -Fq 'if $DO_NOTARIZE; then' "$RELEASE_SCRIPT" ||
+    ! grep -Fq 'DO_PREFLIGHT=true' "$RELEASE_SCRIPT"; then
+    echo "FAIL: local builds must skip full preflight by default while notarization retains it" >&2
+    exit 1
+  fi
+  if ! grep -Fq 'validate_project_worktree_alignment' "$RELEASE_SCRIPT" ||
+    ! grep -Fq '发布脚本目录与 Git 工作树不一致' "$RELEASE_SCRIPT"; then
+    echo "FAIL: release must reject a script/source directory that differs from the Git worktree" >&2
     exit 1
   fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: release paths share policies, verify provenance, and isolate build configurations"
+  echo "PASS: local build and full preflight are decoupled while gated releases isolate configurations"
 }
 
 run_xcode_build_policy_case() {
@@ -383,6 +394,10 @@ run_xcode_build_policy_case() {
   if ! grep -Fq -- '--build-system swiftbuild' "$XCODE_RELEASE_BUILD_SCRIPT" ||
     ! grep -Fq -- '--manifest-cache none' "$XCODE_RELEASE_BUILD_SCRIPT" ||
     ! grep -Fq -- '--arch arm64' "$XCODE_RELEASE_BUILD_SCRIPT" ||
+    ! grep -Fq -- '--scratch-path "$RELEASE_SCRATCH_PATH"' "$XCODE_RELEASE_BUILD_SCRIPT" ||
+    ! grep -Fq 'RELEASE_SCRATCH_PATH="$PROJECT_DIR/.build/rill-release"' \
+      "$XCODE_RELEASE_BUILD_SCRIPT" ||
+    ! grep -Fq '.build/rill-release/Intermediates.noindex' "$PREFLIGHT_SCRIPT" ||
     ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh"' "$XCODE_RELEASE_BUILD_SCRIPT" ||
     ! grep -Fq 'xcrun metal -v' \
       "$XCODE_RELEASE_BUILD_SCRIPT" ||
@@ -399,7 +414,7 @@ run_xcode_build_policy_case() {
   fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: Xcode release build uses the locked SwiftPM graph without checkout mutation"
+  echo "PASS: Xcode release build uses an isolated locked SwiftPM graph without checkout mutation"
 }
 
 run_executable_package_surface_policy_case() {

@@ -34,7 +34,7 @@ final class WorkflowPrivacyDestinationClassifierTests: XCTestCase {
             trigger: .hotkey,
             pipeline: PipelineDeclaration(
                 recognizerID: "sherpa-onnx.local",
-                outputActions: [OutputActionReference(id: "inject.text")]
+                outputActions: [OutputActionReference(id: "focused-application.insert")]
             ),
             ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "green")
         )
@@ -68,13 +68,13 @@ final class WorkflowPrivacyDestinationClassifierTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "speaker.wave.2", accentColorName: "blue")
         )
-        let invocation = WorkflowRunInvocation.clipboardItem(
-            subject: ClipboardItemDryRunSubject(
-                itemID: UUID(),
-                itemVersion: ClipboardItemVersion(),
-                groupID: ClipboardGroup.defaultGroupID,
-                contentKind: .text,
-                hasTransferableContent: true
+        let invocation = WorkflowRunInvocation.record(
+            subject: RecordDeliverySubject(
+                recordID: RecordID(),
+                membershipID: RecordMembershipID(),
+                membershipRevision: 0,
+                collectionID: RecordCollection.inboxID,
+                payloadKind: .text
             ),
             operation: .replay
         )

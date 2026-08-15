@@ -157,7 +157,7 @@ public actor TextInjectionEngine {
     }
 
     public init(
-        pasteboard: PasteboardController,
+        pasteboard: SystemClipboardPort,
         accessibilityChecker: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() },
         diagnosticReporter: (@Sendable (DiagnosticEvent) async -> Void)? = nil,
         hotkeyTap: HotkeyEventTap? = nil,
@@ -167,9 +167,9 @@ public actor TextInjectionEngine {
         },
         keyboardChunkSender: (@Sendable ([UInt16]) async -> Bool)? = nil,
         temporaryClipboardRestorer: (@Sendable (
-            PasteboardController.TemporaryWriteTransaction,
+            SystemClipboardPort.TemporaryWriteTransaction,
             Int
-        ) async -> PasteboardController.TemporaryRestoreOutcome)? = nil
+        ) async -> SystemClipboardPort.TemporaryRestoreOutcome)? = nil
     ) {
         self.pasteboard = pasteboard
         self.accessibilityChecker = accessibilityChecker
@@ -185,7 +185,7 @@ public actor TextInjectionEngine {
         }
     }
 
-    private let pasteboard: PasteboardController
+    private let pasteboard: SystemClipboardPort
     private let accessibilityChecker: @Sendable () -> Bool
     private let diagnosticReporter: (@Sendable (DiagnosticEvent) async -> Void)?
     private let hotkeyTap: HotkeyEventTap?
@@ -193,11 +193,11 @@ public actor TextInjectionEngine {
     private let pasteCommandSender: @Sendable () async throws -> Bool
     private let keyboardChunkSender: @Sendable ([UInt16]) async -> Bool
     private let temporaryClipboardRestorer: @Sendable (
-        PasteboardController.TemporaryWriteTransaction,
+        SystemClipboardPort.TemporaryWriteTransaction,
         Int
-    ) async -> PasteboardController.TemporaryRestoreOutcome
+    ) async -> SystemClipboardPort.TemporaryRestoreOutcome
     private struct PendingClipboardRecovery: Sendable {
-        var transaction: PasteboardController.TemporaryWriteTransaction
+        var transaction: SystemClipboardPort.TemporaryWriteTransaction
         var expectedChangeCount: Int
         var deliveryCompleted: Bool
     }
@@ -249,13 +249,13 @@ public actor TextInjectionEngine {
                     "textLength": String(text.count)
                 ]
             )
-            let transaction: PasteboardController.TemporaryWriteTransaction
+            let transaction: SystemClipboardPort.TemporaryWriteTransaction
             do {
                 transaction = try await pasteboard.beginTemporaryWrite(
-                    ClipboardSnapshot(plainText: text, changeCount: 0),
+                    SystemClipboardSnapshot(plainText: text, changeCount: 0),
                     ifChangeCountIs: descriptor.changeCount
                 )
-            } catch let error as PasteboardController.ConditionalWriteError {
+            } catch let error as SystemClipboardPort.ConditionalWriteError {
                 switch error {
                 case let .protectedClipboard(protections):
                     try await injectUsingProtectedClipboardFallback(
@@ -281,7 +281,7 @@ public actor TextInjectionEngine {
     }
 
     public func injectClipboardSnapshot(
-        _ snapshot: ClipboardSnapshot,
+        _ snapshot: SystemClipboardSnapshot,
         targetFocus: FocusSnapshot? = nil
     ) async throws {
         guard snapshot.hasTransferableContent else { return }
@@ -310,13 +310,13 @@ public actor TextInjectionEngine {
                 "fileCount": String(snapshot.fileURLs.count)
             ]
         )
-        let transaction: PasteboardController.TemporaryWriteTransaction
+        let transaction: SystemClipboardPort.TemporaryWriteTransaction
         do {
             transaction = try await pasteboard.beginTemporaryWrite(
                 snapshot,
                 ifChangeCountIs: revalidatedDescriptor.changeCount
             )
-        } catch let error as PasteboardController.ConditionalWriteError {
+        } catch let error as SystemClipboardPort.ConditionalWriteError {
             switch error {
             case .protectedClipboard:
                 throw InjectionError.protectedClipboardCannotBeReplaced
@@ -451,7 +451,7 @@ public actor TextInjectionEngine {
     }
 
     private func pasteAndRestore(
-        _ transaction: PasteboardController.TemporaryWriteTransaction,
+        _ transaction: SystemClipboardPort.TemporaryWriteTransaction,
         target: FocusIdentity?
     ) async throws {
         do {
@@ -476,7 +476,7 @@ public actor TextInjectionEngine {
         }
     }
 
-    private enum ClipboardRestoreReason: String {
+    private enum SystemClipboardRestoreReason: String {
         case pasteFailed = "paste-failed"
         case pasteFinished = "paste-finished"
 
@@ -486,10 +486,10 @@ public actor TextInjectionEngine {
     }
 
     private func restorePreservedClipboard(
-        _ transaction: PasteboardController.TemporaryWriteTransaction,
+        _ transaction: SystemClipboardPort.TemporaryWriteTransaction,
         expectedChangeCount: Int,
-        reason: ClipboardRestoreReason
-    ) async -> PasteboardController.TemporaryRestoreOutcome {
+        reason: SystemClipboardRestoreReason
+    ) async -> SystemClipboardPort.TemporaryRestoreOutcome {
         let initialOutcome = await attemptClipboardRestore(
             transaction,
             expectedChangeCount: expectedChangeCount,
@@ -523,7 +523,7 @@ public actor TextInjectionEngine {
 
     private func recoverPendingClipboardIfNeeded() async throws {
         guard let pendingClipboardRecovery else { return }
-        let reason: ClipboardRestoreReason = pendingClipboardRecovery.deliveryCompleted
+        let reason: SystemClipboardRestoreReason = pendingClipboardRecovery.deliveryCompleted
             ? .pasteFinished
             : .pasteFailed
         let outcome = await attemptClipboardRestore(
@@ -542,11 +542,11 @@ public actor TextInjectionEngine {
     }
 
     private func attemptClipboardRestore(
-        _ transaction: PasteboardController.TemporaryWriteTransaction,
+        _ transaction: SystemClipboardPort.TemporaryWriteTransaction,
         expectedChangeCount: Int,
-        reason: ClipboardRestoreReason,
+        reason: SystemClipboardRestoreReason,
         isRetry: Bool
-    ) async -> PasteboardController.TemporaryRestoreOutcome {
+    ) async -> SystemClipboardPort.TemporaryRestoreOutcome {
         let outcome = await temporaryClipboardRestorer(transaction, expectedChangeCount)
         let message: String
         let outcomeName: String
@@ -605,7 +605,7 @@ public actor TextInjectionEngine {
 
     private func injectUsingProtectedClipboardFallback(
         _ text: String,
-        protections: [ClipboardProtection],
+        protections: [SystemClipboardProtection],
         target: FocusIdentity?
     ) async throws {
         await recordDiagnostic(
@@ -720,7 +720,7 @@ public actor TextInjectionEngine {
         guard let diagnosticReporter else { return }
         await diagnosticReporter(
             DiagnosticEvent(
-                subsystem: .clipboard,
+                subsystem: .systemClipboard,
                 level: level,
                 event: event,
                 message: message,

@@ -71,7 +71,7 @@ verify_xcode_resource_accessor() {
   local bundle_name="$1"
   local accessor=""
   local candidate
-  local accessor_root="$PROJECT_DIR/.build/out/Intermediates.noindex"
+  local accessor_root="$PROJECT_DIR/.build/rill-release/Intermediates.noindex"
 
   while IFS= read -r candidate; do
     if grep -Fq "let bundleName = \"$bundle_name\"" "$candidate"; then
@@ -107,6 +107,9 @@ bash "$SCRIPT_DIR/check_shell_syntax.sh"
 
 info "Checking repository release artifact hygiene..."
 bash "$SCRIPT_DIR/check_release_artifact_hygiene.sh"
+
+info "Checking Record domain boundary..."
+bash "$SCRIPT_DIR/check_record_domain_boundary.sh"
 
 info "Checking dependency security policy..."
 uv run --script "$SCRIPT_DIR/tests/dependency_security_test.py"

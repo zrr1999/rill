@@ -64,7 +64,7 @@ public struct VocabularyCorrectionDraft: Sendable {
     private let proposedRuleCreatedAt: Date
 
     public static func isEligible(
-        record: HistoryRecord,
+        record: WorkflowResultRecord,
         privacyPreviewMode: PrivacyHistoryPreviewMode
     ) -> Bool {
         record.outcome == .completed
@@ -73,7 +73,7 @@ public struct VocabularyCorrectionDraft: Sendable {
     }
 
     public init?(
-        record: HistoryRecord,
+        record: WorkflowResultRecord,
         privacyPreviewMode: PrivacyHistoryPreviewMode,
         planner: VocabularyCorrectionPlanner = .init()
     ) {

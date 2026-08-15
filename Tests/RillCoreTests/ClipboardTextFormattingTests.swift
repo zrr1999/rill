@@ -1,7 +1,7 @@
 import XCTest
 @testable import RillCore
 
-final class ClipboardTextFormattingTests: XCTestCase {
+final class RecordTextFormattingTests: XCTestCase {
     func testLikelyMarkdownDetectsStructuredMarkdown() {
         let markdown = """
         # Release Notes
@@ -10,10 +10,10 @@ final class ClipboardTextFormattingTests: XCTestCase {
         - Renders [Markdown](https://example.com)
         """
 
-        XCTAssertTrue(ClipboardTextFormatting.isLikelyMarkdown(markdown))
-        XCTAssertNotNil(ClipboardTextFormatting.renderedMarkdown(markdown))
+        XCTAssertTrue(RecordTextFormatting.isLikelyMarkdown(markdown))
+        XCTAssertNotNil(RecordTextFormatting.renderedMarkdown(markdown))
         XCTAssertEqual(
-            ClipboardTextFormatting.summaryText(markdown),
+            RecordTextFormatting.summaryText(markdown),
             "Release Notes Adds image previews Renders Markdown"
         )
     }
@@ -21,9 +21,9 @@ final class ClipboardTextFormattingTests: XCTestCase {
     func testLikelyMarkdownDetectsInlineFormatting() {
         let markdown = "Use `swift test` before shipping **clipboard** changes."
 
-        XCTAssertTrue(ClipboardTextFormatting.isLikelyMarkdown(markdown))
+        XCTAssertTrue(RecordTextFormatting.isLikelyMarkdown(markdown))
         XCTAssertEqual(
-            ClipboardTextFormatting.summaryText(markdown),
+            RecordTextFormatting.summaryText(markdown),
             "Use swift test before shipping clipboard changes."
         )
     }
@@ -31,17 +31,17 @@ final class ClipboardTextFormattingTests: XCTestCase {
     func testLikelyMarkdownRejectsPlainText() {
         let plainText = "Please ship version 2.0 tomorrow after lunch."
 
-        XCTAssertFalse(ClipboardTextFormatting.isLikelyMarkdown(plainText))
-        XCTAssertNil(ClipboardTextFormatting.renderedMarkdown(plainText))
+        XCTAssertFalse(RecordTextFormatting.isLikelyMarkdown(plainText))
+        XCTAssertNil(RecordTextFormatting.renderedMarkdown(plainText))
         XCTAssertEqual(
-            ClipboardTextFormatting.summaryText("  hello\n\nworld  "),
+            RecordTextFormatting.summaryText("  hello\n\nworld  "),
             "hello world"
         )
     }
 
     func testPreviewTextTruncatesNormalizedSummary() {
         XCTAssertEqual(
-            ClipboardTextFormatting.previewText("  hello\n\nworld again  ", limit: 12),
+            RecordTextFormatting.previewText("  hello\n\nworld again  ", limit: 12),
             "hello world…"
         )
     }

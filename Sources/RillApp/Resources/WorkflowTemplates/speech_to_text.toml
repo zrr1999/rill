@@ -34,7 +34,7 @@ kind = "normalize-whitespace"
 strategy = "immediate"
 
 [[output.actions]]
-id = "inject.text"
+id = "focused-application.insert"
 
 [metadata]
 "workflow.origin" = "user"

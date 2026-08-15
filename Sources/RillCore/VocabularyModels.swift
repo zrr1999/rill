@@ -13,16 +13,16 @@ public enum VocabularyMatchMode: String, Codable, Sendable, Equatable {
 
 public struct VocabularyRuleScope: Codable, Sendable, Equatable, Hashable {
     public var bundleIdentifier: String?
-    public var clipboardGroupID: UUID?
+    public var recordCollectionID: UUID?
     public var locale: String?
 
     public init(
         bundleIdentifier: String? = nil,
-        clipboardGroupID: UUID? = nil,
+        recordCollectionID: UUID? = nil,
         locale: String? = nil
     ) {
         self.bundleIdentifier = bundleIdentifier
-        self.clipboardGroupID = clipboardGroupID
+        self.recordCollectionID = recordCollectionID
         self.locale = locale
     }
 
@@ -30,13 +30,35 @@ public struct VocabularyRuleScope: Codable, Sendable, Equatable, Hashable {
         if let bundleIdentifier, bundleIdentifier != context.bundleIdentifier {
             return false
         }
-        if let clipboardGroupID, clipboardGroupID != context.clipboardGroupID {
+        if let recordCollectionID, recordCollectionID != context.recordCollectionID {
             return false
         }
         if let locale, locale != context.locale {
             return false
         }
         return true
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case bundleIdentifier
+        case recordCollectionID
+        case legacyClipboardGroupID = "clipboardGroupID"
+        case locale
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bundleIdentifier = try container.decodeIfPresent(String.self, forKey: .bundleIdentifier)
+        recordCollectionID = try container.decodeIfPresent(UUID.self, forKey: .recordCollectionID)
+            ?? container.decodeIfPresent(UUID.self, forKey: .legacyClipboardGroupID)
+        locale = try container.decodeIfPresent(String.self, forKey: .locale)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(bundleIdentifier, forKey: .bundleIdentifier)
+        try container.encodeIfPresent(recordCollectionID, forKey: .recordCollectionID)
+        try container.encodeIfPresent(locale, forKey: .locale)
     }
 }
 
@@ -79,29 +101,51 @@ public struct VocabularyRule: Identifiable, Codable, Sendable, Equatable {
 
 public struct VocabularyRuleContext: Codable, Sendable, Equatable {
     public var bundleIdentifier: String?
-    public var clipboardGroupID: UUID?
+    public var recordCollectionID: UUID?
     public var locale: String?
 
     public init(
         bundleIdentifier: String? = nil,
-        clipboardGroupID: UUID? = nil,
+        recordCollectionID: UUID? = nil,
         locale: String? = nil
     ) {
         self.bundleIdentifier = bundleIdentifier
-        self.clipboardGroupID = clipboardGroupID
+        self.recordCollectionID = recordCollectionID
         self.locale = locale
     }
 
     public init(
         contextSnapshot: ContextSnapshot,
-        clipboardGroupID: UUID? = nil,
+        recordCollectionID: UUID? = nil,
         locale: String? = nil
     ) {
         self.init(
             bundleIdentifier: contextSnapshot.focus.bundleIdentifier,
-            clipboardGroupID: clipboardGroupID,
+            recordCollectionID: recordCollectionID,
             locale: locale
         )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case bundleIdentifier
+        case recordCollectionID
+        case legacyClipboardGroupID = "clipboardGroupID"
+        case locale
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bundleIdentifier = try container.decodeIfPresent(String.self, forKey: .bundleIdentifier)
+        recordCollectionID = try container.decodeIfPresent(UUID.self, forKey: .recordCollectionID)
+            ?? container.decodeIfPresent(UUID.self, forKey: .legacyClipboardGroupID)
+        locale = try container.decodeIfPresent(String.self, forKey: .locale)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(bundleIdentifier, forKey: .bundleIdentifier)
+        try container.encodeIfPresent(recordCollectionID, forKey: .recordCollectionID)
+        try container.encodeIfPresent(locale, forKey: .locale)
     }
 }
 

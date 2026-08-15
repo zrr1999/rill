@@ -2,7 +2,7 @@ import Foundation
 
 public enum VocabularyCorrectionScopeField: String, CaseIterable, Sendable, Equatable, Hashable {
     case bundleIdentifier
-    case clipboardGroupID
+    case recordCollectionID
     case locale
 }
 
@@ -21,7 +21,7 @@ public struct VocabularyCorrectionScopeAssessment: Sendable, Equatable {
 
         knownConstraints = VocabularyRuleScope(
             bundleIdentifier: bundleIdentifier,
-            clipboardGroupID: context.clipboardGroupID,
+            recordCollectionID: context.recordCollectionID,
             locale: locale
         )
 
@@ -29,8 +29,8 @@ public struct VocabularyCorrectionScopeAssessment: Sendable, Equatable {
         if bundleIdentifier == nil {
             unknownFields.insert(.bundleIdentifier)
         }
-        if context.clipboardGroupID == nil {
-            unknownFields.insert(.clipboardGroupID)
+        if context.recordCollectionID == nil {
+            unknownFields.insert(.recordCollectionID)
         }
         if locale == nil {
             unknownFields.insert(.locale)

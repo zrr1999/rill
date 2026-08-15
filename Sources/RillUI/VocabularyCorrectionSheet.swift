@@ -98,12 +98,12 @@ public struct VocabularyCorrectionSheet: View {
             case .unchanged:
                 guidance(
                     L10n.string(.vocabularyCorrectionNoChange, language: model.language),
-                    symbol: "pencil"
+                    symbol: RillSystemSymbol.pencil.rawValue
                 )
             case .invalid:
                 guidance(
                     L10n.string(.vocabularyCorrectionUnsupported, language: model.language),
-                    symbol: "exclamationmark.triangle"
+                    symbol: RillSystemSymbol.exclamationmarkTriangle.rawValue
                 )
                 Button(L10n.string(.vocabularyCorrectionOpenSettings, language: model.language)) {
                     openVocabularySettings()
@@ -208,7 +208,7 @@ public struct VocabularyCorrectionSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label(
                     L10n.string(.vocabularyCorrectionConflict, language: model.language),
-                    systemImage: "exclamationmark.triangle.fill"
+                    systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
                 )
                 .foregroundStyle(.orange)
                 Button(L10n.string(.vocabularyCorrectionOpenSettings, language: model.language)) {
@@ -219,7 +219,7 @@ public struct VocabularyCorrectionSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 Label(
                     L10n.string(.vocabularyCorrectionUnsupported, language: model.language),
-                    systemImage: "exclamationmark.triangle"
+                    systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
                 )
                 .foregroundStyle(.secondary)
                 Button(L10n.string(.vocabularyCorrectionOpenSettings, language: model.language)) {
@@ -231,7 +231,7 @@ public struct VocabularyCorrectionSheet: View {
                 model.language == .english
                     ? "Vocabulary settings are still loading. Wait a moment and try again."
                     : "词汇设置仍在加载，请稍候再试。",
-                systemImage: "clock"
+                systemImage: RillSystemSymbol.clock.rawValue
             )
             .foregroundStyle(.secondary)
         case nil:
@@ -298,15 +298,15 @@ public struct VocabularyCorrectionSheet: View {
     private func scopeSummary(_ scope: VocabularyRuleScope) -> String {
         L10n.vocabularyScopeSummary(
             scope,
-            groupName: groupName(scope.clipboardGroupID),
+            groupName: groupName(scope.recordCollectionID),
             language: model.language
         )
     }
 
     private func groupName(_ groupID: UUID?) -> String? {
         guard let groupID else { return nil }
-        let groups = [model.clipboardDefaultGroup] + model.clipboardGroups
-        return groups.first(where: { $0.group.id == groupID })?.group.name
+        return model.recordWorkspace.snapshot.collections
+            .first(where: { $0.id.rawValue == groupID })?.name
             ?? groupID.uuidString
     }
 
@@ -322,7 +322,7 @@ public struct VocabularyCorrectionSheet: View {
         switch field {
         case .bundleIdentifier:
             return L10n.string(.vocabularyCorrectionUnknownApp, language: model.language)
-        case .clipboardGroupID:
+        case .recordCollectionID:
             return L10n.string(.vocabularyCorrectionUnknownGroup, language: model.language)
         case .locale:
             return L10n.string(.vocabularyCorrectionUnknownLanguage, language: model.language)

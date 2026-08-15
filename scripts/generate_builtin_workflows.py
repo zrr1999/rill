@@ -40,6 +40,11 @@ SUPPORTED_SPEECH_MODES = {
 SUPPORTED_SETTINGS = {"output_mode"}
 SUPPORTED_STREAMING_PROFILES = {"realtime", "agent", "subtitle"}
 SUPPORTED_LIVE_PREVIEW_PLACEMENTS = {"overlay", "cursor"}
+SUPPORTED_WORKFLOW_SYMBOLS = {
+    "mic.fill": "micFill",
+    "sparkles": "sparkles",
+    "square.stack.3d.up.fill": "squareStack3dUpFill",
+}
 SUPPORTED_SPEECH_OUTPUT_CONFIGURATION = {
     "speech.language",
     "speech.provider",
@@ -339,6 +344,9 @@ def build_workflow(
     if trigger == "wakeWord":
         setup["wakeWord"] = {"phrases": wake_phrases}
 
+    symbol = required_string(entry, "symbol", location)
+    validate_member(symbol, set(SUPPORTED_WORKFLOW_SYMBOLS), f"{location}.symbol")
+
     return {
         "id": str(workflow_id).upper(),
         "name": required_string(entry, "name", location),
@@ -370,7 +378,7 @@ def build_workflow(
             },
         },
         "ui": {
-            "symbolName": required_string(entry, "symbol", location),
+            "symbolName": symbol,
             "accentColorName": required_string(entry, "accent_color", location),
         },
         "metadata": metadata,
@@ -546,7 +554,7 @@ def render_swift_workflow(workflow: Mapping[str, Any], indent: int) -> list[str]
             f"{prefix}        )",
             f"{prefix}    ),",
             f"{prefix}    ui: WorkflowUIConfig(",
-            f"{prefix}        symbolName: {swift_string(ui['symbolName'])},",
+            f"{prefix}        symbolName: {swift_workflow_symbol(ui['symbolName'])},",
             f"{prefix}        accentColorName: {swift_string(ui['accentColorName'])}",
             f"{prefix}    ),",
             f"{prefix}    metadata: [",
@@ -588,6 +596,14 @@ def swift_string(value: str) -> str:
         else:
             escaped.append(character)
     return f'"{"".join(escaped)}"'
+
+
+def swift_workflow_symbol(value: str) -> str:
+    try:
+        member = SUPPORTED_WORKFLOW_SYMBOLS[value]
+    except KeyError as error:
+        raise SourceError(f"unsupported Rill-owned workflow symbol: {value}") from error
+    return f"WorkflowUISymbol.{member}.rawValue"
 
 
 def swift_number(value: int | float) -> str:

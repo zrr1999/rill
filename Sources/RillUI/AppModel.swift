@@ -44,7 +44,7 @@ enum WorkflowAudioRunState: Sendable, Equatable {
   case transcribing(workflowID: UUID)
 }
 
-public enum ClipboardHistoryVisibility: String, CaseIterable, Identifiable, Sendable, Equatable {
+public enum RecordHistoryVisibility: String, CaseIterable, Identifiable, Sendable, Equatable {
   case remainingOnly = "remaining-only"
   case all = "all"
 
@@ -120,25 +120,53 @@ actor DiagnosticEventRelay {
   }
 }
 
+@MainActor
 final class WorkflowExplanationTaskOwner {
-  private var task: Task<Void, Never>?
+  private var currentTaskID: UUID?
+  private var tasks: [UUID: Task<Void, Never>] = [:]
+  private var idleWaiters: [CheckedContinuation<Void, Never>] = []
 
-  func replace(with task: Task<Void, Never>) {
-    self.task?.cancel()
-    self.task = task
+  func replace(id: UUID, with task: Task<Void, Never>) {
+    if let currentTaskID {
+      tasks[currentTaskID]?.cancel()
+    }
+    tasks[id] = task
+    currentTaskID = id
   }
 
-  func clear() {
-    task = nil
+  func finish(id: UUID) {
+    tasks.removeValue(forKey: id)
+    if currentTaskID == id {
+      currentTaskID = nil
+    }
+    guard tasks.isEmpty else { return }
+    let waiters = idleWaiters
+    idleWaiters.removeAll()
+    for waiter in waiters {
+      waiter.resume()
+    }
   }
 
   func cancel() {
-    task?.cancel()
-    task = nil
+    guard let currentTaskID else { return }
+    tasks[currentTaskID]?.cancel()
+    self.currentTaskID = nil
+  }
+
+  func waitUntilIdle() async {
+    guard !tasks.isEmpty else { return }
+    await withCheckedContinuation { continuation in
+      idleWaiters.append(continuation)
+    }
   }
 
   deinit {
-    task?.cancel()
+    for task in tasks.values {
+      task.cancel()
+    }
+    for waiter in idleWaiters {
+      waiter.resume()
+    }
   }
 }
 
@@ -232,10 +260,14 @@ public final class AppModel {
     .customWorkflows,
     workflowLibrarySettingKey,
     .workflowEnabledStates,
-    .clipboardCaptureEnabled,
-    .clipboardMergeSimilarItems,
-    .clipboardHistoryVisibility,
-    .clipboardPanelHotkey,
+    .systemClipboardCaptureEnabled,
+    .legacyClipboardCaptureEnabled,
+    .recordMergeSimilar,
+    .legacyClipboardMergeSimilarItems,
+    .recordHistoryVisibility,
+    .legacyClipboardHistoryVisibility,
+    .recordPanelHotkey,
+    .legacyClipboardPanelHotkey,
     .preferredSpeechEngine,
     .localSpeechModel,
     .localSpeechDownloadedModels,
@@ -262,7 +294,8 @@ public final class AppModel {
     .privacyCloudProcessingAuthorizations,
     .privacyHistoryPreviewMode,
     .privacySecureInputConservativeMode,
-    .clipboardHistoryRetentionPeriod,
+    .recordRetentionPeriod,
+    .legacyClipboardHistoryRetentionPeriod,
     .runHistoryRetentionPeriod,
     .failedAudioRecoveryEnabled,
     .builtinPushToTalkOutputMode,
@@ -301,7 +334,7 @@ public final class AppModel {
   }
   public let localPersistenceStatus: LocalPersistenceStatus
   public internal(set) var selectedSidebarSection: SidebarSection = .dashboard
-  public internal(set) var selectedClipboardSidebarGroupID: UUID?
+  public let recordWorkspace: RecordWorkspaceModel
   public var runHistoryScope: RunHistoryScope = .recentRuns {
     didSet {
       guard oldValue != runHistoryScope else { return }
@@ -312,12 +345,12 @@ public final class AppModel {
   internal var historyNavigationRequest: HistoryNavigationRequest?
   internal var workflowEditorNavigationRequest: WorkflowEditorNavigationRequest?
   public var language: AppLanguage { didSet { handleLanguageChange(from: oldValue) } }
-  public var clipboardCaptureEnabled: Bool {
+  public var systemClipboardCaptureEnabled: Bool {
     didSet { handleClipboardCaptureEnabledChange(from: oldValue) }
   }
   public internal(set) var clipboardCapturePreferenceRevision: UInt64 = 0
-  public var clipboardPanelHotkeyBinding: HotkeyBindingDescriptor {
-    didSet { handleClipboardPanelHotkeyChange(from: oldValue) }
+  public var recordPanelHotkeyBinding: HotkeyBindingDescriptor {
+    didSet { handleRecordPanelHotkeyChange(from: oldValue) }
   }
   public var preferredSpeechEngine: PreferredSpeechEngine {
     didSet { handlePreferredSpeechEngineChange(from: oldValue) }
@@ -415,20 +448,25 @@ public final class AppModel {
   public var pendingResolution: CandidateResolutionCase?
   public var permissionSnapshot: PermissionSnapshot
   public internal(set) var globalInputCapability: GlobalInputCapability = .checking
-  public var stackCount = 0
-  public var stackPreview: String?
-  public internal(set) var clipboardCaptureControlSnapshot = ClipboardCaptureControlSnapshot(
+  public var recordCount: Int {
+    recordWorkspace.snapshot.records.count
+  }
+  public var recordPreview: String? {
+    guard let projection = recordWorkspace.snapshot.records.first else { return nil }
+    return projection.record.payload.textValue
+  }
+  public internal(set) var systemClipboardCaptureControlSnapshot = SystemClipboardCaptureControlSnapshot(
     revision: 0,
     state: .paused
   )
   public var isClipboardCapturePaused: Bool {
-    clipboardCaptureControlSnapshot.state.isPaused
+    systemClipboardCaptureControlSnapshot.state.isPaused
   }
   public var isIgnoringNextExternalClipboardChange: Bool {
-    clipboardCaptureControlSnapshot.state.isIgnoringNextExternalChange
+    systemClipboardCaptureControlSnapshot.state.isIgnoringNextExternalChange
   }
-  public var isClipboardCaptureControlTransitioning: Bool {
-    clipboardCaptureControlSnapshot.state.isTransitioning
+  public var isSystemClipboardCaptureControlTransitioning: Bool {
+    systemClipboardCaptureControlSnapshot.state.isTransitioning
   }
   public var lastCompletedText: String?
   public var lastFailure: String?
@@ -474,7 +512,7 @@ public final class AppModel {
   public internal(set) var isSavingPrivacySettings = false
   public internal(set) var privacySettingsLoadError: String?
   public internal(set) var privacySettingsSaveError: String?
-  public internal(set) var clipboardHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
+  public internal(set) var recordRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
   public internal(set) var runHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod {
     didSet {
       guard oldValue != runHistoryRetentionPeriod else { return }
@@ -488,9 +526,9 @@ public final class AppModel {
   public internal(set) var localHistoryMaintenancePendingReason: String?
   public internal(set) var localHistoryMaintenanceBlockedReason: String?
   public internal(set) var lastLocalHistoryRemovedCount = 0
-  public internal(set) var lastPreservedActiveClipboardCount = 0
+  public internal(set) var lastPreservedActiveRecordCount = 0
   public internal(set) var historyLoadState: HistoryLoadState = .loaded
-  public internal(set) var historyRecords: [HistoryRecord] = []
+  public internal(set) var historyRecords: [WorkflowResultRecord] = []
   public internal(set) var runHistoryBrowseLoadState: HistoryLoadState = .loaded
   public internal(set) var runHistoryPage: RunHistoryPage?
   public internal(set) var isRunHistoryPageTransitioning = false
@@ -505,25 +543,12 @@ public final class AppModel {
   public internal(set) var failedAudioRecoveryUnavailableReasonsByRunID:
     [UUID: FailedAudioRecoveryError] = [:]
   public var failedAudioRecoveryError: String?
-  public internal(set) var clipboardItems: [ClipboardHistoryItem] = []
-  public internal(set) var clipboardGroups: [ClipboardGroupSummary] = []
-  public internal(set) var clipboardDefaultGroup = ClipboardGroupSummary(
-    group: .defaultGroup,
-    count: 0,
-    previewText: nil
-  )
-  public internal(set) var clipboardAppAssignments: [ClipboardAppAssignment] = []
-  public internal(set) var clipboardRemainingItemIDs: Set<UUID> = []
-  public internal(set) var clipboardPersistenceAvailability: ClipboardPersistenceAvailability =
-    .available
-  public internal(set) var clipboardStorageLimits: ClipboardStorageLimits = .productDefault
-  public internal(set) var clipboardStorageRejection: ClipboardStorageRejectionReason?
-  public internal(set) var clipboardStoragePressureContext: ClipboardStoragePressureContext?
-  public internal(set) var isRetryingClipboardPersistence = false
-  public internal(set) var isResettingClipboardPersistence = false
-  public internal(set) var clipboardPersistenceResetFailed = false
-  public internal(set) var liveSubtitleSnapshot: LiveSubtitleSnapshot?
-  var currentCaptureLiveSubtitleSnapshot: LiveSubtitleSnapshot? {
+  // The floating panel is driven through `updateLiveSubtitlePanelAction`, not
+  // through a SwiftUI view observing AppModel. Keeping its 25 Hz meter state
+  // outside Observation prevents every audio frame from invalidating the main
+  // application view graph.
+  @ObservationIgnored public internal(set) var liveSubtitleSnapshot: LiveSubtitleSnapshot?
+  @ObservationIgnored var currentCaptureLiveSubtitleSnapshot: LiveSubtitleSnapshot? {
     didSet {
       guard
         hasLiveSubtitleSemanticChange(
@@ -536,16 +561,15 @@ public final class AppModel {
   }
   var workflowAudioCaptureRunID: UUID?
   var audioProcessingQueueSnapshot: AudioProcessingQueueSnapshot?
-  var lastLiveSubtitleMeterRefreshAt: ContinuousClock.Instant?
-  var pendingLiveSubtitleMeterSnapshot: LiveSubtitleSnapshot?
-  var clipboardHistoryEntries: [ClipboardHistoryEntry] = []
-  public var clipboardHistoryVisibility: ClipboardHistoryVisibility {
+  @ObservationIgnored var lastLiveSubtitleMeterRefreshAt: ContinuousClock.Instant?
+  @ObservationIgnored var pendingLiveSubtitleMeterSnapshot: LiveSubtitleSnapshot?
+  public var recordHistoryVisibility: RecordHistoryVisibility {
     didSet {
-      guard oldValue != clipboardHistoryVisibility else { return }
-      persistClipboardHistoryVisibilityPreference()
+      guard oldValue != recordHistoryVisibility else { return }
+      persistRecordHistoryVisibilityPreference()
     }
   }
-  public internal(set) var mergeSimilarClipboardItems = false
+  public internal(set) var mergeSimilarRecords = false
   public var enabledManualWorkflows: [WorkflowDefinition] {
     enabledWorkflows(for: .manual)
   }
@@ -573,16 +597,17 @@ public final class AppModel {
       recognizerID: Self.localSpeechRecognizerID
     )
     workflow.plan.output = WorkflowOutputPhase(
-      actions: [OutputActionReference(id: "stack.push")],
-      deliveryPolicy: DeliveryPolicy(strategy: .stackFirst)
+      actions: [OutputActionReference(id: "record.store")],
+      deliveryPolicy: DeliveryPolicy(strategy: .collectionFirst)
     )
     workflow.metadata.removeValue(forKey: WorkflowMetadataKey.catalog)
     workflow.metadata.removeValue(forKey: WorkflowMetadataKey.triggerGesture)
     workflow.metadata.removeValue(forKey: WorkflowMetadataKey.builtinKind)
     workflow.metadata.removeValue(forKey: WorkflowMetadataKey.exclusiveGroup)
     workflow.metadata.removeValue(forKey: WorkflowMetadataKey.recognizerSelectionMode)
-    workflow.metadata[WorkflowMetadataKey.targetClipboardGroupID] =
-      ClipboardGroup.voiceGroupID.uuidString
+    workflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] =
+      RecordCollection.voiceInputID.rawValue.uuidString
+    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
     return workflow
   }
   public var enabledTextStyleWorkflows: [WorkflowDefinition] {
@@ -594,8 +619,8 @@ public final class AppModel {
   public var canRunAnyManualWorkflow: Bool {
     enabledManualWorkflows.contains(where: canTriggerWorkflow)
   }
-  public var canDeliverTopOfStack: Bool {
-    stackCount > 0 && permissionSnapshot.accessibility == .granted
+  public var canDeliverNextRecord: Bool {
+    recordCount > 0 && permissionSnapshot.accessibility == .granted
   }
   public var hasActiveOrQueuedVoiceRun: Bool {
     isRunning || (audioProcessingQueueSnapshot?.isVisible ?? false)
@@ -607,10 +632,10 @@ public final class AppModel {
     !hasActiveOrQueuedVoiceRun && !isLocalHistoryMaintenanceRunning
       && !isUpdatingHistoryRetentionSettings
   }
-  public var recentVoiceHistoryRecords: [HistoryRecord] {
+  public var recentVoiceHistoryRecords: [WorkflowResultRecord] {
     historyRecords.filter(isVoiceHistoryRecord)
   }
-  public var recentVoiceResultRecords: [HistoryRecord] {
+  public var recentVoiceResultRecords: [WorkflowResultRecord] {
     recentVoiceHistoryRecords.filter { record in
       record.outcome == .completed
         && !(record.finalText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
@@ -632,7 +657,6 @@ public final class AppModel {
   let eventBus: EventBus
   let sessionCoordinator: SessionCoordinator
   let outputActionRegistry: OutputActionRegistry
-  let deliveryStack: DeliveryStack?
   let candidateResolver: CandidateResolver
   let historyRepository: (any HistoryRepository)?
   let runHistoryBrowser: (any RunHistoryBrowsing)?
@@ -685,25 +709,12 @@ public final class AppModel {
     @Sendable (
       WorkflowDefinition
     ) async throws -> AuthorizedWorkflowRunContext
-  let authorizeClipboardItemRunAction:
-    @Sendable (
-      UUID,
-      ClipboardItemVersion,
-      ClipboardItemDryRunOperation,
-      WorkflowDefinition
-    ) async throws -> AuthorizedWorkflowRunContext
   let explainResolvedWorkflowAction:
     @Sendable (
       WorkflowResolvedExecutionPlan
     ) async throws -> WorkflowExplanationReceipt
-  let previewClipboardItemAction:
-    @Sendable (
-      UUID,
-      ClipboardItemDryRunOperation,
-      WorkflowDefinition?
-    ) async throws -> PreparedClipboardItemDryRun
   let writeClipboardTextAction: @MainActor (String) -> Void
-  let pasteTopOfStackAction: () -> Void
+  let deliverNextRecordAction: () -> Void
   let refreshPermissionsAction: () -> Void
   let requestAccessibilityAction: () -> Void
   let requestMicrophoneAction: () -> Void
@@ -711,11 +722,11 @@ public final class AppModel {
   let openMicrophoneSettingsAction: () -> Void
   var requestGlobalInputAction: () -> Void = {}
   var retryGlobalInputAction: () -> Void = {}
-  var beginClipboardPanelShortcutRecordingAction: () -> UUID = { UUID() }
-  var endClipboardPanelShortcutRecordingAction: (UUID) -> Void = { _ in }
-  var commitClipboardPanelShortcutRecordingAction: (UUID, UInt16) -> Void = { _, _ in }
-  var showClipboardPanelAction: () -> Void = {}
-  var setClipboardCaptureEnabledAction: (Bool, UInt64) -> Void = { _, _ in }
+  var beginRecordPanelShortcutRecordingAction: () -> UUID = { UUID() }
+  var endRecordPanelShortcutRecordingAction: (UUID) -> Void = { _ in }
+  var commitRecordPanelShortcutRecordingAction: (UUID, UInt16) -> Void = { _, _ in }
+  var showRecordPanelAction: () -> Void = {}
+  var setSystemClipboardCaptureEnabledAction: (Bool, UInt64) -> Void = { _, _ in }
   var ignoreNextExternalClipboardChangeAction: () -> Void = {}
   var openWorkflowEditorAction: () -> Void = {}
   var workflowLibraryChangedAction: @MainActor () -> Void = {}
@@ -751,8 +762,7 @@ public final class AppModel {
       )
     }
   var stopSpeechPlaybackAction: @MainActor () -> Bool = { false }
-  var updateClipboardPanelHotkeyAction: (HotkeyBindingDescriptor) -> Void = { _ in }
-  var useClipboardItemAction: (ClipboardHistoryItem) -> Void = { _ in }
+  var updateRecordPanelHotkeyAction: (HotkeyBindingDescriptor) -> Void = { _ in }
   var updateLiveSubtitlePanelAction: @MainActor (LiveSubtitleSnapshot?, AppLanguage) -> Void = {
     _, _ in
   }
@@ -818,6 +828,7 @@ public final class AppModel {
   var pendingRuns: [UUID: PendingRunInfo] = [:]
   var pendingInteractiveWorkflowTask: Task<Void, Never>?
   var interactiveWorkflowTaskGeneration = 0
+  var workflowAudioActionTasks: [UUID: Task<Void, Never>] = [:]
   var listenerTask: Task<Void, Never>?
   var eventListenerBarrierContinuations: [UUID: CheckedContinuation<Void, Never>] = [:]
   var eventListenerShutdownTask: Task<Void, Never>?
@@ -845,8 +856,8 @@ public final class AppModel {
   var pendingPrivacySettingsWriteTask: Task<Void, Never>?
   var privacySettingsWriteGeneration = 0
   var pendingLiveSubtitleHideTask: Task<Void, Never>?
-  var pendingLiveSubtitleMeterRefreshTask: Task<Void, Never>?
-  var liveSubtitleMeterRefreshGeneration = 0
+  @ObservationIgnored var pendingLiveSubtitleMeterRefreshTask: Task<Void, Never>?
+  @ObservationIgnored var liveSubtitleMeterRefreshGeneration = 0
   var clipboardUpdateDebounceTask: Task<Void, Never>?
   var historyLoadGeneration = 0
   var runReceiptLoadGeneration = 0
@@ -878,17 +889,17 @@ public final class AppModel {
   var openAIVerificationGeneration = 0
   var openAIVerificationTask: Task<Void, Never>?
   var failedAudioRecoveryRetryTasks: [UUID: Task<Void, Never>] = [:]
+  var failedAudioRecoveryLoadTask: Task<Void, Never>?
+  var failedAudioRecoveryLoadGeneration = 0
   var hasBegunApplicationShutdown = false {
     didSet {
       guard hasBegunApplicationShutdown, !oldValue else { return }
       cancelPendingLiveSubtitleMeterRefresh()
     }
   }
-  let clipboardMutationTaskOwner = AppModelClipboardMutationTaskOwner()
   let workflowExplanationTaskOwner = WorkflowExplanationTaskOwner()
   var workflowExplanationGeneration = 0
   var isApplyingVocabularyLibrary = false
-  var hasReceivedClipboardSnapshot = false
   let liveSubtitlePreparingHideDelay: Duration
 
   public init(
@@ -896,7 +907,7 @@ public final class AppModel {
     eventBus: EventBus,
     sessionCoordinator: SessionCoordinator,
     outputActionRegistry: OutputActionRegistry,
-    deliveryStack: DeliveryStack? = nil,
+    recordWorkspace: RecordWorkspaceModel? = nil,
     candidateResolver: CandidateResolver,
     historyRepository: (any HistoryRepository)? = nil,
     runHistoryBrowser: (any RunHistoryBrowsing)? = nil,
@@ -1001,15 +1012,6 @@ public final class AppModel {
       ) async throws -> AuthorizedWorkflowRunContext = { _ in
         throw SessionCoordinator.SessionError.privacyAuthorizationRequired
       },
-    authorizeClipboardItemRunAction:
-      @escaping @Sendable (
-        UUID,
-        ClipboardItemVersion,
-        ClipboardItemDryRunOperation,
-        WorkflowDefinition
-      ) async throws -> AuthorizedWorkflowRunContext = { _, _, _, _ in
-        throw SessionCoordinator.SessionError.privacyAuthorizationRequired
-      },
     explainResolvedWorkflowAction:
       @escaping @Sendable (
         WorkflowResolvedExecutionPlan
@@ -1030,16 +1032,8 @@ public final class AppModel {
           ]
         )
       },
-    previewClipboardItemAction:
-      @escaping @Sendable (
-        UUID,
-        ClipboardItemDryRunOperation,
-        WorkflowDefinition?
-      ) async throws -> PreparedClipboardItemDryRun = { _, _, _ in
-        throw ClipboardItemDryRunPreparationError.itemUnavailable
-      },
     writeClipboardTextAction: @escaping @MainActor (String) -> Void,
-    pasteTopOfStackAction: @escaping () -> Void,
+    deliverNextRecordAction: @escaping () -> Void,
     permissionSnapshot: PermissionSnapshot,
     language: AppLanguage = .preferred,
     refreshPermissionsAction: @escaping () -> Void,
@@ -1082,9 +1076,9 @@ public final class AppModel {
     // Capture remains closed until durable settings prove it is enabled.
     // Test and preview compositions that explicitly skip loading retain the
     // historical enabled behavior when they still provide a settings store.
-    self.clipboardCaptureEnabled = settingsStore != nil && !loadsPersistentSettingsOnInitialization
-    self.clipboardHistoryVisibility = .remainingOnly
-    self.clipboardPanelHotkeyBinding = .doubleCommand
+    self.systemClipboardCaptureEnabled = settingsStore != nil && !loadsPersistentSettingsOnInitialization
+    self.recordHistoryVisibility = .remainingOnly
+    self.recordPanelHotkeyBinding = .doubleCommand
     self.preferredSpeechEngine = .local
     self.builtinPushToTalkOutputMode = .pasteIntoApp
     self.longRecordingModeEnabled = false
@@ -1124,7 +1118,7 @@ public final class AppModel {
     self.eventBus = eventBus
     self.sessionCoordinator = sessionCoordinator
     self.outputActionRegistry = outputActionRegistry
-    self.deliveryStack = deliveryStack
+    self.recordWorkspace = recordWorkspace ?? RecordWorkspaceModel(store: RecordStore())
     self.candidateResolver = candidateResolver
     self.historyRepository = historyRepository
     self.runHistoryBrowser = runHistoryBrowser
@@ -1166,26 +1160,15 @@ public final class AppModel {
     self.refreshFailedAudioRecoveryAction = refreshFailedAudioRecoveryAction
     self.loadFailedAudioRecoveryReceiptsAction = loadFailedAudioRecoveryReceiptsAction
     self.authorizeWorkflowRunAction = authorizeWorkflowRunAction
-    self.authorizeClipboardItemRunAction = authorizeClipboardItemRunAction
     self.explainResolvedWorkflowAction = explainResolvedWorkflowAction
-    self.previewClipboardItemAction = previewClipboardItemAction
     self.writeClipboardTextAction = writeClipboardTextAction
-    self.pasteTopOfStackAction = pasteTopOfStackAction
+    self.deliverNextRecordAction = deliverNextRecordAction
     self.refreshPermissionsAction = refreshPermissionsAction
     self.requestAccessibilityAction = requestAccessibilityAction
     self.requestMicrophoneAction = requestMicrophoneAction
     self.openAccessibilitySettingsAction = openAccessibilitySettingsAction
     self.openMicrophoneSettingsAction = openMicrophoneSettingsAction
     synchronizeWorkflowEnabledStates()
-    if let deliveryStack {
-      Task { [weak self] in
-        let snapshot = await deliveryStack.clipboardSnapshot()
-        await MainActor.run {
-          guard let self, !self.hasReceivedClipboardSnapshot else { return }
-          self.applyClipboardStoreSnapshot(snapshot)
-        }
-      }
-    }
     if loadsPersistentSettingsOnInitialization {
       loadSettings()
     } else {
@@ -1193,7 +1176,7 @@ public final class AppModel {
       openAICredentialAvailability = .inaccessible
       if settingsStore == nil {
         unavailableScalarSettingKeys.formUnion(
-          ScalarSettingsDomain.clipboard.settingKeys
+          ScalarSettingsDomain.systemClipboard.settingKeys
         )
         applyResolvedClipboardCapturePreference(enabled: false)
       }
@@ -1211,7 +1194,7 @@ struct PendingRunInfo {
   let workflowID: UUID
   let workflow: WorkflowPresentation
   let trigger: WorkflowRunTriggerKind
-  let isStackRelated: Bool
+  let isRecordRelated: Bool
 }
 
 extension AppModel {
@@ -1241,8 +1224,8 @@ extension ActionResult {
       return language == .english ? "injected" : "已注入"
     case .copiedToClipboard:
       return language == .english ? "copied to clipboard" : "已复制到剪贴板"
-    case .pushedToStack:
-      return language == .english ? "pushed to stack" : "已压入栈"
+    case .storedRecord:
+      return language == .english ? "stored as a record" : "已存为记录"
     case .externalOutput(let destination):
       return language == .english
         ? "external output completed (\(destination))" : "外部输出已完成（\(destination)）"

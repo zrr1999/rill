@@ -54,7 +54,7 @@ final class VocabularyPromptModelsTests: XCTestCase {
             replacement: "语音识别组",
             scope: VocabularyRuleScope(
                 bundleIdentifier: "com.apple.Notes",
-                clipboardGroupID: groupID,
+                recordCollectionID: groupID,
                 locale: "zh-CN"
             )
         )
@@ -69,7 +69,7 @@ final class VocabularyPromptModelsTests: XCTestCase {
             rules: [matchingRule, nonMatchingRule],
             context: VocabularyRuleContext(
                 bundleIdentifier: "com.apple.Notes",
-                clipboardGroupID: groupID,
+                recordCollectionID: groupID,
                 locale: "zh-CN"
             )
         )

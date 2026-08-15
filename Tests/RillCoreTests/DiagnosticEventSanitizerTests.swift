@@ -60,7 +60,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       message: "runtime state",
       metadata: [
         "pushToTalk": "active",
-        "clipboardPanelShortcut": "disabled-by-preference",
+        "recordPanelShortcut": "disabled-by-preference",
         "commandVInterception": "disabled-by-preference",
       ]
     )
@@ -249,7 +249,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       event: "session.action",
       message: "safe",
       metadata: [
-        "actionID": "inject.text",
+        "actionID": "focused-application.insert",
         "provider": "sherpa-onnx.local",
         "provider.kind": "sherpa-onnx",
         "provider.model": "qwen3-asr-0.6b-int8",
@@ -266,7 +266,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
 
   func testSanitizeRejectsUnknownValueInsideOtherwiseClosedCodeList() {
     let event = DiagnosticEvent(
-      subsystem: .clipboard,
+      subsystem: .systemClipboard,
       level: .warning,
       event: "clipboard.capture.skipped",
       message: "unsafe",
@@ -401,7 +401,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
 
   func testSanitizeDropsExactApplicationAndProcessIdentifiers() {
     let event = DiagnosticEvent(
-      subsystem: .clipboard,
+      subsystem: .systemClipboard,
       level: .warning,
       event: "clipboard.inject.focus.changed",
       message: "unsafe",
@@ -593,12 +593,12 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let runID = UUID()
     let event = DiagnosticEvent(
       runID: runID,
-      subsystem: .clipboard,
+      subsystem: .systemClipboard,
       level: .info,
       event: "clipboard.trigger.loop-prevented",
       message: "private clipboard body canary",
       metadata: [
-        "eventKind": "itemEdited",
+        "eventKind": "recordEdited",
         "groupID": UUID().uuidString,
         "itemID": UUID().uuidString,
         "outcome": "skipped",
@@ -617,7 +617,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     XCTAssertEqual(
       sanitized.metadata,
       [
-        "eventKind": "itemEdited",
+        "eventKind": "recordEdited",
         "outcome": "skipped",
         "reason": "loopPrevented",
       ]
@@ -628,7 +628,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
 
   func testSanitizeRejectsUnknownClipboardTriggerDecisionValues() {
     let event = DiagnosticEvent(
-      subsystem: .clipboard,
+      subsystem: .systemClipboard,
       level: .warning,
       event: "clipboard.trigger.skipped",
       message: "unsafe",
@@ -645,7 +645,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
   func testEveryWorkflowSkipCodeIsAClosedDiagnosticReason() {
     for reason in WorkflowRunSkipCode.allCases {
       let event = DiagnosticEvent(
-        subsystem: .clipboard,
+        subsystem: .systemClipboard,
         level: .info,
         event: "clipboard.trigger.skipped",
         message: "safe",

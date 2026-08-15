@@ -43,9 +43,8 @@ public enum WorkflowExplanationTransformKind: String, Codable, Sendable, Equatab
 
 public enum WorkflowExplanationOutputEffect: String, Codable, Sendable, Equatable {
     case clipboardWrite
-    case clipboardHistoryWrite
     case focusedApplicationWrite
-    case deliveryStackWrite
+    case recordStoreWrite
     case webhookRequest
     case shortcutInvocation
     case fileAppend
