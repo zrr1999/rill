@@ -27,11 +27,7 @@ extension SettingsView {
         .accessibilityIdentifier("settings.local-speech-unavailable")
       }
 
-      Text(
-        model.language == .english
-          ? "Models are enabled here; each workflow chooses its STT model, TTS model, voice, language, prompt, and streaming style."
-          : "在这里启用模型；每个 workflow 独立选择 STT 模型、TTS 模型、音色、语言、提示词和流式风格。"
-      )
+      Text(L10n.settingsText(.settingsSpeechModelEnablementDetail, language: model.language))
         .font(.caption)
         .foregroundStyle(.secondary)
 
@@ -58,82 +54,84 @@ extension SettingsView {
             speechModelPoolSettings
 
             if model.speechModelResourceCatalog.isEmpty {
-            if !model.trustedLocalSpeechModels.isEmpty {
-              Picker(
-                UIStrings.text(.localSpeechModel, language: model.language),
-                selection: Binding(
-                  get: { model.selectedTrustedLocalSpeechModelIdentifier },
-                  set: { _ = model.setPreferredLocalSpeechModel($0) }
+              if !model.trustedLocalSpeechModels.isEmpty {
+                Picker(
+                  UIStrings.text(.localSpeechModel, language: model.language),
+                  selection: Binding(
+                    get: { model.selectedTrustedLocalSpeechModelIdentifier },
+                    set: { _ = model.setPreferredLocalSpeechModel($0) }
+                  )
+                ) {
+                  ForEach(modelsForSelectedLocalSpeechEngine) { descriptor in
+                    Text(
+                      model.language == .english
+                        ? descriptor.englishName
+                        : descriptor.simplifiedChineseName
+                    )
+                    .tag(descriptor.id)
+                  }
+                }
+                .pickerStyle(.menu)
+                .disabled(
+                  model.isLoadingSettings
+                    || !model.canMutateScalarSettings(in: .localSpeech)
                 )
-              ) {
-                ForEach(modelsForSelectedLocalSpeechEngine) { descriptor in
+                .accessibilityIdentifier("settings.local-speech.model")
+
+                if let descriptor = modelsForSelectedLocalSpeechEngine.first(where: {
+                  $0.id == model.selectedTrustedLocalSpeechModelIdentifier
+                }) {
                   Text(
                     model.language == .english
-                      ? descriptor.englishName
-                      : descriptor.simplifiedChineseName
+                      ? descriptor.englishDetail
+                      : descriptor.simplifiedChineseDetail
                   )
-                  .tag(descriptor.id)
-                }
-              }
-              .pickerStyle(.menu)
-              .disabled(
-                model.isLoadingSettings
-                  || !model.canMutateScalarSettings(in: .localSpeech)
-              )
-              .accessibilityIdentifier("settings.local-speech.model")
-
-              if let descriptor = modelsForSelectedLocalSpeechEngine.first(where: {
-                $0.id == model.selectedTrustedLocalSpeechModelIdentifier
-              }) {
-                Text(
-                  model.language == .english
-                    ? descriptor.englishDetail
-                    : descriptor.simplifiedChineseDetail
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("settings.local-speech.trusted-model-detail")
-                Text(model.localSpeechModelHardwareDescription(descriptor))
                   .font(.caption)
                   .foregroundStyle(.secondary)
-                  .accessibilityIdentifier(
-                    "settings.local-speech.trusted-model-hardware"
-                  )
-                if model.recommendedLocalSpeechModelIdentifier != descriptor.id {
-                  Button(
-                    model.language == .english
-                      ? "Use hardware recommendation"
-                      : "使用硬件推荐"
-                  ) {
-                    model.selectRecommendedLocalSpeechModel()
+                  .accessibilityIdentifier("settings.local-speech.trusted-model-detail")
+                  Text(model.localSpeechModelHardwareDescription(descriptor))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier(
+                      "settings.local-speech.trusted-model-hardware"
+                    )
+                  if model.recommendedLocalSpeechModelIdentifier != descriptor.id {
+                    Button(
+                      L10n.settingsText(
+                        .settingsUseHardwareRecommendation,
+                        language: model.language
+                      )
+                    ) {
+                      model.selectRecommendedLocalSpeechModel()
+                    }
+                    .controlSize(.small)
+                    .disabled(model.isLoadingSettings)
+                    .accessibilityIdentifier(
+                      "settings.local-speech.use-hardware-recommendation"
+                    )
                   }
-                  .controlSize(.small)
-                  .disabled(model.isLoadingSettings)
-                  .accessibilityIdentifier(
-                    "settings.local-speech.use-hardware-recommendation"
+                  Text(
+                    L10n.settingsText(
+                      .settingsStreamingPreviewModelDetail,
+                      language: model.language
+                    )
                   )
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+                  .accessibilityIdentifier("settings.local-speech.streaming-preview-model")
                 }
-                Text(
-                  model.language == .english
-                    ? "Live preview uses the workflow's Qwen model; the sealed WAV is always recognized offline for the authoritative final text."
-                    : "实时预览使用 workflow 选择的 Qwen 模型；录音封口后始终以 WAV 离线识别生成唯一正式文本。"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityIdentifier("settings.local-speech.streaming-preview-model")
-              }
-            } else {
-              Picker(
-                UIStrings.text(.localSpeechModel, language: model.language),
-                selection: $model.localSpeechModelOption
-              ) {
-                ForEach(LegacyWhisperModelOption.allCases) { option in
-                  Text(model.localSpeechModelOptionLabel(option))
-                    .tag(option)
+              } else {
+                Picker(
+                  UIStrings.text(.localSpeechModel, language: model.language),
+                  selection: $model.localSpeechModelOption
+                ) {
+                  ForEach(LegacyWhisperModelOption.allCases) { option in
+                    Text(model.localSpeechModelOptionLabel(option))
+                      .tag(option)
+                  }
                 }
+                .pickerStyle(.menu)
               }
-              .pickerStyle(.menu)
-            }
 
             }
 
@@ -368,11 +366,7 @@ extension SettingsView {
         .disabled(model.hasUnavailableScalarSettings(in: .openAI))
         .accessibilityIdentifier("settings.openai.model")
 
-        Text(
-          model.language == .english
-            ? "Model ID: \(model.openAIModel)"
-            : "模型 ID：\(model.openAIModel)"
-        )
+        Text(L10n.settingsOpenAIModelID(model.openAIModel, language: model.language))
         .font(.caption.monospaced())
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
@@ -449,22 +443,7 @@ extension SettingsView {
   }
 
   func openAIModelLabel(_ selection: OpenAIModelSelection) -> String {
-    switch selection {
-    case .luna:
-      model.language == .english
-        ? "Luna — high volume (gpt-5.6-luna)"
-        : "Luna — 高吞吐 (gpt-5.6-luna)"
-    case .terra:
-      model.language == .english
-        ? "Terra — balanced (gpt-5.6-terra)"
-        : "Terra — 均衡 (gpt-5.6-terra)"
-    case .sol:
-      model.language == .english
-        ? "Sol — highest capability (gpt-5.6-sol)"
-        : "Sol — 最高能力 (gpt-5.6-sol)"
-    case .custom:
-      model.language == .english ? "Custom model ID" : "自定义模型 ID"
-    }
+    L10n.openAIModelLabel(selection, language: model.language)
   }
 
   var usesThirdPartyOpenAIEndpoint: Bool {
@@ -475,57 +454,14 @@ extension SettingsView {
   }
 
   var thirdPartyOpenAICompatibilityHint: String {
-    switch model.language {
-    case .english:
-      "Verification uses the exact model ID shown above. Third-party providers must expose gpt-5.6-luna for the Luna preset to succeed."
-    case .simplifiedChinese:
-      "验证会使用上方显示的准确模型 ID。使用 Luna 预设时，第三方服务必须实际开放 gpt-5.6-luna。"
-    }
+    L10n.settingsText(.settingsThirdPartyOpenAIHint, language: model.language)
   }
 
   var openAIVerificationFailureMessage: String {
-    switch (model.language, model.openAIVerificationFailure) {
-    case (.english, .credentialUnavailable):
-      "The saved API key could not be loaded."
-    case (.simplifiedChinese, .credentialUnavailable):
-      "无法读取已保存的 API Key。"
-    case (.english, .configurationInvalid):
-      "The endpoint rejected this request or model ID. Check the exact model available from the provider."
-    case (.simplifiedChinese, .configurationInvalid):
-      "该地址拒绝了当前请求或模型 ID。请核对服务商实际开放的模型 ID。"
-    case (.english, .authenticationFailed):
-      "Authentication failed. Check whether the API key belongs to this endpoint."
-    case (.simplifiedChinese, .authenticationFailed):
-      "身份验证失败。请确认 API Key 属于当前服务地址。"
-    case (.english, .rateLimited):
-      "The account is rate limited or has insufficient quota. Check the provider account and retry."
-    case (.simplifiedChinese, .rateLimited):
-      "账号受到限流或额度不足。请检查服务商账号后重试。"
-    case (.english, .timedOut):
-      "The verification request timed out."
-    case (.simplifiedChinese, .timedOut):
-      "验证请求超时。"
-    case (.english, .networkFailed):
-      "The endpoint could not be reached. Check the network and Base URL."
-    case (.simplifiedChinese, .networkFailed):
-      "无法连接该地址。请检查网络和 Base URL。"
-    case (.english, .refused):
-      "The model refused the verification request."
-    case (.simplifiedChinese, .refused):
-      "模型拒绝了验证请求。"
-    case (.english, .incomplete):
-      "The endpoint returned an incomplete response."
-    case (.simplifiedChinese, .incomplete):
-      "服务返回了不完整响应。"
-    case (.english, .invalidResponse):
-      "The endpoint returned empty content or an unrecognized Responses API payload."
-    case (.simplifiedChinese, .invalidResponse):
-      "服务返回了空内容或无法识别的 Responses API 响应。"
-    case (.english, .unknown), (.english, nil):
-      L10n.string(.settingsOpenAIVerificationFailed, language: .english)
-    case (.simplifiedChinese, .unknown), (.simplifiedChinese, nil):
-      L10n.string(.settingsOpenAIVerificationFailed, language: .simplifiedChinese)
-    }
+    L10n.openAIVerificationFailureMessage(
+      model.openAIVerificationFailure,
+      language: model.language
+    )
   }
 
   func providerInputRow<Content: View>(
@@ -567,21 +503,15 @@ extension SettingsView {
   var speechModelPoolSettings: some View {
     if !model.speechModelResourceCatalog.isEmpty {
       VStack(alignment: .leading, spacing: 10) {
-        Text(model.language == .english ? "Available model pool" : "可用模型池")
+        Text(L10n.settingsText(.settingsModelPoolTitle, language: model.language))
           .font(.caption.weight(.semibold))
-        Text(
-          model.language == .english
-            ? "Workflows choose models and voices. Enable models here, then optionally keep frequently used models resident."
-            : "模型和音色由各 workflow 选择。这里仅启用可用模型，并可选择让常用模型常驻。"
-        )
+        Text(L10n.settingsText(.settingsModelPoolDescription, language: model.language))
         .font(.caption)
         .foregroundStyle(.secondary)
 
         if model.speechModelPoolDegradedByMemoryPressure {
           Label(
-            model.language == .english
-              ? "Memory pressure unloaded resident models; they will reload on demand."
-              : "因系统内存压力，常驻模型已临时卸载；下次使用时会按需重载。",
+            L10n.settingsText(.settingsModelPoolDegraded, language: model.language),
             systemImage: RillSystemSymbol.memorychip.rawValue
           )
           .font(.caption)
@@ -602,7 +532,7 @@ extension SettingsView {
             .disabled(model.isLoadingSettings)
 
             Toggle(
-              model.language == .english ? "Keep resident" : "保持常驻",
+              L10n.settingsText(.settingsKeepResident, language: model.language),
               isOn: Binding(
                 get: { model.residentSpeechModelIDs.contains(descriptor.id) },
                 set: { model.setSpeechModelResident(descriptor.id, resident: $0) }
@@ -621,28 +551,24 @@ extension SettingsView {
         if let budget = model.pendingResidentSpeechModelBudget {
           VStack(alignment: .leading, spacing: 6) {
             Label(
-              model.language == .english
-                ? "Estimated resident memory exceeds 20%"
-                : "预计常驻内存超过整机内存的 20%",
+              L10n.settingsText(.settingsResidentMemoryWarning, language: model.language),
               systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
             )
             .foregroundStyle(.orange)
             Text(
-              String(
-                format: model.language == .english
-                  ? "Estimated %.2f GB (%.1f%%): %@"
-                  : "预计 %.2f GB（%.1f%%）：%@",
-                Double(budget.estimatedPeakByteCount) / 1_073_741_824,
-                budget.estimatedFraction * 100,
-                budget.models.map(\.id).joined(separator: ", ")
+              L10n.settingsResidentMemoryBudget(
+                estimatedGigabytes: Double(budget.estimatedPeakByteCount) / 1_073_741_824,
+                estimatedFractionPercent: budget.estimatedFraction * 100,
+                modelList: budget.models.map(\.id).joined(separator: ", "),
+                language: model.language
               )
             )
             .font(.caption)
             HStack {
-              Button(model.language == .english ? "Enable anyway" : "仍然启用") {
+              Button(L10n.settingsText(.settingsEnableAnyway, language: model.language)) {
                 model.confirmPendingResidentSpeechModels()
               }
-              Button(model.language == .english ? "Cancel" : "取消", role: .cancel) {
+              Button(L10n.recordText(.cancel, language: model.language), role: .cancel) {
                 model.cancelPendingResidentSpeechModels()
               }
             }

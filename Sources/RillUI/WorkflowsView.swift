@@ -117,7 +117,7 @@ extension WorkflowsView {
                         NSWorkspace.shared.open(directoryURL)
                     } label: {
                         Label(
-                            model.language == .english ? "Open Folder" : "打开目录",
+                            L10n.workflowText(.workflowOpenFolder, language: model.language),
                             systemImage: RillSystemSymbol.folder.rawValue
                         )
                     }
@@ -138,7 +138,7 @@ extension WorkflowsView {
                         }
                     } label: {
                         Label(
-                            model.language == .english ? "Reload" : "重新加载",
+                            L10n.workflowText(.workflowReload, language: model.language),
                             systemImage: RillSystemSymbol.arrowClockwise.rawValue
                         )
                     }
@@ -160,11 +160,7 @@ extension WorkflowsView {
 
             if let directoryURL = model.workflowConfigurationDirectoryURL {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(
-                        model.language == .english
-                            ? "TOML files are the source of truth. This window is a visual editor for them."
-                            : "TOML 文件是唯一事实来源；此窗口只是它们的可视化编辑器。"
-                    )
+                    Text(L10n.workflowText(.workflowTOMLSourceOfTruthHint, language: model.language))
                     Text(directoryURL.path)
                         .font(.caption.monospaced())
                         .textSelection(.enabled)
@@ -255,7 +251,7 @@ extension WorkflowsView {
                                     NSWorkspace.shared.open(fileURL)
                                 } label: {
                                     Label(
-                                        model.language == .english ? "Edit TOML" : "编辑 TOML",
+                                        L10n.workflowText(.workflowEditTOML, language: model.language),
                                         systemImage: RillSystemSymbol.docText.rawValue
                                     )
                                 }
@@ -279,9 +275,7 @@ extension WorkflowsView {
 
                     if isInspectingBuiltinWorkflow {
                         Label(
-                            model.language == .english
-                                ? "Changes are saved as a TOML override for this built-in workflow. Restore Defaults removes the override."
-                                : "修改会保存为此内置工作流的 TOML 覆盖；“恢复默认”会移除该覆盖。",
+                            L10n.workflowText(.workflowBuiltinOverrideHint, language: model.language),
                             systemImage: RillSystemSymbol.arrowTriangle2Circlepath.rawValue
                         )
                         .font(.caption)
@@ -305,18 +299,12 @@ extension WorkflowsView {
 
     var editorSubtitle: String {
         if isInspectingBuiltinWorkflow {
-            return model.language == .english
-                ? "Edit this built-in workflow directly, or restore its bundled defaults later."
-                : "直接编辑这个内置工作流；之后也可以恢复到应用内置默认值。"
+            return L10n.workflowText(.workflowEditorSubtitleBuiltin, language: model.language)
         }
         if editingWorkflowID != nil {
-            return model.language == .english
-                ? "Edit the selected voice mode, text style, and output destination."
-                : "编辑当前语音模式、文字风格和输出位置。"
+            return L10n.workflowText(.workflowEditorSubtitleEditing, language: model.language)
         }
-        return model.language == .english
-            ? "Create a reusable voice mode with a text style and output destination."
-            : "创建可复用的语音模式，配置文字风格和输出位置。"
+        return L10n.workflowText(.workflowEditorSubtitleNew, language: model.language)
     }
 
     var canExplainSelectedWorkflow: Bool {
@@ -331,7 +319,7 @@ extension WorkflowsView {
             editorNodeCard(
                 icon: RillSystemSymbol.boltCircleFill.rawValue,
                 tint: .orange,
-                title: model.language == .english ? "Event" : "事件"
+                title: L10n.workflowText(.workflowEventNodeTitle, language: model.language)
             ) {
                 TextField(
                     UIStrings.text(.workflowNameField, language: model.language),
@@ -340,7 +328,7 @@ extension WorkflowsView {
                 .textFieldStyle(.roundedBorder)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(model.language == .english ? "Trigger Type" : "触发类型")
+                    Text(L10n.workflowText(.workflowTriggerTypeLabel, language: model.language))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
 
@@ -348,13 +336,13 @@ extension WorkflowsView {
                         UIStrings.text(.workflowTrigger, language: model.language),
                         selection: $draft.eventType
                     ) {
-                        Text(model.language == .english ? "⌨ Hotkey" : "⌨ 快捷键")
+                        Text(L10n.workflowText(.workflowTriggerHotkey, language: model.language))
                             .tag(WorkflowEditorDraft.EventType.hotkey)
-                        Text(model.language == .english ? "👆 Manual" : "👆 手动")
+                        Text(L10n.workflowText(.workflowTriggerManual, language: model.language))
                             .tag(WorkflowEditorDraft.EventType.manual)
-                        Text(model.language == .english ? "☰ Menu Bar" : "☰ 菜单栏")
+                        Text(L10n.workflowText(.workflowTriggerMenuBar, language: model.language))
                             .tag(WorkflowEditorDraft.EventType.menuBar)
-                        Text(model.language == .english ? "◉ Wake Word" : "◉ 唤醒词")
+                        Text(L10n.workflowText(.workflowTriggerWakeWord, language: model.language))
                             .tag(WorkflowEditorDraft.EventType.wakeWord)
                     }
                     .labelsHidden()
@@ -363,31 +351,25 @@ extension WorkflowsView {
 
                 if draft.eventType == .wakeWord {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(model.language == .english ? "Wake phrases" : "唤醒短语")
+                        Text(L10n.workflowText(.workflowWakePhrasesLabel, language: model.language))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
                         TextField(
-                            model.language == .english
-                                ? "One phrase per line (1–4)"
-                                : "每行一个短语（1–4 个）",
+                            L10n.workflowText(.workflowWakePhrasesPlaceholder, language: model.language),
                             text: $draft.wakePhrasesText,
                             axis: .vertical
                         )
                         .lineLimit(1...4)
                         .textFieldStyle(.roundedBorder)
-                        Text(
-                            model.language == .english
-                                ? "Local listening is off by default. Prepare the selected local Qwen ASR in Voice settings before enabling this workflow."
-                                : "本地监听默认关闭；启用此工作流前，请先在语音设置中准备当前本地 Qwen ASR。"
-                        )
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        Text(L10n.workflowText(.workflowWakePhrasesHint, language: model.language))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
                 if !draft.eventType.isVoiceEvent {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(model.language == .english ? "Source Collection" : "来源记录集")
+                        Text(UIStrings.text(.workflowSourceCollection, language: model.language))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
 
@@ -398,7 +380,7 @@ extension WorkflowsView {
                                 set: { draft.sourceCollectionID = $0 }
                             )
                         ) {
-                            Text(model.language == .english ? "Any collection" : "任意记录集").tag(nil as UUID?)
+                            Text(L10n.workflowText(.workflowAnyCollection, language: model.language)).tag(nil as UUID?)
                             ForEach(model.recordWorkspace.snapshot.collections) { collection in
                                 Text(collection.name).tag(collection.id.rawValue as UUID?)
                             }
@@ -414,7 +396,7 @@ extension WorkflowsView {
             editorNodeCard(
                 icon: RillSystemSymbol.line3HorizontalDecreaseCircleFill.rawValue,
                 tint: .teal,
-                title: model.language == .english ? "Condition" : "条件"
+                title: L10n.workflowText(.workflowConditionNodeTitle, language: model.language)
             ) {
                 if draft.eventType.isVoiceEvent {
                     if draft.destination != .pasteIntoApp {
@@ -425,17 +407,13 @@ extension WorkflowsView {
                         .toggleStyle(.checkbox)
                         .font(.caption)
                     } else {
-                        Text(
-                            model.language == .english
-                                ? "No additional conditions for this trigger type."
-                                : "该触发类型无额外条件。"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        Text(L10n.workflowText(.workflowNoAdditionalConditions, language: model.language))
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
                     }
                 } else {
                     Toggle(
-                        model.language == .english ? "Exclude polish-generated items" : "排除润色生成的条目",
+                        L10n.workflowText(.workflowExcludePolishItems, language: model.language),
                         isOn: $draft.excludePolishTag
                     )
                     .toggleStyle(.checkbox)
@@ -448,7 +426,7 @@ extension WorkflowsView {
             editorNodeCard(
                 icon: RillSystemSymbol.playCircleFill.rawValue,
                 tint: .green,
-                title: model.language == .english ? "Mode & Output" : "模式与输出"
+                title: L10n.workflowText(.workflowModeOutputNodeTitle, language: model.language)
             ) {
                 if draft.eventType.isVoiceEvent {
                     voiceActionContent
@@ -476,7 +454,7 @@ extension WorkflowsView {
 
                 if isInspectingBuiltinWorkflow, let selectedWorkflow {
                     Button(
-                        model.language == .english ? "Restore Defaults" : "恢复默认"
+                        L10n.workflowText(.workflowRestoreDefaults, language: model.language)
                     ) {
                         restoreBuiltInWorkflow(selectedWorkflow)
                     }
@@ -593,13 +571,13 @@ extension WorkflowsView {
     func postProcessStepKindLabel(_ kind: PostProcessStepKind) -> String {
         switch kind {
         case .normalizeWhitespace:
-            return model.language == .english ? "Normalize Whitespace" : "标准化空白"
+            return L10n.workflowText(.workflowStepNormalizeWhitespace, language: model.language)
         case .llmRewrite:
-            return model.language == .english ? "LLM Polish / Rewrite" : "LLM 润色 / 改写"
+            return L10n.workflowText(.workflowStepLLMRewrite, language: model.language)
         case .llmAnswer:
-            return model.language == .english ? "LLM Answer" : "LLM 回答"
+            return L10n.workflowText(.workflowStepLLMAnswer, language: model.language)
         case .snippetReplacement:
-            return model.language == .english ? "Snippet Replacement" : "片段替换"
+            return L10n.workflowText(.workflowStepSnippetReplacement, language: model.language)
         }
     }
 
@@ -644,9 +622,10 @@ extension WorkflowsView {
 
     func beginEditing(_ workflow: WorkflowDefinition) {
         guard let draft = WorkflowEditorDraft(workflow: workflow) else {
-            model.workflowEditorError = model.language == .english
-                ? "This workflow cannot be edited in the current editor."
-                : "当前编辑器暂不支持编辑这个工作流。"
+            model.workflowEditorError = L10n.workflowText(
+                .workflowNotEditableError,
+                language: model.language
+            )
             return
         }
 

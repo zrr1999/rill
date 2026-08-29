@@ -45,9 +45,10 @@ extension AppModel {
 
     public func clearRunHistory() {
         guard !hasActiveOrQueuedVoiceRun else {
-            localHistoryMaintenanceBlockedReason = language == .english
-                ? "Finish the active or queued voice run before clearing run and diagnostic history."
-                : "请先完成当前或排队中的语音运行，再清除运行与诊断历史。"
+            localHistoryMaintenanceBlockedReason = L10n.runText(
+                .clearRunHistoryBlockedActiveRun,
+                language: language
+            )
             return
         }
         guard canClearRunHistory else { return }
@@ -121,9 +122,10 @@ extension AppModel {
         }
         guard areHistoryRetentionSettingsAvailable else {
             shouldStartPeriodicHistoryRetentionMaintenance = false
-            localHistoryMaintenanceBlockedReason = language == .english
-                ? "Automatic history cleanup is paused because saved retention settings could not be loaded."
-                : "无法加载已保存的留存设置，自动历史清理保持暂停。"
+            localHistoryMaintenanceBlockedReason = L10n.runText(
+                .retentionCleanupPausedLoadFailed,
+                language: language
+            )
             return
         }
         guard let localHistoryMaintenance else {
@@ -132,9 +134,10 @@ extension AppModel {
                 runHistoryRetentionPeriod != .forever else {
                 return
             }
-            localHistoryMaintenanceBlockedReason = language == .english
-                ? "The retention setting was saved, but cleanup is unavailable. Cleanup will be retried after the maintenance service is restored or Rill restarts."
-                : "留存设置已保存，但清理服务不可用；维护服务恢复或 Rill 重启后将再次尝试。"
+            localHistoryMaintenanceBlockedReason = L10n.runText(
+                .retentionCleanupServiceUnavailable,
+                language: language
+            )
             return
         }
         guard !isLocalHistoryMaintenanceRunning else {
@@ -238,9 +241,10 @@ extension AppModel {
         guard !isUpdatingHistoryRetentionSettings, !isLocalHistoryMaintenanceRunning else { return }
         guard !isRestoringSettings else { return }
         guard let settingsStore else {
-            historyRetentionSettingsWriteError = language == .english
-                ? "Retention settings cannot be saved because settings storage is unavailable."
-                : "设置存储不可用，无法保存留存设置。"
+            historyRetentionSettingsWriteError = L10n.runText(
+                .retentionSaveStorageUnavailable,
+                language: language
+            )
             refreshHistoryRetentionSettingsErrorPresentation()
             return
         }
@@ -276,13 +280,17 @@ extension AppModel {
                 guard let self else { return }
                 self.isUpdatingHistoryRetentionSettings = false
                 guard !self.hasBegunApplicationShutdown else { return }
-                self.historyRetentionSettingsWriteError = self.language == .english
-                    ? "Retention setting was not saved; no history was removed. Repair configuration storage, then retry."
-                    : "留存设置未能保存，因此没有移除任何历史记录。请修复配置存储后重试。"
+                self.historyRetentionSettingsWriteError = L10n.runText(
+                    .retentionSaveFailedRepair,
+                    language: self.language
+                )
                 self.refreshHistoryRetentionSettingsErrorPresentation()
                 self.append(
-                    english: "History retention settings could not be saved. Cleanup was not started.",
-                    simplifiedChinese: "历史留存设置无法保存，未启动清理。"
+                    english: L10n.runText(.retentionSaveFailedNotice, language: .english),
+                    simplifiedChinese: L10n.runText(
+                        .retentionSaveFailedNotice,
+                        language: .simplifiedChinese
+                    )
                 )
             }
         }
@@ -316,9 +324,10 @@ extension AppModel {
 
     private func finishWithUnavailableMaintenanceService() {
         isLocalHistoryMaintenanceRunning = false
-        localHistoryMaintenanceBlockedReason = language == .english
-            ? "Local history maintenance is unavailable. No history was removed."
-            : "本地历史维护服务不可用，没有移除任何历史记录。"
+        localHistoryMaintenanceBlockedReason = L10n.runText(
+            .maintenanceServiceUnavailable,
+            language: language
+        )
     }
 
     private func finishLocalHistoryMaintenance(
@@ -337,8 +346,19 @@ extension AppModel {
             localHistoryMaintenanceBlockedReason = nil
             if counts.totalRemovedCount > 0 || counts.preservedActiveRecordCount > 0 {
                 append(
-                    english: "Local history updated: removed \(counts.totalRemovedCount), preserved \(counts.preservedActiveRecordCount) active clipboard item(s).",
-                    simplifiedChinese: "本地历史已更新：移除 \(counts.totalRemovedCount) 条，保留 \(counts.preservedActiveRecordCount) 条仍在使用的剪贴板内容。"
+                    english: String(
+                        format: L10n.runText(.localHistoryUpdatedFormat, language: .english),
+                        counts.totalRemovedCount,
+                        counts.preservedActiveRecordCount
+                    ),
+                    simplifiedChinese: String(
+                        format: L10n.runText(
+                            .localHistoryUpdatedFormat,
+                            language: .simplifiedChinese
+                        ),
+                        counts.totalRemovedCount,
+                        counts.preservedActiveRecordCount
+                    )
                 )
             }
         case .pending(let counts, let reason):

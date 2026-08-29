@@ -428,18 +428,15 @@ extension AppModel {
       )
       isLoadingPrivacySettings = false
       areHistoryRetentionSettingsAvailable = false
-      historyRetentionSettingsLoadError =
-        language == .english
-        ? "Retention settings storage is unavailable. Automatic history cleanup is paused; the displayed periods are defaults, not confirmed saved choices."
-        : "留存设置存储不可用，自动历史清理已暂停；当前显示的是默认值，并非已确认保存的选择。"
+      historyRetentionSettingsLoadError = L10n.runText(
+        .retentionStorageUnavailableDefaults,
+        language: language
+      )
       refreshHistoryRetentionSettingsErrorPresentation()
       if !privacySettingsSource.hasAvailableSettings {
         let reason = "Persistent settings storage is unavailable."
         privacySettingsSource.markUnavailable(reason: reason)
-        privacySettingsLoadError =
-          language == .english
-          ? "Privacy settings could not be loaded. Privacy-related capture and cloud processing remain blocked."
-          : "隐私设置无法加载；隐私相关捕获与云端处理保持阻断。"
+        privacySettingsLoadError = L10n.runText(.privacyLoadBlocked, language: language)
       }
       return
     }
@@ -509,10 +506,10 @@ extension AppModel {
         self.privacyPolicySettings = .defaults
         self.isRestoringSettings = false
         self.areHistoryRetentionSettingsAvailable = false
-        self.historyRetentionSettingsLoadError =
-          self.language == .english
-          ? "Retention settings could not be loaded. Automatic history cleanup is paused; the displayed periods are not confirmed saved choices."
-          : "无法加载留存设置，自动历史清理已暂停；当前显示值并非已确认保存的选择。"
+        self.historyRetentionSettingsLoadError = L10n.runText(
+          .retentionLoadFailedPaused,
+          language: self.language
+        )
         self.refreshHistoryRetentionSettingsErrorPresentation()
         self.loadHistory()
         self.vocabularyRuleSource.markUnavailable(
@@ -525,14 +522,16 @@ extension AppModel {
         self.privacySettingsSource.markUnavailable(
           reason: "Configuration storage could not be loaded."
         )
-        self.privacySettingsLoadError =
-          self.language == .english
-          ? "Privacy settings could not be loaded. Privacy-related capture and cloud processing remain blocked. Fix storage, then retry."
-          : "隐私设置无法加载；隐私相关捕获与云端处理保持阻断。修复存储后请重试。"
+        self.privacySettingsLoadError = L10n.runText(
+          .privacyLoadBlockedRetry,
+          language: self.language
+        )
         self.append(
-          english:
-            "Configuration storage is unavailable. Settings and privacy controls could not be loaded.",
-          simplifiedChinese: "配置存储不可用，无法加载设置与隐私控制。"
+          english: L10n.runText(.configurationStorageUnavailable, language: .english),
+          simplifiedChinese: L10n.runText(
+            .configurationStorageUnavailable,
+            language: .simplifiedChinese
+          )
         )
       }
     }
@@ -899,10 +898,10 @@ extension AppModel {
   func applyStoredHistoryRetentionSettings(_ settings: StoredAppSettingsSnapshot) {
     guard settings.persistentSettingsStoreWasAvailable else {
       areHistoryRetentionSettingsAvailable = false
-      historyRetentionSettingsLoadError =
-        language == .english
-        ? "Retention settings storage is unavailable. Automatic history cleanup is paused; the displayed periods are defaults, not confirmed saved choices."
-        : "留存设置存储不可用，自动历史清理已暂停；当前显示的是默认值，并非已确认保存的选择。"
+      historyRetentionSettingsLoadError = L10n.runText(
+        .retentionStorageUnavailableDefaults,
+        language: language
+      )
       historyRetentionSettingsWriteError = nil
       clipboardHistoryRetentionSettingIsInvalid = false
       runHistoryRetentionSettingIsInvalid = false
@@ -946,8 +945,11 @@ extension AppModel {
     default:
       failedAudioRecoveryEnabled = false
       append(
-        english: "Invalid failed recording recovery setting was ignored; recovery remains off.",
-        simplifiedChinese: "已忽略无效的失败录音恢复设置；恢复功能保持关闭。"
+        english: L10n.runText(.failedRecoverySettingInvalid, language: .english),
+        simplifiedChinese: L10n.runText(
+          .failedRecoverySettingInvalid,
+          language: .simplifiedChinese
+        )
       )
     }
   }
@@ -965,8 +967,8 @@ extension AppModel {
     default:
       benchmarkRecordingArchiveEnabled = false
       append(
-        english: "Invalid benchmark recording setting was ignored; recording retention remains off.",
-        simplifiedChinese: "已忽略无效的 Benchmark 录音设置；录音保留功能保持关闭。"
+        english: L10n.runText(.benchmarkSettingInvalid, language: .english),
+        simplifiedChinese: L10n.runText(.benchmarkSettingInvalid, language: .simplifiedChinese)
       )
     }
   }
@@ -983,9 +985,14 @@ extension AppModel {
         runHistoryRetentionSettingIsInvalid = true
       }
       append(
-        english:
-          "A stored \(isRecordSetting ? "clipboard" : "run and diagnostic") history retention setting could not be read; cleanup for that domain is paused.",
-        simplifiedChinese: "无法读取已保存的\(isRecordSetting ? "剪贴板" : "运行与诊断")历史留存设置；该域清理已暂停。"
+        english: L10n.runHistoryRetentionReadFailed(
+          isRecordSetting: isRecordSetting,
+          language: .english
+        ),
+        simplifiedChinese: L10n.runHistoryRetentionReadFailed(
+          isRecordSetting: isRecordSetting,
+          language: .simplifiedChinese
+        )
       )
       return .forever
     }
@@ -999,9 +1006,14 @@ extension AppModel {
         runHistoryRetentionSettingIsInvalid = true
       }
       append(
-        english:
-          "Invalid \(isRecordSetting ? "clipboard" : "run and diagnostic") history retention setting was ignored; cleanup for that domain is paused.",
-        simplifiedChinese: "\(isRecordSetting ? "剪贴板" : "运行与诊断")历史留存设置无效；该域清理已暂停。"
+        english: L10n.runHistoryRetentionInvalid(
+          isRecordSetting: isRecordSetting,
+          language: .english
+        ),
+        simplifiedChinese: L10n.runHistoryRetentionInvalid(
+          isRecordSetting: isRecordSetting,
+          language: .simplifiedChinese
+        )
       )
       return .forever
     }
@@ -1014,18 +1026,10 @@ extension AppModel {
       messages.append(historyRetentionSettingsLoadError)
     }
     if clipboardHistoryRetentionSettingIsInvalid {
-      messages.append(
-        language == .english
-          ? "Stored clipboard history retention is damaged; clipboard cleanup is paused until you save a valid period."
-          : "已保存的剪贴板历史留存设置损坏；保存有效时长前，剪贴板清理保持暂停。"
-      )
+      messages.append(L10n.runText(.clipboardRetentionDamaged, language: language))
     }
     if runHistoryRetentionSettingIsInvalid {
-      messages.append(
-        language == .english
-          ? "Stored run and diagnostic history retention is damaged; run and diagnostic cleanup is paused until you save a valid period."
-          : "已保存的运行与诊断历史留存设置损坏；保存有效时长前，运行与诊断清理保持暂停。"
-      )
+      messages.append(L10n.runText(.runRetentionDamaged, language: language))
     }
     if let historyRetentionSettingsWriteError {
       messages.append(historyRetentionSettingsWriteError)
@@ -1130,8 +1134,8 @@ extension AppModel {
     rebuildWorkflowLibrary()
     persistWorkflowEnabledStates()
     append(
-      english: "Workflow TOML files reloaded.",
-      simplifiedChinese: "已重新加载工作流 TOML 文件。"
+      english: L10n.runText(.workflowTOMLReloaded, language: .english),
+      simplifiedChinese: L10n.runText(.workflowTOMLReloaded, language: .simplifiedChinese)
     )
   }
 
@@ -1143,9 +1147,7 @@ extension AppModel {
     let suffix = issues.count > visibleIssues.count
       ? " (+\(issues.count - visibleIssues.count) more)"
       : ""
-    let heading = language == .english
-      ? "Some workflow TOML files need attention:"
-      : "部分工作流 TOML 文件需要处理："
+    let heading = L10n.runText(.workflowTOMLIssuesHeading, language: language)
     return "\(heading) \(visibleIssues.joined(separator: "; "))\(suffix)"
   }
 
@@ -1524,8 +1526,11 @@ extension AppModel {
         }
         self.retryingUnavailableScalarSettingsDomains.remove(domain)
         self.append(
-          english: "Saved settings are available again.",
-          simplifiedChinese: "已保存的设置现已恢复可用。"
+          english: L10n.runText(.savedSettingsAvailableAgain, language: .english),
+          simplifiedChinese: L10n.runText(
+            .savedSettingsAvailableAgain,
+            language: .simplifiedChinese
+          )
         )
       } catch is CancellationError {
         return
@@ -1539,8 +1544,11 @@ extension AppModel {
         }
         self.retryingUnavailableScalarSettingsDomains.remove(domain)
         self.append(
-          english: "Saved settings are still unavailable.",
-          simplifiedChinese: "已保存的设置仍不可用。"
+          english: L10n.runText(.savedSettingsStillUnavailable, language: .english),
+          simplifiedChinese: L10n.runText(
+            .savedSettingsStillUnavailable,
+            language: .simplifiedChinese
+          )
         )
       }
     }
@@ -1612,8 +1620,11 @@ extension AppModel {
           Self.openAICredentialAvailability(for: credential)
         self.workflowLibraryChangedAction()
         self.append(
-          english: "OpenAI settings and credential access are available again.",
-          simplifiedChinese: "OpenAI 设置与凭据访问已恢复。"
+          english: L10n.runText(.openAISettingsAvailableAgain, language: .english),
+          simplifiedChinese: L10n.runText(
+            .openAISettingsAvailableAgain,
+            language: .simplifiedChinese
+          )
         )
       } catch is CancellationError {
         return
@@ -1629,8 +1640,11 @@ extension AppModel {
         self.openAICredentialAvailability = .inaccessible
         self.workflowLibraryChangedAction()
         self.append(
-          english: "OpenAI settings or credential access are still unavailable.",
-          simplifiedChinese: "OpenAI 设置或凭据访问仍不可用。"
+          english: L10n.runText(.openAISettingsStillUnavailable, language: .english),
+          simplifiedChinese: L10n.runText(
+            .openAISettingsStillUnavailable,
+            language: .simplifiedChinese
+          )
         )
       }
     }
@@ -1914,9 +1928,11 @@ extension AppModel {
         self.isRetryingUnavailableSettingsDomains = false
         self.refreshUnavailableStoredSettingsDomainErrors()
         self.append(
-          english:
-            "Protected settings are still unavailable. No workflow, model, or vocabulary data was changed.",
-          simplifiedChinese: "受保护设置仍不可用；工作流、模型与词汇数据均未更改。"
+          english: L10n.runText(.protectedSettingsStillUnavailable, language: .english),
+          simplifiedChinese: L10n.runText(
+            .protectedSettingsStillUnavailable,
+            language: .simplifiedChinese
+          )
         )
       }
     }
@@ -1990,8 +2006,11 @@ extension AppModel {
 
     if recoveredAnyDomain {
       append(
-        english: "Protected settings were loaded again without overwriting stored data.",
-        simplifiedChinese: "已重新加载受保护设置，且未覆盖已保存数据。"
+        english: L10n.runText(.protectedSettingsReloaded, language: .english),
+        simplifiedChinese: L10n.runText(
+          .protectedSettingsReloaded,
+          language: .simplifiedChinese
+        )
       )
     }
   }
@@ -2000,10 +2019,7 @@ extension AppModel {
     privacyPolicySettings = settings.privacyPolicySettings
     isLoadingPrivacySettings = false
     if settings.privacySettingsWereInvalid {
-      privacySettingsLoadError =
-        language == .english
-        ? "Privacy settings are damaged. Privacy-related capture and cloud processing remain blocked. Reset to safe defaults or repair storage, then retry."
-        : "隐私设置已损坏；隐私相关捕获与云端处理保持阻断。请恢复安全默认值或修复存储后重试。"
+      privacySettingsLoadError = L10n.runText(.privacySettingsDamaged, language: language)
       privacySettingsSource.markUnavailable(reason: "Privacy settings are damaged.")
     } else {
       privacySettingsLoadError = nil
@@ -2051,8 +2067,11 @@ extension AppModel {
         }
         self.diagnosticsLoadState = .failed
         self.append(
-          english: "Diagnostics repository is unavailable.",
-          simplifiedChinese: "诊断仓库不可用。"
+          english: L10n.runText(.diagnosticsRepositoryUnavailable, language: .english),
+          simplifiedChinese: L10n.runText(
+            .diagnosticsRepositoryUnavailable,
+            language: .simplifiedChinese
+          )
         )
       }
     }
@@ -2170,9 +2189,8 @@ extension AppModel {
         openAICredentialAvailability = .inaccessible
       }
       append(
-        english:
-          "A speech-provider credential could not be saved. Review credential access in Settings.",
-        simplifiedChinese: "语音服务凭据无法保存，请在设置页面检查凭据访问状态。"
+        english: L10n.runText(.credentialSaveFailed, language: .english),
+        simplifiedChinese: L10n.runText(.credentialSaveFailed, language: .simplifiedChinese)
       )
       return
     }
@@ -2218,9 +2236,11 @@ extension AppModel {
             self.workflowLibraryChangedAction()
           }
           self.append(
-            english:
-              "A speech-provider credential could not be saved. Review credential access in Settings.",
-            simplifiedChinese: "语音服务凭据无法保存，请在设置页面检查凭据访问状态。"
+            english: L10n.runText(.credentialSaveFailed, language: .english),
+            simplifiedChinese: L10n.runText(
+              .credentialSaveFailed,
+              language: .simplifiedChinese
+            )
           )
         }
       }
@@ -2363,8 +2383,8 @@ extension AppModel {
 
   func appendSettingsSaveFailureEvent() {
     append(
-      english: "Some settings could not be saved. Retry from Settings.",
-      simplifiedChinese: "部分设置无法保存，请在设置页面重试。"
+      english: L10n.runText(.settingsSaveFailedRetry, language: .english),
+      simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)
     )
   }
 
@@ -3756,8 +3776,11 @@ extension AppModel {
           self?.markStoredSettingsDomainUnavailable(.workflowLibrary)
           self?.markStoredSettingsDomainUnavailable(.vocabularyRules)
           self?.append(
-            english: "Workflow composition migration could not be saved; legacy data was preserved.",
-            simplifiedChinese: "工作流组合迁移无法保存；旧数据已保留。"
+            english: L10n.runText(.workflowMigrationSaveFailed, language: .english),
+            simplifiedChinese: L10n.runText(
+              .workflowMigrationSaveFailed,
+              language: .simplifiedChinese
+            )
           )
         }
       }
@@ -3767,10 +3790,10 @@ extension AppModel {
   func persistPrivacyPolicySettings() {
     guard !hasBegunApplicationShutdown, !isRestoringSettings else { return }
     guard let settingsStore else {
-      privacySettingsSaveError =
-        language == .english
-        ? "Privacy settings could not be saved because configuration storage is unavailable. Your changes remain active for this session only."
-        : "配置存储不可用，隐私设置无法保存；更改仅在本次会话中有效。"
+      privacySettingsSaveError = L10n.runText(
+        .privacySaveStorageUnavailable,
+        language: language
+      )
       isSavingPrivacySettings = false
       return
     }
@@ -3802,9 +3825,11 @@ extension AppModel {
         await MainActor.run {
           guard let self else { return }
           self.append(
-            english:
-              "Privacy settings could not be saved. Retry from the Privacy section in Settings.",
-            simplifiedChinese: "隐私设置无法保存，请在设置页面的隐私区域重试。"
+            english: L10n.runText(.privacySaveFailedRetry, language: .english),
+            simplifiedChinese: L10n.runText(
+              .privacySaveFailedRetry,
+              language: .simplifiedChinese
+            )
           )
           guard self.privacySettingsWriteGeneration == generation else { return }
           self.pendingPrivacySettingsWriteTask = nil
@@ -3883,10 +3908,10 @@ extension AppModel {
           return
         }
         self.isLoadingPrivacySettings = false
-        self.privacySettingsLoadError =
-          self.language == .english
-          ? "Privacy settings could not be loaded. Runtime privacy gates remain closed. Repair configuration storage, then retry."
-          : "隐私设置无法加载，运行时隐私闸门保持关闭。请修复配置存储后重试。"
+        self.privacySettingsLoadError = L10n.runText(
+          .privacyLoadFailedRepairStorage,
+          language: self.language
+        )
         self.privacySettingsSource.markUnavailable(
           reason: "Privacy settings could not be loaded."
         )
@@ -3981,9 +4006,7 @@ extension AppModel {
   }
 
   private func localizedPrivacySettingsSaveFailure() -> String {
-    language == .english
-      ? "Privacy settings could not be saved. Your changes remain active for this session but will be lost after restart. Retry from the Privacy section."
-      : "隐私设置无法保存；更改在本次会话中仍然有效，但重启后会丢失。请在隐私设置中重试。"
+    L10n.runText(.privacySaveFailedSessionOnly, language: language)
   }
 
   static func storedBoolean(_ value: String, defaultValue: Bool) -> Bool {

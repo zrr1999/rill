@@ -10,7 +10,7 @@ extension SettingsView {
       Divider()
 
       LabeledContent(
-        model.language == .english ? "Wake-word listener" : "唤醒词监听"
+        L10n.settingsText(.settingsWakeWordListener, language: model.language)
       ) {
         Text(wakeWordRuntimeStatusText)
           .foregroundStyle(wakeWordRuntimeStatusColor)
@@ -18,18 +18,14 @@ extension SettingsView {
 
       voiceResourceStatus(
         state: model.wakeWordResourceState,
-        readyText:
-          model.language == .english
-          ? "Selected local ASR is ready"
-          : "当前本地语音模型已就绪"
+        readyText: L10n.settingsText(.settingsWakeWordASRReady, language: model.language)
       )
 
       if voiceAssistantActionVisibility.showsWakeWordPreparation {
         Button(
           resourcePreparationButtonTitle(
             state: model.wakeWordResourceState,
-            englishName: "local ASR",
-            simplifiedChineseName: "本地语音模型"
+            resourceNameKey: .settingsLocalASRResourceName
           )
         ) {
           model.prepareWakeWordModel()
@@ -38,9 +34,7 @@ extension SettingsView {
       }
 
       Toggle(
-        model.language == .english
-          ? "Enable wake-word listening"
-          : "启用唤醒词监听",
+        L10n.settingsText(.settingsEnableWakeWordListening, language: model.language),
         isOn: Binding(
           get: { wakeListeningDraftEnabled },
           set: { requestWakeWordListening($0) }
@@ -54,13 +48,11 @@ extension SettingsView {
       .accessibilityIdentifier("settings.wake-word.enabled")
 
       VStack(alignment: .leading, spacing: 5) {
-        Text(model.language == .english ? "Wake phrases" : "唤醒短语")
+        Text(L10n.settingsText(.settingsWakePhrasesTitle, language: model.language))
           .font(.caption.weight(.medium))
           .foregroundStyle(.secondary)
         TextField(
-          model.language == .english
-            ? "One phrase per line (1–4)"
-            : "每行一个短语（1–4 个）",
+          L10n.settingsText(.settingsWakePhrasesPlaceholder, language: model.language),
           text: $wakePhrasesText,
           axis: .vertical
         )
@@ -71,7 +63,7 @@ extension SettingsView {
         .accessibilityIdentifier("settings.wake-word.phrases")
 
         HStack(spacing: 8) {
-          Button(model.language == .english ? "Save phrases" : "保存短语") {
+          Button(L10n.settingsText(.settingsSavePhrases, language: model.language)) {
             applyWakeWordSettings(
               enableListening: wakeListeningDraftEnabled
             )
@@ -87,11 +79,7 @@ extension SettingsView {
           Spacer()
 
           if let workflowName = model.wakeWordSettingsSnapshot.workflowName {
-            Text(
-              model.language == .english
-                ? "Workflow: \(workflowName)"
-                : "工作流：\(workflowName)"
-            )
+            Text(L10n.settingsWorkflowName(workflowName, language: model.language))
             .font(.caption)
             .foregroundStyle(.secondary)
           }
@@ -104,20 +92,11 @@ extension SettingsView {
           .foregroundStyle(.red)
       }
 
-      Text(
-        model.language == .english
-          ? "This edits the ambient wake trigger only. Fn and other interactive recognition take microphone priority immediately; "
-            + "LLM and speech output continue on the assistant lane without blocking the next recognition."
-          : "这里仅编辑环境唤醒触发。Fn 和其他交互识别会立即取得麦克风优先级；LLM 与语音输出在独立助手通道继续处理，不阻塞下一次识别。"
-      )
+      Text(L10n.settingsText(.settingsWakeWordScopeDetail, language: model.language))
       .font(.caption)
       .foregroundStyle(.secondary)
 
-      Text(
-        model.language == .english
-          ? "Idle listening runs only local VAD. Complete candidates are checked locally and discarded unless they begin with a configured wake phrase."
-          : "空闲监听只运行本地 VAD；完整候选会在本地检查，不以已配置唤醒短语开头时立即丢弃。"
-      )
+      Text(L10n.settingsText(.settingsWakeWordPrivacyDetail, language: model.language))
       .font(.caption)
       .foregroundStyle(.secondary)
     }
@@ -137,7 +116,7 @@ extension SettingsView {
   ) -> some View {
     switch state {
     case .notInstalled:
-      Text(model.language == .english ? "Not installed" : "尚未安装")
+      Text(L10n.settingsText(.settingsResourceNotInstalled, language: model.language))
         .font(.caption)
         .foregroundStyle(.secondary)
     case .preparing(let progress):
@@ -153,7 +132,7 @@ extension SettingsView {
         HStack(spacing: 8) {
           ProgressView()
             .controlSize(.small)
-          Text(model.language == .english ? "Preparing download…" : "正在准备下载…")
+          Text(L10n.settingsText(.settingsResourcePreparingDownload, language: model.language))
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -189,12 +168,8 @@ extension SettingsView {
     return VStack(alignment: .leading, spacing: 10) {
       Label(
         readiness.canEnableListening
-          ? (model.language == .english
-            ? "Assistant setup is ready"
-            : "语音助手已准备就绪")
-          : (model.language == .english
-            ? "Complete assistant setup"
-            : "请完成语音助手设置"),
+          ? L10n.settingsText(.settingsAssistantSetupReady, language: model.language)
+          : L10n.settingsText(.settingsAssistantSetupIncomplete, language: model.language),
         systemImage: readiness.canEnableListening
           ? "checkmark.seal.fill"
           : "checklist"
@@ -203,34 +178,34 @@ extension SettingsView {
       .foregroundStyle(readiness.canEnableListening ? .green : .primary)
 
       voiceAssistantReadinessRow(
-        title: model.language == .english ? "Microphone" : "麦克风",
+        title: UIStrings.text(.microphone, language: model.language),
         detail: microphoneReadinessDetail(readiness.microphone),
         isReady: readiness.microphone == .granted
       )
       voiceAssistantReadinessRow(
-        title: model.language == .english ? "Local recognition" : "本地识别",
+        title: L10n.settingsText(.settingsReadinessLocalRecognition, language: model.language),
         detail: localSpeechReadinessDetail(readiness.localSpeech),
         isReady: readiness.isLocalSpeechReady
       )
       voiceAssistantReadinessRow(
-        title: model.language == .english ? "LLM answer" : "LLM 回答",
+        title: L10n.settingsText(.settingsReadinessLLMAnswer, language: model.language),
         detail: llmReadinessDetail(readiness.llm),
         isReady: readiness.llm.permitsListening
       )
       voiceAssistantReadinessRow(
-        title: model.language == .english ? "Cloud privacy" : "云端隐私",
+        title: L10n.settingsText(.settingsReadinessCloudPrivacy, language: model.language),
         detail: privacyReadinessDetail(readiness.privacy),
         isReady: readiness.privacy.permitsListening
       )
       voiceAssistantReadinessRow(
-        title: model.language == .english ? "Speech output" : "语音输出",
+        title: L10n.settingsText(.settingsReadinessSpeechOutput, language: model.language),
         detail: speechOutputReadinessDetail(readiness.speechOutput),
         isReady: true
       )
 
       HStack(spacing: 8) {
         if readiness.microphone != .granted {
-          Button(model.language == .english ? "Review permissions" : "检查权限") {
+          Button(L10n.settingsText(.settingsReviewPermissions, language: model.language)) {
             model.showSettings(.permissions)
           }
           .accessibilityIdentifier("settings.voice-assistant.review-permissions")
@@ -238,13 +213,13 @@ extension SettingsView {
         if readiness.llm != .notRequired,
           readiness.llm != .verified
         {
-          Button(model.language == .english ? "Configure & verify LLM" : "配置并验证 LLM") {
+          Button(L10n.settingsText(.settingsConfigureVerifyLLM, language: model.language)) {
             model.showSettings(.speech)
           }
           .accessibilityIdentifier("settings.voice-assistant.configure-llm")
         }
         if readiness.privacy == .unavailable {
-          Button(model.language == .english ? "Repair privacy settings" : "修复隐私设置") {
+          Button(L10n.settingsText(.settingsRepairPrivacySettings, language: model.language)) {
             model.showSettings(.privacy)
           }
           .accessibilityIdentifier("settings.voice-assistant.repair-privacy")
@@ -277,90 +252,29 @@ extension SettingsView {
   }
 
   func microphoneReadinessDetail(_ state: PermissionState) -> String {
-    switch (model.language, state) {
-    case (.english, .granted): "Ready"
-    case (.simplifiedChinese, .granted): "已就绪"
-    case (.english, .unknown): "Permission not checked"
-    case (.simplifiedChinese, .unknown): "尚未检查权限"
-    case (.english, .denied): "Permission required"
-    case (.simplifiedChinese, .denied): "需要授权"
-    }
+    L10n.microphoneReadinessDetail(state, language: model.language)
   }
 
   func localSpeechReadinessDetail(
     _ state: VoiceAssistantResourceState
   ) -> String {
-    switch (model.language, state) {
-    case (.english, .ready): "Selected Qwen ASR is ready"
-    case (.simplifiedChinese, .ready): "当前 Qwen ASR 已就绪"
-    case (.english, .preparing): "Preparing model"
-    case (.simplifiedChinese, .preparing): "正在准备模型"
-    case (.english, .notInstalled): "Model required"
-    case (.simplifiedChinese, .notInstalled): "需要准备模型"
-    case (.english, .failed): "Preparation failed"
-    case (.simplifiedChinese, .failed): "模型准备失败"
-    case (.english, .unavailable): "Unavailable in this build"
-    case (.simplifiedChinese, .unavailable): "当前版本不可用"
-    }
+    L10n.localSpeechReadinessDetail(state, language: model.language)
   }
 
   func llmReadinessDetail(_ state: VoiceAssistantLLMReadiness) -> String {
-    switch (model.language, state) {
-    case (.english, .notRequired): "Not used by this workflow"
-    case (.simplifiedChinese, .notRequired): "当前工作流不使用"
-    case (.english, .loading): "Loading secure settings"
-    case (.simplifiedChinese, .loading): "正在读取安全设置"
-    case (.english, .credentialMissing): "API key required"
-    case (.simplifiedChinese, .credentialMissing): "需要 API Key"
-    case (.english, .credentialInaccessible): "Keychain unavailable"
-    case (.simplifiedChinese, .credentialInaccessible): "无法访问钥匙串"
-    case (.english, .configurationInvalid): "Endpoint or model ID is invalid"
-    case (.simplifiedChinese, .configurationInvalid): "地址或模型 ID 无效"
-    case (.english, .configured): "Configured; verification recommended"
-    case (.simplifiedChinese, .configured): "已配置；建议验证"
-    case (.english, .verifying): "Verifying"
-    case (.simplifiedChinese, .verifying): "正在验证"
-    case (.english, .verified): "Verified"
-    case (.simplifiedChinese, .verified): "验证通过"
-    case (.english, .verificationFailed): "Verification failed"
-    case (.simplifiedChinese, .verificationFailed): "验证失败"
-    }
+    L10n.llmReadinessDetail(state, language: model.language)
   }
 
   func privacyReadinessDetail(
     _ state: VoiceAssistantPrivacyReadiness
   ) -> String {
-    switch (model.language, state) {
-    case (.english, .notRequired): "No cloud step"
-    case (.simplifiedChinese, .notRequired): "没有云端步骤"
-    case (.english, .loading): "Loading policy"
-    case (.simplifiedChinese, .loading): "正在读取策略"
-    case (.english, .unavailable): "Policy unavailable"
-    case (.simplifiedChinese, .unavailable): "策略不可用"
-    case (.english, .ready(cloudConfirmationRequired: true)):
-      "Confirmation required per run"
-    case (.simplifiedChinese, .ready(cloudConfirmationRequired: true)):
-      "每次运行需要确认"
-    case (.english, .ready(cloudConfirmationRequired: false)):
-      "Policy ready"
-    case (.simplifiedChinese, .ready(cloudConfirmationRequired: false)):
-      "策略已就绪"
-    }
+    L10n.privacyReadinessDetail(state, language: model.language)
   }
 
   func speechOutputReadinessDetail(
     _ state: VoiceAssistantSpeechOutputReadiness
   ) -> String {
-    switch (model.language, state) {
-    case (.english, .notRequired): "Not used by this workflow"
-    case (.simplifiedChinese, .notRequired): "当前工作流不使用"
-    case (.english, .localVoice): "Local Qwen voice"
-    case (.simplifiedChinese, .localVoice): "本地 Qwen 音色"
-    case (.english, .preparingLocalVoice): "System voice until ready"
-    case (.simplifiedChinese, .preparingLocalVoice): "准备期间使用系统语音"
-    case (.english, .systemFallback): "System voice fallback ready"
-    case (.simplifiedChinese, .systemFallback): "系统语音回退已就绪"
-    }
+    L10n.speechOutputReadinessDetail(state, language: model.language)
   }
 
   var wakeWordModelIsReady: Bool {
@@ -413,17 +327,13 @@ extension SettingsView {
 
   func resourcePreparationButtonTitle(
     state: VoiceAssistantResourceState,
-    englishName: String,
-    simplifiedChineseName: String
+    resourceNameKey: SettingsTextKey
   ) -> String {
+    let resourceName = L10n.settingsText(resourceNameKey, language: model.language)
     if case .failed = state {
-      return model.language == .english
-        ? "Retry \(englishName)"
-        : "重试\(simplifiedChineseName)"
+      return L10n.settingsResourceRetryTitle(resourceName, language: model.language)
     }
-    return model.language == .english
-      ? "Download \(englishName)"
-      : "下载\(simplifiedChineseName)"
+    return L10n.settingsResourceDownloadTitle(resourceName, language: model.language)
   }
 
   func voiceResourceUnavailableText(
@@ -431,55 +341,12 @@ extension SettingsView {
   ) -> String {
     switch reason {
     case .distributionLicenseUnverified:
-      return model.language == .english
-        ? "This local speech model is unavailable in the current distribution."
-        : "当前发行版本不提供此本地语音模型。"
+      return L10n.settingsText(.settingsVoiceResourceUnavailable, language: model.language)
     }
   }
 
   var wakeWordRuntimeStatusText: String {
-    switch model.wakeWordRuntimeState {
-    case .disabled:
-      model.language == .english ? "Disabled" : "已停用"
-    case .modelMissing:
-      model.language == .english ? "Model required" : "需要模型"
-    case .starting:
-      model.language == .english ? "Starting" : "正在启动"
-    case .listening:
-      model.language == .english ? "Listening locally" : "正在本地监听"
-    case .suspended(let reason):
-      (model.language == .english ? "Paused: " : "已暂停：")
-        + wakeWordSuspensionReasonText(reason)
-    case .failed:
-      model.language == .english ? "Unavailable" : "不可用"
-    }
-  }
-
-  func wakeWordSuspensionReasonText(_ reason: String) -> String {
-    switch (model.language, reason) {
-    case (.english, "interactiveRecognition"):
-      "interactive recognition has priority"
-    case (.simplifiedChinese, "interactiveRecognition"):
-      "交互识别优先"
-    case (.english, "speechPlayback"):
-      "speech playback"
-    case (.simplifiedChinese, "speechPlayback"):
-      "正在播放语音"
-    case (.english, "microphonePermission"):
-      "microphone permission"
-    case (.simplifiedChinese, "microphonePermission"):
-      "麦克风权限"
-    case (.english, "inputDeviceChanged"):
-      "input device changed"
-    case (.simplifiedChinese, "inputDeviceChanged"):
-      "输入设备已变化"
-    case (.english, "busy"):
-      "assistant workflow is running"
-    case (.simplifiedChinese, "busy"):
-      "助手工作流正在运行"
-    default:
-      reason
-    }
+    L10n.wakeWordRuntimeStatus(model.wakeWordRuntimeState, language: model.language)
   }
 
   var wakeWordRuntimeStatusColor: Color {

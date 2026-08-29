@@ -280,12 +280,10 @@ public struct LiveSubtitleOverlay: View {
             .foregroundStyle(timerColor(state))
             .background(timerColor(state).opacity(0.1), in: Circle())
             .help(
-              language == .english
-                ? "Continue without the automatic recording limit"
-                : "继续录音并解除自动时限"
+              L10n.overlayText(.liveSubtitleContinueWithoutLimitHelp, language: language)
             )
             .accessibilityLabel(
-              Text(language == .english ? "Continue with no time limit" : "继续且不限时")
+              Text(L10n.overlayText(.liveSubtitleContinueNoTimeLimit, language: language))
             )
           }
         }
@@ -307,14 +305,14 @@ public struct LiveSubtitleOverlay: View {
     _ state: LiveSubtitlePresentationPolicy.RecordingTimerState?
   ) -> String {
     guard let state else {
-      return language == .english ? "Recording just started." : "录音刚刚开始。"
+      return L10n.overlayText(.liveSubtitleRecordingJustStarted, language: language)
     }
     if state.isNearLimit, let remainingSeconds = state.remainingSeconds {
       let remaining = LiveSubtitlePresentationPolicy.formattedDuration(remainingSeconds)
-      return language == .english ? "\(remaining) remaining." : "剩余 \(remaining)。"
+      return L10n.liveSubtitleRemaining(remaining, language: language)
     }
     let elapsed = LiveSubtitlePresentationPolicy.formattedDuration(state.elapsedSeconds)
-    return language == .english ? "Recorded \(elapsed)." : "已录制 \(elapsed)。"
+    return L10n.liveSubtitleRecorded(elapsed, language: language)
   }
 
   private func timerColor(
@@ -345,7 +343,7 @@ public struct LiveSubtitleOverlay: View {
           .strokeBorder(borderColor.opacity(0.55), lineWidth: 0.75)
       )
       .accessibilityLabel(
-        Text(language == .english ? "Press Escape to cancel and discard" : "按 Escape 取消并丢弃")
+        Text(L10n.overlayText(.liveSubtitleEscapeHint, language: language))
       )
   }
 

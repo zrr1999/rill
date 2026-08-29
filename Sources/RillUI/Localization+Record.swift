@@ -30,6 +30,10 @@ extension L10n {
         String(format: recordText(.replaceWithFormat, language: language), collectionName)
     }
 
+    static func onlyFromSourceApp(_ applicationName: String, language: AppLanguage) -> String {
+        String(format: recordText(.currentAppSourceOnlyFormat, language: language), applicationName)
+    }
+
     static func routeWorkflowsCount(_ count: Int, language: AppLanguage) -> String {
         String(format: recordText(.workflowsCountFormat, language: language), count)
     }
@@ -78,6 +82,8 @@ extension L10n {
         .consumptionConsume: .init(english: "Consume", simplifiedChinese: "消费"),
         .consumptionPolicy: .init(english: "After Delivery", simplifiedChinese: "投递后"),
         .consumptionRetain: .init(english: "Retain", simplifiedChinese: "保留"),
+        .currentAppSourceOnly: .init(english: "Current App Only", simplifiedChinese: "仅当前 App"),
+        .currentAppSourceOnlyFormat: .init(english: "Only from %@", simplifiedChinese: "仅来自 %@"),
         .deleteCaptureRouteDetail: .init(
             english: "The route is removed permanently; newly captured records will no longer follow it.",
             simplifiedChinese: "路由将被永久删除，新采集的记录不再按此规则路由。"
@@ -111,6 +117,10 @@ extension L10n {
         ),
         .deliveryRoutesTitle: .init(english: "Delivery Routes", simplifiedChinese: "投递路由"),
         .destinationCollections: .init(english: "Destination Collections", simplifiedChinese: "目标记录集"),
+        .digitInsertHint: .init(
+            english: "Press 1–9 to insert the matching record into the previous app",
+            simplifiedChinese: "按 1–9 将对应记录输入到上一应用"
+        ),
         .disableAffectedRoutes: .init(english: "Disable Affected Routes", simplifiedChinese: "禁用受影响路由"),
         .disabledState: .init(english: "Disabled", simplifiedChinese: "已禁用"),
         .edit: .init(english: "Edit", simplifiedChinese: "编辑"),
@@ -228,6 +238,8 @@ enum RecordTextKey: String, CaseIterable, Sendable {
     case consumptionConsume
     case consumptionPolicy
     case consumptionRetain
+    case currentAppSourceOnly
+    case currentAppSourceOnlyFormat
     case deleteCaptureRouteDetail
     case deleteCaptureRouteTitle
     case deleteCollection
@@ -243,6 +255,7 @@ enum RecordTextKey: String, CaseIterable, Sendable {
     case deliveryRoutesEmpty
     case deliveryRoutesTitle
     case destinationCollections
+    case digitInsertHint
     case disableAffectedRoutes
     case disabledState
     case edit

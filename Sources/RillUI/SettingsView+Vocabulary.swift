@@ -13,11 +13,7 @@ extension SettingsView {
       }
 
       VStack(alignment: .leading, spacing: 10) {
-        Text(
-          model.language == .english
-            ? "Hotwords and replacements now live in reusable collections attached to workflow Setup."
-            : "热词与替换词现在位于可复用词库中，并在工作流 Setup 阶段绑定。"
-        )
+        Text(L10n.settingsText(.settingsVocabularyMovedNotice, language: model.language))
           .font(.callout)
           .foregroundStyle(.secondary)
 
@@ -40,9 +36,10 @@ extension SettingsView {
           model.selectSidebarSection(.workflows)
         } label: {
           Label(
-            model.language == .english
-              ? "Manage Collections and Workflow Bindings"
-              : "管理词库与工作流绑定",
+            L10n.settingsText(
+              .settingsManageVocabularyCollections,
+              language: model.language
+            ),
             systemImage: SidebarSection.workflows.symbolName
           )
         }

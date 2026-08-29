@@ -34,6 +34,9 @@ public struct RecordWorkspaceView: View {
     @Bindable private var workspace: RecordWorkspaceModel
     private let language: AppLanguage
     private let deliverSelection: (@MainActor @Sendable (RecordDeliverySubject) -> Void)?
+    /// Frontmost-application context captured when the floating panel was
+    /// shown; nil in the main-window Records page.
+    private let sourceAppContext: RecordRouteContext?
 
     @State private var isCreatingCollection = false
     @State private var newCollectionName = ""
@@ -49,11 +52,13 @@ public struct RecordWorkspaceView: View {
     public init(
         workspace: RecordWorkspaceModel,
         language: AppLanguage,
-        deliverSelection: (@MainActor @Sendable (RecordDeliverySubject) -> Void)? = nil
+        deliverSelection: (@MainActor @Sendable (RecordDeliverySubject) -> Void)? = nil,
+        sourceAppContext: RecordRouteContext? = nil
     ) {
         self.workspace = workspace
         self.language = language
         self.deliverSelection = deliverSelection
+        self.sourceAppContext = sourceAppContext
     }
 
     public var body: some View {
@@ -348,6 +353,11 @@ public struct RecordWorkspaceView: View {
                 .toggleStyle(.button)
                 .help(L10n.recordText(.pinnedOnly, language: language))
                 .accessibilityLabel(L10n.recordText(.pinnedOnly, language: language))
+                if deliverSelection != nil {
+                    Toggle(sourceAppFilterTitle, isOn: sourceAppFilterBinding)
+                        .toggleStyle(.button)
+                        .disabled(sourceAppContext?.bundleIdentifier == nil)
+                }
             }
             .padding(12)
             Divider()
@@ -361,8 +371,8 @@ public struct RecordWorkspaceView: View {
                 )
             } else {
                 List(selection: $workspace.selectedRecordID) {
-                    ForEach(workspace.visibleRecords) { projection in
-                        recordRow(projection)
+                    ForEach(Array(workspace.visibleRecords.enumerated()), id: \.element.id) { index, projection in
+                        recordRow(projection, index: index)
                             .tag(projection.id)
                     }
                 }
@@ -376,10 +386,15 @@ public struct RecordWorkspaceView: View {
         )
     }
 
-    private func recordRow(_ projection: RecordProjection) -> some View {
+    private func recordRow(_ projection: RecordProjection, index: Int? = nil) -> some View {
         HStack(alignment: .top, spacing: 10) {
             payloadIcon(projection.record.payload)
                 .frame(width: 30, height: 30)
+                .overlay(alignment: .topLeading) {
+                    if deliverSelection != nil, let index, index < 9 {
+                        digitBadge(index + 1)
+                    }
+                }
             VStack(alignment: .leading, spacing: 5) {
                 Text(payloadTitle(projection.record.payload))
                     .lineLimit(2)
@@ -723,6 +738,17 @@ public struct RecordWorkspaceView: View {
         }
     }
 
+    private func digitBadge(_ number: Int) -> some View {
+        Text(number, format: .number)
+            .font(.caption2.monospacedDigit().weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: RillRadius.chip, style: .continuous))
+            .offset(x: -6, y: -6)
+            .help(L10n.recordText(.digitInsertHint, language: language))
+    }
+
     private func membershipChip(_ title: String) -> some View {
         Text(title)
             .font(.caption2)
@@ -741,6 +767,22 @@ public struct RecordWorkspaceView: View {
 
     private var membershipSheetIsPresented: Binding<Bool> {
         Binding(get: { membershipRecordID != nil }, set: { if !$0 { membershipRecordID = nil } })
+    }
+
+    private var sourceAppFilterTitle: String {
+        if let applicationName = sourceAppContext?.applicationName {
+            return L10n.onlyFromSourceApp(applicationName, language: language)
+        }
+        return L10n.recordText(.currentAppSourceOnly, language: language)
+    }
+
+    private var sourceAppFilterBinding: Binding<Bool> {
+        Binding(
+            get: { workspace.sourceAppFilterBundleIdentifier != nil },
+            set: { isOn in
+                workspace.sourceAppFilterBundleIdentifier = isOn ? sourceAppContext?.bundleIdentifier : nil
+            }
+        )
     }
 
     private var replacementSheetIsPresented: Binding<Bool> {

@@ -14,9 +14,9 @@ public extension AppModel {
         _ reason: FailedAudioRecoveryError
     ) -> String {
         let detail = localizedRecoveryErrorDetail(reason)
-        return localizedRecoveryMessage(
-            english: "The failed recording could not be retained. \(detail)",
-            simplifiedChinese: "无法保留失败录音。\(detail)"
+        return String(
+            format: L10n.runText(.failedRecordingNotRetainedFormat, language: language),
+            detail
         )
     }
 
@@ -28,9 +28,9 @@ public extension AppModel {
             return
         }
         guard let settingsStore else {
-            failedAudioRecoveryError = localizedRecoveryMessage(
-                english: "Encrypted failed recording recovery is unavailable because persistent settings storage is unavailable.",
-                simplifiedChinese: "持久化设置存储不可用，因此无法使用加密的失败录音恢复。"
+            failedAudioRecoveryError = L10n.runText(
+                .recoveryStorageUnavailable,
+                language: language
             )
             return
         }
@@ -69,9 +69,9 @@ public extension AppModel {
                                 guard let self else { return }
                                 self.isUpdatingFailedAudioRecovery = false
                                 self.failedAudioRecoveryEnabled = true
-                                self.failedAudioRecoveryError = self.localizedRecoveryMessage(
-                                    english: "Recovery is saved as enabled, but protected storage is unavailable in this session. No new failed audio will be retained until storage recovers.",
-                                    simplifiedChinese: "恢复设置已保存为开启，但本次会话的受保护存储不可用。在存储恢复前，不会保留新的失败录音。"
+                                self.failedAudioRecoveryError = L10n.runText(
+                                    .recoveryEnabledStorageUnavailable,
+                                    language: self.language
                                 )
                             }
                             return
@@ -87,9 +87,9 @@ public extension AppModel {
                 await MainActor.run {
                     guard let self else { return }
                     self.isUpdatingFailedAudioRecovery = false
-                    self.failedAudioRecoveryError = self.localizedRecoveryMessage(
-                        english: "Failed recording recovery could not be updated. \(self.localizedRecoveryErrorDetail(error))",
-                        simplifiedChinese: "无法更新失败录音恢复。\(self.localizedRecoveryErrorDetail(error))"
+                    self.failedAudioRecoveryError = String(
+                        format: L10n.runText(.recoveryUpdateFailedFormat, language: self.language),
+                        self.localizedRecoveryErrorDetail(error)
                     )
                 }
             }
@@ -128,9 +128,9 @@ public extension AppModel {
                 guard !self.hasBegunApplicationShutdown,
                       self.failedAudioRecoveryLoadGeneration == generation else { return }
                 self.failedAudioRecoveryReceipts = []
-                self.failedAudioRecoveryError = self.localizedRecoveryMessage(
-                    english: "Failed recordings could not be loaded. \(self.localizedRecoveryErrorDetail(error))",
-                    simplifiedChinese: "无法加载失败录音。\(self.localizedRecoveryErrorDetail(error))"
+                self.failedAudioRecoveryError = String(
+                    format: L10n.runText(.recoveryLoadFailedFormat, language: self.language),
+                    self.localizedRecoveryErrorDetail(error)
                 )
             }
         }
@@ -158,16 +158,16 @@ public extension AppModel {
             return
         }
         guard receipt.status.canRetry else {
-            failedAudioRecoveryError = localizedRecoveryMessage(
-                english: "A previous retry may have reached the speech provider. Delete this recording to avoid a duplicate request.",
-                simplifiedChinese: "上一次重试可能已到达语音服务。为避免重复请求，请删除这条录音。"
+            failedAudioRecoveryError = L10n.runText(
+                .recoveryRetryDuplicateWarning,
+                language: language
             )
             return
         }
         guard let workflow = workflows.first(where: { $0.id == receipt.workflowID }) else {
-            failedAudioRecoveryError = localizedRecoveryMessage(
-                english: "The original workflow is no longer available. Delete this failed recording or restore the workflow first.",
-                simplifiedChinese: "原工作流已不可用。请删除此失败录音，或先恢复该工作流。"
+            failedAudioRecoveryError = L10n.runText(
+                .recoveryWorkflowUnavailable,
+                language: language
             )
             return
         }
@@ -190,9 +190,9 @@ public extension AppModel {
                 case .completed:
                     self.failedAudioRecoveryError = nil
                 case .completedCleanupPending:
-                    self.failedAudioRecoveryError = self.localizedRecoveryMessage(
-                        english: "Transcription completed, but recovery cleanup is pending; this can include an unencrypted temporary recording. Rill will keep retrying cleanup and will not repeat the provider request.",
-                        simplifiedChinese: "转写已完成，但恢复清理仍待完成，其中可能包含未加密的临时录音。Rill 会继续重试清理，也不会重复请求语音服务。"
+                    self.failedAudioRecoveryError = L10n.runText(
+                        .recoveryCleanupPending,
+                        language: self.language
                     )
                 }
             } catch is CancellationError {
@@ -200,9 +200,9 @@ public extension AppModel {
                 // runtime controller restores the retryable receipt and removes
                 // any decrypted temporary audio before returning.
             } catch {
-                self.failedAudioRecoveryError = self.localizedRecoveryMessage(
-                    english: "The failed recording could not be retried. \(self.localizedRecoveryErrorDetail(error))",
-                    simplifiedChinese: "无法重试失败录音。\(self.localizedRecoveryErrorDetail(error))"
+                self.failedAudioRecoveryError = String(
+                    format: L10n.runText(.recoveryRetryFailedFormat, language: self.language),
+                    self.localizedRecoveryErrorDetail(error)
                 )
             }
         }
@@ -247,9 +247,9 @@ public extension AppModel {
                 await MainActor.run {
                     guard let self else { return }
                     self.isUpdatingFailedAudioRecovery = false
-                    self.failedAudioRecoveryError = self.localizedRecoveryMessage(
-                        english: "The failed recording could not be deleted. \(self.localizedRecoveryErrorDetail(error))",
-                        simplifiedChinese: "无法删除失败录音。\(self.localizedRecoveryErrorDetail(error))"
+                    self.failedAudioRecoveryError = String(
+                        format: L10n.runText(.recoveryDeleteFailedFormat, language: self.language),
+                        self.localizedRecoveryErrorDetail(error)
                     )
                 }
             }
@@ -275,9 +275,9 @@ public extension AppModel {
                 await MainActor.run {
                     guard let self else { return }
                     self.isUpdatingFailedAudioRecovery = false
-                    self.failedAudioRecoveryError = self.localizedRecoveryMessage(
-                        english: "Failed recordings could not be cleared. \(self.localizedRecoveryErrorDetail(error))",
-                        simplifiedChinese: "无法清除失败录音。\(self.localizedRecoveryErrorDetail(error))"
+                    self.failedAudioRecoveryError = String(
+                        format: L10n.runText(.recoveryClearFailedFormat, language: self.language),
+                        self.localizedRecoveryErrorDetail(error)
                     )
                 }
             }
@@ -315,10 +315,7 @@ extension AppModel {
             )
         }
         guard let recoveryError = error as? FailedAudioRecoveryError else {
-            return localizedRecoveryMessage(
-                english: "Failed recording recovery is temporarily unavailable. Retry the operation.",
-                simplifiedChinese: "失败录音恢复暂时不可用。请重试此操作。"
-            )
+            return L10n.runText(.recoveryTemporarilyUnavailable, language: language)
         }
         let simplifiedChinese: String
         switch recoveryError {

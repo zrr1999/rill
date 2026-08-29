@@ -122,10 +122,63 @@ final class RecordWorkspaceModelTests: XCTestCase {
         XCTAssertEqual(model.selectedListDeliverySubject?.membershipID, membership.id)
     }
 
-    private func draft(_ text: String) -> RecordDraft {
+    func testSourceAppFilterNarrowsVisibleRecordsByBundleIdentifier() async throws {
+        let store = RecordStore()
+        let safari = try await store.ingest(draft("from safari", bundleID: "com.apple.Safari"), into: [])
+        _ = try await store.ingest(draft("from notes", bundleID: "com.apple.Notes"), into: [])
+        _ = try await store.ingest(draft("no source app"), into: [])
+        let model = RecordWorkspaceModel(store: store)
+        await model.refresh()
+        XCTAssertEqual(model.visibleRecords.count, 3)
+
+        model.sourceAppFilterBundleIdentifier = "com.apple.Safari"
+        XCTAssertEqual(model.visibleRecords.map(\.id), [safari.id])
+
+        model.sourceAppFilterBundleIdentifier = nil
+        XCTAssertEqual(model.visibleRecords.count, 3)
+    }
+
+    func testDeliverySubjectForVisibleRecordPrefersSelectedCollectionMembership() async throws {
+        let store = RecordStore()
+        let stack = try await store.createCollection(name: "Stack", preset: .stack)
+        let list = try await store.createCollection(name: "Reusable", preset: .list)
+        let projection = try await store.ingest(draft("deliverable"), into: [stack.id, list.id])
+        let model = RecordWorkspaceModel(store: store)
+        await model.refresh()
+
+        // All Records: falls back to the first membership regardless of preset.
+        let fallback = try XCTUnwrap(model.deliverySubject(forVisibleRecordAt: 0))
+        XCTAssertEqual(fallback.recordID, projection.id)
+        XCTAssertEqual(fallback.payloadKind, .text)
+
+        // A selected collection contributes its own membership.
+        model.selectCollection(list.id)
+        let listMembership = try XCTUnwrap(projection.memberships.first { $0.collectionID == list.id })
+        let subject = try XCTUnwrap(model.deliverySubject(forVisibleRecordAt: 0))
+        XCTAssertEqual(subject.membershipID, listMembership.id)
+        XCTAssertEqual(subject.membershipRevision, listMembership.revision)
+        XCTAssertEqual(subject.collectionID, list.id)
+    }
+
+    func testDeliverySubjectForVisibleRecordRejectsNoMembershipAndOutOfBounds() async throws {
+        let store = RecordStore()
+        let projection = try await store.ingest(draft("no collection"), into: [])
+        let model = RecordWorkspaceModel(store: store)
+        await model.refresh()
+
+        XCTAssertEqual(model.visibleRecords.map(\.id), [projection.id])
+        XCTAssertNil(model.deliverySubject(forVisibleRecordAt: 0))
+        XCTAssertNil(model.deliverySubject(forVisibleRecordAt: 1))
+        XCTAssertNil(model.deliverySubject(forVisibleRecordAt: -1))
+    }
+
+    private func draft(_ text: String, bundleID: String? = nil) -> RecordDraft {
         RecordDraft(
             payload: .text(text),
-            provenance: RecordProvenance(source: RecordSourceIdentity(kind: .user))
+            provenance: RecordProvenance(
+                source: RecordSourceIdentity(kind: .user),
+                sourceBundleIdentifier: bundleID
+            )
         )
     }
 }

@@ -1231,18 +1231,20 @@ extension ActionResult {
   func localizedDescription(language: AppLanguage) -> String {
     switch self {
     case .injected:
-      return language == .english ? "injected" : "已注入"
+      return L10n.runText(.runActionInjected, language: language)
     case .copiedToClipboard:
-      return language == .english ? "copied to clipboard" : "已复制到剪贴板"
+      return L10n.runText(.runActionCopiedToClipboard, language: language)
     case .storedRecord:
-      return language == .english ? "stored as a record" : "已存为记录"
+      return L10n.runText(.runActionStoredRecord, language: language)
     case .externalOutput(let destination):
-      return language == .english
-        ? "external output completed (\(destination))" : "外部输出已完成（\(destination)）"
+      return String(
+        format: L10n.runText(.runActionExternalOutputFormat, language: language),
+        destination
+      )
     case .skipped(let reason):
-      return language == .english ? "skipped (\(reason))" : "已跳过（\(reason)）"
+      return String(format: L10n.runText(.runActionSkippedFormat, language: language), reason)
     case .failed(let reason):
-      return language == .english ? "failed (\(reason))" : "失败（\(reason)）"
+      return String(format: L10n.runText(.runActionFailedFormat, language: language), reason)
     }
   }
 }

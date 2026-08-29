@@ -28,15 +28,15 @@ enum GlobalSearchResultCategory: Int, CaseIterable, Sendable {
     case settings
 
     func title(language: AppLanguage) -> String {
-        switch (language, self) {
-        case (.english, .pages): "Pages"
-        case (.simplifiedChinese, .pages): "页面"
-        case (.english, .workflows): "Workflows"
-        case (.simplifiedChinese, .workflows): "工作流"
-        case (.english, .history): "Run History"
-        case (.simplifiedChinese, .history): "运行历史"
-        case (.english, .settings): "Settings"
-        case (.simplifiedChinese, .settings): "设置"
+        switch self {
+        case .pages:
+            L10n.overlayText(.searchCategoryPages, language: language)
+        case .workflows:
+            UIStrings.text(.sidebarWorkflows, language: language)
+        case .history:
+            L10n.overlayText(.searchCategoryRunHistory, language: language)
+        case .settings:
+            UIStrings.text(.settingsTitle, language: language)
         }
     }
 }
@@ -90,72 +90,55 @@ enum GlobalHistorySearchState: Equatable, Sendable {
 
 enum GlobalSearchText {
     static func searchCommand(language: AppLanguage) -> String {
-        language == .english ? "Search Rill" : "搜索 Rill"
+        L10n.overlayText(.searchCommand, language: language)
     }
 
     static func searchPrompt(language: AppLanguage) -> String {
-        language == .english
-            ? "Search pages, workflows, run history, and settings"
-            : "搜索页面、工作流、运行历史和设置"
+        L10n.overlayText(.searchPrompt, language: language)
     }
 
     static func quickDestinations(language: AppLanguage) -> String {
-        language == .english ? "Quick Destinations" : "快速前往"
+        L10n.overlayText(.searchQuickDestinations, language: language)
     }
 
     static func noResultsTitle(language: AppLanguage) -> String {
-        language == .english ? "No Results" : "没有结果"
+        L10n.overlayText(.searchNoResultsTitle, language: language)
     }
 
     static func noResultsDescription(language: AppLanguage) -> String {
-        language == .english
-            ? "Try a page, workflow, run status, or settings term."
-            : "请尝试页面、工作流、运行状态或设置关键词。"
+        L10n.overlayText(.searchNoResultsDescription, language: language)
     }
 
     static func cancel(language: AppLanguage) -> String {
-        language == .english ? "Cancel" : "取消"
+        L10n.recordText(.cancel, language: language)
     }
 
     static func workflowDetail(language: AppLanguage) -> String {
-        language == .english ? "Open in Workflows" : "在工作流中打开"
+        L10n.overlayText(.searchOpenInWorkflows, language: language)
     }
 
     static func settingsDetail(language: AppLanguage) -> String {
-        language == .english ? "Open settings section" : "打开设置分区"
+        L10n.overlayText(.searchOpenSettingsSection, language: language)
     }
 
     static func status(_ status: HistoryTimelineStatus, language: AppLanguage) -> String {
-        switch (language, status) {
-        case (.english, .completed): "Completed"
-        case (.simplifiedChinese, .completed): "已完成"
-        case (.english, .partiallyCompleted): "Partially completed"
-        case (.simplifiedChinese, .partiallyCompleted): "部分完成"
-        case (.english, .failed): "Failed"
-        case (.simplifiedChinese, .failed): "失败"
-        case (.english, .cancelled): "Cancelled"
-        case (.simplifiedChinese, .cancelled): "已取消"
-        case (.english, .skipped): "Skipped"
-        case (.simplifiedChinese, .skipped): "已跳过"
-        }
+        L10n.historyRunStatus(status, language: language)
     }
 
     static func genericRun(language: AppLanguage) -> String {
-        language == .english ? "Workflow run" : "工作流运行"
+        L10n.historyTimelineText(.workflowRunFallback, language: language)
     }
 
     static func historySearching(language: AppLanguage) -> String {
-        language == .english ? "Searching run history…" : "正在搜索运行历史…"
+        L10n.overlayText(.searchHistorySearching, language: language)
     }
 
     static func historyUnavailable(language: AppLanguage) -> String {
-        language == .english
-            ? "Saved run history couldn't be searched. Page, workflow, and settings results are still available."
-            : "无法搜索已保存的运行历史；页面、工作流和设置结果仍然可用。"
+        L10n.overlayText(.searchHistoryUnavailable, language: language)
     }
 
     static func historyRetry(language: AppLanguage) -> String {
-        language == .english ? "Retry" : "重试"
+        UIStrings.text(.retryGlobalInput, language: language)
     }
 }
 

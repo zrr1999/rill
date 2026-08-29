@@ -19,6 +19,9 @@ public final class RecordWorkspaceModel {
     public var selectedRecordID: RecordID?
     public var searchText = ""
     public var showsPinnedOnly = false
+    /// Panel-mode session filter: when set, only records captured from this
+    /// application remain visible. Not persisted.
+    public var sourceAppFilterBundleIdentifier: String?
     public private(set) var isLoading = false
     public private(set) var isMutating = false
     public private(set) var errorMessage: String?
@@ -59,6 +62,33 @@ public final class RecordWorkspaceModel {
         )
     }
 
+    /// Freezes the exact immutable Record and an active membership for the
+    /// record currently visible at `index`. Membership selection mirrors the
+    /// inspector's preferred-membership rule, but unlike
+    /// `selectedListDeliverySubject` it is not restricted to List presets.
+    /// Records without an active membership cannot be delivered and return nil.
+    public func deliverySubject(forVisibleRecordAt index: Int) -> RecordDeliverySubject? {
+        let records = visibleRecords
+        guard records.indices.contains(index) else { return nil }
+        let projection = records[index]
+        let membership: RecordMembership?
+        if let selectedCollectionID,
+           let selected = projection.memberships.first(where: { $0.collectionID == selectedCollectionID }) {
+            membership = selected
+        } else {
+            membership = projection.memberships.first
+        }
+        guard let membership, membership.state == .active else { return nil }
+        return RecordDeliverySubject(
+            recordID: projection.id,
+            membershipID: membership.id,
+            membershipRevision: membership.revision,
+            collectionID: membership.collectionID,
+            payloadKind: projection.record.payload.kind,
+            captureTags: projection.record.provenance.captureTags
+        )
+    }
+
     public var visibleRecords: [RecordProjection] {
         let records: [RecordProjection]
         if let selectedCollectionID {
@@ -75,6 +105,10 @@ public final class RecordWorkspaceModel {
 
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return records.filter { projection in
+            if let sourceAppFilterBundleIdentifier,
+               projection.record.provenance.sourceBundleIdentifier != sourceAppFilterBundleIdentifier {
+                return false
+            }
             guard !showsPinnedOnly || projection.metadata.isPinned else { return false }
             guard !query.isEmpty else { return true }
             return searchableText(for: projection).contains(query)

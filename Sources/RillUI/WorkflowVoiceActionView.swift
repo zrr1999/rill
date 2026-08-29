@@ -7,15 +7,13 @@ extension WorkflowsView {
         VStack(alignment: .leading, spacing: 8) {
             workflowPhaseHeader(
                 .setup,
-                subtitle: model.language == .english
-                    ? "Resolve speech resources and freeze vocabulary for this run."
-                    : "解析语音资源，并为本次运行冻结词库快照。"
+                subtitle: L10n.workflowText(.workflowSetupPhaseSubtitle, language: model.language)
             )
 
             actionStepRow(
                 number: 1,
                 icon: RillSystemSymbol.micFill.rawValue,
-                label: model.language == .english ? "Speech Recognition" : "语音识别"
+                label: L10n.workflowText(.workflowSpeechRecognitionLabel, language: model.language)
             ) {
                 HStack(spacing: 8) {
                     Image(systemName: RillSystemSymbol.laptopcomputer.rawValue)
@@ -23,16 +21,12 @@ extension WorkflowsView {
                     Text(UIStrings.editorRecognizer(.localSpeech, language: model.language))
                         .font(.callout.weight(.medium))
                     Spacer(minLength: 8)
-                    Text(model.language == .english ? "On-device" : "设备端")
+                    Text(L10n.workflowText(.workflowOnDeviceBadge, language: model.language))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
 
-                Text(
-                    model.language == .english
-                        ? "Uses the local engine and model selected in Voice settings unless a model override is set below."
-                        : "默认使用语音设置中选择的本地引擎和模型；也可在下方为此工作流指定模型。"
-                )
+                Text(L10n.workflowText(.workflowSpeechRecognitionHint, language: model.language))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text(L10n.privacySettingsSpeechRouteHint(.localSpeech, language: model.language))
@@ -75,19 +69,19 @@ extension WorkflowsView {
                 .font(.caption)
 
                 Toggle(
-                    model.language == .english ? "Live preview" : "实时预览",
+                    L10n.workflowText(.workflowLivePreviewToggle, language: model.language),
                     isOn: $draft.livePreviewEnabled
                 )
                 .toggleStyle(.checkbox)
 
                 if draft.livePreviewEnabled {
                     Picker(
-                        model.language == .english ? "Preview location" : "预览位置",
+                        L10n.workflowText(.workflowPreviewLocationLabel, language: model.language),
                         selection: $draft.livePreviewPlacement
                     ) {
-                        Text(model.language == .english ? "Overlay" : "浮层")
+                        Text(L10n.workflowText(.workflowPreviewOverlay, language: model.language))
                             .tag(LivePreviewPlacement.overlay)
-                        Text(model.language == .english ? "Cursor" : "光标")
+                        Text(L10n.workflowText(.workflowPreviewCursor, language: model.language))
                             .tag(LivePreviewPlacement.cursor)
                     }
                     .pickerStyle(.segmented)
@@ -96,7 +90,7 @@ extension WorkflowsView {
                 }
 
                 Picker(
-                    model.language == .english ? "Streaming style" : "流式风格",
+                    L10n.workflowText(.workflowStreamingStyleLabel, language: model.language),
                     selection: $draft.streamingProfile
                 ) {
                     Text("Realtime").tag("realtime")
@@ -110,10 +104,10 @@ extension WorkflowsView {
             actionStepRow(
                 number: 2,
                 icon: RillSystemSymbol.textBookClosedFill.rawValue,
-                label: model.language == .english ? "Vocabulary Collections" : "词库集合"
+                label: L10n.workflowText(.workflowVocabularyCollectionsLabel, language: model.language)
             ) {
                 if model.vocabularyCollections.isEmpty {
-                    Text(model.language == .english ? "No collections available." : "暂无可用词库。")
+                    Text(L10n.workflowText(.workflowNoVocabularyCollections, language: model.language))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -150,37 +144,27 @@ extension WorkflowsView {
 
             workflowPhaseHeader(
                 .process,
-                subtitle: model.language == .english
-                    ? "Recognize audio, apply vocabulary, then run text transforms in order."
-                    : "识别音频、应用词库，再按顺序执行文本处理。"
+                subtitle: L10n.workflowText(.workflowProcessPhaseSubtitle, language: model.language)
             )
 
             actionStepRow(
                 number: 3,
                 icon: RillSystemSymbol.waveform.rawValue,
-                label: model.language == .english ? "Recognize Speech" : "识别语音"
+                label: L10n.workflowText(.workflowRecognizeSpeechLabel, language: model.language)
             ) {
-                Text(
-                    model.language == .english
-                        ? "Audio → text using the frozen Setup route and supported hotword hints."
-                        : "使用 Setup 中冻结的路由和引擎支持的热词提示，将音频转换为文本。"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text(L10n.workflowText(.workflowRecognizeSpeechHint, language: model.language))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             actionStepRow(
                 number: 4,
                 icon: RillSystemSymbol.arrowTriangle2Circlepath.rawValue,
-                label: model.language == .english ? "Apply Vocabulary" : "应用替换词"
+                label: L10n.workflowText(.workflowApplyVocabularyLabel, language: model.language)
             ) {
-                Text(
-                    model.language == .english
-                        ? "Apply matching replacement entries before normalization and LLM rewriting."
-                        : "在空白规范化和 LLM 改写之前应用匹配的替换词。"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text(L10n.workflowText(.workflowApplyVocabularyHint, language: model.language))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             actionStepRow(
@@ -222,7 +206,7 @@ extension WorkflowsView {
                 ) {
                     if step.kind == .llmRewrite || step.kind == .llmAnswer {
                         TextField(
-                            model.language == .english ? "LLM prompt…" : "LLM 提示词…",
+                            L10n.workflowText(.workflowLLMPromptPlaceholder, language: model.language),
                             text: Binding(
                                 get: { draft.postProcessSteps[index].prompt },
                                 set: { draft.postProcessSteps[index].prompt = $0 }
@@ -231,13 +215,9 @@ extension WorkflowsView {
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
 
-                        Text(
-                            model.language == .english
-                                ? "OpenAI model: \(model.openAIModel). Change it in Settings → Speech Engine."
-                                : "OpenAI 模型：\(model.openAIModel)。可在“设置 → 语音引擎”中切换。"
-                        )
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        Text(L10n.workflowOpenAIModelHint(model.openAIModel, language: model.language))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
                     }
 
                     HStack(spacing: 4) {
@@ -302,7 +282,7 @@ extension WorkflowsView {
                 }
             } label: {
                 Label(
-                    model.language == .english ? "Add Step" : "添加步骤",
+                    L10n.workflowText(.workflowAddStep, language: model.language),
                     systemImage: RillSystemSymbol.plusCircle.rawValue
                 )
                 .font(.caption.weight(.medium))
@@ -313,19 +293,13 @@ extension WorkflowsView {
 
             workflowPhaseHeader(
                 .output,
-                subtitle: model.language == .english
-                    ? "Choose a primary destination and optionally add speech playback."
-                    : "选择主要输出目标，并可追加语音朗读。"
+                subtitle: L10n.workflowText(.workflowOutputPhaseSubtitle, language: model.language)
             )
 
-            Text(
-                model.language == .english
-                    ? "For fully ordered output.actions, edit the workflow TOML and reload."
-                    : "如需自由编排多个 output.actions，可直接编辑工作流 TOML 后重新加载。"
-            )
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .padding(.leading, 24)
+            Text(L10n.workflowText(.workflowOrderedActionsHint, language: model.language))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 24)
 
             actionStepRow(
                 number: draft.postProcessSteps.count + 6,
@@ -356,7 +330,7 @@ extension WorkflowsView {
                                     set: { draft.targetGroupID = $0 }
                                 )
                             ) {
-                                Text(model.language == .english ? "Default routing" : "默认路由").tag(nil as UUID?)
+                                Text(L10n.workflowText(.workflowDefaultRouting, language: model.language)).tag(nil as UUID?)
                                 ForEach(model.recordWorkspace.snapshot.collections) { collection in
                                     Text(collection.name).tag(collection.id.rawValue as UUID?)
                                 }
@@ -409,21 +383,15 @@ extension WorkflowsView {
             actionStepRow(
                 number: draft.postProcessSteps.count + 7,
                 icon: RillSystemSymbol.speakerWave2.rawValue,
-                label: model.language == .english ? "Speak Result" : "朗读结果"
+                label: L10n.workflowText(.workflowSpeakResultLabel, language: model.language)
             ) {
                 if draft.destination == .speakOnly {
-                    Text(
-                        model.language == .english
-                            ? "Speech is the primary output for this workflow."
-                            : "朗读是此工作流的主要输出。"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Text(L10n.workflowText(.workflowSpeakPrimaryHint, language: model.language))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } else {
                     Toggle(
-                        model.language == .english
-                            ? "Read the final result aloud"
-                            : "朗读最终结果",
+                        L10n.workflowText(.workflowReadAloudToggle, language: model.language),
                         isOn: $draft.speaksResult
                     )
                     .toggleStyle(.checkbox)
@@ -431,10 +399,10 @@ extension WorkflowsView {
                 }
                 if draft.speaksResult || draft.destination == .speakOnly {
                     Picker(
-                        model.language == .english ? "Workflow TTS model" : "工作流 TTS 模型",
+                        L10n.workflowText(.workflowTTSModelLabel, language: model.language),
                         selection: $draft.speechModelID
                     ) {
-                        Text(model.language == .english ? "Default enabled model" : "默认已启用模型")
+                        Text(L10n.workflowText(.workflowDefaultTTSModel, language: model.language))
                             .tag("")
                         ForEach(model.workflowSelectableTTSModels, id: \.self) { modelID in
                             Text(modelID).tag(modelID)
@@ -444,7 +412,7 @@ extension WorkflowsView {
                     .accessibilityIdentifier("workflow.tts.model")
 
                     Picker(
-                        model.language == .english ? "Workflow voice" : "工作流音色",
+                        L10n.workflowText(.workflowVoiceLabel, language: model.language),
                         selection: $draft.speechVoice
                     ) {
                         ForEach(Qwen3TTSVoice.allCases, id: \.self) { voice in
@@ -454,13 +422,9 @@ extension WorkflowsView {
                     .pickerStyle(.menu)
                     .accessibilityIdentifier("workflow.tts.voice")
                 }
-                Text(
-                    model.language == .english
-                        ? "The TTS model and voice are saved in this workflow. Settings only controls which models are available and resident."
-                        : "TTS 模型与音色均保存在此 workflow 中；设置页只控制模型是否可用及是否常驻。"
-                )
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                Text(L10n.workflowText(.workflowTTSSavedHint, language: model.language))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -471,17 +435,17 @@ extension WorkflowsView {
             actionStepRow(
                 number: 1,
                 icon: RillSystemSymbol.boltHorizontalCircle.rawValue,
-                label: model.language == .english ? "Group Action" : "组动作"
+                label: UIStrings.text(.workflowGroupAction, language: model.language)
             ) {
                 Picker(
                     UIStrings.text(.workflowGroupAction, language: model.language),
                     selection: $draft.groupActionKind
                 ) {
-                    Text(model.language == .english ? "Create Item" : "创建条目")
+                    Text(L10n.workflowText(.workflowCreateItem, language: model.language))
                         .tag(RecordCollectionActionKind.createRecord)
-                    Text(model.language == .english ? "Edit Item" : "编辑条目")
+                    Text(L10n.workflowText(.workflowEditItem, language: model.language))
                         .tag(RecordCollectionActionKind.editRecord)
-                    Text(model.language == .english ? "Remove Item" : "移除条目")
+                    Text(L10n.workflowText(.workflowRemoveItem, language: model.language))
                         .tag(RecordCollectionActionKind.removeRecord)
                 }
                 .labelsHidden()
@@ -492,10 +456,10 @@ extension WorkflowsView {
                 actionStepRow(
                     number: 2,
                     icon: RillSystemSymbol.wandAndStars.rawValue,
-                    label: model.language == .english ? "Prompt" : "提示词"
+                    label: L10n.workflowText(.workflowPromptLabel, language: model.language)
                 ) {
                     TextField(
-                        model.language == .english ? "LLM prompt (e.g. polish text)…" : "LLM 提示词（如润色文本）…",
+                        L10n.workflowText(.workflowActionPromptPlaceholder, language: model.language),
                         text: $draft.actionPrompt
                     )
                     .textFieldStyle(.roundedBorder)

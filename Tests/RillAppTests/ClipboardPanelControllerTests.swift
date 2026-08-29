@@ -1,6 +1,31 @@
+import AppKit
 import XCTest
 @testable import RillApp
 @testable import RillCore
+@testable import RillRuntime
+@testable import RillUI
+
+private actor RecordPanelDeliveryProbe {
+    struct Snapshot: Sendable {
+        var subjects: [RecordDeliverySubject] = []
+        var targets: [FocusedApplicationTargetIdentity] = []
+    }
+
+    private var state = Snapshot()
+
+    func record(_ subject: RecordDeliverySubject, target: FocusedApplicationTargetIdentity) {
+        state.subjects.append(subject)
+        state.targets.append(target)
+    }
+
+    func snapshot() -> Snapshot {
+        state
+    }
+}
+
+private struct RecordPanelDigitTestContextProvider: ContextProvider {
+    func captureContext() async -> ContextSnapshot { .empty }
+}
 
 private actor RecordPanelPasteProbe {
     struct Snapshot: Sendable {
@@ -294,6 +319,67 @@ final class RecordPanelControllerTests: XCTestCase {
         XCTAssertEqual(result.shutdownCount, 1)
     }
 
+    func testDigitShortcutPolicyMapsMainKeyboardDigitsInOrder() {
+        // ANSI key codes for 1...9 are not contiguous: 5/6 are swapped, 8 is 28.
+        let digitKeyCodes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
+        for (index, keyCode) in digitKeyCodes.enumerated() {
+            XCTAssertEqual(
+                RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: keyCode, modifierFlags: []),
+                index,
+                "keyCode \(keyCode)"
+            )
+        }
+    }
+
+    func testDigitShortcutPolicyRejectsModifiedAndNonDigitKeys() {
+        XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 18, modifierFlags: .command))
+        XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 18, modifierFlags: .shift))
+        XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 18, modifierFlags: .option))
+        XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 18, modifierFlags: .control))
+        XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 24, modifierFlags: [])) // =
+        XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 29, modifierFlags: [])) // 0
+        XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 83, modifierFlags: [])) // numpad 1
+    }
+
+    func testDigitSelectionDeliversVisibleRecordThroughTheLockedTarget() async throws {
+        let target = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.Editor")
+        let store = RecordStore()
+        let projection = try await store.ingest(
+            RecordDraft(
+                payload: .text("digit deliverable"),
+                provenance: RecordProvenance(source: RecordSourceIdentity(kind: .user))
+            ),
+            into: [RecordCollection.inboxID]
+        )
+        let workspace = RecordWorkspaceModel(store: store)
+        await workspace.refresh()
+        let probe = RecordPanelDeliveryProbe()
+        let controller = RecordPanelController(
+            pasteTargetProvider: { target },
+            pasteTargetRestorer: { _ in true },
+            reduceMotionProvider: { true }
+        )
+
+        controller.show(
+            model: makeModel(recordWorkspace: workspace),
+            deliverSelection: { subject, actionTarget in
+                await probe.record(subject, target: actionTarget)
+            },
+            onDeliveryAbort: {}
+        )
+        let handler = try XCTUnwrap(controller.digitSelectionHandler)
+
+        // Only one visible record: index 1 is out of bounds and consumed nothing.
+        XCTAssertFalse(handler(1))
+        XCTAssertTrue(handler(0))
+        await waitForPasteWork()
+
+        let result = await probe.snapshot()
+        XCTAssertEqual(result.subjects.map(\.recordID), [projection.id])
+        XCTAssertEqual(result.targets, [target])
+        await controller.shutdown()
+    }
+
     private func makeTarget(
         processIdentifier: Int32,
         bundleIdentifier: String
@@ -303,6 +389,37 @@ final class RecordPanelControllerTests: XCTestCase {
                 processIdentifier: processIdentifier,
                 bundleIdentifier: bundleIdentifier
             )
+        )
+    }
+
+    private func makeModel(recordWorkspace: RecordWorkspaceModel) -> AppModel {
+        let eventBus = EventBus()
+        let resolver = CandidateResolver(eventBus: eventBus)
+        let actionRegistry = OutputActionRegistry(actions: [])
+        let coordinator = SessionCoordinator(
+            contextProvider: RecordPanelDigitTestContextProvider(),
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
+            transformerRegistry: TextTransformerRegistry(transformers: []),
+            actionRegistry: actionRegistry,
+            candidateResolver: resolver,
+            eventBus: eventBus
+        )
+        return AppModel(
+            workflows: [],
+            eventBus: eventBus,
+            sessionCoordinator: coordinator,
+            outputActionRegistry: actionRegistry,
+            recordWorkspace: recordWorkspace,
+            candidateResolver: resolver,
+            loadsPersistentSettingsOnInitialization: false,
+            writeClipboardTextAction: { _ in },
+            deliverNextRecordAction: {},
+            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted),
+            refreshPermissionsAction: {},
+            requestAccessibilityAction: {},
+            requestMicrophoneAction: {},
+            openAccessibilitySettingsAction: {},
+            openMicrophoneSettingsAction: {}
         )
     }
 

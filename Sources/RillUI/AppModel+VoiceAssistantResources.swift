@@ -126,11 +126,7 @@ extension AppModel {
       })
     {
       guard !isLoadingSettings, isWorkflowLibraryAvailable else {
-        return .failed(
-          language == .english
-            ? "The saved workflow library is unavailable. Repair storage, then retry."
-            : "已保存的工作流库不可用。请修复存储后重试。"
-        )
+        return .failed(L10n.runText(.workflowLibraryUnavailable, language: language))
       }
       hasModifiedWorkflowLibrary = true
       var updatedWorkflow = customWorkflows[index]
@@ -156,17 +152,19 @@ extension AppModel {
       persistWorkflowEnabledStates()
       persistCustomWorkflows()
       append(
-        english: "Wake phrases updated: \(editableWorkflow.name)",
-        simplifiedChinese: "唤醒短语已更新：\(editableWorkflow.name)"
+        english: String(
+          format: L10n.runText(.wakePhrasesUpdatedFormat, language: .english),
+          editableWorkflow.name
+        ),
+        simplifiedChinese: String(
+          format: L10n.runText(.wakePhrasesUpdatedFormat, language: .simplifiedChinese),
+          editableWorkflow.name
+        )
       )
       savedWorkflowID = editableWorkflow.id
     } else if let sourceWorkflow {
       guard !isLoadingSettings, isWorkflowLibraryAvailable else {
-        return .failed(
-          language == .english
-            ? "The saved workflow library is unavailable. Repair storage, then retry."
-            : "已保存的工作流库不可用。请修复存储后重试。"
-        )
+        return .failed(L10n.runText(.workflowLibraryUnavailable, language: language))
       }
       var customizedWorkflow = sourceWorkflow
       customizedWorkflow.name = localizedWorkflowName(for: sourceWorkflow)
@@ -197,17 +195,20 @@ extension AppModel {
       rebuildWorkflowLibrary()
       persistCustomWorkflows()
       append(
-        english: "Built-in wake workflow updated: \(customizedWorkflow.name)",
-        simplifiedChinese: "内置唤醒工作流已更新：\(customizedWorkflow.name)"
+        english: String(
+          format: L10n.runText(.builtInWakeWorkflowUpdatedFormat, language: .english),
+          customizedWorkflow.name
+        ),
+        simplifiedChinese: String(
+          format: L10n.runText(.builtInWakeWorkflowUpdatedFormat, language: .simplifiedChinese),
+          customizedWorkflow.name
+        )
       )
       savedWorkflowID = customizedWorkflow.id
     } else {
       var draft =
         defaultWorkflowDraft()
-      draft.name =
-        language == .english
-        ? "Wake Dictation"
-        : "唤醒听写"
+      draft.name = L10n.runText(.wakeDictationDraftName, language: language)
       draft.eventType = .wakeWord
       draft.wakePhrasesText = normalizedPhrases.joined(separator: "\n")
 
@@ -223,11 +224,7 @@ extension AppModel {
       })?.id
     }
     guard let savedWorkflowID else {
-      return .failed(
-        language == .english
-          ? "Rill could not locate the saved wake-word workflow."
-          : "Rill 无法找到刚保存的唤醒词工作流。"
-      )
+      return .failed(L10n.runText(.wakeWorkflowNotFound, language: language))
     }
 
     for workflow in workflows where
@@ -339,15 +336,16 @@ extension AppModel {
   }
 
   private func localizedWakeWordSettingsError(_ error: Error) -> String {
-    if language == .english {
-      return error.localizedDescription
-    }
-    return "无法保存唤醒词设置：\(error.localizedDescription)"
+    L10n.runWakeWordSettingsSaveFailed(
+      detail: error.localizedDescription,
+      language: language
+    )
   }
 
   private func localizedWorkflowFileSaveError(_ error: Error) -> String {
-    language == .english
-      ? "The workflow TOML file could not be saved: \(error.localizedDescription)"
-      : "无法保存工作流 TOML 文件：\(error.localizedDescription)"
+    String(
+      format: L10n.runText(.workflowTOMLFileSaveFailedFormat, language: language),
+      error.localizedDescription
+    )
   }
 }

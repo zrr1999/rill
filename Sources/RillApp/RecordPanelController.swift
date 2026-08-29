@@ -37,6 +37,29 @@ enum RecordPanelModalPolicy {
     }
 }
 
+enum RecordPanelDigitShortcutPolicy {
+    /// Maps an unmodified main-keyboard digit press (1...9) to a zero-based
+    /// index into the visible record list. The ANSI key codes are not
+    /// contiguous — 5 and 6 are swapped and 8 sits at 28 — so the mapping is
+    /// explicit rather than a range.
+    static func visibleRecordIndex(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> Int? {
+        let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.isDisjoint(with: [.command, .option, .control, .shift]) else { return nil }
+        switch keyCode {
+        case 18: return 0
+        case 19: return 1
+        case 20: return 2
+        case 21: return 3
+        case 23: return 4
+        case 22: return 5
+        case 26: return 6
+        case 28: return 7
+        case 25: return 8
+        default: return nil
+        }
+    }
+}
+
 @MainActor
 final class RecordPanelPasteTaskOwner {
     private struct Reservation {
@@ -206,6 +229,11 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     var isVisible: Bool { panel?.isVisible ?? false }
     var isShutdown: Bool { hasBegunShutdown }
 
+    /// Digit-key hook wired to the panel while it is shown; resolves a
+    /// zero-based visible record index to a delivery through the same target
+    /// locking path as the Insert button. Exposed for tests.
+    private(set) var digitSelectionHandler: ((Int) -> Bool)?
+
     func show(
         model: AppModel,
         deliverSelection: @escaping @Sendable (
@@ -228,6 +256,13 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
                 await onDeliveryAbort()
             }
         }
+        let digitSelection: (Int) -> Bool = { index in
+            guard let subject = model.recordWorkspace.deliverySubject(forVisibleRecordAt: index)
+            else { return false }
+            useSelectedRecord(subject)
+            return true
+        }
+        digitSelectionHandler = digitSelection
         let hostingController = FloatingRecordHostingController(
             rootView: FloatingRecordView(
                 model: model,
@@ -238,6 +273,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         )
 
         if let panel {
+            (panel as? FloatingRecordPanel)?.onDigitPressed = digitSelection
             panel.contentViewController = hostingController
             restorePanelSizeIfNeeded(panel)
             if panel.isVisible {
@@ -256,6 +292,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         )
         panel.delegate = self
         panel.onEscapePressed = { [weak self] in self?.handleEscape() }
+        panel.onDigitPressed = digitSelection
         panel.contentViewController = hostingController
         panel.minSize = Self.minimumPanelSize
         panel.contentMinSize = Self.minimumPanelSize
@@ -636,9 +673,20 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
 
 private final class FloatingRecordPanel: NSPanel {
     var onEscapePressed: (() -> Void)?
+    var onDigitPressed: ((Int) -> Bool)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func keyDown(with event: NSEvent) {
+        if let index = RecordPanelDigitShortcutPolicy.visibleRecordIndex(
+            keyCode: event.keyCode,
+            modifierFlags: event.modifierFlags
+        ), onDigitPressed?(index) == true {
+            return
+        }
+        super.keyDown(with: event)
+    }
 
     override func cancelOperation(_ sender: Any?) {
         onEscapePressed?()
@@ -707,7 +755,8 @@ private struct FloatingRecordView: View {
             RecordWorkspaceView(
                 workspace: model.recordWorkspace,
                 language: model.language,
-                deliverSelection: deliverSelection
+                deliverSelection: deliverSelection,
+                sourceAppContext: previewContext
             )
                 .frame(
                     minWidth: RecordPanelController.minimumPanelSize.width,

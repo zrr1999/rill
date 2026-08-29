@@ -33,7 +33,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         case .input:
             UIStrings.text(.settingsBuiltinPushToTalk, language: language)
         case .voiceAssistant:
-            language == .english ? "Voice Assistant" : "语音助手"
+            L10n.overlayText(.settingsVoiceAssistantTitle, language: language)
         }
     }
 

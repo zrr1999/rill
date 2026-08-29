@@ -79,7 +79,7 @@ SPARK.md 把最终形态定义为「原生 macOS 边缘语音与剪贴板工作�
 | 动效 | 用户可感知的状态动画一律 spring：默认 `.spring(response: 0.3–0.35, dampingFraction: 1.0)` 无过冲，按压等带用户动量的交互允许 `dampingFraction: 0.8` 轻回弹；装饰性动画必须读 `\.accessibilityReduceMotion` 降级；scrollTo 导航定位保留固定时长 easing；AppKit 浮窗显隐须经 `reduceMotionProvider` 门控 |
 | 空态 | 空态大图标统一 `.font(.largeTitle)` + `.imageScale(.large)`，随 Dynamic Type 缩放，不用固定 pt 尺寸 |
 | 强调色 | 跟随系统 `accentColor`，不引入品牌主题引擎；品牌色（深墨绿/珊瑚路由节点）只出现在 App 图标与营销面 |
-| 双语与无障碍 | 所有用户可见字符串走 `UIStrings`/`L10n` 双语；Record 域与历史时间线文案分别走 `Localization+Record.swift`（`L10n.recordText`）与 `Localization+HistoryRun.swift` 子表（`L10n.historyTimelineText`），不再使用视图内私有双语 helper；非文本控件的非空 AX 标签由既有 L10n 测试约束；新页面必须维持 shell 持有的跨页焦点合同 |
+| 双语与无障碍 | 所有用户可见字符串走 `UIStrings`/`L10n` 双语；领域子表按表面拆分：`Localization+Record.swift`、`Localization+HistoryRun.swift`、`Localization+Workflows.swift`、`Localization+Settings.swift`、`Localization+Overlays.swift`、`Localization+RunStatus.swift`（AppModel 层状态/错误文案），不再使用视图内私有双语 helper 或 `language == .english` 行内三元；各子表 key 穷举测试保证「加 key 必须双语填表」；非文本控件的非空 AX 标签由既有 L10n 测试约束；新页面必须维持 shell 持有的跨页焦点合同 |
 | 密度 | 环境层 glanceable（一瞥可读）；主窗口 management density（卡片+列表，行内动作优先于浮层） |
 
 ## 5. 分阶段计划
@@ -99,18 +99,23 @@ SPARK.md 把最终形态定义为「原生 macOS 边缘语音与剪贴板工作�
   `AppModelTests` 的导航与焦点合同改到 `活动` 路由后全绿；完整
   `just test` 通过。
 
-### 阶段二（候选，需数据触发）
+### 阶段二（候选，需数据触发；截至 2026-08-30 门槛未满足）
 
 - 实时动态与回执时间线的去重：先用 dogfood 记录二者的信息重叠度，再决定
-  是否把 transient event feed 折叠进时间线的「进行中」区。
+  是否把 transient event feed 折叠进时间线的「进行中」区。（仓内无该
+  重叠度数据，维持现状。）
 - Records 工作区增强（置顶/重命名/`Paste as…`）继续按 competitive-radar
   的条件式 P2 门槛，用复用率与格式失败计数决定。
 - 模式模板（原样/干净/正式/翻译）按 competitive-research 3.1 评估，只包装
   已有工作流机制。
 
-### 阶段三（候选）
+### 阶段三
 
-- RecordPanel 光标旁短闭环增强（数字直贴、跟随前台 App 过滤）。
+- RecordPanel 光标旁短闭环增强（已完成 2026-08-30）：数字键 1–9 直贴对应
+  可见记录（经 `RecordPanelDigitShortcutPolicy` + `useSelectedItem` 既有
+  目标锁定链；搜索框聚焦时数字键天然进搜索框），列表行带序号角标；工具条
+  新增「仅当前 App」来源过滤（按采集时的 `sourceBundleIdentifier` 匹配
+  show 时锁定的前台 App）。仅浮窗模式启用，主窗口 Records 页不变。
 - 语音助手状态在浮窗与活动页的呈现（随 SPARK 当前切片验收后评估）。
 
 ## 6. 非目标

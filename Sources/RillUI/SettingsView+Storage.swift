@@ -75,9 +75,10 @@ extension SettingsView {
         Spacer()
         if !model.failedAudioRecoveryReceipts.isEmpty {
           Text(
-            model.language == .english
-              ? "\(model.failedAudioRecoveryReceipts.count) encrypted"
-              : "已加密 \(model.failedAudioRecoveryReceipts.count) 条"
+            L10n.settingsFailedAudioEncryptedCount(
+              model.failedAudioRecoveryReceipts.count,
+              language: model.language
+            )
           )
           .font(.caption)
           .foregroundStyle(.secondary)

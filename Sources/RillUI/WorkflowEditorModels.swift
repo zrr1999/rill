@@ -518,17 +518,16 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
 
     func outputValidationError(language: AppLanguage) -> String? {
         guard eventType.isVoiceEvent else {
-            return language == .english
-                ? "Record collection event workflows are unavailable until production actions and receipts are implemented."
-                : "旧版记录集事件工作流已停用；生产投递请使用记录路由。"
+            return L10n.workflowText(.workflowRecordEventUnavailable, language: language)
         }
         if eventType == .wakeWord {
             do {
                 _ = try WakeWordConfiguration(phrases: wakePhrases).validatedPhrases()
             } catch {
-                return language == .english
-                    ? error.localizedDescription
-                    : "唤醒词必须包含 1–4 个不重复的有效短语。"
+                return L10n.workflowWakePhraseValidationError(
+                    englishDescription: error.localizedDescription,
+                    language: language
+                )
             }
         }
         if let unsupportedStep = postProcessSteps.first(where: {
@@ -536,17 +535,13 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
                 && $0.kind != .llmRewrite
                 && $0.kind != .llmAnswer
         }) {
-            return language == .english
-                ? "The \(unsupportedStep.kind.rawValue) step is not available without a configured production transformer."
-                : "尚未配置生产级 transformer，不能使用 \(unsupportedStep.kind.rawValue) 步骤。"
+            return L10n.workflowUnsupportedStepError(unsupportedStep.kind.rawValue, language: language)
         }
         if postProcessSteps.contains(where: {
             ($0.kind == .llmRewrite || $0.kind == .llmAnswer)
                 && $0.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }) {
-            return language == .english
-                ? "Enter an instruction for every LLM rewrite step."
-                : "请为每个大模型改写步骤填写指令。"
+            return L10n.workflowText(.workflowLLMInstructionRequired, language: language)
         }
         switch destination {
         case .pasteIntoApp, .copyToClipboard, .saveToQueue, .speakOnly:

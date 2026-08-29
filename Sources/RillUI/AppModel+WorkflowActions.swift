@@ -55,10 +55,7 @@ private enum WorkflowOperationFailureStage {
 extension AppModel {
   private func workflowLibraryIsReadyForMutation(reportingToEditor: Bool) -> Bool {
     guard !isLoadingSettings else {
-      let message =
-        language == .english
-        ? "Workflows are still loading. Wait a moment and try again."
-        : "工作流仍在加载，请稍候再试。"
+      let message = L10n.runText(.workflowLibraryLoading, language: language)
       if reportingToEditor {
         workflowEditorError = message
       } else {
@@ -70,9 +67,7 @@ extension AppModel {
       refreshUnavailableStoredSettingsDomainErrors()
       let message =
         workflowLibraryError
-        ?? (language == .english
-          ? "The saved workflow library is unavailable. Repair storage, then retry."
-          : "已保存的工作流库不可用。请修复存储后重试。")
+        ?? L10n.runText(.workflowLibraryUnavailable, language: language)
       if reportingToEditor {
         workflowEditorError = message
       } else {
@@ -151,10 +146,10 @@ extension AppModel {
           self?.workflowFileURLsByID[workflow.id] = fileURL
         } catch {
           guard let self else { return }
-          self.workflowLibraryError =
-            self.language == .english
-            ? "The workflow TOML state could not be saved: \(error.localizedDescription)"
-            : "无法保存工作流 TOML 状态：\(error.localizedDescription)"
+          self.workflowLibraryError = String(
+            format: L10n.runText(.workflowTOMLStateSaveFailedFormat, language: self.language),
+            error.localizedDescription
+          )
           return
         }
       }
@@ -295,18 +290,24 @@ extension AppModel {
     }
     let profile = "\(category) · \(capacity) · \(descriptor.quantization.rawValue)"
     if descriptor.id == recommendedLocalSpeechModelIdentifier {
-      return language == .english
-        ? "Recommended for this Mac (\(localSpeechPhysicalMemoryGiB) GB memory) · \(profile)"
-        : "推荐用于本机（\(localSpeechPhysicalMemoryGiB) GB 内存）· \(profile)"
+      return String(
+        format: L10n.runText(.localSpeechHardwareRecommendedFormat, language: language),
+        localSpeechPhysicalMemoryGiB,
+        profile
+      )
     }
     if localSpeechPhysicalMemoryGiB < descriptor.minimumSystemMemoryGiB {
-      return language == .english
-        ? "\(profile) · At least \(descriptor.minimumSystemMemoryGiB) GB memory required"
-        : "\(profile) · 至少需要 \(descriptor.minimumSystemMemoryGiB) GB 内存"
+      return String(
+        format: L10n.runText(.localSpeechHardwareMemoryRequiredFormat, language: language),
+        profile,
+        descriptor.minimumSystemMemoryGiB
+      )
     }
-    return language == .english
-      ? "\(profile) · \(descriptor.recommendedSystemMemoryGiB) GB memory recommended"
-      : "\(profile) · 建议 \(descriptor.recommendedSystemMemoryGiB) GB 内存"
+    return String(
+      format: L10n.runText(.localSpeechHardwareMemoryRecommendedFormat, language: language),
+      profile,
+      descriptor.recommendedSystemMemoryGiB
+    )
   }
 
   public func selectRecommendedLocalSpeechModel() {
@@ -377,29 +378,32 @@ extension AppModel {
       for: workflow,
       includeRuntimeAvailability: true
     ) {
-      let english = workflowRunError(for: issue, language: .english)
-      let simplifiedChinese = workflowRunError(for: issue, language: .simplifiedChinese)
-      lastFailure = language == .english ? english : simplifiedChinese
-      append(english: english, simplifiedChinese: simplifiedChinese)
+      lastFailure = workflowRunError(for: issue, language: language)
+      append(
+        english: workflowRunError(for: issue, language: .english),
+        simplifiedChinese: workflowRunError(for: issue, language: .simplifiedChinese)
+      )
       return
     }
     guard isWorkflowEnabled(workflow) else {
-      let english = "Enable the workflow before running it."
-      let simplifiedChinese = "请先启用这个工作流再运行。"
-      lastFailure = language == .english ? english : simplifiedChinese
+      lastFailure = L10n.runText(.runWorkflowDisabledNotice, language: language)
       append(
-        english: english,
-        simplifiedChinese: simplifiedChinese
+        english: L10n.runText(.runWorkflowDisabledNotice, language: .english),
+        simplifiedChinese: L10n.runText(.runWorkflowDisabledNotice, language: .simplifiedChinese)
       )
       return
     }
     if workflow.prefersAutomaticRecognizerSelection,
       hasUnavailableScalarSettings(in: .speechRoute)
     {
-      let english = "Saved speech-routing settings are unavailable."
-      let simplifiedChinese = "已保存的语音路由设置不可用。"
-      lastFailure = language == .english ? english : simplifiedChinese
-      append(english: english, simplifiedChinese: simplifiedChinese)
+      lastFailure = L10n.runText(.speechRoutingSettingsUnavailable, language: language)
+      append(
+        english: L10n.runText(.speechRoutingSettingsUnavailable, language: .english),
+        simplifiedChinese: L10n.runText(
+          .speechRoutingSettingsUnavailable,
+          language: .simplifiedChinese
+        )
+      )
       return
     }
 
@@ -409,10 +413,11 @@ extension AppModel {
         trigger: binding
       )
     else {
-      let english = "Workflow routing could not be resolved safely."
-      let simplifiedChinese = "无法安全解析工作流路由。"
-      lastFailure = language == .english ? english : simplifiedChinese
-      append(english: english, simplifiedChinese: simplifiedChinese)
+      lastFailure = L10n.runText(.workflowRoutingUnresolvable, language: language)
+      append(
+        english: L10n.runText(.workflowRoutingUnresolvable, language: .english),
+        simplifiedChinese: L10n.runText(.workflowRoutingUnresolvable, language: .simplifiedChinese)
+      )
       return
     }
     if requiresCapturedAudioForInteractiveRun(workflowForExecution) {
@@ -781,9 +786,11 @@ extension AppModel {
           guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
           self.workflowAudioRunState = .recording(workflowID: workflow.id)
           self.append(
-            english:
-              "Recording started. It will finish after you stop speaking; click again to stop now.",
-            simplifiedChinese: "已开始录音。停止说话后会自动结束；再次点击可立即停止。"
+            english: L10n.runText(.recordingStartedAutoStop, language: .english),
+            simplifiedChinese: L10n.runText(
+              .recordingStartedAutoStop,
+              language: .simplifiedChinese
+            )
           )
         }
       } catch is CancellationError {
@@ -1055,10 +1062,7 @@ extension AppModel {
   }
 
   public func reportRecordPanelPasteFailure() {
-    lastFailure =
-      language == .english
-      ? "Record delivery was aborted because Rill could not return focus to the target app."
-      : "记录投递已中止，因为 Rill 未能把焦点切回目标 App。"
+    lastFailure = L10n.runText(.recordDeliveryFocusFailure, language: language)
   }
 
   public func updatePermissionSnapshot(_ snapshot: PermissionSnapshot) {
@@ -1113,10 +1117,7 @@ extension AppModel {
     guard workflowLibraryIsReadyForMutation(reportingToEditor: true) else { return }
     let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedName.isEmpty else {
-      workflowEditorError =
-        language == .english
-        ? "Enter a workflow name before saving."
-        : "请先填写工作流名称。"
+      workflowEditorError = L10n.runText(.workflowNameRequired, language: language)
       return
     }
 
@@ -1136,10 +1137,10 @@ extension AppModel {
           WakeWordConfiguration(phrases: sanitizedDraft.wakePhrases)
         )
       } catch {
-        workflowEditorError =
-          language == .english
-          ? error.localizedDescription
-          : "无法保存唤醒词工作流：\(error.localizedDescription)"
+        workflowEditorError = L10n.runWakeWordWorkflowSaveFailed(
+          detail: error.localizedDescription,
+          language: language
+        )
         return
       }
     }
@@ -1170,10 +1171,10 @@ extension AppModel {
         )
         workflowFileURLsByID[workflow.id] = fileURL
       } catch {
-        workflowEditorError =
-          language == .english
-          ? "The workflow TOML file could not be saved: \(error.localizedDescription)"
-          : "无法保存工作流 TOML 文件：\(error.localizedDescription)"
+        workflowEditorError = String(
+          format: L10n.runText(.workflowTOMLFileSaveFailedFormat, language: language),
+          error.localizedDescription
+        )
         return
       }
     }
@@ -1207,8 +1208,14 @@ extension AppModel {
     persistWorkflowEnabledStates()
     persistCustomWorkflows()
     append(
-      english: "Workflow saved: \(workflow.name)",
-      simplifiedChinese: "工作流已保存：\(workflow.name)"
+      english: String(
+        format: L10n.runText(.workflowSavedFormat, language: .english),
+        workflow.name
+      ),
+      simplifiedChinese: String(
+        format: L10n.runText(.workflowSavedFormat, language: .simplifiedChinese),
+        workflow.name
+      )
     )
   }
 
@@ -1220,10 +1227,10 @@ extension AppModel {
       do {
         try await workflowFileStore.delete(fileURL: fileURL)
       } catch {
-        workflowLibraryError =
-          language == .english
-          ? "The workflow TOML file could not be removed: \(error.localizedDescription)"
-          : "无法删除工作流 TOML 文件：\(error.localizedDescription)"
+        workflowLibraryError = String(
+          format: L10n.runText(.workflowTOMLFileRemoveFailedFormat, language: language),
+          error.localizedDescription
+        )
         return
       }
     }
@@ -1237,8 +1244,14 @@ extension AppModel {
     persistWorkflowEnabledStates()
     persistCustomWorkflows()
     append(
-      english: "Workflow removed: \(workflow.name)",
-      simplifiedChinese: "工作流已删除：\(workflow.name)"
+      english: String(
+        format: L10n.runText(.workflowRemovedFormat, language: .english),
+        workflow.name
+      ),
+      simplifiedChinese: String(
+        format: L10n.runText(.workflowRemovedFormat, language: .simplifiedChinese),
+        workflow.name
+      )
     )
   }
 
@@ -1252,9 +1265,10 @@ extension AppModel {
       do {
         try await workflowFileStore.delete(fileURL: fileURL)
       } catch {
-        workflowEditorError = language == .english
-          ? "The built-in workflow override could not be removed: \(error.localizedDescription)"
-          : "无法删除内置工作流覆盖文件：\(error.localizedDescription)"
+        workflowEditorError = String(
+          format: L10n.runText(.builtInWorkflowOverrideRemoveFailedFormat, language: language),
+          error.localizedDescription
+        )
         return
       }
     }
@@ -1270,8 +1284,14 @@ extension AppModel {
     persistWorkflowEnabledStates()
     persistCustomWorkflows()
     append(
-      english: "Built-in workflow restored: \(localizedWorkflowName(for: defaultWorkflow))",
-      simplifiedChinese: "内置工作流已恢复默认：\(localizedWorkflowName(for: defaultWorkflow))"
+      english: String(
+        format: L10n.runText(.builtInWorkflowRestoredFormat, language: .english),
+        localizedWorkflowName(for: defaultWorkflow)
+      ),
+      simplifiedChinese: String(
+        format: L10n.runText(.builtInWorkflowRestoredFormat, language: .simplifiedChinese),
+        localizedWorkflowName(for: defaultWorkflow)
+      )
     )
   }
 
@@ -1411,8 +1431,14 @@ extension AppModel {
           self.localSpeechPreparedModelIdentifier = preparedModel
           self.recordDownloadedLocalSpeechModel(preparedModel)
           self.append(
-            english: "Local speech model is ready: \(preparedModel)",
-            simplifiedChinese: "本地语音模型已准备就绪：\(preparedModel)"
+            english: String(
+              format: L10n.runText(.localSpeechModelReadyFormat, language: .english),
+              preparedModel
+            ),
+            simplifiedChinese: String(
+              format: L10n.runText(.localSpeechModelReadyFormat, language: .simplifiedChinese),
+              preparedModel
+            )
           )
         case .failure(is CancellationError):
           self.localSpeechPreparationState = .idle
@@ -1455,9 +1481,11 @@ extension AppModel {
     releaseLocalSpeechRuntimeAction()
     localSpeechPreparationError = nil
     append(
-      english:
-        "Released the local speech model from memory. It will load again on the next local recognition.",
-      simplifiedChinese: "已释放本地语音模型内存；下次本地识别时会重新加载。"
+      english: L10n.runText(.localSpeechModelMemoryReleased, language: .english),
+      simplifiedChinese: L10n.runText(
+        .localSpeechModelMemoryReleased,
+        language: .simplifiedChinese
+      )
     )
   }
 

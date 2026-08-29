@@ -200,7 +200,7 @@ public struct SettingsView: View {
           voiceAssistantResourcesSection
         } header: {
           settingsGroupHeader(
-            model.language == .english ? "Voice & Models" : "语音与模型",
+            L10n.settingsText(.settingsGroupVoiceAndModels, language: model.language),
             systemImage: RillSystemSymbol.waveform.rawValue
           )
         }
@@ -211,7 +211,7 @@ public struct SettingsView: View {
           languageSection
         } header: {
           settingsGroupHeader(
-            model.language == .english ? "Features & Personalization" : "功能与个性化",
+            L10n.settingsText(.settingsGroupFeaturesAndPersonalization, language: model.language),
             systemImage: RillSystemSymbol.sliderHorizontal3.rawValue
           )
         }
@@ -221,7 +221,7 @@ public struct SettingsView: View {
           localDataAndRetentionSection
         } header: {
           settingsGroupHeader(
-            model.language == .english ? "Privacy & Data" : "隐私与数据",
+            L10n.settingsText(.settingsGroupPrivacyAndData, language: model.language),
             systemImage: RillSystemSymbol.lockShield.rawValue
           )
         }
@@ -230,7 +230,7 @@ public struct SettingsView: View {
           diagnosticsEntryRow
         } header: {
           settingsGroupHeader(
-            model.language == .english ? "Advanced" : "高级",
+            L10n.settingsText(.settingsGroupAdvanced, language: model.language),
             systemImage: RillSystemSymbol.gearshape.rawValue
           )
         }
@@ -492,44 +492,7 @@ extension SettingsView {
   }
 
   private func settingsSectionSummary(_ section: SettingsSection) -> String {
-    switch (section, model.language) {
-    case (.permissions, .english):
-      "Microphone, global shortcuts, and system access"
-    case (.permissions, .simplifiedChinese):
-      "麦克风、全局快捷键与系统访问"
-    case (.speech, .english):
-      "Provider configuration and available model pool"
-    case (.speech, .simplifiedChinese):
-      "提供商配置与可用模型池"
-    case (.input, .english):
-      "Recording behavior, duration, and output"
-    case (.input, .simplifiedChinese):
-      "录音方式、时长与输出"
-    case (.voiceAssistant, .english):
-      "Readiness, wake listening, LLM answers, and speech output"
-    case (.voiceAssistant, .simplifiedChinese):
-      "就绪检查、唤醒监听、LLM 回答与语音输出"
-    case (.recordPanel, .english):
-      "Clipboard capture and panel shortcut"
-    case (.recordPanel, .simplifiedChinese):
-      "剪贴板捕获与面板快捷键"
-    case (.vocabulary, .english):
-      "Hotwords, replacements, and scoped corrections"
-    case (.vocabulary, .simplifiedChinese):
-      "热词、替换与限定范围的纠正"
-    case (.language, .english):
-      "Display language"
-    case (.language, .simplifiedChinese):
-      "界面显示语言"
-    case (.privacy, .english):
-      "Cloud confirmation and sensitive-app safeguards"
-    case (.privacy, .simplifiedChinese):
-      "云端确认与敏感应用保护"
-    case (.storage, .english):
-      "Retention, recovery, and local cleanup"
-    case (.storage, .simplifiedChinese):
-      "保留期限、恢复与本地清理"
-    }
+    L10n.settingsSectionSummary(section, language: model.language)
   }
 
   private func positionSettingsSection(
@@ -724,10 +687,10 @@ extension SettingsView {
             HStack(spacing: 8) {
               ProgressView()
                 .controlSize(.small)
-              Text(model.language == .english ? "Retrying…" : "正在重试…")
+              Text(UIStrings.text(.settingsSaveRetrying, language: model.language))
             }
           } else {
-            Text(model.language == .english ? "Retry Loading" : "重试加载")
+            Text(L10n.settingsText(.settingsRetryLoading, language: model.language))
           }
         }
         .disabled(model.isRetryingUnavailableScalarSettings(in: domain))

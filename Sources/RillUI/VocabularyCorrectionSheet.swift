@@ -172,13 +172,11 @@ public struct VocabularyCorrectionSheet: View {
                 }
 
                 Picker(
-                    model.language == .english ? "Save to collection" : "保存到词库",
+                    L10n.overlayText(.correctionSaveToCollection, language: model.language),
                     selection: $targetCollectionID
                 ) {
                     Text(
-                        model.language == .english
-                            ? "Create matching scoped collection"
-                            : "创建匹配条件的词库"
+                        L10n.overlayText(.correctionCreateScopedCollection, language: model.language)
                     )
                     .tag(nil as UUID?)
                     ForEach(compatibleCollections(for: option.scope.knownConstraints)) {
@@ -220,9 +218,7 @@ public struct VocabularyCorrectionSheet: View {
             }
         case .notReady:
             Label(
-                model.language == .english
-                    ? "Vocabulary settings are still loading. Wait a moment and try again."
-                    : "词汇设置仍在加载，请稍候再试。",
+                L10n.overlayText(.correctionSettingsLoading, language: model.language),
                 systemImage: RillSystemSymbol.clock.rawValue
             )
             .foregroundStyle(.secondary)

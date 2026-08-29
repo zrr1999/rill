@@ -43,30 +43,30 @@ struct VocabularyCollectionCard: View {
                 }
 
                 Picker("", selection: $entryKind) {
-                    Text(model.language == .english ? "Hotword" : "热词")
+                    Text(L10n.vocabularyRuleKind(.hotword, language: model.language))
                         .tag(VocabularyRuleKind.hotword)
-                    Text(model.language == .english ? "Replacement" : "替换词")
+                    Text(L10n.workflowText(.workflowReplacementKindOption, language: model.language))
                         .tag(VocabularyRuleKind.mapping)
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
 
                 TextField(
-                    model.language == .english ? "Phrase" : "原词",
+                    L10n.workflowText(.workflowPhrasePlaceholder, language: model.language),
                     text: $pattern
                 )
                 .textFieldStyle(.roundedBorder)
 
                 if entryKind == .mapping {
                     TextField(
-                        model.language == .english ? "Replacement" : "替换为",
+                        L10n.workflowText(.workflowReplacementPlaceholder, language: model.language),
                         text: $replacement
                     )
                     .textFieldStyle(.roundedBorder)
                 }
 
                 HStack {
-                    Button(model.language == .english ? "Add Entry" : "添加词条") {
+                    Button(L10n.workflowText(.workflowAddEntry, language: model.language)) {
                         model.addVocabularyEntry(
                             to: collection.id,
                             kind: entryKind,
@@ -121,19 +121,15 @@ struct VocabularyCollectionCard: View {
         }
         .rillCard(.regular, cornerRadius: 10, padding: 10)
         .alert(
-            model.language == .english ? "Delete collection?" : "删除词库？",
+            L10n.workflowText(.workflowDeleteCollectionTitle, language: model.language),
             isPresented: $confirmsCollectionDeletion
         ) {
-            Button(model.language == .english ? "Cancel" : "取消", role: .cancel) {}
-            Button(model.language == .english ? "Delete" : "删除", role: .destructive) {
+            Button(L10n.recordText(.cancel, language: model.language), role: .cancel) {}
+            Button(UIStrings.text(.clipboardDeleteItem, language: model.language), role: .destructive) {
                 model.deleteVocabularyCollection(collection.id)
             }
         } message: {
-            Text(
-                model.language == .english
-                    ? "The collection and its workflow bindings will be removed."
-                    : "该词库及其工作流绑定都会被移除。"
-            )
+            Text(L10n.workflowText(.workflowDeleteCollectionDetail, language: model.language))
         }
     }
 
@@ -150,17 +146,13 @@ struct VocabularyCollectionCard: View {
 extension WorkflowsView {
     var vocabularyLibrarySection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(model.language == .english ? "Vocabulary Collections" : "词库集合")
+            Text(L10n.workflowText(.workflowVocabularyCollectionsLabel, language: model.language))
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
 
-            Text(
-                model.language == .english
-                    ? "Reusable hotwords and replacements attached in workflow Setup."
-                    : "在工作流 Setup 中复用的热词与替换词集合。"
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            Text(L10n.workflowText(.workflowVocabularyLibraryHint, language: model.language))
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             ForEach(model.vocabularyCollections) { collection in
                 VocabularyCollectionCard(model: model, collection: collection)
@@ -168,7 +160,7 @@ extension WorkflowsView {
 
             HStack {
                 TextField(
-                    model.language == .english ? "New collection" : "新词库名称",
+                    L10n.workflowText(.workflowNewCollectionPlaceholder, language: model.language),
                     text: $newVocabularyCollectionName
                 )
                 .textFieldStyle(.roundedBorder)
@@ -222,11 +214,11 @@ extension WorkflowsView {
     func vocabularyConditionEditor(for collectionID: UUID) -> some View {
         if let index = vocabularyBindingIndex(for: collectionID) {
             VStack(alignment: .leading, spacing: 5) {
-                Text(model.language == .english ? "Applies when (all fields match)" : "生效条件（字段之间为 AND）")
+                Text(L10n.workflowText(.workflowBindingConditionLabel, language: model.language))
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                 TextField(
-                    model.language == .english ? "App bundle ID · any" : "App Bundle ID · 任意",
+                    L10n.workflowText(.workflowBundleIDAnyPlaceholder, language: model.language),
                     text: Binding(
                         get: {
                             draft.vocabularyBindings[index].condition.bundleIdentifier ?? ""
@@ -244,7 +236,7 @@ extension WorkflowsView {
 
                 HStack {
                     TextField(
-                        model.language == .english ? "Language · any" : "语言 · 任意",
+                        L10n.workflowText(.workflowLanguageAnyPlaceholder, language: model.language),
                         text: Binding(
                             get: { draft.vocabularyBindings[index].condition.locale ?? "" },
                             set: {
@@ -256,7 +248,7 @@ extension WorkflowsView {
                     .textFieldStyle(.roundedBorder)
 
                     Picker(
-                        model.language == .english ? "Record collection" : "记录集",
+                        L10n.workflowText(.workflowRecordCollectionPickerLabel, language: model.language),
                         selection: Binding(
                             get: {
                                 draft.vocabularyBindings[index].condition.recordCollectionID
@@ -266,7 +258,7 @@ extension WorkflowsView {
                             }
                         )
                     ) {
-                        Text(model.language == .english ? "Any collection" : "任意记录集")
+                        Text(L10n.workflowText(.workflowAnyCollection, language: model.language))
                             .tag(nil as UUID?)
                         ForEach(model.recordWorkspace.snapshot.collections) { collection in
                             Text(collection.name).tag(collection.id.rawValue as UUID?)
@@ -285,13 +277,9 @@ extension WorkflowsView {
         let supportsHotwords = ["local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming"]
             .contains(resolvedRecognizerID)
         if supportsHotwords {
-            return model.language == .english
-                ? "Recognition hotwords are supported by the current engine; replacements run after recognition."
-                : "当前识别引擎支持热词；替换词会在识别后执行。"
+            return L10n.workflowText(.workflowHotwordSupportedHint, language: model.language)
         }
-        return model.language == .english
-            ? "The current engine skips recognition hotwords; replacements still run after recognition."
-            : "当前识别引擎会跳过识别热词；替换词仍会在识别后执行。"
+        return L10n.workflowText(.workflowHotwordSkippedHint, language: model.language)
     }
 
     func vocabularyCollectionSummary(_ collection: VocabularyCollection) -> String {
@@ -299,10 +287,11 @@ extension WorkflowsView {
             if case .hotword = entry.content { count += 1 }
         }
         let replacementCount = collection.entries.count - hotwordCount
-        if model.language == .english {
-            return "\(hotwordCount) hotwords · \(replacementCount) replacements"
-        }
-        return "\(hotwordCount) 个热词 · \(replacementCount) 个替换词"
+        return L10n.workflowVocabularySummary(
+            hotwordCount: hotwordCount,
+            replacementCount: replacementCount,
+            language: model.language
+        )
     }
 }
 

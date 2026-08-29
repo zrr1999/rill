@@ -11,9 +11,9 @@ public extension AppModel {
       return
     }
     guard let settingsStore else {
-      benchmarkRecordingArchiveError = benchmarkArchiveMessage(
-        english: "Encrypted benchmark recording storage is unavailable because persistent settings storage is unavailable.",
-        simplifiedChinese: "持久化设置存储不可用，因此无法使用加密的 Benchmark 录音归档。"
+      benchmarkRecordingArchiveError = L10n.runText(
+        .benchmarkStorageUnavailable,
+        language: language
       )
       return
     }
@@ -48,9 +48,9 @@ public extension AppModel {
         await MainActor.run {
           guard let self else { return }
           self.isUpdatingBenchmarkRecordingArchive = false
-          self.benchmarkRecordingArchiveError = self.benchmarkArchiveMessage(
-            english: "Benchmark recording retention could not be updated.",
-            simplifiedChinese: "无法更新 Benchmark 录音保留设置。"
+          self.benchmarkRecordingArchiveError = L10n.runText(
+            .benchmarkRetentionUpdateFailed,
+            language: self.language
           )
         }
       }
@@ -73,20 +73,13 @@ public extension AppModel {
         try await clearAction()
         self.benchmarkRecordingArchiveError = nil
       } catch {
-        self.benchmarkRecordingArchiveError = self.benchmarkArchiveMessage(
-          english: "Encrypted benchmark recordings could not be cleared.",
-          simplifiedChinese: "无法清除加密的 Benchmark 录音。"
+        self.benchmarkRecordingArchiveError = L10n.runText(
+          .benchmarkClearFailed,
+          language: self.language
         )
       }
       self.isUpdatingBenchmarkRecordingArchive = false
     }
     registerPersistenceWrite(task)
-  }
-
-  private func benchmarkArchiveMessage(
-    english: String,
-    simplifiedChinese: String
-  ) -> String {
-    language == .english ? english : simplifiedChinese
   }
 }

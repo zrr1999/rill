@@ -392,9 +392,7 @@ extension SettingsView {
 
   func localizedSensitiveAppRuleError(_ error: Error) -> String {
     guard let validationError = error as? SensitiveAppRuleValidationError else {
-      return model.language == .english
-        ? "The privacy rule could not be updated. Review the rule and retry."
-        : "无法更新隐私规则。请检查规则后重试。"
+      return L10n.settingsText(.settingsPrivacyRuleUpdateFailed, language: model.language)
     }
     let key: PrivacySettingsTextKey
     switch validationError {
