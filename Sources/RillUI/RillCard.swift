@@ -25,7 +25,7 @@ public enum RillCardProminence: Sendable {
 extension View {
     func rillCard(
         _ prominence: RillCardProminence = .regular,
-        cornerRadius: CGFloat = 14,
+        cornerRadius: CGFloat = RillRadius.card,
         padding: CGFloat = 16
     ) -> some View {
         self
@@ -47,7 +47,7 @@ extension View {
 public struct RillCardButtonStyle: ButtonStyle {
     let cornerRadius: CGFloat
 
-    public init(cornerRadius: CGFloat = 14) {
+    public init(cornerRadius: CGFloat = RillRadius.card) {
         self.cornerRadius = cornerRadius
     }
 
@@ -77,8 +77,14 @@ private struct RillCardButtonBody: View {
                 )
             }
             .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovering)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.12), value: configuration.isPressed)
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.2, dampingFraction: 1.0),
+                value: isHovering
+            )
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.8),
+                value: configuration.isPressed
+            )
             .onHover { isHovering = $0 }
     }
 }

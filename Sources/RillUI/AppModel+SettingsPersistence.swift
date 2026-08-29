@@ -269,6 +269,7 @@ struct StoredAppSettingsSnapshot {
   let recordRetentionPeriod: String?
   let runHistoryRetentionPeriod: String?
   let failedAudioRecoveryEnabled: String?
+  let benchmarkRecordingArchiveEnabled: String?
   let builtinPushToTalkOutputMode: String?
   let longRecordingModeEnabled: String?
   let recordingDurationLimit: String?
@@ -816,6 +817,7 @@ extension AppModel {
         ?? storedSettings[.legacyClipboardHistoryRetentionPeriod],
       runHistoryRetentionPeriod: storedSettings[.runHistoryRetentionPeriod],
       failedAudioRecoveryEnabled: storedSettings[.failedAudioRecoveryEnabled],
+      benchmarkRecordingArchiveEnabled: storedSettings[.benchmarkRecordingArchiveEnabled],
       builtinPushToTalkOutputMode: storedSettings[.builtinPushToTalkOutputMode],
       longRecordingModeEnabled: storedSettings[.longRecordingModeEnabled],
       recordingDurationLimit: storedSettings[.recordingDurationLimit],
@@ -842,6 +844,7 @@ extension AppModel {
     applyStoredPrivacySettings(settings)
     applyStoredHistoryRetentionSettings(settings)
     applyStoredFailedAudioRecoverySetting(settings)
+    applyStoredBenchmarkRecordingArchiveSetting(settings)
     applyPreferredSpeechEngineSelectionIfNeeded()
     rebuildWorkflowLibrary()
     isRestoringSettings = false
@@ -945,6 +948,25 @@ extension AppModel {
       append(
         english: "Invalid failed recording recovery setting was ignored; recovery remains off.",
         simplifiedChinese: "已忽略无效的失败录音恢复设置；恢复功能保持关闭。"
+      )
+    }
+  }
+
+  func applyStoredBenchmarkRecordingArchiveSetting(_ settings: StoredAppSettingsSnapshot) {
+    guard settings.persistentSettingsStoreWasAvailable else {
+      benchmarkRecordingArchiveEnabled = false
+      return
+    }
+    switch settings.benchmarkRecordingArchiveEnabled {
+    case "true":
+      benchmarkRecordingArchiveEnabled = true
+    case nil, "", "false":
+      benchmarkRecordingArchiveEnabled = false
+    default:
+      benchmarkRecordingArchiveEnabled = false
+      append(
+        english: "Invalid benchmark recording setting was ignored; recording retention remains off.",
+        simplifiedChinese: "已忽略无效的 Benchmark 录音设置；录音保留功能保持关闭。"
       )
     }
   }
@@ -2398,6 +2420,7 @@ extension AppModel {
       .runHistoryRetentionPeriod,
       .localHistoryMaintenanceState,
       .failedAudioRecoveryEnabled,
+      .benchmarkRecordingArchiveEnabled,
       .legacyClipboardGlobalMode,
       .legacyClipboardAppModes,
       .legacyClipboardRoutePreferences,

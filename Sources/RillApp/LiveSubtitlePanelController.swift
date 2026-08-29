@@ -383,6 +383,11 @@ final class LiveSubtitlePanelController {
           invalidateShadow(of: panel)
         } else {
           windowFrameAssignmentCount += 1
+          // Deliberately a short fixed-duration tween, not a spring: window
+          // geometry must stay in lockstep with the already-rendered SwiftUI
+          // surface and `windowFrameAssignmentCount` test assumptions.
+          // Interruptibility is provided by the `geometryGeneration` guard in
+          // the completion handler — a newer tween supersedes this one.
           NSAnimationContext.runAnimationGroup { context in
             context.duration = LiveSubtitlePanelAnimationPolicy.resizeDuration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)

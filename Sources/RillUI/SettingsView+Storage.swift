@@ -92,6 +92,46 @@ extension SettingsView {
 
       Divider()
 
+      Toggle(
+        L10n.string(.settingsBenchmarkRecordingArchive, language: model.language),
+        isOn: Binding(
+          get: { model.benchmarkRecordingArchiveEnabled },
+          set: { model.setBenchmarkRecordingArchiveEnabled($0) }
+        )
+      )
+      .disabled(
+        model.isLoadingSettings
+          || model.isUpdatingBenchmarkRecordingArchive
+      )
+
+      Text(
+        L10n.string(
+          .settingsBenchmarkRecordingArchiveDescription,
+          language: model.language
+        )
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
+
+      Button(
+        L10n.string(
+          .settingsBenchmarkRecordingArchiveClear,
+          language: model.language
+        ),
+        role: .destructive
+      ) {
+        destructiveConfirmation = .benchmarkRecordingArchive
+      }
+      .disabled(model.isUpdatingBenchmarkRecordingArchive)
+
+      if let error = model.benchmarkRecordingArchiveError {
+        Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
+          .font(.caption)
+          .foregroundStyle(.red)
+      }
+
+      Divider()
+
       VStack(alignment: .leading, spacing: 6) {
         HStack {
           Button(

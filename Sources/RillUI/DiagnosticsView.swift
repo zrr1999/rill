@@ -162,7 +162,7 @@ public struct DiagnosticsView: View {
         case .debug:
             return .secondary
         case .info:
-            return .blue
+            return .secondary
         case .warning:
             return .orange
         case .error:

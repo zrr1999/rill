@@ -28,7 +28,7 @@ struct PrivacyNoticeSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(
-                        L10n.historySettingsText(.cancel, language: language)
+                        L10n.string(.close, language: language)
                     ) {
                         dismiss()
                     }

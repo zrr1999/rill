@@ -31,7 +31,7 @@ public struct VoiceActivityIndicator: View {
   public init(
     levelMeter: [Float],
     isActive: Bool,
-    accentColor: Color = .purple,
+    accentColor: Color,
     barCount: Int = 12,
     barWidth: CGFloat = 4,
     barSpacing: CGFloat = 3,

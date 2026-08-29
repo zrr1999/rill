@@ -441,6 +441,7 @@ private struct PersistenceBackends {
   let residuePurger: (any StorageResiduePurging)?
   let temporaryFileCleanupService: RillTemporaryFileCleanupService
   let failedAudioRecoveryStore: (any FailedAudioRecoveryStore)?
+  let benchmarkRecordingArchiveStore: (any BenchmarkRecordingArchiveStore)?
   let startupDiagnostic: DiagnosticEvent?
 }
 
@@ -541,6 +542,7 @@ private struct RuntimeServices {
   let wakeWordCoordinator: WakeWordCoordinator?
   let cursorTextPreviewLifecycleCoordinator: CursorTextPreviewLifecycleCoordinator
   let failedAudioRecoveryController: FailedAudioRecoveryController?
+  let benchmarkRecordingArchiveController: BenchmarkRecordingArchiveController?
   let privacyRunGate: PrivacyRunGate
   let authorizeWorkflowRunAction:
     @Sendable (
@@ -1180,16 +1182,25 @@ private enum AppContainerFactory {
         }
       )
     }
+    let benchmarkRecordingArchiveController =
+      core.persistence.benchmarkRecordingArchiveStore.map { store in
+        BenchmarkRecordingArchiveController(
+          store: store,
+          diagnostics: core.diagnostics
+        )
+      }
     let queue = CapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: core.eventBus,
       diagnostics: core.diagnostics,
-      failedAudioRecoveryController: failedAudioRecoveryController
+      failedAudioRecoveryController: failedAudioRecoveryController,
+      benchmarkRecordingArchiveController: benchmarkRecordingArchiveController
     )
     let assistantQueue = CapturedAudioProcessingQueue(
       sessionCoordinator: assistantCoordinator,
       eventBus: core.eventBus,
       diagnostics: core.diagnostics,
+      benchmarkRecordingArchiveController: benchmarkRecordingArchiveController,
       lane: .assistant,
       publishesSnapshots: false
     )
@@ -1313,6 +1324,7 @@ private enum AppContainerFactory {
       wakeWordCoordinator: wakeWordCoordinator,
       cursorTextPreviewLifecycleCoordinator: cursorTextPreviewLifecycleCoordinator,
       failedAudioRecoveryController: failedAudioRecoveryController,
+      benchmarkRecordingArchiveController: benchmarkRecordingArchiveController,
       privacyRunGate: privacyRunGate,
       authorizeWorkflowRunAction: authorizeWorkflowRunAction,
       workflowSelectionBridge: bridge,
@@ -1677,6 +1689,37 @@ private enum AppContainerFactory {
               )
             )
           }
+        },
+        {
+          let isEnabled: Bool
+          do {
+            isEnabled =
+              try await core.persistence.settingsStore?.string(
+                forKey: .benchmarkRecordingArchiveEnabled
+              ) == "true"
+          } catch {
+            // Retention is opt-in. A setting that cannot be read must not start
+            // preserving new recordings, but existing encrypted artifacts stay
+            // untouched until the user explicitly clears them.
+            isEnabled = false
+          }
+          guard !Task.isCancelled else { return }
+          guard let controller = runtime.benchmarkRecordingArchiveController else {
+            if isEnabled {
+              await diagnostics.record(
+                DiagnosticEvent(
+                  subsystem: .platform,
+                  level: .error,
+                  event: "benchmark-recording.storage-unavailable",
+                  message:
+                    "Benchmark recording retention is enabled, but protected storage is unavailable.",
+                  metadata: ["runtime": "disabled"]
+                )
+              )
+            }
+            return
+          }
+          await controller.refresh(isEnabled: isEnabled)
         },
         {
           if let startupDiagnostic = core.persistence.startupDiagnostic {
@@ -2095,6 +2138,18 @@ private enum AppModelFactory {
         }
         return try await controller.currentReceipts()
       },
+      clearBenchmarkRecordingArchiveAction: {
+        guard let controller = runtime.benchmarkRecordingArchiveController else {
+          throw BenchmarkRecordingArchiveError.storageUnavailable
+        }
+        try await controller.deleteAll()
+      },
+      refreshBenchmarkRecordingArchiveAction: { isEnabled in
+        guard let controller = runtime.benchmarkRecordingArchiveController else {
+          throw BenchmarkRecordingArchiveError.storageUnavailable
+        }
+        await controller.refresh(isEnabled: isEnabled)
+      },
       authorizeWorkflowRunAction: runtime.authorizeWorkflowRunAction,
       explainResolvedWorkflowAction: AppBootstrap.makeWorkflowExplanationAction(
         service: WorkflowExplainService(
@@ -2228,12 +2283,18 @@ private enum AppPersistence {
       let recoveryDirectoryURL =
         try EncryptedFailedAudioRecoveryStore
         .defaultDirectoryURL()
+      let benchmarkArchiveDirectoryURL =
+        try EncryptedBenchmarkRecordingArchiveStore
+        .defaultDirectoryURL()
       let databaseRequiresExistingKey =
         try SQLitePersistenceStore
         .requiresExistingDataProtectionKey(databaseURL: databaseURL)
       let recoveryRequiresExistingKey =
         EncryptedFailedAudioRecoveryStore
         .requiresExistingDataProtectionKey(directoryURL: recoveryDirectoryURL)
+      let archiveRequiresExistingKey =
+        EncryptedBenchmarkRecordingArchiveStore
+        .requiresExistingDataProtectionKey(directoryURL: benchmarkArchiveDirectoryURL)
       let keyStore = KeychainLocalDataKeyStore(
         service: localDataKeychainServiceIdentifier
       )
@@ -2241,6 +2302,7 @@ private enum AppPersistence {
         candidates: keyStore.loadCandidates(),
         databaseRequiresExistingKey: databaseRequiresExistingKey,
         recoveryRequiresExistingKey: recoveryRequiresExistingKey,
+        archiveRequiresExistingKey: archiveRequiresExistingKey,
         databaseAccepts: { key in
           try databaseAccepts(
             key: key,
@@ -2251,6 +2313,12 @@ private enum AppPersistence {
           try recoveryAccepts(
             key: key,
             directoryURL: recoveryDirectoryURL
+          )
+        },
+        archiveAccepts: { key in
+          try archiveAccepts(
+            key: key,
+            directoryURL: benchmarkArchiveDirectoryURL
           )
         }
       )
@@ -2273,10 +2341,15 @@ private enum AppPersistence {
       try revalidateCurrentBindings(
         candidate: selectedKey,
         databaseURL: databaseURL,
-        recoveryDirectoryURL: recoveryDirectoryURL
+        recoveryDirectoryURL: recoveryDirectoryURL,
+        benchmarkArchiveDirectoryURL: benchmarkArchiveDirectoryURL
       )
       let failedAudioRecoveryStore = try EncryptedFailedAudioRecoveryStore(
         directoryURL: recoveryDirectoryURL,
+        localDataProtector: localDataProtector
+      )
+      let benchmarkRecordingArchiveStore = try EncryptedBenchmarkRecordingArchiveStore(
+        directoryURL: benchmarkArchiveDirectoryURL,
         localDataProtector: localDataProtector
       )
       let keyFinalization = try keyStore.finalizeValidatedKey(selectedKey)
@@ -2285,7 +2358,8 @@ private enum AppPersistence {
       try revalidateCurrentBindings(
         candidate: selectedKey,
         databaseURL: databaseURL,
-        recoveryDirectoryURL: recoveryDirectoryURL
+        recoveryDirectoryURL: recoveryDirectoryURL,
+        benchmarkArchiveDirectoryURL: benchmarkArchiveDirectoryURL
       )
       let localPersistenceStatus: LocalPersistenceStatus
       let keychainKeyState: String
@@ -2335,6 +2409,7 @@ private enum AppPersistence {
         ),
         temporaryFileCleanupService: temporaryFileCleanupService,
         failedAudioRecoveryStore: failedAudioRecoveryStore,
+        benchmarkRecordingArchiveStore: benchmarkRecordingArchiveStore,
         startupDiagnostic: DiagnosticEvent(
           subsystem: .session,
           level: startupDiagnosticLevel,
@@ -2383,6 +2458,7 @@ private enum AppPersistence {
       residuePurger: nil,
       temporaryFileCleanupService: temporaryFileCleanupService,
       failedAudioRecoveryStore: nil,
+      benchmarkRecordingArchiveStore: nil,
       startupDiagnostic: DiagnosticEvent(
         subsystem: .session,
         level: .warning,
@@ -2410,7 +2486,8 @@ private enum AppPersistence {
   private static func revalidateCurrentBindings(
     candidate: KeychainLocalDataKeyStore.Candidate,
     databaseURL: URL,
-    recoveryDirectoryURL: URL
+    recoveryDirectoryURL: URL,
+    benchmarkArchiveDirectoryURL: URL
   ) throws {
     try LocalDataKeyResolver.revalidate(
       candidate: candidate,
@@ -2420,6 +2497,9 @@ private enum AppPersistence {
       recoveryRequiresExistingKey:
         EncryptedFailedAudioRecoveryStore
         .requiresExistingDataProtectionKey(directoryURL: recoveryDirectoryURL),
+      archiveRequiresExistingKey:
+        EncryptedBenchmarkRecordingArchiveStore
+        .requiresExistingDataProtectionKey(directoryURL: benchmarkArchiveDirectoryURL),
       databaseAccepts: { key in
         try databaseAccepts(
           key: key,
@@ -2430,6 +2510,12 @@ private enum AppPersistence {
         try recoveryAccepts(
           key: key,
           directoryURL: recoveryDirectoryURL
+        )
+      },
+      archiveAccepts: { key in
+        try archiveAccepts(
+          key: key,
+          directoryURL: benchmarkArchiveDirectoryURL
         )
       }
     )
@@ -2447,6 +2533,22 @@ private enum AppPersistence {
           localDataProtector: protector
         ) == .boundAndValid
     } catch FailedAudioRecoveryError.invalidEntry {
+      return false
+    }
+  }
+
+  private static func archiveAccepts(
+    key: Data,
+    directoryURL: URL
+  ) throws -> Bool {
+    let protector = try AESGCMDataProtector(key: key)
+    do {
+      return try EncryptedBenchmarkRecordingArchiveStore
+        .probeExistingDataProtectionKey(
+          directoryURL: directoryURL,
+          localDataProtector: protector
+        ) == .boundAndValid
+    } catch BenchmarkRecordingArchiveError.invalidEntry {
       return false
     }
   }

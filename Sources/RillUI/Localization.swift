@@ -141,6 +141,7 @@ public enum UIStrings {
     case workflowPreparingAudio
     case workflowStopAndTranscribe
     case workflowTranscribing
+    case streamActivityRecording
     case deliverNextRecord
     case deliveryStack
     case latestOutput
@@ -194,12 +195,11 @@ public enum UIStrings {
     case dismiss
     case liveSubtitleClose
     case copy
-    case sidebarDashboard
+    case sidebarStream
     case sidebarWorkflows
     case sidebarRecords
     case recordCollections
     case sidebarClipboard
-    case sidebarHistory
     case sidebarDiagnostics
     case sidebarSettings
     case openWorkflowEditor
@@ -210,7 +210,6 @@ public enum UIStrings {
     case settingsSaveRetrying
     case historyEmpty
     case historyPageEmpty
-    case historyTitle
     case historyDescription
     case historyLoading
     case historyLoadFailedTitle
@@ -226,7 +225,6 @@ public enum UIStrings {
     case historyStackBadge
     case historyScopeLabel
     case historyScopeAll
-    case historyOpenDashboard
     case resultsEmpty
     case resultsTitle
     case resultsDescription
@@ -287,6 +285,7 @@ public enum UIStrings {
     case recordPanelHotkeyReset
     case recordPanelHotkeyHint
     case recordPanelHotkeyDefault
+    case recordPanelHotkeyRecorderLabel
     case settingsStackDelivery
     case settingsStackDescription
     case settingsStackStatus
@@ -363,6 +362,8 @@ public enum UIStrings {
     case workflowSelected
     case workflowEdit
     case workflowDelete
+    case workflowDeleteConfirmationTitle
+    case workflowDeleteConfirmationDetail
     case workflowUse
     case workflowEnabled
     case workflowCustomEmpty
@@ -519,27 +520,6 @@ public enum UIStrings {
     }
   }
 
-  public static func recentRunsAccessibilityLabel(
-    count: Int,
-    language: AppLanguage
-  ) -> String {
-    switch language {
-    case .english:
-      return count == 1 ? "Recent Runs, 1 run" : "Recent Runs, \(count) runs"
-    case .simplifiedChinese:
-      return "最近运行，\(count) 条"
-    }
-  }
-
-  public static func recentRunsAccessibilityHint(language: AppLanguage) -> String {
-    switch language {
-    case .english:
-      return "Opens Run History."
-    case .simplifiedChinese:
-      return "打开运行历史。"
-    }
-  }
-
   public static func targetedAccessibilityLabel(
     _ key: Key,
     target: String,
@@ -596,6 +576,10 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   .workflowTranscribing: .init(
     english: "Transcribing...",
     simplifiedChinese: "转写中..."
+  ),
+  .streamActivityRecording: .init(
+    english: "Recording...",
+    simplifiedChinese: "录音中..."
   ),
   .deliverNextRecord: .init(
     english: "Deliver Next Record",
@@ -820,9 +804,9 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     english: "Copy",
     simplifiedChinese: "复制"
   ),
-  .sidebarDashboard: .init(
-    english: "Dashboard",
-    simplifiedChinese: "仪表盘"
+  .sidebarStream: .init(
+    english: "Activity",
+    simplifiedChinese: "活动"
   ),
   .sidebarWorkflows: .init(
     english: "Workflows",
@@ -839,10 +823,6 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   .sidebarClipboard: .init(
     english: "Clipboard",
     simplifiedChinese: "剪贴板"
-  ),
-  .sidebarHistory: .init(
-    english: "Run History",
-    simplifiedChinese: "运行历史"
   ),
   .sidebarDiagnostics: .init(
     english: "Diagnostics",
@@ -883,10 +863,6 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   .historyPageEmpty: .init(
     english: "No runs remain on this page. Go to a newer page or refresh the latest history.",
     simplifiedChinese: "此页已没有保留的运行记录。请前往较新页面或刷新最新历史。"
-  ),
-  .historyTitle: .init(
-    english: "Run History",
-    simplifiedChinese: "运行历史"
   ),
   .historyDescription: .init(
     english:
@@ -949,10 +925,6 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   .historyScopeAll: .init(
     english: "Recent Runs",
     simplifiedChinese: "最近运行"
-  ),
-  .historyOpenDashboard: .init(
-    english: "Open Dashboard",
-    simplifiedChinese: "打开仪表盘"
   ),
   .resultsEmpty: .init(
     english: "No voice results yet. Finish a recording to see text here.",
@@ -1205,6 +1177,10 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   .recordPanelHotkeyDefault: .init(
     english: "Double Command",
     simplifiedChinese: "双击 Command"
+  ),
+  .recordPanelHotkeyRecorderLabel: .init(
+    english: "Hotkey recorder",
+    simplifiedChinese: "快捷键录制器"
   ),
   .settingsStackDelivery: .init(
     english: "Record Delivery",
@@ -1524,6 +1500,14 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   .workflowDelete: .init(
     english: "Delete",
     simplifiedChinese: "删除"
+  ),
+  .workflowDeleteConfirmationTitle: .init(
+    english: "Delete this workflow?",
+    simplifiedChinese: "删除这个工作流？"
+  ),
+  .workflowDeleteConfirmationDetail: .init(
+    english: "This permanently removes the workflow's TOML file. This action can't be undone.",
+    simplifiedChinese: "这会永久删除该工作流的 TOML 文件，且无法撤销。"
   ),
   .workflowUse: .init(
     english: "Use",

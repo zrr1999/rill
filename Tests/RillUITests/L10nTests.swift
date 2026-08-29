@@ -137,14 +137,11 @@ final class L10nTests: XCTestCase {
     XCTAssertEqual(UIStrings.loadedRunCount(1, language: .english), "1 run loaded")
     XCTAssertEqual(UIStrings.loadedRunCount(3, language: .english), "3 runs loaded")
     XCTAssertEqual(UIStrings.loadedRunCount(3, language: .simplifiedChinese), "已加载 3 条运行")
-    XCTAssertEqual(
-      UIStrings.recentRunsAccessibilityLabel(count: 2, language: .english),
-      "Recent Runs, 2 runs"
-    )
   }
 
   func testAccessibilityControlLabelsAreBilingualAndTargeted() {
     let simpleKeys: [UIStrings.Key] = [
+      .sidebarStream,
       .clipboardClearSearch,
       .clipboardSection,
       .clipboardAddTag,
@@ -367,5 +364,93 @@ final class L10nTests: XCTestCase {
       ]
     }.joined(separator: "\n")
     XCTAssertFalse(copy.contains("private clipboard payload"))
+  }
+
+  func testRecordTextKeysAreExhaustivelyLocalized() {
+    for key in RecordTextKey.allCases {
+      let english = L10n.recordText(key, language: .english)
+      let simplifiedChinese = L10n.recordText(key, language: .simplifiedChinese)
+      XCTAssertNotEqual(english, key.rawValue)
+      XCTAssertNotEqual(simplifiedChinese, key.rawValue)
+      XCTAssertFalse(english.isEmpty)
+      XCTAssertFalse(simplifiedChinese.isEmpty)
+      XCTAssertNotEqual(english, simplifiedChinese)
+    }
+
+    XCTAssertEqual(
+      L10n.recordText(.collectionPresetStack, language: .english),
+      "Stack"
+    )
+    XCTAssertEqual(
+      L10n.recordText(.collectionPresetStack, language: .simplifiedChinese),
+      "栈"
+    )
+    XCTAssertEqual(
+      L10n.recordText(.collectionPresetQueue, language: .simplifiedChinese),
+      "队列"
+    )
+    XCTAssertEqual(
+      L10n.recordText(.collectionPresetList, language: .simplifiedChinese),
+      "列表"
+    )
+    XCTAssertEqual(L10n.recordCount(3, language: .english), "3 records")
+    XCTAssertEqual(L10n.recordCount(3, language: .simplifiedChinese), "3 条记录")
+    XCTAssertEqual(
+      L10n.removeFromCollection("Inbox", language: .english),
+      "Remove from Inbox"
+    )
+    XCTAssertEqual(
+      L10n.collectionReferencesUsage(
+        captureRouteCount: 2,
+        deliveryRouteCount: 1,
+        language: .english
+      ),
+      "This collection is used by 2 capture routes and 1 delivery routes."
+    )
+    XCTAssertEqual(L10n.routePriority(5, language: .simplifiedChinese), "优先级 5")
+    XCTAssertEqual(L10n.routePriorityLabel(-2, language: .english), "Priority: -2")
+  }
+
+  func testHistoryTimelineTextKeysAreExhaustivelyLocalized() {
+    for key in HistoryTimelineTextKey.allCases {
+      let english = L10n.historyTimelineText(key, language: .english)
+      let simplifiedChinese = L10n.historyTimelineText(key, language: .simplifiedChinese)
+      XCTAssertNotEqual(english, key.rawValue)
+      XCTAssertNotEqual(simplifiedChinese, key.rawValue)
+      XCTAssertFalse(english.isEmpty)
+      XCTAssertFalse(simplifiedChinese.isEmpty)
+      XCTAssertNotEqual(english, simplifiedChinese)
+    }
+
+    XCTAssertEqual(L10n.historyTimelineAction(2, language: .english), "Action 2")
+    XCTAssertEqual(L10n.historyTimelineAction(2, language: .simplifiedChinese), "动作 2")
+    XCTAssertEqual(
+      L10n.historyTimelineLLMRequestStep(3, language: .simplifiedChinese),
+      "LLM 请求 · 第 3 步"
+    )
+    XCTAssertEqual(
+      L10n.historyTimelineSentMessage(role: "user", number: 1, language: .english),
+      "Sent message · user 1"
+    )
+    XCTAssertEqual(
+      L10n.historyTimelineSentToLLMStep(2, language: .simplifiedChinese),
+      "发送给 LLM · 第 2 步"
+    )
+    XCTAssertEqual(
+      L10n.historyRunTrigger(.wakeWord, language: .simplifiedChinese),
+      "唤醒词"
+    )
+    XCTAssertEqual(
+      L10n.historyRunDurationBucket(.s1To4, language: .english),
+      "1–4 s"
+    )
+    XCTAssertEqual(
+      L10n.historyRunStatus(.skipped, language: .english),
+      "Skipped"
+    )
+    XCTAssertEqual(
+      L10n.historyRunStatus(.completed, language: .simplifiedChinese),
+      L10n.workflowRunTermination(.completed, language: .simplifiedChinese)
+    )
   }
 }

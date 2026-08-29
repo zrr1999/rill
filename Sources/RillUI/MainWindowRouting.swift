@@ -39,15 +39,15 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
 
     public var symbolName: String {
         switch self {
-        case .language: "globe"
-        case .recordPanel: "doc.on.clipboard"
-        case .permissions: "lock.shield"
-        case .privacy: "hand.raised"
-        case .storage: "externaldrive"
-        case .speech: "waveform.path.ecg"
-        case .vocabulary: "text.badge.checkmark"
-        case .input: "mic.badge.plus"
-        case .voiceAssistant: "waveform.badge.mic"
+        case .language: RillSystemSymbol.globe.rawValue
+        case .recordPanel: RillSystemSymbol.docOnClipboard.rawValue
+        case .permissions: RillSystemSymbol.lockShield.rawValue
+        case .privacy: RillSystemSymbol.handRaised.rawValue
+        case .storage: RillSystemSymbol.externaldrive.rawValue
+        case .speech: RillSystemSymbol.waveformPathEcg.rawValue
+        case .vocabulary: RillSystemSymbol.textBadgeCheckmark.rawValue
+        case .input: RillSystemSymbol.micBadgePlus.rawValue
+        case .voiceAssistant: RillSystemSymbol.waveformBadgeMic.rawValue
         }
     }
 

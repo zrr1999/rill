@@ -60,6 +60,7 @@ public enum L10n {
     case clipboardHistoryTitle
     case clipboardRoutingDescription
     case clipboardRoutingTitle
+    case close
     case menuAbout
     case menuClipboardCaptureActive
     case menuClipboardCaptureOff
@@ -163,6 +164,11 @@ public enum L10n {
     case settingsFailedAudioRecoveryClearConfirmation
     case settingsFailedAudioRecoveryClearConfirmationDetail
     case settingsFailedAudioRecoveryDescription
+    case settingsBenchmarkRecordingArchive
+    case settingsBenchmarkRecordingArchiveClear
+    case settingsBenchmarkRecordingArchiveClearConfirmation
+    case settingsBenchmarkRecordingArchiveClearConfirmationDetail
+    case settingsBenchmarkRecordingArchiveDescription
     case historyFailedAudioDelete
     case historyFailedAudioDeleteConfirmation
     case historyFailedAudioDeleteConfirmationDetail
@@ -219,6 +225,10 @@ public enum L10n {
     .clipboardRoutingTitle: .init(
       english: "Collections",
       simplifiedChinese: "记录集"
+    ),
+    .close: .init(
+      english: "Close",
+      simplifiedChinese: "关闭"
     ),
     .menuAbout: .init(
       english: "About Rill",
@@ -645,6 +655,29 @@ public enum L10n {
         "Off by default. Eligible recordings are encrypted with the local Keychain key for up to 24 hours (3 items, 16 MB each, 32 MB total). Retry rechecks current privacy and provider settings, writes only to History, and never repeats output actions.",
       simplifiedChinese:
         "默认关闭。符合条件的录音会使用本机 Keychain 密钥加密保存，最长 24 小时（最多 3 条、单条 16 MB、总计 32 MB）。重试会重新检查当前隐私与服务配置，只写入历史，不会重复执行输出动作。"
+    ),
+    .settingsBenchmarkRecordingArchive: .init(
+      english: "Save recordings for ASR benchmark",
+      simplifiedChinese: "保存录音用于 ASR Benchmark"
+    ),
+    .settingsBenchmarkRecordingArchiveClear: .init(
+      english: "Clear Benchmark Recordings",
+      simplifiedChinese: "清除 Benchmark 录音"
+    ),
+    .settingsBenchmarkRecordingArchiveClearConfirmation: .init(
+      english: "Delete all benchmark recordings?",
+      simplifiedChinese: "删除全部 Benchmark 录音吗？"
+    ),
+    .settingsBenchmarkRecordingArchiveClearConfirmationDetail: .init(
+      english:
+        "This permanently removes every encrypted benchmark recording. Run history and transcripts are not changed.",
+      simplifiedChinese: "这会永久删除全部加密的 Benchmark 录音；运行历史和转写不会改变。"
+    ),
+    .settingsBenchmarkRecordingArchiveDescription: .init(
+      english:
+        "Off by default. When enabled, every recording that reaches workflow processing is encrypted with the local Keychain key and kept until cleared. Nothing is uploaded automatically. Turning this off stops new saves but keeps the existing archive.",
+      simplifiedChinese:
+        "默认关闭。开启后，每条进入工作流处理的录音都会使用本机 Keychain 密钥加密保存，直到手动清除；不会自动上传。关闭只会停止新增，不会删除已有归档。"
     ),
     .historyFailedAudioDelete: .init(
       english: "Delete recording",

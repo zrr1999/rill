@@ -298,6 +298,7 @@ public final class AppModel {
     .legacyClipboardHistoryRetentionPeriod,
     .runHistoryRetentionPeriod,
     .failedAudioRecoveryEnabled,
+    .benchmarkRecordingArchiveEnabled,
     .builtinPushToTalkOutputMode,
     .longRecordingModeEnabled,
     .recordingDurationLimit,
@@ -333,7 +334,7 @@ public final class AppModel {
     workflowFileStore?.configurationDirectoryURL
   }
   public let localPersistenceStatus: LocalPersistenceStatus
-  public internal(set) var selectedSidebarSection: SidebarSection = .dashboard
+  public internal(set) var selectedSidebarSection: SidebarSection = .stream
   public let recordWorkspace: RecordWorkspaceModel
   public var runHistoryScope: RunHistoryScope = .recentRuns {
     didSet {
@@ -543,6 +544,9 @@ public final class AppModel {
   public internal(set) var failedAudioRecoveryUnavailableReasonsByRunID:
     [UUID: FailedAudioRecoveryError] = [:]
   public var failedAudioRecoveryError: String?
+  public internal(set) var benchmarkRecordingArchiveEnabled = false
+  public internal(set) var isUpdatingBenchmarkRecordingArchive = false
+  public var benchmarkRecordingArchiveError: String?
   // The floating panel is driven through `updateLiveSubtitlePanelAction`, not
   // through a SwiftUI view observing AppModel. Keeping its 25 Hz meter state
   // outside Observation prevents every audio frame from invalidating the main
@@ -650,9 +654,6 @@ public final class AppModel {
   public var localizedMenuBarTitle: String {
     UIStrings.text(.menuBarLabel, language: language)
   }
-  public var localizedWorkflowWindowTitle: String {
-    UIStrings.text(.workflowsTitle, language: language)
-  }
 
   let eventBus: EventBus
   let sessionCoordinator: SessionCoordinator
@@ -705,6 +706,8 @@ public final class AppModel {
   let refreshFailedAudioRecoveryAction: @Sendable (Bool) async throws -> Void
   let loadFailedAudioRecoveryReceiptsAction:
     @Sendable () async throws -> [FailedAudioRecoveryReceipt]
+  let clearBenchmarkRecordingArchiveAction: @Sendable () async throws -> Void
+  let refreshBenchmarkRecordingArchiveAction: @Sendable (Bool) async throws -> Void
   let authorizeWorkflowRunAction:
     @Sendable (
       WorkflowDefinition
@@ -728,7 +731,6 @@ public final class AppModel {
   var showRecordPanelAction: () -> Void = {}
   var setSystemClipboardCaptureEnabledAction: (Bool, UInt64) -> Void = { _, _ in }
   var ignoreNextExternalClipboardChangeAction: () -> Void = {}
-  var openWorkflowEditorAction: () -> Void = {}
   var workflowLibraryChangedAction: @MainActor () -> Void = {}
   var prepareWakeWordModelAction:
     @Sendable (@escaping @Sendable (Double) -> Void) async throws -> String = { _ in
@@ -1006,6 +1008,12 @@ public final class AppModel {
       @escaping @Sendable () async throws -> [FailedAudioRecoveryReceipt] = {
         throw FailedAudioRecoveryError.storageUnavailable
       },
+    clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void = {
+      throw BenchmarkRecordingArchiveError.storageUnavailable
+    },
+    refreshBenchmarkRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void = { _ in
+      throw BenchmarkRecordingArchiveError.storageUnavailable
+    },
     authorizeWorkflowRunAction:
       @escaping @Sendable (
         WorkflowDefinition
@@ -1159,6 +1167,8 @@ public final class AppModel {
     self.clearFailedAudioRecoveryAction = clearFailedAudioRecoveryAction
     self.refreshFailedAudioRecoveryAction = refreshFailedAudioRecoveryAction
     self.loadFailedAudioRecoveryReceiptsAction = loadFailedAudioRecoveryReceiptsAction
+    self.clearBenchmarkRecordingArchiveAction = clearBenchmarkRecordingArchiveAction
+    self.refreshBenchmarkRecordingArchiveAction = refreshBenchmarkRecordingArchiveAction
     self.authorizeWorkflowRunAction = authorizeWorkflowRunAction
     self.explainResolvedWorkflowAction = explainResolvedWorkflowAction
     self.writeClipboardTextAction = writeClipboardTextAction

@@ -229,10 +229,6 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     return RillSystemSymbol.checkmarkCircle.rawValue
   }
 
-  public var speechEngineTitle: String {
-    L10n.string(.menuLocalEngine, language: language)
-  }
-
   public var outputModeTitle: String {
     switch outputMode {
     case .pasteIntoApp:
@@ -512,7 +508,7 @@ public struct MenuBarStatusView: View {
         .accessibilityIdentifier("menu.status.summary")
     } else {
       Button {
-        model.selectSidebarSection(.dashboard)
+        model.selectSidebarSection(.stream)
         openMainWindow()
       } label: {
         Label(panelState.statusTitle, systemImage: panelState.statusSystemImage)
@@ -649,6 +645,7 @@ extension MenuBarStatusView {
 
     Button {
       model.openWorkflowEditor()
+      openMainWindow()
     } label: {
       Label(
         UIStrings.text(.openWorkflowEditor, language: model.language),
@@ -757,6 +754,7 @@ extension MenuBarStatusView {
 
     Button {
       model.openWorkflowEditor()
+      openMainWindow()
     } label: {
       Label(
         UIStrings.text(.openWorkflowEditor, language: model.language),

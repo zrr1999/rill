@@ -43,6 +43,7 @@ public actor CapturedAudioProcessingQueue {
     private let eventBus: EventBus
     private let diagnostics: DiagnosticsRecorder?
     private let failedAudioRecoveryController: FailedAudioRecoveryController?
+    private let benchmarkRecordingArchiveController: BenchmarkRecordingArchiveController?
     private let lane: Lane
     private let publishesSnapshots: Bool
     private let rejectedCapturedAudioRemoval: @Sendable (CapturedAudio) async throws -> Void
@@ -64,6 +65,7 @@ public actor CapturedAudioProcessingQueue {
         eventBus: EventBus,
         diagnostics: DiagnosticsRecorder? = nil,
         failedAudioRecoveryController: FailedAudioRecoveryController? = nil,
+        benchmarkRecordingArchiveController: BenchmarkRecordingArchiveController? = nil,
         lane: Lane = .interactive,
         publishesSnapshots: Bool = true
     ) {
@@ -72,6 +74,7 @@ public actor CapturedAudioProcessingQueue {
             eventBus: eventBus,
             diagnostics: diagnostics,
             failedAudioRecoveryController: failedAudioRecoveryController,
+            benchmarkRecordingArchiveController: benchmarkRecordingArchiveController,
             lane: lane,
             publishesSnapshots: publishesSnapshots,
             rejectedCapturedAudioRemoval: { capturedAudio in
@@ -91,6 +94,7 @@ public actor CapturedAudioProcessingQueue {
         eventBus: EventBus,
         diagnostics: DiagnosticsRecorder? = nil,
         failedAudioRecoveryController: FailedAudioRecoveryController? = nil,
+        benchmarkRecordingArchiveController: BenchmarkRecordingArchiveController? = nil,
         lane: Lane = .interactive,
         publishesSnapshots: Bool = true,
         rejectedCapturedAudioRemoval: @escaping @Sendable (
@@ -107,6 +111,7 @@ public actor CapturedAudioProcessingQueue {
         self.eventBus = eventBus
         self.diagnostics = diagnostics
         self.failedAudioRecoveryController = failedAudioRecoveryController
+        self.benchmarkRecordingArchiveController = benchmarkRecordingArchiveController
         self.lane = lane
         self.publishesSnapshots = publishesSnapshots
         self.rejectedCapturedAudioRemoval = rejectedCapturedAudioRemoval
@@ -470,6 +475,11 @@ public actor CapturedAudioProcessingQueue {
                     recognitionOptions: authorization.authorizedContext.recognitionOptions,
                     waitsForAvailability: true
                 )
+                await preserveBenchmarkRecordingIfEnabled(
+                    capturedAudio,
+                    outcome: outcome,
+                    for: job
+                )
                 if case .failed(let failure) = outcome {
                     await preserveFailedAudioIfEligible(
                         capturedAudio,
@@ -548,6 +558,59 @@ public actor CapturedAudioProcessingQueue {
     private func publishSnapshot() async {
         guard publishesSnapshots else { return }
         await eventBus.publish(.audioProcessingQueueUpdated(snapshot()))
+    }
+
+    private func preserveBenchmarkRecordingIfEnabled(
+        _ capturedAudio: CapturedAudio,
+        outcome: WorkflowRunExecutionResult,
+        for job: Job
+    ) async {
+        guard let benchmarkRecordingArchiveController else { return }
+        let archiveOutcome: BenchmarkRecordingOutcome =
+            switch outcome {
+            case .completed:
+                .completed
+            case .cancelled:
+                .cancelled
+            case .failed:
+                .failed
+            }
+        var metadata = capturedAudio.metadata
+        metadata["recognizerID"] = job.workflow.plan.setup.speechRoute?.recognizerID
+        do {
+            _ = try await benchmarkRecordingArchiveController.preserveIfEnabled(
+                audio: capturedAudio,
+                runID: job.runID,
+                workflowID: job.workflow.id,
+                trigger: Self.runTriggerKind(for: job.triggerEvent),
+                outcome: archiveOutcome,
+                metadata: metadata
+            )
+        } catch {
+            await recordDiagnostic(
+                event: "benchmark-recording.preserve-failed",
+                message: "The recording could not be retained for the private ASR benchmark.",
+                runID: job.runID,
+                level: .warning,
+                metadata: ["reason": "storage-unavailable"]
+            )
+        }
+    }
+
+    private static func runTriggerKind(
+        for triggerEvent: WorkflowTriggerEvent?
+    ) -> WorkflowRunTriggerKind {
+        guard let triggerEvent else { return .manual }
+        switch triggerEvent.binding {
+        case .manual:
+            return .manual
+        case .menuBar:
+            return .menuBar
+        case .hotkey:
+            return .hotkey
+        case .wakeWord:
+            return .wakeWord
+        }
     }
 
     private func preserveFailedAudioIfEligible(

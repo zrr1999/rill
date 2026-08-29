@@ -4,11 +4,10 @@ import RillCore
 import RillUI
 
 enum RecordPanelModalPolicy {
-    /// Opening any SwiftUI sheet from the nonactivating AppKit panel remains
-    /// disabled until attached-sheet focus, Escape routing, auto-hide, and key
-    /// isolation have all passed live accessibility testing in the packaged app.
-    static let allowsSheetPresentation = false
-
+    /// SwiftUI sheets and alerts presented from the embedded Record workspace
+    /// attach to the nonactivating panel. While one is attached, auto-hide is
+    /// suppressed and the first Escape press closes the sheet instead of the
+    /// panel.
     enum EscapeDestination: Equatable {
         case attachedSheet
         case panel
@@ -169,10 +168,12 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     private var autoHideSuppressedUntil = ContinuousClock.now
     private let pasteTargetProvider: (@MainActor () -> FocusedApplicationTargetIdentity?)?
     private let pasteTargetRestorer: (@MainActor (FocusedApplicationTargetIdentity) async -> Bool)?
+    private let reduceMotionProvider: @MainActor () -> Bool
 
     override init() {
         pasteTargetProvider = nil
         pasteTargetRestorer = nil
+        reduceMotionProvider = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
         super.init()
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
@@ -185,10 +186,14 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
 
     init(
         pasteTargetProvider: @escaping @MainActor () -> FocusedApplicationTargetIdentity?,
-        pasteTargetRestorer: @escaping @MainActor (FocusedApplicationTargetIdentity) async -> Bool
+        pasteTargetRestorer: @escaping @MainActor (FocusedApplicationTargetIdentity) async -> Bool,
+        reduceMotionProvider: @escaping @MainActor () -> Bool = {
+            NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        }
     ) {
         self.pasteTargetProvider = pasteTargetProvider
         self.pasteTargetRestorer = pasteTargetRestorer
+        self.reduceMotionProvider = reduceMotionProvider
         super.init()
     }
 
@@ -267,7 +272,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.contentView?.wantsLayer = true
-        panel.contentView?.layer?.cornerRadius = 16
+        panel.contentView?.layer?.cornerRadius = RillRadius.panel
         panel.contentView?.layer?.masksToBounds = true
         centerOnActiveScreen(panel)
         self.panel = panel
@@ -441,6 +446,13 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         pendingFocusRestoreTask?.cancel()
         pendingFocusRestoreTask = nil
         suppressAutoHide()
+        // Reduce Motion: skip the entrance fade and show the panel directly.
+        if reduceMotionProvider() {
+            panel.alphaValue = 1
+            panel.orderFrontRegardless()
+            panel.makeKey()
+            return
+        }
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         panel.makeKey()
@@ -479,6 +491,16 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         panelTransitionGeneration &+= 1
         let transitionGeneration = panelTransitionGeneration
         let previousApp = restorePreviousApplication ? previousApplication ?? fallbackExternalApplication : nil
+        // Reduce Motion: skip the exit fade and hide the panel directly.
+        guard !reduceMotionProvider() else {
+            finishHide(
+                transitionGeneration: transitionGeneration,
+                previousApp: previousApp,
+                onHidden: onHidden,
+                onInvalidated: onInvalidated
+            )
+            return
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.12
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
@@ -489,29 +511,43 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
                     onInvalidated?()
                     return
                 }
-                guard self.panelTransitionGeneration == transitionGeneration,
-                      !self.hasBegunShutdown else {
-                    onInvalidated?()
-                    return
-                }
-                self.panel?.orderOut(nil)
-                self.panel?.alphaValue = 1
-                guard previousApp != nil else {
-                    onHidden?()
-                    return
-                }
-                let focusTask = Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    _ = await self.restorePreviousApplicationIfNeeded(previousApp)
-                    guard !Task.isCancelled,
-                          self.panelTransitionGeneration == transitionGeneration,
-                          !self.hasBegunShutdown else { return }
-                    self.pendingFocusRestoreTask = nil
-                    onHidden?()
-                }
-                self.pendingFocusRestoreTask = focusTask
+                self.finishHide(
+                    transitionGeneration: transitionGeneration,
+                    previousApp: previousApp,
+                    onHidden: onHidden,
+                    onInvalidated: onInvalidated
+                )
             }
         }
+    }
+
+    private func finishHide(
+        transitionGeneration: UInt64,
+        previousApp: NSRunningApplication?,
+        onHidden: (@MainActor () -> Void)?,
+        onInvalidated: (@MainActor () -> Void)?
+    ) {
+        guard panelTransitionGeneration == transitionGeneration,
+              !hasBegunShutdown else {
+            onInvalidated?()
+            return
+        }
+        panel?.orderOut(nil)
+        panel?.alphaValue = 1
+        guard previousApp != nil else {
+            onHidden?()
+            return
+        }
+        let focusTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            _ = await self.restorePreviousApplicationIfNeeded(previousApp)
+            guard !Task.isCancelled,
+                  self.panelTransitionGeneration == transitionGeneration,
+                  !self.hasBegunShutdown else { return }
+            self.pendingFocusRestoreTask = nil
+            onHidden?()
+        }
+        pendingFocusRestoreTask = focusTask
     }
 
     private func suppressAutoHide() {

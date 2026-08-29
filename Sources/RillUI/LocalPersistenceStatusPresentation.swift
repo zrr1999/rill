@@ -141,17 +141,9 @@ struct LocalPersistenceStatusBanner: View {
           .accessibilityIdentifier("persistence.status.open-storage-settings")
       }
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(12)
-    .background(
-      Color.orange.opacity(0.08),
-      in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-    )
-    .overlay {
-      RoundedRectangle(cornerRadius: 10, style: .continuous)
-        .strokeBorder(Color.orange.opacity(0.35))
-        .allowsHitTesting(false)
-    }
+    // Prominent-tier card; the caution semantics are carried by the orange
+    // icon rather than a custom tinted fill.
+    .rillCard(.prominent, cornerRadius: 10, padding: 12)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("persistence.status.banner")
   }

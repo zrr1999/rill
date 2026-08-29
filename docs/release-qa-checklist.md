@@ -249,7 +249,7 @@ hash from one clean, uniquely tagged candidate still need to be attached.
 | `AppleVoiceProcessingAudioProcessorTests`, `LocalSpeechIncrementalWaveWriterTests`, `LocalSpeechVoiceCaptureRuntimeTests`, and `RealtimeAudioCaptureServiceTests` prove Apple Voice Processing activation on both I/O nodes, bypass disabled, AGC enabled, strongest-channel selection, exact 16 kHz energy framing, bounded realtime PCM/RMS retention, private incremental WAV output, accepted-tail drain, late-buffer rejection, permission/readiness races, exact frame ceilings, partial-file cleanup, explicit route/conversion failure, local-model injection, configured-live fail-closed behavior, and run/generation-scoped terminal cleanup | **Working-source complete; candidate pending.** This proves frontend configuration and lifecycle, not controlled acoustic denoise effectiveness or constant-memory native offline decoding. |
 | `HotkeyEventTapTests`, `RecordingSessionManagerTests`, and `StackPasteControllerTests` prove the shared producer must be valid and enabled before it is reported available; slow start preparation cannot block later release or second-toggle intent; tap interruption, failed re-enable, and teardown clear recognizer latches; producer loss cancels pending, hold, and toggle capture without waiting for a physical key-up; shutdown drains every derived start/release task; and the visible global-input capability downgrades after producer loss | **Working-source complete; candidate pending.** Included in the 1,691-test 2026-07-17 working-source install; real physical Fn behavior and system-level tap failure remain manual candidate checks. |
 | `SherpaOnnxModelInstallerTests` proves pinned archive size/SHA verification, safe archive inspection, canonical installed-file inventory verification, private atomic publication, corruption rejection and clean repair, cancellation of the external tar child, and verified offline cache reuse | **Working-source complete; candidate pending.** Focused migration suite passed, including a real pinned Qwen archive install; rerun deterministic tests from the candidate and attach the explicit model-install dogfood log separately. |
-| `MainShellFocusIntegrationTests` and `HistoryRetryFocusPolicyTests` prove the main-window sidebar Dashboard → Clipboard → History focus path across hosted AppKit detail replacement and mouse-event tracking, that Clipboard does not steal first responder into Search, and per-channel keyboard/VoiceOver focus rehoming when transient Retry controls disappear without stealing unrelated focus | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
+| `MainShellFocusIntegrationTests` and `HistoryRetryFocusPolicyTests` prove the main-window sidebar Activity → Clipboard → Workflows focus path across hosted AppKit detail replacement and mouse-event tracking, that Clipboard does not steal first responder into Search, and per-channel keyboard/VoiceOver focus rehoming when transient Retry controls disappear without stealing unrelated focus | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
 | `ExternalOutputActionsTests` proves Markdown pre/post-commit cancellation, pre-publication short-write rejection, single-SWAP atomic publication without post-SWAP rollback, descriptor-bound displaced-file cleanup and retry, cancellation-resistant post-commit cleanup without duplicate append, existing-file metadata preservation, macOS 14 compatibility fallback, hard-link and any-level symlink rejection, special-file/UTF-8/size bounds, indeterminate-race evidence preservation with inspect-before-retry reporting, and serialized concurrent append | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
 | The `AppModelTests` retention cases in `Tests/RillUITests/AppModelHistoryRetentionTests.swift` and `ApplicationTerminationCoordinatorTests` prove history-maintenance drain precedes event and persistence shutdown barriers | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
 | `PasteboardControllerTests`, `TextInjectionEngineTests`, `StackPasteControllerTests`, and termination tests prove temporary paste restores every item/type/data representation and order after success, failure, and cancellation without overwriting a newer user copy; the raw archive enforces 128-item, 32-representation-per-item, 256-total-representation, per-representation/item, and 64 MiB total bounds before replacement; ImageIO runs off MainActor with one single-flight worker; failed exact restores retain the archive, retry without repeating delivery, and drain inner TextInjection before outer StackPaste during shutdown | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
@@ -320,7 +320,7 @@ they do not replace running the notarized candidate on macOS 14.
 
 For a declared `cloud-only` candidate:
 
-- [ ] Dashboard and Settings identify trusted local speech as unavailable; model
+- [ ] The Activity page and Settings identify trusted local speech as unavailable; model
       preparation performs no model-host request, and an old downloaded-model ID
       cannot make the App report Ready.
 
@@ -362,7 +362,7 @@ candidate before recording a failure.
       user initiates the corresponding setup action.
 - [ ] Denying each permission produces an actionable state and does not loop.
 - [ ] Granting each permission recovers without deleting user settings.
-- [ ] Dashboard remains incomplete when Input Monitoring preflight passes but
+- [ ] The Activity page remains incomplete when Input Monitoring preflight passes but
       the shared active event tap cannot be installed; retrying after permission
       changes must activate Fn. With Clipboard Capture enabled it must also
       activate the clipboard-panel shortcut and Command-V interception; with
@@ -429,8 +429,8 @@ cannot be confused with deleting stored content.
 
 Complete the pass in both App languages.
 
-- [ ] Dashboard, the History page with Recent Runs/Recent Results filters,
-      Clipboard, Workflows, Diagnostics, and Settings have a coherent VoiceOver
+- [ ] The Activity page (including the run timeline with Recent Runs/Recent
+      Results filters), Clipboard, Workflows, Diagnostics, and Settings have a coherent VoiceOver
       reading and focus order.
 - [ ] Restricted history previews expose only the same truncated text shown
       visually; disabled previews expose no body text.
@@ -447,14 +447,14 @@ Complete the pass in both App languages.
       VoiceOver focus returns to the global search field. When the main Clipboard
       persistence Retry disappears after recovery, focus returns to Search in
       Current/History or the section picker in Routing; if Retry was not focused,
-      Dashboard → Clipboard keeps sidebar focus.
+      Activity → Clipboard keeps sidebar focus.
 - [ ] Empty states, loading counts, privacy reasons, destructive confirmations,
       progress, success, and failure states are announced once and remain
       understandable without color.
 - [ ] Escape, Tab, Shift-Tab, Space, Return, and arrow-key behavior is predictable.
-- [ ] In the main window, with the Dashboard sidebar row focused, Down opens the
-      Clipboard page directly below Dashboard and a second Down opens History;
-      entering Clipboard does not move focus into Search or clear the sidebar
+- [ ] In the main window, with the Activity sidebar row focused, Down opens the
+      first collection directly below Activity and a second Down selects the next
+      collection; entering Clipboard does not move focus into Search or clear the sidebar
       first responder after the mouse event finishes.
 - [ ] Selecting top-level Clipboard exits any selected clipboard group. Search
       gains a visible focus ring only after explicit focus, and Tab/Shift-Tab use

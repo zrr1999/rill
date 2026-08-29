@@ -113,6 +113,8 @@ struct GlobalSearchResultsView: View {
                 .accessibilityIdentifier("global-search.results")
                 .onChange(of: selectedResultID) { _, selectedID in
                     guard let selectedID else { return }
+                    // Navigation scroll, not decorative motion: keep the fixed
+                    // duration easing so result positioning stays predictable.
                     withAnimation(.easeInOut(duration: 0.12)) {
                         proxy.scrollTo(selectedID, anchor: .center)
                     }
@@ -308,17 +310,7 @@ private struct GlobalSearchResultRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(
-            isSelected ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.08),
-            in: RoundedRectangle(cornerRadius: 12)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(
-                    isSelected ? Color.accentColor.opacity(0.7) : Color.clear,
-                    lineWidth: 1.5
-                )
-        }
+        .rillSelection(isSelected, cornerRadius: 12)
         .onHover { isHovered in
             if isHovered {
                 onHighlight(result.id)

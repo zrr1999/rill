@@ -23,17 +23,17 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
     var systemImage: String {
         switch self {
         case .rawInput:
-            return "text.quote"
+            return RillSystemSymbol.textQuote.rawValue
         case .cleanInput:
-            return "text.alignleft"
+            return RillSystemSymbol.textAlignLeft.rawValue
         case .formalWriting:
-            return "wand.and.stars"
+            return RillSystemSymbol.wandAndStars.rawValue
         case .translateInput:
-            return "globe.asia.australia"
+            return RillSystemSymbol.globeAsiaAustralia.rawValue
         case .commandMode:
-            return "terminal"
+            return RillSystemSymbol.terminal.rawValue
         case .custom:
-            return "slider.horizontal.3"
+            return RillSystemSymbol.sliderHorizontal3.rawValue
         }
     }
 

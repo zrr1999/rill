@@ -202,17 +202,22 @@ private struct HistoryNavigationTaskIdentity: Hashable {
     let deepLinkState: RunHistoryDeepLinkState
 }
 
-public struct HistoryView: View {
-    private static let topAnchorID = "history.top"
-
+/// Receipt-first run timeline, embedded in `StreamView`. The host owns the
+/// ScrollView/ScrollViewReader so readiness, live activity and the durable
+/// timeline share one scroll position; deep links still scroll and focus the
+/// exact entry through the injected proxy.
+public struct HistoryTimelineView: View {
     @Bindable private var model: AppModel
+    private let proxy: ScrollViewProxy
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var correctionRecord: WorkflowResultRecord?
     @State private var pendingFailedAudioDeletion: FailedAudioRecoveryReceipt?
     @FocusState private var focusedTarget: HistoryViewFocusTarget?
     @AccessibilityFocusState private var accessibilityFocusedTarget: HistoryViewFocusTarget?
 
-    public init(model: AppModel) {
+    public init(model: AppModel, proxy: ScrollViewProxy) {
         self.model = model
+        self.proxy = proxy
     }
 
     public var body: some View {
@@ -226,164 +231,162 @@ public struct HistoryView: View {
             hasEntries: !visibleEntries.isEmpty
         )
 
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    HStack(alignment: .firstTextBaseline, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(UIStrings.text(.historyScopeAll, language: model.language))
-                                .font(.headline)
-                            Text(UIStrings.text(.historyDescription, language: model.language))
-                        }
-                        Spacer(minLength: 12)
-                        if case .loaded = model.effectiveRunHistoryLoadState {
-                            Text(
-                                UIStrings.loadedRunCount(
-                                    visibleEntries.count,
-                                    language: model.language
-                                )
-                            )
-                            .font(.caption)
-                        }
-                    }
-                    .foregroundStyle(.secondary)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityFocused(
-                        $accessibilityFocusedTarget,
-                        equals: .scopeSummary
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(UIStrings.text(.historyScopeAll, language: model.language))
+                        .font(.headline)
+                    Text(UIStrings.text(.historyDescription, language: model.language))
+                }
+                Spacer(minLength: 12)
+                if case .loaded = model.effectiveRunHistoryLoadState {
+                    Text(
+                        UIStrings.loadedRunCount(
+                            visibleEntries.count,
+                            language: model.language
+                        )
                     )
+                    .font(.caption)
+                }
+            }
+            .foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+            .accessibilityFocused(
+                $accessibilityFocusedTarget,
+                equals: .scopeSummary
+            )
 
-                    if let error = model.failedAudioRecoveryError {
-                        Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
-                            .font(.callout)
-                            .foregroundStyle(.red)
-                    }
+            if let error = model.failedAudioRecoveryError {
+                Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
 
-                    if case .expired = model.runHistoryDeepLinkState {
-                        Label {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(
-                                    UIStrings.text(
-                                        .historyEntryExpiredTitle,
-                                        language: model.language
-                                    )
-                                )
-                                .font(.headline)
-                                Text(
-                                    UIStrings.text(
-                                        .historyEntryExpiredDescription,
-                                        language: model.language
-                                    )
-                                )
-                                .font(.callout)
-                            }
-                        } icon: {
-                            Image(systemName: RillSystemSymbol.clockBadgeExclamationmark.rawValue)
-                        }
-                        .foregroundStyle(.orange)
-                        .padding(12)
-                        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                        .accessibilityIdentifier("history.deep-link.expired")
-                    }
-
-                    if model.runHistoryPaginationFailed {
-                        HStack(spacing: 10) {
-                            Label(
-                                UIStrings.text(.historyPaginationFailed, language: model.language),
-                                systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
+            if case .expired = model.runHistoryDeepLinkState {
+                Label {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(
+                            UIStrings.text(
+                                .historyEntryExpiredTitle,
+                                language: model.language
                             )
-                            .font(.callout)
-                            .foregroundStyle(.orange)
-                            Spacer()
-                            if model.localPersistenceStatus.isSessionOnly {
-                                Button(
-                                    LocalPersistenceStatusPresentation.make(
-                                        status: model.localPersistenceStatus,
-                                        language: model.language
-                                    )?.actionTitle
-                                        ?? SettingsSection.storage.title(language: model.language)
-                                ) {
-                                    model.showSettings(.storage)
-                                }
-                                .accessibilityIdentifier(
-                                    "history.pagination.open-storage-settings"
-                                )
-                            } else if case .failed = model.runHistoryDeepLinkState {
-                                Button(
-                                    UIStrings.text(.historyRetryLoad, language: model.language)
-                                ) {
-                                    model.retryRunHistoryDeepLink()
-                                }
-                                .accessibilityIdentifier("history.deep-link.retry")
-                            }
-                        }
-                        .accessibilityIdentifier("history.pagination.error")
+                        )
+                        .font(.headline)
+                        Text(
+                            UIStrings.text(
+                                .historyEntryExpiredDescription,
+                                language: model.language
+                            )
+                        )
+                        .font(.callout)
                     }
-                    Group {
-                        switch viewState {
-                        case .loading:
-                            loadingState
-                                .transition(.opacity)
-                        case .failed:
-                            loadFailureState
-                                .transition(.opacity)
-                        case .loaded(isEmpty: true):
-                            VStack(alignment: .leading, spacing: 16) {
-                                emptyState
-                                if model.usesPagedRunHistory,
-                                   model.canLoadNewerRunHistoryPage {
-                                    paginationControls
-                                }
-                            }
-                            .transition(.opacity)
-                        case .loaded(isEmpty: false):
-                            VStack(alignment: .leading, spacing: 16) {
-                                recordList(
-                                    entries: visibleEntries,
-                                    workflowsByID: workflowsByID
-                                )
-                                if model.usesPagedRunHistory {
-                                    paginationControls
-                                }
-                            }
-                            .transition(.opacity)
+                } icon: {
+                    Image(systemName: RillSystemSymbol.clockBadgeExclamationmark.rawValue)
+                }
+                .foregroundStyle(.orange)
+                .padding(12)
+                .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityIdentifier("history.deep-link.expired")
+            }
+
+            if model.runHistoryPaginationFailed {
+                HStack(spacing: 10) {
+                    Label(
+                        UIStrings.text(.historyPaginationFailed, language: model.language),
+                        systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    Spacer()
+                    if model.localPersistenceStatus.isSessionOnly {
+                        Button(
+                            LocalPersistenceStatusPresentation.make(
+                                status: model.localPersistenceStatus,
+                                language: model.language
+                            )?.actionTitle
+                                ?? SettingsSection.storage.title(language: model.language)
+                        ) {
+                            model.showSettings(.storage)
+                        }
+                        .accessibilityIdentifier(
+                            "history.pagination.open-storage-settings"
+                        )
+                    } else if case .failed = model.runHistoryDeepLinkState {
+                        Button(
+                            UIStrings.text(.historyRetryLoad, language: model.language)
+                        ) {
+                            model.retryRunHistoryDeepLink()
+                        }
+                        .accessibilityIdentifier("history.deep-link.retry")
+                    }
+                }
+                .accessibilityIdentifier("history.pagination.error")
+            }
+            Group {
+                switch viewState {
+                case .loading:
+                    loadingState
+                        .transition(.opacity)
+                case .failed:
+                    loadFailureState
+                        .transition(.opacity)
+                case .loaded(isEmpty: true):
+                    VStack(alignment: .leading, spacing: 16) {
+                        emptyState
+                        if model.usesPagedRunHistory,
+                           model.canLoadNewerRunHistoryPage {
+                            paginationControls
                         }
                     }
-                    .animation(.easeInOut(duration: 0.3), value: viewState)
+                    .transition(.opacity)
+                case .loaded(isEmpty: false):
+                    VStack(alignment: .leading, spacing: 16) {
+                        recordList(
+                            entries: visibleEntries,
+                            workflowsByID: workflowsByID
+                        )
+                        if model.usesPagedRunHistory {
+                            paginationControls
+                        }
+                    }
+                    .transition(.opacity)
                 }
-                .id(Self.topAnchorID)
-                .padding(24)
             }
-            .task(
-                id: HistoryNavigationTaskIdentity(
-                    requestID: model.historyNavigationRequest?.id,
-                    visibleEntryIDs: visibleEntries.map(\.id),
-                    loadState: model.effectiveRunHistoryLoadState,
-                    deepLinkState: model.runHistoryDeepLinkState
-                )
-            ) {
-                await model.resolveRunHistoryDeepLinkIfNeeded()
-                guard case .loaded = model.effectiveRunHistoryLoadState,
-                      let request = model.historyNavigationRequest,
-                      request.scope == model.runHistoryScope,
-                      let visibleEntryID = model.visibleRunHistoryEntryID(
-                        matching: request.entryID
-                      ),
-                      visibleEntries.contains(where: { $0.id == visibleEntryID }) else {
-                    return
-                }
-                await Task.yield()
-                guard model.historyNavigationRequest?.id == request.id else { return }
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    proxy.scrollTo(visibleEntryID, anchor: .center)
-                }
-                await Task.yield()
-                guard model.historyNavigationRequest?.id == request.id else { return }
-                focusedTarget = .entry(visibleEntryID)
-                accessibilityFocusedTarget = .entry(visibleEntryID)
-            }
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 1.0),
+                value: viewState
+            )
         }
-        .navigationTitle(UIStrings.text(.historyTitle, language: model.language))
+        .task(
+            id: HistoryNavigationTaskIdentity(
+                requestID: model.historyNavigationRequest?.id,
+                visibleEntryIDs: visibleEntries.map(\.id),
+                loadState: model.effectiveRunHistoryLoadState,
+                deepLinkState: model.runHistoryDeepLinkState
+            )
+        ) {
+            await model.resolveRunHistoryDeepLinkIfNeeded()
+            guard case .loaded = model.effectiveRunHistoryLoadState,
+                  let request = model.historyNavigationRequest,
+                  request.scope == model.runHistoryScope,
+                  let visibleEntryID = model.visibleRunHistoryEntryID(
+                    matching: request.entryID
+                  ),
+                  visibleEntries.contains(where: { $0.id == visibleEntryID }) else {
+                return
+            }
+            await Task.yield()
+            guard model.historyNavigationRequest?.id == request.id else { return }
+            // Navigation scroll, not decorative motion: keep the fixed
+            // duration easing so entry positioning stays predictable.
+            withAnimation(.easeInOut(duration: 0.2)) {
+                proxy.scrollTo(visibleEntryID, anchor: .center)
+            }
+            await Task.yield()
+            guard model.historyNavigationRequest?.id == request.id else { return }
+            focusedTarget = .entry(visibleEntryID)
+            accessibilityFocusedTarget = .entry(visibleEntryID)
+        }
         .sheet(item: $correctionRecord) { record in
             if let source = record.correctionSource {
                 VocabularyCorrectionSheet(model: model, source: source)
@@ -447,7 +450,8 @@ public struct HistoryView: View {
         )
         return VStack(spacing: 12) {
             Image(systemName: RillSystemSymbol.exclamationmarkTriangleFill.rawValue)
-                .font(.system(size: 44))
+                .font(.largeTitle)
+                .imageScale(.large)
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
             Text(presentation.title)
@@ -530,7 +534,8 @@ public struct HistoryView: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: RillSystemSymbol.clockArrowCirclepath.rawValue)
-                .font(.system(size: 48))
+                .font(.largeTitle)
+                .imageScale(.large)
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
             Text(
@@ -543,16 +548,6 @@ public struct HistoryView: View {
             )
                 .font(.title3)
                 .foregroundStyle(.secondary)
-            Button {
-                model.selectSidebarSection(.dashboard)
-            } label: {
-                Label(
-                    UIStrings.text(.historyOpenDashboard, language: model.language),
-                    systemImage: SidebarSection.dashboard.symbolName
-                )
-            }
-            .buttonStyle(.borderedProminent)
-            .accessibilityIdentifier("history.empty.openDashboard")
         }
         .frame(maxWidth: .infinity, minHeight: 240)
     }
@@ -576,7 +571,10 @@ public struct HistoryView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: entries.map(\.id))
+        .animation(
+            reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 1.0),
+            value: entries.map(\.id)
+        )
     }
 
     private func performLoadFailureAction(_ action: HistoryLoadFailureAction) {
@@ -617,8 +615,8 @@ public struct HistoryView: View {
                     .font(.caption)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(.blue.opacity(0.1), in: Capsule())
-                    .foregroundStyle(.blue)
+                    .background(.secondary.opacity(0.1), in: Capsule())
+                    .foregroundStyle(.secondary)
                 }
 
                 Spacer()
@@ -691,9 +689,10 @@ public struct HistoryView: View {
                 runReceiptDetails(receipt)
             } else if entry.runID != nil {
                 Label(
-                    model.language == .english
-                        ? "Execution details are unavailable for this older run."
-                        : "这条较早的运行没有可用的执行详情。",
+                    L10n.historyTimelineText(
+                        .executionDetailsUnavailable,
+                        language: model.language
+                    ),
                     systemImage: RillSystemSymbol.infoCircle.rawValue
                 )
                 .font(.caption)
@@ -715,8 +714,7 @@ public struct HistoryView: View {
                 failedAudioRecoveryControls(receipt)
             }
         }
-        .padding(14)
-        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14))
+        .rillCard(.regular, padding: 14)
         .accessibilityElement(children: .contain)
     }
 
@@ -805,30 +803,29 @@ public struct HistoryView: View {
             Divider()
                 .accessibilityHidden(true)
             HStack(spacing: 8) {
-                Label(localizedTrigger(receipt.trigger), systemImage: RillSystemSymbol.boltHorizontalCircle.rawValue)
+                Label(
+                    L10n.historyRunTrigger(receipt.trigger, language: model.language),
+                    systemImage: RillSystemSymbol.boltHorizontalCircle.rawValue
+                )
                 Text("·")
                     .accessibilityHidden(true)
                 Text(localizedTermination(receipt.termination))
                 Text("·")
                     .accessibilityHidden(true)
-                Text(localizedDuration(receipt.duration))
+                Text(L10n.historyRunDurationBucket(receipt.duration, language: model.language))
             }
             .font(.caption.weight(.medium))
             .foregroundStyle(.secondary)
 
             ForEach(receipt.actionDetails, id: \.actionIndex) { action in
                 HStack(spacing: 6) {
-                    Text(
-                        model.language == .english
-                            ? "Action \(action.actionIndex + 1)"
-                            : "动作 \(action.actionIndex + 1)"
-                    )
+                    Text(L10n.historyTimelineAction(action.actionIndex + 1, language: model.language))
                     Text("·")
                         .accessibilityHidden(true)
                     Text(localizedActionResult(action.result))
                     Text("·")
                         .accessibilityHidden(true)
-                    Text(localizedDuration(action.duration))
+                    Text(L10n.historyRunDurationBucket(action.duration, language: model.language))
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -836,9 +833,10 @@ public struct HistoryView: View {
 
             if receipt.detailsTruncated {
                 Label(
-                    model.language == .english
-                        ? "Additional action details were omitted."
-                        : "其余动作详情已省略。",
+                    L10n.historyTimelineText(
+                        .actionDetailsTruncated,
+                        language: model.language
+                    ),
                     systemImage: RillSystemSymbol.ellipsisCircle.rawValue
                 )
                 .font(.caption)
@@ -848,50 +846,8 @@ public struct HistoryView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func localizedTrigger(_ trigger: WorkflowRunTriggerKind) -> String {
-        switch (model.language, trigger) {
-        case (.english, .manual): "Manual"
-        case (.simplifiedChinese, .manual): "手动"
-        case (.english, .menuBar): "Menu bar"
-        case (.simplifiedChinese, .menuBar): "菜单栏"
-        case (.english, .hotkey): "Hotkey"
-        case (.simplifiedChinese, .hotkey): "快捷键"
-        case (.english, .wakeWord): "Wake word"
-        case (.simplifiedChinese, .wakeWord): "唤醒词"
-        case (.english, .recordCollectionEvent): "Collection event"
-        case (.simplifiedChinese, .recordCollectionEvent): "记录集事件"
-        case (.english, .recordDelivery): "Record delivery"
-        case (.simplifiedChinese, .recordDelivery): "记录投递"
-        case (.english, .recordUse): "Record use"
-        case (.simplifiedChinese, .recordUse): "记录使用"
-        case (.english, .recordReplay): "Record replay"
-        case (.simplifiedChinese, .recordReplay): "记录重放"
-        case (.english, .failedAudioRecovery): "Audio recovery"
-        case (.simplifiedChinese, .failedAudioRecovery): "录音恢复"
-        }
-    }
-
     private func localizedTermination(_ termination: WorkflowRunTermination) -> String {
         L10n.workflowRunTermination(termination, language: model.language)
-    }
-
-    private func localizedDuration(_ duration: WorkflowRunDurationBucket) -> String {
-        switch (model.language, duration) {
-        case (.english, .under250ms): "under 250 ms"
-        case (.simplifiedChinese, .under250ms): "少于 250 毫秒"
-        case (.english, .ms250To999): "250–999 ms"
-        case (.simplifiedChinese, .ms250To999): "250–999 毫秒"
-        case (.english, .s1To4): "1–4 s"
-        case (.simplifiedChinese, .s1To4): "1–4 秒"
-        case (.english, .s5To14): "5–14 s"
-        case (.simplifiedChinese, .s5To14): "5–14 秒"
-        case (.english, .s15To59): "15–59 s"
-        case (.simplifiedChinese, .s15To59): "15–59 秒"
-        case (.english, .m1Plus): "1 min or more"
-        case (.simplifiedChinese, .m1Plus): "1 分钟以上"
-        case (.english, .unavailable): "duration unavailable"
-        case (.simplifiedChinese, .unavailable): "耗时不可用"
-        }
     }
 
     private func localizedActionResult(_ result: WorkflowActionResultCode) -> String {
@@ -914,7 +870,7 @@ public struct HistoryView: View {
                 }
                 if let outputText = trace.outputText {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(model.language == .english ? "LLM answer" : "LLM 回答")
+                        Text(L10n.historyTimelineText(.llmAnswer, language: model.language))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
                         historyPreview(outputText, hasProtectedPreview: false)
@@ -941,38 +897,38 @@ public struct HistoryView: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(
                 count > 1
-                    ? (model.language == .english
-                        ? "LLM request · Step \(index + 1)"
-                        : "LLM 请求 · 第 \(index + 1) 步")
-                    : (model.language == .english ? "LLM request" : "LLM 请求")
+                    ? L10n.historyTimelineLLMRequestStep(index + 1, language: model.language)
+                    : L10n.historyTimelineText(.llmRequest, language: model.language)
             )
             .font(.callout.weight(.semibold))
 
-            LabeledContent(model.language == .english ? "Provider" : "提供商") {
+            LabeledContent(L10n.historyTimelineText(.provider, language: model.language)) {
                 Text(trace.providerID).textSelection(.enabled)
             }
-            LabeledContent(model.language == .english ? "Model" : "模型") {
+            LabeledContent(L10n.historyTimelineText(.model, language: model.language)) {
                 Text(trace.modelID).textSelection(.enabled)
             }
 
             languageModelTraceText(
-                model.language == .english ? "System prompt" : "系统提示词",
+                L10n.historyTimelineText(.systemPrompt, language: model.language),
                 text: trace.systemPrompt
             )
             languageModelTraceText(
-                model.language == .english ? "Workflow prompt" : "工作流提示词",
+                L10n.historyTimelineText(.workflowPrompt, language: model.language),
                 text: trace.workflowPrompt
             )
             ForEach(Array(trace.messages.enumerated()), id: \.offset) { messageIndex, message in
                 languageModelTraceText(
-                    model.language == .english
-                        ? "Sent message · \(message.role.rawValue) \(messageIndex + 1)"
-                        : "发送消息 · \(message.role.rawValue) \(messageIndex + 1)",
+                    L10n.historyTimelineSentMessage(
+                        role: message.role.rawValue,
+                        number: messageIndex + 1,
+                        language: model.language
+                    ),
                     text: message.content
                 )
             }
             languageModelTraceText(
-                model.language == .english ? "Returned text" : "返回文本",
+                L10n.historyTimelineText(.returnedText, language: model.language),
                 text: trace.responseText
             )
         }
@@ -994,16 +950,12 @@ public struct HistoryView: View {
         index: Int
     ) -> String {
         if trace.inputProvenance == .legacyRecognition {
-            return model.language == .english
-                ? "Recognized input (older record)"
-                : "识别输入（旧记录）"
+            return L10n.historyTimelineText(.recognizedInputLegacy, language: model.language)
         }
         guard trace.inputTexts.count > 1 else {
-            return model.language == .english ? "Sent to LLM" : "发送给 LLM"
+            return L10n.historyTimelineText(.sentToLLM, language: model.language)
         }
-        return model.language == .english
-            ? "Sent to LLM · Step \(index + 1)"
-            : "发送给 LLM · 第 \(index + 1) 步"
+        return L10n.historyTimelineSentToLLMStep(index + 1, language: model.language)
     }
 
     @ViewBuilder
@@ -1048,9 +1000,9 @@ public struct HistoryView: View {
             return UIStrings.workflowName(workflow, language: model.language)
         }
         if let trigger = entry.receipt?.trigger {
-            return localizedTrigger(trigger)
+            return L10n.historyRunTrigger(trigger, language: model.language)
         }
-        return model.language == .english ? "Workflow run" : "工作流运行"
+        return L10n.historyTimelineText(.workflowRunFallback, language: model.language)
     }
 
     private func statusColor(_ status: HistoryTimelineStatus) -> Color {
@@ -1058,22 +1010,7 @@ public struct HistoryView: View {
         case .completed: .green
         case .partiallyCompleted: .orange
         case .failed: .red
-        case .cancelled, .skipped: .gray
-        }
-    }
-
-    private func localizedStatus(_ status: HistoryTimelineStatus) -> String {
-        switch (model.language, status) {
-        case (.english, .completed): "Completed"
-        case (.simplifiedChinese, .completed): "已完成"
-        case (.english, .partiallyCompleted): "Partially completed"
-        case (.simplifiedChinese, .partiallyCompleted): "部分完成"
-        case (.english, .failed): "Failed"
-        case (.simplifiedChinese, .failed): "失败"
-        case (.english, .cancelled): "Cancelled"
-        case (.simplifiedChinese, .cancelled): "已取消"
-        case (.english, .skipped): "Skipped"
-        case (.simplifiedChinese, .skipped): "已跳过"
+        case .cancelled, .skipped: .secondary
         }
     }
 
@@ -1082,7 +1019,7 @@ public struct HistoryView: View {
         title: String
     ) -> String {
         L10n.historyRunAccessibilityLabel(
-            status: localizedStatus(entry.status),
+            status: L10n.historyRunStatus(entry.status, language: model.language),
             title: title,
             termination: entry.receipt?.termination,
             language: model.language

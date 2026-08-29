@@ -351,26 +351,29 @@ extension AppModelTests {
 
         let historyEntryID = UUID()
         harness.model.showHistoryEntry(historyEntryID)
-        XCTAssertEqual(harness.model.selectedSidebarSection, .history)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
         XCTAssertEqual(harness.model.runHistoryScope, .recentRuns)
         XCTAssertEqual(harness.model.historyNavigationRequest?.entryID, historyEntryID)
 
-        var workflowWindowOpenCount = 0
-        harness.model.installOpenWorkflowEditorAction {
-            workflowWindowOpenCount += 1
-        }
         harness.model.openWorkflowEditor(workflowID: workflow.id)
-        XCTAssertEqual(workflowWindowOpenCount, 1)
-        XCTAssertEqual(
-            harness.model.workflowEditorNavigationRequest?.workflowID,
-            workflow.id
-        )
+        let firstWorkflowRequest = try XCTUnwrap(harness.model.workflowEditorNavigationRequest)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .workflows)
+        XCTAssertEqual(firstWorkflowRequest.workflowID, workflow.id)
+
+        harness.model.openWorkflowEditor(workflowID: workflow.id)
+        let secondWorkflowRequest = try XCTUnwrap(harness.model.workflowEditorNavigationRequest)
+        XCTAssertEqual(secondWorkflowRequest.workflowID, workflow.id)
+        XCTAssertNotEqual(firstWorkflowRequest.id, secondWorkflowRequest.id)
 
         harness.model.openWorkflowEditor(workflowID: UUID())
-        XCTAssertEqual(workflowWindowOpenCount, 1)
+        XCTAssertEqual(
+            harness.model.workflowEditorNavigationRequest?.id,
+            secondWorkflowRequest.id,
+            "An unknown workflow must not supersede the current editor route."
+        )
 
         harness.model.openWorkflowEditor()
-        XCTAssertEqual(workflowWindowOpenCount, 2)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .workflows)
         XCTAssertNil(harness.model.workflowEditorNavigationRequest)
     }
 
@@ -380,7 +383,7 @@ extension AppModelTests {
 
         harness.model.showSettings(.speech)
         XCTAssertNotNil(harness.model.settingsNavigationRequest)
-        harness.model.selectSidebarSection(.dashboard)
+        harness.model.selectSidebarSection(.stream)
         XCTAssertNil(harness.model.settingsNavigationRequest)
 
         harness.model.showHistoryEntry(UUID())

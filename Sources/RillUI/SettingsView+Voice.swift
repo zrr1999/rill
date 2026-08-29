@@ -253,6 +253,7 @@ extension SettingsView {
       .buttonStyle(.bordered)
     }
     .padding(10)
+    // RillCard prominent-tier fill; custom corner radius keeps this manual.
     .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
   }
 

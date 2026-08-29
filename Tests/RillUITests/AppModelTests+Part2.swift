@@ -1044,14 +1044,14 @@ extension AppModelTests {
         XCTAssertNil(storedValue)
     }
 
-    func testShowRunHistorySelectsUnifiedRunHistory() {
+    func testShowRunHistorySelectsStreamSection() {
         let harness = makeHarness()
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .dashboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
 
         harness.model.showRunHistory()
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .history)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
         XCTAssertEqual(harness.model.runHistoryScope, .recentRuns)
     }
 

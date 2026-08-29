@@ -83,25 +83,22 @@ public struct RecordWorkspaceView: View {
             collectionDeletionImpactSheet(impact)
         }
         .alert(
-            text("Delete this record everywhere?", "在所有位置删除这条记录？"),
+            L10n.recordText(.deleteRecordEverywhereConfirmationTitle, language: language),
             isPresented: globalDeletionAlertIsPresented,
             presenting: recordPendingGlobalDeletion
         ) { recordID in
-            Button(text("Delete Record", "删除记录"), role: .destructive) {
+            Button(L10n.recordText(.deleteRecord, language: language), role: .destructive) {
                 Task { await workspace.deleteRecord(recordID) }
             }
-            Button(text("Cancel", "取消"), role: .cancel) {}
+            Button(L10n.recordText(.cancel, language: language), role: .cancel) {}
         } message: { _ in
-            Text(text(
-                "This removes the immutable record and every collection membership.",
-                "这会删除不可变记录及其在所有记录集中的成员关系。"
-            ))
+            Text(L10n.recordText(.deleteRecordEverywhereDetail, language: language))
         }
         .alert(
-            text("Records could not be updated", "无法更新记录"),
+            L10n.recordText(.recordsUpdateFailedTitle, language: language),
             isPresented: errorIsPresented
         ) {
-            Button(text("OK", "好")) { workspace.dismissError() }
+            Button(L10n.recordText(.ok, language: language)) { workspace.dismissError() }
         } message: {
             Text(workspace.errorMessage ?? "")
         }
@@ -133,8 +130,9 @@ public struct RecordWorkspaceView: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
                 Text(pane == .routes
-                    ? text("Record Routes", "记录路由")
-                    : workspace.selectedCollection?.name ?? text("All Records", "所有记录"))
+                    ? L10n.recordText(.recordRoutesTitle, language: language)
+                    : workspace.selectedCollection?.name
+                        ?? L10n.string(.clipboardHistoryTitle, language: language))
                     .font(.title2.weight(.semibold))
                 if pane == .records {
                     Text("\(workspace.visibleRecords.count)")
@@ -143,21 +141,15 @@ public struct RecordWorkspaceView: View {
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
                         .background(.quaternary, in: Capsule())
-                        .accessibilityLabel(text(
-                            "\(workspace.visibleRecords.count) records",
-                            "\(workspace.visibleRecords.count) 条记录"
+                        .accessibilityLabel(L10n.recordCount(
+                            workspace.visibleRecords.count,
+                            language: language
                         ))
                 }
             }
             Text(pane == .routes
-                ? text(
-                    "Route captures into collections and deliver records to their destinations.",
-                    "将采集内容路由到记录集，并把记录投递到目标。"
-                )
-                : text(
-                    "Records are stored once and may belong to multiple collections.",
-                    "记录只存储一次，并可同时属于多个记录集。"
-                ))
+                ? L10n.recordText(.routesHeaderDetail, language: language)
+                : L10n.recordText(.recordsHeaderDetail, language: language))
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(2)
@@ -166,8 +158,8 @@ public struct RecordWorkspaceView: View {
 
     private var panePicker: some View {
         Picker("", selection: $pane) {
-            Text(text("Records", "记录")).tag(Pane.records)
-            Text(text("Routes", "路由")).tag(Pane.routes)
+            Text(L10n.recordText(.paneRecords, language: language)).tag(Pane.records)
+            Text(L10n.recordText(.paneRoutes, language: language)).tag(Pane.routes)
         }
         .labelsHidden()
         .pickerStyle(.segmented)
@@ -181,7 +173,7 @@ public struct RecordWorkspaceView: View {
                 Button {
                     isCreatingCollection = true
                 } label: {
-                    Label(text("New Collection", "新建记录集"), systemImage: RillSystemSymbol.plus.rawValue)
+                    Label(L10n.recordText(.newCollection, language: language), systemImage: RillSystemSymbol.plus.rawValue)
                 }
                 if let collection = workspace.selectedCollection {
                     Button(role: .destructive) {
@@ -189,8 +181,8 @@ public struct RecordWorkspaceView: View {
                     } label: {
                         Image(systemName: RillSystemSymbol.trash.rawValue)
                     }
-                    .help(text("Delete Collection", "删除记录集"))
-                    .accessibilityLabel(text("Delete Collection", "删除记录集"))
+                    .help(L10n.recordText(.deleteCollection, language: language))
+                    .accessibilityLabel(L10n.recordText(.deleteCollection, language: language))
                     .disabled(workspace.isMutating)
                 }
             }
@@ -262,7 +254,8 @@ public struct RecordWorkspaceView: View {
                     workspace.selectedRecordID = nil
                 } label: {
                     Label(
-                        workspace.selectedCollection?.name ?? text("All Records", "所有记录"),
+                        workspace.selectedCollection?.name
+                            ?? L10n.string(.clipboardHistoryTitle, language: language),
                         systemImage: RillSystemSymbol.chevronLeft.rawValue
                     )
                 }
@@ -301,18 +294,18 @@ public struct RecordWorkspaceView: View {
     }
 
     private func collectionPresetPicker(_ collection: RecordCollection) -> some View {
-        Picker(text("Preset", "预设"), selection: Binding(
+        Picker(L10n.recordText(.preset, language: language), selection: Binding(
             get: { collection.matchingPreset },
             set: { preset in
                 guard let preset else { return }
                 Task { await workspace.updateCollection(collection.id, preset: preset) }
             }
         )) {
-            Text("Stack").tag(Optional(RecordCollectionPreset.stack))
-            Text("Queue").tag(Optional(RecordCollectionPreset.queue))
-            Text("List").tag(Optional(RecordCollectionPreset.list))
+            Text(L10n.recordText(.collectionPresetStack, language: language)).tag(Optional(RecordCollectionPreset.stack))
+            Text(L10n.recordText(.collectionPresetQueue, language: language)).tag(Optional(RecordCollectionPreset.queue))
+            Text(L10n.recordText(.collectionPresetList, language: language)).tag(Optional(RecordCollectionPreset.list))
             if collection.matchingPreset == nil {
-                Text(text("Custom", "自定义")).tag(Optional<RecordCollectionPreset>.none)
+                Text(UIStrings.text(.workflowCustom, language: language)).tag(Optional<RecordCollectionPreset>.none)
             }
         }
         .pickerStyle(.segmented)
@@ -320,40 +313,41 @@ public struct RecordWorkspaceView: View {
     }
 
     private func collectionSelectionPicker(_ collection: RecordCollection) -> some View {
-        Picker(text("Selection", "选取"), selection: Binding(
+        Picker(L10n.recordText(.selectionPolicy, language: language), selection: Binding(
             get: { collection.selectionPolicy },
             set: { policy in
                 Task { await workspace.updateCollection(collection.id, selectionPolicy: policy) }
             }
         )) {
-            Text(text("Newest", "最新优先")).tag(RecordSelectionPolicy.newestFirst)
-            Text(text("Oldest", "最早优先")).tag(RecordSelectionPolicy.oldestFirst)
-            Text(text("Manual", "手动")).tag(RecordSelectionPolicy.manual)
+            Text(L10n.recordText(.selectionNewest, language: language)).tag(RecordSelectionPolicy.newestFirst)
+            Text(L10n.recordText(.selectionOldest, language: language)).tag(RecordSelectionPolicy.oldestFirst)
+            Text(L10n.recordText(.selectionManual, language: language)).tag(RecordSelectionPolicy.manual)
         }
     }
 
     private func collectionConsumptionPicker(_ collection: RecordCollection) -> some View {
-        Picker(text("After Delivery", "投递后"), selection: Binding(
+        Picker(L10n.recordText(.consumptionPolicy, language: language), selection: Binding(
             get: { collection.consumptionPolicy },
             set: { policy in
                 Task { await workspace.updateCollection(collection.id, consumptionPolicy: policy) }
             }
         )) {
-            Text(text("Retain", "保留")).tag(RecordConsumptionPolicy.retain)
-            Text(text("Consume", "消费")).tag(RecordConsumptionPolicy.consumeAfterSuccessfulDelivery)
+            Text(L10n.recordText(.consumptionRetain, language: language)).tag(RecordConsumptionPolicy.retain)
+            Text(L10n.recordText(.consumptionConsume, language: language)).tag(RecordConsumptionPolicy.consumeAfterSuccessfulDelivery)
         }
     }
 
     private var recordList: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                TextField(text("Search records", "搜索记录"), text: $workspace.searchText)
+                TextField(UIStrings.text(.clipboardSearch, language: language), text: $workspace.searchText)
                     .textFieldStyle(.roundedBorder)
                 Toggle(isOn: $workspace.showsPinnedOnly) {
                     Image(systemName: RillSystemSymbol.pinFill.rawValue)
                 }
                 .toggleStyle(.button)
-                .help(text("Pinned only", "仅显示置顶记录"))
+                .help(L10n.recordText(.pinnedOnly, language: language))
+                .accessibilityLabel(L10n.recordText(.pinnedOnly, language: language))
             }
             .padding(12)
             Divider()
@@ -361,12 +355,9 @@ public struct RecordWorkspaceView: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if workspace.visibleRecords.isEmpty {
                 ContentUnavailableView(
-                    text("No Records", "没有记录"),
+                    L10n.recordText(.noRecordsTitle, language: language),
                     systemImage: RillSystemSymbol.tray.rawValue,
-                    description: Text(text(
-                        "Captured and workflow-created records appear here.",
-                        "采集和工作流创建的记录会显示在这里。"
-                    ))
+                    description: Text(L10n.recordText(.noRecordsDescription, language: language))
                 )
             } else {
                 List(selection: $workspace.selectedRecordID) {
@@ -397,7 +388,7 @@ public struct RecordWorkspaceView: View {
                         Image(systemName: RillSystemSymbol.pinFill.rawValue).foregroundStyle(.orange)
                     }
                     if projection.memberships.isEmpty {
-                        membershipChip(text("No Collection", "无记录集"))
+                        membershipChip(L10n.recordText(.noCollection, language: language))
                     } else {
                         ForEach(projection.memberships.prefix(3)) { membership in
                             membershipChip(workspace.collectionName(membership.collectionID))
@@ -428,7 +419,7 @@ public struct RecordWorkspaceView: View {
                             deliverSelection(subject)
                         } label: {
                             Label(
-                                text("Insert in Previous App", "输入到上一应用"),
+                                L10n.recordText(.insertInPreviousApp, language: language),
                                 systemImage: RillSystemSymbol.textInsert.rawValue
                             )
                         }
@@ -445,7 +436,9 @@ public struct RecordWorkspaceView: View {
                             }
                         } label: {
                             Label(
-                                record.metadata.isPinned ? text("Unpin", "取消置顶") : text("Pin", "置顶"),
+                                record.metadata.isPinned
+                                    ? UIStrings.text(.clipboardUnpinItem, language: language)
+                                    : UIStrings.text(.clipboardPinItem, language: language),
                                 systemImage: record.metadata.isPinned ? "pin.slash" : "pin"
                             )
                         }
@@ -453,37 +446,38 @@ public struct RecordWorkspaceView: View {
                             collectionIDsToAdd = []
                             membershipRecordID = record.id
                         } label: {
-                            Label(text("Add to Collections", "加入多个记录集"), systemImage: RillSystemSymbol.rectangleStackBadgePlus.rawValue)
+                            Label(L10n.recordText(.addToCollections, language: language), systemImage: RillSystemSymbol.rectangleStackBadgePlus.rawValue)
                         }
                     }
                     membershipInspector(record)
                     metadataInspector(record)
                     if case .text(let textValue) = record.record.payload,
                        let membership = preferredMembership(for: record) {
-                        Button(text("Replace in Current Collection", "在当前记录集中替换")) {
+                        Button(L10n.recordText(.replaceInCurrentCollection, language: language)) {
                             replacementRecordID = record.id
                             replacementText = textValue
                             replacesInAllCollections = false
                         }
-                        Button(text("Replace in All Collections", "在所有记录集中替换")) {
+                        Button(L10n.recordText(.replaceInAllCollections, language: language)) {
                             replacementRecordID = record.id
                             replacementText = textValue
                             replacesInAllCollections = true
                         }
                         .disabled(record.memberships.count < 2 || membership.state != .active)
+                        .help(L10n.recordText(.replaceInAllCollectionsHint, language: language))
                     }
                     Divider()
                     Button(role: .destructive) {
                         recordPendingGlobalDeletion = record.id
                     } label: {
-                        Label(text("Delete Record Everywhere", "全局删除记录"), systemImage: RillSystemSymbol.trash.rawValue)
+                        Label(L10n.recordText(.deleteRecordEverywhere, language: language), systemImage: RillSystemSymbol.trash.rawValue)
                     }
                 }
                 .padding(16)
             }
         } else {
             ContentUnavailableView(
-                text("Select a Record", "选择一条记录"),
+                L10n.recordText(.selectRecordPrompt, language: language),
                 systemImage: RillSystemSymbol.docTextMagnifyingglass.rawValue
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -492,19 +486,18 @@ public struct RecordWorkspaceView: View {
 
     private func membershipInspector(_ record: RecordProjection) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(text("Collections", "记录集")).font(.headline)
+            Text(UIStrings.text(.recordCollections, language: language)).font(.headline)
             if record.memberships.isEmpty {
-                Text(text(
-                    "This record remains visible in All Records.",
-                    "这条记录仍会显示在“所有记录”中。"
-                ))
+                Text(L10n.recordText(.noMembershipHint, language: language))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
             ForEach(record.memberships) { membership in
                 HStack {
                     membershipChip(workspace.collectionName(membership.collectionID))
-                    Text(membership.state == .active ? text("Active", "有效") : text("Consumed", "已消费"))
+                    Text(membership.state == .active
+                        ? L10n.recordText(.membershipActive, language: language)
+                        : L10n.recordText(.membershipConsumed, language: language))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -514,7 +507,11 @@ public struct RecordWorkspaceView: View {
                         Image(systemName: RillSystemSymbol.xmarkCircle.rawValue)
                     }
                     .buttonStyle(.plain)
-                    .help(text("Remove from this collection", "从此记录集移除"))
+                    .help(L10n.recordText(.removeFromThisCollection, language: language))
+                    .accessibilityLabel(L10n.removeFromCollection(
+                        workspace.collectionName(membership.collectionID),
+                        language: language
+                    ))
                 }
             }
         }
@@ -522,14 +519,14 @@ public struct RecordWorkspaceView: View {
 
     private func metadataInspector(_ record: RecordProjection) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(text("Metadata", "元数据")).font(.headline)
-            LabeledContent(text("Source", "来源")) {
+            Text(L10n.recordText(.metadataTitle, language: language)).font(.headline)
+            LabeledContent(L10n.recordText(.metadataSource, language: language)) {
                 Text(sourceName(record.record.provenance))
             }
-            LabeledContent(text("Uses", "使用次数")) {
+            LabeledContent(L10n.recordText(.metadataUses, language: language)) {
                 Text("\(record.activity.useCount)")
             }
-            LabeledContent(text("Tags", "标签")) {
+            LabeledContent(L10n.recordText(.metadataTags, language: language)) {
                 Text(record.metadata.tags.isEmpty ? "—" : record.metadata.tags.joined(separator: ", "))
             }
         }
@@ -537,18 +534,18 @@ public struct RecordWorkspaceView: View {
 
     private var createCollectionSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(text("New Record Collection", "新建记录集")).font(.title2.weight(.semibold))
-            TextField(text("Collection name", "记录集名称"), text: $newCollectionName)
-            Picker(text("Preset", "预设"), selection: $newCollectionPreset) {
-                Text("Stack").tag(RecordCollectionPreset.stack)
-                Text("Queue").tag(RecordCollectionPreset.queue)
-                Text("List").tag(RecordCollectionPreset.list)
+            Text(L10n.recordText(.newCollection, language: language)).font(.title2.weight(.semibold))
+            TextField(L10n.recordText(.collectionNameField, language: language), text: $newCollectionName)
+            Picker(L10n.recordText(.preset, language: language), selection: $newCollectionPreset) {
+                Text(L10n.recordText(.collectionPresetStack, language: language)).tag(RecordCollectionPreset.stack)
+                Text(L10n.recordText(.collectionPresetQueue, language: language)).tag(RecordCollectionPreset.queue)
+                Text(L10n.recordText(.collectionPresetList, language: language)).tag(RecordCollectionPreset.list)
             }
             .pickerStyle(.segmented)
             HStack {
                 Spacer()
-                Button(text("Cancel", "取消")) { isCreatingCollection = false }
-                Button(text("Create", "创建")) {
+                Button(L10n.recordText(.cancel, language: language)) { isCreatingCollection = false }
+                Button(UIStrings.text(.clipboardCreate, language: language)) {
                     let name = newCollectionName
                     let preset = newCollectionPreset
                     isCreatingCollection = false
@@ -565,15 +562,15 @@ public struct RecordWorkspaceView: View {
 
     private var membershipSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(text("Add to Collections", "加入多个记录集")).font(.title2.weight(.semibold))
+            Text(L10n.recordText(.addToCollections, language: language)).font(.title2.weight(.semibold))
             List(workspace.snapshot.collections, selection: $collectionIDsToAdd) { collection in
                 Text(collection.name).tag(collection.id)
             }
             .frame(height: 260)
             HStack {
                 Spacer()
-                Button(text("Cancel", "取消")) { membershipRecordID = nil }
-                Button(text("Add", "加入")) {
+                Button(L10n.recordText(.cancel, language: language)) { membershipRecordID = nil }
+                Button(L10n.recordText(.add, language: language)) {
                     guard let recordID = membershipRecordID else { return }
                     let collectionIDs = Array(collectionIDsToAdd)
                     membershipRecordID = nil
@@ -590,23 +587,20 @@ public struct RecordWorkspaceView: View {
     private var replacementSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(replacesInAllCollections
-                ? text("Replace in All Collections", "在所有记录集中替换")
-                : text("Replace in Current Collection", "在当前记录集中替换"))
+                ? L10n.recordText(.replaceInAllCollections, language: language)
+                : L10n.recordText(.replaceInCurrentCollection, language: language))
                 .font(.title2.weight(.semibold))
             TextEditor(text: $replacementText)
                 .font(.body.monospaced())
                 .frame(height: 220)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
-            Text(text(
-                "Replace creates a derived immutable record; the original remains in All Records.",
-                "替换会创建派生的不可变记录；原记录仍保留在“所有记录”中。"
-            ))
+            Text(L10n.recordText(.replaceDescription, language: language))
             .font(.caption)
             .foregroundStyle(.secondary)
             HStack {
                 Spacer()
-                Button(text("Cancel", "取消")) { replacementRecordID = nil }
-                Button(text("Replace", "替换")) { performReplacement() }
+                Button(L10n.recordText(.cancel, language: language)) { replacementRecordID = nil }
+                Button(L10n.recordText(.replace, language: language)) { performReplacement() }
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -616,18 +610,16 @@ public struct RecordWorkspaceView: View {
 
     private func collectionDeletionImpactSheet(_ impact: RecordCollectionDeletionImpact) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(text("Collection References", "记录集引用影响")).font(.title2.weight(.semibold))
-            Text(text(
-                "This collection is used by \(impact.captureRuleIDs.count) capture routes and \(impact.deliveryRuleIDs.count) delivery routes.",
-                "此记录集被 \(impact.captureRuleIDs.count) 条采集路由和 \(impact.deliveryRuleIDs.count) 条投递路由引用。"
+            Text(L10n.recordText(.collectionReferencesTitle, language: language)).font(.title2.weight(.semibold))
+            Text(L10n.collectionReferencesUsage(
+                captureRouteCount: impact.captureRuleIDs.count,
+                deliveryRouteCount: impact.deliveryRuleIDs.count,
+                language: language
             ))
-            Text(text(
-                "Choose a replacement collection, or explicitly disable routes that would become empty.",
-                "请选择替代记录集，或明确禁用将变为空的路由。"
-            ))
+            Text(L10n.recordText(.collectionReferencesHint, language: language))
             .foregroundStyle(.secondary)
             ForEach(workspace.snapshot.collections.filter { $0.id != impact.collectionID }) { collection in
-                Button(text("Replace with \(collection.name)", "替换为 \(collection.name)")) {
+                Button(L10n.replaceWithCollection(collection.name, language: language)) {
                     Task {
                         await workspace.confirmCollectionDeletion(
                             impact.collectionID,
@@ -638,7 +630,7 @@ public struct RecordWorkspaceView: View {
             }
             Divider()
             HStack {
-                Button(text("Disable Affected Routes", "禁用受影响路由"), role: .destructive) {
+                Button(L10n.recordText(.disableAffectedRoutes, language: language), role: .destructive) {
                     Task {
                         await workspace.confirmCollectionDeletion(
                             impact.collectionID,
@@ -647,7 +639,7 @@ public struct RecordWorkspaceView: View {
                     }
                 }
                 Spacer()
-                Button(text("Cancel", "取消")) { workspace.cancelCollectionDeletion() }
+                Button(L10n.recordText(.cancel, language: language)) { workspace.cancelCollectionDeletion() }
             }
         }
         .padding(20)
@@ -687,9 +679,9 @@ public struct RecordWorkspaceView: View {
         switch payload {
         case .text(let value):
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? text("Empty Text", "空文本") : trimmed
+            return trimmed.isEmpty ? L10n.recordText(.emptyTextPayload, language: language) : trimmed
         case .image:
-            return text("Image", "图片")
+            return L10n.recordText(.imagePayload, language: language)
         case .files(let urls):
             return urls.map(\.lastPathComponent).joined(separator: ", ")
         }
@@ -720,7 +712,7 @@ public struct RecordWorkspaceView: View {
             if let image = NSImage(data: data) {
                 Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 280)
             } else {
-                Label(text("Image unavailable", "图片不可用"), systemImage: RillSystemSymbol.photoBadgeExclamationmark.rawValue)
+                Label(L10n.recordText(.imageUnavailable, language: language), systemImage: RillSystemSymbol.photoBadgeExclamationmark.rawValue)
             }
         case .files(let urls):
             VStack(alignment: .leading) {
@@ -737,6 +729,7 @@ public struct RecordWorkspaceView: View {
             .lineLimit(1)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
+            // RillCard regular-tier fill; a Capsule chip cannot use rillCard itself.
             .background(.quaternary.opacity(0.35), in: Capsule())
     }
 
@@ -744,10 +737,6 @@ public struct RecordWorkspaceView: View {
         provenance.sourceApplicationName
             ?? provenance.workflow?.fallbackName
             ?? provenance.source.kind.rawValue
-    }
-
-    private func text(_ english: String, _ simplifiedChinese: String) -> String {
-        language == .simplifiedChinese ? simplifiedChinese : english
     }
 
     private var membershipSheetIsPresented: Binding<Bool> {

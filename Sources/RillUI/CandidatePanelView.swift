@@ -8,6 +8,7 @@ public struct CandidatePanelView: View {
     let onDismiss: () -> Void
 
     @State private var selections: [UUID: UUID] = [:]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(
         candidateCase: CandidateResolutionCase,
@@ -78,25 +79,17 @@ public struct CandidatePanelView: View {
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(10)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.08))
+                                .rillSelection(isSelected, cornerRadius: 12)
+                                .animation(
+                                    reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 1.0),
+                                    value: isSelected
                                 )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(
-                                            isSelected ? Color.accentColor : Color.secondary.opacity(0.35),
-                                            lineWidth: 1
-                                        )
-                                )
-                                .animation(.easeInOut(duration: 0.15), value: isSelected)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
-                .padding(14)
-                .background(.quaternary.opacity(0.15), in: RoundedRectangle(cornerRadius: 14))
+                .rillCard(.subdued, padding: 14)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -104,9 +97,7 @@ public struct CandidatePanelView: View {
                     .font(.headline)
                 Text(resolvedPreview)
                     .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 12))
+                    .rillCard(.subdued, cornerRadius: 12, padding: 12)
             }
 
             HStack {
@@ -125,7 +116,7 @@ public struct CandidatePanelView: View {
             }
         }
         .padding(18)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: RillRadius.panel, style: .continuous))
     }
 
     private func currentSelection(for set: CandidateSet) -> UUID? {

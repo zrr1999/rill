@@ -52,16 +52,7 @@ extension WorkflowsView {
             }
         }
         .padding(14)
-        .background(
-            isSelected
-                ? Color.accentColor.opacity(0.10)
-                : Color.secondary.opacity(0.04),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(isSelected ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.16))
-        )
+        .rillSelection(isSelected)
     }
 
     private func workflowEditButton(
@@ -101,7 +92,7 @@ extension WorkflowsView {
                             isCustom
                                 ? UIStrings.text(.workflowCustom, language: model.language)
                                 : UIStrings.text(.workflowBuiltIn, language: model.language),
-                            tint: isCustom ? .blue : .purple
+                            tint: isCustom ? .accentColor : .secondary
                         )
                     }
                 }
@@ -144,15 +135,7 @@ extension WorkflowsView {
 
             if isCustom {
                 Button(role: .destructive) {
-                    Task { @MainActor in
-                        await model.deleteCustomWorkflow(workflow)
-                        guard !model.customWorkflows.contains(where: { $0.id == workflow.id }) else {
-                            return
-                        }
-                        if selectedWorkflowID == workflow.id || editingWorkflowID == workflow.id {
-                            resetDraft()
-                        }
-                    }
+                    pendingWorkflowDeletion = workflow
                 } label: {
                     Image(systemName: RillSystemSymbol.trash.rawValue)
                         .font(.caption.weight(.medium))
@@ -209,5 +192,17 @@ extension WorkflowsView {
             UIStrings.text(isCustom ? .workflowCustom : .workflowBuiltIn, language: model.language)
         )
         return values.joined(separator: model.language == .english ? ", " : "，")
+    }
+
+    func deleteCustomWorkflow(_ workflow: WorkflowDefinition) {
+        Task { @MainActor in
+            await model.deleteCustomWorkflow(workflow)
+            guard !model.customWorkflows.contains(where: { $0.id == workflow.id }) else {
+                return
+            }
+            if selectedWorkflowID == workflow.id || editingWorkflowID == workflow.id {
+                resetDraft()
+            }
+        }
     }
 }

@@ -14,6 +14,7 @@ public struct WorkflowsView: View {
     @State var editingWorkflowID: UUID?
     @State var selectedWorkflowID: UUID?
     @State var presentedWorkflowExplanation: WorkflowExplanationSheetRequest?
+    @State var pendingWorkflowDeletion: WorkflowDefinition?
     @State var newVocabularyCollectionName = ""
     @State var isSavingDraft = false
 
@@ -52,6 +53,30 @@ public struct WorkflowsView: View {
             model.cancelWorkflowExplanation()
         }) { request in
             WorkflowExplanationSheet(model: model, workflowID: request.workflowID)
+        }
+        .confirmationDialog(
+            UIStrings.text(.workflowDeleteConfirmationTitle, language: model.language),
+            isPresented: Binding(
+                get: { pendingWorkflowDeletion != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        pendingWorkflowDeletion = nil
+                    }
+                }
+            ),
+            presenting: pendingWorkflowDeletion
+        ) { workflow in
+            Button(UIStrings.text(.workflowDelete, language: model.language), role: .destructive) {
+                pendingWorkflowDeletion = nil
+                deleteCustomWorkflow(workflow)
+            }
+            .accessibilityIdentifier("workflow.delete.confirm")
+            Button(L10n.historySettingsText(.cancel, language: model.language), role: .cancel) {
+                pendingWorkflowDeletion = nil
+            }
+            .accessibilityIdentifier("workflow.delete.cancel")
+        } message: { _ in
+            Text(UIStrings.text(.workflowDeleteConfirmationDetail, language: model.language))
         }
         .onDisappear {
             model.cancelWorkflowExplanation()
@@ -388,7 +413,7 @@ extension WorkflowsView {
 
             editorNodeCard(
                 icon: RillSystemSymbol.line3HorizontalDecreaseCircleFill.rawValue,
-                tint: .cyan,
+                tint: .teal,
                 title: model.language == .english ? "Condition" : "条件"
             ) {
                 if draft.eventType.isVoiceEvent {

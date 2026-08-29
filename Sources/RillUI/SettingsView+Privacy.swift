@@ -140,7 +140,8 @@ extension SettingsView {
           .foregroundStyle(.secondary)
         }
         .padding(10)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+        // RillCard prominent-tier fill; custom corner radius keeps this manual.
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
       }
 
       Toggle(

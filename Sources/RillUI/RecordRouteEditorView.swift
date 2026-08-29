@@ -7,20 +7,19 @@ struct RecordRouteEditorView: View {
 
     @State private var captureDraft: CaptureRouteDraft?
     @State private var deliveryDraft: DeliveryRouteDraft?
+    @State private var captureRulePendingDeletion: CaptureRouteRule?
+    @State private var deliveryRulePendingDeletion: DeliveryRouteRule?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 routeSectionHeader(
-                    title: text("Capture Routes", "采集路由"),
-                    detail: text(
-                        "Every matching rule contributes destinations; one capture still creates one Record.",
-                        "所有命中规则的目标会取稳定并集；一次采集仍只创建一条记录。"
-                    ),
+                    title: L10n.recordText(.captureRoutesTitle, language: language),
+                    detail: L10n.recordText(.captureRoutesDetail, language: language),
                     action: { captureDraft = CaptureRouteDraft(collections: workspace.snapshot.collections) }
                 )
                 if workspace.snapshot.captureRules.isEmpty {
-                    emptyRoutes(text("No capture routes. Unmatched records go to Inbox or Voice Input.", "没有采集路由。未匹配记录会进入收件箱或语音输入。"))
+                    emptyRoutes(L10n.recordText(.captureRoutesEmpty, language: language))
                 } else {
                     ForEach(workspace.snapshot.captureRules) { rule in
                         captureRuleRow(rule)
@@ -30,15 +29,12 @@ struct RecordRouteEditorView: View {
                 Divider()
 
                 routeSectionHeader(
-                    title: text("Delivery Routes", "投递路由"),
-                    detail: text(
-                        "The highest-priority matching rule selects an ordered collection list and sink.",
-                        "最高优先级的命中规则会选择有序来源记录集列表和输出端。"
-                    ),
+                    title: L10n.recordText(.deliveryRoutesTitle, language: language),
+                    detail: L10n.recordText(.deliveryRoutesDetail, language: language),
                     action: { deliveryDraft = DeliveryRouteDraft(collections: workspace.snapshot.collections) }
                 )
                 if workspace.snapshot.deliveryRules.isEmpty {
-                    emptyRoutes(text("No delivery routes. Focused delivery reads Inbox.", "没有投递路由。当前应用投递默认读取收件箱。"))
+                    emptyRoutes(L10n.recordText(.deliveryRoutesEmpty, language: language))
                 } else {
                     ForEach(sortedDeliveryRules) { rule in
                         deliveryRuleRow(rule)
@@ -83,6 +79,46 @@ struct RecordRouteEditorView: View {
                 }
             )
         }
+        .alert(
+            L10n.recordText(.deleteCaptureRouteTitle, language: language),
+            isPresented: Binding(
+                get: { captureRulePendingDeletion != nil },
+                set: { if !$0 { captureRulePendingDeletion = nil } }
+            ),
+            presenting: captureRulePendingDeletion
+        ) { rule in
+            Button(L10n.recordText(.deleteRoute, language: language), role: .destructive) {
+                captureRulePendingDeletion = nil
+                Task {
+                    await workspace.replaceCaptureRules(
+                        workspace.snapshot.captureRules.filter { $0.id != rule.id }
+                    )
+                }
+            }
+            Button(L10n.recordText(.cancel, language: language), role: .cancel) {}
+        } message: { _ in
+            Text(L10n.recordText(.deleteCaptureRouteDetail, language: language))
+        }
+        .alert(
+            L10n.recordText(.deleteDeliveryRouteTitle, language: language),
+            isPresented: Binding(
+                get: { deliveryRulePendingDeletion != nil },
+                set: { if !$0 { deliveryRulePendingDeletion = nil } }
+            ),
+            presenting: deliveryRulePendingDeletion
+        ) { rule in
+            Button(L10n.recordText(.deleteRoute, language: language), role: .destructive) {
+                deliveryRulePendingDeletion = nil
+                Task {
+                    await workspace.replaceDeliveryRules(
+                        workspace.snapshot.deliveryRules.filter { $0.id != rule.id }
+                    )
+                }
+            }
+            Button(L10n.recordText(.cancel, language: language), role: .cancel) {}
+        } message: { _ in
+            Text(L10n.recordText(.deleteDeliveryRouteDetail, language: language))
+        }
     }
 
     private var sortedDeliveryRules: [DeliveryRouteRule] {
@@ -102,19 +138,19 @@ struct RecordRouteEditorView: View {
                             routeChip(workspace.collectionName(id))
                         }
                     }
-                    Text(rule.isEnabled ? text("Enabled", "已启用") : text("Disabled", "已禁用"))
+                    Text(rule.isEnabled
+                        ? L10n.recordText(.enabledState, language: language)
+                        : L10n.recordText(.disabledState, language: language))
                         .font(.caption)
                         .foregroundStyle(rule.isEnabled ? .green : .secondary)
                 }
                 Spacer()
-                Button(text("Edit", "编辑")) { captureDraft = CaptureRouteDraft(rule: rule) }
+                Button(L10n.recordText(.edit, language: language)) { captureDraft = CaptureRouteDraft(rule: rule) }
                 Button(role: .destructive) {
-                    Task {
-                        await workspace.replaceCaptureRules(
-                            workspace.snapshot.captureRules.filter { $0.id != rule.id }
-                        )
-                    }
+                    captureRulePendingDeletion = rule
                 } label: { Image(systemName: RillSystemSymbol.trash.rawValue) }
+                    .help(L10n.recordText(.deleteRoute, language: language))
+                    .accessibilityLabel(L10n.recordText(.deleteRoute, language: language))
             }
         }
     }
@@ -124,7 +160,7 @@ struct RecordRouteEditorView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(deliveryMatcherSummary(rule.matcher)).font(.headline)
-                    Text(text("Priority \(rule.priority)", "优先级 \(rule.priority)"))
+                    Text(L10n.routePriority(rule.priority, language: language))
                         .font(.caption).foregroundStyle(.secondary)
                     HStack(spacing: 5) {
                         ForEach(Array(rule.sourceCollectionIDs.enumerated()), id: \.element) { offset, id in
@@ -133,19 +169,19 @@ struct RecordRouteEditorView: View {
                         Image(systemName: RillSystemSymbol.arrowRight.rawValue)
                         routeChip(sinkName(rule))
                     }
-                    Text(rule.isEnabled ? text("Enabled", "已启用") : text("Disabled", "已禁用"))
+                    Text(rule.isEnabled
+                        ? L10n.recordText(.enabledState, language: language)
+                        : L10n.recordText(.disabledState, language: language))
                         .font(.caption)
                         .foregroundStyle(rule.isEnabled ? .green : .secondary)
                 }
                 Spacer()
-                Button(text("Edit", "编辑")) { deliveryDraft = DeliveryRouteDraft(rule: rule) }
+                Button(L10n.recordText(.edit, language: language)) { deliveryDraft = DeliveryRouteDraft(rule: rule) }
                 Button(role: .destructive) {
-                    Task {
-                        await workspace.replaceDeliveryRules(
-                            workspace.snapshot.deliveryRules.filter { $0.id != rule.id }
-                        )
-                    }
+                    deliveryRulePendingDeletion = rule
                 } label: { Image(systemName: RillSystemSymbol.trash.rawValue) }
+                    .help(L10n.recordText(.deleteRoute, language: language))
+                    .accessibilityLabel(L10n.recordText(.deleteRoute, language: language))
             }
         }
     }
@@ -161,16 +197,14 @@ struct RecordRouteEditorView: View {
                 Text(detail).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Button(action: action) { Label(text("Add Route", "添加路由"), systemImage: RillSystemSymbol.plus.rawValue) }
+            Button(action: action) { Label(L10n.recordText(.addRoute, language: language), systemImage: RillSystemSymbol.plus.rawValue) }
         }
     }
 
     private func emptyRoutes(_ message: String) -> some View {
         Text(message)
             .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background(.quaternary.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+            .rillCard(.subdued, cornerRadius: 10, padding: 16)
     }
 
     private func routeCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
@@ -182,6 +216,7 @@ struct RecordRouteEditorView: View {
 
     private func routeChip(_ value: String) -> some View {
         Text(value).font(.caption).padding(.horizontal, 7).padding(.vertical, 3)
+            // RillCard regular-tier fill; a Capsule chip cannot use rillCard itself.
             .background(.quaternary.opacity(0.35), in: Capsule())
     }
 
@@ -189,27 +224,26 @@ struct RecordRouteEditorView: View {
         var parts: [String] = []
         if !matcher.sourceKinds.isEmpty { parts.append(matcher.sourceKinds.map(\.rawValue).sorted().joined(separator: ", ")) }
         if !matcher.sourceBundleIdentifiers.isEmpty { parts.append(matcher.sourceBundleIdentifiers.sorted().joined(separator: ", ")) }
-        if !matcher.workflowIDs.isEmpty { parts.append(text("\(matcher.workflowIDs.count) workflows", "\(matcher.workflowIDs.count) 个工作流")) }
-        return parts.isEmpty ? text("Any record source", "任意记录来源") : parts.joined(separator: " · ")
+        if !matcher.workflowIDs.isEmpty { parts.append(L10n.routeWorkflowsCount(matcher.workflowIDs.count, language: language)) }
+        return parts.isEmpty
+            ? L10n.recordText(.anyRecordSource, language: language)
+            : parts.joined(separator: " · ")
     }
 
     private func deliveryMatcherSummary(_ matcher: DeliveryRouteMatcher) -> String {
         matcher.targetBundleIdentifiers.isEmpty
-            ? text("Any focused application", "任意当前应用")
+            ? L10n.recordText(.anyFocusedApplication, language: language)
             : matcher.targetBundleIdentifiers.sorted().joined(separator: ", ")
     }
 
     private func sinkName(_ rule: DeliveryRouteRule) -> String {
         switch rule.sink {
-        case .focusedApplication: text("Focused Application", "当前应用")
-        case .systemClipboard: text("System Clipboard", "系统剪贴板")
+        case .focusedApplication: L10n.recordText(.sinkFocusedApplication, language: language)
+        case .systemClipboard: L10n.recordText(.sinkSystemClipboard, language: language)
         case .recordCollection:
-            rule.sinkCollectionID.map(workspace.collectionName) ?? text("Collection", "记录集")
+            rule.sinkCollectionID.map(workspace.collectionName)
+                ?? L10n.recordText(.sinkCollectionFallback, language: language)
         }
-    }
-
-    private func text(_ english: String, _ simplifiedChinese: String) -> String {
-        language == .simplifiedChinese ? simplifiedChinese : english
     }
 }
 
@@ -285,26 +319,26 @@ private struct CaptureRouteEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(text("Capture Route", "采集路由")).font(.title2.weight(.semibold))
-            Picker(text("Source", "来源"), selection: $draft.sourceKind) {
-                Text(text("Any Source", "任意来源")).tag(Optional<RecordSourceKind>.none)
-                Text(text("System Clipboard", "系统剪贴板")).tag(Optional(RecordSourceKind.systemClipboard))
-                Text(text("Voice Input", "语音输入")).tag(Optional(RecordSourceKind.voiceInput))
-                Text(text("Workflow", "工作流")).tag(Optional(RecordSourceKind.workflow))
-                Text(text("User", "用户")).tag(Optional(RecordSourceKind.user))
+            Text(L10n.recordText(.captureRouteTitle, language: language)).font(.title2.weight(.semibold))
+            Picker(L10n.recordText(.metadataSource, language: language), selection: $draft.sourceKind) {
+                Text(L10n.recordText(.anySource, language: language)).tag(Optional<RecordSourceKind>.none)
+                Text(L10n.recordText(.sinkSystemClipboard, language: language)).tag(Optional(RecordSourceKind.systemClipboard))
+                Text(L10n.recordText(.sourceVoiceInput, language: language)).tag(Optional(RecordSourceKind.voiceInput))
+                Text(L10n.recordText(.sourceWorkflow, language: language)).tag(Optional(RecordSourceKind.workflow))
+                Text(L10n.recordText(.sourceUser, language: language)).tag(Optional(RecordSourceKind.user))
             }
-            TextField(text("Source app bundle IDs (comma separated)", "来源应用 Bundle ID（逗号分隔）"), text: $draft.sourceBundleIdentifier)
-            TextField(text("Workflow UUID (optional)", "工作流 UUID（可选）"), text: $draft.workflowID)
-            Text(text("Destination Collections", "目标记录集")).font(.headline)
+            TextField(L10n.recordText(.sourceBundleIDsField, language: language), text: $draft.sourceBundleIdentifier)
+            TextField(L10n.recordText(.workflowUUIDField, language: language), text: $draft.workflowID)
+            Text(L10n.recordText(.destinationCollections, language: language)).font(.headline)
             List(collections, selection: $draft.destinationCollectionIDs) { collection in
                 Text(collection.name).tag(collection.id)
             }
             .frame(height: 210)
-            Toggle(text("Enabled", "启用"), isOn: $draft.isEnabled)
+            Toggle(L10n.recordText(.enabledToggle, language: language), isOn: $draft.isEnabled)
             HStack {
                 Spacer()
-                Button(text("Cancel", "取消"), action: onCancel)
-                Button(text("Save", "保存")) { save() }
+                Button(L10n.recordText(.cancel, language: language), action: onCancel)
+                Button(L10n.recordText(.save, language: language)) { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(draft.destinationCollectionIDs.isEmpty
                         || draft.destinationCollectionIDs.count > RecordGraphLimits.maximumRouteCollections
@@ -331,10 +365,6 @@ private struct CaptureRouteEditorSheet: View {
             createdAt: draft.createdAt
         ))
     }
-
-    private func text(_ english: String, _ simplifiedChinese: String) -> String {
-        language == .simplifiedChinese ? simplifiedChinese : english
-    }
 }
 
 private struct DeliveryRouteEditorSheet: View {
@@ -346,23 +376,23 @@ private struct DeliveryRouteEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(text("Delivery Route", "投递路由")).font(.title2.weight(.semibold))
-            TextField(text("Target app bundle IDs (comma separated)", "目标应用 Bundle ID（逗号分隔）"), text: $draft.targetBundleIdentifiers)
-            Stepper(text("Priority: \(draft.priority)", "优先级：\(draft.priority)"), value: $draft.priority, in: -1_000...1_000)
-            Picker(text("Sink", "输出端"), selection: $draft.sink) {
-                Text(text("Focused Application", "当前应用")).tag(RecordSinkIdentity.focusedApplication)
-                Text(text("System Clipboard", "系统剪贴板")).tag(RecordSinkIdentity.systemClipboard)
-                Text(text("Record Collection", "记录集")).tag(RecordSinkIdentity.recordCollection)
+            Text(L10n.recordText(.deliveryRouteTitle, language: language)).font(.title2.weight(.semibold))
+            TextField(L10n.recordText(.targetBundleIDsField, language: language), text: $draft.targetBundleIdentifiers)
+            Stepper(L10n.routePriorityLabel(draft.priority, language: language), value: $draft.priority, in: -1_000...1_000)
+            Picker(L10n.recordText(.sinkLabel, language: language), selection: $draft.sink) {
+                Text(L10n.recordText(.sinkFocusedApplication, language: language)).tag(RecordSinkIdentity.focusedApplication)
+                Text(L10n.recordText(.sinkSystemClipboard, language: language)).tag(RecordSinkIdentity.systemClipboard)
+                Text(L10n.recordText(.sinkRecordCollection, language: language)).tag(RecordSinkIdentity.recordCollection)
             }
             if draft.sink == .recordCollection {
-                Picker(text("Target Collection", "目标记录集"), selection: $draft.sinkCollectionID) {
-                    Text(text("Choose Collection", "选择记录集")).tag(Optional<RecordCollectionID>.none)
+                Picker(L10n.recordText(.targetCollection, language: language), selection: $draft.sinkCollectionID) {
+                    Text(L10n.recordText(.chooseCollection, language: language)).tag(Optional<RecordCollectionID>.none)
                     ForEach(collections) { collection in
                         Text(collection.name).tag(Optional(collection.id))
                     }
                 }
             }
-            Text(text("Source Collections (drag to order)", "来源记录集（拖动排序）")).font(.headline)
+            Text(L10n.recordText(.sourceCollectionsLabel, language: language)).font(.headline)
             List {
                 ForEach(draft.sourceCollectionIDs) { id in
                     HStack {
@@ -379,16 +409,16 @@ private struct DeliveryRouteEditorSheet: View {
                 }
             }
             .frame(height: 180)
-            Menu(text("Add Source Collection", "添加来源记录集")) {
+            Menu(L10n.recordText(.addSourceCollection, language: language)) {
                 ForEach(collections.filter { !draft.sourceCollectionIDs.contains($0.id) }) { collection in
                     Button(collection.name) { draft.sourceCollectionIDs.append(collection.id) }
                 }
             }
-            Toggle(text("Enabled", "启用"), isOn: $draft.isEnabled)
+            Toggle(L10n.recordText(.enabledToggle, language: language), isOn: $draft.isEnabled)
             HStack {
                 Spacer()
-                Button(text("Cancel", "取消"), action: onCancel)
-                Button(text("Save", "保存")) { save() }
+                Button(L10n.recordText(.cancel, language: language), action: onCancel)
+                Button(L10n.recordText(.save, language: language)) { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(draft.sourceCollectionIDs.isEmpty
                         || draft.sourceCollectionIDs.count > RecordGraphLimits.maximumRouteCollections
@@ -412,10 +442,6 @@ private struct DeliveryRouteEditorSheet: View {
             isEnabled: draft.isEnabled,
             createdAt: draft.createdAt
         ))
-    }
-
-    private func text(_ english: String, _ simplifiedChinese: String) -> String {
-        language == .simplifiedChinese ? simplifiedChinese : english
     }
 }
 

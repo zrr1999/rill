@@ -79,7 +79,10 @@ struct HotkeyRecorderView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // RillCard regular-tier fill; asymmetric padding keeps this manual.
                 .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityLabel(UIStrings.text(.recordPanelHotkeyRecorderLabel, language: language))
+                .accessibilityValue(Text(currentBindingLabel))
 
             HStack(spacing: 10) {
                 Button(
@@ -92,6 +95,9 @@ struct HotkeyRecorderView: View {
                 ) {
                     isRecording ? cancelRecording() : startRecording()
                 }
+                .accessibilityLabel(UIStrings.text(.recordPanelHotkeyRecorderLabel, language: language))
+                .accessibilityValue(Text(currentBindingLabel))
+                .accessibilityHint(UIStrings.text(.recordPanelHotkeyHint, language: language))
                 .accessibilityIdentifier("settings.clipboard-hotkey.record")
 
                 Button(UIStrings.text(.recordPanelHotkeyReset, language: language)) {

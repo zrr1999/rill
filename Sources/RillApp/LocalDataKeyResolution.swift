@@ -21,10 +21,14 @@ enum LocalDataKeyResolver {
     candidates: [KeychainLocalDataKeyStore.Candidate],
     databaseRequiresExistingKey: Bool,
     recoveryRequiresExistingKey: Bool,
+    archiveRequiresExistingKey: Bool = false,
     databaseAccepts: (Data) throws -> Bool,
-    recoveryAccepts: (Data) throws -> Bool
+    recoveryAccepts: (Data) throws -> Bool,
+    archiveAccepts: (Data) throws -> Bool = { _ in true }
   ) throws -> LocalDataKeyResolutionDecision {
-    guard databaseRequiresExistingKey || recoveryRequiresExistingKey else {
+    guard databaseRequiresExistingKey || recoveryRequiresExistingKey
+      || archiveRequiresExistingKey
+    else {
       if let protected = candidates.first(where: { $0.source == .dataProtection }) {
         return .existing(protected)
       }
@@ -43,6 +47,11 @@ enum LocalDataKeyResolver {
       }
       if recoveryRequiresExistingKey,
         try !recoveryAccepts(candidate.key)
+      {
+        continue
+      }
+      if archiveRequiresExistingKey,
+        try !archiveAccepts(candidate.key)
       {
         continue
       }
@@ -71,8 +80,10 @@ enum LocalDataKeyResolver {
     candidate: KeychainLocalDataKeyStore.Candidate,
     databaseRequiresExistingKey: Bool,
     recoveryRequiresExistingKey: Bool,
+    archiveRequiresExistingKey: Bool = false,
     databaseAccepts: (Data) throws -> Bool,
-    recoveryAccepts: (Data) throws -> Bool
+    recoveryAccepts: (Data) throws -> Bool,
+    archiveAccepts: (Data) throws -> Bool = { _ in true }
   ) throws {
     if databaseRequiresExistingKey,
       try !databaseAccepts(candidate.key)
@@ -81,6 +92,11 @@ enum LocalDataKeyResolver {
     }
     if recoveryRequiresExistingKey,
       try !recoveryAccepts(candidate.key)
+    {
+      throw LocalDataKeyResolutionError.noValidatedCandidate
+    }
+    if archiveRequiresExistingKey,
+      try !archiveAccepts(candidate.key)
     {
       throw LocalDataKeyResolutionError.noValidatedCandidate
     }

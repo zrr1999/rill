@@ -1,15 +1,12 @@
 import SwiftUI
 import RillCore
 
-private enum DashboardViewMetrics {
-    static let summaryCardHeight: CGFloat = 168
-    static let recentRunsPreviewLimit = 2
-    static let recentRunLineLimit = 3
+private enum StreamViewMetrics {
     static let activityPreviewLimit = 6
 }
 
 struct RecordPanelShortcutSurfaceVisibility: Sendable, Equatable {
-    let dashboardCard: Bool
+    let streamCard: Bool
     let settingsRecorder: Bool
     let menuShortcutAnnotation: Bool
 }
@@ -19,7 +16,7 @@ enum RecordPanelShortcutPresentationPolicy {
         systemClipboardCaptureEnabled: Bool
     ) -> RecordPanelShortcutSurfaceVisibility {
         RecordPanelShortcutSurfaceVisibility(
-            dashboardCard: systemClipboardCaptureEnabled,
+            streamCard: systemClipboardCaptureEnabled,
             settingsRecorder: systemClipboardCaptureEnabled,
             menuShortcutAnnotation: systemClipboardCaptureEnabled
         )
@@ -34,202 +31,137 @@ enum RecordPanelShortcutPresentationPolicy {
     }
 }
 
-public struct DashboardView: View {
+/// The stream home merges the former Dashboard and Run History pages into one
+/// Record-stream surface: readiness, live activity and the durable receipt
+/// timeline share a single scroll, per docs/ui-direction.md.
+public struct StreamView: View {
     @Bindable private var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(model: AppModel) {
         self.model = model
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                if !model.voiceSetupReadiness.isComplete {
-                    voiceSetupCard(model.voiceSetupReadiness)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if !model.voiceSetupReadiness.isComplete {
+                        voiceSetupCard(model.voiceSetupReadiness)
+                    }
+                    Text(UIStrings.text(.appSubtitle, language: model.language))
+                        .foregroundStyle(.secondary)
+                    recordStatusCard
+                    if let activityPresentation = streamActivityPresentation {
+                        streamActivityCard(activityPresentation)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .top)),
+                                removal: .opacity
+                            ))
+                    }
+                    if let failureMessage = latestFailureMessage {
+                        voiceFailureBanner(message: failureMessage)
+                    }
+                    if let pending = model.pendingResolution {
+                        CandidatePanelView(
+                            candidateCase: pending,
+                            language: model.language,
+                            onApply: { selections in
+                                model.acceptResolution(selections: selections)
+                            },
+                            onDismiss: {
+                                model.dismissResolution()
+                            }
+                        )
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .top)),
+                            removal: .opacity
+                        ))
+                    }
+                    eventFeed
+                    HistoryTimelineView(model: model, proxy: proxy)
                 }
-                Text(UIStrings.text(.appSubtitle, language: model.language))
-                    .foregroundStyle(.secondary)
-                statusCards
-                if let failureMessage = latestFailureMessage {
-                    voiceFailureBanner(message: failureMessage)
-                }
-                if let pending = model.pendingResolution {
-                    CandidatePanelView(
-                        candidateCase: pending,
-                        language: model.language,
-                        onApply: { selections in
-                            model.acceptResolution(selections: selections)
-                        },
-                        onDismiss: {
-                            model.dismissResolution()
-                        }
-                    )
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .move(edge: .top)),
-                        removal: .opacity
-                    ))
-                }
-                eventFeed
+                .padding(24)
+                .animation(
+                    reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 1.0),
+                    value: model.pendingResolution != nil
+                )
+                .animation(
+                    reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 1.0),
+                    value: streamActivityPresentation
+                )
             }
-            .padding(24)
-            .animation(.easeInOut(duration: 0.25), value: model.pendingResolution != nil)
         }
-        .navigationTitle(UIStrings.text(.appTitle, language: model.language))
+        .navigationTitle(UIStrings.text(.sidebarStream, language: model.language))
     }
 
-
-    private var statusCards: some View {
-        HStack(alignment: .top, spacing: 16) {
-            if RecordPanelShortcutPresentationPolicy.surfaceVisibility(
-                systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled
-            ).dashboardCard {
-                Button {
-                    model.showRecordPanel()
-                } label: {
-                    statusCard(
-                        title: UIStrings.text(.deliveryStack, language: model.language),
-                        primary: UIStrings.recordCountSummary(model.recordCount, language: model.language),
-                        secondary: model.recordPreview ?? UIStrings.text(.stackEmpty, language: model.language)
-                    )
-                }
-                .buttonStyle(RillCardButtonStyle())
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(
-                    "\(UIStrings.text(.deliveryStack, language: model.language)): "
-                        + UIStrings.recordCountSummary(model.recordCount, language: model.language)
-                )
-                .accessibilityIdentifier("dashboard.clipboard-panel")
-            }
-
+    @ViewBuilder
+    private var recordStatusCard: some View {
+        if RecordPanelShortcutPresentationPolicy.surfaceVisibility(
+            systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled
+        ).streamCard {
             Button {
-                model.showRunHistory()
+                model.showRecordPanel()
             } label: {
-                recentRunsCard
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(UIStrings.text(.deliveryStack, language: model.language))
+                        .font(.headline)
+                    Text(UIStrings.recordCountSummary(model.recordCount, language: model.language))
+                        .font(.body.weight(.medium))
+                        .lineLimit(2)
+                    Text(model.recordPreview ?? UIStrings.text(.stackEmpty, language: model.language))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .truncationMode(.tail)
+                }
+                .rillCard()
             }
             .buttonStyle(RillCardButtonStyle())
-            .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
-                UIStrings.recentRunsAccessibilityLabel(
-                    count: recentRunEntries.count,
-                    language: model.language
-                )
+                "\(UIStrings.text(.deliveryStack, language: model.language)): "
+                    + UIStrings.recordCountSummary(model.recordCount, language: model.language)
             )
-            .accessibilityHint(
-                UIStrings.recentRunsAccessibilityHint(language: model.language)
+            .accessibilityIdentifier("stream.record-panel")
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 1.0),
+                value: model.systemClipboardCaptureEnabled
             )
-            .accessibilityIdentifier("dashboard.recent-runs")
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 1.0),
+                value: model.recordCount
+            )
         }
-        .animation(.easeInOut(duration: 0.2), value: model.systemClipboardCaptureEnabled)
-        .animation(.easeInOut(duration: 0.2), value: model.recordCount)
-        .animation(.easeInOut(duration: 0.2), value: recentRunEntries.map(\.id))
     }
 
-    private func statusCard(title: String, primary: String, secondary: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-            Text(primary)
-                .font(.body.weight(.medium))
-                .lineLimit(2)
-            Text(secondary)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
-                .truncationMode(.tail)
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, minHeight: DashboardViewMetrics.summaryCardHeight, alignment: .topLeading)
-        .rillCard()
-    }
-
-    private var recentRunsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(UIStrings.text(.historyScopeAll, language: model.language))
-                .font(.headline)
-
-            if recentRunEntries.isEmpty {
-                Text(UIStrings.text(.historyEmpty, language: model.language))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(
-                        Array(recentRunEntries.prefix(DashboardViewMetrics.recentRunsPreviewLimit))
-                    ) { entry in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(alignment: .top, spacing: 8) {
-                                Label(
-                                    GlobalSearchText.status(
-                                        entry.status,
-                                        language: model.language
-                                    ),
-                                    systemImage: entry.status.systemSymbol.rawValue
-                                )
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Text(recentRunTitle(entry))
-                                    .font(.caption.weight(.semibold))
-                                    .lineLimit(1)
-                                Spacer()
-                                Text(entry.timestamp, style: .relative)
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-
-                            if let finalText = entry.record?.finalText {
-                                HistoryPreviewContent(
-                                    text: finalText,
-                                    mode: model.privacyPolicySettings.historyPreviewMode,
-                                    language: model.language
-                                ) { text, privacyLineLimit in
-                                    Text(RecordTextFormatting.previewText(text, limit: 260))
-                                        .font(.body.weight(.medium))
-                                        .lineLimit(
-                                            min(
-                                                privacyLineLimit
-                                                    ?? DashboardViewMetrics.recentRunLineLimit,
-                                                DashboardViewMetrics.recentRunLineLimit
-                                            )
-                                        )
-                                        .truncationMode(.tail)
-                                }
-                            } else if let failureMessage = entry.record?.failureMessage {
-                                Text(failureMessage)
-                                    .font(.body.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(DashboardViewMetrics.recentRunLineLimit)
-                                    .truncationMode(.tail)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.vertical, 2)
-                    }
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, minHeight: DashboardViewMetrics.summaryCardHeight, alignment: .topLeading)
-        .rillCard()
-    }
-
-    private var recentRunEntries: [HistoryTimelineEntry] {
-        HistoryTimelineBuilder.allRuns(
-            records: model.recentVoiceHistoryRecords,
-            receipts: Array(model.workflowRunReceiptsByRunID.values)
+    private var streamActivityPresentation: StreamActivityPresentation? {
+        StreamActivityPresentation.make(
+            isRunning: model.isRunning,
+            workflowAudioRunState: model.workflowAudioRunState,
+            isAudioProcessingQueueVisible: model.audioProcessingQueueSnapshot?.isVisible ?? false,
+            language: model.language
         )
     }
 
-    private func recentRunTitle(_ entry: HistoryTimelineEntry) -> String {
-        if let record = entry.record {
-            return UIStrings.workflowName(record.workflow, language: model.language)
+    private func streamActivityCard(_ presentation: StreamActivityPresentation) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: presentation.symbol.rawValue)
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(presentation.title)
+                    .font(.subheadline.weight(.medium))
+                Text(presentation.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
         }
-        if let workflowID = entry.workflowID,
-           let workflow = model.workflows.first(where: { $0.id == workflowID }) {
-            return UIStrings.workflowName(workflow.presentation, language: model.language)
-        }
-        return GlobalSearchText.genericRun(language: model.language)
+        .rillCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(presentation.title). \(presentation.detail)")
+        .accessibilityIdentifier("stream.activity-status")
     }
 
     private var latestFailureMessage: String? {
@@ -244,7 +176,7 @@ public struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Label(
-                    UIStrings.text(.sidebarDiagnostics, language: model.language),
+                    L10n.string(.voiceFailureTitle, language: model.language),
                     systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
                 )
                 .font(.headline)
@@ -258,11 +190,11 @@ public struct DashboardView: View {
                 .buttonStyle(.borderless)
             }
 
-            Text(failureSummary(for: message))
+            Text(L10n.string(.voiceFailureGenericSummary, language: model.language))
                 .font(.callout.weight(.medium))
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(UIStrings.text(.diagnosticsTimeline, language: model.language))
+                Text(L10n.string(.voiceFailureDetailsLabel, language: model.language))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Text(message)
@@ -274,10 +206,6 @@ public struct DashboardView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .rillCard(.prominent)
-    }
-
-    private func failureSummary(for message: String) -> String {
-        return UIStrings.text(.historyDescription, language: model.language)
     }
 
     private var eventFeed: some View {
@@ -296,12 +224,13 @@ public struct DashboardView: View {
                 }
                 .buttonStyle(.borderless)
                 .controlSize(.small)
-                .accessibilityIdentifier("dashboard.open-diagnostics")
+                .accessibilityIdentifier("stream.open-diagnostics")
             }
             if model.eventFeed.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: RillSystemSymbol.textBubble.rawValue)
-                        .font(.system(size: 32))
+                        .font(.largeTitle)
+                        .imageScale(.large)
                         .foregroundStyle(.tertiary)
                     Text(UIStrings.text(.eventFeedEmpty, language: model.language))
                         .font(.callout)
@@ -312,7 +241,7 @@ public struct DashboardView: View {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(
                         model.eventFeed
-                            .suffix(DashboardViewMetrics.activityPreviewLimit)
+                            .suffix(StreamViewMetrics.activityPreviewLimit)
                             .reversed()
                     ) { entry in
                         eventFeedRow(entry)
@@ -336,7 +265,7 @@ public struct DashboardView: View {
 }
 
 
-extension DashboardView {
+extension StreamView {
     private func voiceSetupCard(_ readiness: VoiceSetupReadiness) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Label(
@@ -411,7 +340,7 @@ extension DashboardView {
                 symbol: RillSystemSymbol.exclamationmarkCircleFill.rawValue,
                 color: .orange,
                 actionTitle: UIStrings.text(.requestAccess, language: model.language),
-                actionIdentifier: "dashboard.global-input.request",
+                actionIdentifier: "stream.global-input.request",
                 action: model.requestGlobalInputPermission
             )
         case .installationFailed:
@@ -421,7 +350,7 @@ extension DashboardView {
                 symbol: RillSystemSymbol.xmarkCircleFill.rawValue,
                 color: .red,
                 actionTitle: UIStrings.text(.retryGlobalInput, language: model.language),
-                actionIdentifier: "dashboard.global-input.retry",
+                actionIdentifier: "stream.global-input.retry",
                 action: model.retryGlobalInputInstallation
             )
         }
@@ -499,7 +428,7 @@ extension DashboardView {
                 symbol: RillSystemSymbol.exclamationmarkTriangleFill.rawValue,
                 color: .red,
                 actionTitle: UIStrings.text(.openSettings, language: model.language),
-                actionIdentifier: "dashboard.local-speech.open-settings",
+                actionIdentifier: "stream.local-speech.open-settings",
                 action: { model.showSettings(.speech) }
             )
         case .localPreviouslyPrepared:
@@ -527,7 +456,7 @@ extension DashboardView {
                 symbol: RillSystemSymbol.xmarkCircleFill.rawValue,
                 color: .red,
                 actionTitle: UIStrings.text(.openSettings, language: model.language),
-                actionIdentifier: "dashboard.local-speech.open-settings",
+                actionIdentifier: "stream.local-speech.open-settings",
                 action: { model.showSettings(.speech) }
             )
         }
@@ -550,7 +479,7 @@ extension DashboardView {
                 symbol: RillSystemSymbol.lockTrianglebadgeExclamationmark.rawValue,
                 color: .red,
                 actionTitle: UIStrings.text(.openSettings, language: model.language),
-                actionIdentifier: "dashboard.privacy.open-settings",
+                actionIdentifier: "stream.privacy.open-settings",
                 action: { model.showSettings(.privacy) }
             )
         case .available:

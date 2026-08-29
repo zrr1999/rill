@@ -585,6 +585,9 @@ func makeHarness(
   refreshFailedAudioRecoveryAction: @escaping @Sendable (Bool) async throws -> Void = { _ in },
   loadFailedAudioRecoveryReceiptsAction:
     @escaping @Sendable () async throws -> [FailedAudioRecoveryReceipt] = { [] },
+  clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void = {},
+  refreshBenchmarkRecordingArchiveAction:
+    @escaping @Sendable (Bool) async throws -> Void = { _ in },
   authorizeWorkflowRunAction:
     @escaping @Sendable (
       WorkflowDefinition
@@ -692,6 +695,8 @@ func makeHarness(
     clearFailedAudioRecoveryAction: clearFailedAudioRecoveryAction,
     refreshFailedAudioRecoveryAction: refreshFailedAudioRecoveryAction,
     loadFailedAudioRecoveryReceiptsAction: loadFailedAudioRecoveryReceiptsAction,
+    clearBenchmarkRecordingArchiveAction: clearBenchmarkRecordingArchiveAction,
+    refreshBenchmarkRecordingArchiveAction: refreshBenchmarkRecordingArchiveAction,
     authorizeWorkflowRunAction: authorizeWorkflowRunAction,
     explainResolvedWorkflowAction: explainResolvedWorkflowAction,
     writeClipboardTextAction: writeClipboardTextAction,

@@ -3,32 +3,33 @@ import SwiftUI
 import RillCore
 
 public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
-    case dashboard
+    case stream
     case workflows
     case records
-    case history
     case diagnostics
     case settings
 
     public var id: String { rawValue }
 
     public var symbolName: String {
+        symbol.rawValue
+    }
+
+    public var symbol: RillSystemSymbol {
         switch self {
-        case .dashboard: return "gauge.with.dots.needle.33percent"
-        case .workflows: return "point.3.connected.trianglepath.dotted"
-        case .records: return "square.stack.3d.up"
-        case .history: return "clock.arrow.circlepath"
-        case .diagnostics: return "stethoscope"
-        case .settings: return "gearshape"
+        case .stream: return .waveform
+        case .workflows: return .point3ConnectedTrianglepathDotted
+        case .records: return .squareStack3dUp
+        case .diagnostics: return .stethoscope
+        case .settings: return .gearshape
         }
     }
 
     public var titleKey: UIStrings.Key {
         switch self {
-        case .dashboard: return .sidebarDashboard
+        case .stream: return .sidebarStream
         case .workflows: return .sidebarWorkflows
         case .records: return .sidebarRecords
-        case .history: return .sidebarHistory
         case .diagnostics: return .sidebarDiagnostics
         case .settings: return .sidebarSettings
         }
@@ -164,6 +165,7 @@ enum SidebarAccessibilityFocusPolicy {
 
 public struct MainShellView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable private var model: AppModel
     @AccessibilityFocusState private var accessibilityFocusedSidebarDestination: SidebarDestination?
     @State private var globalSearchText = ""
@@ -176,9 +178,8 @@ public struct MainShellView: View {
     @State private var sidebarFocusRequestGeneration = 0
     @State private var sidebarFocusCoordinator = SidebarFocusCoordinator()
     private let sidebarFocusTurnWaiter: @MainActor @Sendable () async -> Void
-    private static let leadingSections: [SidebarSection] = [.dashboard]
-    private static let historySections: [SidebarSection] = [.history]
-    private static let utilitySections: [SidebarSection] = [.diagnostics, .settings]
+    private static let leadingSections: [SidebarSection] = [.stream]
+    private static let utilitySections: [SidebarSection] = [.settings]
 
     public init(model: AppModel) {
         self.model = model
@@ -212,12 +213,6 @@ public struct MainShellView: View {
                                 $accessibilityFocusedSidebarDestination,
                                 equals: .recordCollection(collection.id)
                             )
-                    }
-                }
-
-                Section {
-                    ForEach(Self.historySections) { section in
-                        sidebarSectionRow(section)
                     }
                 }
 
@@ -423,14 +418,12 @@ extension MainShellView {
     @ViewBuilder
     private var detailContent: some View {
         switch model.selectedSidebarSection {
-        case .dashboard:
-            DashboardView(model: model)
+        case .stream:
+            StreamView(model: model)
         case .workflows:
             WorkflowsView(model: model)
         case .records:
             RecordWorkspaceView(workspace: model.recordWorkspace, language: model.language)
-        case .history:
-            HistoryView(model: model)
         case .diagnostics:
             DiagnosticsView(model: model)
         case .settings:
@@ -500,7 +493,7 @@ extension MainShellView {
             switch destination {
             case .section(.settings):
                 model.settingsNavigationRequest?.id
-            case .section(.history):
+            case .section(.stream):
                 model.historyNavigationRequest?.id
             case .section, .recordCollection, .workflow:
                 nil
@@ -562,7 +555,11 @@ extension MainShellView {
                 currentID: nil,
                 results: filteredGlobalSearchResults
             )
-            isGlobalSearchPresented = true
+            // The overlay's `.transition(.opacity)` needs an explicit
+            // animation transaction; Reduce Motion presents it instantly.
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+                isGlobalSearchPresented = true
+            }
         }
         // The toolbar is intentionally unavailable while the overlay owns the
         // window, but the focused scene command remains installed. Repeated
@@ -586,7 +583,11 @@ extension MainShellView {
     }
 
     private func dismissGlobalSearch() {
-        isGlobalSearchPresented = false
+        // Symmetric short fade matching the presentation transition; Reduce
+        // Motion dismisses instantly.
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+            isGlobalSearchPresented = false
+        }
         globalSearchText = ""
         selectedGlobalSearchResultID = nil
         globalHistorySearchResults = []
@@ -596,7 +597,11 @@ extension MainShellView {
     }
 
     private func commitGlobalSearchDestination(_ destination: GlobalSearchDestination) {
-        isGlobalSearchPresented = false
+        // Same dismissal fade as `dismissGlobalSearch`; Reduce Motion
+        // dismisses instantly.
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+            isGlobalSearchPresented = false
+        }
         globalSearchText = ""
         selectedGlobalSearchResultID = nil
         globalHistorySearchResults = []
@@ -609,7 +614,7 @@ extension MainShellView {
             // request the same post-event focus restoration used by dismissal.
             sidebarFocusRequestGeneration &+= 1
         case .workflow(let workflowID):
-            model.openWorkflowEditor(workflowID: workflowID)
+            model.showWorkflow(workflowID)
         case .history(let entryID):
             model.showHistoryEntry(entryID)
         case .settings(let section):
@@ -714,7 +719,7 @@ extension MainShellView {
         switch destination {
         case .section(.settings):
             return model.settingsNavigationRequest != nil
-        case .section(.history):
+        case .section(.stream):
             guard model.historyNavigationRequest != nil else { return false }
             switch model.runHistoryDeepLinkState {
             case .expired, .failed:
@@ -752,7 +757,8 @@ extension MainShellView {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
-                .background(.quaternary.opacity(0.18), in: Capsule())
+                // RillCard subdued-tier fill; a Capsule chip cannot use rillCard itself.
+                .background(.quaternary.opacity(0.2), in: Capsule())
         }
         .accessibilityLabel(collection.name)
         .accessibilityIdentifier("sidebar.record-collection.\(collection.id.rawValue.uuidString)")

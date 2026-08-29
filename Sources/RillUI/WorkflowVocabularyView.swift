@@ -119,8 +119,7 @@ struct VocabularyCollectionCard: View {
             }
             .toggleStyle(.checkbox)
         }
-        .padding(10)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+        .rillCard(.regular, cornerRadius: 10, padding: 10)
         .alert(
             model.language == .english ? "Delete collection?" : "删除词库？",
             isPresented: $confirmsCollectionDeletion

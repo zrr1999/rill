@@ -5,7 +5,6 @@ import RillUI
 @main
 struct RillApplication: App {
     fileprivate static let mainWindowID = "main"
-    fileprivate static let workflowEditorWindowID = "workflow-editor"
 
     @NSApplicationDelegateAdaptor(VoiceInputApplicationDelegate.self)
     private var applicationDelegate
@@ -81,11 +80,6 @@ struct RillApplication: App {
             RillGlobalSearchCommands(language: container.model.language)
         }
 
-        Window(container.model.localizedWorkflowWindowTitle, id: Self.workflowEditorWindowID) {
-            WorkflowsView(model: container.model)
-        }
-        .defaultSize(width: 1120, height: 760)
-
         MenuBarExtra(
             container.model.localizedMenuBarTitle,
             systemImage: menuBarSystemSymbol.rawValue
@@ -118,11 +112,6 @@ private struct MenuBarContent: View {
             openAbout: openAboutFromMenu,
             quitApplication: { NSApp.terminate(nil) }
         )
-        .onAppear {
-            model.installOpenWorkflowEditorAction {
-                openWindow(id: RillApplication.workflowEditorWindowID)
-            }
-        }
     }
 
     private func openMainWindowFromMenu() {
@@ -146,16 +135,9 @@ private struct MenuBarContent: View {
 }
 
 private struct MainWindowContent: View {
-    @Environment(\.openWindow) private var openWindow
-
     let container: AppContainer
 
     var body: some View {
         MainShellView(model: container.model)
-            .onAppear {
-                container.model.installOpenWorkflowEditorAction {
-                    openWindow(id: RillApplication.workflowEditorWindowID)
-                }
-            }
     }
 }

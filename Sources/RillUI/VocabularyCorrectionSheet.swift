@@ -64,9 +64,7 @@ public struct VocabularyCorrectionSheet: View {
                     .font(.headline)
                 Text(draft.originalText)
                     .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+                    .rillCard(.regular, cornerRadius: RillRadius.badge, padding: 10)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -143,12 +141,7 @@ public struct VocabularyCorrectionSheet: View {
             }
             .contentShape(Rectangle())
             .padding(10)
-            .background(
-                draft.selectedOptionID == option.id
-                    ? Color.accentColor.opacity(0.1)
-                    : Color.secondary.opacity(0.06),
-                in: RoundedRectangle(cornerRadius: 10)
-            )
+            .rillSelection(draft.selectedOptionID == option.id, cornerRadius: 10)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(optionTitle(option)): \(optionSummary(option))")
@@ -197,8 +190,7 @@ public struct VocabularyCorrectionSheet: View {
                 .accessibilityIdentifier("vocabulary.correction.target-collection")
             }
         }
-        .padding(12)
-        .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 10))
+        .rillCard(.subdued, cornerRadius: 10, padding: 12)
     }
 
     @ViewBuilder

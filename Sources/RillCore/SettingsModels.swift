@@ -49,6 +49,7 @@ public enum AppSettingKey: String, Codable, Sendable, Equatable {
   case runHistoryRetentionPeriod = "history.run-retention-period"
   case localHistoryMaintenanceState = "history.local-maintenance-state"
   case failedAudioRecoveryEnabled = "audio.failed-recovery-enabled"
+  case benchmarkRecordingArchiveEnabled = "audio.benchmark-archive-enabled"
   case builtinPushToTalkOutputMode = "workflow.builtin-push-to-talk.output-mode"
   case longRecordingModeEnabled = "recording.long-mode-enabled"
   case recordingDurationLimit = "recording.duration-limit"

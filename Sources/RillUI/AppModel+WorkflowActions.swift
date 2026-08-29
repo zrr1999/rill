@@ -965,10 +965,6 @@ extension AppModel {
     systemClipboardCaptureControlSnapshot = snapshot
   }
 
-  public func installOpenWorkflowEditorAction(_ action: @escaping () -> Void) {
-    openWorkflowEditorAction = action
-  }
-
   public func installRecordPanelHotkeyAction(
     _ action: @escaping (HotkeyBindingDescriptor) -> Void
   ) {
@@ -995,7 +991,7 @@ extension AppModel {
         workflowID: workflowID
       )
     }
-    if section == .history {
+    if section == .stream {
       runHistoryScope = .recentRuns
     }
   }
@@ -1018,7 +1014,7 @@ extension AppModel {
   }
 
   public func showRunHistory() {
-    selectSidebarSection(.history)
+    selectSidebarSection(.stream)
   }
 
   public func showSettings(_ section: SettingsSection) {
@@ -1029,7 +1025,7 @@ extension AppModel {
 
   public func showHistoryEntry(_ entryID: UUID) {
     settingsNavigationRequest = nil
-    selectedSidebarSection = .history
+    selectedSidebarSection = .stream
     runHistoryScope = .recentRuns
     runHistoryDeepLinkState = .idle
     historyNavigationRequest = HistoryNavigationRequest(
@@ -1038,21 +1034,15 @@ extension AppModel {
     )
   }
 
-  public func beginCreatingWorkflow() {
-    openWorkflowEditor()
-  }
-
   public func openWorkflowEditor() {
+    settingsNavigationRequest = nil
+    historyNavigationRequest = nil
+    selectedSidebarSection = .workflows
     workflowEditorNavigationRequest = nil
-    openWorkflowEditorAction()
   }
 
   public func openWorkflowEditor(workflowID: UUID) {
-    guard workflows.contains(where: { $0.id == workflowID }) else { return }
-    workflowEditorNavigationRequest = WorkflowEditorNavigationRequest(
-      workflowID: workflowID
-    )
-    openWorkflowEditorAction()
+    showWorkflow(workflowID)
   }
 
   public func setRecordPanelHotkeyShortcut(_ shortcut: KeyboardShortcut) {

@@ -5,6 +5,7 @@ enum SettingsDestructiveConfirmation: Sendable {
   case clipboardHistory
   case runHistory
   case failedAudioRecovery
+  case benchmarkRecordingArchive
 }
 
 enum SettingsSheetDestination: Identifiable {
@@ -224,6 +225,15 @@ public struct SettingsView: View {
             systemImage: RillSystemSymbol.lockShield.rawValue
           )
         }
+
+        Section {
+          diagnosticsEntryRow
+        } header: {
+          settingsGroupHeader(
+            model.language == .english ? "Advanced" : "高级",
+            systemImage: RillSystemSymbol.gearshape.rawValue
+          )
+        }
       }
       .formStyle(.grouped)
       .task(id: model.settingsNavigationRequest?.id) {
@@ -412,6 +422,26 @@ extension SettingsView {
       .accessibilityIdentifier("settings.section.\(section.rawValue)")
   }
 
+  private var diagnosticsEntryRow: some View {
+    Button {
+      model.selectSidebarSection(.diagnostics)
+    } label: {
+      HStack {
+        Label(
+          UIStrings.text(.sidebarDiagnostics, language: model.language),
+          systemImage: SidebarSection.diagnostics.symbolName
+        )
+        Spacer()
+        Image(systemName: RillSystemSymbol.chevronRight.rawValue)
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.tertiary)
+      }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("settings.diagnostics.open")
+  }
+
   private func settingsGroupHeader(
     _ title: String,
     systemImage: String
@@ -514,6 +544,8 @@ extension SettingsView {
     }
     expandedSettingsSections.insert(request.section)
     await Task.yield()
+    // Navigation scroll, not decorative motion: keep the fixed duration
+    // easing so section positioning stays predictable.
     withAnimation(.easeInOut(duration: 0.2)) {
       proxy.scrollTo(request.section, anchor: .top)
     }
@@ -535,6 +567,11 @@ extension SettingsView {
         .settingsFailedAudioRecoveryClearConfirmation,
         language: model.language
       )
+    case .benchmarkRecordingArchive:
+      L10n.string(
+        .settingsBenchmarkRecordingArchiveClearConfirmation,
+        language: model.language
+      )
     }
   }
 
@@ -548,6 +585,8 @@ extension SettingsView {
       L10n.historySettingsText(.clearRun, language: model.language)
     case .failedAudioRecovery:
       L10n.string(.settingsFailedAudioRecoveryClear, language: model.language)
+    case .benchmarkRecordingArchive:
+      L10n.string(.settingsBenchmarkRecordingArchiveClear, language: model.language)
     }
   }
 
@@ -567,6 +606,11 @@ extension SettingsView {
         .settingsFailedAudioRecoveryClearConfirmationDetail,
         language: model.language
       )
+    case .benchmarkRecordingArchive:
+      L10n.string(
+        .settingsBenchmarkRecordingArchiveClearConfirmationDetail,
+        language: model.language
+      )
     }
   }
 
@@ -580,6 +624,8 @@ extension SettingsView {
       model.clearRunHistory()
     case .failedAudioRecovery:
       model.clearFailedAudioRecoveries()
+    case .benchmarkRecordingArchive:
+      model.clearBenchmarkRecordingArchive()
     }
   }
 

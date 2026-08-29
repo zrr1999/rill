@@ -25,6 +25,9 @@ final class LocalSpeechRuntimeLifecycleTests: XCTestCase {
       }
     )
     await waitForEventProcessing(harness)
+    // The runtime enable/disable call is issued by the initial settings load
+    // task; synchronizeEventListener alone does not drain it.
+    await harness.model.waitForInitialVoiceConfiguration()
 
     harness.model.releaseLocalSpeechModelMemory()
 

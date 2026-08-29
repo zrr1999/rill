@@ -69,8 +69,7 @@ private actor RecordPanelOperationGate {
 
 @MainActor
 final class RecordPanelControllerTests: XCTestCase {
-    func testModalGateClosesSheetPresentationAndAttachedSheetOwnsFirstEscape() {
-        XCTAssertFalse(RecordPanelModalPolicy.allowsSheetPresentation)
+    func testAttachedSheetSuppressesAutoHideAndOwnsFirstEscape() {
         XCTAssertFalse(
             RecordPanelModalPolicy.shouldAutoHide(
                 isVisible: true,

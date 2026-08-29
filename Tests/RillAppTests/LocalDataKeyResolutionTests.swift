@@ -72,6 +72,42 @@ final class LocalDataKeyResolutionTests: XCTestCase {
     }
   }
 
+  func testArchiveBindingSelectsOnlyCandidateThatAuthenticatesAllStores() throws {
+    let protected = candidate(0x43, source: .dataProtection)
+    let legacy = candidate(0x44, source: .legacyLogin)
+
+    let decision = try LocalDataKeyResolver.resolve(
+      candidates: [legacy, protected],
+      databaseRequiresExistingKey: true,
+      recoveryRequiresExistingKey: false,
+      archiveRequiresExistingKey: true,
+      databaseAccepts: { $0 == protected.key },
+      recoveryAccepts: { _ in true },
+      archiveAccepts: { $0 == protected.key }
+    )
+
+    XCTAssertEqual(existingCandidate(in: decision), protected)
+  }
+
+  func testArchiveBindingOnDifferentRootKeyFailsClosed() {
+    let protected = candidate(0x45, source: .dataProtection)
+    let legacy = candidate(0x46, source: .legacyLogin)
+
+    XCTAssertThrowsError(
+      try LocalDataKeyResolver.resolve(
+        candidates: [protected, legacy],
+        databaseRequiresExistingKey: true,
+        recoveryRequiresExistingKey: false,
+        archiveRequiresExistingKey: true,
+        databaseAccepts: { $0 == protected.key },
+        recoveryAccepts: { _ in true },
+        archiveAccepts: { $0 == legacy.key }
+      )
+    ) {
+      XCTAssertEqual($0 as? LocalDataKeyResolutionError, .noValidatedCandidate)
+    }
+  }
+
   func testDistinctCandidatesThatBothAuthenticateAreRejectedAsAmbiguous() {
     let protected = candidate(0x51, source: .dataProtection)
     let legacy = candidate(0x52, source: .legacyLogin)
@@ -157,6 +193,24 @@ final class LocalDataKeyResolutionTests: XCTestCase {
       )
     ) {
       XCTAssertEqual($0 as? ProbeFailure, .rejected)
+    }
+  }
+
+  func testRevalidationRejectsArchiveBindingCreatedAfterInitialSelection() {
+    let protected = candidate(0x73, source: .dataProtection)
+
+    XCTAssertThrowsError(
+      try LocalDataKeyResolver.revalidate(
+        candidate: protected,
+        databaseRequiresExistingKey: true,
+        recoveryRequiresExistingKey: false,
+        archiveRequiresExistingKey: true,
+        databaseAccepts: { $0 == protected.key },
+        recoveryAccepts: { _ in true },
+        archiveAccepts: { _ in false }
+      )
+    ) {
+      XCTAssertEqual($0 as? LocalDataKeyResolutionError, .noValidatedCandidate)
     }
   }
 

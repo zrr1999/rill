@@ -184,10 +184,10 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let dashboardRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let streamRow = sidebar.selectedRow
+        XCTAssertGreaterThanOrEqual(streamRow, 0)
         let recordCollectionRow = try XCTUnwrap(
-            nextSelectableRow(after: dashboardRow, in: sidebar)
+            nextSelectableRow(after: streamRow, in: sidebar)
         )
         let searchToolbarItem = try XCTUnwrap(
             window.toolbar?.items.first { item in
@@ -272,7 +272,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         )
     }
 
-    func testVisibleSidebarDashboardToClipboardThenDownPreservesSidebarFocus() async throws {
+    func testVisibleSidebarStreamToClipboardThenDownPreservesSidebarFocus() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
         let window = makeWindow(model: harness.model)
@@ -300,7 +300,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
 
         sidebar.keyDown(with: downArrow)
         await settle(window)
-        XCTAssertEqual(harness.model.selectedSidebarSection, .history)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .workflows)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "Each detail replacement must preserve continued keyboard navigation in the sidebar."
@@ -308,7 +308,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertFalse(window.firstResponder === detailFocusAnchor)
     }
 
-    func testDashboardToClipboardSelectionReplacementPreservesSidebarFirstResponder() async throws {
+    func testStreamToClipboardSelectionReplacementPreservesSidebarFirstResponder() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
         let window = makeWindow(model: harness.model)
@@ -317,10 +317,10 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let dashboardRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let streamRow = sidebar.selectedRow
+        XCTAssertGreaterThanOrEqual(streamRow, 0)
         let recordCollectionRow = try XCTUnwrap(
-            nextSelectableRow(after: dashboardRow, in: sidebar)
+            nextSelectableRow(after: streamRow, in: sidebar)
         )
 
         sidebar.selectRowIndexes(
@@ -336,7 +336,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         )
     }
 
-    func testDashboardToClipboardEventTrackingRepairsBeforeDefaultModeFallback() async throws {
+    func testStreamToClipboardEventTrackingRepairsBeforeDefaultModeFallback() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
         let initialFocusWait = expectation(description: "Initial sidebar focus waits for its turn")
@@ -364,9 +364,9 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let dashboardRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(dashboardRow, 0)
-        let clipboardRow = try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))
+        let streamRow = sidebar.selectedRow
+        XCTAssertGreaterThanOrEqual(streamRow, 0)
+        let clipboardRow = try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))
         let didRunTrackingSelection = runMainEventTrackingTurn {
             XCTAssertEqual(RunLoop.current.currentMode, .eventTracking)
             sidebar.selectRowIndexes(
@@ -416,10 +416,10 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let dashboardRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let streamRow = sidebar.selectedRow
+        XCTAssertGreaterThanOrEqual(streamRow, 0)
         let recordCollectionRow = try XCTUnwrap(
-            nextSelectableRow(after: dashboardRow, in: sidebar)
+            nextSelectableRow(after: streamRow, in: sidebar)
         )
 
         let detailFocusProbe = FocusProbeView(frame: .zero)
@@ -461,7 +461,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertFalse(isResponder(window.firstResponder, inside: sidebar))
     }
 
-    func testDashboardToClipboardDoesNotClearSidebarFocusWhileWaitingForPostTrackingRepair()
+    func testStreamToClipboardDoesNotClearSidebarFocusWhileWaitingForPostTrackingRepair()
         async throws
     {
         _ = NSApplication.shared
@@ -491,10 +491,10 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let dashboardRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let streamRow = sidebar.selectedRow
+        XCTAssertGreaterThanOrEqual(streamRow, 0)
         let recordCollectionRow = try XCTUnwrap(
-            nextSelectableRow(after: dashboardRow, in: sidebar)
+            nextSelectableRow(after: streamRow, in: sidebar)
         )
 
         XCTAssertTrue(
@@ -549,10 +549,10 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let dashboardRow = sidebar.selectedRow
+        let streamRow = sidebar.selectedRow
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [clipboardFocusWait], timeout: 1)
@@ -609,11 +609,11 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let dashboardRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let streamRow = sidebar.selectedRow
+        XCTAssertGreaterThanOrEqual(streamRow, 0)
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [clipboardFocusWait], timeout: 1)
@@ -672,8 +672,8 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await focusTurnGate.release(through: 1)
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
-        let dashboardRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let streamRow = sidebar.selectedRow
+        XCTAssertGreaterThanOrEqual(streamRow, 0)
 
         let persistentDetailFocusProbe = FocusProbeView(frame: .zero)
         window.contentView?.addSubview(persistentDetailFocusProbe)
@@ -681,7 +681,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(persistentDetailFocusProbe))
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [firstRouteRepair], timeout: 1)
@@ -742,8 +742,8 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await focusTurnGate.release(through: 1)
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
-        let dashboardRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let streamRow = sidebar.selectedRow
+        XCTAssertGreaterThanOrEqual(streamRow, 0)
 
         let persistentDetailFocusProbe = FocusProbeView(frame: .zero)
         window.contentView?.addSubview(persistentDetailFocusProbe)
@@ -751,7 +751,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(persistentDetailFocusProbe))
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [firstRouteRepair], timeout: 1)
@@ -804,11 +804,11 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await focusTurnGate.release(through: 1)
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
-        let dashboardRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let streamRow = sidebar.selectedRow
+        XCTAssertGreaterThanOrEqual(streamRow, 0)
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [firstRouteRepair], timeout: 1)
@@ -1038,7 +1038,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     func testProgrammaticRouteChangeRehomesDetailFocusInSidebar() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
-        harness.model.selectSidebarSection(.history)
+        harness.model.selectSidebarSection(.diagnostics)
         let window = makeWindow(model: harness.model)
         defer { tearDown(window) }
 
@@ -1051,12 +1051,12 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         XCTAssertTrue(window.firstResponder === detailFocusProbe)
 
-        harness.model.selectSidebarSection(.dashboard)
+        harness.model.selectSidebarSection(.stream)
         detailFocusProbe.removeFromSuperview()
         XCTAssertTrue(window.makeFirstResponder(nil))
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .dashboard)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "A detail-originated route must land in persistent sidebar navigation."
@@ -1198,7 +1198,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         let harness = makeHarness()
         let initialFocusWait = expectation(description: "Initial sidebar focus waits for its turn")
         let clipboardRouteWait = expectation(description: "Clipboard route waits for its focus check")
-        let historyRouteWait = expectation(description: "History route supersedes the clipboard claim")
+        let historyRouteWait = expectation(description: "Stream route supersedes the clipboard claim")
         let focusTurnGate = SidebarFocusTurnGate { entry in
             switch entry {
             case 1:
@@ -1242,7 +1242,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         // destination must replace that older claim instead of skipping its
         // own ownership transition.
         XCTAssertTrue(window.makeFirstResponder(clipboardFocusProbe))
-        harness.model.selectSidebarSection(.history)
+        harness.model.selectSidebarSection(.stream)
         await fulfillment(of: [historyRouteWait], timeout: 1)
         XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
 
@@ -1251,7 +1251,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         clipboardHost.removeFromSuperview()
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .history)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "The final route must retain sidebar focus after the superseded detail host detaches."
@@ -1267,7 +1267,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         let harness = makeHarness()
         let initialFocusWait = expectation(description: "Initial sidebar focus waits for its turn")
         let clipboardListWait = expectation(description: "Clipboard List route waits for repair")
-        let historyRouteWait = expectation(description: "History route supersedes the old List claim")
+        let historyRouteWait = expectation(description: "Stream route supersedes the old List claim")
         let focusTurnGate = SidebarFocusTurnGate { entry in
             switch entry {
             case 1:
@@ -1293,11 +1293,11 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let dashboardRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(dashboardRow, 0)
+        let streamRow = sidebar.selectedRow
+        XCTAssertGreaterThanOrEqual(streamRow, 0)
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: dashboardRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [clipboardListWait], timeout: 1)
@@ -1311,7 +1311,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         clipboardHost.layoutSubtreeIfNeeded()
         XCTAssertTrue(window.makeFirstResponder(clipboardFocusProbe))
 
-        harness.model.selectSidebarSection(.history)
+        harness.model.selectSidebarSection(.stream)
         await fulfillment(of: [historyRouteWait], timeout: 1)
         XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
 
@@ -1320,7 +1320,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         clipboardHost.removeFromSuperview()
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .history)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "A List claim for an older destination must not suppress the final programmatic route."
@@ -1356,7 +1356,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     func testRapidProgrammaticRoutesLandOnFinalSidebarDestination() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
-        harness.model.selectSidebarSection(.history)
+        harness.model.selectSidebarSection(.records)
         let window = makeWindow(model: harness.model)
         defer { tearDown(window) }
 
@@ -1367,7 +1367,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         defer { detailFocusProbe.removeFromSuperview() }
         XCTAssertTrue(window.makeFirstResponder(detailFocusProbe))
 
-        harness.model.selectSidebarSection(.dashboard)
+        harness.model.selectSidebarSection(.stream)
         detailFocusProbe.removeFromSuperview()
         XCTAssertTrue(window.makeFirstResponder(nil))
         await Task.yield()
@@ -1489,15 +1489,15 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(harness.model.historyRecords.contains(where: { $0.id == record.id }))
 
         let initialFocusWait = expectation(description: "Initial sidebar focus waits for its turn")
-        let plainHistoryFocusWait = expectation(
-            description: "Plain history route starts its sidebar focus request"
+        let plainRecordsFocusWait = expectation(
+            description: "Plain records route starts its sidebar focus request"
         )
         let focusTurnGate = SidebarFocusTurnGate { entry in
             switch entry {
             case 1:
                 initialFocusWait.fulfill()
             case 2:
-                plainHistoryFocusWait.fulfill()
+                plainRecordsFocusWait.fulfill()
             default:
                 break
             }
@@ -1514,8 +1514,8 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
 
-        harness.model.selectSidebarSection(.history)
-        await fulfillment(of: [plainHistoryFocusWait], timeout: 1)
+        harness.model.selectSidebarSection(.records)
+        await fulfillment(of: [plainRecordsFocusWait], timeout: 1)
         harness.model.showHistoryEntry(record.id)
         await settle(window)
         let detailFocusProbe = FocusProbeView(frame: .zero)
@@ -1526,7 +1526,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await focusTurnGate.release(through: 2)
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .history)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
         XCTAssertEqual(harness.model.historyNavigationRequest?.entryID, record.id)
         XCTAssertTrue(
             window.firstResponder === detailFocusProbe,
@@ -1567,7 +1567,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         else {
             return XCTFail("The missing typed history destination did not resolve as expired.")
         }
-        XCTAssertEqual(harness.model.selectedSidebarSection, .history)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "A terminal typed-history request must release focus ownership to a stable fallback."

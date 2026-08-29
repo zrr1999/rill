@@ -208,7 +208,7 @@ public struct LiveSubtitleOverlay: View {
     .padding(.horizontal, showsTitle ? 6 : 0)
     .frame(minWidth: 20, minHeight: 20)
     .fixedSize()
-    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: RillRadius.chip, style: .continuous))
     .help(
       LiveSubtitleInteractionPolicy.networkDisclosureTitle(
         usage,
@@ -227,11 +227,13 @@ public struct LiveSubtitleOverlay: View {
   }
 
   private func networkUsageTint(_ usage: LiveSubtitleNetworkUsage) -> Color {
+    // Four-color status semantics (docs/ui-direction.md §4): offline is a
+    // caution, online is ready, unknown stays neutral.
     switch usage {
     case .offline:
-      .green
+      .orange
     case .online:
-      .blue
+      .green
     case .unknown:
       secondaryTextColor
     }
@@ -336,10 +338,10 @@ public struct LiveSubtitleOverlay: View {
       .frame(height: 20)
       .background(
         Color(nsColor: .controlBackgroundColor).opacity(0.42),
-        in: RoundedRectangle(cornerRadius: 5)
+        in: RoundedRectangle(cornerRadius: RillRadius.chip)
       )
       .overlay(
-        RoundedRectangle(cornerRadius: 5)
+        RoundedRectangle(cornerRadius: RillRadius.chip)
           .strokeBorder(borderColor.opacity(0.55), lineWidth: 0.75)
       )
       .accessibilityLabel(

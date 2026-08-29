@@ -88,4 +88,160 @@ extension L10n {
         }
         return "\(summary), \(workflowRunSkipReason(reason, language: language))"
     }
+
+    static func historyRunTrigger(
+        _ trigger: WorkflowRunTriggerKind,
+        language: AppLanguage
+    ) -> String {
+        switch (language, trigger) {
+        case (.english, .manual): "Manual"
+        case (.simplifiedChinese, .manual): "手动"
+        case (.english, .menuBar): "Menu bar"
+        case (.simplifiedChinese, .menuBar): "菜单栏"
+        case (.english, .hotkey): "Hotkey"
+        case (.simplifiedChinese, .hotkey): "快捷键"
+        case (.english, .wakeWord): "Wake word"
+        case (.simplifiedChinese, .wakeWord): "唤醒词"
+        case (.english, .recordCollectionEvent): "Collection event"
+        case (.simplifiedChinese, .recordCollectionEvent): "记录集事件"
+        case (.english, .recordDelivery): "Record delivery"
+        case (.simplifiedChinese, .recordDelivery): "记录投递"
+        case (.english, .recordUse): "Record use"
+        case (.simplifiedChinese, .recordUse): "记录使用"
+        case (.english, .recordReplay): "Record replay"
+        case (.simplifiedChinese, .recordReplay): "记录重放"
+        case (.english, .failedAudioRecovery): "Audio recovery"
+        case (.simplifiedChinese, .failedAudioRecovery): "录音恢复"
+        }
+    }
+
+    static func historyRunDurationBucket(
+        _ bucket: WorkflowRunDurationBucket,
+        language: AppLanguage
+    ) -> String {
+        switch (language, bucket) {
+        case (.english, .under250ms): "under 250 ms"
+        case (.simplifiedChinese, .under250ms): "少于 250 毫秒"
+        case (.english, .ms250To999): "250–999 ms"
+        case (.simplifiedChinese, .ms250To999): "250–999 毫秒"
+        case (.english, .s1To4): "1–4 s"
+        case (.simplifiedChinese, .s1To4): "1–4 秒"
+        case (.english, .s5To14): "5–14 s"
+        case (.simplifiedChinese, .s5To14): "5–14 秒"
+        case (.english, .s15To59): "15–59 s"
+        case (.simplifiedChinese, .s15To59): "15–59 秒"
+        case (.english, .m1Plus): "1 min or more"
+        case (.simplifiedChinese, .m1Plus): "1 分钟以上"
+        case (.english, .unavailable): "duration unavailable"
+        case (.simplifiedChinese, .unavailable): "耗时不可用"
+        }
+    }
+
+    /// Timeline status is a reason-free rollup of `WorkflowRunTermination`;
+    /// the skipped case cannot carry the receipt's skip reason here, so the
+    /// labels stay plain instead of routing through `workflowRunTermination`.
+    static func historyRunStatus(
+        _ status: HistoryTimelineStatus,
+        language: AppLanguage
+    ) -> String {
+        switch (language, status) {
+        case (.english, .completed): "Completed"
+        case (.simplifiedChinese, .completed): "已完成"
+        case (.english, .partiallyCompleted): "Partially completed"
+        case (.simplifiedChinese, .partiallyCompleted): "部分完成"
+        case (.english, .failed): "Failed"
+        case (.simplifiedChinese, .failed): "失败"
+        case (.english, .cancelled): "Cancelled"
+        case (.simplifiedChinese, .cancelled): "已取消"
+        case (.english, .skipped): "Skipped"
+        case (.simplifiedChinese, .skipped): "已跳过"
+        }
+    }
+
+    static func historyTimelineText(
+        _ key: HistoryTimelineTextKey,
+        language: AppLanguage
+    ) -> String {
+        historyTimelineTextTable[key]?.string(for: language) ?? key.rawValue
+    }
+
+    static func historyTimelineAction(_ number: Int, language: AppLanguage) -> String {
+        String(format: historyTimelineText(.actionFormat, language: language), number)
+    }
+
+    static func historyTimelineLLMRequestStep(_ step: Int, language: AppLanguage) -> String {
+        String(format: historyTimelineText(.llmRequestStepFormat, language: language), step)
+    }
+
+    static func historyTimelineSentMessage(
+        role: String,
+        number: Int,
+        language: AppLanguage
+    ) -> String {
+        String(
+            format: historyTimelineText(.sentMessageFormat, language: language),
+            role,
+            number
+        )
+    }
+
+    static func historyTimelineSentToLLMStep(_ step: Int, language: AppLanguage) -> String {
+        String(format: historyTimelineText(.sentToLLMStepFormat, language: language), step)
+    }
+
+    private static let historyTimelineTextTable: [HistoryTimelineTextKey: LocalizedText] = [
+        .actionDetailsTruncated: .init(
+            english: "Additional action details were omitted.",
+            simplifiedChinese: "其余动作详情已省略。"
+        ),
+        .actionFormat: .init(english: "Action %d", simplifiedChinese: "动作 %d"),
+        .executionDetailsUnavailable: .init(
+            english: "Execution details are unavailable for this older run.",
+            simplifiedChinese: "这条较早的运行没有可用的执行详情。"
+        ),
+        .llmAnswer: .init(english: "LLM answer", simplifiedChinese: "LLM 回答"),
+        .llmRequest: .init(english: "LLM request", simplifiedChinese: "LLM 请求"),
+        .llmRequestStepFormat: .init(
+            english: "LLM request · Step %d",
+            simplifiedChinese: "LLM 请求 · 第 %d 步"
+        ),
+        .model: .init(english: "Model", simplifiedChinese: "模型"),
+        .provider: .init(english: "Provider", simplifiedChinese: "提供商"),
+        .recognizedInputLegacy: .init(
+            english: "Recognized input (older record)",
+            simplifiedChinese: "识别输入（旧记录）"
+        ),
+        .returnedText: .init(english: "Returned text", simplifiedChinese: "返回文本"),
+        .sentMessageFormat: .init(
+            english: "Sent message · %@ %d",
+            simplifiedChinese: "发送消息 · %@ %d"
+        ),
+        .sentToLLM: .init(english: "Sent to LLM", simplifiedChinese: "发送给 LLM"),
+        .sentToLLMStepFormat: .init(
+            english: "Sent to LLM · Step %d",
+            simplifiedChinese: "发送给 LLM · 第 %d 步"
+        ),
+        .systemPrompt: .init(english: "System prompt", simplifiedChinese: "系统提示词"),
+        .workflowPrompt: .init(english: "Workflow prompt", simplifiedChinese: "工作流提示词"),
+        .workflowRunFallback: .init(english: "Workflow run", simplifiedChinese: "工作流运行"),
+    ]
+}
+
+enum HistoryTimelineTextKey: String, CaseIterable, Sendable {
+    case actionDetailsTruncated
+    case actionFormat
+    case executionDetailsUnavailable
+    case llmAnswer
+    case llmRequest
+    case llmRequestStepFormat
+    case model
+    case provider
+    case recognizedInputLegacy
+    case returnedText
+    case sentMessageFormat
+    case sentToLLM
+    case sentToLLMStepFormat
+    case systemPrompt
+    case workflowPrompt
+    case workflowRunFallback
 }

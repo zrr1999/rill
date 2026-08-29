@@ -26,8 +26,8 @@ extension SettingsView {
             Label(
               collection.name,
               systemImage: collection.enabled
-                ? "text.book.closed.fill"
-                : "text.book.closed"
+                ? RillSystemSymbol.textBookClosedFill.rawValue
+                : RillSystemSymbol.textBookClosed.rawValue
             )
             Spacer()
             Text("\(collection.entries.count)")

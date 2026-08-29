@@ -304,6 +304,63 @@ private actor AudioRecoveryStoreProbe: FailedAudioRecoveryStore {
     func purgeExpired(now: Date) async throws -> Int { 0 }
 }
 
+private actor BenchmarkArchiveStoreProbe: BenchmarkRecordingArchiveStore {
+    struct Entry: Sendable, Equatable {
+        let bytes: Data
+        let runID: UUID
+        let workflowID: UUID
+        let trigger: WorkflowRunTriggerKind?
+        let outcome: BenchmarkRecordingOutcome
+        let metadata: [String: String]
+    }
+
+    private(set) var entries: [Entry] = []
+
+    func preserve(
+        audio: CapturedAudio,
+        runID: UUID,
+        workflowID: UUID,
+        trigger: WorkflowRunTriggerKind?,
+        outcome: BenchmarkRecordingOutcome,
+        metadata: [String: String],
+        now: Date
+    ) async throws -> BenchmarkRecordingReceipt {
+        guard let fileURL = audio.fileURL else {
+            throw BenchmarkRecordingArchiveError.unsupportedPayload
+        }
+        let bytes = try Data(contentsOf: fileURL)
+        entries.append(
+            Entry(
+                bytes: bytes,
+                runID: runID,
+                workflowID: workflowID,
+                trigger: trigger,
+                outcome: outcome,
+                metadata: metadata
+            )
+        )
+        return BenchmarkRecordingReceipt(
+            runID: runID,
+            workflowID: workflowID,
+            createdAt: now,
+            durationSeconds: audio.durationSeconds,
+            format: audio.format,
+            plaintextByteCount: bytes.count,
+            trigger: trigger,
+            outcome: outcome,
+            metadata: metadata
+        )
+    }
+
+    func delete(runID: UUID) async throws {
+        entries.removeAll { $0.runID == runID }
+    }
+
+    func deleteAll() async throws {
+        entries.removeAll()
+    }
+}
+
 final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     func testLegacyClipboardWorkflowCleansManagedTemporaryFileWithoutProcessing() async throws {
         let fileURL = try makeAudioFile()
@@ -658,6 +715,57 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     }
 
+    func testOptInQueueArchivesEveryProcessedRecordingBeforeRemovingPlaintext() async throws {
+        for (recognitionShouldFail, expectedOutcome) in [
+            (false, BenchmarkRecordingOutcome.completed),
+            (true, BenchmarkRecordingOutcome.failed),
+        ] {
+            let bytes = Data([0x41, recognitionShouldFail ? 0x42 : 0x43])
+            let fileURL = try makeAudioFile(bytes: bytes)
+            defer { try? FileManager.default.removeItem(at: fileURL) }
+            let archiveStore = BenchmarkArchiveStoreProbe()
+            let queue = await makeQueue(
+                recognitionShouldFail: recognitionShouldFail,
+                benchmarkArchiveStore: archiveStore,
+                benchmarkArchiveEnabled: true
+            )
+            let workflow = makeWorkflow()
+            let runID = UUID()
+
+            await queue.enqueue(
+                authorizationLease: makeAudioProcessingTestLease(
+                    runID: runID,
+                    workflow: workflow
+                ),
+                triggerEvent: WorkflowTriggerEvent(
+                    binding: .hotkey,
+                    workflowID: workflow.id,
+                    sourceID: "benchmark-archive-test"
+                ),
+                deferredCapture: .resolved(
+                    try makeCapturedAudio(
+                        fileURL: fileURL,
+                        ownership: .managedTemporary
+                    )
+                )
+            )
+
+            await waitUntilDrained(queue)
+            let entries = await archiveStore.entries
+            XCTAssertEqual(entries.count, 1)
+            XCTAssertEqual(entries.first?.bytes, bytes)
+            XCTAssertEqual(entries.first?.runID, runID)
+            XCTAssertEqual(entries.first?.workflowID, workflow.id)
+            XCTAssertEqual(entries.first?.trigger, .hotkey)
+            XCTAssertEqual(entries.first?.outcome, expectedOutcome)
+            XCTAssertEqual(
+                entries.first?.metadata["recognizerID"],
+                "audio-lifecycle.recognizer"
+            )
+            XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+        }
+    }
+
     func testQueueDoesNotRetainFailedAudioWithoutExplicitOptIn() async throws {
         let fileURL = try makeAudioFile()
         defer { try? FileManager.default.removeItem(at: fileURL) }
@@ -913,6 +1021,8 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         recognitionShouldFail: Bool,
         recoveryStore: (any FailedAudioRecoveryStore)? = nil,
         recoveryEnabled: Bool = false,
+        benchmarkArchiveStore: (any BenchmarkRecordingArchiveStore)? = nil,
+        benchmarkArchiveEnabled: Bool = false,
         executionProbe providedExecutionProbe: AudioLifecycleExecutionProbe? = nil,
         diagnostics providedDiagnostics: DiagnosticsRecorder? = nil,
         rejectedCapturedAudioRemoval: (
@@ -955,6 +1065,17 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         if let recoveryController {
             try? await recoveryController.refresh(isEnabled: recoveryEnabled)
         }
+        let benchmarkArchiveController = benchmarkArchiveStore.map { store in
+            BenchmarkRecordingArchiveController(
+                store: store,
+                diagnostics: diagnostics
+            )
+        }
+        if let benchmarkArchiveController {
+            await benchmarkArchiveController.refresh(
+                isEnabled: benchmarkArchiveEnabled
+            )
+        }
         if rejectedCapturedAudioRemoval != nil || ownershipTransferObserver != nil {
             let sleep = rejectedCleanupSleep ?? { delay in
                 try await Task.sleep(for: delay)
@@ -964,6 +1085,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
                 eventBus: eventBus,
                 diagnostics: diagnostics,
                 failedAudioRecoveryController: recoveryController,
+                benchmarkRecordingArchiveController: benchmarkArchiveController,
                 rejectedCapturedAudioRemoval: rejectedCapturedAudioRemoval ?? { capturedAudio in
                     _ = try capturedAudio.removeManagedTemporaryFile()
                 },
@@ -977,7 +1099,8 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
             sessionCoordinator: coordinator,
             eventBus: eventBus,
             diagnostics: diagnostics,
-            failedAudioRecoveryController: recoveryController
+            failedAudioRecoveryController: recoveryController,
+            benchmarkRecordingArchiveController: benchmarkArchiveController
         )
     }
 
