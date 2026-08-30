@@ -13,6 +13,7 @@ enum SidebarRouteFocusClaimOrigin {
     case programmatic
 }
 
+@MainActor
 final class SidebarFocusCoordinator {
     typealias RouteFocusClaim = UInt64
 
