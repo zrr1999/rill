@@ -102,6 +102,9 @@ extension AppModel {
     guard localSpeechAvailability.isAvailable else {
       return .localUnavailable(localSpeechAvailability)
     }
+    if !trustedLocalSpeechModels.isEmpty {
+      return trustedModelPoolReadiness
+    }
     switch localSpeechPreparationState {
     case .preparing:
       return .localPreparing(progress: localSpeechPreparationProgress)
@@ -113,6 +116,33 @@ extension AppModel {
       }
       if hasRecordedPreparationForSelectedLocalModel {
         return .localPreviouslyPrepared
+      }
+      return .localNeedsPreparation(downloadIfNeeded: true)
+    }
+  }
+
+  /// Trusted-model (model pool) readiness. Pool models are prepared by the
+  /// enable/resident synchronization rather than the legacy warm-up path, so
+  /// a recorded preparation plus pool membership is sufficient — the user
+  /// must not be asked to re-confirm after every relaunch.
+  private var trustedModelPoolReadiness: VoiceSetupProviderReadiness {
+    switch localSpeechPreparationState {
+    case .preparing:
+      return .localPreparing(progress: localSpeechPreparationProgress)
+    case .ready:
+      return .localReady
+    case .idle:
+      if localSpeechPreparationError != nil {
+        return .localPreparationFailed
+      }
+      let selected = selectedTrustedLocalSpeechModelIdentifier
+      guard !selected.isEmpty else {
+        return .localNeedsPreparation(downloadIfNeeded: true)
+      }
+      if enabledSpeechModelIDs.contains(selected),
+        downloadedLocalSpeechModels.contains(selected)
+      {
+        return .localReady
       }
       return .localNeedsPreparation(downloadIfNeeded: true)
     }

@@ -241,6 +241,92 @@ final class VoiceSetupReadinessTests: XCTestCase {
         XCTAssertFalse(exposedText.contains("background-secret"))
         XCTAssertFalse(exposedText.contains("abcdef0123456789"))
     }
+    func testTrustedPoolModelEnabledAndRecordedIsReadyAfterRelaunch() {
+        let descriptor = LocalSpeechModelDescriptor(
+            id: "qwen3-asr-0.6b-mlx-8bit",
+            englishName: "Qwen3-ASR 0.6B",
+            simplifiedChineseName: "Qwen3-ASR 0.6B"
+        )
+        let harness = makeHarness(
+            trustedLocalSpeechModels: [descriptor],
+            defaultLocalSpeechModelIdentifier: descriptor.id,
+            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
+        )
+        harness.model.preferredSpeechEngine = .local
+        harness.model.localSpeechModel = descriptor.id
+        harness.model.enabledSpeechModelIDs = [descriptor.id]
+        harness.model.downloadedLocalSpeechModels = [descriptor.id]
 
+        XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
+        XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localReady)
+        XCTAssertTrue(harness.model.voiceSetupReadiness.isComplete)
+    }
+
+    func testTrustedPoolModelEnabledWithoutRecordStillNeedsPreparation() {
+        let descriptor = LocalSpeechModelDescriptor(
+            id: "qwen3-asr-0.6b-mlx-8bit",
+            englishName: "Qwen3-ASR 0.6B",
+            simplifiedChineseName: "Qwen3-ASR 0.6B"
+        )
+        let harness = makeHarness(
+            trustedLocalSpeechModels: [descriptor],
+            defaultLocalSpeechModelIdentifier: descriptor.id,
+            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
+        )
+        harness.model.preferredSpeechEngine = .local
+        harness.model.localSpeechModel = descriptor.id
+        harness.model.enabledSpeechModelIDs = [descriptor.id]
+
+        XCTAssertEqual(
+            harness.model.voiceSetupReadiness.provider,
+            .localNeedsPreparation(downloadIfNeeded: true)
+        )
+    }
+
+    func testTrustedPoolModelRecordedButNotEnabledStillNeedsPreparation() {
+        let descriptor = LocalSpeechModelDescriptor(
+            id: "qwen3-asr-0.6b-mlx-8bit",
+            englishName: "Qwen3-ASR 0.6B",
+            simplifiedChineseName: "Qwen3-ASR 0.6B"
+        )
+        let harness = makeHarness(
+            trustedLocalSpeechModels: [descriptor],
+            defaultLocalSpeechModelIdentifier: descriptor.id,
+            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
+        )
+        harness.model.preferredSpeechEngine = .local
+        harness.model.localSpeechModel = descriptor.id
+        harness.model.enabledSpeechModelIDs = []
+        harness.model.downloadedLocalSpeechModels = [descriptor.id]
+
+        XCTAssertEqual(
+            harness.model.voiceSetupReadiness.provider,
+            .localNeedsPreparation(downloadIfNeeded: true)
+        )
+    }
+
+    func testTrustedPoolModelReportsLegacyPreparingAndFailureStates() {
+        let descriptor = LocalSpeechModelDescriptor(
+            id: "qwen3-asr-0.6b-mlx-8bit",
+            englishName: "Qwen3-ASR 0.6B",
+            simplifiedChineseName: "Qwen3-ASR 0.6B"
+        )
+        let harness = makeHarness(
+            trustedLocalSpeechModels: [descriptor],
+            defaultLocalSpeechModelIdentifier: descriptor.id,
+            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
+        )
+        harness.model.preferredSpeechEngine = .local
+        harness.model.localSpeechModel = descriptor.id
+        harness.model.enabledSpeechModelIDs = [descriptor.id]
+        harness.model.downloadedLocalSpeechModels = [descriptor.id]
+
+        harness.model.localSpeechPreparationState = .preparing
+        XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreparing(progress: 0))
+
+        harness.model.localSpeechPreparationState = .idle
+        harness.model.localSpeechPreparationError = "failed"
+        XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreparationFailed)
+    }
 
 }
