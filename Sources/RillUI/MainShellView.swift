@@ -179,7 +179,6 @@ public struct MainShellView: View {
     @State private var sidebarFocusCoordinator = SidebarFocusCoordinator()
     private let sidebarFocusTurnWaiter: @MainActor @Sendable () async -> Void
     private static let leadingSections: [SidebarSection] = [.stream]
-    private static let utilitySections: [SidebarSection] = [.settings]
 
     public init(model: AppModel) {
         self.model = model
@@ -226,14 +225,11 @@ public struct MainShellView: View {
                             )
                     }
                 }
-
-                Section {
-                    ForEach(Self.utilitySections) { section in
-                        sidebarSectionRow(section)
-                    }
-                }
             }
             .background(SidebarFocusAnchor(coordinator: sidebarFocusCoordinator))
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                sidebarSettingsFooter
+            }
             .allowsHitTesting(
                 MainShellInteractionPolicy.allowsSidebarInteraction(
                     isGlobalSearchPresented: isGlobalSearchPresented
@@ -765,12 +761,51 @@ extension MainShellView {
     }
 
     private func sidebarWorkflowRow(_ workflow: WorkflowDefinition) -> some View {
-        Label(
-            model.localizedWorkflowName(for: workflow),
-            systemImage: RillSystemSymbol.resolvedName(workflow.ui.symbolName)
+        let name = model.localizedWorkflowName(for: workflow)
+        let sourceBadge = sidebarWorkflowSourceBadge(for: workflow)
+        return HStack(spacing: 8) {
+            Label(
+                name,
+                systemImage: RillSystemSymbol.resolvedName(workflow.ui.symbolName)
+            )
+            if let sourceBadge {
+                Spacer(minLength: 4)
+                Text(sourceBadge.title)
+                    .font(.caption2.weight(.medium))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(sourceBadge.tint.opacity(0.12), in: Capsule())
+                    .foregroundStyle(sourceBadge.tint)
+            }
+        }
+        .accessibilityLabel(
+            sourceBadge.map { "\(name), \($0.title)" } ?? name
         )
-        .accessibilityLabel(model.localizedWorkflowName(for: workflow))
         .accessibilityIdentifier("sidebar.workflow.\(workflow.id.uuidString)")
+    }
+
+    /// Duplicate display names are real user data (two TOML workflows can
+    /// share a name), so a duplicated row carries a small source badge to
+    /// stay distinguishable. Unique names render exactly as before.
+    private func sidebarWorkflowSourceBadge(
+        for workflow: WorkflowDefinition
+    ) -> (title: String, tint: Color)? {
+        let name = model.localizedWorkflowName(for: workflow)
+        guard duplicatedSidebarWorkflowNames.contains(
+            WorkflowNameDuplicationPolicy.normalizedName(name)
+        ) else {
+            return nil
+        }
+        return model.isBuiltInWorkflow(workflow)
+            ? (UIStrings.text(.workflowBuiltIn, language: model.language), .secondary)
+            : (UIStrings.text(.workflowCustom, language: model.language), .accentColor)
+    }
+
+    private var duplicatedSidebarWorkflowNames: Set<String> {
+        WorkflowNameDuplicationPolicy.duplicatedNames(
+            in: model.workflows,
+            language: model.language
+        )
     }
 
     private func sidebarSectionRow(_ section: SidebarSection) -> some View {
@@ -785,6 +820,60 @@ extension MainShellView {
             $accessibilityFocusedSidebarDestination,
             equals: .section(section)
         )
+    }
+
+    /// Settings is a pinned utility destination, not scrollable content, so
+    /// it lives below the list and stays visible while sections scroll.
+    private var sidebarSettingsFooter: some View {
+        let section = SidebarSection.settings
+        let isSelected = model.selectedSidebarSection == section
+        return VStack(spacing: 0) {
+            Divider()
+            Button(action: selectSettingsFromSidebarFooter) {
+                Label(
+                    UIStrings.text(section.titleKey, language: model.language),
+                    systemImage: section.symbolName
+                )
+                .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .rillSelection(isSelected, cornerRadius: RillRadius.badge)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .accessibilityLabel(UIStrings.text(section.titleKey, language: model.language))
+            .accessibilityIdentifier("sidebar.\(section.rawValue)")
+            .accessibilityFocused(
+                $accessibilityFocusedSidebarDestination,
+                equals: .section(section)
+            )
+        }
+    }
+
+    private func selectSettingsFromSidebarFooter() {
+        // Footer selection shares the List pipeline: claim the sidebar
+        // responder before changing the route so replacing the detail cannot
+        // strand keyboard focus.
+        let routeFocusClaim = sidebarFocusCoordinator.claimSidebarFocusForRoute(
+            origin: .list,
+            destination: .section(.settings)
+        )
+        model.selectSidebarSection(.settings)
+        guard let routeFocusClaim else { return }
+        _ = sidebarFocusCoordinator.restoreFocus(
+            routeClaimID: routeFocusClaim,
+            phase: .routeReconciliation
+        )
+        sidebarFocusRequestGeneration &+= 1
+        scheduleOnMainRunLoopInteractiveModes {
+            _ = sidebarFocusCoordinator.restoreFocus(
+                routeClaimID: routeFocusClaim,
+                phase: .protectNewFocus
+            )
+        }
     }
 
     private func collectionRecordCount(_ collectionID: RecordCollectionID) -> Int {

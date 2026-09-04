@@ -107,6 +107,10 @@ extension L10n {
         .workflowLanguageAnyPlaceholder: .init(english: "Language · any", simplifiedChinese: "语言 · 任意"),
         .workflowLivePreviewToggle: .init(english: "Live preview", simplifiedChinese: "实时预览"),
         .workflowModeOutputNodeTitle: .init(english: "Mode & Output", simplifiedChinese: "模式与输出"),
+        .workflowNameTakenError: .init(
+            english: "That name is already used by another workflow. Choose a different name.",
+            simplifiedChinese: "该名称已被其他工作流占用，请换一个名称。"
+        ),
         .workflowNewCollectionPlaceholder: .init(english: "New collection", simplifiedChinese: "新词库名称"),
         .workflowNoAdditionalConditions: .init(
             english: "No additional conditions for this trigger type.",
@@ -135,6 +139,10 @@ extension L10n {
             simplifiedChinese: "选择主要输出目标，并可追加语音朗读。"
         ),
         .workflowPhrasePlaceholder: .init(english: "Phrase", simplifiedChinese: "原词"),
+        .workflowPrivacyShortAutomatic: .init(
+            english: "Cloud may confirm", simplifiedChinese: "可能经云端确认"),
+        .workflowPrivacyShortLocal: .init(
+            english: "Stays on this Mac", simplifiedChinese: "识别留在本机"),
         .workflowPreviewCursor: .init(english: "Cursor", simplifiedChinese: "光标"),
         .workflowPreviewLocationLabel: .init(english: "Preview location", simplifiedChinese: "预览位置"),
         .workflowPreviewOverlay: .init(english: "Overlay", simplifiedChinese: "浮层"),
@@ -255,6 +263,7 @@ enum WorkflowTextKey: String, CaseIterable, Sendable {
     case workflowLanguageAnyPlaceholder
     case workflowLivePreviewToggle
     case workflowModeOutputNodeTitle
+    case workflowNameTakenError
     case workflowNewCollectionPlaceholder
     case workflowNoAdditionalConditions
     case workflowNoVocabularyCollections
@@ -265,6 +274,8 @@ enum WorkflowTextKey: String, CaseIterable, Sendable {
     case workflowOrderedActionsHint
     case workflowOutputPhaseSubtitle
     case workflowPhrasePlaceholder
+    case workflowPrivacyShortAutomatic
+    case workflowPrivacyShortLocal
     case workflowPreviewCursor
     case workflowPreviewLocationLabel
     case workflowPreviewOverlay

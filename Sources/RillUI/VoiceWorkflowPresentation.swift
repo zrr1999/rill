@@ -141,7 +141,7 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
         let output = outputActionID.map { UIStrings.actionName($0, language: language) }
             ?? L10n.string(.voiceModeOutputNone, language: language)
         let privacyLabel = L10n.privacyText(PrivacySettingsTextKey.routeDetailLabel, language: language)
-        let privacy = privacyRouteHint(language: language)
+        let privacy = privacyRouteShortValue(language: language)
 
         switch language {
         case .english:
@@ -165,11 +165,39 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
         return UIStrings.recognizerName(recognizerID, language: language)
     }
 
-    func privacyRouteHint(language: AppLanguage) -> String {
-        if let route = WorkflowEditorDraft.RecognizerChoice(recognizerID: recognizerID) {
-            return L10n.privacySettingsSpeechRouteHint(route, language: language)
+    /// Card-list privacy value: a bare value that reads cleanly after the
+    /// "Privacy:" label in the dense detail line (the settings-style hint
+    /// carries its own label and would double-label here).
+    private func privacyRouteShortValue(language: AppLanguage) -> String {
+        let route = WorkflowEditorDraft.RecognizerChoice(recognizerID: recognizerID) ?? .localSpeech
+        switch route {
+        case .automatic:
+            return L10n.workflowText(.workflowPrivacyShortAutomatic, language: language)
+        case .localSpeech:
+            return L10n.workflowText(.workflowPrivacyShortLocal, language: language)
         }
-        return L10n.privacySettingsSpeechRouteHint(.localSpeech, language: language)
+    }
+}
+
+/// Duplicate workflow display names are legal (user TOML files are data, not
+/// dirt), so navigation UI disambiguates them with a source badge instead of
+/// renaming anything. Both the badge and `saveWorkflowDraft` name handling
+/// judge names on the same normalized display string the sidebar renders.
+enum WorkflowNameDuplicationPolicy {
+    static func normalizedName(_ name: String) -> String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func duplicatedNames(
+        in workflows: [WorkflowDefinition],
+        language: AppLanguage
+    ) -> Set<String> {
+        var counts: [String: Int] = [:]
+        for workflow in workflows {
+            let displayName = UIStrings.workflowName(workflow.presentation, language: language)
+            counts[normalizedName(displayName), default: 0] += 1
+        }
+        return Set(counts.filter { $0.value > 1 }.map(\.key))
     }
 }
 

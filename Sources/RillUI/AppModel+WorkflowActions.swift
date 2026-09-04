@@ -1121,12 +1121,29 @@ extension AppModel {
       return
     }
 
+    let resolvedName: String
+    if let workflowID {
+      resolvedName = trimmedName
+      // Renaming onto another workflow's name is an explicit error; edits
+      // that keep the current name (even a duplicated one) save as-is.
+      let isRename = workflows.first(where: { $0.id == workflowID }).map {
+        WorkflowNameDuplicationPolicy.normalizedName(localizedWorkflowName(for: $0))
+          != WorkflowNameDuplicationPolicy.normalizedName(trimmedName)
+      } ?? true
+      if isRename, workflowNameIsTaken(trimmedName, excluding: workflowID) {
+        workflowEditorError = L10n.workflowText(.workflowNameTakenError, language: language)
+        return
+      }
+    } else {
+      resolvedName = uniqueWorkflowName(for: trimmedName)
+    }
+
     let existingMetadata = workflowID.flatMap { id in
       customWorkflows.first(where: { $0.id == id })?.metadata
         ?? builtInWorkflows.first(where: { $0.id == id })?.metadata
     } ?? [:]
     var sanitizedDraft = draft
-    sanitizedDraft.name = trimmedName
+    sanitizedDraft.name = resolvedName
     if let validationError = sanitizedDraft.outputValidationError(language: language) {
       workflowEditorError = validationError
       return
@@ -1217,6 +1234,32 @@ extension AppModel {
         workflow.name
       )
     )
+  }
+
+  private func workflowNameIsTaken(_ name: String, excluding workflowID: UUID) -> Bool {
+    let normalized = WorkflowNameDuplicationPolicy.normalizedName(name)
+    return workflows.contains { candidate in
+      candidate.id != workflowID
+        && WorkflowNameDuplicationPolicy.normalizedName(localizedWorkflowName(for: candidate))
+          == normalized
+    }
+  }
+
+  private func uniqueWorkflowName(for baseName: String) -> String {
+    let takenNames = Set(
+      workflows.map {
+        WorkflowNameDuplicationPolicy.normalizedName(localizedWorkflowName(for: $0))
+      }
+    )
+    guard takenNames.contains(WorkflowNameDuplicationPolicy.normalizedName(baseName)) else {
+      return baseName
+    }
+    var suffix = 2
+    while takenNames.contains(WorkflowNameDuplicationPolicy.normalizedName("\(baseName) \(suffix)"))
+    {
+      suffix += 1
+    }
+    return "\(baseName) \(suffix)"
   }
 
   public func deleteCustomWorkflow(_ workflow: WorkflowDefinition) async {

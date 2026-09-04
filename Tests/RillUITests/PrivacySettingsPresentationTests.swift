@@ -372,7 +372,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
 
         let detail = VoiceWorkflowPresentation(workflow: workflow).detail(language: .english)
 
-        XCTAssertTrue(detail.contains("Privacy: Local route: recognition stays on this Mac."))
+        XCTAssertTrue(detail.contains("Privacy: Stays on this Mac"))
     }
 }
 

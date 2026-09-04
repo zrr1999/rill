@@ -307,6 +307,86 @@ extension AppModelTests {
         XCTAssertTrue(removedLibrary.customWorkflows.isEmpty)
     }
 
+    func testNewWorkflowWithDuplicateNameGetsNumericSuffix() async throws {
+        let existing = makeNamedWorkflow("Speech Recognition")
+        let harness = makeHarness(workflows: [existing])
+        await harness.model.waitForInitialVoiceConfiguration()
+
+        await harness.model.saveWorkflowDraft(
+            WorkflowEditorDraft(
+                name: "Speech Recognition",
+                recognizer: .localSpeech,
+                postProcessSteps: [.init(kind: .normalizeWhitespace)],
+                destination: .copyToClipboard
+            )
+        )
+
+        XCTAssertNil(harness.model.workflowEditorError)
+        XCTAssertEqual(harness.model.customWorkflows.map(\.name), ["Speech Recognition 2"])
+
+        await harness.model.saveWorkflowDraft(
+            WorkflowEditorDraft(
+                name: "Speech Recognition",
+                recognizer: .localSpeech,
+                postProcessSteps: [.init(kind: .normalizeWhitespace)],
+                destination: .copyToClipboard
+            )
+        )
+
+        XCTAssertNil(harness.model.workflowEditorError)
+        XCTAssertEqual(
+            harness.model.customWorkflows.map(\.name),
+            ["Speech Recognition 3", "Speech Recognition 2"]
+        )
+    }
+
+    func testRenamingWorkflowOntoExistingNameReportsError() async throws {
+        let alpha = makeNamedWorkflow("Alpha")
+        let beta = makeNamedWorkflow("Beta")
+        let harness = makeHarness(workflows: [alpha, beta])
+        await harness.model.waitForInitialVoiceConfiguration()
+
+        var draft = try XCTUnwrap(WorkflowEditorDraft(workflow: beta))
+        draft.name = "Alpha"
+        await harness.model.saveWorkflowDraft(draft, editing: beta.id)
+
+        XCTAssertEqual(
+            harness.model.workflowEditorError,
+            L10n.workflowText(.workflowNameTakenError, language: harness.model.language)
+        )
+        XCTAssertTrue(harness.model.customWorkflows.isEmpty)
+        XCTAssertEqual(harness.model.workflows.map(\.name), ["Alpha", "Beta"])
+    }
+
+    func testEditingWorkflowWithoutNameChangeKeepsSaving() async throws {
+        let first = makeNamedWorkflow("Speech Recognition")
+        let second = makeNamedWorkflow("Speech Recognition")
+        let harness = makeHarness(workflows: [first, second])
+        await harness.model.waitForInitialVoiceConfiguration()
+
+        // The duplicated name is pre-existing user data; an edit that does
+        // not rename the workflow must not be blocked by it.
+        var draft = try XCTUnwrap(WorkflowEditorDraft(workflow: second))
+        draft.destination = .copyToClipboard
+        await harness.model.saveWorkflowDraft(draft, editing: second.id)
+
+        XCTAssertNil(harness.model.workflowEditorError)
+        XCTAssertEqual(harness.model.customWorkflows.map(\.name), ["Speech Recognition"])
+    }
+
+    private func makeNamedWorkflow(_ name: String) -> WorkflowDefinition {
+        WorkflowDefinition(
+            name: name,
+            trigger: .manual,
+            pipeline: PipelineDeclaration(
+                recognizerID: AppModel.localSpeechRecognizerID,
+                postProcessSteps: [PostProcessStep(kind: .normalizeWhitespace)],
+                outputActions: [OutputActionReference(id: "system-clipboard.copy")]
+            ),
+            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
+        )
+    }
+
     func testTOMLStoreIsSourceOfTruthForVisualSaveAndDelete() async throws {
         let settingsStore = UITestSettingsStore()
         let workflowFileStore = UITestWorkflowFileStore()

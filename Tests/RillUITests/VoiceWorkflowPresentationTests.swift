@@ -329,4 +329,56 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
             "原子追加到现有文件夹中的 Obsidian 兼容笔记；拒绝链接路径和超过 64 MiB 的文件。"
         )
     }
+
+    func testDuplicatedNamesReturnsOnlyRepeatedDisplayNames() {
+        let duplicated = WorkflowNameDuplicationPolicy.duplicatedNames(
+            in: [
+                makeWorkflowDefinition(name: "Speech Recognition"),
+                makeWorkflowDefinition(name: "Speech Recognition"),
+                makeWorkflowDefinition(name: "Polish Draft"),
+            ],
+            language: .english
+        )
+
+        XCTAssertEqual(
+            duplicated,
+            [WorkflowNameDuplicationPolicy.normalizedName("Speech Recognition")]
+        )
+    }
+
+    func testDuplicatedNamesNormalizesCaseAndWhitespace() {
+        let duplicated = WorkflowNameDuplicationPolicy.duplicatedNames(
+            in: [
+                makeWorkflowDefinition(name: "Speech Recognition"),
+                makeWorkflowDefinition(name: "  speech recognition  "),
+            ],
+            language: .english
+        )
+
+        XCTAssertEqual(duplicated, ["speech recognition"])
+    }
+
+    func testDuplicatedNamesIsEmptyWhenAllNamesAreUnique() {
+        XCTAssertTrue(
+            WorkflowNameDuplicationPolicy.duplicatedNames(
+                in: [
+                    makeWorkflowDefinition(name: "Alpha"),
+                    makeWorkflowDefinition(name: "Beta"),
+                ],
+                language: .english
+            ).isEmpty
+        )
+    }
+
+    private func makeWorkflowDefinition(name: String) -> WorkflowDefinition {
+        WorkflowDefinition(
+            name: name,
+            trigger: .manual,
+            pipeline: PipelineDeclaration(
+                recognizerID: "sherpa-onnx.local",
+                outputActions: []
+            ),
+            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
+        )
+    }
 }
