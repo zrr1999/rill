@@ -1096,8 +1096,11 @@ extension AppModel {
   }
 
   public var editableBuiltInWorkflows: [WorkflowDefinition] {
-    builtInWorkflows.map { builtInWorkflow in
-      workflows.first(where: { $0.id == builtInWorkflow.id }) ?? builtInWorkflow
+    // Shadowed built-ins (replaced by a same-named custom) stay hidden until
+    // the custom is deleted; only built-ins present in the effective library
+    // are editable surfaces.
+    builtInWorkflows.compactMap { builtInWorkflow in
+      workflows.first(where: { $0.id == builtInWorkflow.id })
     }
   }
 
@@ -1236,21 +1239,23 @@ extension AppModel {
     )
   }
 
+  // Only custom names are reserved for true customs: naming a custom
+  // workflow after a built-in shadows that built-in (see
+  // rebuildWorkflowLibrary), so a built-in name must not trigger a suffix or
+  // an error. Editing a built-in (an ID-override) cannot shadow anything, so
+  // every other visible name stays reserved for it.
   private func workflowNameIsTaken(_ name: String, excluding workflowID: UUID) -> Bool {
     let normalized = WorkflowNameDuplicationPolicy.normalizedName(name)
-    return workflows.contains { candidate in
+    let candidates =
+      builtInWorkflows.contains(where: { $0.id == workflowID }) ? workflows : customWorkflows
+    return candidates.contains { candidate in
       candidate.id != workflowID
-        && WorkflowNameDuplicationPolicy.normalizedName(localizedWorkflowName(for: candidate))
-          == normalized
+        && workflowShadowNameKeys(candidate).contains(normalized)
     }
   }
 
   private func uniqueWorkflowName(for baseName: String) -> String {
-    let takenNames = Set(
-      workflows.map {
-        WorkflowNameDuplicationPolicy.normalizedName(localizedWorkflowName(for: $0))
-      }
-    )
+    let takenNames = Set(customWorkflows.flatMap(workflowShadowNameKeys))
     guard takenNames.contains(WorkflowNameDuplicationPolicy.normalizedName(baseName)) else {
       return baseName
     }

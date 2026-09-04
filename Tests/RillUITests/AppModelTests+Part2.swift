@@ -308,8 +308,7 @@ extension AppModelTests {
     }
 
     func testNewWorkflowWithDuplicateNameGetsNumericSuffix() async throws {
-        let existing = makeNamedWorkflow("Speech Recognition")
-        let harness = makeHarness(workflows: [existing])
+        let harness = makeHarness()
         await harness.model.waitForInitialVoiceConfiguration()
 
         await harness.model.saveWorkflowDraft(
@@ -322,7 +321,7 @@ extension AppModelTests {
         )
 
         XCTAssertNil(harness.model.workflowEditorError)
-        XCTAssertEqual(harness.model.customWorkflows.map(\.name), ["Speech Recognition 2"])
+        XCTAssertEqual(harness.model.customWorkflows.map(\.name), ["Speech Recognition"])
 
         await harness.model.saveWorkflowDraft(
             WorkflowEditorDraft(
@@ -336,7 +335,7 @@ extension AppModelTests {
         XCTAssertNil(harness.model.workflowEditorError)
         XCTAssertEqual(
             harness.model.customWorkflows.map(\.name),
-            ["Speech Recognition 3", "Speech Recognition 2"]
+            ["Speech Recognition 2", "Speech Recognition"]
         )
     }
 
@@ -460,6 +459,67 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.editableBuiltInWorkflows.map(\.name), [builtInWorkflow.name])
         XCTAssertEqual(harness.model.workflows.map(\.id), [builtInWorkflow.id])
         XCTAssertFalse(harness.model.canRestoreBuiltInWorkflow(builtInWorkflow))
+    }
+
+    func testCustomWorkflowSharingBuiltInNameShadowsBuiltInUntilDeleted() async throws {
+        let builtInWorkflow = makeBuiltinPushToTalkWorkflow()
+        let workflowFileStore = UITestWorkflowFileStore()
+        let harness = makeHarness(
+            workflows: [builtInWorkflow],
+            workflowFileStore: workflowFileStore
+        )
+        await harness.model.waitForInitialVoiceConfiguration()
+        XCTAssertEqual(harness.model.workflows.map(\.id), [builtInWorkflow.id])
+
+        var draft = harness.model.defaultWorkflowDraft()
+        draft.name = "Accurate Transcription"  // English display name of the built-in
+        await harness.model.saveWorkflowDraft(draft)
+
+        let custom = try XCTUnwrap(harness.model.customWorkflows.first)
+        XCTAssertNotEqual(custom.id, builtInWorkflow.id)
+        // The built-in is shadowed everywhere instead of listed twice.
+        XCTAssertEqual(harness.model.workflows.map(\.id), [custom.id])
+        XCTAssertTrue(harness.model.editableBuiltInWorkflows.isEmpty)
+        XCTAssertFalse(harness.model.isBuiltInWorkflow(custom))
+
+        await harness.model.deleteCustomWorkflow(custom)
+
+        XCTAssertEqual(harness.model.workflows.map(\.id), [builtInWorkflow.id])
+        XCTAssertEqual(harness.model.editableBuiltInWorkflows.map(\.id), [builtInWorkflow.id])
+    }
+
+    func testCustomWorkflowMatchingBuiltInChineseDisplayNameShadowsIt() async throws {
+        let builtInWorkflow = makeBuiltinPushToTalkWorkflow()
+        let harness = makeHarness(workflows: [builtInWorkflow])
+        await harness.model.waitForInitialVoiceConfiguration()
+
+        var draft = harness.model.defaultWorkflowDraft()
+        draft.name = "精准转写"  // Simplified Chinese display name of the built-in
+        await harness.model.saveWorkflowDraft(draft)
+
+        XCTAssertEqual(harness.model.customWorkflows.count, 1)
+        XCTAssertEqual(harness.model.workflows.map(\.name), ["精准转写"])
+    }
+
+    func testCustomWorkflowSharingNameWithAnotherCustomStillGetsNumericSuffix() async throws {
+        let builtInWorkflow = makeBuiltinPushToTalkWorkflow()
+        let harness = makeHarness(workflows: [builtInWorkflow])
+        await harness.model.waitForInitialVoiceConfiguration()
+
+        var first = harness.model.defaultWorkflowDraft()
+        first.name = "Accurate Transcription"
+        await harness.model.saveWorkflowDraft(first)
+        var second = harness.model.defaultWorkflowDraft()
+        second.name = "Accurate Transcription"
+        await harness.model.saveWorkflowDraft(second)
+
+        XCTAssertEqual(
+            harness.model.customWorkflows.map(\.name).sorted(),
+            ["Accurate Transcription", "Accurate Transcription 2"]
+        )
+        // The built-in stays shadowed by the first custom.
+        XCTAssertEqual(harness.model.workflows.count, 2)
+        XCTAssertFalse(harness.model.workflows.contains { $0.id == builtInWorkflow.id })
     }
 
     func testEmptyTOMLDirectoryMigratesAndVerifiesLegacyWorkflowLibrary() async throws {

@@ -2840,14 +2840,38 @@ extension AppModel {
       .sorted {
         $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
       }
-    let effectiveBuiltInWorkflows = builtInWorkflows.map {
-      builtInOverridesByID[$0.id] ?? $0
+    // A custom workflow sharing a built-in's display name shadows that
+    // built-in: listing both would read as duplication. The built-in returns
+    // when the custom is deleted. Matching covers every localized display
+    // variant so the result does not depend on the UI language.
+    let customShadowNameKeys = Set(sortedCustomWorkflows.flatMap(workflowShadowNameKeys))
+    let effectiveBuiltInWorkflows = builtInWorkflows.compactMap {
+      builtIn -> WorkflowDefinition? in
+      if let override = builtInOverridesByID[builtIn.id] { return override }
+      guard workflowShadowNameKeys(builtIn).isDisjoint(with: customShadowNameKeys) else {
+        return nil
+      }
+      return builtIn
     }
     workflows = (sortedCustomWorkflows + effectiveBuiltInWorkflows).map {
       workflowApplyingVocabularyCustomization($0)
     }
     synchronizeWorkflowEnabledStates()
     workflowLibraryChangedAction()
+  }
+
+  /// Every display name a workflow can be known by — raw name plus both
+  /// localized title-key variants — normalized for collision matching.
+  func workflowShadowNameKeys(_ workflow: WorkflowDefinition) -> Set<String> {
+    [
+      WorkflowNameDuplicationPolicy.normalizedName(workflow.name),
+      WorkflowNameDuplicationPolicy.normalizedName(
+        UIStrings.workflowName(workflow.presentation, language: .english)
+      ),
+      WorkflowNameDuplicationPolicy.normalizedName(
+        UIStrings.workflowName(workflow.presentation, language: .simplifiedChinese)
+      ),
+    ]
   }
 
   private func workflowApplyingVocabularyCustomization(
