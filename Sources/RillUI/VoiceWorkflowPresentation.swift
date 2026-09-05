@@ -180,24 +180,11 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
 }
 
 /// Duplicate workflow display names are legal (user TOML files are data, not
-/// dirt), so navigation UI disambiguates them with a source badge instead of
-/// renaming anything. Both the badge and `saveWorkflowDraft` name handling
-/// judge names on the same normalized display string the sidebar renders.
+/// dirt). Naming rules in `saveWorkflowDraft` and the built-in shadowing in
+/// `rebuildWorkflowLibrary` judge names on this same normalized string.
 enum WorkflowNameDuplicationPolicy {
     static func normalizedName(_ name: String) -> String {
         name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
-
-    static func duplicatedNames(
-        in workflows: [WorkflowDefinition],
-        language: AppLanguage
-    ) -> Set<String> {
-        var counts: [String: Int] = [:]
-        for workflow in workflows {
-            let displayName = UIStrings.workflowName(workflow.presentation, language: language)
-            counts[normalizedName(displayName), default: 0] += 1
-        }
-        return Set(counts.filter { $0.value > 1 }.map(\.key))
     }
 }
 

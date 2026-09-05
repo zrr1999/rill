@@ -215,15 +215,8 @@ public struct MainShellView: View {
                     }
                 }
 
-                Section(UIStrings.text(.sidebarWorkflows, language: model.language)) {
-                    ForEach(model.workflows) { workflow in
-                        sidebarWorkflowRow(workflow)
-                            .tag(SidebarDestination.workflow(workflow.id))
-                            .accessibilityFocused(
-                                $accessibilityFocusedSidebarDestination,
-                                equals: .workflow(workflow.id)
-                            )
-                    }
+                Section {
+                    sidebarSectionRow(.workflows)
                 }
             }
             .background(SidebarFocusAnchor(coordinator: sidebarFocusCoordinator))
@@ -473,12 +466,6 @@ extension MainShellView {
             let collectionID = model.recordWorkspace.selectedCollectionID
         {
             return .recordCollection(collectionID)
-        }
-        if model.selectedSidebarSection == .workflows,
-            let workflowID = model.workflowEditorNavigationRequest?.workflowID,
-            model.workflows.contains(where: { $0.id == workflowID })
-        {
-            return .workflow(workflowID)
         }
         return .section(model.selectedSidebarSection)
     }
@@ -758,54 +745,6 @@ extension MainShellView {
         }
         .accessibilityLabel(collection.name)
         .accessibilityIdentifier("sidebar.record-collection.\(collection.id.rawValue.uuidString)")
-    }
-
-    private func sidebarWorkflowRow(_ workflow: WorkflowDefinition) -> some View {
-        let name = model.localizedWorkflowName(for: workflow)
-        let sourceBadge = sidebarWorkflowSourceBadge(for: workflow)
-        return HStack(spacing: 8) {
-            Label(
-                name,
-                systemImage: RillSystemSymbol.resolvedName(workflow.ui.symbolName)
-            )
-            if let sourceBadge {
-                Spacer(minLength: 4)
-                Text(sourceBadge.title)
-                    .font(.caption2.weight(.medium))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(sourceBadge.tint.opacity(0.12), in: Capsule())
-                    .foregroundStyle(sourceBadge.tint)
-            }
-        }
-        .accessibilityLabel(
-            sourceBadge.map { "\(name), \($0.title)" } ?? name
-        )
-        .accessibilityIdentifier("sidebar.workflow.\(workflow.id.uuidString)")
-    }
-
-    /// Duplicate display names are real user data (two TOML workflows can
-    /// share a name), so a duplicated row carries a small source badge to
-    /// stay distinguishable. Unique names render exactly as before.
-    private func sidebarWorkflowSourceBadge(
-        for workflow: WorkflowDefinition
-    ) -> (title: String, tint: Color)? {
-        let name = model.localizedWorkflowName(for: workflow)
-        guard duplicatedSidebarWorkflowNames.contains(
-            WorkflowNameDuplicationPolicy.normalizedName(name)
-        ) else {
-            return nil
-        }
-        return model.isBuiltInWorkflow(workflow)
-            ? (UIStrings.text(.workflowBuiltIn, language: model.language), .secondary)
-            : (UIStrings.text(.workflowCustom, language: model.language), .accentColor)
-    }
-
-    private var duplicatedSidebarWorkflowNames: Set<String> {
-        WorkflowNameDuplicationPolicy.duplicatedNames(
-            in: model.workflows,
-            language: model.language
-        )
     }
 
     private func sidebarSectionRow(_ section: SidebarSection) -> some View {
