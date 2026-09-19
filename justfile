@@ -4,12 +4,12 @@ default:
 
 # Install the pre-commit and commit-message hooks.
 install:
-    uvx prek==0.3.10 install --install-hooks --hook-type pre-commit --hook-type commit-msg
+    uvx prek==0.5.3 install --prepare-hooks --hook-type pre-commit --hook-type commit-msg
 
-# Run every repository quality hook.
+# Run maintained formatting and configuration hooks.
 check:
-    uvx prek==0.3.10 validate-config prek.toml
-    uvx prek==0.3.10 -c prek.toml run --all-files
+    uvx prek==0.5.3 validate-config prek.toml
+    uvx prek==0.5.3 -c prek.toml run --all-files
 
 # Run the locked Swift test suite.
 test:

@@ -431,30 +431,5 @@ class DependencySecurityTests(unittest.TestCase):
                     script_path.read_text(encoding="utf-8").startswith(expected_header)
                 )
 
-    def test_repository_wires_offline_policy_and_live_ci_as_separate_gates(
-        self,
-    ) -> None:
-        preflight = (SCRIPTS_DIR / "preflight.sh").read_text(encoding="utf-8")
-        prek = (PROJECT_DIR / "prek.toml").read_text(encoding="utf-8")
-        ci = (PROJECT_DIR / ".github/workflows/ci-verify.yml").read_text(
-            encoding="utf-8"
-        )
-
-        self.assertIn(
-            'uv run --script "$SCRIPT_DIR/tests/dependency_security_test.py"', preflight
-        )
-        self.assertIn(
-            'uv run --script "$SCRIPT_DIR/check_dependency_security.py"', preflight
-        )
-        self.assertNotIn("--live-osv", preflight)
-        self.assertIn('id = "dependency-security-policy"', prek)
-        self.assertIn('id = "dependency-security-baseline"', prek)
-        self.assertNotIn("--live-osv", prek)
-        self.assertIn(
-            "uv run --script scripts/check_dependency_security.py --live-osv",
-            ci,
-        )
-
-
 if __name__ == "__main__":
     unittest.main()

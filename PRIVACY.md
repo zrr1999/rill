@@ -1,12 +1,12 @@
 # Rill Technical Privacy and Data Flow Notice
 
-Last updated: 2026-07-26
+Last updated: 2026-09-19
 
 This notice describes the data behavior of the current Rill build. It is a technical product disclosure, not a substitute for any formal legal privacy policy that may be required for a future distribution channel.
 
 ## Data processed by Rill
 
-Rill processes microphone audio only while a voice capture is active. Depending on the workflow and privacy settings, it may also process selected text, stored clipboard items, scoped vocabulary terms, workflow configuration, delivery results, and content-free diagnostic or run-receipt metadata.
+Rill processes microphone audio during explicit voice capture. Wake-word listening is off by default; enabling it keeps a local microphone/VAD/ASR path active until listening is stopped. Model preloading alone does not acquire the microphone. Depending on the workflow and privacy settings, it may also process selected text, stored clipboard items, scoped vocabulary terms, workflow configuration, delivery results, and content-free diagnostic or run-receipt metadata.
 
 Clipboard monitoring can capture allowed text, images, and copied-file references. Rill skips capture when Secure Input, an unknown focus boundary, a configured sensitive application, a protected pasteboard type, or an explicit capture-exclusion tag requires it to fail closed.
 
@@ -14,7 +14,7 @@ Rill does not operate an analytics or advertising endpoint in this build. Saniti
 
 ## Network destinations
 
-- **sherpa-onnx local speech:** the public build exposes and downloads exactly one local model, Qwen3-ASR 0.6B INT8. When a user prepares it, Rill downloads only the catalog-pinned HTTPS archive from `github.com`; redirects are restricted to `github.com`, `objects.githubusercontent.com`, and `release-assets.githubusercontent.com`. The ephemeral download session uses no cookies, credential storage, or cache, and removes `Authorization` and `Cookie` headers on redirects. Model download sends no microphone audio or recognized text. Rill verifies the exact archive byte count and SHA-256 digest before extraction, rejects unsafe archive entries, verifies the canonical inventory of every installed regular file, and atomically publishes a private model directory. Recognition from that directory then runs on this Mac without sending microphone audio or recognized text to the model hosts. The source tree retains a pinned SenseVoiceSmall INT8 identity only for internal compatibility and future evaluation; the public build does not expose, select, recommend, or download it pending product and legal review.
+- **Local MLX speech and synthesis:** Rill downloads catalog-pinned Qwen ASR, Qwen TTS, and Silero VAD model files from Hugging Face and its download storage when preparing an enabled model. The ASR catalog offers Qwen3-ASR 0.6B 8bit and 1.7B 8bit. Repository revisions, retained file sizes, and SHA-256 digests are checked before publishing a private local model directory. Model downloads send no microphone audio or recognized text. Recognition, wake-phrase matching, and local speech synthesis run on this Mac after preparation; system speech may be used as the documented synthesis fallback.
 - **OpenAI Responses API-compatible cloud text workflows:** when the user explicitly selects an enabled built-in or custom voice workflow containing an LLM rewrite step, has supplied a readable API key, confirms cloud text processing when required, and the active privacy policy permits the run, Rill sends the API key, final transcript text, and that workflow step's instruction to the configured Responses API endpoint. It does not send microphone audio, selected text, clipboard text, application names, or bundle identifiers. The request is non-streaming and sets `store: false`; that request setting is not a promise that the endpoint operator keeps no security, abuse-monitoring, billing, or operational records. The configured endpoint operator's terms and data controls govern data after it reaches the service. Rill cannot inspect or delete provider-side records.
 - **Apple Shortcuts:** a workflow can hand final text to a user-selected Shortcut. The Shortcut, its actions, and any services it contacts are controlled by the user and are outside Rill's ability to inspect.
 - **Markdown file output:** a workflow can append final text to a local Markdown path selected by the user. Rill does not upload that file. Appends use a same-directory atomic transaction and reject linked paths, multiply linked files, non-UTF-8 content, and files over 64 MiB.
@@ -29,7 +29,7 @@ Clipboard history and run/diagnostic history default to 30 days. The user can in
 
 Failed-audio recovery is off by default. If explicitly enabled, eligible pre-delivery failures can be stored encrypted for at most 24 hours, with a maximum of 3 entries, 16 MiB per entry, and 32 MiB total. Recovery controls allow individual deletion or clearing all retained failed recordings.
 
-Downloaded trusted speech models remain under `~/Library/Application Support/Rill/Models/sherpa-onnx`. The public build can prepare only the approximately 879 MB Qwen3-ASR 0.6B INT8 archive. It stores one verified extracted tree and removes the temporary download archive after installation; the extracted tree requires additional space. A SenseVoiceSmall tree prepared by an internal development build can remain in the same parent directory, but the public build does not select or download it. This build has no in-app control to reveal or delete those files. Removing the App does not automatically remove the model directories. Model files do not contain the user's recordings or transcripts.
+Downloaded ASR models remain under `~/Library/Application Support/Rill/Models/mlx-audio-swift`; synthesis models and Hugging Face download caches use their own Rill-managed model/cache directories. The ASR catalog currently requires approximately 1.01 GB for the 0.6B model or 2.46 GB for the 1.7B model, plus temporary download/cache space. Old sherpa-onnx directories can remain after an upgrade but are not the current recognition runtime. Removing the App does not automatically remove downloaded models or caches. Model weights do not contain the user's recordings or transcripts.
 
 ## Your controls
 
@@ -51,13 +51,13 @@ This notice covers Rill's current behavior only. macOS, OpenAI, Apple Shortcuts,
 
 # Rill 技术隐私与数据流说明
 
-更新日期：2026-07-26
+更新日期：2026-09-19
 
 本文说明当前 Rill 构建的数据行为，是面向产品的技术披露；它不替代未来分发渠道可能要求的正式法律隐私政策。
 
 ## Rill 处理的数据
 
-Rill 只在语音采集处于活动状态时处理麦克风音频。根据工作流和隐私设置，它还可能处理选中文本、已保存的剪贴板条目、作用域词汇、工作流配置、投递结果，以及不含正文的诊断与运行收据元数据。
+Rill 在用户发起语音采集时处理麦克风音频。唤醒词监听默认关闭；开启后，本地麦克风、VAD 和 ASR 路径会持续工作，直到用户停止监听。仅预加载模型不会占用麦克风。根据工作流和隐私设置，它还可能处理选中文本、已保存的剪贴板条目、作用域词汇、工作流配置、投递结果，以及不含正文的诊断与运行收据元数据。
 
 剪贴板监听可捕获策略允许的文本、图片和复制文件引用。遇到 Secure Input、未知焦点边界、已配置的敏感 App、受保护的粘贴板类型或明确的捕获排除标签时，Rill 会采用 fail-closed 策略跳过捕获。
 
@@ -65,7 +65,7 @@ Rill 只在语音采集处于活动状态时处理麦克风音频。根据工作
 
 ## 网络目的地
 
-- **sherpa-onnx 本地语音：**公开构建只暴露和下载一款本地模型：Qwen3-ASR 0.6B INT8。用户准备该模型时，Rill 只会从 `github.com` 下载目录中固定的 HTTPS 归档；重定向仅允许前往 `github.com`、`objects.githubusercontent.com` 和 `release-assets.githubusercontent.com`。临时下载会话不使用 Cookie、凭据存储或缓存，并会在重定向时移除 `Authorization` 与 `Cookie` 请求头。模型下载不会发送麦克风音频或识别文本。Rill 会在解压前校验归档的精确字节数和 SHA-256，拒绝不安全的归档条目，校验每个已安装普通文件的规范清单，并把私有模型目录原子发布；之后从该目录进行的识别完全在本机运行，不会把麦克风音频或识别文本发送给模型 host。源码仍保留固定的 SenseVoiceSmall INT8 身份，仅用于内部兼容和未来评估；在产品与法律审核完成前，公开构建不会暴露、选择、推荐或下载该模型。
+- **MLX 本地语音识别与合成：**准备已启用的模型时，Rill 从 Hugging Face 及其下载存储获取目录中固定版本的 Qwen ASR、Qwen TTS 和 Silero VAD 文件。ASR 目录提供 Qwen3-ASR 0.6B 8bit 和 1.7B 8bit。程序在发布私有本地模型目录前核对仓库 revision、保留文件大小及 SHA-256。模型下载不发送麦克风音频或识别文本。准备完成后，识别、唤醒词匹配和本地语音合成在本机运行；合成路径可按产品说明回退到系统语音。
 - **OpenAI-compatible 云端文本工作流：**只有用户主动选择已启用、包含大模型改写步骤的内置或自定义语音工作流，提供的 API Key 可读取，在需要时确认云端文本处理且当前隐私策略允许运行，Rill 才会把 API Key、最终转写正文和对应工作流步骤指令发送到已配置的 Responses API 地址。请求不包含麦克风音频、选中文本、剪贴板正文、App 名或 bundle ID。请求采用非流式并设置 `store: false`；该请求参数不等于地址运营方不保留任何安全、滥用监测、计费或运行记录。数据到达服务后适用地址运营方的服务条款和数据控制，Rill 无法检查或删除 provider 侧记录。
 - **Apple 快捷指令：**工作流可把最终文本交给用户选择的快捷指令。快捷指令的动作及其访问的服务由用户控制，Rill 无法检查其后续行为。
 - **Markdown 文件输出：**工作流可把最终文本追加到用户选择的本地 Markdown 路径；Rill 不会上传该文件。追加使用同目录原子事务，并拒绝链接路径、多重硬链接、非 UTF-8 内容和超过 64 MiB 的文件。
@@ -80,7 +80,7 @@ Rill 在用户的 Application Support 区域保存设置、剪贴板状态、运
 
 失败录音恢复默认关闭。明确开启后，符合条件的投递前失败录音可加密保留最多 24 小时，最多 3 条、单条 16 MiB、总计 32 MiB；用户可逐条删除或清空全部恢复录音。
 
-已下载的可信语音模型会留在 `~/Library/Application Support/Rill/Models/sherpa-onnx`。公开构建只能准备大小约 879 MB 的 Qwen3-ASR 0.6B INT8 归档；安装后会保存一棵经过校验的解压目录、删除临时下载归档，解压目录还需要更多空间。内部开发构建曾准备的 SenseVoiceSmall 目录可能仍留在同一父目录，但公开构建不会选择或下载它。当前构建没有在 App 内显示位置或删除模型文件的控制；移除 App 也不会自动删除这些模型目录。模型文件不包含用户录音或转写正文。
+ASR 模型保存在 `~/Library/Application Support/Rill/Models/mlx-audio-swift`；语音合成模型和 Hugging Face 下载缓存使用各自的 Rill 模型／缓存目录。当前 ASR 目录中的 0.6B 模型约需 1.01 GB，1.7B 模型约需 2.46 GB，下载时还需要临时文件和缓存空间。升级后旧 sherpa-onnx 目录可能仍然存在，但当前识别不使用它。移除 App 不会自动删除模型和缓存；模型权重不包含用户录音或转写正文。
 
 ## 用户控制
 

@@ -99,6 +99,9 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 - macOS 14.0 (Sonoma) 或更高版本，仅支持 Apple Silicon（arm64）；发布产物必须是单一 arm64 slice
 - 原生 MLX 本地 runtime 随 arm64 App 提供；每个候选版本必须在声明支持的 Apple Silicon 硬件上完成录音、模型准备和转写验收
 - 可选的 Qwen3-ASR 1.7B 8bit 使用随辅助进程编译的原生 mlx-audio-swift 0.1.3 与 MLX/Metal GPU；用户无需安装 Python 或 `uv`，该路径不使用 ANE/NPU
+
+源码开发还需要：
+
 - Xcode 26 或更高版本，并选择包含 Swift 6.2+ 的 Command Line Tools；本地
   默认开发工具链为 Xcode 27
 - 从源码生成发布包还需要与当前 Xcode 兼容的独立 Metal Toolchain；可用 `xcodebuild -downloadComponent MetalToolchain` 安装，并用 `xcrun metal -v` 验证。不要强制 `--toolchain XcodeDefault`，否则 `xcrun` 会排除已下载并挂载的 Metal Toolchain。若组件下载后仍失败，请用 `DEVELOPER_DIR` 临时选择一个验证通过的并存 Xcode，不要修改 Xcode.app 内部文件
@@ -298,6 +301,7 @@ RillApp         — 组合根和应用入口
 - 贡献与本地验证指南：[CONTRIBUTING.md](CONTRIBUTING.md)
 - 技术选型记录：[docs/technology-selection.md](docs/technology-selection.md)
 - 技术隐私与数据流说明：[PRIVACY.md](PRIVACY.md)；发布装配会把同一文件原样放入 App，并在预检中逐字节校验
+- 维护者发布步骤、版本规则和升级边界：[docs/releasing.md](docs/releasing.md)
 - 最终包人工验收记录模板：[docs/release-qa-checklist.md](docs/release-qa-checklist.md)
 
 ## 📜 许可证
