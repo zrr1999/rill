@@ -53,6 +53,9 @@ uv run --script scripts/check_dependency_security.py --live-osv
 
 live 模式固定调用 OSV 官方 `https://api.osv.dev/v1/querybatch`；响应按 lock 顺序映射，只有返回独立 `next_page_token` 的条目会继续分页。网络、重定向、JSON/字段、结果数量、重复 advisory 或分页异常都必须 fail-closed，任何 advisory 都会阻断。依赖变化必须同步锁文件测试与第三方 NOTICE 证据；baseline 变化必须保留受审来源并更新 policy tests，不能用 baseline 忽略 live 结果。
 
+CI 直接调用的 Python 脚本随附 `.py.lock`，并使用 `--no-build --locked`。
+修改这些脚本的依赖或 Python 要求后，运行 `uv lock --script <path>` 更新对应锁文件。
+
 可以把仓库固定的 Gitleaks 安装到个人工具目录：
 
 ```bash
