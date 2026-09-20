@@ -80,10 +80,10 @@ jobs:
         run: |
           uv --version
           swift --version
-          uv run --script scripts/report_python_version.py
+          uv run --no-build --locked --script scripts/report_python_version.py
 
       - name: Query live OSV for locked SwiftPM commits
-        run: uv run --script scripts/check_dependency_security.py --live-osv
+        run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
 
       - name: Run preflight
         run: bash scripts/preflight.sh
