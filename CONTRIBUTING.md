@@ -32,8 +32,8 @@ just test
 just ci
 ```
 
-`just check` 只运行 prek 内建检查以及上游提供的 TOML、Actionlint、Typos 和
-Renovate 配置检查；不在 Git hook 中运行整仓构建、完整历史扫描或项目策略测试。
+`just check` 只运行 prek 内建检查以及上游提供的 TOML、Actionlint 和 Typos
+检查；不在 Git hook 中运行整仓构建、完整历史扫描或项目策略测试。
 这些项目专用检查集中在 `just ci` / `scripts/preflight.sh`，生成物和安全门禁
 仍然是提交前必须完成的检查。新增通用检查时优先复用维护中的上游工具。
 

@@ -45,10 +45,3 @@ hooks = [
   # Use published components instead of the upstream checkout's uv workspace.
   { id = "zendev-message-check", args = ["--profile", "zendev"], additional_dependencies = ["--no-sources", "zendev-commit==0.4.0", "zendev-review==0.4.0"], stages = ["commit-msg"] },
 ]
-
-[[repos]]
-repo = "https://github.com/renovatebot/pre-commit-hooks"
-rev = "40df60d65c814f4c0ec3b81e2279e5b7d28bea83"  # frozen: 44.103.2
-hooks = [
-  { id = "renovate-config-validator", language_version = "24.21.0", args = ["--strict", "--no-global"], stages = ["pre-commit"] },
-]
