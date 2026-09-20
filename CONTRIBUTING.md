@@ -105,6 +105,21 @@ git diff --cached --check
 
 主窗口搜索由 MainShell 的浮层与 AppKit `NSSearchField` bridge 共同拥有，以便在 macOS 14 上确定性处理首次/重复 `Cmd-F`、方向键、`Return` 与 `Esc`；不要未经同等真实 App 回归就替换为 `.searchable`。普通页面路由由 shell 恢复侧栏焦点，typed Settings / History 目的地则由详情页持有目标焦点。鼠标选择后的恢复必须跨到主 RunLoop 的 default mode，不能只靠 `Task.yield()` 猜测 AppKit mouse tracking / first-responder 时序；修改任一侧时都应覆盖 Dashboard → Clipboard 的方向键、List selection、快速路由与 exact 详情 AX 焦点。
 
+## GitHub Actions 命名
+
+参考 ZenDev 和 Volvox，workflow 文件使用小写 kebab-case，按职责使用 `ci-`、
+`cd-` 或 `policy-` 前缀；显示名称对应 `CI - <Purpose>`、`CD - <Purpose>` 或
+`Policy - <Purpose>`。PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
+
+| Workflow | 显示名称 | 职责 |
+| --- | --- | --- |
+| [policy-pr.yml](.github/workflows/policy-pr.yml) | Policy - PR | PR 标题、正文及完整提交信息 |
+| [ci-tests.yml](.github/workflows/ci-tests.yml) | CI - Tests | macOS 测试、依赖和发布预检 |
+
+job ID 使用小写 kebab-case，检查名称描述具体职责。`Required CI`、`PR message`
+和 `Commit messages` 是主分支保护要引用的检查名称；改名时必须同步服务端配置
+及发布文档。
+
 ## 生成文件
 
 不要直接编辑生成产物。
