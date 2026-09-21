@@ -45,9 +45,14 @@ Core/Providers 编译算成 worker 专属编译。还核对了对象文件时间
 通过 arm64/macOS 14 Mach-O 检查、ad-hoc 签名验证和 worker 标准输入 EOF 启动
 退出检查。单独清理 Debug 后，Release 可执行文件摘要保持不变。
 
+实际执行 `SIGN_IDENTITY="Apple Development" scripts/release.sh --preflight`
+完成本地 App/DMG 装配与签名，用时 133.6 s。预检和装配前的两次 Release 增量
+检查各为 0.85 s，整轮 Release 编译任务为零，DMG 校验通过；没有安装或公证。
+
 自动化覆盖了输入增删改、跨物理路径身份一致、工具链及参数失效、未知输入
 绕过、资源冲突、损坏条目、发布中断状态、活动条目清理、进程锁互斥，以及构建
 或复制期间输入漂移拒绝发布。新增可执行产品由 Package 声明自动纳入构建。
+首次编译发生普通源码错误后，也会保留已经完成的依赖编译供修复后继续使用。
 
 ## 验证边界与复现
 

@@ -316,6 +316,7 @@ class BuildContext:
         if (cached or has_products) and digest(environment) != cached:
             self.clean()
         self.scratch.mkdir(parents=True, exist_ok=True)
+        self.fingerprint_path.write_text(digest(environment) + "\n")
 
     def swift(
         self, subcommand: str, arguments: list[str], *, quiet: bool = False
@@ -362,9 +363,8 @@ class BuildContext:
                 raise
             info("Detected a stale cache; cleaning this arena and retrying once")
             self.clean(corrupt_checkout="Failed to clone" in error.output)
+            self.prepare(environment)
             self.swift(subcommand, arguments)
-        self.scratch.mkdir(parents=True, exist_ok=True)
-        self.fingerprint_path.write_text(digest(environment) + "\n")
 
 
 def make_receipt(

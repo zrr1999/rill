@@ -78,6 +78,7 @@ class BuildDriverTests(unittest.TestCase):
         with patch.object(self.context, "clean") as clean:
             self.context.prepare({})
             clean.assert_not_called()
+            self.context.fingerprint_path.unlink()
             (self.context.scratch / "out").mkdir()
             self.context.prepare({})
             clean.assert_called_once()
@@ -121,6 +122,25 @@ class BuildDriverTests(unittest.TestCase):
             ],
         )
         self.assertIn("--scratch-path", command)
+
+    def test_first_compile_failure_keeps_partial_incremental_outputs(self):
+        partial = self.context.scratch / "out/partial.o"
+
+        def compile_error(*args, **kwargs):
+            partial.parent.mkdir(parents=True)
+            partial.write_text("completed dependency")
+            raise build.BuildFailure(1, "type error in application")
+
+        with patch.object(self.context, "swift", side_effect=compile_error):
+            with self.assertRaises(build.BuildFailure):
+                self.context.build("build", [], {"toolchain": "stable"})
+        with (
+            patch.object(self.context, "clean") as clean,
+            patch.object(self.context, "swift"),
+        ):
+            self.context.build("build", [], {"toolchain": "stable"})
+            clean.assert_not_called()
+        self.assertEqual(partial.read_text(), "completed dependency")
 
     def test_lock_blocks_second_process_and_release_recovers(self):
         receiver, sender = multiprocessing.Pipe(False)
