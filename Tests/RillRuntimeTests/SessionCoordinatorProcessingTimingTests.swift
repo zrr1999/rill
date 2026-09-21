@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import Testing
 @testable import RillCore
 @testable import RillRuntime
 
@@ -35,17 +36,18 @@ private struct ProcessingTestRecognizer: SpeechRecognizer {
     let id = "timed.recognizer"
     let clock: ProcessingTestClock
     let outcome: ProcessingTestOutcome
+    let candidateSets: [CandidateSet]
 
     func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
         clock.advance(milliseconds: 1_234)
         try outcome.check()
-        return RecognitionResult(rawText: "recognized", bestText: "recognized")
+        return RecognitionResult(rawText: "recognized", bestText: "recognized", candidateSets: candidateSets)
     }
 }
 
 private struct ProcessingTestTransformer: TracedTextTransformer {
     let id = "timed.transformer"
-    let supportedKinds: [PostProcessStepKind] = [.llmRewrite, .llmAnswer]
+    let supportedKinds: [PostProcessStepKind] = [.llmRewrite, .llmAnswer, .normalizeWhitespace]
     let clock: ProcessingTestClock
     let outcome: ProcessingTestOutcome
 
@@ -79,8 +81,66 @@ private struct ProcessingTestAction: OutputAction {
 }
 
 final class SessionCoordinatorProcessingTimingTests: XCTestCase {
+    func testSkippedResolutionHasTheSameStatusInReceiptsAndTextHistory() async throws {
+        for mode: ResolutionMode in [.off, .nonBlocking] {
+            var harness = makeProcessingHarness(steps: [], candidateSets: mode == .off ? [processingCandidateSet()] : [])
+            let index = try XCTUnwrap(harness.workflow.plan.process.steps.firstIndex { $0.kind == .resolveUncertainty })
+            harness.workflow.plan.process.steps[index].uncertaintyPolicy = .init(mode: mode)
+            let outcome = await harness.coordinator.runReportingOutcome(workflow: harness.workflow, contextSnapshot: .empty)
+            guard case .completed(let summary) = outcome else { return XCTFail("Expected speech completion") }
+            let receipts = try await harness.repository.receipts(matching: .init(runID: summary.runID))
+            let receiptStep = try XCTUnwrap(receipts.first?.stepDetails.first { $0.kind == .resolveUncertainty })
+            let textStep = try XCTUnwrap(summary.correctionSource?.processingSteps?.first { $0.kind == .resolveUncertainty })
+            XCTAssertEqual(receiptStep.result, .skipped)
+            XCTAssertEqual(textStep.result, receiptStep.result)
+            XCTAssertNil(receiptStep.durationMilliseconds)
+            XCTAssertNil(textStep.durationMilliseconds)
+        }
+    }
+
+    func testCompletedAndCancelledResolutionShareOneRecordedStatus() async throws {
+        for cancel in [false, true] {
+            let candidates = processingCandidateSet()
+            let selected = try XCTUnwrap(candidates.candidates.first { $0.text == "corrected" })
+            let harness = makeProcessingHarness(steps: [], candidateSets: [candidates])
+            let runID = UUID()
+            let stream = await harness.eventBus.stream()
+            let run = Task {
+                await harness.coordinator.runReportingOutcome(workflow: harness.workflow, runID: runID, contextSnapshot: .empty)
+            }
+            var textStep: WorkflowTextStep?
+            for await event in stream {
+                if case .candidateResolutionRequested(let request) = event {
+                    if cancel { run.cancel() }
+                    else {
+                        _ = await harness.resolver.accept(caseID: request.id,
+                            selections: [candidates.id: selected.id])
+                    }
+                }
+                if case .runTextStepRecorded(_, let step) = event, step.kind == .resolveUncertainty {
+                    textStep = step
+                    break
+                }
+                if case .runCompleted = event { break }
+                if case .runFailed = event { break }
+            }
+            let outcome = await run.value
+            let receipts = try await harness.repository.receipts(matching: .init(runID: runID))
+            let receiptStep = try XCTUnwrap(receipts.first?.stepDetails.first { $0.kind == .resolveUncertainty })
+            XCTAssertEqual(receiptStep.result, cancel ? .cancelled : .completed)
+            XCTAssertEqual(try XCTUnwrap(textStep).result, receiptStep.result)
+            if cancel {
+                guard case .cancelled = outcome else { return XCTFail("Expected cancellation") }
+                XCTAssertTrue(try XCTUnwrap(receipts.first).actionDetails.isEmpty)
+            } else {
+                guard case .completed(let summary) = outcome else { return XCTFail("Expected completion") }
+                XCTAssertEqual(summary.finalText, "corrected")
+            }
+        }
+    }
+
     func testRecognitionAndEachLanguageModelStepRetainSeparateDurationsExcludingDelivery() async throws {
-        let harness = makeHarness(steps: [.llmRewrite, .llmAnswer])
+        let harness = makeProcessingHarness(steps: [.llmRewrite, .llmAnswer])
         let result = await harness.coordinator.runReportingOutcome(workflow: harness.workflow, contextSnapshot: .empty)
         guard case .completed(let summary) = result else { return XCTFail("Expected completion") }
         let steps = try XCTUnwrap(summary.correctionSource?.processingSteps)
@@ -94,7 +154,7 @@ final class SessionCoordinatorProcessingTimingTests: XCTestCase {
     }
 
     func testTextInputDoesNotInventRecognitionDuration() async throws {
-        let harness = makeHarness(steps: [.llmRewrite], recognition: .failure)
+        let harness = makeProcessingHarness(steps: [.llmRewrite], recognition: .failure)
         let result = await harness.coordinator.runReportingOutcome(
             workflow: harness.workflow, contextSnapshot: .empty, preRecognizedText: "existing text"
         )
@@ -107,7 +167,7 @@ final class SessionCoordinatorProcessingTimingTests: XCTestCase {
 
     func testRecognitionFailuresCancellationAndTimeoutRetainElapsedTime() async throws {
         for outcome: ProcessingTestOutcome in [.failure, .cancelled, .timeout] {
-            let harness = makeHarness(steps: [.llmRewrite], recognition: outcome)
+            let harness = makeProcessingHarness(steps: [.llmRewrite], recognition: outcome)
             let runID = UUID()
             let stream = await harness.eventBus.stream()
             _ = await harness.coordinator.runReportingOutcome(workflow: harness.workflow, runID: runID, contextSnapshot: .empty)
@@ -127,7 +187,7 @@ final class SessionCoordinatorProcessingTimingTests: XCTestCase {
     }
 
     func testRecoverableRewriteFallbackRetainsFailedRequestDuration() async throws {
-        let harness = makeHarness(steps: [.llmRewrite], transformation: .failure)
+        let harness = makeProcessingHarness(steps: [.llmRewrite], transformation: .failure)
         let result = await harness.coordinator.runReportingOutcome(
             workflow: harness.workflow, contextSnapshot: .empty, preRecognizedText: "keep this"
         )
@@ -142,7 +202,7 @@ final class SessionCoordinatorProcessingTimingTests: XCTestCase {
 
     func testFailedAndCancelledLanguageModelCallsRetainElapsedTime() async throws {
         for outcome: ProcessingTestOutcome in [.failure, .cancelled] {
-            let harness = makeHarness(steps: [.llmAnswer], transformation: outcome)
+            let harness = makeProcessingHarness(steps: [.llmAnswer], transformation: outcome)
             let runID = UUID()
             _ = await harness.coordinator.runReportingOutcome(workflow: harness.workflow, runID: runID, contextSnapshot: .empty)
             let receipts = try await harness.repository.receipts(matching: .init(runID: runID))
@@ -153,32 +213,113 @@ final class SessionCoordinatorProcessingTimingTests: XCTestCase {
         }
     }
 
-    private func makeHarness(
-        steps: [PostProcessStepKind],
-        recognition: ProcessingTestOutcome = .success,
-        transformation: ProcessingTestOutcome = .success
-    ) -> (coordinator: SessionCoordinator, workflow: WorkflowDefinition, repository: InMemoryWorkflowRunReceiptRepository, eventBus: EventBus) {
-        let clock = ProcessingTestClock()
-        let eventBus = EventBus()
-        let repository = InMemoryWorkflowRunReceiptRepository()
-        let workflow = WorkflowDefinition(
-            name: "Timed speech",
-            pipeline: PipelineDeclaration(
-                recognizerID: "timed.recognizer",
-                postProcessSteps: steps.map { PostProcessStep(kind: $0, prompt: "Process") },
-                outputActions: [.init(id: "timed.action")]
-            ),
-            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
+}
+
+private func makeProcessingHarness(
+    steps: [PostProcessStepKind],
+    recognition: ProcessingTestOutcome = .success,
+    transformation: ProcessingTestOutcome = .success,
+    candidateSets: [CandidateSet] = []
+) -> (coordinator: SessionCoordinator, workflow: WorkflowDefinition, repository: InMemoryWorkflowRunReceiptRepository, eventBus: EventBus, resolver: CandidateResolver) {
+    let clock = ProcessingTestClock()
+    let eventBus = EventBus()
+    let repository = InMemoryWorkflowRunReceiptRepository()
+    let resolver = CandidateResolver(eventBus: eventBus)
+    let workflow = WorkflowDefinition(
+        name: "Timed speech",
+        pipeline: PipelineDeclaration(
+            recognizerID: "timed.recognizer",
+            postProcessSteps: steps.map { PostProcessStep(kind: $0, prompt: $0 == .normalizeWhitespace ? nil : "Process") },
+            outputActions: [.init(id: "timed.action")]
+        ),
+        ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
+    )
+    let coordinator = SessionCoordinator(
+        contextProvider: ProcessingTestContext(),
+        recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ProcessingTestRecognizer(clock: clock, outcome: recognition, candidateSets: candidateSets)]),
+        transformerRegistry: TextTransformerRegistry(transformers: [ProcessingTestTransformer(clock: clock, outcome: transformation)]),
+        actionRegistry: OutputActionRegistry(actions: [ProcessingTestAction(clock: clock)]),
+        candidateResolver: resolver, eventBus: eventBus,
+        runReceiptRecorder: WorkflowRunReceiptRecorder(repository: repository, monotonicClock: { clock.now() }),
+        processingClock: { clock.now() }
+    )
+    return (coordinator, workflow, repository, eventBus, resolver)
+}
+
+private func processingCandidateSet() -> CandidateSet {
+    CandidateSet(surfaceText: "recognized", range: TextRange(lowerBound: 0, upperBound: 10), candidates: [
+        Candidate(text: "recognized", confidence: 0.4, source: .asr),
+        Candidate(text: "corrected", confidence: 0.5, source: .asr),
+    ])
+}
+
+struct ConfigurableProcessingTimingTests {
+    @Test(arguments: [true, false])
+    func timingSelectionAppliesToReceiptsAndTextHistory(enabled: Bool) async throws {
+        var harness = makeProcessingHarness(steps: [.normalizeWhitespace, .llmRewrite])
+        for index in harness.workflow.plan.process.steps.indices {
+            harness.workflow.plan.process.steps[index].recordDuration = enabled
+        }
+        let audio = try CapturedAudio(
+            durationSeconds: 12.5,
+            format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
+            inlineData: Data([0, 0])
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: ProcessingTestContext(),
-            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ProcessingTestRecognizer(clock: clock, outcome: recognition)]),
-            transformerRegistry: TextTransformerRegistry(transformers: [ProcessingTestTransformer(clock: clock, outcome: transformation)]),
-            actionRegistry: OutputActionRegistry(actions: [ProcessingTestAction(clock: clock)]),
-            candidateResolver: CandidateResolver(eventBus: eventBus), eventBus: eventBus,
-            runReceiptRecorder: WorkflowRunReceiptRecorder(repository: repository, monotonicClock: { clock.now() }),
-            processingClock: { clock.now() }
+        let outcome = await harness.coordinator.runReportingOutcome(
+            workflow: harness.workflow, capturedAudio: audio, contextSnapshot: .empty
         )
-        return (coordinator, workflow, repository, eventBus)
+        guard case .completed(let summary) = outcome else {
+            Issue.record("Expected speech completion, received \(outcome)")
+            return
+        }
+        let receipts = try await harness.repository.receipts(matching: .init(runID: summary.runID))
+        let receipt = try #require(receipts.first)
+        #expect(receipt.recordingDurationMilliseconds == 12_500)
+        #expect(receipt.actionDetails.first?.durationMilliseconds == 60_000)
+        let measured = receipt.stepDetails.filter { [.recognizeSpeech, .normalizeWhitespace, .llmRewrite].contains($0.kind) }
+        #expect(measured.map(\.durationMilliseconds) == (enabled ? [1_234, 87, 2_500] : [nil, nil, nil]))
+        let textSteps = try #require(summary.correctionSource?.processingSteps)
+        #expect(textSteps.filter { [.recognizeSpeech, .normalizeWhitespace, .llmRewrite].contains($0.kind) }
+            .map(\.durationMilliseconds) == (enabled ? [1_234, 87, 2_500] : [nil, nil, nil]))
+    }
+
+    @Test func onlyTheSelectedBranchRecordsItsConfiguredDurations() async throws {
+        var harness = makeProcessingHarness(steps: [.normalizeWhitespace])
+        var selected = WorkflowProcessStep(kind: .normalizeWhitespace, recordDuration: true)
+        selected.documentID = "selected"
+        var branch = WorkflowProcessStep(kind: .conditional, recordDuration: true)
+        branch.condition = .comparison(field: .text, operation: .contains, value: "recognized")
+        branch.thenSteps = [selected]
+        branch.elseSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: "Unused", recordDuration: true)]
+        let index = try #require(harness.workflow.plan.process.steps.firstIndex { $0.kind == .normalizeWhitespace })
+        harness.workflow.plan.process.steps[index] = branch
+        let runID = UUID()
+        _ = await harness.coordinator.runReportingOutcome(workflow: harness.workflow, runID: runID, contextSnapshot: .empty)
+        let receipts = try await harness.repository.receipts(matching: .init(runID: runID))
+        let receipt = try #require(receipts.first)
+        #expect(receipt.outcome == .completed)
+        #expect(receipt.stepDetails.first { $0.kind == .conditional }?.durationMilliseconds == 0)
+        #expect(receipt.stepDetails.first { $0.kind == .normalizeWhitespace }?.durationMilliseconds == 87)
+        #expect(!receipt.stepDetails.contains { $0.kind == .llmRewrite })
+        #expect(receipt.recordingDurationMilliseconds == nil)
+    }
+
+    @Test func recordingLengthSurvivesRecognitionFailure() async throws {
+        let harness = makeProcessingHarness(steps: [.llmRewrite], recognition: .failure)
+        let audio = try CapturedAudio(
+            durationSeconds: 8,
+            format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
+            inlineData: Data([0, 0])
+        )
+        let runID = UUID()
+        _ = await harness.coordinator.runReportingOutcome(
+            workflow: harness.workflow, runID: runID, capturedAudio: audio, contextSnapshot: .empty
+        )
+        let receipts = try await harness.repository.receipts(matching: .init(runID: runID))
+        let receipt = try #require(receipts.first)
+        #expect(receipt.recordingDurationMilliseconds == 8_000)
+        #expect(receipt.stepDetails.first?.durationMilliseconds == 1_234)
+        #expect(receipt.stepDetails.first?.result == .failed)
+        #expect(!receipt.stepDetails.contains { $0.kind == .llmRewrite })
     }
 }

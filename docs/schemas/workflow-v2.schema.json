@@ -407,6 +407,10 @@
         "prompt": {
           "type": "string"
         },
+        "record_duration": {
+          "type": "boolean",
+          "description": "Record measured time for this step. Defaults to true for speech recognition and LLM calls."
+        },
         "uncertainty": {
           "type": "object",
           "properties": {

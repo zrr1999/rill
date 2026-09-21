@@ -407,7 +407,8 @@ public extension SessionCoordinator {
             runID: runID,
             workflowID: workflow.id,
             trigger: effectiveReceiptTrigger,
-            historyWorkflow: workflow
+            historyWorkflow: workflow,
+            recordingDurationSeconds: capturedAudio?.durationSeconds
         )
         if receiptRegistration == .duplicate {
             contextPreparation?.cancel()
@@ -515,15 +516,9 @@ public extension SessionCoordinator {
             )]
             let correctionContext = try frozenContext.get()
             failureStage = .resolving
-            let resolvedRecognition = await resolveIfNeeded(recognition, in: session)
-            if session.resolvedPlan.declaration.process.steps.contains(where: { $0.kind == .resolveUncertainty }) {
-                processingSteps.append(await textExecutor.recordTextStep(
-                    kind: .resolveUncertainty,
-                    text: resolvedRecognition.bestText,
-                    previousText: recognition.bestText,
-                    in: session
-                ))
-            }
+            let resolution = try await resolveIfNeeded(recognition, in: session)
+            let resolvedRecognition = resolution.result
+            if let step = resolution.textStep { processingSteps.append(step) }
             failureStage = .transforming
             let transformation = try await textExecutor.transformText(
                 from: resolvedRecognition,
@@ -1129,7 +1124,8 @@ private extension SessionCoordinator {
         runID: UUID,
         workflowID: UUID?,
         trigger: WorkflowRunTriggerKind,
-        historyWorkflow: WorkflowDefinition? = nil
+        historyWorkflow: WorkflowDefinition? = nil,
+        recordingDurationSeconds: Double? = nil
     ) async -> RunReceiptRegistration {
         guard let runReceiptRecorder else { return .inactive }
         do {
@@ -1137,7 +1133,8 @@ private extension SessionCoordinator {
                 runID: runID,
                 workflowID: workflowID,
                 trigger: trigger,
-                historyWorkflow: historyWorkflow
+                historyWorkflow: historyWorkflow,
+                recordingDurationSeconds: recordingDurationSeconds
             )
             return .active
         } catch let error as WorkflowRunReceiptRecorderError {
@@ -1561,7 +1558,9 @@ private extension SessionCoordinator {
            let index = session.resolvedPlan.declaration.process.allSteps.firstIndex(where: { $0.kind == .recognizeSpeech }) {
             try await runReceiptRecorder.beginStep(runID: session.runID, stepIndex: index, kind: .recognizeSpeech)
         }
-        let startedAt = processingClock()
+        let recordsDuration = session.resolvedPlan.steps
+            .first { $0.kind == .recognizeSpeech }?.recordsDuration ?? true
+        let startedAt = recordsDuration ? processingClock() : nil
         do {
             let recognition = try await recognitionTimeoutExecutor.recognize(
                 using: recognizer,
@@ -1572,9 +1571,9 @@ private extension SessionCoordinator {
             guard !recognition.bestText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw SessionError.noSpeech
             }
-            return (recognition, textExecutor.processingDurationMilliseconds(since: startedAt))
+            return (recognition, startedAt.flatMap(textExecutor.processingDurationMilliseconds))
         } catch {
-            let durationMilliseconds = textExecutor.processingDurationMilliseconds(since: startedAt)
+            let durationMilliseconds = startedAt.flatMap(textExecutor.processingDurationMilliseconds)
             let result: WorkflowStepResultCode = error is CancellationError ? .cancelled : .failed
             try? await textExecutor.finishProcessReceipt(session, result: result, durationMilliseconds: durationMilliseconds)
             _ = await textExecutor.recordTextStep(
@@ -1617,45 +1616,48 @@ private extension SessionCoordinator {
         )
     }
 
-    private func resolveIfNeeded(_ recognition: RecognitionResult, in session: RunSession) async -> RecognitionResult {
-        guard
-            let resolutionStep = session.resolvedPlan.declaration.process.steps.first(
-                where: { $0.kind == .resolveUncertainty }
-            ),
-            let uncertaintyPolicy = resolutionStep.uncertaintyPolicy,
-            uncertaintyPolicy.mode != .off,
-            recognition.requiresResolution
-        else {
-            return recognition
+    private func resolveIfNeeded(
+        _ recognition: RecognitionResult, in session: RunSession
+    ) async throws -> (result: RecognitionResult, textStep: WorkflowTextStep?) {
+        guard let step = session.resolvedPlan.steps.first(where: { $0.kind == .resolveUncertainty }),
+              case .resolveUncertainty(let policy) = step.operation else {
+            return (recognition, nil)
         }
-
+        if session.receiptIsActive, let runReceiptRecorder {
+            try await runReceiptRecorder.beginStep(runID: session.runID, stepIndex: step.index, kind: step.kind)
+        }
+        guard policy.mode != .off, recognition.requiresResolution else {
+            try await textExecutor.finishProcessReceipt(session, result: .skipped)
+            let textStep = await textExecutor.recordTextStep(
+                kind: step.kind, result: .skipped, text: recognition.bestText,
+                previousText: recognition.bestText, in: session
+            )
+            return (recognition, textStep)
+        }
         state = .resolving(session.runID)
         await runDiagnostics.recordStage(
-            .resolving,
-            runID: session.runID,
-            workflow: session.presentation,
+            .resolving, runID: session.runID, workflow: session.presentation,
             metadata: ["candidateSetCount": String(recognition.candidateSets.count)]
         )
         let resolutionCase = CandidateResolutionCase(
-            runID: session.runID,
-            recognitionResult: recognition,
-            policy: uncertaintyPolicy
+            runID: session.runID, recognitionResult: recognition, policy: policy
         )
+        let startedAt = step.recordsDuration ? processingClock() : nil
         let outcome = await candidateResolver.resolve(resolutionCase)
+        let duration = startedAt.flatMap(textExecutor.processingDurationMilliseconds)
+        let result: WorkflowStepResultCode = Task.isCancelled ? .cancelled : .completed
+        try await textExecutor.finishProcessReceipt(
+            session, result: result, durationMilliseconds: duration
+        )
+        let textStep = await textExecutor.recordTextStep(
+            kind: step.kind, result: result, text: outcome.result.bestText,
+            previousText: recognition.bestText, durationMilliseconds: duration, in: session
+        )
         await eventBus.publish(
             .candidateResolutionFinished(run: .init(runID: session.runID, lane: lane), caseID: resolutionCase.id, resolvedText: outcome.result.bestText)
         )
-        return outcome.result
+        return (outcome.result, textStep)
     }
-
-
-
-
-
-
-
-
-
 
 
     private func vocabularyContext(in session: RunSession) -> VocabularyRuleContext {

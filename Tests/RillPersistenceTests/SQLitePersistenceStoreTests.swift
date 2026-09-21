@@ -174,9 +174,11 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         WorkflowActionReceipt(
           actionIndex: 0,
           result: .copiedToClipboard,
-          duration: .under250ms
+          duration: .under250ms,
+          durationMilliseconds: 42
         )
-      ]
+      ],
+      recordingDurationMilliseconds: 12_500
     )
 
     try await store.insertTerminal(receipt)

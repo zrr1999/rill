@@ -52,14 +52,20 @@ struct WorkflowTextExecutor: Sendable {
           runID: session.runID, stepIndex: processStep.index, kind: processStep.kind)
       }
       do {
+        processingStartedAt = processStep.recordsDuration ? processingClock() : nil
         switch processStep.operation {
         case .conditional(let condition, let thenSteps, let elseSteps):
           let selected = try condition.evaluate(text: finalText, context: session.contextSnapshot)
           pendingSteps.append(contentsOf: (selected ? thenSteps : elseSteps).reversed())
-          try await finishProcessReceipt(session, result: selected ? .thenBranch : .elseBranch)
+          durationMilliseconds = processingStartedAt.flatMap(processingDurationMilliseconds)
+          try await finishProcessReceipt(
+            session, result: selected ? .thenBranch : .elseBranch,
+            durationMilliseconds: durationMilliseconds
+          )
           processingSteps.append(
             await recordTextStep(
-              kind: .conditional, result: selected ? .thenBranch : .elseBranch, in: session
+              kind: .conditional, result: selected ? .thenBranch : .elseBranch,
+              durationMilliseconds: durationMilliseconds, in: session
             ))
           continue
         case .recognizeSpeech, .resolveUncertainty:
@@ -88,10 +94,12 @@ struct WorkflowTextExecutor: Sendable {
             }
             await recordVocabularyApplication(result, in: session)
           }
-          try await finishProcessReceipt(session, result: .completed)
+          durationMilliseconds = processingStartedAt.flatMap(processingDurationMilliseconds)
+          try await finishProcessReceipt(session, result: .completed, durationMilliseconds: durationMilliseconds)
           processingSteps.append(
             await recordTextStep(
-              kind: processStep.kind, text: finalText, previousText: inputText, in: session
+              kind: processStep.kind, text: finalText, previousText: inputText,
+              durationMilliseconds: durationMilliseconds, in: session
             ))
           continue
         case .transform:
@@ -129,7 +137,7 @@ struct WorkflowTextExecutor: Sendable {
             recognitionResult: recognition,
             correctionRequest: correctionRequest
           )
-          processingStartedAt = processingClock()
+          processingStartedAt = processStep.recordsDuration ? processingClock() : nil
           if let tracedTransformer = transformer as? any TracedTextTransformer,
             step.kind == .llmRewrite || step.kind == .llmAnswer
           {

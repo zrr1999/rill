@@ -272,3 +272,43 @@ enum HistoryTimelineTextKey: String, CaseIterable, Sendable {
     case workflowPrompt
     case workflowRunFallback
 }
+
+enum HistoryRunDetailTextKey {
+    case recording, transcription, polishing, languageModel, notRecorded
+    case diagnostics, noDiagnostics, legacyDiagnostics, details, textResults
+}
+
+extension L10n {
+    static func historyRunDetail(_ key: HistoryRunDetailTextKey, language: AppLanguage) -> String {
+        let text: LocalizedText = switch key {
+        case .recording: .init(english: "Recording length", simplifiedChinese: "录音时长")
+        case .transcription: .init(english: "Speech to text", simplifiedChinese: "语音转文字")
+        case .polishing: .init(english: "Polishing API", simplifiedChinese: "润色 API")
+        case .languageModel: .init(english: "Answer API", simplifiedChinese: "回答 API")
+        case .notRecorded: .init(english: "Not recorded", simplifiedChinese: "未记录")
+        case .diagnostics: .init(english: "Diagnostics for this run", simplifiedChinese: "本次运行诊断")
+        case .noDiagnostics: .init(english: "No retained diagnostics for this run.", simplifiedChinese: "没有保留本次运行的诊断记录。")
+        case .legacyDiagnostics: .init(english: "This older entry has no run ID to link diagnostics.", simplifiedChinese: "这条旧记录没有运行标识，无法关联诊断。")
+        case .details: .init(english: "Execution details & diagnostics", simplifiedChinese: "执行详情与诊断")
+        case .textResults: .init(english: "Text processing results", simplifiedChinese: "文本处理结果")
+        }
+        return text.string(for: language)
+    }
+
+    static func historyMeasuredDuration(_ milliseconds: UInt64?, language: AppLanguage) -> String {
+        milliseconds.map { historyProcessingDuration($0, language: language) }
+            ?? historyRunDetail(.notRecorded, language: language)
+    }
+
+    static func historyStepResult(_ result: WorkflowStepResultCode, language: AppLanguage) -> String {
+        let chinese = language == .simplifiedChinese
+        switch result {
+        case .completed: return chinese ? "已完成" : "Completed"
+        case .thenBranch: return chinese ? "满足条件" : "Then branch"
+        case .elseBranch: return chinese ? "不满足条件" : "Else branch"
+        case .skipped: return chinese ? "已跳过" : "Skipped"
+        case .failed: return chinese ? "失败" : "Failed"
+        case .cancelled: return chinese ? "已取消" : "Cancelled"
+        }
+    }
+}

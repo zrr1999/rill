@@ -110,12 +110,12 @@ final class DiagnosticsViewTests: XCTestCase {
         let raw = "provider-internal-canary"
 
         XCTAssertEqual(
-            RunFailurePresentation.text(for: raw, language: .english),
-            HistoryFailureSanitizer.genericMessage
+            RunFailurePresentation.historyText(for: raw, language: .english),
+            "Processing did not complete. Expand execution details to see why."
         )
         XCTAssertEqual(
-            RunFailurePresentation.text(for: raw, language: .simplifiedChinese),
-            "工作流失败。请在诊断中查看安全摘要后重试。"
+            RunFailurePresentation.historyText(for: raw, language: .simplifiedChinese),
+            "本次处理未完成。展开执行详情查看原因。"
         )
     }
 

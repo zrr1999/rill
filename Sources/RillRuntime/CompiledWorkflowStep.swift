@@ -15,6 +15,7 @@ public struct CompiledWorkflowStep: Sendable, Equatable {
   public let id: UUID
   public let index: Int
   public let kind: WorkflowProcessStepKind
+  public let recordsDuration: Bool
   public let operation: Operation
 
   static func compile(_ documents: [WorkflowProcessStep], nextIndex: inout Int) throws -> [Self] {
@@ -41,7 +42,10 @@ public struct CompiledWorkflowStep: Sendable, Equatable {
         }
         operation = .transform(step)
       }
-      return Self(id: document.id, index: index, kind: document.kind, operation: operation)
+      return Self(
+        id: document.id, index: index, kind: document.kind,
+        recordsDuration: document.recordsDuration, operation: operation
+      )
     }
   }
 }
