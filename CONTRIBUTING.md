@@ -197,7 +197,8 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 job ID 使用小写 kebab-case，检查名称描述具体职责。`Required CI` 和 `PR message`
 是主分支保护要引用的检查名称；改名时必须同步服务端配置及发布文档。
 
-`Automation - PR Title` 在 `pull_request_target` 上只通过 GitHub API 改名，不检出代码。
+`Automation - PR Title` 在 `pull_request_target` 上只通过 GitHub API 改名，永不检出 PR head
+或任何仓库代码。
 它只把 `imgbot[bot]` 的 `[ImgBot] Optimize images` 改为 `⚡ perf(assets): optimize images`，
 保留其他作者和人工设置的标题；写权限只授予该 job。
 `Policy - PR` 使用普通 `pull_request` 校验标题和正文，不调用自动化工作流。
