@@ -181,7 +181,7 @@ git diff --cached --check
 
 修复竞态或生命周期问题时，应优先使用可控的 fake、barrier 或 lease 写确定性测试；不要依赖固定 `sleep` 猜测时序。涉及 SwiftUI/AppKit 焦点、系统权限、全局快捷键、VoiceOver、签名或公证时，除自动化测试外还需记录真实环境验收结果。
 
-主窗口搜索由 MainShell 的浮层与 AppKit `NSSearchField` bridge 共同拥有，以便在 macOS 14 上确定性处理首次/重复 `Cmd-F`、方向键、`Return` 与 `Esc`；不要未经同等真实 App 回归就替换为 `.searchable`。普通页面路由由 shell 恢复侧栏焦点，typed Settings / History 目的地则由详情页持有目标焦点。鼠标选择后的恢复必须跨到主 RunLoop 的 default mode，不能只靠 `Task.yield()` 猜测 AppKit mouse tracking / first-responder 时序；修改任一侧时都应覆盖 Dashboard → Clipboard 的方向键、List selection、快速路由与 exact 详情 AX 焦点。
+主窗口搜索由 MainShell 的浮层与 AppKit `NSSearchField` bridge 共同拥有，以便在 macOS 14 上确定性处理首次/重复 `Cmd-F`、方向键、`Return` 与 `Esc`；不要未经同等真实 App 回归就替换为 `.searchable`。普通页面路由由 shell 恢复侧栏焦点，typed Record / History 目的地则由详情页持有目标焦点，Settings 深链由独立设置窗口持有目标焦点。鼠标选择后的恢复必须跨到主 RunLoop 的 default mode，不能只靠 `Task.yield()` 猜测 AppKit mouse tracking / first-responder 时序；修改任一侧时都应覆盖 全部记录 → 记录集 → 活动的方向键、List selection、快速路由与 exact 详情 AX 焦点。
 
 ## GitHub Actions 命名
 

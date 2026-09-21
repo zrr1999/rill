@@ -304,14 +304,18 @@ public final class AppModel {
     workflowFileStore?.configurationDirectoryURL
   }
   public let localPersistenceStatus: LocalPersistenceStatus
-  public internal(set) var selectedSidebarSection: SidebarSection = .stream
+  public internal(set) var selectedSidebarSection: SidebarSection = .records
   public let recordWorkspace: RecordWorkspaceModel
   public let history: RunHistoryModel
   public var runHistoryScope: RunHistoryScope {
     get { history.runHistoryScope }
     set { history.runHistoryScope = newValue }
   }
-  internal var settingsNavigationRequest: SettingsNavigationRequest?
+  public internal(set) var settingsNavigationRequest: SettingsNavigationRequest?
+  public var selectedSettingsPane: SettingsPane = .general
+  public internal(set) var settingsPresentationGeneration = 0
+  var handledSettingsPresentationGeneration = 0
+  @ObservationIgnored var copyRecordAction: @MainActor (RecordReuseSubject) async -> RecordReuseOutcome = { _ in .blocked }
   internal var historyNavigationRequest: HistoryNavigationRequest? {
     get { history.historyNavigationRequest }
     set { history.historyNavigationRequest = newValue }

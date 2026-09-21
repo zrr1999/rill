@@ -46,12 +46,6 @@ public struct StreamView: View {
                                 removal: .opacity
                             ))
                     }
-                    if model.voiceSetupReadiness.isComplete {
-                        Label(L10n.presentation(.ready, language: model.language), systemImage: RillSystemSymbol.checkmarkCircleFill.rawValue)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    recordStatusCard
                     if let activityPresentation = streamActivityPresentation {
                         streamActivityCard(activityPresentation)
                             .transition(.asymmetric(
@@ -78,41 +72,6 @@ public struct StreamView: View {
             }
         }
         .navigationTitle(UIStrings.text(.sidebarStream, language: model.language))
-    }
-
-    @ViewBuilder
-    private var recordStatusCard: some View {
-        Button {
-            model.showRecordPanel()
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(UIStrings.text(.deliveryStack, language: model.language))
-                    .font(.headline)
-                Text(UIStrings.recordCountSummary(model.recordCount, language: model.language))
-                    .font(.body.weight(.medium))
-                    .lineLimit(2)
-                    // Animate the count text itself instead of springing
-                    // the whole card on every record-count change.
-                    .contentTransition(.numericText())
-                    .animation(
-                        reduceMotion ? nil : Self.cardSpring,
-                        value: model.recordCount
-                    )
-                Text(model.recordPreview ?? UIStrings.text(.stackEmpty, language: model.language))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                    .truncationMode(.tail)
-            }
-            .rillCard()
-        }
-        .buttonStyle(RillCardButtonStyle())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(UIStrings.text(.deliveryStack, language: model.language)): "
-                + UIStrings.recordCountSummary(model.recordCount, language: model.language)
-        )
-        .accessibilityIdentifier("stream.record-panel")
     }
 
     private var streamActivityPresentation: StreamActivityPresentation? {

@@ -569,6 +569,7 @@ func makeHarness(
   runReceiptRepository: (any WorkflowRunReceiptRepository)? = nil,
   localHistoryMaintenance: (any LocalHistoryMaintaining)? = nil,
   diagnosticRepository: (any DiagnosticRepository)? = nil,
+  recordWorkspace: RecordWorkspaceModel? = nil,
   permissionSnapshot: PermissionSnapshot = PermissionSnapshot(
     accessibility: .granted, microphone: .unknown),
   globalInputCapability: GlobalInputCapability = .available,
@@ -674,6 +675,7 @@ func makeHarness(
     eventBus: eventBus,
     sessionCoordinator: coordinator,
     outputActionRegistry: outputActionRegistry,
+    recordWorkspace: recordWorkspace,
     candidateResolver: resolver,
     historyRepository: historyRepository,
     runHistoryBrowser: runHistoryBrowser,

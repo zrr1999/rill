@@ -73,6 +73,8 @@ public final class RecordCleanupModel {
 
 @MainActor @Observable
 public final class RecordQuickPanelModel {
+  public var pasteTargetName: String?
+
   public var searchText = "" { didSet { if oldValue != searchText { scheduleSearch() } } }
   public var pinnedOnly = false { didSet { if oldValue != pinnedOnly { scheduleSearch() } } }
   public var currentAppOnly = false {
@@ -209,17 +211,7 @@ public final class RecordQuickPanelModel {
   }
 
   public func report(_ result: RecordReuseOutcome) {
-    switch result {
-    case .delivered: message = nil
-    case .copied: message = .copied
-    case .blocked: message = .deliveryBlocked
-    case .targetUnavailable: message = .targetUnavailable
-    case .permissionRequired: message = .permissionRequired
-    case .recordUnavailable: message = .recordUnavailable
-    case .storageUnavailable: message = .storageUnavailable
-    case .failed: message = .deliveryFailed
-    case .outputCommittedWithIssue: message = .outputCommitted
-    }
+    message = result.feedback
   }
 
   public func loadMore() {

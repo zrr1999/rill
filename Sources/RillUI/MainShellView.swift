@@ -50,6 +50,7 @@ struct GlobalHistorySearchTaskIdentity: Hashable {
     let retentionPeriod: String
     let workflowSearchSnapshot: [String]
     let retryGeneration: Int
+    var recordRevision: UInt64 = 0
 }
 
 enum GlobalHistorySearchRequestPolicy {
@@ -94,14 +95,6 @@ enum GlobalHistorySearchRequestPolicy {
             retryGeneration: retryGeneration,
             focusRequest: currentFocusRequest &+ 1
         )
-    }
-
-    static func canPublish(
-        request: GlobalHistorySearchTaskIdentity,
-        current: GlobalHistorySearchTaskIdentity,
-        isCancelled: Bool
-    ) -> Bool {
-        !isCancelled && request == current
     }
 }
 
@@ -183,17 +176,14 @@ public struct MainShellView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Bindable private var model: AppModel
     @AccessibilityFocusState private var accessibilityFocusedSidebarDestination: SidebarDestination?
-    @State private var globalSearchText = ""
+    @State private var search = GlobalSearchModel()
     @State private var isGlobalSearchPresented = false
-    @State private var selectedGlobalSearchResultID: String?
-    @State private var globalHistorySearchResults: [GlobalSearchResult] = []
-    @State private var globalHistorySearchState: GlobalHistorySearchState = .idle
     @State private var globalHistorySearchRetryGeneration = 0
     @State private var globalSearchFocusRequest = 0
     @State private var sidebarFocusRequestGeneration = 0
     @State private var sidebarFocusCoordinator = SidebarFocusCoordinator()
     private let sidebarFocusTurnWaiter: @MainActor @Sendable () async -> Void
-    private static let leadingSections: [SidebarSection] = [.stream]
+    private static let leadingSections: [SidebarSection] = [.records]
 
     public init(model: AppModel) {
         self.model = model
@@ -231,6 +221,7 @@ public struct MainShellView: View {
                 }
 
                 Section {
+                    sidebarSectionRow(.stream)
                     sidebarSectionRow(.workflows)
                 }
             }
@@ -293,10 +284,14 @@ public struct MainShellView: View {
 
                 if isGlobalSearchPresented {
                     GlobalSearchResultsView(
-                        query: $globalSearchText,
+                        query: $search.query,
                         results: filteredGlobalSearchResults,
-                        selectedResultID: selectedGlobalSearchResultID,
-                        historySearchState: globalHistorySearchState,
+                        selectedResultID: search.selectedID,
+                        historySearchState: search.historyState,
+                        recordSearchState: search.recordState,
+                        hasMore: search.hasMoreRecords || search.hasMoreHistory,
+                        onLoadMore: { search.showMore(); globalHistorySearchRetryGeneration &+= 1 },
+                        onRecordRetry: { globalHistorySearchRetryGeneration &+= 1 },
                         historyFailureActionTitle:
                             globalHistoryLoadFailurePresentation.actionTitle,
                         language: model.language,
@@ -306,7 +301,7 @@ public struct MainShellView: View {
                         onCancel: dismissGlobalSearch,
                         onHistorySearchFailureAction:
                             performGlobalHistorySearchFailureAction,
-                        onHighlight: { selectedGlobalSearchResultID = $0 },
+                        onHighlight: { search.selectedID = $0 },
                         onSelect: commitGlobalSearchDestination
                     )
                     .transition(.opacity)
@@ -351,7 +346,7 @@ public struct MainShellView: View {
             GlobalSearchPresentationAction(presentGlobalSearch)
         )
         .toolbar {
-            ToolbarItem {
+            ToolbarItem(id: "rill.global-search") {
                 Button(action: presentGlobalSearch) {
                     Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
                 }
@@ -369,25 +364,7 @@ public struct MainShellView: View {
                     )
                 )
             }
-            ToolbarItem {
-                Button {
-                    model.openWorkflowEditor()
-                } label: {
-                    Image(systemName: RillSystemSymbol.squareAndPencil.rawValue)
-                }
-                .help(UIStrings.text(.openWorkflowEditor, language: model.language))
-                .accessibilityLabel(UIStrings.text(.openWorkflowEditor, language: model.language))
-                .disabled(
-                    !MainShellInteractionPolicy.allowsToolbarInteraction(
-                        isGlobalSearchPresented: isGlobalSearchPresented
-                    )
-                )
-                .accessibilityHidden(
-                    !MainShellInteractionPolicy.allowsToolbarInteraction(
-                        isGlobalSearchPresented: isGlobalSearchPresented
-                    )
-                )
-            }
+
         }
         .onAppear {
             model.refreshPermissions()
@@ -404,8 +381,8 @@ public struct MainShellView: View {
             }
         }
         .onChange(of: filteredGlobalSearchResults.map(\.id)) { _, _ in
-            selectedGlobalSearchResultID = GlobalSearchSelection.reconcile(
-                currentID: selectedGlobalSearchResultID,
+            search.selectedID = GlobalSearchSelection.reconcile(
+                currentID: search.selectedID,
                 results: filteredGlobalSearchResults
             )
         }
@@ -431,7 +408,7 @@ extension MainShellView {
         case .workflows:
             WorkflowsView(model: model)
         case .records:
-            RecordWorkspaceView(workspace: model.recordWorkspace, language: model.language)
+            RecordWorkspaceView(workspace: model.recordWorkspace, language: model.language, copySelection: model.copyRecord)
         case .diagnostics:
             DiagnosticsView(model: model)
         case .settings:
@@ -512,28 +489,30 @@ extension MainShellView {
             GlobalSearchIndex.makeStaticResults(
                 language: model.language,
                 workflows: model.workflows
-            ) + globalHistorySearchResults,
-            query: globalSearchText
+            ) + GlobalSearchIndex.collectionResults(model.recordWorkspace.snapshot.collections, language: model.language)
+                + search.results(matching: globalHistorySearchTaskIdentity),
+            query: search.query
         )
     }
 
     private var globalHistorySearchTaskIdentity: GlobalHistorySearchTaskIdentity {
         GlobalHistorySearchTaskIdentity(
             isPresented: isGlobalSearchPresented,
-            query: globalSearchText,
+            query: search.query,
             language: model.language.rawValue,
             previewMode: model.privacyPolicySettings.historyPreviewMode.rawValue,
             retentionPeriod: model.runHistoryRetentionPeriod.rawValue,
             workflowSearchSnapshot: model.workflows.map {
                 "\($0.id.uuidString):\(UIStrings.workflowName($0.presentation, language: model.language))"
             },
-            retryGeneration: globalHistorySearchRetryGeneration
+            retryGeneration: globalHistorySearchRetryGeneration,
+            recordRevision: model.recordWorkspace.snapshot.revision
         )
     }
 
     private var selectedGlobalSearchResult: GlobalSearchResult? {
-        guard let selectedGlobalSearchResultID else { return nil }
-        return filteredGlobalSearchResults.first { $0.id == selectedGlobalSearchResultID }
+        guard let selectedID = search.selectedID else { return nil }
+        return filteredGlobalSearchResults.first { $0.id == selectedID }
     }
 
     private var globalHistoryLoadFailurePresentation: HistoryLoadFailurePresentation {
@@ -559,7 +538,7 @@ extension MainShellView {
             currentFocusRequest: globalSearchFocusRequest
         )
         if transition.shouldInitializeSelection {
-            selectedGlobalSearchResultID = GlobalSearchSelection.reconcile(
+            search.selectedID = GlobalSearchSelection.reconcile(
                 currentID: nil,
                 results: filteredGlobalSearchResults
             )
@@ -578,8 +557,8 @@ extension MainShellView {
 
     private func moveGlobalSearchSelection(by offset: Int) {
         guard isGlobalSearchPresented else { return }
-        selectedGlobalSearchResultID = GlobalSearchSelection.move(
-            currentID: selectedGlobalSearchResultID,
+        search.selectedID = GlobalSearchSelection.move(
+            currentID: search.selectedID,
             offset: offset,
             results: filteredGlobalSearchResults
         )
@@ -596,10 +575,7 @@ extension MainShellView {
         withAnimation(Self.searchOverlayAnimation(reduceMotion: reduceMotion)) {
             isGlobalSearchPresented = false
         }
-        globalSearchText = ""
-        selectedGlobalSearchResultID = nil
-        globalHistorySearchResults = []
-        globalHistorySearchState = .idle
+        search.reset()
         globalHistorySearchRetryGeneration = 0
         sidebarFocusRequestGeneration &+= 1
     }
@@ -610,12 +586,13 @@ extension MainShellView {
         withAnimation(Self.searchOverlayAnimation(reduceMotion: reduceMotion)) {
             isGlobalSearchPresented = false
         }
-        globalSearchText = ""
-        selectedGlobalSearchResultID = nil
-        globalHistorySearchResults = []
-        globalHistorySearchState = .idle
+        search.reset()
         globalHistorySearchRetryGeneration = 0
         switch destination {
+        case .record(let id):
+            Task { await model.showRecord(id) }
+        case .collection(let id):
+            model.showRecordCollection(id)
         case .sidebar(let section):
             model.selectSidebarSection(section)
             // Selecting the current page does not change route identity, so
@@ -636,8 +613,8 @@ extension MainShellView {
                 currentGeneration: globalHistorySearchRetryGeneration,
                 currentFocusRequest: globalSearchFocusRequest,
                 isPresented: isGlobalSearchPresented,
-                query: globalSearchText,
-                state: globalHistorySearchState
+                query: search.query,
+                state: search.historyState
             )
         else {
             return
@@ -659,74 +636,28 @@ extension MainShellView {
         }
     }
 
-    private func updateGlobalHistorySearch(
-        for request: GlobalHistorySearchTaskIdentity
-    ) async {
-        guard
-            GlobalHistorySearchRequestPolicy.canPublish(
-                request: request,
-                current: globalHistorySearchTaskIdentity,
-                isCancelled: Task.isCancelled
-            )
-        else {
-            return
-        }
-        globalHistorySearchResults = []
-        globalHistorySearchState = .idle
-        let query = request.query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard request.isPresented, !query.isEmpty else { return }
-
-        do {
-            try await Task.sleep(for: .milliseconds(250))
-            guard
-                GlobalHistorySearchRequestPolicy.canPublish(
-                    request: request,
-                    current: globalHistorySearchTaskIdentity,
-                    isCancelled: Task.isCancelled
+    private func updateGlobalHistorySearch(for request: GlobalHistorySearchTaskIdentity) async {
+        await search.update(
+            request: request,
+            records: { query, limit in
+                try await model.recordWorkspace.searchRecords(query, limit: limit)
+            },
+            history: { query, limit in
+                try await model.searchRunHistory(
+                    query: query, language: model.language,
+                    previewMode: model.privacyPolicySettings.historyPreviewMode, limit: limit
                 )
-            else {
-                return
-            }
-            globalHistorySearchState = .searching
-            let results = try await model.searchRunHistory(
-                query: query,
-                language: model.language,
-                previewMode: model.privacyPolicySettings.historyPreviewMode
-            )
-            guard
-                GlobalHistorySearchRequestPolicy.canPublish(
-                    request: request,
-                    current: globalHistorySearchTaskIdentity,
-                    isCancelled: Task.isCancelled
-                )
-            else {
-                return
-            }
-            globalHistorySearchResults = Array(
-                results.prefix(GlobalSearchIndex.maximumHistoryResultCount)
-            )
-            globalHistorySearchState = .loaded
-        } catch is CancellationError {
-            return
-        } catch {
-            guard
-                GlobalHistorySearchRequestPolicy.canPublish(
-                    request: request,
-                    current: globalHistorySearchTaskIdentity,
-                    isCancelled: Task.isCancelled
-                )
-            else {
-                return
-            }
-            globalHistorySearchResults = []
-            globalHistorySearchState = .failed
-        }
+            },
+            language: model.language
+        )
     }
 
     private func typedDetailOwnsFocus(for destination: SidebarDestination) -> Bool {
         switch destination {
         case .section(.settings):
             return model.settingsNavigationRequest != nil
+        case .section(.records):
+            return model.recordWorkspace.revealedRecordID != nil
         case .section(.stream):
             guard model.historyNavigationRequest != nil else { return false }
             switch model.runHistoryDeepLinkState {
@@ -777,11 +708,11 @@ extension MainShellView {
 
     private func sidebarSectionRow(_ section: SidebarSection) -> some View {
         Label(
-            UIStrings.text(section.titleKey, language: model.language),
+            (section == .records ? L10n.workspace(.allRecords, language: model.language) : UIStrings.text(section.titleKey, language: model.language)),
             systemImage: section.symbolName
         )
         .tag(SidebarDestination.section(section))
-        .accessibilityLabel(UIStrings.text(section.titleKey, language: model.language))
+        .accessibilityLabel((section == .records ? L10n.workspace(.allRecords, language: model.language) : UIStrings.text(section.titleKey, language: model.language)))
         .accessibilityIdentifier("sidebar.\(section.rawValue)")
         .accessibilityFocused(
             $accessibilityFocusedSidebarDestination,
@@ -789,70 +720,26 @@ extension MainShellView {
         )
     }
 
-    /// Settings is a pinned utility destination, not scrollable content, so
-    /// it lives below the list and stays visible while sections scroll.
     private var sidebarSettingsFooter: some View {
-        let section = SidebarSection.settings
-        let isSelected = model.selectedSidebarSection == section
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             Divider()
             Button(action: selectSettingsFromSidebarFooter) {
-                Label(
-                    UIStrings.text(section.titleKey, language: model.language),
-                    systemImage: section.symbolName
-                )
-                // Match the native List sidebar selection (solid accent fill,
-                // white label) instead of the accent-wash `rillSelection`, so
-                // the pinned footer row reads identically to the selected
-                // rows above it.
-                .foregroundStyle(isSelected ? Color.white : .primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, MainShellLayoutMetrics.sidebarFooterRowHorizontalPadding)
-                .padding(.vertical, MainShellLayoutMetrics.sidebarFooterRowVerticalPadding)
-                .contentShape(Rectangle())
-                .background {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: RillRadius.badge, style: .continuous)
-                            .fill(Color.accentColor)
-                    }
-                }
-                // Keep the selection transition the shared `rillSelection`
-                // modifier provided; Reduce Motion switches instantly.
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isSelected)
+                Label(UIStrings.text(.sidebarSettings, language: model.language), systemImage: SidebarSection.settings.symbolName)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, MainShellLayoutMetrics.sidebarFooterRowHorizontalPadding)
+                    .padding(.vertical, MainShellLayoutMetrics.sidebarFooterRowVerticalPadding)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .padding(.horizontal, MainShellLayoutMetrics.sidebarFooterRowHorizontalPadding)
             .padding(.vertical, MainShellLayoutMetrics.sidebarFooterRowVerticalPadding)
-            .accessibilityLabel(UIStrings.text(section.titleKey, language: model.language))
-            .accessibilityIdentifier("sidebar.\(section.rawValue)")
-            .accessibilityFocused(
-                $accessibilityFocusedSidebarDestination,
-                equals: .section(section)
-            )
+            .accessibilityIdentifier("sidebar.settings")
         }
     }
 
     private func selectSettingsFromSidebarFooter() {
-        // Footer selection shares the List pipeline: claim the sidebar
-        // responder before changing the route so replacing the detail cannot
-        // strand keyboard focus.
-        let routeFocusClaim = sidebarFocusCoordinator.claimSidebarFocusForRoute(
-            origin: .list,
-            destination: .section(.settings)
-        )
-        model.selectSidebarSection(.settings)
-        guard let routeFocusClaim else { return }
-        _ = sidebarFocusCoordinator.restoreFocus(
-            routeClaimID: routeFocusClaim,
-            phase: .routeReconciliation
-        )
-        sidebarFocusRequestGeneration &+= 1
-        scheduleOnMainRunLoopInteractiveModes {
-            _ = sidebarFocusCoordinator.restoreFocus(
-                routeClaimID: routeFocusClaim,
-                phase: .protectNewFocus
-            )
-        }
+        sidebarFocusCoordinator.cancelActiveRouteFocusClaim()
+        model.presentSettings()
     }
 
     private func collectionRecordCount(_ collectionID: RecordCollectionID) -> Int {

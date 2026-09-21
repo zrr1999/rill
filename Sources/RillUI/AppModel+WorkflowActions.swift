@@ -1019,11 +1019,13 @@ extension AppModel {
     // A plain sidebar selection is a fresh user navigation, not a request
     // to resume an older search/CTA deep link that may still be waiting
     // for its destination view to appear.
-    settingsNavigationRequest = nil
+    if section == .settings { presentSettings(); return }
+    if section == .diagnostics { showSettings(.diagnostics); return }
     historyNavigationRequest = nil
+    recordWorkspace.cancelNavigation()
     selectedSidebarSection = section
     if section == .records {
-      recordWorkspace.selectCollection(recordWorkspace.snapshot.collections.first?.id)
+      recordWorkspace.selectCollection(nil)
     }
     if section == .stream {
       runHistoryScope = .recentRuns
@@ -1031,7 +1033,6 @@ extension AppModel {
   }
 
   public func showRecordCollection(_ collectionID: RecordCollectionID) {
-    settingsNavigationRequest = nil
     historyNavigationRequest = nil
     selectedSidebarSection = .records
     recordWorkspace.selectCollection(collectionID)
@@ -1039,8 +1040,8 @@ extension AppModel {
 
   public func showWorkflow(_ workflowID: UUID) {
     guard workflows.contains(where: { $0.id == workflowID }) else { return }
-    settingsNavigationRequest = nil
     historyNavigationRequest = nil
+    recordWorkspace.cancelNavigation()
     selectedSidebarSection = .workflows
     workflowEditorNavigationRequest = WorkflowEditorNavigationRequest(
       workflowID: workflowID
@@ -1051,14 +1052,39 @@ extension AppModel {
     selectSidebarSection(.stream)
   }
 
+  public func presentSettings() {
+    settingsPresentationGeneration &+= 1
+  }
+
+  public func consumeSettingsPresentation() -> Bool {
+    guard handledSettingsPresentationGeneration != settingsPresentationGeneration else { return false }
+    handledSettingsPresentationGeneration = settingsPresentationGeneration
+    return true
+  }
+
   public func showSettings(_ section: SettingsSection) {
-    historyNavigationRequest = nil
-    selectedSidebarSection = .settings
+    selectedSettingsPane = section.pane
     settingsNavigationRequest = SettingsNavigationRequest(section: section)
+    presentSettings()
+  }
+
+  public func showRecord(_ id: RecordID) async {
+    selectSidebarSection(.records)
+    await recordWorkspace.revealRecord(id)
+  }
+
+  public func installRecordCopyAction(
+    _ action: @escaping @MainActor (RecordReuseSubject) async -> RecordReuseOutcome
+  ) {
+    copyRecordAction = action
+  }
+
+  public func copyRecord(_ subject: RecordReuseSubject) async -> RecordReuseOutcome {
+    await copyRecordAction(subject)
   }
 
   public func showHistoryEntry(_ entryID: UUID) {
-    settingsNavigationRequest = nil
+    recordWorkspace.cancelNavigation()
     selectedSidebarSection = .stream
     runHistoryScope = .recentRuns
     runHistoryDeepLinkState = .idle
@@ -1069,8 +1095,8 @@ extension AppModel {
   }
 
   public func openWorkflowEditor() {
-    settingsNavigationRequest = nil
     historyNavigationRequest = nil
+    recordWorkspace.cancelNavigation()
     selectedSidebarSection = .workflows
     workflowEditorNavigationRequest = nil
   }

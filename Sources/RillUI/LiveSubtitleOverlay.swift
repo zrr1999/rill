@@ -31,7 +31,7 @@ public enum LiveSubtitleOverlayMetrics {
 
 enum LiveSubtitleSurfaceMaterial: Equatable {
   case thin
-  case regular
+  case opaque
 }
 
 /// Shared bar geometry for the overlay waveform, so the observed-meter and
@@ -53,7 +53,7 @@ struct LiveSubtitleSurfaceStyle: Equatable {
     increasedContrast: Bool
   ) -> LiveSubtitleSurfaceStyle {
     if reduceTransparency {
-      return LiveSubtitleSurfaceStyle(material: .regular, tintOpacity: 0.28)
+      return LiveSubtitleSurfaceStyle(material: .opaque, tintOpacity: 0)
     }
     return LiveSubtitleSurfaceStyle(
       material: .thin,
@@ -130,10 +130,8 @@ public struct LiveSubtitleOverlay: View {
       shape
         .fill(.thinMaterial)
         .overlay(shape.fill(surfaceTint.opacity(style.tintOpacity)))
-    case .regular:
-      shape
-        .fill(.regularMaterial)
-        .overlay(shape.fill(surfaceTint.opacity(style.tintOpacity)))
+    case .opaque:
+      shape.fill(Color(nsColor: .windowBackgroundColor))
     }
   }
 

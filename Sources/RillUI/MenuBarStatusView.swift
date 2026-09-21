@@ -357,6 +357,11 @@ public struct MenuBarStatusView: View {
         }
         .keyboardShortcut("o", modifiers: [.command, .shift])
 
+        SettingsLink {
+          Label(UIStrings.text(.settingsTitle, language: model.language), systemImage: RillSystemSymbol.gearshape.rawValue)
+        }
+
+
         Button {
           model.showRunHistory()
           openMainWindow()
@@ -371,7 +376,7 @@ public struct MenuBarStatusView: View {
           openMainWindow()
         } label: {
           Label(
-            UIStrings.text(.sidebarRecords, language: model.language),
+            L10n.workspace(.allRecords, language: model.language),
             systemImage: RillSystemSymbol.squareStack3dUp.rawValue
           )
         }

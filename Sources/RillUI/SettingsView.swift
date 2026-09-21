@@ -163,7 +163,9 @@ public struct SettingsView: View {
   @State var sensitiveAppRuleError: String?
   @State var destructiveConfirmation: SettingsDestructiveConfirmation?
   @State var presentedSheet: SettingsSheetDestination?
-  @State private var expandedSettingsSections: Set<SettingsSection> = [.permissions]
+  private let pane: SettingsPane
+  @State private var expandedSettingsSections: Set<SettingsSection> = []
+  @State private var showsDiagnostics = false
   @State var wakePhrasesText: String
   @State var wakeListeningDraftEnabled: Bool
   @State var isApplyingWakeWordSettings = false
@@ -176,9 +178,12 @@ public struct SettingsView: View {
 
   public init(
     model: AppModel,
-    privacyNoticeDocument: PrivacyNoticeDocument? = PrivacyNoticeDocument.bundled
+    privacyNoticeDocument: PrivacyNoticeDocument? = PrivacyNoticeDocument.bundled,
+    pane: SettingsPane = .general
   ) {
     self.model = model
+    self.pane = pane
+    _expandedSettingsSections = State(initialValue: Set(pane.sections))
     self.privacyNoticeDocument = privacyNoticeDocument
     let wakeWordSettings = model.wakeWordSettingsSnapshot
     _wakePhrasesText = State(
@@ -192,58 +197,32 @@ public struct SettingsView: View {
   public var body: some View {
     ScrollViewReader { proxy in
       Form {
-        Section {
-          Text(UIStrings.text(.settingsDescription, language: model.language))
-            .foregroundStyle(.secondary)
-        }
-
         if let unsavedSummary = model.settingsSaveState.unsavedSummary {
           settingsSaveFailureSection(unsavedSummary)
         }
-
-        Section {
-          permissionsSection
-          speechEngineSection
-          builtinPushToTalkSection
-          voiceAssistantResourcesSection
-        } header: {
-          settingsGroupHeader(
-            L10n.settingsText(.settingsGroupVoiceAndModels, language: model.language),
-            systemImage: RillSystemSymbol.waveform.rawValue
-          )
-        }
-
-        Section {
-          recordPanelSection
-          vocabularySection
-          if let memory = model.contextMemory {
-            ContextMemorySettingsView(memory: memory, workflows: model.workflows.filter(\.supportsContextualCorrection), language: model.language)
+        switch pane {
+        case .general:
+          Section { languageSection }
+        case .input:
+          Section { builtinPushToTalkSection; recordPanelSection }
+        case .voice:
+          Section { speechEngineSection; voiceAssistantResourcesSection }
+        case .vocabulary:
+          Section {
+            vocabularySection
+            if let memory = model.contextMemory {
+              ContextMemorySettingsView(memory: memory, workflows: model.workflows.filter(\.supportsContextualCorrection), language: model.language, isExpanded: settingsDisclosureBinding(for: .contextMemory))
+                .id(SettingsSection.contextMemory)
+                .accessibilityIdentifier("settings.section.contextMemory")
+                .focusable()
+                .focused($focusedSettingsSection, equals: .contextMemory)
+                .accessibilityFocused($accessibilityFocusedSettingsSection, equals: .contextMemory)
+            }
           }
-          languageSection
-        } header: {
-          settingsGroupHeader(
-            L10n.settingsText(.settingsGroupFeaturesAndPersonalization, language: model.language),
-            systemImage: RillSystemSymbol.sliderHorizontal3.rawValue
-          )
-        }
-
-        Section {
-          privacySection
-          localDataAndRetentionSection
-        } header: {
-          settingsGroupHeader(
-            L10n.settingsText(.settingsGroupPrivacyAndData, language: model.language),
-            systemImage: RillSystemSymbol.lockShield.rawValue
-          )
-        }
-
-        Section {
-          diagnosticsEntryRow
-        } header: {
-          settingsGroupHeader(
-            L10n.settingsText(.settingsGroupAdvanced, language: model.language),
-            systemImage: RillSystemSymbol.gearshape.rawValue
-          )
+        case .privacy:
+          Section { permissionsSection; privacySection }
+        case .data:
+          Section { localDataAndRetentionSection; diagnosticsEntryRow }
         }
       }
       .formStyle(.grouped)
@@ -252,7 +231,18 @@ public struct SettingsView: View {
         await positionSettingsSection(request, proxy: proxy)
       }
     }
-    .navigationTitle(UIStrings.text(.settingsTitle, language: model.language))
+    .navigationTitle(pane.title(language: model.language))
+    .sheet(isPresented: $showsDiagnostics) {
+      VStack(spacing: 0) {
+        HStack {
+          Text(UIStrings.text(.sidebarDiagnostics, language: model.language)).font(.headline)
+          Spacer()
+          Button(L10n.workspace(.done, language: model.language)) { showsDiagnostics = false }
+            .keyboardShortcut(.cancelAction)
+        }.padding()
+        DiagnosticsView(model: model)
+      }.frame(minWidth: 680, minHeight: 480)
+    }
     .sheet(item: $presentedSheet) { destination in
       switch destination {
       case .privacyNotice(let document):
@@ -424,16 +414,12 @@ extension SettingsView {
 
   private func settingsSectionHeader(_ section: SettingsSection) -> some View {
     Label(section.title(language: model.language), systemImage: section.symbolName)
-      .accessibilityFocused(
-        $accessibilityFocusedSettingsSection,
-        equals: section
-      )
-      .accessibilityIdentifier("settings.section.\(section.rawValue)")
+
   }
 
   private var diagnosticsEntryRow: some View {
     Button {
-      model.selectSidebarSection(.diagnostics)
+      showsDiagnostics = true
     } label: {
       HStack {
         Label(
@@ -450,15 +436,9 @@ extension SettingsView {
     }
     .buttonStyle(SettingsNavigationRowButtonStyle())
     .accessibilityIdentifier("settings.diagnostics.open")
-  }
-
-  private func settingsGroupHeader(
-    _ title: String,
-    systemImage: String
-  ) -> some View {
-    Label(title, systemImage: systemImage)
-      .font(.headline)
-      .foregroundStyle(.primary)
+    .id(SettingsSection.diagnostics)
+    .focused($focusedSettingsSection, equals: .diagnostics)
+    .accessibilityFocused($accessibilityFocusedSettingsSection, equals: .diagnostics)
   }
 
   func settingsDisclosure<Content: View>(
@@ -482,6 +462,8 @@ extension SettingsView {
     }
     .focusable()
     .focused($focusedSettingsSection, equals: section)
+    .accessibilityFocused($accessibilityFocusedSettingsSection, equals: section)
+    .accessibilityIdentifier("settings.section.\(section.rawValue)")
     .id(section)
   }
 
@@ -527,22 +509,24 @@ extension SettingsView {
     proxy: ScrollViewProxy
   ) async {
     await Task.yield()
-    guard model.selectedSidebarSection == .settings,
+    guard pane == request.section.pane,
       model.settingsNavigationRequest?.id == request.id
     else {
       return
     }
+    if request.section == .diagnostics { showsDiagnostics = true }
     expandedSettingsSections.insert(request.section)
     await Task.yield()
     // Navigation scroll, not decorative motion: keep the fixed duration
     // easing so section positioning stays predictable.
-    withAnimation(.easeInOut(duration: 0.2)) {
+    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
       proxy.scrollTo(request.section, anchor: .top)
     }
-    await Task.yield()
-    guard model.settingsNavigationRequest?.id == request.id else { return }
+    await waitForMainRunLoopDefaultMode()
+    guard !Task.isCancelled, model.settingsNavigationRequest?.id == request.id else { return }
     focusedSettingsSection = request.section
     accessibilityFocusedSettingsSection = request.section
+    model.settingsNavigationRequest = nil
   }
 
   private var destructiveConfirmationTitle: String {

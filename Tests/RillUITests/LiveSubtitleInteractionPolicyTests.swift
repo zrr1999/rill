@@ -24,7 +24,7 @@ final class LiveSubtitleInteractionPolicyTests: XCTestCase {
         reduceTransparency: true,
         increasedContrast: false
       ),
-      LiveSubtitleSurfaceStyle(material: .regular, tintOpacity: 0.28)
+      LiveSubtitleSurfaceStyle(material: .opaque, tintOpacity: 0)
     )
   }
 
