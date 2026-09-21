@@ -59,7 +59,7 @@ gitleaks version
 
 ## 改动边界
 
-模块依赖应保持单向：
+模块依赖应保持单向；完整依赖图与状态归属见 [架构说明](docs/architecture.md)：
 
 ```text
 RillCore          领域模型与协议

@@ -823,8 +823,7 @@ private enum AppContainerFactory {
       pasteboard: pasteboard,
       diagnosticReporter: { event in
         await core.diagnostics.record(event)
-      },
-      hotkeyTap: hotkeyTap
+      }
     )
     let cursorTextPreviewCoordinator = CursorTextPreviewCoordinator(
       diagnosticReporter: { diagnostic in
@@ -959,6 +958,9 @@ private enum AppContainerFactory {
       supervisor: speechWorkerSupervisor,
       settingsProvider: {
         try localSpeechSettingsSource.currentSettings()
+      },
+      diagnosticReporter: { event in
+        await core.diagnostics.record(event)
       }
     )
     let localSpeechRecognizer = RoutedLocalSpeechRecognizer(
@@ -1131,10 +1133,19 @@ private enum AppContainerFactory {
       providers: providers,
       authorizationBridge: cloudProcessingAuthorizationBridge
     )
-    let recognitionOptionsProvider = makeRecognitionOptionsProvider(
-      core: core,
-      providers: providers
-    )
+    let recognitionOptionsProvider: RecognitionOptionsProvider = { workflow, _ in
+      let language: String?
+      switch workflow.plan.setup.speechRoute?.recognizerID {
+      case "local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming", "auto":
+        // Local workers resolve workflow overrides and otherwise detect the language.
+        language = nil
+      default:
+        language = AppSettingsLoader.trimmedNonEmpty(
+          workflow.metadata[WorkflowMetadataKey.languageOverride]
+        )
+      }
+      return SpeechRecognitionRequestOptions(language: language)
+    }
     let recognitionRunPreflight = AppBootstrap.makeRecognitionRunPreflight(
       trustedLocalModelIdentifiers: Set(providers.trustedLocalSpeechModels.map(\.id)),
       defaultLocalModelIdentifier: providers.defaultLocalSpeechModelIdentifier
@@ -1377,9 +1388,7 @@ private enum AppContainerFactory {
     SystemClipboardCaptureController(
       hotkeyTap: platform.hotkeyTap,
       pasteboard: platform.pasteboard,
-      contextProvider: platform.contextProvider,
       recordStore: core.recordStore,
-      recordDeliveryCoordinator: core.recordDelivery,
       sessionCoordinator: coordinator,
       eventBus: core.eventBus,
       diagnostics: core.diagnostics,
@@ -1448,60 +1457,17 @@ private enum AppContainerFactory {
         recognizerRegistry.recognizer(for: recognizerID)?
           .capabilities.maximumAudioDurationSeconds
       },
-      cleanupOwner: providers.managedTemporaryAudioCleanupOwner
-    )
-  }
-
-  private static func makeRecognitionOptionsProvider(
-    core: CoreServices,
-    providers: ProviderServices
-  ) -> RecognitionOptionsProvider {
-    { workflow, context in
-      let language = await resolvedRecognitionLanguage(
-        for: workflow,
-        providers: providers
-      )
-      _ = core
-      _ = context
-      return SpeechRecognitionRequestOptions(language: language)
-    }
-  }
-
-  private static func resolvedRecognitionLanguage(
-    for workflow: WorkflowDefinition,
-    providers: ProviderServices
-  ) async -> String? {
-    switch workflow.plan.setup.speechRoute?.recognizerID {
-    case "local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming", "auto":
-      // Qwen defaults to multilingual automatic detection. The worker still
-      // honors an explicit workflow override when one exists.
-      return nil
-    default:
-      return AppSettingsLoader.trimmedNonEmpty(
-        workflow.metadata[WorkflowMetadataKey.languageOverride]
-      )
-    }
-  }
-
-  private static func recognitionHintResolutionDiagnostic(
-    outcome: String,
-    count: Int,
-    omittedCount: Int,
-    rejectedCount: Int,
-    recognizerID: String
-  ) -> DiagnosticEvent {
-    DiagnosticEvent(
-      subsystem: .providers,
-      level: outcome == "load-failed" ? .warning : .info,
-      event: "session.recognition-hints.resolved",
-      message: "Recognition hints were resolved for the current run.",
-      metadata: [
-        "count": String(count),
-        "omittedCount": String(omittedCount),
-        "outcome": outcome,
-        "recognizerID": recognizerID,
-        "rejectedCount": String(rejectedCount),
-      ]
+      cleanupOwner: providers.managedTemporaryAudioCleanupOwner,
+      recordingCueAction: { cue, token in
+        await MainActor.run {
+          token.performIfValid {
+            NSHapticFeedbackManager.defaultPerformer.perform(
+              cue == .started ? .alignment : .generic,
+              performanceTime: .now
+            )
+          }
+        }
+      }
     )
   }
 
@@ -1521,7 +1487,7 @@ private enum AppContainerFactory {
             let settings = try await providers.openAISettingsProvider()
             providerIdentities.append(
               cloudAuthorizationScopeIdentity([
-                "openai.responses",
+                LLMTextProcessing.providerID,
                 settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines),
                 settings.model.trimmingCharacters(in: .whitespacesAndNewlines),
                 settings.apiKey,
@@ -2824,12 +2790,12 @@ private enum CloudPrivacyConfirmation {
       processingDestinations: processingDestinations,
       usesChinese: usesChinese
     )
+    alert.addButton(withTitle: usesChinese ? "允许并记住" : "Allow and Remember")
     alert.addButton(withTitle: usesChinese ? "仅这一次" : "Allow Once")
-    alert.addButton(withTitle: usesChinese ? "始终允许" : "Always Allow")
     alert.addButton(withTitle: usesChinese ? "取消" : "Cancel")
     return switch alert.runModal() {
-    case .alertFirstButtonReturn: .allowOnce
-    case .alertSecondButtonReturn: .alwaysAllow
+    case .alertFirstButtonReturn: .alwaysAllow
+    case .alertSecondButtonReturn: .allowOnce
     default: .cancel
     }
   }
@@ -2862,8 +2828,8 @@ enum CloudPrivacyConfirmationCopy {
       "工作流“\(workflowName)”请求了云端处理，但无法对云端目的地进行分类。如非预期，请取消。本次内容尚未离开本机。"
     }
     let authorizationCopy = usesChinese
-      ? "选择“始终允许”后，仅当此工作流及云端服务配置保持不变时不再询问；可随时在“设置 > 隐私”中撤销。"
-      : "Choose “Always Allow” to skip this prompt only while this workflow and cloud-service configuration remain unchanged. Revoke it anytime in Settings > Privacy."
+      ? "选择“允许并记住”后，此工作流及云端服务配置不变时不再询问，重启 Rill 后仍然有效。可随时在“设置 > 隐私”中撤销，或选择“仅这一次”。"
+      : "Choose “Allow and Remember” to skip this prompt for this workflow and cloud-service configuration, including after restarting Rill. Revoke it anytime in Settings > Privacy, or choose “Allow Once”."
     return processingCopy + "\n\n" + authorizationCopy
   }
 }

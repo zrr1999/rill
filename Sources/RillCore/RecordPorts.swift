@@ -45,14 +45,14 @@ public struct RecordDeliveryRequest: Sendable, Equatable {
 public struct RecordDeliveryReceipt: Codable, Sendable, Equatable {
     public let id: UUID
     public let recordID: RecordID
-    public let membershipID: RecordMembershipID
+    public let membershipID: RecordMembershipID?
     public let sink: RecordSinkIdentity
     public let deliveredAt: Date
 
     public init(
         id: UUID = UUID(),
         recordID: RecordID,
-        membershipID: RecordMembershipID,
+        membershipID: RecordMembershipID?,
         sink: RecordSinkIdentity,
         deliveredAt: Date = Date()
     ) {

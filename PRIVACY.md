@@ -15,7 +15,8 @@ Rill does not operate an analytics or advertising endpoint in this build. Saniti
 ## Network destinations
 
 - **sherpa-onnx local speech:** the public build exposes and downloads exactly one local model, Qwen3-ASR 0.6B INT8. When a user prepares it, Rill downloads only the catalog-pinned HTTPS archive from `github.com`; redirects are restricted to `github.com`, `objects.githubusercontent.com`, and `release-assets.githubusercontent.com`. The ephemeral download session uses no cookies, credential storage, or cache, and removes `Authorization` and `Cookie` headers on redirects. Model download sends no microphone audio or recognized text. Rill verifies the exact archive byte count and SHA-256 digest before extraction, rejects unsafe archive entries, verifies the canonical inventory of every installed regular file, and atomically publishes a private model directory. Recognition from that directory then runs on this Mac without sending microphone audio or recognized text to the model hosts. The source tree retains a pinned SenseVoiceSmall INT8 identity only for internal compatibility and future evaluation; the public build does not expose, select, recommend, or download it pending product and legal review.
-- **OpenAI Responses API-compatible cloud text workflows:** when the user explicitly selects an enabled built-in or custom voice workflow containing an LLM rewrite step, has supplied a readable API key, confirms cloud text processing when required, and the active privacy policy permits the run, Rill sends the API key, final transcript text, and that workflow step's instruction to the configured Responses API endpoint. It does not send microphone audio, selected text, clipboard text, application names, or bundle identifiers. The request is non-streaming and sets `store: false`; that request setting is not a promise that the endpoint operator keeps no security, abuse-monitoring, billing, or operational records. The configured endpoint operator's terms and data controls govern data after it reaches the service. Rill cannot inspect or delete provider-side records.
+- **Smart Cleanup with DeepSeek:** uses the shared LLM Provider endpoint, model and Keychain credential. When configured for DeepSeek V4.1 Flash (`deepseek-flash`), rewrite requests disable thinking, have a 5-second budget and reject incomplete output. Audio remains in the local recognition path. Cloud authorization is scoped to the configured model, endpoint and credential.
+- **LLM Provider (OpenAI-compatible Responses API):** when the user explicitly selects an enabled built-in or custom voice workflow containing an LLM rewrite step, has supplied a readable API key, confirms cloud text processing when required, and the active privacy policy permits the run, Rill sends the API key, final transcript text, and that workflow step's instruction to the configured Responses API endpoint. It does not send microphone audio, selected text, clipboard text, application names, or bundle identifiers. The request is non-streaming and sets `store: false`; that request setting is not a promise that the endpoint operator keeps no security, abuse-monitoring, billing, or operational records. The configured endpoint operator's terms and data controls govern data after it reaches the service. Rill cannot inspect or delete provider-side records.
 - **Apple Shortcuts:** a workflow can hand final text to a user-selected Shortcut. The Shortcut, its actions, and any services it contacts are controlled by the user and are outside Rill's ability to inspect.
 - **Markdown file output:** a workflow can append final text to a local Markdown path selected by the user. Rill does not upload that file. Appends use a same-directory atomic transaction and reject linked paths, multiply linked files, non-UTF-8 content, and files over 64 MiB.
 
@@ -23,7 +24,9 @@ Third-party services and user-created automations apply their own retention, acc
 
 ## Local storage and retention
 
-Rill stores settings, clipboard state, run history, run receipts, and sanitized diagnostics in the user's Application Support area. Sensitive stored payloads are protected with AES-256-GCM using a root key held in macOS Keychain. Provider credentials, including the user-supplied OpenAI API key, are stored in Keychain rather than ordinary settings rows. Diagnostics record only allowlisted provider, stage, result category, duration, and coarse status-code metadata; they do not record the API key, request text, response text, prompt, or OpenAI error body.
+Rill stores settings, clipboard state, run history, run receipts, and sanitized diagnostics in the user's Application Support area. Sensitive stored payloads are protected with AES-256-GCM using a root key held in macOS Keychain. The shared LLM Provider credential is stored in Keychain rather than ordinary settings rows. Diagnostics record only allowlisted provider, stage, result category, duration, and coarse status-code metadata; they do not record the API key, request text, response text, prompt, or OpenAI error body.
+
+Voice activity history also retains the recognized text and each executed text-processing result, including vocabulary replacement and LLM cleanup. Completed steps remain available when a later step fails. These snapshots use the same encrypted history storage and retention controls; they are not added to diagnostic exports. LLM steps also retain API-reported input, output, and total token counts when available; missing counts are not estimated. Older entries cannot reconstruct intermediate results or token counts that were not recorded.
 
 Clipboard history and run/diagnostic history default to 30 days. The user can independently select 1 day, 1 week, 30 days, 1 year, or no automatic pruning. Automatic clipboard pruning preserves pinned items. Explicitly clearing clipboard history removes pinned history but preserves items that are still active in a Stack, Queue, or List so pending delivery is not silently destroyed.
 
@@ -33,9 +36,11 @@ Downloaded trusted speech models remain under `~/Library/Application Support/Ril
 
 ## Your controls
 
+When cloud confirmation is enabled, the default action is **Allow and Remember**. Rill saves that authorization across restarts and skips later prompts for the same workflow and provider configuration. **Allow Once** applies only to the current run. You can revoke saved authorizations in Settings > Privacy; changing the workflow or provider configuration requires confirmation again.
+
 The Settings screen provides controls for the speech provider, OpenAI API key, Responses API Base URL and model ID, explicit configuration verification, cloud confirmation, sensitive applications, Secure Input behavior, history preview exposure, history retention, history clearing, failed-audio recovery, provider credentials, and clipboard capture. Verification sends the API key and fixed non-user content to the configured endpoint and does not record the response text. Clipboard capture can also be paused or bypassed for the next external copy from the menu bar.
 
-The history preview setting changes what text is exposed to the visual and accessibility UI: Full shows the complete result, Restricted exposes at most 96 summarized characters, and Hidden exposes no result text. It does not delete the underlying local record.
+The history preview setting changes what text is exposed to the visual and accessibility UI: Full shows the complete result, Restricted exposes at most 96 summarized characters per result or processing step, and Hidden exposes no result text. It does not delete the underlying local record.
 
 Rill does not yet provide a single "erase everything" command. Use the available history, failed-audio, credential, and clipboard controls for those data categories. Rill does not currently reveal or delete trusted model files in the App. Removing the App alone may not remove Keychain items or downloaded models.
 
@@ -43,9 +48,9 @@ Rill does not yet provide a single "erase everything" command. Use the available
 
 Privacy checks are designed to fail closed when settings, focus identity, exact clipboard-item identity, or a processing destination cannot be verified. A preview or explanation is never an execution authorization; the runtime rechecks applicable policy before side effects.
 
-An OpenAI polishing failure, refusal, incomplete response, timeout, cancellation, or configuration error occurs before delivery. Rill does not silently fall back to injecting the original transcript or any partial cloud output.
+For captured speech or explicitly supplied text, recoverable rewrite failures (network errors, rate limiting, timeout, incomplete or invalid results) may deliver the complete text from before the rewrite, under the same output and privacy policy. Activity reports skipped cleanup. Partial cloud output is rejected. Cancellation, privacy restrictions, credential/configuration failures, authentication failures and refusal stop delivery; assistant runs never fall back to echoing the request.
 
-This notice covers Rill's current behavior only. macOS, OpenAI, Apple Shortcuts, user-selected files, and any other software invoked by a Shortcut have their own data practices.
+This notice covers Rill's current behavior only. macOS, DeepSeek, OpenAI, Apple Shortcuts, user-selected files, and any other software invoked by a Shortcut have their own data practices.
 
 ---
 
@@ -66,7 +71,8 @@ Rill 只在语音采集处于活动状态时处理麦克风音频。根据工作
 ## 网络目的地
 
 - **sherpa-onnx 本地语音：**公开构建只暴露和下载一款本地模型：Qwen3-ASR 0.6B INT8。用户准备该模型时，Rill 只会从 `github.com` 下载目录中固定的 HTTPS 归档；重定向仅允许前往 `github.com`、`objects.githubusercontent.com` 和 `release-assets.githubusercontent.com`。临时下载会话不使用 Cookie、凭据存储或缓存，并会在重定向时移除 `Authorization` 与 `Cookie` 请求头。模型下载不会发送麦克风音频或识别文本。Rill 会在解压前校验归档的精确字节数和 SHA-256，拒绝不安全的归档条目，校验每个已安装普通文件的规范清单，并把私有模型目录原子发布；之后从该目录进行的识别完全在本机运行，不会把麦克风音频或识别文本发送给模型 host。源码仍保留固定的 SenseVoiceSmall INT8 身份，仅用于内部兼容和未来评估；在产品与法律审核完成前，公开构建不会暴露、选择、推荐或下载该模型。
-- **OpenAI-compatible 云端文本工作流：**只有用户主动选择已启用、包含大模型改写步骤的内置或自定义语音工作流，提供的 API Key 可读取，在需要时确认云端文本处理且当前隐私策略允许运行，Rill 才会把 API Key、最终转写正文和对应工作流步骤指令发送到已配置的 Responses API 地址。请求不包含麦克风音频、选中文本、剪贴板正文、App 名或 bundle ID。请求采用非流式并设置 `store: false`；该请求参数不等于地址运营方不保留任何安全、滥用监测、计费或运行记录。数据到达服务后适用地址运营方的服务条款和数据控制，Rill 无法检查或删除 provider 侧记录。
+- **使用 DeepSeek 的智能整理：**复用统一 LLM Provider 的地址、模型和 Keychain 凭据。配置 DeepSeek V4.1 Flash（`deepseek-flash`）后，润色请求关闭思考，预算为 5 秒，不接受截断结果。音频继续在本地识别，云端授权绑定所配置的模型、地址和凭据。
+- **LLM Provider（OpenAI-compatible Responses API）：**只有用户主动选择已启用、包含大模型改写步骤的内置或自定义语音工作流，提供的 API Key 可读取，在需要时确认云端文本处理且当前隐私策略允许运行，Rill 才会把 API Key、最终转写正文和对应工作流步骤指令发送到已配置的 Responses API 地址。请求不包含麦克风音频、选中文本、剪贴板正文、App 名或 bundle ID。请求采用非流式并设置 `store: false`；该请求参数不等于地址运营方不保留任何安全、滥用监测、计费或运行记录。数据到达服务后适用地址运营方的服务条款和数据控制，Rill 无法检查或删除 provider 侧记录。
 - **Apple 快捷指令：**工作流可把最终文本交给用户选择的快捷指令。快捷指令的动作及其访问的服务由用户控制，Rill 无法检查其后续行为。
 - **Markdown 文件输出：**工作流可把最终文本追加到用户选择的本地 Markdown 路径；Rill 不会上传该文件。追加使用同目录原子事务，并拒绝链接路径、多重硬链接、非 UTF-8 内容和超过 64 MiB 的文件。
 
@@ -74,7 +80,9 @@ Rill 只在语音采集处于活动状态时处理麦克风音频。根据工作
 
 ## 本地存储与留存
 
-Rill 在用户的 Application Support 区域保存设置、剪贴板状态、运行历史、运行收据和净化后的诊断。敏感持久化正文使用 macOS Keychain 中的根密钥和 AES-256-GCM 保护；provider 凭据（包括用户提供的 OpenAI API Key）保存在 Keychain，而不是普通设置行中。诊断只记录白名单内的 provider、阶段、结果分类、耗时和粗粒度状态码信息，不记录 API Key、请求正文、响应正文、prompt 或 OpenAI 错误正文。
+Rill 在用户的 Application Support 区域保存设置、剪贴板状态、运行历史、运行收据和净化后的诊断。敏感持久化正文使用 macOS Keychain 中的根密钥和 AES-256-GCM 保护；统一 LLM Provider 的 API Key 保存在 Keychain，而不是普通设置行中。诊断只记录白名单内的 provider、阶段、结果分类、耗时和粗粒度状态码信息，不记录 API Key、请求正文、响应正文、prompt 或服务端错误正文。
+
+语音活动历史还会保留识别文本及各个实际执行步骤的结果，包括词替换和大模型润色；后续步骤失败时，已完成步骤的文本仍可查看。这些快照沿用加密历史存储和留存控制，不进入诊断导出。大模型步骤同时保留接口实际返回的输入、输出和总 token 用量，不估算缺失的计数。旧记录未保存的中间结果或 token 用量无法补回。
 
 剪贴板历史和运行/诊断历史默认保留 30 天。用户可以分别选择 1 天、1 周、30 天、1 年或不自动清理。自动清理会保留已置顶条目；用户显式清除剪贴板历史时会删除已置顶历史，但仍保留 Stack、Queue 或 List 中等待投递的条目，避免静默破坏待投递内容。
 
@@ -84,9 +92,11 @@ Rill 在用户的 Application Support 区域保存设置、剪贴板状态、运
 
 ## 用户控制
 
+开启云端确认时，弹窗默认操作为**允许并记住**。Rill 会在重启后保留授权，同一工作流和服务配置下不再重复询问；**仅这一次**只授权当前运行。可在“设置 > 隐私”中撤销已保存的授权；更改工作流或服务配置后需要重新确认。
+
 设置页提供语音 provider、OpenAI API Key、Responses API Base URL 与模型 ID、显式配置验证、云端确认、敏感 App、Secure Input 行为、历史预览暴露、历史留存与清除、失败录音恢复、provider 凭据和剪贴板捕获控制。验证会把 API Key 与固定的非用户内容发送到已配置地址，且不记录响应正文。菜单栏还可以暂停剪贴板捕获，或跳过下一次外部复制。
 
-历史预览设置控制视觉界面和辅助功能界面实际接收的文本：完整预览显示全部结果；受限预览最多暴露 96 个摘要字符；隐藏预览不暴露结果正文。该设置不会删除底层本地记录。
+历史预览设置控制视觉界面和辅助功能界面实际接收的文本：完整预览显示全部结果；受限预览对每个结果或处理步骤最多显示 96 个摘要字符；隐藏预览不暴露结果正文。该设置不会删除底层本地记录。
 
 Rill 目前没有单一的“清除全部数据”命令。历史、失败录音、凭据和剪贴板数据可使用当前提供的分类控制；Rill 当前不会在 App 内显示或删除可信模型文件。仅移除 App 不一定会删除 Keychain 条目或已下载模型。
 
@@ -94,6 +104,6 @@ Rill 目前没有单一的“清除全部数据”命令。历史、失败录音
 
 当设置、焦点身份、精确剪贴板条目身份或处理目的地无法验证时，隐私检查会采用 fail-closed 策略。预览或解释不是执行授权；运行时会在副作用发生前重新检查适用策略。
 
-OpenAI 润色失败、拒绝、响应不完整、超时、取消或配置错误都发生在投递前；Rill 不会静默回退并注入原始转写，也不会注入任何云端部分输出。
+对于已录制语音或主动提供的文本，网络错误、限流、超时、不完整或无效结果等可恢复的改写失败，可以在相同输出与隐私策略下投递改写前的完整文本，并在活动中提示未完成整理。云端部分结果不会被投递。取消、隐私阻止、凭据或配置错误、认证失败及拒绝会停止投递；语音助手不会回退为复述请求。
 
-本文只覆盖当前 Rill 行为。macOS、OpenAI、Apple 快捷指令、用户选择的文件，以及快捷指令调用的其他软件均有各自的数据实践。
+本文只覆盖当前 Rill 行为。macOS、DeepSeek、OpenAI、Apple 快捷指令、用户选择的文件，以及快捷指令调用的其他软件均有各自的数据实践。

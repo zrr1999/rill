@@ -71,7 +71,7 @@ public enum SQLitePersistenceError: Error, LocalizedError, Equatable {
   }
 }
 
-private enum SQLiteBinding {
+enum SQLiteBinding {
   case text(String)
   case blob(Data)
   case double(Double)
@@ -79,10 +79,8 @@ private enum SQLiteBinding {
   case null
 }
 
-public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptRepository,
-  RunHistoryBrowsing,
-  DiagnosticRepository,
-  SensitiveSettingsStore, ExportMetadataRepository,
+public actor SQLitePersistenceStore: DiagnosticRepository,
+  ExportMetadataRepository,
   RecordGraphPersistenceStore
 {
   private static let logger = Logger(
@@ -93,9 +91,9 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
   public let databaseURL: URL
 
   private let connection: SQLiteConnectionBox
-  private let encoder = JSONEncoder()
-  private let decoder = JSONDecoder()
-  private let localDataProtector: any LocalDataProtector
+  let encoder = JSONEncoder()
+  let decoder = JSONDecoder()
+  let localDataProtector: any LocalDataProtector
 
   private static let clipboardStorageLimits = SystemClipboardStorageLimits.productDefault
   private static let maximumClipboardBlobCount =
@@ -136,6 +134,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
 
     self.connection = SQLiteConnectionBox(db: handle)
     try SQLiteWriterBarrier.registerCapability(on: handle)
+      try SQLiteCatalogWriterBarrier.register(on: handle)
     try Self.execute(
       """
       PRAGMA journal_mode = WAL;
@@ -398,6 +397,12 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     let prepared = try prepareRecordGraphWrite(snapshot)
     do {
       return try withImmediateTransaction {
+        if let stored = try storedRecordGraphMetadata() {
+          let data = try localDataProtector.openBinary(stored.protectedGraph, context: Self.recordGraphProtectionContext)
+          if (try? JSONDecoder().decode(RecordCatalogManifest.self, from: data).schemaVersion) == 2 {
+            throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
+          }
+        }
         let storedRevision = try storedRecordGraphRevision()
         let hasLegacyCurrent = try storedClipboardRevision() != nil
         let hasLegacySettings = try legacyClipboardRowExists()
@@ -510,6 +515,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
   public func removeRecordGraph() async throws -> RecordGraphRemovalResult {
     do {
       try withImmediateTransaction {
+        try execute("DELETE FROM record_catalog_nodes;")
         try execute("DELETE FROM record_payload_blobs;")
         try execute("DELETE FROM record_graph_metadata WHERE id = 1;")
         try execute("DELETE FROM clipboard_image_blobs;")
@@ -530,1255 +536,6 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     } catch {
       return .removedCleanupPending
     }
-  }
-
-  public func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration {
-    try currentRunHistoryWriteGeneration()
-  }
-
-  public func save(_ record: WorkflowResultRecord) async throws {
-    let generation = try currentRunHistoryWriteGeneration()
-    try saveHistoryRecord(record, generation: generation)
-  }
-
-  public func save(
-    _ record: WorkflowResultRecord,
-    generation: RunHistoryWriteGeneration
-  ) async throws {
-    try saveHistoryRecord(record, generation: generation)
-  }
-
-  private func saveHistoryRecord(
-    _ record: WorkflowResultRecord,
-    generation: RunHistoryWriteGeneration
-  ) throws {
-    let record = HistoryRecordSanitizer.sanitize(record)
-    let recordID = record.id.uuidString
-    let protectedFallbackName = try protectString(
-      record.workflow.fallbackName,
-      context: historyProtectionContext(
-        recordID: recordID,
-        field: "workflow_fallback_name"
-      )
-    )
-    let protectedFinalText = try record.finalText.map { finalText in
-      try protectString(
-        finalText,
-        context: historyProtectionContext(recordID: recordID, field: "final_text")
-      )
-    }
-    let correctionSourceJSON: String?
-    do {
-      correctionSourceJSON = try record.correctionSource.map { source in
-        let encoded = String(decoding: try encoder.encode(source), as: UTF8.self)
-        return try protectString(
-          encoded,
-          context: historyProtectionContext(
-            recordID: recordID,
-            field: "correction_source_json"
-          )
-        )
-      }
-    } catch let error as SQLitePersistenceError {
-      throw error
-    } catch {
-      throw SQLitePersistenceError.encodingValue(error.localizedDescription)
-    }
-    try withImmediateTransaction {
-      guard try generationIsCurrent(generation) else {
-        throw HistoryRepositoryError.writeObsoletedByClearBarrier
-      }
-      if let existingIdentity = try storedHistoryIdentity(recordID: record.id) {
-        guard existingIdentity.matches(record, generation: generation) else {
-          throw HistoryRepositoryError.conflictingHistoryRecord(recordID: record.id)
-        }
-        try updateHistoryRecordContent(
-          record,
-          protectedFallbackName: protectedFallbackName,
-          protectedFinalText: protectedFinalText,
-          correctionSourceJSON: correctionSourceJSON
-        )
-        return
-      }
-      let writeOrdinal = try nextRunHistoryWriteOrdinal()
-      let statement = try prepare(
-        """
-        INSERT INTO history_records (
-            id,
-            run_id,
-            workflow_id,
-            workflow_fallback_name,
-            workflow_title_key,
-            final_text,
-            failure_message,
-            timestamp,
-            is_stack_related,
-            outcome,
-            correction_source_json,
-            trigger_kind,
-            write_generation,
-            write_ordinal,
-            has_nonempty_final_text
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-        """
-      )
-      defer { sqlite3_finalize(statement) }
-
-      try bind(
-        [
-          .text(recordID),
-          record.runID.map { .text($0.uuidString) } ?? .null,
-          record.workflowID.map { .text($0.uuidString) } ?? .null,
-          .text(protectedFallbackName),
-          record.workflow.titleKey.map { .text($0.rawValue) } ?? .null,
-          protectedFinalText.map(SQLiteBinding.text) ?? .null,
-          record.failureMessage.map(SQLiteBinding.text) ?? .null,
-          .double(record.timestamp.timeIntervalSince1970),
-          .int(record.isRecordRelated ? 1 : 0),
-          .text(record.outcome.rawValue),
-          correctionSourceJSON.map(SQLiteBinding.text) ?? .null,
-          record.trigger.map { .text($0.rawValue) } ?? .null,
-          .int(generation.value),
-          .int(writeOrdinal),
-          .int(Self.hasNonemptyBody(record.finalText) ? 1 : 0),
-        ],
-        to: statement
-      )
-
-      try step(statement, expecting: SQLITE_DONE)
-    }
-  }
-
-  private struct StoredHistoryIdentity {
-    let runID: UUID?
-    let workflowID: UUID?
-    let timestamp: Date
-    let isRecordRelated: Bool
-    let outcome: HistoryOutcome
-    let trigger: WorkflowRunTriggerKind?
-    let generation: RunHistoryWriteGeneration
-    let hasNonemptyFinalText: Bool
-
-    func matches(
-      _ record: WorkflowResultRecord,
-      generation requestedGeneration: RunHistoryWriteGeneration
-    ) -> Bool {
-      runID == record.runID
-        && workflowID == record.workflowID
-        && timestamp == record.timestamp
-        && isRecordRelated == record.isRecordRelated
-        && outcome == record.outcome
-        && trigger == record.trigger
-        && generation == requestedGeneration
-        && hasNonemptyFinalText == SQLitePersistenceStore.hasNonemptyBody(record.finalText)
-    }
-  }
-
-  /// A snapshot freezes membership and ordering, while an intentional body or
-  /// correction revision remains visible at its stable row coordinate.
-  private func storedHistoryIdentity(recordID: UUID) throws -> StoredHistoryIdentity? {
-    let statement = try prepare(
-      """
-      SELECT run_id, workflow_id, timestamp, is_stack_related, outcome,
-             trigger_kind, write_generation, has_nonempty_final_text
-      FROM history_records
-      WHERE id = ?;
-      """
-    )
-    defer { sqlite3_finalize(statement) }
-    try bind([.text(recordID.uuidString)], to: statement)
-    switch sqlite3_step(statement) {
-    case SQLITE_DONE:
-      return nil
-    case SQLITE_ROW:
-      let runID: UUID?
-      if let rawRunID = textColumn(in: statement, index: 0) {
-        guard let decoded = UUID(uuidString: rawRunID) else {
-          throw SQLitePersistenceError.decodingRow(
-            "History identity contained an invalid run coordinate."
-          )
-        }
-        runID = decoded
-      } else {
-        runID = nil
-      }
-      let workflowID: UUID?
-      if let rawWorkflowID = textColumn(in: statement, index: 1) {
-        guard let decoded = UUID(uuidString: rawWorkflowID) else {
-          throw SQLitePersistenceError.decodingRow(
-            "History identity contained an invalid workflow coordinate."
-          )
-        }
-        workflowID = decoded
-      } else {
-        workflowID = nil
-      }
-      guard let outcomeText = textColumn(in: statement, index: 4),
-        let outcome = HistoryOutcome(rawValue: outcomeText)
-      else {
-        throw SQLitePersistenceError.decodingRow(
-          "History identity contained an invalid outcome."
-        )
-      }
-      let trigger: WorkflowRunTriggerKind?
-      if let triggerText = textColumn(in: statement, index: 5) {
-        guard let decoded = WorkflowRunTriggerKind(rawValue: triggerText) else {
-          throw SQLitePersistenceError.decodingRow(
-            "History identity contained an invalid trigger."
-          )
-        }
-        trigger = decoded
-      } else {
-        trigger = nil
-      }
-      let generation: RunHistoryWriteGeneration
-      do {
-        generation = try RunHistoryWriteGeneration(sqlite3_column_int64(statement, 6))
-      } catch {
-        throw SQLitePersistenceError.decodingRow(
-          "History identity contained an invalid generation."
-        )
-      }
-      return StoredHistoryIdentity(
-        runID: runID,
-        workflowID: workflowID,
-        timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
-        isRecordRelated: sqlite3_column_int64(statement, 3) != 0,
-        outcome: outcome,
-        trigger: trigger,
-        generation: generation,
-        hasNonemptyFinalText: sqlite3_column_int64(statement, 7) != 0
-      )
-    default:
-      throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
-    }
-  }
-
-  private func updateHistoryRecordContent(
-    _ record: WorkflowResultRecord,
-    protectedFallbackName: String,
-    protectedFinalText: String?,
-    correctionSourceJSON: String?
-  ) throws {
-    let statement = try prepare(
-      """
-      UPDATE history_records
-      SET workflow_fallback_name = ?, workflow_title_key = ?, final_text = ?,
-          failure_message = ?, correction_source_json = ?
-      WHERE id = ?;
-      """
-    )
-    defer { sqlite3_finalize(statement) }
-    try bind(
-      [
-        .text(protectedFallbackName),
-        record.workflow.titleKey.map { .text($0.rawValue) } ?? .null,
-        protectedFinalText.map(SQLiteBinding.text) ?? .null,
-        record.failureMessage.map(SQLiteBinding.text) ?? .null,
-        correctionSourceJSON.map(SQLiteBinding.text) ?? .null,
-        .text(record.id.uuidString),
-      ],
-      to: statement
-    )
-    try step(statement, expecting: SQLITE_DONE)
-    guard sqlite3_changes(db) == 1 else {
-      throw SQLitePersistenceError.steppingStatement(
-        "History content revision lost its stable row coordinate."
-      )
-    }
-  }
-
-  public func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
-    if query.limit == 0 { return [] }
-    let resultLimit = query.limit.flatMap { $0 >= 0 ? $0 : nil }
-    let currentGeneration = try currentRunHistoryWriteGeneration()
-    var clauses = ["write_generation = ?"]
-    var bindings: [SQLiteBinding] = [.int(currentGeneration.value)]
-
-    if let runID = query.runID {
-      clauses.append("run_id = ?")
-      bindings.append(.text(runID.uuidString))
-    }
-
-    if let workflowID = query.workflowID {
-      clauses.append("workflow_id = ?")
-      bindings.append(.text(workflowID.uuidString))
-    }
-
-    if let outcome = query.outcome {
-      clauses.append("outcome = ?")
-      bindings.append(.text(outcome.rawValue))
-    }
-
-    if let since = query.since {
-      clauses.append("timestamp >= ?")
-      bindings.append(.double(since.timeIntervalSince1970))
-    }
-
-    if let recordRelatedOnly = query.recordRelatedOnly {
-      clauses.append("is_stack_related = ?")
-      bindings.append(.int(recordRelatedOnly ? 1 : 0))
-    }
-
-    var records: [WorkflowResultRecord] = []
-    var scanOffset: Int64 = 0
-    var skippedCorruptRowCount = 0
-    let scanBatchSize: Int64
-    if let resultLimit {
-      let clampedLimit = min(max(resultLimit, 1), 128)
-      scanBatchSize = Int64(max(32, clampedLimit * 2))
-    } else {
-      scanBatchSize = 256
-    }
-
-    var exhaustedStorage = false
-    while !exhaustedStorage,
-      resultLimit.map({ records.count < $0 }) ?? true
-    {
-      var sql = """
-        SELECT
-            id,
-            run_id,
-            workflow_id,
-            workflow_fallback_name,
-            workflow_title_key,
-            final_text,
-            failure_message,
-            timestamp,
-            is_stack_related,
-            outcome,
-            correction_source_json,
-            trigger_kind
-        FROM history_records
-        """
-      if !clauses.isEmpty {
-        sql += " WHERE " + clauses.joined(separator: " AND ")
-      }
-      sql += " ORDER BY timestamp DESC, id ASC LIMIT ? OFFSET ?"
-
-      let statement = try prepare(sql)
-      var batchBindings = bindings
-      batchBindings.append(.int(scanBatchSize))
-      batchBindings.append(.int(scanOffset))
-      do {
-        try bind(batchBindings, to: statement)
-      } catch {
-        sqlite3_finalize(statement)
-        throw error
-      }
-
-      var scannedRowCount: Int64 = 0
-      do {
-        while true {
-          let stepResult = sqlite3_step(statement)
-          if stepResult == SQLITE_DONE { break }
-          guard stepResult == SQLITE_ROW else {
-            throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
-          }
-          scannedRowCount += 1
-          do {
-            records.append(try decodeHistoryRecord(from: statement))
-          } catch {
-            skippedCorruptRowCount += 1
-            continue
-          }
-          if let resultLimit, records.count >= resultLimit {
-            break
-          }
-        }
-      } catch {
-        sqlite3_finalize(statement)
-        throw error
-      }
-      sqlite3_finalize(statement)
-
-      scanOffset += scannedRowCount
-      exhaustedStorage = scannedRowCount < scanBatchSize
-    }
-
-    Self.reportSkippedCorruptHistoryRows(skippedCorruptRowCount)
-    return records
-  }
-
-  public func insertTerminal(_ receipt: WorkflowRunReceipt) async throws {
-    let generation = try currentRunHistoryWriteGeneration()
-    try insertTerminalReceipt(receipt, generation: generation)
-  }
-
-  public func insertTerminal(
-    _ receipt: WorkflowRunReceipt,
-    generation: RunHistoryWriteGeneration
-  ) async throws {
-    try insertTerminalReceipt(receipt, generation: generation)
-  }
-
-  private func insertTerminalReceipt(
-    _ receipt: WorkflowRunReceipt,
-    generation: RunHistoryWriteGeneration
-  ) throws {
-    let encodedReceipt: String
-    do {
-      encodedReceipt = String(decoding: try encoder.encode(receipt), as: UTF8.self)
-    } catch {
-      throw SQLitePersistenceError.encodingValue(error.localizedDescription)
-    }
-    let runID = receipt.runID.uuidString
-    let protectedPayload = try protectString(
-      encodedReceipt,
-      context: Self.runReceiptProtectionContext(runID: runID)
-    )
-    try withImmediateTransaction {
-      guard try generationIsCurrent(generation) else {
-        throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(
-          runID: receipt.runID
-        )
-      }
-      try deleteObsoleteStoredReceipt(
-        forRunID: receipt.runID,
-        before: generation
-      )
-      if let existing = try storedReceipt(
-        forRunID: receipt.runID,
-        generation: generation
-      ) {
-        guard existing == receipt else {
-          throw WorkflowRunReceiptRepositoryError.conflictingTerminalReceipt(
-            runID: receipt.runID
-          )
-        }
-        return
-      }
-      let writeOrdinal = try nextRunHistoryWriteOrdinal()
-
-      let statement = try prepare(
-        """
-        INSERT INTO workflow_run_receipts (
-            run_id, timestamp, payload, write_generation, write_ordinal
-        ) VALUES (?, ?, ?, ?, ?);
-        """
-      )
-      defer { sqlite3_finalize(statement) }
-      try bind(
-        [
-          .text(runID),
-          .double(receipt.timestamp.timeIntervalSince1970),
-          .text(protectedPayload),
-          .int(generation.value),
-          .int(writeOrdinal),
-        ],
-        to: statement
-      )
-      try step(statement, expecting: SQLITE_DONE)
-    }
-  }
-
-  public func receipts(
-    matching query: WorkflowRunReceiptQuery
-  ) async throws -> [WorkflowRunReceipt] {
-    if query.limit == 0 { return [] }
-    let resultLimit = query.limit.flatMap { $0 >= 0 ? $0 : nil }
-    let currentGeneration = try currentRunHistoryWriteGeneration()
-    if let requestedRunIDs = query.runIDs {
-      let exactRunIDs: Set<UUID>
-      if let runID = query.runID {
-        guard requestedRunIDs.contains(runID) else { return [] }
-        exactRunIDs = [runID]
-      } else {
-        exactRunIDs = requestedRunIDs
-      }
-      return try receipts(
-        forExactRunIDs: exactRunIDs,
-        matching: query,
-        resultLimit: resultLimit,
-        generation: currentGeneration
-      )
-    }
-
-    var clauses = ["write_generation = ?"]
-    var bindings: [SQLiteBinding] = [.int(currentGeneration.value)]
-    if let runID = query.runID {
-      clauses.append("run_id = ?")
-      bindings.append(.text(runID.uuidString))
-    }
-    if let since = query.since {
-      clauses.append("timestamp >= ?")
-      bindings.append(.double(since.timeIntervalSince1970))
-    }
-
-    var result: [WorkflowRunReceipt] = []
-    var scanOffset: Int64 = 0
-    var skippedCorruptRowCount = 0
-    let scanBatchSize: Int64
-    if let resultLimit {
-      let clampedLimit = min(max(resultLimit, 1), 128)
-      scanBatchSize = Int64(max(32, clampedLimit * 2))
-    } else {
-      scanBatchSize = 256
-    }
-
-    var exhaustedStorage = false
-    while !exhaustedStorage,
-      resultLimit.map({ result.count < $0 }) ?? true
-    {
-      var sql = "SELECT run_id, timestamp, payload FROM workflow_run_receipts"
-      if !clauses.isEmpty {
-        sql += " WHERE " + clauses.joined(separator: " AND ")
-      }
-      sql += " ORDER BY timestamp DESC, run_id ASC LIMIT ? OFFSET ?"
-
-      let statement = try prepare(sql)
-      var batchBindings = bindings
-      batchBindings.append(.int(scanBatchSize))
-      batchBindings.append(.int(scanOffset))
-      do {
-        try bind(batchBindings, to: statement)
-      } catch {
-        sqlite3_finalize(statement)
-        throw error
-      }
-
-      var scannedRowCount: Int64 = 0
-      do {
-        while true {
-          let stepResult = sqlite3_step(statement)
-          if stepResult == SQLITE_DONE { break }
-          guard stepResult == SQLITE_ROW else {
-            throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
-          }
-          scannedRowCount += 1
-
-          let receipt: WorkflowRunReceipt
-          do {
-            receipt = try decodeRunReceipt(from: statement)
-          } catch {
-            skippedCorruptRowCount += 1
-            continue
-          }
-          guard query.workflowID == nil || receipt.workflowID == query.workflowID,
-            query.trigger == nil || receipt.trigger == query.trigger,
-            query.outcome == nil || receipt.outcome == query.outcome
-          else {
-            continue
-          }
-          result.append(receipt)
-          if let resultLimit, result.count >= resultLimit {
-            break
-          }
-        }
-      } catch {
-        sqlite3_finalize(statement)
-        throw error
-      }
-      sqlite3_finalize(statement)
-
-      scanOffset += scannedRowCount
-      exhaustedStorage = scannedRowCount < scanBatchSize
-    }
-
-    Self.reportSkippedCorruptRunReceiptRows(skippedCorruptRowCount)
-    return result
-  }
-
-  public func page(_ request: RunHistoryPageRequest) async throws -> RunHistoryPage {
-    try validateBrowseLimit(request.limit)
-    switch request {
-    case .first(let scope, let retentionCutoff, let contentAccess, let limit):
-      let session = try captureRunHistoryReadSession(
-        scope: scope,
-        retentionCutoff: retentionCutoff,
-        contentAccess: contentAccess
-      )
-      return try makeRunHistoryPage(session: session, after: nil, limit: limit)
-    case .next(let cursor, let limit):
-      return try makeRunHistoryPage(
-        session: cursor.session,
-        after: cursor.after,
-        limit: limit
-      )
-    }
-  }
-
-  public func page(
-    containing entryID: UUID,
-    in session: RunHistoryReadSession,
-    limit: Int
-  ) async throws -> RunHistoryPage? {
-    try validateBrowseLimit(limit)
-    return try runHistoryPageContaining(
-      entryID,
-      session: session,
-      limit: limit
-    )
-  }
-
-  public func page(
-    containing entryID: UUID,
-    scope: RunHistoryBrowseScope,
-    retentionCutoff: Date?,
-    contentAccess: RunHistoryContentAccess,
-    limit: Int
-  ) async throws -> RunHistoryPage? {
-    try validateBrowseLimit(limit)
-    let session = try captureRunHistoryReadSession(
-      scope: scope,
-      retentionCutoff: retentionCutoff,
-      contentAccess: contentAccess
-    )
-    return try runHistoryPageContaining(
-      entryID,
-      session: session,
-      limit: limit
-    )
-  }
-
-  private struct BrowseCandidate {
-    enum Source: Int64 {
-      case receipt = 0
-      case orphanRecord = 1
-    }
-
-    let source: Source
-    let key: RunHistorySortKey
-    let recordMetadata: RunHistoryRecordMetadata?
-    let protectedReceiptPayload: String?
-  }
-
-  private func validateBrowseLimit(_ limit: Int) throws {
-    guard (1...50).contains(limit) else {
-      throw RunHistoryBrowsingError.invalidLimit(limit)
-    }
-  }
-
-  private func captureRunHistoryReadSession(
-    scope: RunHistoryBrowseScope,
-    retentionCutoff: Date?,
-    contentAccess: RunHistoryContentAccess
-  ) throws -> RunHistoryReadSession {
-    try RunHistoryReadSession(
-      generation: currentRunHistoryWriteGeneration(),
-      snapshotWriteOrdinal: currentRunHistoryWriteOrdinal(),
-      retentionCutoff: retentionCutoff,
-      scope: scope,
-      contentAccess: contentAccess
-    )
-  }
-
-  private func validate(_ session: RunHistoryReadSession) throws {
-    let current = try currentRunHistoryWriteGeneration()
-    guard current == session.generation else {
-      throw RunHistoryBrowsingError.sessionInvalidated(
-        expected: session.generation,
-        actual: current
-      )
-    }
-  }
-
-  private func makeRunHistoryPage(
-    session: RunHistoryReadSession,
-    after: RunHistorySortKey?,
-    limit: Int
-  ) throws -> RunHistoryPage {
-    try validateBrowseLimit(limit)
-    try validate(session)
-    let fetched = try browseRunHistoryEntries(
-      session: session,
-      after: after,
-      maximumCount: limit + 1
-    )
-    let entries = Array(fetched.prefix(limit))
-    let nextCursor: RunHistoryCursor?
-    if fetched.count > limit, let last = entries.last {
-      nextCursor = RunHistoryCursor(
-        session: session,
-        after: RunHistorySortKey(timestamp: last.timestamp, entryID: last.id)
-      )
-    } else {
-      nextCursor = nil
-    }
-    return RunHistoryPage(
-      session: session,
-      entries: entries,
-      nextCursor: nextCursor
-    )
-  }
-
-  private func runHistoryPageContaining(
-    _ entryID: UUID,
-    session: RunHistoryReadSession,
-    limit: Int
-  ) throws -> RunHistoryPage? {
-    var cursor: RunHistoryCursor?
-    while true {
-      let page = try makeRunHistoryPage(
-        session: session,
-        after: cursor?.after,
-        limit: limit
-      )
-      if page.entries.contains(where: { entry in
-        entry.id == entryID
-          || (entry.receipt == nil && entry.recordMetadata?.runID == entryID)
-          || entry.recordMetadata?.recordID == entryID
-      }) {
-        return page
-      }
-      guard let nextCursor = page.nextCursor else { return nil }
-      cursor = nextCursor
-    }
-  }
-
-  private func browseRunHistoryEntries(
-    session: RunHistoryReadSession,
-    after initialKey: RunHistorySortKey?,
-    maximumCount: Int
-  ) throws -> [RunHistoryEntry] {
-    var entries: [RunHistoryEntry] = []
-    var scanAfter = initialKey
-    let batchSize = 64
-    var skippedCorruptReceiptCount = 0
-    var skippedCorruptRecordCount = 0
-
-    while entries.count < maximumCount {
-      let candidates = try browseCandidates(
-        session: session,
-        after: scanAfter,
-        limit: batchSize
-      )
-      guard !candidates.isEmpty else { break }
-      for candidate in candidates {
-        scanAfter = candidate.key
-        switch candidate.source {
-        case .receipt:
-          guard let protectedPayload = candidate.protectedReceiptPayload else {
-            skippedCorruptReceiptCount += 1
-            continue
-          }
-          let receipt: WorkflowRunReceipt
-          do {
-            receipt = try decodeBrowseReceipt(
-              runID: candidate.key.entryID,
-              timestamp: candidate.key.timestamp,
-              protectedPayload: protectedPayload
-            )
-          } catch {
-            skippedCorruptReceiptCount += 1
-            continue
-          }
-          if session.scope == .voiceResults {
-            guard receipt.outcome == .completed, receipt.trigger.isVoiceCapture else {
-              continue
-            }
-          }
-          let matchedMetadata =
-            receipt.trigger.isVoiceCapture
-            ? try matchedRecordMetadata(for: receipt, session: session)
-            : nil
-          if session.scope == .voiceResults {
-            guard let matchedMetadata,
-              matchedMetadata.outcome == .completed,
-              matchedMetadata.hasNonemptyFinalText
-            else {
-              continue
-            }
-          }
-          let record = try openedHistoryRecordIfAllowed(
-            metadata: matchedMetadata,
-            authoritativeTrigger: receipt.trigger,
-            session: session,
-            bodyRequired: session.scope == .voiceResults,
-            corruptCount: &skippedCorruptRecordCount
-          )
-          if session.scope == .voiceResults,
-            session.contentAccess != .metadataOnly,
-            record == nil
-          {
-            continue
-          }
-          entries.append(
-            try RunHistoryEntry(
-              id: receipt.runID,
-              timestamp: receipt.timestamp,
-              recordMetadata: matchedMetadata,
-              record: record,
-              receipt: receipt
-            )
-          )
-        case .orphanRecord:
-          guard let metadata = candidate.recordMetadata else {
-            skippedCorruptRecordCount += 1
-            continue
-          }
-          if session.scope == .voiceResults {
-            guard metadata.outcome == .completed,
-              metadata.trigger?.isVoiceCapture == true,
-              metadata.hasNonemptyFinalText
-            else {
-              continue
-            }
-          }
-          let record = try openedHistoryRecordIfAllowed(
-            metadata: metadata,
-            authoritativeTrigger: metadata.trigger,
-            session: session,
-            bodyRequired: session.scope == .voiceResults,
-            corruptCount: &skippedCorruptRecordCount
-          )
-          if session.scope == .voiceResults,
-            session.contentAccess != .metadataOnly,
-            record == nil
-          {
-            continue
-          }
-          if session.scope == .allRuns,
-            session.contentAccess != .metadataOnly,
-            metadata.trigger?.isVoiceCapture == true,
-            record == nil
-          {
-            // A body-authorized orphan with an unreadable protected projection
-            // is a corrupt row, not a metadata result that may consume a slot.
-            continue
-          }
-          entries.append(
-            try RunHistoryEntry(
-              id: candidate.key.entryID,
-              timestamp: metadata.timestamp,
-              recordMetadata: metadata,
-              record: record
-            )
-          )
-        }
-        if entries.count >= maximumCount { break }
-      }
-      if candidates.count < batchSize { break }
-    }
-
-    Self.reportSkippedCorruptRunReceiptRows(skippedCorruptReceiptCount)
-    Self.reportSkippedCorruptHistoryRows(skippedCorruptRecordCount)
-    return entries
-  }
-
-  private func browseCandidates(
-    session: RunHistoryReadSession,
-    after: RunHistorySortKey?,
-    limit: Int
-  ) throws -> [BrowseCandidate] {
-    func visibilityClause(alias: String?) -> String {
-      let prefix = alias.map { "\($0)." } ?? ""
-      let cutoffClause =
-        session.retentionCutoff == nil
-        ? ""
-        : " AND \(prefix)timestamp >= ?"
-      return "\(prefix)write_generation = ? AND \(prefix)write_ordinal <= ?" + cutoffClause
-    }
-    let receiptVisibility = visibilityClause(alias: nil)
-    let historyVisibility = visibilityClause(alias: "h")
-    let joinedReceiptVisibility = visibilityClause(alias: "r")
-    let competingHistoryVisibility = visibilityClause(alias: "h2")
-    var sql = """
-      SELECT source_kind, entry_id, timestamp, write_ordinal,
-             record_id, run_id, workflow_id, outcome, trigger_kind,
-             is_stack_related, has_nonempty_final_text, protected_payload
-      FROM (
-          SELECT 0 AS source_kind, run_id AS entry_id, timestamp, write_ordinal,
-                 NULL AS record_id, run_id, NULL AS workflow_id,
-                 NULL AS outcome, NULL AS trigger_kind,
-                 NULL AS is_stack_related, NULL AS has_nonempty_final_text,
-                 payload AS protected_payload
-          FROM workflow_run_receipts
-          WHERE \(receiptVisibility)
-          UNION ALL
-          SELECT 1 AS source_kind, COALESCE(h.run_id, h.id) AS entry_id,
-                 h.timestamp, h.write_ordinal,
-                 h.id AS record_id, h.run_id, h.workflow_id, h.outcome,
-                 h.trigger_kind, h.is_stack_related, h.has_nonempty_final_text,
-                 NULL AS protected_payload
-          FROM history_records AS h
-          WHERE \(historyVisibility)
-            AND NOT EXISTS (
-                SELECT 1
-                FROM workflow_run_receipts AS r
-                WHERE h.run_id IS NOT NULL AND r.run_id = h.run_id
-                  AND \(joinedReceiptVisibility)
-            )
-            AND (
-                h.run_id IS NULL
-                OR NOT EXISTS (
-                    SELECT 1
-                    FROM history_records AS h2
-                    WHERE h2.run_id = h.run_id
-                      AND \(competingHistoryVisibility)
-                      AND (
-                          h2.timestamp > h.timestamp
-                          OR (h2.timestamp = h.timestamp AND h2.id < h.id)
-                      )
-                )
-            )
-      ) AS timeline
-      """
-    var bindings: [SQLiteBinding] = []
-    func appendVisibilityBindings() {
-      bindings.append(.int(session.generation.value))
-      bindings.append(.int(session.snapshotWriteOrdinal))
-      if let cutoff = session.retentionCutoff {
-        bindings.append(.double(cutoff.timeIntervalSince1970))
-      }
-    }
-    appendVisibilityBindings()
-    appendVisibilityBindings()
-    appendVisibilityBindings()
-    appendVisibilityBindings()
-    if let after {
-      sql += " WHERE timestamp < ? OR (timestamp = ? AND entry_id > ?)"
-      bindings.append(.double(after.timestamp.timeIntervalSince1970))
-      bindings.append(.double(after.timestamp.timeIntervalSince1970))
-      bindings.append(.text(after.entryID.uuidString))
-    }
-    sql += " ORDER BY timestamp DESC, entry_id ASC;"
-
-    let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
-    try bind(bindings, to: statement)
-    var candidates: [BrowseCandidate] = []
-    while true {
-      switch sqlite3_step(statement) {
-      case SQLITE_DONE:
-        return candidates
-      case SQLITE_ROW:
-        guard
-          let source = BrowseCandidate.Source(
-            rawValue: sqlite3_column_int64(statement, 0)
-          ),
-          let entryIDText = textColumn(in: statement, index: 1),
-          let entryID = UUID(uuidString: entryIDText)
-        else {
-          continue
-        }
-        let key = RunHistorySortKey(
-          timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
-          entryID: entryID
-        )
-        let metadata: RunHistoryRecordMetadata?
-        if source == .orphanRecord {
-          metadata = try? decodeBrowseRecordMetadata(from: statement)
-        } else {
-          metadata = nil
-        }
-        candidates.append(
-          BrowseCandidate(
-            source: source,
-            key: key,
-            recordMetadata: metadata,
-            protectedReceiptPayload: textColumn(in: statement, index: 11)
-          )
-        )
-        if candidates.count >= limit {
-          return candidates
-        }
-      default:
-        throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
-      }
-    }
-  }
-
-  private func decodeBrowseRecordMetadata(
-    from statement: OpaquePointer?
-  ) throws -> RunHistoryRecordMetadata {
-    guard let recordIDText = textColumn(in: statement, index: 4),
-      let recordID = UUID(uuidString: recordIDText),
-      let outcomeText = textColumn(in: statement, index: 7),
-      let outcome = HistoryOutcome(rawValue: outcomeText)
-    else {
-      throw SQLitePersistenceError.decodingRow(
-        "A run-history record candidate had invalid metadata."
-      )
-    }
-    let runID = try optionalUUIDColumn(in: statement, index: 5)
-    let workflowID = try optionalUUIDColumn(in: statement, index: 6)
-    let trigger: WorkflowRunTriggerKind?
-    if let rawTrigger = textColumn(in: statement, index: 8) {
-      guard let decoded = WorkflowRunTriggerKind(rawValue: rawTrigger) else {
-        throw SQLitePersistenceError.decodingRow(
-          "A run-history record candidate had an invalid trigger."
-        )
-      }
-      trigger = decoded
-    } else {
-      trigger = nil
-    }
-    return RunHistoryRecordMetadata(
-      recordID: recordID,
-      runID: runID,
-      workflowID: workflowID,
-      timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
-      isRecordRelated: sqlite3_column_int64(statement, 9) != 0,
-      outcome: outcome,
-      trigger: trigger,
-      hasNonemptyFinalText: trigger?.isVoiceCapture == true
-        && sqlite3_column_int64(statement, 10) != 0
-    )
-  }
-
-  private func optionalUUIDColumn(
-    in statement: OpaquePointer?,
-    index: Int32
-  ) throws -> UUID? {
-    guard let rawValue = textColumn(in: statement, index: index) else { return nil }
-    guard let value = UUID(uuidString: rawValue) else {
-      throw SQLitePersistenceError.decodingRow(
-        "A run-history candidate had an invalid UUID coordinate."
-      )
-    }
-    return value
-  }
-
-  private func decodeBrowseReceipt(
-    runID: UUID,
-    timestamp: Date,
-    protectedPayload: String
-  ) throws -> WorkflowRunReceipt {
-    let payload = try openString(
-      protectedPayload,
-      context: Self.runReceiptProtectionContext(runID: runID.uuidString)
-    )
-    do {
-      let receipt = try decoder.decode(
-        WorkflowRunReceipt.self,
-        from: Data(payload.utf8)
-      )
-      guard receipt.runID == runID,
-        abs(receipt.timestamp.timeIntervalSince(timestamp)) < 0.001
-      else {
-        throw SQLitePersistenceError.decodingRow(
-          "Workflow run receipt index did not match its protected payload."
-        )
-      }
-      return receipt
-    } catch let error as SQLitePersistenceError {
-      throw error
-    } catch {
-      throw SQLitePersistenceError.decodingRow(error.localizedDescription)
-    }
-  }
-
-  private func matchedRecordMetadata(
-    for receipt: WorkflowRunReceipt,
-    session: RunHistoryReadSession
-  ) throws -> RunHistoryRecordMetadata? {
-    var sql = """
-      SELECT id, run_id, workflow_id, timestamp, is_stack_related, outcome,
-             trigger_kind, has_nonempty_final_text
-      FROM history_records
-      WHERE run_id = ? AND write_generation = ? AND write_ordinal <= ?
-        AND trigger_kind = ?
-      """
-    var bindings: [SQLiteBinding] = [
-      .text(receipt.runID.uuidString),
-      .int(session.generation.value),
-      .int(session.snapshotWriteOrdinal),
-      .text(receipt.trigger.rawValue),
-    ]
-    if let cutoff = session.retentionCutoff {
-      sql += " AND timestamp >= ?"
-      bindings.append(.double(cutoff.timeIntervalSince1970))
-    }
-    sql += " ORDER BY timestamp DESC, id ASC;"
-    let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
-    try bind(bindings, to: statement)
-    while true {
-      switch sqlite3_step(statement) {
-      case SQLITE_DONE:
-        return nil
-      case SQLITE_ROW:
-        do {
-          guard let recordIDText = textColumn(in: statement, index: 0),
-            let recordID = UUID(uuidString: recordIDText),
-            let outcomeText = textColumn(in: statement, index: 5),
-            let outcome = HistoryOutcome(rawValue: outcomeText),
-            let triggerText = textColumn(in: statement, index: 6),
-            let trigger = WorkflowRunTriggerKind(rawValue: triggerText)
-          else {
-            continue
-          }
-          return RunHistoryRecordMetadata(
-            recordID: recordID,
-            runID: try optionalUUIDColumn(in: statement, index: 1),
-            workflowID: try optionalUUIDColumn(in: statement, index: 2),
-            timestamp: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
-            isRecordRelated: sqlite3_column_int64(statement, 4) != 0,
-            outcome: outcome,
-            trigger: trigger,
-            hasNonemptyFinalText: sqlite3_column_int64(statement, 7) != 0
-          )
-        } catch {
-          continue
-        }
-      default:
-        throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
-      }
-    }
-  }
-
-  private func openedHistoryRecordIfAllowed(
-    metadata: RunHistoryRecordMetadata?,
-    authoritativeTrigger: WorkflowRunTriggerKind?,
-    session: RunHistoryReadSession,
-    bodyRequired: Bool,
-    corruptCount: inout Int
-  ) throws -> WorkflowResultRecord? {
-    guard let metadata,
-      authoritativeTrigger?.isVoiceCapture == true,
-      metadata.trigger == authoritativeTrigger,
-      session.contentAccess != .metadataOnly
-    else {
-      return nil
-    }
-    let fullRecord: WorkflowResultRecord
-    do {
-      guard
-        let opened = try openedHistoryRecord(
-          recordID: metadata.recordID,
-          session: session
-        )
-      else {
-        return nil
-      }
-      fullRecord = opened
-    } catch {
-      corruptCount += 1
-      return nil
-    }
-    if bodyRequired, !Self.hasNonemptyBody(fullRecord.finalText) {
-      return nil
-    }
-    guard session.contentAccess == .restrictedPreview else { return fullRecord }
-    return WorkflowResultRecord(
-      id: fullRecord.id,
-      runID: fullRecord.runID,
-      workflowID: fullRecord.workflowID,
-      workflow: fullRecord.workflow,
-      finalText: fullRecord.finalText.map {
-        RecordTextFormatting.previewText(
-          $0,
-          limit: RunHistoryContentAccess.restrictedPreviewCharacterLimit
-        )
-      },
-      failureMessage: fullRecord.failureMessage,
-      timestamp: fullRecord.timestamp,
-      isRecordRelated: fullRecord.isRecordRelated,
-      outcome: fullRecord.outcome,
-      correctionSource: nil,
-      trigger: fullRecord.trigger
-    )
-  }
-
-  private func openedHistoryRecord(
-    recordID: UUID,
-    session: RunHistoryReadSession
-  ) throws -> WorkflowResultRecord? {
-    let correctionProjection =
-      session.contentAccess == .full
-      ? "correction_source_json"
-      : "NULL AS correction_source_json"
-    var sql = """
-      SELECT id, run_id, workflow_id, workflow_fallback_name,
-             workflow_title_key, final_text, failure_message, timestamp,
-             is_stack_related, outcome, \(correctionProjection), trigger_kind
-      FROM history_records
-      WHERE id = ? AND write_generation = ? AND write_ordinal <= ?
-      """
-    var bindings: [SQLiteBinding] = [
-      .text(recordID.uuidString),
-      .int(session.generation.value),
-      .int(session.snapshotWriteOrdinal),
-    ]
-    if let cutoff = session.retentionCutoff {
-      sql += " AND timestamp >= ?"
-      bindings.append(.double(cutoff.timeIntervalSince1970))
-    }
-    sql += ";"
-    let statement = try prepare(sql)
-    defer { sqlite3_finalize(statement) }
-    try bind(bindings, to: statement)
-    switch sqlite3_step(statement) {
-    case SQLITE_DONE:
-      return nil
-    case SQLITE_ROW:
-      return try decodeHistoryRecord(from: statement)
-    default:
-      throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
-    }
-  }
-
-  public func deleteReceipts(olderThan cutoff: Date) async throws -> Int {
-    let statement = try prepare("DELETE FROM workflow_run_receipts WHERE timestamp < ?;")
-    defer { sqlite3_finalize(statement) }
-    try bind([.double(cutoff.timeIntervalSince1970)], to: statement)
-    try step(statement, expecting: SQLITE_DONE)
-    return Int(sqlite3_changes(db))
-  }
-
-  public func deleteReceipts(through upperBound: Date) async throws -> Int {
-    let statement = try prepare(
-      "DELETE FROM workflow_run_receipts WHERE timestamp <= ?;"
-    )
-    defer { sqlite3_finalize(statement) }
-    try bind([.double(upperBound.timeIntervalSince1970)], to: statement)
-    try step(statement, expecting: SQLITE_DONE)
-    return Int(sqlite3_changes(db))
-  }
-
-  public func deleteReceipts(
-    obsoletedBy transition: RunHistoryClearTransition,
-    preservingLegacyRowsAfter legacyUpperBound: Date?
-  ) async throws -> Int {
-    try deleteRunHistoryRows(
-      obsoletedBy: transition,
-      from: "workflow_run_receipts",
-      preservingLegacyRowsAfter: legacyUpperBound
-    )
-  }
-
-  public func deleteAllReceipts() async throws -> Int {
-    let statement = try prepare("DELETE FROM workflow_run_receipts;")
-    defer { sqlite3_finalize(statement) }
-    try step(statement, expecting: SQLITE_DONE)
-    return Int(sqlite3_changes(db))
-  }
-
-  public func deleteRecords(olderThan cutoff: Date) async throws -> Int {
-    let statement = try prepare("DELETE FROM history_records WHERE timestamp < ?;")
-    defer { sqlite3_finalize(statement) }
-    try bind([.double(cutoff.timeIntervalSince1970)], to: statement)
-    try step(statement, expecting: SQLITE_DONE)
-    return Int(sqlite3_changes(db))
-  }
-
-  public func deleteRecords(through upperBound: Date) async throws -> Int {
-    let statement = try prepare(
-      "DELETE FROM history_records WHERE timestamp <= ?;"
-    )
-    defer { sqlite3_finalize(statement) }
-    try bind([.double(upperBound.timeIntervalSince1970)], to: statement)
-    try step(statement, expecting: SQLITE_DONE)
-    return Int(sqlite3_changes(db))
-  }
-
-  public func deleteRecords(
-    obsoletedBy transition: RunHistoryClearTransition,
-    preservingLegacyRowsAfter legacyUpperBound: Date?
-  ) async throws -> Int {
-    try deleteRunHistoryRows(
-      obsoletedBy: transition,
-      from: "history_records",
-      preservingLegacyRowsAfter: legacyUpperBound
-    )
-  }
-
-  public func deleteAllRecords() async throws -> Int {
-    let statement = try prepare("DELETE FROM history_records;")
-    defer { sqlite3_finalize(statement) }
-    try step(statement, expecting: SQLITE_DONE)
-    return Int(sqlite3_changes(db))
   }
 
   public func save(_ event: DiagnosticEvent) async throws {
@@ -1986,7 +743,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
   /// Advances one replayable clear transition and deletes only older-generation
   /// rows in the same transaction. A schema-4 bridge first promotes rows whose
   /// timestamps prove that they were written after the legacy intent.
-  private func deleteRunHistoryRows(
+  func deleteRunHistoryRows(
     obsoletedBy transition: RunHistoryClearTransition,
     from tableName: String,
     preservingLegacyRowsAfter legacyUpperBound: Date?
@@ -2300,21 +1057,14 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     try step(statement, expecting: SQLITE_DONE)
   }
 
-  private func deleteClipboardBlob(blobID: UUID) throws {
-    let statement = try prepare("DELETE FROM clipboard_image_blobs WHERE blob_id = ?;")
-    defer { sqlite3_finalize(statement) }
-    try bind([.text(blobID.uuidString)], to: statement)
-    try step(statement, expecting: SQLITE_DONE)
-  }
-
-  private func deleteLegacyClipboardRow() throws {
+  func deleteLegacyClipboardRow() throws {
     let statement = try prepare("DELETE FROM app_settings WHERE key = ?;")
     defer { sqlite3_finalize(statement) }
     try bind([.text(AppSettingKey.legacyClipboardPersistedState.rawValue)], to: statement)
     try step(statement, expecting: SQLITE_DONE)
   }
 
-  private struct StoredRecordGraphMetadata {
+  struct StoredRecordGraphMetadata {
     let revision: Int64
     let protectedGraph: Data
   }
@@ -2347,7 +1097,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private struct PreparedRecordPayloadBlob {
+  struct PreparedRecordPayloadBlob {
     let reference: RecordGraphPersistenceBlobReference
     let protectedPayload: Data
   }
@@ -2436,7 +1186,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     )
   }
 
-  private func storedRecordGraphMetadata() throws -> StoredRecordGraphMetadata? {
+  func storedRecordGraphMetadata() throws -> StoredRecordGraphMetadata? {
     let statement = try prepare(
       "SELECT revision, payload FROM record_graph_metadata WHERE id = 1;"
     )
@@ -2462,7 +1212,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func storedRecordGraphRevision() throws -> Int64? {
+  func storedRecordGraphRevision() throws -> Int64? {
     let statement = try prepare("SELECT revision FROM record_graph_metadata WHERE id = 1;")
     defer { sqlite3_finalize(statement) }
     switch sqlite3_step(statement) {
@@ -2613,7 +1363,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func upsertRecordGraphMetadata(
+  func upsertRecordGraphMetadata(
     protectedGraph: Data,
     revision: Int64
   ) throws {
@@ -2631,7 +1381,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     try step(statement, expecting: SQLITE_DONE)
   }
 
-  private func insertRecordPayloadBlob(_ blob: PreparedRecordPayloadBlob) throws {
+  func insertRecordPayloadBlob(_ blob: PreparedRecordPayloadBlob) throws {
     let statement = try prepare(
       """
       INSERT INTO record_payload_blobs (
@@ -2657,7 +1407,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func deleteRecordPayloadBlob(blobID: UUID) throws {
+  func deleteRecordPayloadBlob(blobID: UUID) throws {
     let statement = try prepare("DELETE FROM record_payload_blobs WHERE blob_id = ?;")
     defer { sqlite3_finalize(statement) }
     try bind([.text(blobID.uuidString)], to: statement)
@@ -2686,7 +1436,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func withDeferredTransaction<T>(_ operation: () throws -> T) throws -> T {
+  func withDeferredTransaction<T>(_ operation: () throws -> T) throws -> T {
     try execute("BEGIN TRANSACTION;")
     do {
       let result = try operation()
@@ -2698,7 +1448,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func withImmediateTransaction<T>(_ operation: () throws -> T) throws -> T {
+  func withImmediateTransaction<T>(_ operation: () throws -> T) throws -> T {
     try execute("BEGIN IMMEDIATE TRANSACTION;")
     do {
       let result = try operation()
@@ -2710,7 +1460,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func currentRunHistoryWriteGeneration() throws -> RunHistoryWriteGeneration {
+  func currentRunHistoryWriteGeneration() throws -> RunHistoryWriteGeneration {
     let statement = try prepare(
       "SELECT current_generation FROM run_history_generation WHERE id = 1;"
     )
@@ -2733,7 +1483,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func currentRunHistoryWriteOrdinal() throws -> Int64 {
+  func currentRunHistoryWriteOrdinal() throws -> Int64 {
     let statement = try prepare(
       "SELECT last_ordinal FROM run_history_write_sequence WHERE id = 1;"
     )
@@ -2758,7 +1508,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
 
   /// Called only from an immediate transaction, so the read/increment pair is
   /// one shared monotonic coordinate across records and receipts.
-  private func nextRunHistoryWriteOrdinal() throws -> Int64 {
+  func nextRunHistoryWriteOrdinal() throws -> Int64 {
     let current = try currentRunHistoryWriteOrdinal()
     guard current < Int64.max else {
       throw RunHistoryBrowsingError.writeOrdinalExhausted
@@ -2782,12 +1532,12 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     return next
   }
 
-  private static func hasNonemptyBody(_ value: String?) -> Bool {
+  static func hasNonemptyBody(_ value: String?) -> Bool {
     guard let value else { return false }
     return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
-  private func generationIsCurrent(_ generation: RunHistoryWriteGeneration) throws -> Bool {
+  func generationIsCurrent(_ generation: RunHistoryWriteGeneration) throws -> Bool {
     try currentRunHistoryWriteGeneration() == generation
   }
 
@@ -2839,199 +1589,6 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     try step(update, expecting: SQLITE_DONE)
     guard sqlite3_changes(db) == 1 else {
       throw RunHistoryGenerationError.clearTransitionConflict
-    }
-  }
-
-  public func string(forKey key: AppSettingKey) async throws -> String? {
-    let statement = try prepare(
-      """
-      SELECT value
-      FROM app_settings
-      WHERE key = ?;
-      """
-    )
-    defer { sqlite3_finalize(statement) }
-    try bind([.text(key.rawValue)], to: statement)
-
-    let rc = sqlite3_step(statement)
-    if rc == SQLITE_DONE {
-      return nil
-    }
-    guard rc == SQLITE_ROW else {
-      throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
-    }
-
-    guard let protectedValue = textColumn(in: statement, index: 0) else {
-      throw SQLitePersistenceError.decodingRow("A setting row was missing its value.")
-    }
-    return try openString(
-      protectedValue,
-      context: settingsProtectionContext(keyRawValue: key.rawValue)
-    )
-  }
-
-  public func strings(forKeys keys: [AppSettingKey]) async throws -> [AppSettingKey: String] {
-    let uniqueKeys = Array(Set(keys))
-    guard !uniqueKeys.isEmpty else { return [:] }
-
-    let placeholders = Array(repeating: "?", count: uniqueKeys.count).joined(separator: ", ")
-    let statement = try prepare(
-      """
-      SELECT key, value
-      FROM app_settings
-      WHERE key IN (\(placeholders));
-      """
-    )
-    defer { sqlite3_finalize(statement) }
-    try bind(uniqueKeys.map { .text($0.rawValue) }, to: statement)
-
-    var values: [AppSettingKey: String] = [:]
-    while true {
-      let rc = sqlite3_step(statement)
-      if rc == SQLITE_DONE {
-        break
-      }
-      guard rc == SQLITE_ROW else {
-        throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
-      }
-
-      guard
-        let keyText = textColumn(in: statement, index: 0),
-        let key = AppSettingKey(rawValue: keyText),
-        let protectedValue = textColumn(in: statement, index: 1)
-      else {
-        continue
-      }
-
-      values[key] = try openString(
-        protectedValue,
-        context: settingsProtectionContext(keyRawValue: key.rawValue)
-      )
-    }
-
-    return values
-  }
-
-  public func settingsSnapshot(
-    forKeys keys: [AppSettingKey]
-  ) async throws -> SettingsStoreReadSnapshot {
-    let uniqueKeys = Array(Set(keys)).sorted { $0.rawValue < $1.rawValue }
-    guard !uniqueKeys.isEmpty else { return .empty }
-
-    let placeholders = Array(repeating: "?", count: uniqueKeys.count).joined(separator: ", ")
-    let statement = try prepare(
-      """
-      SELECT key, value
-      FROM app_settings
-      WHERE key IN (\(placeholders));
-      """
-    )
-    defer { sqlite3_finalize(statement) }
-    try bind(uniqueKeys.map { .text($0.rawValue) }, to: statement)
-
-    var values: [AppSettingKey: String] = [:]
-    var unavailableKeys: Set<AppSettingKey> = []
-    while true {
-      let rc = sqlite3_step(statement)
-      if rc == SQLITE_DONE {
-        break
-      }
-      guard rc == SQLITE_ROW else {
-        throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
-      }
-
-      guard
-        let keyText = textColumn(in: statement, index: 0),
-        let key = AppSettingKey(rawValue: keyText)
-      else {
-        continue
-      }
-      guard let protectedValue = textColumn(in: statement, index: 1) else {
-        unavailableKeys.insert(key)
-        continue
-      }
-
-      do {
-        values[key] = try openString(
-          protectedValue,
-          context: settingsProtectionContext(keyRawValue: key.rawValue)
-        )
-      } catch {
-        unavailableKeys.insert(key)
-      }
-    }
-
-    return SettingsStoreReadSnapshot(
-      values: values,
-      unavailableKeys: unavailableKeys
-    )
-  }
-
-  public func setString(_ value: String, forKey key: AppSettingKey) async throws {
-    try upsertString(value, forKey: key, updatedAt: Date().timeIntervalSince1970)
-  }
-
-  public func setStringsAtomically(_ values: [AppSettingKey: String]) async throws {
-    guard !values.isEmpty else { return }
-    try execute("BEGIN IMMEDIATE TRANSACTION;")
-    do {
-      let updatedAt = Date().timeIntervalSince1970
-      for key in values.keys.sorted(by: { $0.rawValue < $1.rawValue }) {
-        guard let value = values[key] else { continue }
-        try upsertString(value, forKey: key, updatedAt: updatedAt)
-      }
-      try execute("COMMIT;")
-    } catch {
-      try? execute("ROLLBACK;")
-      throw error
-    }
-  }
-
-  private func upsertString(
-    _ value: String,
-    forKey key: AppSettingKey,
-    updatedAt: TimeInterval
-  ) throws {
-    let protectedValue = try protectString(
-      value,
-      context: settingsProtectionContext(keyRawValue: key.rawValue)
-    )
-    let statement = try prepare(
-      """
-      INSERT INTO app_settings (key, value, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(key) DO UPDATE SET
-          value = excluded.value,
-          updated_at = excluded.updated_at;
-      """
-    )
-    defer { sqlite3_finalize(statement) }
-
-    try bind(
-      [
-        .text(key.rawValue),
-        .text(protectedValue),
-        .double(updatedAt),
-      ],
-      to: statement
-    )
-
-    try step(statement, expecting: SQLITE_DONE)
-  }
-
-  public func removeValue(forKey key: AppSettingKey) async throws {
-    do {
-      let statement = try prepare("DELETE FROM app_settings WHERE key = ?;")
-      defer { sqlite3_finalize(statement) }
-      try bind([.text(key.rawValue)], to: statement)
-      try step(statement, expecting: SQLITE_DONE)
-    }
-
-    if key == .openAIAPIKey || key == .legacyWhisperKitModelToken
-    {
-      // Legacy credentials may still exist in an older WAL frame. Apply the
-      // secure deletion to the main database, then truncate those frames.
-      try truncateWriteAheadLog()
     }
   }
 
@@ -3177,7 +1734,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private static let currentSchemaVersion = 12
+  private static let currentSchemaVersion = 13
   private static let writerBarrierTableNames = [
     "app_settings",
     "clipboard_image_blobs",
@@ -3186,6 +1743,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     "export_metadata",
     "history_records",
     "local_data_protection",
+    "record_catalog_nodes",
     "record_graph_metadata",
     "record_payload_blobs",
     "run_history_generation",
@@ -3255,11 +1813,20 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
         try SQLiteWriterBarrier.validateTriggers(
           on: handle,
           tableNames: writerBarrierTableNames.filter {
-            $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
+            $0 != "record_catalog_nodes" && $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
           }
         )
         try migrateToV12(on: handle, localDataProtector: localDataProtector)
         try requireQuickCheck(on: handle)
+        return cleanupIsPending
+      }
+      if authenticatedSchemaFloor == 12 {
+        guard storedVersion <= 12 else {
+          throw SQLitePersistenceError.migrationFailed("Schema version conflicts with its authenticated floor.")
+        }
+        let cleanupIsPending = try validateDataProtectionKey(on: handle, localDataProtector: localDataProtector)
+        try setSchemaVersion(12, on: handle)
+        try migrateToV13(on: handle, localDataProtector: localDataProtector)
         return cleanupIsPending
       }
       if storedVersion < authenticatedSchemaFloor {
@@ -3281,7 +1848,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       return cleanupIsPending
     }
 
-    guard storedVersion < SQLiteAuthenticatedSchemaFloor.installedSchemaFloor else {
+    guard storedVersion < SQLiteAuthenticatedSchemaFloor.legacySchemaFloor else {
       throw SQLitePersistenceError.migrationFailed(
         "Authenticated schema metadata is unavailable for this schema version."
       )
@@ -4378,7 +2945,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       try SQLiteWriterBarrier.installTriggers(
         on: handle,
         tableNames: writerBarrierTableNames.filter {
-          $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
+          $0 != "record_catalog_nodes" && $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
         }
       )
       guard
@@ -4451,23 +3018,49 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
       )
       try SQLiteWriterBarrier.installTriggers(
         on: handle,
-        tableNames: writerBarrierTableNames
+        tableNames: writerBarrierTableNames.filter { $0 != "record_catalog_nodes" }
       )
       try SQLiteAuthenticatedSchemaFloor.upgrade(
         on: handle,
         validatedDatabaseID: databaseID,
-        localDataProtector: localDataProtector
+        localDataProtector: localDataProtector,
+        schemaFloor: 12
       )
       try setSchemaVersion(12, on: handle)
-      try validateAuthenticatedStorageBoundary(
-        on: handle,
-        localDataProtector: localDataProtector
-      )
+      try migrateToV13(on: handle, localDataProtector: localDataProtector)
     } catch {
       throw SQLitePersistenceError.migrationFailed(
         "Record graph storage and authenticated schema 12 could not be installed."
       )
     }
+  }
+
+  private static func migrateToV13(
+    on handle: OpaquePointer?,
+    localDataProtector: any LocalDataProtector
+  ) throws {
+    guard try schemaVersion(on: handle) == 12,
+      try authenticatedSchemaFloor(on: handle, localDataProtector: localDataProtector) == 12
+    else { throw SQLitePersistenceError.migrationFailed("Catalog migration requires schema 12.") }
+    let databaseID = try SQLiteAuthenticatedSchemaFloor.validatedDatabaseID(
+      on: handle, localDataProtector: localDataProtector
+    )
+    try execute("""
+      CREATE TABLE record_catalog_nodes (
+        key TEXT PRIMARY KEY NOT NULL,
+        kind TEXT NOT NULL,
+        identifier TEXT NOT NULL,
+        payload BLOB NOT NULL CHECK (typeof(payload) = 'blob' AND length(payload) BETWEEN 1 AND 4194304),
+        UNIQUE(kind, identifier)
+      );
+      """, on: handle)
+    try SQLiteWriterBarrier.installTriggers(on: handle, tableNames: writerBarrierTableNames)
+    try SQLiteCatalogWriterBarrier.install(on: handle, tables: writerBarrierTableNames)
+    try SQLiteAuthenticatedSchemaFloor.upgrade(
+      on: handle, validatedDatabaseID: databaseID, localDataProtector: localDataProtector
+    )
+    try setSchemaVersion(13, on: handle)
+    try validateAuthenticatedStorageBoundary(on: handle, localDataProtector: localDataProtector)
   }
 
   private static func recoverAuthenticatedSchemaFloor(
@@ -4524,7 +3117,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     try SQLiteWriterBarrier.validateTriggers(
       on: handle,
       tableNames: writerBarrierTableNames.filter {
-        $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
+        $0 != "record_catalog_nodes" && $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
       }
     )
   }
@@ -5403,7 +3996,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     )
   }
 
-  private static func runReceiptProtectionContext(
+  static func runReceiptProtectionContext(
     runID: String
   ) -> LocalDataProtectionContext {
     LocalDataProtectionContext(
@@ -5452,7 +4045,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     )
   }
 
-  private static var recordGraphProtectionContext: LocalDataProtectionContext {
+  static var recordGraphProtectionContext: LocalDataProtectionContext {
     LocalDataProtectionContext(
       namespace: "record_graph_metadata",
       recordID: "1",
@@ -5460,7 +4053,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     )
   }
 
-  private static func recordPayloadProtectionContext(
+  static func recordPayloadProtectionContext(
     reference: RecordGraphPersistenceBlobReference
   ) -> LocalDataProtectionContext {
     LocalDataProtectionContext(
@@ -5478,7 +4071,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     return String(cString: cString)
   }
 
-  private func execute(_ sql: String) throws {
+  func execute(_ sql: String) throws {
     try Self.execute(sql, on: db)
   }
 
@@ -5486,7 +4079,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     try Self.ensureSecureDeleteEnabled(on: db)
   }
 
-  private func truncateWriteAheadLog() throws {
+  func truncateWriteAheadLog() throws {
     try Self.truncateWriteAheadLog(on: db)
   }
 
@@ -5595,7 +4188,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func prepare(_ sql: String) throws -> OpaquePointer? {
+  func prepare(_ sql: String) throws -> OpaquePointer? {
     var statement: OpaquePointer?
     guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
       throw SQLitePersistenceError.preparingStatement(lastErrorMessage())
@@ -5603,7 +4196,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     return statement
   }
 
-  private func bind(_ bindings: [SQLiteBinding], to statement: OpaquePointer?) throws {
+  func bind(_ bindings: [SQLiteBinding], to statement: OpaquePointer?) throws {
     guard let statement else {
       throw SQLitePersistenceError.preparingStatement("Missing SQLite statement.")
     }
@@ -5642,14 +4235,14 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func step(_ statement: OpaquePointer?, expecting expectedResult: Int32) throws {
+  func step(_ statement: OpaquePointer?, expecting expectedResult: Int32) throws {
     let rc = sqlite3_step(statement)
     guard rc == expectedResult else {
       throw SQLitePersistenceError.steppingStatement(lastErrorMessage())
     }
   }
 
-  private func decodeHistoryRecord(from statement: OpaquePointer?) throws -> WorkflowResultRecord {
+  func decodeHistoryRecord(from statement: OpaquePointer?) throws -> WorkflowResultRecord {
     guard
       let idText = textColumn(in: statement, index: 0),
       let id = UUID(uuidString: idText),
@@ -5728,7 +4321,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     )
   }
 
-  private func receipts(
+  func receipts(
     forExactRunIDs runIDs: Set<UUID>,
     matching query: WorkflowRunReceiptQuery,
     resultLimit: Int?,
@@ -5798,7 +4391,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     return result
   }
 
-  private static func reportSkippedCorruptRunReceiptRows(_ count: Int) {
+  static func reportSkippedCorruptRunReceiptRows(_ count: Int) {
     guard count > 0 else { return }
     // Receipt failures are reported only as an aggregate count. Never
     // include row coordinates, protected payloads, or decoder errors.
@@ -5807,7 +4400,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     )
   }
 
-  private static func reportSkippedCorruptHistoryRows(_ count: Int) {
+  static func reportSkippedCorruptHistoryRows(_ count: Int) {
     guard count > 0 else { return }
     // History failures are reported only as an aggregate count. Never include
     // row coordinates, protected payloads, or decoder errors.
@@ -5825,7 +4418,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     )
   }
 
-  private func deleteObsoleteStoredReceipt(
+  func deleteObsoleteStoredReceipt(
     forRunID runID: UUID,
     before generation: RunHistoryWriteGeneration
   ) throws {
@@ -5843,7 +4436,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     try step(statement, expecting: SQLITE_DONE)
   }
 
-  private func storedReceipt(
+  func storedReceipt(
     forRunID runID: UUID,
     generation: RunHistoryWriteGeneration
   ) throws -> WorkflowRunReceipt? {
@@ -5869,7 +4462,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func decodeRunReceipt(from statement: OpaquePointer?) throws -> WorkflowRunReceipt {
+  func decodeRunReceipt(from statement: OpaquePointer?) throws -> WorkflowRunReceipt {
     guard let runIDText = textColumn(in: statement, index: 0),
       let runID = UUID(uuidString: runIDText),
       let protectedPayload = textColumn(in: statement, index: 2)
@@ -5973,7 +4566,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     )
   }
 
-  private func protectString(
+  func protectString(
     _ value: String,
     context: LocalDataProtectionContext
   ) throws -> String {
@@ -5984,7 +4577,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func openString(
+  func openString(
     _ envelope: String,
     context: LocalDataProtectionContext
   ) throws -> String {
@@ -6001,14 +4594,14 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     }
   }
 
-  private func historyProtectionContext(
+  func historyProtectionContext(
     recordID: String,
     field: String
   ) -> LocalDataProtectionContext {
     Self.historyProtectionContext(recordID: recordID, field: field)
   }
 
-  private func settingsProtectionContext(
+  func settingsProtectionContext(
     keyRawValue: String
   ) -> LocalDataProtectionContext {
     Self.settingsProtectionContext(keyRawValue: keyRawValue)
@@ -6021,7 +4614,7 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     Self.exportProtectionContext(recordID: recordID, field: field)
   }
 
-  private func dataColumn(
+  func dataColumn(
     in statement: OpaquePointer?,
     index: Int32,
     maximumByteCount: Int
@@ -6042,18 +4635,18 @@ public actor SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptReposi
     return Data(bytes: bytes, count: byteCount)
   }
 
-  private func textColumn(in statement: OpaquePointer?, index: Int32) -> String? {
+  func textColumn(in statement: OpaquePointer?, index: Int32) -> String? {
     guard let cString = sqlite3_column_text(statement, index) else {
       return nil
     }
     return String(cString: cString)
   }
 
-  private func lastErrorMessage() -> String {
+  func lastErrorMessage() -> String {
     Self.lastErrorMessage(from: db)
   }
 
-  private var db: OpaquePointer? {
+  var db: OpaquePointer? {
     connection.db
   }
 

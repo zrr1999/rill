@@ -298,9 +298,26 @@ public struct WorkflowActionReceipt: Codable, Sendable, Equatable {
     }
 }
 
+public enum WorkflowStepResultCode: String, Codable, Sendable, Equatable {
+    case completed, thenBranch, elseBranch, skipped, failed, cancelled
+}
+
+/// The index and kind belong to the frozen run definition, never to the current editor draft.
+public struct WorkflowStepReceipt: Codable, Sendable, Equatable {
+    public let stepIndex: Int
+    public let kind: WorkflowProcessStepKind
+    public let result: WorkflowStepResultCode
+    public let duration: WorkflowRunDurationBucket
+
+    public init(stepIndex: Int, kind: WorkflowProcessStepKind, result: WorkflowStepResultCode, duration: WorkflowRunDurationBucket) {
+        self.stepIndex = stepIndex; self.kind = kind; self.result = result; self.duration = duration
+    }
+}
+
 public enum WorkflowRunReceiptValidationError: Error, Sendable, Equatable {
     case unsupportedSchemaVersion(Int)
     case tooManyActionDetails(Int)
+    case invalidStepSequence
     case invalidActionSequence
     case inconsistentTruncationFlag
 }
@@ -313,7 +330,7 @@ public enum WorkflowRunReceiptValidationError: Error, Sendable, Equatable {
 /// timestamp is not retained because it would reconstruct a more precise
 /// duration than the bucketed contract permits.
 public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
     public static let maximumActionDetails = 32
 
     public let schemaVersion: Int
@@ -323,6 +340,7 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
     public let timestamp: Date
     public let duration: WorkflowRunDurationBucket
     public let termination: WorkflowRunTermination
+    public let stepDetails: [WorkflowStepReceipt]
     public let actionDetails: [WorkflowActionReceipt]
     public let detailsTruncated: Bool
 
@@ -336,6 +354,7 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
         timestamp: Date,
         duration: WorkflowRunDurationBucket,
         termination: WorkflowRunTermination,
+        stepDetails: [WorkflowStepReceipt] = [],
         actionDetails: [WorkflowActionReceipt] = [],
         detailsTruncated: Bool = false
     ) throws {
@@ -347,6 +366,7 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
             timestamp: timestamp,
             duration: duration,
             termination: termination,
+            stepDetails: stepDetails,
             actionDetails: actionDetails,
             detailsTruncated: detailsTruncated
         )
@@ -360,10 +380,11 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
         timestamp: Date,
         duration: WorkflowRunDurationBucket,
         termination: WorkflowRunTermination,
+        stepDetails: [WorkflowStepReceipt],
         actionDetails: [WorkflowActionReceipt],
         detailsTruncated: Bool
     ) throws {
-        guard schemaVersion == Self.currentSchemaVersion else {
+        guard schemaVersion == 1 || schemaVersion == Self.currentSchemaVersion else {
             throw WorkflowRunReceiptValidationError.unsupportedSchemaVersion(schemaVersion)
         }
         guard actionDetails.count <= Self.maximumActionDetails else {
@@ -378,6 +399,13 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
             throw WorkflowRunReceiptValidationError.inconsistentTruncationFlag
         }
 
+        guard stepDetails.count <= 256,
+              stepDetails.allSatisfy({ (0..<256).contains($0.stepIndex) }),
+              Set(stepDetails.map(\.stepIndex)).count == stepDetails.count,
+              schemaVersion != 1 || stepDetails.isEmpty else {
+            throw WorkflowRunReceiptValidationError.invalidStepSequence
+        }
+        self.stepDetails = stepDetails
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.workflowID = workflowID
@@ -397,6 +425,7 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
         case timestamp
         case duration
         case termination
+        case stepDetails
         case actionDetails
         case detailsTruncated
     }
@@ -411,6 +440,7 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
             timestamp: container.decode(Date.self, forKey: .timestamp),
             duration: container.decode(WorkflowRunDurationBucket.self, forKey: .duration),
             termination: container.decode(WorkflowRunTermination.self, forKey: .termination),
+            stepDetails: container.decodeIfPresent([WorkflowStepReceipt].self, forKey: .stepDetails) ?? [],
             actionDetails: container.decode([WorkflowActionReceipt].self, forKey: .actionDetails),
             detailsTruncated: container.decode(Bool.self, forKey: .detailsTruncated)
         )
@@ -425,6 +455,7 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
         try container.encode(timestamp, forKey: .timestamp)
         try container.encode(duration, forKey: .duration)
         try container.encode(termination, forKey: .termination)
+        if schemaVersion >= 2 { try container.encode(stepDetails, forKey: .stepDetails) }
         try container.encode(actionDetails, forKey: .actionDetails)
         try container.encode(detailsTruncated, forKey: .detailsTruncated)
     }

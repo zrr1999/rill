@@ -110,7 +110,8 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
           status: .completed,
           outputText: "actual answer",
           containsRefusal: false,
-          httpStatusCode: 200
+          httpStatusCode: 200,
+          tokenUsage: .init(inputTokens: 120, outputTokens: 24, totalTokens: 144)
         )
       )
     )
@@ -132,7 +133,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     )
 
     XCTAssertEqual(result.text, "actual answer")
-    XCTAssertEqual(result.trace.providerID, "openai.responses")
+    XCTAssertEqual(result.trace.providerID, "llm.responses")
     XCTAssertEqual(result.trace.modelID, "vendor/answer-model")
     XCTAssertEqual(result.trace.workflowPrompt, "Answer in one sentence.")
     XCTAssertTrue(result.trace.systemPrompt.contains("Answer the supplied user request"))
@@ -142,6 +143,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       [.init(role: .user, content: "actual question")]
     )
     XCTAssertEqual(result.trace.responseText, "actual answer")
+    XCTAssertEqual(result.trace.tokenUsage, .init(inputTokens: 120, outputTokens: 24, totalTokens: 144))
 
     let encodedTrace = String(decoding: try JSONEncoder().encode(result.trace), as: UTF8.self)
     XCTAssertFalse(encodedTrace.contains("secret-key-canary"))
@@ -344,6 +346,8 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
   }
 
   func testMacPawAdapterCollectsTypedOutputWhenConvenienceFieldIsAbsent() async throws {
+    let decoded = try JSONDecoder().decode(ResponseObject.self, from: typedOutputResponseData)
+    XCTAssertEqual(decoded.usage?.totalTokens, 144)
     OpenAIRequestCaptureProtocol.reset(responseData: typedOutputResponseData)
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [OpenAIRequestCaptureProtocol.self]
@@ -366,6 +370,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
 
     XCTAssertEqual(result.status, .completed)
     XCTAssertEqual(result.outputText, "typed polished")
+    XCTAssertEqual(result.tokenUsage, .init(inputTokens: 120, outputTokens: 24, totalTokens: 144))
     XCTAssertFalse(result.containsRefusal)
   }
 
@@ -376,6 +381,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
         "id": "resp-compatible",
         "object": "response",
         "status": "completed",
+        "usage": {"input_tokens": 32, "output_tokens": 8, "total_tokens": 40},
         "output": [
           {
             "id": "reasoning-compatible",
@@ -405,12 +411,14 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     XCTAssertEqual(result.outputText, "兼容后的回答")
     XCTAssertFalse(result.containsRefusal)
     XCTAssertEqual(result.httpStatusCode, 200)
+    XCTAssertEqual(result.tokenUsage, .init(inputTokens: 32, outputTokens: 8, totalTokens: 40))
   }
 
   func testCompatibleResponseFallbackAcceptsGatewayChoiceShape() throws {
     let data = Data(
       """
       {
+        "usage": {"prompt_tokens": 40, "completion_tokens": 10, "total_tokens": 50},
         "choices": [
           {"message": {"role": "assistant", "content": "gateway answer"}}
         ]
@@ -427,6 +435,7 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
 
     XCTAssertEqual(result.status, .completed)
     XCTAssertEqual(result.outputText, "gateway answer")
+    XCTAssertEqual(result.tokenUsage, .init(inputTokens: 40, outputTokens: 10, totalTokens: 50))
   }
 
   func testCompatibleResponseFallbackPreservesIncompleteAndRefusal() throws {
@@ -451,6 +460,33 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
 
     XCTAssertEqual(result.status, .incomplete)
     XCTAssertTrue(result.containsRefusal)
+  }
+
+  func testCompatibleUsagePreservesPartialAndZeroCountsWithoutEstimatingMissingCounts() throws {
+    let fixtures: [(String, LanguageModelTokenUsage?)] = [
+      ("null", nil),
+      ("{}", nil),
+      (#"{"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}"#,
+       .init(inputTokens: 0, outputTokens: 0, totalTokens: 0)),
+      (#"{"input_tokens": 12, "output_tokens": 3}"#, .init(inputTokens: 12, outputTokens: 3)),
+      (#"{"total_tokens": 15}"#, .init(totalTokens: 15)),
+      (#"{"input_tokens": -1, "output_tokens": 3}"#, .init(outputTokens: 3)),
+      (#"{"input_tokens": true}"#, nil),
+      (#"{"input_tokens": "12"}"#, nil),
+      (#"{"input_tokens": 1.5}"#, nil),
+    ]
+    for (usage, expected) in fixtures {
+      let data = Data("{\"output_text\":\"answer\",\"usage\":\(usage)}".utf8)
+      let result = try XCTUnwrap(MacPawOpenAIResponsesClient.decodeCompatibleResponse(
+        from: data, httpStatusCode: 200
+      ))
+      XCTAssertEqual(result.outputText, "answer", usage)
+      XCTAssertEqual(result.tokenUsage, expected, usage)
+    }
+    let withoutUsage = try XCTUnwrap(MacPawOpenAIResponsesClient.decodeCompatibleResponse(
+      from: Data(#"{"output_text":"answer"}"#.utf8), httpStatusCode: 200
+    ))
+    XCTAssertNil(withoutUsage.tokenUsage)
   }
 
   func testMacPawAdapterOmitsVerificationOutputLimit() async throws {
@@ -602,6 +638,13 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
       {
         "id": "resp-typed-output",
         "object": "response",
+        "usage": {
+          "input_tokens": 120,
+          "output_tokens": 24,
+          "total_tokens": 144,
+          "input_tokens_details": {"cached_tokens": 0},
+          "output_tokens_details": {"reasoning_tokens": 0}
+        },
         "model": "gpt-5.6-luna",
         "created_at": 1717459200,
         "output": [

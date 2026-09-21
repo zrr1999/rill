@@ -257,7 +257,7 @@ extension AppModel {
   private func voiceAssistantReadiness(
     for workflow: WorkflowDefinition?
   ) -> VoiceAssistantReadiness {
-    let requiresLLM = workflow?.plan.process.steps.contains(where: {
+    let requiresLLM = workflow?.plan.process.allSteps.contains(where: {
       $0.kind == .llmRewrite || $0.kind == .llmAnswer
     }) ?? false
 

@@ -67,9 +67,13 @@ public enum WorkflowExecutionPlanResolver {
         )
         switch (outputDependsOnSettings, output) {
         case (true, .builtinPasteIntoApplication):
-            resolvedWorkflow.plan.output.actions = [OutputActionReference(id: "focused-application.insert")]
+            resolvedWorkflow.plan.output.actions = [
+                OutputActionReference(id: "record.store"),
+                OutputActionReference(id: "focused-application.insert"),
+            ]
             resolvedWorkflow.plan.output.deliveryPolicy = .init(strategy: .immediate)
-            resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.targetRecordCollectionIDs)
+            resolvedWorkflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] =
+                RecordCollection.voiceInputID.rawValue.uuidString
             resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
         case (true, .builtinSaveToVoiceGroup):
             resolvedWorkflow.plan.output.actions = [OutputActionReference(id: "record.store")]
@@ -716,7 +720,7 @@ public struct WorkflowExplainService: Sendable {
         issues: inout [WorkflowExplanationIssue]
     ) -> [WorkflowExplanationTransform] {
         var transforms: [WorkflowExplanationTransform] = []
-        if workflow.plan.process.steps.contains(where: {
+        if workflow.plan.process.allSteps.contains(where: {
             $0.kind == .applyVocabulary
         }), workflow.plan.setup.vocabularyBindings.contains(where: {
             $0.uses.contains(.textReplacement)
@@ -730,7 +734,7 @@ public struct WorkflowExplainService: Sendable {
                 )
             )
         }
-        let postProcessSteps = workflow.plan.process.steps.compactMap(\.postProcessStep)
+        let postProcessSteps = workflow.plan.process.allSteps.compactMap(\.postProcessStep)
         transforms.append(contentsOf: postProcessSteps.enumerated().map { index, step in
             let component = transformerRegistry.transformer(for: step.kind)
             guard let profile = profileRegistry.transformer(for: step.kind) else {

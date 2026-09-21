@@ -203,6 +203,7 @@ public enum DiagnosticEventSanitizer {
   ]
 
   private static let recognizerIDs: Set<String> = [
+    "local-speech",
     "context.selection",
     "sherpa-onnx.local",
     "sherpa-onnx.streaming",
@@ -216,14 +217,18 @@ public enum DiagnosticEventSanitizer {
   ]
 
   private static let providerIDs: Set<String> = [
+    "local-speech",
     "openai.responses",
+    "llm.responses",
     "sherpa-onnx.local",
     "sherpa-onnx.streaming",
     "whisperkit.stream",
   ]
 
   private static let providerKinds: Set<String> = [
+    "mlx-audio-swift",
     "openai",
+    "llm",
     "sherpa-onnx",
     "whisperkit",
     "whisperkit.live",
@@ -404,16 +409,23 @@ public enum DiagnosticEventSanitizer {
     "eventSourceState": .closed(["privateState"]),
     "eventTap": .closed(["cghidEventTap"]),
     "failureCode": .closed([
+      "busy",
+      "cancelled",
+      "configuration",
       "invalid-managed-audio",
       "invalidAudio",
       "invalidRequest",
       "invalidText",
       "modelUnavailable",
+      "model-disabled",
+      "noSpeech",
+      "processing",
       "protocol-violation",
       "recognitionFailed",
       "request-already-active",
       "request-timed-out",
       "stale-response",
+      "settings-unavailable",
       "synthesisFailed",
       "unclassified",
       "unsupportedModel",

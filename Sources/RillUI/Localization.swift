@@ -195,6 +195,7 @@ public enum UIStrings {
     case dismiss
     case liveSubtitleClose
     case copy
+    case searchCancelShortcutHint
     case sidebarStream
     case sidebarWorkflows
     case sidebarRecords
@@ -215,6 +216,9 @@ public enum UIStrings {
     case historyLoadFailedTitle
     case historyLoadFailedDescription
     case historyRetryLoad
+    case historyLoadSessionOnlyTitle
+    case historyLoadSessionOnlyDescription
+    case historyLoadSessionOnlyViewStorage
     case historyNewRunsAvailable
     case historyRefreshNewest
     case historyNewerPage
@@ -760,9 +764,9 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   ),
   .commandVHint: .init(
     english:
-      "When the clipboard queue has pending items, Command-V pastes the next one. Double-tap "
-      + "Command to open the clipboard panel.",
-    simplifiedChinese: "当剪贴板队列里还有待处理条目时，Command-V 会粘贴下一个。双击 Command 可以打开剪贴板面板。"
+      "Copy and paste work normally. Rill records clipboard history in the background; "
+      + "open the clipboard panel to explicitly copy or paste a saved item.",
+    simplifiedChinese: "复制和粘贴保持系统原有行为。Rill 在后台记录剪贴板历史；打开面板后，可手动复制或粘贴历史条目。"
   ),
   .candidateResolution: .init(
     english: "Candidate Resolution",
@@ -804,6 +808,10 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     english: "Copy",
     simplifiedChinese: "复制"
   ),
+  .searchCancelShortcutHint: .init(
+    english: "Close search (Esc)",
+    simplifiedChinese: "关闭搜索（Esc）"
+  ),
   .sidebarStream: .init(
     english: "Activity",
     simplifiedChinese: "活动"
@@ -833,8 +841,8 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     simplifiedChinese: "设置"
   ),
   .openWorkflowEditor: .init(
-    english: "Open Workflow Editor",
-    simplifiedChinese: "打开工作流编辑器"
+    english: "Manage Workflows",
+    simplifiedChinese: "管理工作流"
   ),
   .settingsTitle: .init(
     english: "Settings",
@@ -885,6 +893,20 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
   .historyRetryLoad: .init(
     english: "Try Again",
     simplifiedChinese: "重试"
+  ),
+  .historyLoadSessionOnlyTitle: .init(
+    english: "Saved history is unavailable",
+    simplifiedChinese: "已保存的历史记录不可用"
+  ),
+  .historyLoadSessionOnlyDescription: .init(
+    english:
+      "Rill is running session-only, so reopening saved history cannot "
+      + "succeed until persistent storage is available.",
+    simplifiedChinese: "Rill 当前仅在本次会话中运行；在持久化存储恢复前，重新加载已保存历史不会成功。"
+  ),
+  .historyLoadSessionOnlyViewStorage: .init(
+    english: "View Storage Settings",
+    simplifiedChinese: "查看存储设置"
   ),
   .historyNewRunsAvailable: .init(
     english: "New runs are available",
@@ -1388,8 +1410,8 @@ private let uiStringsTextTable: [UIStrings.Key: LocalizedText] = [
     simplifiedChinese: "运行时间线"
   ),
   .workflowsTitle: .init(
-    english: "Workflow Editor",
-    simplifiedChinese: "工作流编辑器"
+    english: "Workflows",
+    simplifiedChinese: "工作流"
   ),
   .workflowsDescription: .init(
     english:

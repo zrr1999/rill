@@ -4,6 +4,76 @@ import XCTest
 
 @MainActor
 final class EventFeedPrivacyPresentationTests: XCTestCase {
+    func testTokenUsageRemainsVisibleWithoutExposingTheStepText() async throws {
+        let harness = makeHarness()
+        await harness.model.waitForInitialVoiceConfiguration()
+        let runID = UUID()
+        harness.model.handle(.runStarted(RunSnapshot(
+            runID: runID, workflowID: harness.workflow.id,
+            workflow: harness.workflow.presentation, trigger: .manual
+        )))
+        harness.model.handle(.runTextStepRecorded(runID: runID, step: WorkflowTextStep(
+            kind: .llmRewrite, outputText: "PRIVATE-RESULT", didChange: true,
+            tokenUsage: .init(inputTokens: 120, outputTokens: 24, totalTokens: 144)
+        )))
+        let entry = try XCTUnwrap(harness.model.eventFeed.last)
+        for language in AppLanguage.allCases {
+            for mode: PrivacyHistoryPreviewMode in [.full, .restricted, .disabled] {
+                let text = entry.presentation(for: language, historyPreviewMode: mode).text
+                XCTAssertTrue(text.contains("120"))
+                XCTAssertTrue(text.contains("24"))
+                XCTAssertTrue(text.contains("144"))
+                XCTAssertEqual(text.contains("PRIVATE-RESULT"), mode != .disabled)
+            }
+        }
+        await harness.model.flushPendingPersistenceWrites()
+    }
+
+    func testTokenUsagePresentationDistinguishesMissingFromZero() {
+        XCTAssertEqual(HistoryTextStepPresentation.tokenUsage(nil, language: .simplifiedChinese), "Token 用量：未提供")
+        XCTAssertEqual(
+            HistoryTextStepPresentation.tokenUsage(.init(inputTokens: 0, outputTokens: 3), language: .english),
+            "Tokens · Input 0 · Output 3 · Total Not provided"
+        )
+    }
+
+    func testFailedVoiceRunRetainsStepsAndAddsPrivacyAwareDetailedLog() async throws {
+        let harness = makeHarness()
+        await harness.model.waitForInitialVoiceConfiguration()
+        let runID = UUID()
+        harness.model.handle(.runStarted(RunSnapshot(
+            runID: runID, workflowID: harness.workflow.id,
+            workflow: harness.workflow.presentation, trigger: .manual
+        )))
+        let steps = [
+            WorkflowTextStep(kind: .recognizeSpeech, outputText: "识别正文"),
+            WorkflowTextStep(kind: .applyVocabulary, outputText: "替换后正文", didChange: true),
+            WorkflowTextStep(kind: .llmRewrite, result: .failed)
+        ]
+        let feedCount = harness.model.eventFeed.count
+        for step in steps {
+            harness.model.handle(.runTextStepRecorded(runID: runID, step: step))
+        }
+        harness.model.handle(.runTextStepRecorded(
+            runID: UUID(), step: WorkflowTextStep(kind: .recognizeSpeech, outputText: "其他运行")
+        ))
+        XCTAssertEqual(harness.model.eventFeed.count, feedCount + steps.count)
+        let replacement = harness.model.eventFeed[feedCount + 1]
+        XCTAssertTrue(replacement.presentation(for: .simplifiedChinese, historyPreviewMode: .full).text.contains("词替换 · 已完成\n替换后正文"))
+        XCTAssertFalse(replacement.presentation(for: .simplifiedChinese, historyPreviewMode: .disabled).text.contains("替换后正文"))
+        XCTAssertFalse(replacement.simplifiedChinese.contains("替换后正文"))
+        harness.model.handle(.runFailed(
+            runID: runID, workflow: harness.workflow.presentation, message: "provider unavailable"
+        ))
+        await harness.model.flushPendingPersistenceWrites()
+        let record = try XCTUnwrap(harness.model.historyRecords.first { $0.runID == runID })
+        XCTAssertEqual(record.outcome, .failed)
+        XCTAssertEqual(record.correctionSource?.processingSteps, steps)
+        XCTAssertNil(record.finalText)
+        XCTAssertNil(harness.model.pendingRuns[runID])
+        await harness.model.flushPendingPersistenceWrites()
+    }
+
     func testRecognitionActivityUsesHistoryPreviewPolicyForVisualAndAccessibilityPresentation() throws {
         let harness = makeHarness()
         let tailCanary = "PRIVATE-TAIL-CANARY"

@@ -71,7 +71,8 @@ verify_xcode_resource_accessor() {
   local bundle_name="$1"
   local accessor=""
   local candidate
-  local accessor_root="$PROJECT_DIR/.build/rill-release/Intermediates.noindex"
+  local accessor_root
+  accessor_root="$(dirname "$(dirname "$BUILD_DIR")")/Intermediates.noindex"
 
   while IFS= read -r candidate; do
     if grep -Fq "let bundleName = \"$bundle_name\"" "$candidate"; then

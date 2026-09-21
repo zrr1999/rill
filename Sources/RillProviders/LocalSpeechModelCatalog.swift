@@ -5,12 +5,15 @@ public typealias LocalSpeechModelBackend = LocalSpeechEngine
 
 public enum LocalSpeechModelSelectionError: Error, LocalizedError, Sendable, Equatable {
   case unsupportedModelIdentifier(String)
+  case modelNotEnabled(String)
   case backendUnavailable(LocalSpeechModelBackend)
 
   public var errorDescription: String? {
     switch self {
     case .unsupportedModelIdentifier(let identifier):
       "The local speech model is not supported: \(identifier)."
+    case .modelNotEnabled:
+      "The selected local speech model is disabled. Enable it in Settings or select another model."
     case .backendUnavailable(let backend):
       "The local speech backend is unavailable: \(backend.rawValue)."
     }
@@ -254,7 +257,12 @@ public enum LocalSpeechModelCatalog {
     let configured = normalizedLegacyModelID(
       settings.model.trimmingCharacters(in: .whitespacesAndNewlines)
     )
-    return configured.isEmpty ? defaultModelIdentifier : configured
+    guard distributableModelIdentifiers.contains(configured),
+      !settings.enabledModelIDs.contains(configured)
+    else { return configured }
+    return MLXAudioModelCatalog.distributable.first {
+      settings.enabledModelIDs.contains($0.id.rawValue)
+    }?.id.rawValue ?? configured
   }
 
   public static func normalizedLegacyModelID(_ modelID: String) -> String {

@@ -26,6 +26,21 @@ extension L10n {
         )
     }
 
+    static func workflowVocabularyEntryCount(_ count: Int, language: AppLanguage) -> String {
+        String(format: workflowText(.workflowVocabularyEntryCountFormat, language: language), count)
+    }
+
+    static func workflowPhaseTitle(_ phase: WorkflowPhaseKind, language: AppLanguage) -> String {
+        switch phase {
+        case .setup:
+            workflowText(.workflowPhaseSetup, language: language)
+        case .process:
+            workflowText(.workflowPhaseProcess, language: language)
+        case .output:
+            workflowText(.workflowPhaseOutput, language: language)
+        }
+    }
+
     static func workflowWakePhraseValidationError(
         englishDescription: String,
         language: AppLanguage
@@ -59,6 +74,15 @@ extension L10n {
             english: "Changes are saved as a TOML override for this built-in workflow. Restore Defaults removes the override.",
             simplifiedChinese: "修改会保存为此内置工作流的 TOML 覆盖；“恢复默认”会移除该覆盖。"
         ),
+        .workflowCancel: .init(english: "Cancel", simplifiedChinese: "取消"),
+        .workflowCollectionEmptyEntries: .init(
+            english: "No entries yet.",
+            simplifiedChinese: "还没有词条。"
+        ),
+        .workflowCollectionEntriesToggle: .init(
+            english: "Show or hide entries",
+            simplifiedChinese: "展开或收起词条列表"
+        ),
         .workflowBundleIDAnyPlaceholder: .init(
             english: "App bundle ID · any",
             simplifiedChinese: "App Bundle ID · 任意"
@@ -71,9 +95,11 @@ extension L10n {
             english: "The collection and its workflow bindings will be removed.",
             simplifiedChinese: "该词库及其工作流绑定都会被移除。"
         ),
+        .workflowDeleteCollection: .init(english: "Delete collection", simplifiedChinese: "删除词库"),
         .workflowDeleteCollectionTitle: .init(english: "Delete collection?", simplifiedChinese: "删除词库？"),
         .workflowEditItem: .init(english: "Edit Item", simplifiedChinese: "编辑条目"),
         .workflowEditTOML: .init(english: "Edit TOML", simplifiedChinese: "编辑 TOML"),
+        .workflowEntryKindLabel: .init(english: "Entry type", simplifiedChinese: "词条类型"),
         .workflowEditorSubtitleBuiltin: .init(
             english: "Edit this built-in workflow directly, or restore its bundled defaults later.",
             simplifiedChinese: "直接编辑这个内置工作流；之后也可以恢复到应用内置默认值。"
@@ -126,14 +152,17 @@ extension L10n {
         ),
         .workflowOnDeviceBadge: .init(english: "On-device", simplifiedChinese: "设备端"),
         .workflowOpenAIModelHintFormat: .init(
-            english: "OpenAI model: %@. Change it in Settings → Speech Engine.",
-            simplifiedChinese: "OpenAI 模型：%@。可在“设置 → 语音引擎”中切换。"
+            english: "LLM Provider model: %@. Change it in Settings → Speech Engine.",
+            simplifiedChinese: "LLM Provider 模型：%@。可在“设置 → 语音引擎”中切换。"
         ),
         .workflowOpenFolder: .init(english: "Open Folder", simplifiedChinese: "打开目录"),
         .workflowOrderedActionsHint: .init(
             english: "For fully ordered output.actions, edit the workflow TOML and reload.",
             simplifiedChinese: "如需自由编排多个 output.actions，可直接编辑工作流 TOML 后重新加载。"
         ),
+        .workflowPhaseOutput: .init(english: "Output", simplifiedChinese: "输出"),
+        .workflowPhaseProcess: .init(english: "Process", simplifiedChinese: "处理"),
+        .workflowPhaseSetup: .init(english: "Setup", simplifiedChinese: "准备"),
         .workflowOutputPhaseSubtitle: .init(
             english: "Choose a primary destination and optionally add speech playback.",
             simplifiedChinese: "选择主要输出目标，并可追加语音朗读。"
@@ -167,6 +196,7 @@ extension L10n {
         .workflowReplacementKindOption: .init(english: "Replacement", simplifiedChinese: "替换词"),
         .workflowReplacementPlaceholder: .init(english: "Replacement", simplifiedChinese: "替换为"),
         .workflowRestoreDefaults: .init(english: "Restore Defaults", simplifiedChinese: "恢复默认"),
+        .workflowRetry: .init(english: "Retry", simplifiedChinese: "重试"),
         .workflowSetupPhaseSubtitle: .init(
             english: "Resolve speech resources and freeze vocabulary for this run.",
             simplifiedChinese: "解析语音资源，并为本次运行冻结词库快照。"
@@ -186,6 +216,9 @@ extension L10n {
         .workflowStepNormalizeWhitespace: .init(english: "Normalize Whitespace", simplifiedChinese: "标准化空白"),
         .workflowStepSnippetReplacement: .init(english: "Snippet Replacement", simplifiedChinese: "片段替换"),
         .workflowStreamingStyleLabel: .init(english: "Streaming style", simplifiedChinese: "流式风格"),
+        .workflowStreamingStyleAgent: .init(english: "Agent", simplifiedChinese: "智能体"),
+        .workflowStreamingStyleRealtime: .init(english: "Realtime", simplifiedChinese: "实时"),
+        .workflowStreamingStyleSubtitle: .init(english: "Subtitle", simplifiedChinese: "字幕"),
         .workflowTOMLSourceOfTruthHint: .init(
             english: "TOML files are the source of truth. This window is a visual editor for them.",
             simplifiedChinese: "TOML 文件是唯一事实来源；此窗口只是它们的可视化编辑器。"
@@ -207,6 +240,10 @@ extension L10n {
         .workflowVocabularyCollectionsLabel: .init(
             english: "Vocabulary Collections",
             simplifiedChinese: "词库集合"
+        ),
+        .workflowVocabularyEntryCountFormat: .init(
+            english: "%d entries",
+            simplifiedChinese: "%d 个词条"
         ),
         .workflowVocabularyLibraryHint: .init(
             english: "Reusable hotwords and replacements attached in workflow Setup.",
@@ -243,10 +280,14 @@ enum WorkflowTextKey: String, CaseIterable, Sendable {
     case workflowBindingConditionLabel
     case workflowBuiltinOverrideHint
     case workflowBundleIDAnyPlaceholder
+    case workflowCancel
+    case workflowCollectionEmptyEntries
+    case workflowCollectionEntriesToggle
     case workflowConditionNodeTitle
     case workflowCreateItem
     case workflowDefaultRouting
     case workflowDefaultTTSModel
+    case workflowDeleteCollection
     case workflowDeleteCollectionDetail
     case workflowDeleteCollectionTitle
     case workflowEditItem
@@ -254,6 +295,7 @@ enum WorkflowTextKey: String, CaseIterable, Sendable {
     case workflowEditorSubtitleBuiltin
     case workflowEditorSubtitleEditing
     case workflowEditorSubtitleNew
+    case workflowEntryKindLabel
     case workflowEventNodeTitle
     case workflowExcludePolishItems
     case workflowHotwordSkippedHint
@@ -273,6 +315,9 @@ enum WorkflowTextKey: String, CaseIterable, Sendable {
     case workflowOpenFolder
     case workflowOrderedActionsHint
     case workflowOutputPhaseSubtitle
+    case workflowPhaseOutput
+    case workflowPhaseProcess
+    case workflowPhaseSetup
     case workflowPhrasePlaceholder
     case workflowPrivacyShortAutomatic
     case workflowPrivacyShortLocal
@@ -291,6 +336,7 @@ enum WorkflowTextKey: String, CaseIterable, Sendable {
     case workflowReplacementKindOption
     case workflowReplacementPlaceholder
     case workflowRestoreDefaults
+    case workflowRetry
     case workflowSetupPhaseSubtitle
     case workflowSpeakPrimaryHint
     case workflowSpeakResultLabel
@@ -301,6 +347,9 @@ enum WorkflowTextKey: String, CaseIterable, Sendable {
     case workflowStepNormalizeWhitespace
     case workflowStepSnippetReplacement
     case workflowStreamingStyleLabel
+    case workflowStreamingStyleAgent
+    case workflowStreamingStyleRealtime
+    case workflowStreamingStyleSubtitle
     case workflowTOMLSourceOfTruthHint
     case workflowTriggerHotkey
     case workflowTriggerManual
@@ -311,6 +360,7 @@ enum WorkflowTextKey: String, CaseIterable, Sendable {
     case workflowTTSSavedHint
     case workflowUnsupportedStepFormat
     case workflowVocabularyCollectionsLabel
+    case workflowVocabularyEntryCountFormat
     case workflowVocabularyLibraryHint
     case workflowVocabularySummaryFormat
     case workflowVoiceLabel

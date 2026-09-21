@@ -3,6 +3,48 @@ import XCTest
 @testable import RillCore
 
 final class RecognitionCorrectionSourceTests: XCTestCase {
+    func testHistoryFromBeforeTokenUsageStillDecodes() throws {
+        let trace = Data(#"{"providerID":"llm.responses","modelID":"model","systemPrompt":"system","workflowPrompt":"workflow","messages":[],"responseText":"answer"}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(LanguageModelTrace.self, from: trace).tokenUsage)
+        let step = Data(#"{"kind":"llmRewrite","result":"completed","outputText":"answer"}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(WorkflowTextStep.self, from: step).tokenUsage)
+    }
+
+    func testProcessingStepsRoundTripAndRestrictedPreviewDropsUnrelatedContent() throws {
+        let text = String(repeating: "recognized text ", count: 20) + "PRIVATE-TAIL"
+        let source = RecognitionCorrectionSource(
+            preMappingText: text,
+            context: VocabularyRuleContext(bundleIdentifier: "private.app", locale: "zh-CN"),
+            languageModelInputTexts: [text],
+            languageModelTraces: [LanguageModelTrace(
+                providerID: "llm.responses", modelID: "test-model",
+                systemPrompt: "private prompt", workflowPrompt: "private instructions",
+                messages: [.init(role: .user, content: text)], responseText: text
+            )],
+            processingSteps: [
+                WorkflowTextStep(kind: .recognizeSpeech, outputText: text),
+                WorkflowTextStep(kind: .applyVocabulary, outputText: text, didChange: false),
+                WorkflowTextStep(kind: .llmRewrite, result: .failed,
+                                 tokenUsage: .init(inputTokens: 120, outputTokens: 24, totalTokens: 144))
+            ]
+        )
+        let encoded = try JSONEncoder().encode(source)
+        XCTAssertEqual(try JSONDecoder().decode(RecognitionCorrectionSource.self, from: encoded), source)
+        let preview = try XCTUnwrap(source.restrictedStepPreview)
+        XCTAssertEqual(preview.preMappingText, "")
+        XCTAssertEqual(preview.context, VocabularyRuleContext())
+        XCTAssertNil(preview.languageModelInputTexts)
+        XCTAssertNil(preview.languageModelTraces)
+        let steps = try XCTUnwrap(preview.processingSteps)
+        XCTAssertEqual(steps.map(\.kind), [.recognizeSpeech, .applyVocabulary, .llmRewrite])
+        XCTAssertEqual(steps.last?.result, .failed)
+        XCTAssertNil(steps.last?.outputText)
+        XCTAssertEqual(steps.last?.tokenUsage, source.processingSteps?.last?.tokenUsage)
+        XCTAssertEqual(steps[1].didChange, false)
+        XCTAssertLessThanOrEqual(try XCTUnwrap(steps.first?.outputText).count, 96)
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(preview), as: UTF8.self).contains("PRIVATE-TAIL"))
+    }
+
     func testCorrectionSourceCodableSurfaceContainsOnlyTextAndVocabularyContext() throws {
         let source = RecognitionCorrectionSource(
             preMappingText: "vux type",

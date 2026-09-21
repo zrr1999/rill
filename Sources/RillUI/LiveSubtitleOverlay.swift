@@ -2,6 +2,15 @@ import AppKit
 import RillCore
 import SwiftUI
 
+extension Notification.Name {
+  /// Posted by the live-subtitle overlay when the user asks to drop the
+  /// recording duration limit; observed by the panel controller in RillApp.
+  /// Defined once here so poster and observer share a single source of truth.
+  public static let rillLiveSubtitleRemoveDurationLimitRequested = Notification.Name(
+    "works.earendil.rill.live-subtitle.remove-duration-limit-requested"
+  )
+}
+
 public enum LiveSubtitleOverlayMetrics {
   public static let minimumSurfaceWidth: CGFloat = 184
   public static let maximumSurfaceWidth: CGFloat = 360
@@ -23,6 +32,16 @@ public enum LiveSubtitleOverlayMetrics {
 enum LiveSubtitleSurfaceMaterial: Equatable {
   case thin
   case regular
+}
+
+/// Shared bar geometry for the overlay waveform, so the observed-meter and
+/// snapshot-driven render paths stay visually identical.
+private enum LiveSubtitleWaveformMetrics {
+  static let barCount = 12
+  static let barWidth: CGFloat = 2
+  static let barSpacing: CGFloat = 2
+  static let minHeight: CGFloat = 3
+  static let maxHeight: CGFloat = 20
 }
 
 struct LiveSubtitleSurfaceStyle: Equatable {
@@ -178,11 +197,11 @@ public struct LiveSubtitleOverlay: View {
         levelMeter: snapshot.levelMeter,
         isActive: isAudioCaptureActive,
         accentColor: meterColor,
-        barCount: 12,
-        barWidth: 2,
-        barSpacing: 2,
-        minHeight: 3,
-        maxHeight: 20
+        barCount: LiveSubtitleWaveformMetrics.barCount,
+        barWidth: LiveSubtitleWaveformMetrics.barWidth,
+        barSpacing: LiveSubtitleWaveformMetrics.barSpacing,
+        minHeight: LiveSubtitleWaveformMetrics.minHeight,
+        maxHeight: LiveSubtitleWaveformMetrics.maxHeight
       )
     }
   }
@@ -193,7 +212,7 @@ public struct LiveSubtitleOverlay: View {
     let tint = networkUsageTint(usage)
     return HStack(spacing: 4) {
       Image(systemName: LiveSubtitleInteractionPolicy.networkDisclosureSymbolName(usage))
-        .font(.system(size: 10, weight: .semibold))
+        .font(.caption2.weight(.semibold))
       if showsTitle {
         Text(
           LiveSubtitleInteractionPolicy.networkDisclosureShortTitle(
@@ -265,6 +284,8 @@ public struct LiveSubtitleOverlay: View {
           Text(recordingTimerTitle(state))
             .font(.caption.monospacedDigit().weight(.semibold))
             .foregroundStyle(timerColor(state))
+            .frame(minWidth: 48, alignment: .trailing)
+            .help(recordingTimerAccessibilityLabel(state))
             .accessibilityLabel(Text(recordingTimerAccessibilityLabel(state)))
 
           if let state,
@@ -273,12 +294,14 @@ public struct LiveSubtitleOverlay: View {
           {
             Button(action: requestUnlimitedRecording) {
               Image(systemName: RillSystemSymbol.infinity.rawValue)
-                .font(.system(size: 10, weight: .bold))
+                .font(.caption2.weight(.bold))
                 .frame(width: 20, height: 20)
             }
             .buttonStyle(.plain)
             .foregroundStyle(timerColor(state))
             .background(timerColor(state).opacity(0.1), in: Circle())
+            .frame(width: 32, height: 32)
+            .contentShape(Circle())
             .help(
               L10n.overlayText(.liveSubtitleContinueWithoutLimitHelp, language: language)
             )
@@ -329,6 +352,8 @@ public struct LiveSubtitleOverlay: View {
   }
 
   private var escapeHint: some View {
+    // Key-cap glyph: "esc" is the physical key name and is intentionally not
+    // localized; the spoken label below is.
     Text("esc")
       .font(.caption2.monospaced().weight(.medium))
       .foregroundStyle(secondaryTextColor)
@@ -349,7 +374,7 @@ public struct LiveSubtitleOverlay: View {
 
   private func requestUnlimitedRecording() {
     NotificationCenter.default.post(
-      name: Self.removeDurationLimitRequestedNotification,
+      name: .rillLiveSubtitleRemoveDurationLimitRequested,
       object: snapshot.runID
     )
   }
@@ -376,10 +401,6 @@ public struct LiveSubtitleOverlay: View {
       ? LiveSubtitleOverlayMetrics.standardCornerRadius
       : LiveSubtitleOverlayMetrics.compactCornerRadius
   }
-
-  private static let removeDurationLimitRequestedNotification = Notification.Name(
-    "works.earendil.rill.live-subtitle.remove-duration-limit-requested"
-  )
 }
 
 private struct LiveSubtitleObservedWaveform: View {
@@ -392,11 +413,11 @@ private struct LiveSubtitleObservedWaveform: View {
       levelMeter: meterModel.levels,
       isActive: isActive,
       accentColor: accentColor,
-      barCount: 12,
-      barWidth: 2,
-      barSpacing: 2,
-      minHeight: 3,
-      maxHeight: 20
+      barCount: LiveSubtitleWaveformMetrics.barCount,
+      barWidth: LiveSubtitleWaveformMetrics.barWidth,
+      barSpacing: LiveSubtitleWaveformMetrics.barSpacing,
+      minHeight: LiveSubtitleWaveformMetrics.minHeight,
+      maxHeight: LiveSubtitleWaveformMetrics.maxHeight
     )
   }
 }

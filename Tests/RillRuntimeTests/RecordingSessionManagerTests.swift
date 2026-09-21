@@ -1750,7 +1750,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             eventBus: eventBus,
             privacyRunGate: makeRecordingTestPrivacyGate(),
             workflowProvider: { [workflow] },
-            recordingCueAction: { _ in }
+            recordingCueAction: { _, _ in }
         )
 
         let marker = "recording.synchronously-revoked-ready.\(UUID().uuidString)"

@@ -94,7 +94,7 @@ public extension AppModel {
                 }
             }
         }
-        registerPersistenceWrite(task)
+        persistenceWrites.track(task)
     }
 
     func loadFailedAudioRecoveryReceipts() {

@@ -55,7 +55,7 @@ extension SettingsView {
       }
 
       Text(L10n.privacyText(PrivacySettingsTextKey.description, language: model.language))
-        .font(.callout)
+        .font(.caption)
         .foregroundStyle(.secondary)
 
       VStack(alignment: .leading, spacing: 6) {
@@ -140,8 +140,11 @@ extension SettingsView {
           .foregroundStyle(.secondary)
         }
         .padding(10)
-        // RillCard prominent-tier fill; custom corner radius keeps this manual.
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+        // RillCard prominent-tier fill at badge radius; padding stays manual.
+        .background(
+          .quaternary.opacity(RillCardProminence.prominent.fillOpacity),
+          in: RoundedRectangle(cornerRadius: RillRadius.badge, style: .continuous)
+        )
       }
 
       Toggle(
@@ -203,9 +206,15 @@ extension SettingsView {
       sensitiveAppRuleEditor
         .disabled(privacySettingsControlsDisabled)
 
-      ForEach(model.privacyPolicySettings.sensitiveAppRules) { rule in
-        sensitiveAppRuleRow(rule)
-          .disabled(privacySettingsControlsDisabled)
+      if model.privacyPolicySettings.sensitiveAppRules.isEmpty {
+        Text(L10n.settingsText(.settingsSensitiveAppRulesEmpty, language: model.language))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      } else {
+        ForEach(model.privacyPolicySettings.sensitiveAppRules) { rule in
+          sensitiveAppRuleRow(rule)
+            .disabled(privacySettingsControlsDisabled)
+        }
       }
     }
   }
@@ -215,12 +224,13 @@ extension SettingsView {
   }
 
   var sensitiveAppRuleEditor: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: RillSpacing.row) {
       TextField(
         L10n.privacyText(.bundleIdentifier, language: model.language),
         text: $sensitiveAppBundleIdentifier
       )
       .textFieldStyle(.roundedBorder)
+      .monospaced()
 
       TextField(
         L10n.privacyText(.applicationNameOptional, language: model.language),
@@ -285,7 +295,7 @@ extension SettingsView {
           }
           .buttonStyle(.borderless)
           Button(role: .destructive) {
-            deleteSensitiveAppRule(rule)
+            destructiveConfirmation = .sensitiveAppRule(rule.id)
           } label: {
             Text(L10n.privacyText(.deleteRule, language: model.language))
           }

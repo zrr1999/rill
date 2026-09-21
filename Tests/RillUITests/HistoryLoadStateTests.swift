@@ -108,6 +108,9 @@ final class HistoryLoadStateTests: XCTestCase {
             .historyLoadFailedTitle,
             .historyLoadFailedDescription,
             .historyRetryLoad,
+            .historyLoadSessionOnlyTitle,
+            .historyLoadSessionOnlyDescription,
+            .historyLoadSessionOnlyViewStorage,
         ]
 
         for key in keys {

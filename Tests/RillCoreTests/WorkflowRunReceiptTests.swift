@@ -107,7 +107,7 @@ final class WorkflowRunReceiptTests: XCTestCase {
         let decoded = try JSONDecoder().decode(WorkflowRunReceipt.self, from: data)
 
         XCTAssertEqual(decoded, receipt)
-        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertEqual(decoded.schemaVersion, 2)
         XCTAssertEqual(decoded.outcome, .partiallyCompleted)
     }
 
@@ -142,7 +142,7 @@ final class WorkflowRunReceiptTests: XCTestCase {
             JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
 
-        XCTAssertEqual(object["schemaVersion"] as? Int, 1)
+        XCTAssertEqual(object["schemaVersion"] as? Int, 2)
         XCTAssertNil(object["startedAt"])
         XCTAssertNil(object["durationMilliseconds"])
         XCTAssertNil(object["workflowName"])
@@ -151,6 +151,18 @@ final class WorkflowRunReceiptTests: XCTestCase {
         XCTAssertFalse(json.contains(textCanary))
         XCTAssertFalse(json.contains(destinationCanary))
         XCTAssertFalse(json.contains(errorCanary))
+    }
+
+    func testVersionOneReceiptsRemainReadableWithoutStepDetails() throws {
+        let receipt = try WorkflowRunReceipt(runID: UUID(), workflowID: UUID(), trigger: .manual, timestamp: Date(), duration: .under250ms, termination: .completed)
+        let data = try JSONEncoder().encode(receipt)
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        object["schemaVersion"] = 1
+        object.removeValue(forKey: "stepDetails")
+        let decoded = try JSONDecoder().decode(WorkflowRunReceipt.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertTrue(decoded.stepDetails.isEmpty)
+        XCTAssertEqual(decoded.runID, receipt.runID)
     }
 
     func testReceiptRejectsUnsupportedSchemaAndInvalidActionDetailBounds() throws {
@@ -166,7 +178,7 @@ final class WorkflowRunReceiptTests: XCTestCase {
         var object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: validData) as? [String: Any]
         )
-        object["schemaVersion"] = 2
+        object["schemaVersion"] = 3
         let futureData = try JSONSerialization.data(withJSONObject: object)
 
         XCTAssertThrowsError(
@@ -174,7 +186,7 @@ final class WorkflowRunReceiptTests: XCTestCase {
         ) { error in
             XCTAssertEqual(
                 error as? WorkflowRunReceiptValidationError,
-                .unsupportedSchemaVersion(2)
+                .unsupportedSchemaVersion(3)
             )
         }
 

@@ -163,6 +163,21 @@ enum SidebarAccessibilityFocusPolicy {
     }
 }
 
+/// Main-shell layout constants, following the `MenuBarLayoutMetrics`
+/// precedent so the shell stops inventing its own numbers.
+enum MainShellLayoutMetrics {
+    static let sidebarColumnMinWidth: CGFloat = 180
+    static let sidebarColumnIdealWidth: CGFloat = 200
+    static let sidebarColumnMaxWidth: CGFloat = 260
+    static let shutdownOverlaySpacing: CGFloat = RillSpacing.card
+    static let shutdownOverlayMaxWidth: CGFloat = 420
+    static let shutdownOverlayPadding: CGFloat = 32
+    /// Footer-row insets mirror the List row insets above the footer, so the
+    /// pinned Settings row aligns with the scrollable sidebar rows.
+    static let sidebarFooterRowHorizontalPadding: CGFloat = 8
+    static let sidebarFooterRowVerticalPadding: CGFloat = 6
+}
+
 public struct MainShellView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -233,7 +248,11 @@ public struct MainShellView: View {
                     isGlobalSearchPresented: isGlobalSearchPresented
                 )
             )
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
+            .navigationSplitViewColumnWidth(
+                min: MainShellLayoutMetrics.sidebarColumnMinWidth,
+                ideal: MainShellLayoutMetrics.sidebarColumnIdealWidth,
+                max: MainShellLayoutMetrics.sidebarColumnMaxWidth
+            )
             .navigationTitle(UIStrings.text(.appTitle, language: model.language))
         } detail: {
             ZStack {
@@ -252,9 +271,9 @@ public struct MainShellView: View {
                                 )
                             }
                         )
-                        .padding(.horizontal, 12)
-                        .padding(.top, 12)
-                        .padding(.bottom, 8)
+                        .padding(.horizontal, RillSpacing.card)
+                        .padding(.top, RillSpacing.card)
+                        .padding(.bottom, RillSpacing.row)
                     }
 
                     detailContent
@@ -301,7 +320,7 @@ public struct MainShellView: View {
                     Rectangle()
                         .fill(.ultraThinMaterial)
 
-                    VStack(spacing: 12) {
+                    VStack(spacing: MainShellLayoutMetrics.shutdownOverlaySpacing) {
                         ProgressView()
                             .controlSize(.large)
                         Text(
@@ -319,9 +338,9 @@ public struct MainShellView: View {
                         )
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                        .frame(maxWidth: 420)
+                        .frame(maxWidth: MainShellLayoutMetrics.shutdownOverlayMaxWidth)
                     }
-                    .padding(32)
+                    .padding(MainShellLayoutMetrics.shutdownOverlayPadding)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("application.shutdown-progress")
@@ -524,6 +543,12 @@ extension MainShellView {
         )
     }
 
+    /// Single short fade for presenting and dismissing the search overlay;
+    /// Reduce Motion presents and dismisses instantly.
+    private static func searchOverlayAnimation(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.15)
+    }
+
     private func presentGlobalSearch() {
         // Search becomes the exclusive interaction owner synchronously. Retire
         // any queued sidebar-route repair before its AppKit field is installed
@@ -540,7 +565,7 @@ extension MainShellView {
             )
             // The overlay's `.transition(.opacity)` needs an explicit
             // animation transaction; Reduce Motion presents it instantly.
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+            withAnimation(Self.searchOverlayAnimation(reduceMotion: reduceMotion)) {
                 isGlobalSearchPresented = true
             }
         }
@@ -568,7 +593,7 @@ extension MainShellView {
     private func dismissGlobalSearch() {
         // Symmetric short fade matching the presentation transition; Reduce
         // Motion dismisses instantly.
-        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+        withAnimation(Self.searchOverlayAnimation(reduceMotion: reduceMotion)) {
             isGlobalSearchPresented = false
         }
         globalSearchText = ""
@@ -582,7 +607,7 @@ extension MainShellView {
     private func commitGlobalSearchDestination(_ destination: GlobalSearchDestination) {
         // Same dismissal fade as `dismissGlobalSearch`; Reduce Motion
         // dismisses instantly.
-        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) {
+        withAnimation(Self.searchOverlayAnimation(reduceMotion: reduceMotion)) {
             isGlobalSearchPresented = false
         }
         globalSearchText = ""
@@ -741,7 +766,10 @@ extension MainShellView {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 // RillCard subdued-tier fill; a Capsule chip cannot use rillCard itself.
-                .background(.quaternary.opacity(0.2), in: Capsule())
+                .background(
+                    .quaternary.opacity(RillCardProminence.subdued.fillOpacity),
+                    in: Capsule()
+                )
         }
         .accessibilityLabel(collection.name)
         .accessibilityIdentifier("sidebar.record-collection.\(collection.id.rawValue.uuidString)")
@@ -773,16 +801,28 @@ extension MainShellView {
                     UIStrings.text(section.titleKey, language: model.language),
                     systemImage: section.symbolName
                 )
-                .foregroundStyle(isSelected ? Color.accentColor : .primary)
+                // Match the native List sidebar selection (solid accent fill,
+                // white label) instead of the accent-wash `rillSelection`, so
+                // the pinned footer row reads identically to the selected
+                // rows above it.
+                .foregroundStyle(isSelected ? Color.white : .primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(.horizontal, MainShellLayoutMetrics.sidebarFooterRowHorizontalPadding)
+                .padding(.vertical, MainShellLayoutMetrics.sidebarFooterRowVerticalPadding)
                 .contentShape(Rectangle())
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: RillRadius.badge, style: .continuous)
+                            .fill(Color.accentColor)
+                    }
+                }
+                // Keep the selection transition the shared `rillSelection`
+                // modifier provided; Reduce Motion switches instantly.
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isSelected)
             }
             .buttonStyle(.plain)
-            .rillSelection(isSelected, cornerRadius: RillRadius.badge)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, MainShellLayoutMetrics.sidebarFooterRowHorizontalPadding)
+            .padding(.vertical, MainShellLayoutMetrics.sidebarFooterRowVerticalPadding)
             .accessibilityLabel(UIStrings.text(section.titleKey, language: model.language))
             .accessibilityIdentifier("sidebar.\(section.rawValue)")
             .accessibilityFocused(

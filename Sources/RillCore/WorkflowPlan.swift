@@ -195,6 +195,7 @@ public struct WorkflowSetupPhase: Codable, Sendable, Equatable {
 }
 
 public enum WorkflowProcessStepKind: String, Codable, Sendable, Equatable, CaseIterable {
+    case conditional
     case recognizeSpeech
     case resolveUncertainty
     case applyVocabulary
@@ -213,7 +214,7 @@ public enum WorkflowProcessStepKind: String, Codable, Sendable, Equatable, CaseI
             return .llmAnswer
         case .normalizeWhitespace:
             return .normalizeWhitespace
-        case .recognizeSpeech, .resolveUncertainty, .applyVocabulary:
+        case .recognizeSpeech, .resolveUncertainty, .applyVocabulary, .conditional:
             return nil
         }
     }
@@ -233,6 +234,11 @@ public enum WorkflowProcessStepKind: String, Codable, Sendable, Equatable, CaseI
 }
 
 public struct WorkflowProcessStep: Identifiable, Codable, Sendable, Equatable {
+    public var documentID: String?
+    public var nodeDescription: String?
+    public var condition: WorkflowCondition?
+    public var thenSteps: [WorkflowProcessStep]?
+    public var elseSteps: [WorkflowProcessStep]?
     public var id: UUID
     public var kind: WorkflowProcessStepKind
     public var prompt: String?
@@ -299,6 +305,17 @@ public struct WorkflowPlan: Codable, Sendable, Equatable {
         self.process = process
         self.output = output
     }
+
+    /// Reuses the text-processing and output plan when recognition is supplied
+    /// by a stored Record or an editor sample. Nested speech steps remain invalid.
+    public func acceptingTextInput() -> WorkflowPlan {
+        var plan = self
+        plan.setup.speechRoute = nil
+        plan.process.steps.removeAll {
+            $0.kind == .recognizeSpeech || $0.kind == .resolveUncertainty
+        }
+        return plan
+    }
 }
 
 public enum WorkflowPlanInput: String, Codable, Sendable, Equatable {
@@ -351,6 +368,33 @@ public enum WorkflowPlanValidationError: Error, LocalizedError, Sendable, Equata
 }
 
 public enum WorkflowPlanValidator {
+    private static func validateStructure(_ steps: [WorkflowProcessStep], depth: Int) throws {
+        guard depth < 16 else { throw WorkflowDocumentError("process", "Steps exceed the nesting limit of 16.") }
+        for step in steps {
+            if step.kind == .conditional {
+                guard let condition = step.condition, step.prompt == nil, step.uncertaintyPolicy == nil else {
+                    throw WorkflowDocumentError("process", "An if step requires a condition and cannot have a prompt or recognition policy.")
+                }
+                try condition.validate()
+                try validateStructure(step.thenSteps ?? [], depth: depth + 1)
+                try validateStructure(step.elseSteps ?? [], depth: depth + 1)
+            } else {
+                guard step.condition == nil, step.thenSteps == nil, step.elseSteps == nil else {
+                    throw WorkflowDocumentError("process", "Only if steps may declare condition, then, or else.")
+                }
+                if step.uncertaintyPolicy != nil, step.kind != .resolveUncertainty {
+                    throw WorkflowDocumentError("process", "Only resolution steps may declare an uncertainty policy.")
+                }
+                if step.prompt != nil, ![.llmRewrite, .llmAnswer, .snippetReplacement].contains(step.kind) {
+                    throw WorkflowDocumentError("process", "Only text generation or snippet steps may declare a prompt.")
+                }
+                if depth > 0, step.kind == .recognizeSpeech || step.kind == .resolveUncertainty {
+                    throw WorkflowDocumentError("process", "Speech recognition and resolution must be at the workflow root.")
+                }
+            }
+        }
+    }
+
     public static func validate(
         _ plan: WorkflowPlan,
         input: WorkflowPlanInput,
@@ -371,7 +415,12 @@ public enum WorkflowPlanValidator {
         }
 
         var stepIDs = Set<UUID>()
-        for step in plan.process.steps {
+        try validateStructure(plan.process.steps, depth: 0)
+        guard plan.process.allSteps.count <= 256, plan.output.actions.count <= 256 else {
+            throw WorkflowDocumentError("workflow", "A workflow supports at most 256 process steps and 256 outputs.")
+        }
+        for action in plan.output.actions { try action.condition?.validate() }
+        for step in plan.process.allSteps {
             guard stepIDs.insert(step.id).inserted else {
                 throw WorkflowPlanValidationError.duplicateProcessStepID(step.id)
             }

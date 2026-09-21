@@ -1,4 +1,3 @@
-import AppKit
 import ApplicationServices
 import Foundation
 import RillCore
@@ -7,24 +6,17 @@ import RillRuntime
 
 @MainActor
 protocol SystemClipboardAccess: Sendable {
+  func currentClipboardChangeCount() async -> Int
   func currentClipboardDescriptor() async -> SystemClipboardDescriptor
   func readClipboardSnapshot(ifChangeCountIs expected: Int) async -> SystemClipboardSnapshot?
-  func beginTemporaryClipboardWrite(
-    _ snapshot: SystemClipboardSnapshot,
-    ifChangeCountIs expected: Int
-  ) async throws -> SystemClipboardPort.TemporaryWriteTransaction
-  func writeClipboardSnapshot(
-    _ snapshot: SystemClipboardSnapshot,
-    ifChangeCountIs expected: Int
-  ) async -> Int?
-  func restoreTemporaryClipboardWrite(
-    _ transaction: SystemClipboardPort.TemporaryWriteTransaction,
-    ifChangeCountIs expected: Int
-  ) async -> SystemClipboardPort.TemporaryRestoreOutcome
   func ownsClipboardChangeCount(_ changeCount: Int) async -> Bool
 }
 
 extension SystemClipboardPort: SystemClipboardAccess {
+  func currentClipboardChangeCount() async -> Int {
+    currentChangeCount()
+  }
+
   func currentClipboardDescriptor() async -> SystemClipboardDescriptor {
     currentDescriptor()
   }
@@ -33,48 +25,15 @@ extension SystemClipboardPort: SystemClipboardAccess {
     await readSnapshot(ifChangeCountIs: expected)
   }
 
-  func beginTemporaryClipboardWrite(
-    _ snapshot: SystemClipboardSnapshot,
-    ifChangeCountIs expected: Int
-  ) async throws -> TemporaryWriteTransaction {
-    try beginTemporaryWrite(snapshot, ifChangeCountIs: expected)
-  }
-
-  func writeClipboardSnapshot(
-    _ snapshot: SystemClipboardSnapshot,
-    ifChangeCountIs expected: Int
-  ) async -> Int? {
-    writeSnapshot(snapshot, ifChangeCountIs: expected)
-  }
-
-  func restoreTemporaryClipboardWrite(
-    _ transaction: TemporaryWriteTransaction,
-    ifChangeCountIs expected: Int
-  ) async -> TemporaryRestoreOutcome {
-    restore(transaction, ifChangeCountIs: expected)
-  }
-
   func ownsClipboardChangeCount(_ changeCount: Int) async -> Bool {
     isOwnedChangeCount(changeCount)
   }
 }
 
 public actor SystemClipboardCaptureController {
-  private struct MirroredClipboardPreview: Equatable {
-    var snapshot: SystemClipboardSnapshot
-    var subject: RecordDeliverySubject
-  }
-
   private struct CaptureOperation: Sendable, Equatable {
     var id: UInt64
     var controlRevision: UInt64
-  }
-
-  private struct PendingMirrorTransaction: Sendable, Equatable {
-    var id: UInt64
-    var controlRevision: UInt64
-    var preservedClipboard: SystemClipboardSnapshot
-    var preview: MirroredClipboardPreview
   }
 
   private struct InitialClipboardPrivacyEvaluation: Sendable {
@@ -86,66 +45,40 @@ public actor SystemClipboardCaptureController {
     }
   }
 
-  private struct MirrorPrivacyAuthorization: Sendable {
-    var descriptor: SystemClipboardDescriptor
-    var focusSample: FocusPrivacyIdentitySample
-    var decision: PrivacyPolicyDecision
-    var controlRevision: UInt64
+  private struct PendingClipboardCapture: Sendable {
+    var snapshot: SystemClipboardSnapshot
+    var sourceApplication: FocusedApplicationIdentity
+    var privacy: InitialClipboardPrivacyEvaluation
+    var byteCount: Int
   }
 
-  private struct RichPastePrivacyAuthorization: Sendable {
-    var descriptor: SystemClipboardDescriptor
-    var focusSample: FocusPrivacyIdentitySample
-    var decision: PrivacyPolicyDecision
-    var mirroredChangeCount: Int
-  }
-
-  private enum RichPasteError: Error, LocalizedError {
-    case privacyBoundaryChanged
-
-    var errorDescription: String? {
-      "Rich clipboard paste was blocked because the target privacy boundary changed."
-    }
-  }
-
-  private static let monitorInterval = Duration.milliseconds(750)
-  private static let maxMirroredPlainTextLength = 32_000
+  private static let privacyCheckInterval = Duration.milliseconds(750)
+  private static let clipboardPollInterval = Duration.milliseconds(50)
+  private static let clipboardReadRetryDelays: [Duration] = [
+    .milliseconds(50), .milliseconds(50), .milliseconds(50), .milliseconds(50),
+    .milliseconds(250), .milliseconds(750), .seconds(1), .seconds(2),
+  ]
 
   private let hotkeyTap: HotkeyEventTap
   private let pasteboard: any SystemClipboardAccess
   private let recordStore: RecordStore
-  private let focusedApplicationDelivery: FocusedApplicationDeliveryController
+  private let sessionCoordinator: SessionCoordinator
   private let eventBus: EventBus
   private let diagnostics: DiagnosticsRecorder?
   private let privacySettingsProvider: @Sendable () async throws -> PrivacyPolicySettings
   private let focusIdentitySampleProvider: @Sendable () async -> FocusPrivacyIdentitySample
-  private let activeRouteContextProvider: (@Sendable () async -> RecordRouteContext)?
   private let captureControlStateObserver: @Sendable (SystemClipboardCaptureControlSnapshot) async -> Void
   private let accessibilityChecker: @Sendable () -> Bool
-  private let pasteCommandSender: @Sendable () async -> Bool
 
   private var started = false
   private var stopped = false
   private var stopCompleted = false
   private var stopWaiters: [CheckedContinuation<Void, Never>] = []
   private var hotkeyEventsTask: Task<Void, Never>?
-  private var routeRefreshMonitorTask: Task<Void, Never>?
   private var externalClipboardMonitorTask: Task<Void, Never>?
-  private var preservedClipboard: SystemClipboardSnapshot?
-  private var preservedClipboardTransaction: SystemClipboardPort.TemporaryWriteTransaction?
-  private var ownedChangeCount: Int?
-  private var mirroredPreview: MirroredClipboardPreview?
-  private var latestRouteSnapshot = RecordRouteProjection()
-  private var latestRouteContext: RecordRouteContext?
   private var isDeliveryInProgress = false
   private var deliveryOperationWaiters: [CheckedContinuation<Void, Never>] = []
-  private var activeProgrammaticPasteSessionIDs: Set<UInt64> = []
-  private var inFlightProgrammaticPasteOperationIDs: Set<UInt64> = []
-  private var programmaticPasteOperationWaiters: [CheckedContinuation<Void, Never>] = []
-  private var privacyPasteBypassActive = false
-  private var richPasteLeaseInProgress = false
-  // This pre-start state is not capture authority: no clipboard monitor or
-  // interception begins until start() merges an explicit preference. The
+  // Capture begins only after start() merges an explicit preference. The
   // fail-closed desired value below remains the source of truth.
   private var captureControlSnapshot = SystemClipboardCaptureControlSnapshot.initial
   private var desiredClipboardCaptureEnabled = false
@@ -154,18 +87,20 @@ public actor SystemClipboardCaptureController {
   private var nextOperationID: UInt64 = 0
   private var inFlightCaptureOperationIDs: Set<UInt64> = []
   private var captureOperationWaiters: [CheckedContinuation<Void, Never>] = []
-  private var pendingMirrorTransaction: PendingMirrorTransaction?
-  private var mirrorTransactionWaiters: [CheckedContinuation<Void, Never>] = []
   private var lastObservedPasteboardChangeCount: Int?
   private var lastObservedFocusIdentitySample: FocusPrivacyIdentitySample?
   private var lastPrivacyDiagnosticChangeCount: Int?
+  private var nextClipboardPrivacyCheck: ContinuousClock.Instant?
+  private var clipboardReadRetry:
+    (changeCount: Int, focus: FocusPrivacyIdentitySample, attempts: Int, nextAttempt: ContinuousClock.Instant?)?
+  private var pendingClipboardCaptures: [PendingClipboardCapture] = []
+  private var pendingClipboardByteCount = 0
+  private var clipboardPersistenceTask: Task<Void, Never>?
 
   public init(
     hotkeyTap: HotkeyEventTap,
     pasteboard: SystemClipboardPort,
-    contextProvider: any ContextProvider,
     recordStore: RecordStore,
-    recordDeliveryCoordinator: RecordDeliveryCoordinator? = nil,
     sessionCoordinator: SessionCoordinator,
     eventBus: EventBus,
     diagnostics: DiagnosticsRecorder? = nil,
@@ -176,17 +111,12 @@ public actor SystemClipboardCaptureController {
     focusIdentitySampleProvider: (@Sendable () async -> FocusPrivacyIdentitySample)? = nil,
     captureControlStateObserver:
       @escaping @Sendable (SystemClipboardCaptureControlSnapshot) async -> Void = { _ in },
-    accessibilityChecker: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() },
-    pasteCommandSender: @escaping @Sendable () async -> Bool = {
-      await PasteCommandSender.sendWithEventSpacing()
-    }
+    accessibilityChecker: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() }
   ) {
     self.init(
       hotkeyTap: hotkeyTap,
       pasteboard: pasteboard as any SystemClipboardAccess,
-      contextProvider: contextProvider,
       recordStore: recordStore,
-      recordDeliveryCoordinator: recordDeliveryCoordinator,
       sessionCoordinator: sessionCoordinator,
       eventBus: eventBus,
       diagnostics: diagnostics,
@@ -194,17 +124,14 @@ public actor SystemClipboardCaptureController {
       focusSnapshotProvider: focusSnapshotProvider,
       focusIdentitySampleProvider: focusIdentitySampleProvider,
       captureControlStateObserver: captureControlStateObserver,
-      accessibilityChecker: accessibilityChecker,
-      pasteCommandSender: pasteCommandSender
+      accessibilityChecker: accessibilityChecker
     )
   }
 
   init(
     hotkeyTap: HotkeyEventTap,
     pasteboard: any SystemClipboardAccess,
-    contextProvider: any ContextProvider,
     recordStore: RecordStore,
-    recordDeliveryCoordinator: RecordDeliveryCoordinator? = nil,
     sessionCoordinator: SessionCoordinator,
     eventBus: EventBus,
     diagnostics: DiagnosticsRecorder? = nil,
@@ -213,22 +140,14 @@ public actor SystemClipboardCaptureController {
     },
     focusSnapshotProvider: (@Sendable () async -> FocusSnapshot)? = nil,
     focusIdentitySampleProvider: (@Sendable () async -> FocusPrivacyIdentitySample)? = nil,
-    activeRouteContextProvider: (@Sendable () async -> RecordRouteContext)? = nil,
     captureControlStateObserver:
       @escaping @Sendable (SystemClipboardCaptureControlSnapshot) async -> Void = { _ in },
-    accessibilityChecker: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() },
-    pasteCommandSender: @escaping @Sendable () async -> Bool = {
-      await PasteCommandSender.sendWithEventSpacing()
-    }
+    accessibilityChecker: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() }
   ) {
     self.hotkeyTap = hotkeyTap
     self.pasteboard = pasteboard
     self.recordStore = recordStore
-    self.focusedApplicationDelivery = FocusedApplicationDeliveryController(
-      recordDeliveryCoordinator:
-        recordDeliveryCoordinator ?? RecordDeliveryCoordinator(store: recordStore),
-      sessionCoordinator: sessionCoordinator
-    )
+    self.sessionCoordinator = sessionCoordinator
     self.eventBus = eventBus
     self.diagnostics = diagnostics
     self.privacySettingsProvider = privacySettingsProvider
@@ -256,10 +175,8 @@ public actor SystemClipboardCaptureController {
         )
       }
     }
-    self.activeRouteContextProvider = activeRouteContextProvider
     self.captureControlStateObserver = captureControlStateObserver
     self.accessibilityChecker = accessibilityChecker
-    self.pasteCommandSender = pasteCommandSender
   }
 
   public func stop() async {
@@ -269,17 +186,13 @@ public actor SystemClipboardCaptureController {
     }
     stopped = true
     started = false
-    privacyPasteBypassActive = true
     _ = transitionCaptureControl(to: .pausing)
-    hotkeyTap.setPasteInterceptEnabled(false)
 
     let tasks = [
       hotkeyEventsTask,
-      routeRefreshMonitorTask,
       externalClipboardMonitorTask,
     ].compactMap { $0 }
     hotkeyEventsTask = nil
-    routeRefreshMonitorTask = nil
     externalClipboardMonitorTask = nil
     for task in tasks {
       task.cancel()
@@ -288,11 +201,9 @@ public actor SystemClipboardCaptureController {
       await task.value
     }
 
-    await waitForInFlightProgrammaticPasteOperations()
     await waitForDeliveryOperation()
     await waitForInFlightCaptureOperations()
-    await waitForPendingMirrorTransaction()
-    await drainPreservedClipboardRecoveryForApplicationShutdown()
+    await clipboardPersistenceTask?.value
     _ = transitionCaptureControl(to: .paused)
     finishStop()
   }
@@ -306,13 +217,12 @@ public actor SystemClipboardCaptureController {
       isEnabled: initialClipboardCaptureEnabled,
       preferenceRevision: preferenceRevision
     )
-    hotkeyTap.setRecordPanelShortcutEnabled(desiredClipboardCaptureEnabled)
+    hotkeyTap.setRecordPanelShortcutEnabled(true)
     started = true
 
     // Register before the application-level GlobalInputOwner installs the
     // producer. AsyncStream buffers events until the listener task starts.
     let hotkeyStream = hotkeyTap.stream()
-    hotkeyTap.setPasteInterceptEnabled(false)
     if captureControlSnapshot.state == .active {
       let initialDescriptor = await pasteboard.currentClipboardDescriptor()
       let initialFocusSample = await focusIdentitySampleProvider()
@@ -324,7 +234,6 @@ public actor SystemClipboardCaptureController {
         focus: initialFocusSample.focus
       )
       if isCurrentControlState(.active, revision: initialControlRevision) {
-        applyInitialClipboardPrivacy(initialPrivacy)
         await recordInitialClipboardPrivacyIfNeeded(initialPrivacy)
       }
     }
@@ -334,15 +243,8 @@ public actor SystemClipboardCaptureController {
       }
     }
 
-    routeRefreshMonitorTask = Task {
-      while !Task.isCancelled {
-        await self.refreshActiveRouteSnapshotIfNeeded()
-        try? await Task.sleep(for: Self.monitorInterval)
-      }
-    }
     startExternalClipboardMonitorIfNeeded()
 
-    await refreshActiveRouteSnapshot(forceContextRefresh: true)
     await publishCaptureControlState()
   }
 
@@ -363,7 +265,6 @@ public actor SystemClipboardCaptureController {
       return
     }
 
-    privacyPasteBypassActive = true
     guard captureControlSnapshot.state != .paused else { return }
     _ = transitionCaptureControl(to: .paused)
   }
@@ -378,10 +279,25 @@ public actor SystemClipboardCaptureController {
 
     externalClipboardMonitorTask = Task {
       while !Task.isCancelled {
-        await self.captureExternalClipboardIfNeeded()
-        try? await Task.sleep(for: Self.monitorInterval)
+        await self.pollExternalClipboardIfNeeded()
+        try? await Task.sleep(for: Self.clipboardPollInterval)
       }
     }
+  }
+
+  private func pollExternalClipboardIfNeeded(at now: ContinuousClock.Instant = .now) async {
+    let revision = captureControlSnapshot.revision
+    let changeCount = await pasteboard.currentClipboardChangeCount()
+    let focusSample = await focusIdentitySampleProvider()
+    guard captureControlSnapshot.revision == revision else { return }
+    // Keep idle polling cheap while still rechecking policy without a new copy.
+    guard changeCount != lastObservedPasteboardChangeCount
+      || isClipboardReadRetryDue(changeCount: changeCount, at: now)
+      || lastObservedFocusIdentitySample?.hasSamePrivacyIdentity(as: focusSample) != true
+      || nextClipboardPrivacyCheck.map({ now >= $0 }) != false
+    else { return }
+    nextClipboardPrivacyCheck = now + Self.privacyCheckInterval
+    await captureExternalClipboardIfNeeded(at: now)
   }
 
   private func stopExternalClipboardMonitor() async {
@@ -414,7 +330,7 @@ public actor SystemClipboardCaptureController {
 
   private func applyDesiredClipboardCaptureState() async {
     guard !stopped else { return }
-    hotkeyTap.setRecordPanelShortcutEnabled(desiredClipboardCaptureEnabled)
+    hotkeyTap.setRecordPanelShortcutEnabled(true)
     let isPaused = !desiredClipboardCaptureEnabled
     if isPaused {
       await pauseClipboardCapture()
@@ -433,8 +349,6 @@ public actor SystemClipboardCaptureController {
     }
 
     let transitionRevision = transitionCaptureControl(to: .pausing)
-    privacyPasteBypassActive = true
-    updatePasteInterceptState()
     await publishCaptureControlState()
     guard isCurrentControlState(.pausing, revision: transitionRevision) else { return }
 
@@ -442,9 +356,7 @@ public actor SystemClipboardCaptureController {
     guard isCurrentControlState(.pausing, revision: transitionRevision) else { return }
     await waitForInFlightCaptureOperations()
     guard isCurrentControlState(.pausing, revision: transitionRevision) else { return }
-    await waitForPendingMirrorTransaction()
-    guard isCurrentControlState(.pausing, revision: transitionRevision) else { return }
-    await restorePreservedClipboardIfNeeded()
+    await clipboardPersistenceTask?.value
     guard isCurrentControlState(.pausing, revision: transitionRevision) else { return }
 
     let pausedRevision = transitionCaptureControl(to: .paused)
@@ -462,8 +374,6 @@ public actor SystemClipboardCaptureController {
   private func resumeClipboardCapture() async {
     guard captureControlSnapshot.state == .paused else { return }
     let transitionRevision = transitionCaptureControl(to: .resuming)
-    privacyPasteBypassActive = true
-    updatePasteInterceptState()
     await publishCaptureControlState()
     guard isCurrentControlState(.resuming, revision: transitionRevision) else { return }
 
@@ -495,13 +405,8 @@ public actor SystemClipboardCaptureController {
 
     lastObservedPasteboardChangeCount = descriptor.changeCount
     lastObservedFocusIdentitySample = focusSample
-    applyInitialClipboardPrivacy(evaluation)
     let activeRevision = transitionCaptureControl(to: .active)
     startExternalClipboardMonitorIfNeeded()
-    if started {
-      await refreshActiveRouteSnapshot(forceContextRefresh: true)
-      guard isCurrentControlState(.active, revision: activeRevision) else { return }
-    }
     await publishCaptureControlState()
     guard isCurrentControlState(.active, revision: activeRevision) else { return }
     await recordInitialClipboardPrivacyIfNeeded(evaluation)
@@ -518,8 +423,6 @@ public actor SystemClipboardCaptureController {
   public func ignoreNextExternalClipboardChange() async {
     guard captureControlSnapshot.state == .active else { return }
     let transitionRevision = transitionCaptureControl(to: .armingIgnoreNextExternalChange)
-    privacyPasteBypassActive = true
-    updatePasteInterceptState()
     await publishCaptureControlState()
     guard isCurrentControlState(.armingIgnoreNextExternalChange, revision: transitionRevision)
     else { return }
@@ -536,12 +439,6 @@ public actor SystemClipboardCaptureController {
     await waitForInFlightCaptureOperations()
     guard isCurrentControlState(.armingIgnoreNextExternalChange, revision: transitionRevision)
     else { return }
-    await waitForPendingMirrorTransaction()
-    guard isCurrentControlState(.armingIgnoreNextExternalChange, revision: transitionRevision)
-    else { return }
-    await restorePreservedClipboardIfNeeded()
-    guard isCurrentControlState(.armingIgnoreNextExternalChange, revision: transitionRevision)
-    else { return }
 
     let ignoringRevision = transitionCaptureControl(to: .ignoringNextExternalChange)
     await publishCaptureControlState()
@@ -555,42 +452,26 @@ public actor SystemClipboardCaptureController {
   }
 
   public func deliverNextRecord() async {
-    guard !stopped else { return }
+    guard !stopped, !isDeliveryInProgress else { return }
     guard accessibilityChecker() else {
-      hotkeyTap.setPasteInterceptEnabled(false)
-      await eventBus.publish(
-        .runFailed(
-          runID: nil,
-          workflow: WorkflowPresentation(fallbackName: "Stack Delivery", titleKey: .recordDelivery),
-          message: TextInjectionEngine.InjectionError.accessibilityPermissionRequired
-            .localizedDescription
-        )
+      await publishSelectedRecordDeliveryFailure(
+        message: TextInjectionEngine.InjectionError.accessibilityPermissionRequired.localizedDescription
       )
       return
     }
-    guard !isDeliveryInProgress else { return }
     isDeliveryInProgress = true
-    hotkeyTap.setPasteInterceptEnabled(false)
-    defer {
-      finishDeliveryOperation()
+    defer { finishDeliveryOperation() }
+    let focus = await focusIdentitySampleProvider().focus
+    guard !stopped, let target = FocusedApplicationTargetIdentity(focus: focus) else {
+      await reportSelectedRecordDeliveryUnavailable()
+      return
     }
-
-    let routeContext = await currentRouteContext()
-    latestRouteContext = routeContext
-    let routeSnapshot = await recordRouteProjection(for: routeContext)
-
-    switch routeSnapshot.previewContentKind {
-    case .image?, .files?:
-      await handleRouteSnapshot(routeSnapshot, routeContext: routeContext)
-      await pasteMirroredClipboardItem(for: routeContext)
-    case .text?:
-      await focusedApplicationDelivery.deliverNext(
-        to: focusedApplicationIdentity(routeContext)
-      )
-    case nil:
-      break
-    }
-    await refreshActiveRouteSnapshot(forceContextRefresh: true)
+    await sessionCoordinator.deliverNextRecord(
+      for: FocusedApplicationIdentity(
+        bundleIdentifier: focus.bundleIdentifier, applicationName: focus.applicationName),
+      actionID: RecordActionID.focusedApplicationInsert,
+      expectedTarget: target
+    )
   }
 
   public func deliverSelectedRecord(
@@ -599,7 +480,6 @@ public actor SystemClipboardCaptureController {
   ) async {
     guard !stopped else { return }
     guard accessibilityChecker() else {
-      hotkeyTap.setPasteInterceptEnabled(false)
       await eventBus.publish(
         .runFailed(
           runID: nil,
@@ -620,19 +500,27 @@ public actor SystemClipboardCaptureController {
       return
     }
     isDeliveryInProgress = true
-    hotkeyTap.setPasteInterceptEnabled(false)
     defer {
       finishDeliveryOperation()
     }
 
-    let didBeginDelivery = await performProgrammaticPaste {
-      await self.focusedApplicationDelivery.deliver(subject, to: target)
+    await sessionCoordinator.deliverRecord(
+      matching: subject, to: target, actionID: RecordActionID.focusedApplicationInsert)
+  }
+
+  public func reuseRecord(
+    _ subject: RecordReuseSubject,
+    to target: FocusedApplicationTargetIdentity? = nil,
+    copyOnly: Bool = false
+  ) async -> RecordReuseOutcome {
+    guard !stopped, !isDeliveryInProgress else { return .blocked }
+    guard copyOnly || accessibilityChecker() else {
+      await reportSelectedRecordDeliveryUnavailable()
+      return .permissionRequired
     }
-    if !didBeginDelivery {
-      await publishSelectedRecordDeliveryFailure(
-        message: HistoryFailureSanitizer.genericMessage
-      )
-    }
+    isDeliveryInProgress = true
+    defer { finishDeliveryOperation() }
+    return await sessionCoordinator.reuseRecord(subject, to: target, copyOnly: copyOnly)
   }
 
   public func reportSelectedRecordDeliveryUnavailable() async {
@@ -654,75 +542,6 @@ public actor SystemClipboardCaptureController {
     )
   }
 
-  @discardableResult
-  public func performProgrammaticPaste(
-    _ operation: @Sendable () async -> Void
-  ) async -> Bool {
-    guard let operationID = beginProgrammaticPasteOperation() else { return false }
-    defer {
-      finishProgrammaticPasteOperation(operationID)
-    }
-
-    var shouldRefreshRoute = false
-    var didPerformOperation = false
-    do {
-      defer {
-        shouldRefreshRoute = finishProgrammaticPasteSession(operationID)
-      }
-      await waitForPendingMirrorTransaction()
-      let restoreOutcome = await restorePreservedClipboardIfNeeded()
-      if case .writeFailed? = restoreOutcome {
-        didPerformOperation = false
-      } else {
-        await operation()
-        didPerformOperation = true
-      }
-    }
-    if shouldRefreshRoute {
-      await refreshActiveRouteSnapshot(forceContextRefresh: true)
-    }
-    return didPerformOperation
-  }
-
-  private func refreshActiveRouteSnapshot(forceContextRefresh: Bool = false) async {
-    guard !isPreviewMirroringSuspended else {
-      updatePasteInterceptState()
-      return
-    }
-    let routeContext: RecordRouteContext
-    if !forceContextRefresh, let latestRouteContext {
-      routeContext = latestRouteContext
-    } else {
-      routeContext = await currentRouteContext()
-    }
-    await refreshActiveRouteSnapshot(using: routeContext)
-  }
-
-  private func refreshActiveRouteSnapshotIfNeeded() async {
-    guard !isPreviewMirroringSuspended else {
-      updatePasteInterceptState()
-      return
-    }
-    let routeContext = await currentRouteContext()
-    guard routeContext != latestRouteContext else {
-      updatePasteInterceptState()
-      return
-    }
-    await refreshActiveRouteSnapshot(using: routeContext)
-  }
-
-  private func refreshActiveRouteSnapshot(using routeContext: RecordRouteContext) async {
-    let snapshot = await recordRouteProjection(for: routeContext)
-    await handleRouteSnapshot(snapshot, routeContext: routeContext)
-  }
-
-  private func recordRouteProjection(
-    for routeContext: RecordRouteContext
-  ) async -> RecordRouteProjection {
-    (try? await recordStore.routeProjection(target: focusedApplicationIdentity(routeContext)))
-      ?? RecordRouteProjection()
-  }
-
   private func focusedApplicationIdentity(
     _ routeContext: RecordRouteContext
   ) -> FocusedApplicationIdentity {
@@ -731,529 +550,10 @@ public actor SystemClipboardCaptureController {
       applicationName: routeContext.applicationName
     )
   }
-
-  private func handleRouteSnapshot(
-    _ snapshot: RecordRouteProjection,
-    routeContext: RecordRouteContext
-  ) async {
-    latestRouteContext = routeContext
-    latestRouteSnapshot = snapshot
-    updatePasteInterceptState()
-
-    guard snapshot.count > 0,
-      let previewSnapshot = snapshot.previewSnapshot,
-      let previewSubject = snapshot.previewSubject
-    else {
-      mirroredPreview = nil
-      if preservedClipboard != nil || preservedClipboardTransaction != nil || ownedChangeCount != nil {
-        await restorePreservedClipboardIfNeeded()
-      }
-      return
-    }
-
-    // Keep route state current, but do not let panel-driven paste overwrite the clipboard mid-injection.
-    guard !isPreviewMirroringSuspended else { return }
-    guard let privacyAuthorization = await authorizeMirrorPrivacy() else { return }
-    guard !isPreviewMirroringSuspended else { return }
-
-    let preview = MirroredClipboardPreview(
-      snapshot: previewSnapshot,
-      subject: previewSubject
-    )
-    if preservedClipboard == nil {
-      guard
-        let preservedSnapshot = await pasteboard.readClipboardSnapshot(
-          ifChangeCountIs: privacyAuthorization.descriptor.changeCount
-        )
-      else {
-        await failClosedMirrorPrivacyAuthorization()
-        return
-      }
-      guard !isPreviewMirroringSuspended,
-        await validateMirrorPrivacyAuthorization(
-          privacyAuthorization,
-          verifyClipboardDescriptor: true
-        )
-      else {
-        await failClosedMirrorPrivacyAuthorization()
-        return
-      }
-      preservedClipboard = preservedSnapshot
-    }
-
-    guard !isPreviewMirroringSuspended,
-      await validateMirrorPrivacyAuthorization(
-        privacyAuthorization,
-        verifyClipboardDescriptor: true
-      )
-    else {
-      await failClosedMirrorPrivacyAuthorization()
-      return
-    }
-    if let preservedClipboard,
-      previewSnapshot.hasEquivalentTransferableContent(as: preservedClipboard)
-    {
-      if ownedChangeCount != nil {
-        await restorePreservedClipboardIfNeeded()
-      } else {
-        lastObservedPasteboardChangeCount = preservedClipboard.changeCount
-      }
-      mirroredPreview = preview
-      return
-    }
-
-    guard mirroredPreview != preview else { return }
-    guard shouldMirrorPreviewSnapshot(previewSnapshot) else {
-      if ownedChangeCount != nil {
-        await restorePreservedClipboardIfNeeded()
-      }
-      return
-    }
-
-    guard let preservedClipboard else { return }
-    nextOperationID &+= 1
-    let transaction = PendingMirrorTransaction(
-      id: nextOperationID,
-      controlRevision: captureControlSnapshot.revision,
-      preservedClipboard: preservedClipboard,
-      preview: preview
-    )
-    pendingMirrorTransaction = transaction
-    updatePasteInterceptState()
-
-    let restoreTransaction: SystemClipboardPort.TemporaryWriteTransaction
-    let mirroredChangeCount: Int
-    if let preservedClipboardTransaction {
-      guard
-        let updatedChangeCount = await pasteboard.writeClipboardSnapshot(
-          previewSnapshot,
-          ifChangeCountIs: privacyAuthorization.descriptor.changeCount
-        )
-      else {
-        self.preservedClipboard = nil
-        self.preservedClipboardTransaction = nil
-        ownedChangeCount = nil
-        mirroredPreview = nil
-        activatePrivacyPasteBypass()
-        finishPendingMirrorTransaction(transaction.id)
-        await recordPendingMirrorSettlement(outcome: .skippedChangeCount)
-        return
-      }
-      restoreTransaction = preservedClipboardTransaction
-      mirroredChangeCount = updatedChangeCount
-    } else {
-      do {
-        let temporaryTransaction = try await pasteboard.beginTemporaryClipboardWrite(
-          previewSnapshot,
-          ifChangeCountIs: privacyAuthorization.descriptor.changeCount
-        )
-        restoreTransaction = temporaryTransaction
-        mirroredChangeCount = temporaryTransaction.temporaryChangeCount
-      } catch {
-        // Capturing every pasteboard representation and the replacement write
-        // are one conditional operation. If either fails, leave the user's
-        // clipboard untouched and abandon this preview generation.
-        self.preservedClipboard = nil
-        self.preservedClipboardTransaction = nil
-        ownedChangeCount = nil
-        mirroredPreview = nil
-        activatePrivacyPasteBypass()
-        finishPendingMirrorTransaction(transaction.id)
-        await recordPendingMirrorSettlement(outcome: .skippedChangeCount)
-        return
-      }
-    }
-
-    guard pendingMirrorTransaction?.id == transaction.id else {
-      let outcome = await restoreTemporaryClipboardWithRetry(
-        restoreTransaction,
-        expectedChangeCount: mirroredChangeCount
-      )
-      settleStandaloneTemporaryClipboardRestore(
-        outcome,
-        transaction: restoreTransaction,
-        preservedClipboard: transaction.preservedClipboard
-      )
-      finishPendingMirrorTransaction(transaction.id)
-      await recordPendingMirrorSettlement(outcome: outcome)
-      return
-    }
-
-    if await pasteboard.currentClipboardDescriptor().changeCount != mirroredChangeCount {
-      // The pasteboard changed after authorization. Do not restore the
-      // stale preserved payload over the external writer; the next poll
-      // will evaluate and capture the new value from scratch.
-      self.preservedClipboard = nil
-      self.preservedClipboardTransaction = nil
-      ownedChangeCount = nil
-      mirroredPreview = nil
-      activatePrivacyPasteBypass()
-      finishPendingMirrorTransaction(transaction.id)
-      await recordPendingMirrorSettlement(outcome: .skippedChangeCount)
-      return
-    }
-    lastObservedPasteboardChangeCount = mirroredChangeCount
-    let descriptorAfterWrite = await pasteboard.currentClipboardDescriptor()
-    let focusAfterWrite = await focusIdentitySampleProvider()
-    let policyAfterWrite = await capturePrivacyDecision(
-      for: ContextSnapshot(
-        focus: focusAfterWrite.focus,
-        clipboard: privacyAuthorization.descriptor.policySnapshot
-      )
-    )
-    let descriptorAfterPolicy = await pasteboard.currentClipboardDescriptor()
-    let focusAfterPolicy = await focusIdentitySampleProvider()
-    let stillOwnsCurrentClipboard =
-      descriptorAfterWrite.changeCount == mirroredChangeCount
-      && descriptorAfterPolicy.changeCount == mirroredChangeCount
-    let privacyIsCurrent =
-      focusAfterWrite.hasSamePrivacyIdentity(
-        as: privacyAuthorization.focusSample
-      )
-      && focusAfterPolicy.hasSamePrivacyIdentity(as: focusAfterWrite)
-      && policyAfterWrite == privacyAuthorization.decision
-      && policyAfterWrite.allowsClipboardCapture
-    if !privacyIsCurrent {
-      lastObservedFocusIdentitySample = focusAfterPolicy
-      activatePrivacyPasteBypass()
-    }
-    let shouldCommit =
-      pendingMirrorTransaction?.id == transaction.id
-      && stillOwnsCurrentClipboard
-      && isCurrentControlState(.active, revision: transaction.controlRevision)
-      && transaction.controlRevision == privacyAuthorization.controlRevision
-      && privacyIsCurrent
-      && activeProgrammaticPasteSessionIDs.isEmpty
-      && !privacyPasteBypassActive
-      && latestRouteSnapshot.count > 0
-      && latestRouteSnapshot.previewSnapshot == transaction.preview.snapshot
-      && latestRouteSnapshot.previewSubject == transaction.preview.subject
-
-    guard shouldCommit else {
-      finishPendingMirrorTransaction(transaction.id)
-      var restoreOutcome = SystemClipboardPort.TemporaryRestoreOutcome.skippedChangeCount
-      if stillOwnsCurrentClipboard {
-        restoreOutcome = await restoreTemporaryClipboardWithRetry(
-          restoreTransaction,
-          expectedChangeCount: mirroredChangeCount
-        )
-        settleStandaloneTemporaryClipboardRestore(
-          restoreOutcome,
-          transaction: restoreTransaction,
-          preservedClipboard: transaction.preservedClipboard
-        )
-      }
-      if self.preservedClipboard == transaction.preservedClipboard, ownedChangeCount == nil {
-        self.preservedClipboard = nil
-        self.preservedClipboardTransaction = nil
-      }
-      mirroredPreview = nil
-      await recordPendingMirrorSettlement(outcome: restoreOutcome)
-      return
-    }
-
-    ownedChangeCount = mirroredChangeCount
-    self.preservedClipboard = transaction.preservedClipboard
-    preservedClipboardTransaction = restoreTransaction
-    mirroredPreview = preview
-    lastObservedFocusIdentitySample = focusAfterPolicy
-    finishPendingMirrorTransaction(transaction.id)
-
-    if let diagnostics {
-      await diagnostics.record(
-        DiagnosticEvent(
-          subsystem: .systemClipboard,
-          level: .debug,
-          event: "clipboard.preview.mirrored",
-          message: "Mirrored the active clipboard item to the system clipboard.",
-          metadata: [
-            "count": String(snapshot.count),
-          ]
-        )
-      )
-    }
-  }
-
-  private func pasteMirroredClipboardItem(for routeContext: RecordRouteContext) async {
-    let recordDeliveryWorkflow = WorkflowPresentation(
-      fallbackName: "Record Delivery", titleKey: .recordDelivery)
-    guard let authorization = await authorizeRichPastePrivacy(for: routeContext) else {
-      await rejectRichPaste(
-        leaseID: nil,
-        workflow: recordDeliveryWorkflow,
-        error: RichPasteError.privacyBoundaryChanged
-      )
-      return
-    }
-
-    richPasteLeaseInProgress = true
-    updatePasteInterceptState()
-    defer {
-      richPasteLeaseInProgress = false
-      updatePasteInterceptState()
-    }
-    guard let subject = mirroredPreview?.subject else {
-      await rejectRichPaste(
-        leaseID: nil,
-        workflow: recordDeliveryWorkflow,
-        error: RecordStoreError.membershipUnavailable
-      )
-      return
-    }
-    let lease: RecordDeliveryLease
-    do {
-      lease = try await focusedApplicationDelivery.beginRichDelivery(matching: subject)
-    } catch {
-      await rejectRichPaste(
-        leaseID: nil,
-        workflow: recordDeliveryWorkflow,
-        error: error
-      )
-      return
-    }
-
-    do {
-      guard await validateRichPastePrivacy(authorization) else {
-        await rejectRichPaste(
-          leaseID: lease.id,
-          workflow: recordDeliveryWorkflow,
-          error: RichPasteError.privacyBoundaryChanged
-        )
-        return
-      }
-      try await simulatePaste()
-      // Once the OS event sender reports success, the output cannot be
-      // recalled. Treat it as committed so a later focus transition or
-      // cancellation cannot leave the item queued for duplicate output.
-      try? await Task.sleep(for: .milliseconds(120))
-      try await focusedApplicationDelivery.completeRichDelivery(lease.id)
-    } catch {
-      await focusedApplicationDelivery.failRichDelivery(lease.id)
-      await activatePrivacyPasteBypassRestoringClipboard()
-      await eventBus.publish(
-        .runFailed(
-          runID: nil,
-          workflow: recordDeliveryWorkflow,
-          message: HistoryFailureSanitizer.genericMessage
-        )
-      )
-    }
-  }
-
-  private func authorizeRichPastePrivacy(
-    for routeContext: RecordRouteContext
-  ) async -> RichPastePrivacyAuthorization? {
-    guard let mirroredChangeCount = ownedChangeCount,
-      mirroredPreview != nil,
-      !privacyPasteBypassActive,
-      captureControlSnapshot.state == .active
-    else { return nil }
-
-    let descriptor = await pasteboard.currentClipboardDescriptor()
-    guard descriptor.changeCount == mirroredChangeCount,
-      descriptor.protections.isEmpty,
-      await pasteboard.ownsClipboardChangeCount(mirroredChangeCount)
-    else { return nil }
-    let focusSample = await focusIdentitySampleProvider()
-    guard focusSample.hasVerifiablePrivacyIdentity,
-      routeContext.matchesPrivacyIdentity(focusSample.focus)
-    else { return nil }
-    let decision = await capturePrivacyDecision(
-      for: ContextSnapshot(
-        focus: focusSample.focus,
-        clipboard: descriptor.policySnapshot
-      )
-    )
-    let descriptorAfterPolicy = await pasteboard.currentClipboardDescriptor()
-    let focusAfterPolicy = await focusIdentitySampleProvider()
-    guard descriptorAfterPolicy == descriptor,
-      focusAfterPolicy.hasSamePrivacyIdentity(as: focusSample),
-      decision.allowsClipboardCapture
-    else { return nil }
-
-    return RichPastePrivacyAuthorization(
-      descriptor: descriptor,
-      focusSample: focusSample,
-      decision: decision,
-      mirroredChangeCount: mirroredChangeCount
-    )
-  }
-
-  private func validateRichPastePrivacy(
-    _ authorization: RichPastePrivacyAuthorization
-  ) async -> Bool {
-    guard !privacyPasteBypassActive,
-      captureControlSnapshot.state == .active,
-      ownedChangeCount == authorization.mirroredChangeCount
-    else { return false }
-    let descriptor = await pasteboard.currentClipboardDescriptor()
-    guard descriptor == authorization.descriptor,
-      await pasteboard.ownsClipboardChangeCount(authorization.mirroredChangeCount)
-    else { return false }
-    let focusSample = await focusIdentitySampleProvider()
-    guard focusSample.hasSamePrivacyIdentity(as: authorization.focusSample) else { return false }
-    let decision = await capturePrivacyDecision(
-      for: ContextSnapshot(
-        focus: focusSample.focus,
-        clipboard: descriptor.policySnapshot
-      )
-    )
-    let descriptorAfterPolicy = await pasteboard.currentClipboardDescriptor()
-    let focusAfterPolicy = await focusIdentitySampleProvider()
-    return descriptorAfterPolicy == authorization.descriptor
-      && focusAfterPolicy.hasSamePrivacyIdentity(as: focusSample)
-      && decision == authorization.decision
-      && decision.allowsClipboardCapture
-  }
-
-  private func rejectRichPaste(
-    leaseID: UUID?,
-    workflow: WorkflowPresentation,
-    error: Error
-  ) async {
-    if let leaseID {
-      await focusedApplicationDelivery.failRichDelivery(leaseID)
-    }
-    await activatePrivacyPasteBypassRestoringClipboard()
-    await eventBus.publish(
-      .runFailed(
-        runID: nil,
-        workflow: workflow,
-        message: HistoryFailureSanitizer.genericMessage
-      )
-    )
-  }
-
 }
 
 extension SystemClipboardCaptureController {
-  private func authorizeMirrorPrivacy() async -> MirrorPrivacyAuthorization? {
-    guard captureControlSnapshot.state == .active,
-      activeProgrammaticPasteSessionIDs.isEmpty,
-      pendingMirrorTransaction == nil
-    else { return nil }
-
-    let controlRevision = captureControlSnapshot.revision
-    let descriptor = await pasteboard.currentClipboardDescriptor()
-    guard isCurrentControlState(.active, revision: controlRevision) else { return nil }
-    let focusSample = await focusIdentitySampleProvider()
-    guard isCurrentControlState(.active, revision: controlRevision) else { return nil }
-    let context = ContextSnapshot(
-      focus: focusSample.focus,
-      clipboard: descriptor.policySnapshot
-    )
-    let decision = await capturePrivacyDecision(for: context)
-    guard isCurrentControlState(.active, revision: controlRevision) else { return nil }
-
-    guard decision.allowsClipboardCapture else {
-      lastObservedPasteboardChangeCount = descriptor.changeCount
-      lastObservedFocusIdentitySample = focusSample
-      await failClosedMirrorPrivacyAuthorization()
-      await recordCaptureDecision(
-        decision,
-        context: context,
-        event: "clipboard.preview.mirroring-skipped",
-        message: "Skipped clipboard preview mirroring because of the active privacy policy."
-      )
-      return nil
-    }
-
-    let authorization = MirrorPrivacyAuthorization(
-      descriptor: descriptor,
-      focusSample: focusSample,
-      decision: decision,
-      controlRevision: controlRevision
-    )
-    guard
-      await validateMirrorPrivacyAuthorization(
-        authorization,
-        verifyClipboardDescriptor: true
-      )
-    else {
-      await failClosedMirrorPrivacyAuthorization()
-      return nil
-    }
-    deactivatePrivacyPasteBypass()
-    return authorization
-  }
-
-  private func validateMirrorPrivacyAuthorization(
-    _ authorization: MirrorPrivacyAuthorization,
-    verifyClipboardDescriptor: Bool
-  ) async -> Bool {
-    guard isCurrentControlState(.active, revision: authorization.controlRevision),
-      activeProgrammaticPasteSessionIDs.isEmpty,
-      pendingMirrorTransaction == nil
-    else {
-      activatePrivacyPasteBypass()
-      return false
-    }
-
-    let descriptor = await pasteboard.currentClipboardDescriptor()
-    guard isCurrentControlState(.active, revision: authorization.controlRevision) else {
-      activatePrivacyPasteBypass()
-      return false
-    }
-    let focusSample = await focusIdentitySampleProvider()
-    guard isCurrentControlState(.active, revision: authorization.controlRevision) else {
-      activatePrivacyPasteBypass()
-      return false
-    }
-    let context = ContextSnapshot(
-      focus: focusSample.focus,
-      clipboard: authorization.descriptor.policySnapshot
-    )
-    let decision = await capturePrivacyDecision(for: context)
-    guard isCurrentControlState(.active, revision: authorization.controlRevision) else {
-      activatePrivacyPasteBypass()
-      return false
-    }
-    let descriptorAfterPolicy = await pasteboard.currentClipboardDescriptor()
-    guard isCurrentControlState(.active, revision: authorization.controlRevision) else {
-      activatePrivacyPasteBypass()
-      return false
-    }
-    let focusAfterPolicy = await focusIdentitySampleProvider()
-    guard isCurrentControlState(.active, revision: authorization.controlRevision) else {
-      activatePrivacyPasteBypass()
-      return false
-    }
-
-    let descriptorIsCurrent =
-      !verifyClipboardDescriptor
-      || (descriptor == authorization.descriptor
-        && descriptorAfterPolicy == authorization.descriptor)
-    let focusIsCurrent =
-      focusSample.hasSamePrivacyIdentity(as: authorization.focusSample)
-      && focusAfterPolicy.hasSamePrivacyIdentity(as: focusSample)
-    let policyIsCurrent = decision == authorization.decision && decision.allowsClipboardCapture
-    guard descriptorIsCurrent, focusIsCurrent, policyIsCurrent else {
-      lastObservedFocusIdentitySample = focusAfterPolicy
-      activatePrivacyPasteBypass()
-      if !decision.allowsClipboardCapture {
-        if verifyClipboardDescriptor {
-          lastObservedPasteboardChangeCount = descriptorAfterPolicy.changeCount
-        }
-        await recordCaptureDecision(
-          decision,
-          context: context,
-          event: "clipboard.preview.mirroring-skipped",
-          message: "Skipped clipboard preview mirroring because the privacy boundary changed."
-        )
-      } else if !focusIsCurrent {
-        await recordFocusTransitionCaptureSkip(focus: focusSample.focus)
-      }
-      return false
-    }
-    return true
-  }
-
-  fileprivate func failClosedMirrorPrivacyAuthorization() async {
-    activatePrivacyPasteBypass()
-    await restorePreservedClipboardIfNeeded()
-  }
-
-  fileprivate func captureExternalClipboardIfNeeded() async {
+  fileprivate func captureExternalClipboardIfNeeded(at now: ContinuousClock.Instant = .now) async {
     guard
       captureControlSnapshot.state == .active
         || captureControlSnapshot.state == .ignoringNextExternalChange
@@ -1287,7 +587,6 @@ extension SystemClipboardCaptureController {
       focusAfterPolicy.hasSamePrivacyIdentity(as: focusSample)
     else {
       lastObservedFocusIdentitySample = focusAfterPolicy
-      await activatePrivacyPasteBypassRestoringClipboard()
       if !focusAfterPolicy.hasSamePrivacyIdentity(as: focusSample) {
         await recordFocusTransitionCaptureSkip(focus: focusAfterPolicy.focus)
       } else {
@@ -1300,11 +599,14 @@ extension SystemClipboardCaptureController {
       lastObservedFocusIdentitySample.map {
         !focusSample.hasSamePrivacyIdentity(as: $0)
       } ?? false
+    if let retry = clipboardReadRetry, !retry.focus.hasSamePrivacyIdentity(as: focusSample) {
+      clipboardReadRetry = nil
+    }
 
     guard evaluation.allowsClipboardCapture else {
       lastObservedPasteboardChangeCount = descriptor.changeCount
       lastObservedFocusIdentitySample = focusSample
-      await activatePrivacyPasteBypassRestoringClipboard()
+      clipboardReadRetry = nil
       await recordCaptureDecision(
         evaluation.decision,
         context: evaluation.context,
@@ -1314,11 +616,10 @@ extension SystemClipboardCaptureController {
       return
     }
 
-    guard descriptor.changeCount != lastObservedPasteboardChangeCount else {
+    guard descriptor.changeCount != lastObservedPasteboardChangeCount
+      || isClipboardReadRetryDue(changeCount: descriptor.changeCount, at: now)
+    else {
       lastObservedFocusIdentitySample = focusSample
-      if observedControlState == .active {
-        deactivatePrivacyPasteBypass()
-      }
       return
     }
 
@@ -1337,8 +638,9 @@ extension SystemClipboardCaptureController {
     guard descriptor.hasTransferableContent else {
       lastObservedPasteboardChangeCount = descriptor.changeCount
       lastObservedFocusIdentitySample = focusSample
-      if captureControlSnapshot.state == .active {
-        deactivatePrivacyPasteBypass()
+      clipboardReadRetry?.nextAttempt = nil
+      if !crossedPrivacyIdentity {
+        retryClipboardReadIfNeeded(changeCount: descriptor.changeCount, focus: focusSample, at: now)
       }
       return
     }
@@ -1346,19 +648,16 @@ extension SystemClipboardCaptureController {
     guard captureControlSnapshot.revision == observedControlRevision,
       captureControlSnapshot.state == observedControlState
     else { return }
-    guard descriptor.changeCount != lastObservedPasteboardChangeCount else { return }
+    guard descriptor.changeCount != lastObservedPasteboardChangeCount
+      || isClipboardReadRetryDue(changeCount: descriptor.changeCount, at: now)
+    else { return }
     lastObservedPasteboardChangeCount = descriptor.changeCount
     lastObservedFocusIdentitySample = focusSample
-    guard !isOwnedChangeCount else {
-      if captureControlSnapshot.state == .active {
-        deactivatePrivacyPasteBypass()
-      }
-      return
-    }
+    clipboardReadRetry?.nextAttempt = nil
+    guard !isOwnedChangeCount else { return }
 
     switch captureControlSnapshot.state {
     case .ignoringNextExternalChange:
-      privacyPasteBypassActive = true
       _ = transitionCaptureControl(to: .active)
       await publishCaptureControlState()
       await recordCaptureControlEvent(
@@ -1373,7 +672,6 @@ extension SystemClipboardCaptureController {
     }
 
     guard !crossedPrivacyIdentity else {
-      await activatePrivacyPasteBypassRestoringClipboard()
       await recordFocusTransitionCaptureSkip(focus: focusSample.focus)
       return
     }
@@ -1382,7 +680,6 @@ extension SystemClipboardCaptureController {
       applicationName: focusSample.focus.applicationName,
       bundleIdentifier: focusSample.focus.bundleIdentifier
     )
-    latestRouteContext = routeContext
     let captureRevision = captureControlSnapshot.revision
     let captureOperation = beginCaptureOperation(controlRevision: captureRevision)
     defer { finishCaptureOperation(captureOperation.id) }
@@ -1408,7 +705,6 @@ extension SystemClipboardCaptureController {
       evaluationBeforePayloadRead.allowsClipboardCapture
     else {
       lastObservedFocusIdentitySample = focusAfterPreReadPolicy
-      await activatePrivacyPasteBypassRestoringClipboard()
       if !evaluationBeforePayloadRead.allowsClipboardCapture {
         await recordCaptureDecision(
           evaluationBeforePayloadRead.decision,
@@ -1432,7 +728,8 @@ extension SystemClipboardCaptureController {
         ifChangeCountIs: descriptor.changeCount
       )
     else {
-      activatePrivacyPasteBypass()
+      guard isCaptureOperationCurrent(captureOperation) else { return }
+      retryClipboardReadIfNeeded(changeCount: descriptor.changeCount, focus: focusSample, at: now)
       await recordClipboardReadRace(context: evaluation.context)
       return
     }
@@ -1458,7 +755,6 @@ extension SystemClipboardCaptureController {
       evaluationAfterPayloadRead.allowsClipboardCapture
     else {
       lastObservedFocusIdentitySample = focusAfterPostReadPolicy
-      await activatePrivacyPasteBypassRestoringClipboard()
       if !evaluationAfterPayloadRead.allowsClipboardCapture {
         await recordCaptureDecision(
           evaluationAfterPayloadRead.decision,
@@ -1476,27 +772,98 @@ extension SystemClipboardCaptureController {
       return
     }
 
-    deactivatePrivacyPasteBypass()
-    preservedClipboard = snapshot
-    preservedClipboardTransaction = nil
-    guard isCaptureOperationCurrent(captureOperation) else {
-      preservedClipboard = nil
-      preservedClipboardTransaction = nil
+    guard snapshot.hasTransferableContent else {
+      if snapshot.captureStorageRejection == nil {
+        retryClipboardReadIfNeeded(changeCount: descriptor.changeCount, focus: focusSample, at: now)
+      }
       return
     }
-    _ = try? await recordStore.captureSystemClipboard(
-      snapshot: snapshot,
-      sourceApplication: focusedApplicationIdentity(routeContext),
-      allowsWorkflowCapture: evaluation.decision.allowsWorkflowCapture
-    )
-    if !evaluation.decision.allowsWorkflowCapture {
-      await recordCaptureDecision(
-        evaluation.decision,
-        context: evaluation.context,
-        event: "clipboard.capture.workflow-skipped",
-        message: "Saved clipboard history without emitting a workflow event."
-      )
+
+    let byteCount = snapshot.plainText.utf8.count + (snapshot.imagePNGData?.count ?? 0)
+      + snapshot.fileURLs.reduce(0) { $0 + $1.absoluteString.utf8.count }
+    // Accepted snapshots survive a newer copy; disk latency must not delay polling.
+    // Backpressure bounds both the number of captures and retained rich payloads.
+    if pendingClipboardCaptures.count >= 8
+      || pendingClipboardByteCount + byteCount > 64 * 1_024 * 1_024
+    {
+      await clipboardPersistenceTask?.value
     }
+    pendingClipboardCaptures.append(
+      PendingClipboardCapture(
+        snapshot: snapshot,
+        sourceApplication: focusedApplicationIdentity(routeContext),
+        privacy: evaluation,
+        byteCount: byteCount
+      )
+    )
+    pendingClipboardByteCount += byteCount
+    if clipboardPersistenceTask == nil {
+      clipboardPersistenceTask = Task { await self.persistPendingClipboardCaptures() }
+    }
+  }
+
+  private func persistPendingClipboardCaptures() async {
+    while let capture = pendingClipboardCaptures.first {
+      var attempts = 0
+      while true {
+        do {
+          _ = try await recordStore.captureSystemClipboard(
+            snapshot: capture.snapshot,
+            sourceApplication: capture.sourceApplication,
+            allowsWorkflowCapture: capture.privacy.decision.allowsWorkflowCapture
+          )
+          if !capture.privacy.decision.allowsWorkflowCapture {
+            await recordCaptureDecision(
+              capture.privacy.decision,
+              context: capture.privacy.context,
+              event: "clipboard.capture.workflow-skipped",
+              message: "Saved clipboard history without emitting a workflow event."
+            )
+          }
+          break
+        } catch {
+          if error as? RecordStoreError == .persistenceUnavailable, attempts < 2 {
+            attempts += 1
+            try? await Task.sleep(for: .milliseconds(50 * attempts))
+            continue
+          }
+          await diagnostics?.record(
+            DiagnosticEvent(
+              subsystem: .systemClipboard,
+              level: .warning,
+              event: "clipboard.state.persist-failed",
+              message: "Could not save the external clipboard to record history."
+            )
+          )
+          break
+        }
+      }
+      pendingClipboardCaptures.removeFirst()
+      pendingClipboardByteCount -= capture.byteCount
+    }
+    clipboardPersistenceTask = nil
+  }
+
+  private func isClipboardReadRetryDue(changeCount: Int, at now: ContinuousClock.Instant) -> Bool {
+    guard let retry = clipboardReadRetry, retry.changeCount == changeCount,
+      let nextAttempt = retry.nextAttempt
+    else { return false }
+    return now >= nextAttempt
+  }
+
+  private func retryClipboardReadIfNeeded(
+    changeCount: Int, focus: FocusPrivacyIdentitySample, at now: ContinuousClock.Instant
+  ) {
+    guard lastObservedPasteboardChangeCount == changeCount else { return }
+    if clipboardReadRetry?.changeCount != changeCount {
+      clipboardReadRetry = (changeCount, focus, 0, nil)
+    }
+    guard let retry = clipboardReadRetry,
+      retry.attempts < Self.clipboardReadRetryDelays.count
+    else { return }
+    clipboardReadRetry = (
+      changeCount, focus, retry.attempts + 1, now + Self.clipboardReadRetryDelays[retry.attempts]
+    )
   }
 
   private func evaluateInitialClipboardPrivacy(
@@ -1511,14 +878,6 @@ extension SystemClipboardCaptureController {
     return InitialClipboardPrivacyEvaluation(context: context, decision: decision)
   }
 
-  private func applyInitialClipboardPrivacy(_ evaluation: InitialClipboardPrivacyEvaluation) {
-    if evaluation.allowsClipboardCapture {
-      deactivatePrivacyPasteBypass()
-    } else {
-      activatePrivacyPasteBypass()
-    }
-  }
-
   private func recordInitialClipboardPrivacyIfNeeded(
     _ evaluation: InitialClipboardPrivacyEvaluation
   ) async {
@@ -1531,23 +890,6 @@ extension SystemClipboardCaptureController {
     )
   }
 
-  fileprivate func activatePrivacyPasteBypass() {
-    privacyPasteBypassActive = true
-    updatePasteInterceptState()
-  }
-
-  fileprivate func activatePrivacyPasteBypassRestoringClipboard() async {
-    activatePrivacyPasteBypass()
-    await waitForPendingMirrorTransaction()
-    await restorePreservedClipboardIfNeeded()
-  }
-
-  fileprivate func deactivatePrivacyPasteBypass() {
-    guard privacyPasteBypassActive else { return }
-    privacyPasteBypassActive = false
-    updatePasteInterceptState()
-  }
-
   fileprivate func publishCaptureControlState() async {
     let snapshot = captureControlSnapshot
     await captureControlStateObserver(snapshot)
@@ -1557,7 +899,7 @@ extension SystemClipboardCaptureController {
   fileprivate func transitionCaptureControl(to state: SystemClipboardCaptureControlState) -> UInt64 {
     captureControlSnapshot.revision &+= 1
     captureControlSnapshot.state = state
-    updatePasteInterceptState()
+    clipboardReadRetry = nil
     return captureControlSnapshot.revision
   }
 
@@ -1566,40 +908,6 @@ extension SystemClipboardCaptureController {
     revision: UInt64
   ) -> Bool {
     captureControlSnapshot.revision == revision && captureControlSnapshot.state == state
-  }
-
-  private func beginProgrammaticPasteOperation() -> UInt64? {
-    guard !stopped else { return nil }
-    nextOperationID &+= 1
-    let operationID = nextOperationID
-    activeProgrammaticPasteSessionIDs.insert(operationID)
-    inFlightProgrammaticPasteOperationIDs.insert(operationID)
-    updatePasteInterceptState()
-    return operationID
-  }
-
-  @discardableResult
-  private func finishProgrammaticPasteSession(_ operationID: UInt64) -> Bool {
-    guard activeProgrammaticPasteSessionIDs.remove(operationID) != nil else { return false }
-    guard activeProgrammaticPasteSessionIDs.isEmpty else {
-      updatePasteInterceptState()
-      return false
-    }
-    return true
-  }
-
-  private func finishProgrammaticPasteOperation(_ operationID: UInt64) {
-    let removedActiveSession = activeProgrammaticPasteSessionIDs.remove(operationID) != nil
-    guard inFlightProgrammaticPasteOperationIDs.remove(operationID) != nil else { return }
-    if removedActiveSession {
-      updatePasteInterceptState()
-    }
-    guard inFlightProgrammaticPasteOperationIDs.isEmpty else { return }
-    let waiters = programmaticPasteOperationWaiters
-    programmaticPasteOperationWaiters.removeAll()
-    for waiter in waiters {
-      waiter.resume()
-    }
   }
 
   private func beginCaptureOperation(controlRevision: UInt64) -> CaptureOperation {
@@ -1632,7 +940,6 @@ extension SystemClipboardCaptureController {
     for waiter in waiters {
       waiter.resume()
     }
-    updatePasteInterceptState()
   }
 
   fileprivate func finishStop() {
@@ -1661,39 +968,12 @@ extension SystemClipboardCaptureController {
     }
   }
 
-  fileprivate func waitForInFlightProgrammaticPasteOperations() async {
-    while !inFlightProgrammaticPasteOperationIDs.isEmpty {
-      await withCheckedContinuation { continuation in
-        programmaticPasteOperationWaiters.append(continuation)
-      }
-    }
-  }
-
   fileprivate func waitForInFlightCaptureOperations() async {
     while !inFlightCaptureOperationIDs.isEmpty {
       await withCheckedContinuation { continuation in
         captureOperationWaiters.append(continuation)
       }
     }
-  }
-
-  fileprivate func waitForPendingMirrorTransaction() async {
-    while pendingMirrorTransaction != nil {
-      await withCheckedContinuation { continuation in
-        mirrorTransactionWaiters.append(continuation)
-      }
-    }
-  }
-
-  fileprivate func finishPendingMirrorTransaction(_ transactionID: UInt64) {
-    guard pendingMirrorTransaction?.id == transactionID else { return }
-    pendingMirrorTransaction = nil
-    let waiters = mirrorTransactionWaiters
-    mirrorTransactionWaiters.removeAll()
-    for waiter in waiters {
-      waiter.resume()
-    }
-    updatePasteInterceptState()
   }
 
   fileprivate func recordCaptureControlEvent(event: String, message: String) async {
@@ -1741,37 +1021,6 @@ extension SystemClipboardCaptureController {
             lastObservedFocusIdentitySample?.applicationActivationRevision ?? 0
           ),
         ]
-      )
-    )
-  }
-
-  fileprivate func recordPendingMirrorSettlement(
-    outcome: SystemClipboardPort.TemporaryRestoreOutcome
-  ) async {
-    guard let diagnostics else { return }
-    let level: DiagnosticLevel
-    let event: String
-    let message: String
-    switch outcome {
-    case .restored:
-      level = .info
-      event = "clipboard.preview.pending-write-restored"
-      message = "Restored the preserved clipboard after a pending preview write was invalidated."
-    case .skippedChangeCount:
-      level = .debug
-      event = "clipboard.preview.pending-write-discarded"
-      message = "Discarded an invalidated preview write after external clipboard ownership changed."
-    case .writeFailed:
-      level = .error
-      event = "clipboard.preview.pending-write-recovery-pending"
-      message = "Preserved clipboard recovery remains pending after a preview write was invalidated."
-    }
-    await diagnostics.record(
-      DiagnosticEvent(
-        subsystem: .systemClipboard,
-        level: level,
-        event: event,
-        message: message
       )
     )
   }
@@ -1832,130 +1081,10 @@ extension SystemClipboardCaptureController {
     )
   }
 
-  @discardableResult
-  fileprivate func restorePreservedClipboardIfNeeded() async
-    -> SystemClipboardPort.TemporaryRestoreOutcome?
-  {
-    await waitForPendingMirrorTransaction()
-    guard preservedClipboard != nil,
-      let preservedClipboardTransaction,
-      let ownedChangeCount
-    else {
-      self.preservedClipboard = nil
-      self.preservedClipboardTransaction = nil
-      self.ownedChangeCount = nil
-      mirroredPreview = nil
-      return nil
-    }
-
-    let restoreOutcome = await restoreTemporaryClipboardWithRetry(
-      preservedClipboardTransaction,
-      expectedChangeCount: ownedChangeCount
-    )
-
-    let level: DiagnosticLevel
-    let event: String
-    let message: String
-    switch restoreOutcome {
-    case .restored:
-      lastObservedPasteboardChangeCount = await pasteboard.currentClipboardDescriptor().changeCount
-      level = .info
-      event = "clipboard.preview.restored"
-      message = "Restored the clipboard after the active clipboard route became empty."
-      self.preservedClipboard = nil
-      self.preservedClipboardTransaction = nil
-      self.ownedChangeCount = nil
-    case .skippedChangeCount:
-      level = .debug
-      event = "clipboard.preview.restore-skipped"
-      message = "Skipped restoring the clipboard because it changed outside Rill ownership."
-      self.preservedClipboard = nil
-      self.preservedClipboardTransaction = nil
-      self.ownedChangeCount = nil
-    case let .writeFailed(retryChangeCount):
-      level = .error
-      event = "clipboard.preview.restore-pending"
-      message = "Preserved clipboard recovery remains pending and will be retried without repeating paste delivery."
-      self.ownedChangeCount = retryChangeCount
-    }
-    mirroredPreview = nil
-    if let diagnostics {
-      await diagnostics.record(
-        DiagnosticEvent(
-          subsystem: .systemClipboard,
-          level: level,
-          event: event,
-          message: message
-        )
-      )
-    }
-    return restoreOutcome
-  }
-
-  fileprivate func restoreTemporaryClipboardWithRetry(
-    _ transaction: SystemClipboardPort.TemporaryWriteTransaction,
-    expectedChangeCount: Int
-  ) async -> SystemClipboardPort.TemporaryRestoreOutcome {
-    let initialOutcome = await pasteboard.restoreTemporaryClipboardWrite(
-      transaction,
-      ifChangeCountIs: expectedChangeCount
-    )
-    guard case let .writeFailed(retryChangeCount) = initialOutcome else {
-      return initialOutcome
-    }
-    return await pasteboard.restoreTemporaryClipboardWrite(
-      transaction,
-      ifChangeCountIs: retryChangeCount
-    )
-  }
-
-  fileprivate func drainPreservedClipboardRecoveryForApplicationShutdown() async {
-    var retryDelay = Duration.milliseconds(25)
-    while preservedClipboardTransaction != nil || ownedChangeCount != nil {
-      let outcome = await restorePreservedClipboardIfNeeded()
-      guard case .writeFailed = outcome else { return }
-      try? await Task.sleep(for: retryDelay)
-      retryDelay = min(retryDelay * 2, .seconds(1))
-    }
-  }
-
-  fileprivate func settleStandaloneTemporaryClipboardRestore(
-    _ outcome: SystemClipboardPort.TemporaryRestoreOutcome,
-    transaction: SystemClipboardPort.TemporaryWriteTransaction,
-    preservedClipboard: SystemClipboardSnapshot
-  ) {
-    switch outcome {
-    case let .writeFailed(retryChangeCount):
-      self.preservedClipboard = preservedClipboard
-      preservedClipboardTransaction = transaction
-      ownedChangeCount = retryChangeCount
-    case .restored, .skippedChangeCount:
-      if preservedClipboardTransaction == transaction {
-        self.preservedClipboard = nil
-        preservedClipboardTransaction = nil
-        ownedChangeCount = nil
-      }
-    }
-    mirroredPreview = nil
-  }
-
-  fileprivate func shouldMirrorPreviewSnapshot(_ snapshot: SystemClipboardSnapshot) -> Bool {
-    guard snapshot.imagePNGData == nil, snapshot.fileURLs.isEmpty else {
-      return true
-    }
-    return snapshot.plainText.count <= Self.maxMirroredPlainTextLength
-  }
-
   fileprivate func handleHotkey(_ event: HotkeyEventTap.Event) async {
     switch event {
-    case .manualPasteInterceptRequested:
-      if await shouldBypassPasteInterception() {
-        await pasteSystemClipboardWithoutInterception()
-      } else {
-        await deliverNextRecord()
-      }
     case .recordPanelRequested:
-      guard desiredClipboardCaptureEnabled else { return }
+      guard !stopped else { return }
       await eventBus.publish(.recordPanelRequested)
     case .globalInputUnavailable, .pushToTalkPressed, .pushToTalkReleased,
       .liveAudioCancellationRequested, .customHotkey:
@@ -1963,225 +1092,31 @@ extension SystemClipboardCaptureController {
     }
   }
 
-  fileprivate func shouldBypassPasteInterception() async -> Bool {
-    guard captureControlSnapshot.state == .active, !privacyPasteBypassActive else {
-      return true
-    }
-    let controlRevision = captureControlSnapshot.revision
-    let descriptor = await pasteboard.currentClipboardDescriptor()
-    guard isCurrentControlState(.active, revision: controlRevision), !privacyPasteBypassActive
-    else {
-      return true
-    }
-    guard descriptor.hasTransferableContent else { return false }
-    let focusSample = await focusIdentitySampleProvider()
-    guard isCurrentControlState(.active, revision: controlRevision), !privacyPasteBypassActive
-    else {
-      return true
-    }
-    let context = ContextSnapshot(
-      focus: focusSample.focus,
-      clipboard: descriptor.policySnapshot
-    )
-    let decision = await capturePrivacyDecision(for: context)
-    guard isCurrentControlState(.active, revision: controlRevision), !privacyPasteBypassActive
-    else {
-      return true
-    }
-    guard !decision.allowsClipboardCapture else { return false }
-    await activatePrivacyPasteBypassRestoringClipboard()
-    await recordCaptureDecision(
-      decision,
-      context: context,
-      event: "clipboard.paste.interception-bypassed",
-      message: "Bypassed stack paste interception for a privacy-protected clipboard."
-    )
-    return true
-  }
-
-  fileprivate func pasteSystemClipboardWithoutInterception() async {
-    guard let operationID = beginProgrammaticPasteOperation() else { return }
-    defer {
-      finishProgrammaticPasteOperation(operationID)
-    }
-
-    var shouldRefreshRoute = false
-    let didSendPaste: Bool
-    do {
-      defer {
-        shouldRefreshRoute = finishProgrammaticPasteSession(operationID)
-      }
-      switch captureControlSnapshot.state {
-      case .pausing, .armingIgnoreNextExternalChange:
-        await waitForInFlightCaptureOperations()
-      case .active, .paused, .resuming, .ignoringNextExternalChange:
-        break
-      }
-      await waitForPendingMirrorTransaction()
-      await restorePreservedClipboardIfNeeded()
-      hotkeyTap.skipNextPasteInterception()
-      didSendPaste = await pasteCommandSender()
-    }
-    if shouldRefreshRoute {
-      await refreshActiveRouteSnapshot(forceContextRefresh: true)
-    }
-    guard didSendPaste else {
-      await eventBus.publish(
-        .runFailed(
-          runID: nil,
-          workflow: WorkflowPresentation(fallbackName: "System Paste", titleKey: .recordDelivery),
-          message: TextInjectionEngine.InjectionError.unableToCreatePasteEvent.localizedDescription
-        )
-      )
-      return
-    }
-  }
-
-  fileprivate func currentRouteContext() async -> RecordRouteContext {
-    if let activeRouteContextProvider {
-      return await activeRouteContextProvider()
-    }
-
-    let frontmostApplication = await MainActor.run {
-      NSWorkspace.shared.frontmostApplication
-    }
-
-    if let frontmostApplication {
-      return RecordRouteContext(
-        applicationName: frontmostApplication.localizedName,
-        bundleIdentifier: frontmostApplication.bundleIdentifier
-      )
-    }
-
-    let identity = await focusIdentitySampleProvider()
-    return RecordRouteContext(
-      applicationName: identity.focus.applicationName,
-      bundleIdentifier: identity.focus.bundleIdentifier
-    )
-  }
-
-  fileprivate func simulatePaste() async throws {
-    guard await pasteCommandSender() else {
-      throw TextInjectionEngine.InjectionError.unableToCreatePasteEvent
-    }
-  }
-
-  fileprivate func updatePasteInterceptState() {
-    hotkeyTap.setPasteInterceptEnabled(
-      latestRouteSnapshot.count > 0
-        && accessibilityChecker()
-        && !isDeliveryInProgress
-        && !isPreviewMirroringSuspended
-    )
-  }
-
-  fileprivate var isPreviewMirroringSuspended: Bool {
-    !activeProgrammaticPasteSessionIDs.isEmpty
-      || privacyPasteBypassActive
-      || richPasteLeaseInProgress
-      || captureControlSnapshot.state != .active
-      || pendingMirrorTransaction != nil
-  }
 }
 
 extension SystemClipboardCaptureController {
-  func testingHandleRouteSnapshot(
-    _ snapshot: RecordRouteProjection,
-    routeContext: RecordRouteContext
-  ) async {
-    await handleRouteSnapshot(snapshot, routeContext: routeContext)
-  }
-
   func testingCaptureExternalClipboardIfNeeded() async {
     await captureExternalClipboardIfNeeded()
+    await clipboardPersistenceTask?.value
+  }
+
+  func testingPollExternalClipboardIfNeeded(
+    at now: ContinuousClock.Instant = .now,
+    waitForPersistence: Bool = true
+  ) async {
+    await pollExternalClipboardIfNeeded(at: now)
+    if waitForPersistence { await clipboardPersistenceTask?.value }
+  }
+
+  func testingStopExternalClipboardMonitor() async {
+    await stopExternalClipboardMonitor()
   }
 
   func testingHandleHotkey(_ event: HotkeyEventTap.Event) async {
     await handleHotkey(event)
   }
 
-  func testingPrivacyPasteBypassActive() -> Bool {
-    privacyPasteBypassActive
-  }
-
-  func testingCaptureControlState() -> (isPaused: Bool, isIgnoringNext: Bool) {
-    (
-      isPaused: captureControlSnapshot.state.isPaused,
-      isIgnoringNext: captureControlSnapshot.state.isIgnoringNextExternalChange
-    )
-  }
-
   func testingCaptureControlSnapshot() -> SystemClipboardCaptureControlSnapshot {
     captureControlSnapshot
-  }
-
-  func testingMonitorState() -> (routeRefreshActive: Bool, externalCaptureActive: Bool) {
-    (
-      routeRefreshActive: routeRefreshMonitorTask != nil,
-      externalCaptureActive: externalClipboardMonitorTask != nil
-    )
-  }
-
-  func testingProgrammaticPasteOperationCounts() -> (active: Int, inFlight: Int) {
-    (
-      active: activeProgrammaticPasteSessionIDs.count,
-      inFlight: inFlightProgrammaticPasteOperationIDs.count
-    )
-  }
-
-  func testingShouldBypassPasteInterception() async -> Bool {
-    await shouldBypassPasteInterception()
-  }
-
-  func testingPasteMirroredClipboardItem(
-    for routeContext: RecordRouteContext
-  ) async {
-    await pasteMirroredClipboardItem(for: routeContext)
-  }
-}
-
-private extension RecordRouteProjection {
-  var previewContentKind: RecordPayloadKind? {
-    switch previewPayload?.kind {
-    case .text?: .text
-    case .image?: .image
-    case .files?: .files
-    case nil: nil
-    }
-  }
-
-  var previewSnapshot: SystemClipboardSnapshot? {
-    guard let previewPayload else { return nil }
-    let captureTags = previewSubject?.captureTags ?? []
-    switch previewPayload {
-    case .text(let text):
-      return SystemClipboardSnapshot(plainText: text, changeCount: 0, captureTags: captureTags)
-    case .image(let data):
-      return SystemClipboardSnapshot(
-        plainText: "",
-        imagePNGData: data,
-        changeCount: 0,
-        captureTags: captureTags
-      )
-    case .files(let urls):
-      return SystemClipboardSnapshot(
-        plainText: "",
-        fileURLs: urls,
-        changeCount: 0,
-        captureTags: captureTags
-      )
-    }
-  }
-}
-
-extension RecordRouteContext {
-  fileprivate func matchesPrivacyIdentity(_ focus: FocusSnapshot) -> Bool {
-    if let bundleIdentifier {
-      return focus.bundleIdentifier == bundleIdentifier
-    }
-    if let applicationName, let focusedApplicationName = focus.applicationName {
-      return focusedApplicationName == applicationName
-    }
-    return true
   }
 }

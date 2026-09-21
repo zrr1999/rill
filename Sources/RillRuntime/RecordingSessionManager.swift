@@ -1,9 +1,7 @@
-import AppKit
 import Foundation
 import RillCore
-import RillPlatform
 
-final class RecordingCueToken: @unchecked Sendable {
+public final class RecordingCueToken: @unchecked Sendable {
   private let lock = NSLock()
   private var isValid = true
 
@@ -16,7 +14,7 @@ final class RecordingCueToken: @unchecked Sendable {
   /// Keeps validation and the short synchronous effect in one critical
   /// section. A finish/cancel that wins before this boundary suppresses the
   /// cue; one that arrives after it waits for the already-started effect.
-  func performIfValid(_ effect: () -> Void) {
+  public func performIfValid(_ effect: () -> Void) {
     lock.withLock {
       guard isValid else { return }
       effect()
@@ -49,7 +47,7 @@ public actor RecordingSessionManager {
   private struct PendingPushToTalkStart: Sendable {
     let runID: UUID
     let workflow: WorkflowDefinition
-    let gesture: HotkeyEventTap.PushToTalkGesture
+    let gesture: PushToTalkGesture
     let controlMode: RecordingControlMode
     let request: AudioCaptureRequest
     let startCueToken: RecordingCueToken
@@ -61,7 +59,7 @@ public actor RecordingSessionManager {
   /// desired state without starting a second operation.
   private struct PendingStreamHotkeyStart: Sendable {
     let taskID: UUID
-    let gesture: HotkeyEventTap.PushToTalkGesture
+    let gesture: PushToTalkGesture
     let expectedFocus: FocusPrivacyIdentitySample
     var pressCount = 1
     var isGesturePressed = true
@@ -104,7 +102,7 @@ public actor RecordingSessionManager {
   }
 
   private let audioCaptureService: any AudioCaptureService
-  private let hotkeyTap: HotkeyEventTap
+  private let hotkeyTap: any GlobalInputSource
   private let capturedAudioProcessingQueue: CapturedAudioProcessingQueue
   private let eventBus: EventBus
   private let diagnostics: DiagnosticsRecorder?
@@ -127,9 +125,9 @@ public actor RecordingSessionManager {
   private let longRecordingModeProvider: @Sendable () async -> Bool
   private let recordingDurationLimitProvider: @Sendable () async -> RecordingDurationLimit
   private let recognizerDurationProvider: @Sendable (String) -> Double?
-  private let pushToTalkGestureStateProvider: @Sendable (HotkeyEventTap.PushToTalkGesture) -> Bool
+  private let pushToTalkGestureStateProvider: @Sendable (PushToTalkGesture) -> Bool
   private let cleanupOwner: ManagedTemporaryAudioCleanupOwner
-  private let recordingCueAction: (@Sendable (RecordingInteractionCue) async -> Void)?
+  private let recordingCueAction: @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void
 
   private var state: State = .idle
   private var started = false
@@ -169,7 +167,7 @@ public actor RecordingSessionManager {
 
   public init(
     audioCaptureService: any AudioCaptureService,
-    hotkeyTap: HotkeyEventTap,
+    hotkeyTap: any GlobalInputSource,
     capturedAudioProcessingQueue: CapturedAudioProcessingQueue,
     eventBus: EventBus,
     diagnostics: DiagnosticsRecorder? = nil,
@@ -202,9 +200,10 @@ public actor RecordingSessionManager {
       .fiveMinutes
     },
     recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
-    pushToTalkGestureStateProvider: (@Sendable (HotkeyEventTap.PushToTalkGesture) -> Bool)? = nil,
+    pushToTalkGestureStateProvider: (@Sendable (PushToTalkGesture) -> Bool)? = nil,
     cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
-    recordingCueAction: (@Sendable (RecordingInteractionCue) async -> Void)? = nil
+    recordingCueAction:
+      @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }
   ) {
     self.audioCaptureService = audioCaptureService
     self.hotkeyTap = hotkeyTap
@@ -282,7 +281,7 @@ public actor RecordingSessionManager {
   }
 
   public func beginPushToTalk(
-    triggeredBy gesture: HotkeyEventTap.PushToTalkGesture = .fnHold
+    triggeredBy gesture: PushToTalkGesture = .fnHold
   ) async {
     guard beginStartOperation() else { return }
     defer { finishStartOperation() }
@@ -300,12 +299,12 @@ public actor RecordingSessionManager {
     await completePushToTalkStart(pendingStart)
   }
 
-  func processHotkeyEvent(_ event: HotkeyEventTap.Event) async {
+  func processHotkeyEvent(_ event: GlobalInputEvent) async {
     await processHotkeyEvent(event, waitsForFinishingCompletion: true)
   }
 
   private func processHotkeyEvent(
-    _ event: HotkeyEventTap.Event,
+    _ event: GlobalInputEvent,
     waitsForFinishingCompletion: Bool
   ) async {
     guard !hasBegunApplicationShutdown else { return }
@@ -370,7 +369,7 @@ public actor RecordingSessionManager {
       await handleGlobalInputUnavailable(
         waitsForCancellationCompletion: waitsForFinishingCompletion
       )
-    case .manualPasteInterceptRequested, .recordPanelRequested,
+    case .recordPanelRequested,
       .liveAudioCancellationRequested, .customHotkey(_):
       break
     }
@@ -380,7 +379,7 @@ public actor RecordingSessionManager {
   /// settings/privacy preparation off the listener. The pending intent is
   /// mutated synchronously before this method returns, so a following release
   /// can never overtake an unregistered press.
-  private func processStreamHotkeyEvent(_ event: HotkeyEventTap.Event) async {
+  private func processStreamHotkeyEvent(_ event: GlobalInputEvent) async {
     guard !hasBegunApplicationShutdown else { return }
     switch event {
     case .pushToTalkPressed(let gesture):
@@ -460,14 +459,14 @@ public actor RecordingSessionManager {
     case .globalInputUnavailable:
       await handleGlobalInputUnavailable(waitsForCancellationCompletion: false)
 
-    case .manualPasteInterceptRequested, .recordPanelRequested,
+    case .recordPanelRequested,
       .liveAudioCancellationRequested, .customHotkey:
       break
     }
   }
 
   private func beginTrackedStreamHotkeyStart(
-    triggeredBy gesture: HotkeyEventTap.PushToTalkGesture,
+    triggeredBy gesture: PushToTalkGesture,
     expectedFocus: FocusPrivacyIdentitySample
   ) {
     let taskID = UUID()
@@ -513,7 +512,7 @@ public actor RecordingSessionManager {
   }
 
   public func toggleLongRecording(
-    triggeredBy gesture: HotkeyEventTap.PushToTalkGesture = .fnHold
+    triggeredBy gesture: PushToTalkGesture = .fnHold
   ) async {
     let expectedFocus: FocusPrivacyIdentitySample?
     if case .idle = state {
@@ -529,7 +528,7 @@ public actor RecordingSessionManager {
   }
 
   private func toggleLongRecording(
-    triggeredBy gesture: HotkeyEventTap.PushToTalkGesture,
+    triggeredBy gesture: PushToTalkGesture,
     waitsForFinishingCompletion: Bool,
     expectedFocus: FocusPrivacyIdentitySample?
   ) async {
@@ -580,7 +579,7 @@ public actor RecordingSessionManager {
   }
 
   private func beginPushToTalkFromHotkeyEvent(
-    triggeredBy gesture: HotkeyEventTap.PushToTalkGesture,
+    triggeredBy gesture: PushToTalkGesture,
     expectedFocus: FocusPrivacyIdentitySample?
   ) async {
     guard let expectedFocus else { return }
@@ -609,7 +608,7 @@ public actor RecordingSessionManager {
   }
 
   private func preparePushToTalkStart(
-    triggeredBy gesture: HotkeyEventTap.PushToTalkGesture,
+    triggeredBy gesture: PushToTalkGesture,
     controlMode: RecordingControlMode,
     expectedFocus: FocusPrivacyIdentitySample,
     streamStartTaskID: UUID? = nil
@@ -996,7 +995,7 @@ public actor RecordingSessionManager {
       else {
         return
       }
-      await performRecordingCue(token: pendingStart.startCueToken, cue: .started)
+      await recordingCueAction(.started, pendingStart.startCueToken)
       completedStartCueCount += 1
     } catch is CancellationError {
       _ = pendingStart.request.audioLifetime?.cancel()
@@ -1055,7 +1054,7 @@ public actor RecordingSessionManager {
   }
 
   public func endPushToTalk(
-    triggeredBy gesture: HotkeyEventTap.PushToTalkGesture = .fnHold
+    triggeredBy gesture: PushToTalkGesture = .fnHold
   ) async {
     await endPushToTalk(
       triggeredBy: gesture,
@@ -1064,7 +1063,7 @@ public actor RecordingSessionManager {
   }
 
   private func endPushToTalk(
-    triggeredBy gesture: HotkeyEventTap.PushToTalkGesture,
+    triggeredBy gesture: PushToTalkGesture,
     waitsForFinishingCompletion: Bool
   ) async {
     guard let workflow = activeWorkflow else { return }
@@ -1442,7 +1441,7 @@ extension RecordingSessionManager {
   private func scheduleMaximumDuration(
     runID: UUID,
     workflow: WorkflowDefinition,
-    gesture: HotkeyEventTap.PushToTalkGesture,
+    gesture: PushToTalkGesture,
     seconds: Double?
   ) {
     cancelMaximumDurationTask(runID: nil)
@@ -1473,7 +1472,7 @@ extension RecordingSessionManager {
   private func handleMaximumDuration(
     runID: UUID,
     workflow: WorkflowDefinition,
-    gesture: HotkeyEventTap.PushToTalkGesture
+    gesture: PushToTalkGesture
   ) {
     guard !hasBegunApplicationShutdown,
       activeRunID == runID,
@@ -1528,7 +1527,7 @@ extension RecordingSessionManager {
   fileprivate func beginFinishingPushToTalkRecording(
     runID: UUID,
     workflow: WorkflowDefinition,
-    gesture: HotkeyEventTap.PushToTalkGesture
+    gesture: PushToTalkGesture
   ) -> Task<Void, Never>? {
     guard activeRunID == runID,
       let liveAudioSession = activeLiveAudioSession
@@ -1567,7 +1566,7 @@ extension RecordingSessionManager {
     runID: UUID,
     operationID: UUID,
     workflow: WorkflowDefinition,
-    gesture: HotkeyEventTap.PushToTalkGesture,
+    gesture: PushToTalkGesture,
     triggerEvent: WorkflowTriggerEvent?,
     liveAudioSession: AuthorizedLiveAudioSession,
     stopCueToken: RecordingCueToken
@@ -1606,7 +1605,7 @@ extension RecordingSessionManager {
     runID: UUID,
     operationID: UUID,
     workflow: WorkflowDefinition,
-    gesture: HotkeyEventTap.PushToTalkGesture,
+    gesture: PushToTalkGesture,
     triggerEvent: WorkflowTriggerEvent?,
     liveAudioSession: AuthorizedLiveAudioSession,
     stopCueToken: RecordingCueToken
@@ -1634,7 +1633,7 @@ extension RecordingSessionManager {
       await discard(deferredCapture, runID: runID)
       return
     }
-    await performRecordingCue(token: stopCueToken, cue: .stopped)
+    await recordingCueAction(.stopped, stopCueToken)
     stopCueToken.invalidate()
     guard ownsFinishingRecording(runID: runID, operationID: operationID),
       !Task.isCancelled
@@ -1699,7 +1698,7 @@ extension RecordingSessionManager {
 
   private func scheduleDeferredRelease(
     target: DeferredPushToTalkReleaseTarget,
-    gesture: HotkeyEventTap.PushToTalkGesture
+    gesture: PushToTalkGesture
   ) {
     guard !hasBegunApplicationShutdown else { return }
     cancelActiveDeferredRelease()
@@ -1734,7 +1733,7 @@ extension RecordingSessionManager {
 
   private func handleDeferredRelease(
     taskID: UUID,
-    gesture: HotkeyEventTap.PushToTalkGesture
+    gesture: PushToTalkGesture
   ) async {
     guard activePushToTalkReleaseTaskID == taskID,
       let target = activeDeferredReleaseTarget
@@ -1782,7 +1781,7 @@ extension RecordingSessionManager {
 
   fileprivate func cancelPreparationAfterDeferredRelease(
     runID: UUID,
-    gesture: HotkeyEventTap.PushToTalkGesture,
+    gesture: PushToTalkGesture,
     gestureWasChecked: Bool = false
   ) async {
     if !gestureWasChecked, pushToTalkGestureStateProvider(gesture) {
@@ -2008,23 +2007,5 @@ extension RecordingSessionManager {
       )
     )
     await task?.value
-  }
-
-  fileprivate func performRecordingCue(
-    token: RecordingCueToken,
-    cue: RecordingInteractionCue
-  ) async {
-    if let recordingCueAction {
-      await recordingCueAction(cue)
-      return
-    }
-    await MainActor.run {
-      token.performIfValid {
-        NSHapticFeedbackManager.defaultPerformer.perform(
-          cue == .started ? .alignment : .generic,
-          performanceTime: .now
-        )
-      }
-    }
   }
 }

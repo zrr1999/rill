@@ -108,11 +108,11 @@ final class LocalizationSettingsTests: XCTestCase {
       "模型 ID：gpt-5.6-luna"
     )
     XCTAssertEqual(
-      L10n.openAIModelLabel(.luna, language: .simplifiedChinese),
+      L10n.llmModelLabel(.luna, language: .simplifiedChinese),
       "Luna — 高吞吐 (gpt-5.6-luna)"
     )
     XCTAssertEqual(
-      L10n.openAIModelLabel(.custom, language: .english),
+      L10n.llmModelLabel(.custom, language: .english),
       L10n.string(.settingsOpenAICustomModel, language: .english)
     )
     XCTAssertEqual(

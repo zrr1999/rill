@@ -74,6 +74,9 @@ struct OpenAIResponsesRequest: Sendable, Equatable {
     let store: Bool
     let stream: Bool
     let maxOutputTokens: Int?
+    var disablesThinking = false
+    var temperature: Double? = nil
+    var timeoutInterval: TimeInterval = 60
 }
 
 struct OpenAIResponsesResult: Sendable, Equatable {
@@ -91,6 +94,7 @@ struct OpenAIResponsesResult: Sendable, Equatable {
     let outputText: String?
     let containsRefusal: Bool
     let httpStatusCode: Int?
+    var tokenUsage: LanguageModelTokenUsage? = nil
 }
 
 protocol OpenAIResponsesServing: Sendable {
@@ -176,7 +180,7 @@ struct MacPawOpenAIResponsesClient: OpenAIResponsesServing {
                 port: endpoint.port,
                 scheme: endpoint.scheme,
                 basePath: endpoint.basePath,
-                timeoutInterval: 60
+                timeoutInterval: request.timeoutInterval
             ),
             session: session,
             middlewares: [statusRecorder] + additionalMiddlewares
@@ -186,8 +190,10 @@ struct MacPawOpenAIResponsesClient: OpenAIResponsesServing {
             model: model,
             instructions: request.instructions,
             maxOutputTokens: request.maxOutputTokens,
+            reasoning: request.disablesThinking ? .init(effort: .some(.none)) : nil,
             store: request.store,
-            stream: request.stream
+            stream: request.stream,
+            temperature: request.temperature
         )
 
         do {
@@ -197,7 +203,14 @@ struct MacPawOpenAIResponsesClient: OpenAIResponsesServing {
                 status: Self.status(response.status),
                 outputText: Self.outputText(from: response),
                 containsRefusal: response.output.contains(where: Self.containsRefusal),
-                httpStatusCode: statusRecorder.statusCode
+                httpStatusCode: statusRecorder.statusCode,
+                tokenUsage: response.usage.map {
+                    LanguageModelTokenUsage(
+                        inputTokens: $0.inputTokens,
+                        outputTokens: $0.outputTokens,
+                        totalTokens: $0.totalTokens
+                    )
+                }
             )
         } catch {
             if error is CancellationError || Task.isCancelled {
@@ -276,8 +289,37 @@ struct MacPawOpenAIResponsesClient: OpenAIResponsesServing {
             status: status == .unknown && outputText != nil ? .completed : status,
             outputText: outputText,
             containsRefusal: containsRefusal,
-            httpStatusCode: httpStatusCode
+            httpStatusCode: httpStatusCode,
+            tokenUsage: (try? JSONDecoder().decode(CompatibleUsageResponse.self, from: data))?.usage?.tokenUsage
         )
+    }
+
+    private struct CompatibleUsageResponse: Decodable {
+        let usage: Usage?
+
+        struct Usage: Decodable {
+            let inputTokens: Int?
+            let outputTokens: Int?
+            let promptTokens: Int?
+            let completionTokens: Int?
+            let totalTokens: Int?
+
+            enum CodingKeys: String, CodingKey {
+                case inputTokens = "input_tokens"
+                case outputTokens = "output_tokens"
+                case promptTokens = "prompt_tokens"
+                case completionTokens = "completion_tokens"
+                case totalTokens = "total_tokens"
+            }
+
+            var tokenUsage: LanguageModelTokenUsage? {
+                let input = (inputTokens ?? promptTokens).flatMap { $0 >= 0 ? $0 : nil }
+                let output = (outputTokens ?? completionTokens).flatMap { $0 >= 0 ? $0 : nil }
+                let total = totalTokens.flatMap { $0 >= 0 ? $0 : nil }
+                guard input != nil || output != nil || total != nil else { return nil }
+                return LanguageModelTokenUsage(inputTokens: input, outputTokens: output, totalTokens: total)
+            }
+        }
     }
 
     private static func compatibleStatus(
@@ -434,7 +476,7 @@ private struct OpenAIEndpointConfiguration: Sendable, Equatable {
         self.scheme = scheme
         self.host = host
         self.port = components.port ?? (scheme == "https" ? 443 : 80)
-        self.basePath = components.path.isEmpty ? "/" : components.path
+        self.basePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 }
 
@@ -463,6 +505,7 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
 
     private let settingsProvider: @Sendable () async throws -> OpenAISettings
     private let clientFactory: OpenAIResponsesClientFactory
+    private let deepSeekTimeout: Duration
     private let diagnosticReporter: @Sendable (DiagnosticEvent) async -> Void
 
     public init(
@@ -479,10 +522,12 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
     init(
         settingsProvider: @escaping @Sendable () async throws -> OpenAISettings,
         clientFactory: @escaping OpenAIResponsesClientFactory,
+        deepSeekTimeout: Duration = .seconds(LLMTextProcessing.rewriteTimeout),
         diagnosticReporter: @escaping @Sendable (DiagnosticEvent) async -> Void = { _ in }
     ) {
         self.settingsProvider = settingsProvider
         self.clientFactory = clientFactory
+        self.deepSeekTimeout = deepSeekTimeout
         self.diagnosticReporter = diagnosticReporter
     }
 
@@ -528,6 +573,11 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
             throw OpenAITextRewriteError.configurationInvalid
         }
 
+        let usesDeepSeekRewrite = LLMTextProcessing.usesDeepSeek(settings)
+            && step.kind == .llmRewrite && context.workflow.speechMode != .voiceAssistant
+        if usesDeepSeekRewrite, text.utf8.count > LLMTextProcessing.maximumInputBytes {
+            throw OpenAITextRewriteError.incomplete
+        }
         let request = OpenAIResponsesRequest(
             input: text,
             instructions: requestContract(step: step, context: context)
@@ -537,7 +587,10 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
             model: settings.model,
             store: false,
             stream: false,
-            maxOutputTokens: Self.maximumOutputTokens
+            maxOutputTokens: Self.maximumOutputTokens,
+            disablesThinking: usesDeepSeekRewrite,
+            temperature: usesDeepSeekRewrite ? 0.1 : nil,
+            timeoutInterval: usesDeepSeekRewrite ? LLMTextProcessing.rewriteTimeout : 60
         )
         let startedAt = ContinuousClock.now
         await diagnosticReporter(
@@ -552,9 +605,8 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
         )
 
         do {
-            let response = try await clientFactory().createResponse(
-                request: request,
-                apiKey: apiKey
+            let response = try await createResponse(
+                request: request, apiKey: apiKey, bounded: usesDeepSeekRewrite
             )
             try Task.checkCancellation()
             let output = try Self.acceptedOutput(from: response)
@@ -571,14 +623,15 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
             return TracedTextTransformation(
                 text: output,
                 trace: LanguageModelTrace(
-                    providerID: "openai.responses",
+                    providerID: LLMTextProcessing.providerID,
                     modelID: request.model,
                     systemPrompt: request.instructions,
                     workflowPrompt: workflowInstruction,
                     messages: [
                         LanguageModelTraceMessage(role: .user, content: request.input),
                     ],
-                    responseText: output
+                    responseText: output,
+                    tokenUsage: response.tokenUsage
                 )
             )
         } catch is CancellationError {
@@ -597,6 +650,26 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
                 )
             )
             throw mapped
+        }
+    }
+
+    private func createResponse(
+        request: OpenAIResponsesRequest, apiKey: String, bounded: Bool
+    ) async throws -> OpenAIResponsesResult {
+        let client = clientFactory()
+        guard bounded else {
+            return try await client.createResponse(request: request, apiKey: apiKey)
+        }
+        return try await withThrowingTaskGroup(of: OpenAIResponsesResult.self) { group in
+            group.addTask { try await client.createResponse(request: request, apiKey: apiKey) }
+            group.addTask { [deepSeekTimeout] in
+                try await Task.sleep(for: deepSeekTimeout)
+                throw OpenAITextRewriteError.timedOut
+            }
+            defer { group.cancelAll() }
+            guard let response = try await group.next() else { throw CancellationError() }
+            try Task.checkCancellation()
+            return response
         }
     }
 
@@ -660,7 +733,7 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
             subsystem: .providers,
             level: level,
             event: event,
-            message: "OpenAI Responses request \(outcome).",
+            message: "Responses request \(outcome).",
             metadata: metadata
         )
     }
@@ -674,8 +747,8 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
             components.seconds * 1_000
             + components.attoseconds / 1_000_000_000_000_000
         return [
-            "provider": "openai.responses",
-            "provider.kind": "openai",
+            "provider": LLMTextProcessing.providerID,
+            "provider.kind": "llm",
             "outcome": outcome,
             "durationMillis": String(max(0, milliseconds)),
         ]
@@ -715,6 +788,7 @@ public enum OpenAIConfigurationVerifier {
             throw OpenAITextRewriteError.configurationInvalid
         }
         let startedAt = ContinuousClock.now
+        let usesDeepSeek = LLMTextProcessing.usesDeepSeek(settings)
         do {
             let response = try await clientFactory().createResponse(
                 request: OpenAIResponsesRequest(
@@ -724,7 +798,11 @@ public enum OpenAIConfigurationVerifier {
                     model: settings.model,
                     store: false,
                     stream: false,
-                    maxOutputTokens: nil
+                    maxOutputTokens: nil,
+                    disablesThinking: usesDeepSeek,
+                    temperature: usesDeepSeek ? 0.1 : nil,
+                    timeoutInterval: usesDeepSeek
+                        ? LLMTextProcessing.rewriteTimeout : 60
                 ),
                 apiKey: apiKey
             )
@@ -775,7 +853,7 @@ public enum OpenAIConfigurationVerifier {
             subsystem: .providers,
             level: level,
             event: event,
-            message: "OpenAI configuration verification \(outcome).",
+            message: "Text service configuration verification \(outcome).",
             metadata: metadata
         )
     }

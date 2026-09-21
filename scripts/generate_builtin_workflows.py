@@ -57,6 +57,7 @@ SUPPORTED_TITLE_KEYS = {
     "commandMode",
     "directDemoClipboard",
     "formalWriting",
+    "smartCleanup",
     "localDictation",
     "pushToTalkCapture",
     "pushToTalkPolish",
@@ -84,7 +85,7 @@ WORKFLOW_KEYS = {
     "local_model",
     "mode",
     "name",
-    "output",
+    "outputs",
     "output_configuration",
     "post_process",
     "recognizer",
@@ -265,7 +266,7 @@ def build_workflow(
 
     target_group = optional_string(entry, "target_group", location)
     if target_group is not None:
-        metadata["clipboard.target-group-id"] = resolve_target_group(
+        metadata["record.target-collection-ids"] = resolve_target_group(
             target_group, location
         )
 
@@ -283,13 +284,15 @@ def build_workflow(
             f"{location}.wake_phrases is supported only for wakeWord workflows"
         )
 
-    output_id = required_string(entry, "output", location)
+    output_ids = string_list(entry.get("outputs", []), f"{location}.outputs")
+    if not output_ids or len(output_ids) != len(set(output_ids)):
+        raise SourceError(f"{location}.outputs must contain unique output action IDs")
     output_configuration = string_mapping(
         entry.get("output_configuration", {}),
         f"{location}.output_configuration",
     )
     if output_configuration:
-        if output_id != "speech.speak":
+        if "speech.speak" not in output_ids:
             raise SourceError(
                 f"{location}.output_configuration is supported only for speech.speak"
             )
@@ -371,8 +374,11 @@ def build_workflow(
                 "actions": [
                     {
                         "id": output_id,
-                        "configuration": output_configuration,
+                        "configuration": (
+                            output_configuration if output_id == "speech.speak" else {}
+                        ),
                     }
+                    for output_id in output_ids
                 ],
                 "deliveryPolicy": {"strategy": delivery},
             },

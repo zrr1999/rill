@@ -364,20 +364,26 @@ candidate before recording a failure.
 - [ ] Granting each permission recovers without deleting user settings.
 - [ ] The Activity page remains incomplete when Input Monitoring preflight passes but
       the shared active event tap cannot be installed; retrying after permission
-      changes must activate Fn. With Clipboard Capture enabled it must also
-      activate the clipboard-panel shortcut and Command-V interception; with
-      capture disabled those two surfaces must remain inactive.
+      changes must activate Fn and the clipboard-panel shortcut independently
+      of whether Clipboard Capture is enabled. Native Command-C, Command-X, and
+      Command-V must pass through unchanged with capture enabled or disabled.
 - [ ] Keychain creation, restart, logout/login, and App relaunch preserve readable
       encrypted state.
 - [ ] Revoking a permission while recording or delivering fails closed and cleans
       temporary audio.
 
+- [ ] With queued records present, native copy/paste and menu-bar Paste use the
+      original system clipboard. Queue changes, capture pause/resume, privacy
+      changes, and app exit do not replace clipboard contents.
+- [ ] Explicit panel output works for text, images, and files with capture on or
+      off. Temporary output restores the original clipboard unless the user has
+      copied newer content during delivery.
+
 ## Input and global shortcuts
 
 Run each case with the Simplified Chinese and US input sources and with at least
 TextEdit, Safari, and a password field as the foreground target. Exercise the
-clipboard-panel shortcut cases only while Clipboard Capture is enabled, then
-repeat the explicit disabled-state check with capture off.
+clipboard-panel shortcut cases with Clipboard Capture both enabled and disabled.
 
 - [ ] With Clipboard Capture on, Left Command double tap opens the clipboard
       panel once.
@@ -390,9 +396,9 @@ repeat the explicit disabled-state check with capture off.
 - [ ] A Command hold longer than 350 ms, or a next press more than 350 ms after
       the previous release, does not open it.
 - [ ] A third Command tap does not overlap with the completed pair.
-- [ ] With Clipboard Capture off, left, right, and mixed Command double taps do
-      not open the panel; Settings hides the shortcut recorder and the menu bar
-      shows no panel-shortcut annotation.
+- [ ] With Clipboard Capture off, left, right, and mixed Command double taps still
+      open the panel; Settings keeps the shortcut recorder and the menu bar keeps
+      the explicit panel shortcut.
 - [ ] Push-to-talk press/release, event-tap interruption, and permission loss do
       not leave recording latched.
 - [ ] With Toggle Recording off, physical Fn release is the authoritative stop and

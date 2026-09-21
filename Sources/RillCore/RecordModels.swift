@@ -633,7 +633,7 @@ public struct DeliveryRouteRule: Identifiable, Codable, Sendable, Equatable {
 
 public enum RecordGraphLimits {
     public static let maximumMembershipsPerRecord = 32
-    public static let maximumMemberships = 8_192
+    public static let maximumMemberships = 320_000
     public static let maximumRouteCollections = 32
 }
 
@@ -642,16 +642,16 @@ public enum RecordGraphLimits {
 /// even when a Record has several collection memberships.
 public struct RecordStorageLimits: Sendable, Equatable {
     public static let productDefault = RecordStorageLimits(
-        maximumRecordCount: 1_500,
-        maximumActiveRecordCount: 1_000,
-        maximumHistoryOnlyRecordCount: 500,
-        maximumActiveMembershipCountPerCollection: 500,
+        maximumRecordCount: 10_000,
+        maximumActiveRecordCount: 10_000,
+        maximumHistoryOnlyRecordCount: 10_000,
+        maximumActiveMembershipCountPerCollection: 10_000,
         maximumTextUTF8ByteCount: 1 * 1_024 * 1_024,
         maximumImageByteCount: 32 * 1_024 * 1_024,
         maximumFileURLCount: 128,
         maximumFileURLUTF8ByteCount: 8 * 1_024,
         maximumTotalFileURLUTF8ByteCount: 512 * 1_024,
-        maximumTotalPayloadByteCount: 64 * 1_024 * 1_024,
+        maximumTotalPayloadByteCount: 512 * 1_024 * 1_024,
         maximumTagCount: 32,
         maximumTagUTF8ByteCount: 128,
         maximumTotalTagUTF8ByteCount: 4 * 1_024,

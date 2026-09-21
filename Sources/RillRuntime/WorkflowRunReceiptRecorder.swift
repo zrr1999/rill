@@ -50,6 +50,8 @@ public actor WorkflowRunReceiptRecorder {
         var nextActionIndex = 0
         var activeAction: ActiveAction?
         var actionDetails: [WorkflowActionReceipt] = []
+        var activeStep: (index: Int, kind: WorkflowProcessStepKind, startedAt: UInt64)?
+        var stepDetails: [WorkflowStepReceipt] = []
         var detailsTruncated = false
         var preparedTerminal: PreparedTerminal?
         var terminalWriteIsInProgress = false
@@ -128,6 +130,26 @@ public actor WorkflowRunReceiptRecorder {
             trigger: trigger,
             startedAtNanoseconds: monotonicClock()
         )
+    }
+
+    public func beginStep(runID: UUID, stepIndex: Int, kind: WorkflowProcessStepKind) throws {
+        var run = try mutablePendingRun(runID: runID)
+        guard run.preparedTerminal == nil, run.activeStep == nil,
+              (0..<256).contains(stepIndex), !run.stepDetails.contains(where: { $0.stepIndex == stepIndex }) else {
+            throw WorkflowRunReceiptValidationError.invalidStepSequence
+        }
+        run.activeStep = (stepIndex, kind, monotonicClock())
+        pendingRuns[runID] = run
+    }
+
+    public func finishStep(runID: UUID, result: WorkflowStepResultCode) throws {
+        var run = try mutablePendingRun(runID: runID)
+        guard let step = run.activeStep, run.preparedTerminal == nil else {
+            throw WorkflowRunReceiptValidationError.invalidStepSequence
+        }
+        run.stepDetails.append(WorkflowStepReceipt(stepIndex: step.index, kind: step.kind, result: result, duration: Self.durationBucket(from: step.startedAt, to: monotonicClock())))
+        run.activeStep = nil
+        pendingRuns[runID] = run
     }
 
     public func beginAction(runID: UUID, actionIndex: Int) throws {
@@ -257,6 +279,7 @@ public actor WorkflowRunReceiptRecorder {
                     to: monotonicClock()
                 ),
                 termination: termination,
+                stepDetails: run.stepDetails.sorted { $0.stepIndex < $1.stepIndex },
                 actionDetails: run.actionDetails,
                 detailsTruncated: run.detailsTruncated
             )

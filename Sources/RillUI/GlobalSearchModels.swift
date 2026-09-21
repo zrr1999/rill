@@ -113,6 +113,10 @@ enum GlobalSearchText {
         L10n.recordText(.cancel, language: language)
     }
 
+    static func cancelHelp(language: AppLanguage) -> String {
+        UIStrings.text(.searchCancelShortcutHint, language: language)
+    }
+
     static func workflowDetail(language: AppLanguage) -> String {
         L10n.overlayText(.searchOpenInWorkflows, language: language)
     }

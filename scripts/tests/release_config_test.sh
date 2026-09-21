@@ -397,7 +397,7 @@ run_xcode_build_policy_case() {
     ! grep -Fq -- '--scratch-path "$RELEASE_SCRATCH_PATH"' "$XCODE_RELEASE_BUILD_SCRIPT" ||
     ! grep -Fq 'RELEASE_SCRATCH_PATH="$PROJECT_DIR/.build/rill-release"' \
       "$XCODE_RELEASE_BUILD_SCRIPT" ||
-    ! grep -Fq '.build/rill-release/Intermediates.noindex' "$PREFLIGHT_SCRIPT" ||
+    ! grep -Fq 'accessor_root="$(dirname "$(dirname "$BUILD_DIR")")/Intermediates.noindex"' "$PREFLIGHT_SCRIPT" ||
     ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh"' "$XCODE_RELEASE_BUILD_SCRIPT" ||
     ! grep -Fq 'xcrun metal -v' \
       "$XCODE_RELEASE_BUILD_SCRIPT" ||

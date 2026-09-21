@@ -38,7 +38,7 @@ extension SettingsView {
         )
       }
 
-      VStack(alignment: .leading, spacing: 8) {
+      VStack(alignment: .leading, spacing: RillSpacing.row) {
           Text(UIStrings.text(.settingsLocalSpeech, language: model.language))
             .font(.subheadline.weight(.medium))
 
@@ -49,6 +49,7 @@ extension SettingsView {
                 language: model.language
               )
             )
+            .font(.caption)
             .foregroundStyle(.secondary)
 
             speechModelPoolSettings
@@ -137,12 +138,12 @@ extension SettingsView {
 
             if model.trustedLocalSpeechModels.isEmpty {
               if !model.downloadedLocalSpeechModels.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: RillSpacing.row) {
                   Text(UIStrings.text(.localSpeechDownloadedModels, language: model.language))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-                  ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                  ScrollView(.horizontal, showsIndicators: true) {
+                    HStack(spacing: RillSpacing.row) {
                       ForEach(model.downloadedLocalSpeechModels, id: \.self) { modelIdentifier in
                         Button(
                           model.localSpeechModelDisplayName(modelIdentifier, includeStatus: true)
@@ -151,7 +152,10 @@ extension SettingsView {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .disabled(model.isLoadingSettings)
+                        .disabled(
+                          model.isLoadingSettings
+                            || model.localSpeechModel == modelIdentifier
+                        )
                       }
                     }
                   }
@@ -159,7 +163,7 @@ extension SettingsView {
               }
 
               if model.localSpeechModelOption == .custom {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: RillSpacing.row) {
                   TextField(
                     UIStrings.text(.legacyWhisperKitCustomModel, language: model.language),
                     text: $model.legacyWhisperKitCustomModel
@@ -169,7 +173,7 @@ extension SettingsView {
                     model.prepareLocalSpeechModel()
                   }
 
-                  HStack(alignment: .center, spacing: 12) {
+                  HStack(alignment: .center, spacing: RillSpacing.card) {
                     Text(UIStrings.text(.legacyWhisperKitCustomModelHint, language: model.language))
                       .font(.caption)
                       .foregroundStyle(.secondary)
@@ -221,9 +225,10 @@ extension SettingsView {
                     .controlSize(.small)
                 }
               }
+              .transition(.opacity)
             } else if model.localSpeechPreparationState == .ready {
-              VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
+              VStack(alignment: .leading, spacing: RillSpacing.compact) {
+                HStack(alignment: .firstTextBaseline, spacing: RillSpacing.card) {
                   Label(
                     UIStrings.text(.localSpeechPreparationReady, language: model.language),
                     systemImage: RillSystemSymbol.checkmarkCircleFill.rawValue
@@ -254,10 +259,11 @@ extension SettingsView {
                     .foregroundStyle(.secondary)
                 }
               }
+              .transition(.opacity)
             }
 
             if let testWorkflow = model.localSpeechTestWorkflow {
-              VStack(alignment: .leading, spacing: 4) {
+              VStack(alignment: .leading, spacing: RillSpacing.compact) {
                 Button(model.workflowRunButtonTitle(for: testWorkflow)) {
                   model.runWorkflow(testWorkflow)
                 }
@@ -291,137 +297,15 @@ extension SettingsView {
             }
           }
         }
+      .animation(
+        reduceMotion ? nil : .easeInOut(duration: 0.15),
+        value: model.localSpeechPreparationState
+      )
       .disabled(model.hasUnavailableScalarSettings(in: .localSpeech))
 
       Divider()
 
-      VStack(alignment: .leading, spacing: 12) {
-        Text(L10n.string(.settingsOpenAITitle, language: model.language))
-          .font(.subheadline.weight(.medium))
-        Text(L10n.string(.settingsOpenAIDescription, language: model.language))
-          .foregroundStyle(.secondary)
-
-        switch model.openAICredentialAvailability {
-        case .loading:
-          ProgressView(UIStrings.text(.voiceSetupLoading, language: model.language))
-            .controlSize(.small)
-        case .saving:
-          ProgressView(L10n.string(.settingsOpenAISaving, language: model.language))
-            .controlSize(.small)
-        case .missing:
-          Label(
-            L10n.string(.settingsOpenAIMissing, language: model.language),
-            systemImage: RillSystemSymbol.keySlash.rawValue
-          )
-          .font(.caption)
-          .foregroundStyle(.orange)
-        case .available:
-          Label(
-            L10n.string(.settingsOpenAIAvailable, language: model.language),
-            systemImage: RillSystemSymbol.checkmarkCircleFill.rawValue
-          )
-          .font(.caption)
-          .foregroundStyle(.green)
-        case .inaccessible:
-          HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Label(
-              L10n.string(.settingsOpenAIInaccessible, language: model.language),
-              systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
-            )
-            .font(.caption)
-            .foregroundStyle(.red)
-            Spacer()
-            Button(UIStrings.text(.retryCredentialLoad, language: model.language)) {
-              model.retryOpenAICredentialLoad()
-            }
-          }
-        }
-
-        providerInputRow(L10n.string(.settingsOpenAIAPIKey, language: model.language)) {
-          SecureField("", text: $model.openAIAPIKey)
-            .textFieldStyle(.roundedBorder)
-            .disabled(model.openAICredentialAvailability == .inaccessible)
-            .accessibilityIdentifier("settings.openai.api-key")
-        }
-
-        providerInputRow(L10n.string(.settingsOpenAIBaseURL, language: model.language)) {
-          TextField("", text: $model.openAIBaseURL)
-            .textFieldStyle(.roundedBorder)
-            .accessibilityIdentifier("settings.openai.base-url")
-        }
-
-        Text(L10n.string(.settingsOpenAIEndpointHint, language: model.language))
-          .font(.caption)
-          .foregroundStyle(.secondary)
-
-        Picker(
-          L10n.string(.settingsOpenAIModel, language: model.language),
-          selection: openAIModelSelection
-        ) {
-          ForEach(OpenAIModelSelection.allCases) { selection in
-            Text(openAIModelLabel(selection)).tag(selection)
-          }
-        }
-        .pickerStyle(.menu)
-        .disabled(model.hasUnavailableScalarSettings(in: .openAI))
-        .accessibilityIdentifier("settings.openai.model")
-
-        Text(L10n.settingsOpenAIModelID(model.openAIModel, language: model.language))
-        .font(.caption.monospaced())
-        .foregroundStyle(.secondary)
-        .textSelection(.enabled)
-
-        if openAIModelSelection.wrappedValue == .custom {
-          providerInputRow(
-            L10n.string(.settingsOpenAICustomModel, language: model.language)
-          ) {
-            TextField("", text: $model.openAIModel)
-              .textFieldStyle(.roundedBorder)
-              .accessibilityIdentifier("settings.openai.custom-model")
-          }
-        }
-
-        HStack(spacing: 10) {
-          Button(L10n.string(.settingsOpenAIVerify, language: model.language)) {
-            model.verifyOpenAIConfiguration()
-          }
-          .disabled(!model.canVerifyOpenAIConfiguration)
-          .accessibilityIdentifier("settings.openai.verify")
-
-          switch model.openAIConfigurationVerificationState {
-          case .idle:
-            EmptyView()
-          case .verifying:
-            ProgressView(L10n.string(.settingsOpenAIVerifying, language: model.language))
-              .controlSize(.small)
-          case .verified:
-            Label(
-              L10n.string(.settingsOpenAIVerificationSucceeded, language: model.language),
-              systemImage: RillSystemSymbol.checkmarkSealFill.rawValue
-            )
-            .font(.caption)
-            .foregroundStyle(.green)
-          case .failed:
-            Label(
-              openAIVerificationFailureMessage,
-              systemImage: RillSystemSymbol.xmarkOctagonFill.rawValue
-            )
-            .font(.caption)
-            .foregroundStyle(.red)
-          }
-        }
-
-        if usesThirdPartyOpenAIEndpoint {
-          Text(thirdPartyOpenAICompatibilityHint)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-
-        Text(L10n.string(.settingsOpenAITranscriptOnlyHint, language: model.language))
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-      .disabled(model.openAIConfigurationVerificationState == .verifying)
+      llmProviderSettingsSection
 
       Text(UIStrings.text(.settingsSpeechEngineDescription, language: model.language))
         .font(.caption)
@@ -429,21 +313,21 @@ extension SettingsView {
     }
   }
 
-  var openAIModelSelection: Binding<OpenAIModelSelection> {
+  var llmModelSelection: Binding<LLMModelSelection> {
     Binding(
-      get: { OpenAIModelSelection(modelIdentifier: model.openAIModel) },
+      get: { LLMModelSelection(modelIdentifier: model.openAIModel) },
       set: { selection in
         if let modelIdentifier = selection.modelIdentifier {
           model.openAIModel = modelIdentifier
-        } else if OpenAIModelOption(rawValue: model.openAIModel) != nil {
+        } else if LLMModelSelection(modelIdentifier: model.openAIModel) != .custom {
           model.openAIModel = ""
         }
       }
     )
   }
 
-  func openAIModelLabel(_ selection: OpenAIModelSelection) -> String {
-    L10n.openAIModelLabel(selection, language: model.language)
+  func llmModelLabel(_ selection: LLMModelSelection) -> String {
+    L10n.llmModelLabel(selection, language: model.language)
   }
 
   var usesThirdPartyOpenAIEndpoint: Bool {
@@ -574,8 +458,11 @@ extension SettingsView {
             }
             .controlSize(.small)
           }
-          .padding(8)
-          .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+          .padding(RillSpacing.row)
+          .background(
+            .orange.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: RillRadius.badge, style: .continuous)
+          )
         }
       }
       .accessibilityIdentifier("settings.speech-model-pool")
@@ -585,7 +472,10 @@ extension SettingsView {
   func speechModelDisplayName(
     _ descriptor: SpeechModelResourceDescriptor
   ) -> String {
-    let capability = descriptor.capability == .speechToText ? "STT" : "TTS"
+    let capability =
+      descriptor.capability == .speechToText
+      ? L10n.settingsText(.settingsSpeechModelCapabilitySTT, language: model.language)
+      : L10n.settingsText(.settingsSpeechModelCapabilityTTS, language: model.language)
     let size = ByteCountFormatter.string(
       fromByteCount: Int64(clamping: descriptor.downloadByteCount),
       countStyle: .file

@@ -1,6 +1,6 @@
 # Record architecture
 
-Status: accepted, Record graph v1 / SQLite schema 12.
+Status: accepted, Record catalog v2 / SQLite schema 13.
 
 ## Decision
 
@@ -35,14 +35,30 @@ membership lease → sink → content-free receipt.
   coordinates. Legacy automation actions that were never executable remain
   fail-closed, but their trigger decisions still produce durable run receipts.
 
+## System clipboard boundary
+
+Native copy, cut, and paste remain owned by the foreground application. Rill
+asynchronously reads clipboard changes and records permitted content. Collection
+previews, capture controls, privacy changes, and shutdown never write back to
+the clipboard. The capture port exposes reads only; the global input tap has no
+native paste interception or replay path.
+
+Only explicitly requested output uses the shared delivery workflow. Text,
+images, and files all use its target checks and conditional clipboard transaction;
+restoration must preserve a newer external copy. Pausing history capture does
+not disable explicit output.
+
 ## Persistence and migration
 
-SQLite schema 12 separates encrypted immutable payload blobs from the encrypted
-Record graph. Metadata-only changes retain the payload blob and ciphertext.
+SQLite schema 13 stores encrypted catalog nodes and immutable payload blobs
+separately. The catalog holds headers and previews; payloads are loaded on demand
+through a bounded cache. Metadata-only changes retain the payload ciphertext.
+
 The pre-Record clipboard graph is decoded only by `LegacyClipboardMigration`.
-The repository writes, decrypts, and validates the complete Record graph and all
-payloads in one transaction before deleting the legacy rows. Any decode, key,
-reference, size, CAS, or readback failure rolls the transaction back.
+Record graph v1 remains readable and is converted to catalog v2 on the next
+commit. Catalog mutations, payload writes, and legacy-row removal share one
+transaction with revision checks and authenticated readback. A failed commit
+rolls back the database transaction and the RecordStore's committed graph state.
 
 The migration is forward-only. There is no dual runtime or downgrade contract.
 Old workflow TOML names remain accepted at the file-loader boundary and are
@@ -50,15 +66,19 @@ normalized immediately; canonical serialization uses Record terminology only.
 
 ## Limits
 
-Content keeps the shipped 1 MiB text, 32 MiB image, and 64 MiB total budget.
-Each Record may have at most 32 memberships, the graph at most 8,192
-memberships, and each route at most 32 collection references. Pinned Records and
-Records with any active membership are protected from automatic retention.
+`RecordStorageLimits.productDefault` admits up to 10,000 Records and 512 MiB of
+payload, with per-item limits of 1 MiB text and 32 MiB images. Each Record may
+have at most 32 memberships, the graph at most 320,000 memberships, and each
+route at most 32 collection references. Pinned Records and Records with any
+active membership are protected from automatic retention. Clipboard transfer
+budgets are separate from the durable catalog's storage limits.
 
-## Deferred debt
+## Module and lifecycle boundaries
 
-Global input contracts should move to Core so Runtime no longer imports the
-platform hotkey implementation. SQLite should later split into one connection /
-migration owner and records, history, and settings repositories. Remaining
-settings, workflow, and voice projections should continue moving out of the
-global AppModel.
+`GlobalInputSource` and focus identity values live in Core. Runtime consumes
+those contracts; App wires platform input and recording cues. SQLite history,
+settings, and catalog queries share one connection owner so graph migration and
+clear barriers retain their transactional guarantees. UI persistence task
+ownership is separate from AppModel's settings presentation and retry policy.
+
+See [Architecture](architecture.md) for the dependency graph and state owners.

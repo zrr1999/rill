@@ -1,11 +1,17 @@
-# Rill workflow schema v1: Speech to Text
+# Rill workflow schema v2: Speech to Text
 # Change `id` before keeping more than one copy of this template.
 
-schema_version = 1
-enabled = true
+schema_version = 2
+enabled = false
 id = "D0000000-0000-4000-8000-000000000001"
 name = "Speech to Text"
-trigger = "hotkey"
+
+[trigger]
+kind = "hotkey"
+gesture = "control-option-shift-space"
+
+[input]
+kind = "audio"
 
 [ui]
 symbol = "mic.fill"
@@ -14,7 +20,6 @@ accent = "red"
 [setup.speech]
 selection = "fixed"
 recognizer = "local-speech"
-local_model = "qwen3-asr-0.6b-mlx-8bit"
 live_preview = true
 streaming_profile = "realtime"
 
@@ -34,8 +39,15 @@ kind = "normalize-whitespace"
 strategy = "immediate"
 
 [[output.actions]]
-id = "focused-application.insert"
+id = "store"
+kind = "record.store"
+
+[[output.actions]]
+id = "deliver"
+kind = "focused-application.insert"
+
+[options]
+"record.target-collection-ids" = "4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"
 
 [metadata]
 "workflow.origin" = "user"
-"trigger.gesture" = "control-option-shift-space"

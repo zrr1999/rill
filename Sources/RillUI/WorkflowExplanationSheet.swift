@@ -37,7 +37,7 @@ struct WorkflowExplanationSheet: View {
             .foregroundStyle(.secondary)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: RillRadius.section))
 
             ScrollView {
                 explanationContent
@@ -59,7 +59,7 @@ struct WorkflowExplanationSheet: View {
             }
         }
         .padding(24)
-        .frame(minWidth: 620, idealWidth: 680, minHeight: 560, idealHeight: 720)
+        .frame(minWidth: 520, idealWidth: 620, minHeight: 420, idealHeight: 600)
         .accessibilityIdentifier("workflow-explanation.sheet")
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
@@ -187,7 +187,7 @@ struct WorkflowExplanationSheet: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(style.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+        .background(style.color.opacity(0.10), in: RoundedRectangle(cornerRadius: RillRadius.section))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("workflow-explanation.status")
     }
@@ -219,9 +219,7 @@ struct WorkflowExplanationSheet: View {
                 }
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
+        .rillCard(.subdued, cornerRadius: RillRadius.section, padding: 14)
     }
 
     private func statusStyle(

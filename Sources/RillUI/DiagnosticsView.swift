@@ -134,7 +134,7 @@ public struct DiagnosticsView: View {
                     .foregroundStyle(diagnosticColor(event.level))
                 Spacer()
                 if event.level == .warning || event.level == .error {
-                    Button(UIStrings.text(.copy, language: model.language)) {
+                    RillCopyButton(title: UIStrings.text(.copy, language: model.language), language: model.language) {
                         model.copyDiagnosticEvent(event)
                     }
                     .buttonStyle(.borderless)
@@ -142,19 +142,23 @@ public struct DiagnosticsView: View {
                     .accessibilityLabel(entry.copyAccessibilityLabel(language: model.language))
                 }
                 Text(event.timestamp.formatted(date: .omitted, time: .standard))
-                    .font(.caption)
+                    .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
 
             Text(DiagnosticEventPresentation.title(for: event, language: model.language))
                 .font(.subheadline.weight(.medium))
 
-            Text(DiagnosticEventPresentation.detail(for: event))
-                .font(.caption)
-                .monospaced()
-                .foregroundStyle(.secondary)
+            DisclosureGroup(L10n.presentation(.metadata, language: model.language)) {
+                Text(DiagnosticEventPresentation.detail(for: event))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            .font(.caption)
+            Divider()
         }
-        .rillCard(.subdued, cornerRadius: 10, padding: 10)
+        .padding(.vertical, RillSpacing.row)
     }
 
     private func diagnosticColor(_ level: DiagnosticLevel) -> Color {

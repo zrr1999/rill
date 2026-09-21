@@ -6,6 +6,7 @@ enum SettingsDestructiveConfirmation: Sendable {
   case runHistory
   case failedAudioRecovery
   case benchmarkRecordingArchive
+  case sensitiveAppRule(UUID)
 }
 
 enum SettingsSheetDestination: Identifiable {
@@ -19,7 +20,8 @@ enum SettingsSheetDestination: Identifiable {
   }
 }
 
-enum OpenAIModelSelection: String, CaseIterable, Identifiable {
+enum LLMModelSelection: String, CaseIterable, Identifiable {
+  case deepSeek
   case luna
   case terra
   case sol
@@ -29,6 +31,8 @@ enum OpenAIModelSelection: String, CaseIterable, Identifiable {
 
   var modelIdentifier: String? {
     switch self {
+    case .deepSeek:
+      LLMTextProcessing.deepSeekModel
     case .luna:
       OpenAIModelOption.luna.rawValue
     case .terra:
@@ -42,6 +46,8 @@ enum OpenAIModelSelection: String, CaseIterable, Identifiable {
 
   init(modelIdentifier: String) {
     switch modelIdentifier {
+    case LLMTextProcessing.deepSeekModel:
+      self = .deepSeek
     case OpenAIModelOption.luna.rawValue:
       self = .luna
     case OpenAIModelOption.terra.rawValue:
@@ -165,6 +171,8 @@ public struct SettingsView: View {
   @FocusState private var focusedSettingsSection: SettingsSection?
   @FocusState var wakePhrasesFieldFocused: Bool
   @AccessibilityFocusState private var accessibilityFocusedSettingsSection: SettingsSection?
+  // Shared with the section extensions for Reduce-Motion-aware transitions.
+  @Environment(\.accessibilityReduceMotion) var reduceMotion
 
   public init(
     model: AppModel,
@@ -350,35 +358,31 @@ extension SettingsView {
       .font(.caption)
       .foregroundStyle(.secondary)
 
-      if RecordPanelShortcutPresentationPolicy.surfaceVisibility(
-        systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled
-      ).settingsRecorder {
-        Divider()
+      Divider()
 
-        HotkeyRecorderView(
-          binding: model.recordPanelHotkeyBinding,
-          language: model.language,
-          beginRecordPanelShortcutRecording: {
-            model.beginRecordPanelShortcutRecording()
-          },
-          endRecordPanelShortcutRecording: { suspensionID in
-            model.endRecordPanelShortcutRecording(suspensionID)
-          },
-          commitRecordPanelShortcutRecording: { suspensionID, keyCode in
-            model.commitRecordPanelShortcutRecording(
-              suspensionID,
-              keyCode: keyCode
-            )
-          },
-          onRecord: { shortcut in
-            model.setRecordPanelHotkeyShortcut(shortcut)
-          },
-          onReset: {
-            model.resetRecordPanelHotkeyBinding()
-          }
-        )
-        .disabled(model.hasUnavailableScalarSettings(in: .systemClipboard))
-      }
+      HotkeyRecorderView(
+        binding: model.recordPanelHotkeyBinding,
+        language: model.language,
+        beginRecordPanelShortcutRecording: {
+          model.beginRecordPanelShortcutRecording()
+        },
+        endRecordPanelShortcutRecording: { suspensionID in
+          model.endRecordPanelShortcutRecording(suspensionID)
+        },
+        commitRecordPanelShortcutRecording: { suspensionID, keyCode in
+          model.commitRecordPanelShortcutRecording(
+            suspensionID,
+            keyCode: keyCode
+          )
+        },
+        onRecord: { shortcut in
+          model.setRecordPanelHotkeyShortcut(shortcut)
+        },
+        onReset: {
+          model.resetRecordPanelHotkeyBinding()
+        }
+      )
+      .disabled(model.hasUnavailableScalarSettings(in: .systemClipboard))
 
       Text(UIStrings.text(.settingsRecordPanelDescription, language: model.language))
         .font(.caption)
@@ -404,6 +408,8 @@ extension SettingsView {
         }
       }
       .pickerStyle(.segmented)
+      // Keep the two language segments compact instead of stretching across
+      // the full form width.
       .frame(maxWidth: 260)
       .disabled(!model.canMutateScalarSettings(in: .interface))
 
@@ -435,10 +441,11 @@ extension SettingsView {
         Image(systemName: RillSystemSymbol.chevronRight.rawValue)
           .font(.caption.weight(.semibold))
           .foregroundStyle(.tertiary)
+          .accessibilityHidden(true)
       }
       .contentShape(Rectangle())
     }
-    .buttonStyle(.plain)
+    .buttonStyle(SettingsNavigationRowButtonStyle())
     .accessibilityIdentifier("settings.diagnostics.open")
   }
 
@@ -472,7 +479,6 @@ extension SettingsView {
     }
     .focusable()
     .focused($focusedSettingsSection, equals: section)
-    .focusEffectDisabled()
     .id(section)
   }
 
@@ -492,7 +498,25 @@ extension SettingsView {
   }
 
   private func settingsSectionSummary(_ section: SettingsSection) -> String {
-    L10n.settingsSectionSummary(section, language: model.language)
+    switch section {
+    case .permissions:
+      return UIStrings.text(.microphone, language: model.language) + " · "
+        + UIStrings.permissionState(model.permissionSnapshot.microphone, language: model.language)
+    case .speech:
+      let name = model.selectedTrustedLocalSpeechModelIdentifier
+      return name.isEmpty
+        ? UIStrings.speechEngine(model.preferredSpeechEngine, language: model.language)
+        : UIStrings.speechEngine(model.preferredSpeechEngine, language: model.language) + " · " + name
+    case .input:
+      return UIStrings.builtinPushToTalkOutputMode(model.builtinPushToTalkOutputMode, language: model.language)
+    case .language:
+      return model.language.displayName
+    case .storage:
+      return L10n.historySettingsText(.runRetention, language: model.language) + " · "
+        + L10n.historyRetentionPeriod(model.runHistoryRetentionPeriod, language: model.language)
+    default:
+      return L10n.settingsSectionSummary(section, language: model.language)
+    }
   }
 
   private func positionSettingsSection(
@@ -535,6 +559,8 @@ extension SettingsView {
         .settingsBenchmarkRecordingArchiveClearConfirmation,
         language: model.language
       )
+    case .sensitiveAppRule:
+      L10n.settingsText(.settingsSensitiveAppRuleDeleteConfirmation, language: model.language)
     }
   }
 
@@ -550,6 +576,8 @@ extension SettingsView {
       L10n.string(.settingsFailedAudioRecoveryClear, language: model.language)
     case .benchmarkRecordingArchive:
       L10n.string(.settingsBenchmarkRecordingArchiveClear, language: model.language)
+    case .sensitiveAppRule:
+      L10n.privacyText(.deleteRule, language: model.language)
     }
   }
 
@@ -574,6 +602,11 @@ extension SettingsView {
         .settingsBenchmarkRecordingArchiveClearConfirmationDetail,
         language: model.language
       )
+    case .sensitiveAppRule:
+      L10n.settingsText(
+        .settingsSensitiveAppRuleDeleteConfirmationDetail,
+        language: model.language
+      )
     }
   }
 
@@ -589,6 +622,12 @@ extension SettingsView {
       model.clearFailedAudioRecoveries()
     case .benchmarkRecordingArchive:
       model.clearBenchmarkRecordingArchive()
+    case .sensitiveAppRule(let ruleID):
+      if let rule = model.privacyPolicySettings.sensitiveAppRules.first(where: {
+        $0.id == ruleID
+      }) {
+        deleteSensitiveAppRule(rule)
+      }
     }
   }
 
@@ -736,9 +775,7 @@ extension SettingsView {
       case .checking:
         .voiceSetupGlobalInputChecking
       case .available:
-        RecordPanelShortcutPresentationPolicy.globalInputReadyDetail(
-          systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled
-        )
+        .voiceSetupGlobalInputReady
       case .permissionRequired:
         .voiceSetupGlobalInputPermissionNeeded
       case .installationFailed:
@@ -823,5 +860,36 @@ extension SettingsView {
     case .warning: return .orange
     case .error: return .red
     }
+  }
+}
+
+/// Hover feedback for plain navigation rows in settings, mirroring
+/// RillCardButtonStyle's pointer acknowledgement as a quiet fill instead of
+/// a stroke so the row's layout inside the grouped form stays untouched.
+private struct SettingsNavigationRowButtonStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    SettingsNavigationRowButtonBody(configuration: configuration)
+  }
+}
+
+private struct SettingsNavigationRowButtonBody: View {
+  let configuration: ButtonStyleConfiguration
+
+  @State private var isHovering = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  var body: some View {
+    configuration.label
+      .background {
+        RoundedRectangle(cornerRadius: RillRadius.row, style: .continuous)
+          .fill(
+            .quaternary.opacity(isHovering ? RillCardProminence.regular.fillOpacity : 0)
+          )
+      }
+      .animation(
+        reduceMotion ? nil : .easeInOut(duration: 0.15),
+        value: isHovering
+      )
+      .onHover { isHovering = $0 }
   }
 }

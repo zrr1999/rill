@@ -336,7 +336,7 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
 
   private static func writePrivate(_ data: Data, to url: URL) throws {
     do {
-      try data.write(to: url, options: [.atomic, .completeFileProtection])
+      try data.write(to: url, options: [.atomic])
       guard chmod(url.path, S_IRUSR | S_IWUSR) == 0 else {
         throw BenchmarkRecordingArchiveError.storageUnavailable
       }

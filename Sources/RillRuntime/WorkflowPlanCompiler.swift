@@ -89,7 +89,7 @@ public struct WorkflowPlanCompiler: Sendable {
         input inputOverride: WorkflowPlanInput? = nil,
         allowEmptyOutput: Bool = false
     ) throws -> ResolvedWorkflowPlan {
-        let hasRecognitionStep = workflow.plan.process.steps.contains {
+        let hasRecognitionStep = workflow.plan.process.allSteps.contains {
             $0.kind == .recognizeSpeech
         }
         let inferredInput: WorkflowPlanInput =
@@ -97,10 +97,7 @@ public struct WorkflowPlanCompiler: Sendable {
         let input = inputOverride ?? inferredInput
         var validationPlan = workflow.plan
         if inputOverride == .text, inferredInput == .audio {
-            validationPlan.setup.speechRoute = nil
-            validationPlan.process.steps.removeAll {
-                $0.kind == .recognizeSpeech || $0.kind == .resolveUncertainty
-            }
+            validationPlan = validationPlan.acceptingTextInput()
         }
         do {
             try WorkflowPlanValidator.validate(
@@ -141,7 +138,7 @@ public struct WorkflowPlanCompiler: Sendable {
             throw WorkflowPlanCompilationError.missingVocabularyCollection(binding.collectionID)
         }
 
-        for step in workflow.plan.process.steps {
+        for step in workflow.plan.process.allSteps {
             guard let kind = step.kind.postProcessKind else { continue }
             guard transformerRegistry.transformer(for: kind) != nil else {
                 throw WorkflowPlanCompilationError.missingTransformer(kind)

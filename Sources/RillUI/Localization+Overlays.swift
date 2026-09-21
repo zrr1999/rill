@@ -6,6 +6,16 @@ extension L10n {
         overlayTextTable[key]?.string(for: language) ?? key.rawValue
     }
 
+    static func candidateSetTitle(_ ordinal: Int, language: AppLanguage) -> String {
+        String(format: overlayText(.candidateSetTitleFormat, language: language), ordinal)
+    }
+
+    /// Window and accessibility title of the live-subtitle floating panel.
+    /// Public because the panel controller lives in RillApp.
+    public static func liveSubtitlePanelTitle(language: AppLanguage) -> String {
+        overlayText(.liveSubtitlePanelTitle, language: language)
+    }
+
     static func liveSubtitleRemaining(_ remaining: String, language: AppLanguage) -> String {
         String(format: overlayText(.liveSubtitleRemainingFormat, language: language), remaining)
     }
@@ -15,6 +25,10 @@ extension L10n {
     }
 
     private static let overlayTextTable: [OverlayTextKey: LocalizedText] = [
+        .candidateSetTitleFormat: .init(
+            english: "Candidate %d",
+            simplifiedChinese: "候选 %d"
+        ),
         .correctionCreateScopedCollection: .init(
             english: "Create matching scoped collection",
             simplifiedChinese: "创建匹配条件的词库"
@@ -38,6 +52,10 @@ extension L10n {
         .liveSubtitleEscapeHint: .init(
             english: "Press Escape to cancel and discard",
             simplifiedChinese: "按 Escape 取消并丢弃"
+        ),
+        .liveSubtitlePanelTitle: .init(
+            english: "Rill Dictation",
+            simplifiedChinese: "Rill 语音输入"
         ),
         .liveSubtitleRecordedFormat: .init(
             english: "Recorded %@.",
@@ -91,12 +109,14 @@ extension L10n {
 }
 
 enum OverlayTextKey: String, CaseIterable, Sendable {
+    case candidateSetTitleFormat
     case correctionCreateScopedCollection
     case correctionSaveToCollection
     case correctionSettingsLoading
     case liveSubtitleContinueNoTimeLimit
     case liveSubtitleContinueWithoutLimitHelp
     case liveSubtitleEscapeHint
+    case liveSubtitlePanelTitle
     case liveSubtitleRecordedFormat
     case liveSubtitleRecordingJustStarted
     case liveSubtitleRemainingFormat

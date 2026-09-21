@@ -178,7 +178,7 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
       recognizerDurationProvider: { recognizerID in
         recognizerID == "toggle.recognizer" ? 20 : nil
       },
-      recordingCueAction: { cue in
+      recordingCueAction: { cue, _ in
         await cueOrderProbe.record(.cue(cue))
       }
     )

@@ -180,6 +180,10 @@ public final class SystemClipboardPort: Sendable {
             ?? descriptor.policySnapshot
     }
 
+    public func currentChangeCount() -> Int {
+        pasteboard.changeCount
+    }
+
     public func currentDescriptor() -> SystemClipboardDescriptor {
         let availableTypes = Set(pasteboard.types ?? [])
         return SystemClipboardDescriptor(

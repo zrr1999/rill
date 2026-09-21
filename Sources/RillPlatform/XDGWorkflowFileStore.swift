@@ -9,11 +9,13 @@ import TOML
 /// specification. Files are deliberately independent so they remain easy to
 /// hand-author, diff, copy and remove with ordinary tools.
 public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
-  public static let currentSchemaVersion = 1
+  public static let currentSchemaVersion = 2
   public static let maximumFileCount = 256
   public static let maximumFileSize = 1_048_576
 
   public let configurationDirectoryURL: URL
+  public let stateDirectoryURL: URL
+  private static let writer = WorkflowFileWriter()
 
   public init() {
     self.init(
@@ -26,6 +28,8 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     environment: [String: String],
     homeDirectoryURL: URL
   ) {
+    let stateBase = environment["XDG_STATE_HOME"].flatMap { $0.hasPrefix("/") ? URL(fileURLWithPath: $0, isDirectory: true) : nil } ?? homeDirectoryURL.appendingPathComponent(".local/state", isDirectory: true)
+    stateDirectoryURL = stateBase.appendingPathComponent("rill/workflows", isDirectory: true)
     let baseURL: URL
     if let configuredPath = environment["XDG_CONFIG_HOME"],
       !configuredPath.isEmpty,
@@ -44,21 +48,17 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
 
   public init(configurationDirectoryURL: URL) {
     self.configurationDirectoryURL = configurationDirectoryURL.standardizedFileURL
+    self.stateDirectoryURL = configurationDirectoryURL.deletingLastPathComponent().appendingPathComponent(".workflow-state", isDirectory: true)
   }
 
   public func load() async -> WorkflowFileLoadResult {
     let fileManager = FileManager.default
-    do {
-      try prepareConfigurationDirectory(fileManager: fileManager)
-    } catch {
-      return WorkflowFileLoadResult(
-        issues: [
-          WorkflowFileIssue(
-            filename: configurationDirectoryURL.lastPathComponent,
-            message: "The workflow configuration directory could not be prepared."
-          )
-        ]
-      )
+    var isDirectory: ObjCBool = false
+    guard fileManager.fileExists(atPath: configurationDirectoryURL.path, isDirectory: &isDirectory) else {
+      return WorkflowFileLoadResult()
+    }
+    guard isDirectory.boolValue else {
+      return WorkflowFileLoadResult(issues: [WorkflowFileIssue(filename: configurationDirectoryURL.lastPathComponent, message: "The workflow configuration path is not a directory.")])
     }
 
     let entries: [URL]
@@ -98,6 +98,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     }
 
     for fileURL in acceptedEntries {
+      var identifiedID: UUID?
       do {
         let values = try fileURL.resourceValues(forKeys: [
           .isRegularFileKey,
@@ -111,13 +112,15 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
           throw WorkflowFileStoreError.fileTooLarge
         }
         let source = try String(contentsOf: fileURL, encoding: .utf8)
+        identifiedID = Self.identifyWorkflow(source)
         let record = try Self.decode(source, fileURL: fileURL)
         records.append(record)
       } catch {
         issues.append(
           WorkflowFileIssue(
             filename: fileURL.lastPathComponent,
-            message: Self.safeMessage(for: error)
+            message: Self.safeMessage(for: error),
+            workflowID: identifiedID ?? UUID(uuidString: String(fileURL.deletingPathExtension().lastPathComponent.suffix(36)))
           )
         )
       }
@@ -132,7 +135,8 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
         issues.append(
           WorkflowFileIssue(
             filename: record.fileURL.lastPathComponent,
-            message: "The workflow ID is also declared by another TOML file."
+            message: "The workflow ID is also declared by another TOML file.",
+            workflowID: record.workflow.id
           )
         )
       }
@@ -152,26 +156,33 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     isEnabled: Bool,
     replacing fileURL: URL?
   ) async throws -> URL {
-    try Self.validate(workflow)
-    let fileManager = FileManager.default
-    try prepareConfigurationDirectory(fileManager: fileManager)
+    try await saveDocument(WorkflowDocument(workflow: workflow, isEnabled: isEnabled), replacing: fileURL, expected: fileURL == nil ? .missing : .overwrite).fileURL
+  }
 
-    let destinationURL: URL
-    if let fileURL {
-      destinationURL = try validatedDirectChild(fileURL)
-    } else {
-      destinationURL = configurationDirectoryURL.appendingPathComponent(
-        Self.filename(for: workflow),
-        isDirectory: false
-      )
-    }
-    let data = try Self.encode(workflow: workflow, isEnabled: isEnabled)
-    try data.write(to: destinationURL, options: [.atomic])
-    try fileManager.setAttributes(
-      [.posixPermissions: 0o600],
-      ofItemAtPath: destinationURL.path
-    )
-    return destinationURL
+  public func decodeDocument(_ source: String) throws -> WorkflowDocument { try WorkflowDocumentCodec().decode(source) }
+  public func encodeDocument(_ document: WorkflowDocument) throws -> String { try WorkflowDocumentCodec().encode(document) }
+
+  public func readSource(at fileURL: URL) async throws -> String {
+    let url = try validatedDirectChild(fileURL)
+    let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isRegularFileKey, .fileSizeKey])
+    guard values.isRegularFile == true, values.isSymbolicLink != true else { throw WorkflowFileStoreError.unsupportedFile }
+    guard values.fileSize ?? 0 <= Self.maximumFileSize else { throw WorkflowFileStoreError.fileTooLarge }
+    return try String(contentsOf: url, encoding: .utf8)
+  }
+
+  public func saveDocument(_ document: WorkflowDocument, replacing fileURL: URL?, expected: WorkflowFileExpectation) async throws -> WorkflowFileRecord {
+    let source = try encodeDocument(document)
+    let destination = try fileURL.map(validatedDirectChild) ?? configurationDirectoryURL.appendingPathComponent(Self.filename(for: document.workflow))
+    try await Self.writer.save(source: source, to: destination, expected: expected, historyDirectory: stateDirectoryURL.appendingPathComponent(document.workflow.id.uuidString))
+    return WorkflowFileRecord(workflow: document.workflow, isEnabled: document.isEnabled, fileURL: destination, source: source)
+  }
+
+  public func changes() async -> AsyncStream<Void> {
+    await WorkflowDirectoryObserver.changes(in: configurationDirectoryURL)
+  }
+
+  public func versions(for workflowID: UUID) async throws -> [WorkflowFileVersion] {
+    try await Self.writer.versions(in: stateDirectoryURL.appendingPathComponent(workflowID.uuidString))
   }
 
   public func delete(fileURL: URL) async throws {
@@ -190,57 +201,12 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     workflow: WorkflowDefinition,
     isEnabled: Bool
   ) throws -> Data {
-    try validate(workflow)
-    let encoder = TOMLEncoder()
-    encoder.outputFormatting = .sortedKeys
-    return try encoder.encode(WorkflowTOMLDocument(workflow: workflow, enabled: isEnabled))
+    Data(try WorkflowDocumentCodec().encode(WorkflowDocument(workflow: workflow, isEnabled: isEnabled)).utf8)
   }
 
-  public static func decode(
-    _ source: String,
-    fileURL: URL = URL(fileURLWithPath: "workflow.toml")
-  ) throws -> WorkflowFileRecord {
-    guard source.utf8.count <= maximumFileSize else {
-      throw WorkflowFileStoreError.fileTooLarge
-    }
-    let decoder = TOMLDecoder()
-    decoder.limits.maxInputSize = maximumFileSize
-    decoder.limits.maxDepth = 32
-    decoder.limits.maxTableKeys = 1_024
-    decoder.limits.maxArrayLength = 1_024
-    let document = try decoder.decode(WorkflowTOMLDocument.self, from: source)
-    guard document.schemaVersion == currentSchemaVersion else {
-      throw WorkflowFileStoreError.unsupportedSchema(document.schemaVersion)
-    }
-    let workflow = try document.workflow()
-    try validate(workflow)
-    return WorkflowFileRecord(
-      workflow: workflow,
-      isEnabled: document.enabled,
-      fileURL: fileURL
-    )
-  }
-
-  private func prepareConfigurationDirectory(fileManager: FileManager) throws {
-    var isDirectory: ObjCBool = false
-    if fileManager.fileExists(
-      atPath: configurationDirectoryURL.path,
-      isDirectory: &isDirectory
-    ) {
-      guard isDirectory.boolValue else {
-        throw WorkflowFileStoreError.configurationPathIsNotDirectory
-      }
-    } else {
-      try fileManager.createDirectory(
-        at: configurationDirectoryURL,
-        withIntermediateDirectories: true,
-        attributes: [.posixPermissions: 0o700]
-      )
-    }
-    try fileManager.setAttributes(
-      [.posixPermissions: 0o700],
-      ofItemAtPath: configurationDirectoryURL.path
-    )
+  public static func decode(_ source: String, fileURL: URL = URL(fileURLWithPath: "workflow.toml")) throws -> WorkflowFileRecord {
+    let document = try WorkflowDocumentCodec().decode(source)
+    return WorkflowFileRecord(workflow: document.workflow, isEnabled: document.isEnabled, fileURL: fileURL, source: source)
   }
 
   private func validatedDirectChild(_ fileURL: URL) throws -> URL {
@@ -256,7 +222,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     return standardized
   }
 
-  private static func validate(_ workflow: WorkflowDefinition) throws {
+  static func validate(_ workflow: WorkflowDefinition) throws {
     let name = workflow.name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !name.isEmpty, name.unicodeScalars.count <= 160 else {
       throw WorkflowFileStoreError.invalidWorkflow("The workflow name is empty or too long.")
@@ -273,6 +239,17 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
       throw WorkflowFileStoreError.invalidWorkflow(error.localizedDescription)
     }
     for action in workflow.plan.output.actions {
+      if action.id == ExternalOutputActionID.shortcutsRun {
+        guard let name = action.configuration[ExternalOutputActionConfigurationKey.shortcutName],
+              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+          throw WorkflowDocumentError("output.actions.config.shortcuts.name", "A Shortcut name is required.")
+        }
+      }
+      if action.id == ExternalOutputActionID.markdownAppend {
+        guard let path = action.configuration[ExternalOutputActionConfigurationKey.markdownAppendPath], path.hasPrefix("/") else {
+          throw WorkflowDocumentError("output.actions.config.markdown.append.path", "An absolute Markdown file path is required.")
+        }
+      }
       guard action.id != ExternalOutputActionID.webhookPost else {
         throw WorkflowFileStoreError.invalidWorkflow(
           "Plaintext webhook workflows are not accepted."
@@ -288,6 +265,19 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
         )
       }
     }
+  }
+
+  private static func identifyWorkflow(_ source: String) -> UUID? {
+    // Read only the root header; a malformed later step must not reactivate a built-in override.
+    for line in source.split(separator: "\n") {
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      if trimmed.hasPrefix("[") { break }
+      guard let match = trimmed.range(of: #"^id\s*=\s*["'][0-9A-Fa-f-]{36}["']"#, options: .regularExpression) else { continue }
+      let declaration = String(trimmed[match])
+      guard let quote = declaration.firstIndex(where: { $0 == "\"" || $0 == "'" }) else { continue }
+      return UUID(uuidString: String(declaration[declaration.index(after: quote)...].prefix(36)))
+    }
+    return nil
   }
 
   private static func filename(for workflow: WorkflowDefinition) -> String {
@@ -316,7 +306,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
   }
 }
 
-private enum WorkflowFileStoreError: Error, LocalizedError {
+enum WorkflowFileStoreError: Error, LocalizedError {
   case configurationPathIsNotDirectory
   case fileOutsideConfigurationDirectory
   case unsupportedFile
@@ -342,7 +332,7 @@ private enum WorkflowFileStoreError: Error, LocalizedError {
   }
 }
 
-private struct WorkflowTOMLDocument: Codable {
+struct WorkflowTOMLDocument: Codable {
   var schemaVersion: Int
   var enabled: Bool
   var id: UUID
@@ -368,7 +358,7 @@ private struct WorkflowTOMLDocument: Codable {
   }
 
   init(workflow: WorkflowDefinition, enabled: Bool) {
-    schemaVersion = XDGWorkflowFileStore.currentSchemaVersion
+    schemaVersion = 1
     self.enabled = enabled
     id = workflow.id
     name = workflow.name
@@ -440,7 +430,7 @@ private struct WorkflowTOMLDocument: Codable {
   }
 }
 
-private struct WorkflowTOMLUI: Codable {
+struct WorkflowTOMLUI: Codable {
   var symbol: String
   var accent: String
 
@@ -454,7 +444,7 @@ private struct WorkflowTOMLUI: Codable {
   }
 }
 
-private struct WorkflowTOMLSetup: Codable {
+struct WorkflowTOMLSetup: Codable {
   var speech: WorkflowTOMLSpeechRoute?
   var vocabulary: [WorkflowTOMLVocabularyBinding]
   var wakeWord: WorkflowTOMLWakeWord?
@@ -506,7 +496,7 @@ private struct WorkflowTOMLSetup: Codable {
   }
 }
 
-private struct WorkflowTOMLSpeechRoute: Codable {
+struct WorkflowTOMLSpeechRoute: Codable {
   var selection: String
   var recognizer: String
   var language: String?
@@ -585,7 +575,7 @@ private struct WorkflowTOMLSpeechRoute: Codable {
   }
 }
 
-private struct WorkflowTOMLVocabularyBinding: Codable {
+struct WorkflowTOMLVocabularyBinding: Codable {
   var id: UUID
   var collection: UUID
   var uses: [String]
@@ -618,7 +608,7 @@ private struct WorkflowTOMLVocabularyBinding: Codable {
   }
 }
 
-private struct WorkflowTOMLBindingCondition: Codable {
+struct WorkflowTOMLBindingCondition: Codable {
   var appBundleID: String?
   var clipboardGroup: UUID?
   var locale: String?
@@ -644,7 +634,7 @@ private struct WorkflowTOMLBindingCondition: Codable {
   }
 }
 
-private struct WorkflowTOMLWakeWord: Codable {
+struct WorkflowTOMLWakeWord: Codable {
   var phrases: [String]
 
   init(configuration: WakeWordConfiguration) {
@@ -656,7 +646,7 @@ private struct WorkflowTOMLWakeWord: Codable {
   }
 }
 
-private struct WorkflowTOMLProcessStep: Codable {
+struct WorkflowTOMLProcessStep: Codable {
   var id: UUID
   var kind: String
   var prompt: String?
@@ -684,7 +674,7 @@ private struct WorkflowTOMLProcessStep: Codable {
   }
 }
 
-private struct WorkflowTOMLUncertainty: Codable {
+struct WorkflowTOMLUncertainty: Codable {
   var mode: String
   var confidenceThreshold: Double
   var timeoutSeconds: Double
@@ -715,7 +705,7 @@ private struct WorkflowTOMLUncertainty: Codable {
   }
 }
 
-private struct WorkflowTOMLOutput: Codable {
+struct WorkflowTOMLOutput: Codable {
   var strategy: String
   var actions: [WorkflowTOMLAction]
 
@@ -737,7 +727,7 @@ private struct WorkflowTOMLOutput: Codable {
   }
 }
 
-private struct WorkflowTOMLAction: Codable {
+struct WorkflowTOMLAction: Codable {
   var id: String
   var config: [String: String]
 
@@ -769,7 +759,7 @@ private struct WorkflowTOMLAction: Codable {
   }
 }
 
-private extension TriggerBinding {
+extension TriggerBinding {
   var tomlValue: String {
     switch self {
     case .manual: "manual"
@@ -790,7 +780,7 @@ private extension TriggerBinding {
   }
 }
 
-private extension VocabularyBindingUse {
+extension VocabularyBindingUse {
   var tomlValue: String {
     switch self {
     case .recognitionHints: "recognition-hints"
@@ -807,7 +797,7 @@ private extension VocabularyBindingUse {
   }
 }
 
-private extension WorkflowProcessStepKind {
+extension WorkflowProcessStepKind {
   var tomlValue: String {
     switch self {
     case .recognizeSpeech: "recognize-speech"
@@ -817,6 +807,7 @@ private extension WorkflowProcessStepKind {
     case .llmRewrite: "llm-rewrite"
     case .llmAnswer: "llm-answer"
     case .normalizeWhitespace: "normalize-whitespace"
+    case .conditional: "if"
     }
   }
 
@@ -829,12 +820,13 @@ private extension WorkflowProcessStepKind {
     case "llm-rewrite": self = .llmRewrite
     case "llm-answer": self = .llmAnswer
     case "normalize-whitespace": self = .normalizeWhitespace
+    case "if": self = .conditional
     default: return nil
     }
   }
 }
 
-private extension ResolutionMode {
+extension ResolutionMode {
   var tomlValue: String {
     switch self {
     case .off: "off"
@@ -853,7 +845,7 @@ private extension ResolutionMode {
   }
 }
 
-private extension DeliveryStrategy {
+extension DeliveryStrategy {
   var tomlValue: String {
     switch self {
     case .immediate: "immediate"

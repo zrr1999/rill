@@ -303,8 +303,8 @@ public enum L10n {
       simplifiedChinese: "打开 Rill 主窗口"
     ),
     .menuPasteIntoApp: .init(
-      english: "Type Directly into Current App",
-      simplifiedChinese: "直接输入到当前 App"
+      english: "Type into Current App and Save Record",
+      simplifiedChinese: "输入到当前 App 并记录"
     ),
     .menuDeliverNextRecord: .init(
       english: "Paste Top Clipboard Queue Item",
@@ -327,8 +327,8 @@ public enum L10n {
       simplifiedChinese: "开启剪贴板捕获"
     ),
     .menuSaveToVoiceGroup: .init(
-      english: "Save to Voice Clipboard Group",
-      simplifiedChinese: "保存到语音剪贴板组"
+      english: "Save Voice Record Only",
+      simplifiedChinese: "仅保存语音记录"
     ),
     .menuSpeechEngine: .init(
       english: "Recognition Engine",
@@ -548,8 +548,8 @@ public enum L10n {
       simplifiedChinese: "词汇与映射词"
     ),
     .settingsOpenAIAPIKey: .init(
-      english: "OpenAI API Key",
-      simplifiedChinese: "OpenAI API Key"
+      english: "API Key",
+      simplifiedChinese: "API Key"
     ),
     .settingsOpenAIAvailable: .init(
       english: "API key saved in Keychain",
@@ -565,8 +565,8 @@ public enum L10n {
     ),
     .settingsOpenAIDescription: .init(
       english:
-        "Uses an OpenAI-compatible Responses API for built-in and custom voice workflow text steps.",
-      simplifiedChinese: "使用兼容 OpenAI Responses API 的服务，为内置和自定义语音工作流提供大模型文本步骤。"
+        "One OpenAI-compatible Responses API configuration for Smart Cleanup, voice assistant answers, and custom text workflows.",
+      simplifiedChinese: "智能整理、语音助手回答和自定义文本工作流共用一套 OpenAI-compatible Responses API 配置。"
     ),
     .settingsOpenAIEndpointHint: .init(
       english:
@@ -574,8 +574,8 @@ public enum L10n {
       simplifiedChinese: "API Key 与转写正文会发送到该地址。请使用 HTTPS；仅回环地址允许明文 HTTP。"
     ),
     .settingsOpenAIInaccessible: .init(
-      english: "OpenAI credential storage is unavailable.",
-      simplifiedChinese: "OpenAI 凭据存储不可用。"
+      english: "LLM Provider credential storage is unavailable.",
+      simplifiedChinese: "LLM Provider 凭据存储不可用。"
     ),
     .settingsOpenAIMissing: .init(
       english: "Add an API key to enable text polishing.",
@@ -590,8 +590,8 @@ public enum L10n {
       simplifiedChinese: "正在安全保存 API Key…"
     ),
     .settingsOpenAITitle: .init(
-      english: "OpenAI Text Polishing",
-      simplifiedChinese: "OpenAI 文本润色"
+      english: "LLM Provider",
+      simplifiedChinese: "LLM Provider"
     ),
     .settingsOpenAITranscriptOnlyHint: .init(
       english:
@@ -604,16 +604,16 @@ public enum L10n {
       simplifiedChinese: "验证失败。请检查地址、模型 ID、API Key、网络和账号额度。"
     ),
     .settingsOpenAIVerificationSucceeded: .init(
-      english: "OpenAI configuration verified.",
-      simplifiedChinese: "OpenAI 配置验证成功。"
+      english: "LLM Provider configuration verified.",
+      simplifiedChinese: "LLM Provider 配置验证成功。"
     ),
     .settingsOpenAIVerify: .init(
       english: "Verify Configuration",
       simplifiedChinese: "验证配置"
     ),
     .settingsOpenAIVerifying: .init(
-      english: "Verifying OpenAI configuration…",
-      simplifiedChinese: "正在验证 OpenAI 配置…"
+      english: "Verifying LLM Provider configuration…",
+      simplifiedChinese: "正在验证 LLM Provider 配置…"
     ),
     .settingsLongRecordingMode: .init(
       english: "Toggle recording hotkey mode",
@@ -854,6 +854,10 @@ public enum L10n {
       return "Clean Input"
     case (.cleanInput, .simplifiedChinese):
       return "干净输入"
+    case (.smartCleanup, .english):
+      return "Smart Cleanup"
+    case (.smartCleanup, .simplifiedChinese):
+      return "智能整理"
     case (.formalWriting, .english):
       return "Formal Writing"
     case (.formalWriting, .simplifiedChinese):
@@ -894,6 +898,10 @@ public enum L10n {
       return "Clean spacing and line breaks without rewriting meaning."
     case (.cleanInput, .simplifiedChinese):
       return "整理空格和换行，不改写含义。"
+    case (.smartCleanup, .english):
+      return "Correct transcription errors and organize paragraphs and lists without losing information."
+    case (.smartCleanup, .simplifiedChinese):
+      return "纠正识别错误，整理段落和列表，保留所有实质信息。"
     case (.formalWriting, .english):
       return "Rewrite into a concise polished draft while preserving meaning."
     case (.formalWriting, .simplifiedChinese):
@@ -992,15 +1000,15 @@ public enum L10n {
       PrivacySettingsTextKey.automaticRouteHint: .init(
         english: "Global engine; cloud may confirm.", simplifiedChinese: "全局引擎；云端可能确认。"),
       PrivacySettingsTextKey.cloudConfirmation: .init(
-        english: "Confirm cloud", simplifiedChinese: "确认云端"),
+        english: "Ask before cloud processing", simplifiedChinese: "云端处理前询问"),
       PrivacySettingsTextKey.bundleIdentifier: .init(
         english: "Bundle identifier (for example, com.example.Vault)",
         simplifiedChinese: "Bundle ID（例如 com.example.Vault）"),
       PrivacySettingsTextKey.cancelEdit: .init(english: "Cancel", simplifiedChinese: "取消"),
       PrivacySettingsTextKey.cloudConfirmationDescription: .init(
         english:
-          "Cloud text processing can send selected context off this Mac; restricted apps and stricter privacy settings block those runs.",
-        simplifiedChinese: "云端文本处理可能把所选上下文发送到本机之外；受限 App 与更严格的隐私设置会阻止这些运行。"),
+          "Choose Allow and Remember at the first prompt to skip future prompts for the same workflow and service configuration. Restricted apps and stricter privacy settings still block those runs.",
+        simplifiedChinese: "首次询问时选择“允许并记住”，同一工作流和服务配置下不再重复弹窗。受限 App 与更严格的隐私设置仍会阻止运行。"),
       PrivacySettingsTextKey.cloudAlwaysAllowed: .init(
         english: "Always-allowed workflows", simplifiedChinese: "永久允许的工作流"),
       PrivacySettingsTextKey.cloudAlwaysAllowedDescription: .init(
@@ -1280,6 +1288,7 @@ extension UIStrings {
       ),
       .rawInput: .init(english: "Raw Input", simplifiedChinese: "原样输入"),
       .cleanInput: .init(english: "Clean Input", simplifiedChinese: "干净输入"),
+      .smartCleanup: .init(english: "Smart Cleanup", simplifiedChinese: "智能整理"),
       .formalWriting: .init(english: "Formal Writing", simplifiedChinese: "正式写作"),
       .translateInput: .init(english: "Translate Input", simplifiedChinese: "翻译输入"),
       .commandMode: .init(english: "Command Mode", simplifiedChinese: "命令模式"),
@@ -1593,13 +1602,13 @@ extension UIStrings {
   ) -> String {
     switch (language, mode) {
     case (.english, .pasteIntoApp):
-      return "Type into App"
+      return "Type into App and Save Record"
     case (.simplifiedChinese, .pasteIntoApp):
-      return "直接输入"
+      return "输入并记录"
     case (.english, .saveToVoiceGroup):
-      return "Save to Speech Recognition Group"
+      return "Save Voice Record Only"
     case (.simplifiedChinese, .saveToVoiceGroup):
-      return "保存到语音识别组"
+      return "仅保存语音记录"
     }
   }
 }

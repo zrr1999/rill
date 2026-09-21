@@ -121,7 +121,9 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         }
 
         init?(workflow: WorkflowDefinition) {
-            switch workflow.plan.output.actions.first?.id {
+            let primaryAction = workflow.plan.output.actions.first { $0.id != RecordActionID.store }
+                ?? workflow.plan.output.actions.first
+            switch primaryAction?.id {
             case "focused-application.insert":
                 self = .pasteIntoApp
             case "system-clipboard.copy":
@@ -346,7 +348,8 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
             workflow.metadata[WorkflowMetadataKey.streamingProfile]
             ?? (workflow.trigger == .wakeWord ? "agent" : "realtime")
         self.targetGroupID = workflow.targetRecordCollectionIDs.first?.rawValue
-        let outputConfiguration = workflow.plan.output.actions.first?.configuration ?? [:]
+        let outputConfiguration = workflow.plan.output.actions
+            .first { $0.id == destination.outputActionID }?.configuration ?? [:]
         self.webhookURL = outputConfiguration[ExternalOutputActionConfigurationKey.webhookURL] ?? ""
         self.webhookHeadersJSON = outputConfiguration[ExternalOutputActionConfigurationKey.webhookHeadersJSON] ?? ""
         self.shortcutName = outputConfiguration[ExternalOutputActionConfigurationKey.shortcutName] ?? ""

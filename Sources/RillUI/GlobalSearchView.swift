@@ -2,7 +2,10 @@ import AppKit
 import SwiftUI
 
 struct GlobalSearchResultsView: View {
+    private static let emptyStateMinHeight: CGFloat = 320
+
     @AccessibilityFocusState private var accessibilityFocusedResultID: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var query: String
     let results: [GlobalSearchResult]
     let selectedResultID: String?
@@ -36,13 +39,17 @@ struct GlobalSearchResultsView: View {
 
                 Button(GlobalSearchText.cancel(language: language), action: onCancel)
                     .buttonStyle(.borderless)
+                    .keyboardShortcut(.cancelAction)
+                    .help(GlobalSearchText.cancelHelp(language: language))
                     .accessibilityIdentifier("global-search.cancel")
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, RillSpacing.section)
             .padding(.vertical, 14)
 
             Divider()
 
+            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Group {
             if historySearchState == .searching {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -52,7 +59,7 @@ struct GlobalSearchResultsView: View {
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, RillSpacing.section)
                 .padding(.vertical, 8)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("global-search.history.loading")
@@ -75,9 +82,13 @@ struct GlobalSearchResultsView: View {
                     .accessibilityIdentifier("global-search.history.retry")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, RillSpacing.section)
                 .padding(.vertical, 8)
                 .accessibilityIdentifier("global-search.history.error")
+            }
+                    else { Color.clear.frame(height: 32).accessibilityHidden(true) }
+                }
+                .frame(minHeight: 32)
             }
 
             ScrollViewReader { proxy in
@@ -90,10 +101,14 @@ struct GlobalSearchResultsView: View {
                                 GlobalSearchText.noResultsDescription(language: language)
                             )
                         )
-                        .frame(maxWidth: .infinity, minHeight: 320)
+                        .frame(maxWidth: .infinity, minHeight: Self.emptyStateMinHeight)
                         .accessibilityIdentifier("global-search.empty")
+                        if !query.isEmpty {
+                            Button(L10n.presentation(.clearSearch, language: language)) { query = "" }
+                                .buttonStyle(.borderless)
+                        }
                     } else {
-                        LazyVStack(alignment: .leading, spacing: 22) {
+                        LazyVStack(alignment: .leading, spacing: RillSpacing.section) {
                             if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                 Text(GlobalSearchText.quickDestinations(language: language))
                                     .font(.title2.weight(.semibold))
@@ -107,7 +122,7 @@ struct GlobalSearchResultsView: View {
                                 }
                             }
                         }
-                        .padding(24)
+                        .padding(RillSpacing.page)
                     }
                 }
                 .accessibilityIdentifier("global-search.results")
@@ -115,13 +130,33 @@ struct GlobalSearchResultsView: View {
                     guard let selectedID else { return }
                     // Navigation scroll, not decorative motion: keep the fixed
                     // duration easing so result positioning stays predictable.
-                    withAnimation(.easeInOut(duration: 0.12)) {
+                    if reduceMotion {
                         proxy.scrollTo(selectedID, anchor: .center)
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.12)) {
+                            proxy.scrollTo(selectedID, anchor: .center)
+                        }
                     }
                 }
             }
         }
         .background(.background)
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.15),
+            value: historySearchState
+        )
+        .onKeyPress(.escape) {
+            onCancel()
+            return .handled
+        }
+        .onKeyPress(.upArrow) {
+            onMoveSelection(-1)
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            onMoveSelection(1)
+            return .handled
+        }
         .onChange(of: selectedResultID) { _, selectedID in
             accessibilityFocusedResultID = selectedID
         }
@@ -172,6 +207,7 @@ private struct GlobalSearchField: NSViewRepresentable {
         field.sendsSearchStringImmediately = true
         field.sendsWholeSearchString = false
         field.setAccessibilityIdentifier("global-search.field")
+        field.setAccessibilityLabel(prompt)
         return field
     }
 
@@ -181,6 +217,7 @@ private struct GlobalSearchField: NSViewRepresentable {
             field.stringValue = text
         }
         field.placeholderString = prompt
+        field.setAccessibilityLabel(prompt)
         field.onMoveSelection = onMoveSelection
         field.onSubmit = onSubmit
         field.onCancelSearch = onCancel
@@ -268,6 +305,8 @@ private final class KeyRoutingSearchField: NSSearchField {
 }
 
 private struct GlobalSearchResultRow: View {
+    private static let iconSize: CGFloat = 24
+
     let result: GlobalSearchResult
     let isSelected: Bool
     let onHighlight: (String) -> Void
@@ -277,9 +316,9 @@ private struct GlobalSearchResultRow: View {
         Button {
             onSelect(result.destination)
         } label: {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: RillSpacing.card) {
                 Image(systemName: result.symbolName)
-                    .frame(width: 24, height: 24)
+                    .frame(width: Self.iconSize, height: Self.iconSize)
                     .foregroundStyle(.tint)
                     .accessibilityHidden(true)
 
@@ -287,10 +326,12 @@ private struct GlobalSearchResultRow: View {
                     Text(result.title)
                         .font(.body.weight(.semibold))
                         .foregroundStyle(.primary)
+                        .lineLimit(1)
                     if let detail = result.detail {
                         Text(detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                     if let preview = result.preview {
                         Text(preview)
@@ -305,12 +346,12 @@ private struct GlobalSearchResultRow: View {
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }
-            .padding(12)
+            .padding(RillSpacing.card)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .rillSelection(isSelected, cornerRadius: 12)
+        .rillSelection(isSelected, cornerRadius: RillRadius.section)
         .onHover { isHovered in
             if isHovered {
                 onHighlight(result.id)

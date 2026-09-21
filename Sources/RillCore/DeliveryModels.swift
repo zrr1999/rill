@@ -44,28 +44,72 @@ public struct ActionContext: Sendable, Equatable {
     }
 }
 
-/// The minimal retained input provenance for a completed voice run.
-///
-/// This deliberately excludes the full recognition result and captured application
-/// context so run history does not retain unrelated recognition or foreground-app data.
-/// Ordered LLM inputs are optional for backward compatibility and remain inside the
-/// same encrypted, privacy-gated history payload as vocabulary-correction provenance.
+/// One executed text-processing step, retained in encrypted activity history.
+public struct WorkflowTextStep: Codable, Sendable, Equatable {
+    public let kind: WorkflowProcessStepKind
+    public let result: WorkflowStepResultCode
+    public let outputText: String?
+    public let didChange: Bool?
+    public let tokenUsage: LanguageModelTokenUsage?
+
+    public init(
+        kind: WorkflowProcessStepKind,
+        result: WorkflowStepResultCode = .completed,
+        outputText: String? = nil,
+        didChange: Bool? = nil,
+        tokenUsage: LanguageModelTokenUsage? = nil
+    ) {
+        self.kind = kind
+        self.result = result
+        self.outputText = outputText
+        self.didChange = didChange
+        self.tokenUsage = tokenUsage
+    }
+}
+
+/// Voice-run provenance and ordered text results. Optional traces preserve
+/// compatibility with older history and exclude credentials and captured app content.
 public struct RecognitionCorrectionSource: Codable, Sendable, Equatable {
     public var preMappingText: String
     public var context: VocabularyRuleContext
     public var languageModelInputTexts: [String]?
     public var languageModelTraces: [LanguageModelTrace]?
+    public var processingSteps: [WorkflowTextStep]?
 
     public init(
         preMappingText: String,
         context: VocabularyRuleContext,
         languageModelInputTexts: [String]? = nil,
-        languageModelTraces: [LanguageModelTrace]? = nil
+        languageModelTraces: [LanguageModelTrace]? = nil,
+        processingSteps: [WorkflowTextStep]? = nil
     ) {
         self.preMappingText = preMappingText
         self.context = context
         self.languageModelInputTexts = languageModelInputTexts
         self.languageModelTraces = languageModelTraces
+        self.processingSteps = processingSteps
+    }
+
+    /// Restricted activity exposes step previews, never prompts or captured context.
+    public var restrictedStepPreview: RecognitionCorrectionSource? {
+        guard let processingSteps, !processingSteps.isEmpty else { return nil }
+        return RecognitionCorrectionSource(
+            preMappingText: "",
+            context: VocabularyRuleContext(),
+            processingSteps: processingSteps.map { step in
+                WorkflowTextStep(
+                    kind: step.kind,
+                    result: step.result,
+                    outputText: step.outputText.map {
+                        RecordTextFormatting.previewText(
+                            $0, limit: RunHistoryContentAccess.restrictedPreviewCharacterLimit
+                        )
+                    },
+                    didChange: step.didChange,
+                    tokenUsage: step.tokenUsage
+                )
+            }
+        )
     }
 }
 

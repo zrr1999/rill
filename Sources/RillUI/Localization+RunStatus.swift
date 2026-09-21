@@ -152,12 +152,12 @@ extension L10n {
             simplifiedChinese: "本地历史维护服务不可用，没有移除任何历史记录。"
         ),
         .openAISettingsAvailableAgain: .init(
-            english: "OpenAI settings and credential access are available again.",
-            simplifiedChinese: "OpenAI 设置与凭据访问已恢复。"
+            english: "LLM Provider settings and credential access are available again.",
+            simplifiedChinese: "LLM Provider 设置与凭据访问已恢复。"
         ),
         .openAISettingsStillUnavailable: .init(
-            english: "OpenAI settings or credential access are still unavailable.",
-            simplifiedChinese: "OpenAI 设置或凭据访问仍不可用。"
+            english: "LLM Provider settings or credential access are still unavailable.",
+            simplifiedChinese: "LLM Provider 设置或凭据访问仍不可用。"
         ),
         .privacyLoadBlocked: .init(
             english: "Privacy settings could not be loaded. Privacy-related capture and cloud processing remain blocked.",

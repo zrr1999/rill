@@ -192,9 +192,11 @@ extension L10n {
         }
     }
 
-    static func openAIModelLabel(_ selection: OpenAIModelSelection, language: AppLanguage) -> String
+    static func llmModelLabel(_ selection: LLMModelSelection, language: AppLanguage) -> String
     {
         switch selection {
+        case .deepSeek:
+            "DeepSeek V4.1 Flash"
         case .luna:
             settingsText(.settingsOpenAIModelLuna, language: language)
         case .terra:
@@ -274,6 +276,82 @@ extension L10n {
         .settingsGroupVoiceAndModels: .init(
             english: "Voice & Models",
             simplifiedChinese: "语音与模型"
+        ),
+        .settingsHotkeyKeyClear: .init(
+            english: "Clear",
+            simplifiedChinese: "清除"
+        ),
+        .settingsHotkeyKeyDelete: .init(
+            english: "Delete",
+            simplifiedChinese: "删除"
+        ),
+        .settingsHotkeyKeyDown: .init(
+            english: "↓",
+            simplifiedChinese: "下"
+        ),
+        .settingsHotkeyKeyEnd: .init(
+            english: "End",
+            simplifiedChinese: "行尾"
+        ),
+        .settingsHotkeyKeyEnter: .init(
+            english: "Enter",
+            simplifiedChinese: "小键盘回车"
+        ),
+        .settingsHotkeyKeyEsc: .init(
+            english: "Esc",
+            simplifiedChinese: "退出"
+        ),
+        .settingsHotkeyKeyForwardDelete: .init(
+            english: "Forward Delete",
+            simplifiedChinese: "向前删除"
+        ),
+        .settingsHotkeyKeyHelp: .init(
+            english: "Help",
+            simplifiedChinese: "帮助"
+        ),
+        .settingsHotkeyKeyHome: .init(
+            english: "Home",
+            simplifiedChinese: "行首"
+        ),
+        .settingsHotkeyKeyLeft: .init(
+            english: "←",
+            simplifiedChinese: "左"
+        ),
+        .settingsHotkeyKeyPageDown: .init(
+            english: "Page Down",
+            simplifiedChinese: "下翻页"
+        ),
+        .settingsHotkeyKeyPageUp: .init(
+            english: "Page Up",
+            simplifiedChinese: "上翻页"
+        ),
+        .settingsHotkeyKeyReturn: .init(
+            english: "Return",
+            simplifiedChinese: "回车"
+        ),
+        .settingsHotkeyKeyRight: .init(
+            english: "→",
+            simplifiedChinese: "右"
+        ),
+        .settingsHotkeyKeySpace: .init(
+            english: "Space",
+            simplifiedChinese: "空格"
+        ),
+        .settingsHotkeyKeyTab: .init(
+            english: "Tab",
+            simplifiedChinese: "制表"
+        ),
+        .settingsHotkeyKeyUnknownFormat: .init(
+            english: "Key %d",
+            simplifiedChinese: "按键 %d"
+        ),
+        .settingsHotkeyKeyUp: .init(
+            english: "↑",
+            simplifiedChinese: "上"
+        ),
+        .settingsHotkeyResetHelp: .init(
+            english: "Clears the bound shortcut and restores the default.",
+            simplifiedChinese: "清除已绑定的快捷键并恢复默认。"
         ),
         .settingsKeepResident: .init(
             english: "Keep resident",
@@ -464,6 +542,26 @@ extension L10n {
             english: "Save phrases",
             simplifiedChinese: "保存短语"
         ),
+        .settingsSensitiveAppRuleDeleteConfirmation: .init(
+            english: "Delete this sensitive-app rule?",
+            simplifiedChinese: "删除这条敏感应用规则？"
+        ),
+        .settingsSensitiveAppRuleDeleteConfirmationDetail: .init(
+            english: "The app will no longer be treated as privacy-sensitive.",
+            simplifiedChinese: "该应用将不再按敏感应用处理。"
+        ),
+        .settingsSensitiveAppRulesEmpty: .init(
+            english: "No sensitive-app rules yet.",
+            simplifiedChinese: "还没有敏感应用规则。"
+        ),
+        .settingsSpeechModelCapabilitySTT: .init(
+            english: "STT",
+            simplifiedChinese: "语音识别"
+        ),
+        .settingsSpeechModelCapabilityTTS: .init(
+            english: "TTS",
+            simplifiedChinese: "语音合成"
+        ),
         .settingsSpeechModelEnablementDetail: .init(
             english:
                 "Models are enabled here; each workflow chooses its STT model, TTS model, voice, language, prompt, and streaming style.",
@@ -524,8 +622,8 @@ extension L10n {
         ),
         .settingsThirdPartyOpenAIHint: .init(
             english:
-                "Verification uses the exact model ID shown above. Third-party providers must expose gpt-5.6-luna for the Luna preset to succeed.",
-            simplifiedChinese: "验证会使用上方显示的准确模型 ID。使用 Luna 预设时，第三方服务必须实际开放 gpt-5.6-luna。"
+                "Verification uses the configured endpoint, key and exact model ID shown above. Choose a model offered by that provider.",
+            simplifiedChinese: "验证使用当前地址、API Key 和上方显示的准确模型 ID。请选择该服务实际提供的模型。"
         ),
         .settingsUseHardwareRecommendation: .init(
             english: "Use hardware recommendation",
@@ -667,6 +765,25 @@ enum SettingsTextKey: String, CaseIterable, Sendable {
     case settingsGroupFeaturesAndPersonalization
     case settingsGroupPrivacyAndData
     case settingsGroupVoiceAndModels
+    case settingsHotkeyKeyClear
+    case settingsHotkeyKeyDelete
+    case settingsHotkeyKeyDown
+    case settingsHotkeyKeyEnd
+    case settingsHotkeyKeyEnter
+    case settingsHotkeyKeyEsc
+    case settingsHotkeyKeyForwardDelete
+    case settingsHotkeyKeyHelp
+    case settingsHotkeyKeyHome
+    case settingsHotkeyKeyLeft
+    case settingsHotkeyKeyPageDown
+    case settingsHotkeyKeyPageUp
+    case settingsHotkeyKeyReturn
+    case settingsHotkeyKeyRight
+    case settingsHotkeyKeySpace
+    case settingsHotkeyKeyTab
+    case settingsHotkeyKeyUnknownFormat
+    case settingsHotkeyKeyUp
+    case settingsHotkeyResetHelp
     case settingsKeepResident
     case settingsLLMCredentialInaccessible
     case settingsLLMCredentialMissing
@@ -714,6 +831,11 @@ enum SettingsTextKey: String, CaseIterable, Sendable {
     case settingsRetryLoading
     case settingsReviewPermissions
     case settingsSavePhrases
+    case settingsSensitiveAppRuleDeleteConfirmation
+    case settingsSensitiveAppRuleDeleteConfirmationDetail
+    case settingsSensitiveAppRulesEmpty
+    case settingsSpeechModelCapabilitySTT
+    case settingsSpeechModelCapabilityTTS
     case settingsSpeechModelEnablementDetail
     case settingsSpeechOutputLocalVoice
     case settingsSpeechOutputPreparingLocalVoice

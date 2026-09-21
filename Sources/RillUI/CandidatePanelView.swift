@@ -8,7 +8,6 @@ public struct CandidatePanelView: View {
     let onDismiss: () -> Void
 
     @State private var selections: [UUID: UUID] = [:]
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(
         candidateCase: CandidateResolutionCase,
@@ -39,10 +38,10 @@ public struct CandidatePanelView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
-            ForEach(candidateCase.recognitionResult.candidateSets) { candidateSet in
+            ForEach(Array(candidateCase.recognitionResult.candidateSets.enumerated()), id: \.element.id) { index, candidateSet in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text(candidateSet.surfaceText)
+                        Text(L10n.candidateSetTitle(index + 1, language: language))
                             .font(.headline)
                         Text(
                             UIStrings.spanSummary(
@@ -79,17 +78,14 @@ public struct CandidatePanelView: View {
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(10)
-                                .rillSelection(isSelected, cornerRadius: 12)
-                                .animation(
-                                    reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 1.0),
-                                    value: isSelected
-                                )
+                                .rillSelection(isSelected, cornerRadius: RillRadius.section)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(CandidateButtonStyle(cornerRadius: RillRadius.section))
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
                         }
                     }
                 }
-                .rillCard(.subdued, padding: 14)
+                .rillCard(.subdued, cornerRadius: RillRadius.section, padding: RillSpacing.card)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -97,25 +93,27 @@ public struct CandidatePanelView: View {
                     .font(.headline)
                 Text(resolvedPreview)
                     .textSelection(.enabled)
-                    .rillCard(.subdued, cornerRadius: 12, padding: 12)
+                    .rillCard(.subdued, cornerRadius: RillRadius.section, padding: RillSpacing.card)
             }
 
             HStack {
-                Button(UIStrings.text(.applySelection, language: language)) {
-                    onApply(mergedSelections())
+                Spacer(minLength: 0)
+
+                Button(UIStrings.text(.dismiss, language: language), role: .cancel) {
+                    onDismiss()
                 }
-                .keyboardShortcut(.defaultAction)
 
                 Button(UIStrings.text(.useDefaults, language: language)) {
                     onApply(candidateCase.defaultSelections())
                 }
 
-                Button(UIStrings.text(.dismiss, language: language), role: .cancel) {
-                    onDismiss()
+                Button(UIStrings.text(.applySelection, language: language)) {
+                    onApply(mergedSelections())
                 }
+                .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(18)
+        .padding(RillSpacing.panel)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: RillRadius.panel, style: .continuous))
     }
 
@@ -133,6 +131,36 @@ public struct CandidatePanelView: View {
 
     private var resolvedPreview: String {
         candidateCase.recognitionResult.applyingSelections(mergedSelections()).bestText
+    }
+}
+
+/// Hover feedback for candidate chips: a hairline stroke on hover, following
+/// RillCardButtonStyle's treatment (including its Reduce Motion rule) without
+/// the card press scale.
+private struct CandidateButtonStyle: ButtonStyle {
+    let cornerRadius: CGFloat
+
+    @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .contentShape(shape)
+            .overlay {
+                shape.strokeBorder(
+                    Color.primary.opacity(isHovering ? 0.22 : 0),
+                    lineWidth: 1
+                )
+            }
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 0.15),
+                value: isHovering
+            )
+            .onHover { isHovering = $0 }
     }
 }
 

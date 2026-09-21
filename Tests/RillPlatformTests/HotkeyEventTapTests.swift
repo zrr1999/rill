@@ -1,6 +1,7 @@
 import ApplicationServices
 import RillCore
 import XCTest
+import Testing
 @testable import RillPlatform
 
 final class HotkeyEventTapTests: XCTestCase {
@@ -604,22 +605,6 @@ final class HotkeyEventTapTests: XCTestCase {
             ),
             "A timely second press remains a tap when its own hold stays bounded."
         )
-    }
-
-    func testDisablingPasteInterceptionClearsBypassTokens() {
-        let tap = HotkeyEventTap()
-        tap.setPasteInterceptEnabled(true)
-        tap.skipNextPasteInterception()
-        XCTAssertEqual(tap.testingSkippedPasteEventCount(), 1)
-
-        tap.setPasteInterceptEnabled(false)
-        XCTAssertEqual(tap.testingSkippedPasteEventCount(), 0)
-
-        tap.skipNextPasteInterception()
-        XCTAssertEqual(tap.testingSkippedPasteEventCount(), 0)
-
-        tap.setPasteInterceptEnabled(true)
-        XCTAssertEqual(tap.testingSkippedPasteEventCount(), 0)
     }
 
     func testRecordPanelShortcutDefaultsDisabledButKeepsFunctionPushToTalk() {
@@ -1327,6 +1312,27 @@ private final class SequencedBooleanState: @unchecked Sendable {
             samples += 1
             guard !states.isEmpty else { return false }
             return states.removeFirst()
+        }
+    }
+}
+
+struct NativeClipboardShortcutTests {
+    @Test(arguments: [CGKeyCode(7), 8, 9], [
+        CGEventFlags.maskCommand,
+        [.maskCommand, .maskShift],
+        [.maskCommand, .maskAlternate],
+        [.maskCommand, .maskAlternate, .maskShift],
+    ])
+    func forwardsOriginalCutCopyAndPasteEvents(keyCode: CGKeyCode, flags: CGEventFlags) throws {
+        let tap = HotkeyEventTap()
+        tap.setRecordPanelShortcutEnabled(true)
+        for type in [CGEventType.keyDown, .keyUp] {
+            let event = try #require(CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: type == .keyDown))
+            event.flags = flags
+            let forwarded = try #require(tap.testingHandle(type: type, event: event))
+            #expect(forwarded.takeUnretainedValue() === event)
+            #expect(event.flags == flags)
+            #expect(event.getIntegerValueField(.keyboardEventKeycode) == Int64(keyCode))
         }
     }
 }

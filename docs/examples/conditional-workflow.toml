@@ -1,0 +1,39 @@
+schema_version = 2
+id = "54B31E01-96AC-4A0F-BB82-0A8CB12DD629"
+name = "Prepare a reply"
+description = "Normalize a draft; rewrite messages that include a question."
+enabled = false
+
+[trigger]
+kind = "manual"
+
+[input]
+kind = "text"
+
+[[process]]
+id = "clean"
+kind = "normalize-whitespace"
+
+[[process]]
+id = "question"
+kind = "if"
+condition = { field = "text", op = "contains", value = "?" }
+
+[[process.then]]
+id = "rewrite"
+kind = "llm-rewrite"
+prompt = "Rewrite as a concise question. Keep the original language and meaning."
+
+[output]
+strategy = "immediate"
+
+[[output.actions]]
+id = "save"
+kind = "record.store"
+
+[[output.actions]]
+id = "copy"
+kind = "system-clipboard.copy"
+
+[metadata]
+"user.category" = "writing"

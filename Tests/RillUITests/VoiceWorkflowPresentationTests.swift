@@ -3,14 +3,26 @@ import XCTest
 @testable import RillUI
 
 final class VoiceWorkflowPresentationTests: XCTestCase {
+    func testDetailIncludesBothRecordAndTextOutputs() {
+        var workflow = makeDefaultWorkflow()
+        workflow.plan.output.actions = [
+            OutputActionReference(id: "record.store"),
+            OutputActionReference(id: "focused-application.insert"),
+        ]
+        let presentation = VoiceWorkflowPresentation(workflow: workflow)
+        for language in AppLanguage.allCases {
+            let detail = presentation.detail(language: language)
+            XCTAssertTrue(detail.contains(UIStrings.actionName("record.store", language: language)))
+            XCTAssertTrue(detail.contains(UIStrings.actionName("focused-application.insert", language: language)))
+        }
+    }
+
     @MainActor
-    func testWorkflowEditorExposesAndValidatesLLMRewriteSteps() {
+    func testLegacyDraftValidatesLLMRewriteSteps() {
         XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.formalWriting))
         XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.translateInput))
         XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.commandMode))
         XCTAssertTrue(VoiceTextStyle.selectableCases.contains(.custom))
-        XCTAssertTrue(WorkflowsView.availableStepKinds.contains(.llmRewrite))
-        XCTAssertTrue(WorkflowsView.availableStepKinds.contains(.llmAnswer))
 
         var draft = WorkflowEditorDraft(
             name: "Custom Rewrite",

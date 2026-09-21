@@ -63,7 +63,7 @@ let package = Package(
         .product(name: "HuggingFace", package: "swift-huggingface"),
       ]
     ),
-    .target(name: "RillRuntime", dependencies: ["RillCore", "RillPlatform"]),
+    .target(name: "RillRuntime", dependencies: ["RillCore"]),
     .target(
       name: "RillPersistence",
       dependencies: ["RillCore"],
@@ -132,7 +132,7 @@ let package = Package(
     ),
     .testTarget(
       name: "RillUITests",
-      dependencies: ["RillCore", "RillRuntime", "RillUI"]
+      dependencies: ["RillCore", "RillPlatform", "RillRuntime", "RillUI"]
     ),
     .testTarget(
       name: "RillAppTests",

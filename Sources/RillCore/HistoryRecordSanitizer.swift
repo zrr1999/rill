@@ -31,23 +31,23 @@ public enum HistoryFailureSanitizer {
     public static let recognitionRecoveryPendingMessage =
         "The previous recognition operation is still finishing. Please wait a moment or switch recognition engines."
     public static let openAICredentialUnavailableMessage =
-        "The OpenAI API key is unavailable. Open Settings, save a key, and retry."
+        "The text service API key is unavailable. Open Settings, save a key, and retry."
     public static let openAIConfigurationInvalidMessage =
-        "The OpenAI endpoint or model configuration is invalid. Open Settings and retry."
+        "The text service endpoint or model configuration is invalid. Open Settings and retry."
     public static let openAIAuthenticationFailedMessage =
-        "OpenAI rejected the saved API key. Verify it in Settings and retry."
+        "The text service rejected the saved API key. Verify it in Settings and retry."
     public static let openAIRateLimitedMessage =
-        "OpenAI is temporarily rate limited. Wait a moment and retry."
+        "The text service is temporarily rate limited. Wait a moment and retry."
     public static let openAITimedOutMessage =
-        "OpenAI text polishing took too long. This run was stopped; please retry."
+        "Text polishing took too long. This run was stopped; please retry."
     public static let openAINetworkFailedMessage =
-        "OpenAI could not be reached. Check the network and retry."
+        "The text service could not be reached. Check the network and retry."
     public static let openAIRefusedMessage =
-        "OpenAI declined to rewrite this text. No text was inserted."
+        "The text service declined to rewrite this text. No text was inserted."
     public static let openAIIncompleteMessage =
-        "OpenAI returned an incomplete rewrite. No text was inserted."
+        "The text service returned an incomplete rewrite. No text was inserted."
     public static let openAIInvalidResponseMessage =
-        "OpenAI returned an invalid rewrite. No text was inserted."
+        "The text service returned an invalid rewrite. No text was inserted."
 
     public static func sanitize(_ message: String?) -> String? {
         guard let message else { return nil }

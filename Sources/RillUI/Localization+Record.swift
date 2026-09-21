@@ -34,6 +34,10 @@ extension L10n {
         String(format: recordText(.currentAppSourceOnlyFormat, language: language), applicationName)
     }
 
+    static func recordsUpdateFailureReason(_ detail: String, language: AppLanguage) -> String {
+        String(format: recordText(.recordsUpdateFailedReasonFormat, language: language), detail)
+    }
+
     static func routeWorkflowsCount(_ count: Int, language: AppLanguage) -> String {
         String(format: recordText(.workflowsCountFormat, language: language), count)
     }
@@ -148,6 +152,7 @@ extension L10n {
         ),
         .noRecordsTitle: .init(english: "No Records", simplifiedChinese: "没有记录"),
         .ok: .init(english: "OK", simplifiedChinese: "好"),
+        .panePickerLabel: .init(english: "Workspace Pane", simplifiedChinese: "工作区面板"),
         .paneRecords: .init(english: "Records", simplifiedChinese: "记录"),
         .paneRoutes: .init(english: "Routes", simplifiedChinese: "路由"),
         .pinnedOnly: .init(english: "Pinned only", simplifiedChinese: "仅显示置顶记录"),
@@ -159,6 +164,14 @@ extension L10n {
         .recordsHeaderDetail: .init(
             english: "Records are stored once and may belong to multiple collections.",
             simplifiedChinese: "记录只存储一次，并可同时属于多个记录集。"
+        ),
+        .recordsUpdateFailedReasonFormat: .init(
+            english: "Reason: %@",
+            simplifiedChinese: "原因：%@"
+        ),
+        .recordsUpdateFailedSuggestion: .init(
+            english: "The change could not be saved. Your records are unchanged — please try again.",
+            simplifiedChinese: "更改未能保存，你的记录没有变化，请重试。"
         ),
         .recordsUpdateFailedTitle: .init(english: "Records could not be updated", simplifiedChinese: "无法更新记录"),
         .removeFromCollectionFormat: .init(english: "Remove from %@", simplifiedChinese: "从 %@ 移除"),
@@ -277,6 +290,7 @@ enum RecordTextKey: String, CaseIterable, Sendable {
     case noRecordsDescription
     case noRecordsTitle
     case ok
+    case panePickerLabel
     case paneRecords
     case paneRoutes
     case pinnedOnly
@@ -286,6 +300,8 @@ enum RecordTextKey: String, CaseIterable, Sendable {
     case recordCountFormat
     case recordRoutesTitle
     case recordsHeaderDetail
+    case recordsUpdateFailedReasonFormat
+    case recordsUpdateFailedSuggestion
     case recordsUpdateFailedTitle
     case removeFromCollectionFormat
     case removeFromThisCollection

@@ -314,6 +314,7 @@ public enum WorkflowTitleKey: String, Codable, Sendable, Equatable {
     case cleanInput
     case speechRecognition
     case formalWriting
+    case smartCleanup
     case translateInput
     case commandMode
     case localDictation
@@ -422,6 +423,9 @@ public struct PostProcessStep: Identifiable, Codable, Sendable, Equatable {
 }
 
 public struct OutputActionReference: Identifiable, Codable, Sendable, Equatable {
+    public var documentID: String?
+    public var nodeDescription: String?
+    public var condition: WorkflowCondition?
     public var id: String
     public var configuration: [String: String]
 
@@ -496,7 +500,7 @@ public struct PipelineDeclaration: Codable, Sendable, Equatable {
             ?? .init(mode: .off)
         self.init(
             recognizerID: plan.setup.speechRoute?.recognizerID ?? "",
-            postProcessSteps: plan.process.steps.compactMap(\.postProcessStep),
+            postProcessSteps: plan.process.allSteps.compactMap(\.postProcessStep),
             outputActions: plan.output.actions,
             uncertaintyPolicy: uncertaintyPolicy,
             deliveryPolicy: plan.output.deliveryPolicy
@@ -505,6 +509,8 @@ public struct PipelineDeclaration: Codable, Sendable, Equatable {
 }
 
 public struct WorkflowDefinition: Identifiable, Codable, Sendable, Equatable {
+    public var documentDescription: String?
+    public var declaredInputKind: WorkflowInputKind?
     public var id: UUID
     public var name: String
     public var titleKey: WorkflowTitleKey?
@@ -561,6 +567,8 @@ public struct WorkflowDefinition: Identifiable, Codable, Sendable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case id
+        case documentDescription
+        case declaredInputKind
         case name
         case titleKey
         case trigger
@@ -572,6 +580,8 @@ public struct WorkflowDefinition: Identifiable, Codable, Sendable, Equatable {
 
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        documentDescription = try container.decodeIfPresent(String.self, forKey: .documentDescription)
+        declaredInputKind = try container.decodeIfPresent(WorkflowInputKind.self, forKey: .declaredInputKind)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         titleKey = try container.decodeIfPresent(WorkflowTitleKey.self, forKey: .titleKey)
@@ -588,6 +598,8 @@ public struct WorkflowDefinition: Identifiable, Codable, Sendable, Equatable {
 
     public func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(documentDescription, forKey: .documentDescription)
+        try container.encodeIfPresent(declaredInputKind, forKey: .declaredInputKind)
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encodeIfPresent(titleKey, forKey: .titleKey)

@@ -244,7 +244,7 @@ Superwhisper 的 [模式快捷键](https://superwhisper.com/docs/get-started/set
 - `PrivacyPolicy` 已进入剪贴板、录音、非音频工作流和剪贴板重放的真实运行路径；密码管理器 pasteboard 标记、敏感 App、Secure Input、未知焦点、排除工作流捕获的条目标签与云端目的地都会在载荷读取、组件调用或外发前判定。Secure Input 与未知焦点会遮蔽选区和剪贴板，排除标签会遮蔽工作流可见的剪贴板正文；未知焦点下的云端路径额外阻断。
 - Replay/Replace 不再只用授权时的前台 App 判断隐私：DeliveryStack 将 exact item generation/revision 与 transient source App identity 一起原子解析，Runtime 在任何云确认前先评估来源、目标授权后再复核来源；来源规则禁止 cloud/workflow processing 时不能通过切换前台 App 绕过。source identity 不进入 dry-run 收据、scheduler descriptor 或 durable diagnostics。
 - 隐私预览与真实执行共用 closed destination classifier，不由 UI 猜测本地/云端路径。Runtime 只公开接受 opaque `AuthorizedWorkflowRunContext` 的执行入口；capability 与 exact `WorkflowDefinition` 绑定，raw `ContextSnapshot` 执行入口保持 Runtime-internal，因此非音频与 replay 不能绕过 preflight、隐私授权或识别 options 快照。
-- 剪贴板捕获已有 Settings、菜单栏与主剪贴板页共用的持久总开关，并保留“忽略下一次外部复制”。关闭冷启动不会读取 pasteboard descriptor、payload、焦点或隐私状态，不运行外部复制监控，也不会拦截 Command-V；历史与显式复制/粘贴仍可用。重新开启先以当前 change count 建立 baseline，不回填关闭期间的复制；单调 preference revision 会拒绝旧启动快照覆盖较新的用户选择。敏感 App 规则支持增改删、启停、bundle ID 校验/去重和推荐默认恢复。UI 与运行时共享同一会话策略源，修改立即生效；四项设置以严格顺序在单次 SQLite 事务中提交，加载失败 fail-closed，保存失败可见且可重试。Stack 路由预览镜像与外部剪贴板捕获会在 payload 读取和系统 pasteboard 写入前后复核 change count、焦点身份、Secure Input、策略结果和控制 revision；焦点或设置竞态会丢弃 payload、恢复仍由 Rill 持有的原剪贴板并关闭 paste interception。
+- 剪贴板捕获已有 Settings、菜单栏与主剪贴板页共用的持久总开关，并保留“忽略下一次外部复制”。关闭冷启动不会读取 pasteboard descriptor、payload、焦点或隐私状态，不运行外部复制监控，也不会拦截 Command-V；历史与显式复制/粘贴仍可用。重新开启先以当前 change count 建立 baseline，不回填关闭期间的复制；单调 preference revision 会拒绝旧启动快照覆盖较新的用户选择。敏感 App 规则支持增改删、启停、bundle ID 校验/去重和推荐默认恢复。UI 与运行时共享同一会话策略源，修改立即生效；四项设置以严格顺序在单次 SQLite 事务中提交，加载失败 fail-closed，保存失败可见且可重试。外部剪贴板采集只异步读取和记录，在 payload 读取前后复核 change count、焦点身份、Secure Input、策略结果和控制 revision；焦点或设置竞态会丢弃 payload。原生复制和粘贴不被拦截，队列预览不再写入系统剪贴板；只有用户明确触发输出时才进行条件写入与恢复。
 - Webhook 动作实现已有最小文本载荷、隐私授权与 HTTPS 策略；发布版本不在 destination picker 或生产 registry 注册 Webhook，manifest 导入和旧执行均 fail-closed。启动迁移会先将旧端点/请求头写入 Keychain 并精确回读，再原子写回不含凭据的稳定引用，强制工作流禁用并物理清除 SQLite DB/WAL 残留；任一步失败都隔离工作流库而不影响其他设置。
 - retired cloud ASR API Key 使用 Keychain，旧 SQLite 值只在安全写入成功后删除。本地 sherpa-onnx 模型来自固定公开 archive，不需要 repository token，也不会把旧 Whisper credential 传给下载器或 runtime。
 - 保留期内的本地内容也不再以应用级明文落盘：32-byte 根密钥保存在本机 Keychain，运行正文、工作流名、纠错来源、全部设置（含剪贴板活动状态）和导出路径/元数据使用带表/行/字段 AAD 的 AES-256-GCM 版本化 envelope。SQLite v4 在同一事务写入 key marker、密文和 `user_version`；错误密钥、损坏 tag 或 marker/schema 不一致均 fail-closed。旧诊断正文在迁移时清空为安全摘要，durable `cleanup_pending` 会在 WAL busy、崩溃或清理失败后继续重试，只有可验证 checkpoint + `VACUUM` 完成后才清除。
@@ -388,3 +388,23 @@ mapping / hotword 的 dogfood 指标：专业词一次通过率、手动编辑�
 - Alfred Clipboard History retention / maximum clip size / exclusions: <https://www.alfredapp.com/help/features/clipboard/>
 - PastePal / CleanClip / PasteBar: <https://indiegoodies.com/pastepal>, <https://cleanclip.cc/>, <https://github.com/PasteBar/PasteBarApp>
 - Apple notarization guidance: <https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution>
+
+## 11. Structured workflow editor references (2026-09-15)
+
+The workflow editor adopts file-based configuration and a native, independent
+window with vertical steps. The following official references informed the
+specific interactions; these are reference patterns, not feature-parity claims.
+
+| Reference | Pattern adopted in Rill | Scope |
+| --- | --- | --- |
+| [n8n execution modes](https://raw.githubusercontent.com/n8n-io/n8n-docs/main/docs/build/understand-workflows/understand-executions/types-of-executions.md) | Test a workflow or stop at a selected step; pin generated sample outputs. | Samples stay in the editor. Rill has structured sequences rather than an arbitrary graph canvas. |
+| [Apple Shortcuts If actions](https://support.apple.com/guide/shortcuts-mac/use-if-actions-apd83dcd1b51/mac) | Vertically nested Then/Else blocks with explicit data flow. | Native form controls and bounded nesting. |
+| [Kestra flow UI](https://kestra.io/docs/ui/flows) | Source and visual editing share the same configuration. | TOML is authoritative; invalid source cannot be overwritten by a reduced form model. |
+| [Home Assistant troubleshooting](https://www.home-assistant.io/docs/automation/troubleshooting/) | Show which path ran and where execution stopped. | Persist fixed result codes and coarse timing; full test text is transient. |
+| [Alfred editor and palette](https://www.alfredapp.com/help/workflows/getting-started/editor-and-palette/) | Add explicit actions and inspect their configuration locally. | A compact native step menu rather than a general integration marketplace. |
+| [Node-RED projects](https://nodered.org/docs/user-guide/projects/) | Treat workflows as versionable author-owned files. | One XDG TOML per workflow, external edit detection, bounded local history. |
+| [Dify workflow quick start](https://docs.dify.ai/en/quick-start) | Inspect processing output before committing to production effects. | A process test suppresses all outputs; real output is a separate explicit action. |
+
+Implementation and schema contracts are documented in
+[workflow-toml.md](workflow-toml.md). Native visual QA and physical microphone/Fn
+acceptance remain separate from parser and runtime test results.

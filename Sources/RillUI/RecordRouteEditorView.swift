@@ -10,6 +10,14 @@ struct RecordRouteEditorView: View {
     @State private var captureRulePendingDeletion: CaptureRouteRule?
     @State private var deliveryRulePendingDeletion: DeliveryRouteRule?
 
+    @ViewBuilder
+    private var routeSaveError: some View {
+        if let message = workspace.errorMessage {
+            Text(message).font(.callout).foregroundStyle(.red)
+                .padding(RillSpacing.panel).textSelection(.enabled)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
@@ -56,10 +64,15 @@ struct RecordRouteEditorView: View {
                     } else {
                         rules.append(rule)
                     }
-                    captureDraft = nil
-                    Task { await workspace.replaceCaptureRules(rules) }
+                    guard !workspace.isMutating else { return }
+                    Task {
+                        await workspace.replaceCaptureRules(rules)
+                        if workspace.errorMessage == nil { captureDraft = nil }
+                    }
                 }
             )
+            .disabled(workspace.isMutating)
+            .safeAreaInset(edge: .bottom) { routeSaveError }
         }
         .sheet(item: $deliveryDraft) { draft in
             DeliveryRouteEditorSheet(
@@ -74,10 +87,15 @@ struct RecordRouteEditorView: View {
                     } else {
                         rules.append(rule)
                     }
-                    deliveryDraft = nil
-                    Task { await workspace.replaceDeliveryRules(rules) }
+                    guard !workspace.isMutating else { return }
+                    Task {
+                        await workspace.replaceDeliveryRules(rules)
+                        if workspace.errorMessage == nil { deliveryDraft = nil }
+                    }
                 }
             )
+            .disabled(workspace.isMutating)
+            .safeAreaInset(edge: .bottom) { routeSaveError }
         }
         .alert(
             L10n.recordText(.deleteCaptureRouteTitle, language: language),
@@ -163,8 +181,14 @@ struct RecordRouteEditorView: View {
                     Text(L10n.routePriority(rule.priority, language: language))
                         .font(.caption).foregroundStyle(.secondary)
                     HStack(spacing: 5) {
-                        ForEach(Array(rule.sourceCollectionIDs.enumerated()), id: \.element) { offset, id in
+                        // Cap the inline chips so long source lists cannot
+                        // overflow the row; the remainder collapses into +N.
+                        let visibleSourceIDs = Array(rule.sourceCollectionIDs.prefix(3))
+                        ForEach(Array(visibleSourceIDs.enumerated()), id: \.element) { offset, id in
                             routeChip("\(offset + 1). \(workspace.collectionName(id))")
+                        }
+                        if rule.sourceCollectionIDs.count > visibleSourceIDs.count {
+                            routeChip("+\(rule.sourceCollectionIDs.count - visibleSourceIDs.count)")
                         }
                         Image(systemName: RillSystemSymbol.arrowRight.rawValue)
                         routeChip(sinkName(rule))
@@ -204,30 +228,40 @@ struct RecordRouteEditorView: View {
     private func emptyRoutes(_ message: String) -> some View {
         Text(message)
             .foregroundStyle(.secondary)
-            .rillCard(.subdued, cornerRadius: 10, padding: 16)
+            .rillCard(.subdued, cornerRadius: RillRadius.row, padding: RillSpacing.panel)
     }
 
     private func routeCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
-            .padding(14)
-            .background(.background, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(.quaternary))
+            .rillCard(.subdued, cornerRadius: RillRadius.row, padding: 14)
     }
 
     private func routeChip(_ value: String) -> some View {
-        Text(value).font(.caption).padding(.horizontal, 7).padding(.vertical, 3)
+        Text(value).font(.caption).lineLimit(1).padding(.horizontal, 7).padding(.vertical, 3)
             // RillCard regular-tier fill; a Capsule chip cannot use rillCard itself.
-            .background(.quaternary.opacity(0.35), in: Capsule())
+            .background(.quaternary.opacity(RillCardProminence.regular.fillOpacity), in: Capsule())
     }
 
     private func captureMatcherSummary(_ matcher: CaptureRouteMatcher) -> String {
         var parts: [String] = []
-        if !matcher.sourceKinds.isEmpty { parts.append(matcher.sourceKinds.map(\.rawValue).sorted().joined(separator: ", ")) }
+        if !matcher.sourceKinds.isEmpty {
+            parts.append(matcher.sourceKinds.map(sourceKindDisplayName).sorted().joined(separator: ", "))
+        }
         if !matcher.sourceBundleIdentifiers.isEmpty { parts.append(matcher.sourceBundleIdentifiers.sorted().joined(separator: ", ")) }
         if !matcher.workflowIDs.isEmpty { parts.append(L10n.routeWorkflowsCount(matcher.workflowIDs.count, language: language)) }
         return parts.isEmpty
             ? L10n.recordText(.anyRecordSource, language: language)
             : parts.joined(separator: " · ")
+    }
+
+    // Reuses the same display names as the capture route editor's source picker.
+    private func sourceKindDisplayName(_ kind: RecordSourceKind) -> String {
+        switch kind {
+        case .systemClipboard: L10n.recordText(.sinkSystemClipboard, language: language)
+        case .voiceInput: L10n.recordText(.sourceVoiceInput, language: language)
+        case .workflow: L10n.recordText(.sourceWorkflow, language: language)
+        case .user: L10n.recordText(.sourceUser, language: language)
+        }
     }
 
     private func deliveryMatcherSummary(_ matcher: DeliveryRouteMatcher) -> String {
@@ -245,6 +279,13 @@ struct RecordRouteEditorView: View {
                 ?? L10n.recordText(.sinkCollectionFallback, language: language)
         }
     }
+}
+
+/// Shared sheet geometry so the capture and delivery route editors stay
+/// visually consistent instead of drifting per sheet.
+private enum RouteEditorSheetMetrics {
+    static let width: CGFloat = 540
+    static let listHeight: CGFloat = 200
 }
 
 private struct CaptureRouteDraft: Identifiable {
@@ -329,15 +370,20 @@ private struct CaptureRouteEditorSheet: View {
             }
             TextField(L10n.recordText(.sourceBundleIDsField, language: language), text: $draft.sourceBundleIdentifier)
             TextField(L10n.recordText(.workflowUUIDField, language: language), text: $draft.workflowID)
+            if !draft.workflowID.isEmpty && UUID(uuidString: draft.workflowID) == nil {
+                Text(L10n.presentation(.invalidWorkflowID, language: language))
+                    .font(.caption).foregroundStyle(.red)
+            }
             Text(L10n.recordText(.destinationCollections, language: language)).font(.headline)
             List(collections, selection: $draft.destinationCollectionIDs) { collection in
                 Text(collection.name).tag(collection.id)
             }
-            .frame(height: 210)
+            .frame(height: RouteEditorSheetMetrics.listHeight)
             Toggle(L10n.recordText(.enabledToggle, language: language), isOn: $draft.isEnabled)
             HStack {
                 Spacer()
                 Button(L10n.recordText(.cancel, language: language), action: onCancel)
+                    .keyboardShortcut(.cancelAction)
                 Button(L10n.recordText(.save, language: language)) { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(draft.destinationCollectionIDs.isEmpty
@@ -346,7 +392,7 @@ private struct CaptureRouteEditorSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 520)
+        .frame(width: RouteEditorSheetMetrics.width)
     }
 
     private func save() {
@@ -408,7 +454,7 @@ private struct DeliveryRouteEditorSheet: View {
                     draft.sourceCollectionIDs.move(fromOffsets: source, toOffset: destination)
                 }
             }
-            .frame(height: 180)
+            .frame(height: RouteEditorSheetMetrics.listHeight)
             Menu(L10n.recordText(.addSourceCollection, language: language)) {
                 ForEach(collections.filter { !draft.sourceCollectionIDs.contains($0.id) }) { collection in
                     Button(collection.name) { draft.sourceCollectionIDs.append(collection.id) }
@@ -418,6 +464,7 @@ private struct DeliveryRouteEditorSheet: View {
             HStack {
                 Spacer()
                 Button(L10n.recordText(.cancel, language: language), action: onCancel)
+                    .keyboardShortcut(.cancelAction)
                 Button(L10n.recordText(.save, language: language)) { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(draft.sourceCollectionIDs.isEmpty
@@ -426,7 +473,7 @@ private struct DeliveryRouteEditorSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 560)
+        .frame(width: RouteEditorSheetMetrics.width)
     }
 
     private func save() {

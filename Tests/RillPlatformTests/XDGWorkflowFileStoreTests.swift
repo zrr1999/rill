@@ -32,7 +32,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
       isEnabled: false
     )
     let source = try XCTUnwrap(String(data: data, encoding: .utf8))
-    XCTAssertTrue(source.contains("schema_version = 1"))
+    XCTAssertTrue(source.contains("schema_version = 2"))
     XCTAssertTrue(source.contains("enabled = false"))
     XCTAssertTrue(source.contains("[setup.speech]"))
     XCTAssertTrue(source.contains("[[process]]"))
@@ -71,28 +71,24 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
 
   func testLegacyRecordActionsStrategyAndMetadataNormalizeWithoutRewritingSource() async throws {
     let collectionID = UUID(uuidString: "12345678-1234-1234-1234-123456789ABC")!
-    var workflow = makeWorkflow()
-    workflow.plan.output = WorkflowOutputPhase(
-      actions: [OutputActionReference(id: "record.store")],
-      deliveryPolicy: DeliveryPolicy(strategy: .collectionFirst)
-    )
-    workflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] = collectionID.uuidString
-    workflow.metadata[WorkflowMetadataKey.excludeOutputFromRecordCapture] = "true"
-    let canonical = String(
-      decoding: try XDGWorkflowFileStore.encode(workflow: workflow, isEnabled: true),
-      as: UTF8.self
-    )
-    let legacy = canonical
-      .replacingOccurrences(of: "record.store", with: "stack.push")
-      .replacingOccurrences(of: "collection-first", with: "stack-first")
-      .replacingOccurrences(
-        of: WorkflowMetadataKey.targetRecordCollectionIDs,
-        with: WorkflowMetadataKey.legacyTargetRecordCollectionID
-      )
-      .replacingOccurrences(
-        of: WorkflowMetadataKey.excludeOutputFromRecordCapture,
-        with: WorkflowMetadataKey.excludeOutputFromWorkflowCapture
-      )
+    let legacy = """
+    schema_version = 1
+    id = "11111111-2222-3333-4444-555555555555"
+    name = "Legacy workflow"
+    trigger = "manual"
+    process = []
+    [ui]
+    symbol = "sparkles"
+    accent = "blue"
+    [setup]
+    [output]
+    strategy = "stack-first"
+    [[output.actions]]
+    id = "stack.push"
+    [metadata]
+    "\(WorkflowMetadataKey.legacyTargetRecordCollectionID)" = "\(collectionID.uuidString)"
+    "\(WorkflowMetadataKey.excludeOutputFromWorkflowCapture)" = "true"
+    """
     let directory = temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -118,6 +114,11 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
     XCTAssertFalse(saved.contains("stack.push"))
     XCTAssertFalse(saved.contains("stack-first"))
     XCTAssertFalse(saved.contains(WorkflowMetadataKey.legacyTargetRecordCollectionID))
+    _ = try await store.saveDocument(WorkflowDocument(workflow: loaded, isEnabled: true), replacing: fileURL, expected: .source(legacy))
+    let history = try await store.versions(for: loaded.id)
+    XCTAssertEqual(history.first?.source, legacy)
+    XCTAssertTrue(try String(contentsOf: fileURL, encoding: .utf8).contains("schema_version = 2"))
+
   }
 
   func testInvalidLivePreviewPlacementIsRejected() throws {
@@ -209,7 +210,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
     )
   }
 
-  func testBundledTemplatesConformToSchemaVersionOne() throws {
+  func testBundledTemplatesConformToCurrentSchema() throws {
     let repositoryRoot = URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()
       .deletingLastPathComponent()
@@ -238,7 +239,7 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
     id: UUID = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!,
     name: String = "Manual Dictation"
   ) -> WorkflowDefinition {
-    WorkflowDefinition(
+    var workflow = WorkflowDefinition(
       id: id,
       name: name,
       trigger: .hotkey,
@@ -283,5 +284,13 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
         "trigger.gesture": "control-option-shift-space",
       ]
     )
+    workflow.declaredInputKind = .audio
+    for index in workflow.plan.process.steps.indices {
+      workflow.plan.process.steps[index].documentID = workflow.plan.process.steps[index].id.uuidString
+    }
+    for index in workflow.plan.output.actions.indices {
+      workflow.plan.output.actions[index].documentID = "output-\(index + 1)"
+    }
+    return workflow
   }
 }

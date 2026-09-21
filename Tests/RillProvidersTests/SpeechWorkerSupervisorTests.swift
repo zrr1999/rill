@@ -291,6 +291,81 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     XCTAssertNil(activePID)
   }
 
+  func testBuiltinSpeechWorkflowsUseEnabledModelsAndReportDisabledOverrides() async throws {
+    let selectedModel = MLXAudioModelID.qwen3ASR17BInt8.rawValue
+    let disabledModel = MLXAudioModelID.qwen3ASR06BInt8.rawValue
+    let response = makeSuccessResponse(requestID: speechWorkerTestRequestID, generation: 1)
+    let supervisor = makeSupervisor(script: persistentResponseScript, response: response)
+    let diagnostics = WorkerDiagnosticRecorder()
+    let recognizer = MLXAudioSwiftWorkerRecognizer(
+      supervisor: supervisor,
+      settingsProvider: {
+        LocalSpeechSettings(
+          model: disabledModel,
+          downloadIfNeeded: false,
+          enabledModelIDs: [selectedModel]
+        )
+      },
+      workerTimeout: .seconds(2),
+      diagnosticReporter: { event in
+        diagnostics.record(DiagnosticEventSanitizer.sanitize(event))
+      }
+    )
+    let audioURL = try makeManagedAudioFile()
+    defer { try? FileManager.default.removeItem(at: audioURL) }
+    let audio = try CapturedAudio(
+      durationSeconds: 3,
+      format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .float32),
+      fileURL: audioURL,
+      fileOwnership: .managedTemporary
+    )
+    let workflows = BuiltinWorkflowCatalog().manifest().workflows
+    do {
+      for workflow in workflows {
+        let result = try await recognizer.recognize(
+          RecognitionRequest(
+            runID: UUID(), workflow: workflow, contextSnapshot: .empty, capturedAudio: audio
+          )
+        )
+        XCTAssertEqual(result.bestText, "worker result")
+      }
+    } catch {
+      try await recognizer.stopRuntime()
+      throw error
+    }
+    try await recognizer.stopRuntime()
+    XCTAssertTrue(diagnostics.snapshot().isEmpty)
+
+    var workflow = try XCTUnwrap(workflows.first { $0.titleKey == .smartCleanup })
+    workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride] = disabledModel
+    let failedRunID = UUID()
+    do {
+      _ = try await recognizer.recognize(
+        RecognitionRequest(
+          runID: failedRunID, workflow: workflow, contextSnapshot: .empty, capturedAudio: audio
+        )
+      )
+      XCTFail("An explicit disabled model must fail before starting the worker.")
+    } catch {
+      XCTAssertEqual(error as? LocalSpeechModelSelectionError, .modelNotEnabled(disabledModel))
+    }
+    let activePID = await supervisor.activeProcessIdentifier()
+    XCTAssertNil(activePID)
+    let failure = try XCTUnwrap(diagnostics.snapshot().first)
+    XCTAssertEqual(diagnostics.snapshot().count, 1)
+    XCTAssertEqual(failure.runID, failedRunID)
+    XCTAssertEqual(failure.event, "provider.local-speech.recognition.failed")
+    XCTAssertEqual(failure.message, DiagnosticEventSanitizer.sanitizedMessage)
+    XCTAssertEqual(failure.metadata, [
+      "provider": "local-speech",
+      "provider.kind": "mlx-audio-swift",
+      "recognizerID": "local-speech",
+      "stage": "recognizing",
+      "outcome": "failed",
+      "failureCode": "model-disabled",
+    ])
+  }
+
   func testRecognizerRestartsWorkerAndRetriesOnceAfterRecognitionFailure() async throws {
     let markerURL = FileManager.default.temporaryDirectory.appendingPathComponent(
       "rill-worker-retry-marker-\(UUID().uuidString)"

@@ -454,7 +454,7 @@ public final class AppModel {
   }
   public var recordPreview: String? {
     guard let projection = recordWorkspace.snapshot.records.first else { return nil }
-    return projection.record.payload.textValue
+    return projection.header.kind == .text ? projection.header.preview : nil
   }
   public internal(set) var systemClipboardCaptureControlSnapshot = SystemClipboardCaptureControlSnapshot(
     revision: 0,
@@ -573,7 +573,6 @@ public final class AppModel {
       persistRecordHistoryVisibilityPreference()
     }
   }
-  public internal(set) var mergeSimilarRecords = false
   public var enabledManualWorkflows: [WorkflowDefinition] {
     enabledWorkflows(for: .manual)
   }
@@ -837,19 +836,22 @@ public final class AppModel {
   var hasStoppedEventListener = false
   var activeRunID: UUID?
   var workflowEnabledStates: [UUID: Bool] = [:]
+  public internal(set) var isUpdatingWorkflowEnabledStates = false
   var workflowFileURLsByID: [UUID: URL] = [:]
+  var workflowFileSourcesByID: [UUID: String] = [:]
+  public internal(set) var workflowFileIssues: [WorkflowFileIssue] = []
+  var invalidWorkflowFileIDs: Set<UUID> = []
+  @ObservationIgnored var workflowFileMonitorTask: Task<Void, Never>?
+  var workflowFileLoadGeneration = 0
   var usesWorkflowFilesAsSource = false
   var hasModifiedWorkflowLibrary = false
   var isRestoringSettings = false
   /// Keys changed by the user after the initial snapshot read started but
   /// before it was applied. The older snapshot must not overwrite them.
   var settingsKeysModifiedDuringInitialLoad: Set<AppSettingKey> = []
-  var pendingSettingWriteTasks: [AppSettingKey: Task<Void, Never>] = [:]
-  var pendingSettingWriteGenerations: [AppSettingKey: Int] = [:]
+  let persistenceWrites = PersistenceWriteCoordinator()
   var failedSettingsStoreWrites: [AppSettingKey: RetryableSettingsStoreWrite] = [:]
   var retryingSettingsStoreWriteKeys: Set<AppSettingKey> = []
-  var pendingPersistenceWriteBarrierTask: Task<Void, Never>?
-  var persistenceWriteBarrierGeneration = 0
   var settingsLoadGeneration = 0
   var unavailableSettingsDomainRetryGeneration = 0
   var scalarSettingsRetryGenerations: [ScalarSettingsDomain: Int] = [:]
@@ -985,7 +987,7 @@ public final class AppModel {
         throw NSError(
           domain: "Rill.AppModel.OpenAI",
           code: 1,
-          userInfo: [NSLocalizedDescriptionKey: "OpenAI verification is not configured."]
+          userInfo: [NSLocalizedDescriptionKey: "LLM Provider verification is not configured."]
         )
       },
     retryFailedAudioRecoveryAction:
@@ -1205,6 +1207,7 @@ struct PendingRunInfo {
   let workflow: WorkflowPresentation
   let trigger: WorkflowRunTriggerKind
   let isRecordRelated: Bool
+  var processingSteps: [WorkflowTextStep] = []
 }
 
 extension AppModel {

@@ -286,6 +286,26 @@ final class RecordingSessionManagerTimingTests: XCTestCase {
         XCTAssertFalse(didPerform)
     }
 
+    func testCancelledRecordingInvalidatesInjectedCueBeforePlatformEffect() async throws {
+        let (tokens, continuation) = AsyncStream<RecordingCueToken>.makeStream()
+        let manager = makeManager(
+            audioCaptureService: try makeAudioCaptureService(testName: #function),
+            diagnostics: nil,
+            recordingCueAction: { _, token in continuation.yield(token) }
+        )
+        await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+        let receivedToken = await tokens.first { _ in true }
+        let token = try XCTUnwrap(receivedToken)
+        await manager.cancelCurrentRecording()
+
+        var didPerform = false
+        token.performIfValid { didPerform = true }
+
+        XCTAssertFalse(didPerform)
+        await manager.stopForApplicationShutdown()
+        continuation.finish()
+    }
+
     func testFinishingDiagnosticCannotDelayInputShutdown() async throws {
         let repository = BlockingRecordingDiagnosticRepository(
             blockedEvent: "recording.finishing"
@@ -448,7 +468,7 @@ final class RecordingSessionManagerTimingTests: XCTestCase {
         let manager = makeManager(
             audioCaptureService: audioCaptureService,
             diagnostics: nil,
-            recordingCueAction: { _ in
+            recordingCueAction: { _, _ in
                 await cueProbe.perform()
             }
         )
@@ -491,7 +511,7 @@ final class RecordingSessionManagerTimingTests: XCTestCase {
         let manager = makeManager(
             audioCaptureService: audioCaptureService,
             diagnostics: nil,
-            recordingCueAction: { _ in
+            recordingCueAction: { _, _ in
                 await cueProbe.perform()
             }
         )
@@ -546,7 +566,7 @@ private func makeManager(
     audioCaptureService: RecordingTimingAudioCaptureService,
     diagnostics: DiagnosticsRecorder?,
     cueProbe: RecordingTimingCueProbe = RecordingTimingCueProbe(),
-    recordingCueAction: (@Sendable (RecordingInteractionCue) async -> Void)? = nil
+    recordingCueAction: (@Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void)? = nil
 ) -> RecordingSessionManager {
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
@@ -593,7 +613,7 @@ private func makeManager(
         diagnostics: diagnostics,
         privacyRunGate: privacyRunGate,
         workflowProvider: { [workflow] },
-        recordingCueAction: recordingCueAction ?? { _ in
+        recordingCueAction: recordingCueAction ?? { _, _ in
             await cueProbe.perform()
         }
     )

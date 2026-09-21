@@ -22,10 +22,13 @@ struct RillApplication: App {
             recordPanelController.show(
                 model: model,
                 deliverSelection: { subject, target in
-                    await container.systemClipboardCaptureController.deliverSelectedRecord(
+                    await container.systemClipboardCaptureController.reuseRecord(
                         subject,
                         to: target
                     )
+                },
+                copySelection: { subject in
+                    await container.systemClipboardCaptureController.reuseRecord(subject, copyOnly: true)
                 },
                 onDeliveryAbort: {
                     await container.systemClipboardCaptureController

@@ -89,7 +89,6 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
         .systemClipboardCaptureEnabled,
         .recordHistoryVisibility,
         .recordPanelHotkey,
-        .recordMergeSimilar,
       ]
     case .speechRoute:
       [.preferredSpeechEngine, .ttsModel]
@@ -128,7 +127,7 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
     case .systemClipboard: "clipboard"
     case .speechRoute: "speech routing"
     case .localSpeech: "local speech"
-    case .openAI: "OpenAI"
+    case .openAI: "LLM Provider"
     case .input: "input"
     }
   }
@@ -139,7 +138,7 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
     case .systemClipboard: "剪贴板"
     case .speechRoute: "语音路由"
     case .localSpeech: "本地语音"
-    case .openAI: "OpenAI"
+    case .openAI: "LLM Provider"
     case .input: "输入"
     }
   }
@@ -210,8 +209,8 @@ enum StoredSettingsLoadWarning: Sendable {
       )
     case .openAICredential:
       LocalizedText(
-        english: "The OpenAI credential could not be read from secure storage.",
-        simplifiedChinese: "无法从安全存储读取 OpenAI 凭据。"
+        english: "The LLM Provider credential could not be read from secure storage.",
+        simplifiedChinese: "无法从安全存储读取 LLM Provider 凭据。"
       )
     }
   }
@@ -238,7 +237,6 @@ struct StoredAppSettingsSnapshot {
   let workflowLibraryNeedsMigration: Bool
   let workflowEnabledStates: [UUID: Bool]
   let systemClipboardCaptureEnabled: String?
-  let recordMergeSimilar: String?
   let recordHistoryVisibility: String?
   let recordPanelHotkey: String?
   let preferredSpeechEngine: String?
@@ -290,7 +288,7 @@ private struct RecoverableStoredSettingsDomains: Sendable {
   let vocabularyRules: [VocabularyRule]?
 }
 
-private enum StoredSettingsCollectionValidationError: Error {
+enum StoredSettingsCollectionValidationError: Error {
   case invalidIdentifier
   case duplicateIdentifier
 }
@@ -778,8 +776,6 @@ extension AppModel {
       workflowEnabledStates: workflowEnabledStates,
       systemClipboardCaptureEnabled: storedSettings[.systemClipboardCaptureEnabled]
         ?? storedSettings[.legacyClipboardCaptureEnabled],
-      recordMergeSimilar: storedSettings[.recordMergeSimilar]
-        ?? storedSettings[.legacyClipboardMergeSimilarItems],
       recordHistoryVisibility: storedSettings[.recordHistoryVisibility]
         ?? storedSettings[.legacyClipboardHistoryVisibility],
       recordPanelHotkey: storedSettings[.recordPanelHotkey]
@@ -844,7 +840,6 @@ extension AppModel {
     applyStoredHistoryRetentionSettings(settings)
     applyStoredFailedAudioRecoverySetting(settings)
     applyStoredBenchmarkRecordingArchiveSetting(settings)
-    applyPreferredSpeechEngineSelectionIfNeeded()
     rebuildWorkflowLibrary()
     isRestoringSettings = false
     synchronizeLocalSpeechSettingsSource()
@@ -1062,14 +1057,22 @@ extension AppModel {
 
     if usesTOMLSource, let workflowFiles {
       usesWorkflowFilesAsSource = true
-      customWorkflows = workflowFiles.result.records.map {
-        Self.normalizeCustomWorkflow($0.workflow)
-      }
+      customWorkflows = workflowFiles.result.records.map(\.workflow)
+      workflowFileSourcesByID = Dictionary(uniqueKeysWithValues: workflowFiles.result.records.compactMap { record in record.source.map { (record.workflow.id, $0) } })
+      workflowFileIssues = workflowFiles.result.issues
+      invalidWorkflowFileIDs = Set(workflowFileIssues.compactMap(\.workflowID))
       workflowFileURLsByID = Dictionary(
         uniqueKeysWithValues: workflowFiles.result.records.map {
           ($0.workflow.id, $0.fileURL)
         }
       )
+      if let directory = workflowFileStore?.configurationDirectoryURL {
+        for issue in workflowFileIssues {
+          if let id = issue.workflowID, workflowFileURLsByID[id] == nil {
+            workflowFileURLsByID[id] = directory.appendingPathComponent(issue.filename)
+          }
+        }
+      }
       workflowEnabledStates = storedDomainUnavailable
         ? [:]
         : settings.workflowEnabledStates
@@ -1095,12 +1098,15 @@ extension AppModel {
       )
     }
     rebuildWorkflowLibrary()
+    startWorkflowFileMonitoring()
   }
 
   public func reloadWorkflowFiles() async {
     guard let workflowFileStore else { return }
+    workflowFileLoadGeneration += 1
+    let generation = workflowFileLoadGeneration
     let result = await workflowFileStore.load()
-    guard !hasBegunApplicationShutdown else { return }
+    guard !hasBegunApplicationShutdown, generation == workflowFileLoadGeneration else { return }
 
     // A failed first-run migration deliberately keeps the legacy definitions active.
     // Do not let a manual reload of an empty directory discard that recovery copy.
@@ -1112,14 +1118,22 @@ extension AppModel {
 
     usesWorkflowFilesAsSource = true
     let previousCustomIDs = Set(customWorkflows.map(\.id))
-    customWorkflows = result.records.map {
-      Self.normalizeCustomWorkflow($0.workflow)
+    let invalidNames = Set(result.issues.map(\.filename))
+    let retainedInvalid = customWorkflows.filter { workflow in
+      workflowFileURLsByID[workflow.id].map { invalidNames.contains($0.lastPathComponent) } ?? false
     }
+    workflowFileIssues = result.issues
+    invalidWorkflowFileIDs = Set(result.issues.compactMap(\.workflowID)).union(retainedInvalid.map(\.id))
+    let validIDs = Set(result.records.map { $0.workflow.id })
+    customWorkflows = result.records.map(\.workflow) + retainedInvalid.filter { !validIDs.contains($0.id) }
+    let invalidURLs = workflowFileURLsByID.filter { invalidWorkflowFileIDs.contains($0.key) }
+    workflowFileSourcesByID = Dictionary(uniqueKeysWithValues: result.records.compactMap { record in record.source.map { (record.workflow.id, $0) } })
     workflowFileURLsByID = Dictionary(
       uniqueKeysWithValues: result.records.map {
         ($0.workflow.id, $0.fileURL)
       }
     )
+    workflowFileURLsByID.merge(invalidURLs) { current, _ in current }
     for workflowID in previousCustomIDs {
       workflowEnabledStates.removeValue(forKey: workflowID)
     }
@@ -1133,10 +1147,6 @@ extension AppModel {
     }
     rebuildWorkflowLibrary()
     persistWorkflowEnabledStates()
-    append(
-      english: L10n.runText(.workflowTOMLReloaded, language: .english),
-      simplifiedChinese: L10n.runText(.workflowTOMLReloaded, language: .simplifiedChinese)
-    )
   }
 
   func workflowFileIssueMessage(_ issues: [WorkflowFileIssue]) -> String? {
@@ -1172,12 +1182,6 @@ extension AppModel {
       let visibility = RecordHistoryVisibility(rawValue: rawVisibility)
     {
       recordHistoryVisibility = visibility
-    }
-
-    if shouldApplyStoredSetting(.recordMergeSimilar),
-      let mergeSimilar = settings.recordMergeSimilar
-    {
-      mergeSimilarRecords = Self.storedBoolean(mergeSimilar, defaultValue: false)
     }
 
     if shouldApplyStoredSetting(.recordPanelHotkey) {
@@ -1676,11 +1680,6 @@ extension AppModel {
       {
         recordHistoryVisibility = visibility
       }
-      if let rawValue = values[.recordMergeSimilar],
-        let mergeSimilar = Self.storedBooleanIfValid(rawValue)
-      {
-        mergeSimilarRecords = mergeSimilar
-      }
       if let rawValue = values[.recordPanelHotkey] {
         recordPanelHotkeyBinding = HotkeyBindingDescriptor(storageString: rawValue)
       }
@@ -1959,9 +1958,10 @@ extension AppModel {
     {
       if let workflowFiles = recovered.workflowFiles {
         usesWorkflowFilesAsSource = true
-        self.customWorkflows = workflowFiles.records.map {
-          Self.normalizeCustomWorkflow($0.workflow)
-        }
+        self.customWorkflows = workflowFiles.records.map(\.workflow)
+        workflowFileSourcesByID = Dictionary(uniqueKeysWithValues: workflowFiles.records.compactMap { record in record.source.map { (record.workflow.id, $0) } })
+        workflowFileIssues = workflowFiles.issues
+        invalidWorkflowFileIDs = Set(workflowFiles.issues.compactMap(\.workflowID))
         workflowFileURLsByID = Dictionary(
           uniqueKeysWithValues: workflowFiles.records.map {
             ($0.workflow.id, $0.fileURL)
@@ -2195,58 +2195,36 @@ extension AppModel {
       return
     }
 
-    let previousTask = pendingSettingWriteTasks[taskKey]
-    previousTask?.cancel()
-    let generation = (pendingSettingWriteGenerations[taskKey] ?? 0) + 1
-    pendingSettingWriteGenerations[taskKey] = generation
-    let debounceDuration = settingsWriteDebounceDuration
-
-    let task = Task { [weak self, credentialStore, previousTask] in
-      await previousTask?.value
-      do {
-        try await Task.sleep(for: debounceDuration)
-        try Task.checkCancellation()
-        if value.isEmpty {
-          try await credentialStore.removeCredential(for: credentialKey)
-        } else {
-          try await credentialStore.setCredential(value, for: credentialKey)
+    persistenceWrites.replace(
+      for: taskKey,
+      debounce: settingsWriteDebounceDuration
+    ) {
+      if value.isEmpty {
+        try await credentialStore.removeCredential(for: credentialKey)
+      } else {
+        try await credentialStore.setCredential(value, for: credentialKey)
+      }
+    } completion: { [weak self] result in
+      guard let self else { return }
+      switch result {
+      case .success:
+        if credentialKey == .openAIAPIKey {
+          self.openAICredentialAvailability = Self.openAICredentialAvailability(for: value)
+          self.workflowLibraryChangedAction()
         }
-        await MainActor.run {
-          guard let self else { return }
-          let isCurrentWrite = self.pendingSettingWriteGenerations[taskKey] == generation
-          self.finishPendingSettingWrite(for: taskKey, generation: generation)
-          if isCurrentWrite, credentialKey == .openAIAPIKey {
-            self.openAICredentialAvailability =
-              Self.openAICredentialAvailability(for: value)
-            self.workflowLibraryChangedAction()
-          }
+      case .failure(is CancellationError):
+        break
+      case .failure:
+        if credentialKey == .openAIAPIKey {
+          self.openAICredentialAvailability = .inaccessible
+          self.workflowLibraryChangedAction()
         }
-      } catch is CancellationError {
-        await MainActor.run {
-          self?.finishPendingSettingWrite(for: taskKey, generation: generation)
-        }
-      } catch {
-        await MainActor.run {
-          guard let self else { return }
-          let isCurrentWrite = self.pendingSettingWriteGenerations[taskKey] == generation
-          self.finishPendingSettingWrite(for: taskKey, generation: generation)
-          guard isCurrentWrite else { return }
-          if credentialKey == .openAIAPIKey {
-            self.openAICredentialAvailability = .inaccessible
-            self.workflowLibraryChangedAction()
-          }
-          self.append(
-            english: L10n.runText(.credentialSaveFailed, language: .english),
-            simplifiedChinese: L10n.runText(
-              .credentialSaveFailed,
-              language: .simplifiedChinese
-            )
-          )
-        }
+        self.append(
+          english: L10n.runText(.credentialSaveFailed, language: .english),
+          simplifiedChinese: L10n.runText(.credentialSaveFailed, language: .simplifiedChinese)
+        )
       }
     }
-    pendingSettingWriteTasks[taskKey] = task
-    registerPersistenceWrite(task)
   }
 
   func persistRetryableSettingsStoreWrite(
@@ -2277,58 +2255,26 @@ extension AppModel {
     settingsStore: any SettingsStore,
     debounceDuration: Duration
   ) {
-    let previousTask = pendingSettingWriteTasks[key]
-    previousTask?.cancel()
-
-    let generation = (pendingSettingWriteGenerations[key] ?? 0) + 1
-    pendingSettingWriteGenerations[key] = generation
     if failedSettingsStoreWrites[key] != nil {
       retryingSettingsStoreWriteKeys.insert(key)
       refreshSettingsSaveState()
     }
-
-    let task = Task { [weak self, settingsStore, previousTask, retryableWrite] in
-      await previousTask?.value
-      do {
-        try await Task.sleep(for: debounceDuration)
-        try Task.checkCancellation()
-        try await retryableWrite.operation(settingsStore)
-        await MainActor.run {
-          guard let self,
-            self.pendingSettingWriteGenerations[key] == generation
-          else {
-            return
-          }
-          self.finishPendingSettingWrite(for: key, generation: generation)
-          self.failedSettingsStoreWrites[key] = nil
-          self.retryingSettingsStoreWriteKeys.remove(key)
-          self.refreshSettingsSaveState()
-        }
-      } catch is CancellationError {
-        await MainActor.run {
-          guard let self,
-            self.pendingSettingWriteGenerations[key] == generation
-          else {
-            return
-          }
-          self.finishPendingSettingWrite(for: key, generation: generation)
-          self.retryingSettingsStoreWriteKeys.remove(key)
-          self.refreshSettingsSaveState()
-        }
-      } catch {
-        await MainActor.run {
-          guard let self,
-            self.pendingSettingWriteGenerations[key] == generation
-          else {
-            return
-          }
-          self.finishPendingSettingWrite(for: key, generation: generation)
-          self.recordFailedSettingsStoreWrite(retryableWrite, for: key)
-        }
+    persistenceWrites.replace(for: key, debounce: debounceDuration) {
+      try await retryableWrite.operation(settingsStore)
+    } completion: { [weak self] result in
+      guard let self else { return }
+      switch result {
+      case .success:
+        self.failedSettingsStoreWrites[key] = nil
+        self.retryingSettingsStoreWriteKeys.remove(key)
+        self.refreshSettingsSaveState()
+      case .failure(is CancellationError):
+        self.retryingSettingsStoreWriteKeys.remove(key)
+        self.refreshSettingsSaveState()
+      case .failure:
+        self.recordFailedSettingsStoreWrite(retryableWrite, for: key)
       }
     }
-    pendingSettingWriteTasks[key] = task
-    registerPersistenceWrite(task)
   }
 
   public func retryUnsavedSettingsSave() {
@@ -2454,41 +2400,8 @@ extension AppModel {
     }
   }
 
-  func finishPendingSettingWrite(for key: AppSettingKey, generation: Int) {
-    guard pendingSettingWriteGenerations[key] == generation else { return }
-    pendingSettingWriteTasks[key] = nil
-    pendingSettingWriteGenerations[key] = nil
-  }
-
-  func registerPersistenceWrite(_ task: Task<Void, Never>) {
-    let previousBarrier = pendingPersistenceWriteBarrierTask
-    persistenceWriteBarrierGeneration += 1
-    let generation = persistenceWriteBarrierGeneration
-    pendingPersistenceWriteBarrierTask = Task { [weak self, previousBarrier, task] in
-      await previousBarrier?.value
-      await task.value
-      guard let self, self.persistenceWriteBarrierGeneration == generation else { return }
-      self.pendingPersistenceWriteBarrierTask = nil
-    }
-  }
-
-  func performTrackedPersistenceWrite(
-    _ operation: @escaping @Sendable () async throws -> Void
-  ) async throws {
-    let writeTask = Task {
-      try await operation()
-    }
-    let completionTask = Task {
-      _ = try? await writeTask.value
-    }
-    registerPersistenceWrite(completionTask)
-    try await writeTask.value
-  }
-
   public func flushPendingPersistenceWrites() async {
-    while let barrier = pendingPersistenceWriteBarrierTask {
-      await barrier.value
-    }
+    await persistenceWrites.flush()
   }
 
   /// The global hotkey producer must not become available until the initial
@@ -2500,6 +2413,9 @@ extension AppModel {
 
   public func stopSettingsReadTasksForApplicationShutdown() async {
     hasBegunApplicationShutdown = true
+    workflowFileMonitorTask?.cancel()
+    await workflowFileMonitorTask?.value
+    workflowFileMonitorTask = nil
     settingsLoadGeneration &+= 1
     openAICredentialLoadGeneration &+= 1
     openAIVerificationGeneration &+= 1
@@ -2551,419 +2467,6 @@ extension AppModel {
       }
       retryDelayIndex = min(retryDelayIndex + 1, retryDelays.count - 1)
     }
-  }
-
-  public func stopInteractiveWorkflowRunsForApplicationShutdown() async {
-    hasBegunApplicationShutdown = true
-    let task = pendingInteractiveWorkflowTask
-    task?.cancel()
-    await task?.value
-    pendingInteractiveWorkflowTask = nil
-    let audioTasks = Array(workflowAudioActionTasks.values)
-    for audioTask in audioTasks {
-      audioTask.cancel()
-    }
-    for audioTask in audioTasks {
-      await audioTask.value
-    }
-    workflowAudioActionTasks.removeAll()
-    isRunning = false
-    workflowAudioRunState = .idle
-    workflowAudioCaptureRunID = nil
-  }
-
-  /// Waits for the interactive workflow accepted before this call to finish.
-  ///
-  /// Unlike the application-shutdown drain, this does not cancel the run or
-  /// mutate presentation state. It is a deterministic completion boundary for
-  /// callers that need to observe the result of an explicitly launched run.
-  public func waitForInteractiveWorkflowRun() async {
-    while let task = pendingInteractiveWorkflowTask {
-      await task.value
-    }
-  }
-
-  /// Waits for accepted start/finish actions for an interactive captured-audio
-  /// workflow without changing the run state.
-  public func waitForWorkflowAudioActions() async {
-    while !workflowAudioActionTasks.isEmpty {
-      let tasks = Array(workflowAudioActionTasks.values)
-      for task in tasks {
-        await task.value
-      }
-    }
-  }
-
-  /// Waits for local speech preparation, including cancelled provider work
-  /// that is still unwinding, without changing the selected model or state.
-  public func waitForLocalSpeechPreparation() async {
-    await localSpeechPreparationTaskOwner.waitUntilIdle()
-  }
-
-  public func stopLocalSpeechPreparationForApplicationShutdown() async {
-    hasBegunApplicationShutdown = true
-    localSpeechReadinessGeneration += 1
-    localSpeechPreparationGeneration += 1
-
-    localSpeechPreparationState = .idle
-    localSpeechPreparationProgress = 0
-    localSpeechPreparedModelIdentifier = nil
-    localSpeechPreparationError = nil
-
-    localSpeechPreparationTaskOwner.stopForApplicationShutdown()
-    await stopLocalSpeechRuntimeAction()
-  }
-
-  func resetLocalSpeechPreparationStatus() {
-    localSpeechReadinessGeneration += 1
-    localSpeechPreparationGeneration += 1
-    localSpeechPreparationTaskOwner.cancelActive()
-    localSpeechPreparationState = .idle
-    localSpeechPreparationProgress = 0
-    localSpeechPreparedModelIdentifier = nil
-    localSpeechPreparationError = nil
-    if !isRestoringSettings {
-      releaseLocalSpeechRuntimeAction()
-    }
-    queueLocalSpeechReadinessIfNeeded()
-  }
-
-  func hasLiveSubtitleSemanticChange(
-    from current: LiveSubtitleSnapshot?,
-    to snapshot: LiveSubtitleSnapshot?
-  ) -> Bool {
-    guard let current, let snapshot else {
-      return current != nil || snapshot != nil
-    }
-    return current.runID != snapshot.runID || current.workflow != snapshot.workflow
-      || current.phase != snapshot.phase || current.confirmedText != snapshot.confirmedText
-      || current.hypothesisText != snapshot.hypothesisText
-      || current.statusText != snapshot.statusText || current.providerID != snapshot.providerID
-      || current.networkUsage != snapshot.networkUsage
-      || current.livePreviewPlacement != snapshot.livePreviewPlacement
-      || current.queuedRunCount != snapshot.queuedRunCount
-      || current.prefersCompactLayout != snapshot.prefersCompactLayout
-  }
-
-  func shouldUpdateLiveSubtitleSnapshot(_ snapshot: LiveSubtitleSnapshot) -> Bool {
-    guard let current = currentCaptureLiveSubtitleSnapshot else { return true }
-    if hasLiveSubtitleSemanticChange(from: current, to: snapshot) {
-      lastLiveSubtitleMeterRefreshAt = ContinuousClock.now
-      return true
-    }
-    guard current.levelMeter != snapshot.levelMeter else {
-      cancelPendingLiveSubtitleMeterRefresh()
-      return false
-    }
-    let now = ContinuousClock.now
-    if let lastLiveSubtitleMeterRefreshAt,
-      now - lastLiveSubtitleMeterRefreshAt < liveSubtitleMeterRefreshInterval
-    {
-      let elapsed = now - lastLiveSubtitleMeterRefreshAt
-      scheduleLiveSubtitleMeterRefresh(
-        snapshot,
-        after: liveSubtitleMeterRefreshInterval - elapsed
-      )
-      return false
-    }
-    cancelPendingLiveSubtitleMeterRefresh()
-    lastLiveSubtitleMeterRefreshAt = now
-    return true
-  }
-
-  func scheduleLiveSubtitleMeterRefresh(
-    _ snapshot: LiveSubtitleSnapshot,
-    after delay: Duration
-  ) {
-    guard !hasBegunApplicationShutdown else { return }
-    if pendingLiveSubtitleMeterSnapshot?.runID == snapshot.runID,
-      pendingLiveSubtitleMeterRefreshTask != nil
-    {
-      pendingLiveSubtitleMeterSnapshot = snapshot
-      return
-    }
-
-    cancelPendingLiveSubtitleMeterRefresh()
-    liveSubtitleMeterRefreshGeneration &+= 1
-    let generation = liveSubtitleMeterRefreshGeneration
-    let runID = snapshot.runID
-    let wait = waitForLiveSubtitleMeterRefresh
-    pendingLiveSubtitleMeterSnapshot = snapshot
-    pendingLiveSubtitleMeterRefreshTask = Task { @MainActor [weak self, wait] in
-      do {
-        try await wait(delay)
-      } catch {
-        self?.discardPendingLiveSubtitleMeterRefresh(generation: generation)
-        return
-      }
-      guard !Task.isCancelled else { return }
-      self?.applyPendingLiveSubtitleMeterRefresh(runID: runID, generation: generation)
-    }
-  }
-
-  func applyPendingLiveSubtitleMeterRefresh(runID: UUID, generation: Int) {
-    guard generation == liveSubtitleMeterRefreshGeneration else { return }
-    pendingLiveSubtitleMeterRefreshTask = nil
-    guard
-      !hasBegunApplicationShutdown,
-      let pendingSnapshot = pendingLiveSubtitleMeterSnapshot,
-      pendingSnapshot.runID == runID,
-      let currentSnapshot = currentCaptureLiveSubtitleSnapshot,
-      currentSnapshot.runID == runID,
-      !hasLiveSubtitleSemanticChange(from: currentSnapshot, to: pendingSnapshot)
-    else {
-      pendingLiveSubtitleMeterSnapshot = nil
-      return
-    }
-
-    pendingLiveSubtitleMeterSnapshot = nil
-    lastLiveSubtitleMeterRefreshAt = ContinuousClock.now
-    currentCaptureLiveSubtitleSnapshot = pendingSnapshot
-    refreshLiveSubtitlePresentation()
-  }
-
-  func discardPendingLiveSubtitleMeterRefresh(generation: Int) {
-    guard generation == liveSubtitleMeterRefreshGeneration else { return }
-    pendingLiveSubtitleMeterRefreshTask = nil
-    pendingLiveSubtitleMeterSnapshot = nil
-  }
-
-  func cancelPendingLiveSubtitleMeterRefresh() {
-    guard
-      pendingLiveSubtitleMeterRefreshTask != nil || pendingLiveSubtitleMeterSnapshot != nil
-    else { return }
-    liveSubtitleMeterRefreshGeneration &+= 1
-    pendingLiveSubtitleMeterRefreshTask?.cancel()
-    pendingLiveSubtitleMeterRefreshTask = nil
-    pendingLiveSubtitleMeterSnapshot = nil
-  }
-
-  func applyLiveSubtitleUpdate(_ snapshot: LiveSubtitleSnapshot) {
-    let currentLiveRunID = currentCaptureLiveSubtitleSnapshot?.runID
-    if snapshot.isVisible || currentLiveRunID == nil || currentLiveRunID == snapshot.runID {
-      pendingLiveSubtitleHideTask?.cancel()
-    }
-    if snapshot.isVisible {
-      if workflowAudioCaptureRunID == nil, workflowAudioRunState != .idle {
-        workflowAudioCaptureRunID = snapshot.runID
-      }
-      if shouldUpdateLiveSubtitleSnapshot(snapshot) {
-        currentCaptureLiveSubtitleSnapshot = snapshot
-        refreshLiveSubtitlePresentation()
-        if snapshot.phase == .failed {
-          scheduleLiveSubtitleHide()
-        } else if snapshot.phase == .preparing {
-          scheduleLiveSubtitleHide(after: liveSubtitlePreparingHideDelay)
-        }
-      }
-    } else if currentCaptureLiveSubtitleSnapshot?.runID == snapshot.runID {
-      if case .recording(let workflowID) = workflowAudioRunState {
-        workflowAudioRunState = .transcribing(workflowID: workflowID)
-      }
-      currentCaptureLiveSubtitleSnapshot = nil
-      lastLiveSubtitleMeterRefreshAt = nil
-      refreshLiveSubtitlePresentation()
-    }
-  }
-
-  func refreshLiveSubtitlePresentation() {
-    if var captureSnapshot = currentCaptureLiveSubtitleSnapshot, captureSnapshot.isVisible {
-      captureSnapshot.queuedRunCount = queuedBackgroundRunCount(from: audioProcessingQueueSnapshot)
-      setLiveSubtitlePresentation(captureSnapshot)
-      return
-    }
-    // The floating surface belongs only to live capture. Background
-    // recognition and output remain observable in the menu bar/history, but
-    // never open a second panel that can fight with the next recording.
-    setLiveSubtitlePresentation(nil)
-  }
-
-  func setLiveSubtitlePresentation(_ snapshot: LiveSubtitleSnapshot?) {
-    liveSubtitleSnapshot = snapshot
-    syncLiveSubtitlePanel()
-  }
-
-  func syncLiveSubtitlePanel() {
-    updateLiveSubtitlePanelAction(liveSubtitleSnapshot, language)
-  }
-
-  func queuedBackgroundRunCount(from snapshot: AudioProcessingQueueSnapshot?) -> Int {
-    snapshot?.pendingCount ?? 0
-  }
-
-  func applyDiagnosticEvents(_ events: [DiagnosticEvent]) {
-    guard !events.isEmpty else { return }
-    diagnosticEvents = Array(
-      Self.sortedDiagnosticEvents(diagnosticEvents + events).prefix(200)
-    )
-    for event in events {
-      append(
-        english: "[\(UIStrings.subsystem(event.subsystem, language: .english))] \(event.message)",
-        simplifiedChinese:
-          "[\(UIStrings.subsystem(event.subsystem, language: .simplifiedChinese))] \(event.message)"
-      )
-    }
-  }
-
-  static func sortedDiagnosticEvents(_ events: [DiagnosticEvent]) -> [DiagnosticEvent] {
-    events.sorted { $0.timestamp > $1.timestamp }
-  }
-
-  func updateLocalSpeechPreparationProgress(
-    _ progress: Progress,
-    operationID: UUID
-  ) {
-    guard !hasBegunApplicationShutdown,
-      localSpeechPreparationTaskOwner.isActive(id: operationID),
-      localSpeechPreparationState == .preparing
-    else {
-      return
-    }
-    let fraction = progress.fractionCompleted
-    if fraction.isFinite {
-      localSpeechPreparationProgress = min(max(fraction, 0), 1)
-    }
-    localSpeechPreparationCompletedUnitCount = max(progress.completedUnitCount, 0)
-    localSpeechPreparationTotalUnitCount = max(progress.totalUnitCount, 0)
-  }
-
-  func rebuildWorkflowLibrary() {
-    invalidateWorkflowExplanation()
-    let builtInWorkflowIDs = Set(builtInWorkflows.map(\.id))
-    let builtInOverridesByID = Dictionary(
-      uniqueKeysWithValues: customWorkflows
-        .filter { builtInWorkflowIDs.contains($0.id) }
-        .map { ($0.id, $0) }
-    )
-    let sortedCustomWorkflows = customWorkflows
-      .filter { !builtInWorkflowIDs.contains($0.id) }
-      .sorted {
-        $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-      }
-    // A custom workflow sharing a built-in's display name shadows that
-    // built-in: listing both would read as duplication. The built-in returns
-    // when the custom is deleted. Matching covers every localized display
-    // variant so the result does not depend on the UI language.
-    let customShadowNameKeys = Set(sortedCustomWorkflows.flatMap(workflowShadowNameKeys))
-    let effectiveBuiltInWorkflows = builtInWorkflows.compactMap {
-      builtIn -> WorkflowDefinition? in
-      if let override = builtInOverridesByID[builtIn.id] { return override }
-      guard workflowShadowNameKeys(builtIn).isDisjoint(with: customShadowNameKeys) else {
-        return nil
-      }
-      return builtIn
-    }
-    workflows = (sortedCustomWorkflows + effectiveBuiltInWorkflows).map {
-      workflowApplyingVocabularyCustomization($0)
-    }
-    synchronizeWorkflowEnabledStates()
-    workflowLibraryChangedAction()
-  }
-
-  /// Every display name a workflow can be known by — raw name plus both
-  /// localized title-key variants — normalized for collision matching.
-  func workflowShadowNameKeys(_ workflow: WorkflowDefinition) -> Set<String> {
-    [
-      WorkflowNameDuplicationPolicy.normalizedName(workflow.name),
-      WorkflowNameDuplicationPolicy.normalizedName(
-        UIStrings.workflowName(workflow.presentation, language: .english)
-      ),
-      WorkflowNameDuplicationPolicy.normalizedName(
-        UIStrings.workflowName(workflow.presentation, language: .simplifiedChinese)
-      ),
-    ]
-  }
-
-  private func workflowApplyingVocabularyCustomization(
-    _ workflow: WorkflowDefinition
-  ) -> WorkflowDefinition {
-    var workflow = workflow
-    if let customization = workflowCustomizations.first(where: {
-      $0.workflowID == workflow.id
-    }), let bindings = customization.vocabularyBindings {
-      workflow.plan.setup.vocabularyBindings = bindings
-    } else if workflow.plan.setup.speechRoute != nil {
-      workflow.plan.setup.vocabularyBindings = vocabularyCollectionBindings
-    }
-    return workflow
-  }
-
-  func applyPreferredSpeechEngineSelectionIfNeeded() {
-    // Workflow enablement no longer tracks a selected workflow.
-  }
-
-  func persistCustomWorkflows() {
-    persistWorkflowLibrary()
-  }
-
-  func persistWorkflowLibrary() {
-    markSettingModifiedDuringInitialLoad(Self.workflowLibrarySettingKey)
-    guard !isRestoringSettings, isWorkflowLibraryAvailable else { return }
-    let document = WorkflowLibraryDocument(
-      customWorkflows: usesWorkflowFilesAsSource ? [] : customWorkflows,
-      customizations: workflowCustomizations
-    )
-    persistRetryableSettingsStoreWrite(
-      for: Self.workflowLibrarySettingKey,
-      category: .workflows
-    ) { settingsStore in
-      let encoder = JSONEncoder()
-      encoder.outputFormatting = [.sortedKeys]
-      let data = try encoder.encode(document)
-      try await settingsStore.setString(
-        String(decoding: data, as: UTF8.self),
-        forKey: Self.workflowLibrarySettingKey
-      )
-    }
-  }
-
-  static func loadCustomWorkflows(
-    from rawValue: String?
-  ) throws -> [WorkflowDefinition] {
-    guard let rawValue, !rawValue.isEmpty else { return [] }
-    let data = Data(rawValue.utf8)
-    let decoded = try JSONDecoder().decode([WorkflowDefinition].self, from: data)
-    guard Set(decoded.map(\.id)).count == decoded.count else {
-      throw StoredSettingsCollectionValidationError.duplicateIdentifier
-    }
-    return decoded.map(Self.normalizeCustomWorkflow)
-  }
-
-  static func loadWorkflowLibrary(
-    from rawValue: String?
-  ) throws -> WorkflowLibraryDocument? {
-    guard let rawValue, !rawValue.isEmpty else { return nil }
-    let document = try JSONDecoder().decode(
-      WorkflowLibraryDocument.self,
-      from: Data(rawValue.utf8)
-    )
-    guard document.schemaVersion == WorkflowLibraryDocument.currentSchemaVersion else {
-      throw StoredSettingsCollectionValidationError.invalidIdentifier
-    }
-    guard Set(document.customWorkflows.map(\.id)).count
-      == document.customWorkflows.count
-    else {
-      throw StoredSettingsCollectionValidationError.duplicateIdentifier
-    }
-    guard Set(document.customizations.map(\.workflowID)).count
-      == document.customizations.count
-    else {
-      throw StoredSettingsCollectionValidationError.duplicateIdentifier
-    }
-    for workflow in document.customWorkflows {
-      let input: WorkflowPlanInput =
-        workflow.plan.setup.speechRoute == nil ? .text : .audio
-      try WorkflowPlanValidator.validate(workflow.plan, input: input)
-    }
-    for customization in document.customizations {
-      guard let bindings = customization.vocabularyBindings else { continue }
-      guard Set(bindings.map(\.id)).count == bindings.count else {
-        throw StoredSettingsCollectionValidationError.duplicateIdentifier
-      }
-    }
-    var normalized = document
-    normalized.customWorkflows = normalized.customWorkflows.map(Self.normalizeCustomWorkflow)
-    return normalized
   }
 
   static func loadWorkflowEnabledStates(
@@ -3202,401 +2705,6 @@ extension AppModel {
       return
     }
     localSpeechSettingsSource.update(currentLocalSpeechSettings())
-  }
-
-  /// Compatibility warmup for installations that do not expose the v5 model
-  /// pool. Current builds synchronize `residentModelIDs` directly and keep
-  /// microphone initialization entirely outside model preparation.
-  func queueLocalSpeechReadinessIfNeeded() {
-    localSpeechPreparationTaskOwner.cancelActive()
-    localSpeechReadinessGeneration += 1
-    let generation = localSpeechReadinessGeneration
-    guard !hasBegunApplicationShutdown,
-      !isLoadingSettings,
-      !isRestoringSettings,
-      !hasUnavailableScalarSettings(in: .localSpeech),
-      localSpeechTrustMaterialAvailable,
-      preferredSpeechEngine == .local,
-      !trustedLocalSpeechModels.contains(where: { $0.engine == .mlxAudioSwift })
-    else {
-      return
-    }
-    let settings = currentLocalSpeechSettings()
-    guard !settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      return
-    }
-    let operationID = UUID()
-    let progressRelay = LocalSpeechPreparationProgressRelay(
-      model: self,
-      operationID: operationID
-    )
-    let taskOwner = localSpeechPreparationTaskOwner
-    let task = Task { [weak self, warmLocalSpeechForCaptureAction, taskOwner] in
-      let shouldStartProvider = await MainActor.run {
-        guard let self,
-          !self.hasBegunApplicationShutdown,
-          taskOwner.isActive(id: operationID),
-          self.localSpeechReadinessGeneration == generation
-        else {
-          return false
-        }
-        self.localSpeechPreparationState = .preparing
-        self.localSpeechPreparationProgress = 0
-        self.localSpeechPreparedModelIdentifier = nil
-        self.localSpeechPreparationError = nil
-        return true
-      }
-      guard shouldStartProvider, !Task.isCancelled else {
-        await MainActor.run {
-          taskOwner.finish(id: operationID)
-        }
-        return
-      }
-      let result: Result<String, Error>
-      do {
-        result = .success(
-          try await warmLocalSpeechForCaptureAction(
-            settings,
-            { progress in
-              Task {
-                await progressRelay.update(progress: progress)
-              }
-            }
-          ))
-      } catch {
-        result = .failure(error)
-      }
-      let wasCancelled = Task.isCancelled
-      await MainActor.run {
-        let shouldPublish =
-          !wasCancelled
-          && taskOwner.isActive(id: operationID)
-          && self?.hasBegunApplicationShutdown == false
-          && self?.localSpeechReadinessGeneration == generation
-        taskOwner.finish(id: operationID)
-        guard shouldPublish, let self else { return }
-
-        switch result {
-        case .success(let preparedModel):
-          guard
-            self.acceptsPreparedLocalSpeechModel(
-              preparedModel,
-              requestedModel: settings.model
-            )
-          else {
-            self.localSpeechPreparationState = .idle
-            self.localSpeechPreparationProgress = 0
-            self.localSpeechPreparedModelIdentifier = nil
-            self.applyLocalSpeechPreparationFailure(
-              LocalSpeechPreparationFailure(stage: .trustRoot)
-            )
-            return
-          }
-          self.localSpeechPreparationState = .ready
-          self.localSpeechPreparationProgress = 1
-          self.localSpeechPreparedModelIdentifier = preparedModel
-          self.localSpeechPreparationError = nil
-          self.recordDownloadedLocalSpeechModel(preparedModel)
-        case .failure(is CancellationError):
-          self.localSpeechPreparationState = .idle
-          self.localSpeechPreparationProgress = 0
-          self.localSpeechPreparedModelIdentifier = nil
-        case .failure(let error):
-          self.localSpeechPreparationState = .idle
-          self.localSpeechPreparationProgress = 0
-          self.localSpeechPreparedModelIdentifier = nil
-          self.applyLocalSpeechPreparationFailure(error)
-        }
-      }
-    }
-    _ = taskOwner.replaceActive(id: operationID, with: task)
-  }
-
-  func addVocabularyRule(
-    kind: VocabularyRuleKind,
-    pattern: String,
-    replacement: String,
-    matchMode: VocabularyMatchMode,
-    caseSensitive: Bool,
-    scope: VocabularyRuleScope,
-    priority: Int = 0
-  ) {
-    guard !isLoadingSettings, areVocabularyRulesAvailable else { return }
-    let trimmedPattern = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedPattern.isEmpty else { return }
-    let rule = VocabularyRule(
-      kind: kind,
-      enabled: true,
-      pattern: trimmedPattern,
-      replacement: replacement.trimmingCharacters(in: .whitespacesAndNewlines),
-      matchMode: matchMode,
-      caseSensitive: caseSensitive,
-      scope: scope,
-      priority: priority
-    )
-    insertVocabularyRule(rule)
-  }
-
-  func createVocabularyCollection(named name: String) {
-    guard !isLoadingSettings, areVocabularyRulesAvailable else { return }
-    let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !name.isEmpty else { return }
-    vocabularyCollections.append(VocabularyCollection(name: name))
-    commitVocabularyLibraryChange()
-  }
-
-  func setVocabularyCollectionEnabled(_ collectionID: UUID, isEnabled: Bool) {
-    guard let index = vocabularyCollections.firstIndex(where: {
-      $0.id == collectionID
-    }) else { return }
-    vocabularyCollections[index].enabled = isEnabled
-    vocabularyCollections[index].updatedAt = Date()
-    commitVocabularyLibraryChange()
-  }
-
-  func deleteVocabularyCollection(_ collectionID: UUID) {
-    guard collectionID != VocabularyCollection.personalID else { return }
-    vocabularyCollections.removeAll { $0.id == collectionID }
-    vocabularyCollectionBindings.removeAll { $0.collectionID == collectionID }
-    workflowCustomizations = workflowCustomizations.map { customization in
-      var customization = customization
-      customization.vocabularyBindings?.removeAll {
-        $0.collectionID == collectionID
-      }
-      return customization
-    }
-    commitVocabularyLibraryChange()
-    persistWorkflowLibrary()
-  }
-
-  func setVocabularyBindings(
-    _ bindings: [VocabularyCollectionBinding],
-    for workflowID: UUID
-  ) {
-    if let index = workflowCustomizations.firstIndex(where: {
-      $0.workflowID == workflowID
-    }) {
-      workflowCustomizations[index].vocabularyBindings = bindings
-    } else {
-      workflowCustomizations.append(
-        WorkflowCustomization(
-          workflowID: workflowID,
-          vocabularyBindings: bindings
-        )
-      )
-    }
-    rebuildWorkflowLibrary()
-    persistWorkflowLibrary()
-  }
-
-  func addVocabularyEntry(
-    to collectionID: UUID,
-    kind: VocabularyRuleKind,
-    pattern: String,
-    replacement: String = ""
-  ) {
-    guard let index = vocabularyCollections.firstIndex(where: {
-      $0.id == collectionID
-    }) else { return }
-    let pattern = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !pattern.isEmpty else { return }
-    let content: VocabularyEntryContent =
-      kind == .hotword
-      ? .hotword(phrase: pattern)
-      : .replacement(
-        pattern: pattern,
-        replacement: replacement.trimmingCharacters(in: .whitespacesAndNewlines),
-        matchMode: .exactPhrase,
-        caseSensitive: false
-      )
-    vocabularyCollections[index].entries.append(
-      VocabularyEntry(content: content)
-    )
-    vocabularyCollections[index].updatedAt = Date()
-    commitVocabularyLibraryChange()
-  }
-
-  func deleteVocabularyEntry(_ entryID: UUID, from collectionID: UUID) {
-    guard let index = vocabularyCollections.firstIndex(where: {
-      $0.id == collectionID
-    }) else { return }
-    vocabularyCollections[index].entries.removeAll { $0.id == entryID }
-    vocabularyCollections[index].updatedAt = Date()
-    commitVocabularyLibraryChange()
-  }
-
-  private func commitVocabularyLibraryChange() {
-    isApplyingVocabularyLibrary = true
-    let scopeByCollectionID = Dictionary(
-      uniqueKeysWithValues: vocabularyCollectionBindings.map { binding in
-        (
-          binding.collectionID,
-          VocabularyRuleScope(
-            bundleIdentifier: binding.condition.bundleIdentifier,
-            recordCollectionID: binding.condition.recordCollectionID,
-            locale: binding.condition.locale
-          )
-        )
-      }
-    )
-    vocabularyRules = Self.sortedVocabularyRules(
-      vocabularyCollections.flatMap { collection in
-        let scope = scopeByCollectionID[collection.id] ?? VocabularyRuleScope()
-        return collection.entries.map { $0.legacyRule(scope: scope) }
-      }
-    )
-    isApplyingVocabularyLibrary = false
-    vocabularyRuleSource.updateCollections(vocabularyCollections)
-    rebuildWorkflowLibrary()
-    persistVocabularyLibrary()
-  }
-
-  @discardableResult
-  public func saveVocabularyCorrectionRule(_ proposedRule: VocabularyRule)
-    -> VocabularyCorrectionSaveOutcome
-  {
-    saveVocabularyCorrectionRule(proposedRule, to: nil)
-  }
-
-  @discardableResult
-  public func saveVocabularyCorrectionRule(
-    _ proposedRule: VocabularyRule,
-    to targetCollectionID: UUID?
-  ) -> VocabularyCorrectionSaveOutcome
-  {
-    guard !isLoadingSettings, areVocabularyRulesAvailable else { return .notReady }
-    let pattern = proposedRule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !pattern.isEmpty else { return .invalid }
-
-    var rule = proposedRule
-    rule.pattern = pattern
-    rule.replacement = proposedRule.replacement.trimmingCharacters(in: .whitespacesAndNewlines)
-    if rule.kind == .hotword {
-      rule.replacement = ""
-      rule.matchMode = .exactPhrase
-      rule.caseSensitive = false
-    }
-
-    if let existing = vocabularyRules.first(where: { existing in
-      existing.kind == rule.kind && existing.pattern == rule.pattern
-        && existing.matchMode == rule.matchMode && existing.caseSensitive == rule.caseSensitive
-        && existing.scope == rule.scope
-    }) {
-      guard existing.replacement == rule.replacement else {
-        return .conflict(existingRuleID: existing.id)
-      }
-      if !existing.enabled {
-        setVocabularyRuleEnabled(existing.id, isEnabled: true)
-      }
-      return .reused(ruleID: existing.id)
-    }
-
-    if let targetCollectionID {
-      let condition = WorkflowBindingCondition(
-        bundleIdentifier: rule.scope.bundleIdentifier,
-        recordCollectionID: rule.scope.recordCollectionID,
-        locale: rule.scope.locale
-      )
-      guard vocabularyCollections.contains(where: { $0.id == targetCollectionID }),
-        vocabularyCollectionBindings.contains(where: {
-          $0.collectionID == targetCollectionID && $0.condition == condition
-        })
-      else {
-        return .invalid
-      }
-    }
-
-    insertVocabularyRule(rule, targetCollectionID: targetCollectionID)
-    return .created(ruleID: rule.id)
-  }
-
-  func vocabularyCollectionIDs(compatibleWith scope: VocabularyRuleScope) -> [UUID] {
-    let condition = WorkflowBindingCondition(
-      bundleIdentifier: scope.bundleIdentifier,
-      recordCollectionID: scope.recordCollectionID,
-      locale: scope.locale
-    )
-    let compatibleIDs = Set(
-      vocabularyCollectionBindings.lazy
-        .filter { $0.condition == condition }
-        .map(\.collectionID)
-    )
-    return vocabularyCollections
-      .filter { compatibleIDs.contains($0.id) }
-      .map(\.id)
-  }
-
-  func setVocabularyRuleEnabled(_ ruleID: UUID, isEnabled: Bool) {
-    guard !isLoadingSettings, areVocabularyRulesAvailable else { return }
-    for collectionIndex in vocabularyCollections.indices {
-      guard let entryIndex = vocabularyCollections[collectionIndex].entries.firstIndex(
-        where: { $0.id == ruleID }
-      ) else { continue }
-      vocabularyCollections[collectionIndex].entries[entryIndex].enabled = isEnabled
-      vocabularyCollections[collectionIndex].updatedAt = Date()
-      commitVocabularyLibraryChange()
-      return
-    }
-  }
-
-  func deleteVocabularyRule(_ ruleID: UUID) {
-    guard !isLoadingSettings, areVocabularyRulesAvailable else { return }
-    for index in vocabularyCollections.indices {
-      let oldCount = vocabularyCollections[index].entries.count
-      vocabularyCollections[index].entries.removeAll { $0.id == ruleID }
-      if vocabularyCollections[index].entries.count != oldCount {
-        vocabularyCollections[index].updatedAt = Date()
-        commitVocabularyLibraryChange()
-        return
-      }
-    }
-  }
-
-  private func insertVocabularyRule(
-    _ rule: VocabularyRule,
-    targetCollectionID: UUID? = nil
-  ) {
-    let condition = WorkflowBindingCondition(
-      bundleIdentifier: rule.scope.bundleIdentifier,
-      recordCollectionID: rule.scope.recordCollectionID,
-      locale: rule.scope.locale
-    )
-    let collectionID: UUID
-    if let targetCollectionID {
-      collectionID = targetCollectionID
-    } else if rule.scope == VocabularyRuleScope() {
-      collectionID = VocabularyCollection.personalID
-    } else if let binding = vocabularyCollectionBindings.first(where: {
-      $0.condition == condition
-    }) {
-      collectionID = binding.collectionID
-    } else {
-      let migration = VocabularyLegacyMigrator.migrate([rule])
-      guard let collection = migration.collections.first,
-        let binding = migration.bindings.first
-      else { return }
-      vocabularyCollections.append(
-        VocabularyCollection(
-          id: collection.id,
-          name: collection.name,
-          entries: []
-        )
-      )
-      vocabularyCollectionBindings.append(binding)
-      collectionID = collection.id
-    }
-
-    if let index = vocabularyCollections.firstIndex(where: {
-      $0.id == collectionID
-    }) {
-      vocabularyCollections[index].entries.append(VocabularyEntry(rule: rule))
-      vocabularyCollections[index].updatedAt = Date()
-    } else {
-      vocabularyCollections.append(
-        .personal(entries: [VocabularyEntry(rule: rule)])
-      )
-    }
-    commitVocabularyLibraryChange()
   }
 
   func setPrivacyCloudConfirmationRequired(_ isRequired: Bool) {
@@ -3863,7 +2971,7 @@ extension AppModel {
       }
     }
     pendingPrivacySettingsWriteTask = task
-    registerPersistenceWrite(task)
+    persistenceWrites.track(task)
   }
 
   func retryPrivacySettingsSave() {
@@ -4061,9 +3169,6 @@ extension AppModel {
     if let value = values[.systemClipboardCaptureEnabled], storedBooleanIfValid(value) == nil {
       invalidKeys.insert(.systemClipboardCaptureEnabled)
     }
-    if let value = values[.recordMergeSimilar], storedBooleanIfValid(value) == nil {
-      invalidKeys.insert(.recordMergeSimilar)
-    }
     if let value = values[.recordPanelHotkey],
       HotkeyBindingDescriptor(storageString: value).storageString != value
     {
@@ -4114,9 +3219,8 @@ extension AppModel {
   func persistWorkflowEnabledStates() {
     markSettingModifiedDuringInitialLoad(.workflowEnabledStates)
     guard !isRestoringSettings, isWorkflowLibraryAvailable else { return }
-    let disabledStates =
+    let enabledStates =
       workflowEnabledStates
-      .filter { !$0.value }
       .reduce(into: [String: Bool]()) { partialResult, entry in
         partialResult[entry.key.uuidString] = entry.value
       }
@@ -4125,12 +3229,12 @@ extension AppModel {
       for: .workflowEnabledStates,
       category: .workflows
     ) { settingsStore in
-      if disabledStates.isEmpty {
+      if enabledStates.isEmpty {
         try await settingsStore.removeValue(forKey: .workflowEnabledStates)
       } else {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let data = try encoder.encode(disabledStates)
+        let data = try encoder.encode(enabledStates)
         try await settingsStore.setString(
           String(decoding: data, as: UTF8.self),
           forKey: .workflowEnabledStates

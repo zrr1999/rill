@@ -26,23 +26,10 @@ private extension HotkeyEventTapHealthChecker where Handle == CFMachPort {
     }
 }
 
-public final class HotkeyEventTap: @unchecked Sendable {
-    public enum PushToTalkGesture: String, Sendable, Equatable {
-        case fnHold = "fn-hold"
-        case controlOptionShiftSpace = "control-option-shift-space"
-    }
+public final class HotkeyEventTap: GlobalInputSource, @unchecked Sendable {
+    public typealias PushToTalkGesture = RillCore.PushToTalkGesture
+    public typealias Event = GlobalInputEvent
 
-    public enum Event: Sendable, Equatable {
-        case manualPasteInterceptRequested
-        case recordPanelRequested
-        case pushToTalkPressed(PushToTalkGesture)
-        case pushToTalkReleased(PushToTalkGesture)
-        case liveAudioCancellationRequested(UUID)
-        case globalInputUnavailable
-        case customHotkey(String)
-    }
-
-    private static let pasteKeyCode: CGKeyCode = 9
     static let escapeKeyCode: CGKeyCode = 53
     static let legacyPushToTalkKeyCode: CGKeyCode = 49
     static let legacyPushToTalkModifiers: CGEventFlags = [.maskControl, .maskAlternate, .maskShift]
@@ -64,8 +51,6 @@ public final class HotkeyEventTap: @unchecked Sendable {
     private var eventTapRunLoop: CFRunLoop?
     private var eventTapThread: Thread?
     private var retainedSelfPointer: UnsafeMutableRawPointer?
-    private var pasteInterceptEnabled = false
-    private var skippedPasteEvents = 0
     private var recordPanelShortcutEnabled = false
     private var recordPanelShortcutRecordingSuspensions: Set<UUID> = []
     private var recordPanelShortcutRecordingCommitKeyCodes: [UUID: CGKeyCode] = [:]
@@ -133,35 +118,6 @@ public final class HotkeyEventTap: @unchecked Sendable {
         withLock {
             liveAudioEscapeRecognizer.setActiveRunID(runID)
         }
-    }
-
-    public func setPasteInterceptEnabled(_ enabled: Bool) {
-        withLock {
-            pasteInterceptEnabled = enabled
-            if !enabled {
-                // A bypass token is only meaningful while interception is active. If
-                // interception is disabled before the synthetic paste arrives, that
-                // event passes through naturally and must not leave a token that can
-                // suppress a later user-initiated paste.
-                skippedPasteEvents = 0
-            }
-        }
-    }
-
-    public func skipNextPasteInterception(count: Int = 1) {
-        guard count > 0 else { return }
-        withLock {
-            guard pasteInterceptEnabled else { return }
-            skippedPasteEvents += count
-        }
-    }
-
-    func testingIsPasteInterceptEnabled() -> Bool {
-        isPasteInterceptEnabled
-    }
-
-    func testingSkippedPasteEventCount() -> Int {
-        withLock { skippedPasteEvents }
     }
 
     public func setRecordPanelHotkeyBinding(_ binding: HotkeyBindingDescriptor) {
@@ -428,7 +384,6 @@ extension HotkeyEventTap {
         releaseCommittedRecordPanelShortcutRecordingSuspensions { _ in true }
         doubleCommandTapRecognizer.reset()
         recordPanelShortcutRecognizer.reset()
-        skippedPasteEvents = 0
         liveAudioEscapeRecognizer.reset()
         _ = pushToTalkRecognizer.interrupt()
     }
@@ -444,7 +399,6 @@ extension HotkeyEventTap {
         }
         recordPanelShortcutRecognizer.reset()
         doubleCommandTapRecognizer.reset()
-        skippedPasteEvents = 0
         liveAudioEscapeRecognizer.resetLatch()
         let activeGesture = pushToTalkRecognizer.activeGesture
         let shouldPreserveActiveTrigger = activeGesture.map {
@@ -573,30 +527,7 @@ extension HotkeyEventTap {
             return nil
         }
 
-        guard type == .keyDown else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        guard keyCode == Self.pasteKeyCode else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        guard event.flags.contains(.maskCommand), isPasteInterceptEnabled else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        if shouldAllowBypassedPasteEvent() {
-            return Unmanaged.passUnretained(event)
-        }
-
-        emit(.manualPasteInterceptRequested)
-        return nil
-    }
-
-    private var isPasteInterceptEnabled: Bool {
-        withLock {
-            pasteInterceptEnabled
-        }
+        return Unmanaged.passUnretained(event)
     }
 
     private func handleLiveAudioEscape(
@@ -709,12 +640,8 @@ extension HotkeyEventTap {
         }
     }
 
-    private func shouldAllowBypassedPasteEvent() -> Bool {
-        withLock {
-            guard skippedPasteEvents > 0 else { return false }
-            skippedPasteEvents -= 1
-            return true
-        }
+    func testingHandle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        handle(type: type, event: event)
     }
 
     func testingIsRecordPanelShortcutEnabled() -> Bool {

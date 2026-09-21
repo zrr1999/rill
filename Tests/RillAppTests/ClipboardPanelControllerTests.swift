@@ -7,13 +7,13 @@ import XCTest
 
 private actor RecordPanelDeliveryProbe {
     struct Snapshot: Sendable {
-        var subjects: [RecordDeliverySubject] = []
+        var subjects: [RecordReuseSubject] = []
         var targets: [FocusedApplicationTargetIdentity] = []
     }
 
     private var state = Snapshot()
 
-    func record(_ subject: RecordDeliverySubject, target: FocusedApplicationTargetIdentity) {
+    func record(_ subject: RecordReuseSubject, target: FocusedApplicationTargetIdentity) {
         state.subjects.append(subject)
         state.targets.append(target)
     }
@@ -94,6 +94,48 @@ private actor RecordPanelOperationGate {
 
 @MainActor
 final class RecordPanelControllerTests: XCTestCase {
+    func testMarkedTextPreventsBothPanelDigitDispatchPathsFromPasting() async throws {
+        let target = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.Editor")
+        let store = RecordStore()
+        _ = try await store.ingest(.init(payload: .text("history"), provenance: .init(source: .init(kind: .systemClipboard))), into: [])
+        let workspace = RecordWorkspaceModel(store: store)
+        let probe = RecordPanelDeliveryProbe()
+        let controller = RecordPanelController(
+            pasteTargetProvider: { target }, pasteTargetRestorer: { _ in true }, reduceMotionProvider: { true })
+        let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
+        controller.show(model: makeModel(recordWorkspace: workspace), deliverSelection: { subject, target in
+            await probe.record(subject, target: target)
+            return .delivered
+        }, onDeliveryAbort: {})
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while controller.quickPanelModel?.results.isEmpty != false, ContinuousClock.now < deadline { await Task.yield() }
+        let window = try XCTUnwrap(NSApp.windows.first { $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
+        window.contentView?.layoutSubtreeIfNeeded()
+        func searchField(in view: NSView) -> NSSearchField? {
+            if let field = view as? NSSearchField { return field }
+            return view.subviews.lazy.compactMap { searchField(in: $0) }.first
+        }
+        let field = try XCTUnwrap(searchField(in: XCTUnwrap(window.contentView)))
+        XCTAssertTrue(window.makeFirstResponder(field))
+        let editor = try XCTUnwrap(window.firstResponder as? NSTextView)
+        editor.setMarkedText("中", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        let event = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: window.windowNumber,
+            context: nil, characters: "1", charactersIgnoringModifiers: "1", isARepeat: false, keyCode: 18))
+        _ = window.performKeyEquivalent(with: event)
+        window.keyDown(with: event)
+        await waitForPasteWork()
+        let marked = await probe.snapshot()
+        XCTAssertTrue(marked.subjects.isEmpty)
+        XCTAssertTrue(controller.isVisible)
+        editor.unmarkText()
+        XCTAssertTrue(window.performKeyEquivalent(with: event))
+        await waitForPasteWork()
+        let unmarked = await probe.snapshot()
+        XCTAssertEqual(unmarked.subjects.count, 1)
+        await controller.shutdown()
+    }
+
     func testAttachedSheetSuppressesAutoHideAndOwnsFirstEscape() {
         XCTAssertFalse(
             RecordPanelModalPolicy.shouldAutoHide(
@@ -324,7 +366,7 @@ final class RecordPanelControllerTests: XCTestCase {
         let digitKeyCodes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25]
         for (index, keyCode) in digitKeyCodes.enumerated() {
             XCTAssertEqual(
-                RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: keyCode, modifierFlags: []),
+                RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: keyCode, modifierFlags: .command),
                 index,
                 "keyCode \(keyCode)"
             )
@@ -332,7 +374,7 @@ final class RecordPanelControllerTests: XCTestCase {
     }
 
     func testDigitShortcutPolicyRejectsModifiedAndNonDigitKeys() {
-        XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 18, modifierFlags: .command))
+        XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 18, modifierFlags: []))
         XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 18, modifierFlags: .shift))
         XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 18, modifierFlags: .option))
         XCTAssertNil(RecordPanelDigitShortcutPolicy.visibleRecordIndex(keyCode: 18, modifierFlags: .control))
@@ -364,9 +406,13 @@ final class RecordPanelControllerTests: XCTestCase {
             model: makeModel(recordWorkspace: workspace),
             deliverSelection: { subject, actionTarget in
                 await probe.record(subject, target: actionTarget)
+                return .delivered
             },
             onDeliveryAbort: {}
         )
+        for _ in 0..<100 where controller.quickPanelModel?.results.isEmpty != false {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         let handler = try XCTUnwrap(controller.digitSelectionHandler)
 
         // Only one visible record: index 1 is out of bounds and consumed nothing.
@@ -378,6 +424,38 @@ final class RecordPanelControllerTests: XCTestCase {
         XCTAssertEqual(result.subjects.map(\.recordID), [projection.id])
         XCTAssertEqual(result.targets, [target])
         await controller.shutdown()
+    }
+
+    func testWarmPanelReadyToSearchWithTenThousandRecords() async throws {
+        guard ProcessInfo.processInfo.environment["RILL_RECORD_STRESS"] == "1" else {
+            throw XCTSkip("Set RILL_RECORD_STRESS=1 to measure native panel presentation with 10,000 summaries.")
+        }
+        let store = RecordStore(persistence: try await LargePanelCatalogFixture.make())
+        let workspace = RecordWorkspaceModel(store: store)
+        await workspace.refresh()
+        let model = makeModel(recordWorkspace: workspace)
+        let controller = RecordPanelController(pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false }, reduceMotionProvider: { true })
+        let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
+        var timings: [Double] = []
+        for iteration in 0..<31 {
+            let started = ContinuousClock.now
+            controller.show(model: model, deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
+            let window = try XCTUnwrap(NSApp.windows.first { $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
+            window.contentView?.layoutSubtreeIfNeeded()
+            let deadline = started.advanced(by: .seconds(2))
+            while controller.quickPanelModel?.results.count != 50, ContinuousClock.now < deadline {
+                await Task.yield()
+            }
+            XCTAssertEqual(controller.quickPanelModel?.results.count, 50)
+            XCTAssertTrue(window.firstResponder is NSTextView, "The search field must own keyboard input")
+            let elapsed = started.duration(to: .now).components
+            if iteration > 0 { timings.append(Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18) }
+            controller.dismiss()
+        }
+        await controller.shutdown()
+        let p95 = timings.sorted()[28]
+        print("RECORD_PANEL_STRESS summaries=10000 warm_ready_p95_ms=\(p95 * 1000)")
+        XCTAssertLessThanOrEqual(p95, 0.150)
     }
 
     private func makeTarget(
@@ -429,4 +507,36 @@ final class RecordPanelControllerTests: XCTestCase {
             try? await Task.sleep(for: .milliseconds(5))
         }
     }
+}
+
+private struct LargePanelCatalogFixture: RecordCatalogPersistenceStore {
+    let catalog: RecordCatalogRead
+    static func make() async throws -> Self {
+        let seed = try await RecordStore().catalogSnapshot()
+        let encoder = JSONEncoder()
+        var nodes: [RecordCatalogNode] = []
+        func append<T: Encodable>(_ kind: RecordCatalogNode.Kind, _ id: String, _ value: T) throws {
+            nodes.append(.init(kind: kind, id: id, value: try encoder.encode(value)))
+        }
+        for collection in seed.collections { try append(.collection, collection.id.description, collection) }
+        for rule in seed.captureRules { try append(.captureRule, rule.id.description, rule) }
+        for rule in seed.deliveryRules { try append(.deliveryRule, rule.id.description, rule) }
+        var order: [RecordID] = []
+        var references: [RecordGraphPersistenceBlobReference] = []
+        for index in 0..<10_000 {
+            let record = Record(payload: .text("record"), provenance: .init(source: .init(kind: .systemClipboard)), createdAt: Date(timeIntervalSince1970: Double(index)))
+            order.append(record.id)
+            try append(.record, record.id.description, RecordHeader(record: record, byteCount: 6))
+            try append(.metadata, record.id.description, RecordMetadata(recordID: record.id))
+            try append(.activity, record.id.description, RecordActivity(recordID: record.id))
+            references.append(.init(blobID: UUID(), recordID: record.id, kind: .text, byteCount: 6))
+        }
+        return Self(catalog: .init(revision: 1, manifest: .init(nextMembershipOrdinal: 1, recordOrder: order.reversed(), collectionOrder: seed.collections.map(\.id)), nodes: nodes, references: references))
+    }
+    func loadRecordCatalog() async throws -> RecordCatalogRead? { catalog }
+    func loadRecordPayload(_ reference: RecordGraphPersistenceBlobReference) async throws -> Data { Data("record".utf8) }
+    func commitRecordCatalog(_ mutation: RecordCatalogMutation) async throws -> Int64 { throw RecordStoreError.persistenceUnavailable }
+    func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
+    func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 { throw RecordStoreError.persistenceUnavailable }
+    func removeRecordGraph() async throws -> RecordGraphRemovalResult { throw RecordStoreError.persistenceUnavailable }
 }

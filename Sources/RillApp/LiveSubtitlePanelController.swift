@@ -193,10 +193,6 @@ struct LiveSubtitlePanelWindowState: Equatable {
 final class LiveSubtitlePanelController {
   static let accessibilityIdentifier = "works.earendil.rill.live-subtitle"
 
-  private static let removeDurationLimitRequestedNotification = Notification.Name(
-    "works.earendil.rill.live-subtitle.remove-duration-limit-requested"
-  )
-
   private let visibleFrameResolver: @MainActor () -> NSRect?
   private let reduceMotionProvider: @MainActor () -> Bool
 
@@ -226,7 +222,7 @@ final class LiveSubtitlePanelController {
     self.reduceMotionProvider = reduceMotionProvider
 
     let removeDurationLimitObserver = NotificationCenter.default.addObserver(
-      forName: Self.removeDurationLimitRequestedNotification,
+      forName: .rillLiveSubtitleRemoveDurationLimitRequested,
       object: nil,
       queue: .main
     ) { [weak self] notification in
@@ -450,7 +446,7 @@ final class LiveSubtitlePanelController {
   }
 
   private func configureAccessibility(of panel: NSPanel, language: AppLanguage) {
-    let title = language == .english ? "Rill Dictation" : "Rill 语音输入"
+    let title = L10n.liveSubtitlePanelTitle(language: language)
     panel.title = title
     panel.setAccessibilityLabel(title)
   }

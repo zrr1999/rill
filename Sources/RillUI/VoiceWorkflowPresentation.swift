@@ -4,6 +4,7 @@ import RillCore
 enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equatable {
     case rawInput
     case cleanInput
+    case smartCleanup
     case formalWriting
     case translateInput
     case commandMode
@@ -12,6 +13,7 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
     static let selectableCases: [VoiceTextStyle] = [
         .rawInput,
         .cleanInput,
+        .smartCleanup,
         .formalWriting,
         .translateInput,
         .commandMode,
@@ -26,7 +28,7 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
             return RillSystemSymbol.textQuote.rawValue
         case .cleanInput:
             return RillSystemSymbol.textAlignLeft.rawValue
-        case .formalWriting:
+        case .formalWriting, .smartCleanup:
             return RillSystemSymbol.wandAndStars.rawValue
         case .translateInput:
             return RillSystemSymbol.globeAsiaAustralia.rawValue
@@ -42,7 +44,7 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
            let style = VoiceTextStyle(rawValue: rawValue) {
             return style
         }
-        return infer(from: workflow.plan.process.steps.compactMap(\.postProcessStep))
+        return infer(from: workflow.plan.process.allSteps.compactMap(\.postProcessStep))
     }
 
     static func infer(from steps: [PostProcessStep]) -> VoiceTextStyle {
@@ -57,6 +59,9 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
             .joined(separator: " ")
             .lowercased()
 
+        if steps.contains(where: { $0.prompt == LLMTextProcessing.cleanupPrompt }) {
+            return .smartCleanup
+        }
         if promptText.contains("translate") {
             return .translateInput
         }
@@ -79,6 +84,11 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
             return []
         case .cleanInput:
             return [PostProcessStep(kind: .normalizeWhitespace)]
+        case .smartCleanup:
+            return [
+                PostProcessStep(kind: .normalizeWhitespace),
+                PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt),
+            ]
         case .formalWriting:
             return [
                 PostProcessStep(kind: .normalizeWhitespace),
@@ -117,7 +127,7 @@ enum VoiceTextStyle: String, CaseIterable, Identifiable, Codable, Sendable, Equa
 struct VoiceWorkflowPresentation: Equatable, Sendable {
     let textStyle: VoiceTextStyle
     let trigger: TriggerBinding
-    let outputActionID: String?
+    let outputActionIDs: [String]
     let recognizerID: String
     let languageOverride: String?
     let usesBuiltinTitle: Bool
@@ -125,7 +135,7 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
     init(workflow: WorkflowDefinition) {
         textStyle = VoiceTextStyle.infer(from: workflow)
         trigger = workflow.trigger
-        outputActionID = workflow.plan.output.actions.first?.id
+        outputActionIDs = workflow.plan.output.actions.map(\.id)
         recognizerID = workflow.plan.setup.speechRoute?.recognizerID ?? ""
         languageOverride = workflow.metadata[WorkflowMetadataKey.languageOverride]
         usesBuiltinTitle = workflow.titleKey != nil
@@ -138,8 +148,9 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
             ? languageOverride ?? ""
             : L10n.string(.workflowLanguageAuto, language: language)
         let triggerTitle = UIStrings.workflowTrigger(trigger, language: language)
-        let output = outputActionID.map { UIStrings.actionName($0, language: language) }
-            ?? L10n.string(.voiceModeOutputNone, language: language)
+        let output = outputActionIDs.isEmpty
+            ? L10n.string(.voiceModeOutputNone, language: language)
+            : outputActionIDs.map { UIStrings.actionName($0, language: language) }.joined(separator: " + ")
         let privacyLabel = L10n.privacyText(PrivacySettingsTextKey.routeDetailLabel, language: language)
         let privacy = privacyRouteShortValue(language: language)
 

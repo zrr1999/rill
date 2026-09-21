@@ -38,13 +38,13 @@ enum RecordPanelModalPolicy {
 }
 
 enum RecordPanelDigitShortcutPolicy {
-    /// Maps an unmodified main-keyboard digit press (1...9) to a zero-based
+    /// Maps a Command-modified main-keyboard digit press (1...9) to a zero-based
     /// index into the visible record list. The ANSI key codes are not
     /// contiguous — 5 and 6 are swapped and 8 sits at 28 — so the mapping is
     /// explicit rather than a range.
     static func visibleRecordIndex(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> Int? {
         let flags = modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard flags.isDisjoint(with: [.command, .option, .control, .shift]) else { return nil }
+        guard flags.intersection([.command, .option, .control, .shift]) == .command else { return nil }
         switch keyCode {
         case 18: return 0
         case 19: return 1
@@ -175,8 +175,8 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         var application: NSRunningApplication?
     }
 
-    private static let defaultPanelSize = NSSize(width: 750, height: 520)
-    fileprivate static let minimumPanelSize = NSSize(width: 600, height: 400)
+    private static let defaultPanelSize = NSSize(width: 620, height: 560)
+    fileprivate static let minimumPanelSize = NSSize(width: 500, height: 440)
     private static let autoHideSuppressionInterval: Duration = .milliseconds(200)
     private static let focusRestoreSettleInterval: Duration = .milliseconds(80)
 
@@ -187,6 +187,8 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     private var pendingFocusRestoreTask: Task<Void, Never>?
     private let pasteTaskOwner = RecordPanelPasteTaskOwner()
     private var panelTransitionGeneration: UInt64 = 0
+    private var panelHideTask: Task<Void, Never>?
+    private var retiringSessionTasks: [UUID: Task<Void, Never>] = [:]
     private var hasBegunShutdown = false
     private var autoHideSuppressedUntil = ContinuousClock.now
     private let pasteTargetProvider: (@MainActor () -> FocusedApplicationTargetIdentity?)?
@@ -221,6 +223,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     }
 
     deinit {
+        panelHideTask?.cancel()
         pendingFocusHideTask?.cancel()
         pendingFocusRestoreTask?.cancel()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
@@ -233,46 +236,64 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     /// zero-based visible record index to a delivery through the same target
     /// locking path as the Insert button. Exposed for tests.
     private(set) var digitSelectionHandler: ((Int) -> Bool)?
+    private(set) var quickPanelModel: RecordQuickPanelModel?
 
     func show(
         model: AppModel,
-        deliverSelection: @escaping @Sendable (
-            RecordDeliverySubject,
-            FocusedApplicationTargetIdentity
-        ) async -> Void,
+        deliverSelection: @escaping @Sendable (RecordReuseSubject, FocusedApplicationTargetIdentity) async -> RecordReuseOutcome,
+        copySelection: @escaping @Sendable (RecordReuseSubject) async -> RecordReuseOutcome = { _ in .blocked },
         onDeliveryAbort: @escaping @Sendable () async -> Void
     ) {
         guard !hasBegunShutdown else { return }
+        if isVisible { handleEscape(); return }
         rememberPreviousApplication()
-        let previewContext = RecordRouteContext(
-            applicationName: previousApplication?.localizedName,
-            bundleIdentifier: previousApplication?.bundleIdentifier
-        )
-        let useSelectedRecord: @MainActor @Sendable (RecordDeliverySubject) -> Void = {
-            [weak self] subject in
-            self?.useSelectedItem { target in
-                await deliverSelection(subject, target)
-            } onAbort: {
+        if let previousSession = quickPanelModel {
+            previousSession.stop()
+            let id = UUID()
+            retiringSessionTasks[id] = Task { [weak self] in
+                await previousSession.shutdown()
+                self?.retiringSessionTasks[id] = nil
+            }
+        }
+        let session = model.recordWorkspace.makeQuickPanelModel()
+        session.start(sourceBundleIdentifier: previousApplication?.bundleIdentifier)
+        quickPanelModel = session
+        let useSelectedRecord: @MainActor @Sendable (RecordReuseSubject) -> Void = { [weak self] subject in
+            self?.useSelectedItem { [weak self] target in
+                let result = await deliverSelection(subject, target)
+                await self?.handleReuseOutcome(result, session: session)
+            } onAbort: { [weak self] in
                 await onDeliveryAbort()
+                self?.handleReuseOutcome(.targetUnavailable, session: session)
             }
         }
         let digitSelection: (Int) -> Bool = { index in
-            guard let subject = model.recordWorkspace.deliverySubject(forVisibleRecordAt: index)
-            else { return false }
+            guard let subject = session.subject(at: index) else { return false }
             useSelectedRecord(subject)
             return true
         }
         digitSelectionHandler = digitSelection
         let hostingController = FloatingRecordHostingController(
             rootView: FloatingRecordView(
-                model: model,
-                previewContext: previewContext,
+                model: model, session: session,
                 deliverSelection: useSelectedRecord,
-                onClose: dismiss
+                copySelection: { [weak self] subject in
+                    guard let self, let reservation = self.pasteTaskOwner.reserve(
+                        prepare: { true },
+                        action: { [weak self] in
+                            let result = await copySelection(subject)
+                            self?.handleReuseOutcome(result, session: session)
+                        }, onAbort: nil
+                    ) else { return }
+                    self.pasteTaskOwner.start(reservation)
+                },
+                onShowRecord: { [weak self] in self?.hidePanel(restorePreviousApplication: false) },
+                onClose: { [weak self] in self?.dismiss() }
             )
         )
 
         if let panel {
+            panel.title = L10n.quickRecord(.title, language: model.language)
             (panel as? FloatingRecordPanel)?.onDigitPressed = digitSelection
             panel.contentViewController = hostingController
             restorePanelSizeIfNeeded(panel)
@@ -290,6 +311,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
+        panel.title = L10n.quickRecord(.title, language: model.language)
         panel.delegate = self
         panel.onEscapePressed = { [weak self] in self?.handleEscape() }
         panel.onDigitPressed = digitSelection
@@ -316,12 +338,22 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         present(panel)
     }
 
+    private func handleReuseOutcome(_ result: RecordReuseOutcome, session: RecordQuickPanelModel) {
+        guard !hasBegunShutdown, session === quickPanelModel else { return }
+        session.report(result)
+        if result != .delivered && result != .copied, let panel, !panel.isVisible {
+            session.resume()
+            present(panel)
+        }
+    }
+
     func dismiss() {
         hidePanel(restorePreviousApplication: true)
     }
 
     private func handleEscape() {
-        guard let panel else { return }
+        guard let panel, quickPanelModel?.cleanup.isWorking != true else { return }
+        if panel.attachedSheet == nil, quickPanelModel?.preview != nil { quickPanelModel?.closePreview(); return }
         switch RecordPanelModalPolicy.escapeDestination(
             hasAttachedSheet: panel.attachedSheet != nil
         ) {
@@ -372,6 +404,11 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
             return
         }
         hasBegunShutdown = true
+        panelHideTask?.cancel()
+        await panelHideTask?.value
+        panelHideTask = nil
+        await quickPanelModel?.shutdown()
+        for task in Array(retiringSessionTasks.values) { await task.value }
         panelTransitionGeneration &+= 1
         pendingFocusHideTask?.cancel()
         pendingFocusHideTask = nil
@@ -476,6 +513,9 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     }
 
     private func present(_ panel: NSPanel) {
+        panelHideTask?.cancel()
+        panelHideTask = nil
+        centerOnActiveScreen(panel)
         guard !hasBegunShutdown else { return }
         pasteTaskOwner.abortReservations()
         panelTransitionGeneration &+= 1
@@ -507,7 +547,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         guard let screen else { return }
         let visibleFrame = screen.visibleFrame
         let originX = visibleFrame.midX - panel.frame.width / 2
-        let originY = visibleFrame.midY - panel.frame.height / 2 + visibleFrame.height * 0.1
+        let originY = visibleFrame.midY - panel.frame.height / 2
         panel.setFrameOrigin(NSPoint(x: originX, y: originY))
     }
 
@@ -516,6 +556,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         onHidden: (@MainActor () -> Void)? = nil,
         onInvalidated: (@MainActor () -> Void)? = nil
     ) {
+        quickPanelModel?.stop()
         if onHidden == nil, onInvalidated == nil {
             pasteTaskOwner.abortReservations()
         }
@@ -529,6 +570,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         let transitionGeneration = panelTransitionGeneration
         let previousApp = restorePreviousApplication ? previousApplication ?? fallbackExternalApplication : nil
         // Reduce Motion: skip the exit fade and hide the panel directly.
+        panelHideTask?.cancel()
         guard !reduceMotionProvider() else {
             finishHide(
                 transitionGeneration: transitionGeneration,
@@ -542,19 +584,16 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
             context.duration = 0.12
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
-        } completionHandler: { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self else {
-                    onInvalidated?()
-                    return
-                }
-                self.finishHide(
-                    transitionGeneration: transitionGeneration,
-                    previousApp: previousApp,
-                    onHidden: onHidden,
-                    onInvalidated: onInvalidated
-                )
-            }
+        }
+        // A no-op AppKit alpha animation may omit its completion. The session
+        // owns the dismissal deadline so rapid Enter/Escape cannot strand a paste.
+        panelHideTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .milliseconds(120)) }
+            catch { onInvalidated?(); return }
+            guard let self else { onInvalidated?(); return }
+            self.finishHide(transitionGeneration: transitionGeneration, previousApp: previousApp,
+                            onHidden: onHidden, onInvalidated: onInvalidated)
+            if self.panelTransitionGeneration == transitionGeneration { self.panelHideTask = nil }
         }
     }
 
@@ -678,14 +717,24 @@ private final class FloatingRecordPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if handleDigitShortcut(event) { return true }
+        return super.performKeyEquivalent(with: event)
+    }
+
     override func keyDown(with event: NSEvent) {
-        if let index = RecordPanelDigitShortcutPolicy.visibleRecordIndex(
+        if handleDigitShortcut(event) { return }
+        super.keyDown(with: event)
+    }
+
+    private func handleDigitShortcut(_ event: NSEvent) -> Bool {
+        guard attachedSheet == nil,
+              (firstResponder as? NSTextView)?.hasMarkedText() != true,
+              let index = RecordPanelDigitShortcutPolicy.visibleRecordIndex(
             keyCode: event.keyCode,
             modifierFlags: event.modifierFlags
-        ), onDigitPressed?(index) == true {
-            return
-        }
-        super.keyDown(with: event)
+        ) else { return false }
+        return onDigitPressed?(index) == true
     }
 
     override func cancelOperation(_ sender: Any?) {
@@ -705,67 +754,31 @@ private final class FirstMouseHostingView<Content: View>: NSHostingView<Content>
     }
 }
 
-/// Transparent view that allows window dragging from its area.
-private final class WindowDragHandleView: NSView {
-    override var mouseDownCanMoveWindow: Bool { true }
-
-    override func mouseDown(with event: NSEvent) {
-        window?.performDrag(with: event)
-    }
-}
-
-/// SwiftUI wrapper for the drag handle — place this as an overlay on the panel edge.
-private struct WindowDragHandle: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { WindowDragHandleView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
-
 private struct FloatingRecordView: View {
     let model: AppModel
-    let previewContext: RecordRouteContext?
-    let deliverSelection: @MainActor @Sendable (RecordDeliverySubject) -> Void
+    let session: RecordQuickPanelModel
+    let deliverSelection: @MainActor @Sendable (RecordReuseSubject) -> Void
+    let copySelection: (RecordReuseSubject) -> Void
+    let onShowRecord: () -> Void
     let onClose: () -> Void
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text(UIStrings.text(.sidebarRecords, language: model.language))
-                    .font(.headline)
-
-                Spacer(minLength: 0)
-
-                Button(action: onClose) {
-                    Image(systemName: RillSystemSymbol.xmarkCircleFill.rawValue)
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(UIStrings.text(.dismiss, language: model.language))
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 10)
-            .background {
-                WindowDragHandle()
-            }
-
-            Divider()
-                .padding(.horizontal, 16)
-
-            RecordWorkspaceView(
-                workspace: model.recordWorkspace,
-                language: model.language,
-                deliverSelection: deliverSelection,
-                sourceAppContext: previewContext
-            )
-                .frame(
-                    minWidth: RecordPanelController.minimumPanelSize.width,
-                    maxWidth: .infinity,
-                    minHeight: RecordPanelController.minimumPanelSize.height,
-                    maxHeight: .infinity
-                )
-        }
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        RecordQuickPanelView(
+            model: session, language: model.language, capturePaused: !model.systemClipboardCaptureEnabled,
+            onPaste: deliverSelection, onCopy: copySelection,
+            onShowRecord: { id in
+                model.selectSidebarSection(.records)
+                model.recordWorkspace.selectCollection(nil)
+                model.recordWorkspace.searchText = ""
+                model.recordWorkspace.selectedRecordID = id
+                onShowRecord()
+                NSApp.activate(ignoringOtherApps: true)
+                openWindow(id: "main")
+            }, onClose: onClose
+        )
+        .frame(minWidth: RecordPanelController.minimumPanelSize.width,
+               minHeight: RecordPanelController.minimumPanelSize.height)
+        .clipShape(RoundedRectangle(cornerRadius: RillRadius.panel, style: .continuous))
     }
 }

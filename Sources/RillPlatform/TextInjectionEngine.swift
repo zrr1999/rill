@@ -160,7 +160,6 @@ public actor TextInjectionEngine {
         pasteboard: SystemClipboardPort,
         accessibilityChecker: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() },
         diagnosticReporter: (@Sendable (DiagnosticEvent) async -> Void)? = nil,
-        hotkeyTap: HotkeyEventTap? = nil,
         focusController: FocusController = .system,
         pasteCommandSender: @escaping @Sendable () async throws -> Bool = {
             await PasteCommandSender.sendWithEventSpacing()
@@ -174,7 +173,6 @@ public actor TextInjectionEngine {
         self.pasteboard = pasteboard
         self.accessibilityChecker = accessibilityChecker
         self.diagnosticReporter = diagnosticReporter
-        self.hotkeyTap = hotkeyTap
         self.focusController = focusController
         self.pasteCommandSender = pasteCommandSender
         self.keyboardChunkSender = keyboardChunkSender ?? { chunk in
@@ -188,7 +186,6 @@ public actor TextInjectionEngine {
     private let pasteboard: SystemClipboardPort
     private let accessibilityChecker: @Sendable () -> Bool
     private let diagnosticReporter: (@Sendable (DiagnosticEvent) async -> Void)?
-    private let hotkeyTap: HotkeyEventTap?
     private let focusController: FocusController
     private let pasteCommandSender: @Sendable () async throws -> Bool
     private let keyboardChunkSender: @Sendable ([UInt16]) async -> Bool
@@ -409,7 +406,6 @@ public actor TextInjectionEngine {
             ]
         )
         try await verifyTargetFocus(target)
-        hotkeyTap?.skipNextPasteInterception()
         try await simulatePaste()
         try? await Task.sleep(for: Self.postPasteSettleDelay)
         await recordDiagnostic(

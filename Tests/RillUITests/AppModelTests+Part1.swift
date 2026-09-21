@@ -726,9 +726,9 @@ extension AppModelTests {
         XCTAssertNil(storedWorkflowID)
     }
 
-    func testLoadSettingsRestoresClipboardMergeSimilarPreferenceWithoutRewrite() async {
+    func testLoadSettingsPreservesRetiredClipboardPreferenceWithoutApplyingOrRewritingIt() async {
         let settingsStore = UITestSettingsStore(
-            storage: [.recordMergeSimilar: "true"]
+            storage: [.recordMergeSimilar: "legacy-value"]
         )
         let harness = makeHarness(
             settingsStore: settingsStore,
@@ -739,8 +739,10 @@ extension AppModelTests {
 
         let activity = await settingsStore.activitySnapshot()
 
-        XCTAssertTrue(harness.model.mergeSimilarRecords)
+        XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
+        XCTAssertEqual(activity.storage[.recordMergeSimilar], "legacy-value")
         XCTAssertTrue(activity.setCounts.isEmpty)
+        XCTAssertTrue(activity.removeCounts.isEmpty)
     }
 
     func testLoadSettingsRestoresRecordHistoryVisibilityPreference() async {
@@ -1057,6 +1059,8 @@ extension AppModelTests {
         let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
 
         XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.recognizerID, AppModel.localSpeechRecognizerID)
+        XCTAssertEqual(resolvedHotkeyWorkflow?.plan.output.actions.map(\.id), ["record.store", "focused-application.insert"])
+        XCTAssertEqual(resolvedHotkeyWorkflow?.targetRecordCollectionIDs, [RecordCollection.voiceInputID])
     }
 
     func testBuiltinHotkeyWorkflowUsesConfiguredVoiceGroupOutputMode() async {
@@ -1066,7 +1070,7 @@ extension AppModelTests {
 
         let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
 
-        XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.outputActions.first?.id, "record.store")
+        XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.outputActions.map(\.id), ["record.store"])
         XCTAssertEqual(
             resolvedHotkeyWorkflow?.targetRecordCollectionIDs,
             [RecordCollection.voiceInputID]

@@ -433,6 +433,14 @@ final class L10nTests: XCTestCase {
       "Sent message · user 1"
     )
     XCTAssertEqual(
+      L10n.historyTimelineMessageRole(.user, language: .simplifiedChinese),
+      "用户"
+    )
+    XCTAssertEqual(
+      L10n.historyTimelineMessageRole(.assistant, language: .english),
+      "Assistant"
+    )
+    XCTAssertEqual(
       L10n.historyTimelineSentToLLMStep(2, language: .simplifiedChinese),
       "发送给 LLM · 第 2 步"
     )

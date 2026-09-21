@@ -53,6 +53,47 @@ private enum WorkflowOperationFailureStage {
 }
 
 extension AppModel {
+  public func stopInteractiveWorkflowRunsForApplicationShutdown() async {
+    hasBegunApplicationShutdown = true
+    let task = pendingInteractiveWorkflowTask
+    task?.cancel()
+    await task?.value
+    pendingInteractiveWorkflowTask = nil
+    let audioTasks = Array(workflowAudioActionTasks.values)
+    for audioTask in audioTasks {
+      audioTask.cancel()
+    }
+    for audioTask in audioTasks {
+      await audioTask.value
+    }
+    workflowAudioActionTasks.removeAll()
+    isRunning = false
+    workflowAudioRunState = .idle
+    workflowAudioCaptureRunID = nil
+  }
+
+  /// Waits for the interactive workflow accepted before this call to finish.
+  ///
+  /// Unlike the application-shutdown drain, this does not cancel the run or
+  /// mutate presentation state. It is a deterministic completion boundary for
+  /// callers that need to observe the result of an explicitly launched run.
+  public func waitForInteractiveWorkflowRun() async {
+    while let task = pendingInteractiveWorkflowTask {
+      await task.value
+    }
+  }
+
+  /// Waits for accepted start/finish actions for an interactive captured-audio
+  /// workflow without changing the run state.
+  public func waitForWorkflowAudioActions() async {
+    while !workflowAudioActionTasks.isEmpty {
+      let tasks = Array(workflowAudioActionTasks.values)
+      for task in tasks {
+        await task.value
+      }
+    }
+  }
+
   private func workflowLibraryIsReadyForMutation(reportingToEditor: Bool) -> Bool {
     guard !isLoadingSettings else {
       let message = L10n.runText(.workflowLibraryLoading, language: language)
@@ -79,11 +120,13 @@ extension AppModel {
   }
 
   public func isWorkflowEnabled(_ workflow: WorkflowDefinition) -> Bool {
-    WorkflowExecutionPolicy.supports(workflow)
+    !invalidWorkflowFileIDs.contains(workflow.id)
+      && WorkflowExecutionPolicy.supports(workflow)
       && (workflowEnabledStates[workflow.id] ?? true)
   }
 
   public func setWorkflowEnabled(_ isEnabled: Bool, for workflowID: UUID) {
+    guard !hasBegunApplicationShutdown, !isUpdatingWorkflowEnabledStates else { return }
     guard workflowLibraryIsReadyForMutation(reportingToEditor: false) else { return }
     guard let workflow = workflows.first(where: { $0.id == workflowID }) else { return }
 
@@ -105,47 +148,52 @@ extension AppModel {
     }
 
     hasModifiedWorkflowLibrary = true
-    var changedWorkflowIDs: Set<UUID> = [workflowID]
+    var changes = [workflowID: isEnabled]
     if isEnabled, let exclusiveGroup = workflow.exclusiveGroupIdentifier {
       for candidate in workflows
       where
         candidate.id != workflowID && candidate.exclusiveGroupIdentifier == exclusiveGroup
       {
-        workflowEnabledStates[candidate.id] = false
-        changedWorkflowIDs.insert(candidate.id)
+        changes[candidate.id] = false
       }
     }
-    workflowEnabledStates[workflowID] = isEnabled
     workflowLibraryError = nil
+    if persistWorkflowFileEnabledStates(changes) { return }
+    workflowEnabledStates.merge(changes) { _, new in new }
     updateWorkflowTriggerConflicts()
     persistWorkflowEnabledStates()
-    persistWorkflowFileEnabledStates(for: changedWorkflowIDs)
     workflowLibraryChangedAction()
   }
 
-  private func persistWorkflowFileEnabledStates(for workflowIDs: Set<UUID>) {
-    guard let workflowFileStore else { return }
-    let records = customWorkflows.compactMap { workflow -> (WorkflowDefinition, Bool, URL?)? in
-      guard workflowIDs.contains(workflow.id) else { return nil }
+  private func persistWorkflowFileEnabledStates(_ changes: [UUID: Bool]) -> Bool {
+    guard let workflowFileStore else { return false }
+    let records = customWorkflows.compactMap { workflow -> (WorkflowDefinition, Bool, URL?, String?)? in
+      guard let enabled = changes[workflow.id] else { return nil }
       return (
         workflow,
-        workflowEnabledStates[workflow.id] ?? true,
-        workflowFileURLsByID[workflow.id]
+        enabled,
+        workflowFileURLsByID[workflow.id],
+        workflowFileSourcesByID[workflow.id]
       )
     }
-    guard !records.isEmpty else { return }
+    guard !records.isEmpty else { return false }
 
-    Task { @MainActor [weak self] in
-      for (workflow, isEnabled, existingURL) in records {
+    isUpdatingWorkflowEnabledStates = true
+    let task = Task { @MainActor [weak self] in
+      guard let self else { return }
+      defer { self.isUpdatingWorkflowEnabledStates = false }
+      // Persist deactivations first so a reload cannot enable both Fn workflows.
+      for (workflow, isEnabled, existingURL, source) in records.sorted(by: { !$0.1 && $1.1 }) {
         do {
-          let fileURL = try await workflowFileStore.save(
-            workflow: workflow,
-            isEnabled: isEnabled,
-            replacing: existingURL
+          let record = try await workflowFileStore.saveDocument(
+            WorkflowDocument(workflow: workflow, isEnabled: isEnabled),
+            replacing: existingURL,
+            expected: source.map(WorkflowFileExpectation.source) ?? .missing
           )
-          self?.workflowFileURLsByID[workflow.id] = fileURL
+          self.workflowFileURLsByID[workflow.id] = record.fileURL
+          self.workflowFileSourcesByID[workflow.id] = record.source
         } catch {
-          guard let self else { return }
+          await self.reloadWorkflowFiles()
           self.workflowLibraryError = String(
             format: L10n.runText(.workflowTOMLStateSaveFailedFormat, language: self.language),
             error.localizedDescription
@@ -153,7 +201,13 @@ extension AppModel {
           return
         }
       }
+      // Commit built-in selection only after every file change has succeeded.
+      self.workflowEnabledStates.merge(changes) { _, new in new }
+      self.persistWorkflowEnabledStates()
+      await self.reloadWorkflowFiles()
     }
+    persistenceWrites.track(task)
+    return true
   }
 
   public func enabledWorkflows(for trigger: TriggerBinding) -> [WorkflowDefinition] {
@@ -162,6 +216,7 @@ extension AppModel {
         workflow.trigger == trigger
           && isWorkflowEnabled(workflow)
           && isWorkflowExecutionSupported(workflow)
+          && (workflowConflictIDsByWorkflowID[workflow.id]?.isEmpty ?? true)
       }
       .compactMap { workflow in
         resolvedWorkflowForExecution(workflow, trigger: trigger)
@@ -468,7 +523,7 @@ extension AppModel {
     case nil:
       break
     }
-    if workflow.plan.process.steps.compactMap(\.postProcessStep).contains(where: {
+    if workflow.plan.process.allSteps.compactMap(\.postProcessStep).contains(where: {
       !Self.productionPostProcessStepKinds.contains($0.kind)
     }) {
       return .missingProductionTransformer
@@ -487,7 +542,7 @@ extension AppModel {
         return .wakeWordModelNotReady
       }
     }
-    if workflow.plan.process.steps.contains(where: {
+    if workflow.plan.process.allSteps.contains(where: {
       $0.kind == .llmRewrite || $0.kind == .llmAnswer
     }) {
       guard openAICredentialAvailability == .available,
@@ -559,9 +614,9 @@ extension AppModel {
     case (.simplifiedChinese, .unregisteredOutputAction(let actionID)):
       return "此工作流使用了当前版本不可用的输出动作：\(actionID)。"
     case (.english, .openAIUnavailable(_)):
-      return "Add an OpenAI API key in Settings before enabling this workflow."
+      return "Add an LLM Provider API key in Settings before enabling this workflow."
     case (.simplifiedChinese, .openAIUnavailable(_)):
-      return "请先在设置中添加 OpenAI API Key，再启用此工作流。"
+      return "请先在设置中添加 API Key，再启用此工作流。"
     case (.english, .openAIConfigurationInvalid):
       return "Enter a valid OpenAI-compatible endpoint and model ID before enabling this workflow."
     case (.simplifiedChinese, .openAIConfigurationInvalid):
@@ -614,9 +669,9 @@ extension AppModel {
     case (.simplifiedChinese, .unregisteredOutputAction(let actionID)):
       return "此工作流无法运行，因为没有为 \(actionID) 注册生产级输出动作。"
     case (.english, .openAIUnavailable(_)):
-      return "OpenAI text polishing is unavailable. Open Settings and save an API key."
+      return "LLM Provider is unavailable. Open Settings and save an API key."
     case (.simplifiedChinese, .openAIUnavailable(_)):
-      return "OpenAI 文本润色当前不可用。请打开设置并保存 API Key。"
+      return "LLM Provider当前不可用。请打开设置并保存 API Key。"
     case (.english, .openAIConfigurationInvalid):
       return "The OpenAI-compatible endpoint or model ID is invalid. Review Speech settings and retry."
     case (.simplifiedChinese, .openAIConfigurationInvalid):
@@ -993,11 +1048,6 @@ extension AppModel {
     if section == .records {
       recordWorkspace.selectCollection(recordWorkspace.snapshot.collections.first?.id)
     }
-    if section == .workflows, let workflowID = workflows.first?.id {
-      workflowEditorNavigationRequest = WorkflowEditorNavigationRequest(
-        workflowID: workflowID
-      )
-    }
     if section == .stream {
       runHistoryScope = .recentRuns
     }
@@ -1343,212 +1393,6 @@ extension AppModel {
     )
   }
 
-  public func refreshDiagnostics() {
-    loadDiagnostics()
-  }
-
-  public func prepareLocalSpeechModel() {
-    guard !hasBegunApplicationShutdown,
-      !isLoadingSettings,
-      localSpeechPreparationState != .preparing
-    else {
-      return
-    }
-    guard !hasUnavailableScalarSettings(in: .localSpeech) else {
-      localSpeechPreparationError = ProviderSettingsPersistenceError.unavailableStoredSettings
-        .message(language: language)
-      return
-    }
-    guard localSpeechTrustMaterialAvailable else {
-      localSpeechPreparationState = .idle
-      localSpeechPreparationProgress = 0
-      localSpeechPreparedModelIdentifier = nil
-      localSpeechPreparationError = UIStrings.localSpeechAvailabilityDescription(
-        localSpeechAvailability,
-        language: language
-      )
-      return
-    }
-    localSpeechPreparationTaskOwner.cancelActive()
-    localSpeechReadinessGeneration += 1
-    localSpeechPreparationGeneration += 1
-    let generation = localSpeechPreparationGeneration
-    if !trustedLocalSpeechModels.isEmpty {
-      let selectedModel = selectedTrustedLocalSpeechModelIdentifier
-      guard !selectedModel.isEmpty else {
-        localSpeechPreparationState = .idle
-        localSpeechPreparationProgress = 0
-        localSpeechPreparedModelIdentifier = nil
-        localSpeechPreparationError = UIStrings.text(
-          UIStrings.Key.localSpeechTrustMaterialUnavailable,
-          language: language
-        )
-        return
-      }
-      if localSpeechModel != selectedModel {
-        localSpeechModel = selectedModel
-      }
-    } else if localSpeechModelOption == .custom {
-      let customModel = legacyWhisperKitCustomModel.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !customModel.isEmpty else {
-        localSpeechPreparationState = .idle
-        localSpeechPreparationProgress = 0
-        localSpeechPreparedModelIdentifier = nil
-        localSpeechPreparationError = UIStrings.text(
-          UIStrings.Key.legacyWhisperKitCustomModelRequired,
-          language: language
-        )
-        return
-      }
-      if localSpeechModel != customModel {
-        localSpeechModel = customModel
-      }
-    }
-    localSpeechPreparationState = .preparing
-    localSpeechPreparationProgress = 0
-    localSpeechPreparationCompletedUnitCount = 0
-    localSpeechPreparationTotalUnitCount = 0
-    localSpeechPreparedModelIdentifier = nil
-    localSpeechPreparationError = nil
-    let settings = currentLocalSpeechSettings()
-    let operationID = UUID()
-    let progressRelay = LocalSpeechPreparationProgressRelay(
-      model: self,
-      operationID: operationID
-    )
-    let taskOwner = localSpeechPreparationTaskOwner
-
-    let task = Task { [weak self, prepareLocalSpeechAction, taskOwner] in
-      let shouldStartProvider = await MainActor.run {
-        guard let self,
-          !self.hasBegunApplicationShutdown,
-          taskOwner.isActive(id: operationID),
-          self.localSpeechPreparationGeneration == generation
-        else {
-          return false
-        }
-        return true
-      }
-      guard shouldStartProvider, !Task.isCancelled else {
-        await MainActor.run {
-          taskOwner.finish(id: operationID)
-        }
-        return
-      }
-      let result: Result<String, Error>
-      do {
-        result = .success(
-          try await prepareLocalSpeechAction(
-            settings,
-            { progress in
-              Task {
-                await progressRelay.update(progress: progress)
-              }
-            }))
-      } catch {
-        result = .failure(error)
-      }
-      let wasCancelled = Task.isCancelled
-      await MainActor.run {
-        let shouldPublish =
-          !wasCancelled
-          && taskOwner.isActive(id: operationID)
-          && self?.hasBegunApplicationShutdown == false
-          && self?.localSpeechPreparationGeneration == generation
-        taskOwner.finish(id: operationID)
-        guard shouldPublish, let self else { return }
-
-        switch result {
-        case .success(let preparedModel):
-          guard
-            self.acceptsPreparedLocalSpeechModel(
-              preparedModel,
-              requestedModel: settings.model
-            )
-          else {
-            self.localSpeechPreparationState = .idle
-            self.localSpeechPreparationProgress = 0
-            self.localSpeechPreparedModelIdentifier = nil
-            self.applyLocalSpeechPreparationFailure(
-              LocalSpeechPreparationFailure(stage: .trustRoot)
-            )
-            return
-          }
-          self.localSpeechPreparationState = .ready
-          self.localSpeechPreparationProgress = 1
-          self.localSpeechPreparedModelIdentifier = preparedModel
-          self.recordDownloadedLocalSpeechModel(preparedModel)
-          self.append(
-            english: String(
-              format: L10n.runText(.localSpeechModelReadyFormat, language: .english),
-              preparedModel
-            ),
-            simplifiedChinese: String(
-              format: L10n.runText(.localSpeechModelReadyFormat, language: .simplifiedChinese),
-              preparedModel
-            )
-          )
-        case .failure(is CancellationError):
-          self.localSpeechPreparationState = .idle
-          self.localSpeechPreparationProgress = 0
-          self.localSpeechPreparedModelIdentifier = nil
-        case .failure(let error):
-          self.localSpeechPreparationState = .idle
-          self.localSpeechPreparationProgress = 0
-          self.localSpeechPreparedModelIdentifier = nil
-          self.applyLocalSpeechPreparationFailure(error)
-        }
-      }
-    }
-    _ = taskOwner.replaceActive(id: operationID, with: task)
-  }
-
-  public func cancelLocalSpeechModelPreparation() {
-    guard localSpeechPreparationState == .preparing else { return }
-    localSpeechReadinessGeneration += 1
-    localSpeechPreparationGeneration += 1
-    localSpeechPreparationTaskOwner.cancelActive()
-    localSpeechPreparationState = .idle
-    localSpeechPreparationProgress = 0
-    localSpeechPreparationCompletedUnitCount = 0
-    localSpeechPreparationTotalUnitCount = 0
-    localSpeechPreparedModelIdentifier = nil
-    localSpeechPreparationError = nil
-    releaseLocalSpeechRuntimeAction()
-  }
-
-  public func releaseLocalSpeechModelMemory() {
-    guard !hasBegunApplicationShutdown,
-      localSpeechPreparationState != .preparing
-    else {
-      return
-    }
-    localSpeechReadinessGeneration += 1
-    localSpeechPreparationGeneration += 1
-    localSpeechPreparationTaskOwner.cancelActive()
-    releaseLocalSpeechRuntimeAction()
-    localSpeechPreparationError = nil
-    append(
-      english: L10n.runText(.localSpeechModelMemoryReleased, language: .english),
-      simplifiedChinese: L10n.runText(
-        .localSpeechModelMemoryReleased,
-        language: .simplifiedChinese
-      )
-    )
-  }
-
-  /// Starts the irreversible clipboard-mutation shutdown boundary.
-  public func sealRecordMutationsForApplicationShutdown() {
-    hasBegunApplicationShutdown = true
-    cancelResidentSpeechModelSynchronizationForApplicationShutdown()
-  }
-
-  /// Waits for mutations accepted before the shutdown boundary. Accepted
-  /// writes are never cancelled because they may already own durable state.
-  public func drainRecordMutationsForApplicationShutdown() async {
-    hasBegunApplicationShutdown = true
-  }
-
   public func acceptResolution(selections: [UUID: UUID]) {
     guard let pendingResolution else { return }
     Task {
@@ -1568,28 +1412,4 @@ extension AppModel {
     pendingInteractiveWorkflowTask = nil
   }
 
-  /// Projects provider failures into fixed, payload-free UI state.
-  ///
-  /// App composition may preserve one of the trusted loader's allowlisted
-  /// stages by wrapping it in `LocalSpeechPreparationFailure`. Any other error
-  /// is deliberately collapsed to the generic presentation before it reaches
-  /// Settings or the activity feed.
-  func applyLocalSpeechPreparationFailure(_ error: Error) {
-    let stage = (error as? LocalSpeechPreparationFailure)?.stage ?? .generic
-    let presentation = L10n.localSpeechPreparationFailure(stage)
-    localSpeechPreparationError = presentation.string(for: language)
-    append(
-      english: presentation.english,
-      simplifiedChinese: presentation.simplifiedChinese
-    )
-  }
-
-  func acceptsPreparedLocalSpeechModel(
-    _ preparedModel: String,
-    requestedModel: String
-  ) -> Bool {
-    guard !trustedLocalSpeechModels.isEmpty else { return true }
-    return preparedModel == requestedModel
-      && trustedLocalSpeechModels.contains(where: { $0.id == preparedModel })
-  }
 }

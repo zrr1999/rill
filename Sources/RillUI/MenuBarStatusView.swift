@@ -2,19 +2,6 @@ import Foundation
 import SwiftUI
 import RillCore
 
-private struct RecordPanelKeyboardShortcutModifier: ViewModifier {
-  let isVisible: Bool
-
-  @ViewBuilder
-  func body(content: Content) -> some View {
-    if isVisible {
-      content.keyboardShortcut("b", modifiers: .command)
-    } else {
-      content
-    }
-  }
-}
-
 enum MenuBarLayoutMetrics {
   static let contentWidth: CGFloat = 360
 }
@@ -27,6 +14,10 @@ struct MenuBarFixedWidthText: View {
       .lineLimit(1)
       .truncationMode(.tail)
       .frame(width: MenuBarLayoutMetrics.contentWidth, alignment: .leading)
+      // The .menu bar-extra style does not reliably present tooltips, so the
+      // fixed width remains a copy-length budget; .help still exposes the
+      // full string wherever tooltips do render.
+      .help(text)
   }
 }
 
@@ -43,6 +34,9 @@ struct MenuBarFixedWidthLabel: View {
       Image(systemName: systemImage)
     }
     .frame(width: MenuBarLayoutMetrics.contentWidth, alignment: .leading)
+    // Same tooltip caveat as MenuBarFixedWidthText: under the .menu style
+    // this may never surface, so keep titles short enough for 360pt.
+    .help(title)
   }
 }
 
@@ -381,13 +375,7 @@ public struct MenuBarStatusView: View {
             systemImage: RillSystemSymbol.squareStack3dUp.rawValue
           )
         }
-        .modifier(
-          RecordPanelKeyboardShortcutModifier(
-            isVisible: RecordPanelShortcutPresentationPolicy.surfaceVisibility(
-              systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled
-            ).menuShortcutAnnotation
-          )
-        )
+        .keyboardShortcut("b", modifiers: .command)
         .accessibilityIdentifier("menu.clipboard.open-history")
 
         Button {

@@ -1,6 +1,11 @@
 import SwiftUI
 
 struct PrivacyNoticeSheet: View {
+    // Sheet minimums: wide enough for the rendered markdown document and
+    // tall enough to avoid immediate scrolling on common display sizes.
+    private static let minimumWidth: CGFloat = 520
+    private static let minimumHeight: CGFloat = 420
+
     @Environment(\.dismiss) private var dismiss
 
     private let language: AppLanguage
@@ -20,7 +25,7 @@ struct PrivacyNoticeSheet: View {
                 Text(renderedDocument)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
-                    .padding(24)
+                    .padding(RillSpacing.page)
             }
             .navigationTitle(
                 L10n.privacyText(.technicalNotice, language: language)
@@ -36,7 +41,7 @@ struct PrivacyNoticeSheet: View {
                 }
             }
         }
-        .frame(minWidth: 680, minHeight: 560)
+        .frame(minWidth: Self.minimumWidth, minHeight: Self.minimumHeight)
         .accessibilityIdentifier("privacy.technical-notice")
     }
 }

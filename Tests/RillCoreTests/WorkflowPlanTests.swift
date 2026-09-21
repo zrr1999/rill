@@ -3,6 +3,40 @@ import XCTest
 @testable import RillCore
 
 final class WorkflowPlanTests: XCTestCase {
+    func testTextInputProjectionPreservesBranchesVocabularyAndOutputs() throws {
+        var plan = makeVoiceWorkflow().plan
+        plan.setup.vocabularyBindings = [VocabularyCollectionBinding(collectionID: UUID())]
+        plan.process.steps.insert(WorkflowProcessStep(kind: .resolveUncertainty), at: 1)
+        var branch = WorkflowProcessStep(kind: .conditional)
+        branch.condition = .comparison(field: .text, operation: .contains, value: "Rill")
+        branch.thenSteps = [WorkflowProcessStep(kind: .normalizeWhitespace)]
+        branch.elseSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: "Polish")]
+        plan.process.steps.append(branch)
+        let original = plan
+
+        let textPlan = plan.acceptingTextInput()
+
+        try WorkflowPlanValidator.validate(textPlan, input: .text)
+        XCTAssertEqual(plan, original)
+        XCTAssertNil(textPlan.setup.speechRoute)
+        XCTAssertEqual(textPlan.setup.vocabularyBindings, plan.setup.vocabularyBindings)
+        XCTAssertEqual(textPlan.process.steps, [plan.process.steps[2], branch])
+        XCTAssertEqual(textPlan.output, plan.output)
+        XCTAssertEqual(textPlan.acceptingTextInput(), textPlan)
+    }
+
+    func testTextInputProjectionDoesNotHideInvalidNestedSpeech() {
+        var plan = makeVoiceWorkflow().plan
+        var branch = WorkflowProcessStep(kind: .conditional)
+        branch.condition = .comparison(field: .text, operation: .contains, value: "Rill")
+        branch.thenSteps = [WorkflowProcessStep(kind: .recognizeSpeech)]
+        plan.process.steps.append(branch)
+
+        XCTAssertThrowsError(
+            try WorkflowPlanValidator.validate(plan.acceptingTextInput(), input: .text)
+        )
+    }
+
     func testWorkflowDefinitionEncodesPlanWithoutLegacyPipeline() throws {
         let workflow = makeVoiceWorkflow()
 

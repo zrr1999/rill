@@ -49,11 +49,11 @@ final class LocalizationWorkflowsTests: XCTestCase {
   func testWorkflowParameterizedCopy() {
     XCTAssertEqual(
       L10n.workflowOpenAIModelHint("gpt-5", language: .english),
-      "OpenAI model: gpt-5. Change it in Settings → Speech Engine."
+      "LLM Provider model: gpt-5. Change it in Settings → Speech Engine."
     )
     XCTAssertEqual(
       L10n.workflowOpenAIModelHint("gpt-5", language: .simplifiedChinese),
-      "OpenAI 模型：gpt-5。可在“设置 → 语音引擎”中切换。"
+      "LLM Provider 模型：gpt-5。可在“设置 → 语音引擎”中切换。"
     )
     XCTAssertEqual(
       L10n.workflowUnsupportedStepError("snippetReplacement", language: .english),

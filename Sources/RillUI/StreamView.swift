@@ -1,40 +1,14 @@
 import SwiftUI
 import RillCore
 
-private enum StreamViewMetrics {
-    static let activityPreviewLimit = 6
-}
-
-struct RecordPanelShortcutSurfaceVisibility: Sendable, Equatable {
-    let streamCard: Bool
-    let settingsRecorder: Bool
-    let menuShortcutAnnotation: Bool
-}
-
-enum RecordPanelShortcutPresentationPolicy {
-    static func surfaceVisibility(
-        systemClipboardCaptureEnabled: Bool
-    ) -> RecordPanelShortcutSurfaceVisibility {
-        RecordPanelShortcutSurfaceVisibility(
-            streamCard: systemClipboardCaptureEnabled,
-            settingsRecorder: systemClipboardCaptureEnabled,
-            menuShortcutAnnotation: systemClipboardCaptureEnabled
-        )
-    }
-
-    static func globalInputReadyDetail(
-        systemClipboardCaptureEnabled: Bool
-    ) -> UIStrings.Key {
-        systemClipboardCaptureEnabled
-            ? .voiceSetupGlobalInputReady
-            : .voiceSetupGlobalInputVoiceOnlyReady
-    }
-}
-
 /// The stream home merges the former Dashboard and Run History pages into one
 /// Record-stream surface: readiness, live activity and the durable receipt
 /// timeline share a single scroll, per docs/ui-direction.md.
 public struct StreamView: View {
+    /// Shared card appear/disappear spring for the stream surface.
+    private static let cardSpring: Animation = .spring(response: 0.35, dampingFraction: 1.0)
+
+    @State private var isEventFeedExpanded = false
     @Bindable private var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -48,19 +22,6 @@ public struct StreamView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     if !model.voiceSetupReadiness.isComplete {
                         voiceSetupCard(model.voiceSetupReadiness)
-                    }
-                    Text(UIStrings.text(.appSubtitle, language: model.language))
-                        .foregroundStyle(.secondary)
-                    recordStatusCard
-                    if let activityPresentation = streamActivityPresentation {
-                        streamActivityCard(activityPresentation)
-                            .transition(.asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .top)),
-                                removal: .opacity
-                            ))
-                    }
-                    if let failureMessage = latestFailureMessage {
-                        voiceFailureBanner(message: failureMessage)
                     }
                     if let pending = model.pendingResolution {
                         CandidatePanelView(
@@ -78,17 +39,41 @@ public struct StreamView: View {
                             removal: .opacity
                         ))
                     }
-                    eventFeed
+                    if let failureMessage = latestFailureMessage {
+                        voiceFailureBanner(message: failureMessage)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .top)),
+                                removal: .opacity
+                            ))
+                    }
+                    if model.voiceSetupReadiness.isComplete {
+                        Label(L10n.presentation(.ready, language: model.language), systemImage: RillSystemSymbol.checkmarkCircleFill.rawValue)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    recordStatusCard
+                    if let activityPresentation = streamActivityPresentation {
+                        streamActivityCard(activityPresentation)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .top)),
+                                removal: .opacity
+                            ))
+                    }
                     HistoryTimelineView(model: model, proxy: proxy)
+                    eventFeed
                 }
-                .padding(24)
+                .padding(RillSpacing.page)
                 .animation(
-                    reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 1.0),
+                    reduceMotion ? nil : Self.cardSpring,
                     value: model.pendingResolution != nil
                 )
                 .animation(
-                    reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 1.0),
+                    reduceMotion ? nil : Self.cardSpring,
                     value: streamActivityPresentation
+                )
+                .animation(
+                    reduceMotion ? nil : Self.cardSpring,
+                    value: latestFailureMessage != nil
                 )
             }
         }
@@ -97,42 +82,37 @@ public struct StreamView: View {
 
     @ViewBuilder
     private var recordStatusCard: some View {
-        if RecordPanelShortcutPresentationPolicy.surfaceVisibility(
-            systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled
-        ).streamCard {
-            Button {
-                model.showRecordPanel()
-            } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(UIStrings.text(.deliveryStack, language: model.language))
-                        .font(.headline)
-                    Text(UIStrings.recordCountSummary(model.recordCount, language: model.language))
-                        .font(.body.weight(.medium))
-                        .lineLimit(2)
-                    Text(model.recordPreview ?? UIStrings.text(.stackEmpty, language: model.language))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                        .truncationMode(.tail)
-                }
-                .rillCard()
+        Button {
+            model.showRecordPanel()
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(UIStrings.text(.deliveryStack, language: model.language))
+                    .font(.headline)
+                Text(UIStrings.recordCountSummary(model.recordCount, language: model.language))
+                    .font(.body.weight(.medium))
+                    .lineLimit(2)
+                    // Animate the count text itself instead of springing
+                    // the whole card on every record-count change.
+                    .contentTransition(.numericText())
+                    .animation(
+                        reduceMotion ? nil : Self.cardSpring,
+                        value: model.recordCount
+                    )
+                Text(model.recordPreview ?? UIStrings.text(.stackEmpty, language: model.language))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .truncationMode(.tail)
             }
-            .buttonStyle(RillCardButtonStyle())
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(
-                "\(UIStrings.text(.deliveryStack, language: model.language)): "
-                    + UIStrings.recordCountSummary(model.recordCount, language: model.language)
-            )
-            .accessibilityIdentifier("stream.record-panel")
-            .animation(
-                reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 1.0),
-                value: model.systemClipboardCaptureEnabled
-            )
-            .animation(
-                reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 1.0),
-                value: model.recordCount
-            )
+            .rillCard()
         }
+        .buttonStyle(RillCardButtonStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(UIStrings.text(.deliveryStack, language: model.language)): "
+                + UIStrings.recordCountSummary(model.recordCount, language: model.language)
+        )
+        .accessibilityIdentifier("stream.record-panel")
     }
 
     private var streamActivityPresentation: StreamActivityPresentation? {
@@ -184,16 +164,37 @@ public struct StreamView: View {
 
                 Spacer()
 
-                Button(UIStrings.text(.copy, language: model.language)) {
+                RillCopyButton(
+                    title: L10n.historyTimelineText(.copyFailureDetails, language: model.language),
+                    language: model.language
+                ) {
                     model.copyTextToClipboard(message)
                 }
                 .buttonStyle(.borderless)
             }
 
+            Button(model.permissionSnapshot.microphone == .denied
+                || (model.voiceSetupReadiness.accessibilityRequired && model.permissionSnapshot.accessibility == .denied)
+                ? UIStrings.text(.openSettings, language: model.language)
+                : L10n.presentation(.details, language: model.language)) {
+                if model.permissionSnapshot.microphone == .denied {
+                    model.openMicrophoneSettings()
+                } else if model.voiceSetupReadiness.accessibilityRequired && model.permissionSnapshot.accessibility == .denied {
+                    model.openAccessibilitySettings()
+                } else if let entry = model.displayedRunHistoryEntries.first(where: {
+                    $0.status == .failed && $0.record?.failureMessage == message
+                }) {
+                    model.showHistoryEntry(entry.id)
+                } else {
+                    model.selectSidebarSection(.diagnostics)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+
             Text(L10n.string(.voiceFailureGenericSummary, language: model.language))
                 .font(.callout.weight(.medium))
 
-            VStack(alignment: .leading, spacing: 4) {
+            DisclosureGroup(L10n.string(.voiceFailureDetailsLabel, language: model.language)) {
                 Text(L10n.string(.voiceFailureDetailsLabel, language: model.language))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -209,7 +210,19 @@ public struct StreamView: View {
     }
 
     private var eventFeed: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        DisclosureGroup(isExpanded: $isEventFeedExpanded) {
+            if model.eventFeed.isEmpty {
+                Text(UIStrings.text(.eventFeedEmpty, language: model.language))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(model.eventFeed) { entry in
+                        eventFeedRow(entry)
+                    }
+                }
+            }
+        } label: {
             HStack(alignment: .firstTextBaseline) {
                 Text(UIStrings.text(.eventFeed, language: model.language))
                     .font(.headline)
@@ -226,28 +239,9 @@ public struct StreamView: View {
                 .controlSize(.small)
                 .accessibilityIdentifier("stream.open-diagnostics")
             }
-            if model.eventFeed.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: RillSystemSymbol.textBubble.rawValue)
-                        .font(.largeTitle)
-                        .imageScale(.large)
-                        .foregroundStyle(.tertiary)
-                    Text(UIStrings.text(.eventFeedEmpty, language: model.language))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, minHeight: 120)
-            } else {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(
-                        model.eventFeed
-                            .suffix(StreamViewMetrics.activityPreviewLimit)
-                            .reversed()
-                    ) { entry in
-                        eventFeedRow(entry)
-                    }
-                }
-            }
+            Text("\(model.eventFeed.count)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -258,9 +252,10 @@ public struct StreamView: View {
         )
         return Text(presentation.text)
             .lineLimit(presentation.lineLimit)
+            .textSelection(.enabled)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(presentation.accessibilityLabel)
-            .rillCard(.subdued, cornerRadius: 10, padding: 10)
+            .rillCard(.subdued, cornerRadius: RillRadius.row, padding: RillSpacing.row)
     }
 }
 
@@ -327,9 +322,7 @@ extension StreamView {
         case .available:
             setupRow(
                 title: title,
-                detail: RecordPanelShortcutPresentationPolicy.globalInputReadyDetail(
-                    systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled
-                ),
+                detail: .voiceSetupGlobalInputReady,
                 symbol: RillSystemSymbol.checkmarkCircleFill.rawValue,
                 color: .green
             )
@@ -509,10 +502,18 @@ extension StreamView {
             }
             Spacer(minLength: 12)
             if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityIdentifier(actionIdentifier ?? "")
+                // Only stamp an identifier when one is provided; an empty
+                // identifier is worse than none for accessibility queries.
+                if let actionIdentifier {
+                    Button(actionTitle, action: action)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityIdentifier(actionIdentifier)
+                } else {
+                    Button(actionTitle, action: action)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
             }
         }
     }

@@ -38,7 +38,7 @@ public enum WorkflowPrivacyDestinationClassifier {
 
         switch invocation {
         case .capture:
-            guard classifyRecognizer(
+            guard workflow.inputKind != .audio || classifyRecognizer(
                 workflow.plan.setup.speechRoute?.recognizerID ?? "",
                 destinations: &destinations
             ) else {
@@ -53,7 +53,7 @@ public enum WorkflowPrivacyDestinationClassifier {
             // result and therefore never invokes or classifies the recognizer.
         }
 
-        for step in workflow.plan.process.steps.compactMap(\.postProcessStep) {
+        for step in workflow.plan.process.allSteps.compactMap(\.postProcessStep) {
             switch step.kind {
             case .snippetReplacement, .normalizeWhitespace:
                 break

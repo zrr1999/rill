@@ -321,7 +321,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         XCTAssertEqual(try privacySettingsSource.currentSettings(), .defaults)
         XCTAssertTrue(
             harness.model.eventFeed.contains {
-                $0.english == "The OpenAI credential could not be read from secure storage."
+                $0.english == "The LLM Provider credential could not be read from secure storage."
             }
         )
     }

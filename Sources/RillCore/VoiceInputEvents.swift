@@ -34,6 +34,7 @@ public enum RillEvent: Sendable, Equatable {
     case candidateResolutionRequested(CandidateResolutionCase)
     case candidateResolutionFinished(caseID: UUID, resolvedText: String)
     case transformationApplied(stepID: UUID, text: String)
+    case runTextStepRecorded(runID: UUID, step: WorkflowTextStep)
     case actionExecuted(actionID: String, result: ActionResult)
     case recordPanelRequested
     /// Invalidates subscriber snapshots after a terminal receipt is accepted.

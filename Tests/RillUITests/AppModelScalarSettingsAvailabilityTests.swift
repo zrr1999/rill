@@ -10,7 +10,6 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       .interfaceLanguage: "klingon",
       .systemClipboardCaptureEnabled: "maybe",
       .recordHistoryVisibility: "everything",
-      .recordMergeSimilar: "sometimes",
       .recordPanelHotkey: "unknown",
       .preferredSpeechEngine: "hybrid",
       .localSpeechPrewarm: "later",

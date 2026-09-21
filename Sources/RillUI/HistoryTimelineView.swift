@@ -154,26 +154,12 @@ struct HistoryLoadFailurePresentation: Sendable, Equatable {
             )
         }
 
-        switch language {
-        case .english:
-            return HistoryLoadFailurePresentation(
-                title: "Saved history is unavailable",
-                message:
-                    "Rill is running session-only, so reopening saved history cannot "
-                    + "succeed until persistent storage is available.",
-                actionTitle: "View Storage Settings",
-                action: .viewStorageSettings
-            )
-        case .simplifiedChinese:
-            return HistoryLoadFailurePresentation(
-                title: "已保存的历史记录不可用",
-                message:
-                    "Rill 当前仅在本次会话中运行；在持久化存储恢复前，"
-                    + "重新加载已保存历史不会成功。",
-                actionTitle: "查看存储设置",
-                action: .viewStorageSettings
-            )
-        }
+        return HistoryLoadFailurePresentation(
+            title: UIStrings.text(.historyLoadSessionOnlyTitle, language: language),
+            message: UIStrings.text(.historyLoadSessionOnlyDescription, language: language),
+            actionTitle: UIStrings.text(.historyLoadSessionOnlyViewStorage, language: language),
+            action: .viewStorageSettings
+        )
     }
 }
 
@@ -215,6 +201,10 @@ public struct HistoryTimelineView: View {
     @FocusState private var focusedTarget: HistoryViewFocusTarget?
     @AccessibilityFocusState private var accessibilityFocusedTarget: HistoryViewFocusTarget?
 
+    /// Shared minimum height for the loading/failure/empty placeholders so
+    /// state switches do not resize the timeline.
+    private static let stateMinHeight: CGFloat = 240
+
     public init(model: AppModel, proxy: ScrollViewProxy) {
         self.model = model
         self.proxy = proxy
@@ -247,6 +237,7 @@ public struct HistoryTimelineView: View {
                         )
                     )
                     .font(.caption)
+                    .monospacedDigit()
                 }
             }
             .foregroundStyle(.secondary)
@@ -285,7 +276,7 @@ public struct HistoryTimelineView: View {
                 }
                 .foregroundStyle(.orange)
                 .padding(12)
-                .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: RillRadius.section))
                 .accessibilityIdentifier("history.deep-link.expired")
             }
 
@@ -438,7 +429,7 @@ public struct HistoryTimelineView: View {
                 .font(.title3)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 240)
+        .frame(maxWidth: .infinity, minHeight: Self.stateMinHeight)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("history.loading")
     }
@@ -451,7 +442,6 @@ public struct HistoryTimelineView: View {
         return VStack(spacing: 12) {
             Image(systemName: RillSystemSymbol.exclamationmarkTriangleFill.rawValue)
                 .font(.largeTitle)
-                .imageScale(.large)
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
             Text(presentation.title)
@@ -482,7 +472,7 @@ public struct HistoryTimelineView: View {
                     : "history.error.open-storage-settings"
             )
         }
-        .frame(maxWidth: .infinity, minHeight: 240)
+        .frame(maxWidth: .infinity, minHeight: Self.stateMinHeight)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("history.error")
     }
@@ -518,7 +508,6 @@ public struct HistoryTimelineView: View {
                     UIStrings.text(.historyOlderPage, language: model.language),
                     systemImage: RillSystemSymbol.chevronRight.rawValue
                 )
-                .labelStyle(.titleAndIcon)
             }
             .disabled(
                 !model.canLoadOlderRunHistoryPage
@@ -535,7 +524,6 @@ public struct HistoryTimelineView: View {
         VStack(spacing: 12) {
             Image(systemName: RillSystemSymbol.clockArrowCirclepath.rawValue)
                 .font(.largeTitle)
-                .imageScale(.large)
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
             Text(
@@ -549,7 +537,7 @@ public struct HistoryTimelineView: View {
                 .font(.title3)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 240)
+        .frame(maxWidth: .infinity, minHeight: Self.stateMinHeight)
     }
 
     private func recordList(
@@ -568,7 +556,7 @@ public struct HistoryTimelineView: View {
                         equals: .entry(entry.id)
                     )
                     .accessibilityIdentifier("history.entry.\(entry.id.uuidString)")
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity)
             }
         }
         .animation(
@@ -599,6 +587,7 @@ public struct HistoryTimelineView: View {
         let languageModelTrace = entry.record.flatMap {
             HistoryLanguageModelTracePresentation(record: $0)
         }
+        let textSteps = entry.record?.correctionSource?.processingSteps ?? []
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: entry.status.systemSymbol.rawValue)
@@ -606,6 +595,7 @@ public struct HistoryTimelineView: View {
 
                 Text(title)
                     .font(.headline)
+                    .lineLimit(1)
 
                 if entry.isRecordRelated || entry.receipt?.trigger == .recordDelivery {
                     Label(
@@ -621,22 +611,34 @@ public struct HistoryTimelineView: View {
 
                 Spacer()
 
-                Text(entry.timestamp, style: .relative)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                TimelineView(.periodic(from: .now, by: 30)) { _ in
+                    Text(entry.timestamp, style: .relative)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(historyAccessibilityLabel(entry, title: title))
             .accessibilityValue(Text(entry.timestamp, style: .relative))
 
-            if let languageModelTrace {
-                languageModelTracePreview(languageModelTrace)
-            } else {
-                historyPreview(
-                    entry.record?.finalText,
-                    hasProtectedPreview: entry.hasProtectedPreview
-                )
+            historyPreview(
+                entry.record?.finalText,
+                hasProtectedPreview: entry.hasProtectedPreview
+            )
+            HStack(spacing: RillSpacing.row) {
+                Text(L10n.historyRunStatus(entry.status, language: model.language))
+                    .foregroundStyle(statusColor(entry.status))
+                if let receipt = entry.receipt {
+                    Text(L10n.historyRunDurationBucket(receipt.duration, language: model.language))
+                        .monospacedDigit()
+                    Text(WorkflowActionResultCode.allCases.filter { result in
+                        receipt.actionDetails.contains { $0.result == result }
+                    }.map { localizedActionResult($0) }.joined(separator: " · "))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
 
             if let record = entry.record {
                 if VocabularyCorrectionDraft.isEligible(
@@ -676,17 +678,49 @@ public struct HistoryTimelineView: View {
                         }
                         .buttonStyle(.borderless)
                         .font(.caption)
-                        Button(UIStrings.text(.copy, language: model.language)) {
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                        RillCopyButton(
+                            title: L10n.historyTimelineText(.copyFailureDetails, language: model.language),
+                            language: model.language
+                        ) {
                             model.copyHistoryFailure(record)
                         }
                         .buttonStyle(.borderless)
                         .font(.caption)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                        .help(
+                            L10n.historyTimelineText(
+                                .copyFailureDetails,
+                                language: model.language
+                            )
+                        )
                     }
                 }
             }
 
-            if let receipt = entry.receipt {
-                runReceiptDetails(receipt)
+            if entry.receipt != nil || languageModelTrace != nil || !textSteps.isEmpty {
+                DisclosureGroup(L10n.presentation(.details, language: model.language)) {
+                    if !textSteps.isEmpty {
+                        HistoryTextStepsView(
+                            steps: textSteps,
+                            previewMode: model.privacyPolicySettings.historyPreviewMode,
+                            language: model.language
+                        )
+                    }
+                    if let languageModelTrace {
+                        DisclosureGroup(L10n.historyTimelineText(.llmRequest, language: model.language)) {
+                            languageModelTracePreview(languageModelTrace)
+                        }
+                    }
+                    if let receipt = entry.receipt {
+                        runReceiptDetails(receipt)
+                    }
+                }
+                .font(.caption)
             } else if entry.runID != nil {
                 Label(
                     L10n.historyTimelineText(
@@ -817,6 +851,16 @@ public struct HistoryTimelineView: View {
             .font(.caption.weight(.medium))
             .foregroundStyle(.secondary)
 
+            ForEach(receipt.stepDetails, id: \.stepIndex) { step in
+                HStack(spacing: 6) {
+                    Text("\(step.stepIndex + 1). " + WorkflowStepPresentation.stepTitle(step.kind, language: model.language))
+                    Text("·")
+                    Text(stepResultLabel(step.result))
+                    Text("·")
+                    Text(L10n.historyRunDurationBucket(step.duration, language: model.language))
+                }.font(.caption).foregroundStyle(.secondary)
+            }
+
             ForEach(receipt.actionDetails, id: \.actionIndex) { action in
                 HStack(spacing: 6) {
                     Text(L10n.historyTimelineAction(action.actionIndex + 1, language: model.language))
@@ -844,6 +888,18 @@ public struct HistoryTimelineView: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func stepResultLabel(_ result: WorkflowStepResultCode) -> String {
+        let chinese = model.language == .simplifiedChinese
+        switch result {
+        case .completed: return chinese ? "已完成" : "Completed"
+        case .thenBranch: return chinese ? "满足条件" : "Then branch"
+        case .elseBranch: return chinese ? "不满足条件" : "Else branch"
+        case .skipped: return chinese ? "已跳过" : "Skipped"
+        case .failed: return chinese ? "失败" : "Failed"
+        case .cancelled: return chinese ? "已取消" : "Cancelled"
+        }
     }
 
     private func localizedTermination(_ termination: WorkflowRunTermination) -> String {
@@ -883,7 +939,7 @@ public struct HistoryTimelineView: View {
             }
         }
         .padding(10)
-        .background(.background.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+        .background(.background.opacity(0.45), in: RoundedRectangle(cornerRadius: RillRadius.row))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("history.llm-trace")
     }
@@ -908,6 +964,11 @@ public struct HistoryTimelineView: View {
             LabeledContent(L10n.historyTimelineText(.model, language: model.language)) {
                 Text(trace.modelID).textSelection(.enabled)
             }
+            Text(HistoryTextStepPresentation.tokenUsage(trace.tokenUsage, language: model.language))
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
 
             languageModelTraceText(
                 L10n.historyTimelineText(.systemPrompt, language: model.language),
@@ -920,7 +981,10 @@ public struct HistoryTimelineView: View {
             ForEach(Array(trace.messages.enumerated()), id: \.offset) { messageIndex, message in
                 languageModelTraceText(
                     L10n.historyTimelineSentMessage(
-                        role: message.role.rawValue,
+                        role: L10n.historyTimelineMessageRole(
+                            message.role,
+                            language: model.language
+                        ),
                         number: messageIndex + 1,
                         language: model.language
                     ),
@@ -980,10 +1044,7 @@ public struct HistoryTimelineView: View {
                 mode: model.privacyPolicySettings.historyPreviewMode,
                 language: model.language
             ) { text, lineLimit in
-                Text(text)
-                    .font(.body)
-                    .lineLimit(lineLimit)
-                    .textSelection(.enabled)
+                RillTextPreview(text: text, permitsExpansion: lineLimit == nil, language: model.language)
             }
         }
     }

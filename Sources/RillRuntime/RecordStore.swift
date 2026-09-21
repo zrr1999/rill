@@ -98,7 +98,7 @@ public enum RecordCollectionReferenceResolution: Sendable, Equatable {
 /// metadata, activity, membership, collection, or route state.
 public actor RecordStore {
     private struct CommittedGraphState {
-        var recordsByID: [RecordID: Record]
+        var recordsByID: [RecordID: RecordHeader]
         var recordOrder: [RecordID]
         var metadataByRecordID: [RecordID: RecordMetadata]
         var activityByRecordID: [RecordID: RecordActivity]
@@ -144,7 +144,7 @@ public actor RecordStore {
         var nextMembershipOrdinal: UInt64
     }
 
-    private var recordsByID: [RecordID: Record] = [:]
+    private var recordsByID: [RecordID: RecordHeader] = [:]
     private var recordOrder: [RecordID] = []
     private var metadataByRecordID: [RecordID: RecordMetadata] = [:]
     private var activityByRecordID: [RecordID: RecordActivity] = [:]
@@ -164,6 +164,7 @@ public actor RecordStore {
     ]
     private var captureRules: [CaptureRouteRule] = []
     private var deliveryRules: [DeliveryRouteRule] = []
+    private var reuseLeases: [UUID: RecordReuseLease] = [:]
     private var leasesByID: [UUID: LeaseState] = [:]
     private var leasedMembershipIDs: Set<RecordMembershipID> = []
     private var settlingLeaseIDs: Set<UUID> = []
@@ -181,8 +182,16 @@ public actor RecordStore {
     private var initializationError: RecordStoreError?
     private var isPersistingGraph = false
     private var graphPersistenceWaiters: [CheckedContinuation<Void, Never>] = []
-    private var snapshotContinuations: [UUID: AsyncStream<RecordStoreSnapshot>.Continuation] = [:]
+    private var snapshotContinuations: [UUID: AsyncStream<RecordCatalogSnapshot>.Continuation] = [:]
     private var collectionEventSink: (any RecordCollectionEventSink)?
+    private var payloadCache: [RecordID: RecordPayload] = [:]
+    private var payloadCacheOrder: [RecordID] = []
+    private var payloadCacheBytes = 0
+    private var hasCatalogPersistence = false
+    private var admissionWasLimited = false
+    private var searchCache: [RecordID: String] = [:]
+    private var searchCacheOrder: [RecordID] = []
+    private var searchCacheBytes = 0
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -222,19 +231,46 @@ public actor RecordStore {
 
     public func snapshot() async throws -> RecordStoreSnapshot {
         try await ensureInitialized()
-        return makeSnapshot()
+        let catalog = makeCatalogSnapshot()
+        var records: [RecordProjection] = []
+        for summary in catalog.records {
+            if let record = try await projection(for: summary.id) { records.append(record) }
+        }
+        guard revision == catalog.revision else { throw RecordStoreError.membershipChanged }
+        return RecordStoreSnapshot(revision: catalog.revision, records: records, collections: catalog.collections,
+                                   captureRules: catalog.captureRules, deliveryRules: catalog.deliveryRules)
     }
 
-    public func snapshotStream() async throws -> AsyncStream<RecordStoreSnapshot> {
+    public func catalogSnapshot() async throws -> RecordCatalogSnapshot {
+        try await ensureInitialized()
+        return makeCatalogSnapshot()
+    }
+
+    public func catalogStream() async throws -> AsyncStream<RecordCatalogSnapshot> {
         try await ensureInitialized()
         let id = UUID()
-        let initial = makeSnapshot()
-        return AsyncStream { continuation in
+        let initial = makeCatalogSnapshot()
+        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             snapshotContinuations[id] = continuation
             continuation.yield(initial)
             continuation.onTermination = { [weak self] _ in
                 Task { await self?.removeSnapshotContinuation(id) }
             }
+        }
+    }
+
+    public func snapshotStream() async throws -> AsyncStream<RecordStoreSnapshot> {
+        let source = try await catalogStream()
+        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            let task = Task { [weak self] in
+                for await _ in source {
+                    guard !Task.isCancelled, let self else { break }
+                    do { continuation.yield(try await self.snapshot()) }
+                    catch { break }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
@@ -244,7 +280,7 @@ public actor RecordStore {
 
     public func record(id: RecordID) async throws -> RecordProjection? {
         try await ensureInitialized()
-        return projection(for: id)
+        return try await projection(for: id)
     }
 
     public func collection(id: RecordCollectionID) async throws -> RecordCollectionProjection? {
@@ -252,15 +288,11 @@ public actor RecordStore {
         guard let collection = collectionsByID[id] else { return nil }
         let memberships = membershipIDsByCollectionID[id, default: []]
             .compactMap { membershipsByID[$0] }
-        return RecordCollectionProjection(
-            collection: collection,
-            memberships: memberships,
-            recordsByID: Dictionary(
-                uniqueKeysWithValues: Set(memberships.map(\.recordID)).compactMap { recordID in
-                    recordsByID[recordID].map { (recordID, $0) }
-                }
-            )
-        )
+        var records: [RecordID: Record] = [:]
+        for id in Set(memberships.map(\.recordID)) {
+            records[id] = try await materializedRecord(id)
+        }
+        return RecordCollectionProjection(collection: collection, memberships: memberships, recordsByID: records)
     }
 
     @discardableResult
@@ -296,7 +328,8 @@ public actor RecordStore {
             provenance: draft.provenance,
             createdAt: draft.createdAt
         )
-        recordsByID[record.id] = record
+        recordsByID[record.id] = RecordHeader(record: record, byteCount: try encodedPayload(record.payload).count)
+        cachePayload(record.payload, for: record.id)
         recordOrder.insert(record.id, at: 0)
         metadataByRecordID[record.id] = RecordMetadata(
             recordID: record.id,
@@ -310,7 +343,7 @@ public actor RecordStore {
         }
         noteMutation()
         try await persistCurrentGraph()
-        guard let projection = projection(for: record.id) else {
+        guard let projection = try await projection(for: record.id) else {
             throw RecordStoreError.invalidGraph
         }
         await publishCollectionEvents(
@@ -382,6 +415,7 @@ public actor RecordStore {
     public func deleteRecord(_ recordID: RecordID) async throws {
         try await ensureInitialized()
         guard recordsByID[recordID] != nil else { throw RecordStoreError.recordUnavailable }
+        guard !reuseLeases.values.contains(where: { $0.record.id == recordID }) else { throw RecordStoreError.membershipAlreadyInUse }
         let membershipIDs = membershipIDsByRecordID[recordID, default: []]
         guard membershipIDs.allSatisfy({ !leasedMembershipIDs.contains($0) }) else {
             throw RecordStoreError.membershipAlreadyInUse
@@ -481,7 +515,8 @@ public actor RecordStore {
         provenance.derivedFrom = sourceRecord.id
         provenance.supersedes = sourceRecord.id
         let replacement = Record(payload: payload, provenance: provenance, createdAt: createdAt)
-        recordsByID[replacement.id] = replacement
+        recordsByID[replacement.id] = RecordHeader(record: replacement, byteCount: try encodedPayload(replacement.payload).count)
+        cachePayload(replacement.payload, for: replacement.id)
         recordOrder.insert(replacement.id, at: 0)
         metadataByRecordID[replacement.id] = RecordMetadata(
             recordID: replacement.id,
@@ -509,7 +544,7 @@ public actor RecordStore {
         }
         noteMutation()
         try await persistCurrentGraph()
-        guard let projection = projection(for: replacement.id) else {
+        guard let projection = try await projection(for: replacement.id) else {
             throw RecordStoreError.invalidGraph
         }
         await publishCollectionEvents(
@@ -758,7 +793,9 @@ public actor RecordStore {
             let active = activeMemberships(in: collectionID)
             guard collection.selectionPolicy != .manual,
                   let membership = selectedMembership(from: active, policy: collection.selectionPolicy),
-                  let record = recordsByID[membership.recordID]
+                  let record = try await materializedRecord(membership.recordID),
+                  membershipsByID[membership.id] == membership,
+                  !leasedMembershipIDs.contains(membership.id)
             else { continue }
             return RecordRouteProjection(
                 collection: collection,
@@ -800,7 +837,9 @@ public actor RecordStore {
             }
             guard let membership,
                   !leasedMembershipIDs.contains(membership.id),
-                  let record = recordsByID[membership.recordID]
+                  let record = try await materializedRecord(membership.recordID),
+                  membershipsByID[membership.id] == membership,
+                  !leasedMembershipIDs.contains(membership.id)
             else { continue }
             let leaseID = UUID()
             leasesByID[leaseID] = LeaseState(
@@ -831,7 +870,8 @@ public actor RecordStore {
     ) async throws -> RecordDeliveryLease {
         try await ensureInitialized()
         guard let membership = membershipsByID[subject.membershipID],
-              let record = recordsByID[subject.recordID]
+              let record = try await materializedRecord(subject.recordID),
+              membershipsByID[membership.id] == membership
         else { throw RecordStoreError.membershipUnavailable }
         guard membership.recordID == subject.recordID,
               membership.collectionID == subject.collectionID,
@@ -902,6 +942,17 @@ public actor RecordStore {
         deliveredAt: Date = Date()
     ) async throws -> RecordDeliveryReceipt {
         try await ensureInitialized()
+        if let reuse = reuseLeases[leaseID] {
+            guard receipt == nil, settlingLeaseIDs.insert(leaseID).inserted else { throw RecordStoreError.invalidDeliveryReceipt }
+            defer { settlingLeaseIDs.remove(leaseID) }
+            guard var activity = activityByRecordID[reuse.record.id] else { throw RecordStoreError.recordUnavailable }
+            activity.recordDelivery(at: deliveredAt)
+            activityByRecordID[reuse.record.id] = activity
+            noteMutation()
+            try await persistCurrentGraph()
+            reuseLeases.removeValue(forKey: leaseID)
+            return RecordDeliveryReceipt(recordID: reuse.record.id, membershipID: nil, sink: reuse.sink, deliveredAt: deliveredAt)
+        }
         guard let lease = leasesByID[leaseID],
               var membership = membershipsByID[lease.membershipID]
         else { throw RecordStoreError.membershipUnavailable }
@@ -944,6 +995,17 @@ public actor RecordStore {
         failure: RecordDeliveryFailureCode = .deliveryFailed
     ) async throws {
         try await ensureInitialized()
+        if let reuse = reuseLeases[leaseID] {
+            guard !settlingLeaseIDs.contains(leaseID) else { throw RecordStoreError.membershipAlreadyInUse }
+            defer { reuseLeases.removeValue(forKey: leaseID) }
+            if var activity = activityByRecordID[reuse.record.id] {
+                activity.recordFailure(failure)
+                activityByRecordID[reuse.record.id] = activity
+                noteMutation()
+                try await persistCurrentGraph()
+            }
+            return
+        }
         guard let lease = leasesByID[leaseID],
               let membership = membershipsByID[lease.membershipID]
         else { throw RecordStoreError.membershipUnavailable }
@@ -973,6 +1035,7 @@ public actor RecordStore {
         guard !settlingLeaseIDs.contains(leaseID) else {
             throw RecordStoreError.membershipAlreadyInUse
         }
+        if reuseLeases.removeValue(forKey: leaseID) != nil { return }
         guard let lease = leasesByID.removeValue(forKey: leaseID),
               let membership = membershipsByID[lease.membershipID]
         else { throw RecordStoreError.membershipUnavailable }
@@ -1068,28 +1131,26 @@ public actor RecordStore {
         )
     }
 
-    private func projection(for recordID: RecordID) -> RecordProjection? {
-        guard let record = recordsByID[recordID],
-              let metadata = metadataByRecordID[recordID],
-              let activity = activityByRecordID[recordID]
+    private func projection(for recordID: RecordID) async throws -> RecordProjection? {
+        guard let record = try await materializedRecord(recordID),
+              let metadata = metadataByRecordID[recordID], let activity = activityByRecordID[recordID]
         else { return nil }
-        return RecordProjection(
-            record: record,
-            metadata: metadata,
-            activity: activity,
-            memberships: membershipIDsByRecordID[recordID, default: []]
-                .compactMap { membershipsByID[$0] }
-        )
+        return RecordProjection(record: record, metadata: metadata, activity: activity,
+                                memberships: membershipIDsByRecordID[recordID, default: []].compactMap { membershipsByID[$0] })
     }
 
-    private func makeSnapshot() -> RecordStoreSnapshot {
-        RecordStoreSnapshot(
-            revision: revision,
-            records: recordOrder.compactMap(projection),
-            collections: collectionOrder.compactMap { collectionsByID[$0] },
-            captureRules: captureRules,
-            deliveryRules: deliveryRules
-        )
+    private func summary(for recordID: RecordID) -> RecordSummary? {
+        guard let header = recordsByID[recordID], let metadata = metadataByRecordID[recordID],
+              let activity = activityByRecordID[recordID] else { return nil }
+        return RecordSummary(header: header, metadata: metadata, activity: activity,
+                             memberships: membershipIDsByRecordID[recordID, default: []].compactMap { membershipsByID[$0] })
+    }
+
+    private func makeCatalogSnapshot() -> RecordCatalogSnapshot {
+        RecordCatalogSnapshot(revision: revision, records: recordOrder.compactMap(summary),
+                              collections: collectionOrder.compactMap { collectionsByID[$0] },
+                              captureRules: captureRules, deliveryRules: deliveryRules,
+                              capacity: RecordCapacity(count: recordsByID.count, byteCount: totalPayloadByteCount(), limits: storageLimits, admissionWasLimited: admissionWasLimited))
     }
 
     private func noteMutation() {
@@ -1101,7 +1162,7 @@ public actor RecordStore {
     }
 
     private func publishSnapshotToObservers() {
-        let snapshot = makeSnapshot()
+        let snapshot = makeCatalogSnapshot()
         for continuation in snapshotContinuations.values {
             continuation.yield(snapshot)
         }
@@ -1143,6 +1204,7 @@ public actor RecordStore {
         revision = state.revision
         repositoryRevision = state.repositoryRevision
         durableBlobReferencesByRecordID = state.durableBlobReferencesByRecordID
+        trimPayloadCache()
         publishSnapshotToObservers()
     }
 
@@ -1187,9 +1249,16 @@ public actor RecordStore {
               activeRecordCount() + activeRecordDelta <= storageLimits.maximumActiveRecordCount,
               historyOnlyRecordCount() + historyOnlyRecordDelta
                 <= storageLimits.maximumHistoryOnlyRecordCount
-        else { throw RecordStoreError.recordLimitReached }
-        let payloadBytes = try validatedPayloadByteCount(payload)
-        guard try totalPayloadByteCount() <= storageLimits.maximumTotalPayloadByteCount - payloadBytes else {
+        else {
+            admissionWasLimited = true
+            publishSnapshotToObservers()
+            throw RecordStoreError.recordLimitReached
+        }
+        _ = try validatedPayloadByteCount(payload)
+        let payloadBytes = try encodedPayload(payload).count
+        guard totalPayloadByteCount() <= storageLimits.maximumTotalPayloadByteCount - payloadBytes else {
+            admissionWasLimited = true
+            publishSnapshotToObservers()
             throw RecordStoreError.totalPayloadLimitReached
         }
         try validateTags(normalizedTags(tags))
@@ -1202,10 +1271,8 @@ public actor RecordStore {
         else { throw RecordStoreError.payloadLimitReached }
     }
 
-    private func totalPayloadByteCount() throws -> Int {
-        try recordsByID.values.reduce(into: 0) { count, record in
-            count += try validatedPayloadByteCount(record.payload)
-        }
+    private func totalPayloadByteCount() -> Int {
+        recordsByID.values.reduce(0) { $0 + $1.byteCount }
     }
 
     private func validatedPayloadByteCount(_ payload: RecordPayload) throws -> Int {
@@ -1237,6 +1304,12 @@ extension RecordStore {
     private func loadPersistedGraph() async {
         guard let persistence else { return }
         do {
+            if let catalogStore = persistence as? any RecordCatalogPersistenceStore,
+               let catalog = try await catalogStore.loadRecordCatalog() {
+                try installCatalog(catalog)
+                hasCatalogPersistence = true
+                return
+            }
             switch try await persistence.loadRecordGraph() {
             case .empty:
                 return
@@ -1272,13 +1345,37 @@ extension RecordStore {
                 durableBlobReferencesByRecordID = Dictionary(
                     uniqueKeysWithValues: persisted.records.map { ($0.id, $0.payloadBlob) }
                 )
+                if persistence is any RecordCatalogPersistenceStore {
+                    committedGraphState = captureCommittedGraphState()
+                    try await persistCurrentGraph()
+                }
             }
         } catch {
             initializationError = .persistenceUnavailable
         }
     }
 
-    private func install(_ graph: LegacyClipboardMigration.MigratedGraph) throws {
+    private struct InstalledGraph {
+        var records: [RecordHeader]
+        var metadata: [RecordMetadata]
+        var activity: [RecordActivity]
+        var collections: [RecordCollection]
+        var memberships: [RecordMembership]
+        var captureRules: [CaptureRouteRule]
+        var deliveryRules: [DeliveryRouteRule]
+        var nextMembershipOrdinal: UInt64
+    }
+
+    private func install(_ legacy: LegacyClipboardMigration.MigratedGraph) throws {
+        let headers = try legacy.records.map { RecordHeader(record: $0, byteCount: try encodedPayload($0.payload).count) }
+        try install(InstalledGraph(records: headers, metadata: legacy.metadata, activity: legacy.activity,
+                                   collections: legacy.collections, memberships: legacy.memberships,
+                                   captureRules: legacy.captureRules, deliveryRules: legacy.deliveryRules,
+                                   nextMembershipOrdinal: legacy.nextMembershipOrdinal))
+        for record in legacy.records { cachePayload(record.payload, for: record.id) }
+    }
+
+    private func install(_ graph: InstalledGraph) throws {
         let recordIDs = Set(graph.records.map(\.id))
         let collectionIDs = Set(graph.collections.map(\.id))
         guard graph.records.count == recordIDs.count,
@@ -1337,7 +1434,7 @@ extension RecordStore {
         else { throw RecordStoreError.invalidGraph }
         var payloadByteCount = 0
         for record in graph.records {
-            payloadByteCount += try validatedPayloadByteCount(record.payload)
+            payloadByteCount += record.byteCount
             guard payloadByteCount <= storageLimits.maximumTotalPayloadByteCount else {
                 throw RecordStoreError.invalidGraph
             }
@@ -1375,16 +1472,26 @@ extension RecordStore {
         defer { finishGraphPersistence() }
         let rollbackState = committedGraphState
         guard let persistence else {
+            if let rollbackState, recordsByID.count < rollbackState.recordsByID.count { admissionWasLimited = false }
+            trimPayloadCache()
             committedGraphState = captureCommittedGraphState()
             publishSnapshotToObservers()
             return
         }
         do {
-            let prepared = try preparePersistenceWrite()
-            let committedRevision = try await persistence.replaceRecordGraph(with: prepared.snapshot)
-            repositoryRevision = committedRevision
-            durableBlobReferencesByRecordID = prepared.referencesByRecordID
+            if let catalogStore = persistence as? any RecordCatalogPersistenceStore {
+                let prepared = try prepareCatalogMutation()
+                repositoryRevision = try await catalogStore.commitRecordCatalog(prepared.mutation)
+                durableBlobReferencesByRecordID = prepared.references
+                hasCatalogPersistence = true
+            } else {
+                let prepared = try preparePersistenceWrite()
+                repositoryRevision = try await persistence.replaceRecordGraph(with: prepared.snapshot)
+                durableBlobReferencesByRecordID = prepared.referencesByRecordID
+            }
+            trimPayloadCache()
             committedGraphState = captureCommittedGraphState()
+            if let rollbackState, recordsByID.count < rollbackState.recordsByID.count { admissionWasLimited = false }
             publishSnapshotToObservers()
         } catch {
             if let rollbackState {
@@ -1429,11 +1536,12 @@ extension RecordStore {
                 reference = durable
                 retained.append(durable)
             } else {
-                let payload = try encodedPayload(record.payload)
+                guard let content = payloadCache[record.id] else { throw RecordStoreError.recordUnavailable }
+                let payload = try encodedPayload(content)
                 reference = RecordGraphPersistenceBlobReference(
                     blobID: UUID(),
                     recordID: record.id,
-                    kind: record.payload.kind,
+                    kind: record.kind,
                     byteCount: payload.count
                 )
                 newBlobs.append(RecordGraphPersistenceBlob(reference: reference, payload: payload))
@@ -1442,7 +1550,7 @@ extension RecordStore {
             persistedRecords.append(
                 PersistedGraph.PersistedRecord(
                     id: record.id,
-                    payloadKind: record.payload.kind,
+                    payloadKind: record.kind,
                     payloadBlob: reference,
                     provenance: record.provenance,
                     createdAt: record.createdAt
@@ -1531,6 +1639,16 @@ private extension RecordStore {
         )
     }
 
+    func collectionEvent(
+        _ kind: RecordCollectionEventKind,
+        membership: RecordMembership,
+        record: RecordHeader
+    ) -> RecordCollectionEventDescriptor {
+        RecordCollectionEventDescriptor(kind: kind, collectionID: membership.collectionID, recordID: record.id,
+                                        membershipID: membership.id, membershipRevision: membership.revision,
+                                        storeRevision: revision, captureTags: record.provenance.captureTags)
+    }
+
     func publishCollectionEvents(_ descriptors: [RecordCollectionEventDescriptor]) async {
         guard let collectionEventSink else { return }
         for descriptor in descriptors {
@@ -1540,55 +1658,320 @@ private extension RecordStore {
 }
 
 extension RecordStore {
+    // Compatibility with pending maintenance from older versions: the Record
+    // domain no longer deletes from a time range without a confirmed plan.
     public func pruneHistory(olderThan cutoff: Date) async throws -> RecordCleanupResult {
-        try await removeRecordsForMaintenance(through: cutoff, preservesPinnedRecords: true)
+        let plan = try await prepareCleanup(olderThan: cutoff)
+        return RecordCleanupResult(removedCount: 0, preservedActiveCount: plan.protectedCount)
     }
 
     public func clearHistory(through upperBound: Date) async throws -> RecordCleanupResult {
-        try await removeRecordsForMaintenance(through: upperBound, preservesPinnedRecords: false)
+        try await pruneHistory(olderThan: upperBound)
     }
 
-    private func removeRecordsForMaintenance(
-        through upperBound: Date,
-        preservesPinnedRecords: Bool
-    ) async throws -> RecordCleanupResult {
-        try await ensureInitialized()
-        let eligibleIDs = recordOrder.filter { recordID in
-            guard let record = recordsByID[recordID], record.createdAt <= upperBound else { return false }
-            if preservesPinnedRecords, metadataByRecordID[recordID]?.isPinned == true { return false }
-            return true
-        }
-        let protectedIDs = Set(eligibleIDs.filter { recordID in
-            membershipIDsByRecordID[recordID, default: []].contains { membershipID in
-                leasedMembershipIDs.contains(membershipID)
-                    || membershipsByID[membershipID]?.state == .active
-            }
-        })
-        let removableIDs = eligibleIDs.filter { !protectedIDs.contains($0) }
-        guard !removableIDs.isEmpty else {
-            return RecordCleanupResult(
-                removedCount: 0,
-                preservedActiveCount: protectedIDs.count
-            )
-        }
+}
 
-        for recordID in removableIDs {
-            for membershipID in membershipIDsByRecordID[recordID, default: []] {
-                removeMembershipWithoutPersistence(membershipID)
-            }
-            recordsByID.removeValue(forKey: recordID)
-            metadataByRecordID.removeValue(forKey: recordID)
-            activityByRecordID.removeValue(forKey: recordID)
-            membershipIDsByRecordID.removeValue(forKey: recordID)
-            durableBlobReferencesByRecordID.removeValue(forKey: recordID)
+private extension RecordStore {
+    func materializedRecord(_ id: RecordID) async throws -> Record? {
+        guard let header = recordsByID[id] else { return nil }
+        if let payload = payloadCache[id] { return header.materialize(payload) }
+        guard let repository = persistence as? any RecordCatalogPersistenceStore,
+              let reference = durableBlobReferencesByRecordID[id] else {
+            throw RecordStoreError.persistenceUnavailable
         }
-        let removedSet = Set(removableIDs)
-        recordOrder.removeAll { removedSet.contains($0) }
+        let data = try await repository.loadRecordPayload(reference)
+        await waitForGraphPersistence()
+        guard recordsByID[id] == header, durableBlobReferencesByRecordID[id] == reference else {
+            throw RecordStoreError.recordUnavailable
+        }
+        let payload = try decodedPayload(data, kind: header.kind)
+        _ = try validatedPayloadByteCount(payload)
+        cachePayload(payload, for: id)
+        trimPayloadCache()
+        return header.materialize(payload)
+    }
+
+    func cachePayload(_ payload: RecordPayload, for id: RecordID) {
+        if payloadCache[id] == nil {
+            payloadCacheOrder.append(id)
+            payloadCacheBytes += recordsByID[id]?.byteCount ?? 0
+        }
+        payloadCache[id] = payload
+    }
+
+    func trimPayloadCache() {
+        searchCacheOrder.removeAll { recordsByID[$0] == nil }
+        searchCache = searchCache.filter { recordsByID[$0.key] != nil }
+        searchCacheBytes = searchCache.values.reduce(0) { $0 + $1.utf8.count }
+        payloadCacheOrder.removeAll { recordsByID[$0] == nil }
+        payloadCache = payloadCache.filter { recordsByID[$0.key] != nil }
+        payloadCacheBytes = payloadCache.keys.reduce(0) { $0 + (recordsByID[$1]?.byteCount ?? 0) }
+        guard persistence is any RecordCatalogPersistenceStore else { return }
+        while payloadCacheBytes > 64 * 1_024 * 1_024,
+              let index = payloadCacheOrder.firstIndex(where: { durableBlobReferencesByRecordID[$0] != nil }) {
+            let id = payloadCacheOrder.remove(at: index)
+            payloadCache.removeValue(forKey: id)
+            payloadCacheBytes -= recordsByID[id]?.byteCount ?? 0
+        }
+    }
+
+    func installCatalog(_ catalog: RecordCatalogRead) throws {
+        func values<T: Decodable>(_ kind: RecordCatalogNode.Kind, _ type: T.Type, id: (T) -> String) throws -> [T] {
+            try catalog.nodes.filter { $0.kind == kind }.map { node in
+                let value = try decoder.decode(type, from: node.value)
+                guard id(value) == node.id else { throw RecordStoreError.invalidGraph }
+                return value
+            }
+        }
+        let headers = try values(.record, RecordHeader.self, id: { $0.id.description })
+        guard catalog.manifest.schemaVersion == 2, catalog.revision > 0,
+              Set(catalog.nodes.map(\.key)).count == catalog.nodes.count,
+              catalog.references.count == headers.count,
+              Set(catalog.references.map(\.recordID)).count == headers.count,
+              Set(catalog.manifest.recordOrder) == Set(headers.map(\.id)),
+              catalog.manifest.recordOrder.count == headers.count
+        else { throw RecordStoreError.invalidGraph }
+        let references = Dictionary(uniqueKeysWithValues: catalog.references.map { ($0.recordID, $0) })
+        for header in headers {
+            guard let reference = references[header.id], reference.kind == header.kind,
+                  reference.byteCount == header.byteCount, header.byteCount > 0,
+                  header.preview.utf8.count <= 4_096 else { throw RecordStoreError.invalidGraph }
+        }
+        try install(InstalledGraph(
+            records: headers,
+            metadata: try values(.metadata, RecordMetadata.self, id: { $0.recordID.description }),
+            activity: try values(.activity, RecordActivity.self, id: { $0.recordID.description }),
+            collections: try values(.collection, RecordCollection.self, id: { $0.id.description }),
+            memberships: try values(.membership, RecordMembership.self, id: { $0.id.description }),
+            captureRules: try values(.captureRule, CaptureRouteRule.self, id: { $0.id.description }),
+            deliveryRules: try values(.deliveryRule, DeliveryRouteRule.self, id: { $0.id.description }),
+            nextMembershipOrdinal: catalog.manifest.nextMembershipOrdinal
+        ))
+        guard Set(catalog.manifest.collectionOrder) == Set(collectionOrder),
+              catalog.manifest.collectionOrder.count == collectionOrder.count else { throw RecordStoreError.invalidGraph }
+        recordOrder = catalog.manifest.recordOrder
+        collectionOrder = catalog.manifest.collectionOrder
+        repositoryRevision = catalog.revision
+        durableBlobReferencesByRecordID = references
+    }
+
+    func prepareCatalogMutation() throws -> (mutation: RecordCatalogMutation, references: [RecordID: RecordGraphPersistenceBlobReference]) {
+        let old = hasCatalogPersistence ? committedGraphState : nil
+        var nodes: [RecordCatalogNode] = []
+        var removedKeys: [String] = []
+        func changes<K: RecordIdentifier, V: Encodable & Equatable>(
+            _ kind: RecordCatalogNode.Kind, _ current: [K: V], _ previous: [K: V]
+        ) throws {
+            for (id, value) in current where previous[id] != value {
+                nodes.append(RecordCatalogNode(kind: kind, id: id.description, value: try encoder.encode(value)))
+            }
+            for id in previous.keys where current[id] == nil { removedKeys.append("\(kind.rawValue)/\(id.description)") }
+        }
+        try changes(.record, recordsByID, old?.recordsByID ?? [:])
+        try changes(.metadata, metadataByRecordID, old?.metadataByRecordID ?? [:])
+        try changes(.activity, activityByRecordID, old?.activityByRecordID ?? [:])
+        try changes(.membership, membershipsByID, old?.membershipsByID ?? [:])
+        try changes(.collection, collectionsByID, old?.collectionsByID ?? [:])
+        try changes(.captureRule, Dictionary(uniqueKeysWithValues: captureRules.map { ($0.id, $0) }),
+                    Dictionary(uniqueKeysWithValues: (old?.captureRules ?? []).map { ($0.id, $0) }))
+        try changes(.deliveryRule, Dictionary(uniqueKeysWithValues: deliveryRules.map { ($0.id, $0) }),
+                    Dictionary(uniqueKeysWithValues: (old?.deliveryRules ?? []).map { ($0.id, $0) }))
+        var references = durableBlobReferencesByRecordID.filter { recordsByID[$0.key] != nil }
+        var blobs: [RecordGraphPersistenceBlob] = []
+        for id in recordOrder where references[id] == nil {
+            guard let header = recordsByID[id], let payload = payloadCache[id] else { throw RecordStoreError.invalidGraph }
+            let data = try encodedPayload(payload)
+            let reference = RecordGraphPersistenceBlobReference(blobID: UUID(), recordID: id, kind: header.kind, byteCount: data.count)
+            references[id] = reference
+            blobs.append(RecordGraphPersistenceBlob(reference: reference, payload: data))
+        }
+        let removedBlobs = (committedGraphState?.durableBlobReferencesByRecordID ?? [:]).values
+            .filter { recordsByID[$0.recordID] == nil }.map(\.blobID)
+        let mutation = RecordCatalogMutation(
+            expectedRevision: repositoryRevision,
+            manifest: RecordCatalogManifest(nextMembershipOrdinal: nextMembershipOrdinal, recordOrder: recordOrder, collectionOrder: collectionOrder),
+            upserts: nodes, removedKeys: removedKeys, newPayloadBlobs: blobs, removedPayloadBlobIDs: removedBlobs
+        )
+        return (mutation, references)
+    }
+}
+
+extension RecordStore {
+    public func query(_ query: RecordQuery, offset: Int = 0, limit: Int = 50) async throws -> RecordQueryPage {
+        try await ensureInitialized()
+        let expectedRevision = revision
+        let ids = recordOrder
+        let keywords = query.text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .split(whereSeparator: \.isWhitespace).map(String.init)
+        var results: [RecordSummary] = []
+        var index = min(max(0, offset), ids.count)
+        let pageSize = min(max(1, limit), 100)
+        let batchEnd = min(ids.count, index + 256)
+        while index < batchEnd, results.count < pageSize {
+            try Task.checkCancellation()
+            let id = ids[index]
+            index += 1
+            if index.isMultiple(of: 32) { await Task.yield(); try Task.checkCancellation() }
+            guard let item = summary(for: id),
+                  !query.pinnedOnly || item.metadata.isPinned,
+                  query.kind == nil || item.header.kind == query.kind,
+                  query.sourceBundleIdentifier == nil || item.header.provenance.sourceBundleIdentifier == query.sourceBundleIdentifier,
+                  query.collectionID == nil || item.memberships.contains(where: { $0.collectionID == query.collectionID })
+            else { continue }
+            if !keywords.isEmpty {
+                let metadataText = ([item.header.provenance.sourceApplicationName ?? "", item.header.provenance.sourceBundleIdentifier ?? ""] + item.metadata.tags)
+                    .joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                let remaining = keywords.filter { !metadataText.contains($0) }
+                if !remaining.isEmpty {
+                    let content = try await searchableContent(id, kind: item.header.kind)
+                    guard remaining.allSatisfy(content.contains) else { continue }
+                }
+            }
+            results.append(item)
+        }
+        guard revision == expectedRevision else { throw RecordStoreError.membershipChanged }
+        return RecordQueryPage(revision: revision, records: results, nextOffset: index < ids.count ? index : nil)
+    }
+
+    private func searchableContent(_ id: RecordID, kind: RecordPayloadKind) async throws -> String {
+        if let cached = searchCache[id] { return cached }
+        guard kind != .image, let record = try await materializedRecord(id) else { return "" }
+        let text: String
+        switch record.payload {
+        case .text(let value): text = value
+        case .files(let urls): text = urls.map(\.lastPathComponent).joined(separator: " ")
+        case .image: text = ""
+        }
+        try Task.checkCancellation()
+        let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let bytes = folded.utf8.count
+        while searchCacheBytes + bytes > 16 * 1_024 * 1_024, !searchCacheOrder.isEmpty {
+            let evicted = searchCacheOrder.removeFirst()
+            searchCacheBytes -= searchCache.removeValue(forKey: evicted)?.utf8.count ?? 0
+        }
+        if bytes <= 16 * 1_024 * 1_024 {
+            if let previous = searchCache.updateValue(folded, forKey: id) { searchCacheBytes -= previous.utf8.count }
+            else { searchCacheOrder.append(id) }
+            searchCacheBytes += bytes
+        }
+        return folded
+    }
+
+    public func prepareCleanup(olderThan cutoff: Date = .distantFuture) async throws -> RecordCleanupPlan {
+        try await ensureInitialized()
+        let candidates = recordOrder.reversed().filter { id in
+            guard !reuseLeases.values.contains(where: { $0.record.id == id }),
+                  let header = recordsByID[id], header.createdAt <= cutoff,
+                  header.provenance.source.kind == .systemClipboard,
+                  let metadata = metadataByRecordID[id], !metadata.isPinned, metadata.tags.isEmpty else { return false }
+            return membershipIDsByRecordID[id, default: []].allSatisfy { membershipID in
+                guard let membership = membershipsByID[membershipID] else { return false }
+                return membership.collectionID == RecordCollection.inboxID && !leasedMembershipIDs.contains(membershipID)
+            }
+        }
+        return RecordCleanupPlan(revision: revision, recordIDs: candidates,
+                                 byteCount: candidates.reduce(0) { $0 + (recordsByID[$1]?.byteCount ?? 0) },
+                                 protectedCount: recordsByID.count - candidates.count, scope: .history(olderThan: cutoff))
+    }
+
+    public func prepareCleanup(scope: RecordCleanupScope) async throws -> RecordCleanupPlan {
+        try await ensureInitialized()
+        let recordIDs: [RecordID]
+        let membershipIDs: [RecordMembershipID]
+        switch scope {
+        case .history(let cutoff): return try await prepareCleanup(olderThan: cutoff)
+        case .record(let id):
+            guard recordsByID[id] != nil else { throw RecordStoreError.recordUnavailable }
+            recordIDs = [id]
+            membershipIDs = membershipIDsByRecordID[id, default: []]
+        case .collection(let id):
+            guard collectionsByID[id] != nil else { throw RecordStoreError.collectionUnavailable }
+            recordIDs = []
+            membershipIDs = membershipIDsByCollectionID[id, default: []]
+        case .membership(let id):
+            guard membershipsByID[id] != nil else { throw RecordStoreError.membershipUnavailable }
+            recordIDs = []
+            membershipIDs = [id]
+        }
+        guard membershipIDs.allSatisfy({ !leasedMembershipIDs.contains($0) }),
+              !reuseLeases.values.contains(where: { recordIDs.contains($0.record.id) }) else {
+            throw RecordStoreError.membershipAlreadyInUse
+        }
+        return RecordCleanupPlan(revision: revision, recordIDs: recordIDs,
+                                 byteCount: recordIDs.reduce(0) { $0 + (recordsByID[$1]?.byteCount ?? 0) },
+                                 protectedCount: recordsByID.count - recordIDs.count,
+                                 scope: scope, membershipIDs: membershipIDs)
+    }
+
+    public func refreshCleanupPlan(_ previous: RecordCleanupPlan) async throws -> RecordCleanupPlan {
+        let eligible = try await prepareCleanup(scope: previous.scope)
+        guard Set(eligible.membershipIDs) == Set(previous.membershipIDs) else {
+            throw RecordStoreError.membershipChanged
+        }
+        let allowed = Set(previous.recordIDs)
+        let candidates = eligible.recordIDs.filter { allowed.contains($0) }
+        return RecordCleanupPlan(revision: revision, recordIDs: candidates,
+                                 byteCount: candidates.reduce(0) { $0 + (recordsByID[$1]?.byteCount ?? 0) },
+                                 protectedCount: recordsByID.count - candidates.count,
+                                 scope: previous.scope, membershipIDs: previous.membershipIDs)
+    }
+
+    public func confirmCleanup(_ plan: RecordCleanupPlan, resolvingReferences resolution: RecordCollectionReferenceResolution? = nil) async throws -> RecordCleanupResult {
+        try await ensureInitialized()
+        guard plan.revision == revision, Set(plan.recordIDs).count == plan.recordIDs.count else {
+            throw RecordStoreError.membershipChanged
+        }
+        let eligible = try await prepareCleanup(scope: plan.scope)
+        guard plan.revision == revision, Set(plan.recordIDs).isSubset(of: Set(eligible.recordIDs)),
+              Set(plan.membershipIDs) == Set(eligible.membershipIDs) else { throw RecordStoreError.membershipChanged }
+        switch plan.scope {
+        case .collection(let id):
+            try await deleteCollection(id, resolvingReferences: resolution)
+            return RecordCleanupResult(removedCount: 0, preservedActiveCount: eligible.protectedCount)
+        case .membership(let id):
+            try await removeMembership(id)
+            return RecordCleanupResult(removedCount: 0, preservedActiveCount: eligible.protectedCount)
+        case .record(let id):
+            guard plan.recordIDs == [id] else { throw RecordStoreError.membershipChanged }
+            try await deleteRecord(id)
+            return RecordCleanupResult(removedCount: 1, preservedActiveCount: eligible.protectedCount)
+        case .history: break
+        }
+        guard !plan.recordIDs.isEmpty else {
+            return RecordCleanupResult(removedCount: 0, preservedActiveCount: eligible.protectedCount)
+        }
+        let removed = Set(plan.recordIDs)
+        for id in removed {
+            for membershipID in membershipIDsByRecordID[id, default: []] { removeMembershipWithoutPersistence(membershipID) }
+            recordsByID.removeValue(forKey: id)
+            metadataByRecordID.removeValue(forKey: id)
+            activityByRecordID.removeValue(forKey: id)
+            membershipIDsByRecordID.removeValue(forKey: id)
+            durableBlobReferencesByRecordID.removeValue(forKey: id)
+        }
+        recordOrder.removeAll { removed.contains($0) }
         noteMutation()
         try await persistCurrentGraph()
-        return RecordCleanupResult(
-            removedCount: removableIDs.count,
-            preservedActiveCount: protectedIDs.count
-        )
+        return RecordCleanupResult(removedCount: removed.count, preservedActiveCount: recordsByID.count)
+    }
+}
+
+public struct RecordReuseLease: Sendable {
+    public let id: UUID
+    public let record: Record
+    public let sink: RecordSinkIdentity
+}
+
+extension RecordStore {
+    public func beginReuse(_ subject: RecordReuseSubject, sink: RecordSinkIdentity) async throws -> RecordReuseLease {
+        try await ensureInitialized()
+        guard sink != .recordCollection,
+              let record = try await materializedRecord(subject.recordID),
+              metadataByRecordID[subject.recordID]?.revision == subject.metadataRevision else {
+            throw RecordStoreError.recordUnavailable
+        }
+        let lease = RecordReuseLease(id: UUID(), record: record, sink: sink)
+        reuseLeases[lease.id] = lease
+        return lease
     }
 }

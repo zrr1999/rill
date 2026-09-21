@@ -199,7 +199,6 @@ enum ApplicationShutdownOperation {
 final class VoiceInputApplicationDelegate: NSObject, NSApplicationDelegate {
   private let terminationCoordinator = ApplicationTerminationCoordinator()
   private var escapeMonitor: Any?
-
   func installEscapeAction(_ action: @escaping @MainActor () -> Bool) {
     if let escapeMonitor {
       NSEvent.removeMonitor(escapeMonitor)
@@ -217,9 +216,7 @@ final class VoiceInputApplicationDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-    terminationCoordinator.beginTermination { shouldTerminate in
-      sender.reply(toApplicationShouldTerminate: shouldTerminate)
-    }
+    terminationCoordinator.beginTermination { sender.reply(toApplicationShouldTerminate: $0) }
   }
 
   func applicationWillTerminate(_: Notification) {

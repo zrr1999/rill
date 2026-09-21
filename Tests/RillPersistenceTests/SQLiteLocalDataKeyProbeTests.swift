@@ -245,6 +245,7 @@ private func createV11Database(
   let database = try openReadWriteDatabase(at: databaseURL)
   defer { sqlite3_close(database) }
   try SQLiteWriterBarrier.registerCapability(on: database)
+  try SQLiteCatalogWriterBarrier.register(on: database)
   try execute(
     """
     PRAGMA journal_mode = WAL;
@@ -262,6 +263,7 @@ private func tamperAuthenticatedFloor(at databaseURL: URL) throws {
   let database = try openReadWriteDatabase(at: databaseURL)
   defer { sqlite3_close(database) }
   try SQLiteWriterBarrier.registerCapability(on: database)
+  try SQLiteCatalogWriterBarrier.register(on: database)
   try execute(
     """
     UPDATE rill_authenticated_schema_floor
@@ -276,6 +278,7 @@ private func replaceMarker(at databaseURL: URL, envelope: String) throws {
   let database = try openReadWriteDatabase(at: databaseURL)
   defer { sqlite3_close(database) }
   try SQLiteWriterBarrier.registerCapability(on: database)
+  try SQLiteCatalogWriterBarrier.register(on: database)
   var statement: OpaquePointer?
   guard
     sqlite3_prepare_v2(

@@ -1,11 +1,16 @@
-# Rill workflow schema v1: Capture into the Voice clipboard group
+# Rill workflow schema v2: Capture into the Voice clipboard group
 # Change `id` before keeping more than one copy of this template.
 
-schema_version = 1
-enabled = true
+schema_version = 2
+enabled = false
 id = "D0000000-0000-4000-8000-000000000002"
 name = "Clipboard Capture"
-trigger = "manual"
+
+[trigger]
+kind = "manual"
+
+[input]
+kind = "audio"
 
 [ui]
 symbol = "tray.and.arrow.down.fill"
@@ -14,7 +19,6 @@ accent = "blue"
 [setup.speech]
 selection = "fixed"
 recognizer = "local-speech"
-local_model = "qwen3-asr-0.6b-mlx-8bit"
 
 [[process]]
 id = "D0000000-0000-4000-8000-000000000201"
@@ -32,8 +36,11 @@ kind = "normalize-whitespace"
 strategy = "collection-first"
 
 [[output.actions]]
-id = "record.store"
+id = "deliver"
+kind = "record.store"
 
 [metadata]
 "workflow.origin" = "user"
+
+[options]
 "record.target-collection-ids" = "4C5A3D00-90E6-4BA0-95D7-17E8B6DA0002"

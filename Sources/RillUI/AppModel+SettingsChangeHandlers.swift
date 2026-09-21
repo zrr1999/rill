@@ -42,7 +42,6 @@ extension AppModel {
     guard oldValue != preferredSpeechEngine else { return }
     invalidateWorkflowExplanation()
     persistPreferredSpeechEnginePreference()
-    applyPreferredSpeechEngineSelectionIfNeeded()
     guard !isRestoringSettings else { return }
     setLocalSpeechRuntimeEnabledAction(preferredSpeechEngine == .local)
     if isLoadingSettings {

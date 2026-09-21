@@ -67,6 +67,23 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
   }
 
   public func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
+    do {
+      return try await recognizeCapturedAudio(request)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
+      await recordRecognitionDiagnostic(
+        event: "provider.local-speech.recognition.failed",
+        level: .error,
+        outcome: "failed",
+        failureCode: Self.diagnosticFailureCode(error),
+        runID: request.runID
+      )
+      throw error
+    }
+  }
+
+  private func recognizeCapturedAudio(_ request: RecognitionRequest) async throws -> RecognitionResult {
     try Task.checkCancellation()
     guard let capturedAudio = request.capturedAudio,
       capturedAudio.fileOwnership == .managedTemporary,
@@ -85,10 +102,12 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
       workflow: request.workflow
     )
     guard let modelID = MLXAudioModelID(rawValue: modelIdentifier),
-      MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelIdentifier),
-      settings.enabledModelIDs.contains(modelIdentifier)
+      MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelIdentifier)
     else {
       throw LocalSpeechModelSelectionError.unsupportedModelIdentifier(modelIdentifier)
+    }
+    guard settings.enabledModelIDs.contains(modelIdentifier) else {
+      throw LocalSpeechModelSelectionError.modelNotEnabled(modelIdentifier)
     }
     let language = LocalSpeechRecognitionPolicy.resolvedLanguage(
       requestLanguage: request.options.language,
@@ -154,13 +173,6 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
       throw CancellationError()
     } catch let initialError as SpeechWorkerClientError {
       guard case .remoteFailure(.recognitionFailed) = initialError else {
-        await recordRecognitionDiagnostic(
-          event: "provider.local-speech.recognition.failed",
-          level: .error,
-          outcome: "failed",
-          failureCode: Self.diagnosticFailureCode(initialError),
-          runID: payload.runID
-        )
         throw initialError
       }
       await recordRecognitionDiagnostic(
@@ -228,6 +240,14 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
   }
 
   private static func diagnosticFailureCode(_ error: Error) -> String {
+    if let selectionError = error as? LocalSpeechModelSelectionError {
+      return switch selectionError {
+      case .unsupportedModelIdentifier: "unsupportedModel"
+      case .modelNotEnabled: "model-disabled"
+      case .backendUnavailable: "worker-unavailable"
+      }
+    }
+    if error is LocalSpeechSettingsSourceError { return "settings-unavailable" }
     guard let error = error as? SpeechWorkerClientError else { return "unclassified" }
     return switch error {
     case .workerUnavailable: "worker-unavailable"

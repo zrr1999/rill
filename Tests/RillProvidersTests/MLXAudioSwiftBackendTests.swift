@@ -82,4 +82,26 @@ final class MLXAudioSwiftBackendTests: XCTestCase {
     XCTAssertEqual(recognizer.backend, .mlxAudioSwift)
     XCTAssertTrue(recognizer.capabilities.supports(.keyterm))
   }
+
+  func testDefaultModelSelectionUsesOnlyEnabledModelsAndRetainsPreferredModel() {
+    let compact = MLXAudioModelID.qwen3ASR06BInt8.rawValue
+    let larger = MLXAudioModelID.qwen3ASR17BInt8.rawValue
+    let cases: [(configured: String, enabled: Set<String>, expected: String)] = [
+      (compact, [larger], larger),
+      (larger, [compact], compact),
+      (larger, [compact, larger], larger),
+      ("", [larger], larger),
+      ("unreviewed-model", [larger], "unreviewed-model"),
+    ]
+    for testCase in cases {
+      XCTAssertEqual(
+        LocalSpeechModelCatalog.effectiveModelIdentifier(
+          settings: LocalSpeechSettings(
+            model: testCase.configured, enabledModelIDs: testCase.enabled
+          )
+        ),
+        testCase.expected
+      )
+    }
+  }
 }

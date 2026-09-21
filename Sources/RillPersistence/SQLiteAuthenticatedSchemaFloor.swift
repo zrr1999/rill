@@ -23,7 +23,7 @@ enum SQLiteAuthenticatedSchemaFloorError: Error, Equatable, Sendable {
 /// the marker lives in the same file, whole-file snapshot rollback remains a
 /// separate threat that would require a monotonic record outside SQLite.
 enum SQLiteAuthenticatedSchemaFloor {
-  static let installedSchemaFloor = 12
+  static let installedSchemaFloor = 13
   static let legacySchemaFloor = 11
   static let tableName = "rill_authenticated_schema_floor"
 
@@ -229,7 +229,8 @@ enum SQLiteAuthenticatedSchemaFloor {
   static func upgrade(
     on database: OpaquePointer?,
     validatedDatabaseID databaseID: UUID,
-    localDataProtector: any LocalDataProtector
+    localDataProtector: any LocalDataProtector,
+    schemaFloor: Int = installedSchemaFloor
   ) throws {
     guard let database, sqlite3_get_autocommit(database) == 0 else {
       throw SQLiteAuthenticatedSchemaFloorError.installationFailed
@@ -240,7 +241,7 @@ enum SQLiteAuthenticatedSchemaFloor {
       verification = try localDataProtector.seal(
         verificationPlaintext(
           databaseID: canonicalDatabaseID,
-          schemaFloor: installedSchemaFloor,
+          schemaFloor: schemaFloor,
           schemaFingerprint: try schemaFingerprint(on: database)
         ),
         context: protectionContext(databaseID: canonicalDatabaseID)
@@ -262,7 +263,7 @@ enum SQLiteAuthenticatedSchemaFloor {
       throw SQLiteAuthenticatedSchemaFloorError.installationFailed
     }
     defer { sqlite3_finalize(statement) }
-    guard sqlite3_bind_int64(statement, 1, Int64(installedSchemaFloor)) == SQLITE_OK,
+    guard sqlite3_bind_int64(statement, 1, Int64(schemaFloor)) == SQLITE_OK,
       bindText(verification, at: 2, in: statement),
       bindText(canonicalDatabaseID, at: 3, in: statement),
       sqlite3_step(statement) == SQLITE_DONE,

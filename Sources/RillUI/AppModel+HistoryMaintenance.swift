@@ -3,6 +3,20 @@ import RillCore
 import RillRuntime
 
 extension AppModel {
+  /// Starts the irreversible clipboard-mutation shutdown boundary.
+  public func sealRecordMutationsForApplicationShutdown() {
+    hasBegunApplicationShutdown = true
+    recordWorkspace.sealMutations()
+    cancelResidentSpeechModelSynchronizationForApplicationShutdown()
+  }
+
+  /// Waits for mutations accepted before the shutdown boundary. Accepted
+  /// writes are never cancelled because they may already own durable state.
+  public func drainRecordMutationsForApplicationShutdown() async {
+    hasBegunApplicationShutdown = true
+    await recordWorkspace.shutdown()
+  }
+
     public func setRecordRetentionPeriod(_ period: HistoryRetentionPeriod) {
         updateHistoryRetentionPeriod(
             period,
@@ -22,25 +36,9 @@ extension AppModel {
     }
 
     public func clearRecordHistory() {
-        guard beginLocalHistoryMaintenance() else { return }
-        guard let localHistoryMaintenance else {
-            finishWithUnavailableMaintenanceService()
-            return
-        }
-
-        let taskID = UUID()
-        let task = Task { @MainActor [weak self, localHistoryMaintenance] in
-            let result = await localHistoryMaintenance.clearRecordHistory()
-            guard let self else { return }
-            defer { self.finishLocalHistoryMaintenanceTask(id: taskID) }
-            await self.finishLocalHistoryMaintenance(
-                result,
-                refreshRecords: true,
-                refreshRunHistory: false,
-                refreshDiagnostics: false
-            )
-        }
-        localHistoryMaintenanceTasks[taskID] = task
+        guard !hasBegunApplicationShutdown else { return }
+        let task = Task { [recordWorkspace] in await recordWorkspace.cleanup.request() }
+        persistenceWrites.track(task)
     }
 
     public func clearRunHistory() {
@@ -150,8 +148,9 @@ extension AppModel {
 
         let taskID = UUID()
         let task = Task { @MainActor [weak self, localHistoryMaintenance] in
+            await self?.recordWorkspace.refreshRetentionSuggestion(olderThan: recordRetention.cutoffDate(relativeTo: now))
             let result = await localHistoryMaintenance.performRetention(
-                recordRetention: recordRetention,
+                recordRetention: .forever,
                 runRetention: runRetention,
                 now: now
             )
@@ -294,7 +293,7 @@ extension AppModel {
                 )
             }
         }
-        registerPersistenceWrite(task)
+        persistenceWrites.track(task)
     }
 
     private static func isShorterRetention(

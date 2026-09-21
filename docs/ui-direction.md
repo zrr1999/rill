@@ -51,14 +51,14 @@ SPARK.md 把最终形态定义为「原生 macOS 边缘语音与剪贴板工作�
 ### 3.2 主窗口目标侧栏
 
 ```text
-活动            ← 合并原 Dashboard + 运行历史：就绪清单 + 实时动态 + 回执时间线
+活动            ← 合并原 Dashboard + 运行历史：待处理事项 + 当前状态 + 回执时间线 + 折叠实时动态
 工作流          ← 单一导航行，进入工作流编辑器页（对象管理在页内列表，侧栏不再平铺对象，避免双列表）
 记录集…         ← 对象列表（不变）
 设置            ← 底部常驻工具区；诊断降为设置内入口打开的高级页
 ```
 
-- **活动**是 Record 流的用户面：就绪（未就绪时）、失败横幅、待消歧、
-  实时动态（transient event feed）与 durable 回执时间线自上而下排列；
+- **活动**是 Record 流的用户面：就绪阻塞、待消歧、失败恢复、当前状态、
+  durable 回执时间线、折叠的实时动态（transient event feed）自上而下排列；
   时间线继续提供 scope 切换、搜索、分页、纠错与失败录音恢复。
 - **诊断**不再占一级导航。它是 allowlist 清洗后的技术事件页，竞品均不把
   诊断放一级；用户面的「为什么触发/跳过」已由回执时间线承担。诊断页本身
@@ -72,8 +72,8 @@ SPARK.md 把最终形态定义为「原生 macOS 边缘语音与剪贴板工作�
 | 决策 | 约定 |
 |---|---|
 | 卡片分级 | 沿用 `RillCard` 三档（prominent/regular/subdued），不新增第四档；prominent 只用于要求行动的就绪清单与失败横幅。手写 `.quaternary.opacity(...)` 必须就近收敛到 0.2/0.35/0.45 三档并注明档位 |
-| 选中态 | 统一用 `rillSelection` 修饰器（`RillSelection.swift`：accent 0.12 填充 + 1pt accent 0.5 描边）；不再各处手写 fill/stroke 参数 |
-| 圆角 | 统一走 `RillRadius`（`RillSelection.swift`：card 14 / badge 8 / chip 6 / panel 16），不引入新档位 |
+| 选中态 | 统一用 `rillSelection` 修饰器（`RillSelection.swift`：accent 0.12 填充 + 1pt accent 0.5 描边）；提高对比度时使用 2pt 不透明描边；不再各处手写 fill/stroke 参数 |
+| 圆角 | 统一走 `RillRadius`（`RillSelection.swift`：chip 6 / badge 8 / row 10 / section 12 / card 14 / panel 16），不引入新档位 |
 | 状态色语义 | green=就绪、orange=需要注意、red=失败、secondary=中性；环境层浮窗的音量/状态色与主窗口共用同一语义，不另立色板（联网指示：online=green、offline=orange、unknown=secondary）。例外：工作流编辑器节点 tint（事件 orange / 条件 teal / 输出 green）是分类语义，不占状态色 |
 | 图标 | 只使用 `RillSystemSymbol` 闭目录；新符号先入目录再用 |
 | 动效 | 用户可感知的状态动画一律 spring：默认 `.spring(response: 0.3–0.35, dampingFraction: 1.0)` 无过冲，按压等带用户动量的交互允许 `dampingFraction: 0.8` 轻回弹；装饰性动画必须读 `\.accessibilityReduceMotion` 降级；scrollTo 导航定位保留固定时长 easing；AppKit 浮窗显隐须经 `reduceMotionProvider` 门控 |
@@ -122,7 +122,7 @@ SPARK.md 把最终形态定义为「原生 macOS 边缘语音与剪贴板工作�
 
 - 不把主窗口做成 launcher 网格或命令面板；全局搜索保持为浮层。
 - 不为语音助手、翻译等建独立「模式」一级页面（避免模式帝国）。
-- 本轮不改 Records / Workflows 页面内部的信息架构。
+- Records / Workflows 只做本计划内的局部重排和紧凑布局，保留现有领域操作与数据结构。
 - 不引入品牌主题引擎、自定义配色系统或图标体系之外的视觉资产。
 - 不为追平竞品入口数量而增加顶级导航项。
 
@@ -133,3 +133,56 @@ SPARK.md 把最终形态定义为「原生 macOS 边缘语音与剪贴板工作�
 - VoiceInk 模式设置：<https://tryvoiceink.com/docs/mode-settings>
 - CleanClip：<https://cleanclip.cc/>
 - 仓内：`docs/competitive-radar.md`、`docs/competitive-research.md` 第 6/9 节、`SPARK.md`
+
+## 8. 原生精修与局部重排（2026-09-12）
+
+本轮以已有未提交的 UI 精修为基线，保留一级导航、系统强调色和 Fn 听写生命周期。
+
+- 活动页顺序为就绪阻塞、待选择、失败恢复、当前状态、历史、实时动态。实时动态默认折叠并显示数量，与持久历史保持独立；不再使用固定高度空态。
+- 历史默认展示最终结果、明确状态、耗时和已记录的动作结果。模型轨迹和详细回执进入“执行详情”；界面不推断回执中不存在的目标应用。全文展开只使用当前隐私规则已授权的文本，受限预览不能展开取得完整原文。
+- 记录操作按内容、常用动作、记录集、折叠元数据排列；文本替换合为一个入口，在编辑器内选择作用范围。全局删除保留确认，删除后选择相邻条目。浮窗显示冻结的目标应用名称，数字直贴提示与图标分开。
+- 工作流内容宽度低于 860pt 时采用列表／编辑器单栏；记录内容区继续使用 700pt 断点。工作流保存操作固定在底部，导航、重新加载和重置经过未保存草稿确认；保存失败保留草稿。内置工作流表单明确只读，自定义工作流可编辑；已有覆盖仍可恢复默认值，底层配置与存储能力保持不变。
+- 设置折叠摘要使用当前麦克风权限、语音引擎／模型、输出方式、界面语言和留存期限。全局搜索保留部分可用结果，提供清除查询动作。诊断事件详情折叠，复制动作在原位短暂反馈。
+- 间距复用 4/8/12/16/20/24pt；圆角按当前实现使用 chip 6、badge 8、row 10、section 12、card 14、panel 16，不再新增档位。页面标题使用 title2 semibold，正文 body，辅助信息 caption；计时、数量使用等宽数字。
+- 选择态遵循 Reduce Motion 和提高对比度设置；字幕保留原有尺寸与显隐节奏，只调整计时区稳定宽度和延长录音按钮的点击区域。
+
+### 验证入口
+
+- `scripts/swift_locked.sh test --parallel --filter RillUITests`：现有 UI 行为与回归测试。
+- `scripts/swift_locked.sh test --filter 'UIRefinementTests|RecordWorkspaceModelTests'`：草稿离开保护、布局边界、投递目标文案、删除后选择与双语文案。
+- `RILL_UI_SNAPSHOT_DIR=/tmp/rill-ui-rendered scripts/swift_locked.sh test --filter UIRenderEvidenceTests`：可选原生测试数据渲染，不读写个人设置；用于辅助布局检查，不能代替运行应用的交互验收。
+- `just ci`：完整本地门禁。实际构建来源、截图、通过项与未覆盖项记录在本次验收记录中。
+
+## Workflow document editor (2026-09-15)
+
+- The Workflows page is a library: search, enable, run, import, duplicate, restore
+  defaults, remove, inspect file errors and reveal the XDG directory.
+- Each workflow opens a separate native document window, keyed by its UUID.
+  Editing a workflow never blocks navigation in the main window.
+- The default presentation is vertical ordered steps, with nested condition
+  blocks and ordered outputs. The TOML view edits the same complete document.
+- Save, Undo, Redo, native text search, dirty-window indication and close/quit
+  handling follow document conventions. Invalid source retains its contents and
+  offers the source editor. External conflicts show both versions before writing.
+- Tests are visibly separate from real outputs. Sample text and pinned results
+  stay within the document session. Provider and privacy authorization still apply.
+- New controls use `Localization+WorkflowDocuments.swift` for bilingual strings.
+  File paths, IDs, provider-owned keys and TOML diagnostics remain selectable.
+- This supersedes the earlier embedded split-editor layout for Workflows. Existing
+  Record, Stream, Fn and voice-capture acceptance requirements remain in force.
+
+## Plain-text workflows and smart cleanup (2026-09-19)
+
+This supersedes the workflow-editor layouts above. The workflow library keeps
+search, activation, templates, import, duplication, execution and file errors.
+Open file launches an external editor. There is no workflow document window,
+visual/source editor, in-app undo, draft recovery or editor-related quit prompt.
+Existing files and historical recovery drafts remain on disk. Saved valid TOML
+applies to the next run; running snapshots stay frozen.
+
+Smart Cleanup is a separate, initially disabled voice mode. Settings provides one
+LLM Provider configuration shared by cleanup, assistant answers and custom text
+workflows, with an endpoint, API key, model and connection check. The recording UI stays focused on
+capture and processing; cleanup repairs errors and structures plain text without
+adding writing-style controls. Recoverable failures retain the full pre-rewrite
+text and report skipped cleanup in Activity.

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 import RillCore
 
@@ -271,7 +272,7 @@ final class DetailKeyboardFocusAnchorView: NSView {
 
     override func keyDown(with event: NSEvent) {
         let unsupportedModifiers = event.modifierFlags.intersection([.command, .control, .option])
-        guard event.keyCode == 48, unsupportedModifiers.isEmpty, let window else {
+        guard event.keyCode == UInt16(kVK_Tab), unsupportedModifiers.isEmpty, let window else {
             super.keyDown(with: event)
             return
         }

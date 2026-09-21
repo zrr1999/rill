@@ -55,7 +55,7 @@ public extension AppModel {
         }
       }
     }
-    registerPersistenceWrite(task)
+    persistenceWrites.track(task)
   }
 
   func clearBenchmarkRecordingArchive() {
@@ -80,6 +80,6 @@ public extension AppModel {
       }
       self.isUpdatingBenchmarkRecordingArchive = false
     }
-    registerPersistenceWrite(task)
+    persistenceWrites.track(task)
   }
 }

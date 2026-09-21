@@ -47,6 +47,7 @@ extension AppModel {
 
         for (_, members) in enabledGroups {
             guard members.count > 1 else { continue }
+            if members.contains(where: { workflowFileURLsByID[$0.id] != nil }) { continue }
             for workflow in members.dropFirst() {
                 workflowEnabledStates[workflow.id] = false
             }

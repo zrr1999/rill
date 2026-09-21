@@ -39,7 +39,7 @@ public struct VocabularyCorrectionSheet: View {
             actionBar
                 .padding(16)
         }
-        .frame(minWidth: 620, idealWidth: 680, minHeight: 620, idealHeight: 720)
+        .frame(minWidth: 520, idealWidth: 620, minHeight: 420, idealHeight: 600)
         .onChange(of: model.privacyPolicySettings.historyPreviewMode) { _, mode in
             if mode == .disabled {
                 dismiss()
@@ -141,9 +141,9 @@ public struct VocabularyCorrectionSheet: View {
             }
             .contentShape(Rectangle())
             .padding(10)
-            .rillSelection(draft.selectedOptionID == option.id, cornerRadius: 10)
+            .rillSelection(draft.selectedOptionID == option.id, cornerRadius: RillRadius.row)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RillCardButtonStyle(cornerRadius: RillRadius.row))
         .accessibilityLabel("\(optionTitle(option)): \(optionSummary(option))")
         .accessibilityAddTraits(draft.selectedOptionID == option.id ? .isSelected : [])
     }
@@ -188,7 +188,7 @@ public struct VocabularyCorrectionSheet: View {
                 .accessibilityIdentifier("vocabulary.correction.target-collection")
             }
         }
-        .rillCard(.subdued, cornerRadius: 10, padding: 12)
+        .rillCard(.subdued, cornerRadius: RillRadius.row, padding: 12)
     }
 
     @ViewBuilder

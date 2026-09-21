@@ -6,11 +6,11 @@ import XCTest
 @testable import RillPersistence
 
 final class SQLiteRecordGraphPersistenceTests: XCTestCase {
-  func testFreshDatabaseInstallsSchema12RecordGraphTables() throws {
+  func testFreshDatabaseInstallsSchema13RecordGraphTables() throws {
     let fixture = try makeFixture(byte: 0x71)
     _ = fixture.store
 
-    XCTAssertEqual(try integerQuery("PRAGMA user_version;", at: fixture.databaseURL), 12)
+    XCTAssertEqual(try integerQuery("PRAGMA user_version;", at: fixture.databaseURL), 13)
     XCTAssertEqual(
       try columnNames(in: "record_graph_metadata", at: fixture.databaseURL),
       ["id", "revision", "payload"]

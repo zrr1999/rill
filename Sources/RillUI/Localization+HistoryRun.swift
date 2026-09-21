@@ -185,6 +185,18 @@ extension L10n {
         )
     }
 
+    static func historyTimelineMessageRole(
+        _ role: LanguageModelTraceMessage.Role,
+        language: AppLanguage
+    ) -> String {
+        switch (language, role) {
+        case (.english, .user): "User"
+        case (.simplifiedChinese, .user): "用户"
+        case (.english, .assistant): "Assistant"
+        case (.simplifiedChinese, .assistant): "助手"
+        }
+    }
+
     static func historyTimelineSentToLLMStep(_ step: Int, language: AppLanguage) -> String {
         String(format: historyTimelineText(.sentToLLMStepFormat, language: language), step)
     }
@@ -195,6 +207,10 @@ extension L10n {
             simplifiedChinese: "其余动作详情已省略。"
         ),
         .actionFormat: .init(english: "Action %d", simplifiedChinese: "动作 %d"),
+        .copyFailureDetails: .init(
+            english: "Copy failure details",
+            simplifiedChinese: "复制失败详情"
+        ),
         .executionDetailsUnavailable: .init(
             english: "Execution details are unavailable for this older run.",
             simplifiedChinese: "这条较早的运行没有可用的执行详情。"
@@ -230,6 +246,7 @@ extension L10n {
 enum HistoryTimelineTextKey: String, CaseIterable, Sendable {
     case actionDetailsTruncated
     case actionFormat
+    case copyFailureDetails
     case executionDetailsUnavailable
     case llmAnswer
     case llmRequest

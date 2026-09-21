@@ -74,6 +74,7 @@ extension SettingsView {
           if isApplyingWakeWordSettings {
             ProgressView()
               .controlSize(.small)
+              .transition(.opacity)
           }
 
           Spacer()
@@ -90,6 +91,7 @@ extension SettingsView {
         Label(wakeWordSettingsError, systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue)
           .font(.caption)
           .foregroundStyle(.red)
+          .transition(.opacity)
       }
 
       Text(L10n.settingsText(.settingsWakeWordScopeDetail, language: model.language))
@@ -100,6 +102,8 @@ extension SettingsView {
       .font(.caption)
       .foregroundStyle(.secondary)
     }
+    .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isApplyingWakeWordSettings)
+    .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: wakeWordSettingsError == nil)
     .onChange(of: model.wakeWordSettingsSnapshot) { _, snapshot in
       guard !isApplyingWakeWordSettings else { return }
       wakeListeningDraftEnabled = snapshot.isEnabled
@@ -171,8 +175,8 @@ extension SettingsView {
           ? L10n.settingsText(.settingsAssistantSetupReady, language: model.language)
           : L10n.settingsText(.settingsAssistantSetupIncomplete, language: model.language),
         systemImage: readiness.canEnableListening
-          ? "checkmark.seal.fill"
-          : "checklist"
+          ? RillSystemSymbol.checkmarkSealFill.rawValue
+          : RillSystemSymbol.checklist.rawValue
       )
       .font(.subheadline.weight(.semibold))
       .foregroundStyle(readiness.canEnableListening ? .green : .primary)
@@ -203,7 +207,7 @@ extension SettingsView {
         isReady: true
       )
 
-      HStack(spacing: 8) {
+      HStack(spacing: RillSpacing.row) {
         if readiness.microphone != .granted {
           Button(L10n.settingsText(.settingsReviewPermissions, language: model.language)) {
             model.showSettings(.permissions)
@@ -228,8 +232,11 @@ extension SettingsView {
       .buttonStyle(.bordered)
     }
     .padding(10)
-    // RillCard prominent-tier fill; custom corner radius keeps this manual.
-    .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+    // RillCard prominent-tier fill at badge radius; padding stays manual.
+    .background(
+      .quaternary.opacity(RillCardProminence.prominent.fillOpacity),
+      in: RoundedRectangle(cornerRadius: RillRadius.badge, style: .continuous)
+    )
   }
 
   func voiceAssistantReadinessRow(

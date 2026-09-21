@@ -52,7 +52,7 @@ public struct WorkflowManifestValidator: Sendable {
                 )
             }
 
-            for step in workflow.plan.process.steps {
+            for step in workflow.plan.process.allSteps {
                 guard let kind = step.kind.postProcessKind else { continue }
                 guard transformerRegistry.transformer(for: kind) == nil else { continue }
                 throw WorkflowManifestValidationError.missingTransformer(

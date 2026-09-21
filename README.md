@@ -2,8 +2,9 @@
 
 User workflows are standard TOML files under
 `$XDG_CONFIG_HOME/rill/workflows` (defaulting to
-`$HOME/.config/rill/workflows`). The separate Workflow window is a visual
-editor for those files; see [the workflow TOML specification](docs/workflow-toml.md).
+`$HOME/.config/rill/workflows`). Edit files and prompts in your external text
+editor; Rill reloads saved changes automatically. There is no built-in workflow
+editor. See [the workflow TOML specification](docs/workflow-toml.md).
 
 **本地优先的记录流与记录路由工作站** — 一款原生 macOS 应用，将语音识别、系统剪切板采集、跨应用投递和可观察工作流统一为一条 Record 流。
 
@@ -22,7 +23,7 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 - **稳定尺寸的语音状态浮窗** — 本地路径以固定标准/紧凑尺寸显示录音、音量和处理状态；增长中的实时 hypothesis 只保留最新两行，不会按正文长度不断撑大窗口。停止或自动端点后再由所选档位模型生成最终转写
 - **中英文支持** — 界面和识别均支持中文/英文双语切换
 - **作用域热词** — Qwen 路径只接收清洗并设有数量/长度上限的热词，通过 Qwen3-ASR 的有界 context 传入
-- **OpenAI-compatible 文本工作流（BYOK）** — 内置预设和自定义语音工作流的 `llmRewrite` 步骤使用 MacPaw/OpenAI 0.5.1 的 Responses API，只把当前最终转写正文发送到用户配置的 endpoint；API Key 保存在 macOS Keychain。默认使用官方 OpenAI `/v1` 与 `gpt-5.6-terra`，也可选择 Sol / Luna 或填写自定义 Base URL 和模型 ID；配置缺失、云端拒绝或请求失败时不会注入原文或部分结果
+- **智能整理（LLM Provider）** — 最终识别和词汇纠正后，通过配置的 LLM Provider 修复错字、整理段落和列表，保留原意；DeepSeek V4.1 Flash 润色时关闭思考；与语音助手共用 LLM Provider 的地址、模型和 API Key，密钥保存在 Keychain，需主动启用并遵循云端授权。临时失败保留整理前完整文本并提示；取消、隐私阻止或凭据错误停止投递。可使用 DeepSeek 或其他兼容 OpenAI Responses API 的服务。
 - **延迟音频双阶段授权** — 录音与 exact workflow/run 绑定一次性 lease；队列在解析音频前 claim，解析后、识别前再次检查设置与目的地。等待期间收紧策略会阻止后续识别或投递
 - **明确且可停止的实时状态** — 活动录音按钮会真正停止对应 run，而不是只隐藏窗口。停止输入后，控制器与后台队列通过原子所有权转移避免重复处理或遗留音频；App 退出会等待录音、手动工作流、音频队列与剪贴板监听清理。清理超时会取消本次退出而不取消清理；事件排空和持久化先于可能较慢的模型卸载
 - **有界本地录音** — 同一份 16 kHz 单声道 PCM 同时送往 v5 流式预览和权限为 `0600` 的受管 WAV；实时层只保留有界 PCM/音量状态。流式失败只关闭预览，正常停止会排空尾帧并继续离线 final，异常、取消或超时会先关闭文件再清理
@@ -35,8 +36,8 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 - **正交记录集策略** — Stack、Queue、List 只是快捷预设；每个记录集可独立选择 newest / oldest / manual 与 retain / successful-delivery 后消费。只有发起投递的 membership 会被消费
 - **双向路由** — capture rule 按来源、来源 App 和 workflow 将一次采集稳定并集到最多 32 个记录集；delivery rule 按目标 App 选择有序来源记录集和 sink。系统剪切板只是 `SystemClipboardSource` / `SystemClipboardSink`，不是领域所有者
 - **显式替换语义** — Replace 创建带 `derivedFrom` / `supersedes` 的新 Record；默认只交换当前记录集的 membership，也可明确选择在所有记录集中替换。原始 Record 继续保留在 All Records
-- **有界且原子的本地存储** — schema 12 将不可变 payload blob 与 metadata / activity / membership / route 图分开保护；保留 1 MiB 文本、32 MiB 图片、64 MiB 总内容、每 Record 32 memberships 和总计 8192 memberships 的上限。metadata 修改不重写 payload 密文
-- **竞态安全的捕获与镜像** — Secure Input 与未知焦点会遮蔽选区和剪贴板输入，排除工作流捕获的标签只遮蔽工作流可见的剪贴板；Stack 路由预览与外部剪贴板捕获会在载荷读取和条件镜像写入前后复核焦点、Secure Input、设置与 change count，边界变化时 fail-closed 且不覆盖外部新剪贴板
+- **有界且原子的本地存储** — schema 13 将加密 catalog 节点与不可变 payload blob 分开保护，正文按需加载；支持最多 10,000 条 Record、512 MiB 总内容、单条 1 MiB 文本或 32 MiB 图片、每 Record 32 memberships 和总计 320,000 memberships。metadata 修改不重写 payload 密文
+- **异步采集，不干预原生复制粘贴** — 后台记录通过隐私检查的剪贴板内容，不拦截 ⌘C / ⌘V，也不把队列预览写入系统剪贴板；只有手动触发输出时才进行剪贴板写入与条件恢复，用户期间的新复制始终优先
 - **有界富内容投递** — 临时替换系统剪贴板前，Rill 最多保存 128 个 item、每项 32 个 representation、总计 256 个 representation / 64 MiB；任一表示不可读或超限都会在替换前失败。图片的 ImageIO 解码、完整性检查和 TIFF → PNG 转换在主线程外 single-flight 串行执行，并在提交前复核 change count。精确写回失败会保留原 archive，只重试恢复而不重复粘贴；退出会排空内外两层临时事务，无法证明恢复完成时拒绝本次正常退出
 - **安全清理** — Record、运行历史及相关诊断默认保留 30 天；自动清理保护 pinned Record 和任何 active membership，consumed membership 本身不构成永久保护
 - **前向迁移** — 旧剪切板图在一个事务中转为 Record graph v1；新图结构、数量、顺序和 payload 解密回读全部通过后才删除旧图。失败会完整回滚，不双写，也不承诺旧版 App 降级
@@ -44,8 +45,8 @@ editor for those files; see [the workflow TOML specification](docs/workflow-toml
 
 ### ⚡ 可观察工作流
 
-- **可视化编辑器** — 配置触发方式、识别路径、确定性文本处理和输出位置
-- **真实能力优先** — 任何包含 `llmRewrite` 的内置或自定义语音工作流只在 OpenAI 凭据可读取时可启用；Snippet 与组事件动作仍不会出现在生产入口中
+- **纯文本工作流** — 用外部编辑器修改 XDG 目录中的 TOML 与提示词；应用只提供列表、模板、启用和运行入口，保存后自动重载。
+- **真实能力优先** — 云端工作流只在对应服务商凭据可读取时可启用；Snippet 与组事件动作仍不会出现在生产入口中。
 - **多种触发方式** — 快捷键、菜单栏和手动触发
 - **失败可见** — 缺失 recognizer、transformer 或 action 时明确失败，不静默跳过
 - **内容无关的运行前解释** — Workflows 页可预览已保存且没有未保存改动的工作流，查看当前触发、输入类别、处理步骤、输出效果、数据目的地和固定隐私原因；收据不包含正文、prompt、路径、端点或凭据
@@ -227,10 +228,13 @@ SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
 
 ### 工作流
 
-内置两个生产可用工作流：
+内置三个工作流：
 
 1. **语音识别** — `Fn` 按住说话 → STT → 热词与替换词 → 输出文字
 2. **语音助手** — `Hey Rill` → STT → 热词与替换词 → LLM 回答 → TTS
+3. **智能整理** — `Fn` 按住说话 → 本地 STT → 热词与替换词 → LLM Provider 润色 → 输出文字
+
+智能整理默认停用。在“设置 → 语音 → LLM Provider”填写地址、API Key 和模型后，从工作流列表启用；它与语音识别共用 Fn，启用其中一个会自动停用另一个。
 
 语音助手默认停用；启用前需要准备当前本地 Qwen ASR 并配置 OpenAI-compatible LLM。
 空闲监听只运行本地 VAD，完整语音段才交给 Qwen 检查唤醒短语；同一句中的后续命令会
@@ -244,13 +248,13 @@ ASR 未准备、LLM 配置无效或云端隐私策略不可用时开启监听；
 唤醒候选，录音结束后恢复环境监听，而已经启动的助手 LLM/TTS 会在独立通道继续运行。
 
 你也可以创建自定义语音工作流，选择本地/云端识别、输出目标和确定性文本处理。
-保存工作流且当前编辑草稿与已保存版本一致后，可在 Workflows 页选择“运行前解释”。预览会按当前路由和隐私设置显示 `ready`、`requires confirmation` 或 `blocked`；它不会读取选区/剪贴板正文，也不会替代运行时的重新检查与云端确认。
+工作流直接在外部编辑器中编写 TOML，保存后对下次运行生效；正在运行的任务保持其配置快照。新建和导入默认停用，无效文件会显示错误并阻止运行。
 
 记录投递使用 exact `RecordID + MembershipID + revision` 租约；成功时只消费发起记录集的成员关系，失败或取消会恢复租约，其他记录集不受影响。Replace 创建派生记录而不覆盖不可变正文；默认只交换当前记录集的成员关系，也可由用户明确选择在所有记录集中替换。
 
 “最近结果”与“运行历史”已合并进“活动”页：就绪清单、实时动态与回执时间线共用一个滚动视图，时间线支持“最近运行 / 最近结果”范围并明确显示当前已加载条数；菜单栏的“最近运行”入口会直接打开该时间线。正文资格绑定运行时持久化的 closed trigger，并与同 run receipt 交叉验证；来源缺失或冲突时 fail-closed，不再根据当前工作流配置猜测。活动页时间线与实时动态共用 `full / restricted / disabled` 正文预览策略；受限内容传给界面与辅助功能树前已在 presentation 层截断为最多 96 个字符，禁用时活动项只保留无正文状态。筛选只改变展示范围，不改变本地留存、清理或隐私策略。诊断不再占用一级导航，经设置页的“高级 → 诊断”入口到达。
 
-旧版剪切板动作 ID、输出策略和 metadata 只在 TOML 加载与 SQLite 前向迁移边界读取；内建资源、编辑器与后续保存只输出 `record.store`、`system-clipboard.copy`、`focused-application.insert` 及 Record metadata。迁移完成后不保留双运行时，也不支持旧版 App 降级。
+旧版剪切板动作 ID、输出策略和 metadata 只在 TOML 加载与 SQLite 前向迁移边界读取；内建资源、模板与后续保存只输出 `record.store`、`system-clipboard.copy`、`focused-application.insert` 及 Record metadata。迁移完成后不保留双运行时，也不支持旧版 App 降级。
 
 ---
 
@@ -267,7 +271,7 @@ RillUI          — SwiftUI 视图和 AppModel
 RillApp         — 组合根和应用入口
 ```
 
-这些 target 是 App 内部实现边界，不构成对外 Swift SDK；Swift Package 只发布 `RillApp` 可执行产品。
+这些 target 是 App 内部实现边界，不构成对外 Swift SDK；Swift Package 提供 `RillApp` 和 `RillSpeechWorker` 两个可执行产品。依赖方向、状态归属和生命周期合同见 [架构说明](docs/architecture.md)。
 
 ---
 
@@ -282,7 +286,7 @@ RillApp         — 组合根和应用入口
 - [x] **组事件可解释性** — 无正文 exact-item descriptor、有界背压、退出排空、严格配置解析、固定 skip/loop 收据、lineage/8-hop 阻断与双语 History 原因；动作仍关闭
 - [x] **失败录音恢复** — 显式 opt-in、Keychain/AES-GCM、硬 TTL 与容量上限、一次性当前策略重试及独立删除/清空
 - [x] **运行前解释** — 已保存工作流的动态、内容无关隐私预览；执行时重新检查并使用与工作流绑定的授权
-- [x] **云端转写润色** — OpenAI-compatible BYOK、Keychain 凭据、自定义 endpoint / 模型、云端确认与失败不投递
+- [x] **云端转写润色** — 智能整理、统一 LLM Provider 与 Keychain 凭据、云端确认、超时取消与完整文本回退。
 - [ ] **Prompt 变量** — `{text}` `{selected}` `{clipboard}` 让语音输入升级为语音命令
 - [ ] **更多云端引擎** — 火山（豆包语音）、Soniox、AssemblyAI
 - [x] **Toggle 录音模式** — 按一下开始，再按一下停止

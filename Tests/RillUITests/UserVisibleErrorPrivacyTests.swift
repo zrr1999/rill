@@ -85,7 +85,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
     func testSingleUnreadablePrivacySettingKeepsOtherSettingsAndFailsClosedWithoutMutation() async {
         let store = UITestSettingsStore(
             storage: [
-                .recordMergeSimilar: "true",
+                .recordHistoryVisibility: RecordHistoryVisibility.all.rawValue,
                 .privacyCloudConfirmationRequired: sentinel,
             ],
             unavailableKeys: [.privacyCloudConfirmationRequired]
@@ -98,7 +98,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertTrue(harness.model.mergeSimilarRecords)
+        XCTAssertEqual(harness.model.recordHistoryVisibility, .all)
         XCTAssertFalse(source.hasAvailableSettings)
         XCTAssertNotNil(harness.model.privacySettingsLoadError)
         let activity = await store.activitySnapshot()

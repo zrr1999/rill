@@ -55,23 +55,35 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
   func testReduceMotionPresentsAndDismissesPanelWithoutFade() {
     let controller = makeController(reduceMotion: true)
 
-    controller.show(model: makeModel(), deliverSelection: { _, _ in }, onDeliveryAbort: {})
+    controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
     XCTAssertTrue(controller.isVisible)
 
     controller.dismiss()
     XCTAssertFalse(controller.isVisible)
   }
 
-  func testAnimatedDismissKeepsPanelVisibleUntilFadeCompletes() {
+  func testAnimatedDismissKeepsPanelVisibleUntilFadeCompletes() async throws {
     let controller = makeController(reduceMotion: false)
 
-    controller.show(model: makeModel(), deliverSelection: { _, _ in }, onDeliveryAbort: {})
+    controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
     XCTAssertTrue(controller.isVisible)
+    try await Task.sleep(for: .milliseconds(250))
 
     controller.dismiss()
     XCTAssertTrue(controller.isVisible)
 
-    RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+    while controller.isVisible, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(20))
+    }
     XCTAssertFalse(controller.isVisible)
   }
+  func testDismissDuringEntranceDoesNotWaitForANoopAnimation() async throws {
+    let controller = makeController(reduceMotion: false)
+    controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
+    controller.dismiss()
+    try await Task.sleep(for: .milliseconds(250))
+    XCTAssertFalse(controller.isVisible)
+  }
+
 }

@@ -8,16 +8,10 @@ import RillRuntime
 @MainActor
 @Observable
 public final class RecordWorkspaceModel {
-    public private(set) var snapshot = RecordStoreSnapshot(
-        revision: 0,
-        records: [],
-        collections: [],
-        captureRules: [],
-        deliveryRules: []
-    )
+    public private(set) var snapshot = RecordCatalogSnapshot.empty
     public var selectedCollectionID: RecordCollectionID?
     public var selectedRecordID: RecordID?
-    public var searchText = ""
+    public var searchText = "" { didSet { if searchText != oldValue { scheduleSearch() } } }
     public var showsPinnedOnly = false
     /// Panel-mode session filter: when set, only records captured from this
     /// application remain visible. Not persisted.
@@ -27,11 +21,40 @@ public final class RecordWorkspaceModel {
     public private(set) var errorMessage: String?
     public private(set) var pendingCollectionDeletion: RecordCollectionDeletionImpact?
 
+    public let cleanup: RecordCleanupModel
+    public private(set) var retentionSuggestionCount = 0
+    private var collectionDeletionPlan: RecordCleanupPlan?
+    private var pendingRecordDeletionSelection: (deleted: RecordID, neighbor: RecordID?)?
     private let store: RecordStore
     private var observationTask: Task<Void, Never>?
+    private var searchTask: Task<Void, Never>?
+    private var mutationTask: Task<Void, Never>?
+    private var isClosed = false
+    private var searchMatches: Set<RecordID> = []
+    public private(set) var isSearching = false
 
     public init(store: RecordStore) {
         self.store = store
+        cleanup = RecordCleanupModel(store: store)
+    }
+
+    isolated deinit { observationTask?.cancel(); searchTask?.cancel() }
+
+    public func sealMutations() {
+        isClosed = true
+        cleanup.seal()
+    }
+
+    public func shutdown() async {
+        sealMutations()
+        observationTask?.cancel()
+        searchTask?.cancel()
+        await mutationTask?.value
+        await cleanup.shutdown()
+    }
+
+    var selectedVisibleRecord: RecordSummary? {
+        selectedRecordID.flatMap { id in visibleRecords.first { $0.id == id } }
     }
 
     public var selectedCollection: RecordCollection? {
@@ -57,8 +80,8 @@ public final class RecordWorkspaceModel {
             membershipID: membership.id,
             membershipRevision: membership.revision,
             collectionID: membership.collectionID,
-            payloadKind: projection.record.payload.kind,
-            captureTags: projection.record.provenance.captureTags
+            payloadKind: projection.header.kind,
+            captureTags: projection.header.provenance.captureTags
         )
     }
 
@@ -84,13 +107,13 @@ public final class RecordWorkspaceModel {
             membershipID: membership.id,
             membershipRevision: membership.revision,
             collectionID: membership.collectionID,
-            payloadKind: projection.record.payload.kind,
-            captureTags: projection.record.provenance.captureTags
+            payloadKind: projection.header.kind,
+            captureTags: projection.header.provenance.captureTags
         )
     }
 
-    public var visibleRecords: [RecordProjection] {
-        let records: [RecordProjection]
+    public var visibleRecords: [RecordSummary] {
+        let records: [RecordSummary]
         if let selectedCollectionID {
             let projectionsByID = Dictionary(uniqueKeysWithValues: snapshot.records.map { ($0.id, $0) })
             let memberships = snapshot.records
@@ -106,12 +129,12 @@ public final class RecordWorkspaceModel {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return records.filter { projection in
             if let sourceAppFilterBundleIdentifier,
-               projection.record.provenance.sourceBundleIdentifier != sourceAppFilterBundleIdentifier {
+               projection.header.provenance.sourceBundleIdentifier != sourceAppFilterBundleIdentifier {
                 return false
             }
             guard !showsPinnedOnly || projection.metadata.isPinned else { return false }
             guard !query.isEmpty else { return true }
-            return searchableText(for: projection).contains(query)
+            return searchMatches.contains(projection.id)
         }
     }
 
@@ -120,7 +143,7 @@ public final class RecordWorkspaceModel {
     }
 
     public func membership(
-        for record: RecordProjection,
+        for record: RecordSummary,
         in collectionID: RecordCollectionID
     ) -> RecordMembership? {
         record.memberships.first { $0.collectionID == collectionID }
@@ -131,7 +154,8 @@ public final class RecordWorkspaceModel {
         isLoading = true
         defer { isLoading = false }
         do {
-            snapshot = try await store.snapshot()
+            snapshot = try await store.catalogSnapshot()
+            scheduleSearch()
             repairSelection()
             errorMessage = nil
         } catch {
@@ -143,13 +167,44 @@ public final class RecordWorkspaceModel {
         guard observationTask == nil else { return }
         observationTask = Task { [weak self, store] in
             do {
-                let stream = try await store.snapshotStream()
+                let stream = try await store.catalogStream()
                 for await snapshot in stream {
                     guard !Task.isCancelled else { return }
                     self?.snapshot = snapshot
+                    self?.scheduleSearch()
                     self?.repairSelection()
                 }
             } catch {
+                self?.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        searchMatches = []
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { isSearching = false; return }
+        isSearching = true
+        searchTask = Task { [weak self, store] in
+            do {
+                var offset = 0
+                repeat {
+                    let page = try await store.query(.init(text: query), offset: offset, limit: 100)
+                    guard !Task.isCancelled, let self, self.searchText.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
+                    self.searchMatches.formUnion(page.records.map(\.id))
+                    if let next = page.nextOffset { offset = next } else { break }
+                } while true
+                guard !Task.isCancelled else { return }
+                self?.isSearching = false
+                self?.repairSelection()
+            } catch is CancellationError {
+            } catch RecordStoreError.membershipChanged {
+                guard !Task.isCancelled else { return }
+                self?.scheduleSearch()
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.isSearching = false
                 self?.errorMessage = error.localizedDescription
             }
         }
@@ -197,23 +252,26 @@ public final class RecordWorkspaceModel {
     }
 
     public func removeMembership(_ membership: RecordMembership) async {
-        await mutate {
-            try await self.store.removeMembership(
-                membership.id,
-                expectedRevision: membership.revision
-            )
-        }
+        await cleanup.request(scope: .membership(membership.id))
     }
 
     public func deleteRecord(_ id: RecordID) async {
-        await mutate {
-            try await self.store.deleteRecord(id)
-            if self.selectedRecordID == id { self.selectedRecordID = nil }
+        let ids = visibleRecords.map(\.id)
+        if let index = ids.firstIndex(of: id), selectedRecordID == id {
+            let neighbor = index + 1 < ids.count ? ids[index + 1] : (index > 0 ? ids[index - 1] : nil)
+            pendingRecordDeletionSelection = (id, neighbor)
         }
+        await cleanup.request(scope: .record(id))
+    }
+
+    public func refreshRetentionSuggestion(olderThan cutoff: Date?) async {
+        guard let cutoff else { retentionSuggestionCount = 0; return }
+        do { retentionSuggestionCount = try await store.prepareCleanup(olderThan: cutoff).recordIDs.count }
+        catch { errorMessage = error.localizedDescription }
     }
 
     public func updateMetadata(
-        for record: RecordProjection,
+        for record: RecordSummary,
         tags: [String]? = nil,
         isPinned: Bool? = nil
     ) async {
@@ -225,6 +283,22 @@ public final class RecordWorkspaceModel {
                 expectedRevision: record.metadata.revision
             )
         }
+    }
+
+    public func updateMetadata(for record: RecordProjection, tags: [String]? = nil, isPinned: Bool? = nil) async {
+        await mutate {
+            _ = try await self.store.updateMetadata(recordID: record.id, tags: tags, isPinned: isPinned,
+                                                   expectedRevision: record.metadata.revision)
+        }
+    }
+
+    public func loadRecord(_ id: RecordID) async -> RecordProjection? {
+        do { return try await store.record(id: id) }
+        catch { errorMessage = error.localizedDescription; return nil }
+    }
+
+    public func makeQuickPanelModel() -> RecordQuickPanelModel {
+        RecordQuickPanelModel(store: store)
     }
 
     public func replaceText(
@@ -245,18 +319,16 @@ public final class RecordWorkspaceModel {
 
     public func requestCollectionDeletion(_ id: RecordCollectionID) async {
         do {
+            collectionDeletionPlan = try await store.prepareCleanup(scope: .collection(id))
             let impact = try await store.deletionImpact(for: id)
-            if impact.hasRouteReferences {
-                pendingCollectionDeletion = impact
-            } else {
-                await confirmCollectionDeletion(id, resolution: nil)
-            }
+            pendingCollectionDeletion = impact
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     public func cancelCollectionDeletion() {
+        collectionDeletionPlan = nil
         pendingCollectionDeletion = nil
     }
 
@@ -264,10 +336,16 @@ public final class RecordWorkspaceModel {
         _ id: RecordCollectionID,
         resolution: RecordCollectionReferenceResolution?
     ) async {
-        pendingCollectionDeletion = nil
+        guard let plan = collectionDeletionPlan, plan.scope == .collection(id) else { return }
         await mutate {
-            try await self.store.deleteCollection(id, resolvingReferences: resolution)
-            if self.selectedCollectionID == id { self.selectedCollectionID = nil }
+            do {
+                _ = try await self.store.confirmCleanup(plan, resolvingReferences: resolution)
+                self.cancelCollectionDeletion()
+                if self.selectedCollectionID == id { self.selectedCollectionID = nil }
+            } catch RecordStoreError.membershipChanged {
+                await self.requestCollectionDeletion(id)
+                throw RecordStoreError.membershipChanged
+            }
         }
     }
 
@@ -284,20 +362,30 @@ public final class RecordWorkspaceModel {
     }
 
     private func mutate(_ operation: @escaping @MainActor () async throws -> Void) async {
-        guard !isMutating else { return }
+        guard !isClosed, !isMutating else { return }
         isMutating = true
         defer { isMutating = false }
-        do {
-            try await operation()
-            snapshot = try await store.snapshot()
-            repairSelection()
-            errorMessage = nil
-        } catch {
-            errorMessage = error.localizedDescription
+        let task = Task {
+            do {
+                try await operation()
+                snapshot = try await store.catalogSnapshot()
+                if !isClosed { scheduleSearch() }
+                repairSelection()
+                errorMessage = nil
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
+        mutationTask = task
+        await task.value
+        mutationTask = nil
     }
 
     private func repairSelection() {
+        if let pending = pendingRecordDeletionSelection, !snapshot.records.contains(where: { $0.id == pending.deleted }) {
+            if selectedRecordID == pending.deleted { selectedRecordID = pending.neighbor }
+            pendingRecordDeletionSelection = nil
+        }
         if let selectedCollectionID,
            !snapshot.collections.contains(where: { $0.id == selectedCollectionID }) {
             self.selectedCollectionID = nil
@@ -308,22 +396,6 @@ public final class RecordWorkspaceModel {
         }
     }
 
-    private func searchableText(for projection: RecordProjection) -> String {
-        let payload: String
-        switch projection.record.payload {
-        case .text(let text):
-            payload = text
-        case .image:
-            payload = "image"
-        case .files(let urls):
-            payload = urls.map(\.lastPathComponent).joined(separator: " ")
-        }
-        return ([
-            payload,
-            projection.record.provenance.sourceApplicationName ?? "",
-            projection.record.provenance.sourceBundleIdentifier ?? "",
-        ] + projection.metadata.tags).joined(separator: " ").lowercased()
-    }
 
     private static func stableUnique<T: Hashable>(_ values: [T]) -> [T] {
         var seen: Set<T> = []

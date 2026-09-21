@@ -25,6 +25,19 @@ enum RecordWorkspaceLayoutPolicy {
     }
 }
 
+private enum RecordWorkspaceViewMetrics {
+    /// Square payload thumbnail at the leading edge of a record row.
+    static let recordIconSize: CGFloat = 30
+    /// Standard sheet width (create collection, membership picker).
+    static let sheetWidth: CGFloat = 420
+    /// Wider sheets that host an editor or impact list.
+    static let wideSheetWidth: CGFloat = 520
+    /// Collection list height inside the membership sheet.
+    static let membershipListHeight: CGFloat = 260
+    /// Editor height inside the replacement sheet.
+    static let replacementEditorHeight: CGFloat = 220
+}
+
 public struct RecordWorkspaceView: View {
     private enum Pane: String, CaseIterable {
         case records
@@ -46,8 +59,9 @@ public struct RecordWorkspaceView: View {
     @State private var replacementRecordID: RecordID?
     @State private var replacementText = ""
     @State private var replacesInAllCollections = false
-    @State private var recordPendingGlobalDeletion: RecordID?
     @State private var pane: Pane = .records
+    @State private var showsCompactList = false
+    @State private var selectedRecordDetail: RecordProjection?
 
     public init(
         workspace: RecordWorkspaceModel,
@@ -81,31 +95,37 @@ public struct RecordWorkspaceView: View {
             .layoutPriority(1)
         }
         .task { await workspace.refresh() }
+        .task(id: workspace.selectedVisibleRecord?.reuseSubject) {
+            selectedRecordDetail = nil
+            guard let subject = workspace.selectedVisibleRecord?.reuseSubject else { return }
+            let record = await workspace.loadRecord(subject.recordID)
+            guard !Task.isCancelled, workspace.selectedVisibleRecord?.reuseSubject == subject else { return }
+            selectedRecordDetail = record
+        }
         .sheet(isPresented: $isCreatingCollection) { createCollectionSheet }
         .sheet(isPresented: membershipSheetIsPresented) { membershipSheet }
         .sheet(isPresented: replacementSheetIsPresented) { replacementSheet }
         .sheet(item: deletionImpactBinding) { impact in
             collectionDeletionImpactSheet(impact)
         }
-        .alert(
-            L10n.recordText(.deleteRecordEverywhereConfirmationTitle, language: language),
-            isPresented: globalDeletionAlertIsPresented,
-            presenting: recordPendingGlobalDeletion
-        ) { recordID in
-            Button(L10n.recordText(.deleteRecord, language: language), role: .destructive) {
-                Task { await workspace.deleteRecord(recordID) }
-            }
-            Button(L10n.recordText(.cancel, language: language), role: .cancel) {}
-        } message: { _ in
-            Text(L10n.recordText(.deleteRecordEverywhereDetail, language: language))
+        .sheet(isPresented: Binding(get: { workspace.cleanup.plan != nil }, set: { if !$0 { workspace.cleanup.cancel() } })) {
+            RecordCleanupSheet(model: workspace.cleanup, language: language)
         }
         .alert(
             L10n.recordText(.recordsUpdateFailedTitle, language: language),
             isPresented: errorIsPresented
         ) {
-            Button(L10n.recordText(.ok, language: language)) { workspace.dismissError() }
+            Button(L10n.recordText(.ok, language: language)) { dismissError() }
         } message: {
-            Text(workspace.errorMessage ?? "")
+            // Friendly guidance first; the original error detail stays visible
+            // below it for diagnostics.
+            Text(L10n.recordText(.recordsUpdateFailedSuggestion, language: language))
+            if let errorMessage = workspace.errorMessage, !errorMessage.isEmpty {
+                Text(L10n.recordsUpdateFailureReason(errorMessage, language: language))
+            }
+            if let message = workspace.cleanup.message {
+                Text(L10n.quickRecord(message, language: language))
+            }
         }
     }
 
@@ -113,7 +133,6 @@ public struct RecordWorkspaceView: View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .center, spacing: 16) {
                 headerSummary
-                    .fixedSize(horizontal: true, vertical: false)
                 Spacer(minLength: 16)
                 panePicker
                 recordHeaderActions
@@ -139,6 +158,8 @@ public struct RecordWorkspaceView: View {
                     : workspace.selectedCollection?.name
                         ?? L10n.string(.clipboardHistoryTitle, language: language))
                     .font(.title2.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
                 if pane == .records {
                     Text("\(workspace.visibleRecords.count)")
                         .font(.caption.monospacedDigit().weight(.medium))
@@ -162,13 +183,13 @@ public struct RecordWorkspaceView: View {
     }
 
     private var panePicker: some View {
-        Picker("", selection: $pane) {
+        Picker(L10n.recordText(.panePickerLabel, language: language), selection: $pane) {
             Text(L10n.recordText(.paneRecords, language: language)).tag(Pane.records)
             Text(L10n.recordText(.paneRoutes, language: language)).tag(Pane.routes)
         }
         .labelsHidden()
         .pickerStyle(.segmented)
-        .frame(width: 190)
+        .frame(width: 200)
     }
 
     @ViewBuilder
@@ -204,7 +225,7 @@ public struct RecordWorkspaceView: View {
                 recordsContent(
                     RecordWorkspaceLayoutPolicy.presentation(
                         availableWidth: geometry.size.width,
-                        hasSelectedRecord: selectedRecord != nil
+                        hasSelectedRecord: selectedRecord != nil && !showsCompactList
                     )
                 )
                 .frame(
@@ -256,7 +277,7 @@ public struct RecordWorkspaceView: View {
         VStack(spacing: 0) {
             HStack {
                 Button {
-                    workspace.selectedRecordID = nil
+                    showsCompactList = true
                 } label: {
                     Label(
                         workspace.selectedCollection?.name
@@ -264,7 +285,7 @@ public struct RecordWorkspaceView: View {
                         systemImage: RillSystemSymbol.chevronLeft.rawValue
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RecordWorkspaceHoverButtonStyle())
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
@@ -314,7 +335,6 @@ public struct RecordWorkspaceView: View {
             }
         }
         .pickerStyle(.segmented)
-        .frame(width: 280)
     }
 
     private func collectionSelectionPicker(_ collection: RecordCollection) -> some View {
@@ -342,6 +362,11 @@ public struct RecordWorkspaceView: View {
         }
     }
 
+    private var hasRecordFilters: Bool {
+        !workspace.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || workspace.showsPinnedOnly || workspace.sourceAppFilterBundleIdentifier != nil
+    }
+
     private var recordList: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
@@ -365,18 +390,47 @@ public struct RecordWorkspaceView: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if workspace.visibleRecords.isEmpty {
                 ContentUnavailableView(
-                    L10n.recordText(.noRecordsTitle, language: language),
+                    hasRecordFilters ? L10n.presentation(.noMatchingRecords, language: language)
+                        : L10n.recordText(.noRecordsTitle, language: language),
                     systemImage: RillSystemSymbol.tray.rawValue,
-                    description: Text(L10n.recordText(.noRecordsDescription, language: language))
+                    description: Text(hasRecordFilters
+                        ? L10n.presentation(.noMatchingRecordsDetail, language: language)
+                        : L10n.recordText(.noRecordsDescription, language: language))
                 )
+                if hasRecordFilters {
+                    Button(L10n.presentation(.clearFilters, language: language)) {
+                        workspace.searchText = ""
+                        workspace.showsPinnedOnly = false
+                        workspace.sourceAppFilterBundleIdentifier = nil
+                    }
+                    .buttonStyle(.borderless)
+                    .padding(.bottom, RillSpacing.panel)
+                }
             } else {
-                List(selection: $workspace.selectedRecordID) {
+                ScrollViewReader { proxy in
+                List(selection: Binding(
+                    get: { workspace.selectedRecordID },
+                    set: { workspace.selectedRecordID = $0; showsCompactList = false }
+                )) {
                     ForEach(Array(workspace.visibleRecords.enumerated()), id: \.element.id) { index, projection in
                         recordRow(projection, index: index)
+                            .onTapGesture {
+                                workspace.selectedRecordID = projection.id
+                                showsCompactList = false
+                            }
+                            .accessibilityAction {
+                                workspace.selectedRecordID = projection.id
+                                showsCompactList = false
+                            }
                             .tag(projection.id)
+                            .id(projection.id)
                     }
                 }
                 .listStyle(.inset)
+                .onAppear {
+                    if let id = workspace.selectedRecordID { proxy.scrollTo(id) }
+                }
+                }
             }
         }
         .frame(
@@ -386,21 +440,23 @@ public struct RecordWorkspaceView: View {
         )
     }
 
-    private func recordRow(_ projection: RecordProjection, index: Int? = nil) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            payloadIcon(projection.record.payload)
-                .frame(width: 30, height: 30)
-                .overlay(alignment: .topLeading) {
-                    if deliverSelection != nil, let index, index < 9 {
-                        digitBadge(index + 1)
-                    }
-                }
+    private func recordRow(_ projection: RecordSummary, index: Int? = nil) -> some View {
+        HStack(alignment: .top, spacing: RillSpacing.row) {
+            if deliverSelection != nil, let index, index < 9 {
+                digitBadge(index + 1).frame(width: 20)
+            }
+            Image(systemName: projection.header.kind == .image ? RillSystemSymbol.photo.rawValue : (projection.header.kind == .files ? RillSystemSymbol.docOnDoc.rawValue : RillSystemSymbol.textAlignLeft.rawValue))
+                .frame(
+                    width: RecordWorkspaceViewMetrics.recordIconSize,
+                    height: RecordWorkspaceViewMetrics.recordIconSize
+                )
+
             VStack(alignment: .leading, spacing: 5) {
-                Text(payloadTitle(projection.record.payload))
+                Text(projection.header.kind == .image ? L10n.recordText(.imagePayload, language: language) : projection.header.preview)
                     .lineLimit(2)
                 HStack(spacing: 5) {
                     if projection.metadata.isPinned {
-                        Image(systemName: RillSystemSymbol.pinFill.rawValue).foregroundStyle(.orange)
+                        Image(systemName: RillSystemSymbol.pinFill.rawValue).foregroundStyle(Color.accentColor)
                     }
                     if projection.memberships.isEmpty {
                         membershipChip(L10n.recordText(.noCollection, language: language))
@@ -408,17 +464,23 @@ public struct RecordWorkspaceView: View {
                         ForEach(projection.memberships.prefix(3)) { membership in
                             membershipChip(workspace.collectionName(membership.collectionID))
                         }
+                        if projection.memberships.count > 3 {
+                            membershipChip("+\(projection.memberships.count - 3)")
+                        }
                     }
                 }
-                Text(projection.record.createdAt, style: .relative)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                HStack(spacing: RillSpacing.row) {
+                    Text(sourceName(projection.header.provenance)).lineLimit(1)
+                    Text(projection.header.createdAt, style: .relative).monospacedDigit()
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(payloadTitle(projection.record.payload))
+        .accessibilityLabel(projection.header.kind == .image ? L10n.recordText(.imagePayload, language: language) : projection.header.preview)
         .accessibilityValue(projection.memberships.map { workspace.collectionName($0.collectionID) }.joined(separator: ", "))
     }
 
@@ -427,14 +489,14 @@ public struct RecordWorkspaceView: View {
         if let record = selectedRecord {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    payloadPreview(record.record.payload)
+                    payloadPreview(record.record)
                     if let deliverSelection,
                        let subject = workspace.selectedListDeliverySubject {
                         Button {
                             deliverSelection(subject)
                         } label: {
                             Label(
-                                L10n.recordText(.insertInPreviousApp, language: language),
+                                RecordDeliveryTitle.make(applicationName: sourceAppContext?.applicationName, language: language),
                                 systemImage: RillSystemSymbol.textInsert.rawValue
                             )
                         }
@@ -454,7 +516,9 @@ public struct RecordWorkspaceView: View {
                                 record.metadata.isPinned
                                     ? UIStrings.text(.clipboardUnpinItem, language: language)
                                     : UIStrings.text(.clipboardPinItem, language: language),
-                                systemImage: record.metadata.isPinned ? "pin.slash" : "pin"
+                                systemImage: record.metadata.isPinned
+                                    ? RillSystemSymbol.pinSlash.rawValue
+                                    : RillSystemSymbol.pin.rawValue
                             )
                         }
                         Button {
@@ -465,28 +529,30 @@ public struct RecordWorkspaceView: View {
                         }
                     }
                     membershipInspector(record)
-                    metadataInspector(record)
+                    DisclosureGroup(L10n.presentation(.metadata, language: language)) {
+                        metadataInspector(record)
+                    }
                     if case .text(let textValue) = record.record.payload,
                        let membership = preferredMembership(for: record) {
-                        Button(L10n.recordText(.replaceInCurrentCollection, language: language)) {
+                        Button(L10n.presentation(.editText, language: language)) {
                             replacementRecordID = record.id
                             replacementText = textValue
                             replacesInAllCollections = false
                         }
-                        Button(L10n.recordText(.replaceInAllCollections, language: language)) {
-                            replacementRecordID = record.id
-                            replacementText = textValue
-                            replacesInAllCollections = true
+                        .disabled(membership.state != .active || workspace.isMutating)
+                    }
+                    Menu {
+                        Button(role: .destructive) {
+                            Task { await workspace.deleteRecord(record.id) }
+                        } label: {
+                            Label(L10n.recordText(.deleteRecordEverywhere, language: language), systemImage: RillSystemSymbol.trash.rawValue)
                         }
-                        .disabled(record.memberships.count < 2 || membership.state != .active)
-                        .help(L10n.recordText(.replaceInAllCollectionsHint, language: language))
-                    }
-                    Divider()
-                    Button(role: .destructive) {
-                        recordPendingGlobalDeletion = record.id
                     } label: {
-                        Label(L10n.recordText(.deleteRecordEverywhere, language: language), systemImage: RillSystemSymbol.trash.rawValue)
+                        Label(L10n.presentation(.moreActions, language: language), systemImage: RillSystemSymbol.ellipsisCircle.rawValue)
                     }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+
                 }
                 .padding(16)
             }
@@ -572,7 +638,7 @@ public struct RecordWorkspaceView: View {
             }
         }
         .padding(20)
-        .frame(width: 420)
+        .frame(width: RecordWorkspaceViewMetrics.sheetWidth)
     }
 
     private var membershipSheet: some View {
@@ -581,7 +647,7 @@ public struct RecordWorkspaceView: View {
             List(workspace.snapshot.collections, selection: $collectionIDsToAdd) { collection in
                 Text(collection.name).tag(collection.id)
             }
-            .frame(height: 260)
+            .frame(height: RecordWorkspaceViewMetrics.membershipListHeight)
             HStack {
                 Spacer()
                 Button(L10n.recordText(.cancel, language: language)) { membershipRecordID = nil }
@@ -596,31 +662,35 @@ public struct RecordWorkspaceView: View {
             }
         }
         .padding(20)
-        .frame(width: 420)
+        .frame(width: RecordWorkspaceViewMetrics.sheetWidth)
     }
 
     private var replacementSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(replacesInAllCollections
-                ? L10n.recordText(.replaceInAllCollections, language: language)
-                : L10n.recordText(.replaceInCurrentCollection, language: language))
+            Text(L10n.presentation(.editText, language: language))
                 .font(.title2.weight(.semibold))
+            Toggle(L10n.recordText(.replaceInAllCollections, language: language), isOn: $replacesInAllCollections)
+                .disabled(selectedRecord.map { $0.memberships.count < 2 || preferredMembership(for: $0)?.state != .active } ?? true)
             TextEditor(text: $replacementText)
-                .font(.body.monospaced())
-                .frame(height: 220)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+                .font(.body)
+                .frame(height: RecordWorkspaceViewMetrics.replacementEditorHeight)
+                .overlay(RoundedRectangle(cornerRadius: RillRadius.chip).stroke(.quaternary))
             Text(L10n.recordText(.replaceDescription, language: language))
             .font(.caption)
             .foregroundStyle(.secondary)
+            if let error = workspace.errorMessage {
+                Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+            }
             HStack {
                 Spacer()
                 Button(L10n.recordText(.cancel, language: language)) { replacementRecordID = nil }
                 Button(L10n.recordText(.replace, language: language)) { performReplacement() }
                     .keyboardShortcut(.defaultAction)
+                    .disabled(workspace.isMutating)
             }
         }
         .padding(20)
-        .frame(width: 520)
+        .frame(width: RecordWorkspaceViewMetrics.wideSheetWidth)
     }
 
     private func collectionDeletionImpactSheet(_ impact: RecordCollectionDeletionImpact) -> some View {
@@ -633,6 +703,9 @@ public struct RecordWorkspaceView: View {
             ))
             Text(L10n.recordText(.collectionReferencesHint, language: language))
             .foregroundStyle(.secondary)
+            LabeledContent(L10n.quickRecord(.memberships, language: language), value: "\(impact.membershipCount)")
+            Text(L10n.quickRecord(.collectionDeletion, language: language)).foregroundStyle(.secondary)
+            if impact.hasRouteReferences {
             ForEach(workspace.snapshot.collections.filter { $0.id != impact.collectionID }) { collection in
                 Button(L10n.replaceWithCollection(collection.name, language: language)) {
                     Task {
@@ -643,13 +716,14 @@ public struct RecordWorkspaceView: View {
                     }
                 }
             }
+            }
             Divider()
             HStack {
-                Button(L10n.recordText(.disableAffectedRoutes, language: language), role: .destructive) {
+                Button(impact.hasRouteReferences ? L10n.recordText(.disableAffectedRoutes, language: language) : L10n.quickRecord(.delete, language: language), role: .destructive) {
                     Task {
                         await workspace.confirmCollectionDeletion(
                             impact.collectionID,
-                            resolution: .disableAffectedRoutes
+                            resolution: impact.hasRouteReferences ? .disableAffectedRoutes : nil
                         )
                     }
                 }
@@ -658,11 +732,14 @@ public struct RecordWorkspaceView: View {
             }
         }
         .padding(20)
-        .frame(width: 520)
+        .frame(width: RecordWorkspaceViewMetrics.wideSheetWidth)
     }
 
     private var selectedRecord: RecordProjection? {
-        workspace.selectedRecordID.flatMap { id in workspace.snapshot.records.first { $0.id == id } }
+        guard let summary = workspace.selectedVisibleRecord, let selectedRecordDetail,
+              selectedRecordDetail.id == summary.id,
+              selectedRecordDetail.metadata.revision == summary.metadata.revision else { return nil }
+        return selectedRecordDetail
     }
 
     private func preferredMembership(for record: RecordProjection) -> RecordMembership? {
@@ -680,13 +757,14 @@ public struct RecordWorkspaceView: View {
         }
         let textValue = replacementText
         let all = replacesInAllCollections
-        replacementRecordID = nil
+        guard !workspace.isMutating else { return }
         Task {
             await workspace.replaceText(
                 membership: membership,
                 text: textValue,
                 inAllCollections: all
             )
+            if workspace.errorMessage == nil { replacementRecordID = nil }
         }
     }
 
@@ -703,32 +781,12 @@ public struct RecordWorkspaceView: View {
     }
 
     @ViewBuilder
-    private func payloadIcon(_ payload: RecordPayload) -> some View {
-        switch payload {
-        case .text:
-            Image(systemName: RillSystemSymbol.textAlignLeft.rawValue)
-        case .image(let data):
-            if let image = NSImage(data: data) {
-                Image(nsImage: image).resizable().scaledToFill().clipShape(RoundedRectangle(cornerRadius: 5))
-            } else {
-                Image(systemName: RillSystemSymbol.photo.rawValue)
-            }
-        case .files:
-            Image(systemName: RillSystemSymbol.docOnDoc.rawValue)
-        }
-    }
-
-    @ViewBuilder
-    private func payloadPreview(_ payload: RecordPayload) -> some View {
-        switch payload {
+    private func payloadPreview(_ record: Record) -> some View {
+        switch record.payload {
         case .text(let value):
-            Text(value).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+            RecordTextPreview(text: value, language: language)
         case .image(let data):
-            if let image = NSImage(data: data) {
-                Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 280)
-            } else {
-                Label(L10n.recordText(.imageUnavailable, language: language), systemImage: RillSystemSymbol.photoBadgeExclamationmark.rawValue)
-            }
+            RecordImagePreview(id: record.id, data: data).frame(maxHeight: 280)
         case .files(let urls):
             VStack(alignment: .leading) {
                 ForEach(urls, id: \.self) { url in
@@ -745,7 +803,6 @@ public struct RecordWorkspaceView: View {
             .padding(.horizontal, 4)
             .padding(.vertical, 1)
             .background(.quaternary, in: RoundedRectangle(cornerRadius: RillRadius.chip, style: .continuous))
-            .offset(x: -6, y: -6)
             .help(L10n.recordText(.digitInsertHint, language: language))
     }
 
@@ -756,7 +813,7 @@ public struct RecordWorkspaceView: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             // RillCard regular-tier fill; a Capsule chip cannot use rillCard itself.
-            .background(.quaternary.opacity(0.35), in: Capsule())
+            .background(.quaternary.opacity(RillCardProminence.regular.fillOpacity), in: Capsule())
     }
 
     private func sourceName(_ provenance: RecordProvenance) -> String {
@@ -796,17 +853,34 @@ public struct RecordWorkspaceView: View {
         )
     }
 
-    private var globalDeletionAlertIsPresented: Binding<Bool> {
-        Binding(
-            get: { recordPendingGlobalDeletion != nil },
-            set: { if !$0 { recordPendingGlobalDeletion = nil } }
-        )
-    }
 
     private var errorIsPresented: Binding<Bool> {
         Binding(
-            get: { workspace.errorMessage != nil },
-            set: { if !$0 { workspace.dismissError() } }
+            get: {
+                (workspace.errorMessage != nil && replacementRecordID == nil)
+                    || (workspace.cleanup.plan == nil && workspace.cleanup.message != nil)
+            },
+            set: { if !$0 { dismissError() } }
         )
+    }
+
+    private func dismissError() {
+        workspace.dismissError()
+        if workspace.cleanup.plan == nil { workspace.cleanup.cancel() }
+    }
+}
+
+/// Plain label buttons still need a pointer acknowledgement; this style tints
+/// the label on hover and follows RillCardButtonStyle's Reduce Motion rule.
+private struct RecordWorkspaceHoverButtonStyle: ButtonStyle {
+    @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(isHovering ? Color.accentColor : Color.primary)
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isHovering)
+            .onHover { isHovering = $0 }
     }
 }

@@ -51,6 +51,9 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    // Hardcoded bilingual (English + Simplified Chinese) keyword lists. When
+    // adding a new AppLanguage, extend every list with that language's terms
+    // or the new locale will search worse than the existing ones.
     var searchKeywords: String {
         switch self {
         case .language:

@@ -96,6 +96,10 @@ public actor RecordDeliveryCoordinator {
         try await store.beginDelivery(matching: subject, sink: sink)
     }
 
+    public func beginReuse(_ subject: RecordReuseSubject, sink: RecordSinkIdentity) async throws -> RecordReuseLease {
+        try await store.beginReuse(subject, sink: sink)
+    }
+
     @discardableResult
     public func completeDelivery(
         _ leaseID: UUID,

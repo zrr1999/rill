@@ -706,10 +706,10 @@ final class AppBootstrapTests: XCTestCase {
     }
   }
 
-  func testBuiltinCatalogContainsSpeechRecognitionAndVoiceAssistant() throws {
+  func testBuiltinCatalogContainsSpeechRecognitionVoiceAssistantAndCleanup() throws {
     let workflows = BuiltinWorkflowCatalog().manifest().workflows
 
-    XCTAssertEqual(workflows.map(\.titleKey), [.speechRecognition, .voiceAssistant])
+    XCTAssertEqual(workflows.map(\.titleKey), [.speechRecognition, .voiceAssistant, .smartCleanup])
 
     let speechRecognition = try XCTUnwrap(
       workflows.first { $0.titleKey == .speechRecognition }
@@ -725,8 +725,25 @@ final class AppBootstrapTests: XCTestCase {
       speechRecognition.plan.setup.vocabularyBindings.first?.uses,
       Set(VocabularyBindingUse.allCases)
     )
-    XCTAssertEqual(speechRecognition.plan.output.actions.map(\.id), ["focused-application.insert"])
+    XCTAssertEqual(speechRecognition.plan.output.actions.map(\.id), ["record.store", "focused-application.insert"])
     XCTAssertTrue(speechRecognition.isEnabledByDefault)
+
+    let cleanup = try XCTUnwrap(workflows.first { $0.titleKey == .smartCleanup })
+    XCTAssertFalse(cleanup.isEnabledByDefault)
+    XCTAssertEqual(cleanup.trigger, .hotkey)
+    XCTAssertEqual(cleanup.exclusiveGroupIdentifier, speechRecognition.exclusiveGroupIdentifier)
+    XCTAssertNil(cleanup.metadata["text.provider"])
+    XCTAssertEqual(cleanup.plan.setup.speechRoute?.recognizerID, "local-speech")
+    XCTAssertEqual(
+      cleanup.plan.process.steps.map(\.kind),
+      [.recognizeSpeech, .applyVocabulary, .normalizeWhitespace, .llmRewrite]
+    )
+    XCTAssertEqual(cleanup.plan.process.steps.last?.prompt, LLMTextProcessing.cleanupPrompt)
+    XCTAssertEqual(cleanup.plan.output.actions.map(\.id), ["record.store", "focused-application.insert"])
+    for workflow in workflows {
+      XCTAssertEqual(workflow.targetRecordCollectionIDs, [RecordCollection.voiceInputID])
+      XCTAssertEqual(workflow.plan.output.deliveryPolicy.strategy, .immediate)
+    }
 
     let voiceAssistant = try XCTUnwrap(
       workflows.first { $0.titleKey == .voiceAssistant }
@@ -742,7 +759,8 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertFalse(
       voiceAssistant.plan.process.steps.last?.prompt?.isEmpty ?? true
     )
-    let speak = try XCTUnwrap(voiceAssistant.plan.output.actions.first)
+    XCTAssertEqual(voiceAssistant.plan.output.actions.map(\.id), ["record.store", SpeechOutputActionID.speak])
+    let speak = try XCTUnwrap(voiceAssistant.plan.output.actions.last)
     XCTAssertEqual(speak.id, SpeechOutputActionID.speak)
     XCTAssertEqual(
       speak.configuration[SpeechOutputActionConfigurationKey.provider],
@@ -1399,7 +1417,7 @@ final class AppBootstrapTests: XCTestCase {
     )
     XCTAssertTrue(textOnly.contains("final transcript"))
     XCTAssertTrue(textOnly.contains("configured cloud text service"))
-    XCTAssertTrue(textOnly.contains("Always Allow"))
+    XCTAssertTrue(textOnly.contains("Allow and Remember"))
     XCTAssertTrue(textOnly.contains("Settings > Privacy"))
     XCTAssertFalse(textOnly.contains("microphone audio"))
 
@@ -1412,7 +1430,7 @@ final class AppBootstrapTests: XCTestCase {
     XCTAssertTrue(mixed.contains("云端识别术语"))
     XCTAssertTrue(mixed.contains("最终转写"))
     XCTAssertTrue(mixed.contains("配置的云端文本服务"))
-    XCTAssertTrue(mixed.contains("始终允许"))
+    XCTAssertTrue(mixed.contains("允许并记住"))
     XCTAssertTrue(mixed.contains("设置 > 隐私"))
 
     let defensive = CloudPrivacyConfirmationCopy.informativeText(

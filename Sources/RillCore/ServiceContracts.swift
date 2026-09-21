@@ -64,6 +64,19 @@ public struct LanguageModelTraceMessage: Codable, Sendable, Equatable {
     }
 }
 
+/// Token counts reported by the API. Missing counts are unknown, not zero.
+public struct LanguageModelTokenUsage: Codable, Sendable, Equatable {
+    public var inputTokens: Int?
+    public var outputTokens: Int?
+    public var totalTokens: Int?
+
+    public init(inputTokens: Int? = nil, outputTokens: Int? = nil, totalTokens: Int? = nil) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.totalTokens = totalTokens
+    }
+}
+
 /// Reviewable provenance for one completed language-model request.
 ///
 /// This value is retained only inside the encrypted, privacy-gated history
@@ -76,6 +89,7 @@ public struct LanguageModelTrace: Codable, Sendable, Equatable {
     public var workflowPrompt: String
     public var messages: [LanguageModelTraceMessage]
     public var responseText: String
+    public var tokenUsage: LanguageModelTokenUsage?
 
     public init(
         providerID: String,
@@ -83,7 +97,8 @@ public struct LanguageModelTrace: Codable, Sendable, Equatable {
         systemPrompt: String,
         workflowPrompt: String,
         messages: [LanguageModelTraceMessage],
-        responseText: String
+        responseText: String,
+        tokenUsage: LanguageModelTokenUsage? = nil
     ) {
         self.providerID = providerID
         self.modelID = modelID
@@ -91,6 +106,7 @@ public struct LanguageModelTrace: Codable, Sendable, Equatable {
         self.workflowPrompt = workflowPrompt
         self.messages = messages
         self.responseText = responseText
+        self.tokenUsage = tokenUsage
     }
 }
 

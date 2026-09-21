@@ -133,27 +133,20 @@ extension SettingsView {
 
       Divider()
 
-      VStack(alignment: .leading, spacing: 6) {
-        HStack {
-          Button(
-            L10n.historySettingsText(.clearClipboard, language: model.language),
-            role: .destructive
-          ) {
-            destructiveConfirmation = .clipboardHistory
-          }
-          .disabled(
-            localHistoryControlsDisabled || !model.isLocalHistoryMaintenanceAvailable
-          )
-          Spacer()
+      RecordCapacityView(capacity: model.recordWorkspace.snapshot.capacity, language: model.language) {
+        model.clearRecordHistory()
+      }
+      .sheet(isPresented: Binding(get: { model.recordWorkspace.cleanup.plan != nil }, set: { if !$0 { model.recordWorkspace.cleanup.cancel() } })) {
+        RecordCleanupSheet(model: model.recordWorkspace.cleanup, language: model.language)
+      }
+      if model.recordWorkspace.cleanup.plan == nil, let message = model.recordWorkspace.cleanup.message {
+        Text(L10n.quickRecord(message, language: model.language))
+          .font(.caption).foregroundStyle(.orange)
+      }
+      if model.recordWorkspace.retentionSuggestionCount > 0 {
+        Button(L10n.quickRecord(.expiredRecords, language: model.language) + " (\(model.recordWorkspace.retentionSuggestionCount))") {
+          Task { await model.recordWorkspace.cleanup.request(olderThan: model.recordRetentionPeriod.cutoffDate(relativeTo: Date()) ?? .distantPast) }
         }
-        Text(
-          L10n.historySettingsText(
-            .preservedClipboardDetail,
-            language: model.language
-          )
-        )
-        .font(.caption)
-        .foregroundStyle(.secondary)
       }
 
       VStack(alignment: .leading, spacing: 6) {

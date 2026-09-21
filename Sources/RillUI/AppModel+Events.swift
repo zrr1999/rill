@@ -7,12 +7,18 @@ private enum EventFeedPrivacyBodyKind {
     case recognition
     case resolution
     case transformation
+    case processingStep(WorkflowTextStep)
     case action(String)
     case runCompleted
     case failure
 
     var fullPrefix: LocalizedText {
         switch self {
+        case .processingStep(let step):
+            return LocalizedText(
+                english: HistoryTextStepPresentation.logHeader(step, language: .english),
+                simplifiedChinese: HistoryTextStepPresentation.logHeader(step, language: .simplifiedChinese)
+            )
         case .recognition:
             return LocalizedText(english: "Recognition: ", simplifiedChinese: "识别结果：")
         case .resolution:
@@ -33,6 +39,8 @@ private enum EventFeedPrivacyBodyKind {
 
     var summaryPrefix: LocalizedText {
         switch self {
+        case .processingStep:
+            return fullPrefix
         case .recognition:
             return LocalizedText(english: "Recognition summary: ", simplifiedChinese: "识别摘要：")
         case .resolution:
@@ -53,6 +61,8 @@ private enum EventFeedPrivacyBodyKind {
 
     var hiddenSummary: LocalizedText {
         switch self {
+        case .processingStep:
+            return fullPrefix
         case .recognition:
             return LocalizedText(english: "Recognition completed.", simplifiedChinese: "识别已完成。")
         case .resolution:
@@ -99,6 +109,35 @@ private func actionResultPresentation(_ result: ActionResult) -> LocalizedText {
 }
 
 extension AppModel {
+  public func refreshDiagnostics() {
+    loadDiagnostics()
+  }
+
+  func applyDiagnosticEvents(_ events: [DiagnosticEvent]) {
+    guard !events.isEmpty else { return }
+    diagnosticEvents = Array(
+      Self.sortedDiagnosticEvents(diagnosticEvents + events).prefix(200)
+    )
+    for event in events {
+      if event.event == "session.transform.fallback" {
+        append(
+          english: "Text cleanup was skipped; the complete text before cleanup was retained.",
+          simplifiedChinese: "未完成智能整理，已保留整理前的完整文本。"
+        )
+        continue
+      }
+      append(
+        english: "[\(UIStrings.subsystem(event.subsystem, language: .english))] \(event.message)",
+        simplifiedChinese:
+          "[\(UIStrings.subsystem(event.subsystem, language: .simplifiedChinese))] \(event.message)"
+      )
+    }
+  }
+
+  static func sortedDiagnosticEvents(_ events: [DiagnosticEvent]) -> [DiagnosticEvent] {
+    events.sorted { $0.timestamp > $1.timestamp }
+  }
+
     /// Applies the immediate UI side of an explicit stop request. The runtime
     /// cancellation remains run-scoped; this method only clears presentation
     /// when the requested run still owns the manual capture, including after
@@ -261,6 +300,7 @@ extension AppModel {
             if !recognition.bestText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 lastCompletedText = recognition.bestText
             }
+            guard pendingRuns.isEmpty else { break }
             appendPrivacyProtectedBody(
                 english: recognition.bestText,
                 simplifiedChinese: recognition.bestText,
@@ -295,13 +335,26 @@ extension AppModel {
         case .candidateResolutionFinished(_, let resolvedText):
             pendingResolution = nil
             lastCompletedText = resolvedText
+            guard pendingRuns.isEmpty else { break }
             appendPrivacyProtectedBody(
                 english: resolvedText,
                 simplifiedChinese: resolvedText,
                 kind: .resolution
             )
+        case .runTextStepRecorded(let runID, let step):
+            guard pendingRuns[runID]?.trigger.isVoiceCapture == true else { return }
+            pendingRuns[runID]?.processingSteps.append(step)
+            if let text = step.outputText {
+                appendPrivacyProtectedBody(
+                    english: text, simplifiedChinese: text, kind: .processingStep(step)
+                )
+            } else {
+                let summary = EventFeedPrivacyBodyKind.processingStep(step).hiddenSummary
+                append(english: summary.english, simplifiedChinese: summary.simplifiedChinese)
+            }
         case .transformationApplied(_, let text):
             lastCompletedText = text
+            guard pendingRuns.isEmpty else { break }
             appendPrivacyProtectedBody(
                 english: text,
                 simplifiedChinese: text,
@@ -418,6 +471,11 @@ extension AppModel {
                     ),
                     isRecordRelated: failedPending.isRecordRelated,
                     outcome: .failed,
+                    correctionSource: failedPending.processingSteps.isEmpty ? nil : RecognitionCorrectionSource(
+                        preMappingText: failedPending.processingSteps.first?.outputText ?? "",
+                        context: VocabularyRuleContext(),
+                        processingSteps: failedPending.processingSteps
+                    ),
                     trigger: failedPending.trigger
                 ))
             } else if let failedRunID, let workflow {
@@ -480,8 +538,8 @@ extension AppModel {
 
     private func append(_ entry: EventFeedEntry) {
         eventFeed.append(entry)
-        if eventFeed.count > 20 {
-            eventFeed.removeFirst(eventFeed.count - 20)
+        if eventFeed.count > 200 {
+            eventFeed.removeFirst(eventFeed.count - 200)
         }
     }
 
@@ -541,7 +599,7 @@ extension AppModel {
                 }
             }
         }
-        registerPersistenceWrite(task)
+        persistenceWrites.track(task)
     }
 
     private func cacheHistoryRecord(_ record: WorkflowResultRecord) {

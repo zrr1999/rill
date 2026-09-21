@@ -126,7 +126,10 @@ private struct ChainedLanguageModelTransformer: TracedTextTransformer {
                 systemPrompt: "system contract",
                 workflowPrompt: step.prompt ?? "",
                 messages: [.init(role: .user, content: text)],
-                responseText: output
+                responseText: output,
+                tokenUsage: step.kind == .llmRewrite
+                    ? .init(inputTokens: 120, outputTokens: 24, totalTokens: 144)
+                    : .init(inputTokens: 180, outputTokens: 36, totalTokens: 216)
             )
         )
     }
@@ -695,6 +698,15 @@ final class SessionCoordinatorTests: XCTestCase {
             "question | first | second"
         )
         XCTAssertEqual(summary.finalText, "question | first | second")
+        let steps = summary.correctionSource?.processingSteps ?? []
+        XCTAssertEqual(steps.filter { [.llmRewrite, .llmAnswer].contains($0.kind) }.map(\.outputText),
+                       ["question | first", "question | first | second"])
+        XCTAssertEqual(steps.first?.outputText, "question")
+        XCTAssertNil(steps.first?.tokenUsage)
+        XCTAssertEqual(steps.compactMap(\.tokenUsage), [
+            .init(inputTokens: 120, outputTokens: 24, totalTokens: 144),
+            .init(inputTokens: 180, outputTokens: 36, totalTokens: 216),
+        ])
         let deliveredValues = await probe.snapshot()
         XCTAssertEqual(deliveredValues, ["question | first | second"])
     }
@@ -1475,6 +1487,8 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertTrue(diagnosticEvents.contains { event in
             event.event == "session.failure"
                 && event.message == DiagnosticEventSanitizer.sanitizedMessage
+                && event.metadata["stage"] == "recognizing"
+                && event.metadata["failureCode"] == "processing"
         })
         XCTAssertFalse(diagnosticEvents.contains { event in
             event.message.contains("Recognizer unavailable")
@@ -1674,6 +1688,10 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(deliveredTexts, ["Rill transformed"])
         XCTAssertEqual(summary.finalText, "Rill transformed")
         XCTAssertEqual(summary.correctionSource?.preMappingText, "vux type")
+        let steps = try XCTUnwrap(summary.correctionSource?.processingSteps)
+        XCTAssertEqual(steps.map(\.kind), [.recognizeSpeech, .resolveUncertainty, .applyVocabulary, .normalizeWhitespace])
+        XCTAssertEqual(steps.map(\.outputText), ["vux tipe", "vux type", "Rill", "Rill transformed"])
+        XCTAssertTrue(steps.dropFirst().allSatisfy { $0.didChange == true })
         XCTAssertEqual(
             summary.correctionSource?.context,
             VocabularyRuleContext(
@@ -1802,6 +1820,10 @@ final class SessionCoordinatorTests: XCTestCase {
             return XCTFail("Expected recognized speech text to be delivered")
         }
         XCTAssertEqual(summary.finalText, "recognized")
+        let skippedStep = try XCTUnwrap(summary.correctionSource?.processingSteps?.last)
+        XCTAssertEqual(skippedStep.kind, .llmRewrite)
+        XCTAssertEqual(skippedStep.result, .skipped)
+        XCTAssertEqual(skippedStep.outputText, "recognized")
         let deliveredValues = await probe.snapshot()
         XCTAssertEqual(deliveredValues, ["recognized"])
         let events = await diagnostics.snapshot(matching: DiagnosticQuery(subsystem: .session))
@@ -1851,6 +1873,7 @@ final class SessionCoordinatorTests: XCTestCase {
             inlineData: Data([0])
         )
 
+        let stream = await eventBus.stream()
         let result = await coordinator.runReportingOutcome(
             workflow: workflow,
             capturedAudio: capturedAudio,
@@ -1860,6 +1883,18 @@ final class SessionCoordinatorTests: XCTestCase {
         guard case .failed(let summary) = result else {
             return XCTFail("Expected voice assistant rewrite failure to remain strict")
         }
+        var recordedSteps: [WorkflowTextStep] = []
+        for await event in stream {
+            if case .runTextStepRecorded(let runID, let step) = event {
+                XCTAssertEqual(runID, summary.runID)
+                recordedSteps.append(step)
+            }
+            if case .runFailed = event { break }
+        }
+        XCTAssertEqual(recordedSteps.first?.outputText, "question")
+        XCTAssertEqual(recordedSteps.last?.kind, .llmRewrite)
+        XCTAssertEqual(recordedSteps.last?.result, .failed)
+        XCTAssertNil(recordedSteps.last?.outputText)
         XCTAssertEqual(summary.stage, .transforming)
         let deliveredValues = await probe.snapshot()
         XCTAssertTrue(deliveredValues.isEmpty)
