@@ -15,26 +15,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  macos14-deployment-target:
-    name: macOS 14 deployment target
-    runs-on: macos-26
-    timeout-minutes: 30
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Show build toolchain and deployment target
-        run: |
-          sw_vers
-          swift --version
-          xcodebuild -version
-          grep -F '.macOS(.v14)' Package.swift
-
-      - name: Run locked test suite for the macOS 14 deployment target
-        run: scripts/swift_locked.sh test
-
   preflight:
     name: Release preflight
     runs-on: macos-26
@@ -66,7 +46,7 @@ jobs:
 
       - name: Resolve locked SwiftPM dependencies
         run: |
-          swift package resolve
+          swift package --force-resolved-versions resolve
           git diff --exit-code -- Package.resolved
 
       - name: Run repository quality gates
@@ -80,19 +60,21 @@ jobs:
         run: |
           uv --version
           swift --version
+          sw_vers
+          xcodebuild -version
+          grep -F '.macOS(.v14)' Package.swift
           uv run --no-build --locked --script scripts/report_python_version.py
 
       - name: Query live OSV for locked SwiftPM commits
         run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
 
       - name: Run preflight
-        run: bash scripts/preflight.sh
+        run: bash scripts/preflight.sh --clean
 
   verify:
     name: Required CI
     if: ${{ always() }}
     needs:
-      - macos14-deployment-target
       - preflight
     runs-on: ubuntu-latest
     steps:

@@ -38,7 +38,7 @@ error() {
 
 usage() {
   cat <<EOF
-Usage: $0 --build-dir DIR --app-bundle PATH --version VERSION --build-number NUMBER \\
+Usage: $0 (--build-dir DIR | --build-result JSON) --app-bundle PATH --version VERSION --build-number NUMBER \\
   --build-kind KIND --source-revision REVISION --source-dirty BOOL --version-label LABEL
 
 Assembles an unsigned ${APP_NAME}.app from an existing SwiftPM Xcode release build.
@@ -50,6 +50,8 @@ require_command() {
 }
 
 BUILD_DIR=""
+BUILD_RESULT=""
+CHECKOUTS_DIR="$PROJECT_DIR/.build/checkouts"
 APP_BUNDLE=""
 VERSION=""
 BUILD_NUMBER=""
@@ -60,10 +62,12 @@ VERSION_LABEL=""
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
-  --build-dir | --app-bundle | --version | --build-number | --build-kind | --source-revision | --source-dirty | --version-label)
+  --build-dir | --build-result | --checkouts-dir | --app-bundle | --version | --build-number | --build-kind | --source-revision | --source-dirty | --version-label)
     [[ "$#" -ge 2 ]] || error "Missing value for $1"
     case "$1" in
     --build-dir) BUILD_DIR="$2" ;;
+    --build-result) BUILD_RESULT="$2" ;;
+    --checkouts-dir) CHECKOUTS_DIR="$2" ;;
     --app-bundle) APP_BUNDLE="$2" ;;
     --version) VERSION="$2" ;;
     --build-number) BUILD_NUMBER="$2" ;;
@@ -84,7 +88,12 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
-[[ -n "$BUILD_DIR" ]] || error "--build-dir is required"
+if [[ -n "$BUILD_RESULT" ]]; then
+  [[ -z "$BUILD_DIR" ]] || error "--build-dir and --build-result are mutually exclusive"
+  BUILD_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field productsDirectory)"
+  CHECKOUTS_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field checkoutsDirectory)"
+fi
+[[ -n "$BUILD_DIR" ]] || error "--build-dir or --build-result is required"
 [[ -n "$APP_BUNDLE" ]] || error "--app-bundle is required"
 [[ -n "$VERSION" ]] || error "--version is required"
 [[ -n "$BUILD_NUMBER" ]] || error "--build-number is required"
@@ -116,7 +125,7 @@ PRIVACY_NOTICE_SOURCE="$PROJECT_DIR/$PRIVACY_NOTICE_NAME"
 THIRD_PARTY_NOTICES_GENERATOR="$SCRIPT_DIR/generate_third_party_notices.py"
 [[ -f "$THIRD_PARTY_NOTICES_GENERATOR" ]] ||
   error "Third-party notice generator not found: $THIRD_PARTY_NOTICES_GENERATOR"
-uv run --script "$THIRD_PARTY_NOTICES_GENERATOR" --check
+uv run --script "$THIRD_PARTY_NOTICES_GENERATOR" --check --checkouts-dir "$CHECKOUTS_DIR"
 [[ -f "$THIRD_PARTY_NOTICES_SOURCE" ]] ||
   error "Generated third-party notices not found: $THIRD_PARTY_NOTICES_SOURCE"
 [[ -f "$LOCAL_MODEL_NOTICES_SOURCE" ]] ||

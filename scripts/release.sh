@@ -35,8 +35,6 @@ NOTARY_PROFILE="${NOTARY_PROFILE-Rill}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 BUILD_DIR=""
-BUILD_ROOT="$PROJECT_DIR/.build"
-BUILD_PATH_MARKER="$BUILD_ROOT/.rill-release-build-root"
 RELEASE_OUTPUT_DIR="${RELEASE_OUTPUT_DIR-$PROJECT_DIR/.artifacts/release}"
 APP_BUNDLE=""
 DMG_PATH=""
@@ -187,34 +185,6 @@ resolve_release_output_location() {
 }
 
 RUNNING_RILL_PIDS=()
-
-purge_stale_module_caches_if_needed() {
-  local cached_root=""
-  [[ -d "$BUILD_ROOT" ]] || mkdir -p "$BUILD_ROOT"
-
-  if [[ -f "$BUILD_PATH_MARKER" ]]; then
-    cached_root="$(<"$BUILD_PATH_MARKER")"
-  fi
-
-  if [[ "$cached_root" == "$PROJECT_DIR" ]]; then
-    return 0
-  fi
-
-  if [[ -n "$cached_root" ]]; then
-    info "检测到构建缓存路径变更，正在清理旧的 Swift module cache..."
-  else
-    info "首次使用当前物理路径构建，正在初始化 Swift module cache..."
-  fi
-
-  find "$BUILD_ROOT" \
-    \( -type d \( -name ModuleCache -o -name ModuleCache.noindex \) \
-    -o -type f \( -name '*.pcm' -o -name '*.pch' \) \) \
-    -prune -exec rm -rf {} + 2>/dev/null || true
-  rm -f "$BUILD_ROOT/build.db"
-  find "$BUILD_ROOT" -type f -name description.json -delete 2>/dev/null || true
-
-  printf '%s\n' "$PROJECT_DIR" >"$BUILD_PATH_MARKER"
-}
 
 running_rill_pids() {
   local process_listing=""
@@ -1430,19 +1400,22 @@ info "发布输出目录: $RELEASE_OUTPUT_DIR"
 
 # ─── 步骤 1: 构建 ────────────────────────────────────────────────
 cd "$PROJECT_DIR"
-purge_stale_module_caches_if_needed
 if $DO_PREFLIGHT; then
   info "运行完整发布预检和全量测试..."
-  "$SCRIPT_DIR/preflight.sh"
+  if $DO_NOTARIZE; then
+    "$SCRIPT_DIR/preflight.sh" --clean
+  else
+    "$SCRIPT_DIR/preflight.sh"
+  fi
   info "完整发布预检通过"
 else
   info "跳过完整预检；如需全量测试请运行 scripts/preflight.sh 或传入 --preflight"
   info "增量构建 Release..."
 fi
-"$SCRIPT_DIR/build_xcode_release.sh"
-BUILD_DIR="$(
-  "$SCRIPT_DIR/build_xcode_release.sh" --show-bin-path
-)"
+WORKER_CACHE="auto"
+$DO_NOTARIZE && WORKER_CACHE="off"
+BUILD_RESULT="$RELEASE_TEMP_DIR/build-result.json"
+"$SCRIPT_DIR/build_xcode_release.sh" --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
 revalidate_notarized_release_source "构建后"
 
 resolve_build_identity
@@ -1454,7 +1427,7 @@ info "构建来源: $RESOLVED_BUILD_KIND @ ${RESOLVED_SOURCE_REVISION:0:12}, dir
 # ─── 步骤 2: 创建 .app 包 ────────────────────────────────────────
 info "创建 $APP_NAME.app..."
 "$SCRIPT_DIR/assemble_app_bundle.sh" \
-  --build-dir "$BUILD_DIR" \
+  --build-result "$BUILD_RESULT" \
   --app-bundle "$APP_BUNDLE" \
   --version "$VERSION" \
   --build-number "$BUILD_NUMBER" \

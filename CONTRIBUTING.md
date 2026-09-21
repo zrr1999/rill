@@ -28,8 +28,10 @@ scripts/swift_locked.sh test --parallel
 ```bash
 just install
 just check
+just build          # 默认只构建 Debug RillApp
 just test
-just ci
+just ci             # 保留增量产物的完整门禁
+just ci-clean       # 与每个 PR 一样的干净构建门禁
 ```
 
 `just check` 只运行 prek 内建检查以及上游提供的 TOML、Actionlint 和 Typos
@@ -64,6 +66,19 @@ bash scripts/install_gitleaks.sh --destination "$tool_dir"
 export PATH="$tool_dir:$PATH"
 gitleaks version
 ```
+
+## 构建目录与增量验证
+
+Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/release`。
+构建、清理和产物快照由统一入口按配置加锁；不要在另一进程构建时手工删除目录，
+也不要在 worktree 之间复制或软链接 SwiftPM 的构建数据库。工具链、SDK、Metal、
+锁文件、Package 声明或构建参数变化会使相应配置失效；普通源文件变化由 SwiftPM
+增量处理。清理不删除 SwiftPM 的共享依赖下载缓存。
+
+`just build RillApp` 适合 App/UI 日常修改，不编译语音 worker 和 MLX。
+`swift test --filter` 只限定测试执行范围，不保证缩小首次编译范围。
+完整预检和打包使用绑定源码摘要的构建回执及独立产物快照；装配过程中源码或
+产物不匹配会失败。许可证验证读取该次构建实际使用的依赖 checkouts。
 
 ## 改动边界
 
@@ -102,7 +117,7 @@ git diff --check
 git diff --cached --check
 ```
 
-`scripts/preflight.sh` 会先运行依赖安全 policy tests 和 reviewed baseline 离线检查，再用固定版本的 Gitleaks 扫描完整 Git 历史与 tracked + untracked(nonignored) 当前源码快照；之后检查脚本语法、生成物和仓库根发布产物卫生，清理旧 SwiftPM 构建，执行 arm64-only Release 构建、验证最低 macOS 版本、装配并临时签名 App、运行完整测试。CI 在此基础上单独运行 live OSV exact-commit 查询，避免把可用网络伪装成本地确定性门禁。当前源码扫描拒绝 symlink 与非普通文件，并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。预检不能替代在 macOS 14 的 Apple Silicon 真机上验证最终公证包，也不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
+`scripts/preflight.sh` 会先运行依赖安全 policy tests 和 reviewed baseline 离线检查，再用固定版本的 Gitleaks 扫描完整 Git 历史与 tracked + untracked(nonignored) 当前源码快照；之后检查脚本语法、生成物和仓库根发布产物卫生，保留现有增量产物，执行 arm64-only Release 构建、验证最低 macOS 版本、装配并临时签名 App、运行完整测试。CI 在此基础上单独运行 live OSV exact-commit 查询，避免把可用网络伪装成本地确定性门禁。当前源码扫描拒绝 symlink 与非普通文件，并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。`just ci-clean` / `scripts/preflight.sh --clean` 在开始时分别清理 Debug 和 Release；GitHub PR CI 与正式公证发布强制使用此模式。预检不能替代在 macOS 14 的 Apple Silicon 真机上验证最终公证包，也不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
 
 修复竞态或生命周期问题时，应优先使用可控的 fake、barrier 或 lease 写确定性测试；不要依赖固定 `sleep` 猜测时序。涉及 SwiftUI/AppKit 焦点、系统权限、全局快捷键、VoiceOver、签名或公证时，除自动化测试外还需记录真实环境验收结果。
 
