@@ -184,17 +184,26 @@ git diff --cached --check
 ## GitHub Actions 命名
 
 参考 ZenDev 和 Volvox，workflow 文件使用小写 kebab-case，按职责使用 `ci-`、
-`cd-` 或 `policy-` 前缀；显示名称对应 `CI - <Purpose>`、`CD - <Purpose>` 或
-`Policy - <Purpose>`。PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
+`cd-`、`policy-` 或 `automation-` 前缀；显示名称对应 `CI - <Purpose>`、
+`CD - <Purpose>`、`Policy - <Purpose>` 或 `Automation - <Purpose>`。
+PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 
 | Workflow | 显示名称 | 职责 |
 | --- | --- | --- |
-| [policy-pr.yml](.github/workflows/policy-pr.yml) | Policy - PR | PR 标题、正文及完整提交信息 |
+| [policy-pr.yml](.github/workflows/policy-pr.yml) | Policy - PR | PR 标题和正文 |
+| [automation-pr-title.yml](.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题 |
 | [ci-tests.yml](.github/workflows/ci-tests.yml) | CI - Tests | macOS 测试、依赖和发布预检 |
 
-job ID 使用小写 kebab-case，检查名称描述具体职责。`Required CI`、`PR message`
-和 `Commit messages` 是主分支保护要引用的检查名称；改名时必须同步服务端配置
-及发布文档。
+job ID 使用小写 kebab-case，检查名称描述具体职责。`Required CI` 和 `PR message`
+是主分支保护要引用的检查名称；改名时必须同步服务端配置及发布文档。
+
+`Automation - PR Title` 在 `pull_request_target` 上只通过 GitHub API 改名，永不检出 PR head
+或任何仓库代码。
+它只把 `imgbot[bot]` 的 `[ImgBot] Optimize images` 改为 `⚡ perf(assets): optimize images`，
+保留其他作者和人工设置的标题；写权限只授予该 job。
+`Policy - PR` 使用普通 `pull_request` 校验标题和正文，不调用自动化工作流。
+自动化改名会触发 `edited`，policy 随后按新标题重新运行。提交信息由本地 prek
+`commit-msg` hook（`zendev-message-check`）校验，CI 不逐条扫描提交。
 
 ## 生成文件
 
@@ -227,9 +236,8 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。`Required CI`�
 ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本。
 
 - `just install` 安装标准 `pre-commit` 和 `commit-msg` hooks，后者运行
-  `zendev-message-check --profile zendev`。
-- CI 的 `Commit messages` 检查逐条验证 PR 引入的完整提交信息；push 到 `main`
-  和手动运行也会检查提交。Renovate 等机器人与人工提交使用相同规则。
+  `zendev-message-check --profile zendev`。提交信息在本地 hook 中校验；CI 不扫描
+  PR 或主分支的完整提交历史。
 - CI 的 `PR message` 检查英文标题的 ZenDev 格式，并按
   [.github/pull_request_template.md](.github/pull_request_template.md) 验证描述章节。
   PR 标题必须使用英文；描述可使用中文。
@@ -238,7 +246,7 @@ ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本�
 - 原创贡献使用项目的 AGPL-3.0-only 许可；引入第三方代码时保留其原始
   版权和许可声明，并同步对应的来源证据。
 
-可以在本地复现完整 message 检查；无参数时检查当前 HEAD 的全部历史，
+需要核对一段历史时，可在本地运行同一校验器；无参数时检查当前 HEAD 的全部历史，
 提供 base 时只检查它之后引入的提交：
 
 ```bash
@@ -246,8 +254,8 @@ bash scripts/check_commit_messages.sh
 bash scripts/check_commit_messages.sh origin/main HEAD
 ```
 
-主分支应要求 `Required CI`、`PR message` 和 `Commit messages` 通过，并限制
-直接推送和绕过规则。仓库仅启用 rebase 合并来保留已验证的 message；若维护者重新启用
+主分支应要求 `Required CI` 和 `PR message` 通过，并限制直接推送和绕过规则。
+仓库仅启用 rebase 合并来保留已通过 hook 校验的 message；若维护者重新启用
 squash，最终生成的 message 必须重新经过同一校验器。GitHub 的计划、权限和
 仓库设置决定这些规则是否实际生效；提交 CI 配置不等于已经启用服务端保护。
 

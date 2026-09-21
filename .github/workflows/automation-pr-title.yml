@@ -1,0 +1,36 @@
+name: Automation - PR Title
+
+on:
+  # Never check out PR head or any repository code, and never execute pull
+  # request code. Untrusted input is reduced to a boolean by the expression
+  # evaluator; the job only PATCHes pull-request metadata.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions: {}
+
+jobs:
+  title:
+    name: Normalize ImgBot PR title
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Normalize ImgBot title
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SHOULD_RENAME: >-
+            ${{ github.event.pull_request.user.login == 'imgbot[bot]' &&
+            github.event.pull_request.title == '[ImgBot] Optimize images' }}
+        run: |
+          if [[ "$SHOULD_RENAME" != "true" ]]; then
+            exit 0
+          fi
+
+          gh api \
+            --method PATCH \
+            --header "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/${GH_REPO}/pulls/${PR_NUMBER}" \
+            --raw-field 'title=⚡ perf(assets): optimize images'
