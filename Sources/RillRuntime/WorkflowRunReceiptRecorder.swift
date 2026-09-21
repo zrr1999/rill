@@ -55,6 +55,7 @@ public actor WorkflowRunReceiptRecorder {
         var textSteps: [WorkflowTextStep] = []
         var historyUpdate: CorrectionHistoryUpdate?
         var nextActionIndex = 0
+        var recordingDurationMilliseconds: UInt64?
         var activeAction: ActiveAction?
         var actionDetails: [WorkflowActionReceipt] = []
         var activeStep: (index: Int, kind: WorkflowProcessStepKind, startedAt: UInt64)?
@@ -106,7 +107,8 @@ public actor WorkflowRunReceiptRecorder {
         runID: UUID,
         workflowID: UUID?,
         trigger: WorkflowRunTriggerKind,
-        historyWorkflow: WorkflowDefinition? = nil
+        historyWorkflow: WorkflowDefinition? = nil,
+        recordingDurationSeconds: Double? = nil
     ) async throws {
         await retryOneFailedTerminalIfPossible()
         guard !finalizedRunIDs.contains(runID) else {
@@ -131,12 +133,17 @@ public actor WorkflowRunReceiptRecorder {
             throw WorkflowRunReceiptRecorderError.terminalAlreadyFinalized(runID: runID)
         }
 
-        pendingRuns[runID] = PendingRun(
+        var run = PendingRun(
             workflowID: workflowID,
             trigger: trigger,
             startedAtNanoseconds: monotonicClock(),
             historyWorkflow: historyWorkflow
         )
+        if let seconds = recordingDurationSeconds,
+           seconds.isFinite, seconds >= 0, seconds * 1_000 < Double(UInt64.max) {
+            run.recordingDurationMilliseconds = UInt64((seconds * 1_000).rounded(.down))
+        }
+        pendingRuns[runID] = run
     }
 
     public func recordTextStep(runID: UUID, step: WorkflowTextStep) {
@@ -247,13 +254,16 @@ public actor WorkflowRunReceiptRecorder {
             )
         }
 
+        let finishedAt = monotonicClock()
         let detail = WorkflowActionReceipt(
             actionIndex: actionIndex,
             result: result,
             duration: Self.durationBucket(
                 from: activeAction.startedAtNanoseconds,
-                to: monotonicClock()
-            )
+                to: finishedAt
+            ),
+            durationMilliseconds: finishedAt >= activeAction.startedAtNanoseconds
+                ? (finishedAt - activeAction.startedAtNanoseconds) / 1_000_000 : nil
         )
         if run.actionDetails.count < WorkflowRunReceipt.maximumActionDetails {
             run.actionDetails.append(detail)
@@ -333,7 +343,8 @@ public actor WorkflowRunReceiptRecorder {
                 termination: termination,
                 stepDetails: run.stepDetails.sorted { $0.stepIndex < $1.stepIndex },
                 actionDetails: run.actionDetails,
-                detailsTruncated: run.detailsTruncated
+                detailsTruncated: run.detailsTruncated,
+                recordingDurationMilliseconds: run.recordingDurationMilliseconds
             )
             prepared = PreparedTerminal(
                 receipt: receipt, generation: generation,

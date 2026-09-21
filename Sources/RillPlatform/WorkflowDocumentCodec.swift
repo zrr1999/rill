@@ -167,6 +167,7 @@ private struct DocumentStep: Codable {
     var kind: String
     var description: String?
     var prompt: String?
+    var record_duration: Bool?
     var uncertainty: WorkflowTOMLUncertainty?
     var condition: DocumentCondition?
     var then: [DocumentStep]?
@@ -177,6 +178,7 @@ private struct DocumentStep: Codable {
         kind = step.kind.tomlValue
         description = step.nodeDescription
         prompt = step.prompt
+        record_duration = step.recordDuration
         uncertainty = step.uncertaintyPolicy.map(WorkflowTOMLUncertainty.init)
         condition = step.condition.map(DocumentCondition.init)
         then = step.thenSteps.map { $0.map(DocumentStep.init) }
@@ -189,7 +191,8 @@ private struct DocumentStep: Codable {
         }
         var step = try WorkflowProcessStep(
             id: Self.runtimeID(id, workflowID: workflowID), kind: stepKind,
-            prompt: prompt, uncertaintyPolicy: uncertainty?.policy()
+            prompt: prompt, uncertaintyPolicy: uncertainty?.policy(),
+            recordDuration: record_duration
         )
         step.documentID = id
         step.nodeDescription = description
@@ -393,7 +396,7 @@ private indirect enum DocumentShape: Decodable {
                     ? ["id", "kind", "prompt", "uncertainty"]
                     : [
                         "id", "kind", "description", "prompt", "uncertainty", "condition", "then",
-                        "else",
+                        "else", "record_duration",
                     ], path: path)
             try step.table?["uncertainty"]?.check(
                 ["mode", "confidence_threshold", "timeout_seconds"], path: "\(path).uncertainty")

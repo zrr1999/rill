@@ -30,6 +30,15 @@ enum RunFailurePresentation {
     )
   }
 
+  static func historyText(for message: String?, language: AppLanguage) -> String {
+    if HistoryFailureSanitizer.sanitize(message) == HistoryFailureSanitizer.genericMessage {
+      return language == .english
+        ? "Processing did not complete. Expand execution details to see why."
+        : "本次处理未完成。展开执行详情查看原因。"
+    }
+    return text(for: message, language: language)
+  }
+
   static func text(
     for untrustedMessage: String?,
     language: AppLanguage
