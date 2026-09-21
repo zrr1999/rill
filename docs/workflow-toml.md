@@ -1,5 +1,9 @@
 # Rill workflow TOML specification
 
+For setup and everyday use, start with the [README workflow guide](../README.md#工作流).
+This document defines the file format and runtime contracts for maintainers and
+advanced workflow authors.
+
 User workflows are plain TOML files edited in an external text editor. Rill has
 no built-in workflow editor. The Workflows page manages files, templates and activation.
 A workflow runs sequentially, with structured `if` branches and ordered outputs.

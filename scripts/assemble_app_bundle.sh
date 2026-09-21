@@ -16,6 +16,7 @@ MIN_MACOS="14.0"
 OWN_RESOURCE_BUNDLE="RillMacOS_RillApp.bundle"
 MLX_RESOURCE_BUNDLE="mlx-swift_Cmlx.bundle"
 WORKFLOW_MANIFEST="BuiltinWorkflowManifest.json"
+PROJECT_DOCUMENTS=("LICENSE" "README.md")
 THIRD_PARTY_NOTICES_NAME="THIRD_PARTY_NOTICES.md"
 LOCAL_MODEL_NOTICES_NAME="LOCAL_MODEL_NOTICES.md"
 PRIVACY_NOTICE_NAME="PRIVACY.md"
@@ -109,6 +110,10 @@ require_command diff
 require_command cmp
 require_command plutil
 require_command uv
+
+for document in "${PROJECT_DOCUMENTS[@]}"; do
+  [[ -s "$PROJECT_DIR/$document" ]] || error "Project document not found or empty: $document"
+done
 
 THIRD_PARTY_NOTICES_SOURCE="$PROJECT_DIR/$THIRD_PARTY_NOTICES_NAME"
 LOCAL_MODEL_NOTICES_SOURCE="$PROJECT_DIR/$LOCAL_MODEL_NOTICES_NAME"
@@ -223,6 +228,12 @@ for source_bundle in "${RESOURCE_SOURCES[@]}"; do
   ditto "$source_bundle" "$resource_destination"
   [[ -n "$(find "$resource_destination" -mindepth 1 -print -quit)" ]] ||
     error "Resource bundle is empty: $bundle_name"
+done
+
+for document in "${PROJECT_DOCUMENTS[@]}"; do
+  ditto "$PROJECT_DIR/$document" "$APP_BUNDLE/Contents/Resources/$document"
+  cmp -s "$PROJECT_DIR/$document" "$APP_BUNDLE/Contents/Resources/$document" ||
+    error "Packaged project document differs from the repository source: $document"
 done
 
 THIRD_PARTY_NOTICES_DESTINATION="$APP_BUNDLE/Contents/Resources/$THIRD_PARTY_NOTICES_NAME"
