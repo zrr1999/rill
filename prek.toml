@@ -1,11 +1,7 @@
 [[repos]]
 repo = "builtin"
 hooks = [
-  {
-    id = "check-added-large-files",
-    exclude = "^THIRD_PARTY_NOTICES\\.md$",
-    stages = ["pre-commit"]
-  },
+  { id = "check-added-large-files", exclude = "^THIRD_PARTY_NOTICES\\.md$", stages = ["pre-commit"] },
   { id = "check-case-conflict", stages = ["pre-commit"] },
   { id = "check-executables-have-shebangs", stages = ["pre-commit"] },
   { id = "check-json", stages = ["pre-commit"] },
@@ -24,140 +20,28 @@ hooks = [
 
 [[repos]]
 repo = "https://github.com/tombi-toml/tombi-pre-commit"
-rev = "v1.1.3"
+rev = "3251597d6d00583a75057ea11da9fcb66a588198"  # frozen: v1.5.5
 hooks = [
   { id = "tombi-format", stages = ["pre-commit"] },
-  {
-    id = "tombi-lint",
-    args = ["--error-on-warnings"],
-    stages = ["pre-commit"]
-  },
+  { id = "tombi-lint", args = ["--error-on-warnings"], stages = ["pre-commit"] },
 ]
 
 [[repos]]
 repo = "https://github.com/rhysd/actionlint"
-rev = "v1.7.12"
+rev = "914e7df21a07ef503a81201c76d2b11c789d3fca"  # frozen: v1.7.12
 hooks = [{ id = "actionlint", stages = ["pre-commit"] }]
 
 [[repos]]
 repo = "https://github.com/crate-ci/typos"
-rev = "v1.48.0"
+rev = "512fc24f32f44ab01972217aaaf3dc86ec234d53"  # frozen: v1.50.2
 hooks = [
   { id = "typos", args = ["--force-exclude"], stages = ["pre-commit"] },
 ]
 
 [[repos]]
 repo = "https://github.com/zendev-lab/zendev"
-rev = "v0.0.7"
-hooks = [{ id = "zendev-commit-msg", stages = ["commit-msg"] }]
-
-[[repos]]
-repo = "local"
+rev = "91087d4d4e9841aaf8cead8b7c6d294a3db63b10"  # frozen: v0.4.0
 hooks = [
-  {
-    id = "builtin-workflow-artifacts",
-    name = "check generated built-in workflow artifacts",
-    language = "system",
-    entry = "uv run --script scripts/generate_builtin_workflows.py --check",
-    files = "^Sources/RillApp/Resources/(BuiltinWorkflowManifest\\.json|BuiltinWorkflows\\.toml|WorkflowTemplates/)",
-    always_run = true,
-    pass_filenames = false,
-  },
-  {
-    id = "shell-syntax",
-    name = "check shell syntax",
-    language = "system",
-    entry = "bash scripts/check_shell_syntax.sh",
-    files = "\\.sh$",
-    always_run = true,
-    pass_filenames = false,
-  },
-  {
-    id = "record-domain-boundary",
-    name = "check Record domain boundary",
-    language = "system",
-    entry = "bash scripts/check_record_domain_boundary.sh",
-    files = "^(Sources/|scripts/check_record_domain_boundary\\.sh)",
-    always_run = true,
-    pass_filenames = false,
-  },
-  {
-    id = "third-party-notices",
-    name = "check reviewed third-party notices",
-    language = "system",
-    entry = "uv run --script scripts/generate_third_party_notices.py --check",
-    files = "^(Package\\.resolved|THIRD_PARTY_NOTICES\\.md|scripts/(generate_third_party_notices\\.py|third_party_notices_manifest\\.json|tests/third_party_notices_test\\.py))$",
-    always_run = true,
-    pass_filenames = false,
-  },
-  {
-    id = "release-policy",
-    name = "check release policy",
-    language = "system",
-    entry = "bash scripts/tests/release_config_test.sh",
-    files = "^(\\.gitignore|\\.github/(dependabot\\.yml|pull_request_template\\.md|renovate\\.json|workflows/(ci-pr-checks|ci-verify)\\.yml)|Package\\.resolved|scripts/(assemble_app_bundle|check_release_artifact_hygiene|preflight|release|verify_release_executable)\\.sh|scripts/(check_dependency_security|generate_builtin_workflows|generate_third_party_notices|report_python_version|validate_builtin_workflow_manifest|validate_renovate_config|write_info_plist)\\.py|scripts/tests/release_config_test\\.sh)$",
-    always_run = true,
-    pass_filenames = false,
-  },
-  {
-    id = "app-icon-artifact",
-    name = "check app icon artifact",
-    language = "system",
-    entry = "bash scripts/tests/app_icon_test.sh",
-    files = "^(Resources/AppIcon/(AppIcon-1024-routed-voice-cursor\\.png|README\\.md)|scripts/(assemble_app_bundle|generate_app_icon|preflight)\\.sh|scripts/render_app_icon_renditions\\.swift|scripts/tests/app_icon_test\\.sh)$",
-    always_run = true,
-    pass_filenames = false,
-  },
-  {
-    id = "dependency-security-policy",
-    name = "test dependency security policy",
-    language = "system",
-    entry = "uv run --script scripts/tests/dependency_security_test.py",
-    files = "^(Package\\.resolved|\\.github/workflows/ci-verify\\.yml|scripts/(check_dependency_security|generate_builtin_workflows|generate_third_party_notices|report_python_version|validate_builtin_workflow_manifest|validate_renovate_config|write_info_plist)\\.py|scripts/(dependency_security_baseline\\.json|preflight\\.sh|tests/(dependency_security_test|third_party_notices_test)\\.py))$",
-    always_run = true,
-    pass_filenames = false,
-  },
-  {
-    id = "dependency-security-baseline",
-    name = "check reviewed dependency security baseline",
-    language = "system",
-    entry = "uv run --script scripts/check_dependency_security.py",
-    files = "^(Package\\.resolved|scripts/(check_dependency_security\\.py|dependency_security_baseline\\.json))$",
-    always_run = true,
-    pass_filenames = false,
-  },
-  {
-    id = "secret-scan-policy",
-    name = "check pinned secret scan policy",
-    language = "system",
-    entry = "bash scripts/tests/secret_scan_test.sh",
-    files = "^(\\.gitleaks\\.toml|\\.github/workflows/ci-verify\\.yml|scripts/(check_secrets|install_gitleaks|preflight)\\.sh|scripts/tests/secret_scan_test\\.sh)$",
-    always_run = true,
-    pass_filenames = false,
-  },
-  {
-    id = "secret-scan",
-    name = "scan Git history and current source for secrets",
-    language = "system",
-    entry = "bash scripts/check_secrets.sh",
-    files = ".*",
-    always_run = true,
-    pass_filenames = false,
-  },
-  {
-    id = "working-diff-whitespace",
-    name = "check working diff whitespace",
-    language = "system",
-    entry = "git diff --check",
-    always_run = true,
-    pass_filenames = false,
-  },
-  {
-    id = "staged-diff-whitespace",
-    name = "check staged diff whitespace",
-    language = "system",
-    entry = "git diff --cached --check",
-    always_run = true,
-    pass_filenames = false,
-  },
+  # Use published components instead of the upstream checkout's uv workspace.
+  { id = "zendev-message-check", args = ["--profile", "zendev"], additional_dependencies = ["--no-sources", "zendev-commit==0.4.0", "zendev-review==0.4.0"], stages = ["commit-msg"] },
 ]

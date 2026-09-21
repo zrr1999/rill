@@ -31,3 +31,6 @@ __pycache__/
 .spark/
 .learnings/
 /SPARK.md
+
+# Isolated development worktrees
+/.agents/worktrees/

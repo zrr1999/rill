@@ -8,268 +8,25 @@ Copy this file for each candidate and keep it with both evidence sets.
 
 ## Automated prerequisite evidence
 
-Attach the exact logs below before beginning candidate QA. A unit or policy test
-does not tick a manual checkbox; it establishes the baseline that the packaged
-candidate must then confirm.
+Attach evidence from the exact candidate commit before beginning device QA:
 
-> **Migration note.** Dated passages below that name `WhisperKit`, Argmax, or a
-> Whisper model are retained only as historical evidence for superseded builds.
-> They do not satisfy any current sherpa-onnx candidate gate. Current evidence
-> must name the fixed public Qwen3-ASR catalog entry and the installed App.
-> SenseVoice is an internal preview identity and cannot satisfy a public candidate gate.
+- `just ci`: maintained prek hooks, generated artifacts, offline dependency policy,
+  full Git/source secret scans, release-policy tests, an arm64 Release build,
+  bundle and signing smoke checks, and the complete Swift test suite.
+- `bash scripts/check_commit_messages.sh`: complete messages validated with the
+  pinned ZenDev profile.
+- `uv run --script scripts/check_dependency_security.py --live-osv`: current
+  advisory results for the exact locked dependency revisions.
+- The corresponding successful GitHub checks and the final DMG SHA-256.
 
-> **Architecture note.** Current release candidates support Apple Silicon only
-> and must contain exactly one `arm64` Mach-O slice. Dated Universal/Intel
-> passages below are retained as historical evidence for superseded builds and
-> do not satisfy the current arm64-only release gate.
+Preserve logs, toolchain versions, expected skips, source commit, and artifact
+hashes together. Local development runs and historical WhisperKit/sherpa-onnx
+results do not satisfy current MLX speech-worker candidate gates. The current
+source and locked model catalog determine which tests and models apply.
 
-> **2026-07-28 KWS working-source evidence — not candidate evidence.** The
-> production downloader fetched the pinned 32,885,699-byte bilingual KWS
-> archive, verified its archive and retained-file SHA-256 values, published the
-> actual chunk-8 `left-64` inventory with a schema-2 receipt that binds the
-> pinned Apache-2.0 evidence, encoded `Hey Rill`, and initialized/reset the
-> production sherpa keyword spotter. A second run encoded `Light Up` and detected
-> that phrase in upstream fixture `en_0.wav` through the same native runtime.
-> This proves download, installation, tokenization, native configuration, and
-> fixture detection only. It does not tick the real-microphone, false-wake,
-> latency, multi-device, or minimum-macOS candidate checks below.
-
-> **Completed working-source baseline — not candidate evidence.** On
-> 2026-07-16, two complete preflight runs from the dirty development source each
-> passed the complete Swift suite plus the expected opt-in ASR dogfood skip.
-> `prek validate-config prek.toml` and
-> `prek -c prek.toml run --all-files` also passed. These results establish that
-> the named automated suites below passed in this development cycle; their exact
-> logs and hashes were not retained as clean-candidate evidence. Test discovery
-> and counts can change, so rerun every prerequisite from the final clean,
-> uniquely tagged candidate and attach that candidate's logs and SHA-256 values.
-
-> On 2026-07-16, the release script installed dirty-source build
-> `0.0.0-dev+7703f9ef8121.dirty` with an Apple Development identity. The installed
-> executable passed strict code-signature verification and had SHA-256
-> `b4c20bc40143865dd472a868f1eb2206653e7062706d9327a5a606a0e359f422`.
-> Qwen and the now-internal SenseVoice preview then completed an installed-App run in which macOS
-> system TTS was played through the speaker and recaptured by the microphone; the
-> resulting transcripts reached the reserved voice group and merged Recent
-> Results surface. This completes evidence for that installed
-> capture/runtime/storage loop only. System TTS → speaker → microphone is not
-> human speech, does not measure human editing cost or model quality, and does not
-> satisfy human-consented, multi-device, clean-candidate, notarization, or GA
-> thresholds. It therefore does not tick any candidate checkbox below.
-
-> A later 2026-07-16 working-source install included the local finalization fix
-> and the disabled clipboard-shortcut presentation policy. Its preflight passed
-> all 1,629 discovered Swift tests, and the Apple Development-signed installed
-> executable had SHA-256
-> `c73465d626481509ce975206ef98e1017836eadf7bd6c3f6cc1fba001eb6afaa`.
-> Cold-start UI inspection confirmed clipboard capture off, no Dashboard
-> clipboard card, no Settings hotkey recorder or Double-Command label, no menu
-> shortcut annotation, and an intact Fn push-to-talk readiness path. For the
-> installed Breeze smoke run, automation first observed the explicit
-> `Stop and Transcribe` recording state and only then started speaker playback.
-> The run completed through file-backed batch recognition and the reserved voice
-> group, but its partial acoustic transcript still failed the reference. The
-> same source audio transcribed nearly verbatim through the no-network batch
-> harness. This isolates the former live-hypothesis finalization defect and
-> validates ordering, while deliberately leaving microphone acoustics and human
-> quality as open acceptance gates.
-
-> A final 2026-07-16 working-source installation tightened the readiness
-> contract: `recording` is now published only after the first accepted microphone
-> buffer, and startup cancellation drains any late audio-engine start. The
-> release preflight completed all 1,642 discovered Swift tests without failure;
-> the installed Apple Development-signed executable had SHA-256
-> `6aeb5884706fed5b61109297d0cd4ec67bffda691ffe9e63b5a58056d9b0c2bb` and passed
-> strict signature verification outside the test sandbox. This supersedes the
-> preceding smoke run's use of `Stop and Transcribe` as sufficient readiness
-> evidence because that older UI state could precede the real audio-engine start.
-> In the replacement installed Breeze run, the exact chain was first-buffer DB
-> event `1784209545.781834` -> AX `Stop and Transcribe` observation
-> `1784209546.025` -> playback launch `1784209571.414747` -> capture queued
-> `1784209592.728913`. Run `6CEE378D-E1BC-40FD-B621-A8515146E178` completed with
-> `whisperkit.local`, `pushedToStack`, and non-empty final text: `阿巴阿巴
-> 今天下午三點我們同步一下 VoxTry 工作流程設計然後運行 Swift Test`. This proves
-> installed capture ordering and the local runtime/storage path, not human speech
-> quality; the `Rill` -> `VoxTry` substitution remains model-quality evidence.
-
-> A subsequent 2026-07-16 working-source installation extended strict
-> first-buffer readiness to the realtime local capture path. The AVAudio
-> diagnostics fallback instead waits for `AVAudioRecorder.currentTime` to advance
-> above zero before reporting readiness; that is a recorder-progress gate, not a
-> strict first-accepted-buffer signal. The same installation removed diagnostic
-> I/O from the hotkey press/release critical path, installed the shared event tap
-> only after the recording consumer had subscribed, and made sidebar route focus
-> ownership synchronous. Its release preflight completed all 1,660 discovered
-> Swift tests without failure. The
-> Apple Development-signed installed executable had SHA-256
-> `6990a40ab823f6de80ede35887473f806de8834a5551a986555ea7ff4d1940fd` and passed
-> strict signature verification. Installed-App inspection confirmed Clipboard
-> Capture remained off and the panel shortcut remained disabled. A real mouse
-> click changed the main-window route from Dashboard to Clipboard; the immediate
-> Down-arrow action then selected Run History, proving the sidebar first responder
-> survived the detail replacement in this run. A local Breeze recording exposed
-> `Stop and Transcribe` before system TTS playback was launched and completed the
-> capture/recognition lifecycle. The speaker signal was not picked up by the
-> microphone and the run correctly ended as `No speech was detected`; no model
-> tuning followed. Computer Use cannot hold or release Fn and its synthetic
-> compatibility shortcut did not traverse the global event tap, so the physical
-> Fn press/release or toggle check remains a separate candidate checkbox rather
-> than being inferred from this automation.
-
-> On 2026-07-17, another working-source installation focused only on global
-> shortcut recording and main-window focus ownership; recognition-quality
-> tuning remained paused. Slow workflow/preflight work no longer serializes the
-> hotkey event stream, release and second-toggle intent remain ordered while a
-> start is pending, and event-tap loss now publishes a gestureless
-> `globalInputUnavailable` event. That event cancels pending, preparing, hold,
-> and toggle capture without the ordinary 140 ms release debounce, and it
-> immediately downgrades the global-input capability. Route repair now preserves
-> a detail/search responder acquired while a delayed sidebar repair is waiting,
-> and keyboard focus no longer claims independent VoiceOver focus. The focused
-> regression set passed 200 tests; the complete Swift suite and required release
-> preflight each completed 1,691 tests with 3 explicit opt-in skips and no
-> failures. `prek` and diff checks passed. The Apple Development-signed installed
-> executable had SHA-256
-> `a52f363b4975f0945176f3a93da1cd19360efa9e9c5c0c28eeb33daae7ff9756`, was a
-> universal x86_64/arm64 binary, and passed strict signature verification outside
-> the test sandbox. This remains dirty working-source evidence, not clean tagged,
-> notarized candidate evidence.
-
-> Later on 2026-07-17, the short-dictation capture path added request-scoped
-> speech endpoint ownership and Apple Voice Processing. WhisperKit live now
-> measures activity in exact 1,600-sample/100 ms frames after 16 kHz conversion;
-> a normal short recording requires 300 ms of speech and finishes after 1.4 s of
-> trailing silence, while 12 s of initial silence cancels without enqueueing
-> blank audio. Hold-to-talk remains release-owned and long/toggle recording
-> remains second-press-owned. Capture stop/cancel retains the process-wide audio
-> slot until the microphone boundary has actually closed, and runtime conversion,
-> route, receive, send, or buffer failures terminate once instead of leaving a
-> false recording state. Configured local live failures no longer downgrade
-> to raw `AVAudioRecorder`. The focused regression set passed 165 tests; the
-> complete Swift suite and required release preflight each completed 1,771 tests
-> with 3 explicit opt-in skips and no failures. `prek` passed. The final
-> Apple Development-signed installed executable had SHA-256
-> `c50c3d7c500e1bb62879840b7c7e39bda4f6df1fce24011385dd8ba4d8e09ea9`, was a
-> universal x86_64/arm64 binary, and passed strict signature verification outside
-> the test sandbox. This is still dirty working-source evidence rather than a
-> clean, tagged, notarized candidate. Installed microphone behavior remains a
-> separate candidate check below.
-
-> On 2026-07-18, the sherpa-onnx/Silero VAD working source completed the exact
-> `./scripts/release.sh --install` path. The Universal Release build produced no
-> effective compiler warnings; preflight passed 46 release-policy, 12 NOTICE,
-> 23 security, 1,714 XCTest, and 17 Swift Testing checks. The installed
-> Apple Development-signed App was
-> `0.0.0-dev+7703f9ef8121.dirty`, its executable SHA-256 was
-> `e71550bf356333aae2c4d1ee98fe59e1494c3a6e760b679a548913852a964aae`, and
-> strict signature verification plus `lipo` confirmed a valid Universal
-> `x86_64 arm64` executable. A combined Qwen/VAD/capture/hotkey/focus dogfood
-> selection passed 191 XCTest and 10 Swift Testing checks; the final capture
-> concurrency selection passed 75 ordinary tests and 58 Thread Sanitizer tests
-> without a sanitizer report. The installed Silero VAD model was 643,854 bytes
-> with SHA-256
-> `9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6`, and
-> its 1,076-byte license had SHA-256
-> `51c19c8be941a3fb00ccf58f0bf9053de9f7237a0b37327896eabad32dffe873`;
-> both files were regular single-link bundle resources. Both executable slices
-> exported the sherpa offline-recognizer and voice-activity-detector entry
-> points. Installed startup diagnostics then reported the fixed public
-> `qwen3-asr-0.6b-int8` default, available `silero-vad-v4`, Clipboard capture
-> paused, the Clipboard panel shortcut disabled by preference, and Fn
-> push-to-talk active. This is comprehensive automated and installed-resource
-> evidence from dirty working source, not a clean Developer ID-signed,
-> notarized candidate. Real-microphone speech detection and automatic stop,
-> controlled-noise behavior, physical Fn press/release, the final main-window
-> focus path remained separate manual gates; Intel execution belonged to that
-> superseded Universal support scope and is no longer a current candidate gate.
-
-> A later 2026-07-18 working-source audit removed full-recording PCM retention
-> from the local Core Audio callback. Accepted chunks now pass through the
-> existing 32-chunk fail-closed stream into a private incremental WAV; normal
-> finish seals the producer, drains every accepted tail chunk without running
-> endpoint detection again, and only then finalizes the artifact. Cancellation,
-> readiness timeout, writer initialization/append/finalize failure, producer
-> failure, and overflow close and transfer the partial file to the cleanup owner.
-> Local Qwen now advertises a 20-second provider limit, with a bounded 3.1-second
-> capture-startup tolerance accepted consistently by capture and recognition.
-> Other local recognizers retain their own explicit capability limits.
-> The focused provider set passed 82 tests, the combined capture/hotkey/focus
-> set passed 210 tests, and the 160-test Thread Sanitizer selection produced no
-> report. The production `SherpaOnnxRecognizer` then re-ran the pinned
-> `codeswitch.wav` fixture in 2.859 seconds and preserved `all by myself`. An
-> independent read-only review found no Critical, High, or Medium issue in the
-> new lifecycle. Recognition still loads one bounded full sample array for the
-> native offline API; this evidence does not claim constant-memory decoding or
-> replace the installed real-microphone checks below.
-
-> The exact `./scripts/release.sh --install` rerun after those source changes
-> passed 46 release-policy, 23 security, 12 NOTICE, 1,731 XCTest, and 17 Swift
-> Testing checks, with no effective Universal Release compiler warning. The
-> installed development build retained source revision `7703f9ef8121`, reported
-> the dirty working-source label `0.0.0-dev+7703f9ef8121.dirty`, and had executable
-> SHA-256 `be13eedde7f581ed5abe08ac15fe8f61996dfac055f743ca72cc596c4bf070e3`.
-> Strict code-signature verification and `lipo` confirmed `x86_64 arm64`. The
-> installed ICNS SHA-256 was
-> `744c795f174a1d6b2ea204a73b37891b48e6b54f33a6e384fd5389989b345af5`;
-> the pinned Silero model/license hashes remained unchanged. Fresh startup
-> diagnostics reported Qwen and Silero available, Clipboard capture paused,
-> the panel shortcut disabled by preference, and Fn push-to-talk active. The Mac
-> locked before UI acceptance, so this install does not tick the microphone,
-> physical Fn, or main-window focus checkboxes.
-
-> A 2026-07-19 follow-up rebuilt and installed the same dirty source with the
-> required `./scripts/release.sh --install` path. The release preflight passed
-> 1,762 XCTest and 18 Swift Testing checks; strict signing verification passed,
-> and the installed executable SHA-256 was
-> `a2468e0cfec000dd62dd369164dab66016be758df787cf44ef3bdb61c4c1163a`.
-> With the reviewed Qwen model selected, a consented real-microphone Settings
-> run reached `workflow.audio-recording.started` 179.8 ms after recognition-hint
-> resolution, observed 6.56 seconds of audio including 4.0 seconds classified as
-> speech, terminated once with `speechEnded`, and persisted one completed record
-> with non-empty final text. No transcript body is retained in this QA evidence.
-> The installed overlay appeared during capture, its shadow followed the rounded
-> surface without a rectangular edge, and Dashboard -> Clipboard -> Down moved
-> keyboard selection to Run History without losing focus. This working-source
-> evidence covers real local capture, automatic endpointing, the reported panel
-> regression, and the visible-sidebar focus path; physical Fn press/release,
-> controlled noise, pause-between-clauses, collapsed-sidebar focus, and clean
-> signed-candidate checks remain separate gates.
-
-In the automated table, **working-source complete; candidate pending** means the
-suite passed in the 2026-07-16 full run above, while the required exact log and
-hash from one clean, uniquely tagged candidate still need to be attached.
-
-| Required automated evidence | Result / evidence path |
-| --- | --- |
-| `scripts/preflight.sh` passes from the candidate source, including locked-dependency notice provenance, secret scanning, the complete release-policy suite, arm64-only Release build, App assembly, signing-policy checks, and the complete Swift suite | **Working-source complete; candidate pending.** Rerun after the local-speech migration and attach the candidate's exact log and SHA-256. |
-| `prek validate-config prek.toml` and `prek -c prek.toml run --all-files` pass against the same source tree | **Working-source complete; candidate pending.** Both commands passed against the dirty development source; attach the clean candidate's exact log and SHA-256. |
-| `TrustedLocalSpeechCatalogTests`, `SherpaOnnxModelInstallerTests`, `SherpaOnnxRecognizerTests`, `SherpaOfflineRecognizerTests`, and `SessionCoordinatorTests` prove the fixed public Qwen catalog, public rejection of the internal SenseVoice identity, exact archive and installed-tree verification, typed no-speech handling, bounded Qwen hotwords, native runtime configuration, and persisted local speech selection | **Working-source complete; candidate pending.** Focused migration suites passed; rerun from the final candidate. Installed first-capture, silence, and quality behavior remain separate manual checks below. |
-| `RealtimeAudioCaptureServiceTests` and `LocalSpeechVoiceCaptureRuntimeTests` prove the realtime local path waits for its first accepted microphone buffer; `AVAudioCaptureServiceReadinessTests` proves the diagnostics fallback waits for `AVAudioRecorder.currentTime > 0`, a recorder-progress gate rather than a strict buffer signal; `RecordingSessionManagerTimingTests` and `ApplicationStartupTaskCoordinatorTests` prove startup cancellation drains late audio-engine work, the recording consumer is subscribed before the shared event tap starts, diagnostics cannot delay hotkey capture or cues, stopped runs never promote live subtitle hypotheses to final text, finalization drains the live task before handing a file-backed complete-sample capture to batch recognition, and start/stop cues cannot reverse across cancellation or replacement | **Working-source complete; candidate pending.** Rerun against and attach evidence for the clean candidate. |
-| `AudioCaptureEndpointingTests`, `WorkflowAudioRunControllerTests`, `RecordingSessionManagerTests`, `RecordingSessionManagerToggleTests`, and `AppModelLiveAudioStopTests` prove first-terminal-wins signaling, exact short-dictation timing, automatic/manual stop races, microphone-boundary ownership, initial-silence discard, visible recording-to-transcribing projection, and isolation of hold and long/toggle gesture semantics | **Working-source complete; candidate pending.** Included in the 1,771-test 2026-07-17 working-source install; installed short dictation, silence, and physical Fn checks remain required below. |
-| `AppleVoiceProcessingAudioProcessorTests`, `LocalSpeechIncrementalWaveWriterTests`, `LocalSpeechVoiceCaptureRuntimeTests`, and `RealtimeAudioCaptureServiceTests` prove Apple Voice Processing activation on both I/O nodes, bypass disabled, AGC enabled, strongest-channel selection, exact 16 kHz energy framing, bounded realtime PCM/RMS retention, private incremental WAV output, accepted-tail drain, late-buffer rejection, permission/readiness races, exact frame ceilings, partial-file cleanup, explicit route/conversion failure, local-model injection, configured-live fail-closed behavior, and run/generation-scoped terminal cleanup | **Working-source complete; candidate pending.** This proves frontend configuration and lifecycle, not controlled acoustic denoise effectiveness or constant-memory native offline decoding. |
-| `HotkeyEventTapTests`, `RecordingSessionManagerTests`, and `StackPasteControllerTests` prove the shared producer must be valid and enabled before it is reported available; slow start preparation cannot block later release or second-toggle intent; tap interruption, failed re-enable, and teardown clear recognizer latches; producer loss cancels pending, hold, and toggle capture without waiting for a physical key-up; shutdown drains every derived start/release task; and the visible global-input capability downgrades after producer loss | **Working-source complete; candidate pending.** Included in the 1,691-test 2026-07-17 working-source install; real physical Fn behavior and system-level tap failure remain manual candidate checks. |
-| `SherpaOnnxModelInstallerTests` proves pinned archive size/SHA verification, safe archive inspection, canonical installed-file inventory verification, private atomic publication, corruption rejection and clean repair, cancellation of the external tar child, and verified offline cache reuse | **Working-source complete; candidate pending.** Focused migration suite passed, including a real pinned Qwen archive install; rerun deterministic tests from the candidate and attach the explicit model-install dogfood log separately. |
-| `MainShellFocusIntegrationTests` and `HistoryRetryFocusPolicyTests` prove the main-window sidebar Activity → Clipboard → Workflows focus path across hosted AppKit detail replacement and mouse-event tracking, that Clipboard does not steal first responder into Search, and per-channel keyboard/VoiceOver focus rehoming when transient Retry controls disappear without stealing unrelated focus | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `ExternalOutputActionsTests` proves Markdown pre/post-commit cancellation, pre-publication short-write rejection, single-SWAP atomic publication without post-SWAP rollback, descriptor-bound displaced-file cleanup and retry, cancellation-resistant post-commit cleanup without duplicate append, existing-file metadata preservation, macOS 14 compatibility fallback, hard-link and any-level symlink rejection, special-file/UTF-8/size bounds, indeterminate-race evidence preservation with inspect-before-retry reporting, and serialized concurrent append | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| The `AppModelTests` retention cases in `Tests/RillUITests/AppModelHistoryRetentionTests.swift` and `ApplicationTerminationCoordinatorTests` prove history-maintenance drain precedes event and persistence shutdown barriers | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `PasteboardControllerTests`, `TextInjectionEngineTests`, `StackPasteControllerTests`, and termination tests prove temporary paste restores every item/type/data representation and order after success, failure, and cancellation without overwriting a newer user copy; the raw archive enforces 128-item, 32-representation-per-item, 256-total-representation, per-representation/item, and 64 MiB total bounds before replacement; ImageIO runs off MainActor with one single-flight worker; failed exact restores retain the archive, retry without repeating delivery, and drain inner TextInjection before outer StackPaste during shutdown | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `AppModelSettingsSaveStateTests` proves ordinary scalar and collection settings remain visibly unsaved, never expose storage errors or values, and clear only after a verified retry succeeds | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `AppModelSettingsDomainRecoveryTests`, `AppModelScalarSettingsAvailabilityTests`, `AppModelSettingsSaveStateTests`, `AppModelSettingsReadTaskOwnerTests`, and `AppModelSettingsReadShutdownTests` prove collection/scalar domains fail closed independently, late reads cannot overwrite current state, failed exact writes remain recoverable, and shutdown rejects then drains settings reads and saves | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `AppModelClipboardMutationShutdownTests` and `ApplicationTerminationCoordinatorTests` prove clipboard mutations are sealed, accepted work drains before scheduler/listener/persistence barriers, and post-seal UI writes are rejected | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| The persistence and capacity cases in `DeliveryStackTests`, together with `DeliveryStackSQLitePersistenceIntegrationTests`, `AppModelClipboardPersistenceTests`, `ClipboardPersistencePresentationTests`, and `ApplicationTerminationCoordinatorTests`, prove atomic schema 7 → 8 migration, protected metadata/image-blob separation, fail-closed raw-before-encode limits, 256 custom-group / 1024 App-route caps, oldest-history-only eviction, active/lease protection, atomic assignment and group creation without history reactivation, full-graph load validation, original-byte preservation, observable save failure/retry, confirmed destructive `loadUnavailable` reset with capture/lease/reset linearization, and final shutdown drain | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `EventBusTests` and `StackPasteControllerTests` prove Clipboard snapshots and their debug diagnostics use latest-wins coalescing only within semantic segments, queue dequeue is amortized O(1), StackPaste consumes a content-free `bufferingNewest(1)` revision stream, consecutive high-frequency state projections remain bounded, and ordinary diagnostics, terminal events, receipts, lifecycle barriers, and different run IDs retain ordering | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `StackPasteControllerTests`, `AppBootstrapTests`, `AppModelClipboardCapturePreferenceTests`, and `ClipboardCapturePresentationTests` prove disabled clipboard capture performs no pasteboard, focus, or privacy polling from cold start; preference revisions reject stale startup state; re-enabling establishes a new baseline without backfilling changes made while disabled; and Settings, menu bar, and the Clipboard page expose one persistent state | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `SQLitePersistenceStoreTests` and `RunHistoryBrowsingUITests` prove receipt-primary snapshot/keyset pagination, 50-row page bounds, stable same-timestamp ordering, clear invalidation, runID/recordID deep links, privacy-bounded body access, cancellable full-history search, and failure-without-false-empty presentation | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `ClipboardInputMethodGuardTests`, `ClipboardFocusPolicyTests`, and `L10nTests` prove destructive clipboard actions share one confirmation contract, disclose merged-item scope, and cannot escape active text/input-method or modal editing | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `GlobalSearchIndexTests` retry-policy cases and `MainShellFocusIntegrationTests` prove only the current visible failed query can retry, cancelled or stale generations cannot publish, static destinations survive history failure, Retry-to-loading focus returns to the stable search field, the visible overlay removes sidebar/detail/toolbar background interaction and accessibility, and repeated Command-F refocuses without resetting search state | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-| `ManagedTemporaryAudioCleanupOwnerTests` plus AVAudio, local realtime, and controller lifecycle tests prove managed plaintext audio survives caller cancellation, retries transient deletion failures, emits path-free diagnostics, and drains at shutdown | **Working-source complete; candidate pending.** Rerun from and attach evidence for the clean candidate. |
-| The local-model preparation lifecycle tests (currently `AppModelWhisperKitPreparationShutdownTests` until the persisted-settings compatibility surface is renamed) prove user cancellation returns to idle, retired tasks cannot publish late progress or completion over replacements, and shutdown drains active and retired manual/warmup tasks | **Working-source complete; candidate pending.** Rerun from and attach evidence for the candidate. |
-| `UserVisibleErrorPrivacyTests` proves the covered Settings, privacy, retention, workflow, provider, runtime-failure, and action-result paths expose only fixed bilingual stage/reason copy | **Working-source complete; candidate pending.** Included in the 2026-07-16 full suite; rerun from and attach evidence for the clean candidate. |
-
-Machine evidence cannot prove Gatekeeper behavior after a real download, TCC
-prompts, physical keyboard/input-method behavior, service availability, model
-quality, or whether VoiceOver phrasing is understandable to a user. Those remain
-required below.
+Automated checks do not prove Gatekeeper behavior after a real download,
+permission prompts, physical Fn or input-method behavior, acoustic quality,
+or VoiceOver usability. Record those results below with the packaged candidate.
 
 ## Release identity
 
@@ -304,7 +61,7 @@ language, and whether the account was newly created.
 | --- | --- | --- | --- |
 | macOS 14, Apple Silicon |  |  |  |
 | macOS 15, Apple Silicon |  |  |  |
-| Latest supported macOS (macOS 26 for this checklist), Apple Silicon |  |  |  |
+| Latest macOS supported by the candidate, Apple Silicon |  |  |  |
 | Clean local account |  |  |  |
 
 `LC_BUILD_VERSION minos` and deployment-target checks are build evidence only;
@@ -508,7 +265,7 @@ Complete the pass in both App languages.
       repeatable background-noise source. Voice Processing activation failure,
       route change, conversion failure, or input loss is explicit and never
       downgrades to an unprocessed live path.
-- [ ] For `cloud + trusted local`, cancelling sherpa-onnx model preparation immediately
+- [ ] For `cloud + trusted local`, cancelling MLX speech-model preparation immediately
       returns Settings to an actionable state; reconfiguration can start a
       replacement without old progress or completion appearing, and quitting
       waits for both active and retired provider work.
@@ -619,7 +376,7 @@ test data.
 - [ ] Clipboard Stack / Queue / List behavior survives restart without duplicating
       or consuming an item twice.
 - [ ] Make the persisted clipboard state unreadable, structurally invalid, or
-      larger than the schema 8 metadata/blob bounds and confirm startup fails
+      larger than the candidate schema's metadata/blob bounds and confirm startup fails
       closed: existing durable data is not overwritten and session changes are
       clearly identified as non-persistent. Open Reset Storage and verify the
       confirmation names both

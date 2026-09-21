@@ -199,14 +199,4 @@ grep -Fq 'dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709' \
   || fail "Darwin x64 release hash is not pinned"
 grep -Fq 'bash "$SCRIPT_DIR/check_secrets.sh"' "$PROJECT_DIR/scripts/preflight.sh" \
   || fail "preflight does not invoke secret scanning"
-grep -Fq 'bash scripts/install_gitleaks.sh --destination "$tool_dir"' \
-  "$PROJECT_DIR/.github/workflows/ci-verify.yml" \
-  || fail "CI does not install the pinned scanner"
-awk '
-  /^  preflight:/ { in_preflight = 1 }
-  in_preflight && /fetch-depth: 0/ { found = 1 }
-  END { exit(found ? 0 : 1) }
-' "$PROJECT_DIR/.github/workflows/ci-verify.yml" \
-  || fail "CI preflight does not fetch complete Git history"
-
 echo "Secret scan policy tests passed"

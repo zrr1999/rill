@@ -144,6 +144,10 @@ info "Checking arm64 release executable architectures..."
 bash "$SCRIPT_DIR/verify_release_executable.sh" "$BUILD_DIR/RillApp"
 bash "$SCRIPT_DIR/verify_release_executable.sh" "$BUILD_DIR/RillSpeechWorker"
 
+# Release builds use a separate scratch path; notice checks read .build/checkouts.
+info "Preparing locked SwiftPM checkouts for license verification..."
+swift package --force-resolved-versions resolve
+
 info "Checking locked third-party license and notice provenance..."
 uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
 

@@ -7,7 +7,7 @@
 - macOS 14.0 或更高版本
 - Xcode 26 或更高版本，并选择包含 Swift 6.2+ 的 Command Line Tools；本地
   默认开发工具链为 Xcode 27
-- 与所选 Xcode build version 匹配的 Metal Toolchain；运行 `xcodebuild -downloadComponent MetalToolchain` 安装，`xcrun --toolchain XcodeDefault metal -v` 必须成功。若组件已安装但验证仍失败，请通过 `DEVELOPER_DIR` 临时选择一个组件可用的并存稳定版 Xcode
+- 与所选 Xcode build version 匹配的 Metal Toolchain；运行 `xcodebuild -downloadComponent MetalToolchain` 安装，`xcrun metal -v` 必须成功。若组件已安装但验证仍失败，请通过 `DEVELOPER_DIR` 临时选择一个组件可用的并存稳定版 Xcode
 - [uv](https://docs.astral.sh/uv/guides/scripts/)；发布脚本通过 PEP 723 单文件脚本模式运行 Python 3.11 或更高版本
 - Git；运行完整发布预检还需要 macOS 自带的 `codesign`、`lipo`、`otool` 和磁盘映像工具
 - Gitleaks 8.30.1；仓库安装脚本会按当前 Mac 架构下载并校验固定 SHA-256
@@ -17,7 +17,7 @@
 
 ```bash
 swift --version
-xcrun --toolchain XcodeDefault metal -v
+xcrun metal -v
 uv run --script scripts/report_python_version.py
 scripts/swift_locked.sh build
 scripts/swift_locked.sh test --parallel
@@ -31,6 +31,11 @@ just check
 just test
 just ci
 ```
+
+`just check` 只运行 prek 内建检查以及上游提供的 TOML、Actionlint 和 Typos
+检查；不在 Git hook 中运行整仓构建、完整历史扫描或项目策略测试。
+这些项目专用检查集中在 `just ci` / `scripts/preflight.sh`，生成物和安全门禁
+仍然是提交前必须完成的检查。新增通用检查时优先复用维护中的上游工具。
 
 不要删除、绕过或手工改写 `Package.resolved`。所有 SwiftPM 构建和测试都应通过 `scripts/swift_locked.sh` 运行，以保证使用仓库锁定的依赖图。
 
@@ -47,6 +52,9 @@ uv run --script scripts/check_dependency_security.py --live-osv
 ```
 
 live 模式固定调用 OSV 官方 `https://api.osv.dev/v1/querybatch`；响应按 lock 顺序映射，只有返回独立 `next_page_token` 的条目会继续分页。网络、重定向、JSON/字段、结果数量、重复 advisory 或分页异常都必须 fail-closed，任何 advisory 都会阻断。依赖变化必须同步锁文件测试与第三方 NOTICE 证据；baseline 变化必须保留受审来源并更新 policy tests，不能用 baseline 忽略 live 结果。
+
+CI 直接调用的 Python 脚本随附 `.py.lock`，并使用 `--no-build --locked`。
+修改这些脚本的依赖或 Python 要求后，运行 `uv lock --script <path>` 更新对应锁文件。
 
 可以把仓库固定的 Gitleaks 安装到个人工具目录：
 
@@ -100,6 +108,21 @@ git diff --cached --check
 
 主窗口搜索由 MainShell 的浮层与 AppKit `NSSearchField` bridge 共同拥有，以便在 macOS 14 上确定性处理首次/重复 `Cmd-F`、方向键、`Return` 与 `Esc`；不要未经同等真实 App 回归就替换为 `.searchable`。普通页面路由由 shell 恢复侧栏焦点，typed Settings / History 目的地则由详情页持有目标焦点。鼠标选择后的恢复必须跨到主 RunLoop 的 default mode，不能只靠 `Task.yield()` 猜测 AppKit mouse tracking / first-responder 时序；修改任一侧时都应覆盖 Dashboard → Clipboard 的方向键、List selection、快速路由与 exact 详情 AX 焦点。
 
+## GitHub Actions 命名
+
+参考 ZenDev 和 Volvox，workflow 文件使用小写 kebab-case，按职责使用 `ci-`、
+`cd-` 或 `policy-` 前缀；显示名称对应 `CI - <Purpose>`、`CD - <Purpose>` 或
+`Policy - <Purpose>`。PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
+
+| Workflow | 显示名称 | 职责 |
+| --- | --- | --- |
+| [policy-pr.yml](.github/workflows/policy-pr.yml) | Policy - PR | PR 标题、正文及完整提交信息 |
+| [ci-tests.yml](.github/workflows/ci-tests.yml) | CI - Tests | macOS 测试、依赖和发布预检 |
+
+job ID 使用小写 kebab-case，检查名称描述具体职责。`Required CI`、`PR message`
+和 `Commit messages` 是主分支保护要引用的检查名称；改名时必须同步服务端配置
+及发布文档。
+
 ## 生成文件
 
 不要直接编辑生成产物。
@@ -124,17 +147,34 @@ git diff --cached --check
 
 ## 提交与 Pull Request
 
-- 提交信息与 Pull Request 标题使用 zendev 的
-  `<emoji> <type>(<optional-scope>): <imperative summary>` 规范，例如
-  `🐛 fix(ui): preserve sidebar focus after route changes`。常用类型包括
-  `feat`、`fix`、`refactor`、`test`、`docs`、`build`、`ci` 和 `chore`；
-  emoji 必须与 type 匹配。
-- 一个提交只表达一个可审阅的意图；说明用户影响、关键边界、测试证据和仍需人工验证的内容。
-- 提交前确保 `prek` 与完整 preflight 通过。不要把 expected skip 写成全绿，也不要把本地 ad-hoc/Apple Development 签名描述为可公开分发。
-- `just install` 会同时安装 `pre-commit` 与 `commit-msg` hooks；
-  `zendev-commit-msg` 在本地验证提交，CI 使用同一 zendev 版本验证 Pull
-  Request 标题和描述结构。描述中列出风险、回滚方式、自动化结果和人工
-  QA；涉及数据格式或持久化时说明迁移、旧数据和 fail-closed 行为。
+提交信息和英文 PR 标题遵守 [ZenDev](https://github.com/zendev-lab/zendev)
+的 `zendev` profile，例如 `🐛 fix(ui): preserve sidebar focus after route changes`。
+使用官方校验器检查 emoji 与 type 的对应关系、scope、正文和 footer，不维护另一套正则。
+当前统一版本是 0.4.0；prek 的上游 revision 和 CI Actions 均固定到 commit，
+ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本。
+
+- `just install` 安装标准 `pre-commit` 和 `commit-msg` hooks，后者运行
+  `zendev-message-check --profile zendev`。
+- CI 的 `Commit messages` 检查逐条验证 PR 引入的完整提交信息；push 到 `main`
+  和手动运行也会检查提交。Renovate 等机器人与人工提交使用相同规则。
+- CI 的 `PR message` 检查英文标题的 ZenDev 格式，并按
+  [.github/pull_request_template.md](.github/pull_request_template.md) 验证描述章节。
+  PR 标题必须使用英文；描述可使用中文。
+- 一个提交表达一个可审阅的意图，说明最终行为和实际测试结果。
+  人工验收未完成时明确记录，不能用单元测试或本地开发签名代替。
+
+可以在本地复现完整 message 检查；无参数时检查当前 HEAD 的全部历史，
+提供 base 时只检查它之后引入的提交：
+
+```bash
+bash scripts/check_commit_messages.sh
+bash scripts/check_commit_messages.sh origin/main HEAD
+```
+
+主分支应要求 `Required CI`、`PR message` 和 `Commit messages` 通过，并限制
+直接推送和绕过规则。仓库仅启用 rebase 合并来保留已验证的 message；若维护者重新启用
+squash，最终生成的 message 必须重新经过同一校验器。GitHub 的计划、权限和
+仓库设置决定这些规则是否实际生效；提交 CI 配置不等于已经启用服务端保护。
 
 ## 发布权限
 
@@ -146,4 +186,4 @@ git diff --cached --check
 - 使用 Developer ID Application 身份和维护者管理的 `notarytool` 凭据；
 - 最终 DMG 完成签名、公证、staple、Gatekeeper 复验和人工 QA。
 
-发布流程以 `scripts/release.sh` 和 `docs/release-qa-checklist.md` 为准。仓库尚未包含 `LICENSE` 与正式安全报告渠道；在维护者补齐前，不要推断授权条款，也不要在公开 issue 中披露敏感漏洞细节。
+发布步骤见 [docs/releasing.md](docs/releasing.md)，实际打包以 `scripts/release.sh` 和 `docs/release-qa-checklist.md` 为准。仓库尚未包含 `LICENSE` 与正式安全报告渠道；在维护者补齐前，不要推断授权条款，也不要在公开 issue 中披露敏感漏洞细节。

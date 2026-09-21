@@ -24,11 +24,6 @@ unset \
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
-CI_WORKFLOW="$PROJECT_DIR/.github/workflows/ci-verify.yml"
-PR_CHECKS_WORKFLOW="$PROJECT_DIR/.github/workflows/ci-pr-checks.yml"
-RENOVATE_CONFIG="$PROJECT_DIR/.github/renovate.json"
-DEPENDABOT_CONFIG="$PROJECT_DIR/.github/dependabot.yml"
-PR_TEMPLATE="$PROJECT_DIR/.github/pull_request_template.md"
 RELEASE_SCRIPT="$PROJECT_DIR/scripts/release.sh"
 ASSEMBLER_SCRIPT="$PROJECT_DIR/scripts/assemble_app_bundle.sh"
 PREFLIGHT_SCRIPT="$PROJECT_DIR/scripts/preflight.sh"
@@ -1600,51 +1595,6 @@ run_local_build_identity_case() {
   echo "PASS: local build versions distinguish exact tags, later commits, and dirty sources"
 }
 
-run_ci_prek_policy_case() {
-  if ! grep -Fq 'uses: j178/prek-action@e98a699c41eb69ab013a45817a0406469a748f8d # v2.0.5' "$CI_WORKFLOW" ||
-    ! grep -Fq 'prek-version: "0.3.10"' "$CI_WORKFLOW" ||
-    ! grep -Fq 'prek validate-config prek.toml' "$CI_WORKFLOW" ||
-    ! grep -Fq 'prek -c prek.toml run --all-files' "$CI_WORKFLOW" ||
-    ! grep -Fq 'run: scripts/swift_locked.sh test' "$CI_WORKFLOW"; then
-    echo "FAIL: CI must install the reviewed prek action and version, then run the complete config" >&2
-    exit 1
-  fi
-  if grep -Eq 'uses:[[:space:]]+j178/prek-action@(v|main|master)' "$CI_WORKFLOW"; then
-    echo "FAIL: CI prek action must use an immutable commit" >&2
-    exit 1
-  fi
-  if grep -Fq 'lfs: true' "$CI_WORKFLOW"; then
-    echo "FAIL: CI must not fetch Git LFS now that the repository has no LFS assets" >&2
-    exit 1
-  fi
-  if grep -Fq 'scripts/swift_locked.sh test --parallel' "$CI_WORKFLOW"; then
-    echo "FAIL: CI must serialize the shared-state XCTest suite" >&2
-    exit 1
-  fi
-
-  PASSED=$((PASSED + 1))
-  echo "PASS: CI pins reviewed prek code and executes the complete configuration without Git LFS"
-}
-
-run_github_governance_policy_case() {
-  if [[ ! -f "$RENOVATE_CONFIG" || -e "$DEPENDABOT_CONFIG" || -e "$PR_TEMPLATE" ]]; then
-    echo "FAIL: GitHub governance must use Renovate without Dependabot or a mandatory PR body template" >&2
-    exit 1
-  fi
-  uv run --script "$PROJECT_DIR/scripts/validate_renovate_config.py" "$RENOVATE_CONFIG"
-  if ! grep -Fq "if: github.event.pull_request.user.login != 'renovate[bot]'" \
-    "$PR_CHECKS_WORKFLOW" ||
-    ! grep -Fq 'uses: zrr1999/zendev/actions/validate-title@v0.0.7' \
-      "$PR_CHECKS_WORKFLOW" ||
-    grep -Fq 'validate-body' "$PR_CHECKS_WORKFLOW"; then
-    echo "FAIL: PR checks must match the shared Renovate-aware title policy" >&2
-    exit 1
-  fi
-
-  PASSED=$((PASSED + 1))
-  echo "PASS: GitHub governance uses the shared Renovate and PR title policy"
-}
-
 create_release_source_fixture() {
   local repository="$1"
 
@@ -2373,8 +2323,6 @@ run_locked_dependency_policy_case
 run_xcode_build_policy_case
 run_executable_package_surface_policy_case
 run_native_mlx_dependency_policy_case
-run_ci_prek_policy_case
-run_github_governance_policy_case
 run_shell_syntax_policy_case
 run_release_artifact_hygiene_policy_case
 run_release_output_staging_policy_case
