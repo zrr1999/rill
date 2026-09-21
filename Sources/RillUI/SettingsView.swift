@@ -216,6 +216,9 @@ public struct SettingsView: View {
         Section {
           recordPanelSection
           vocabularySection
+          if let memory = model.contextMemory {
+            ContextMemorySettingsView(memory: memory, workflows: model.workflows.filter(\.supportsContextualCorrection), language: model.language)
+          }
           languageSection
         } header: {
           settingsGroupHeader(

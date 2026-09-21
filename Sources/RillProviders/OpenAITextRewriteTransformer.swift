@@ -68,7 +68,7 @@ extension OpenAITextRewriteError: SpeechTextFallbackEligibleError {
 
 struct OpenAIResponsesRequest: Sendable, Equatable {
     let input: String
-    let instructions: String
+    var instructions: String
     let baseURL: String
     let model: String
     let store: Bool
@@ -77,6 +77,9 @@ struct OpenAIResponsesRequest: Sendable, Equatable {
     var disablesThinking = false
     var temperature: Double? = nil
     var timeoutInterval: TimeInterval = 60
+    var referenceImage: CorrectionReferenceImage? = nil
+    var referenceData: String? = nil
+    var jsonOutput = false
 }
 
 struct OpenAIResponsesResult: Sendable, Equatable {
@@ -185,15 +188,25 @@ struct MacPawOpenAIResponsesClient: OpenAIResponsesServing {
             session: session,
             middlewares: [statusRecorder] + additionalMiddlewares
         )
+        var content: [InputContent] = [.inputText(.init(_type: .inputText, text: request.input))]
+        if let referenceData = request.referenceData {
+            content.append(.inputText(.init(_type: .inputText, text: referenceData)))
+        }
+        if let image = request.referenceImage {
+            content.append(.inputImage(InputImage(imageData: image.jpeg, detail: .high)))
+        }
         let query = CreateModelResponseQuery(
-            input: .textInput(request.input),
+            input: content.count == 1 ? .textInput(request.input) : .inputItemList([
+                .inputMessage(EasyInputMessage(role: .user, content: .inputItemContentList(content)))
+            ]),
             model: model,
             instructions: request.instructions,
             maxOutputTokens: request.maxOutputTokens,
             reasoning: request.disablesThinking ? .init(effort: .some(.none)) : nil,
             store: request.store,
             stream: request.stream,
-            temperature: request.temperature
+            temperature: request.temperature,
+            text: request.jsonOutput ? .jsonObject : nil
         )
 
         do {
@@ -578,8 +591,15 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
         if usesDeepSeekRewrite, text.utf8.count > LLMTextProcessing.maximumInputBytes {
             throw OpenAITextRewriteError.incomplete
         }
-        let request = OpenAIResponsesRequest(
-            input: text,
+        let correction = step.kind == .llmRewrite ? context.correctionRequest : nil
+        if let correction {
+            guard !correction.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw OpenAITextRewriteError.invalidResponse
+            }
+            try ContextProviderIdentity.validate(correction.authorization, settings: settings)
+        }
+        var request = OpenAIResponsesRequest(
+            input: correction?.transcript ?? text,
             instructions: requestContract(step: step, context: context)
                 + "\n\nWorkflow instruction:\n"
                 + workflowInstruction,
@@ -592,6 +612,12 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
             temperature: usesDeepSeekRewrite ? 0.1 : nil,
             timeoutInterval: usesDeepSeekRewrite ? LLMTextProcessing.rewriteTimeout : 60
         )
+        if let correction {
+            request.instructions = ContextCorrectionPrompts.correction
+            request.referenceImage = ContextProviderIdentity.supportsImages(settings) ? correction.referenceImage : nil
+            request.referenceData = try ContextCorrectionPrompts.referenceData(correction)
+            request.timeoutInterval = LLMTextProcessing.rewriteTimeout
+        }
         let startedAt = ContinuousClock.now
         await diagnosticReporter(
             diagnosticEvent(
@@ -606,10 +632,13 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
 
         do {
             let response = try await createResponse(
-                request: request, apiKey: apiKey, bounded: usesDeepSeekRewrite
+                request: request, apiKey: apiKey, bounded: usesDeepSeekRewrite || correction != nil
             )
             try Task.checkCancellation()
-            let output = try Self.acceptedOutput(from: response)
+            try ContextProviderIdentity.validate(correction?.authorization, settings: settings)
+            let proposedOutput = try Self.acceptedOutput(from: response)
+            let output = correction == nil ? proposedOutput
+                : ContextCorrectionPrompts.preservingNumbers(transcript: request.input, proposed: proposedOutput)
             await diagnosticReporter(
                 diagnosticEvent(
                     runID: context.runID,
@@ -626,7 +655,7 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
                     providerID: LLMTextProcessing.providerID,
                     modelID: request.model,
                     systemPrompt: request.instructions,
-                    workflowPrompt: workflowInstruction,
+                    workflowPrompt: correction == nil ? workflowInstruction : "",
                     messages: [
                         LanguageModelTraceMessage(role: .user, content: request.input),
                     ],
@@ -660,16 +689,12 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
         guard bounded else {
             return try await client.createResponse(request: request, apiKey: apiKey)
         }
-        return try await withThrowingTaskGroup(of: OpenAIResponsesResult.self) { group in
-            group.addTask { try await client.createResponse(request: request, apiKey: apiKey) }
-            group.addTask { [deepSeekTimeout] in
-                try await Task.sleep(for: deepSeekTimeout)
-                throw OpenAITextRewriteError.timedOut
+        do {
+            return try await BoundedOperation.run(timeout: deepSeekTimeout) {
+                try await client.createResponse(request: request, apiKey: apiKey)
             }
-            defer { group.cancelAll() }
-            guard let response = try await group.next() else { throw CancellationError() }
-            try Task.checkCancellation()
-            return response
+        } catch is OperationDeadlineError {
+            throw OpenAITextRewriteError.timedOut
         }
     }
 

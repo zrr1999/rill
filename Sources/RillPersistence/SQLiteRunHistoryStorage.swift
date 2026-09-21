@@ -65,6 +65,7 @@ extension SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptRepositor
         guard existingIdentity.matches(record, generation: generation) else {
           throw HistoryRepositoryError.conflictingHistoryRecord(recordID: record.id)
         }
+        if try historyRecords(sourceID: record.runID ?? record.id).contains(record) { return }
         try updateHistoryRecordContent(
           record,
           protectedFallbackName: protectedFallbackName,

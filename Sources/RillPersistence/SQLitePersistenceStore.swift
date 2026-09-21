@@ -135,6 +135,7 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     self.connection = SQLiteConnectionBox(db: handle)
     try SQLiteWriterBarrier.registerCapability(on: handle)
       try SQLiteCatalogWriterBarrier.register(on: handle)
+      try SQLiteMemoryWriterBarrier.register(on: handle)
     try Self.execute(
       """
       PRAGMA journal_mode = WAL;
@@ -1448,11 +1449,17 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     }
   }
 
-  func withImmediateTransaction<T>(_ operation: () throws -> T) throws -> T {
+  func withImmediateTransaction<T>(authorization: ContextReferenceAuthorization? = nil, _ operation: () throws -> T) throws -> T {
     try execute("BEGIN IMMEDIATE TRANSACTION;")
     do {
+      if authorization?.isValid == false { throw ContextCorrectionError.authorizationChanged }
       let result = try operation()
-      try execute("COMMIT;")
+      if let authorization {
+        try authorization.whileAuthorized {
+          try Task.checkCancellation()
+          try execute("COMMIT;")
+        }
+      } else { try execute("COMMIT;") }
       return result
     } catch {
       try? execute("ROLLBACK;")
@@ -1734,7 +1741,7 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     }
   }
 
-  private static let currentSchemaVersion = 13
+  private static let currentSchemaVersion = 14
   private static let writerBarrierTableNames = [
     "app_settings",
     "clipboard_image_blobs",
@@ -1827,6 +1834,16 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
         let cleanupIsPending = try validateDataProtectionKey(on: handle, localDataProtector: localDataProtector)
         try setSchemaVersion(12, on: handle)
         try migrateToV13(on: handle, localDataProtector: localDataProtector)
+        return cleanupIsPending
+      }
+      if authenticatedSchemaFloor == 13 {
+        guard storedVersion <= 13 else {
+          throw SQLitePersistenceError.migrationFailed("Schema version conflicts with its authenticated floor.")
+        }
+        let cleanupIsPending = try validateDataProtectionKey(on: handle, localDataProtector: localDataProtector)
+        try SQLiteWriterBarrier.validateTriggers(on: handle, tableNames: writerBarrierTableNames)
+        try setSchemaVersion(13, on: handle)
+        try migrateToV14(on: handle, localDataProtector: localDataProtector)
         return cleanupIsPending
       }
       if storedVersion < authenticatedSchemaFloor {
@@ -3057,9 +3074,45 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     try SQLiteWriterBarrier.installTriggers(on: handle, tableNames: writerBarrierTableNames)
     try SQLiteCatalogWriterBarrier.install(on: handle, tables: writerBarrierTableNames)
     try SQLiteAuthenticatedSchemaFloor.upgrade(
-      on: handle, validatedDatabaseID: databaseID, localDataProtector: localDataProtector
+      on: handle, validatedDatabaseID: databaseID, localDataProtector: localDataProtector, schemaFloor: 13
     )
     try setSchemaVersion(13, on: handle)
+    try migrateToV14(on: handle, localDataProtector: localDataProtector)
+  }
+
+  private static let memoryTableNames = ["context_memories", "context_memory_sources", "context_memory_exclusions", "context_memory_control"]
+
+  private static func migrateToV14(on handle: OpaquePointer?, localDataProtector: any LocalDataProtector) throws {
+    let databaseID = try SQLiteAuthenticatedSchemaFloor.validatedDatabaseID(on: handle, localDataProtector: localDataProtector)
+    try execute("""
+      CREATE TABLE context_memories (id TEXT PRIMARY KEY NOT NULL, payload TEXT NOT NULL);
+      CREATE TABLE context_memory_sources (
+        source_id TEXT PRIMARY KEY NOT NULL,
+        revision INTEGER NOT NULL CHECK(revision > 0),
+        processed_revision INTEGER NOT NULL DEFAULT 0,
+        skipped_reason TEXT
+      );
+      CREATE TABLE context_memory_exclusions (source_id TEXT PRIMARY KEY NOT NULL);
+      CREATE TABLE context_memory_control (id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL);
+      INSERT INTO context_memory_sources(source_id, revision)
+        SELECT COALESCE(run_id, id), 1 FROM history_records GROUP BY COALESCE(run_id, id);
+      CREATE TRIGGER context_source_insert AFTER INSERT ON history_records BEGIN
+        INSERT INTO context_memory_sources(source_id, revision) VALUES (COALESCE(NEW.run_id, NEW.id), 1)
+          ON CONFLICT(source_id) DO UPDATE SET revision = revision + 1, skipped_reason = NULL;
+      END;
+      CREATE TRIGGER context_source_update AFTER UPDATE OF final_text, correction_source_json ON history_records BEGIN
+        INSERT INTO context_memory_sources(source_id, revision) VALUES (COALESCE(NEW.run_id, NEW.id), 1)
+          ON CONFLICT(source_id) DO UPDATE SET revision = revision + 1, skipped_reason = NULL;
+      END;
+      CREATE TRIGGER context_source_delete AFTER DELETE ON history_records BEGIN
+        UPDATE context_memory_sources SET revision = revision + 1 WHERE source_id = COALESCE(OLD.run_id, OLD.id);
+      END;
+      """, on: handle)
+    try SQLiteWriterBarrier.installTriggers(on: handle, tableNames: writerBarrierTableNames + memoryTableNames)
+    try SQLiteMemoryWriterBarrier.install(on: handle, tables: writerBarrierTableNames + memoryTableNames)
+    try SQLiteAuthenticatedSchemaFloor.upgrade(on: handle, validatedDatabaseID: databaseID,
+                                              localDataProtector: localDataProtector, schemaFloor: 14)
+    try setSchemaVersion(14, on: handle)
     try validateAuthenticatedStorageBoundary(on: handle, localDataProtector: localDataProtector)
   }
 
@@ -3139,7 +3192,7 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     do {
       try SQLiteWriterBarrier.validateTriggers(
         on: handle,
-        tableNames: writerBarrierTableNames
+        tableNames: writerBarrierTableNames + memoryTableNames
       )
     } catch {
       throw SQLitePersistenceError.migrationFailed(

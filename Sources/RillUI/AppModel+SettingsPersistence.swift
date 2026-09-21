@@ -2361,7 +2361,7 @@ extension AppModel {
       .vocabulary
     case .customWorkflows, .workflowLibrary, .workflowEnabledStates:
       .workflows
-    case .selectedWorkflowID,
+    case .contextFeatureSettings, .selectedWorkflowID,
       .webhookConfigurationProtectionState,
       .legacyWhisperKitModel,
       .legacyWhisperKitDownloadedModels,

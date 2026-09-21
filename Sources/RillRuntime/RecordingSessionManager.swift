@@ -935,8 +935,10 @@ public actor RecordingSessionManager {
       )
       return
     }
+    let liveAudioSession = activeLiveAudioSession
     do {
       try await audioCaptureService.startCapture(pendingStart.request)
+      await liveAudioSession?.recordingStarted()
       guard case .preparing(let expectedRunID) = state, expectedRunID == pendingStart.runID else {
         _ = pendingStart.request.audioLifetime?.cancel()
         if isCancellationInProgress(runID: pendingStart.runID) {

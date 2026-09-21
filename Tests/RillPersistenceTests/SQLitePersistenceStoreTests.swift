@@ -729,7 +729,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
     let receipts = try await migrated.receipts(matching: .all)
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     XCTAssertTrue(try runReceiptTableExists(at: databaseURL))
     XCTAssertTrue(try runHistoryGenerationTableExists(at: databaseURL))
     XCTAssertTrue(receipts.isEmpty)
@@ -753,7 +753,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       localDataProtector: protector
     )
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     XCTAssertTrue(try runHistoryGenerationTableExists(at: databaseURL))
     XCTAssertEqual(try runHistoryGeneration(at: databaseURL), 0)
   }
@@ -792,7 +792,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
     let records = try await migrated.records(matching: .all)
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     XCTAssertTrue(try historyColumnNames(at: databaseURL).contains("trigger_kind"))
     XCTAssertEqual(records, [legacyRecord])
     XCTAssertNil(records.first?.trigger)
@@ -836,7 +836,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       localDataProtector: protector
     )
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     XCTAssertEqual(try runHistoryGeneration(at: databaseURL), 0)
     for tableName in ["history_records", "workflow_run_receipts", "diagnostic_events"] {
       XCTAssertTrue(try columnNames(in: tableName, at: databaseURL).contains("write_generation"))
@@ -987,7 +987,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     XCTAssertEqual(records.first?.id, legacyID)
     XCTAssertEqual(records.first?.finalText, "legacy v2 history")
     XCTAssertNil(records.first?.correctionSource)
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     XCTAssertTrue(try historyColumnNames(at: databaseURL).contains("correction_source_json"))
   }
 
@@ -1010,7 +1010,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     XCTAssertEqual(migratedRecords.count, 1)
     XCTAssertEqual(migratedRecords.first?.id, legacyID)
     XCTAssertNil(migratedRecords.first?.correctionSource)
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
 
     let correctedRecord = WorkflowResultRecord(
       workflow: WorkflowPresentation(fallbackName: "Recovered migration"),
@@ -1082,7 +1082,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         )
       }
     }
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     XCTAssertTrue(
       try SQLitePersistenceStore.requiresExistingDataProtectionKey(
         databaseURL: databaseURL
@@ -1151,7 +1151,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     XCTAssertEqual(migratedDiagnostics.first?.message, DiagnosticEventSanitizer.sanitizedMessage)
     XCTAssertEqual(migratedDiagnostics.first?.metadata, [:])
     XCTAssertEqual(migratedExports, [legacyExport])
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     for sentinel in [
       finalText,
       provenanceText,
@@ -1246,7 +1246,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       localDataProtector: testProtector(byte: 0x3E)
     )
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     XCTAssertEqual(try cleanupPendingValue(at: databaseURL), 0)
     for file in try persistedDatabaseBytes(at: databaseURL) {
       XCTAssertNil(
@@ -1377,7 +1377,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
     XCTAssertEqual(recovered, records.sorted { $0.timestamp > $1.timestamp })
     XCTAssertEqual(recoveredClipboardState, "legacy-clipboard-state")
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
   }
 
   func testPendingV4ResidueCleanupSurvivesBusyCheckpointAndRetriesOnNextOpen() async throws {
@@ -1427,7 +1427,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       XCTAssertTrue(message.contains("busy"))
     }
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     XCTAssertEqual(try cleanupPendingValue(at: databaseURL), 1)
     XCTAssertEqual(sqlite3_exec(reader, "ROLLBACK;", nil, nil, nil), SQLITE_OK)
     sqlite3_close(reader)
@@ -1611,7 +1611,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       localDataProtector: originalProtector
     )
     let recoveredRecords = try await recovered.records(matching: .all)
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     XCTAssertEqual(recoveredRecords, [record])
     XCTAssertEqual(try rawKeyVerificationEnvelope(at: databaseURL), markerBefore)
     XCTAssertEqual(
@@ -1800,7 +1800,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         let message = String(cString: sqlite3_errmsg(legacy))
         XCTAssertNotEqual(result, SQLITE_OK, "Unexpectedly allowed \(blockedWrite.label).")
         XCTAssertTrue(
-          message.contains(SQLiteWriterBarrier.capabilityFunctionName) || message.contains("rill_catalog_writer_v13"),
+          message.contains(SQLiteWriterBarrier.capabilityFunctionName) || message.contains("rill_catalog_writer_v13") || message.contains("rill_memory_writer_v14"),
           "\(blockedWrite.label) failed for an unrelated reason: \(message)"
         )
       }
@@ -1824,7 +1824,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let recoveredDiagnostics = try await recovered.events(matching: .init())
     let recoveredSetting = try await recovered.string(forKey: .interfaceLanguage)
     let recoveredExports = try await recovered.exports(limit: nil)
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     XCTAssertEqual(recoveredHistory, [history])
     XCTAssertEqual(
       recoveredDiagnostics,
@@ -1858,7 +1858,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       localDataProtector: protector
     )
 
-    XCTAssertEqual(try schemaVersion(at: databaseURL), 13)
+    XCTAssertEqual(try schemaVersion(at: databaseURL), 14)
     XCTAssertEqual(try cleanupPendingValue(at: databaseURL), 0)
     XCTAssertEqual(try rawKeyVerificationEnvelope(at: databaseURL), fixture.markerEnvelope)
     XCTAssertEqual(
@@ -3960,6 +3960,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
     guard sqlite3_exec(database, sql, nil, nil, nil) == SQLITE_OK else {
       throw SQLitePersistenceError.executingSQL("Failed to modify a test fixture.")
     }
@@ -4557,6 +4558,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
 
     var statement: OpaquePointer?
     guard
@@ -4644,6 +4646,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
 
     var statement: OpaquePointer?
     guard
@@ -4791,6 +4794,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
     var statement: OpaquePointer?
     guard
       sqlite3_prepare_v2(
@@ -4970,6 +4974,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
     var statement: OpaquePointer?
     guard
       sqlite3_prepare_v2(
@@ -5021,6 +5026,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
     var statement: OpaquePointer?
     guard
       sqlite3_prepare_v2(
@@ -5068,6 +5074,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
     try removeV11StorageBoundary(on: database)
   }
 
@@ -5080,7 +5087,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         SELECT name
         FROM sqlite_schema
         WHERE type = 'trigger'
-          AND (name GLOB 'rill_writer_barrier_v11_*' OR name GLOB 'rill_catalog_v13_*')
+          AND (name GLOB 'rill_writer_barrier_v11_*' OR name GLOB 'rill_catalog_v13_*' OR name GLOB 'rill_memory_v14_*' OR name GLOB 'context_source_*')
         ORDER BY name ASC;
         """,
         -1,
@@ -5121,7 +5128,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     guard
       sqlite3_exec(
         database,
-        "DROP TABLE IF EXISTS record_catalog_nodes; DROP TABLE rill_authenticated_schema_floor;",
+        "DROP TABLE IF EXISTS record_catalog_nodes; DROP TABLE IF EXISTS context_memories; DROP TABLE IF EXISTS context_memory_sources; DROP TABLE IF EXISTS context_memory_exclusions; DROP TABLE IF EXISTS context_memory_control; DROP TABLE rill_authenticated_schema_floor;",
         nil,
         nil,
         nil
@@ -5143,6 +5150,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
     try removeV11StorageBoundary(on: database)
     guard
       sqlite3_exec(
@@ -5167,6 +5175,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
     try removeV11StorageBoundary(on: database)
     guard sqlite3_exec(database, "PRAGMA user_version = 8;", nil, nil, nil) == SQLITE_OK else {
       throw SQLitePersistenceError.executingSQL("Failed to create the v8 migration fixture.")
@@ -5183,6 +5192,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
     try removeV11StorageBoundary(on: database)
     guard
       sqlite3_exec(
@@ -5207,6 +5217,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
     try removeV11StorageBoundary(on: database)
     let sql = """
       BEGIN IMMEDIATE TRANSACTION;
@@ -5255,6 +5266,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
     try SQLiteCatalogWriterBarrier.register(on: database)
+    try SQLiteMemoryWriterBarrier.register(on: database)
     try removeV11StorageBoundary(on: database)
     let sql = """
       BEGIN IMMEDIATE TRANSACTION;

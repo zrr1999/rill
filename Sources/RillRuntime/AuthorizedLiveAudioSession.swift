@@ -159,6 +159,8 @@ public actor AuthorizedLiveAudioSession {
         audioCaptureOptions = processingLease.audioCaptureOptions
     }
 
+    public func recordingStarted() { processingLease.contextPreparation?.recordingStarted() }
+
     /// Performs an immediate sink-adjacent check before capture starts, then
     /// monitors focus and settings until the stopped input is sealed.
     public func startMonitoring() async throws {
@@ -254,6 +256,7 @@ public actor AuthorizedLiveAudioSession {
         monitorTask = nil
         switch authorizationState.cancelControllerOwnedCapture() {
         case .cancelled:
+            processingLease.contextPreparation?.cancel()
             _ = audioLifetime.cancel()
             return .cancelled
         case .queueOwned:
@@ -273,6 +276,7 @@ public actor AuthorizedLiveAudioSession {
         notifyController: Bool
     ) async {
         guard authorizationState.revoke(reason) else { return }
+        processingLease.contextPreparation?.cancel()
         _ = audioLifetime.revoke(.authorizationInvalidated)
         monitorTask?.cancel()
         monitorTask = nil

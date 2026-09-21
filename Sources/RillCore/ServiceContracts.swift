@@ -30,17 +30,20 @@ public struct TransformContext: Sendable, Equatable {
     public var workflow: WorkflowDefinition
     public var contextSnapshot: ContextSnapshot
     public var recognitionResult: RecognitionResult
+    public var correctionRequest: ContextualCorrectionRequest?
 
     public init(
         runID: UUID,
         workflow: WorkflowDefinition,
         contextSnapshot: ContextSnapshot,
-        recognitionResult: RecognitionResult
+        recognitionResult: RecognitionResult,
+        correctionRequest: ContextualCorrectionRequest? = nil
     ) {
         self.runID = runID
         self.workflow = workflow
         self.contextSnapshot = contextSnapshot
         self.recognitionResult = recognitionResult
+        self.correctionRequest = correctionRequest
     }
 }
 

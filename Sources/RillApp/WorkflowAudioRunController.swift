@@ -120,6 +120,11 @@ actor WorkflowAudioRunController {
     self.cleanupOwner = cleanupOwner
   }
 
+  var isIdle: Bool {
+    if case .idle = state { return finishingRuns.isEmpty && preparingRunID == nil }
+    return false
+  }
+
   func startRun(workflow: WorkflowDefinition, binding: TriggerBinding) async throws {
     try await startRun(workflow: workflow, binding: binding, triggerEvent: nil)
   }
@@ -243,6 +248,7 @@ actor WorkflowAudioRunController {
       )
 
       try await audioCaptureService.startCapture(request)
+      await liveAudioSession.recordingStarted()
       guard lifecycle == .accepting, isPreparing(runID) else {
         await liveAudioSession.cancel()
         await audioCaptureService.cancelCapture(runID: runID)

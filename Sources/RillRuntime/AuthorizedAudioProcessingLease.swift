@@ -18,6 +18,7 @@ public actor AuthorizedAudioProcessingLease {
         let processingDestinations: [PrivacyProcessingDestination]
         let liveAuthorizationState: LiveAudioSessionAuthorizationState?
         let audioLifetime: AudioCaptureLifetime?
+        let contextPreparation: RunContextPreparation?
 
         init(
             runID: UUID,
@@ -29,7 +30,8 @@ public actor AuthorizedAudioProcessingLease {
             decision: PrivacyPolicyDecision,
             processingDestinations: [PrivacyProcessingDestination],
             liveAuthorizationState: LiveAudioSessionAuthorizationState? = nil,
-            audioLifetime: AudioCaptureLifetime? = nil
+            audioLifetime: AudioCaptureLifetime? = nil,
+            contextPreparation: RunContextPreparation? = nil
         ) {
             self.runID = runID
             self.workflow = workflow
@@ -41,6 +43,7 @@ public actor AuthorizedAudioProcessingLease {
             self.processingDestinations = processingDestinations
             self.liveAuthorizationState = liveAuthorizationState
             self.audioLifetime = audioLifetime
+            self.contextPreparation = contextPreparation
         }
     }
 
@@ -52,6 +55,7 @@ public actor AuthorizedAudioProcessingLease {
     nonisolated let workflow: WorkflowDefinition
     private nonisolated let liveAuthorizationState: LiveAudioSessionAuthorizationState?
     private nonisolated let audioLifetime: AudioCaptureLifetime?
+    nonisolated let contextPreparation: RunContextPreparation?
     private let payload: Payload
     private let claimValidator: @Sendable (
         Payload,
@@ -84,6 +88,7 @@ public actor AuthorizedAudioProcessingLease {
         processingDestinationsAtIssuance = payload.processingDestinations
         liveAuthorizationState = payload.liveAuthorizationState
         audioLifetime = payload.audioLifetime
+        contextPreparation = payload.contextPreparation
     }
 
     /// Atomically transfers a sealed live capture from its controller to the
@@ -120,6 +125,7 @@ public actor AuthorizedAudioProcessingLease {
     /// Invalidates any live-capture lifetime still attached to this lease.
     /// Used when queue ownership is abandoned during application shutdown.
     public nonisolated func cancel() {
+        contextPreparation?.cancel()
         guard let liveAuthorizationState else {
             _ = audioLifetime?.cancel()
             return

@@ -23,7 +23,7 @@ enum SQLiteAuthenticatedSchemaFloorError: Error, Equatable, Sendable {
 /// the marker lives in the same file, whole-file snapshot rollback remains a
 /// separate threat that would require a monotonic record outside SQLite.
 enum SQLiteAuthenticatedSchemaFloor {
-  static let installedSchemaFloor = 13
+  static let installedSchemaFloor = 14
   static let legacySchemaFloor = 11
   static let tableName = "rill_authenticated_schema_floor"
 

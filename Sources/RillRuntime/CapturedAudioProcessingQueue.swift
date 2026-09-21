@@ -473,7 +473,8 @@ public actor CapturedAudioProcessingQueue {
                     capturedAudio: capturedAudio,
                     contextSnapshot: authorization.authorizedContext.contextSnapshot,
                     recognitionOptions: authorization.authorizedContext.recognitionOptions,
-                    waitsForAvailability: true
+                    waitsForAvailability: true,
+                    contextPreparation: authorization.authorizedContext.contextPreparation
                 )
                 await preserveBenchmarkRecordingIfEnabled(
                     capturedAudio,
@@ -489,6 +490,7 @@ public actor CapturedAudioProcessingQueue {
                 }
                 try Task.checkCancellation()
             } catch {
+                job.authorizationLease.cancel()
                 if let resolvedCapturedAudio = capturedAudioForCleanup {
                     // Final authorization failed after ownership transferred.
                     // Retry removal without resolving the deferred capture again.

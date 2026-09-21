@@ -401,7 +401,7 @@ extension AppModel {
                     outcome: .completed,
                     correctionSource: summary.correctionSource,
                     trigger: summary.trigger
-                ))
+                ), contextHistoryUpdate: summary.contextHistoryUpdate)
                 appendPrivacyProtectedBody(
                     english: summary.finalText,
                     simplifiedChinese: summary.finalText,
@@ -556,7 +556,7 @@ extension AppModel {
         }
     }
 
-    func recordHistory(_ record: WorkflowResultRecord) {
+    func recordHistory(_ record: WorkflowResultRecord, contextHistoryUpdate: CorrectionHistoryUpdate? = nil) {
         let record = HistoryRecordSanitizer.sanitize(record)
         let terminalWriteGeneration = record.runID.flatMap {
             terminalReceiptWriteGenerationByRunID.removeValue(forKey: $0)
@@ -581,6 +581,7 @@ extension AppModel {
                     record,
                     generation: writeGeneration
                 )
+                await contextHistoryUpdate?.historySaved()
                 await MainActor.run {
                     guard self?.historyLoadGeneration == cacheGeneration else { return }
                     self?.cacheHistoryRecord(record)

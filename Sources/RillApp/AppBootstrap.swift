@@ -532,6 +532,7 @@ private struct Registries {
 }
 
 private struct RuntimeServices {
+  let contextMemoryController: ContextMemoryController?
   let coordinator: SessionCoordinator
   let capturedAudioProcessingQueue: CapturedAudioProcessingQueue
   let assistantAudioProcessingQueue: CapturedAudioProcessingQueue
@@ -691,7 +692,16 @@ private enum AppContainerFactory {
       platform: platform,
       providers: providers
     )
+    let contextMemoryController: ContextMemoryController?
+    if let repository = core.persistence.historyRepository as? any ContextMemoryRepository,
+       let settingsStore = core.persistence.settingsStore {
+      contextMemoryController = ContextMemoryController(
+        repository: repository, history: core.persistence.historyRepository, settingsStore: settingsStore,
+        providerSettings: providers.openAISettingsProvider, privacySettings: core.privacySettingsSource
+      )
+    } else { contextMemoryController = nil }
     let runtime = makeRuntimeServices(
+      contextMemoryController: contextMemoryController,
       core: core,
       platform: platform,
       providers: providers,
@@ -707,6 +717,17 @@ private enum AppContainerFactory {
       registries: registries,
       runtime: runtime
     )
+    contextMemoryController?.installRuntimeIdleCheck {
+      [weak coordinator = runtime.coordinator, weak recording = runtime.recordingSessionManager,
+       weak workflowRecording = runtime.workflowAudioRunController,
+       weak interactive = runtime.capturedAudioProcessingQueue, weak assistant = runtime.assistantAudioProcessingQueue] in
+      guard let coordinator, let recording, let workflowRecording, let interactive, let assistant else { return false }
+      guard await coordinator.currentState() == .idle, await recording.currentState() == .idle,
+            await workflowRecording.isIdle, await interactive.pendingCount == 0,
+            await assistant.pendingCount == 0 else { return false }
+      return true
+    }
+    contextMemoryController?.attach(model)
     runtime.workflowSelectionBridge.model = model
     runtime.systemClipboardCaptureControlBridge.model = model
     runtime.globalInputCapabilityBridge.attach(model)
@@ -1120,6 +1141,7 @@ private enum AppContainerFactory {
   }
 
   private static func makeRuntimeServices(
+    contextMemoryController: ContextMemoryController?,
     core: CoreServices,
     platform: PlatformServices,
     providers: ProviderServices,
@@ -1128,11 +1150,15 @@ private enum AppContainerFactory {
     cloudProcessingAuthorizationBridge: CloudProcessingAuthorizationBridge,
     liveAudioCancellationPresentationBridge: LiveAudioCancellationPresentationBridge
   ) -> RuntimeServices {
-    let privacyRunGate = makePrivacyRunGate(
+    var privacyRunGate = makePrivacyRunGate(
       core: core,
       providers: providers,
       authorizationBridge: cloudProcessingAuthorizationBridge
     )
+    privacyRunGate.prepareCorrectionContext = { runID, workflow, context, options, lifetime in
+      try await contextMemoryController?.prepare(runID: runID, workflow: workflow, context: context, recognitionOptions: options, audioLifetime: lifetime)
+    }
+    let preparedPrivacyRunGate = privacyRunGate
     let recognitionOptionsProvider: RecognitionOptionsProvider = { workflow, _ in
       let language: String?
       switch workflow.plan.setup.speechRoute?.recognizerID {
@@ -1174,7 +1200,7 @@ private enum AppContainerFactory {
         sessionCoordinator: coordinator,
         eventBus: core.eventBus,
         diagnostics: core.diagnostics,
-        privacyRunGate: privacyRunGate,
+        privacyRunGate: preparedPrivacyRunGate,
         contextProvider: {
           await platform.contextProvider.captureContext()
         },
@@ -1231,7 +1257,7 @@ private enum AppContainerFactory {
           throw SessionCoordinator.SessionError.unsupportedWorkflow(issue)
         }
         try await recognitionRunPreflight(workflow)
-        return try await privacyRunGate.captureAuthorizedWorkflowRunContext(
+        return try await preparedPrivacyRunGate.captureAuthorizedWorkflowRunContext(
           privacyContextProvider: {
             await platform.contextProvider.capturePrivacyContext()
           },
@@ -1262,7 +1288,7 @@ private enum AppContainerFactory {
         registries.recognizerRegistry.recognizer(for: recognizerID)?
           .capabilities.maximumAudioDurationSeconds
       },
-      privacyRunGate: privacyRunGate,
+      privacyRunGate: preparedPrivacyRunGate,
       cleanupOwner: providers.managedTemporaryAudioCleanupOwner
     )
     let wakeWordCoordinator = providers.wakeWordTriggerSource.map {
@@ -1294,7 +1320,7 @@ private enum AppContainerFactory {
       providers: providers,
       queue: queue,
       bridge: bridge,
-      privacyRunGate: privacyRunGate,
+      privacyRunGate: preparedPrivacyRunGate,
       recognizerRegistry: registries.recognizerRegistry,
       recognitionOptionsProvider: recognitionOptionsProvider,
       runPreflight: recognitionRunPreflight
@@ -1320,6 +1346,7 @@ private enum AppContainerFactory {
       liveAudioCancellationHandler: cancelLiveAudio
     )
     return RuntimeServices(
+      contextMemoryController: contextMemoryController,
       coordinator: coordinator,
       capturedAudioProcessingQueue: queue,
       assistantAudioProcessingQueue: assistantQueue,
@@ -1336,7 +1363,7 @@ private enum AppContainerFactory {
       cursorTextPreviewLifecycleCoordinator: cursorTextPreviewLifecycleCoordinator,
       failedAudioRecoveryController: failedAudioRecoveryController,
       benchmarkRecordingArchiveController: benchmarkRecordingArchiveController,
-      privacyRunGate: privacyRunGate,
+      privacyRunGate: preparedPrivacyRunGate,
       authorizeWorkflowRunAction: authorizeWorkflowRunAction,
       workflowSelectionBridge: bridge,
       systemClipboardCaptureControlBridge: systemClipboardCaptureControlBridge,
@@ -1752,6 +1779,7 @@ private enum AppContainerFactory {
           )
         },
         stopSettingsReads: {
+          await runtime.contextMemoryController?.shutdown()
           await model.stopSettingsReadTasksForApplicationShutdown()
         },
         drainRecordMutations: {

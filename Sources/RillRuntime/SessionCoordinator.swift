@@ -344,7 +344,8 @@ public extension SessionCoordinator {
             triggerEvent: triggerEvent,
             capturedAudio: capturedAudio,
             contextSnapshot: authorizedContext.contextSnapshot,
-            recognitionOptions: authorizedContext.recognitionOptions
+            recognitionOptions: authorizedContext.recognitionOptions,
+            contextPreparation: authorizedContext.contextPreparation
         )
     }
 
@@ -395,7 +396,8 @@ public extension SessionCoordinator {
         triggerEvent: WorkflowTriggerEvent? = nil,
         capturedAudio: CapturedAudio? = nil,
         contextSnapshot: ContextSnapshot? = nil,
-        recognitionOptions: SpeechRecognitionRequestOptions? = nil
+        recognitionOptions: SpeechRecognitionRequestOptions? = nil,
+        contextPreparation: RunContextPreparation? = nil
     ) async {
         _ = await runReportingOutcome(
             workflow: workflow,
@@ -403,7 +405,8 @@ public extension SessionCoordinator {
             triggerEvent: triggerEvent,
             capturedAudio: capturedAudio,
             contextSnapshot: contextSnapshot,
-            recognitionOptions: recognitionOptions
+            recognitionOptions: recognitionOptions,
+            contextPreparation: contextPreparation
         )
     }
 
@@ -417,7 +420,8 @@ public extension SessionCoordinator {
         recognitionOptions: SpeechRecognitionRequestOptions? = nil,
         receiptTrigger: WorkflowRunTriggerKind? = nil,
         preRecognizedText: String? = nil,
-        waitsForAvailability: Bool = false
+        waitsForAvailability: Bool = false,
+        contextPreparation: RunContextPreparation? = nil
     ) async -> WorkflowRunExecutionResult {
         let runID = providedRunID ?? UUID()
         let effectiveReceiptTrigger = receiptTrigger ?? runReceiptTrigger(for: triggerEvent)
@@ -426,6 +430,7 @@ public extension SessionCoordinator {
             waitsForAvailability: waitsForAvailability
         )
         guard acquiredRunLane else {
+            contextPreparation?.cancel()
             if waitsForAvailability, Task.isCancelled {
                 return .failed(
                     WorkflowRunFailureSummary(
@@ -469,6 +474,7 @@ public extension SessionCoordinator {
             trigger: effectiveReceiptTrigger
         )
         if receiptRegistration == .duplicate {
+            contextPreparation?.cancel()
             await publishFailure(
                 runID: runID,
                 workflow: workflow.presentation,
@@ -485,6 +491,7 @@ public extension SessionCoordinator {
         let receiptIsActive = receiptRegistration == .active
 
         if let issue = WorkflowExecutionPolicy.issue(for: workflow) {
+            contextPreparation?.cancel()
             let error = SessionError.unsupportedWorkflow(issue)
             await finishRunReceipt(
                 runID: runID,
@@ -506,6 +513,7 @@ public extension SessionCoordinator {
         }
 
         guard let contextSnapshot else {
+            contextPreparation?.cancel()
             let error = SessionError.privacyAuthorizationRequired
             await finishRunReceipt(
                 runID: runID,
@@ -557,6 +565,7 @@ public extension SessionCoordinator {
                     capturedAudio: capturedAudio
                 )
             }
+            let correctionContext = try contextPreparation?.freeze(transcript: recognition.bestText)
             var processingSteps = [await recordTextStep(
                 kind: .recognizeSpeech, text: recognition.bestText, in: session
             )]
@@ -575,10 +584,13 @@ public extension SessionCoordinator {
                 from: resolvedRecognition,
                 in: session,
                 initialSteps: processingSteps,
+                correctionContext: correctionContext,
                 allowsSpeechTextFallback:
                     (capturedAudio != nil || preRecognizedText != nil)
                     && workflow.speechMode != .voiceAssistant
             )
+            try Task.checkCancellation()
+            if correctionContext?.request.authorization?.isValid == false { throw CancellationError() }
             let finalText = transformation.finalText
             let correctionSource = RecognitionCorrectionSource(
                 preMappingText: resolvedRecognition.bestText,
@@ -591,7 +603,8 @@ public extension SessionCoordinator {
                     transformation.languageModelTraces.isEmpty
                     ? nil
                     : transformation.languageModelTraces,
-                processingSteps: transformation.processingSteps
+                processingSteps: transformation.processingSteps,
+                references: transformation.references
             )
             failureStage = .delivering
             let deliverySummary = try await deliver(
@@ -607,10 +620,12 @@ public extension SessionCoordinator {
             let summary = await complete(
                 session: session,
                 finalText: finalText,
-                correctionSource: correctionSource
+                correctionSource: correctionSource,
+                contextHistoryUpdate: contextPreparation?.historyUpdate
             )
             return .completed(summary)
         } catch {
+            contextPreparation?.cancel()
             let failedWorkflow = workflow.presentation
             if let cancellation = workflowRunCancellationSummary(
                 for: error,
@@ -1751,9 +1766,11 @@ private extension SessionCoordinator {
         from recognition: RecognitionResult,
         in session: RunSession,
         initialSteps: [WorkflowTextStep],
+        correctionContext: RunContextPreparation.Frozen? = nil,
         allowsSpeechTextFallback: Bool = false
     ) async throws -> TextTransformationResult {
         var finalText = recognition.bestText
+        var references = correctionContext?.receipt
         var languageModelInputTexts: [String] = []
         var languageModelTraces: [LanguageModelTrace] = []
         var processingSteps = initialSteps
@@ -1836,11 +1853,15 @@ private extension SessionCoordinator {
             }
             var tokenUsage: LanguageModelTokenUsage?
             do {
+                var correctionRequest = step.kind == .llmRewrite ? correctionContext?.request : nil
+                // References stay frozen; explicit candidate choices and local vocabulary still update the transcript.
+                correctionRequest?.transcript = finalText
                 let context = TransformContext(
                     runID: session.runID,
                     workflow: session.workflow,
                     contextSnapshot: session.contextSnapshot,
-                    recognitionResult: recognition
+                    recognitionResult: recognition,
+                    correctionRequest: correctionRequest
                 )
                 if let tracedTransformer = transformer as? any TracedTextTransformer,
                    step.kind == .llmRewrite || step.kind == .llmAnswer {
@@ -1850,6 +1871,11 @@ private extension SessionCoordinator {
                         context: context
                     )
                     finalText = result.text
+                    if let request = correctionContext?.request {
+                        if request.referenceImage != nil { references?.image = .sent }
+                        if request.imageSummary != nil { references?.imageSummary = .sent }
+                        if request.memorySummary != nil { references?.memorySummary = .sent }
+                    }
                     languageModelTraces.append(result.trace)
                     tokenUsage = result.trace.tokenUsage
                 } else {
@@ -1866,6 +1892,11 @@ private extension SessionCoordinator {
                     && step.kind == .llmRewrite
                     && error.allowsSpeechTextFallback
             {
+                if let request = correctionContext?.request {
+                    if request.referenceImage != nil { references?.image = .deliveryUnconfirmed }
+                    if request.imageSummary != nil { references?.imageSummary = .deliveryUnconfirmed }
+                    if request.memorySummary != nil { references?.memorySummary = .deliveryUnconfirmed }
+                }
                 await recordSpeechTextTransformFallback(
                     runID: session.runID,
                     workflow: session.presentation,
@@ -1907,7 +1938,8 @@ private extension SessionCoordinator {
             finalText: finalText,
             languageModelInputTexts: languageModelInputTexts,
             languageModelTraces: languageModelTraces,
-            processingSteps: processingSteps
+            processingSteps: processingSteps,
+            references: references
         )
     }
 
@@ -2128,7 +2160,8 @@ private extension SessionCoordinator {
     private func complete(
         session: RunSession,
         finalText: String,
-        correctionSource: RecognitionCorrectionSource? = nil
+        correctionSource: RecognitionCorrectionSource? = nil,
+        contextHistoryUpdate: CorrectionHistoryUpdate? = nil
     ) async -> WorkflowRunSummary {
         let summary = WorkflowRunSummary(
             runID: session.runID,
@@ -2136,7 +2169,8 @@ private extension SessionCoordinator {
             workflow: session.presentation,
             trigger: session.trigger,
             finalText: finalText,
-            correctionSource: correctionSource
+            correctionSource: correctionSource,
+            contextHistoryUpdate: contextHistoryUpdate
         )
         await eventBus.publish(
             .runCompleted(summary)
@@ -2157,6 +2191,7 @@ private struct TextTransformationResult: Sendable, Equatable {
     let languageModelInputTexts: [String]
     let languageModelTraces: [LanguageModelTrace]
     let processingSteps: [WorkflowTextStep]
+    var references: CorrectionReferenceReceipt? = nil
 }
 
 private enum RunReceiptRegistration: Sendable, Equatable {

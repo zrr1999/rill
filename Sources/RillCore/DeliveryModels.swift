@@ -75,19 +75,25 @@ public struct RecognitionCorrectionSource: Codable, Sendable, Equatable {
     public var languageModelInputTexts: [String]?
     public var languageModelTraces: [LanguageModelTrace]?
     public var processingSteps: [WorkflowTextStep]?
+    public var references: CorrectionReferenceReceipt?
+    public var userCorrections: [ConfirmedMemoryCorrection]?
 
     public init(
         preMappingText: String,
         context: VocabularyRuleContext,
         languageModelInputTexts: [String]? = nil,
         languageModelTraces: [LanguageModelTrace]? = nil,
-        processingSteps: [WorkflowTextStep]? = nil
+        processingSteps: [WorkflowTextStep]? = nil,
+        references: CorrectionReferenceReceipt? = nil,
+        userCorrections: [ConfirmedMemoryCorrection]? = nil
     ) {
         self.preMappingText = preMappingText
         self.context = context
         self.languageModelInputTexts = languageModelInputTexts
         self.languageModelTraces = languageModelTraces
         self.processingSteps = processingSteps
+        self.references = references
+        self.userCorrections = userCorrections
     }
 
     /// Restricted activity exposes step previews, never prompts or captured context.
@@ -121,6 +127,7 @@ public struct WorkflowRunSummary: Sendable, Equatable {
     public var finalText: String
     public var correctionSource: RecognitionCorrectionSource?
     public var finishedAt: Date
+    public var contextHistoryUpdate: CorrectionHistoryUpdate?
 
     public init(
         runID: UUID,
@@ -129,7 +136,8 @@ public struct WorkflowRunSummary: Sendable, Equatable {
         trigger: WorkflowRunTriggerKind,
         finalText: String,
         correctionSource: RecognitionCorrectionSource? = nil,
-        finishedAt: Date = Date()
+        finishedAt: Date = Date(),
+        contextHistoryUpdate: CorrectionHistoryUpdate? = nil
     ) {
         self.runID = runID
         self.workflowID = workflowID
@@ -138,6 +146,7 @@ public struct WorkflowRunSummary: Sendable, Equatable {
         self.finalText = finalText
         self.correctionSource = correctionSource
         self.finishedAt = finishedAt
+        self.contextHistoryUpdate = contextHistoryUpdate
     }
 }
 

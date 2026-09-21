@@ -12,6 +12,10 @@ public struct AuthorizedPrivacyContext: Sendable, Equatable {
 }
 
 public struct PrivacyRunGate: Sendable {
+    public var prepareCorrectionContext: @Sendable (
+        UUID, WorkflowDefinition, ContextSnapshot, SpeechRecognitionRequestOptions, AudioCaptureLifetime
+    ) async throws -> RunContextPreparation? = { _, _, _, _, _ in nil }
+
     public enum GateError: Error, LocalizedError, Equatable {
         case settingsUnavailable
         case processingDestinationUnavailable
@@ -501,6 +505,13 @@ public struct PrivacyRunGate: Sendable {
         guard finalPolicy == capture.policy else {
             throw GateError.policyChangedDuringAuthorization
         }
+        let contextPreparation: RunContextPreparation?
+        if let audioLifetime {
+            contextPreparation = try await prepareCorrectionContext(runID, workflow, capture.authorizedContext, recognitionOptions, audioLifetime)
+            try Task.checkCancellation()
+        } else {
+            contextPreparation = nil
+        }
         return AuthorizedAudioProcessingLease(
             payload: .init(
                 runID: runID,
@@ -512,7 +523,8 @@ public struct PrivacyRunGate: Sendable {
                 decision: finalPolicy.decision,
                 processingDestinations: finalPolicy.processingDestinations,
                 liveAuthorizationState: liveAuthorizationState,
-                audioLifetime: audioLifetime
+                audioLifetime: audioLifetime,
+                contextPreparation: contextPreparation
             ),
             claimValidator: { [self] payload, triggerEvent in
                 try await self.claimAudioProcessingPayload(
@@ -767,7 +779,8 @@ public struct PrivacyRunGate: Sendable {
             workflow: payload.workflow,
             contextSnapshot: payload.authorizedContext,
             recognitionOptions: payload.recognitionOptions,
-            invocation: .capture
+            invocation: .capture,
+            contextPreparation: payload.contextPreparation
         )
     }
 

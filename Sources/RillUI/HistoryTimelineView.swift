@@ -40,6 +40,7 @@ enum HistoryPreviewPresentation: Equatable {
 
 enum HistoryLanguageModelInputProvenance: Equatable {
     case exact
+    case transcriptOnly
     case legacyRecognition
 }
 
@@ -57,7 +58,7 @@ struct HistoryLanguageModelTracePresentation: Equatable {
             inputTexts = exactTraces.flatMap { trace in
                 trace.messages.map(\.content)
             }
-            inputProvenance = .exact
+            inputProvenance = source.references == nil ? .exact : .transcriptOnly
             outputText = exactTraces.last?.responseText
             return
         }
@@ -67,7 +68,7 @@ struct HistoryLanguageModelTracePresentation: Equatable {
         if !exactInputs.isEmpty {
             traces = []
             inputTexts = exactInputs
-            inputProvenance = .exact
+            inputProvenance = source.references == nil ? .exact : .transcriptOnly
             outputText = record.finalText
             return
         }
@@ -380,7 +381,7 @@ public struct HistoryTimelineView: View {
         }
         .sheet(item: $correctionRecord) { record in
             if let source = record.correctionSource {
-                VocabularyCorrectionSheet(model: model, source: source)
+                VocabularyCorrectionSheet(model: model, source: source, historyRecordID: record.id)
             }
         }
         .confirmationDialog(
@@ -640,6 +641,9 @@ public struct HistoryTimelineView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
 
+            if let references = entry.record?.correctionSource?.references {
+                CorrectionReferenceView(receipt: references, language: model.language)
+            }
             if let record = entry.record {
                 if VocabularyCorrectionDraft.isEligible(
                     record: record,
@@ -1013,6 +1017,9 @@ public struct HistoryTimelineView: View {
         _ trace: HistoryLanguageModelTracePresentation,
         index: Int
     ) -> String {
+        if trace.inputProvenance == .transcriptOnly {
+            return model.language == .simplifiedChinese ? "发送的语音正文（参考另列，原图不保存）" : "Speech text sent (references listed separately; image not retained)"
+        }
         if trace.inputProvenance == .legacyRecognition {
             return L10n.historyTimelineText(.recognizedInputLegacy, language: model.language)
         }

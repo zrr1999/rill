@@ -403,17 +403,27 @@ public final class AppModel {
   public internal(set) var settingsSaveState: SettingsSaveState = .saved
   public internal(set) var unavailableScalarSettingKeys: Set<AppSettingKey> = []
   public internal(set) var retryingUnavailableScalarSettingsDomains: Set<ScalarSettingsDomain> = []
-  public var openAIAPIKey: String { didSet { handleOpenAIAPIKeyChange(from: oldValue) } }
+  public var openAIAPIKey: String { didSet {
+      if !isLoadingSettings, oldValue != openAIAPIKey { contextMemory?.invalidateAuthorization() }
+      handleOpenAIAPIKeyChange(from: oldValue)
+    } }
   public var openAIBaseURL: String {
-    didSet { handleOpenAIBaseURLChange(from: oldValue) }
+    didSet {
+      if !isLoadingSettings, oldValue != openAIBaseURL { contextMemory?.invalidateAuthorization() }
+      handleOpenAIBaseURLChange(from: oldValue)
+    }
   }
   public var openAIModel: String {
-    didSet { handleOpenAIModelChange(from: oldValue) }
+    didSet {
+      if !isLoadingSettings, oldValue != openAIModel { contextMemory?.invalidateAuthorization() }
+      handleOpenAIModelChange(from: oldValue)
+    }
   }
   public internal(set) var openAICredentialAvailability: OpenAICredentialAvailability = .loading
   public internal(set) var openAIConfigurationVerificationState:
     OpenAIConfigurationVerificationState = .idle
   public internal(set) var openAIVerificationFailure: OpenAIVerificationFailure?
+  public var contextMemory: ContextMemoryModel?
   public var isRunning = false
   public internal(set) var isLoadingSettings = true
   public internal(set) var isRetryingUnavailableSettingsDomains = false
@@ -499,6 +509,7 @@ public final class AppModel {
   public internal(set) var privacyPolicySettings: PrivacyPolicySettings = .defaults {
     didSet {
       guard oldValue != privacyPolicySettings else { return }
+      if !isLoadingPrivacySettings { contextMemory?.invalidateAuthorization() }
       invalidateWorkflowExplanation()
       if oldValue.historyPreviewMode != privacyPolicySettings.historyPreviewMode {
         resetRunHistoryBrowsingForPrivacyChange()

@@ -6,7 +6,8 @@ func makeAudioProcessingTestLease(
     runID: UUID,
     workflow: WorkflowDefinition,
     context: ContextSnapshot = .empty,
-    recognitionOptions: SpeechRecognitionRequestOptions = .empty
+    recognitionOptions: SpeechRecognitionRequestOptions = .empty,
+    contextPreparation: RunContextPreparation? = nil
 ) -> AuthorizedAudioProcessingLease {
     let payload = AuthorizedAudioProcessingLease.Payload(
         runID: runID,
@@ -19,7 +20,8 @@ func makeAudioProcessingTestLease(
             cloudConfirmationRequired: false
         ),
         decision: PrivacyPolicyDecision(),
-        processingDestinations: []
+        processingDestinations: [],
+        contextPreparation: contextPreparation
     )
     return AuthorizedAudioProcessingLease(
         payload: payload,
@@ -38,7 +40,8 @@ func makeAudioProcessingTestLease(
             return AuthorizedWorkflowRunContext(
                 workflow: payload.workflow,
                 contextSnapshot: payload.authorizedContext,
-                recognitionOptions: payload.recognitionOptions
+                recognitionOptions: payload.recognitionOptions,
+                contextPreparation: payload.contextPreparation
             )
         }
     )

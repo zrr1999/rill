@@ -22,18 +22,21 @@ public struct AuthorizedWorkflowRunContext: Sendable {
     let contextSnapshot: ContextSnapshot
     let recognitionOptions: SpeechRecognitionRequestOptions
     let invocation: WorkflowRunInvocation
+    let contextPreparation: RunContextPreparation?
     private let consumption = WorkflowRunAuthorizationConsumption()
 
     init(
         workflow: WorkflowDefinition,
         contextSnapshot: ContextSnapshot,
         recognitionOptions: SpeechRecognitionRequestOptions,
-        invocation: WorkflowRunInvocation = .capture
+        invocation: WorkflowRunInvocation = .capture,
+        contextPreparation: RunContextPreparation? = nil
     ) {
         self.workflow = workflow
         self.contextSnapshot = contextSnapshot
         self.recognitionOptions = recognitionOptions
         self.invocation = invocation
+        self.contextPreparation = contextPreparation
     }
 
     func consume() async throws {

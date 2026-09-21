@@ -10,11 +10,13 @@ public struct VocabularyCorrectionSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Bindable private var model: AppModel
+    private let historyRecordID: UUID?
     @State private var draft: VocabularyCorrectionDraft
     @State private var saveIssue: SaveIssue?
     @State private var targetCollectionID: UUID?
 
-    public init(model: AppModel, source: RecognitionCorrectionSource) {
+    public init(model: AppModel, source: RecognitionCorrectionSource, historyRecordID: UUID? = nil) {
+        self.historyRecordID = historyRecordID
         self.model = model
         _draft = State(initialValue: VocabularyCorrectionDraft(source: source))
         _targetCollectionID = State(initialValue: VocabularyCollection.personalID)
@@ -335,12 +337,14 @@ public struct VocabularyCorrectionSheet: View {
             targetCollectionID.flatMap { compatibleIDs.contains($0) ? $0 : nil }
         switch model.saveVocabularyCorrectionRule(rule, to: selectedCollectionID) {
         case .created:
+            recordMemoryCorrection(rule)
             model.append(
                 english: L10n.string(.vocabularyCorrectionCreated, language: .english),
                 simplifiedChinese: L10n.string(.vocabularyCorrectionCreated, language: .simplifiedChinese)
             )
             dismiss()
         case .reused:
+            recordMemoryCorrection(rule)
             model.append(
                 english: L10n.string(.vocabularyCorrectionReused, language: .english),
                 simplifiedChinese: L10n.string(.vocabularyCorrectionReused, language: .simplifiedChinese)
@@ -359,4 +363,11 @@ public struct VocabularyCorrectionSheet: View {
         model.selectSidebarSection(.workflows)
         dismiss()
     }
+    private func recordMemoryCorrection(_ rule: VocabularyRule) {
+        guard let historyRecordID else { return }
+        model.contextMemory?.recordCorrection(
+            ConfirmedMemoryCorrection(original: rule.pattern, corrected: rule.replacement), recordID: historyRecordID
+        )
+    }
+
 }

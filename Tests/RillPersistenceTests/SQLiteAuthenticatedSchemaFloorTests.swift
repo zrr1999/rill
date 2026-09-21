@@ -10,7 +10,7 @@ final class SQLiteAuthenticatedSchemaFloorTests: XCTestCase {
     UUID(uuidString: "123e4567-e89b-12d3-a456-426614174000")
   )
 
-  func testInstallAndValidateV13InsideCallerTransaction() throws {
+  func testInstallAndValidateV14InsideCallerTransaction() throws {
     let database = try makeDatabase()
     defer { sqlite3_close(database) }
     let protector = try makeProtector(byte: 0x11)
@@ -41,7 +41,7 @@ final class SQLiteAuthenticatedSchemaFloorTests: XCTestCase {
         on: database,
         localDataProtector: protector
       ),
-      13
+      14
     )
     XCTAssertEqual(
       try integerQuery(
@@ -136,7 +136,7 @@ final class SQLiteAuthenticatedSchemaFloorTests: XCTestCase {
         on: database,
         localDataProtector: makeProtector(byte: 0x55)
       ),
-      13
+      14
     )
   }
 
