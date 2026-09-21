@@ -1900,7 +1900,11 @@ private enum AppModelFactory {
       sessionCoordinator: runtime.coordinator,
       outputActionRegistry: registries.actionRegistry,
       recordWorkspace: RecordWorkspaceModel(store: core.recordStore,
-        semanticSearch: RecordSemanticSearch(store: core.recordStore, embedder: providers.recordEmbedder)),
+        semanticSearch: RecordSemanticSearch(store: core.recordStore, embedder: providers.recordEmbedder),
+        cloudRanking: RecordCloudRanking(store: core.recordStore, provider: JevRecordRankingProvider(),
+          privacy: core.privacySettingsSource, currentFocus: {
+            await MainActor.run { platform.focusTracker.capturePrivacyIdentitySample().focus }
+          })),
       candidateResolver: core.candidateResolver,
       historyRepository: core.persistence.historyRepository,
       runHistoryBrowser: core.persistence.runHistoryBrowser,

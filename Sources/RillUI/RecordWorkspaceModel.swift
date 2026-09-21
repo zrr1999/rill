@@ -33,6 +33,7 @@ public final class RecordWorkspaceModel {
     private var pendingRecordDeletionSelection: (deleted: RecordID, neighbor: RecordID?)?
     private let store: RecordStore
     private let semanticSearch: RecordSemanticSearch?
+    private let cloudRanking: RecordCloudRanking?
     private var observationTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
     private var mutationTask: Task<Void, Never>?
@@ -40,9 +41,10 @@ public final class RecordWorkspaceModel {
     private var searchMatches: Set<RecordID> = []
     public private(set) var isSearching = false
 
-    public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil) {
+    public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, cloudRanking: RecordCloudRanking? = nil) {
         self.store = store
         self.semanticSearch = semanticSearch
+        self.cloudRanking = cloudRanking
         cleanup = RecordCleanupModel(store: store)
     }
 
@@ -60,6 +62,7 @@ public final class RecordWorkspaceModel {
         await mutationTask?.value
         await cleanup.shutdown()
         await semanticSearch?.shutdown()
+        await cloudRanking?.shutdown()
     }
 
     var selectedVisibleRecord: RecordSummary? {
@@ -355,7 +358,7 @@ public final class RecordWorkspaceModel {
     }
 
     public func makeQuickPanelModel() -> RecordQuickPanelModel {
-        RecordQuickPanelModel(store: store, semanticSearch: semanticSearch)
+        RecordQuickPanelModel(store: store, semanticSearch: semanticSearch, cloudRanking: cloudRanking)
     }
 
     public func replaceText(
