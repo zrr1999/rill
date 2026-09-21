@@ -28,8 +28,10 @@ scripts/swift_locked.sh test --parallel
 ```bash
 just install
 just check
+just build          # 默认只构建 Debug RillApp
 just test
-just ci
+just ci             # 保留增量产物的完整门禁
+just ci-clean       # 与每个 PR 一样的干净构建门禁
 ```
 
 `just check` 只运行 prek 内建检查以及上游提供的 TOML、Actionlint 和 Typos
@@ -64,6 +66,43 @@ bash scripts/install_gitleaks.sh --destination "$tool_dir"
 export PATH="$tool_dir:$PATH"
 gitleaks version
 ```
+
+## 构建目录与增量验证
+
+Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/release`。
+构建、清理和产物快照由统一入口按配置加锁；不要在另一进程构建时手工删除目录，
+也不要在 worktree 之间复制或软链接 SwiftPM 的构建数据库。工具链、SDK、Metal、
+锁文件、Package 声明或构建参数变化会使相应配置失效；普通源文件变化由 SwiftPM
+增量处理。清理不删除 SwiftPM 的共享依赖下载缓存。
+
+`just build RillApp` 适合 App/UI 日常修改，不编译语音 worker 和 MLX。
+`swift test --filter` 只限定测试执行范围，不保证缩小首次编译范围。
+完整预检和打包使用绑定源码摘要的构建回执及独立产物快照；装配过程中源码或
+产物不匹配会失败。许可证验证读取该次构建实际使用的依赖 checkouts。
+
+### 跨 worktree 的 worker 产物缓存
+
+本地 Release 默认复用完整的 `RillSpeechWorker` 和依赖资源，缓存位于
+`~/Library/Caches/Rill/BuildArtifacts/worker-v1/`，只允许当前用户访问。
+缓存键包含求值后的包声明、worker 传递依赖的实际文件内容、锁文件、工具链、
+SDK、Metal 及构建参数；增加、删除或修改未提交文件也参与判断。仅修改 App/UI
+可继续命中。无法完整确定输入、依赖 checkout 有改动或条目损坏时，回退源码构建。
+
+- `just cache-status` 显示容量，`just cache-clean` 删除非活动条目。
+- 默认限制 10 GiB，成功使用后按最近使用情况淘汰；活动条目持有锁。
+- `scripts/build_xcode_release.sh --worker-cache off` 强制使用源码。
+- `--result-file PATH` 写入带校验值的 JSON 回执及产品快照；PATH 应放在被 Git
+  忽略的目录或工作区之外。`assemble_app_bundle.sh --build-result PATH` 消费该回执。
+- `--show-bin-path` 仍返回当前 SwiftPM 产品目录。缓存命中的 worker 可以来自
+  独立目录，装配时应使用回执；不要假定该目录含有缓存命中的 worker。
+- `RILL_BUILD_CACHE_DIR` 可将缓存定向到独立测试目录。正式公证发布及 CI 始终关闭
+  worker 缓存；缓存不替代完整测试，新 worktree 首次测试仍需编译测试依赖。
+
+构建回执将产品复制到其父目录中的独立快照，预检和发布脚本会自动清理自己的
+临时快照。手动指定回执目录时，由调用者在装配完成后清理该目录。共享缓存中的
+文件不参与签名；所有签名都在当前装配目录中完成。
+
+实测数据、计数口径和复现步骤见 [构建提速验证](docs/build-performance.md)。
 
 ## 本地 App 与发布
 
@@ -136,7 +175,7 @@ git diff --check
 git diff --cached --check
 ```
 
-`scripts/preflight.sh` 会先运行依赖安全 policy tests 和 reviewed baseline 离线检查，再用固定版本的 Gitleaks 扫描完整 Git 历史与 tracked + untracked(nonignored) 当前源码快照；之后检查脚本语法、生成物和仓库根发布产物卫生，清理旧 SwiftPM 构建，执行 arm64-only Release 构建、验证最低 macOS 版本、装配并临时签名 App、运行完整测试。CI 在此基础上单独运行 live OSV exact-commit 查询，避免把可用网络伪装成本地确定性门禁。当前源码扫描拒绝 symlink 与非普通文件，并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。预检不能替代在 macOS 14 的 Apple Silicon 真机上验证最终公证包，也不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
+`scripts/preflight.sh` 会先运行依赖安全 policy tests 和 reviewed baseline 离线检查，再用固定版本的 Gitleaks 扫描完整 Git 历史与 tracked + untracked(nonignored) 当前源码快照；之后检查脚本语法、生成物和仓库根发布产物卫生，保留现有增量产物，执行 arm64-only Release 构建、验证最低 macOS 版本、装配并临时签名 App、运行完整测试。CI 在此基础上单独运行 live OSV exact-commit 查询，避免把可用网络伪装成本地确定性门禁。当前源码扫描拒绝 symlink 与非普通文件，并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。`just ci-clean` / `scripts/preflight.sh --clean` 在开始时分别清理 Debug 和 Release；GitHub PR CI 与正式公证发布强制使用此模式。预检不能替代在 macOS 14 的 Apple Silicon 真机上验证最终公证包，也不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
 
 修复竞态或生命周期问题时，应优先使用可控的 fake、barrier 或 lease 写确定性测试；不要依赖固定 `sleep` 猜测时序。涉及 SwiftUI/AppKit 焦点、系统权限、全局快捷键、VoiceOver、签名或公证时，除自动化测试外还需记录真实环境验收结果。
 

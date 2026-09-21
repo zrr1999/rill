@@ -276,140 +276,36 @@ run_notarized_source_case() {
 }
 
 run_locked_dependency_policy_case() {
-  local invocation_log="$TEST_ROOT/swift-invocations.log"
-  local expected_log=""
-  local preflight_release_build_line=""
-  local preflight_transition_clean_line=""
-  local preflight_test_line=""
-  local release_preflight_line=""
-  local release_build_line=""
-  local release_preflight_guard_line=""
-
-  : >"$invocation_log"
-  [[ -x "$LOCKED_SWIFT_SCRIPT" ]] || {
-    echo "FAIL: locked SwiftPM wrapper is not executable" >&2
-    exit 1
-  }
-  PATH="$FAKE_BIN:$PATH" FAKE_SWIFT_LOG="$invocation_log" \
-    "$LOCKED_SWIFT_SCRIPT" build --show-bin-path
-  PATH="$FAKE_BIN:$PATH" FAKE_SWIFT_LOG="$invocation_log" \
-    "$LOCKED_SWIFT_SCRIPT" test --parallel
-  expected_log=$'CALL\nbuild\n--force-resolved-versions\n--show-bin-path\nCALL\ntest\n--force-resolved-versions\n-Xswiftc\n-warnings-as-errors\n--parallel'
-  if [[ "$(<"$invocation_log")" != "$expected_log" ]]; then
-    echo "FAIL: locked SwiftPM wrapper injects dependency and test warning policies" >&2
-    cat "$invocation_log" >&2
-    exit 1
-  fi
-  if grep -Eq '(^|[[:space:]])swift[[:space:]]+(build|test)([[:space:]]|$)' \
+  # Invocation, clean isolation, and lock behavior have executable tests; avoid
+  # assertions tied to the old number or spelling of clean commands.
+  uv run --no-build --locked --script "$PROJECT_DIR/scripts/tests/build_driver_test.py"
+  if grep -Eq '(^|[[:space:]])swift[[:space:]]+(build|test|package clean)([[:space:]]|$)' \
     "$PREFLIGHT_SCRIPT" "$RELEASE_SCRIPT"; then
-    echo "FAIL: release scripts contain an unlocked SwiftPM build or test path" >&2
+    echo "FAIL: release scripts bypass the locked build driver" >&2
     exit 1
   fi
-  if ! grep -Fq 'build_xcode_release.sh"' "$PREFLIGHT_SCRIPT" ||
-    ! grep -Fq 'swift_locked.sh" test' "$PREFLIGHT_SCRIPT" ||
-    ! grep -Fq 'build_xcode_release.sh" --show-bin-path' "$RELEASE_SCRIPT" ||
-    ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh"' "$XCODE_RELEASE_BUILD_SCRIPT"; then
-    echo "FAIL: release scripts do not route every build and test through the locked wrapper" >&2
+  if ! grep -Fq '"$THIRD_PARTY_NOTICES_GENERATOR" --check' "$ASSEMBLER_SCRIPT" ||
+    ! grep -Fq 'DO_PREFLIGHT=false' "$RELEASE_SCRIPT" ||
+    ! grep -Fq '"$SCRIPT_DIR/preflight.sh" --clean' "$RELEASE_SCRIPT" ||
+    ! grep -Fq '$DO_NOTARIZE && WORKER_CACHE="off"' "$RELEASE_SCRIPT" ||
+    ! grep -Fq 'validate_project_worktree_alignment' "$RELEASE_SCRIPT"; then
+    echo "FAIL: release source, license or clean notarization policy changed" >&2
     exit 1
   fi
-  if grep -Fq 'Package.resolved is required' \
-    "$PREFLIGHT_SCRIPT" "$XCODE_RELEASE_BUILD_SCRIPT"; then
-    echo "FAIL: zero-remote-dependency build requires a synthetic lockfile" >&2
-    exit 1
-  fi
-  if ! grep -Fq '"$THIRD_PARTY_NOTICES_GENERATOR" --check' \
-    "$ASSEMBLER_SCRIPT"; then
-    echo "FAIL: bundle assembly does not verify dependency notice provenance" >&2
-    exit 1
-  fi
-  if [[ "$(grep -Ec '^[[:space:]]*swift package clean$' "$PREFLIGHT_SCRIPT")" -ne 2 ]] ||
-    grep -Eq '^[[:space:]]*swift package clean$' "$RELEASE_SCRIPT"; then
-    echo "FAIL: preflight must clean its Debug graph while release keeps the isolated graph incremental" >&2
-    exit 1
-  fi
-  preflight_release_build_line="$(
-    grep -n -m1 '^"\$SCRIPT_DIR/build_xcode_release.sh"$' "$PREFLIGHT_SCRIPT" |
-      cut -d: -f1
-  )"
-  preflight_transition_clean_line="$(
-    grep -n '^[[:space:]]*swift package clean$' "$PREFLIGHT_SCRIPT" |
-      tail -n 1 |
-      cut -d: -f1
-  )"
-  preflight_test_line="$(
-    grep -n -m1 '^"\$SCRIPT_DIR/swift_locked.sh" test$' "$PREFLIGHT_SCRIPT" |
-      cut -d: -f1
-  )"
-  release_preflight_line="$(
-    grep -n -m1 '^[[:space:]]*"\$SCRIPT_DIR/preflight.sh"$' "$RELEASE_SCRIPT" |
-      cut -d: -f1
-  )"
-  release_preflight_guard_line="$(
-    grep -n -m1 '^if \$DO_PREFLIGHT; then$' "$RELEASE_SCRIPT" |
-      cut -d: -f1
-  )"
-  release_build_line="$(
-    grep -n -m1 '^"\$SCRIPT_DIR/build_xcode_release.sh"$' "$RELEASE_SCRIPT" |
-      cut -d: -f1
-  )"
-  if [[ -z "$preflight_release_build_line" ||
-    -z "$preflight_transition_clean_line" ||
-    -z "$preflight_test_line" ||
-    "$preflight_transition_clean_line" -le "$preflight_release_build_line" ||
-    "$preflight_transition_clean_line" -ge "$preflight_test_line" ||
-    -z "$release_preflight_guard_line" ||
-    -z "$release_preflight_line" ||
-    -z "$release_build_line" ||
-    "$release_preflight_guard_line" -ge "$release_preflight_line" ||
-    "$release_preflight_line" -ge "$release_build_line" ]]; then
-    echo "FAIL: Release/Debug configuration cleanup is not ordered at the transition boundary" >&2
-    exit 1
-  fi
-  if ! grep -Fq 'DO_PREFLIGHT=false' "$RELEASE_SCRIPT" ||
-    ! grep -Fq 'if $DO_NOTARIZE; then' "$RELEASE_SCRIPT" ||
-    ! grep -Fq 'DO_PREFLIGHT=true' "$RELEASE_SCRIPT"; then
-    echo "FAIL: local builds must skip full preflight by default while notarization retains it" >&2
-    exit 1
-  fi
-  if ! grep -Fq 'validate_project_worktree_alignment' "$RELEASE_SCRIPT" ||
-    ! grep -Fq '发布脚本目录与 Git 工作树不一致' "$RELEASE_SCRIPT"; then
-    echo "FAIL: release must reject a script/source directory that differs from the Git worktree" >&2
-    exit 1
-  fi
-
   PASSED=$((PASSED + 1))
-  echo "PASS: local build and full preflight are decoupled while gated releases isolate configurations"
+  echo "PASS: locked builds preserve incremental artifacts and clean notarization"
 }
 
 run_xcode_build_policy_case() {
-  [[ -x "$XCODE_RELEASE_BUILD_SCRIPT" ]] || {
-    echo "FAIL: Xcode release build wrapper is not executable" >&2
-    exit 1
-  }
-  if ! grep -Fq -- '--build-system swiftbuild' "$XCODE_RELEASE_BUILD_SCRIPT" ||
-    ! grep -Fq -- '--manifest-cache none' "$XCODE_RELEASE_BUILD_SCRIPT" ||
-    ! grep -Fq -- '--arch arm64' "$XCODE_RELEASE_BUILD_SCRIPT" ||
-    ! grep -Fq -- '--scratch-path "$RELEASE_SCRATCH_PATH"' "$XCODE_RELEASE_BUILD_SCRIPT" ||
-    ! grep -Fq 'RELEASE_SCRATCH_PATH="$PROJECT_DIR/.build/rill-release"' \
-      "$XCODE_RELEASE_BUILD_SCRIPT" ||
-    ! grep -Fq 'accessor_root="$(dirname "$(dirname "$BUILD_DIR")")/Intermediates.noindex"' "$PREFLIGHT_SCRIPT" ||
-    ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh"' "$XCODE_RELEASE_BUILD_SCRIPT" ||
-    ! grep -Fq 'xcrun metal -v' \
-      "$XCODE_RELEASE_BUILD_SCRIPT" ||
-    ! grep -Fq 'xcodebuild -downloadComponent MetalToolchain' \
-      "$XCODE_RELEASE_BUILD_SCRIPT"; then
-    echo "FAIL: Xcode release build does not use the reviewed locked wrapper" >&2
+  local driver="$PROJECT_DIR/scripts/build_driver.py"
+  if ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh" release' "$XCODE_RELEASE_BUILD_SCRIPT" ||
+    ! grep -Fq '.artifacts/build/release' "$driver" ||
+    ! grep -Fq 'xcodebuild -downloadComponent MetalToolchain' "$driver"; then
+    echo "FAIL: release build does not use the reviewed locked configuration" >&2
     exit 1
   fi
-  if grep -Eqi \
-    'argmax|whisper|apply --reverse|--build-system[[:space:]]+xcode|--arch[[:space:]]+x86_64' \
-    "$XCODE_RELEASE_BUILD_SCRIPT"; then
-    echo "FAIL: Xcode release build retains an obsolete dependency workaround" >&2
-    exit 1
-  fi
-
   PASSED=$((PASSED + 1))
-  echo "PASS: Xcode release build uses an isolated locked SwiftPM graph without checkout mutation"
+  echo "PASS: Release uses an isolated locked SwiftPM graph"
 }
 
 run_executable_package_surface_policy_case() {

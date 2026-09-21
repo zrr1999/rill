@@ -9,6 +9,9 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 BUILD_DIR=""
 SOURCE_REVISION=""
 SOURCE_DIRTY="false"
+CLEAN_BUILD=false
+WORKER_CACHE="auto"
+RAW_BUILD_DIR=""
 MLX_RESOURCE_BUNDLE_NAME="mlx-swift_Cmlx.bundle"
 
 info() { echo "▸ $*"; }
@@ -72,7 +75,7 @@ verify_xcode_resource_accessor() {
   local accessor=""
   local candidate
   local accessor_root
-  accessor_root="$(dirname "$(dirname "$BUILD_DIR")")/Intermediates.noindex"
+  accessor_root="$(dirname "$(dirname "$RAW_BUILD_DIR")")/Intermediates.noindex"
 
   while IFS= read -r candidate; do
     if grep -Fq "let bundleName = \"$bundle_name\"" "$candidate"; then
@@ -94,6 +97,15 @@ verify_xcode_resource_accessor() {
 if [[ "${BASH_SOURCE[0]-}" != "$0" ]]; then
   return 0
 fi
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+  --clean) CLEAN_BUILD=true; WORKER_CACHE="off" ;;
+  --help | -h) echo "Usage: $0 [--clean]"; exit 0 ;;
+  *) error "Unknown argument: $1" ;;
+  esac
+  shift
+done
 
 require_command git
 require_command codesign
@@ -124,49 +136,51 @@ bash "$SCRIPT_DIR/tests/secret_scan_test.sh"
 info "Scanning Git history and the current source snapshot for secrets..."
 bash "$SCRIPT_DIR/check_secrets.sh"
 
-info "Cleaning SwiftPM build artifacts for a deterministic preflight..."
-swift package clean
+if $CLEAN_BUILD; then
+  "$SCRIPT_DIR/swift_locked.sh" clean
+  "$SCRIPT_DIR/swift_locked.sh" clean --configuration release
+fi
 
 info "Checking generated built-in workflow artifacts..."
 uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --check
 
 info "Checking release signing and notarization policy..."
 bash "$SCRIPT_DIR/tests/release_config_test.sh"
+uv run --no-build --locked --script "$SCRIPT_DIR/tests/worker_cache_test.py"
 
 info "Checking app icon generation..."
 bash "$SCRIPT_DIR/tests/app_icon_test.sh"
 
+PACKAGE_SMOKE_ROOT="$(mktemp -d)"
+cleanup() {
+  rm -rf "$PACKAGE_SMOKE_ROOT"
+}
+trap cleanup EXIT INT TERM
+BUILD_RESULT="$PACKAGE_SMOKE_ROOT/build-result.json"
 info "Building the release configuration..."
-"$SCRIPT_DIR/build_xcode_release.sh"
-BUILD_DIR="$("$SCRIPT_DIR/build_xcode_release.sh" --show-bin-path)"
+"$SCRIPT_DIR/build_xcode_release.sh" --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
+BUILD_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field productsDirectory)"
+RAW_BUILD_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field buildDirectory)"
 
 info "Checking arm64 release executable architectures..."
 bash "$SCRIPT_DIR/verify_release_executable.sh" "$BUILD_DIR/RillApp"
 bash "$SCRIPT_DIR/verify_release_executable.sh" "$BUILD_DIR/RillSpeechWorker"
 
-# Release builds use a separate scratch path; notice checks read .build/checkouts.
-info "Preparing locked SwiftPM checkouts for license verification..."
-swift package --force-resolved-versions resolve
-
 info "Checking locked third-party license and notice provenance..."
-uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
+RILL_TEST_CHECKOUTS_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field checkoutsDirectory)" \
+  uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
 
 info "Checking relocatable SwiftPM resource accessors..."
 verify_xcode_resource_accessor "RillMacOS_RillApp"
 
 info "Smoke-testing unsigned app bundle assembly..."
-PACKAGE_SMOKE_ROOT="$(mktemp -d)"
 SOURCE_REVISION="$(git rev-parse 'HEAD^{commit}')" ||
   error "Cannot determine the preflight source revision"
 if [[ -n "$(git status --porcelain=v1 --untracked-files=normal)" ]]; then
   SOURCE_DIRTY="true"
 fi
-cleanup() {
-  rm -rf "$PACKAGE_SMOKE_ROOT"
-}
-trap cleanup EXIT INT TERM
 "$SCRIPT_DIR/assemble_app_bundle.sh" \
-  --build-dir "$BUILD_DIR" \
+  --build-result "$BUILD_RESULT" \
   --app-bundle "$PACKAGE_SMOKE_ROOT/Rill.app" \
   --version "0.0.0" \
   --build-number "0" \
@@ -180,6 +194,8 @@ codesign --force --options runtime --sign - \
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker"
 codesign --force --options runtime --sign - "$PACKAGE_SMOKE_ROOT/Rill.app"
 codesign --verify --deep --strict --verbose=2 "$PACKAGE_SMOKE_ROOT/Rill.app"
+"$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker" </dev/null
+
 for document in LICENSE README.md; do
   cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" ||
     error "Packaged project document does not match $document"
@@ -194,9 +210,6 @@ cmp -s \
   error "Packaged local model notices do not match LOCAL_MODEL_NOTICES.md"
 cleanup
 trap - EXIT INT TERM
-
-info "Cleaning Release build artifacts before the Debug test suite..."
-swift package clean
 
 info "Running the test suite..."
 "$SCRIPT_DIR/swift_locked.sh" test

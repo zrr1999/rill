@@ -682,7 +682,20 @@ fi
         self.assertTrue(app_bundle.exists())
 
     def test_repository_notice_is_current(self) -> None:
-        result = run(["uv", "run", "--script", str(GENERATOR), "--check"])
+        checkouts = os.environ.get(
+            "RILL_TEST_CHECKOUTS_DIR", str(PROJECT_DIR / ".build/checkouts")
+        )
+        result = run(
+            [
+                "uv",
+                "run",
+                "--script",
+                str(GENERATOR),
+                "--check",
+                "--checkouts-dir",
+                checkouts,
+            ]
+        )
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_repository_has_no_retired_native_speech_inventory(self) -> None:

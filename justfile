@@ -11,6 +11,10 @@ check:
     uvx prek==0.5.3 validate-config prek.toml
     uvx prek==0.5.3 -c prek.toml run --all-files
 
+# Build one Debug product; application changes do not compile MLX.
+build product="RillApp":
+    scripts/swift_locked.sh build --product {{quote(product)}}
+
 # Run the locked Swift test suite.
 test:
     scripts/swift_locked.sh test --parallel
@@ -20,9 +24,21 @@ ci:
     just check
     bash scripts/preflight.sh
 
+# Reproduce the clean CI gate, without worker artifact reuse.
+ci-clean:
+    just check
+    bash scripts/preflight.sh --clean
+
 # Build and validate the arm64 release products.
 build-release:
     bash scripts/build_xcode_release.sh
+
+# Inspect or clear inactive shared worker artifacts.
+cache-status:
+    scripts/swift_locked.sh cache status
+
+cache-clean:
+    scripts/swift_locked.sh cache clean
 
 # Assemble a local release artifact.
 release:
