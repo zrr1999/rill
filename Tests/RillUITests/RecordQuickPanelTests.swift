@@ -6,6 +6,45 @@ import XCTest
 
 @MainActor
 final class RecordQuickPanelTests: XCTestCase {
+  func testLiteralMatchBeyondFirstScanBatchWinsOverRecentApproximateMatches() async throws {
+    let store = RecordStore()
+    let exact = try await store.ingest(draft("jtb exact", app: "editor"), into: [])
+    for index in 0..<260 {
+      _ = try await store.ingest(draft("剪贴板 \(index)", app: "editor"), into: [])
+    }
+    let panel = RecordQuickPanelModel(store: store)
+    defer { panel.stop() }
+    panel.searchText = "jtb"
+    await settle(panel)
+    XCTAssertEqual(panel.results.map(\.id), [exact.id])
+    XCTAssertEqual(panel.selectedID, exact.id)
+  }
+
+  func testApproximatePaginationKeepsModeAndSelection() async throws {
+    let store = RecordStore()
+    var ids: [RecordID] = []
+    for index in 0..<60 {
+      let record = try await store.ingest(draft("剪贴板 worktree \(index)", app: "editor"), into: [])
+      ids.append(record.id)
+    }
+    let panel = RecordQuickPanelModel(store: store)
+    defer { panel.stop() }
+    panel.searchText = "jtb worktere"
+    await settle(panel)
+    XCTAssertEqual(panel.results.map(\.id), Array(ids.reversed().prefix(50)))
+    let selected = panel.results[10].id
+    panel.selectedID = selected
+    panel.loadMore()
+    await settle(panel)
+    XCTAssertEqual(panel.results.map(\.id), Array(ids.reversed()))
+    XCTAssertEqual(panel.selectedID, selected)
+    panel.searchText = "jtb missing"
+    panel.searchText = "worktree 59"
+    await settle(panel)
+    XCTAssertEqual(panel.results.map(\.id), [ids[59]])
+    XCTAssertEqual(panel.selectedID, ids[59])
+  }
+
   func testQuickPanelSearchSelectionAndFiltersAreIndependentFromManagement() async throws {
     let store = RecordStore()
     let first = try await store.ingest(draft("中文 找到我", app: "com.example.first"), into: [])

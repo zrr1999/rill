@@ -11,6 +11,34 @@ private let speechWorkerTestRequestID = UUID(
 )!
 
 final class SpeechWorkerSupervisorTests: XCTestCase {
+  func testEmbeddingPreparationAndInferenceUseSupervisedProcessAndShutdownDrainsIt() async throws {
+    let modelID = RecordEmbeddingModelCatalog.modelID
+    let prepared = SpeechWorkerResponse(requestID: speechWorkerTestRequestID, generation: 1, payload: .modelPrepared(modelID))
+    let expected = RecordTextEmbedding(vectors: [[Float](repeating: 0, count: 1_024)], coverageLimited: false)
+    let completed = SpeechWorkerResponse(requestID: speechWorkerTestRequestID, generation: 1, payload: .embeddingCompleted(expected))
+    let responses = try [prepared, completed].map {
+      String(decoding: try SpeechWorkerProtocolCodec.encodeResponseLine($0), as: UTF8.self)
+    }
+    let script = """
+      count=0
+      while IFS= read -r request; do
+        count=$((count + 1))
+        if [ "$count" -eq 1 ]; then printf '%s' "$1"; else printf '%s' "$2"; fi
+      done
+      """
+    let supervisor = SpeechWorkerSupervisor(configuration: .init(executableURL: URL(fileURLWithPath: "/bin/sh"),
+      arguments: ["-c", script, "rill-embedding-fixture"] + responses), requestIDGenerator: { speechWorkerTestRequestID })
+    let provider = RecordWorkerEmbedder(supervisor: supervisor)
+    try await provider.prepare(downloadIfNeeded: false, progress: { _ in })
+    let result = try await provider.embed("query", purpose: .query)
+    XCTAssertEqual(result, expected)
+    let running = await supervisor.activeProcessIdentifier()
+    XCTAssertNotNil(running)
+    await provider.shutdown()
+    let stopped = await supervisor.activeProcessIdentifier()
+    XCTAssertNil(stopped)
+  }
+
   func testInteractiveRecognitionPreemptsAndRequeuesActiveBackgroundRequest() async throws {
     let backgroundID = UUID(uuidString: "10000000-0000-4000-8000-000000000001")!
     let interactiveID = UUID(uuidString: "10000000-0000-4000-8000-000000000002")!

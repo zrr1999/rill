@@ -58,6 +58,41 @@ final class RecordQuickPanelRenderTests: XCTestCase {
     }
   }
 
+  func testRenderSemanticReadyAndDownloadStates() async throws {
+    guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+      throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR for native semantic-panel evidence.")
+    }
+    let output = URL(fileURLWithPath: directory)
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+    for missing in [false, true] {
+      let store = RecordStore()
+      for text in ["git reset --soft HEAD~1", "git revert HEAD"] {
+        _ = try await store.ingest(.init(payload: .text(text),
+          provenance: .init(source: .init(kind: .systemClipboard), sourceApplicationName: "Terminal")), into: [])
+      }
+      let search = RecordSemanticSearch(store: store, embedder: PanelEmbeddingFixture(missing: missing))
+      let panel = RecordQuickPanelModel(store: store, semanticSearch: search)
+      panel.start(sourceBundleIdentifier: nil)
+      let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+      while panel.capacity.count != 2, ContinuousClock.now < deadline { await Task.yield() }
+      panel.searchText = "撤销上次提交但保留代码改动"
+      while panel.isSearching, ContinuousClock.now < deadline { await Task.yield() }
+      panel.searchByMeaning()
+      while panel.semanticState == .working, ContinuousClock.now < deadline { await Task.yield() }
+      XCTAssertEqual(panel.semanticState, missing ? .needsModel : .ready)
+      for dark in [false, true] {
+        let view = NSHostingView(rootView: RecordQuickPanelView(
+          model: panel, language: dark ? .english : .simplifiedChinese, capturePaused: false,
+          onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {})
+          .environment(\.colorScheme, dark ? .dark : .light))
+        try render(view, size: NSSize(width: 620, height: 560), dark: dark,
+          to: output.appendingPathComponent("semantic-\(missing ? "download" : "ready")-\(dark ? "dark" : "light").png"))
+      }
+      await panel.shutdown()
+      await search.shutdown()
+    }
+  }
+
   private func render<Content: View>(
     _ view: NSHostingView<Content>, size: NSSize, dark: Bool, to url: URL
   ) throws {

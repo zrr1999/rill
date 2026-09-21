@@ -290,6 +290,35 @@ public actor SpeechWorkerSupervisor {
     }
   }
 
+  public func prepareEmbeddingModel(
+    downloadIfNeeded: Bool,
+    progress: @escaping @Sendable (SpeechWorkerProgress) -> Void = { _ in }
+  ) async throws {
+    _ = try ensureSession()
+    let modelID = RecordEmbeddingModelCatalog.modelID
+    let response = try await exchange(
+      SpeechWorkerRequest(requestID: requestIDGenerator(), generation: generation,
+        payload: .prepareEmbeddingModel(.init(modelID: modelID, downloadIfNeeded: downloadIfNeeded))),
+      timeout: .seconds(downloadIfNeeded ? 1_800 : 60), priority: .interactive, progress: progress)
+    guard response.preparedModelID == modelID else {
+      if let session { try await invalidate(session) }
+      throw SpeechWorkerClientError.protocolViolation
+    }
+  }
+
+  public func embedRecordText(_ text: String, purpose: RecordEmbeddingPurpose) async throws -> RecordTextEmbedding {
+    _ = try ensureSession()
+    let response = try await exchange(
+      SpeechWorkerRequest(requestID: requestIDGenerator(), generation: generation,
+        payload: .embedText(.init(modelID: RecordEmbeddingModelCatalog.modelID, text: text, purpose: purpose))),
+      timeout: .seconds(30), priority: .interactive)
+    guard let result = response.embeddingResult else {
+      if let session { try await invalidate(session) }
+      throw SpeechWorkerClientError.protocolViolation
+    }
+    return result
+  }
+
   public func startStreaming(
     _ payload: SpeechWorkerStreamStart
   ) async throws -> SpeechWorkerStreamingSession {

@@ -1,6 +1,6 @@
 # Rill Local Model Notices
 
-Rill does not bundle speech-model weights in the application. Models are downloaded only after the user enables them. Every production model is fetched at the exact revision listed below and every reviewed file is verified against the byte count and SHA-256 recorded in the Swift catalogs before it is published to Rill's local model directory.
+Rill does not bundle model weights in the application. Models are downloaded only after the user enables them. Every production model is fetched at the exact revision listed below and every reviewed file is verified against the byte count and SHA-256 recorded in the Swift catalogs before it is published to Rill's local model directory.
 
 ## Speech recognition
 
@@ -29,6 +29,14 @@ The reviewed `model.safetensors` and `config.json` hashes are defined in `Source
 
 The exact TTS file inventory is defined in `Sources/RillSpeechContracts/SpeechSynthesisModelCatalog.swift`. TTS is optional: its worker is started only for a resident TTS model or an active synthesis request.
 
+## Clipboard semantic search
+
+| Rill model ID | Upstream repository | Pinned revision |
+| --- | --- | --- |
+| `qwen3-embedding-0.6b` | `Qwen/Qwen3-Embedding-0.6B` | `97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3` |
+
+The [upstream model card](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B/blob/97b0c614be4d77ee51c0cef4e5f07c00f9eb65b3/README.md) declares Apache-2.0. `RecordEmbeddingModelCatalog.swift` pins the five required files, byte counts, and SHA-256 values (approximately 1.2 GB). Search downloads require the explicit panel action. `MLXEmbedders` runs the model locally; search queries and clipboard records are never model-download inputs. Weights are not distributed in the App bundle.
+
 ## Runtime boundary
 
-`mlx-audio-swift` and its SwiftPM dependency graph are pinned in `Package.resolved` and documented in `THIRD_PARTY_NOTICES.md`. The main application does not perform MLX inference; supervised ASR and TTS helper processes own their respective model caches.
+`mlx-audio-swift` and its SwiftPM dependency graph are pinned in `Package.resolved` and documented in `THIRD_PARTY_NOTICES.md`. The main application does not perform MLX inference; separate supervised ASR, TTS, and clipboard-search helper processes own their respective model caches.

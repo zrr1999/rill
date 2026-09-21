@@ -2,6 +2,8 @@ import Foundation
 import RillCore
 
 public enum QuickRecordText: CaseIterable {
+  case meaningSearch, semanticCandidates, downloadSearchModel, localSearchNotice, preparingSearchModel
+  case semanticFailed, semanticChanged, semanticQueryTooLong, semanticNoResults, semanticLimited
   case copied, unpin, recordInUse
   case targetUnavailable, permissionRequired, recordUnavailable, storageUnavailable
   case recordDeletion, collectionDeletion, membershipDeletion, memberships, expiredRecords
@@ -14,6 +16,26 @@ public enum QuickRecordText: CaseIterable {
 extension L10n {
   public static func quickRecord(_ key: QuickRecordText, language: AppLanguage) -> String {
     switch (key, language) {
+    case (.meaningSearch, .english): "Search by meaning"
+    case (.meaningSearch, .simplifiedChinese): "按含义补充"
+    case (.semanticCandidates, .english): "Semantic candidates"
+    case (.semanticCandidates, .simplifiedChinese): "语义候选"
+    case (.downloadSearchModel, .english): "Download search model (1.2 GB)"
+    case (.downloadSearchModel, .simplifiedChinese): "下载搜索模型（1.2 GB）"
+    case (.localSearchNotice, .english): "Queries and records stay on this Mac."
+    case (.localSearchNotice, .simplifiedChinese): "查询和记录仅在本机处理。"
+    case (.preparingSearchModel, .english): "Preparing search model…"
+    case (.preparingSearchModel, .simplifiedChinese): "正在准备搜索模型…"
+    case (.semanticFailed, .english): "Semantic search failed. Try again."
+    case (.semanticFailed, .simplifiedChinese): "语义搜索失败，请重试。"
+    case (.semanticChanged, .english): "Records changed. Search again."
+    case (.semanticChanged, .simplifiedChinese): "记录已变化，请重新搜索。"
+    case (.semanticQueryTooLong, .english): "Shorten the query and try again."
+    case (.semanticQueryTooLong, .simplifiedChinese): "请缩短查询内容后重试。"
+    case (.semanticNoResults, .english): "No additional candidates."
+    case (.semanticNoResults, .simplifiedChinese): "没有更多候选记录。"
+    case (.semanticLimited, .english): "Long records were searched in part."
+    case (.semanticLimited, .simplifiedChinese): "较长记录仅搜索了部分内容。"
     case (.copied, .english): "Copied to the clipboard."
     case (.copied, .simplifiedChinese): "已复制到剪贴板。"
     case (.unpin, .english): "Unpin"
