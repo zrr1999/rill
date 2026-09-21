@@ -142,12 +142,16 @@ public actor WorkflowRunReceiptRecorder {
         pendingRuns[runID] = run
     }
 
-    public func finishStep(runID: UUID, result: WorkflowStepResultCode) throws {
+    public func finishStep(runID: UUID, result: WorkflowStepResultCode, durationMilliseconds: UInt64? = nil) throws {
         var run = try mutablePendingRun(runID: runID)
         guard let step = run.activeStep, run.preparedTerminal == nil else {
             throw WorkflowRunReceiptValidationError.invalidStepSequence
         }
-        run.stepDetails.append(WorkflowStepReceipt(stepIndex: step.index, kind: step.kind, result: result, duration: Self.durationBucket(from: step.startedAt, to: monotonicClock())))
+        run.stepDetails.append(WorkflowStepReceipt(
+            stepIndex: step.index, kind: step.kind, result: result,
+            duration: Self.durationBucket(from: step.startedAt, to: monotonicClock()),
+            durationMilliseconds: durationMilliseconds
+        ))
         run.activeStep = nil
         pendingRuns[runID] = run
     }

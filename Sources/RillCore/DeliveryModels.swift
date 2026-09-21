@@ -51,19 +51,22 @@ public struct WorkflowTextStep: Codable, Sendable, Equatable {
     public let outputText: String?
     public let didChange: Bool?
     public let tokenUsage: LanguageModelTokenUsage?
+    public let durationMilliseconds: UInt64?
 
     public init(
         kind: WorkflowProcessStepKind,
         result: WorkflowStepResultCode = .completed,
         outputText: String? = nil,
         didChange: Bool? = nil,
-        tokenUsage: LanguageModelTokenUsage? = nil
+        tokenUsage: LanguageModelTokenUsage? = nil,
+        durationMilliseconds: UInt64? = nil
     ) {
         self.kind = kind
         self.result = result
         self.outputText = outputText
         self.didChange = didChange
         self.tokenUsage = tokenUsage
+        self.durationMilliseconds = durationMilliseconds
     }
 }
 
@@ -112,7 +115,8 @@ public struct RecognitionCorrectionSource: Codable, Sendable, Equatable {
                         )
                     },
                     didChange: step.didChange,
-                    tokenUsage: step.tokenUsage
+                    tokenUsage: step.tokenUsage,
+                    durationMilliseconds: step.durationMilliseconds
                 )
             }
         )

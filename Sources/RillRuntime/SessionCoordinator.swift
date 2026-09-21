@@ -1,3 +1,4 @@
+import Dispatch
 import Foundation
 import RillCore
 
@@ -84,6 +85,7 @@ public actor SessionCoordinator {
     private let recognitionTimeoutPolicy: RecognitionTimeoutPolicy
     private let recognitionTimeoutExecutor: RecognitionTimeoutExecutor
     private let defaultRecordDeliveryActionID: String
+    private let processingClock: @Sendable () -> UInt64
 
     private struct RunSession: Sendable {
         let runID: UUID
@@ -122,7 +124,8 @@ public actor SessionCoordinator {
         recognitionTimeoutPolicy: RecognitionTimeoutPolicy = .standard,
         recognitionAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner =
             ManagedTemporaryAudioCleanupOwner(),
-        defaultRecordDeliveryActionID: String = "system-clipboard.copy"
+        defaultRecordDeliveryActionID: String = "system-clipboard.copy",
+        processingClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
     ) {
         self.privacyContextProvider = privacyContextProvider
         self.recognizerRegistry = recognizerRegistry
@@ -158,6 +161,7 @@ public actor SessionCoordinator {
             cleanupOwner: recognitionAudioCleanupOwner
         )
         self.defaultRecordDeliveryActionID = defaultRecordDeliveryActionID
+        self.processingClock = processingClock
     }
 
     public func currentState() -> State {
@@ -547,6 +551,7 @@ public extension SessionCoordinator {
             )
             failureStage = .recognizing
             let recognition: RecognitionResult
+            let recognitionDurationMilliseconds: UInt64?
             if let preRecognizedText {
                 let text = preRecognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else {
@@ -557,18 +562,26 @@ public extension SessionCoordinator {
                     bestText: text,
                     candidateSets: []
                 )
-                await eventBus.publish(.recognitionCompleted(recognition))
+                recognitionDurationMilliseconds = nil
             } else {
-                recognition = try await recognize(
+                let measuredRecognition = try await recognize(
                     in: session,
                     triggerEvent: triggerEvent,
                     capturedAudio: capturedAudio
                 )
+                recognition = measuredRecognition.result
+                recognitionDurationMilliseconds = measuredRecognition.durationMilliseconds
             }
-            let correctionContext = try contextPreparation?.freeze(transcript: recognition.bestText)
+            let frozenContext = Result { try contextPreparation?.freeze(transcript: recognition.bestText) }
+            if preRecognizedText == nil {
+                try await finishProcessReceipt(session, result: .completed, durationMilliseconds: recognitionDurationMilliseconds)
+            }
+            await eventBus.publish(.recognitionCompleted(recognition))
             var processingSteps = [await recordTextStep(
-                kind: .recognizeSpeech, text: recognition.bestText, in: session
+                kind: .recognizeSpeech, text: recognition.bestText,
+                durationMilliseconds: recognitionDurationMilliseconds, in: session
             )]
+            let correctionContext = try frozenContext.get()
             failureStage = .resolving
             let resolvedRecognition = await resolveIfNeeded(recognition, in: session)
             if session.resolvedPlan.declaration.process.steps.contains(where: { $0.kind == .resolveUncertainty }) {
@@ -1641,7 +1654,7 @@ private extension SessionCoordinator {
         in session: RunSession,
         triggerEvent: WorkflowTriggerEvent?,
         capturedAudio: CapturedAudio?
-    ) async throws -> RecognitionResult {
+    ) async throws -> (result: RecognitionResult, durationMilliseconds: UInt64?) {
         guard
             let recognizerID = session.resolvedPlan.recognizerID,
             let recognizer = recognizerRegistry.recognizer(for: recognizerID)
@@ -1679,27 +1692,35 @@ private extension SessionCoordinator {
         let timeoutSeconds = recognitionTimeoutPolicy.timeoutSeconds(
             forAudioDuration: capturedAudio?.durationSeconds
         )
-        let recognition: RecognitionResult
+        if session.receiptIsActive, let runReceiptRecorder,
+           let index = session.resolvedPlan.declaration.process.allSteps.firstIndex(where: { $0.kind == .recognizeSpeech }) {
+            try await runReceiptRecorder.beginStep(runID: session.runID, stepIndex: index, kind: .recognizeSpeech)
+        }
+        let startedAt = processingClock()
         do {
-            recognition = try await recognitionTimeoutExecutor.recognize(
+            let recognition = try await recognitionTimeoutExecutor.recognize(
                 using: recognizer,
                 request: request,
                 timeout: .seconds(timeoutSeconds)
             )
-        } catch let error as RecognitionDeadlineError {
-            await recordRecognitionDeadlineFailure(
-                error,
-                recognizerID: recognizer.id,
-                session: session
+            try Task.checkCancellation()
+            guard !recognition.bestText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw SessionError.noSpeech
+            }
+            return (recognition, processingDurationMilliseconds(since: startedAt))
+        } catch {
+            let durationMilliseconds = processingDurationMilliseconds(since: startedAt)
+            let result: WorkflowStepResultCode = error is CancellationError ? .cancelled : .failed
+            try? await finishProcessReceipt(session, result: result, durationMilliseconds: durationMilliseconds)
+            _ = await recordTextStep(
+                kind: .recognizeSpeech, result: result,
+                durationMilliseconds: durationMilliseconds, in: session
             )
+            if let deadlineError = error as? RecognitionDeadlineError {
+                await recordRecognitionDeadlineFailure(deadlineError, recognizerID: recognizer.id, session: session)
+            }
             throw error
         }
-        try Task.checkCancellation()
-        guard !recognition.bestText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw SessionError.noSpeech
-        }
-        await eventBus.publish(.recognitionCompleted(recognition))
-        return recognition
     }
 
     private func recordRecognitionDeadlineFailure(
@@ -1780,6 +1801,8 @@ private extension SessionCoordinator {
             try Task.checkCancellation()
             if processStep.kind == .recognizeSpeech || processStep.kind == .resolveUncertainty { continue }
             let inputText = finalText
+            var processingStartedAt: UInt64?
+            var durationMilliseconds: UInt64?
             if session.receiptIsActive, let runReceiptRecorder,
                let index = session.resolvedPlan.declaration.process.allSteps.firstIndex(where: { $0.id == processStep.id }) {
                 try await runReceiptRecorder.beginStep(runID: session.runID, stepIndex: index, kind: processStep.kind)
@@ -1863,6 +1886,7 @@ private extension SessionCoordinator {
                     recognitionResult: recognition,
                     correctionRequest: correctionRequest
                 )
+                processingStartedAt = processingClock()
                 if let tracedTransformer = transformer as? any TracedTextTransformer,
                    step.kind == .llmRewrite || step.kind == .llmAnswer {
                     let result = try await tracedTransformer.transformWithTrace(
@@ -1885,6 +1909,7 @@ private extension SessionCoordinator {
                         context: context
                     )
                 }
+                durationMilliseconds = processingStartedAt.flatMap(processingDurationMilliseconds)
             } catch is CancellationError {
                 throw CancellationError()
             } catch let error as any SpeechTextFallbackEligibleError
@@ -1892,6 +1917,7 @@ private extension SessionCoordinator {
                     && step.kind == .llmRewrite
                     && error.allowsSpeechTextFallback
             {
+                durationMilliseconds = processingStartedAt.flatMap(processingDurationMilliseconds)
                 if let request = correctionContext?.request {
                     if request.referenceImage != nil { references?.image = .deliveryUnconfirmed }
                     if request.imageSummary != nil { references?.imageSummary = .deliveryUnconfirmed }
@@ -1903,10 +1929,11 @@ private extension SessionCoordinator {
                     step: step,
                     transformerID: transformer.id
                 )
-                try await finishProcessReceipt(session, result: .skipped)
+                try await finishProcessReceipt(session, result: .skipped, durationMilliseconds: durationMilliseconds)
                 processingSteps.append(await recordTextStep(
                     kind: processStep.kind, result: .skipped,
-                    text: finalText, previousText: inputText, in: session
+                    text: finalText, previousText: inputText,
+                    durationMilliseconds: durationMilliseconds, in: session
                 ))
                 continue
             }
@@ -1918,16 +1945,21 @@ private extension SessionCoordinator {
                 step: step,
                 transformerID: transformer.id
             )
-            try await finishProcessReceipt(session, result: .completed)
+            try await finishProcessReceipt(session, result: .completed, durationMilliseconds: durationMilliseconds)
             processingSteps.append(await recordTextStep(
                 kind: processStep.kind, text: finalText, previousText: inputText,
-                tokenUsage: tokenUsage, in: session
+                tokenUsage: tokenUsage, durationMilliseconds: durationMilliseconds, in: session
             ))
             } catch {
-                try? await finishProcessReceipt(session, result: error is CancellationError ? .cancelled : .failed)
+                durationMilliseconds = durationMilliseconds ?? processingStartedAt.flatMap(processingDurationMilliseconds)
+                try? await finishProcessReceipt(
+                    session, result: error is CancellationError ? .cancelled : .failed,
+                    durationMilliseconds: durationMilliseconds
+                )
                 _ = await recordTextStep(
                     kind: processStep.kind,
                     result: error is CancellationError ? .cancelled : .failed,
+                    durationMilliseconds: durationMilliseconds,
                     in: session
                 )
                 throw error
@@ -1949,19 +1981,30 @@ private extension SessionCoordinator {
         text: String? = nil,
         previousText: String? = nil,
         tokenUsage: LanguageModelTokenUsage? = nil,
+        durationMilliseconds: UInt64? = nil,
         in session: RunSession
     ) async -> WorkflowTextStep {
         let step = WorkflowTextStep(
             kind: kind, result: result, outputText: text,
-            didChange: previousText.map { $0 != text }, tokenUsage: tokenUsage
+            didChange: previousText.map { $0 != text }, tokenUsage: tokenUsage,
+            durationMilliseconds: durationMilliseconds
         )
         await eventBus.publish(.runTextStepRecorded(runID: session.runID, step: step))
         return step
     }
 
-    private func finishProcessReceipt(_ session: RunSession, result: WorkflowStepResultCode) async throws {
+    private func processingDurationMilliseconds(since startedAt: UInt64) -> UInt64? {
+        let finishedAt = processingClock()
+        guard finishedAt >= startedAt else { return nil }
+        return (finishedAt - startedAt) / 1_000_000
+    }
+
+    private func finishProcessReceipt(
+        _ session: RunSession, result: WorkflowStepResultCode,
+        durationMilliseconds: UInt64? = nil
+    ) async throws {
         guard session.receiptIsActive, let runReceiptRecorder else { return }
-        try await runReceiptRecorder.finishStep(runID: session.runID, result: result)
+        try await runReceiptRecorder.finishStep(runID: session.runID, result: result, durationMilliseconds: durationMilliseconds)
     }
 
     private func recordSpeechTextTransformFallback(

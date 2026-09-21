@@ -18,6 +18,12 @@ struct HistoryTextStepsView: View {
                             .font(.caption)
                             .foregroundStyle(step.result == .failed ? .red : .secondary)
                     }
+                    if let milliseconds = step.durationMilliseconds {
+                        Text(HistoryTextStepPresentation.duration(milliseconds, language: language))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
                     if step.kind == .llmRewrite || step.kind == .llmAnswer {
                         Text(HistoryTextStepPresentation.tokenUsage(step.tokenUsage, language: language))
                             .font(.caption)
@@ -47,6 +53,11 @@ struct HistoryTextStepsView: View {
 }
 
 enum HistoryTextStepPresentation {
+    static func duration(_ milliseconds: UInt64, language: AppLanguage) -> String {
+        let value = L10n.historyProcessingDuration(milliseconds, language: language)
+        return language == .english ? "Processing time: \(value)" : "处理耗时：\(value)"
+    }
+
     static func tokenUsage(_ usage: LanguageModelTokenUsage?, language: AppLanguage) -> String {
         let chinese = language == .simplifiedChinese
         let missing = chinese ? "未提供" : "Not provided"
@@ -61,6 +72,9 @@ enum HistoryTextStepPresentation {
 
     static func logHeader(_ step: WorkflowTextStep, language: AppLanguage) -> String {
         var header = "\(title(step.kind, language: language)) · \(status(step, language: language))\n"
+        if let milliseconds = step.durationMilliseconds {
+            header += duration(milliseconds, language: language) + "\n"
+        }
         if step.kind == .llmRewrite || step.kind == .llmAnswer {
             header += tokenUsage(step.tokenUsage, language: language) + "\n"
         }

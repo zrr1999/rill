@@ -1,3 +1,4 @@
+import Foundation
 import RillCore
 
 extension L10n {
@@ -135,6 +136,15 @@ extension L10n {
         case (.english, .unavailable): "duration unavailable"
         case (.simplifiedChinese, .unavailable): "耗时不可用"
         }
+    }
+
+    static func historyProcessingDuration(_ milliseconds: UInt64, language: AppLanguage) -> String {
+        if milliseconds < 1_000 {
+            return language == .english ? "\(milliseconds) ms" : "\(milliseconds) 毫秒"
+        }
+        let fraction = String(format: "%03d", Int(milliseconds % 1_000))
+        let seconds = "\(milliseconds / 1_000).\(fraction)"
+        return language == .english ? "\(seconds) s" : "\(seconds) 秒"
     }
 
     /// Timeline status is a reason-free rollup of `WorkflowRunTermination`;

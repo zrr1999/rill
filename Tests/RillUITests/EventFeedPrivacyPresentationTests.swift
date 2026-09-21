@@ -37,6 +37,17 @@ final class EventFeedPrivacyPresentationTests: XCTestCase {
         )
     }
 
+    func testProcessingTimeUsesMillisecondsAndDoesNotInventMissingMeasurements() {
+        XCTAssertEqual(L10n.historyProcessingDuration(0, language: .english), "0 ms")
+        XCTAssertEqual(L10n.historyProcessingDuration(999, language: .simplifiedChinese), "999 毫秒")
+        XCTAssertEqual(L10n.historyProcessingDuration(1_234, language: .simplifiedChinese), "1.234 秒")
+        XCTAssertEqual(L10n.historyProcessingDuration(62_005, language: .english), "62.005 s")
+        let failed = WorkflowTextStep(kind: .llmRewrite, result: .failed, durationMilliseconds: 5_000)
+        XCTAssertTrue(HistoryTextStepPresentation.logHeader(failed, language: .english).contains("Processing time: 5.000 s"))
+        let old = WorkflowTextStep(kind: .recognizeSpeech)
+        XCTAssertFalse(HistoryTextStepPresentation.logHeader(old, language: .english).contains("Processing time"))
+    }
+
     func testFailedVoiceRunRetainsStepsAndAddsPrivacyAwareDetailedLog() async throws {
         let harness = makeHarness()
         await harness.model.waitForInitialVoiceConfiguration()
@@ -46,9 +57,9 @@ final class EventFeedPrivacyPresentationTests: XCTestCase {
             workflow: harness.workflow.presentation, trigger: .manual
         )))
         let steps = [
-            WorkflowTextStep(kind: .recognizeSpeech, outputText: "识别正文"),
+            WorkflowTextStep(kind: .recognizeSpeech, outputText: "识别正文", durationMilliseconds: 1_234),
             WorkflowTextStep(kind: .applyVocabulary, outputText: "替换后正文", didChange: true),
-            WorkflowTextStep(kind: .llmRewrite, result: .failed)
+            WorkflowTextStep(kind: .llmRewrite, result: .failed, durationMilliseconds: 5_000)
         ]
         let feedCount = harness.model.eventFeed.count
         for step in steps {

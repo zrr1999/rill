@@ -89,9 +89,8 @@ public struct WorkflowRunStageSnapshot: Codable, Sendable, Equatable {
 
 /// A privacy-bounded duration classification used by persisted run receipts.
 ///
-/// Exact elapsed time is intentionally not part of the receipt contract. The
-/// runtime measures with a monotonic clock and immediately reduces the result
-/// to one of these closed buckets.
+/// Overall run and delivery durations use these buckets. Processing steps may
+/// additionally retain their measured duration in milliseconds.
 public enum WorkflowRunDurationBucket: String, Codable, Sendable, Equatable, CaseIterable {
     case under250ms
     case ms250To999
@@ -308,9 +307,11 @@ public struct WorkflowStepReceipt: Codable, Sendable, Equatable {
     public let kind: WorkflowProcessStepKind
     public let result: WorkflowStepResultCode
     public let duration: WorkflowRunDurationBucket
+    public let durationMilliseconds: UInt64?
 
-    public init(stepIndex: Int, kind: WorkflowProcessStepKind, result: WorkflowStepResultCode, duration: WorkflowRunDurationBucket) {
+    public init(stepIndex: Int, kind: WorkflowProcessStepKind, result: WorkflowStepResultCode, duration: WorkflowRunDurationBucket, durationMilliseconds: UInt64? = nil) {
         self.stepIndex = stepIndex; self.kind = kind; self.result = result; self.duration = duration
+        self.durationMilliseconds = durationMilliseconds
     }
 }
 
@@ -326,9 +327,9 @@ public enum WorkflowRunReceiptValidationError: Error, Sendable, Equatable {
 ///
 /// The receipt deliberately excludes workflow names, component identifiers,
 /// source metadata, text statistics, free-form failures, paths, endpoints, and
-/// exact durations. `timestamp` is the terminal timeline coordinate; a start
-/// timestamp is not retained because it would reconstruct a more precise
-/// duration than the bucketed contract permits.
+/// exact overall durations. Individual processing steps can retain measured
+/// milliseconds. `timestamp` is the terminal timeline coordinate; no recording
+/// start timestamp is retained.
 public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
     public static let currentSchemaVersion = 2
     public static let maximumActionDetails = 32

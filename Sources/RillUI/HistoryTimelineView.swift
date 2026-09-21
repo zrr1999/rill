@@ -861,7 +861,9 @@ public struct HistoryTimelineView: View {
                     Text("·")
                     Text(stepResultLabel(step.result))
                     Text("·")
-                    Text(L10n.historyRunDurationBucket(step.duration, language: model.language))
+                    Text(step.durationMilliseconds.map {
+                        L10n.historyProcessingDuration($0, language: model.language)
+                    } ?? L10n.historyRunDurationBucket(step.duration, language: model.language))
                 }.font(.caption).foregroundStyle(.secondary)
             }
 

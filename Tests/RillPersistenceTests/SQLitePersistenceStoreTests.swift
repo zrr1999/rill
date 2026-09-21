@@ -117,6 +117,16 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       timestamp: Date(timeIntervalSince1970: 42),
       duration: .ms250To999,
       termination: .completed,
+      stepDetails: [
+        WorkflowStepReceipt(
+          stepIndex: 0, kind: .recognizeSpeech, result: .completed,
+          duration: .under250ms, durationMilliseconds: 123
+        ),
+        WorkflowStepReceipt(
+          stepIndex: 1, kind: .llmRewrite, result: .completed,
+          duration: .ms250To999, durationMilliseconds: 456
+        )
+      ],
       actionDetails: [
         WorkflowActionReceipt(
           actionIndex: 0,

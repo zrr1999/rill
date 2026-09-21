@@ -8,6 +8,9 @@ final class RecognitionCorrectionSourceTests: XCTestCase {
         XCTAssertNil(try JSONDecoder().decode(LanguageModelTrace.self, from: trace).tokenUsage)
         let step = Data(#"{"kind":"llmRewrite","result":"completed","outputText":"answer"}"#.utf8)
         XCTAssertNil(try JSONDecoder().decode(WorkflowTextStep.self, from: step).tokenUsage)
+        XCTAssertNil(try JSONDecoder().decode(WorkflowTextStep.self, from: step).durationMilliseconds)
+        let receipt = Data(#"{"stepIndex":0,"kind":"recognizeSpeech","result":"completed","duration":"s1To4"}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(WorkflowStepReceipt.self, from: receipt).durationMilliseconds)
     }
 
     func testProcessingStepsRoundTripAndRestrictedPreviewDropsUnrelatedContent() throws {
@@ -22,7 +25,7 @@ final class RecognitionCorrectionSourceTests: XCTestCase {
                 messages: [.init(role: .user, content: text)], responseText: text
             )],
             processingSteps: [
-                WorkflowTextStep(kind: .recognizeSpeech, outputText: text),
+                WorkflowTextStep(kind: .recognizeSpeech, outputText: text, durationMilliseconds: 1_234),
                 WorkflowTextStep(kind: .applyVocabulary, outputText: text, didChange: false),
                 WorkflowTextStep(kind: .llmRewrite, result: .failed,
                                  tokenUsage: .init(inputTokens: 120, outputTokens: 24, totalTokens: 144))
@@ -40,6 +43,7 @@ final class RecognitionCorrectionSourceTests: XCTestCase {
         XCTAssertEqual(steps.last?.result, .failed)
         XCTAssertNil(steps.last?.outputText)
         XCTAssertEqual(steps.last?.tokenUsage, source.processingSteps?.last?.tokenUsage)
+        XCTAssertEqual(steps.first?.durationMilliseconds, 1_234)
         XCTAssertEqual(steps[1].didChange, false)
         XCTAssertLessThanOrEqual(try XCTUnwrap(steps.first?.outputText).count, 96)
         XCTAssertFalse(String(decoding: try JSONEncoder().encode(preview), as: UTF8.self).contains("PRIVATE-TAIL"))
