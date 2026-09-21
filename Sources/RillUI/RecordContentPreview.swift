@@ -3,15 +3,11 @@ import ImageIO
 import RillCore
 import SwiftUI
 
-actor RecordThumbnailCache {
-  static let shared = RecordThumbnailCache()
-  private var images: [RecordID: CGImage] = [:]
-  private var order: [RecordID] = []
-  private var byteCount = 0
+actor RecordImageDecoder {
+  static let shared = RecordImageDecoder()
 
-  func thumbnail(for id: RecordID, data: Data) -> CGImage? {
+  func thumbnail(data: Data, maximumPixelSize: Int) -> CGImage? {
     guard !Task.isCancelled else { return nil }
-    if let image = images[id] { return image }
     guard
       let source = CGImageSourceCreateWithData(
         data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
@@ -20,49 +16,92 @@ actor RecordThumbnailCache {
         [
           kCGImageSourceCreateThumbnailFromImageAlways: true,
           kCGImageSourceCreateThumbnailWithTransform: true,
-          kCGImageSourceThumbnailMaxPixelSize: 768,
+          kCGImageSourceThumbnailMaxPixelSize: min(max(maximumPixelSize, 1), 2_048),
           kCGImageSourceShouldCacheImmediately: true,
         ] as CFDictionary), !Task.isCancelled
     else { return nil }
-    let bytes = image.bytesPerRow * image.height
-    guard bytes <= 8 * 1_024 * 1_024 else { return image }
-    while byteCount + bytes > 8 * 1_024 * 1_024, !order.isEmpty {
-      if let removed = images.removeValue(forKey: order.removeFirst()) {
-        byteCount -= removed.bytesPerRow * removed.height
+    return image
+  }
+}
+
+struct RecordContentPreview: View {
+  let record: Record
+  let language: AppLanguage
+  var imageHeight: CGFloat = 240
+
+  var body: some View {
+    Group {
+      switch record.payload {
+      case .text(let text): RecordTextPreview(text: text, language: language)
+      case .image(let data): RecordImagePreview(id: record.id, data: data, language: language, height: imageHeight)
+      case .files(let urls): RecordFilesPreview(urls: urls, language: language)
       }
     }
-    images[id] = image
-    order.append(id)
-    byteCount += bytes
-    return image
+    .id(record.id)
   }
 }
 
 struct RecordImagePreview: View {
   let id: RecordID
   let data: Data
+  let language: AppLanguage
+  var height: CGFloat = 240
+  @State private var showsExpandedImage = false
+
+  var body: some View {
+    VStack(spacing: RillSpacing.row) {
+      RecordImageContent(id: id, data: data, language: language, maximumPixelSize: 768)
+        .frame(maxWidth: .infinity).frame(height: height)
+      Button(L10n.quickRecord(.expandImage, language: language)) { showsExpandedImage = true }
+        .accessibilityIdentifier("records.expand-image")
+    }
+    .sheet(isPresented: $showsExpandedImage) {
+      VStack(spacing: RillSpacing.panel) {
+        HStack {
+          Text(L10n.quickRecord(.image, language: language)).font(.headline)
+          Spacer()
+          Button(L10n.quickRecord(.close, language: language)) { showsExpandedImage = false }
+            .keyboardShortcut(.cancelAction)
+        }
+        RecordImageContent(id: id, data: data, language: language, maximumPixelSize: 2_048)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+      .padding(RillSpacing.panel)
+      .frame(minWidth: 440, idealWidth: 720, maxWidth: 960, minHeight: 360, idealHeight: 560, maxHeight: 800)
+    }
+  }
+}
+
+private struct RecordImageContent: View {
+  let id: RecordID
+  let data: Data
+  let language: AppLanguage
+  let maximumPixelSize: Int
   @State private var image: CGImage?
   @State private var isLoading = true
 
   var body: some View {
     Group {
       if let image {
-        Image(decorative: image, scale: 1).resizable().scaledToFit()
+        Image(image, scale: 1, label: Text(L10n.quickRecord(.image, language: language)))
+          .resizable().scaledToFit()
       } else if isLoading {
         ProgressView().controlSize(.small)
       } else {
-        Image(systemName: RillSystemSymbol.photoBadgeExclamationmark.rawValue).foregroundStyle(
-          .secondary)
+        Label(L10n.quickRecord(.imageUnavailable, language: language),
+          systemImage: RillSystemSymbol.photoBadgeExclamationmark.rawValue)
+          .foregroundStyle(.secondary)
       }
     }
     .task(id: id) {
       image = nil
       isLoading = true
-      let thumbnail = await RecordThumbnailCache.shared.thumbnail(for: id, data: data)
+      let thumbnail = await RecordImageDecoder.shared.thumbnail(data: data, maximumPixelSize: maximumPixelSize)
       guard !Task.isCancelled else { return }
       image = thumbnail
       isLoading = false
     }
+    .onDisappear { image = nil }
   }
 }
 

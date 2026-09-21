@@ -85,10 +85,12 @@ public final class RecordQuickPanelModel {
     didSet { if oldValue != currentAppOnly { scheduleSearch() } }
   }
   public var kind: RecordPayloadKind? { didSet { if oldValue != kind { scheduleSearch() } } }
-  public var selectedID: RecordID? { didSet { if selectedID != oldValue { closePreview() } } }
+  public var selectedID: RecordID? { didSet { if selectedID != oldValue { loadPreview() } } }
   public private(set) var results: [RecordSummary] = []
   public private(set) var capacity = RecordCapacity(count: 0, byteCount: 0)
   public private(set) var isSearching = false
+  public private(set) var isPreviewVisible = false
+  public private(set) var isLoadingPreview = false
   public private(set) var preview: RecordProjection?
   public private(set) var message: QuickRecordText?
   public private(set) var nextOffset: Int?
@@ -162,6 +164,8 @@ public final class RecordQuickPanelModel {
     previewTask = nil
     searchGeneration &+= 1
     preview = nil
+    isLoadingPreview = false
+    isPreviewVisible = false
     isSearching = false
   }
 
@@ -252,22 +256,41 @@ public final class RecordQuickPanelModel {
   }
 
   public func togglePreview() {
-    if preview != nil {
+    if isPreviewVisible {
       closePreview()
+    } else {
+      isPreviewVisible = true
+      loadPreview()
+    }
+  }
+
+  private func loadPreview() {
+    previewTask?.cancel()
+    previewTask = nil
+    isLoadingPreview = false
+    guard !isClosed, isPreviewVisible, let subject = selectedRecord?.reuseSubject else {
+      preview = nil
       return
     }
-    guard let subject = selectedRecord?.reuseSubject else { return }
-    previewTask?.cancel()
+    if preview?.id == subject.recordID, preview?.metadata.revision == subject.metadataRevision { return }
+    preview = nil
+    isLoadingPreview = true
     previewTask = Task { [weak self, store] in
+      defer { if !Task.isCancelled { self?.isLoadingPreview = false } }
       do {
         let record = try await store.record(id: subject.recordID)
         guard !Task.isCancelled, self?.selectedRecord?.reuseSubject == subject else { return }
         self?.preview = record
-      } catch { self?.message = .failed }
+      } catch {
+        guard !Task.isCancelled, self?.selectedRecord?.reuseSubject == subject else { return }
+        self?.message = .recordUnavailable
+      }
     }
   }
 
   public func closePreview() {
+    isPreviewVisible = false
+    isLoadingPreview = false
     previewTask?.cancel()
     previewTask = nil
     preview = nil
@@ -298,7 +321,11 @@ public final class RecordQuickPanelModel {
 
   private func scheduleSearch(offset: Int = 0) {
     guard !isClosed else { return }
-    if offset == 0 { cancelSemanticSearch() }
+    if offset == 0 {
+      cancelSemanticSearch()
+      previewTask?.cancel()
+      isLoadingPreview = false
+    }
     if message == .copied { message = nil }
     searchTask?.cancel()
     searchGeneration &+= 1
@@ -340,6 +367,7 @@ public final class RecordQuickPanelModel {
           self.selectedID = self.selectableResults.first?.id
         }
         self.isSearching = false
+        self.loadPreview()
       } catch is CancellationError {
       } catch RecordStoreError.membershipChanged {
         guard !Task.isCancelled, let self, self.searchGeneration == generation else { return }

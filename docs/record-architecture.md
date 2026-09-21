@@ -48,6 +48,26 @@ images, and files all use its target checks and conditional clipboard transactio
 restoration must preserve a newer external copy. Pausing history capture does
 not disable explicit output.
 
+## Content previews
+
+The quick panel and record inspector share `RecordContentPreview`. Opening the
+quick-panel preview loads only the selected immutable payload; changing selection,
+closing the panel, or refreshing the catalog cancels the previous request. A
+refresh keeps an already loaded preview when its exact subject remains valid. Preview
+reads do not acquire delivery leases, consume memberships, or touch the clipboard.
+
+Images are decoded off the main actor with ImageIO downsampling (768 pixels for
+the inline preview, at most 2048 for the expanded sheet). Decoded images belong
+to visible views and are released when those views disappear, without writing
+plaintext image files or maintaining a process-wide image cache.
+
+Visible file rows read metadata and request cancellable Quick Look thumbnails.
+Full Quick Look views are created only when explicitly opened, do not autoplay,
+and close with their sheet. File URLs reference current filesystem contents,
+not captured copies; missing or unreadable files show an unavailable state. Rill
+does not persist file thumbnails or contents. macOS Quick Look and file providers
+manage their own rendering, caches, and access behavior.
+
 ## Persistence and migration
 
 SQLite schema 13 stores encrypted catalog nodes and immutable payload blobs

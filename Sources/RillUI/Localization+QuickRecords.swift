@@ -2,6 +2,7 @@ import Foundation
 import RillCore
 
 public enum QuickRecordText: CaseIterable {
+  case expandImage, imageUnavailable, fileUnavailable, previousFile, nextFile
   case meaningSearch, semanticCandidates, downloadSearchModel, localSearchNotice, preparingSearchModel
   case semanticFailed, semanticChanged, semanticQueryTooLong, semanticNoResults, semanticLimited
   case copied, unpin, recordInUse
@@ -16,6 +17,16 @@ public enum QuickRecordText: CaseIterable {
 extension L10n {
   public static func quickRecord(_ key: QuickRecordText, language: AppLanguage) -> String {
     switch (key, language) {
+    case (.expandImage, .english): "View larger image"
+    case (.expandImage, .simplifiedChinese): "查看大图"
+    case (.imageUnavailable, .english): "This image could not be loaded."
+    case (.imageUnavailable, .simplifiedChinese): "无法加载此图片。"
+    case (.fileUnavailable, .english): "File moved, deleted, or unreadable."
+    case (.fileUnavailable, .simplifiedChinese): "文件已移动、删除或无法读取。"
+    case (.previousFile, .english): "Previous file"
+    case (.previousFile, .simplifiedChinese): "上一个文件"
+    case (.nextFile, .english): "Next file"
+    case (.nextFile, .simplifiedChinese): "下一个文件"
     case (.meaningSearch, .english): "Search by meaning"
     case (.meaningSearch, .simplifiedChinese): "按含义补充"
     case (.semanticCandidates, .english): "Semantic candidates"

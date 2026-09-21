@@ -795,20 +795,8 @@ public struct RecordWorkspaceView: View {
         }
     }
 
-    @ViewBuilder
     private func payloadPreview(_ record: Record) -> some View {
-        switch record.payload {
-        case .text(let value):
-            RecordTextPreview(text: value, language: language)
-        case .image(let data):
-            RecordImagePreview(id: record.id, data: data).frame(maxHeight: 280)
-        case .files(let urls):
-            VStack(alignment: .leading) {
-                ForEach(urls, id: \.self) { url in
-                    Label(url.lastPathComponent, systemImage: RillSystemSymbol.doc.rawValue)
-                }
-            }
-        }
+        RecordContentPreview(record: record, language: language)
     }
 
     private func digitBadge(_ number: Int) -> some View {
