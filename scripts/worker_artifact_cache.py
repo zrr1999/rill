@@ -1,3 +1,8 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 """Local, content-addressed Release worker artifacts; never SwiftPM build databases."""
 
 from __future__ import annotations
