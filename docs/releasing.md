@@ -10,7 +10,7 @@ Rill 的正式版本由 Git 标签决定。开发构建使用 `0.0.0-dev+<commit
 2. 明确版本号、支持的 macOS/硬件、启用的语音模型以及已知限制。
 3. 确认许可证、安全报告渠道和 GitHub Actions 均可用。启用主分支保护，要求
    `Required CI`、`PR message`、`Commit messages`，并限制直接推送和绕过。
-4. 从候选提交运行 `just ci`、`bash scripts/check_commit_messages.sh` 和
+4. 从候选提交运行 `just ci-clean`、`bash scripts/check_commit_messages.sh` 和
    `uv run --script scripts/check_dependency_security.py --live-osv`。
    保存日志、版本信息和预期跳过项，并确认该提交的 GitHub CI 通过。
 5. 维护者授权发布后，为该提交创建并推送唯一的语义版本标签。
@@ -28,7 +28,8 @@ SIGN_IDENTITY="Developer ID Application" \
   bash scripts/release.sh --notarize
 ```
 
-脚本会从标签提交创建隔离源码快照，完成预检、构建、签名、DMG 公证、staple 和
+脚本会从标签提交创建隔离源码快照，关闭 worker 缓存并执行干净预检；装配前的
+增量复核保留已验证的 Release 产物，再完成签名、DMG 公证、staple 和
 Gatekeeper 复验。成功后在 `.artifacts/release/` 产生最终 DMG 和
 `Rill.dmg.sha256`。凭据只保存在维护者 Keychain 或发布环境的 secret 存储中。
 
