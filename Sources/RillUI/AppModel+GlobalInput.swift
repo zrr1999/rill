@@ -3,14 +3,6 @@ import RillCore
 
 @MainActor
 public extension AppModel {
-    func installGlobalInputActions(
-        request: @escaping () -> Void,
-        retry: @escaping () -> Void
-    ) {
-        requestGlobalInputAction = request
-        retryGlobalInputAction = retry
-    }
-
     func requestGlobalInputPermission() {
         requestGlobalInputAction()
     }

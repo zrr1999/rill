@@ -150,7 +150,8 @@ extension AppModel {
         if activeRunID == runID {
             activeRunID = nil
         }
-        isRunning = false
+        voice.finish(runID)
+        isRunning = !pendingRuns.isEmpty
         workflowAudioRunState = .idle
         if matchesWorkflowAudioCapture {
             workflowAudioCaptureRunID = nil
@@ -261,45 +262,29 @@ extension AppModel {
     func handle(_ event: RillEvent) {
         switch event {
         case .runStarted(let run):
-            activeRunID = run.runID
-            isRunning = true
+            voice.begin(run)
             workflowAudioRunState = .idle
             lastFailure = nil
-            let wf = workflows.first(where: { $0.id == run.workflowID })
-            let isStack = wf?.plan.output.deliveryPolicy.strategy == .collectionFirst
-            pendingRuns[run.runID] = PendingRunInfo(
-                workflowID: run.workflowID,
-                workflow: run.workflow,
-                trigger: run.trigger,
-                isRecordRelated: isStack
-            )
             append(
                 english: "Run started: \(UIStrings.workflowName(run.workflow, language: .english))",
                 simplifiedChinese: "工作流开始：\(UIStrings.workflowName(run.workflow, language: .simplifiedChinese))"
             )
         case .runReceiptRepositoryChanged(let change):
             noteNewRunAvailableForHistoryBrowsing()
-            rememberTerminalReceiptTimestamp(
-                change.terminalTimestamp,
-                runID: change.runID,
-                writeGeneration: change.writeGeneration
-            )
             // The event is only an invalidation edge. A clear may have removed
             // the receipt after its insert returned but before event delivery,
             // so discard the old projection and admit only a fresh repository
             // snapshot. A failed reload therefore remains fail-closed.
             workflowRunReceiptsByRunID.removeValue(forKey: change.runID)
             loadRunReceipts(requiredRunIDs: [change.runID])
-        case .contextCaptured(let context):
+        case .contextCaptured(_, let context):
             let appName = context.focus.applicationName ?? "Unknown"
             append(
                 english: "Context captured from \(appName)",
                 simplifiedChinese: "已捕获上下文：\(appName)"
             )
-        case .recognitionCompleted(let recognition):
-            if !recognition.bestText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                lastCompletedText = recognition.bestText
-            }
+        case .recognitionCompleted(let identity, let recognition):
+            voice.updateText(recognition.bestText, from: identity)
             guard pendingRuns.isEmpty else { break }
             appendPrivacyProtectedBody(
                 english: recognition.bestText,
@@ -332,9 +317,9 @@ extension AppModel {
                 english: "Candidate resolution requested",
                 simplifiedChinese: "已请求候选词消歧"
             )
-        case .candidateResolutionFinished(_, let resolvedText):
-            pendingResolution = nil
-            lastCompletedText = resolvedText
+        case .candidateResolutionFinished(let identity, _, let resolvedText):
+            if pendingResolution?.runID == identity.runID { pendingResolution = nil }
+            voice.updateText(resolvedText, from: identity)
             guard pendingRuns.isEmpty else { break }
             appendPrivacyProtectedBody(
                 english: resolvedText,
@@ -343,7 +328,6 @@ extension AppModel {
             )
         case .runTextStepRecorded(let runID, let step):
             guard pendingRuns[runID]?.trigger.isVoiceCapture == true else { return }
-            pendingRuns[runID]?.processingSteps.append(step)
             if let text = step.outputText {
                 appendPrivacyProtectedBody(
                     english: text, simplifiedChinese: text, kind: .processingStep(step)
@@ -352,15 +336,15 @@ extension AppModel {
                 let summary = EventFeedPrivacyBodyKind.processingStep(step).hiddenSummary
                 append(english: summary.english, simplifiedChinese: summary.simplifiedChinese)
             }
-        case .transformationApplied(_, let text):
-            lastCompletedText = text
+        case .transformationApplied(let identity, _, let text):
+            voice.updateText(text, from: identity)
             guard pendingRuns.isEmpty else { break }
             appendPrivacyProtectedBody(
                 english: text,
                 simplifiedChinese: text,
                 kind: .transformation
             )
-        case .actionExecuted(_, let result):
+        case .actionExecuted(_, _, let result):
             let presentation = actionResultPresentation(result)
             append(
                 english: presentation.english,
@@ -368,40 +352,31 @@ extension AppModel {
             )
         case .recordPanelRequested:
             showRecordPanel()
+        case .runHistoryUpdated(let update):
+            switch update {
+            case .persisted:
+                loadHistory()
+            case .sessionOnly(let record):
+                cacheHistoryRecord(record)
+                append(
+                    english: "History persistence is unavailable. This run is visible only for the current session.",
+                    simplifiedChinese: "历史记录持久化不可用；这次运行仅在当前会话中可见。"
+                )
+            }
         case .runCompleted(let summary):
+            let ownsPresentation = activeRunID == summary.runID
+            voice.complete(summary)
             let completedWorkflowAudioCapture = retireWorkflowAudioCapture(
                 matching: summary.runID
             )
-            if activeRunID == summary.runID || completedWorkflowAudioCapture {
+            if (ownsPresentation || completedWorkflowAudioCapture) && pendingRuns.isEmpty {
                 isRunning = false
                 if activeRunID == summary.runID {
                     activeRunID = nil
                 }
             }
-            lastFailure = nil
-            let completedPending = pendingRuns.removeValue(forKey: summary.runID)
+            if ownsPresentation { lastFailure = nil }
             if summary.trigger.isVoiceCapture {
-                lastCompletedText = summary.finalText
-                let isRecordRelated =
-                    completedPending?.isRecordRelated
-                    ?? (
-                        summary.workflow.titleKey == .recordDelivery
-                            || (workflows.first(where: { $0.id == summary.workflowID })?.plan.output.deliveryPolicy.strategy == .collectionFirst)
-                    )
-                recordHistory(WorkflowResultRecord(
-                    runID: summary.runID,
-                    workflowID: summary.workflowID,
-                    workflow: summary.workflow,
-                    finalText: summary.finalText,
-                    timestamp: runHistoryTimestamp(
-                        for: summary.runID,
-                        fallback: summary.finishedAt
-                    ),
-                    isRecordRelated: isRecordRelated,
-                    outcome: .completed,
-                    correctionSource: summary.correctionSource,
-                    trigger: summary.trigger
-                ), contextHistoryUpdate: summary.contextHistoryUpdate)
                 appendPrivacyProtectedBody(
                     english: summary.finalText,
                     simplifiedChinese: summary.finalText,
@@ -431,7 +406,7 @@ extension AppModel {
                     activeRunID = nil
                 }
             }
-            pendingRuns.removeValue(forKey: summary.runID)
+            voice.finish(summary.runID)
             if pendingResolution?.runID == summary.runID {
                 pendingResolution = nil
             }
@@ -444,9 +419,11 @@ extension AppModel {
                     : "工作流已取消。"
             )
             scheduleLiveSubtitleHide()
-        case .runFailed(let failedRunID, let workflow, let message):
+        case .runFailed(let failedRunID, _, let message):
             let failurePresentation = RunFailurePresentation.localizedText(for: message)
-            lastFailure = failurePresentation.string(for: language)
+            if failedRunID == activeRunID || activeRunID == nil {
+                lastFailure = failurePresentation.string(for: language)
+            }
             let failedCurrentCapture = failedRunID != nil
                 && currentCaptureLiveSubtitleSnapshot?.runID == failedRunID
             let failedActiveRun = failedRunID.map { activeRunID == $0 } ?? false
@@ -459,38 +436,7 @@ extension AppModel {
                     activeRunID = nil
                 }
             }
-            if let failedRunID, let failedPending = pendingRuns.removeValue(forKey: failedRunID) {
-                recordHistory(WorkflowResultRecord(
-                    runID: failedRunID,
-                    workflowID: failedPending.workflowID,
-                    workflow: workflow ?? failedPending.workflow,
-                    failureMessage: message,
-                    timestamp: runHistoryTimestamp(
-                        for: failedRunID,
-                        fallback: Date()
-                    ),
-                    isRecordRelated: failedPending.isRecordRelated,
-                    outcome: .failed,
-                    correctionSource: failedPending.processingSteps.isEmpty ? nil : RecognitionCorrectionSource(
-                        preMappingText: failedPending.processingSteps.first?.outputText ?? "",
-                        context: VocabularyRuleContext(),
-                        processingSteps: failedPending.processingSteps
-                    ),
-                    trigger: failedPending.trigger
-                ))
-            } else if let failedRunID, let workflow {
-                recordHistory(WorkflowResultRecord(
-                    runID: failedRunID,
-                    workflow: workflow,
-                    failureMessage: message,
-                    timestamp: runHistoryTimestamp(
-                        for: failedRunID,
-                        fallback: Date()
-                    ),
-                    isRecordRelated: workflow.titleKey == .recordDelivery,
-                    outcome: .failed
-                ))
-            }
+            if let failedRunID { voice.finish(failedRunID) }
             append(
                 english: failurePresentation.english,
                 simplifiedChinese: failurePresentation.simplifiedChinese
@@ -556,90 +502,12 @@ extension AppModel {
         }
     }
 
-    func recordHistory(_ record: WorkflowResultRecord, contextHistoryUpdate: CorrectionHistoryUpdate? = nil) {
-        let record = HistoryRecordSanitizer.sanitize(record)
-        let terminalWriteGeneration = record.runID.flatMap {
-            terminalReceiptWriteGenerationByRunID.removeValue(forKey: $0)
-        }
-        guard let historyRepository else {
-            cacheHistoryRecord(record)
-            return
-        }
-        let cacheGeneration = historyLoadGeneration
-        let task = Task { [weak self, historyRepository] in
-            do {
-                let writeGeneration: RunHistoryWriteGeneration
-                if let terminalWriteGeneration {
-                    writeGeneration = terminalWriteGeneration
-                } else {
-                    // Compatibility events without a receipt coordinate begin a
-                    // fresh History write intent at this repository boundary.
-                    writeGeneration = try await historyRepository
-                        .captureRunHistoryWriteGeneration()
-                }
-                try await historyRepository.save(
-                    record,
-                    generation: writeGeneration
-                )
-                await contextHistoryUpdate?.historySaved()
-                await MainActor.run {
-                    guard self?.historyLoadGeneration == cacheGeneration else { return }
-                    self?.cacheHistoryRecord(record)
-                }
-            } catch HistoryRepositoryError.writeObsoletedByClearBarrier {
-                // The user's logical clear is authoritative. Do not resurrect
-                // an old-generation row in durable storage or the UI cache.
-            } catch {
-                await MainActor.run {
-                    guard self?.historyLoadGeneration == cacheGeneration else { return }
-                    self?.cacheHistoryRecord(record)
-                    self?.append(
-                        english: "History persistence is unavailable. This run is visible only for the current session.",
-                        simplifiedChinese: "历史记录持久化不可用；这次运行仅在当前会话中可见。"
-                    )
-                }
-            }
-        }
-        persistenceWrites.track(task)
-    }
-
     private func cacheHistoryRecord(_ record: WorkflowResultRecord) {
         noteNewRunAvailableForHistoryBrowsing()
+        historyRecords.removeAll { $0.id == record.id }
         historyRecords.insert(record, at: 0)
         if historyRecords.count > 50 {
             historyRecords.removeLast(historyRecords.count - 50)
-        }
-    }
-
-    /// A finalized receipt is the durable terminal coordinate for its run. The
-    /// UI receives it before runCompleted/runFailed, so the history row and its
-    /// receipt retain the same terminal ordering coordinate. Logical generation
-    /// independently prevents delayed persistence from crossing a clear.
-    private func runHistoryTimestamp(for runID: UUID, fallback: Date) -> Date {
-        if let timestamp = terminalReceiptTimestampByRunID.removeValue(forKey: runID) {
-            terminalReceiptTimestampOrder.removeAll { $0 == runID }
-            return timestamp
-        }
-        return workflowRunReceiptsByRunID[runID]?.timestamp ?? fallback
-    }
-
-    private func rememberTerminalReceiptTimestamp(
-        _ timestamp: Date,
-        runID: UUID,
-        writeGeneration: RunHistoryWriteGeneration?
-    ) {
-        if terminalReceiptTimestampByRunID[runID] == nil {
-            terminalReceiptTimestampOrder.append(runID)
-        }
-        terminalReceiptTimestampByRunID[runID] = timestamp
-        if let writeGeneration {
-            terminalReceiptWriteGenerationByRunID[runID] = writeGeneration
-        }
-        let capacity = 256
-        if terminalReceiptTimestampOrder.count > capacity {
-            let evictedRunID = terminalReceiptTimestampOrder.removeFirst()
-            terminalReceiptTimestampByRunID.removeValue(forKey: evictedRunID)
-            terminalReceiptWriteGenerationByRunID.removeValue(forKey: evictedRunID)
         }
     }
 
@@ -802,7 +670,7 @@ extension AppModel {
             }
         pendingResolution = nil
         eventFeed.removeAll()
-        pendingRuns.removeAll()
+        voice.reset()
         currentCaptureLiveSubtitleSnapshot = nil
         workflowAudioCaptureRunID = nil
         liveSubtitleSnapshot = nil
@@ -811,16 +679,6 @@ extension AppModel {
         pendingLiveSubtitleHideTask = nil
     }
 
-    func isVoiceHistoryRecord(_ record: WorkflowResultRecord) -> Bool {
-        let receiptTrigger = record.runID.flatMap {
-            workflowRunReceiptsByRunID[$0]?.trigger
-        }
-        if let recordTrigger = record.trigger, let receiptTrigger {
-            // Two durable authorities must agree. A corrupt or mismatched join
-            // cannot gain permission to surface a body.
-            guard recordTrigger == receiptTrigger else { return false }
-            return recordTrigger.isVoiceCapture
-        }
-        return (record.trigger ?? receiptTrigger)?.isVoiceCapture == true
-    }
+    func isVoiceHistoryRecord(_ record: WorkflowResultRecord) -> Bool { history.isVoiceHistoryRecord(record) }
+
 }

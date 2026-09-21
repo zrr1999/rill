@@ -70,6 +70,7 @@ public protocol WorkflowFileStore: Sendable {
   ) async throws -> URL
 
   func delete(fileURL: URL) async throws
+  func delete(fileURL: URL, expected: WorkflowFileExpectation) async throws
 
   func decodeDocument(_ source: String) throws -> WorkflowDocument
   func encodeDocument(_ document: WorkflowDocument) throws -> String
@@ -101,12 +102,15 @@ public struct WorkflowFileVersion: Identifiable, Sendable, Equatable {
 }
 
 public extension WorkflowFileStore {
+  func delete(fileURL: URL, expected: WorkflowFileExpectation) async throws {
+    throw WorkflowDocumentError("", "Conflict-aware document deletion is unavailable.")
+  }
+
   func decodeDocument(_ source: String) throws -> WorkflowDocument { throw WorkflowDocumentError("", "Document editing is unavailable.") }
   func encodeDocument(_ document: WorkflowDocument) throws -> String { throw WorkflowDocumentError("", "Document editing is unavailable.") }
   func readSource(at fileURL: URL) async throws -> String { throw WorkflowDocumentError("", "Document editing is unavailable.") }
   func saveDocument(_ document: WorkflowDocument, replacing fileURL: URL?, expected: WorkflowFileExpectation) async throws -> WorkflowFileRecord {
-    let url = try await save(workflow: document.workflow, isEnabled: document.isEnabled, replacing: fileURL)
-    return WorkflowFileRecord(workflow: document.workflow, isEnabled: document.isEnabled, fileURL: url)
+    throw WorkflowDocumentError("", "Conflict-aware document editing is unavailable.")
   }
   func changes() async -> AsyncStream<Void> { AsyncStream { $0.finish() } }
   func versions(for workflowID: UUID) async throws -> [WorkflowFileVersion] { [] }

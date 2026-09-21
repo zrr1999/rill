@@ -1,3 +1,4 @@
+import RillSpeechContracts
 import CryptoKit
 import Darwin
 import Foundation
@@ -7,7 +8,6 @@ import MLXAudioCore
 import MLXAudioSTT
 import MLXAudioTTS
 import RillCore
-import RillProviders
 
 public enum MLXAudioSwiftRuntimeError: Error, LocalizedError, Sendable, Equatable {
   case architectureUnsupported

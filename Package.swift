@@ -32,6 +32,7 @@ let package = Package(
   ],
   targets: [
     .target(name: "RillCore"),
+    .target(name: "RillSpeechContracts", dependencies: ["RillCore"]),
     .target(
       name: "RillPlatform",
       dependencies: [
@@ -45,16 +46,16 @@ let package = Package(
     .target(
       name: "RillProviders",
       dependencies: [
+        "RillSpeechContracts",
         "RillCore",
-        "RillPlatform",
         .product(name: "OpenAI", package: "OpenAI"),
       ]
     ),
     .target(
       name: "RillMLXRuntime",
       dependencies: [
+        "RillSpeechContracts",
         "RillCore",
-        "RillProviders",
         .product(name: "MLXAudioCore", package: "mlx-audio-swift"),
         .product(name: "MLXAudioSTT", package: "mlx-audio-swift"),
         .product(name: "MLXAudioTTS", package: "mlx-audio-swift"),
@@ -71,10 +72,11 @@ let package = Package(
         .linkedLibrary("sqlite3")
       ]
     ),
-    .target(name: "RillUI", dependencies: ["RillCore", "RillRuntime"]),
+    .target(name: "RillUI", dependencies: [ "RillCore", "RillRuntime"]),
     .executableTarget(
       name: "RillApp",
       dependencies: [
+        "RillSpeechContracts",
         "RillCore",
         "RillPlatform",
         "RillProviders",
@@ -91,9 +93,9 @@ let package = Package(
     .executableTarget(
       name: "RillSpeechWorker",
       dependencies: [
+        "RillSpeechContracts",
         "RillCore",
         "RillMLXRuntime",
-        "RillProviders",
       ]
     ),
     .testTarget(name: "RillCoreTests", dependencies: ["RillCore"]),
@@ -113,6 +115,7 @@ let package = Package(
     .testTarget(
       name: "RillProvidersTests",
       dependencies: [
+        "RillSpeechContracts",
         "RillCore",
         "RillPlatform",
         "RillProviders",
@@ -121,9 +124,9 @@ let package = Package(
     .testTarget(
       name: "RillMLXRuntimeTests",
       dependencies: [
+        "RillSpeechContracts",
         "RillCore",
         "RillMLXRuntime",
-        "RillProviders",
       ]
     ),
     .testTarget(
@@ -137,6 +140,7 @@ let package = Package(
     .testTarget(
       name: "RillAppTests",
       dependencies: [
+        "RillSpeechContracts",
         "RillApp",
         "RillCore",
         "RillPlatform",

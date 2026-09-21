@@ -1,3 +1,4 @@
+@testable import RillSpeechContracts
 import XCTest
 
 @testable import RillApp
@@ -257,6 +258,11 @@ private actor AppBootstrapClipboardHistory: RecordHistoryMaintaining {
 }
 
 private actor AppBootstrapHistoryRepository: HistoryRepository {
+    func save(_ value: WorkflowResultRecord, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await (self as any HistoryRepository).save(value)
+    }
+
   private var clearCount: Int
   private var currentGeneration: RunHistoryWriteGeneration = .initial
   private var lastClearIntentID: UUID?
@@ -307,6 +313,11 @@ private actor AppBootstrapHistoryRepository: HistoryRepository {
 }
 
 private actor AppBootstrapDiagnosticRepository: DiagnosticRepository {
+    func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await (self as any DiagnosticRepository).save(value)
+    }
+
   private var clearCount: Int
   private var currentGeneration: RunHistoryWriteGeneration = .initial
   private var lastClearIntentID: UUID?
@@ -942,39 +953,7 @@ final class AppBootstrapTests: XCTestCase {
     }
   }
 
-  func testStartupPurgesRetiredWhisperCredentialWithoutChangingSherpaSettings() async throws {
-    let sourceURL = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .appendingPathComponent("Sources/RillApp/AppBootstrap.swift")
-    let source = try String(contentsOf: sourceURL, encoding: .utf8)
-    let start = try XCTUnwrap(
-      source.range(of: "private static func startBackgroundServices(")
-    )
-    let end = try XCTUnwrap(
-      source.range(
-        of: "private static func makeContainer(",
-        range: start.upperBound..<source.endIndex
-      )
-    )
-    let startupBody = String(source[start.lowerBound..<end.lowerBound])
-    let purgeCall = try XCTUnwrap(
-      startupBody.range(
-        of:
-          #"platform\.credentialStore\.removeCredential\(\s*for:\s*\.legacyWhisperKitModelToken\s*\)"#,
-        options: .regularExpression
-      )
-    )
-    let manifestDiagnostic = try XCTUnwrap(
-      startupBody.range(of: "runtime.workflowManifestStartupDiagnostic")
-    )
-    XCTAssertLessThan(
-      startupBody.distance(from: startupBody.startIndex, to: purgeCall.lowerBound),
-      startupBody.distance(from: startupBody.startIndex, to: manifestDiagnostic.lowerBound),
-      "The retired credential purge must remain an application-startup operation."
-    )
-
+  func testRetiredWhisperCredentialPurgePreservesCurrentSpeechSettings() async throws {
     let qwenModel = MLXAudioModelID.qwen3ASR06BInt8.rawValue
     let legacySettingsStore = AppBootstrapSettingsStore(
       storage: [

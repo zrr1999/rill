@@ -33,7 +33,7 @@ private struct CompilerTransformer: TextTransformer {
 }
 
 private struct CompilerAction: OutputAction {
-    let id = "compiler.action"
+    var id = "compiler.action"
 
     func execute(text: String, context: ActionContext) async throws -> ActionResult {
         .copiedToClipboard
@@ -41,6 +41,21 @@ private struct CompilerAction: OutputAction {
 }
 
 final class WorkflowPlanCompilerTests: XCTestCase {
+    func testRepeatedOutputIDsKeepIndependentFrozenConfiguration() throws {
+        let compiler = WorkflowPlanCompiler(recognizerRegistry: .init(recognizers: []),
+            transformerRegistry: .init(transformers: []),
+            actionRegistry: .init(actions: [CompilerAction(id: ExternalOutputActionID.shortcutsRun)]))
+        var workflow = WorkflowDefinition(name: "Two shortcuts", plan: WorkflowPlan(
+            setup: .init(), process: .init(steps: []), output: .init(actions: [
+                .init(id: ExternalOutputActionID.shortcutsRun, configuration: [ExternalOutputActionConfigurationKey.shortcutName: "First"]),
+                .init(id: ExternalOutputActionID.shortcutsRun, configuration: [ExternalOutputActionConfigurationKey.shortcutName: "Second"])
+            ])), ui: .init(symbolName: "square", accentColorName: "blue"))
+        let compiled = try compiler.compile(workflow: workflow, collections: [], context: .init())
+        workflow.plan.output.actions.removeAll()
+        XCTAssertEqual(compiled.outputConfigurations, [.shortcut(name: "First"), .shortcut(name: "Second")])
+        XCTAssertEqual(compiled.declaration.output.actions.count, 2)
+    }
+
     func testRemoteRecognizerReceivesFrozenApplicableVocabulary() throws {
         let compiler = makeCompiler(acceptsHotwords: true)
         let collectionID = UUID()

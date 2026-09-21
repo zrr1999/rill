@@ -1,16 +1,6 @@
+import RillSpeechContracts
 @preconcurrency import AVFoundation
 import Foundation
-
-enum LocalSpeechCaptureLimits {
-  static let sampleRateHz = 16_000.0
-  static let maximumRequestedDurationSeconds = 120.0
-  static let startupToleranceSeconds = 3.1
-  static let maximumAcceptedDurationSeconds =
-    maximumRequestedDurationSeconds + startupToleranceSeconds
-  static let maximumAcceptedFrameCount = Int(
-    (maximumAcceptedDurationSeconds * sampleRateHz).rounded(.down)
-  )
-}
 
 struct LocalSpeechRecordingArtifact: Sendable, Equatable {
   let fileURL: URL

@@ -16,6 +16,7 @@ private enum EventBusStateProjectionKey: Sendable, Equatable {
 
 private enum EventBusCoalescingDisposition: Sendable {
   case replaceableState(EventBusStateProjectionKey)
+  case diagnostic
   case boundary
 }
 
@@ -23,6 +24,9 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
   private let lock = NSLock()
   private let coalescingDisposition:
     @Sendable (_ incoming: Element) -> EventBusCoalescingDisposition
+  private let capacity: Int
+  private let diagnosticCapacity: Int
+  private var pending: [(Element, EventBusAdmission)] = []
   private var bufferedElements: [Element] = []
   private var bufferedHeadIndex = 0
   private var replaceableStateIndex: Int?
@@ -31,13 +35,19 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
   private var isFinished = false
 
   init(
+    capacity: Int, diagnosticCapacity: Int,
     coalescingDisposition:
       @escaping @Sendable (_ incoming: Element) -> EventBusCoalescingDisposition
   ) {
+    self.capacity = capacity
+    self.diagnosticCapacity = diagnosticCapacity
     self.coalescingDisposition = coalescingDisposition
   }
 
-  func send(_ element: Element) {
+  var pendingCount: Int { lock.withLock { pending.count } }
+
+  func send(_ element: Element) -> EventBusAdmission? {
+    var admission: EventBusAdmission?
     let waitingConsumer = lock.withLock { () -> CheckedContinuation<Element?, Never>? in
       guard !isFinished else { return nil }
       if let waiter {
@@ -45,7 +55,37 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
         return waiter
       }
 
-      switch coalescingDisposition(element) {
+      let disposition = coalescingDisposition(element)
+      if case .diagnostic = disposition {
+        // Keep the buffered head while reliable publishers wait for admission.
+        guard pending.isEmpty else { return nil }
+        let indices = (bufferedHeadIndex..<bufferedElements.count).filter {
+          if case .diagnostic = coalescingDisposition(bufferedElements[$0]) { return true }
+          return false
+        }
+        if indices.count >= diagnosticCapacity, let oldest = indices.first {
+          bufferedElements.remove(at: oldest)
+          if let index = replaceableStateIndex, index > oldest { replaceableStateIndex = index - 1 }
+        }
+      }
+      if !pending.isEmpty || bufferedElements.count - bufferedHeadIndex >= capacity {
+        switch disposition {
+        case .diagnostic: return nil
+        case .replaceableState(let key):
+          if let index = replaceableStateIndex, replaceableStateKey == key {
+            bufferedElements[index] = element
+            return nil
+          }
+        case .boundary: break
+        }
+        let ticket = EventBusAdmission { [weak self] id in self?.cancelAdmission(id) }
+        pending.append((element, ticket))
+        admission = ticket
+        replaceableStateIndex = nil
+        replaceableStateKey = nil
+        return nil
+      }
+      switch disposition {
       case .replaceableState(let key):
         if let replaceableStateIndex, replaceableStateKey == key {
           bufferedElements[replaceableStateIndex] = element
@@ -54,6 +94,10 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
           replaceableStateIndex = bufferedElements.index(before: bufferedElements.endIndex)
           replaceableStateKey = key
         }
+      case .diagnostic:
+        bufferedElements.append(element)
+        replaceableStateIndex = nil
+        replaceableStateKey = nil
       case .boundary:
         bufferedElements.append(element)
         replaceableStateIndex = nil
@@ -62,6 +106,15 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
       return nil
     }
     waitingConsumer?.resume(returning: element)
+    return admission
+  }
+
+  private func cancelAdmission(_ id: UUID) {
+    let admission = lock.withLock { () -> EventBusAdmission? in
+      guard let index = pending.firstIndex(where: { $0.1.id == id }) else { return nil }
+      return pending.remove(at: index).1
+    }
+    admission?.resume()
   }
 
   func next() async -> Element? {
@@ -77,6 +130,13 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
             }
             bufferedHeadIndex += 1
             compactConsumedPrefixIfNeeded()
+            if !pending.isEmpty {
+              let (element, admission) = pending.removeFirst()
+              bufferedElements.append(element)
+              replaceableStateIndex = nil
+              replaceableStateKey = nil
+              admission.resume()
+            }
           } else if isFinished || Task.isCancelled {
             immediateResult = .some(nil)
           } else {
@@ -97,6 +157,8 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
     let waitingConsumer = lock.withLock { () -> CheckedContinuation<Element?, Never>? in
       guard !isFinished else { return nil }
       isFinished = true
+      for (_, admission) in pending { admission.resume() }
+      pending.removeAll()
       bufferedElements.removeAll(keepingCapacity: false)
       bufferedHeadIndex = 0
       replaceableStateIndex = nil
@@ -137,7 +199,18 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
 }
 
 extension RillEvent {
+  fileprivate var retainsDeliveryAfterCancellation: Bool {
+    switch self {
+    case .runCompleted, .runCancelled, .runFailed, .runReceiptRepositoryChanged, .runHistoryUpdated,
+      .audioProcessingQueueUpdated, .failedAudioRecoveryUpdated:
+      true
+    case .liveSubtitleUpdated(let snapshot): !snapshot.isVisible
+    default: false
+    }
+  }
+
   fileprivate var eventBusCoalescingDisposition: EventBusCoalescingDisposition {
+    if case .diagnostic = self { return .diagnostic }
     if case .liveSubtitleUpdated(let snapshot) = self, !snapshot.isVisible {
       // A terminal hidden snapshot closes one visible-presentation segment.
       // Treat it as a boundary so a stalled consumer observes the newest
@@ -181,8 +254,17 @@ public actor EventBus {
   public nonisolated let lifecycleDeliveryStream: AsyncStream<EventBusDelivery>
   private let lifecycleDeliveryChannel: EventBusBufferedChannel<EventBusDelivery>
 
-  public init() {
-    let channel = EventBusBufferedChannel<EventBusDelivery> { incoming in
+  private let capacity: Int
+  private let diagnosticCapacity: Int
+
+  public init(maxBufferedEvents: Int = 4096, maxBufferedDiagnostics: Int = 256) {
+    precondition(maxBufferedEvents > 0 && maxBufferedDiagnostics > 0)
+    capacity = maxBufferedEvents
+    diagnosticCapacity = min(maxBufferedDiagnostics, maxBufferedEvents)
+    let channel = EventBusBufferedChannel<EventBusDelivery>(
+      capacity: maxBufferedEvents,
+      diagnosticCapacity: min(maxBufferedDiagnostics, maxBufferedEvents)
+    ) { incoming in
       incoming.eventBusCoalescingDisposition
     }
     lifecycleDeliveryChannel = channel
@@ -192,15 +274,15 @@ public actor EventBus {
     )
   }
 
-  /// Creates a broadcast event stream. High-frequency state projections are
-  /// not an audit log: while a subscriber is behind, a consecutive projection
-  /// for the same state scope replaces its older pending value. Other events
-  /// retain FIFO order and form semantic boundaries. Clipboard snapshot debug
-  /// diagnostics are the sole transparent boundary exception, and only the
-  /// newest such diagnostic is retained in each pending clipboard segment.
+  /// State projections coalesce within a segment; diagnostics retain a bounded
+  /// recent tail. Other events apply backpressure and preserve FIFO order.
+  /// Cancelling a blocked publisher withdraws only unadmitted progress events.
+  /// Terminals, durable invalidations, and final state remain owned until admitted.
   public func stream() -> AsyncStream<RillEvent> {
     let id = UUID()
-    let channel = EventBusBufferedChannel<RillEvent> { incoming in
+    let channel = EventBusBufferedChannel<RillEvent>(
+      capacity: capacity, diagnosticCapacity: diagnosticCapacity
+    ) { incoming in
       incoming.eventBusCoalescingDisposition
     }
     eventDeliveryChannels[id] = channel
@@ -210,21 +292,73 @@ public actor EventBus {
     )
   }
 
+  var pendingLifecycleEventCount: Int { lifecycleDeliveryChannel.pendingCount }
+
   public func publish(_ event: RillEvent) async {
-    for channel in eventDeliveryChannels.values {
-      channel.send(event)
+    let admissions = enqueue(event)
+    if event.retainsDeliveryAfterCancellation {
+      // The caller joins this task: shutdown keeps consumers alive until every
+      // producer has delivered its terminal state, even if its run was cancelled.
+      await Task {
+        for admission in admissions { await admission.wait() }
+      }.value
+    } else {
+      for admission in admissions { await admission.wait() }
     }
-    lifecycleDeliveryChannel.send(.event(event))
+  }
+
+  private func enqueue(_ event: RillEvent) -> [EventBusAdmission] {
+    var admissions: [EventBusAdmission] = []
+    for channel in eventDeliveryChannels.values {
+      if let admission = channel.send(event) { admissions.append(admission) }
+    }
+    if let admission = lifecycleDeliveryChannel.send(.event(event)) { admissions.append(admission) }
+    return admissions
   }
 
   /// Inserts an ordered marker only into delivery streams. Ordinary event
   /// subscribers never observe lifecycle coordination traffic.
   public func publishBarrier(_ id: UUID) async {
-    lifecycleDeliveryChannel.send(.barrier(id))
+    if let admission = lifecycleDeliveryChannel.send(.barrier(id)) { await admission.wait() }
   }
 
   private func removeEventDeliveryChannel(_ id: UUID) {
     guard let channel = eventDeliveryChannels.removeValue(forKey: id) else { return }
     channel.finish()
+  }
+}
+
+private final class EventBusAdmission: @unchecked Sendable {
+  private let lock = NSLock()
+  let id = UUID()
+  private let cancelPending: @Sendable (UUID) -> Void
+  private var admitted = false
+  private var continuation: CheckedContinuation<Void, Never>?
+
+  init(cancelPending: @escaping @Sendable (UUID) -> Void) {
+    self.cancelPending = cancelPending
+  }
+
+  func wait() async {
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        let ready = lock.withLock {
+          if admitted { return true }
+          self.continuation = continuation
+          return false
+        }
+        if ready { continuation.resume() }
+      }
+    } onCancel: {
+      self.cancelPending(self.id)
+    }
+  }
+  func resume() {
+    let waiting = lock.withLock {
+      admitted = true
+      defer { continuation = nil }
+      return continuation
+    }
+    waiting?.resume()
   }
 }

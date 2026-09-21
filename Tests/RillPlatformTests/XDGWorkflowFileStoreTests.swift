@@ -171,6 +171,26 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
     )
   }
 
+  func testDeleteRejectsExternalChangesAndPreservesAcceptedSourceForRecovery() async throws {
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = XDGWorkflowFileStore(configurationDirectoryURL: directory)
+    let workflow = makeWorkflow()
+    let saved = try await store.saveDocument(.init(workflow: workflow), replacing: nil, expected: .missing)
+    let source = try XCTUnwrap(saved.source)
+    let changed = source + "\n# External edit\n"
+    try changed.write(to: saved.fileURL, atomically: true, encoding: .utf8)
+    do {
+      try await store.delete(fileURL: saved.fileURL, expected: .source(source))
+      XCTFail("An external edit must survive a stale delete")
+    } catch WorkflowFileConflict.changed {}
+    XCTAssertEqual(try String(contentsOf: saved.fileURL, encoding: .utf8), changed)
+    try await store.delete(fileURL: saved.fileURL, expected: .source(changed))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: saved.fileURL.path))
+    let versions = try await store.versions(for: workflow.id)
+    XCTAssertTrue(versions.contains(where: { $0.source == changed }))
+  }
+
   func testMalformedAndDuplicateFilesAreReportedWithoutHidingValidFiles() async throws {
     let directory = temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -230,9 +250,12 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
   }
 
   private func temporaryDirectory() -> URL {
-    FileManager.default.temporaryDirectory
+    let root = FileManager.default.temporaryDirectory
       .appendingPathComponent("rill-workflow-store-tests", isDirectory: true)
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+    // The configuration and its sibling version directory share one test-owned root.
+    return root.appendingPathComponent("workflows", isDirectory: true)
   }
 
   private func makeWorkflow(

@@ -73,6 +73,10 @@ final class EventFeedPrivacyPresentationTests: XCTestCase {
         XCTAssertTrue(replacement.presentation(for: .simplifiedChinese, historyPreviewMode: .full).text.contains("词替换 · 已完成\n替换后正文"))
         XCTAssertFalse(replacement.presentation(for: .simplifiedChinese, historyPreviewMode: .disabled).text.contains("替换后正文"))
         XCTAssertFalse(replacement.simplifiedChinese.contains("替换后正文"))
+        harness.model.handle(.runHistoryUpdated(.sessionOnly(WorkflowResultRecord(
+            runID: runID, workflowID: harness.workflow.id, workflow: harness.workflow.presentation,
+            outcome: .failed, correctionSource: .init(preMappingText: "识别正文", context: .init(), processingSteps: steps), trigger: .manual
+        ))))
         harness.model.handle(.runFailed(
             runID: runID, workflow: harness.workflow.presentation, message: "provider unavailable"
         ))
@@ -91,7 +95,7 @@ final class EventFeedPrivacyPresentationTests: XCTestCase {
         let privateText = String(repeating: "private result ", count: 12) + tailCanary
 
         harness.model.handle(
-            .recognitionCompleted(
+            .recognitionCompleted(run: .init(runID: UUID()), result:
                 RecognitionResult(rawText: privateText, bestText: privateText)
             )
         )
@@ -150,17 +154,17 @@ final class EventFeedPrivacyPresentationTests: XCTestCase {
         let privateBody = String(repeating: "private activity body ", count: 8) + tailCanary
         let events: [(event: RillEvent, disabledText: String)] = [
             (
-                .recognitionCompleted(
+                .recognitionCompleted(run: .init(runID: UUID()), result:
                     RecognitionResult(rawText: privateBody, bestText: privateBody)
                 ),
                 "Recognition completed. Preview hidden by privacy setting"
             ),
             (
-                .candidateResolutionFinished(caseID: UUID(), resolvedText: privateBody),
+                .candidateResolutionFinished(run: .init(runID: UUID()), caseID: UUID(), resolvedText: privateBody),
                 "Resolution completed. Preview hidden by privacy setting"
             ),
             (
-                .transformationApplied(stepID: UUID(), text: privateBody),
+                .transformationApplied(run: .init(runID: UUID()), stepID: UUID(), text: privateBody),
                 "Text transformation completed. Preview hidden by privacy setting"
             ),
             (

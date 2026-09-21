@@ -17,8 +17,6 @@ public enum LLMTextProcessing {
         """
 
     public static func usesDeepSeek(_ settings: OpenAISettings) -> Bool {
-        settings.model.trimmingCharacters(in: .whitespacesAndNewlines) == deepSeekModel
-            || URLComponents(string: settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines))?
-                .host?.lowercased() == "api.deepseek.com"
+        LanguageModelProviderDescriptor(settings: settings).family == .deepSeek
     }
 }

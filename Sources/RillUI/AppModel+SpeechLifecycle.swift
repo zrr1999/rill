@@ -26,7 +26,6 @@ extension AppModel {
       return
     }
     localSpeechPreparationTaskOwner.cancelActive()
-    localSpeechReadinessGeneration += 1
     localSpeechPreparationGeneration += 1
     let generation = localSpeechPreparationGeneration
     if !trustedLocalSpeechModels.isEmpty {
@@ -43,21 +42,6 @@ extension AppModel {
       }
       if localSpeechModel != selectedModel {
         localSpeechModel = selectedModel
-      }
-    } else if localSpeechModelOption == .custom {
-      let customModel = legacyWhisperKitCustomModel.trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !customModel.isEmpty else {
-        localSpeechPreparationState = .idle
-        localSpeechPreparationProgress = 0
-        localSpeechPreparedModelIdentifier = nil
-        localSpeechPreparationError = UIStrings.text(
-          UIStrings.Key.legacyWhisperKitCustomModelRequired,
-          language: language
-        )
-        return
-      }
-      if localSpeechModel != customModel {
-        localSpeechModel = customModel
       }
     }
     localSpeechPreparationState = .preparing
@@ -161,7 +145,6 @@ extension AppModel {
 
   public func cancelLocalSpeechModelPreparation() {
     guard localSpeechPreparationState == .preparing else { return }
-    localSpeechReadinessGeneration += 1
     localSpeechPreparationGeneration += 1
     localSpeechPreparationTaskOwner.cancelActive()
     localSpeechPreparationState = .idle
@@ -179,7 +162,6 @@ extension AppModel {
     else {
       return
     }
-    localSpeechReadinessGeneration += 1
     localSpeechPreparationGeneration += 1
     localSpeechPreparationTaskOwner.cancelActive()
     releaseLocalSpeechRuntimeAction()
@@ -213,7 +195,6 @@ extension AppModel {
     _ preparedModel: String,
     requestedModel: String
   ) -> Bool {
-    guard !trustedLocalSpeechModels.isEmpty else { return true }
     return preparedModel == requestedModel
       && trustedLocalSpeechModels.contains(where: { $0.id == preparedModel })
   }
@@ -235,114 +216,6 @@ extension AppModel {
     localSpeechPreparationTotalUnitCount = max(progress.totalUnitCount, 0)
   }
 
-  /// Compatibility warmup for installations that do not expose the v5 model
-  /// pool. Current builds synchronize `residentModelIDs` directly and keep
-  /// microphone initialization entirely outside model preparation.
-  func queueLocalSpeechReadinessIfNeeded() {
-    localSpeechPreparationTaskOwner.cancelActive()
-    localSpeechReadinessGeneration += 1
-    let generation = localSpeechReadinessGeneration
-    guard !hasBegunApplicationShutdown,
-      !isLoadingSettings,
-      !isRestoringSettings,
-      !hasUnavailableScalarSettings(in: .localSpeech),
-      localSpeechTrustMaterialAvailable,
-      preferredSpeechEngine == .local,
-      !trustedLocalSpeechModels.contains(where: { $0.engine == .mlxAudioSwift })
-    else {
-      return
-    }
-    let settings = currentLocalSpeechSettings()
-    guard !settings.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      return
-    }
-    let operationID = UUID()
-    let progressRelay = LocalSpeechPreparationProgressRelay(
-      model: self,
-      operationID: operationID
-    )
-    let taskOwner = localSpeechPreparationTaskOwner
-    let task = Task { [weak self, warmLocalSpeechForCaptureAction, taskOwner] in
-      let shouldStartProvider = await MainActor.run {
-        guard let self,
-          !self.hasBegunApplicationShutdown,
-          taskOwner.isActive(id: operationID),
-          self.localSpeechReadinessGeneration == generation
-        else {
-          return false
-        }
-        self.localSpeechPreparationState = .preparing
-        self.localSpeechPreparationProgress = 0
-        self.localSpeechPreparedModelIdentifier = nil
-        self.localSpeechPreparationError = nil
-        return true
-      }
-      guard shouldStartProvider, !Task.isCancelled else {
-        await MainActor.run {
-          taskOwner.finish(id: operationID)
-        }
-        return
-      }
-      let result: Result<String, Error>
-      do {
-        result = .success(
-          try await warmLocalSpeechForCaptureAction(
-            settings,
-            { progress in
-              Task {
-                await progressRelay.update(progress: progress)
-              }
-            }
-          ))
-      } catch {
-        result = .failure(error)
-      }
-      let wasCancelled = Task.isCancelled
-      await MainActor.run {
-        let shouldPublish =
-          !wasCancelled
-          && taskOwner.isActive(id: operationID)
-          && self?.hasBegunApplicationShutdown == false
-          && self?.localSpeechReadinessGeneration == generation
-        taskOwner.finish(id: operationID)
-        guard shouldPublish, let self else { return }
-
-        switch result {
-        case .success(let preparedModel):
-          guard
-            self.acceptsPreparedLocalSpeechModel(
-              preparedModel,
-              requestedModel: settings.model
-            )
-          else {
-            self.localSpeechPreparationState = .idle
-            self.localSpeechPreparationProgress = 0
-            self.localSpeechPreparedModelIdentifier = nil
-            self.applyLocalSpeechPreparationFailure(
-              LocalSpeechPreparationFailure(stage: .trustRoot)
-            )
-            return
-          }
-          self.localSpeechPreparationState = .ready
-          self.localSpeechPreparationProgress = 1
-          self.localSpeechPreparedModelIdentifier = preparedModel
-          self.localSpeechPreparationError = nil
-          self.recordDownloadedLocalSpeechModel(preparedModel)
-        case .failure(is CancellationError):
-          self.localSpeechPreparationState = .idle
-          self.localSpeechPreparationProgress = 0
-          self.localSpeechPreparedModelIdentifier = nil
-        case .failure(let error):
-          self.localSpeechPreparationState = .idle
-          self.localSpeechPreparationProgress = 0
-          self.localSpeechPreparedModelIdentifier = nil
-          self.applyLocalSpeechPreparationFailure(error)
-        }
-      }
-    }
-    _ = taskOwner.replaceActive(id: operationID, with: task)
-  }
-
   /// Waits for local speech preparation, including cancelled provider work
   /// that is still unwinding, without changing the selected model or state.
   public func waitForLocalSpeechPreparation() async {
@@ -351,7 +224,6 @@ extension AppModel {
 
   public func stopLocalSpeechPreparationForApplicationShutdown() async {
     hasBegunApplicationShutdown = true
-    localSpeechReadinessGeneration += 1
     localSpeechPreparationGeneration += 1
 
     localSpeechPreparationState = .idle
@@ -364,7 +236,6 @@ extension AppModel {
   }
 
   func resetLocalSpeechPreparationStatus() {
-    localSpeechReadinessGeneration += 1
     localSpeechPreparationGeneration += 1
     localSpeechPreparationTaskOwner.cancelActive()
     localSpeechPreparationState = .idle
@@ -374,7 +245,6 @@ extension AppModel {
     if !isRestoringSettings {
       releaseLocalSpeechRuntimeAction()
     }
-    queueLocalSpeechReadinessIfNeeded()
   }
 
 }

@@ -8,7 +8,10 @@ import RillRuntime
 @MainActor
 @Observable
 public final class RecordWorkspaceModel {
-    public private(set) var snapshot = RecordCatalogSnapshot.empty
+    public private(set) var snapshot = RecordCatalogSnapshot.empty {
+        didSet { rebuildCollectionIndex() }
+    }
+    private var recordsByCollection: [RecordCollectionID: [RecordSummary]] = [:]
     public var selectedCollectionID: RecordCollectionID?
     public var selectedRecordID: RecordID?
     public var searchText = "" { didSet { if searchText != oldValue { scheduleSearch() } } }
@@ -115,12 +118,7 @@ public final class RecordWorkspaceModel {
     public var visibleRecords: [RecordSummary] {
         let records: [RecordSummary]
         if let selectedCollectionID {
-            let projectionsByID = Dictionary(uniqueKeysWithValues: snapshot.records.map { ($0.id, $0) })
-            let memberships = snapshot.records
-                .flatMap(\.memberships)
-                .filter { $0.collectionID == selectedCollectionID }
-                .sorted { $0.ordinal > $1.ordinal }
-            records = memberships.compactMap { projectionsByID[$0.recordID] }
+            records = recordsByCollection[selectedCollectionID] ?? []
         } else {
             // All Records is a virtual, de-duplicated RecordStore timeline.
             records = snapshot.records
@@ -136,6 +134,16 @@ public final class RecordWorkspaceModel {
             guard !query.isEmpty else { return true }
             return searchMatches.contains(projection.id)
         }
+    }
+
+    private func rebuildCollectionIndex() {
+        var memberships: [RecordCollectionID: [(UInt64, RecordSummary)]] = [:]
+        for record in snapshot.records {
+            for membership in record.memberships {
+                memberships[membership.collectionID, default: []].append((membership.ordinal, record))
+            }
+        }
+        recordsByCollection = memberships.mapValues { $0.sorted { $0.0 > $1.0 }.map(\.1) }
     }
 
     public func collectionName(_ id: RecordCollectionID) -> String {

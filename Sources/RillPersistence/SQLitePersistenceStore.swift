@@ -134,8 +134,8 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
 
     self.connection = SQLiteConnectionBox(db: handle)
     try SQLiteWriterBarrier.registerCapability(on: handle)
-      try SQLiteCatalogWriterBarrier.register(on: handle)
-      try SQLiteMemoryWriterBarrier.register(on: handle)
+      try SQLiteSchemaWriterBarrier.catalog.register(on: handle)
+      try SQLiteSchemaWriterBarrier.memory.register(on: handle)
     try Self.execute(
       """
       PRAGMA journal_mode = WAL;
@@ -3072,7 +3072,7 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
       );
       """, on: handle)
     try SQLiteWriterBarrier.installTriggers(on: handle, tableNames: writerBarrierTableNames)
-    try SQLiteCatalogWriterBarrier.install(on: handle, tables: writerBarrierTableNames)
+    try SQLiteSchemaWriterBarrier.catalog.install(on: handle, tables: writerBarrierTableNames)
     try SQLiteAuthenticatedSchemaFloor.upgrade(
       on: handle, validatedDatabaseID: databaseID, localDataProtector: localDataProtector, schemaFloor: 13
     )
@@ -3109,7 +3109,7 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
       END;
       """, on: handle)
     try SQLiteWriterBarrier.installTriggers(on: handle, tableNames: writerBarrierTableNames + memoryTableNames)
-    try SQLiteMemoryWriterBarrier.install(on: handle, tables: writerBarrierTableNames + memoryTableNames)
+    try SQLiteSchemaWriterBarrier.memory.install(on: handle, tables: writerBarrierTableNames + memoryTableNames)
     try SQLiteAuthenticatedSchemaFloor.upgrade(on: handle, validatedDatabaseID: databaseID,
                                               localDataProtector: localDataProtector, schemaFloor: 14)
     try setSchemaVersion(14, on: handle)

@@ -41,12 +41,19 @@ public actor WorkflowRunReceiptRecorder {
     private struct PreparedTerminal: Sendable {
         let receipt: WorkflowRunReceipt
         let generation: RunHistoryWriteGeneration
+        let history: WorkflowResultRecord?
+        let historyUpdate: CorrectionHistoryUpdate?
     }
 
     private struct PendingRun: Sendable {
         let workflowID: UUID?
         let trigger: WorkflowRunTriggerKind
         let startedAtNanoseconds: UInt64
+        let historyWorkflow: WorkflowDefinition?
+        var finalText: String?
+        var correctionSource: RecognitionCorrectionSource?
+        var textSteps: [WorkflowTextStep] = []
+        var historyUpdate: CorrectionHistoryUpdate?
         var nextActionIndex = 0
         var activeAction: ActiveAction?
         var actionDetails: [WorkflowActionReceipt] = []
@@ -98,7 +105,8 @@ public actor WorkflowRunReceiptRecorder {
     public func begin(
         runID: UUID,
         workflowID: UUID?,
-        trigger: WorkflowRunTriggerKind
+        trigger: WorkflowRunTriggerKind,
+        historyWorkflow: WorkflowDefinition? = nil
     ) async throws {
         await retryOneFailedTerminalIfPossible()
         guard !finalizedRunIDs.contains(runID) else {
@@ -109,15 +117,13 @@ public actor WorkflowRunReceiptRecorder {
         }
         beginningRunIDs.insert(runID)
 
-        let existingReceipts: [WorkflowRunReceipt]
+        var existingReceipts: [WorkflowRunReceipt] = []
         do {
             existingReceipts = try await repository.receipts(
                 matching: WorkflowRunReceiptQuery(runID: runID, limit: 1)
             )
         } catch {
             await recordPersistenceFailureDiagnostic(runID: runID)
-            beginningRunIDs.remove(runID)
-            throw WorkflowRunReceiptRecorderError.persistenceFailed(runID: runID)
         }
         beginningRunIDs.remove(runID)
         guard existingReceipts.isEmpty else {
@@ -128,7 +134,46 @@ public actor WorkflowRunReceiptRecorder {
         pendingRuns[runID] = PendingRun(
             workflowID: workflowID,
             trigger: trigger,
-            startedAtNanoseconds: monotonicClock()
+            startedAtNanoseconds: monotonicClock(),
+            historyWorkflow: historyWorkflow
+        )
+    }
+
+    public func recordTextStep(runID: UUID, step: WorkflowTextStep) {
+        guard var run = pendingRuns[runID], run.preparedTerminal == nil else { return }
+        run.textSteps.append(step)
+        pendingRuns[runID] = run
+    }
+
+    public func recordResult(
+        runID: UUID, finalText: String, correctionSource: RecognitionCorrectionSource?,
+        historyUpdate: CorrectionHistoryUpdate?
+    ) {
+        guard var run = pendingRuns[runID], run.preparedTerminal == nil else { return }
+        run.finalText = finalText
+        run.correctionSource = correctionSource
+        run.historyUpdate = historyUpdate
+        pendingRuns[runID] = run
+    }
+
+    private func historyRecord(for run: PendingRun, runID: UUID, timestamp: Date,
+                               termination: WorkflowRunTermination) -> WorkflowResultRecord? {
+        guard run.trigger.isVoiceCapture, let workflow = run.historyWorkflow,
+              termination.outcome != .cancelled else { return nil }
+        let completed = termination.outcome == .completed
+        let failureMessage: String?
+        if case .failed(_, .noSpeech) = termination { failureMessage = HistoryFailureSanitizer.noSpeechMessage }
+        else { failureMessage = completed ? nil : HistoryFailureSanitizer.genericMessage }
+        let source = run.correctionSource ?? (run.textSteps.isEmpty ? nil : RecognitionCorrectionSource(
+            preMappingText: run.textSteps.first?.outputText ?? "", context: VocabularyRuleContext(),
+            processingSteps: run.textSteps
+        ))
+        return WorkflowResultRecord(
+            id: runID, runID: runID, workflowID: workflow.id, workflow: workflow.presentation,
+            finalText: run.finalText,
+            failureMessage: failureMessage,
+            timestamp: timestamp, isRecordRelated: workflow.plan.output.deliveryPolicy.strategy == .collectionFirst,
+            outcome: completed ? .completed : .failed, correctionSource: source, trigger: run.trigger
         )
     }
 
@@ -271,6 +316,9 @@ public actor WorkflowRunReceiptRecorder {
                 await recordPersistenceFailureDiagnostic(runID: runID)
                 pendingRuns.removeValue(forKey: runID)
                 rememberFinalizedRunID(runID)
+                if let record = historyRecord(for: run, runID: runID, timestamp: wallClock(), termination: termination) {
+                    await eventBus?.publish(.runHistoryUpdated(.sessionOnly(record)))
+                }
                 throw WorkflowRunReceiptRecorderError.persistenceFailed(runID: runID)
             }
             let receipt = try WorkflowRunReceipt(
@@ -287,7 +335,11 @@ public actor WorkflowRunReceiptRecorder {
                 actionDetails: run.actionDetails,
                 detailsTruncated: run.detailsTruncated
             )
-            prepared = PreparedTerminal(receipt: receipt, generation: generation)
+            prepared = PreparedTerminal(
+                receipt: receipt, generation: generation,
+                history: historyRecord(for: run, runID: runID, timestamp: receipt.timestamp, termination: termination),
+                historyUpdate: run.historyUpdate
+            )
             run.preparedTerminal = prepared
             pendingRuns[runID] = run
         }
@@ -306,6 +358,7 @@ public actor WorkflowRunReceiptRecorder {
             pendingRuns.removeValue(forKey: runID)
             rememberFinalizedRunID(runID)
             rememberFailedTerminal(prepared)
+            if let history = prepared.history { await eventBus?.publish(.runHistoryUpdated(.sessionOnly(history))) }
             throw WorkflowRunReceiptRecorderError.persistenceFailed(runID: runID)
         }
 
@@ -372,10 +425,7 @@ public actor WorkflowRunReceiptRecorder {
     ) async throws {
         for attempt in 1 ... maximumPersistenceAttempts {
             do {
-                try await repository.insertTerminal(
-                    prepared.receipt,
-                    generation: prepared.generation
-                )
+                try await persist(prepared)
                 return
             } catch {
                 if Self.writeWasObsoletedByClearBarrier(error) {
@@ -393,10 +443,7 @@ public actor WorkflowRunReceiptRecorder {
               retryingFailedTerminalRunIDs.insert(runID).inserted else { return }
         defer { retryingFailedTerminalRunIDs.remove(runID) }
         do {
-            try await repository.insertTerminal(
-                prepared.receipt,
-                generation: prepared.generation
-            )
+            try await persist(prepared)
         } catch {
             if Self.writeWasObsoletedByClearBarrier(error) {
                 removeFailedTerminal(runID)
@@ -408,7 +455,25 @@ public actor WorkflowRunReceiptRecorder {
         await publishRepositoryChange(for: prepared)
     }
 
+    private func persist(_ prepared: PreparedTerminal) async throws {
+        if let terminalRepository = repository as? any WorkflowRunTerminalRepository {
+            try await terminalRepository.commitTerminal(
+                prepared.receipt, history: prepared.history, generation: prepared.generation
+            )
+        } else {
+            try await repository.insertTerminal(prepared.receipt, generation: prepared.generation)
+        }
+    }
+
     private func publishRepositoryChange(for prepared: PreparedTerminal) async {
+        if let history = prepared.history {
+            if repository is any WorkflowRunTerminalRepository {
+                await prepared.historyUpdate?.historySaved()
+                await eventBus?.publish(.runHistoryUpdated(.persisted(runID: prepared.receipt.runID)))
+            } else {
+                await eventBus?.publish(.runHistoryUpdated(.sessionOnly(history)))
+            }
+        }
         guard let eventBus else { return }
         let receipt = prepared.receipt
         await eventBus.publish(
@@ -436,6 +501,7 @@ public actor WorkflowRunReceiptRecorder {
     }
 
     private static func writeWasObsoletedByClearBarrier(_ error: any Error) -> Bool {
+        if (error as? HistoryRepositoryError) == .writeObsoletedByClearBarrier { return true }
         guard let repositoryError = error as? WorkflowRunReceiptRepositoryError,
               case .writeObsoletedByClearBarrier = repositoryError else {
             return false

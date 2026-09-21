@@ -31,6 +31,7 @@ SHELL_SYNTAX_SCRIPT="$PROJECT_DIR/scripts/check_shell_syntax.sh"
 RELEASE_ARTIFACT_HYGIENE_SCRIPT="$PROJECT_DIR/scripts/check_release_artifact_hygiene.sh"
 EXECUTABLE_VERIFIER="$PROJECT_DIR/scripts/verify_release_executable.sh"
 LOCKED_SWIFT_SCRIPT="$PROJECT_DIR/scripts/swift_locked.sh"
+TEST_SUITE_SCRIPT="$PROJECT_DIR/scripts/test.sh"
 XCODE_RELEASE_BUILD_SCRIPT="$PROJECT_DIR/scripts/build_xcode_release.sh"
 PACKAGE_MANIFEST="$PROJECT_DIR/Package.swift"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rill-release-config-tests.XXXXXX")"
@@ -280,7 +281,7 @@ run_locked_dependency_policy_case() {
   # assertions tied to the old number or spelling of clean commands.
   uv run --no-build --locked --script "$PROJECT_DIR/scripts/tests/build_driver_test.py"
   if grep -Eq '(^|[[:space:]])swift[[:space:]]+(build|test|package clean)([[:space:]]|$)' \
-    "$PREFLIGHT_SCRIPT" "$RELEASE_SCRIPT"; then
+    "$PREFLIGHT_SCRIPT" "$RELEASE_SCRIPT" "$TEST_SUITE_SCRIPT"; then
     echo "FAIL: release scripts bypass the locked build driver" >&2
     exit 1
   fi

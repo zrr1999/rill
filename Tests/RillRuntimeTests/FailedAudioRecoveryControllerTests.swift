@@ -1117,7 +1117,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
 
     func testCloudPrivacyDeclineOccursBeforeAudioIsDecrypted() async throws {
         var workflow = makeWorkflow()
-        workflow.pipeline.recognizerID = "remote.recovery-test"
+        workflow.plan.setup.speechRoute?.recognizerID = "remote.recovery-test"
         let receipt = makeReceipt(workflowID: workflow.id)
         let store = RecoveryControllerStoreProbe(receipt: receipt)
         let privacyGate = PrivacyRunGate(
@@ -1241,7 +1241,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
 
     func testRetryRechecksExpirationAfterCloudConfirmation() async throws {
         var workflow = makeWorkflow()
-        workflow.pipeline.recognizerID = "remote.recovery-test"
+        workflow.plan.setup.speechRoute?.recognizerID = "remote.recovery-test"
         let receipt = makeReceipt(workflowID: workflow.id)
         let store = RecoveryControllerStoreProbe(receipt: receipt)
         let clock = LockedRecoveryDate(Date(timeIntervalSince1970: 199))

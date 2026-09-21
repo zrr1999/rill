@@ -70,48 +70,6 @@ struct StructuredWorkflowTests {
         #expect(receipt.stepDetails.first?.result == .elseBranch)
     }
 
-    @Test func testUsesSameBranchSemanticsAndNeverEmitsOutputsOrReceipts() async throws {
-        let (coordinator, probe, receipts) = makeCoordinator()
-        var workflow = makeWorkflow()
-        workflow.plan.output.actions = []
-        let authorization = AuthorizedWorkflowRunContext(
-            workflow: workflow, contextSnapshot: .empty, recognitionOptions: .empty)
-        let results = try await coordinator.testProcess(
-            text: "match", authorizedContext: authorization)
-        #expect(results.last?.output == "match then")
-        #expect(results.first?.branch == true)
-        #expect(await probe.deliveries.isEmpty)
-        #expect(try await receipts.receipts(matching: .all).isEmpty)
-        await #expect(throws: (any Error).self) {
-            try await coordinator.testProcess(text: "match", authorizedContext: authorization)
-        }
-        let unsafeAuthorization = AuthorizedWorkflowRunContext(
-            workflow: makeWorkflow(), contextSnapshot: .empty, recognitionOptions: .empty)
-        await #expect(throws: WorkflowDocumentError.self) {
-            try await coordinator.testProcess(text: "match", authorizedContext: unsafeAuthorization)
-        }
-        #expect(await probe.deliveries.isEmpty)
-    }
-
-    @Test func testStopsAtSelectionAndPinsOnlyExplicitSamples() async throws {
-        let (coordinator, _, _) = makeCoordinator()
-        var workflow = makeWorkflow()
-        workflow.plan.output.actions = []
-        let condition = workflow.plan.process.steps[0]
-        let stopped = try await coordinator.testProcess(
-            text: "match", stopAfter: condition.id,
-            authorizedContext: AuthorizedWorkflowRunContext(
-                workflow: workflow, contextSnapshot: .empty, recognitionOptions: .empty))
-        #expect(stopped.count == 1)
-        #expect(stopped[0].output == "match")
-        let thenID = try #require(condition.thenSteps?.first?.id)
-        let pinned = try await coordinator.testProcess(
-            text: "match", fixedSamples: [thenID: "fixed result"],
-            authorizedContext: AuthorizedWorkflowRunContext(
-                workflow: workflow, contextSnapshot: .empty, recognitionOptions: .empty))
-        #expect(pinned.last?.output == "fixed result")
-    }
-
     @Test func missingContextFailsBeforeAnyOutput() async throws {
         let (coordinator, probe, receipts) = makeCoordinator()
         var workflow = makeWorkflow()

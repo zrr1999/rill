@@ -2,7 +2,7 @@ import Foundation
 import RillCore
 import SQLite3
 
-extension SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptRepository,
+extension SQLitePersistenceStore: HistoryRepository, WorkflowRunTerminalRepository,
   RunHistoryBrowsing
 {
   public func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration {
@@ -11,20 +11,26 @@ extension SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptRepositor
 
   public func save(_ record: WorkflowResultRecord) async throws {
     let generation = try currentRunHistoryWriteGeneration()
-    try saveHistoryRecord(record, generation: generation)
+    let prepared = try prepareHistoryRecord(record)
+    try withImmediateTransaction { try saveHistoryRecord(prepared, generation: generation) }
   }
 
   public func save(
     _ record: WorkflowResultRecord,
     generation: RunHistoryWriteGeneration
   ) async throws {
-    try saveHistoryRecord(record, generation: generation)
+    let prepared = try prepareHistoryRecord(record)
+    try withImmediateTransaction { try saveHistoryRecord(prepared, generation: generation) }
   }
 
-  private func saveHistoryRecord(
-    _ record: WorkflowResultRecord,
-    generation: RunHistoryWriteGeneration
-  ) throws {
+  private struct PreparedHistoryRecord {
+    let record: WorkflowResultRecord
+    let fallbackName: String
+    let finalText: String?
+    let correctionSource: String?
+  }
+
+  private func prepareHistoryRecord(_ record: WorkflowResultRecord) throws -> PreparedHistoryRecord {
     let record = HistoryRecordSanitizer.sanitize(record)
     let recordID = record.id.uuidString
     let protectedFallbackName = try protectString(
@@ -57,70 +63,78 @@ extension SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptRepositor
     } catch {
       throw SQLitePersistenceError.encodingValue(error.localizedDescription)
     }
-    try withImmediateTransaction {
-      guard try generationIsCurrent(generation) else {
-        throw HistoryRepositoryError.writeObsoletedByClearBarrier
-      }
-      if let existingIdentity = try storedHistoryIdentity(recordID: record.id) {
-        guard existingIdentity.matches(record, generation: generation) else {
-          throw HistoryRepositoryError.conflictingHistoryRecord(recordID: record.id)
-        }
-        if try historyRecords(sourceID: record.runID ?? record.id).contains(record) { return }
-        try updateHistoryRecordContent(
-          record,
-          protectedFallbackName: protectedFallbackName,
-          protectedFinalText: protectedFinalText,
-          correctionSourceJSON: correctionSourceJSON
-        )
-        return
-      }
-      let writeOrdinal = try nextRunHistoryWriteOrdinal()
-      let statement = try prepare(
-        """
-        INSERT INTO history_records (
-            id,
-            run_id,
-            workflow_id,
-            workflow_fallback_name,
-            workflow_title_key,
-            final_text,
-            failure_message,
-            timestamp,
-            is_stack_related,
-            outcome,
-            correction_source_json,
-            trigger_kind,
-            write_generation,
-            write_ordinal,
-            has_nonempty_final_text
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-        """
-      )
-      defer { sqlite3_finalize(statement) }
+    return PreparedHistoryRecord(record: record, fallbackName: protectedFallbackName,
+      finalText: protectedFinalText, correctionSource: correctionSourceJSON)
+  }
 
-      try bind(
-        [
-          .text(recordID),
-          record.runID.map { .text($0.uuidString) } ?? .null,
-          record.workflowID.map { .text($0.uuidString) } ?? .null,
-          .text(protectedFallbackName),
-          record.workflow.titleKey.map { .text($0.rawValue) } ?? .null,
-          protectedFinalText.map(SQLiteBinding.text) ?? .null,
-          record.failureMessage.map(SQLiteBinding.text) ?? .null,
-          .double(record.timestamp.timeIntervalSince1970),
-          .int(record.isRecordRelated ? 1 : 0),
-          .text(record.outcome.rawValue),
-          correctionSourceJSON.map(SQLiteBinding.text) ?? .null,
-          record.trigger.map { .text($0.rawValue) } ?? .null,
-          .int(generation.value),
-          .int(writeOrdinal),
-          .int(Self.hasNonemptyBody(record.finalText) ? 1 : 0),
-        ],
-        to: statement
-      )
-
-      try step(statement, expecting: SQLITE_DONE)
+  private func saveHistoryRecord(_ prepared: PreparedHistoryRecord, generation: RunHistoryWriteGeneration) throws {
+    let record = prepared.record
+    let recordID = record.id.uuidString
+    let protectedFallbackName = prepared.fallbackName
+    let protectedFinalText = prepared.finalText
+    let correctionSourceJSON = prepared.correctionSource
+    guard try generationIsCurrent(generation) else {
+      throw HistoryRepositoryError.writeObsoletedByClearBarrier
     }
+    if let existingIdentity = try storedHistoryIdentity(recordID: record.id) {
+      guard existingIdentity.matches(record, generation: generation) else {
+        throw HistoryRepositoryError.conflictingHistoryRecord(recordID: record.id)
+      }
+      if try historyRecords(sourceID: record.runID ?? record.id).contains(record) { return }
+      try updateHistoryRecordContent(
+        record,
+        protectedFallbackName: protectedFallbackName,
+        protectedFinalText: protectedFinalText,
+        correctionSourceJSON: correctionSourceJSON
+      )
+      return
+    }
+    let writeOrdinal = try nextRunHistoryWriteOrdinal()
+    let statement = try prepare(
+      """
+      INSERT INTO history_records (
+          id,
+          run_id,
+          workflow_id,
+          workflow_fallback_name,
+          workflow_title_key,
+          final_text,
+          failure_message,
+          timestamp,
+          is_stack_related,
+          outcome,
+          correction_source_json,
+          trigger_kind,
+          write_generation,
+          write_ordinal,
+          has_nonempty_final_text
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+      """
+    )
+    defer { sqlite3_finalize(statement) }
+
+    try bind(
+      [
+        .text(recordID),
+        record.runID.map { .text($0.uuidString) } ?? .null,
+        record.workflowID.map { .text($0.uuidString) } ?? .null,
+        .text(protectedFallbackName),
+        record.workflow.titleKey.map { .text($0.rawValue) } ?? .null,
+        protectedFinalText.map(SQLiteBinding.text) ?? .null,
+        record.failureMessage.map(SQLiteBinding.text) ?? .null,
+        .double(record.timestamp.timeIntervalSince1970),
+        .int(record.isRecordRelated ? 1 : 0),
+        .text(record.outcome.rawValue),
+        correctionSourceJSON.map(SQLiteBinding.text) ?? .null,
+        record.trigger.map { .text($0.rawValue) } ?? .null,
+        .int(generation.value),
+        .int(writeOrdinal),
+        .int(Self.hasNonemptyBody(record.finalText) ? 1 : 0),
+      ],
+      to: statement
+    )
+
+    try step(statement, expecting: SQLITE_DONE)
   }
 
   private struct StoredHistoryIdentity {
@@ -139,7 +153,7 @@ extension SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptRepositor
     ) -> Bool {
       runID == record.runID
         && workflowID == record.workflowID
-        && timestamp == record.timestamp
+        && timestamp.timeIntervalSince1970 == record.timestamp.timeIntervalSince1970
         && isRecordRelated == record.isRecordRelated
         && outcome == record.outcome
         && trigger == record.trigger
@@ -376,14 +390,31 @@ extension SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptRepositor
 
   public func insertTerminal(_ receipt: WorkflowRunReceipt) async throws {
     let generation = try currentRunHistoryWriteGeneration()
-    try insertTerminalReceipt(receipt, generation: generation)
+    try withImmediateTransaction { try insertTerminalReceipt(receipt, generation: generation) }
   }
 
   public func insertTerminal(
     _ receipt: WorkflowRunReceipt,
     generation: RunHistoryWriteGeneration
   ) async throws {
-    try insertTerminalReceipt(receipt, generation: generation)
+    try withImmediateTransaction { try insertTerminalReceipt(receipt, generation: generation) }
+  }
+
+  public func commitTerminal(
+    _ receipt: WorkflowRunReceipt,
+    history: WorkflowResultRecord?,
+    generation: RunHistoryWriteGeneration
+  ) async throws {
+    if let history {
+      guard history.runID == receipt.runID, history.workflowID == receipt.workflowID,
+        history.timestamp == receipt.timestamp, history.trigger == receipt.trigger
+      else { throw HistoryRepositoryError.conflictingHistoryRecord(recordID: history.id) }
+    }
+    let preparedHistory = try history.map(prepareHistoryRecord)
+    try withImmediateTransaction {
+      try insertTerminalReceipt(receipt, generation: generation)
+      if let preparedHistory { try saveHistoryRecord(preparedHistory, generation: generation) }
+    }
   }
 
   private func insertTerminalReceipt(
@@ -401,49 +432,47 @@ extension SQLitePersistenceStore: HistoryRepository, WorkflowRunReceiptRepositor
       encodedReceipt,
       context: Self.runReceiptProtectionContext(runID: runID)
     )
-    try withImmediateTransaction {
-      guard try generationIsCurrent(generation) else {
-        throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(
+    guard try generationIsCurrent(generation) else {
+      throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(
+        runID: receipt.runID
+      )
+    }
+    try deleteObsoleteStoredReceipt(
+      forRunID: receipt.runID,
+      before: generation
+    )
+    if let existing = try storedReceipt(
+      forRunID: receipt.runID,
+      generation: generation
+    ) {
+      guard existing == receipt else {
+        throw WorkflowRunReceiptRepositoryError.conflictingTerminalReceipt(
           runID: receipt.runID
         )
       }
-      try deleteObsoleteStoredReceipt(
-        forRunID: receipt.runID,
-        before: generation
-      )
-      if let existing = try storedReceipt(
-        forRunID: receipt.runID,
-        generation: generation
-      ) {
-        guard existing == receipt else {
-          throw WorkflowRunReceiptRepositoryError.conflictingTerminalReceipt(
-            runID: receipt.runID
-          )
-        }
-        return
-      }
-      let writeOrdinal = try nextRunHistoryWriteOrdinal()
-
-      let statement = try prepare(
-        """
-        INSERT INTO workflow_run_receipts (
-            run_id, timestamp, payload, write_generation, write_ordinal
-        ) VALUES (?, ?, ?, ?, ?);
-        """
-      )
-      defer { sqlite3_finalize(statement) }
-      try bind(
-        [
-          .text(runID),
-          .double(receipt.timestamp.timeIntervalSince1970),
-          .text(protectedPayload),
-          .int(generation.value),
-          .int(writeOrdinal),
-        ],
-        to: statement
-      )
-      try step(statement, expecting: SQLITE_DONE)
+      return
     }
+    let writeOrdinal = try nextRunHistoryWriteOrdinal()
+
+    let statement = try prepare(
+      """
+      INSERT INTO workflow_run_receipts (
+          run_id, timestamp, payload, write_generation, write_ordinal
+      ) VALUES (?, ?, ?, ?, ?);
+      """
+    )
+    defer { sqlite3_finalize(statement) }
+    try bind(
+      [
+        .text(runID),
+        .double(receipt.timestamp.timeIntervalSince1970),
+        .text(protectedPayload),
+        .int(generation.value),
+        .int(writeOrdinal),
+      ],
+      to: statement
+    )
+    try step(statement, expecting: SQLITE_DONE)
   }
 
   public func receipts(

@@ -121,6 +121,9 @@ bash "$SCRIPT_DIR/check_shell_syntax.sh"
 info "Checking repository release artifact hygiene..."
 bash "$SCRIPT_DIR/check_release_artifact_hygiene.sh"
 
+info "Checking Swift module dependencies..."
+uv run --no-build --locked --script "$SCRIPT_DIR/check_module_boundaries.py"
+
 info "Checking Record domain boundary..."
 bash "$SCRIPT_DIR/check_record_domain_boundary.sh"
 
@@ -215,7 +218,7 @@ cleanup
 trap - EXIT INT TERM
 
 info "Running the test suite..."
-"$SCRIPT_DIR/swift_locked.sh" test
+bash "$SCRIPT_DIR/test.sh"
 
 info "Checking the working diff for whitespace errors..."
 git diff --check

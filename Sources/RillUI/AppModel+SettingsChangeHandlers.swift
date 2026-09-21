@@ -84,52 +84,9 @@ extension AppModel {
     persistRecordingDurationLimitPreference()
   }
 
-  func handleLegacyWhisperModelOptionChange(from oldValue: LegacyWhisperModelOption) {
-    guard oldValue != localSpeechModelOption else { return }
-    markSettingModifiedDuringInitialLoad(.localSpeechModel)
-    if localSpeechModelOption == .custom {
-      let customModel = legacyWhisperKitCustomModel.trimmingCharacters(in: .whitespacesAndNewlines)
-      if localSpeechModel != customModel {
-        localSpeechModel = customModel
-      } else if !isRestoringSettings {
-        persistStringSetting(customModel, for: .localSpeechModel)
-      }
-      guard !isRestoringSettings else { return }
-      if isLoadingSettings {
-        shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = false
-      }
-      resetLocalSpeechPreparationStatus()
-      return
-    }
 
-    let presetModel = localSpeechModelOption.modelIdentifier ?? ""
-    if localSpeechModel != presetModel {
-      localSpeechModel = presetModel
-    } else if !isRestoringSettings {
-      persistStringSetting(presetModel, for: .localSpeechModel)
-    }
-    guard !isRestoringSettings else { return }
-    if isLoadingSettings {
-      shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = true
-      resetLocalSpeechPreparationStatus()
-      return
-    }
-    prepareLocalSpeechModel()
-  }
 
-  func handleLegacyWhisperCustomModelChange(from oldValue: String) {
-    guard oldValue != legacyWhisperKitCustomModel else { return }
-    markSettingModifiedDuringInitialLoad(.legacyWhisperKitCustomModel)
-    publishCurrentLocalSpeechSettingsToRuntime()
-    resetLocalSpeechPreparationStatus()
-    guard localSpeechModelOption == .custom else { return }
-    let customModel = legacyWhisperKitCustomModel.trimmingCharacters(in: .whitespacesAndNewlines)
-    if localSpeechModel != customModel {
-      localSpeechModel = customModel
-    } else {
-      resetLocalSpeechPreparationStatus()
-    }
-  }
+
 
   func handleLocalSpeechModelChange(from oldValue: String) {
     if oldValue != localSpeechModel, !isRestoringSettings {
@@ -142,33 +99,15 @@ extension AppModel {
     persistStringSetting(localSpeechModel, for: .localSpeechModel)
   }
 
-  func handleLegacyWhisperModelRepoChange(from oldValue: String) {
-    markSettingModifiedDuringInitialLoad(.legacyWhisperKitModelRepo)
-    handleLegacyWhisperRuntimeSettingChange(from: oldValue, value: legacyWhisperKitModelRepo)
-  }
 
-  func handleLegacyWhisperModelTokenChange(from oldValue: String) {
-    markSettingModifiedDuringInitialLoad(.legacyWhisperKitModelToken)
-    handleLegacyWhisperRuntimeSettingChange(from: oldValue, value: legacyWhisperKitModelToken)
-  }
 
-  func handleLegacyWhisperModelFolderChange(from oldValue: String) {
-    markSettingModifiedDuringInitialLoad(.legacyWhisperKitModelFolder)
-    handleLegacyWhisperRuntimeSettingChange(from: oldValue, value: legacyWhisperKitModelFolder)
-  }
 
-  func handleLegacyWhisperLanguageChange(from oldValue: String) {
-    markSettingModifiedDuringInitialLoad(.legacyWhisperKitLanguage)
-    handleLegacyWhisperRuntimeSettingChange(from: oldValue, value: legacyWhisperKitLanguage)
-  }
 
-  func handleLegacyWhisperDownloadIfNeededChange(from oldValue: Bool) {
-    markSettingModifiedDuringInitialLoad(.legacyWhisperKitDownloadIfNeeded)
-    handleLegacyWhisperRuntimeSettingChange(
-      from: oldValue,
-      value: legacyWhisperKitDownloadIfNeeded
-    )
-  }
+
+
+
+
+
 
   func handleLocalSpeechPrewarmChange(from oldValue: Bool) {
     guard oldValue != localSpeechPrewarm else { return }
@@ -282,13 +221,6 @@ extension AppModel {
     persistStringSetting(value, for: key)
   }
 
-  func handleLegacyWhisperRuntimeSettingChange<Value: Equatable>(
-    from oldValue: Value,
-    value: Value
-  ) {
-    guard oldValue != value else { return }
-    publishCurrentLocalSpeechSettingsToRuntime()
-    resetLocalSpeechPreparationStatus()
-  }
+
 
 }

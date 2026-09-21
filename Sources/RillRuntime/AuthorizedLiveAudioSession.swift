@@ -159,6 +159,21 @@ public actor AuthorizedLiveAudioSession {
         audioCaptureOptions = processingLease.audioCaptureOptions
     }
 
+    public func startCapture(_ request: AudioCaptureRequest, using service: any AudioCaptureService) async throws {
+        guard request.runID == runID, request.audioLifetime === audioLifetime else {
+            throw SessionCoordinator.SessionError.authorizationInvocationMismatch
+        }
+        try Task.checkCancellation()
+        try await startMonitoring()
+        if let reason = await validation() {
+            await invalidate(reason, notifyController: false)
+            throw LiveAudioSessionError.authorizationInvalidated(reason)
+        }
+        guard audioLifetime.isActive else { throw currentInvalidationError() }
+        try await service.startCapture(request)
+        recordingStarted()
+    }
+
     public func recordingStarted() { processingLease.contextPreparation?.recordingStarted() }
 
     /// Performs an immediate sink-adjacent check before capture starts, then

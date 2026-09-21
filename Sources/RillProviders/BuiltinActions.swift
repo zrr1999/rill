@@ -1,119 +1,9 @@
 import Darwin
 import Foundation
 import RillCore
-import RillPlatform
-
-public enum BuiltinRecordActionID {
-    public static let store = RecordActionID.store
-    public static let systemClipboardCopy = RecordActionID.systemClipboardCopy
-    public static let focusedApplicationInsert = RecordActionID.focusedApplicationInsert
-}
-
-public struct SystemClipboardCopyAction: OutputAction {
-    public let id = BuiltinRecordActionID.systemClipboardCopy
-    private let pasteboard: SystemClipboardPort
-
-    public init(pasteboard: SystemClipboardPort) {
-        self.pasteboard = pasteboard
-    }
-
-    public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-        var captureTags = record.provenance.captureTags
-        if context.workflow.excludesOutputFromRecordCapture,
-           !captureTags.contains(.excludeFromWorkflowCapture) {
-            captureTags.append(.excludeFromWorkflowCapture)
-        }
-        let snapshot: SystemClipboardSnapshot
-        switch record.payload {
-        case .text(let text):
-            snapshot = SystemClipboardSnapshot(plainText: text, changeCount: 0)
-        case .image(let data):
-            snapshot = SystemClipboardSnapshot(
-                plainText: "",
-                imagePNGData: data,
-                changeCount: 0
-            )
-        case .files(let files):
-            snapshot = SystemClipboardSnapshot(
-                plainText: "",
-                fileURLs: files,
-                changeCount: 0
-            )
-        }
-        _ = await pasteboard.writeSnapshot(snapshot, captureTags: captureTags)
-        return .copiedToClipboard
-    }
-}
-
-public struct FocusedApplicationInsertAction: OutputAction {
-    public let id = BuiltinRecordActionID.focusedApplicationInsert
-    private let engine: TextInjectionEngine
-    private let cursorPreviewCoordinator: CursorTextPreviewCoordinator?
-
-    public init(
-        engine: TextInjectionEngine,
-        cursorPreviewCoordinator: CursorTextPreviewCoordinator? = nil
-    ) {
-        self.engine = engine
-        self.cursorPreviewCoordinator = cursorPreviewCoordinator
-    }
-
-    public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-        if case .text(let text) = record.payload,
-           context.workflow.resolvedLivePreviewPlacement == .cursor,
-           let cursorPreviewCoordinator {
-            switch await cursorPreviewCoordinator.commit(
-                runID: context.runID,
-                finalText: text
-            ) {
-            case .committed:
-                return .injected
-            case .useStandardInjection:
-                break
-            case .blocked:
-                return .skipped(
-                    "The cursor preview target changed, so Rill did not overwrite its contents."
-                )
-            }
-        }
-        do {
-            switch record.payload {
-            case .text(let text):
-                try await engine.inject(text, targetFocus: context.contextSnapshot.focus)
-            case .image(let data):
-                try await engine.injectClipboardSnapshot(
-                    SystemClipboardSnapshot(
-                        plainText: "",
-                        imagePNGData: data,
-                        changeCount: 0,
-                        captureTags: record.provenance.captureTags
-                    ),
-                    targetFocus: context.contextSnapshot.focus
-                )
-            case .files(let files):
-                try await engine.injectClipboardSnapshot(
-                    SystemClipboardSnapshot(
-                        plainText: "",
-                        fileURLs: files,
-                        changeCount: 0,
-                        captureTags: record.provenance.captureTags
-                    ),
-                    targetFocus: context.contextSnapshot.focus
-                )
-            }
-        } catch let error as TextInjectionEngine.InjectionError
-        where error == .deliveredButClipboardRestorationFailed {
-            // The paste command has already committed. Preserve that semantic
-            // across the Providers -> Runtime boundary so callers never turn a
-            // clipboard-recovery problem into a retryable output failure.
-            throw CommittedOutputFailure.clipboardRestorationFailedAfterInjection
-        }
-        return .injected
-    }
-}
 
 public struct RecordStoreAction: OutputAction {
-    public let id = BuiltinRecordActionID.store
+    public let id = RecordActionID.store
     private let ingestion: any RecordIngestionSink
 
     public init(ingestion: any RecordIngestionSink) {
@@ -161,21 +51,11 @@ public struct WebhookPostAction: OutputAction {
     }
 
     public func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        let configuration = context.outputActionConfiguration(for: id)
-        let rawURL = configuration[ExternalOutputActionConfigurationKey.webhookURL]
-            .trimmingWhitespaceAndNewlines ?? ""
-        guard !rawURL.isEmpty else {
-            return .failed("Webhook URL is required.")
-        }
-        guard let url = URL(string: rawURL), SecureTransportPolicy.allowsSensitiveHTTPURL(url) else {
-            return .failed("Webhook URL must use HTTPS; HTTP is allowed only for localhost.")
-        }
-
         do {
+            guard case .webhook(let url, let headers) = try context.configuration(for: id) else {
+                return .failed("Webhook configuration is invalid.")
+            }
             try await privacyAuthorizationProvider?(context)
-            let headers = try Self.parseHeadersJSON(
-                configuration[ExternalOutputActionConfigurationKey.webhookHeadersJSON] ?? ""
-            )
             let body = try Self.makeRequestBody(text: text)
             let response = try await client.post(
                 WebhookHTTPRequest(url: url, headers: headers, body: body)
@@ -187,23 +67,6 @@ public struct WebhookPostAction: OutputAction {
         } catch {
             return .failed(error.localizedDescription)
         }
-    }
-
-    static func parseHeadersJSON(_ rawValue: String) throws -> [String: String] {
-        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return [:] }
-        let object = try JSONSerialization.jsonObject(with: Data(trimmed.utf8))
-        guard let dictionary = object as? [String: Any] else {
-            throw ExternalOutputActionError.invalidWebhookHeaders
-        }
-        var headers: [String: String] = [:]
-        for (key, value) in dictionary {
-            guard let stringValue = value as? String else {
-                throw ExternalOutputActionError.invalidWebhookHeaders
-            }
-            headers[key] = stringValue
-        }
-        return headers
     }
 
     private static func makeRequestBody(text: String) throws -> Data {
@@ -261,14 +124,10 @@ public struct ShortcutsRunAction: OutputAction {
     }
 
     public func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        let configuration = context.outputActionConfiguration(for: id)
-        let shortcutName = configuration[ExternalOutputActionConfigurationKey.shortcutName]
-            .trimmingWhitespaceAndNewlines ?? ""
-        guard !shortcutName.isEmpty else {
-            return .failed("Shortcut name is required.")
-        }
-
         do {
+            guard case .shortcut(let shortcutName) = try context.configuration(for: id) else {
+                return .failed("Shortcut configuration is invalid.")
+            }
             try await runner.runShortcut(named: shortcutName, inputText: text)
             return .externalOutput("Shortcut: \(shortcutName)")
         } catch is CancellationError {
@@ -700,24 +559,10 @@ public struct MarkdownAppendAction: OutputAction {
     }
 
     public func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        let configuration = context.outputActionConfiguration(for: id)
-        let rawPath = configuration[ExternalOutputActionConfigurationKey.markdownAppendPath]
-            .trimmingWhitespaceAndNewlines ?? ""
-        guard !rawPath.isEmpty else {
-            return .failed("Markdown append path is required.")
-        }
-        guard rawPath.unicodeScalars.allSatisfy({ scalar in
-            scalar.value >= 0x20 && scalar.value != 0x7F
-        }) else {
-            return .failed("Markdown append path is invalid.")
-        }
-        let expandedPath = NSString(string: rawPath).expandingTildeInPath
-        let fileURL = URL(fileURLWithPath: expandedPath)
-        guard fileURL.isMarkdownFilePath else {
-            return .failed("Markdown append path must end in .md or .markdown.")
-        }
-
         do {
+            guard case .markdown(let fileURL) = try context.configuration(for: id) else {
+                return .failed("Markdown configuration is invalid.")
+            }
             switch try await appender.append(text: text, to: fileURL) {
             case .committed:
                 return .externalOutput("Markdown append")
@@ -1746,21 +1591,8 @@ enum ExternalOutputActionError: LocalizedError, Equatable, Sendable {
     }
 }
 
-private extension ActionContext {
-    func outputActionConfiguration(for actionID: String) -> [String: String] {
-        workflow.plan.output.actions.first { $0.id == actionID }?.configuration ?? [:]
-    }
-}
-
 private extension Optional where Wrapped == String {
     var trimmingWhitespaceAndNewlines: String? {
         self?.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-}
-
-private extension URL {
-    var isMarkdownFilePath: Bool {
-        let normalizedExtension = pathExtension.lowercased()
-        return normalizedExtension == "md" || normalizedExtension == "markdown"
     }
 }

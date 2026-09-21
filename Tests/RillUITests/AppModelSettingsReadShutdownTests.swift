@@ -481,7 +481,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             .privacySecureInputConservativeMode,
         ]
         let settingsStore = PlannedSettingsReadStore(
-            storage: try AppModel.privacySettingsStorageValues(for: .defaults),
+            storage: try AppSettingsCodec.privacySettingsStorageValues(for: .defaults),
             unavailableKeys: [.privacyCloudConfirmationRequired]
         )
         let privacySettingsSource = PrivacyPolicySettingsSource()

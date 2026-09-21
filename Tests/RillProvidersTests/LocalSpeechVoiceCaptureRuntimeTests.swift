@@ -449,7 +449,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     )
     let request: AudioCaptureRequest = {
       var value = makeLocalSpeechRequest()
-      value.workflow.pipeline.recognizerID = "sherpa-onnx.streaming"
+      value.workflow.plan.setup.speechRoute?.recognizerID = "sherpa-onnx.streaming"
       return value
     }()
     let startTask = Task { try await runtime.startCapture(request: request) }

@@ -318,11 +318,6 @@ public struct WorkflowPlan: Codable, Sendable, Equatable {
     }
 }
 
-public enum WorkflowPlanInput: String, Codable, Sendable, Equatable {
-    case audio
-    case text
-}
-
 public enum WorkflowPlanValidationError: Error, LocalizedError, Sendable, Equatable {
     case missingSpeechRoute
     case unexpectedSpeechRoute
@@ -397,7 +392,7 @@ public enum WorkflowPlanValidator {
 
     public static func validate(
         _ plan: WorkflowPlan,
-        input: WorkflowPlanInput,
+        input: WorkflowInputKind,
         requireOutput: Bool = true
     ) throws {
         guard !requireOutput || !plan.output.actions.isEmpty else {
@@ -448,7 +443,7 @@ public enum WorkflowPlanValidator {
             }), vocabularyIndex < recognitionIndexes[0] {
                 throw WorkflowPlanValidationError.vocabularyMustFollowRecognition
             }
-        case .text:
+        case .text, .record:
             guard plan.setup.speechRoute == nil else {
                 throw WorkflowPlanValidationError.unexpectedSpeechRoute
             }

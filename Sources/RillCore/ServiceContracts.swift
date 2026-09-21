@@ -335,10 +335,9 @@ public protocol RunHistoryGenerationSource: Sendable {
 }
 
 public extension RunHistoryGenerationSource {
-    /// Compatibility for external/test repositories that do not persist local
-    /// history. Product repositories override this method.
+    /// Repositories without generation support must fail closed.
     func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration {
-        .initial
+        throw RunHistoryGenerationError.unsupported
     }
 }
 
@@ -382,7 +381,7 @@ public extension HistoryRepository {
         _ record: WorkflowResultRecord,
         generation: RunHistoryWriteGeneration
     ) async throws {
-        try await save(record)
+        throw RunHistoryGenerationError.unsupported
     }
 
     func deleteRecords(through upperBound: Date) async throws -> Int {
@@ -431,7 +430,7 @@ public extension WorkflowRunReceiptRepository {
         _ receipt: WorkflowRunReceipt,
         generation: RunHistoryWriteGeneration
     ) async throws {
-        try await insertTerminal(receipt)
+        throw RunHistoryGenerationError.unsupported
     }
 
     func deleteReceipts(through upperBound: Date) async throws -> Int {
@@ -507,7 +506,7 @@ public extension DiagnosticRepository {
         _ event: DiagnosticEvent,
         generation: RunHistoryWriteGeneration
     ) async throws {
-        try await save(event)
+        throw RunHistoryGenerationError.unsupported
     }
 }
 

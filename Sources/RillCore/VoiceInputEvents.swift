@@ -25,21 +25,22 @@ public struct WorkflowRunReceiptRepositoryChange: Sendable, Equatable {
 
 public enum RillEvent: Sendable, Equatable {
     case runStarted(RunSnapshot)
-    case contextCaptured(ContextSnapshot)
-    case recognitionCompleted(RecognitionResult)
+    case contextCaptured(run: WorkflowRunIdentity, snapshot: ContextSnapshot)
+    case recognitionCompleted(run: WorkflowRunIdentity, result: RecognitionResult)
     case liveSubtitleUpdated(LiveSubtitleSnapshot)
     case audioProcessingQueueUpdated(AudioProcessingQueueSnapshot)
     case failedAudioRecoveryUpdated([FailedAudioRecoveryReceipt])
     case failedAudioRecoveryUnavailable(runID: UUID, reason: FailedAudioRecoveryError)
     case candidateResolutionRequested(CandidateResolutionCase)
-    case candidateResolutionFinished(caseID: UUID, resolvedText: String)
-    case transformationApplied(stepID: UUID, text: String)
+    case candidateResolutionFinished(run: WorkflowRunIdentity, caseID: UUID, resolvedText: String)
+    case transformationApplied(run: WorkflowRunIdentity, stepID: UUID, text: String)
     case runTextStepRecorded(runID: UUID, step: WorkflowTextStep)
-    case actionExecuted(actionID: String, result: ActionResult)
+    case actionExecuted(run: WorkflowRunIdentity, actionID: String, result: ActionResult)
     case recordPanelRequested
     /// Invalidates subscriber snapshots after a terminal receipt is accepted.
     /// Repository membership may already have changed again by delivery time.
     case runReceiptRepositoryChanged(WorkflowRunReceiptRepositoryChange)
+    case runHistoryUpdated(WorkflowRunHistoryUpdate)
     case runCompleted(WorkflowRunSummary)
     case runCancelled(WorkflowRunCancelledSummary)
     case runFailed(runID: UUID?, workflow: WorkflowPresentation?, message: String)

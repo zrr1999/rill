@@ -180,7 +180,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         )
 
         await harness.eventBus.publish(
-            .actionExecuted(actionID: "provider.action", result: .failed(sentinel))
+            .actionExecuted(run: .init(runID: UUID()), actionID: "provider.action", result: .failed(sentinel))
         )
         await waitForEventProcessing(harness)
 

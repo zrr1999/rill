@@ -20,7 +20,7 @@ swift --version
 xcrun metal -v
 uv run --script scripts/report_python_version.py
 scripts/swift_locked.sh build
-scripts/swift_locked.sh test --parallel
+bash scripts/test.sh
 ```
 
 安装 Git hooks，并通过统一入口运行开发门禁：
@@ -146,10 +146,11 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 ```text
 RillCore          领域模型与协议
 RillPlatform      macOS 系统边界
-RillProviders     识别、变换与输出实现
+RillSpeechContracts Worker 协议、流式合同与本地模型清单
+RillProviders     识别客户端、变换与外部输出实现
 RillRuntime       会话协调与运行生命周期
 RillPersistence   加密持久化
-RillUI            SwiftUI 与 AppModel
+RillUI            SwiftUI、功能状态所有者与 AppModel 编排
 RillApp           组合根
 ```
 

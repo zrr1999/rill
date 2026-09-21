@@ -247,8 +247,7 @@ actor WorkflowAudioRunController {
           WorkflowPrivacyDestinationClassifier.liveSubtitleNetworkUsage(for: workflow)
       )
 
-      try await audioCaptureService.startCapture(request)
-      await liveAudioSession.recordingStarted()
+      try await liveAudioSession.startCapture(request, using: audioCaptureService)
       guard lifecycle == .accepting, isPreparing(runID) else {
         await liveAudioSession.cancel()
         await audioCaptureService.cancelCapture(runID: runID)

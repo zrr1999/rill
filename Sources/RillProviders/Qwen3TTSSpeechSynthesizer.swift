@@ -1,3 +1,4 @@
+import RillSpeechContracts
 import Darwin
 import Foundation
 import RillCore

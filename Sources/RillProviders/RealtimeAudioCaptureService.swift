@@ -1,7 +1,7 @@
+import RillSpeechContracts
 import AVFoundation
 import Foundation
 import RillCore
-import RillPlatform
 
 public actor RealtimeAudioCaptureService: AudioCaptureService {
   public nonisolated let sharedVoiceInputHub: SharedVoiceInputHub?
@@ -101,7 +101,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
   private var shutdownWaiters: [CheckedContinuation<Void, Never>] = []
 
   public init(
-    legacyCaptureService: (any AudioCaptureService)? = nil,
+    legacyCaptureService: any AudioCaptureService,
     streamingPreviewService: SpeechWorkerStreamingPreviewService? = nil,
     liveUpdateHandler: @escaping @Sendable (LiveSubtitleSnapshot) async -> Void = { _ in },
     cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
@@ -111,9 +111,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     },
     wakeWordSpeechStartedHandler: @escaping @Sendable () -> Void = {}
   ) {
-    self.legacyCaptureService =
-      legacyCaptureService
-      ?? AVAudioCaptureService(cleanupOwner: cleanupOwner)
+    self.legacyCaptureService = legacyCaptureService
     self.liveUpdateHandler = liveUpdateHandler
     self.cleanupOwner = cleanupOwner
     // Both channels use the input-only frontend. Rebuilding VoiceProcessingIO
