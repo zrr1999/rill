@@ -195,6 +195,11 @@ codesign --force --options runtime --sign - \
 codesign --force --options runtime --sign - "$PACKAGE_SMOKE_ROOT/Rill.app"
 codesign --verify --deep --strict --verbose=2 "$PACKAGE_SMOKE_ROOT/Rill.app"
 "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker" </dev/null
+
+for document in LICENSE README.md; do
+  cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" ||
+    error "Packaged project document does not match $document"
+done
 cmp -s \
   "$PROJECT_DIR/PRIVACY.md" \
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/PRIVACY.md" ||

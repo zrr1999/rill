@@ -397,6 +397,9 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         shutil.copy2(PRIVACY_NOTICE, copied_privacy_notice)
         copied_local_model_notices = self.fixture.root / LOCAL_MODEL_NOTICES.name
         shutil.copy2(LOCAL_MODEL_NOTICES, copied_local_model_notices)
+        project_documents = ("LICENSE", "README.md")
+        for document in project_documents:
+            shutil.copy2(PROJECT_DIR / document, self.fixture.root / document)
         fake_bin = self.fixture.root / "bin"
         fake_bin.mkdir()
         fake_lipo = fake_bin / "lipo"
@@ -492,6 +495,11 @@ EOF
         )
         packaged = app_bundle / "Contents" / "Resources" / "THIRD_PARTY_NOTICES.md"
         self.assertEqual(packaged.read_bytes(), self.fixture.output.read_bytes())
+        for document in project_documents:
+            self.assertEqual(
+                (app_bundle / "Contents" / "Resources" / document).read_bytes(),
+                (PROJECT_DIR / document).read_bytes(),
+            )
         packaged_privacy_notice = (
             app_bundle / "Contents" / "Resources" / PRIVACY_NOTICE.name
         )
@@ -574,6 +582,52 @@ EOF
         )
         self.assertEqual(extracted.returncode, 0, extracted.stderr)
         self.assertTrue((extracted_iconset / "icon_512x512@2x.png").is_file())
+
+        for document in project_documents:
+            source = self.fixture.root / document
+            for state in ("missing", "empty"):
+                with self.subTest(document=document, state=state):
+                    if state == "missing":
+                        source.unlink()
+                    else:
+                        source.write_bytes(b"")
+                    rejected = run(command, env=assembler_env)
+                    self.assertNotEqual(rejected.returncode, 0)
+                    self.assertIn(
+                        f"Project document not found or empty: {document}",
+                        rejected.stderr,
+                    )
+                    self.assertEqual(
+                        (app_bundle / "Contents" / "Resources" / document).read_bytes(),
+                        (PROJECT_DIR / document).read_bytes(),
+                    )
+                    shutil.copy2(PROJECT_DIR / document, source)
+
+        fake_ditto = fake_bin / "ditto"
+        fake_ditto.write_text(
+            """#!/bin/sh
+/usr/bin/ditto "$@" || exit $?
+if [ "${2##*/}" = "$RILL_TEST_CHANGED_DOCUMENT" ]; then
+    printf '\\nchanged after copying\\n' >> "$2"
+fi
+""",
+            encoding="utf-8",
+        )
+        fake_ditto.chmod(0o755)
+        for document in project_documents:
+            with self.subTest(document=document, state="changed after copying"):
+                rejected = run(
+                    command,
+                    env={**assembler_env, "RILL_TEST_CHANGED_DOCUMENT": document},
+                )
+                self.assertNotEqual(rejected.returncode, 0)
+                self.assertIn(
+                    f"Packaged project document differs from the repository source: {document}",
+                    rejected.stderr,
+                )
+        fake_ditto.unlink()
+        assembled = run(command, env=assembler_env)
+        self.assertEqual(assembled.returncode, 0, assembled.stderr)
 
         self.fixture.output.unlink()
         rejected = run(command, env=assembler_env)

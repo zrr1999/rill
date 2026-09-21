@@ -104,6 +104,40 @@ SDK、Metal 及构建参数；增加、删除或修改未提交文件也参与�
 
 实测数据、计数口径和复现步骤见 [构建提速验证](docs/build-performance.md)。
 
+## 本地 App 与发布
+
+`swift build` 只生成可执行文件，不会装配带权限声明的 macOS App。
+使用本机可用的 Apple Development 签名身份进行开发安装：
+
+```bash
+SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
+```
+
+该命令使用独立的 Release scratch path，增量构建、装配、签名、验证并原子安装；
+不会隐式运行完整测试。先运行 `just ci`，或用 `--preflight --install` 一并执行。
+省略 `--install` 会在 `.artifacts/release/` 生成本地 App 和 DMG。
+本地开发签名不证明 Developer ID 公证或 Gatekeeper 分发验收通过。
+正式版本、签名、公证与对应源码交付见 [发布步骤](docs/releasing.md)。
+
+## 文档归属
+
+参照 ZenDev，文档按用途维护，具体行为以当前源码和配置为准：
+
+| 文档 | 内容 |
+| --- | --- |
+| [README.md](README.md) | 用户安装、首次使用、工作流配置、隐私设置、排查与升级卸载 |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | 开发环境、验证、生成物维护、文档归属与 Git 约定 |
+| [LICENSE](LICENSE) | Rill 原创代码和文档的 AGPL-3.0-only 许可条款 |
+| [SECURITY.md](SECURITY.md) | 支持版本、漏洞报告渠道及披露规则 |
+| [PRIVACY.md](PRIVACY.md) | 随 App 分发的技术隐私与数据流说明 |
+| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md) | 第三方依赖与模型的许可及来源证据 |
+| [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[工作流](docs/workflow-toml.md)、[上下文纠错](docs/contextual-correction.md)、[UI](docs/ui-direction.md) | 开发者维护的模块、状态、执行与界面契约 |
+| [发布步骤](docs/releasing.md)、[验收清单](docs/release-qa-checklist.md) | 维护者发布流程和特定候选包的验收要求 |
+
+用户说明集中在 README；技术契约保留在所属文档，通过链接引用。
+`docs/` 中的研究、计划和历史 QA 记录提供背景，不作为当前产品能力或发布通过的依据。
+修改产品行为时同步对应使用说明和契约，避免在多个计划文件中重复维护使用手册。
+
 ## 改动边界
 
 模块依赖应保持单向；完整依赖图与状态归属见 [架构说明](docs/architecture.md)：
@@ -201,6 +235,8 @@ ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本�
   PR 标题必须使用英文；描述可使用中文。
 - 一个提交表达一个可审阅的意图，说明最终行为和实际测试结果。
   人工验收未完成时明确记录，不能用单元测试或本地开发签名代替。
+- 原创贡献使用项目的 AGPL-3.0-only 许可；引入第三方代码时保留其原始
+  版权和许可声明，并同步对应的来源证据。
 
 可以在本地复现完整 message 检查；无参数时检查当前 HEAD 的全部历史，
 提供 base 时只检查它之后引入的提交：
@@ -225,4 +261,4 @@ squash，最终生成的 message 必须重新经过同一校验器。GitHub 的�
 - 使用 Developer ID Application 身份和维护者管理的 `notarytool` 凭据；
 - 最终 DMG 完成签名、公证、staple、Gatekeeper 复验和人工 QA。
 
-发布步骤见 [docs/releasing.md](docs/releasing.md)，实际打包以 `scripts/release.sh` 和 `docs/release-qa-checklist.md` 为准。仓库尚未包含 `LICENSE` 与正式安全报告渠道；在维护者补齐前，不要推断授权条款，也不要在公开 issue 中披露敏感漏洞细节。
+发布步骤见 [docs/releasing.md](docs/releasing.md)，实际打包以 `scripts/release.sh` 和 `docs/release-qa-checklist.md` 为准。项目许可见 [LICENSE](LICENSE)，安全报告渠道状态与披露规则见 [SECURITY.md](SECURITY.md)。

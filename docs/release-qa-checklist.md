@@ -74,6 +74,11 @@ they do not replace running the notarized candidate on macOS 14.
 - [ ] Confirm Gatekeeper accepts the DMG and installed App without an override.
 - [ ] Confirm the stapled ticket and Developer ID identity match the release
       record.
+- [ ] Confirm the installed App includes the release's `LICENSE`, `README.md`,
+      privacy notice, and third-party notices without changes.
+- [ ] Follow the source link beside the binary download without repository
+      privileges; verify the source and build instructions match this candidate.
+- [ ] Verify the private reporting channel listed in `SECURITY.md` is reachable.
 
 For a declared `cloud-only` candidate:
 

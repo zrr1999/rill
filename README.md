@@ -1,317 +1,179 @@
 # Rill
 
-User workflows are standard TOML files under
-`$XDG_CONFIG_HOME/rill/workflows` (defaulting to
-`$HOME/.config/rill/workflows`). Edit files and prompts in your external text
-editor; Rill reloads saved changes automatically. There is no built-in workflow
-editor. See [the workflow TOML specification](docs/workflow-toml.md).
+Rill 是一款本地优先的 macOS 语音输入与记录应用。按住 Fn 说话，松开后把文字
+输入当前应用；也可以保存文本、图片和文件记录，通过工作流整理、复制或朗读。
 
-**本地优先的记录流与记录路由工作站** — 一款原生 macOS 应用，将语音识别、系统剪切板采集、跨应用投递和可观察工作流统一为一条 Record 流。
+- 本地语音识别：默认 Qwen3-ASR 0.6B，可选 1.7B；准备好模型后可离线转写。
+- 可选智能整理与语音助手：连接你配置的 LLM Provider，整理转写或回答问题。
+- 记录与记录集：按用途组织内容，手动投递到目标应用；剪贴板采集默认关闭。
+- TOML 工作流：使用外部编辑器修改步骤和提示词，保存后自动重新加载。
 
-> 🎙 按住 Fn 说话，松开即输入 · 🗂 多记录集路由 · ⚡ 可观察语音工作流 · 🔄 语音状态浮窗
-
----
-
-## ✨ 核心特性
-
-### 🎤 语音转文字
-
-- **统一本地语音边界** — 稳定的 `local-speech` recognizer 由独立 worker 中的原生 [mlx-audio-swift](https://github.com/Blaizzy/mlx-audio-swift) 实现；默认启用并常驻 Qwen3-ASR 0.6B 8bit，也可在模型池加入 1.7B 8bit。Qwen v5 流式结果只用于预览，封口 WAV 的离线结果始终是正式文本
-- **按住说话（Push-to-Talk）** — 按住 `Fn` 开始录音，松开自动识别并输入
-- **本地语音端点** — 主窗口和菜单栏触发的单次听写使用固定 revision/hash 的 MLX Silero VAD v6 判断语音起止；`Fn` 按住说话仍由松键结束，切换式录音由第二次按键结束
-- **按需采集前端** — 唤醒词使用可与其他 App 共存的 input-only 原始前端；只有实际识别运行才切换到 Apple Voice Processing 和自动增益，并在结束后完整释放 VPIO。模型预加载不会预配置或占用麦克风
-- **稳定尺寸的语音状态浮窗** — 本地路径以固定标准/紧凑尺寸显示录音、音量和处理状态；增长中的实时 hypothesis 只保留最新两行，不会按正文长度不断撑大窗口。停止或自动端点后再由所选档位模型生成最终转写
-- **中英文支持** — 界面和识别均支持中文/英文双语切换
-- **作用域热词** — Qwen 路径只接收清洗并设有数量/长度上限的热词，通过 Qwen3-ASR 的有界 context 传入
-- **智能整理（LLM Provider）** — 最终识别和词汇纠正后，通过配置的 LLM Provider 修复错字、整理段落和列表，保留原意；DeepSeek V4.1 Flash 润色时关闭思考；与语音助手共用 LLM Provider 的地址、模型和 API Key，密钥保存在 Keychain，需主动启用并遵循云端授权。临时失败保留整理前完整文本并提示；取消、隐私阻止或凭据错误停止投递。可使用 DeepSeek 或其他兼容 OpenAI Responses API 的服务。
-- **延迟音频双阶段授权** — 录音与 exact workflow/run 绑定一次性 lease；队列在解析音频前 claim，解析后、识别前再次检查设置与目的地。等待期间收紧策略会阻止后续识别或投递
-- **明确且可停止的实时状态** — 活动录音按钮会真正停止对应 run，而不是只隐藏窗口。停止输入后，控制器与后台队列通过原子所有权转移避免重复处理或遗留音频；App 退出会等待录音、手动工作流、音频队列与剪贴板监听清理。清理超时会取消本次退出而不取消清理；事件排空和持久化先于可能较慢的模型卸载
-- **有界本地录音** — 同一份 16 kHz 单声道 PCM 同时送往 v5 流式预览和权限为 `0600` 的受管 WAV；实时层只保留有界 PCM/音量状态。流式失败只关闭预览，正常停止会排空尾帧并继续离线 final，异常、取消或超时会先关闭文件再清理
-- **失败录音恢复（可选）** — 默认关闭；符合条件的投递前失败录音可加密保留最多 24 小时，并从历史页手动重试或删除。重试在解密前和解密后、provider 调用前都重新检查当前隐私与配置，只生成新的运行历史，不重复输出动作。App 退出会拒绝新重试、取消并等待所有活动重试恢复 durable receipt，并执行最终全局恢复明文 sweep；无法证明全部托管明文已清理时会阻止本次退出，让清理继续完成
-
-### 🗂 记录流与记录路由
-
-- **默认不监听** — 新安装默认关闭系统剪贴板捕获和浮动面板全局快捷键；只有用户在设置或菜单栏明确开启后才建立新的捕获基线，关闭期间的变化不会在重新开启时补录
-- **记录只存一次** — 文本、图片和文件是不可变 Record；标签、置顶、活动状态和记录集成员关系独立保存。一条 Record 可以同时属于多个记录集，也可以没有任何成员关系并继续出现在虚拟的“所有记录”时间线中
-- **正交记录集策略** — Stack、Queue、List 只是快捷预设；每个记录集可独立选择 newest / oldest / manual 与 retain / successful-delivery 后消费。只有发起投递的 membership 会被消费
-- **双向路由** — capture rule 按来源、来源 App 和 workflow 将一次采集稳定并集到最多 32 个记录集；delivery rule 按目标 App 选择有序来源记录集和 sink。系统剪切板只是 `SystemClipboardSource` / `SystemClipboardSink`，不是领域所有者
-- **显式替换语义** — Replace 创建带 `derivedFrom` / `supersedes` 的新 Record；默认只交换当前记录集的 membership，也可明确选择在所有记录集中替换。原始 Record 继续保留在 All Records
-- **有界且原子的本地存储** — schema 13 将加密 catalog 节点与不可变 payload blob 分开保护，正文按需加载；支持最多 10,000 条 Record、512 MiB 总内容、单条 1 MiB 文本或 32 MiB 图片、每 Record 32 memberships 和总计 320,000 memberships。metadata 修改不重写 payload 密文
-- **异步采集，不干预原生复制粘贴** — 后台记录通过隐私检查的剪贴板内容，不拦截 ⌘C / ⌘V，也不把队列预览写入系统剪贴板；只有手动触发输出时才进行剪贴板写入与条件恢复，用户期间的新复制始终优先
-- **有界富内容投递** — 临时替换系统剪贴板前，Rill 最多保存 128 个 item、每项 32 个 representation、总计 256 个 representation / 64 MiB；任一表示不可读或超限都会在替换前失败。图片的 ImageIO 解码、完整性检查和 TIFF → PNG 转换在主线程外 single-flight 串行执行，并在提交前复核 change count。精确写回失败会保留原 archive，只重试恢复而不重复粘贴；退出会排空内外两层临时事务，无法证明恢复完成时拒绝本次正常退出
-- **安全清理** — Record、运行历史及相关诊断默认保留 30 天；自动清理保护 pinned Record 和任何 active membership，consumed membership 本身不构成永久保护
-- **前向迁移** — 旧剪切板图在一个事务中转为 Record graph v1；新图结构、数量、顺序和 payload 解密回读全部通过后才删除旧图。失败会完整回滚，不双写，也不承诺旧版 App 降级
-- **本地静态数据保护** — 运行正文、纠错来源、剪贴板状态、设置和导出元数据使用 Keychain 根密钥与 AES-256-GCM 保护；错误或缺失密钥会 fail-closed
-
-### ⚡ 可观察工作流
-
-- **纯文本工作流** — 用外部编辑器修改 XDG 目录中的 TOML 与提示词；应用只提供列表、模板、启用和运行入口，保存后自动重载。
-- **真实能力优先** — 云端工作流只在对应服务商凭据可读取时可启用；Snippet 与组事件动作仍不会出现在生产入口中。
-- **多种触发方式** — 快捷键、菜单栏和手动触发
-- **失败可见** — 缺失 recognizer、transformer 或 action 时明确失败，不静默跳过
-- **内容无关的运行前解释** — Workflows 页可预览已保存且没有未保存改动的工作流，查看当前触发、输入类别、处理步骤、输出效果、数据目的地和固定隐私原因；收据不包含正文、prompt、路径、端点或凭据
-- **预览与授权分离** — 预览只读取不含正文的隐私快照，不显示云端确认，也不是执行凭证；真实运行会用同一目的地分类器重新检查焦点、剪贴板与隐私设置。语音、非音频工作流和剪贴板重放均须先取得与具体工作流绑定的运行时授权；重放/替换还会同时评估 exact 条目来源 App 与当前动作目标，来源侧的云端禁用规则不会因切换前台 App 而失效
-- **Prompt 变量安全基础** — `{text}`、`{selected}`、`{clipboard}` 等 Core 模型使用单遍、有硬上限、非递归的渲染器；运行正文和上下文不可序列化，只有满足 canonical 子集/顺序约束的 content-free summary 可进入收据或诊断。OpenAI transformer 可服务内置与自定义语音工作流，但只能取得当前转写正文，选区、剪贴板、App 名和 bundle ID 不进入请求
-- **Durable 运行收据** — Runtime 直接记录真实触发、分桶耗时、动作固定结果和完成/部分完成/失败/取消/跳过终态；输出动作取消会写入固定 `cancelled` 结果，首个动作取消与已有副作用后的取消分别成为 cancelled 与 partially-completed，不会伪装成失败。加密落库后只发送仓库失效通知，历史时间线必须回读 durable truth。剪贴板/堆栈运行不会二次保存或展示正文，收据本身不含正文、名称、错误字符串、精确长度或正文指纹
-- **剪贴板零副作用预演** — 当前/历史条目可从详情或右键菜单打开 `Paste / Replay / Replace` 影响预演，查看固定的读取类别、处理步骤、潜在副作用、目的地、替换计划与隐私条件；界面只有刷新和关闭，不提供运行入口。Runtime 以 per-item generation + revision 原子解析精确条目，replay/replace 与真实授权共用 invocation-aware 目的地分类；同类型正文漂移、分组/标签变化和删除后同 ID 重建都会使旧结果失效
-
-### 🖥 桌面体验
-
-- **原生 macOS 应用** — SwiftUI + AppKit，系统级集成
-- **菜单栏常驻** — 状态指示 + 快捷操作，不占 Dock 空间
-- **浮动剪贴板面板** — 独立窗口，可边工作边管理剪贴板
-- **全局搜索** — `Cmd-F` 或工具栏按钮打开 MainShell 自己持有的搜索浮层；AppKit `NSSearchField` bridge 在 macOS 14 上确定性处理首次与重复 `Cmd-F` 聚焦、方向键选择、`Return` 打开和 `Esc` 关闭/恢复侧栏。页面、工作流和设置结果即时可用；运行历史在 250 ms 防抖后按同一快照以每批最多 50 条扫描全部留存记录，支持取消且最多返回 20 项。历史正文只按当前 `full / restricted / disabled` 预览策略进入索引：受限模式最多使用同一份 96 字符预览，禁用时不读取或索引正文；历史仓库故障不会让静态导航结果消失
-- **精确结果跳转** — 活动页、诊断页与全局搜索使用 typed 请求进入工作流、历史条目及语言、剪贴板面板、权限、隐私、存储、语音、词汇或输入设置；目标页面拥有滚动和详情焦点，MainShell 不会在跳转后把焦点抢回侧栏
-- **准备清单** — 活动页按当前默认听写路径展示全局输入、麦克风、辅助功能、模型/provider 与隐私状态；只有共享事件监听真正安装成功才算全局输入就绪，权限只在用户点击时请求
-- **可预测的主窗口焦点** — 侧栏统一拥有普通跨页导航焦点；进入剪贴板不会自动聚焦搜索框，鼠标事件完成后会把键盘焦点恢复到新选中的侧栏项。活动页 → 剪贴板的键盘、List selection、`NSEventTrackingRunLoopMode`、快速连续路由及 typed Settings / 历史详情所有权均有 AppKit 托管回归；真实鼠标与完整 VoiceOver 仍按发布 QA 清单验收
-- **启动设置不丢修改** — 初始持久化快照返回前，标量设置按 key 保留用户的新选择；工作流、词汇和已下载模型等整表集合暂时禁用 mutation，避免用不完整内存状态覆盖旧库。加载完成后再恢复编辑与模型准备
-- **焦点绑定的文字注入** — 直接输入会绑定开始运行时的目标 App；浮动剪贴板面板在隐藏前锁定 PID/bundle，恢复后只有同一目标仍在前台才会投递。粘贴或每个键盘分块前会再复核；目标不可验证或中途变化时停止输入并条件恢复剪贴板，诊断不记录目标标识或正文
-
----
-
-## 🆚 与同类应用对比
-
-以下是截至 2026-07-18 的 Rill 公开能力快照，不把未核验或路线图能力写成现状。Type4Me 一栏仍以 2026-07-11 固定 commit 的 [README 与 provider registry](https://github.com/joewongjc/type4me/tree/5a899d9cdad89a9ee47c53f01edaa701d385b17b) 为依据。
-
-| 功能 | Rill | Type4Me |
-| ------ | --------- | --------- |
-| 本地 ASR | 原生 MLX Swift Qwen3-ASR 0.6B 默认 + 1.7B 可选 | SenseVoice + Qwen3-ASR 校准 |
-| 云端 ASR | 不提供 | 多家；以当前 provider registry 为准 |
-| **剪贴板路由模型** | App / 组路由 + Stack / Queue / List | 本次源码快照未见同类路由模型 |
-| **可观察工作流** | 内容无关运行前解释 + 运行时重新授权 | 模式、Prompt 与快捷键配置 |
-| **工作流配置** | 三节点可视化配置 | 模式与 Prompt 配置 |
-| **语音状态浮窗** | ✅；Qwen v5 confirmed/provisional 流式预览 | ✅ |
-| **组标签系统** | ✅ | 本次源码快照未见 |
-| 确定性映射词 | ✅ App / 组 / 语言作用域 | ✅ |
-| 一步纠错闭环 | ✅ 人工确认建议与作用域 | 热词/片段管理工具 |
-| 本地历史留存 | ✅ 剪贴板与运行域独立配置、可清理 | 识别历史 + CSV 导出 |
-| ASR 热词 | ✅ Qwen 有界热词，支持 App / 组 / 语言作用域 | ✅ |
-| Prompt 变量 | 🧪 有界单遍模型与 content-free summary 已完成，尚未接入生产变换器 | ✅ |
-| 本地 LLM | 🔜 Provider / model 待选；Ollama 仅为候选 | ✅ Ollama |
-
----
-
-## 🚀 快速开始
+## 安装
 
 ### 系统要求
 
-- macOS 14.0 (Sonoma) 或更高版本，仅支持 Apple Silicon（arm64）；发布产物必须是单一 arm64 slice
-- 原生 MLX 本地 runtime 随 arm64 App 提供；每个候选版本必须在声明支持的 Apple Silicon 硬件上完成录音、模型准备和转写验收
-- 可选的 Qwen3-ASR 1.7B 8bit 使用随辅助进程编译的原生 mlx-audio-swift 0.1.3 与 MLX/Metal GPU；用户无需安装 Python 或 `uv`，该路径不使用 ANE/NPU
+- Apple Silicon Mac，macOS 14.0 或更高版本。
+- 首次准备语音模型需要联网。0.6B 模型约 1.01 GB，1.7B 模型约 2.46 GB，
+  还需为下载缓存和可选语音合成模型预留空间。
+- 运行打包后的 App 无需安装 Python、uv 或其他开发工具。
 
-源码开发还需要：
-
-- Xcode 26 或更高版本，并选择包含 Swift 6.2+ 的 Command Line Tools；本地
-  默认开发工具链为 Xcode 27
-- 从源码生成发布包还需要与当前 Xcode 兼容的独立 Metal Toolchain；可用 `xcodebuild -downloadComponent MetalToolchain` 安装，并用 `xcrun metal -v` 验证。不要强制 `--toolchain XcodeDefault`，否则 `xcrun` 会排除已下载并挂载的 Metal Toolchain。若组件下载后仍失败，请用 `DEVELOPER_DIR` 临时选择一个验证通过的并存 Xcode，不要修改 Xcode.app 内部文件
-- Git、`codesign` 与 macOS 标准发布工具，以及 [uv](https://docs.astral.sh/uv/guides/scripts/)；发布脚本通过 PEP 723 单文件脚本模式运行 Python 3.11 或更高版本
-
-### 从源码验证
-
-仓库当前尚未发布可验证的公开安装包。开发者可以先运行与发布流程相同的预检：
-
-```bash
-cd /path/to/rill
-tool_dir="$HOME/.local/share/rill/bin"
-bash scripts/install_gitleaks.sh --destination "$tool_dir"
-export PATH="$tool_dir:$PATH"
-gitleaks version
-bash scripts/preflight.sh
-```
-
-安装脚本只接受 Gitleaks 8.30.1 的受审 macOS 资产，并在安装前校验当前架构对应的固定 SHA-256。`Package.resolved` 固定 mlx-audio-swift 及其完整 SwiftPM 依赖图；预检会把锁定图与第三方许可证清单、离线 advisory baseline 和 CI 的实时 OSV 查询对照。随后它检查发布脚本语法与生成产物、执行 arm64 Release 构建和 App 装配，验证主 App 与语音 worker 都只有 arm64 slice，且 `LC_BUILD_VERSION` 的 macOS `minos` 精确为 14.0。最后运行完整测试并检查补丁空白错误。这个 Mach-O 门禁不能替代在 Sonoma 的 Apple Silicon 真机上运行最终公证包。
-
-本地语音保持稳定的 `local-speech` recognizer 边界。一个 ASR worker 可缓存多个已启用 Qwen 模型，但所有 Qwen decode 经过同一串行通道；独立 TTS worker 可与 ASR、LLM、录音并行。模型和 Silero VAD v6 均固定到精确 Hugging Face revision，并在发布本地目录前校验受审文件的大小与 SHA-256。主 App 不链接 MLX，模型预加载也不会初始化麦克风。
-
-SwiftPM 依赖采用可复现的兼容组合：上层 `mlx-audio-swift` 固定为最新稳定版
-0.1.3，底层 `mlx-swift` 暂固定为 0.31.4。0.31.5/0.31.6 给跨平台
-`Cmlx` target 无条件附加 `CudaBuild` 插件，会使当前 Xcode package graph 丢失
-plugin target GUID；消费方没有关闭传递插件的开关。上游修复发布前，不要只为追逐
-底层版本绕过锁文件或修改 checkout。
-
-| model ID | 角色 / 后端 | 固定来源 | 大小 / 固定身份 |
-| --- | --- | --- | --- |
-| `qwen3-asr-0.6b-mlx-8bit` | 默认最终模型与流式预览；Apple Silicon；MLX/Metal GPU | [`mlx-community/Qwen3-ASR-0.6B-8bit`](https://huggingface.co/mlx-community/Qwen3-ASR-0.6B-8bit) | 约 1.01 GB；commit `89e96d92ba34aca20b3e29fb10cc284097d1219f` |
-| `qwen3-asr-1.7b-mlx-8bit` | 可选较大最终模型；Apple Silicon；MLX/Metal GPU | [`mlx-community/Qwen3-ASR-1.7B-8bit`](https://huggingface.co/mlx-community/Qwen3-ASR-1.7B-8bit) | 约 2.46 GB；commit `a8379a2e2f9e313c9292cdf1af4055ab56d50d55` |
-
-流式预览准备或推理失败时只退化为录音音量/状态显示，不改变受管 WAV 与离线最终识别。
-
-内置目录只保留两条基础链路：`语音识别` 使用 Fn 触发，按当前语音路由选择最终
-STT 模型，在识别阶段提供个人词库热词提示，并在识别后执行确定性替换，再输出文字；
-`语音助手` 使用 `Hey Rill` 唤醒，依次执行 STT、词汇处理、OpenAI-compatible
-Responses LLM 回答和 automatic/Vivian TTS。语音助手默认停用，用户需要先配置
-OpenAI API Key，并在设置中主动启用唤醒监听。设置页会在启用前汇总检查麦克风、
-当前本地 ASR、LLM 配置、云端隐私策略与语音输出；已知无效或验证失败的 LLM 配置
-不会启动连续监听。两条链路共用现有 recognizer、transformer 和 action 流水线，
-但使用独立运行通道；Fn/交互识别在共享麦克风入口拥有高于环境唤醒的优先级，助手的
-LLM/TTS 后处理不会占住实时识别通道。ASR 与 TTS 也使用独立 worker supervisor，
-捕获层不会直接依赖文字注入或语音播放。
-
-完整模型身份、来源 revision 与哈希入口见 [LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md)。
-
-仓库通过 `justfile`、`prek.toml` 和 GitHub Actions 共享同一组门禁。
-安装 `just`、`uv` 后，可安装 pre-commit/commit-msg hooks 并运行完整检查：
-
-```bash
-just install
-just ci
-```
-
-`.github/renovate.json` 复用 `github>zrr1999/renovate-config`，统一安排 Swift 与 GitHub Actions 更新。共享 preset 会分组非 major 更新，并仅在全部必需检查通过后 squash 自动合并；major 更新仍保持独立 PR。所有依赖变更继续经过同一套锁文件、OSV、NOTICE 与 CI 门禁。
-
-### 构建 macOS 应用
-
-`swift build` 只生成命令行构建产物，不会创建带权限声明的 `.app`。本地安装需要可用的 Apple 代码签名身份：
+当前仍处于开发阶段，[Releases](https://github.com/zrr1999/rill/releases)
+尚无正式安装包。开发者可按 [CONTRIBUTING.md](CONTRIBUTING.md) 准备构建环境，
+使用本机可用的 Apple Development 签名身份构建并安装：
 
 ```bash
 SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 ```
 
-这个本地安装入口使用独立的 Release scratch path，只做增量构建、装配、签名、验证和原子安装，不再隐式运行全量测试，也不会与 Debug 测试复用 module graph。需要完整门禁时单独运行 `just ci` / `bash scripts/preflight.sh`，或显式使用 `bash scripts/release.sh --preflight --install`。公证发布仍强制执行完整预检。
-
-发布脚本默认把 App、DMG 和可能生成的校验 sidecar 写入仓库内的 `.artifacts/release/`。它在昂贵构建前先使旧 App/DMG/sidecar 失效，再在输出目录所在文件系统的私有 staging 中生成并验证新产物，成功后才原子替换。仓库内输出必须位于 `.artifacts/`，路径会解析到物理祖先并把公证快照 capability 绑定到物理输出位置，因此不能用 traversal 或 symlink 绕过；仓库外目录仍可显式指定。预检会拒绝遗留在仓库根目录的发布产物；完整发布策略测试覆盖这些边界、App-only SwiftPM 产品面、本地 ASR 生产接线、arm64-only 产物与失败不遗留旧产物的行为。
-
-使用默认隔离目录验证完整签名与 DMG 流程：
-
-```bash
-SIGN_IDENTITY="Apple Development" bash scripts/release.sh
-```
-
-如需使用仓库外目录：
-
-```bash
-RELEASE_OUTPUT_DIR="$(mktemp -d)/rill-release" \
-  SIGN_IDENTITY="Apple Development" \
-  bash scripts/release.sh
-```
-
-当前发布链路已用真实 Apple Development 身份验证过 arm64 App、hardened runtime、签名 entitlement 与 DMG 完整性。分发模式会先生成并签名最终 DMG，再把该外层容器提交公证、装订票据并执行 Gatekeeper 复验；自动化测试只用假工具验证顺序。仓库尚未用 Developer ID 和真实 notary profile 跑通这条路径，因此不能把当前产物表述为已公证。
-
-真实公证与 Gatekeeper 复验全部通过后，发布脚本才会在最终 DMG 同目录原子生成标准 `Rill.dmg.sha256`；未公证的本地签名 DMG 不生成正式发布 sidecar。校验和证明下载字节一致，不替代 Developer ID、Apple 公证或可信下载渠道。
-
-本地构建只有在工作树干净、当前 `HEAD` 精确且唯一地标记 `vMAJOR.MINOR.PATCH` 时才沿用该版本号；其他来源统一使用数值版本 `0.0.0`，并在 App 元数据中写入 `0.0.0-dev+<commit>[.dirty]`、完整 commit 与 dirty 状态，避免标签后的代码冒充旧 release。
-
-分发版本还需要 Developer ID 签名与公证。先用 `notarytool store-credentials` 在 Keychain 中创建 profile；默认名称为 `Rill`，也可通过 `NOTARY_PROFILE` 指定其他名称：
-
-```bash
-xcrun notarytool store-credentials Rill \
-  --apple-id "you@example.com" \
-  --team-id "YOURTEAMID"
-
-SIGN_IDENTITY="Developer ID Application" bash scripts/release.sh --notarize
-```
-
-公证模式会在构建前 fail-closed：工作树（含未跟踪文件）必须干净，并且当前 `HEAD` 必须精确且唯一地标记一个 `vMAJOR.MINOR.PATCH` 标签；只有声明了 SwiftPM 源码依赖时才要求将真实 `Package.resolved` 纳入版本控制。脚本随后从该 commit 创建临时 detached worktree，用全新的依赖 checkout 构建，并在签名与公证提交前再次核对 commit、tree，以及存在时的锁文件。普通本地签名和安装仍可在开发工作树中使用。
+本地开发签名不等于 Developer ID 公证。正式安装包上线后，从 Releases 下载
+对应版本，将 Rill 放入“应用程序”；如 macOS 拒绝打开，先核对来源和版本，
+不要通过关闭 Gatekeeper 绕过检查。
 
 ### 首次使用
 
-1. 打开 Rill，按活动页的“完成语音设置”清单授权 **输入监控** 与 **麦克风**；只有事件监听真正启动后，`Fn` 和全局剪贴板快捷键才会显示就绪；使用直接输入时还需授权 **辅助功能**
-2. 在 Settings 选择本地语音模型或使用硬件推荐。1.7B 选项仅在 Apple Silicon 可见，不需要额外 Python 环境；首次准备需要联网，之后本地转写离线运行。App 不会回退到未知模型、内部预览或未固定来源
-3. 按住 `Fn` 开始说话，松开后文字按当前输出模式输入活动 App 或保存到语音剪贴板组
+1. 打开 Rill，按“活动”页的语音设置清单授权麦克风和输入监控。
+   需要向其他应用直接输入文字时，再授权辅助功能。
+2. 在设置中准备并启用本地语音模型。等待模型准备完成后即可开始听写。
+3. 将光标放到目标应用的输入框，按住 Fn 说话，松开结束。
+4. 在“活动”页查看结果和运行状态。没有成功输入时，可从已保存的记录中取回文字。
 
----
+## 使用
 
-## 📖 使用指南
+### 语音输入与文字整理
 
-### 语音输入
+| 工作流 | 操作与结果 | 默认状态 |
+| --- | --- | --- |
+| 语音识别 | 按住 Fn，说完松开；识别、应用词汇规则、保存记录并输入文字 | 启用 |
+| 智能整理 | 按住 Fn；在识别后调用 LLM 整理文字，再保存并输入 | 停用 |
+| 语音助手 | 说出“Hey Rill”和请求；生成回答、保存记录并朗读 | 停用 |
 
-| 操作 | 说明 |
-| ------ | ------ |
-| 按住 `Fn` | 开始录音；浮窗显示录音状态、音量和本地实时 partial text |
-| 松开 `Fn` | 停止录音，识别结果自动输入到当前应用 |
-| `Cmd-F` | 搜索页面、工作流、运行历史和设置分区 |
+语音识别与智能整理共用 Fn，启用其中一个会停用另一个。使用智能整理或语音助手前，
+先在设置中的 LLM Provider 配置服务地址、模型和 API Key，并确认云端处理授权。
+支持 DeepSeek 及兼容 OpenAI Responses API 的服务；API Key 保存在 macOS Keychain。
 
-### 记录与记录集
+智能整理用于修正明显错字、标点和段落，不会把转写中的请求当作问题回答。
+可恢复的服务失败会保留整理前文字并提示；取消、隐私阻止或凭据错误会停止投递。
+语音助手需要单独开启唤醒监听，开启后会持续使用本地麦克风；关闭监听即可停止。
+朗读优先使用可用的本地 Qwen TTS，必要时回退到系统语音。
 
-- **所有记录** — 去重展示留存期内的全部记录；它是虚拟时间线，不是特殊记录集
-- **收件箱 / 语音输入** — 新安装创建的普通记录集，可重命名、删除或被路由替换
-- **自定义记录集** — Stack（最新优先并消费）、Queue（最旧优先并消费）、List（手动选取并保留）只是快捷预设；选取策略与消费策略可独立调整
+个人词库支持识别热词和转写后的确定性替换。可按应用、语言或记录集限定作用域，
+从历史中的识别结果提出纠正，确认后再加入词库。
 
-一条记录可属于多个记录集，也可以不属于任何记录集。移除成员关系不会删除记录；只有明确的全局删除才会删除记录及其全部成员关系。采集路由可把一次输入稳定地加入多个记录集，投递路由则按目标 App 选择有序来源记录集与输出端口。系统剪切板只是首批输入和输出端口之一。
+### 记录与剪贴板
+
+在设置或菜单栏主动开启剪贴板采集后，Rill 才会记录允许采集的文本、图片和文件引用。
+它不会接管系统的 ⌘C / ⌘V，也不会补录关闭期间的剪贴板变化。
+
+“所有记录”展示仍在保留期内的记录。收件箱、语音输入及自建记录集用于组织内容，
+同一条记录可以属于多个记录集。常用预设如下：
+
+| 预设 | 选取与使用方式 |
+| --- | --- |
+| Stack | 最新优先，成功投递后移出该记录集 |
+| Queue | 最旧优先，成功投递后移出该记录集 |
+| List | 手动选取，投递后保留 |
+
+选取顺序与消费策略可以分别调整。移出记录集只移除成员关系；明确删除记录才会
+删除其内容及全部成员关系。投递失败或取消时，不会把对应成员标记为已消费。
+使用图片或文件时，目标应用必须支持对应内容；文件引用还需要原文件可访问。
 
 ### 工作流
 
-内置三个工作流：
+工作流页用于启用、停用、新建、导入和打开文件。Rill 不提供内置文本编辑器，
+文件和提示词由你选择的外部编辑器维护。
 
-1. **语音识别** — `Fn` 按住说话 → STT → 热词与替换词 → 输出文字
-2. **语音助手** — `Hey Rill` → STT → 热词与替换词 → LLM 回答 → TTS
-3. **智能整理** — `Fn` 按住说话 → 本地 STT → 热词与替换词 → LLM Provider 润色 → 输出文字
+- 文件位置：`$XDG_CONFIG_HOME/rill/workflows/*.toml`，默认
+  `~/.config/rill/workflows/`。
+- 配置备份：`$XDG_STATE_HOME/rill/workflows/`，默认
+  `~/.local/state/rill/workflows/`；可用外部编辑器恢复备份。
+- 新建和导入的工作流默认停用。先检查步骤和输出目标，再主动启用。
+- 保存有效文件后，下次运行使用新配置；正在运行的任务保持原配置。
+  无效文件会显示错误并阻止对应工作流运行。
+- 音频工作流从绑定的触发器或运行按钮启动；文本工作流可通过“运行剪贴板文本”
+  显式读取当前剪贴板，仍需通过相应隐私检查。
 
-智能整理默认停用。在“设置 → 语音 → LLM Provider”填写地址、API Key 和模型后，从工作流列表启用；它与语音识别共用 Fn，启用其中一个会自动停用另一个。
+可以从 App 模板开始，也可以创建一个简单的文本工作流。下面的例子整理空白、
+保存记录并复制结果；另存多份时，用 `uuidgen` 为每份生成不同的 `id`。
 
-语音助手默认停用；启用前需要准备当前本地 Qwen ASR 并配置 OpenAI-compatible LLM。
-空闲监听只运行本地 VAD，完整语音段才交给 Qwen 检查唤醒短语；同一句中的后续命令会
-直接进入工作流，不再重复 STT。TTS 默认使用 automatic provider：Qwen3-TTS 可用时
-使用 Vivian，否则回退系统语音。助手设置中的就绪检查会阻止在麦克风未授权、本地
-ASR 未准备、LLM 配置无效或云端隐私策略不可用时开启监听；LLM 已配置但尚未主动验证
-时会明确提示验证建议，而不会把未验证状态伪装成已验证。
+```toml
+schema_version = 2
+id = "54B31E01-96AC-4A0F-BB82-0A8CB12DD629"
+name = "整理并复制"
+enabled = false
 
-设置中的“提供商与模型”只管理共享的 STT、LLM 和 TTS 资源；音色保存在各自 workflow
-的输出步骤中。环境唤醒与交互识别是两个显式音频通道：开始 Fn/交互录音时会立即取消
-唤醒候选，录音结束后恢复环境监听，而已经启动的助手 LLM/TTS 会在独立通道继续运行。
+[trigger]
+kind = "manual"
 
-你也可以创建自定义语音工作流，选择本地/云端识别、输出目标和确定性文本处理。
-工作流直接在外部编辑器中编写 TOML，保存后对下次运行生效；正在运行的任务保持其配置快照。新建和导入默认停用，无效文件会显示错误并阻止运行。
+[input]
+kind = "text"
 
-记录投递使用 exact `RecordID + MembershipID + revision` 租约；成功时只消费发起记录集的成员关系，失败或取消会恢复租约，其他记录集不受影响。Replace 创建派生记录而不覆盖不可变正文；默认只交换当前记录集的成员关系，也可由用户明确选择在所有记录集中替换。
+[[process]]
+id = "clean"
+kind = "normalize-whitespace"
 
-“最近结果”与“运行历史”已合并进“活动”页：就绪清单、实时动态与回执时间线共用一个滚动视图，时间线支持“最近运行 / 最近结果”范围并明确显示当前已加载条数；菜单栏的“最近运行”入口会直接打开该时间线。正文资格绑定运行时持久化的 closed trigger，并与同 run receipt 交叉验证；来源缺失或冲突时 fail-closed，不再根据当前工作流配置猜测。活动页时间线与实时动态共用 `full / restricted / disabled` 正文预览策略；受限内容传给界面与辅助功能树前已在 presentation 层截断为最多 96 个字符，禁用时活动项只保留无正文状态。筛选只改变展示范围，不改变本地留存、清理或隐私策略。诊断不再占用一级导航，经设置页的“高级 → 诊断”入口到达。
+[output]
+strategy = "immediate"
 
-旧版剪切板动作 ID、输出策略和 metadata 只在 TOML 加载与 SQLite 前向迁移边界读取；内建资源、模板与后续保存只输出 `record.store`、`system-clipboard.copy`、`focused-application.insert` 及 Record metadata。迁移完成后不保留双运行时，也不支持旧版 App 降级。
+[[output.actions]]
+id = "save"
+kind = "record.store"
 
----
-
-## 🏗 架构
-
+[[output.actions]]
+id = "copy"
+kind = "system-clipboard.copy"
 ```
-RillCore        — 领域模型和服务协议
-RillPlatform    — macOS 系统集成（焦点追踪、剪贴板控制、权限、文字注入）
-RillProviders   — 稳定 ASR/TTS 合同、Speech Worker v5、确定性文本处理与输出动作
-RillMLXRuntime  — 仅由语音辅助进程链接的原生 MLX/Metal 推理实现
-RillRuntime     — RecordStore、记录路由与投递、事件总线、候选解析、会话协调器
-RillPersistence — 数据持久化
-RillUI          — SwiftUI 视图和 AppModel
-RillApp         — 组合根和应用入口
-```
 
-这些 target 是 App 内部实现边界，不构成对外 Swift SDK；Swift Package 提供 `RillApp` 和 `RillSpeechWorker` 两个可执行产品。依赖方向、状态归属和生命周期合同见 [架构说明](docs/architecture.md)。
+步骤按文件顺序运行。输出可以组合保存记录、复制、输入到应用或朗读；把保存放在
+投递之前，后续输出失败时仍能取回结果。工作流也支持条件分支；完整字段和执行契约
+见 [TOML 规范](docs/workflow-toml.md)，可参考[条件示例](docs/examples/conditional-workflow.toml)。
 
----
+### 活动与排查
 
-## 🗺 路线图
+“活动”页集中显示录音状态、最近结果和运行历史；运行详情中可查看识别与 LLM
+处理耗时。`⌘F` 可搜索页面、工作流、历史和设置。
 
-- [x] **确定性映射词** — 识别后按 App、剪贴板组和语言作用域替换，可解释、可测试
-- [x] **历史留存与清理** — 默认 30 天、分域配置与清理、保护活动剪贴板项；运行历史、收据与诊断使用持久 CAS generation 阻止旧写复活，读路径只承认当前 generation，并清除 SQLite / WAL 残留
-- [x] **ASR 热词** — 显式 provider 能力合同；Qwen 本地路径接收清洗且有界的热词
-- [x] **一步纠错闭环** — 从真实识别历史生成保守 mapping/hotword 建议，未知作用域必须人工确认
-- [x] **本地静态数据保护** — Keychain 根密钥、AES-256-GCM、可恢复 SQLite v8 迁移、加密运行收据、权威运行来源、逻辑清除 generation 与物理残留清理
-- [x] **Durable 运行收据** — 内容无关的真实 trigger、动作终态、耗时分桶与 receipt-first 历史时间线
-- [x] **组事件可解释性** — 无正文 exact-item descriptor、有界背压、退出排空、严格配置解析、固定 skip/loop 收据、lineage/8-hop 阻断与双语 History 原因；动作仍关闭
-- [x] **失败录音恢复** — 显式 opt-in、Keychain/AES-GCM、硬 TTL 与容量上限、一次性当前策略重试及独立删除/清空
-- [x] **运行前解释** — 已保存工作流的动态、内容无关隐私预览；执行时重新检查并使用与工作流绑定的授权
-- [x] **云端转写润色** — 智能整理、统一 LLM Provider 与 Keychain 凭据、云端确认、超时取消与完整文本回退。
-- [ ] **Prompt 变量** — `{text}` `{selected}` `{clipboard}` 让语音输入升级为语音命令
-- [ ] **更多云端引擎** — 火山（豆包语音）、Soniox、AssemblyAI
-- [x] **Toggle 录音模式** — 按一下开始，再按一下停止
-- [ ] **历史记录导出** — CSV 格式导出所有识别记录
-- [ ] **本地 LLM** — 在真实隐私、延迟与质量基准后选择 provider/model；Ollama 目前仅为本地候选
+- Fn 无反应：检查输入监控权限、当前启用的 Fn 工作流和语音设置清单。
+- 模型未就绪：先联网完成模型准备，确认所选模型已启用。
+- 无法输入到目标应用：检查辅助功能权限，并在开始前将光标放入输入框。
+- 云端步骤失败：检查服务地址、模型、API Key 和云端授权，在设置中验证配置。
+- 需要更多诊断信息时，打开“设置 → 高级 → 诊断”。报告问题前移除私人文本和凭据。
 
----
+## 隐私与数据
 
-## 📄 技术文档
+本地识别不上传录音。云端整理或回答会把文字发送到你配置的服务；可选的屏幕上下文
+和长期记忆默认关闭，开启并授权后，会向该服务发送相应截图、摘要或已授权的历史材料。
+请按服务提供方的条款决定是否启用这些功能。
 
-- 贡献与本地验证指南：[CONTRIBUTING.md](CONTRIBUTING.md)
-- 技术选型记录：[docs/technology-selection.md](docs/technology-selection.md)
-- 技术隐私与数据流说明：[PRIVACY.md](PRIVACY.md)；发布装配会把同一文件原样放入 App，并在预检中逐字节校验
-- 维护者发布步骤、版本规则和升级边界：[docs/releasing.md](docs/releasing.md)
-- 最终包人工验收记录模板：[docs/release-qa-checklist.md](docs/release-qa-checklist.md)
+记录正文、运行历史和长期记忆加密保存，密钥由 Keychain 管理。剪贴板和运行历史默认保留
+30 天，可在设置中调整和分类清理；失败录音恢复默认关闭，开启后最多保留 24 小时。
+长期记忆独立于历史留存，清空历史不会同时删除已形成的记忆，需要在记忆管理中处理。
 
-## 📜 许可证
+设置中可暂停采集、配置敏感应用、关闭正文预览、撤销云端授权及清除凭据。
+完整的数据目的地、保留规则与限制见 [PRIVACY.md](PRIVACY.md)，App 设置也可查看同一份说明。
 
-仓库当前尚未包含 `LICENSE` 文件。在维护者正式选择并加入许可证前，源码不应被描述为 MIT 授权。
+## 升级与卸载
 
-锁定依赖的许可证与 NOTICE 证据由 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 单独记录，并会随 macOS App 一起打包；这些第三方条款不构成 Rill 自身的许可证。
+Rill 尚未提供自动更新。新版本发布后，先退出 App，再安装受信任的新版本。
+升级前保留需要的数据；已经迁移的数据不保证能被旧版 App 读取，降级前应阅读该版本说明。
 
-## 🔐 安全报告
+卸载前可在设置中分别清理历史、长期记忆和凭据，再退出并移除 App。
+仅删除 App 不会清除全部用户数据、模型缓存或 Keychain 条目。工作流和备份位于上文的
+XDG 目录；其他数据位置与清理边界见 [PRIVACY.md](PRIVACY.md)。
 
-仓库当前尚未包含 `SECURITY.md`，也没有正式的私密漏洞报告渠道。在维护者发布正式渠道前，请勿在公开 issue 中披露敏感漏洞细节；本说明不构成或暗示已有可用的私密联系方式。
+## 参与开发与反馈
+
+- 普通问题和功能建议：[GitHub Issues](https://github.com/zrr1999/rill/issues)。
+- 安全问题：遵循 [SECURITY.md](SECURITY.md)，不要公开漏洞细节或私人数据。
+- 开发环境、检查命令、提交规则与技术文档入口：[CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## 许可证
+
+Copyright (C) 2026 Zhan Rongrui and contributors.
+
+Rill 的原创代码和文档采用 **GNU Affero General Public License v3.0 only**
+（SPDX：`AGPL-3.0-only`），完整条款见 [LICENSE](LICENSE)。本程序不提供任何担保，
+包括适销性或特定用途适用性的默示担保，详见许可证。
+
+第三方代码和模型继续适用各自条款，分别见
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与
+[LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md)。它们不因 Rill 的许可选择而重新授权。
