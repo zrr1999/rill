@@ -438,6 +438,8 @@ public actor MLXAudioSwiftSpeechWorkerService:
         throw SpeechWorkerProtocolError.unsupportedVersion
       }
       switch request.operation {
+      case .prepareEmbeddingModel, .embedText:
+        return .failure(request: request, code: .unsupportedModel)
       case .prepareModel:
         guard request.recognitionPayload == nil,
           let payload = request.modelPreparationPayload

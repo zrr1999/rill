@@ -100,12 +100,46 @@ final class RecordCatalogStressTests: XCTestCase {
     )
     XCTAssertLessThanOrEqual(catalogP95, 0.150)
     XCTAssertLessThanOrEqual(searchP95, 0.100)
+    let miss = RecordQuery(text: "unfindablexyz", matching: .approximate)
+    let coldMissStart = ContinuousClock.now
+    let coldMiss = try await allMatches(in: store, query: miss)
+    let coldMissSeconds = seconds(coldMissStart.duration(to: .now))
+    XCTAssertTrue(coldMiss.isEmpty)
+    var missTimes: [Double] = []
+    for _ in 0..<5 {
+      let start = ContinuousClock.now
+      let result = try await allMatches(in: store, query: miss)
+      missTimes.append(seconds(start.duration(to: .now)))
+      XCTAssertTrue(result.isEmpty)
+    }
+    let pinyin = try await store.query(.init(text: "zhongwen", matching: .approximate))
+    XCTAssertEqual(pinyin.records.count, 50)
+    var transposed = Array("clipboard")
+    transposed.swapAt(5, 6)
+    let typo = try await store.query(.init(text: String(transposed), matching: .approximate))
+    XCTAssertEqual(typo.records.count, 50)
+    print(
+      "RECORD_APPROXIMATE_STRESS records=10000 cold_full_miss_ms=\(coldMissSeconds * 1000) warm_full_miss_max_ms=\((missTimes.max() ?? 0) * 1000) samples=5"
+    )
+    // Catch whole-cache maintenance on every payload read, which made the cold scan quadratic.
+    XCTAssertLessThan(coldMissSeconds, 5)
+    XCTAssertLessThan(missTimes.max() ?? 0, 1)
     let cleanup = try await store.prepareCleanup()
     _ = try await store.confirmCleanup(cleanup)
     let empty = try await RecordStore(persistence: persistence).catalogSnapshot()
     XCTAssertEqual(empty.records.count, 0)
     XCTAssertEqual(empty.capacity.byteCount, 0)
   }
+  private func allMatches(in store: RecordStore, query: RecordQuery) async throws -> [RecordSummary] {
+    var records: [RecordSummary] = [], offset = 0
+    repeat {
+      let page = try await store.query(query, offset: offset)
+      records += page.records
+      guard let next = page.nextOffset else { return records }
+      offset = next
+    } while true
+  }
+
   private func seconds(_ duration: Duration) -> Double {
     Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
   }

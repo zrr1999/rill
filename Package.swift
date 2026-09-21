@@ -25,6 +25,8 @@ let package = Package(
       url: "https://github.com/ml-explore/mlx-swift.git",
       exact: "0.31.4"
     ),
+    .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", exact: "3.31.4"),
+    .package(url: "https://github.com/huggingface/swift-transformers.git", exact: "1.2.1"),
     .package(
       url: "https://github.com/MacPaw/OpenAI.git",
       exact: "0.5.1"
@@ -61,6 +63,10 @@ let package = Package(
         .product(name: "MLXAudioTTS", package: "mlx-audio-swift"),
         .product(name: "MLXAudioVAD", package: "mlx-audio-swift"),
         .product(name: "MLX", package: "mlx-swift"),
+        .product(name: "MLXEmbedders", package: "mlx-swift-lm"),
+        .product(name: "MLXHuggingFace", package: "mlx-swift-lm"),
+        .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+        .product(name: "Tokenizers", package: "swift-transformers"),
         .product(name: "HuggingFace", package: "swift-huggingface"),
       ]
     ),
@@ -109,6 +115,7 @@ let package = Package(
         "RillCore",
         "RillPersistence",
         "RillPlatform",
+        "RillProviders",
         "RillRuntime",
       ]
     ),
@@ -144,6 +151,7 @@ let package = Package(
         "RillApp",
         "RillCore",
         "RillPlatform",
+        "RillProviders",
         "RillRuntime",
       ]
     ),

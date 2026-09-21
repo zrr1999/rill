@@ -10,6 +10,7 @@ public actor RoutedSpeechWorkerService:
 {
   private let mlxAudioSwift: any SpeechWorkerRequestHandling
   private let mlxAudioSwiftStreaming: (any SpeechWorkerStreamingRequestHandling)?
+  private let recordEmbedding = RecordEmbeddingWorkerService()
 
   public init(
     mlxAudioSwift: any SpeechWorkerRequestHandling = MLXAudioSwiftSpeechWorkerService(),
@@ -25,6 +26,10 @@ public actor RoutedSpeechWorkerService:
     _ request: SpeechWorkerRequest,
     progress: @escaping @Sendable (SpeechWorkerProgress) -> Void
   ) async -> SpeechWorkerResponse {
+    if request.embeddingPayload != nil
+      || request.modelPreparationPayload?.modelID == RecordEmbeddingModelCatalog.modelID {
+      return await recordEmbedding.handle(request, progress: progress)
+    }
     let modelID =
       request.recognitionPayload?.modelID
       ?? request.synthesisPayload?.modelID

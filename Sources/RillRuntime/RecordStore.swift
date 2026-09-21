@@ -200,7 +200,7 @@ public actor RecordStore {
     private var payloadCacheBytes = 0
     private var hasCatalogPersistence = false
     private var admissionWasLimited = false
-    private var searchCache: [RecordID: String] = [:]
+    private var searchCache: [RecordID: RecordSearchDocument] = [:]
     private var searchCacheOrder: [RecordID] = []
     private var searchCacheBytes = 0
     private let encoder = JSONEncoder()
@@ -1720,7 +1720,7 @@ private extension RecordStore {
         let payload = try decodedPayload(data, kind: header.kind)
         _ = try validatedPayloadByteCount(payload)
         cachePayload(payload, for: id)
-        trimPayloadCache()
+        evictPayloadsOverBudget()
         return header.materialize(payload)
     }
 
@@ -1735,10 +1735,14 @@ private extension RecordStore {
     func trimPayloadCache() {
         searchCacheOrder.removeAll { recordsByID[$0] == nil }
         searchCache = searchCache.filter { recordsByID[$0.key] != nil }
-        searchCacheBytes = searchCache.values.reduce(0) { $0 + $1.utf8.count }
+        searchCacheBytes = searchCache.values.reduce(0) { $0 + $1.byteCount }
         payloadCacheOrder.removeAll { recordsByID[$0] == nil }
         payloadCache = payloadCache.filter { recordsByID[$0.key] != nil }
         payloadCacheBytes = payloadCache.keys.reduce(0) { $0 + (recordsByID[$1]?.byteCount ?? 0) }
+        evictPayloadsOverBudget()
+    }
+
+    func evictPayloadsOverBudget() {
         guard persistence is any RecordCatalogPersistenceStore else { return }
         while payloadCacheBytes > 64 * 1_024 * 1_024,
               let index = payloadCacheOrder.firstIndex(where: { durableBlobReferencesByRecordID[$0] != nil }) {
@@ -1844,8 +1848,8 @@ extension RecordStore {
         try await ensureInitialized()
         let expectedRevision = revision
         let ids = recordOrder
-        let keywords = query.text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-            .split(whereSeparator: \.isWhitespace).map(String.init)
+        let matcher = RecordSearchMatcher(query)
+        var preparedMetadata: [String: RecordSearchDocument] = [:]
         var results: [RecordSummary] = []
         var index = min(max(0, offset), ids.count)
         let pageSize = min(max(1, limit), 100)
@@ -1861,13 +1865,28 @@ extension RecordStore {
                   query.sourceBundleIdentifier == nil || item.header.provenance.sourceBundleIdentifier == query.sourceBundleIdentifier,
                   query.collectionID == nil || item.memberships.contains(where: { $0.collectionID == query.collectionID })
             else { continue }
-            if !keywords.isEmpty {
-                let metadataText = ([item.header.provenance.sourceApplicationName ?? "", item.header.provenance.sourceBundleIdentifier ?? ""] + item.metadata.tags)
-                    .joined(separator: " ").folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-                let remaining = keywords.filter { !metadataText.contains($0) }
-                if !remaining.isEmpty {
-                    let content = try await searchableContent(id, kind: item.header.kind)
-                    guard remaining.allSatisfy(content.contains) else { continue }
+            if !matcher.keywords.isEmpty {
+                var metadata = RecordSearchDocument(
+                    ([item.header.provenance.sourceApplicationName ?? "", item.header.provenance.sourceBundleIdentifier ?? ""] + item.metadata.tags)
+                        .joined(separator: " "))
+                if !matcher.matchesLiteral("", metadata: metadata.text) {
+                    var content = try await searchableContent(id, kind: item.header.kind)
+                    if !matcher.matchesLiteral(content.text, metadata: metadata.text) {
+                        guard matcher.canApproximate else { continue }
+                        if content.approximation == nil {
+                            content = try await content.preparingApproximation()
+                            cacheSearchContent(content, for: id)
+                        }
+                        if let cached = preparedMetadata[metadata.text] {
+                            metadata = cached
+                        } else {
+                            metadata = try await metadata.preparingApproximation()
+                            preparedMetadata[metadata.text] = metadata
+                        }
+                        try Task.checkCancellation()
+                        guard revision == expectedRevision else { throw RecordStoreError.membershipChanged }
+                        guard matcher.matches(content, metadata: metadata) else { continue }
+                    }
                 }
             }
             results.append(item)
@@ -1876,9 +1895,9 @@ extension RecordStore {
         return RecordQueryPage(revision: revision, records: results, nextOffset: index < ids.count ? index : nil)
     }
 
-    private func searchableContent(_ id: RecordID, kind: RecordPayloadKind) async throws -> String {
+    private func searchableContent(_ id: RecordID, kind: RecordPayloadKind) async throws -> RecordSearchDocument {
         if let cached = searchCache[id] { return cached }
-        guard kind != .image, let record = try await materializedRecord(id) else { return "" }
+        guard kind != .image, let record = try await materializedRecord(id) else { return RecordSearchDocument("") }
         let text: String
         switch record.payload {
         case .text(let value): text = value
@@ -1886,18 +1905,30 @@ extension RecordStore {
         case .image: text = ""
         }
         try Task.checkCancellation()
-        let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-        let bytes = folded.utf8.count
-        while searchCacheBytes + bytes > 16 * 1_024 * 1_024, !searchCacheOrder.isEmpty {
+        let content = RecordSearchDocument(text)
+        cacheSearchContent(content, for: id)
+        return content
+    }
+
+    private func cacheSearchContent(_ content: RecordSearchDocument, for id: RecordID) {
+        if let previous = searchCache.removeValue(forKey: id) {
+            searchCacheBytes -= previous.byteCount
+            if searchCacheOrder.last == id {
+                searchCacheOrder.removeLast()
+            } else {
+                searchCacheOrder.removeAll { $0 == id }
+            }
+        }
+        let bytes = content.byteCount
+        let maximumBytes = 16 * 1_024 * 1_024
+        guard bytes <= maximumBytes, recordsByID[id] != nil else { return }
+        while searchCacheBytes + bytes > maximumBytes, !searchCacheOrder.isEmpty {
             let evicted = searchCacheOrder.removeFirst()
-            searchCacheBytes -= searchCache.removeValue(forKey: evicted)?.utf8.count ?? 0
+            searchCacheBytes -= searchCache.removeValue(forKey: evicted)?.byteCount ?? 0
         }
-        if bytes <= 16 * 1_024 * 1_024 {
-            if let previous = searchCache.updateValue(folded, forKey: id) { searchCacheBytes -= previous.utf8.count }
-            else { searchCacheOrder.append(id) }
-            searchCacheBytes += bytes
-        }
-        return folded
+        searchCache[id] = content
+        searchCacheOrder.append(id)
+        searchCacheBytes += bytes
     }
 
     public func prepareCleanup(olderThan cutoff: Date = .distantFuture) async throws -> RecordCleanupPlan {

@@ -71,6 +71,10 @@ public final class RecordCleanupModel {
   }
 }
 
+public enum RecordSemanticPanelState: Equatable {
+  case idle, working, needsModel, ready, failed, changed, invalidQuery
+}
+
 @MainActor @Observable
 public final class RecordQuickPanelModel {
   public var pasteTargetName: String?
@@ -89,6 +93,13 @@ public final class RecordQuickPanelModel {
   public private(set) var message: QuickRecordText?
   public private(set) var nextOffset: Int?
   public let cleanup: RecordCleanupModel
+  public private(set) var semanticResults: [RecordSummary] = []
+  public private(set) var semanticState: RecordSemanticPanelState = .idle
+  public private(set) var semanticProgress: RecordSemanticSearchProgress?
+  public private(set) var semanticLimitedRecordCount = 0
+  private let semanticSearch: RecordSemanticSearch?
+  private var semanticRequestID: UUID?
+  private var semanticTasks: [UUID: Task<Void, Never>] = [:]
   private let store: RecordStore
   private var sourceBundleIdentifier: String?
   private var observationTask: Task<Void, Never>?
@@ -97,15 +108,19 @@ public final class RecordQuickPanelModel {
   private var pinTask: Task<RecordMetadata, Error>?
   private var isClosed = false
   private var searchGeneration: UInt64 = 0
+  private var resultMatching: RecordQueryMatching = .literal
+  private var resultsRevision: UInt64?
 
-  public init(store: RecordStore) {
+  public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil) {
     self.store = store
+    self.semanticSearch = semanticSearch
     cleanup = RecordCleanupModel(store: store)
   }
   isolated deinit {
     observationTask?.cancel()
     searchTask?.cancel()
     previewTask?.cancel()
+    for task in semanticTasks.values { task.cancel() }
   }
 
   public func start(sourceBundleIdentifier: String?) {
@@ -138,6 +153,7 @@ public final class RecordQuickPanelModel {
   }
 
   public func stop() {
+    cancelSemanticSearch()
     observationTask?.cancel()
     observationTask = nil
     searchTask?.cancel()
@@ -153,18 +169,79 @@ public final class RecordQuickPanelModel {
     isClosed = true
     stop()
     cleanup.seal()
+    let pendingSemanticTasks = Array(semanticTasks.values)
+    for task in pendingSemanticTasks { await task.value }
     _ = await pinTask?.result
     await cleanup.shutdown()
   }
 
   public var canFilterCurrentApp: Bool { sourceBundleIdentifier != nil }
-  public var selectedRecord: RecordSummary? { results.first { $0.id == selectedID } }
+  public var canSearchByMeaning: Bool {
+    semanticSearch != nil && kind != .image && !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+  public var additionalSemanticResults: [RecordSummary] {
+    let existing = Set(results.map(\.id))
+    return semanticResults.filter { !existing.contains($0.id) }
+  }
+  public var selectableResults: [RecordSummary] { results + additionalSemanticResults }
+  public var selectedRecord: RecordSummary? { selectableResults.first { $0.id == selectedID } }
+
+  public func cancelSemanticSearch() {
+    semanticRequestID = nil
+    for task in semanticTasks.values { task.cancel() }
+    semanticResults = []
+    semanticState = .idle
+    semanticProgress = nil
+    semanticLimitedRecordCount = 0
+    if !results.contains(where: { $0.id == selectedID }) { selectedID = results.first?.id }
+  }
+
+  public func searchByMeaning(downloadIfNeeded: Bool = false) {
+    guard !isClosed, !isSearching, semanticState != .working, canSearchByMeaning,
+      let semanticSearch else { return }
+    cancelSemanticSearch()
+    let requestID = UUID()
+    semanticRequestID = requestID
+    semanticState = .working
+    semanticProgress = .preparing(0)
+    let query = RecordQuery(text: searchText,
+      sourceBundleIdentifier: currentAppOnly ? sourceBundleIdentifier : nil,
+      kind: kind, pinnedOnly: pinnedOnly)
+    semanticTasks[requestID] = Task { [weak self] in
+      defer { self?.semanticTasks.removeValue(forKey: requestID) }
+      do {
+        let result = try await semanticSearch.search(query, downloadIfNeeded: downloadIfNeeded) { [weak self] progress in
+          Task { @MainActor [weak self] in
+            guard let self, self.semanticRequestID == requestID, self.semanticState == .working else { return }
+            self.semanticProgress = progress
+          }
+        }
+        guard !Task.isCancelled, let self, self.semanticRequestID == requestID else { return }
+        self.semanticResults = result.records
+        self.semanticLimitedRecordCount = result.limitedRecordCount
+        self.semanticState = .ready
+        self.semanticProgress = nil
+        if self.selectedID == nil { self.selectedID = self.selectableResults.first?.id }
+      } catch {
+        guard !Task.isCancelled, let self, self.semanticRequestID == requestID else { return }
+        switch error {
+        case RecordEmbeddingError.modelUnavailable: self.semanticState = .needsModel
+        case RecordEmbeddingError.invalidInput: self.semanticState = .invalidQuery
+        case RecordStoreError.membershipChanged: self.semanticState = .changed
+        default: self.semanticState = .failed
+        }
+        self.semanticProgress = nil
+      }
+    }
+  }
   public func subject(at index: Int) -> RecordReuseSubject? {
-    guard results.indices.contains(index) else { return nil }
-    return results[index].reuseSubject
+    let items = selectableResults
+    guard items.indices.contains(index) else { return nil }
+    return items[index].reuseSubject
   }
 
   public func moveSelection(_ offset: Int) {
+    let results = selectableResults
     guard !results.isEmpty else {
       selectedID = nil
       return
@@ -220,32 +297,47 @@ public final class RecordQuickPanelModel {
   }
 
   private func scheduleSearch(offset: Int = 0) {
+    guard !isClosed else { return }
+    if offset == 0 { cancelSemanticSearch() }
     if message == .copied { message = nil }
     searchTask?.cancel()
     searchGeneration &+= 1
     let generation = searchGeneration
-    let query = RecordQuery(
+    var query = RecordQuery(
       text: searchText, sourceBundleIdentifier: currentAppOnly ? sourceBundleIdentifier : nil,
-      kind: kind, pinnedOnly: pinnedOnly)
+      kind: kind, pinnedOnly: pinnedOnly, matching: offset == 0 ? .literal : resultMatching)
+    let previousRevision = offset == 0 ? nil : resultsRevision
     isSearching = true
     searchTask = Task { [weak self, store] in
       do {
         var scanOffset = offset
         var matches: [RecordSummary] = []
+        var scanRevision = previousRevision
         repeat {
           let page = try await store.query(query, offset: scanOffset, limit: 50 - matches.count)
           guard !Task.isCancelled, let self, self.searchGeneration == generation else { return }
+          if let scanRevision, scanRevision != page.revision { throw RecordStoreError.membershipChanged }
+          scanRevision = page.revision
           matches += page.records
           if offset == 0 { self.results = matches }
           self.nextOffset = page.nextOffset
+          self.resultMatching = query.matching
+          self.resultsRevision = page.revision
           if self.selectedID == nil { self.selectedID = self.results.first?.id }
+          if page.nextOffset == nil, matches.isEmpty, offset == 0, query.matching == .literal,
+            !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          {
+            query.matching = .approximate
+            scanOffset = 0
+            continue
+          }
           guard let next = page.nextOffset, matches.count < 50 else { break }
           scanOffset = next
         } while true
         guard !Task.isCancelled, let self, self.searchGeneration == generation else { return }
         if offset != 0 { self.results += matches }
-        if !self.results.contains(where: { $0.id == self.selectedID }) {
-          self.selectedID = self.results.first?.id
+        if !self.selectableResults.contains(where: { $0.id == self.selectedID }) {
+          self.selectedID = self.selectableResults.first?.id
         }
         self.isSearching = false
       } catch is CancellationError {
