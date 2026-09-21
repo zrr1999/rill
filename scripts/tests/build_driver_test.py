@@ -70,6 +70,18 @@ class BuildDriverTests(unittest.TestCase):
         )
         self.assertNotEqual(build.build_settings(["-Xswiftc", "-O"]), [])
 
+    def test_swiftpm_metadata_after_clean_does_not_trigger_another_clean(self):
+        self.context.scratch.mkdir(parents=True)
+        for name in ("CACHEDIR.TAG", ".lock", ".buildSystem_debug"):
+            (self.context.scratch / name).write_text("metadata")
+        (self.context.scratch / "prebuilts").mkdir()
+        with patch.object(self.context, "clean") as clean:
+            self.context.prepare({})
+            clean.assert_not_called()
+            (self.context.scratch / "out").mkdir()
+            self.context.prepare({})
+            clean.assert_called_once()
+
     def test_stale_cache_retries_once_but_compile_error_does_not(self):
         with (
             patch.object(self.context, "prepare"),

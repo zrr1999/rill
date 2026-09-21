@@ -58,6 +58,13 @@ def worker_targets(graph: dict) -> set[str]:
             raise Uncacheable(f"unsupported worker target: {name}")
         if target.get("pluginUsages"):
             raise Uncacheable("local worker plugins require a source build")
+        if any(
+            setting.get("data", {}).get("name") == "unsafeFlags"
+            for setting in target.get("settings", [])
+        ):
+            raise Uncacheable(
+                "unsafe worker build flags can reference untracked inputs"
+            )
         visited.add(name)
         for dependency in target.get("dependencies", []):
             reference = dependency.get("target", dependency.get("byName"))
@@ -72,6 +79,8 @@ def worker_targets(graph: dict) -> set[str]:
 
 
 def input_identity(root: Path, graph: dict, environment: dict) -> dict:
+    if environment["toolchain"].get("untrackedCompilerInputs"):
+        raise Uncacheable("custom compiler environment requires a source build")
     names = worker_targets(graph)
     files = {}
     for target in graph["targets"]:
@@ -192,7 +201,15 @@ class WorkerCache:
         except (OSError, ValueError, build.BuildError):
             return None
 
-    def publish(self, key: str, bin_path: Path, identity: dict, graph: dict) -> Path:
+    def publish(
+        self,
+        key: str,
+        bin_path: Path,
+        identity: dict,
+        graph: dict,
+        *,
+        validate_inputs=None,
+    ) -> Path:
         stage = Path(tempfile.mkdtemp(prefix=f".pending-{key}-", dir=self.entries))
         try:
             payload = stage / "products"
@@ -220,6 +237,8 @@ class WorkerCache:
                 },
             )
             (stage / "used").touch()
+            if validate_inputs is not None:
+                validate_inputs()
             destination = self.entries / key
             if destination.is_symlink():
                 destination.unlink()

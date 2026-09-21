@@ -190,6 +190,22 @@ def toolchain_identity(root: Path, *, require_metal: bool) -> dict[str, str]:
     }
     if compiler_environment:
         identity["compilerEnvironment"] = digest(compiler_environment)
+        if any(
+            name in compiler_environment
+            for name in (
+                "SWIFT_EXEC",
+                "CC",
+                "CXX",
+                "CFLAGS",
+                "CXXFLAGS",
+                "OTHER_SWIFT_FLAGS",
+                "CPATH",
+                "C_INCLUDE_PATH",
+                "CPLUS_INCLUDE_PATH",
+                "LIBRARY_PATH",
+            )
+        ):
+            identity["untrackedCompilerInputs"] = "true"
     return identity
 
 
@@ -284,7 +300,17 @@ class BuildContext:
         )
         has_products = self.scratch.exists() and any(
             path.name
-            not in {"artifacts", "checkouts", "repositories", "workspace-state.json"}
+            not in {
+                "artifacts",
+                "checkouts",
+                "repositories",
+                "workspace-state.json",
+                "prebuilts",
+                "CACHEDIR.TAG",
+                ".lock",
+                ".buildSystem_debug",
+                ".buildSystem_release",
+            }
             for path in self.scratch.iterdir()
         )
         if (cached or has_products) and digest(environment) != cached:
@@ -451,6 +477,24 @@ def release(arguments: list[str]) -> None:
             state,
         ):
             identity, cached_products = entry if entry else (None, None)
+
+            def verify_inputs():
+                if source_inputs(PROJECT) != inputs:
+                    raise BuildError(
+                        "Source changed during the release build; retry from stable inputs"
+                    )
+                if context.environment() != environment:
+                    raise BuildError(
+                        "Build environment changed during the release build"
+                    )
+                if (
+                    identity is not None
+                    and worker.input_identity(PROJECT, graph, environment) != identity
+                ):
+                    raise BuildError(
+                        "Worker inputs changed during the build; retry from stable inputs"
+                    )
+
             if cached_products:
                 for product in worker.runtime_products(graph):
                     if product != worker.WORKER:
@@ -461,15 +505,8 @@ def release(arguments: list[str]) -> None:
                         )
             else:
                 context.build("build", RELEASE_ARGUMENTS, environment)
-            if source_inputs(PROJECT) != inputs:
-                raise BuildError(
-                    "Source changed during the release build; retry from stable inputs"
-                )
+            verify_inputs()
             if identity is not None:
-                if worker.input_identity(PROJECT, graph, environment) != identity:
-                    raise BuildError(
-                        "Worker inputs changed during the build; retry from stable inputs"
-                    )
                 try:
                     worker.verify_checkouts(PROJECT, context.scratch / "checkouts")
                 except (worker.Uncacheable, OSError) as error:
@@ -495,7 +532,11 @@ def release(arguments: list[str]) -> None:
                         )
                         try:
                             cached_products = cache.publish(
-                                state["key"], bin_path, identity, graph
+                                state["key"],
+                                bin_path,
+                                identity,
+                                graph,
+                                validate_inputs=verify_inputs,
                             )
                         except OSError as error:
                             info(

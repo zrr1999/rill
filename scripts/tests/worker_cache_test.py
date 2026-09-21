@@ -130,6 +130,34 @@ class WorkerCacheTests(unittest.TestCase):
         self.assertTrue((payload / "external_Crypto.bundle/data").exists())
         self.assertFalse((payload / "Sample_RillApp.bundle").exists())
 
+    def test_untracked_compiler_inputs_bypass_cache(self):
+        self.environment["toolchain"]["untrackedCompilerInputs"] = "true"
+        with self.assertRaises(worker.Uncacheable):
+            self.identity()
+        self.environment["toolchain"].pop("untrackedCompilerInputs")
+        self.graph["targets"][0]["settings"] = [
+            {"data": {"name": "unsafeFlags", "value": ["-include", "/tmp/header.h"]}}
+        ]
+        with self.assertRaises(worker.Uncacheable):
+            self.identity()
+
+    def test_input_drift_during_snapshot_prevents_publication(self):
+        identity = self.identity()
+        key = build.digest(identity)
+
+        def verify():
+            raise build.BuildError("inputs changed while copying products")
+
+        with (
+            self.cache.lock(key),
+            self.assertRaisesRegex(build.BuildError, "inputs changed"),
+        ):
+            self.cache.publish(
+                key, self.output, identity, self.graph, validate_inputs=verify
+            )
+        self.assertIsNone(self.cache.read(key))
+        self.assertFalse(list(self.cache.entries.glob(".pending-*")))
+
     def test_corrupt_incomplete_and_wrong_manifest_are_misses(self):
         key = self.publish()
         payload = self.cache.read(key)
