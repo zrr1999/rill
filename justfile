@@ -13,7 +13,7 @@ check:
 
 # Build one Debug product; application changes do not compile MLX.
 build product="RillApp":
-    scripts/swift_locked.sh build --product {{product}}
+    scripts/swift_locked.sh build --product {{quote(product)}}
 
 # Run the locked Swift test suite.
 test:
