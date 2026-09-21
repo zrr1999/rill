@@ -18,6 +18,9 @@ struct RillApplication: App {
         let recordPanelController = RecordPanelController()
         let liveSubtitlePanelController = LiveSubtitlePanelController()
 
+        container.model.installRecordCopyAction { subject in
+            await container.systemClipboardCaptureController.reuseRecord(subject, copyOnly: true)
+        }
         container.model.installRecordPanelAction { [recordPanelController, model = container.model] in
             recordPanelController.show(
                 model: model,
@@ -83,6 +86,10 @@ struct RillApplication: App {
             RillGlobalSearchCommands(language: container.model.language)
         }
 
+        Settings {
+            SettingsWindowView(model: container.model)
+        }
+
         MenuBarExtra(
             container.model.localizedMenuBarTitle,
             systemImage: menuBarSystemSymbol.rawValue
@@ -138,9 +145,16 @@ private struct MenuBarContent: View {
 }
 
 private struct MainWindowContent: View {
+    @Environment(\.openSettings) private var openSettings
     let container: AppContainer
+
+    private func presentRequestedSettings() {
+        if container.model.consumeSettingsPresentation() { openSettings() }
+    }
 
     var body: some View {
         MainShellView(model: container.model)
+            .onChange(of: container.model.settingsPresentationGeneration) { _, _ in presentRequestedSettings() }
+            .onAppear { presentRequestedSettings() }
     }
 }

@@ -1,191 +1,62 @@
-# Rill UI 方向：以语音输入为主线
+# Rill UI 方向：内容检索与原生 macOS 工作站
 
-> 创建：2026-08-15
-> 状态：方向已确认；阶段一已实施
-> 输入：`SPARK.md`（最终形态边界）、`docs/competitive-radar.md`、`docs/competitive-research.md`、竞品官方文档与当前源码
-> 事实优先级：当前源码与测试 > 竞品官方文档 > 产品营销页
+更新：2026-09-21。设计基准为 Apple Human Interface Guidelines；Raycast 只用于快捷面板的搜索、键盘操作与内容预览参考。
 
-## 1. 设计目标
+## 信息架构
 
-语音识别和未来输入法能力是产品主线，工作流作为可复用的辅助配置。
-默认体验围绕说话、得到文字、纠正和复用结果展开；Record 流承载这些输入结果，
-工作流页面承担高级配置。用户不需要先理解工作流就能完成语音输入。
+语音输入是产品主线，工作流是可复用的辅助配置；用户不需要先理解工作流就能完成语音输入。
 
-三条设计原则（每条都有竞品或用户反馈证据）：
+主窗口围绕“找回和复用内容”组织，默认进入全部记录。侧栏依次是全部记录、记录集、活动、工作流，底部设置入口打开独立窗口。听写循环仍由字幕浮层、菜单栏与快捷面板承担。
 
-1. **听写主循环住在环境层，不住在主窗口。** Wispr Flow 的主界面是浮条；
-   Superwhisper 把状态放进菜单栏图标与录音窗；VoiceInk 用 mini recorder。
-   主窗口在这些产品里只承担历史、词汇、模式与设置。Rill 已有
-   LiveSubtitle 浮窗、RecordPanel 与菜单栏面板，保持这一分层。
-2. **主窗口按 Record 流的生命周期组织，而不是按工具类型。** 合并前
-   Dashboard / Records / History / Diagnostics 四个页面分别在讲同一条流
-   的不同片段，用户已实际反馈过「运行历史」与「最近结果」语义重复
-   （见 competitive-research 2026-07-12 行）。
-3. **可解释性是 UI 主叙事，不是附属页。** 每次运行能回答「用了什么上下文、
-   是否离机、为什么触发/跳过、文本去了哪里」——这是竞品都没有做成主界面
-   叙事的能力，也是 Rill 的差异化（competitive-radar 产品判断）。
+- 全部记录是 RecordStore 的去重视图，选择该入口不隐式选中第一个集合。
+- 记录采用导航、列表、详情分栏。列表展示摘要、来源与时间；详情优先展示内容与复制，集合归属与元数据在后。集合策略进入集合设置，采集与投递规则在独立管理入口中。
+- 内容区不足 700pt 时在列表与详情之间切换；默认主窗口仍为 960×720，支持调整分栏宽度。
+- 活动页突出就绪阻塞、待处理选择、失败恢复和进行中状态；成功运行使用紧凑行，展开后保留完整回执、纠错、隐私预览及失败录音恢复。精确阶段耗时只显示已记录的数据，旧数据的时间区间不推算为精确时间。
+- 工作流采用列表与说明详情，展示用途、触发方式、处理步骤、输出和启用状态。外部 TOML 编辑、导入、复制、恢复预设与删除仍沿用原有行为。
 
-## 2. 竞品 UI 模式（2026-08-15 核验）
+单次运行的“执行详情与诊断”按 run ID 查询最近 20 条已清洗事件，失败操作直接展开当前运行的诊断。录音长度来自音频，识别与润色 API 耗时来自单调时钟；未计时、旧记录缺失或未运行的步骤不补估值，失败、取消和回退保留实际消耗的调用时间。
 
-| 模式 | 证据 | 对 Rill 的含义 |
-|---|---|---|
-| 听写产品的主循环在浮层与菜单栏，主窗口是管理面 | [Wispr Flow 是什么](https://docs.wisprflow.ai/articles/2772472373-what-is-flow)、[Superwhisper 菜单栏图标](https://superwhisper.com/docs/get-started/interface-menu-bar)、[VoiceInk 文档](https://tryvoiceink.com/docs/mode-settings) | 环境层保持现状分层；主窗口不为「开始说话」服务，为「理解与恢复」服务 |
-| 用户看到的是任务名，不是引擎 | Superwhisper Modes（Message/Email/Note/Meeting）、Typeless Dictate/Translate/Ask | 侧栏与页面标题使用用户语言（活动/记录/工作流），引擎概念留在设置与工作流编辑器内 |
-| 历史是资产，不是只读列表 | [Superwhisper 从历史重处理](https://superwhisper.com/docs/get-started/transcribe-history)、MacWhisper 来源保留、Wispr 失败重试 | 运行时间线继续承担纠错、重试与失败恢复入口；与就绪清单位于同一首页 |
-| 剪贴板复用走光标旁短闭环 | [CleanClip](https://cleanclip.cc/)（⌘; 唤起、数字直贴、跟随前台 App）、Paste、Raycast | RecordPanel 的短闭环增强是独立后续阶段，不与主窗口重组混在一起 |
-| 状态永远可见 | Superwhisper 菜单栏状态点、各家录音浮窗 | 就绪、失败与进行中状态在首页、菜单栏、浮窗三处语义一致 |
+## 统一搜索与导航
 
-共同信号（与 competitive-radar 结论一致）：用户感知到的完成度来自「开始
-可靠、状态明确、结果可恢复、术语命中、输出正确」，而不是入口或模型数量。
+主窗口 `⌘F` 和工具栏搜索由同一浮层提供，保留 AppKit NSSearchField 桥接与首次/重复聚焦、方向键、回车、Esc 合同。页面不再提供第二套文字搜索框，置顶、来源与类型仍属于页面筛选。
 
-## 3. 目标信息架构
+结果依次为记录、记录集、运行历史、工作流、设置、页面。Record 通过现有 RecordStore.query 查询完整可搜索内容，扫描空批次并支持继续加载；运行历史沿用既有浏览服务与隐私预览权限。两类异步查询独立失败，过期查询不能更新新结果，搜索关闭即取消展示。
 
-### 3.1 三层表面
+搜索选中 Record 后调用统一定位动作：进入全部记录、清除冲突筛选、刷新目录、选中记录并聚焦详情。记录被删除时显示不可用状态。快捷面板“在记录中显示”复用同一入口。搜索选中记录不会粘贴。
 
-| 层 | 成员 | 职责 |
-|---|---|---|
-| 环境层 | LiveSubtitle 浮窗、RecordPanel、菜单栏面板 | 主循环：按住说话、状态可见、记录短闭环复用 |
-| 工作站主窗口 | 活动、记录、工作流、设置 | 理解流：就绪、最近活动、路由与回执的解释与恢复 |
-| 全局搜索 | `Cmd-F` 浮层 | 贯穿索引页面、工作流、运行条目与设置分区 |
+## 独立设置窗口
 
-### 3.2 主窗口目标侧栏
+原生 Settings scene 提供 App 菜单和 `⌘,` 入口。设置与主窗口共享 AppModel、持久化协调和保存失败状态，不创建第二套服务或存储。
 
-```text
-活动            ← 合并原 Dashboard + 运行历史：待处理事项 + 当前状态 + 回执时间线 + 折叠实时动态
-工作流          ← 辅助配置页；选择、启停和在外部文本编辑器中编辑 TOML
-记录集…         ← 对象列表（不变）
-设置            ← 底部常驻工具区；全局诊断保留为高级入口
-```
+| 分区 | 内容 |
+| --- | --- |
+| 常规 | 界面语言 |
+| 输入 | Fn 工作流、剪贴板捕获、面板快捷键 |
+| 语音与模型 | 提供商、识别/生成/合成模型、语音助手资源 |
+| 词汇与记忆 | 词汇映射、上下文纠错、长期记忆管理 |
+| 隐私 | 系统权限、敏感应用和预览策略 |
+| 数据 | 留存、清理、恢复与诊断 |
 
-- **活动**是 Record 流的用户面：就绪阻塞、待消歧、失败恢复、当前状态、
-  durable 回执时间线、折叠的实时动态（transient event feed）自上而下排列；
-  时间线继续提供 scope 切换、搜索、分页、纠错与失败录音恢复。
-- **单次运行诊断**在记录卡片的“执行详情与诊断”中展开，按 run ID 查询保留的
-  最近 20 条已清洗事件，不从全局最近事件列表猜测关联。失败行的诊断按钮直接展开
-  当前卡片。全局诊断继续经设置与搜索访问，用于不属于某次输入的系统问题。
-- 卡片摘要展示**录音时长、语音转文字、润色 API 耗时**。录音长度取自音频；
-  处理耗时取自单调时钟，包括调用内请求准备和响应解析。未计时、旧记录缺失和
-  未运行的步骤不补估值；失败、取消、回退仍展示已经消耗的调用时间。
-- 语音助手（SPARK.md 当前切片）不获得独立顶级页面：它保持为内置工作流，
-  其就绪状态并入活动页的就绪清单，资源管理留在设置。这避免重蹈竞品的
-  「模式帝国」，也符合 SPARK 的能力边界。
+设置深链携带具体设置项，映射到分区并定位；打开设置不改变主窗口的记录集、记录选择或活动导航。再次打开保留本次运行中的最后分区。
 
-## 4. 统一设计语言（主窗口 + 环境层）
+## 环境层与视觉规则
 
-| 决策 | 约定 |
-|---|---|
-| 卡片分级 | 沿用 `RillCard` 三档（prominent/regular/subdued），不新增第四档；prominent 只用于要求行动的就绪清单与失败横幅。手写 `.quaternary.opacity(...)` 必须就近收敛到 0.2/0.35/0.45 三档并注明档位 |
-| 选中态 | 统一用 `rillSelection` 修饰器（`RillSelection.swift`：accent 0.12 填充 + 1pt accent 0.5 描边）；提高对比度时使用 2pt 不透明描边；不再各处手写 fill/stroke 参数 |
-| 圆角 | 统一走 `RillRadius`（`RillSelection.swift`：chip 6 / badge 8 / row 10 / section 12 / card 14 / panel 16），不引入新档位 |
-| 状态色语义 | green=就绪、orange=需要注意、red=失败、secondary=中性；环境层浮窗的音量/状态色与主窗口共用同一语义，不另立色板（联网指示：online=green、offline=orange、unknown=secondary）。例外：工作流编辑器节点 tint（事件 orange / 条件 teal / 输出 green）是分类语义，不占状态色 |
-| 图标 | 只使用 `RillSystemSymbol` 闭目录；新符号先入目录再用 |
-| 动效 | 用户可感知的状态动画一律 spring：默认 `.spring(response: 0.3–0.35, dampingFraction: 1.0)` 无过冲，按压等带用户动量的交互允许 `dampingFraction: 0.8` 轻回弹；装饰性动画必须读 `\.accessibilityReduceMotion` 降级；scrollTo 导航定位保留固定时长 easing；AppKit 浮窗显隐须经 `reduceMotionProvider` 门控 |
-| 空态 | 空态大图标统一 `.font(.largeTitle)` + `.imageScale(.large)`，随 Dynamic Type 缩放，不用固定 pt 尺寸 |
-| 强调色 | 跟随系统 `accentColor`，不引入品牌主题引擎；品牌色（深墨绿/珊瑚路由节点）只出现在 App 图标与营销面 |
-| 双语与无障碍 | 所有用户可见字符串走 `UIStrings`/`L10n` 双语；领域子表按表面拆分：`Localization+Record.swift`、`Localization+HistoryRun.swift`、`Localization+Workflows.swift`、`Localization+Settings.swift`、`Localization+Overlays.swift`、`Localization+RunStatus.swift`（AppModel 层状态/错误文案），不再使用视图内私有双语 helper 或 `language == .english` 行内三元；各子表 key 穷举测试保证「加 key 必须双语填表」；非文本控件的非空 AX 标签由既有 L10n 测试约束；新页面必须维持 shell 持有的跨页焦点合同 |
-| 密度 | 环境层 glanceable（一瞥可读）；主窗口 management density（卡片+列表，行内动作优先于浮层） |
+- 快捷面板保留回车粘贴、复制、置顶、⌘1…9、Esc 逐层关闭。宽度达到 760pt 且预览已打开时左右分栏，窄窗口在下方预览。
+- 目标应用名称来自投递控制器同一目标解析路径，目标激活与退出时更新提示；实际投递仍经过现有焦点恢复和身份校验。
+- 主窗口复制复用现有 RecordReuseSubject 通道，根据实际复制结果反馈，不调用集合消费投递。
+- 使用系统字体、强调色、语义背景和原生选择色。现有 4/8/12/16/20/24pt 间距与 RillRadius 继续复用；卡片用于需要行动的事项。
+- 原生控件和转场优先；自定义状态变化不阻塞输入。分别适配减少动态效果、减少透明度和提高对比度；减少透明度时字幕与快捷面板使用不透明系统背景。
+- 文案走 UIStrings/L10n 双语表；SF Symbols 复用 RillSystemSymbol。保存和复制反馈以真实结果为准。
 
-## 5. 分阶段计划
+## 验证边界
 
-### 阶段一（已完成）：活动页合并 + 诊断降级
+模型与查询测试覆盖分页、取消、失效记录、独立设置导航和失败结果；原生 AppKit 测试覆盖焦点。UIRenderEvidenceTests 与 RecordQuickPanelRenderTests 使用临时样例数据导出渲染证据。
 
-- 侧栏 `Dashboard` 与 `运行历史` 合并为 `活动`（`StreamView`）：
-  就绪清单、失败横幅、待消歧面板、记录状态卡、实时动态、完整回执时间线
-  共用一个 `ScrollView`；原 Dashboard 的「最近运行」预览卡删除（与时间线
-  重复），历史空态的「回到仪表盘」按钮删除（就绪清单就在同页上方）。
-- `HistoryView` 改为可嵌入的 `HistoryTimelineView`：不再持有独立
-  `ScrollView`/导航标题，深链滚动由宿主 `ScrollViewReader` 代理完成；
-  scope、分页、纠错、失败恢复行为不变。
-- 诊断从侧栏移除，设置页底部新增「诊断」入口；活动页的失败横幅与实时
-  动态头部保留直达诊断的链接。全局搜索的页面索引同步更新。
-- 验证：`MainShellFocusIntegrationTests`、`GlobalSearchTests`、
-  `AppModelTests` 的导航与焦点合同改到 `活动` 路由后全绿；完整
-  `just test` 通过。
+自动化与快照不能替代真实 Fn、IME 组合输入、跨应用粘贴、VoiceOver、多显示器和 macOS 14 交互验收。QA 时只保留一个拥有全局输入的 Rill 实例。具体步骤见 release-qa-checklist.md。
 
-### 阶段二（候选，需数据触发；截至 2026-08-30 门槛未满足）
+## 参考
 
-- 实时动态与回执时间线的去重：先用 dogfood 记录二者的信息重叠度，再决定
-  是否把 transient event feed 折叠进时间线的「进行中」区。（仓内无该
-  重叠度数据，维持现状。）
-- Records 工作区增强（置顶/重命名/`Paste as…`）继续按 competitive-radar
-  的条件式 P2 门槛，用复用率与格式失败计数决定。
-- 模式模板（原样/干净/正式/翻译）按 competitive-research 3.1 评估，只包装
-  已有工作流机制。
-
-### 阶段三
-
-- RecordPanel 光标旁短闭环增强（已完成 2026-08-30）：数字键 1–9 直贴对应
-  可见记录（经 `RecordPanelDigitShortcutPolicy` + `useSelectedItem` 既有
-  目标锁定链；搜索框聚焦时数字键天然进搜索框），列表行带序号角标；工具条
-  新增「仅当前 App」来源过滤（按采集时的 `sourceBundleIdentifier` 匹配
-  show 时锁定的前台 App）。仅浮窗模式启用，主窗口 Records 页不变。
-- 语音助手状态在浮窗与活动页的呈现（随 SPARK 当前切片验收后评估）。
-
-## 6. 非目标
-
-- 不把主窗口做成 launcher 网格或命令面板；全局搜索保持为浮层。
-- 不为语音助手、翻译等建独立「模式」一级页面（避免模式帝国）。
-- Records / Workflows 只做本计划内的局部重排和紧凑布局，保留现有领域操作与数据结构。
-- 不引入品牌主题引擎、自定义配色系统或图标体系之外的视觉资产。
-- 不为追平竞品入口数量而增加顶级导航项。
-
-## 7. 参考来源
-
-- Wispr Flow：<https://docs.wisprflow.ai/articles/2772472373-what-is-flow>
-- Superwhisper 界面与历史：<https://superwhisper.com/docs/get-started/interface-menu-bar>、<https://superwhisper.com/docs/get-started/transcribe-history>
-- VoiceInk 模式设置：<https://tryvoiceink.com/docs/mode-settings>
-- CleanClip：<https://cleanclip.cc/>
-- 仓内：`docs/competitive-radar.md`、`docs/competitive-research.md` 第 6/9 节、`SPARK.md`
-
-## 8. 原生精修与局部重排（2026-09-12）
-
-本轮以已有未提交的 UI 精修为基线，保留一级导航、系统强调色和 Fn 听写生命周期。
-
-- 活动页顺序为就绪阻塞、待选择、失败恢复、当前状态、历史、实时动态。实时动态默认折叠并显示数量，与持久历史保持独立；不再使用固定高度空态。
-- 历史默认展示最终结果、明确状态、耗时和已记录的动作结果。模型轨迹和详细回执进入“执行详情”；界面不推断回执中不存在的目标应用。全文展开只使用当前隐私规则已授权的文本，受限预览不能展开取得完整原文。
-- 记录操作按内容、常用动作、记录集、折叠元数据排列；文本替换合为一个入口，在编辑器内选择作用范围。全局删除保留确认，删除后选择相邻条目。浮窗显示冻结的目标应用名称，数字直贴提示与图标分开。
-- 工作流内容宽度低于 860pt 时采用列表／编辑器单栏；记录内容区继续使用 700pt 断点。工作流保存操作固定在底部，导航、重新加载和重置经过未保存草稿确认；保存失败保留草稿。内置工作流表单明确只读，自定义工作流可编辑；已有覆盖仍可恢复默认值，底层配置与存储能力保持不变。
-- 设置折叠摘要使用当前麦克风权限、语音引擎／模型、输出方式、界面语言和留存期限。全局搜索保留部分可用结果，提供清除查询动作。诊断事件详情折叠，复制动作在原位短暂反馈。
-- 间距复用 4/8/12/16/20/24pt；圆角按当前实现使用 chip 6、badge 8、row 10、section 12、card 14、panel 16，不再新增档位。页面标题使用 title2 semibold，正文 body，辅助信息 caption；计时、数量使用等宽数字。
-- 选择态遵循 Reduce Motion 和提高对比度设置；字幕保留原有尺寸与显隐节奏，只调整计时区稳定宽度和延长录音按钮的点击区域。
-
-### 验证入口
-
-- `scripts/swift_locked.sh test --parallel --filter RillUITests`：现有 UI 行为与回归测试。
-- `scripts/swift_locked.sh test --filter 'UIRefinementTests|RecordWorkspaceModelTests'`：草稿离开保护、布局边界、投递目标文案、删除后选择与双语文案。
-- `RILL_UI_SNAPSHOT_DIR=/tmp/rill-ui-rendered scripts/swift_locked.sh test --filter UIRenderEvidenceTests`：可选原生测试数据渲染，不读写个人设置；用于辅助布局检查，不能代替运行应用的交互验收。
-- `just ci`：完整本地门禁。实际构建来源、截图、通过项与未覆盖项记录在本次验收记录中。
-
-## Workflow document editor (2026-09-15)
-
-- The Workflows page is a library: search, enable, run, import, duplicate, restore
-  defaults, remove, inspect file errors and reveal the XDG directory.
-- Each workflow opens a separate native document window, keyed by its UUID.
-  Editing a workflow never blocks navigation in the main window.
-- The default presentation is vertical ordered steps, with nested condition
-  blocks and ordered outputs. The TOML view edits the same complete document.
-- Save, Undo, Redo, native text search, dirty-window indication and close/quit
-  handling follow document conventions. Invalid source retains its contents and
-  offers the source editor. External conflicts show both versions before writing.
-- Tests are visibly separate from real outputs. Sample text and pinned results
-  stay within the document session. Provider and privacy authorization still apply.
-- New controls use `Localization+WorkflowDocuments.swift` for bilingual strings.
-  File paths, IDs, provider-owned keys and TOML diagnostics remain selectable.
-- This supersedes the earlier embedded split-editor layout for Workflows. Existing
-  Record, Stream, Fn and voice-capture acceptance requirements remain in force.
-
-## Plain-text workflows and smart cleanup (2026-09-19)
-
-This supersedes the workflow-editor layouts above. The workflow library keeps
-search, activation, templates, import, duplication, execution and file errors.
-Open file launches an external editor. There is no workflow document window,
-visual/source editor, in-app undo, draft recovery or editor-related quit prompt.
-Existing files and historical recovery drafts remain on disk. Saved valid TOML
-applies to the next run; running snapshots stay frozen.
-
-Smart Cleanup is a separate, initially disabled voice mode. Settings provides one
-LLM Provider configuration shared by cleanup, assistant answers and custom text
-workflows, with an endpoint, API key, model and connection check. The recording UI stays focused on
-capture and processing; cleanup repairs errors and structures plain text without
-adding writing-style controls. Recoverable failures retain the full pre-rewrite
-text and report skipped cleanup in Activity.
+- [Apple Split views](https://developer.apple.com/design/human-interface-guidelines/split-views)
+- [Apple Settings](https://developer.apple.com/documentation/foundation/adding-a-settings-interface-to-your-app)
+- [Apple Toolbars](https://developer.apple.com/design/human-interface-guidelines/toolbars)
+- [Raycast Clipboard History](https://manual.raycast.com/clipboard-history)

@@ -2,6 +2,8 @@ import Foundation
 import RillCore
 
 enum GlobalSearchDestination: Hashable, Sendable {
+    case record(RecordID)
+    case collection(RecordCollectionID)
     case sidebar(SidebarSection)
     case workflow(UUID)
     case history(UUID)
@@ -9,6 +11,8 @@ enum GlobalSearchDestination: Hashable, Sendable {
 
     var stableID: String {
         switch self {
+        case .record(let id): "record.\(id)"
+        case .collection(let id): "collection.\(id)"
         case .sidebar(let section):
             "page.\(section.rawValue)"
         case .workflow(let id):
@@ -22,13 +26,17 @@ enum GlobalSearchDestination: Hashable, Sendable {
 }
 
 enum GlobalSearchResultCategory: Int, CaseIterable, Sendable {
-    case pages
-    case workflows
+    case records
+    case collections
     case history
+    case workflows
     case settings
+    case pages
 
     func title(language: AppLanguage) -> String {
         switch self {
+        case .records: L10n.workspace(.records, language: language)
+        case .collections: L10n.workspace(.collections, language: language)
         case .pages:
             L10n.overlayText(.searchCategoryPages, language: language)
         case .workflows:
@@ -94,7 +102,7 @@ enum GlobalSearchText {
     }
 
     static func searchPrompt(language: AppLanguage) -> String {
-        L10n.overlayText(.searchPrompt, language: language)
+        L10n.workspace(.searchEverywhere, language: language)
     }
 
     static func quickDestinations(language: AppLanguage) -> String {
@@ -208,7 +216,7 @@ enum GlobalSearchIndex {
             filtered = results.filter { $0.category == .pages || $0.category == .settings }
         } else {
             filtered = results.filter { result in
-                terms.allSatisfy { term in
+                result.category == .records || terms.allSatisfy { term in
                     result.searchableText.localizedStandardContains(term)
                 }
             }
@@ -216,9 +224,39 @@ enum GlobalSearchIndex {
         return filtered.sorted(by: resultSort)
     }
 
+    static func recordResults(_ records: [RecordSummary], language: AppLanguage) -> [GlobalSearchResult] {
+        records.map { record in
+            let title = record.header.kind == .image
+                ? L10n.recordText(.imagePayload, language: language)
+                : record.header.preview
+            let symbol: RillSystemSymbol = switch record.header.kind {
+            case .text: .textAlignLeft
+            case .image: .photo
+            case .files: .docOnDoc
+            }
+            return GlobalSearchResult(
+                destination: .record(record.id), category: .records,
+                title: title, detail: record.header.provenance.sourceApplicationName,
+                preview: nil, symbolName: symbol.rawValue, searchableText: title,
+                timestamp: record.header.createdAt
+            )
+        }
+    }
+
+    static func collectionResults(_ collections: [RecordCollection], language: AppLanguage) -> [GlobalSearchResult] {
+        collections.map { collection in
+            GlobalSearchResult(
+                destination: .collection(collection.id), category: .collections,
+                title: collection.name, detail: nil, preview: nil,
+                symbolName: RillSystemSymbol.squareStack3dUp.rawValue,
+                searchableText: collection.name, timestamp: nil
+            )
+        }
+    }
+
     private static func pageResults(language: AppLanguage) -> [GlobalSearchResult] {
-        SidebarSection.allCases.map { section in
-            let title = UIStrings.text(section.titleKey, language: language)
+        SidebarSection.allCases.filter { $0 != .settings && $0 != .diagnostics }.map { section in
+            let title = section == .records ? L10n.workspace(.allRecords, language: language) : UIStrings.text(section.titleKey, language: language)
             return GlobalSearchResult(
                 destination: .sidebar(section),
                 category: .pages,
@@ -306,7 +344,7 @@ enum GlobalSearchIndex {
     private static func settingsResults(language: AppLanguage) -> [GlobalSearchResult] {
         SettingsSection.allCases.map { section in
             let title = section.title(language: language)
-            let detail = GlobalSearchText.settingsDetail(language: language)
+            let detail = GlobalSearchText.settingsDetail(language: language) + " · " + section.pane.title(language: language)
             return GlobalSearchResult(
                 destination: .settings(section),
                 category: .settings,
@@ -327,7 +365,7 @@ enum GlobalSearchIndex {
         if lhs.category.rawValue != rhs.category.rawValue {
             return lhs.category.rawValue < rhs.category.rawValue
         }
-        if lhs.category == .history, lhs.timestamp != rhs.timestamp {
+        if (lhs.category == .history || lhs.category == .records), lhs.timestamp != rhs.timestamp {
             return (lhs.timestamp ?? .distantPast) > (rhs.timestamp ?? .distantPast)
         }
         let titleOrder = lhs.title.localizedCaseInsensitiveCompare(rhs.title)

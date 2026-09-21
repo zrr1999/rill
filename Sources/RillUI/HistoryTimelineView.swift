@@ -198,6 +198,7 @@ public struct HistoryTimelineView: View {
     private let proxy: ScrollViewProxy
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var expandedEntryIDs: Set<UUID> = []
+    @State private var expandedEntryID: UUID?
     @State private var correctionRecord: WorkflowResultRecord?
     @State private var pendingFailedAudioDeletion: FailedAudioRecoveryReceipt?
     @FocusState private var focusedTarget: HistoryViewFocusTarget?
@@ -215,6 +216,7 @@ public struct HistoryTimelineView: View {
         self.model = model
         self.proxy = proxy
         _expandedEntryIDs = State(initialValue: expandedEntryIDs)
+        _expandedEntryID = State(initialValue: expandedEntryIDs.first)
     }
 
     public var body: some View {
@@ -377,11 +379,12 @@ public struct HistoryTimelineView: View {
             guard model.historyNavigationRequest?.id == request.id else { return }
             // Navigation scroll, not decorative motion: keep the fixed
             // duration easing so entry positioning stays predictable.
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
                 proxy.scrollTo(visibleEntryID, anchor: .center)
             }
             await Task.yield()
             guard model.historyNavigationRequest?.id == request.id else { return }
+            expandedEntryID = visibleEntryID
             focusedTarget = .entry(visibleEntryID)
             accessibilityFocusedTarget = .entry(visibleEntryID)
         }
@@ -591,6 +594,37 @@ public struct HistoryTimelineView: View {
     }
 
     private func historyRow(_ entry: HistoryTimelineEntry, title: String) -> some View {
+        VStack(alignment: .leading, spacing: RillSpacing.row) {
+            Button {
+                expandedEntryID = expandedEntryID == entry.id ? nil : entry.id
+            } label: {
+                HStack(alignment: .top, spacing: RillSpacing.row) {
+                    Image(systemName: entry.status.systemSymbol.rawValue).foregroundStyle(statusColor(entry.status))
+                    VStack(alignment: .leading, spacing: RillSpacing.compact) {
+                        Text(title).font(.headline)
+                        if case .visible(let preview, _) = HistoryPreviewPresentation(text: entry.record?.finalText, mode: model.privacyPolicySettings.historyPreviewMode, language: model.language) {
+                            Text(preview).lineLimit(2).font(.body).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: RillSpacing.row)
+                    VStack(alignment: .trailing, spacing: RillSpacing.compact) {
+                        Text(entry.timestamp, style: .relative)
+                        Text(L10n.historyRunStatus(entry.status, language: model.language))
+                    }.font(.caption).foregroundStyle(.secondary)
+                    Image(systemName: RillSystemSymbol.chevronRight.rawValue)
+                        .rotationEffect(.degrees(expandedEntryID == entry.id ? 90 : 0))
+                        .foregroundStyle(.secondary)
+                }.contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(historyAccessibilityLabel(entry, title: title))
+            .accessibilityHint(L10n.workspace(.showDetails, language: model.language))
+            if expandedEntryID == entry.id { historyDetail(entry, title: title) }
+            Divider()
+        }.padding(.vertical, RillSpacing.row)
+    }
+
+    private func historyDetail(_ entry: HistoryTimelineEntry, title: String) -> some View {
         let languageModelTrace = entry.record.flatMap {
             HistoryLanguageModelTracePresentation(record: $0)
         }
@@ -776,7 +810,7 @@ public struct HistoryTimelineView: View {
                 failedAudioRecoveryControls(receipt)
             }
         }
-        .rillCard(.regular, padding: 14)
+        .padding(.vertical, RillSpacing.row)
         .accessibilityElement(children: .contain)
     }
 

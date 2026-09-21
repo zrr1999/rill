@@ -29,8 +29,9 @@ extension AppModel {
     history.visibleRunHistoryEntryID(matching: id)
   }
   func searchRunHistory(
-    query: String, language: AppLanguage, previewMode: PrivacyHistoryPreviewMode
+    query: String, language: AppLanguage, previewMode: PrivacyHistoryPreviewMode,
+    limit: Int = GlobalSearchIndex.maximumHistoryResultCount
   ) async throws -> [GlobalSearchResult] {
-    try await history.searchRunHistory(query: query, language: language, previewMode: previewMode)
+    try await history.searchRunHistory(query: query, language: language, previewMode: previewMode, limit: limit)
   }
 }

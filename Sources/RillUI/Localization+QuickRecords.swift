@@ -128,3 +128,20 @@ extension L10n {
     return "\(count) · \(String(format: "%.1f", used)) / \(total) MiB"
   }
 }
+
+
+extension RecordReuseOutcome {
+  var feedback: QuickRecordText? {
+    switch self {
+    case .delivered: nil
+    case .copied: .copied
+    case .blocked: .deliveryBlocked
+    case .targetUnavailable: .targetUnavailable
+    case .permissionRequired: .permissionRequired
+    case .recordUnavailable: .recordUnavailable
+    case .storageUnavailable: .storageUnavailable
+    case .failed: .deliveryFailed
+    case .outputCommittedWithIssue: .outputCommitted
+    }
+  }
+}

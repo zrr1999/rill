@@ -191,8 +191,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         )
         let searchToolbarItem = try XCTUnwrap(
             window.toolbar?.items.first { item in
-                item.view != nil
-                    && !item.itemIdentifier.rawValue.hasPrefix("com.apple.")
+                item.itemIdentifier.rawValue.contains("rill.global-search")
             }
         )
         let searchToolbarView = try XCTUnwrap(searchToolbarItem.view)
@@ -272,7 +271,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         )
     }
 
-    func testVisibleSidebarStreamToClipboardThenDownPreservesSidebarFocus() async throws {
+    func testAllRecordsThroughCollectionsToActivityPreservesSidebarFocus() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
         let window = makeWindow(model: harness.model)
@@ -300,7 +299,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
 
         sidebar.keyDown(with: downArrow)
         await settle(window)
-        XCTAssertEqual(harness.model.selectedSidebarSection, .workflows)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "Each detail replacement must preserve continued keyboard navigation in the sidebar."
@@ -841,6 +840,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
                 break
             }
         }
+        harness.model.selectSidebarSection(.stream)
         let window = makeWindow(
             model: harness.model,
             sidebarFocusTurnWaiter: {
@@ -864,7 +864,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(departingFocusProbe))
 
         sidebarScrollView.isHidden = true
-        harness.model.selectSidebarSection(.records)
+        harness.model.selectSidebarSection(.workflows)
         await fulfillment(of: [routeFocusWait], timeout: 1)
 
         departingHost.removeFromSuperview()
@@ -873,7 +873,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
 
         let detailFocusAnchor = try XCTUnwrap(detailFocusAnchor(in: window))
-        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .workflows)
         XCTAssertTrue(
             window.firstResponder === detailFocusAnchor
                 || isResponder(window.firstResponder, withinVisualBoundsOf: detailFocusAnchor),
@@ -915,6 +915,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
                 break
             }
         }
+        harness.model.selectSidebarSection(.workflows)
         let window = makeWindow(
             model: harness.model,
             sidebarFocusTurnWaiter: {
@@ -1038,7 +1039,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     func testProgrammaticRouteChangeRehomesDetailFocusInSidebar() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
-        harness.model.selectSidebarSection(.diagnostics)
+        harness.model.selectSidebarSection(.workflows)
         let window = makeWindow(model: harness.model)
         defer { tearDown(window) }
 
@@ -1080,6 +1081,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
                 break
             }
         }
+        harness.model.selectSidebarSection(.workflows)
         let window = makeWindow(
             model: harness.model,
             sidebarFocusTurnWaiter: {
@@ -1141,6 +1143,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
                 break
             }
         }
+        harness.model.selectSidebarSection(.workflows)
         let window = makeWindow(
             model: harness.model,
             sidebarFocusTurnWaiter: {
@@ -1211,6 +1214,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
                 break
             }
         }
+        harness.model.selectSidebarSection(.workflows)
         let window = makeWindow(
             model: harness.model,
             sidebarFocusTurnWaiter: {
@@ -1332,7 +1336,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     func testRepeatedProgrammaticRouteDoesNotStealDetailFocus() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
-        harness.model.selectSidebarSection(.settings)
+        harness.model.selectSidebarSection(.workflows)
         let window = makeWindow(model: harness.model)
         defer { tearDown(window) }
 
@@ -1343,10 +1347,10 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(detailFocusProbe))
         await settle(window)
 
-        harness.model.selectSidebarSection(.settings)
+        harness.model.selectSidebarSection(.workflows)
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .settings)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .workflows)
         XCTAssertTrue(
             window.firstResponder === detailFocusProbe,
             "Selecting the current route must not pull focus out of its detail."
@@ -1371,102 +1375,64 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         detailFocusProbe.removeFromSuperview()
         XCTAssertTrue(window.makeFirstResponder(nil))
         await Task.yield()
-        harness.model.selectSidebarSection(.diagnostics)
+        harness.model.selectSidebarSection(.records)
         await Task.yield()
-        harness.model.selectSidebarSection(.settings)
+        harness.model.selectSidebarSection(.workflows)
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .settings)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .workflows)
         XCTAssertTrue(
             isResponder(window.firstResponder, inside: sidebar),
             "Only the final destination in a rapid route sequence may own sidebar focus."
         )
     }
 
-    func testTypedSettingsRouteKeepsFocusOutOfSidebar() async throws {
+    func testSettingsRequestLeavesMainWindowSelectionAndResponderIntact() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
         let window = makeWindow(model: harness.model)
         defer { tearDown(window) }
-
         await settle(window)
-        let sidebar = try XCTUnwrap(sidebarTable(in: window))
+        let selectedSection = harness.model.selectedSidebarSection
+        let responder = FocusProbeView(frame: .zero)
+        window.contentView?.addSubview(responder)
+        defer { responder.removeFromSuperview() }
+        XCTAssertTrue(window.makeFirstResponder(responder))
+
         harness.model.showSettings(.speech)
-        XCTAssertEqual(harness.model.settingsNavigationRequest?.section, .speech)
+        harness.model.showSettings(.privacy)
         await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .settings)
-        XCTAssertEqual(harness.model.settingsNavigationRequest?.section, .speech)
-        XCTAssertNotNil(window.firstResponder)
-        XCTAssertFalse(
-            isResponder(window.firstResponder, inside: sidebar),
-            "A typed settings destination must retain detail focus instead of restoring the sidebar."
-        )
+        XCTAssertEqual(harness.model.selectedSidebarSection, selectedSection)
+        XCTAssertEqual(harness.model.selectedSettingsPane, .privacy)
+        XCTAssertEqual(harness.model.settingsNavigationRequest?.section, .privacy)
+        XCTAssertTrue(window.firstResponder === responder)
+        XCTAssertTrue(harness.model.consumeSettingsPresentation())
+        XCTAssertFalse(harness.model.consumeSettingsPresentation())
     }
 
-    func testTypedSettingsRouteSupersedesPendingPlainSidebarFocusRequest() async throws {
+    func testTypedSettingsDestinationAppearsInIndependentWindow() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
-        let initialFocusWait = expectation(description: "Initial sidebar focus waits for its turn")
-        let plainSettingsFocusWait = expectation(
-            description: "Plain settings route starts its sidebar focus request"
-        )
-        let focusTurnGate = SidebarFocusTurnGate { entry in
-            switch entry {
-            case 1:
-                initialFocusWait.fulfill()
-            case 2:
-                plainSettingsFocusWait.fulfill()
-            default:
-                break
-            }
-        }
-        let window = makeWindow(
-            model: harness.model,
-            sidebarFocusTurnWaiter: {
-                await focusTurnGate.wait()
-            }
-        )
-        defer { tearDown(window) }
-
-        await fulfillment(of: [initialFocusWait], timeout: 1)
-        await focusTurnGate.release(through: 1)
-        await settle(window)
-        let sidebar = try XCTUnwrap(sidebarTable(in: window))
-
-        let departingFocusProbe = FocusProbeView(frame: .zero)
-        window.contentView?.addSubview(departingFocusProbe)
-        XCTAssertTrue(window.makeFirstResponder(departingFocusProbe))
-
-        harness.model.selectSidebarSection(.settings)
-        await fulfillment(of: [plainSettingsFocusWait], timeout: 1)
-        XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
-
+        let mainWindow = makeWindow(model: harness.model)
+        defer { tearDown(mainWindow) }
+        await settle(mainWindow)
+        let destination = harness.model.selectedSidebarSection
         harness.model.showSettings(.speech)
-        await settle(window)
-        departingFocusProbe.removeFromSuperview()
+        let settingsWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        settingsWindow.isReleasedWhenClosed = false
+        settingsWindow.contentView = NSHostingView(rootView: SettingsWindowView(model: harness.model))
+        settingsWindow.makeKeyAndOrderFront(nil)
+        defer { tearDown(settingsWindow) }
+        await settle(settingsWindow)
 
-        let committedFocusProbe = FocusProbeView(frame: .zero)
-        window.contentView?.addSubview(committedFocusProbe)
-        defer { committedFocusProbe.removeFromSuperview() }
-        XCTAssertTrue(window.makeFirstResponder(committedFocusProbe))
-
-        await focusTurnGate.release(through: 2)
-        await settle(window)
-
-        XCTAssertEqual(harness.model.selectedSidebarSection, .settings)
-        XCTAssertEqual(harness.model.settingsNavigationRequest?.section, .speech)
-        XCTAssertTrue(
-            window.firstResponder === committedFocusProbe,
-            "A same-route typed request must cancel the older pending sidebar focus request."
-        )
-        XCTAssertFalse(isResponder(window.firstResponder, inside: sidebar))
-        let completedEntryCount = await focusTurnGate.currentEntryCount()
-        XCTAssertEqual(
-            completedEntryCount,
-            2,
-            "Changing the task identity must stop the stale route from scheduling another retry."
-        )
+        XCTAssertEqual(harness.model.selectedSidebarSection, destination)
+        XCTAssertEqual(harness.model.selectedSettingsPane, .voice)
+        XCTAssertNil(harness.model.settingsNavigationRequest)
+        let responder = try XCTUnwrap(settingsWindow.firstResponder as? NSView)
+        XCTAssertTrue(responder.isDescendant(of: try XCTUnwrap(settingsWindow.contentView)))
+        XCTAssertTrue(settingsWindow.isVisible)
+        XCTAssertTrue(mainWindow.isVisible)
     }
 
     func testTypedHistoryRouteSupersedesPendingPlainSidebarFocusRequest() async throws {
@@ -1502,6 +1468,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
                 break
             }
         }
+        harness.model.selectSidebarSection(.workflows)
         let window = makeWindow(
             model: harness.model,
             sidebarFocusTurnWaiter: {

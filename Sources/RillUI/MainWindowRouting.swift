@@ -11,11 +11,17 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     case language
     case privacy
     case storage
+    case contextMemory
+    case diagnostics
 
     public var id: String { rawValue }
 
     public func title(language: AppLanguage) -> String {
         switch self {
+        case .contextMemory:
+            L10n.workspace(.contextMemory, language: language)
+        case .diagnostics:
+            UIStrings.text(.sidebarDiagnostics, language: language)
         case .language:
             UIStrings.text(.settingsLanguage, language: language)
         case .recordPanel:
@@ -39,6 +45,8 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
 
     public var symbolName: String {
         switch self {
+        case .contextMemory: RillSystemSymbol.textBadgeCheckmark.rawValue
+        case .diagnostics: RillSystemSymbol.stethoscope.rawValue
         case .language: RillSystemSymbol.globe.rawValue
         case .recordPanel: RillSystemSymbol.docOnClipboard.rawValue
         case .permissions: RillSystemSymbol.lockShield.rawValue
@@ -56,6 +64,10 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     // or the new locale will search worse than the existing ones.
     var searchKeywords: String {
         switch self {
+        case .contextMemory:
+            "context memory screen correction 上下文 记忆 屏幕 纠错"
+        case .diagnostics:
+            "diagnostics events logs 诊断 事件 日志"
         case .language:
             "language interface locale 语言 界面 中文 english"
         case .recordPanel:
@@ -78,9 +90,49 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-struct SettingsNavigationRequest: Identifiable, Equatable, Sendable {
-    let id = UUID()
-    let section: SettingsSection
+public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
+    case general, input, voice, vocabulary, privacy, data
+    public var id: String { rawValue }
+    var sections: [SettingsSection] {
+        switch self {
+        case .general: [.language]
+        case .input: [.input, .recordPanel]
+        case .voice: [.speech, .voiceAssistant]
+        case .vocabulary: [.vocabulary, .contextMemory]
+        case .privacy: [.permissions, .privacy]
+        case .data: [.storage, .diagnostics]
+        }
+    }
+    func title(language: AppLanguage) -> String {
+        let key: WorkspaceText = switch self {
+        case .general: .general
+        case .input: .input
+        case .voice: .voiceModels
+        case .vocabulary: .vocabularyMemory
+        case .privacy: .privacy
+        case .data: .data
+        }
+        return L10n.workspace(key, language: language)
+    }
+    var symbolName: String { sections[0].symbolName }
+}
+
+extension SettingsSection {
+    var pane: SettingsPane {
+        switch self {
+        case .language: .general
+        case .input, .recordPanel: .input
+        case .speech, .voiceAssistant: .voice
+        case .vocabulary, .contextMemory: .vocabulary
+        case .permissions, .privacy: .privacy
+        case .storage, .diagnostics: .data
+        }
+    }
+}
+
+public struct SettingsNavigationRequest: Identifiable, Equatable, Sendable {
+    public let id = UUID()
+    public let section: SettingsSection
 }
 
 struct HistoryNavigationRequest: Identifiable, Equatable, Sendable {

@@ -206,6 +206,10 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
             name: NSWorkspace.didActivateApplicationNotification,
             object: nil
         )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(pasteTargetApplicationDidTerminate(_:)),
+            name: NSWorkspace.didTerminateApplicationNotification, object: nil
+        )
         rememberPreviousApplication()
     }
 
@@ -258,6 +262,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         let session = model.recordWorkspace.makeQuickPanelModel()
         session.start(sourceBundleIdentifier: previousApplication?.bundleIdentifier)
         quickPanelModel = session
+        updatePasteTargetPresentation()
         let useSelectedRecord: @MainActor @Sendable (RecordReuseSubject) -> Void = { [weak self] subject in
             self?.useSelectedItem { [weak self] target in
                 let result = await deliverSelection(subject, target)
@@ -471,6 +476,16 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
             return
         }
         rememberExternalApplication(application)
+        updatePasteTargetPresentation()
+    }
+
+    @objc private func pasteTargetApplicationDidTerminate(_ notification: Notification) {
+        updatePasteTargetPresentation()
+    }
+
+    private func updatePasteTargetPresentation() {
+        let target = lockPasteTarget()
+        quickPanelModel?.pasteTargetName = target?.application?.localizedName ?? target?.identity.bundleIdentifier
     }
 
     private func rememberPreviousApplication() {
@@ -768,10 +783,7 @@ private struct FloatingRecordView: View {
             model: session, language: model.language, capturePaused: !model.systemClipboardCaptureEnabled,
             onPaste: deliverSelection, onCopy: copySelection,
             onShowRecord: { id in
-                model.selectSidebarSection(.records)
-                model.recordWorkspace.selectCollection(nil)
-                model.recordWorkspace.searchText = ""
-                model.recordWorkspace.selectedRecordID = id
+                Task { await model.showRecord(id) }
                 onShowRecord()
                 NSApp.activate(ignoringOtherApps: true)
                 openWindow(id: "main")

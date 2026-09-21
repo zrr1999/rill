@@ -32,7 +32,8 @@ final class AppModelLocalPersistenceStatusTests: XCTestCase {
 
         menu.openStorageSettings()
 
-        XCTAssertEqual(model.selectedSidebarSection, .settings)
+        XCTAssertEqual(model.selectedSidebarSection, .records)
+        XCTAssertEqual(model.selectedSettingsPane, .data)
         XCTAssertEqual(model.settingsNavigationRequest?.section, .storage)
         XCTAssertEqual(openedMainWindowCount, 1)
     }

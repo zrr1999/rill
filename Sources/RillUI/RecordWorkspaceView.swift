@@ -38,12 +38,12 @@ private enum RecordWorkspaceViewMetrics {
     static let replacementEditorHeight: CGFloat = 220
 }
 
-public struct RecordWorkspaceView: View {
-    private enum Pane: String, CaseIterable {
-        case records
-        case routes
-    }
+private struct RecordDetailRequest: Equatable {
+    let subject: RecordReuseSubject?
+    let navigationGeneration: Int
+}
 
+public struct RecordWorkspaceView: View {
     @Bindable private var workspace: RecordWorkspaceModel
     private let language: AppLanguage
     private let deliverSelection: (@MainActor @Sendable (RecordDeliverySubject) -> Void)?
@@ -59,7 +59,13 @@ public struct RecordWorkspaceView: View {
     @State private var replacementRecordID: RecordID?
     @State private var replacementText = ""
     @State private var replacesInAllCollections = false
-    @State private var pane: Pane = .records
+    private let copySelection: (@MainActor (RecordReuseSubject) async -> RecordReuseOutcome)?
+    @State private var showsCollectionSettings = false
+    @State private var showsRules = false
+    @State private var copyFeedback: QuickRecordText?
+    @State private var isCopying = false
+    @FocusState private var detailFocused: Bool
+    @AccessibilityFocusState private var detailAccessibilityFocused: Bool
     @State private var showsCompactList = false
     @State private var selectedRecordDetail: RecordProjection?
 
@@ -67,26 +73,19 @@ public struct RecordWorkspaceView: View {
         workspace: RecordWorkspaceModel,
         language: AppLanguage,
         deliverSelection: (@MainActor @Sendable (RecordDeliverySubject) -> Void)? = nil,
-        sourceAppContext: RecordRouteContext? = nil
+        sourceAppContext: RecordRouteContext? = nil,
+        copySelection: (@MainActor (RecordReuseSubject) async -> RecordReuseOutcome)? = nil
     ) {
         self.workspace = workspace
         self.language = language
         self.deliverSelection = deliverSelection
         self.sourceAppContext = sourceAppContext
+        self.copySelection = copySelection
     }
 
     public var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
-            Group {
-                switch pane {
-                case .records:
-                    recordsWorkspace
-                case .routes:
-                    RecordRouteEditorView(workspace: workspace, language: language)
-                }
-            }
+            recordsWorkspace
             .frame(
                 maxWidth: .infinity,
                 maxHeight: .infinity,
@@ -94,13 +93,51 @@ public struct RecordWorkspaceView: View {
             )
             .layoutPriority(1)
         }
+        .navigationTitle(workspace.selectedCollection?.name ?? L10n.workspace(.allRecords, language: language))
+        .toolbar { ToolbarItem { recordActionsMenu } }
+        .sheet(isPresented: $showsCollectionSettings) {
+            VStack(alignment: .leading, spacing: RillSpacing.panel) {
+                Text(L10n.workspace(.collectionSettings, language: language)).font(.headline)
+                if let collection = workspace.selectedCollection { collectionPolicyBar(collection) }
+                HStack {
+                    if let collection = workspace.selectedCollection {
+                        Button(L10n.recordText(.deleteCollection, language: language), role: .destructive) {
+                            showsCollectionSettings = false
+                            Task { await workspace.requestCollectionDeletion(collection.id) }
+                        }
+                    }
+                    Spacer()
+                    Button(L10n.workspace(.done, language: language)) { showsCollectionSettings = false }
+                        .keyboardShortcut(.cancelAction)
+                }
+            }.padding(RillSpacing.page).frame(width: 580)
+        }
+        .sheet(isPresented: $showsRules) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text(L10n.workspace(.recordRules, language: language)).font(.headline)
+                    Spacer()
+                    Button(L10n.workspace(.done, language: language)) { showsRules = false }
+                        .keyboardShortcut(.cancelAction)
+                }.padding()
+                RecordRouteEditorView(workspace: workspace, language: language)
+            }.frame(minWidth: 660, minHeight: 500)
+        }
         .task { await workspace.refresh() }
-        .task(id: workspace.selectedVisibleRecord?.reuseSubject) {
+        .task(id: RecordDetailRequest(subject: workspace.selectedVisibleRecord?.reuseSubject, navigationGeneration: workspace.navigationGeneration)) {
             selectedRecordDetail = nil
             guard let subject = workspace.selectedVisibleRecord?.reuseSubject else { return }
             let record = await workspace.loadRecord(subject.recordID)
             guard !Task.isCancelled, workspace.selectedVisibleRecord?.reuseSubject == subject else { return }
             selectedRecordDetail = record
+            copyFeedback = nil
+            if record != nil, workspace.revealedRecordID == record?.id {
+                showsCompactList = false
+                await waitForMainRunLoopDefaultMode()
+                guard !Task.isCancelled, workspace.selectedVisibleRecord?.reuseSubject == subject else { return }
+                detailFocused = true
+                detailAccessibilityFocused = true
+            }
         }
         .sheet(isPresented: $isCreatingCollection) { createCollectionSheet }
         .sheet(isPresented: membershipSheetIsPresented) { membershipSheet }
@@ -129,104 +166,28 @@ public struct RecordWorkspaceView: View {
         }
     }
 
-    private var header: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 16) {
-                headerSummary
-                Spacer(minLength: 16)
-                panePicker
-                recordHeaderActions
+    private var recordActionsMenu: some View {
+        Menu {
+            Button(L10n.recordText(.newCollection, language: language)) { isCreatingCollection = true }
+            if workspace.selectedCollection != nil {
+                Button(L10n.workspace(.collectionSettings, language: language)) { showsCollectionSettings = true }
             }
-
-            VStack(alignment: .leading, spacing: 12) {
-                headerSummary
-                HStack(spacing: 12) {
-                    panePicker
-                    Spacer(minLength: 0)
-                    recordHeaderActions
-                }
-            }
+            Button(L10n.workspace(.recordRules, language: language)) { showsRules = true }
+        } label: {
+            Label(L10n.presentation(.moreActions, language: language), systemImage: RillSystemSymbol.ellipsisCircle.rawValue)
         }
-        .padding(16)
-    }
-
-    private var headerSummary: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 8) {
-                Text(pane == .routes
-                    ? L10n.recordText(.recordRoutesTitle, language: language)
-                    : workspace.selectedCollection?.name
-                        ?? L10n.string(.clipboardHistoryTitle, language: language))
-                    .font(.title2.weight(.semibold))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                if pane == .records {
-                    Text("\(workspace.visibleRecords.count)")
-                        .font(.caption.monospacedDigit().weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(.quaternary, in: Capsule())
-                        .accessibilityLabel(L10n.recordCount(
-                            workspace.visibleRecords.count,
-                            language: language
-                        ))
-                }
-            }
-            Text(pane == .routes
-                ? L10n.recordText(.routesHeaderDetail, language: language)
-                : L10n.recordText(.recordsHeaderDetail, language: language))
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-        }
-    }
-
-    private var panePicker: some View {
-        Picker(L10n.recordText(.panePickerLabel, language: language), selection: $pane) {
-            Text(L10n.recordText(.paneRecords, language: language)).tag(Pane.records)
-            Text(L10n.recordText(.paneRoutes, language: language)).tag(Pane.routes)
-        }
-        .labelsHidden()
-        .pickerStyle(.segmented)
-        .frame(width: 200)
-    }
-
-    @ViewBuilder
-    private var recordHeaderActions: some View {
-        if pane == .records {
-            HStack(spacing: 8) {
-                Button {
-                    isCreatingCollection = true
-                } label: {
-                    Label(L10n.recordText(.newCollection, language: language), systemImage: RillSystemSymbol.plus.rawValue)
-                }
-                if let collection = workspace.selectedCollection {
-                    Button(role: .destructive) {
-                        Task { await workspace.requestCollectionDeletion(collection.id) }
-                    } label: {
-                        Image(systemName: RillSystemSymbol.trash.rawValue)
-                    }
-                    .help(L10n.recordText(.deleteCollection, language: language))
-                    .accessibilityLabel(L10n.recordText(.deleteCollection, language: language))
-                    .disabled(workspace.isMutating)
-                }
-            }
-        }
+        .accessibilityIdentifier("records.actions")
     }
 
     private var recordsWorkspace: some View {
         VStack(spacing: 0) {
-            if let collection = workspace.selectedCollection {
-                collectionPolicyBar(collection)
-                Divider()
-            }
             GeometryReader { geometry in
                 recordsContent(
                     RecordWorkspaceLayoutPolicy.presentation(
                         availableWidth: geometry.size.width,
                         hasSelectedRecord: selectedRecord != nil && !showsCompactList
-                    )
+                    ),
+                    availableWidth: geometry.size.width
                 )
                 .frame(
                     width: geometry.size.width,
@@ -244,7 +205,10 @@ public struct RecordWorkspaceView: View {
     }
 
     @ViewBuilder
-    private func recordsContent(_ presentation: RecordWorkspacePresentation) -> some View {
+    private func recordsContent(_ presentation: RecordWorkspacePresentation, availableWidth: CGFloat) -> some View {
+        if workspace.visibleRecords.isEmpty {
+            recordList
+        } else {
         switch presentation {
         case .split:
             HSplitView {
@@ -252,7 +216,7 @@ public struct RecordWorkspaceView: View {
                     .frame(
                         minWidth: 300,
                         idealWidth: 360,
-                        maxWidth: 440,
+                        maxWidth: min(440, availableWidth - 360),
                         maxHeight: .infinity,
                         alignment: .topLeading
                     )
@@ -271,6 +235,7 @@ public struct RecordWorkspaceView: View {
         case .inspector:
             compactRecordInspector
         }
+        }
     }
 
     private var compactRecordInspector: some View {
@@ -281,11 +246,12 @@ public struct RecordWorkspaceView: View {
                 } label: {
                     Label(
                         workspace.selectedCollection?.name
-                            ?? L10n.string(.clipboardHistoryTitle, language: language),
+                            ?? L10n.workspace(.allRecords, language: language),
                         systemImage: RillSystemSymbol.chevronLeft.rawValue
                     )
                 }
                 .buttonStyle(RecordWorkspaceHoverButtonStyle())
+                .accessibilityIdentifier("records.back")
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
@@ -364,14 +330,27 @@ public struct RecordWorkspaceView: View {
 
     private var hasRecordFilters: Bool {
         !workspace.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || workspace.showsPinnedOnly || workspace.sourceAppFilterBundleIdentifier != nil
+            || workspace.showsPinnedOnly || workspace.sourceAppFilterBundleIdentifier != nil || workspace.payloadKindFilter != nil
+    }
+
+    private var recordSources: [(id: String, name: String)] {
+        let names = workspace.snapshot.records.reduce(into: [String: String]()) { names, record in
+            guard let id = record.header.provenance.sourceBundleIdentifier else { return }
+            names[id] = record.header.provenance.sourceApplicationName ?? id
+        }
+        return names.map { (id: $0.key, name: $0.value) }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     private var recordList: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                TextField(UIStrings.text(.clipboardSearch, language: language), text: $workspace.searchText)
-                    .textFieldStyle(.roundedBorder)
+                Picker(L10n.workspace(.allTypes, language: language), selection: $workspace.payloadKindFilter) {
+                    Text(L10n.workspace(.allTypes, language: language)).tag(Optional<RecordPayloadKind>.none)
+                    Text(L10n.quickRecord(.text, language: language)).tag(Optional(RecordPayloadKind.text))
+                    Text(L10n.recordText(.imagePayload, language: language)).tag(Optional(RecordPayloadKind.image))
+                    Text(L10n.quickRecord(.files, language: language)).tag(Optional(RecordPayloadKind.files))
+                }.labelsHidden()
+                Spacer(minLength: 0)
                 Toggle(isOn: $workspace.showsPinnedOnly) {
                     Image(systemName: RillSystemSymbol.pinFill.rawValue)
                 }
@@ -382,10 +361,21 @@ public struct RecordWorkspaceView: View {
                     Toggle(sourceAppFilterTitle, isOn: sourceAppFilterBinding)
                         .toggleStyle(.button)
                         .disabled(sourceAppContext?.bundleIdentifier == nil)
+                } else {
+                    Picker(L10n.workspace(.source, language: language), selection: $workspace.sourceAppFilterBundleIdentifier) {
+                        Text(L10n.workspace(.allSources, language: language)).tag(Optional<String>.none)
+                        ForEach(recordSources, id: \.id) { source in
+                            Text(source.name).tag(Optional(source.id))
+                        }
+                    }.labelsHidden()
                 }
             }
             .padding(12)
             Divider()
+            if workspace.unavailableRecordID != nil {
+                Label(L10n.workspace(.recordUnavailable, language: language), systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
+                    .font(.callout).padding()
+            }
             if workspace.isLoading && workspace.snapshot.revision == 0 {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if workspace.visibleRecords.isEmpty {
@@ -402,6 +392,7 @@ public struct RecordWorkspaceView: View {
                         workspace.searchText = ""
                         workspace.showsPinnedOnly = false
                         workspace.sourceAppFilterBundleIdentifier = nil
+                        workspace.payloadKindFilter = nil
                     }
                     .buttonStyle(.borderless)
                     .padding(.bottom, RillSpacing.panel)
@@ -426,7 +417,13 @@ public struct RecordWorkspaceView: View {
                             .id(projection.id)
                     }
                 }
-                .listStyle(.inset)
+                .listStyle(.inset(alternatesRowBackgrounds: false))
+                .onChange(of: workspace.navigationGeneration) { _, _ in
+                    if let id = workspace.selectedRecordID { proxy.scrollTo(id) }
+                }
+                .onChange(of: workspace.selectedRecordID) { _, id in
+                    if let id, workspace.revealedRecordID == id { proxy.scrollTo(id) }
+                }
                 .onAppear {
                     if let id = workspace.selectedRecordID { proxy.scrollTo(id) }
                 }
@@ -458,16 +455,7 @@ public struct RecordWorkspaceView: View {
                     if projection.metadata.isPinned {
                         Image(systemName: RillSystemSymbol.pinFill.rawValue).foregroundStyle(Color.accentColor)
                     }
-                    if projection.memberships.isEmpty {
-                        membershipChip(L10n.recordText(.noCollection, language: language))
-                    } else {
-                        ForEach(projection.memberships.prefix(3)) { membership in
-                            membershipChip(workspace.collectionName(membership.collectionID))
-                        }
-                        if projection.memberships.count > 3 {
-                            membershipChip("+\(projection.memberships.count - 3)")
-                        }
-                    }
+
                 }
                 HStack(spacing: RillSpacing.row) {
                     Text(sourceName(projection.header.provenance)).lineLimit(1)
@@ -489,7 +477,34 @@ public struct RecordWorkspaceView: View {
         if let record = selectedRecord {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text(sourceName(record.record.provenance)).font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        if let copySelection {
+                            Button {
+                                guard !isCopying else { return }
+                                isCopying = true
+                                Task {
+                                    let outcome = await copySelection(RecordReuseSubject(recordID: record.id, metadataRevision: record.metadata.revision))
+                                    isCopying = false
+                                    guard selectedRecord?.id == record.id else { return }
+                                    copyFeedback = outcome.feedback
+                                }
+                            } label: {
+                                Label(L10n.workspace(.copy, language: language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
+                            }
+                            .disabled(isCopying)
+                            .accessibilityIdentifier("records.copy")
+                        }
+                    }
+                    if let copyFeedback {
+                        Text(L10n.quickRecord(copyFeedback, language: language))
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
                     payloadPreview(record.record)
+                        .focusable().focused($detailFocused)
+                        .accessibilityFocused($detailAccessibilityFocused)
+                        .accessibilityIdentifier("records.detail")
                     if let deliverSelection,
                        let subject = workspace.selectedListDeliverySubject {
                         Button {

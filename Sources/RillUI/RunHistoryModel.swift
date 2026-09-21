@@ -303,7 +303,8 @@ public final class RunHistoryModel {
   func searchRunHistory(
     query: String,
     language: AppLanguage,
-    previewMode: PrivacyHistoryPreviewMode
+    previewMode: PrivacyHistoryPreviewMode,
+    limit: Int = GlobalSearchIndex.maximumHistoryResultCount
   ) async throws -> [GlobalSearchResult] {
     guard let runHistoryBrowser else {
       throw RunHistorySearchError.unavailable
@@ -322,7 +323,7 @@ public final class RunHistoryModel {
     var matches: [GlobalSearchResult] = []
     var matchedIDs: Set<String> = []
 
-    while matches.count < GlobalSearchIndex.maximumHistoryResultCount {
+    while matches.count < limit {
       try Task.checkCancellation()
       let page = try await runHistoryBrowser.page(request)
       try Task.checkCancellation()
@@ -342,11 +343,11 @@ public final class RunHistoryModel {
       )
       for result in pageResults where matchedIDs.insert(result.id).inserted {
         matches.append(result)
-        if matches.count == GlobalSearchIndex.maximumHistoryResultCount {
+        if matches.count == limit {
           break
         }
       }
-      guard matches.count < GlobalSearchIndex.maximumHistoryResultCount,
+      guard matches.count < limit,
         let cursor = page.nextCursor
       else {
         break
