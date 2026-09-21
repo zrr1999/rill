@@ -237,7 +237,7 @@ actor UITestSecureCredentialStore: SecureCredentialStore {
   }
 }
 
-actor WhisperKitPrepareProbe {
+actor SpeechPreparationProbe {
   private(set) var prepareCount = 0
   private(set) var lastSettings: LocalSpeechSettings?
   private(set) var reportedProgress: [Double] = []
@@ -494,13 +494,35 @@ actor UITestWorkflowFileStore: WorkflowFileStore {
     recordsByID[workflow.id] = WorkflowFileRecord(
       workflow: workflow,
       isEnabled: isEnabled,
-      fileURL: destination
+      fileURL: destination,
+      source: String(decoding: try JSONEncoder().encode(workflow), as: UTF8.self)
     )
     guard !rejectsSaves else {
       // Simulate an atomic write that succeeded before a later metadata step failed.
       throw UITestWorkflowFileStoreError.rejectedSave
     }
     return destination
+  }
+
+  func saveDocument(_ document: WorkflowDocument, replacing fileURL: URL?, expected: WorkflowFileExpectation) async throws -> WorkflowFileRecord {
+    let previous = recordsByID[document.workflow.id]
+    switch expected {
+    case .missing: guard previous == nil else { throw WorkflowFileConflict.changed }
+    case .source(let source): guard previous?.source == source else { throw WorkflowFileConflict.changed }
+    case .overwrite: break
+    }
+    let url = try await save(workflow: document.workflow, isEnabled: document.isEnabled, replacing: fileURL)
+    let source = String(decoding: try JSONEncoder().encode(document.workflow), as: UTF8.self)
+    let record = WorkflowFileRecord(workflow: document.workflow, isEnabled: document.isEnabled, fileURL: url, source: source)
+    recordsByID[document.workflow.id] = record
+    return record
+  }
+
+  func delete(fileURL: URL, expected: WorkflowFileExpectation) async throws {
+    guard let record = recordsByID.values.first(where: { $0.fileURL == fileURL }) else { throw WorkflowFileConflict.changed }
+    if case .source(let source) = expected, record.source != source { throw WorkflowFileConflict.changed }
+    if case .missing = expected { throw WorkflowFileConflict.changed }
+    recordsByID.removeValue(forKey: record.workflow.id)
   }
 
   func delete(fileURL: URL) async throws {
@@ -533,8 +555,8 @@ func makeHarness(
   liveSubtitlePreparingHideDelay: Duration = .seconds(15),
   localSpeechTrustMaterialAvailable: Bool = true,
   localSpeechAvailability: LocalSpeechAvailability? = nil,
-  trustedLocalSpeechModels: [LocalSpeechModelDescriptor] = [],
-  defaultLocalSpeechModelIdentifier: String? = nil,
+  trustedLocalSpeechModels: [LocalSpeechModelDescriptor] = appModelTestTrustedLocalSpeechModels(),
+  defaultLocalSpeechModelIdentifier: String? = "qwen3-asr-0.6b-mlx-8bit",
   ttsModelOptions: [TTSModelOption] = [],
   defaultTTSModelIdentifier: String = "",
   localSpeechPhysicalMemoryGiB: Int = 16,
@@ -546,14 +568,6 @@ func makeHarness(
   permissionSnapshot: PermissionSnapshot = PermissionSnapshot(
     accessibility: .granted, microphone: .unknown),
   globalInputCapability: GlobalInputCapability = .available,
-  warmLocalSpeechForCaptureAction:
-    @escaping @Sendable (
-      LocalSpeechSettings,
-      @escaping @Sendable (Progress) -> Void
-    ) async throws -> String =
-    { settings, _ in
-      settings.model
-    },
   prepareLocalSpeechAction:
     @escaping @Sendable (
       LocalSpeechSettings,
@@ -680,7 +694,6 @@ func makeHarness(
     ttsModelOptions: ttsModelOptions,
     defaultTTSModelIdentifier: defaultTTSModelIdentifier,
     localSpeechPhysicalMemoryGiB: localSpeechPhysicalMemoryGiB,
-    warmLocalSpeechForCaptureAction: warmLocalSpeechForCaptureAction,
     prepareLocalSpeechAction: prepareLocalSpeechAction,
     synchronizeResidentSpeechModelsAction: synchronizeResidentSpeechModelsAction,
     prepareEnabledSpeechModelAction: prepareEnabledSpeechModelAction,
@@ -706,7 +719,7 @@ func makeHarness(
     requestAccessibilityAction: {},
     requestMicrophoneAction: {},
     openAccessibilitySettingsAction: {},
-    openMicrophoneSettingsAction: {}
+    openMicrophoneSettingsAction: {}, requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {}
   )
   model.installRecordPanelAction {
     Task {
@@ -733,18 +746,6 @@ func makeDefaultWorkflow() -> WorkflowDefinition {
     ),
     ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
   )
-}
-
-actor WhisperWarmupProbe {
-  private var latestSettings: LocalSpeechSettings?
-
-  func record(_ settings: LocalSpeechSettings) {
-    latestSettings = settings
-  }
-
-  func snapshot() -> LocalSpeechSettings? {
-    latestSettings
-  }
 }
 
 func makeBuiltinPushToTalkWorkflow() -> WorkflowDefinition {
@@ -820,4 +821,21 @@ func waitForFailedAudioRecovery(_ harness: AppModelTestHarness) async {
   await harness.model.flushPendingPersistenceWrites()
   await harness.model.waitForFailedAudioRecoveryRetries()
   await harness.model.synchronizeEventListener()
+}
+
+func appModelTestTrustedLocalSpeechModels() -> [LocalSpeechModelDescriptor] {
+    [
+        LocalSpeechModelDescriptor(
+            id: "qwen3-asr-0.6b-mlx-8bit",
+            engine: .mlxAudioSwift,
+            englishName: "Qwen3-ASR 0.6B INT8",
+            simplifiedChineseName: "Qwen3-ASR 0.6B INT8"
+        ),
+        LocalSpeechModelDescriptor(
+            id: "qwen3-asr-1.7b-mlx-8bit",
+            engine: .mlxAudioSwift,
+            englishName: "Qwen3-ASR 1.7B INT8",
+            simplifiedChineseName: "Qwen3-ASR 1.7B INT8"
+        ),
+    ]
 }

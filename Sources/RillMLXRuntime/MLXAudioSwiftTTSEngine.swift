@@ -1,10 +1,10 @@
+import RillSpeechContracts
 import Foundation
 import HuggingFace
 import MLX
 import MLXAudioCore
 import MLXAudioTTS
 import RillCore
-import RillProviders
 
 struct MLXAudioSwiftTTSOutput: Sendable, Equatable {
   let audioFileURL: URL

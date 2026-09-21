@@ -4,6 +4,127 @@ import XCTest
 @testable import RillRuntime
 
 final class EventBusTests: XCTestCase {
+  func testCancellingBlockedPublicationWithdrawsPendingEvent() async {
+    let bus = EventBus(maxBufferedEvents: 1)
+    let first = RillEvent.runFailed(runID: nil, workflow: nil, message: "first")
+    let cancelled = RillEvent.recordPanelRequested
+    await bus.publish(first)
+    let published = expectation(description: "Cancelled publisher returns without a consumer")
+    let task = Task {
+      await bus.publish(cancelled)
+      published.fulfill()
+    }
+    task.cancel()
+    await fulfillment(of: [published], timeout: 2)
+    var iterator = bus.lifecycleDeliveryStream.makeAsyncIterator()
+    let delivered = await iterator.next()
+    XCTAssertEqual(delivered, .event(first))
+    let sentinel = UUID()
+    await bus.publishBarrier(sentinel)
+    let next = await iterator.next()
+    XCTAssertEqual(next, .barrier(sentinel))
+  }
+
+  func testCancelledPublishersStillDeliverTerminalAndFinalState() async {
+    let events: [RillEvent] = [
+      .runCancelled(.init(runID: UUID(), stage: .recognizing, wasPartiallyCompleted: false)),
+      .runFailed(runID: UUID(), workflow: nil, message: "failed"),
+      .runCompleted(
+        .init(
+          runID: UUID(), workflowID: UUID(), workflow: .init(fallbackName: "Done"),
+          trigger: .manual, finalText: "done")),
+      .audioProcessingQueueUpdated(.init(pendingCount: 0)),
+      .liveSubtitleUpdated(.init(runID: UUID(), phase: .hidden)),
+    ]
+    for event in events {
+      let bus = EventBus(maxBufferedEvents: 1)
+      await bus.publish(.recordPanelRequested)
+      let publication = Task { await bus.publish(event) }
+      publication.cancel()
+      var iterator = bus.lifecycleDeliveryStream.makeAsyncIterator()
+      _ = await iterator.next()
+      let terminal = await iterator.next()
+      await publication.value
+      XCTAssertEqual(terminal, .event(event))
+    }
+  }
+
+  func testSlowConsumerReceivesFinalStateThenBarrier() async {
+    let bus = EventBus(maxBufferedEvents: 1)
+    let first = RillEvent.runFailed(runID: nil, workflow: nil, message: "boundary")
+    await bus.publish(first)
+    let sentinel = UUID()
+    let snapshot = AudioProcessingQueueSnapshot(pendingCount: 0)
+    let publisher = Task {
+      await bus.publish(.audioProcessingQueueUpdated(snapshot))
+      await bus.publishBarrier(sentinel)
+    }
+    var iterator = bus.lifecycleDeliveryStream.makeAsyncIterator()
+    let boundary = await iterator.next()
+    let finalState = await iterator.next()
+    let barrier = await iterator.next()
+    await publisher.value
+    XCTAssertEqual(boundary, .event(first))
+    XCTAssertEqual(finalState, .event(.audioProcessingQueueUpdated(snapshot)))
+    XCTAssertEqual(barrier, .barrier(sentinel))
+  }
+
+  func testDiagnosticFloodRetainsOnlyBoundedRecentTailAndTerminal() async {
+    let bus = EventBus(maxBufferedEvents: 4, maxBufferedDiagnostics: 2)
+    var expected: [EventBusDelivery] = []
+    for index in 0..<10 {
+      let event = RillEvent.diagnostic(
+        DiagnosticEvent(
+          subsystem: .systemClipboard, level: .debug,
+          event: "diagnostic", message: "event \(index)"))
+      await bus.publish(event)
+      if index >= 8 { expected.append(.event(event)) }
+    }
+    let barrier = UUID()
+    await bus.publishBarrier(barrier)
+    expected.append(.barrier(barrier))
+    var iterator = bus.lifecycleDeliveryStream.makeAsyncIterator()
+    for value in expected {
+      let actual = await iterator.next()
+      XCTAssertEqual(actual, value)
+    }
+  }
+
+  func testDiagnosticArrivingBehindBlockedTerminalPreservesConsumerProgress() async {
+    let bus = EventBus(maxBufferedEvents: 1, maxBufferedDiagnostics: 1)
+    let first = RillEvent.diagnostic(
+      .init(
+        subsystem: .systemClipboard, level: .debug,
+        event: "first", message: "first"))
+    let terminal = RillEvent.runFailed(runID: UUID(), workflow: nil, message: "terminal")
+    await bus.publish(first)
+    let publication = Task { await bus.publish(terminal) }
+    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+    while await bus.pendingLifecycleEventCount == 0, ContinuousClock.now < deadline {
+      await Task.yield()
+    }
+    let pendingCount = await bus.pendingLifecycleEventCount
+    XCTAssertEqual(pendingCount, 1)
+    await bus.publish(
+      .diagnostic(
+        .init(
+          subsystem: .systemClipboard, level: .debug,
+          event: "later", message: "later")))
+
+    let delivered = expectation(description: "The consumer drains the head and pending terminal")
+    let consumer = Task {
+      var iterator = bus.lifecycleDeliveryStream.makeAsyncIterator()
+      let head = await iterator.next()
+      let last = await iterator.next()
+      XCTAssertEqual(head, .event(first))
+      XCTAssertEqual(last, .event(terminal))
+      delivered.fulfill()
+    }
+    await fulfillment(of: [delivered], timeout: 2)
+    consumer.cancel()
+    await publication.value
+  }
+
   func testDeliveryBarrierPreservesOrderingWithoutLeakingIntoEventStream() async {
     let eventBus = EventBus()
     let eventStream = await eventBus.stream()
@@ -38,10 +159,6 @@ final class EventBusTests: XCTestCase {
     XCTAssertEqual(barrierDelivery, .barrier(barrierID))
     XCTAssertEqual(secondDelivery, .event(second))
   }
-
-
-
-
 
   func testOrdinaryStreamCoalescesEveryHighFrequencyStateProjectionByType() async {
     let eventBus = EventBus()
@@ -217,8 +334,6 @@ final class EventBusTests: XCTestCase {
     XCTAssertEqual(deliveredBarrier, .barrier(barrierID))
     XCTAssertEqual(deliveredAfterBarrier, .event(.liveSubtitleUpdated(newestAfterBarrier)))
   }
-
-
 
   func testOrdinaryEventQueuePreservesFIFOAcrossConsumedPrefixCompaction() async {
     let eventBus = EventBus()

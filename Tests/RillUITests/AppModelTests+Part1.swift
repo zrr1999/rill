@@ -4,6 +4,12 @@ import XCTest
 @testable import RillUI
 
 private actor FailThenSucceedDiagnosticRepository: DiagnosticRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await (self as any DiagnosticRepository).save(value)
+    }
+
     private enum ReadFailure: Error {
         case unavailable
     }
@@ -26,23 +32,6 @@ private actor FailThenSucceedDiagnosticRepository: DiagnosticRepository {
     func readCount() -> Int {
         reads
     }
-}
-
-private func appModelTestTrustedLocalSpeechModels() -> [LocalSpeechModelDescriptor] {
-    [
-        LocalSpeechModelDescriptor(
-            id: "qwen3-asr-0.6b-mlx-8bit",
-            engine: .mlxAudioSwift,
-            englishName: "Qwen3-ASR 0.6B INT8",
-            simplifiedChineseName: "Qwen3-ASR 0.6B INT8"
-        ),
-        LocalSpeechModelDescriptor(
-            id: "qwen3-asr-1.7b-mlx-8bit",
-            engine: .mlxAudioSwift,
-            englishName: "Qwen3-ASR 1.7B INT8",
-            simplifiedChineseName: "Qwen3-ASR 1.7B INT8"
-        ),
-    ]
 }
 
 @MainActor
@@ -91,12 +80,7 @@ extension AppModelTests {
 
         XCTAssertTrue(harness.model.isRunning)
         XCTAssertEqual(harness.model.historyRecords.count, 0)
-        XCTAssertEqual(
-            harness.model.lastFailure,
-            harness.model.language == .english
-                ? HistoryFailureSanitizer.genericMessage
-                : "工作流失败。请在诊断中查看安全摘要后重试。"
-        )
+        XCTAssertNil(harness.model.lastFailure)
     }
 
     func testNewRunAndSuccessClearStaleFailure() async {
@@ -141,7 +125,7 @@ extension AppModelTests {
 
         XCTAssertFalse(harness.model.isRunning)
         XCTAssertNil(harness.model.lastFailure)
-        XCTAssertEqual(harness.model.historyRecords.first?.outcome, .completed)
+        XCTAssertTrue(harness.model.historyRecords.isEmpty)
     }
 
     func testRunWorkflowGuardsAgainstDoubleClickBeforeEventsArrive() async {
@@ -355,7 +339,7 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.localizedWorkflowName(for: harness.workflow), "确认后保存")
     }
 
-    func testStackDeliveryFailureWithRunIDRecordsHistory() async {
+    func testDeliveryFailureDoesNotSynthesizeVoiceHistory() async {
         let harness = makeHarness()
         await waitForListenerSetup(harness)
         let stackWorkflow = WorkflowPresentation(fallbackName: "Stack Delivery", titleKey: .recordDelivery)
@@ -369,9 +353,7 @@ extension AppModelTests {
         )
         await waitForEventProcessing(harness)
 
-        XCTAssertEqual(harness.model.historyRecords.count, 1)
-        XCTAssertEqual(harness.model.historyRecords.first?.outcome, .failed)
-        XCTAssertTrue(harness.model.historyRecords.first?.isRecordRelated == true)
+        XCTAssertTrue(harness.model.historyRecords.isEmpty)
     }
 
     func testLoadsPersistedLanguageWhileIgnoringLegacyWorkflowSelection() async {
@@ -464,7 +446,6 @@ extension AppModelTests {
         XCTAssertTrue(harness.model.isLoadingSettings)
 
         XCTAssertTrue(harness.model.setInterfaceLanguage(userLanguage))
-        harness.model.legacyWhisperKitLanguage = "user-language"
         await harness.model.flushPendingPersistenceWrites()
 
         var activity = await settingsStore.activitySnapshot()
@@ -478,7 +459,6 @@ extension AppModelTests {
         activity = await settingsStore.activitySnapshot()
         XCTAssertFalse(harness.model.isLoadingSettings)
         XCTAssertEqual(harness.model.language, userLanguage)
-        XCTAssertEqual(harness.model.legacyWhisperKitLanguage, "user-language")
         XCTAssertEqual(harness.model.currentLocalSpeechSettings().language, "")
         XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
         XCTAssertEqual(activity.storage[.interfaceLanguage], userLanguage.rawValue)
@@ -533,7 +513,7 @@ extension AppModelTests {
         )
     }
 
-    func testCustomWhisperKitSelectionDuringInitialReadSurvivesAndReplacesStaleStorage() async {
+    func testTrustedModelSelectionDuringInitialReadSurvivesAndReplacesStaleStorage() async {
         let settingsStore = UITestSettingsStore(
             storage: [
                 .localSpeechModel: LegacyWhisperModelOption.distilLargeV3Compact.rawValue,
@@ -546,20 +526,19 @@ extension AppModelTests {
         )
         await settingsStore.waitUntilBatchReadIsSuspended()
 
-        harness.model.localSpeechModelOption = .custom
+        harness.model.selectTrustedLocalSpeechModel(appModelTestTrustedLocalSpeechModels()[1].id)
         await harness.model.flushPendingPersistenceWrites()
 
         var activity = await settingsStore.activitySnapshot()
-        XCTAssertEqual(activity.storage[.localSpeechModel], "")
+        XCTAssertEqual(activity.storage[.localSpeechModel], appModelTestTrustedLocalSpeechModels()[1].id)
         XCTAssertEqual(activity.setCounts[.localSpeechModel], 1)
 
         await settingsStore.resumeBatchRead()
         await harness.model.waitForInitialVoiceConfiguration()
 
         activity = await settingsStore.activitySnapshot()
-        XCTAssertEqual(harness.model.localSpeechModelOption, .custom)
-        XCTAssertEqual(harness.model.localSpeechModel, "")
-        XCTAssertEqual(activity.storage[.localSpeechModel], "")
+        XCTAssertEqual(harness.model.localSpeechModel, appModelTestTrustedLocalSpeechModels()[1].id)
+        XCTAssertEqual(activity.storage[.localSpeechModel], appModelTestTrustedLocalSpeechModels()[1].id)
     }
 
     func testCollectionMutationsAreRejectedUntilInitialSettingsReadFinishes() async throws {
@@ -580,7 +559,7 @@ extension AppModelTests {
             pattern: "stored phrase",
             replacement: "Stored Phrase"
         )
-        let storedDownloadedModels = ["stored-downloaded-model"]
+        let storedDownloadedModels = ["qwen3-asr-0.6b-mlx-8bit"]
         let settingsStore = UITestSettingsStore(
             storage: [
                 .customWorkflows: String(
@@ -598,7 +577,7 @@ extension AppModelTests {
             ],
             suspendBatchReads: true
         )
-        let preparationProbe = WhisperKitPrepareProbe()
+        let preparationProbe = SpeechPreparationProbe()
         let harness = makeHarness(
             settingsStore: settingsStore,
             prepareLocalSpeechAction: { settings, _ in
@@ -661,7 +640,7 @@ extension AppModelTests {
             ],
             suspendBatchReads: true
         )
-        let preparationProbe = WhisperKitPrepareProbe()
+        let preparationProbe = SpeechPreparationProbe()
         let harness = makeHarness(
             settingsStore: settingsStore,
             settingsWriteDebounceDuration: .zero,
@@ -672,7 +651,7 @@ extension AppModelTests {
         )
         await settingsStore.waitUntilBatchReadIsSuspended()
 
-        harness.model.localSpeechModelOption = .distilLargeV3Compact
+        harness.model.selectTrustedLocalSpeechModel(appModelTestTrustedLocalSpeechModels()[1].id)
         await harness.model.flushPendingPersistenceWrites()
         var preparation = await preparationProbe.snapshot()
         XCTAssertEqual(preparation.prepareCount, 0)
@@ -687,13 +666,13 @@ extension AppModelTests {
         XCTAssertEqual(preparation.prepareCount, 1)
         XCTAssertEqual(
             preparation.lastSettings?.model,
-            LegacyWhisperModelOption.distilLargeV3Compact.modelIdentifier
+            appModelTestTrustedLocalSpeechModels()[1].id
         )
-        XCTAssertEqual(harness.model.localSpeechModelOption, .distilLargeV3Compact)
+        XCTAssertEqual(harness.model.localSpeechModel, appModelTestTrustedLocalSpeechModels()[1].id)
         XCTAssertEqual(harness.model.localSpeechPreparationState, .ready)
         XCTAssertEqual(
             settingsActivity.storage[.localSpeechModel],
-            LegacyWhisperModelOption.distilLargeV3Compact.modelIdentifier
+            appModelTestTrustedLocalSpeechModels()[1].id
         )
     }
 
@@ -781,7 +760,10 @@ extension AppModelTests {
 
     func testRetiredLocalSpeechSourceFieldsDoNotPersistOrReachTrustedRuntime() async {
         let trustedModels = appModelTestTrustedLocalSpeechModels()
-        let settingsStore = UITestSettingsStore()
+        let retired: [AppSettingKey: String] = [.legacyWhisperKitCustomModel: "retired-custom-model",
+            .legacyWhisperKitModelRepo: "retired/repository", .legacyWhisperKitModelFolder: "/tmp/retired-model",
+            .legacyWhisperKitLanguage: "fr", .legacyWhisperKitDownloadIfNeeded: "false"]
+        let settingsStore = UITestSettingsStore(storage: retired)
         let credentialStore = UITestSecureCredentialStore()
         let harness = makeHarness(
             settingsStore: settingsStore,
@@ -793,12 +775,6 @@ extension AppModelTests {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        harness.model.legacyWhisperKitCustomModel = "retired-custom-model"
-        harness.model.legacyWhisperKitModelRepo = "retired/repository"
-        harness.model.legacyWhisperKitModelToken = "retired-token"
-        harness.model.legacyWhisperKitModelFolder = "/tmp/retired-model"
-        harness.model.legacyWhisperKitLanguage = "fr"
-        harness.model.legacyWhisperKitDownloadIfNeeded = false
 
         let activity = await settingsStore.activitySnapshot()
         let credentialActivity = await credentialStore.activitySnapshot()
@@ -814,7 +790,7 @@ extension AppModelTests {
             .legacyWhisperKitLanguage,
             .legacyWhisperKitDownloadIfNeeded,
         ] {
-            XCTAssertNil(activity.storage[key])
+            XCTAssertEqual(activity.storage[key], retired[key])
             XCTAssertNil(activity.setCounts[key])
         }
         XCTAssertNil(credentialActivity.storage[.legacyWhisperKitModelToken])
@@ -919,7 +895,7 @@ extension AppModelTests {
         )
         let payload = String(decoding: try JSONEncoder().encode([rule]), as: UTF8.self)
         let settingsStore = UITestSettingsStore(storage: [AppSettingKey(rawValue: "vocabulary.rules")!: payload])
-        let settings = try await AppModel.loadStoredAppSettings(from: settingsStore)
+        let settings = try await AppSettingsCodec.loadStoredAppSettings(from: settingsStore)
 
         let mirror = Mirror(reflecting: settings)
         let loadedRules = mirror.children.first { $0.label == "vocabularyRules" }?.value as? [VocabularyRule]
@@ -964,7 +940,7 @@ extension AppModelTests {
         XCTAssertEqual(AppSettingKey(rawValue: "vocabulary.rules")?.rawValue, "vocabulary.rules")
     }
 
-    func testLoadsPersistedWhisperKitModelSelection() async {
+    func testRetiredPresetMigratesToCatalogDefault() async {
         let settingsStore = UITestSettingsStore(
             storage: [
                 .localSpeechModel: "distil-whisper_distil-large-v3_594MB",
@@ -974,15 +950,14 @@ extension AppModelTests {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertEqual(harness.model.localSpeechModelOption, .distilLargeV3Compact)
-        XCTAssertEqual(harness.model.localSpeechModel, "distil-whisper_distil-large-v3_594MB")
+        XCTAssertEqual(harness.model.localSpeechModel, appModelTestTrustedLocalSpeechModels()[0].id)
     }
 
     func testLoadsPersistedDownloadedLocalSpeechModels() async throws {
         let payload = try XCTUnwrap(
             String(
                 data: JSONEncoder().encode([
-                    "openai_whisper-large-v3-v20240930",
+                    "qwen3-asr-0.6b-mlx-8bit",
                     "custom-downloaded-model",
                 ]),
                 encoding: .utf8
@@ -997,11 +972,11 @@ extension AppModelTests {
 
         XCTAssertEqual(
             harness.model.downloadedLocalSpeechModels,
-            ["custom-downloaded-model", "openai_whisper-large-v3-v20240930"]
+            ["qwen3-asr-0.6b-mlx-8bit"]
         )
     }
 
-    func testLoadsPersistedCustomWhisperKitModelSelection() async {
+    func testRetiredCustomModelMigratesToCatalogDefault() async {
         let settingsStore = UITestSettingsStore(
             storage: [
                 .localSpeechModel: "distil-whisper_distil-large-v3_turbo_600MB-custom",
@@ -1011,9 +986,7 @@ extension AppModelTests {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertEqual(harness.model.localSpeechModelOption, .custom)
-        XCTAssertEqual(harness.model.legacyWhisperKitCustomModel, "distil-whisper_distil-large-v3_turbo_600MB-custom")
-        XCTAssertEqual(harness.model.localSpeechModel, "distil-whisper_distil-large-v3_turbo_600MB-custom")
+        XCTAssertEqual(harness.model.localSpeechModel, appModelTestTrustedLocalSpeechModels()[0].id)
     }
 
     func testRetiredCloudSpeechPreferenceMigratesToLocal() async {
@@ -1266,60 +1239,7 @@ extension AppModelTests {
         XCTAssertTrue(harness.model.hasActiveOrQueuedVoiceRun)
     }
 
-    func testLoadingLocalSpeechSettingsLoadsRuntimeWithCoreMLPrewarmEnabled() async {
-        let warmupProbe = WhisperWarmupProbe()
-        let settingsStore = UITestSettingsStore(
-            storage: [
-                .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
-                .localSpeechModel: "openai_whisper-large-v3",
-                .localSpeechPrewarm: "true",
-            ]
-        )
-        let harness = makeHarness(
-            settingsStore: settingsStore,
-            warmLocalSpeechForCaptureAction: { settings, _ in
-                await warmupProbe.record(settings)
-                return settings.model
-            }
-        )
 
-        _ = harness
-        try? await Task.sleep(for: .milliseconds(260))
-
-        let warmedSettings = await warmupProbe.snapshot()
-        XCTAssertEqual(warmedSettings?.model, "openai_whisper-large-v3")
-        XCTAssertEqual(warmedSettings?.prewarm, true)
-    }
-
-    func testLoadingLocalSpeechSettingsLoadsRuntimeWithCoreMLPrewarmDisabled() async {
-        let warmupProbe = WhisperWarmupProbe()
-        let settingsStore = UITestSettingsStore(
-            storage: [
-                .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
-                .localSpeechModel: "openai_whisper-large-v3",
-                .localSpeechPrewarm: "false",
-            ]
-        )
-        let harness = makeHarness(
-            settingsStore: settingsStore,
-            warmLocalSpeechForCaptureAction: { settings, _ in
-                await warmupProbe.record(settings)
-                return settings.model
-            }
-        )
-
-        _ = harness
-        try? await Task.sleep(for: .milliseconds(260))
-
-        let loadedSettings = await warmupProbe.snapshot()
-        XCTAssertEqual(loadedSettings?.model, "openai_whisper-large-v3")
-        XCTAssertEqual(loadedSettings?.prewarm, false)
-        XCTAssertEqual(harness.model.localSpeechPreparationState, .ready)
-        XCTAssertEqual(
-            harness.model.localSpeechPreparedModelIdentifier,
-            "openai_whisper-large-v3"
-        )
-    }
 
     func testLoadsPersistedRecordPanelHotkeyBinding() async {
         let shortcut = KeyboardShortcut(keyCode: 8, modifiers: [.command, .shift])

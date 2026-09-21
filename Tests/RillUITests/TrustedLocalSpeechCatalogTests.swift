@@ -29,6 +29,13 @@ private actor EnabledSpeechModelPreparationProbe {
 
 @MainActor
 final class TrustedLocalSpeechCatalogTests: XCTestCase {
+  func testEmptyCatalogCannotEnableLocalSpeechThroughAnInjectedAvailabilityFlag() {
+    let harness = makeHarness(localSpeechTrustMaterialAvailable: true,
+      trustedLocalSpeechModels: [], defaultLocalSpeechModelIdentifier: nil)
+    XCTAssertFalse(harness.model.localSpeechTrustMaterialAvailable)
+    XCTAssertTrue(harness.model.workflowSelectableLocalSpeechModels.isEmpty)
+  }
+
   func testLocalSpeechTestWorkflowDerivesFromBuiltinRecognitionAndTargetsVoiceGroup() throws {
     let unrelated = makeDefaultWorkflow()
     let speechRecognition = WorkflowDefinition(
@@ -64,7 +71,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
   }
 
   func testTrustedCatalogIsTheOnlySelectableSurfaceAndPreparationClearsAmbientSourceState() async {
-    let probe = WhisperKitPrepareProbe()
+    let probe = SpeechPreparationProbe()
     let models = makeModels()
     let harness = makeHarness(
       trustedLocalSpeechModels: models,
@@ -86,9 +93,6 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
         : models[1].simplifiedChineseName
     )
 
-    harness.model.legacyWhisperKitModelRepo = "untrusted/repository"
-    harness.model.legacyWhisperKitModelToken = "secret-canary"
-    harness.model.legacyWhisperKitModelFolder = "/tmp/untrusted"
     harness.model.preferredSpeechEngine = .local
     harness.model.selectTrustedLocalSpeechModel(models[1].id)
     await waitUntil { harness.model.localSpeechPreparationState == .ready }
@@ -136,9 +140,9 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
       Set([models[1].id]),
       "The resident model pool owns startup loading; the legacy readiness path must not invent a completed download."
     )
-    XCTAssertEqual(harness.model.legacyWhisperKitModelRepo, "")
-    XCTAssertEqual(harness.model.legacyWhisperKitModelToken, "")
-    XCTAssertEqual(harness.model.legacyWhisperKitModelFolder, "")
+    XCTAssertEqual(harness.model.currentLocalSpeechSettings().modelRepo, "")
+    XCTAssertEqual(harness.model.currentLocalSpeechSettings().modelToken, "")
+    XCTAssertEqual(harness.model.currentLocalSpeechSettings().modelFolder, "")
     XCTAssertEqual(harness.model.currentLocalSpeechSettings().model, models[0].id)
     let activity = await settingsStore.activitySnapshot()
     XCTAssertEqual(activity.storage[.localSpeechModel], models[0].id)
@@ -292,13 +296,13 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     )
   }
 
-  func testV5ResidentModelPoolDoesNotRunLegacyWarmupProvider() async {
-    let probe = WhisperKitPrepareProbe()
+  func testSettingsChangesDoNotStartExplicitModelPreparation() async {
+    let probe = SpeechPreparationProbe()
     let models = makeModels()
     let harness = makeHarness(
       trustedLocalSpeechModels: models,
       defaultLocalSpeechModelIdentifier: models[0].id,
-      warmLocalSpeechForCaptureAction: { settings, _ in
+      prepareLocalSpeechAction: { settings, _ in
         await probe.recordPreparation(settings: settings)
         return "unreviewed-model"
       }
@@ -306,8 +310,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     harness.model.preferredSpeechEngine = .local
     harness.model.localSpeechPrewarm = true
 
-    harness.model.queueLocalSpeechReadinessIfNeeded()
-    try? await Task.sleep(for: .milliseconds(50))
+    await harness.model.waitForLocalSpeechPreparation()
 
     let snapshot = await probe.snapshot()
     XCTAssertEqual(snapshot.prepareCount, 0)

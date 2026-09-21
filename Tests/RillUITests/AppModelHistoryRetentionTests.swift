@@ -185,6 +185,12 @@ private final class ShutdownProjectionReadLatch: @unchecked Sendable {
 }
 
 private struct ShutdownProjectionHistoryRepository: HistoryRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func save(_ value: WorkflowResultRecord, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await (self as any HistoryRepository).save(value)
+    }
+
     let readLatch: ShutdownProjectionReadLatch
 
     func save(_ record: WorkflowResultRecord) async throws {}

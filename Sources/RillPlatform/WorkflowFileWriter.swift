@@ -28,6 +28,19 @@ actor WorkflowFileWriter {
         }
     }
 
+    func delete(at url: URL, expected: WorkflowFileExpectation, historyDirectory: URL) throws {
+        guard let previous = try existingSource(url) else { throw WorkflowFileConflict.changed }
+        switch expected {
+        case .missing: throw WorkflowFileConflict.changed
+        case .source(let source): guard previous == source else { throw WorkflowFileConflict.changed }
+        case .overwrite: break
+        }
+        try prepare(historyDirectory)
+        try replace(Data(previous.utf8), at: historyDirectory.appendingPathComponent("\(UUID().uuidString).toml"))
+        guard try existingSource(url) == previous else { throw WorkflowFileConflict.changed }
+        try FileManager.default.removeItem(at: url)
+    }
+
     func versions(in directory: URL) throws -> [WorkflowFileVersion] {
         guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
         let files = try FileManager.default.contentsOfDirectory(

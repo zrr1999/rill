@@ -497,7 +497,7 @@ final class RecordPanelControllerTests: XCTestCase {
             requestAccessibilityAction: {},
             requestMicrophoneAction: {},
             openAccessibilitySettingsAction: {},
-            openMicrophoneSettingsAction: {}
+            openMicrophoneSettingsAction: {}, requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {}
         )
     }
 

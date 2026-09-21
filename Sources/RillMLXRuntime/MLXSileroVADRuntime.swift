@@ -1,10 +1,10 @@
+import RillSpeechContracts
 import CryptoKit
 import Foundation
 import HuggingFace
 @preconcurrency import MLX
 import MLXAudioVAD
 @preconcurrency import MLXNN
-import RillProviders
 
 struct MLXSileroVADObservation: Sendable, Equatable {
   let activity: SpeechWorkerVADActivity

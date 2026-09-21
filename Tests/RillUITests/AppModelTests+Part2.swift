@@ -5,7 +5,7 @@ import XCTest
 
 @MainActor
 extension AppModelTests {
-    func testVoiceRunCompletionUpdatesLatestResultHistoryAndPersistence() async throws {
+    func testPersistedVoiceResultReloadsAndTerminalUpdatesPresentation() async throws {
         let historyRepository = InMemoryHistoryRepository()
         let voiceWorkflow = makeBuiltinPushToTalkWorkflow()
         let harness = makeHarness(workflows: [voiceWorkflow], historyRepository: historyRepository)
@@ -23,7 +23,7 @@ extension AppModelTests {
             )
         )
         await harness.eventBus.publish(
-            .recognitionCompleted(RecognitionResult(rawText: "draft voice", bestText: "draft voice"))
+            .recognitionCompleted(run: .init(runID: runID), result: RecognitionResult(rawText: "draft voice", bestText: "draft voice"))
         )
         await waitForEventProcessing(harness)
 
@@ -36,6 +36,14 @@ extension AppModelTests {
                 locale: "en-US"
             )
         )
+
+        let record = WorkflowResultRecord(
+            id: runID, runID: runID, workflowID: voiceWorkflow.id,
+            workflow: voiceWorkflow.presentation, finalText: "final voice", outcome: .completed,
+            correctionSource: correctionSource, trigger: .manual
+        )
+        try await historyRepository.save(record)
+        await harness.eventBus.publish(.runHistoryUpdated(.persisted(runID: runID)))
 
         await harness.eventBus.publish(
             .runCompleted(
@@ -188,6 +196,10 @@ extension AppModelTests {
                 )
             )
         )
+        await harness.eventBus.publish(.runHistoryUpdated(.sessionOnly(WorkflowResultRecord(
+            id: runID, runID: runID, workflowID: workflow.id, workflow: workflow.presentation,
+            finalText: "saved voice group text", isRecordRelated: true, outcome: .completed, trigger: .manual
+        ))))
         await harness.eventBus.publish(
             .runCompleted(
                 WorkflowRunSummary(
@@ -596,8 +608,29 @@ extension AppModelTests {
 
 
 
-    func testSelectingWhisperKitModelAutomaticallyPreparesIt() async {
-        let probe = WhisperKitPrepareProbe()
+    func testDeletingPartiallyMigratedWorkflowDoesNotResurrectOnReload() async throws {
+        let workflow = makeBuiltinPushToTalkWorkflow()
+        let document = WorkflowLibraryDocument(customWorkflows: [workflow])
+        let store = UITestSettingsStore(storage: [
+            .workflowLibrary: String(decoding: try JSONEncoder().encode(document), as: UTF8.self)
+        ])
+        let files = UITestWorkflowFileStore(rejectsSaves: true)
+        let harness = makeHarness(workflows: [], settingsStore: store, workflowFileStore: files,
+                                  settingsWriteDebounceDuration: .zero)
+        await harness.model.waitForInitialVoiceConfiguration()
+        XCTAssertFalse(harness.model.usesWorkflowFilesAsSource)
+        XCTAssertNotNil(harness.model.workflowFileURLsByID[workflow.id])
+        await harness.model.deleteCustomWorkflow(workflow)
+        await harness.model.flushPendingPersistenceWrites()
+        let remainingFiles = await files.records()
+        XCTAssertTrue(remainingFiles.isEmpty)
+        let reloaded = makeHarness(workflows: [], settingsStore: store, workflowFileStore: files)
+        await reloaded.model.waitForInitialVoiceConfiguration()
+        XCTAssertTrue(reloaded.model.customWorkflows.isEmpty)
+    }
+
+    func testSelectingTrustedModelAutomaticallyPreparesIt() async {
+        let probe = SpeechPreparationProbe()
         let harness = makeHarness(
             prepareLocalSpeechAction: { settings, progressCallback in
                 await probe.recordPreparation(settings: settings)
@@ -610,18 +643,18 @@ extension AppModelTests {
         )
 
         await harness.model.waitForInitialVoiceConfiguration()
-        harness.model.localSpeechModelOption = .distilLargeV3Compact
+        harness.model.selectTrustedLocalSpeechModel(appModelTestTrustedLocalSpeechModels()[1].id)
         await harness.model.waitForLocalSpeechPreparation()
 
         let snapshot = await probe.snapshot()
         XCTAssertEqual(snapshot.prepareCount, 1)
-        XCTAssertEqual(snapshot.lastSettings?.model, "distil-whisper_distil-large-v3_594MB")
+        XCTAssertEqual(snapshot.lastSettings?.model, appModelTestTrustedLocalSpeechModels()[1].id)
         XCTAssertEqual(snapshot.reportedProgress, [0.5])
-        XCTAssertEqual(harness.model.localSpeechModelOption, .distilLargeV3Compact)
+        XCTAssertEqual(harness.model.localSpeechModel, appModelTestTrustedLocalSpeechModels()[1].id)
         XCTAssertEqual(harness.model.localSpeechPreparationState, .ready)
         XCTAssertEqual(harness.model.localSpeechPreparationProgress, 1)
-        XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, "distil-whisper_distil-large-v3_594MB")
-        XCTAssertEqual(harness.model.downloadedLocalSpeechModels, ["distil-whisper_distil-large-v3_594MB"])
+        XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, appModelTestTrustedLocalSpeechModels()[1].id)
+        XCTAssertEqual(harness.model.downloadedLocalSpeechModels, [appModelTestTrustedLocalSpeechModels()[1].id])
         XCTAssertNil(harness.model.localSpeechPreparationError)
     }
 
@@ -1097,7 +1130,7 @@ extension AppModelTests {
         ]
         let data = try JSONEncoder().encode(workflows)
 
-        let loaded = try AppModel.loadCustomWorkflows(from: String(decoding: data, as: UTF8.self))
+        let loaded = try AppSettingsCodec.loadCustomWorkflows(from: String(decoding: data, as: UTF8.self))
 
         let legacyOnly = try XCTUnwrap(loaded.first(where: { $0.id == legacyOnlyID }))
         XCTAssertEqual(legacyOnly.pipeline.recognizerID, "local-speech")
@@ -1116,31 +1149,18 @@ extension AppModelTests {
         XCTAssertNil(bothKeys.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])
     }
 
-    func testPreparingCustomWhisperKitModelUsesTypedIdentifier() async {
-        let probe = WhisperKitPrepareProbe()
-        let harness = makeHarness(
-            prepareLocalSpeechAction: { settings, progressCallback in
-                await probe.recordPreparation(settings: settings)
-                let progress = Progress(totalUnitCount: 5)
-                progress.completedUnitCount = 3
-                progressCallback(progress)
-                await probe.recordProgress(progress)
-                return settings.model
-            }
-        )
-
+    func testUnsupportedModelSelectionCannotStartPreparation() async {
+        let probe = SpeechPreparationProbe()
+        let harness = makeHarness(prepareLocalSpeechAction: { settings, _ in
+            await probe.recordPreparation(settings: settings)
+            return settings.model
+        })
         await harness.model.waitForInitialVoiceConfiguration()
-        harness.model.localSpeechModelOption = .custom
-        harness.model.legacyWhisperKitCustomModel = "openai_whisper-large-v3-v20240930_turbo"
-        harness.model.prepareLocalSpeechModel()
+        harness.model.selectTrustedLocalSpeechModel("untrusted-custom-model")
         await harness.model.waitForLocalSpeechPreparation()
-
         let snapshot = await probe.snapshot()
-        XCTAssertEqual(snapshot.prepareCount, 1)
-        XCTAssertEqual(snapshot.lastSettings?.model, "openai_whisper-large-v3-v20240930_turbo")
-        XCTAssertEqual(snapshot.reportedProgress, [0.6])
-        XCTAssertEqual(harness.model.localSpeechPreparationState, .ready)
-        XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, "openai_whisper-large-v3-v20240930_turbo")
+        XCTAssertEqual(snapshot.prepareCount, 0)
+        XCTAssertEqual(harness.model.localSpeechModel, appModelTestTrustedLocalSpeechModels()[0].id)
     }
 
     func testRecordPanelRequestedOpensRecordPanel() async {

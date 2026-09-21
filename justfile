@@ -17,7 +17,7 @@ build product="RillApp":
 
 # Run the locked Swift test suite.
 test:
-    scripts/swift_locked.sh test --parallel
+    bash scripts/test.sh
 
 # Reproduce the complete local CI gate.
 ci:
@@ -43,3 +43,11 @@ cache-clean:
 # Assemble a local release artifact.
 release:
     bash scripts/release.sh
+
+# Export native UI render evidence for review.
+test-render:
+    RILL_UI_SNAPSHOT_DIR="$PWD/.artifacts/ui-renders" scripts/swift_locked.sh test --filter 'Render|UIRenderEvidence'
+
+# Exercise the large catalog fixture separately from the fast suite.
+test-stress:
+    RILL_RECORD_STRESS=1 scripts/swift_locked.sh test --filter RecordCatalogStressTests

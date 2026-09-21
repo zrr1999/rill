@@ -1,7 +1,7 @@
+import RillSpeechContracts
 import Darwin
 import Foundation
 import RillMLXRuntime
-import RillProviders
 
 @main
 enum RillSpeechWorkerMain {

@@ -1,3 +1,4 @@
+import RillSpeechContracts
 import Foundation
 
 /// Capture-side seam for worker-owned streaming preview and VAD events.

@@ -34,7 +34,7 @@ struct ScreenContextCaptureTests {
                 processIdentifier: focused.processIdentifier, focusedRole: nil, selectedText: "", secureInput: false)
             let start = ContinuousClock.now
             do {
-                let captured = try await BoundedOperation.run(timeout: .milliseconds(250)) {
+                let captured = try await BoundedOperation().run(timeout: .milliseconds(250)) {
                     try await ScreenContextCapture().capture(focus: focus,
                         excludingApplications: Set(PrivacyPolicySettings().sensitiveAppRules.filter(\.enabled).map(\.bundleIdentifier)))
                 }

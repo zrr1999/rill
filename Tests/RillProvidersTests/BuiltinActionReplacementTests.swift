@@ -85,7 +85,7 @@ private func makeContext() -> ActionContext {
             name: "Store Record",
             pipeline: PipelineDeclaration(
                 recognizerID: "test.recognizer",
-                outputActions: [OutputActionReference(id: BuiltinRecordActionID.store)]
+                outputActions: [OutputActionReference(id: RecordActionID.store)]
             ),
             ui: WorkflowUIConfig(symbolName: "tray.full", accentColorName: "blue")
         ),

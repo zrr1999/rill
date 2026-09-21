@@ -35,7 +35,7 @@ struct ContextMemoryControllerTests {
         let runID = UUID()
         let start = ContinuousClock.now
         do {
-            let preparation = try #require(try await BoundedOperation.run(timeout: .seconds(1)) {
+            let preparation = try #require(try await BoundedOperation().run(timeout: .seconds(1)) {
                 try await controller.prepare(runID: runID, workflow: workflow, context: .empty,
                     recognitionOptions: .init(), audioLifetime: AudioCaptureLifetime(runID: runID))
             })
@@ -68,7 +68,7 @@ struct ContextMemoryControllerTests {
             writeClipboardTextAction: { _ in }, deliverNextRecordAction: {},
             permissionSnapshot: .init(accessibility: .granted, microphone: .granted),
             refreshPermissionsAction: {}, requestAccessibilityAction: {}, requestMicrophoneAction: {},
-            openAccessibilitySettingsAction: {}, openMicrophoneSettingsAction: {})
+            openAccessibilitySettingsAction: {}, openMicrophoneSettingsAction: {}, requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {})
     }
 }
 

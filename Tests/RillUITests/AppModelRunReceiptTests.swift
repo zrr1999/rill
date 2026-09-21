@@ -4,6 +4,12 @@ import XCTest
 @testable import RillUI
 
 private actor SuspendedFirstRunReceiptRepository: WorkflowRunReceiptRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
+        try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+    }
+
     private var stored: [UUID: WorkflowRunReceipt] = [:]
     private var queryCount = 0
     private var firstSnapshotWasCaptured = false
@@ -50,6 +56,12 @@ private actor SuspendedFirstRunReceiptRepository: WorkflowRunReceiptRepository {
 }
 
 private actor SwitchableRunReceiptRepository: WorkflowRunReceiptRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
+        try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+    }
+
     enum QueryError: Error { case unavailable }
 
     private var receiptsByRunID: [UUID: WorkflowRunReceipt]
@@ -118,6 +130,12 @@ private actor SwitchableRunReceiptRepository: WorkflowRunReceiptRepository {
 }
 
 private actor SuspendedAcceptedInsertRunReceiptRepository: WorkflowRunReceiptRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
+        try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+    }
+
     enum QueryError: Error { case unavailable }
 
     private var receiptsByRunID: [UUID: WorkflowRunReceipt] = [:]
@@ -186,64 +204,6 @@ private actor SuspendedAcceptedInsertRunReceiptRepository: WorkflowRunReceiptRep
     func releaseInsert() {
         insertContinuation?.resume()
         insertContinuation = nil
-    }
-}
-
-private actor ClearInterleavingHistoryRepository: HistoryRepository {
-    private let rejectsObsoleteWrites: Bool
-    private var stored: [WorkflowResultRecord] = []
-    private var clearThrough: Date?
-    private var saveStarted = false
-    private var saveFinished = false
-    private var saveContinuation: CheckedContinuation<Void, Never>?
-
-    init(rejectsObsoleteWrites: Bool = true) {
-        self.rejectsObsoleteWrites = rejectsObsoleteWrites
-    }
-
-    func save(_ record: WorkflowResultRecord) async throws {
-        saveStarted = true
-        await withCheckedContinuation { continuation in
-            saveContinuation = continuation
-        }
-        defer { saveFinished = true }
-        guard !rejectsObsoleteWrites || clearThrough.map({ record.timestamp > $0 }) ?? true else {
-            throw HistoryRepositoryError.writeObsoletedByClearBarrier
-        }
-        stored.append(record)
-    }
-
-    func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
-        stored.sorted { $0.timestamp > $1.timestamp }
-    }
-
-    func deleteRecords(olderThan cutoff: Date) async throws -> Int {
-        let count = stored.count
-        stored.removeAll { $0.timestamp < cutoff }
-        return count - stored.count
-    }
-
-    func deleteRecords(through upperBound: Date) async throws -> Int {
-        let count = stored.count
-        stored.removeAll { $0.timestamp <= upperBound }
-        if clearThrough.map({ upperBound > $0 }) ?? true {
-            clearThrough = upperBound
-        }
-        return count - stored.count
-    }
-
-    func deleteAllRecords() async throws -> Int {
-        let count = stored.count
-        stored.removeAll()
-        return count
-    }
-
-    func didStartSave() -> Bool { saveStarted }
-    func didFinishSave() -> Bool { saveFinished }
-
-    func releaseSave() {
-        saveContinuation?.resume()
-        saveContinuation = nil
     }
 }
 
@@ -583,58 +543,7 @@ final class AppModelRunReceiptTests: XCTestCase {
         XCTAssertNil(harness.model.workflowRunReceipt(for: runID))
     }
 
-    func testClearBetweenReceiptChangeAndHistorySaveDoesNotLeaveHistoryOnlyRow() async throws {
-        let receiptRepository = InMemoryWorkflowRunReceiptRepository()
-        let historyRepository = ClearInterleavingHistoryRepository()
-        let harness = makeHarness(
-            historyRepository: historyRepository,
-            runReceiptRepository: receiptRepository
-        )
-        let receipt = try makeReceipt(
-            trigger: .hotkey,
-            timestamp: Date(timeIntervalSince1970: 10)
-        )
-        let receiptGeneration = try await receiptRepository.captureRunHistoryWriteGeneration()
-        try await receiptRepository.insertTerminal(receipt)
-        await harness.eventBus.publish(
-            repositoryChangeEvent(
-                for: receipt,
-                writeGeneration: receiptGeneration
-            )
-        )
-        let receiptLoaded = await waitUntil {
-            harness.model.workflowRunReceipt(for: receipt.runID) == receipt
-        }
-        XCTAssertTrue(receiptLoaded)
-
-        await harness.eventBus.publish(
-            .runCompleted(
-                WorkflowRunSummary(
-                    runID: receipt.runID,
-                    workflowID: receipt.workflowID ?? UUID(),
-                    workflow: WorkflowPresentation(fallbackName: "Late history"),
-                    trigger: receipt.trigger,
-                    finalText: "result",
-                    finishedAt: Date(timeIntervalSince1970: 30)
-                )
-            )
-        )
-        let saveStarted = await waitUntilAsync { await historyRepository.didStartSave() }
-        XCTAssertTrue(saveStarted)
-        let removedCount = try await historyRepository.deleteRecords(
-            through: Date(timeIntervalSince1970: 20)
-        )
-        XCTAssertEqual(removedCount, 0)
-        await historyRepository.releaseSave()
-        let saveFinished = await waitUntilAsync { await historyRepository.didFinishSave() }
-        XCTAssertTrue(saveFinished)
-
-        let storedHistory = try await historyRepository.records(matching: .all)
-        XCTAssertTrue(storedHistory.isEmpty)
-        XCTAssertFalse(harness.model.historyRecords.contains { $0.runID == receipt.runID })
-    }
-
-    func testClearAfterRepositoryChangeStillUsesTerminalTimestampForLateCompletion() async throws {
+    func testLateCompletionAfterClearDoesNotRecreateHistory() async throws {
         let historyRepository = InMemoryHistoryRepository()
         let receiptRepository = InMemoryWorkflowRunReceiptRepository()
         let maintenance = UITestLocalHistoryMaintenance(
@@ -680,10 +589,6 @@ final class AppModelRunReceiptTests: XCTestCase {
                 && harness.model.workflowRunReceipt(for: receipt.runID) == nil
         }
         XCTAssertTrue(maintenanceFinished)
-        XCTAssertEqual(
-            harness.model.terminalReceiptWriteGenerationByRunID[receipt.runID],
-            receiptGeneration
-        )
 
         await harness.eventBus.publish(
             .runCompleted(
@@ -702,46 +607,6 @@ final class AppModelRunReceiptTests: XCTestCase {
         let storedHistory = try await historyRepository.records(matching: .all)
         XCTAssertTrue(storedHistory.isEmpty)
         XCTAssertFalse(harness.model.historyRecords.contains { $0.runID == receipt.runID })
-    }
-
-    func testClearWaitsForTrackedHistoryWriteBeforeStartingMaintenance() async throws {
-        let historyRepository = ClearInterleavingHistoryRepository(
-            rejectsObsoleteWrites: false
-        )
-        let maintenance = UITestLocalHistoryMaintenance()
-        let harness = makeHarness(
-            historyRepository: historyRepository,
-            localHistoryMaintenance: maintenance
-        )
-        let runID = UUID()
-        for _ in 0..<20 { await Task.yield() }
-
-        await harness.eventBus.publish(
-            .runCompleted(
-                WorkflowRunSummary(
-                    runID: runID,
-                    workflowID: UUID(),
-                    workflow: WorkflowPresentation(fallbackName: "Delayed cache append"),
-                    trigger: .manual,
-                    finalText: "result"
-                )
-            )
-        )
-        let saveStarted = await waitUntilAsync { await historyRepository.didStartSave() }
-        XCTAssertTrue(saveStarted)
-
-        harness.model.clearRunHistory()
-        for _ in 0..<20 { await Task.yield() }
-        XCTAssertTrue(harness.model.isLocalHistoryMaintenanceRunning)
-        await historyRepository.releaseSave()
-        let saveFinished = await waitUntilAsync { await historyRepository.didFinishSave() }
-        XCTAssertTrue(saveFinished)
-        let maintenanceFinished = await waitUntil {
-            !harness.model.isLocalHistoryMaintenanceRunning
-        }
-        XCTAssertTrue(maintenanceFinished)
-
-        XCTAssertTrue(harness.model.historyRecords.contains { $0.runID == runID })
     }
 
     private func makeReceipt(

@@ -208,7 +208,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
   func testLocalSpeechSettingsSourceFailsClosedAndRecoversWithScalarDomain() async throws {
     let store = UITestSettingsStore(
-      storage: [.localSpeechModel: "recovered-local-model"],
+      storage: [.localSpeechModel: "qwen3-asr-1.7b-mlx-8bit"],
       unavailableKeys: [.localSpeechModel]
     )
     let source = LocalSpeechSettingsSource()
@@ -229,13 +229,13 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     }
 
     XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .localSpeech))
-    XCTAssertEqual(try source.currentSettings().model, "recovered-local-model")
+    XCTAssertEqual(try source.currentSettings().model, "qwen3-asr-1.7b-mlx-8bit")
   }
 
   func testLocalSpeechNewNamespaceWinsLegacyConflictWithoutMigrationWrite() async {
     let store = UITestSettingsStore(
       storage: [
-        .localSpeechModel: "new-model",
+        .localSpeechModel: "qwen3-asr-1.7b-mlx-8bit",
         .legacyWhisperKitModel: "legacy-model",
         .localSpeechPrewarm: "false",
         .legacyWhisperKitPrewarm: "true",
@@ -245,7 +245,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
     await waitUntil { !harness.model.isLoadingSettings }
 
-    XCTAssertEqual(harness.model.localSpeechModel, "new-model")
+    XCTAssertEqual(harness.model.localSpeechModel, "qwen3-asr-1.7b-mlx-8bit")
     XCTAssertFalse(harness.model.localSpeechPrewarm)
     let activity = await store.activitySnapshot()
     XCTAssertTrue(activity.atomicSnapshots.isEmpty)
@@ -267,12 +267,12 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await waitUntil { !harness.model.isLoadingSettings }
     await harness.model.flushPendingPersistenceWrites()
 
-    XCTAssertEqual(harness.model.localSpeechModel, "legacy-model")
-    XCTAssertEqual(harness.model.downloadedLocalSpeechModels, ["legacy-model"])
+    XCTAssertEqual(harness.model.localSpeechModel, "qwen3-asr-0.6b-mlx-8bit")
+    XCTAssertTrue(harness.model.downloadedLocalSpeechModels.isEmpty)
     XCTAssertTrue(harness.model.localSpeechPrewarm)
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.atomicWriteCount, 0)
-    XCTAssertEqual(activity.storage[.localSpeechModel], "legacy-model")
+    XCTAssertEqual(activity.storage[.localSpeechModel], "qwen3-asr-0.6b-mlx-8bit")
     XCTAssertEqual(activity.storage[.localSpeechDownloadedModels], downloadedModels)
     XCTAssertEqual(activity.storage[.localSpeechPrewarm], "true")
     XCTAssertEqual(activity.setCounts[.localSpeechModel], 1)
@@ -327,7 +327,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
   func testReadableNewLocalSpeechSettingIgnoresUnreadableLegacyValue() async {
     let store = UITestSettingsStore(
-      storage: [.localSpeechModel: "new-model"],
+      storage: [.localSpeechModel: "qwen3-asr-1.7b-mlx-8bit"],
       unavailableKeys: [.legacyWhisperKitModel]
     )
     let harness = makeHarness(settingsStore: store)
@@ -335,7 +335,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await waitUntil { !harness.model.isLoadingSettings }
 
     XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .localSpeech))
-    XCTAssertEqual(harness.model.localSpeechModel, "new-model")
+    XCTAssertEqual(harness.model.localSpeechModel, "qwen3-asr-1.7b-mlx-8bit")
     let activity = await store.activitySnapshot()
     XCTAssertTrue(activity.atomicSnapshots.isEmpty)
   }

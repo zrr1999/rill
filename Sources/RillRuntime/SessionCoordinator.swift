@@ -64,6 +64,7 @@ public actor SessionCoordinator {
     }
     private var runLaneOwner: UUID?
     private var runLaneWaiters: [RunLaneWaiter] = []
+    private let lane: WorkflowRunLane
     private let privacyContextProvider: @Sendable () async -> ContextSnapshot
     private let recognizerRegistry: SpeechRecognizerRegistry
     private let transformerRegistry: TextTransformerRegistry
@@ -87,23 +88,16 @@ public actor SessionCoordinator {
     private let defaultRecordDeliveryActionID: String
     private let processingClock: @Sendable () -> UInt64
 
-    private struct RunSession: Sendable {
-        let runID: UUID
-        let workflow: WorkflowDefinition
-        let trigger: WorkflowRunTriggerKind
-        let contextSnapshot: ContextSnapshot
-        let recognitionOptions: SpeechRecognitionRequestOptions
-        let resolvedPlan: ResolvedWorkflowPlan
-        let startedAt: Date
-        let receiptIsActive: Bool
-
-        var presentation: WorkflowPresentation {
-            workflow.presentation
-        }
+    private typealias RunSession = WorkflowRunSession
+    private var runDiagnostics: WorkflowRunDiagnostics { .init(diagnostics: diagnostics) }
+    private var textExecutor: WorkflowTextExecutor {
+        .init(transformerRegistry: transformerRegistry, runReceiptRecorder: runReceiptRecorder,
+              eventBus: eventBus, diagnostics: diagnostics, lane: lane, processingClock: processingClock)
     }
 
     public init(
         contextProvider _: any ContextProvider,
+        lane: WorkflowRunLane = .primary,
         privacyContextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
         recognizerRegistry: SpeechRecognizerRegistry,
         transformerRegistry: TextTransformerRegistry,
@@ -127,6 +121,7 @@ public actor SessionCoordinator {
         defaultRecordDeliveryActionID: String = "system-clipboard.copy",
         processingClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
     ) {
+        self.lane = lane
         self.privacyContextProvider = privacyContextProvider
         self.recognizerRegistry = recognizerRegistry
         self.transformerRegistry = transformerRegistry
@@ -251,71 +246,6 @@ private extension SessionCoordinator.State {
 
 public extension SessionCoordinator {
     /// Pure configuration check: no context capture, authorization, provider calls, or outputs.
-    func validateWorkflowDocument(_ workflow: WorkflowDefinition) async throws {
-        let collections = workflow.plan.setup.vocabularyBindings.isEmpty ? [] : try await vocabularyCollectionProvider()
-        _ = try workflowPlanCompiler.compile(workflow: workflow, collections: collections, context: VocabularyRuleContext(contextSnapshot: .empty, recordCollectionID: nil))
-    }
-
-    /// Runs an authorized text-only draft without outputs, receipts, or lifecycle events.
-    func testProcess(
-        text: String,
-        stopAfter: UUID? = nil,
-        fixedSamples: [UUID: String] = [:],
-        authorizedContext: AuthorizedWorkflowRunContext
-    ) async throws -> [WorkflowTestStepResult] {
-        try await authorizedContext.consume()
-        let workflow = authorizedContext.workflow
-        guard case .capture = authorizedContext.invocation,
-              workflow.plan.output.actions.isEmpty,
-              workflow.plan.setup.speechRoute == nil else {
-            throw WorkflowDocumentError("test", "A test requires a text-only workflow with no outputs.")
-        }
-        let snapshot = authorizedContext.contextSnapshot
-        let collections = workflow.plan.setup.vocabularyBindings.isEmpty
-            ? [] : try await vocabularyCollectionProvider()
-        let plan = try workflowPlanCompiler.compile(
-            workflow: workflow, collections: collections,
-            context: VocabularyRuleContext(contextSnapshot: snapshot, recordCollectionID: workflow.legacyTargetRecordCollectionID),
-            input: .text, allowEmptyOutput: true
-        )
-        let recognition = RecognitionResult(rawText: text, bestText: text)
-        let context = TransformContext(runID: UUID(), workflow: workflow, contextSnapshot: snapshot, recognitionResult: recognition)
-        var current = text
-        var results: [WorkflowTestStepResult] = []
-        var pending = Array(plan.declaration.process.steps.reversed())
-        while let step = pending.popLast() {
-            try Task.checkCancellation()
-            let input = current
-            var branch: Bool?
-            do {
-                switch step.kind {
-                case .recognizeSpeech, .resolveUncertainty: continue
-                case .conditional:
-                    guard let condition = step.condition else { throw WorkflowDocumentError("condition", "Missing condition.") }
-                    let selected = try condition.evaluate(text: current, context: snapshot)
-                    branch = selected
-                    pending.append(contentsOf: (selected ? step.thenSteps ?? [] : step.elseSteps ?? []).reversed())
-                case .applyVocabulary:
-                    current = VocabularyRuleApplicator.apply(text: current, rules: plan.replacementRules).text
-                case .snippetReplacement, .llmRewrite, .llmAnswer, .normalizeWhitespace:
-                    if let sample = fixedSamples[step.id] { current = sample }
-                    else if let postProcess = step.postProcessStep,
-                            let transformer = transformerRegistry.transformer(for: postProcess.kind) {
-                        current = try await transformer.transform(text: current, step: postProcess, context: context)
-                    } else { throw WorkflowDocumentError("process", "The step provider is unavailable.") }
-                }
-                try Task.checkCancellation()
-                results.append(WorkflowTestStepResult(id: step.id, kind: step.kind, input: input, output: current, branch: branch))
-            } catch is CancellationError { throw CancellationError() }
-            catch {
-                results.append(WorkflowTestStepResult(id: step.id, kind: step.kind, input: input, output: current, error: error.localizedDescription))
-                return results
-            }
-            if step.id == stopAfter { break }
-        }
-        return results
-    }
-
     func run(
         runID providedRunID: UUID? = nil,
         triggerEvent: WorkflowTriggerEvent? = nil,
@@ -447,7 +377,8 @@ public extension SessionCoordinator {
             let busyReceiptRegistration = await beginRunReceipt(
                 runID: runID,
                 workflowID: workflow.id,
-                trigger: effectiveReceiptTrigger
+                trigger: effectiveReceiptTrigger,
+            historyWorkflow: workflow
             )
             let busyReceiptIsActive = busyReceiptRegistration == .active
             if busyReceiptRegistration != .duplicate {
@@ -475,7 +406,8 @@ public extension SessionCoordinator {
         let receiptRegistration = await beginRunReceipt(
             runID: runID,
             workflowID: workflow.id,
-            trigger: effectiveReceiptTrigger
+            trigger: effectiveReceiptTrigger,
+            historyWorkflow: workflow
         )
         if receiptRegistration == .duplicate {
             contextPreparation?.cancel()
@@ -574,10 +506,10 @@ public extension SessionCoordinator {
             }
             let frozenContext = Result { try contextPreparation?.freeze(transcript: recognition.bestText) }
             if preRecognizedText == nil {
-                try await finishProcessReceipt(session, result: .completed, durationMilliseconds: recognitionDurationMilliseconds)
+                try await textExecutor.finishProcessReceipt(session, result: .completed, durationMilliseconds: recognitionDurationMilliseconds)
             }
-            await eventBus.publish(.recognitionCompleted(recognition))
-            var processingSteps = [await recordTextStep(
+            await eventBus.publish(.recognitionCompleted(run: .init(runID: runID, lane: lane), result: recognition))
+            var processingSteps = [await textExecutor.recordTextStep(
                 kind: .recognizeSpeech, text: recognition.bestText,
                 durationMilliseconds: recognitionDurationMilliseconds, in: session
             )]
@@ -585,7 +517,7 @@ public extension SessionCoordinator {
             failureStage = .resolving
             let resolvedRecognition = await resolveIfNeeded(recognition, in: session)
             if session.resolvedPlan.declaration.process.steps.contains(where: { $0.kind == .resolveUncertainty }) {
-                processingSteps.append(await recordTextStep(
+                processingSteps.append(await textExecutor.recordTextStep(
                     kind: .resolveUncertainty,
                     text: resolvedRecognition.bestText,
                     previousText: recognition.bestText,
@@ -593,7 +525,7 @@ public extension SessionCoordinator {
                 ))
             }
             failureStage = .transforming
-            let transformation = try await transformText(
+            let transformation = try await textExecutor.transformText(
                 from: resolvedRecognition,
                 in: session,
                 initialSteps: processingSteps,
@@ -618,6 +550,10 @@ public extension SessionCoordinator {
                     : transformation.languageModelTraces,
                 processingSteps: transformation.processingSteps,
                 references: transformation.references
+            )
+            await runReceiptRecorder?.recordResult(
+                runID: runID, finalText: finalText, correctionSource: correctionSource,
+                historyUpdate: contextPreparation?.historyUpdate
             )
             failureStage = .delivering
             let deliverySummary = try await deliver(
@@ -664,7 +600,7 @@ public extension SessionCoordinator {
                     code: code
                 )
             )
-            await recordStage(.failed, runID: runID, workflow: failedWorkflow)
+            await runDiagnostics.recordStage(.failed, runID: runID, workflow: failedWorkflow)
             let failure = WorkflowRunFailureSummary(
                 runID: runID,
                 stage: failureStage,
@@ -777,7 +713,8 @@ public extension SessionCoordinator {
         let receiptRegistration = await beginRunReceipt(
             runID: runID,
             workflowID: workflow.id,
-            trigger: .recordDelivery
+            trigger: .recordDelivery,
+            historyWorkflow: workflow
         )
         if receiptRegistration == .duplicate {
             await publishFailure(
@@ -864,7 +801,7 @@ public extension SessionCoordinator {
                 )
                 return .blocked
             }
-            await recordStage(.delivering, runID: runID, workflow: recordDeliveryWorkflow)
+            await runDiagnostics.recordStage(.delivering, runID: runID, workflow: recordDeliveryWorkflow)
             do {
                 if receiptIsActive, let runReceiptRecorder {
                     try await runReceiptRecorder.beginAction(runID: runID, actionIndex: 0)
@@ -879,8 +816,8 @@ public extension SessionCoordinator {
                     result: .storedRecord,
                     receiptIsActive: receiptIsActive
                 )
-                await eventBus.publish(.actionExecuted(actionID: selectedActionID, result: .storedRecord))
-                await recordAction(
+                await eventBus.publish(.actionExecuted(run: .init(runID: runID, lane: lane), actionID: selectedActionID, result: .storedRecord))
+                await runDiagnostics.recordAction(
                     runID: runID,
                     workflow: workflow.presentation,
                     actionID: selectedActionID,
@@ -896,6 +833,7 @@ public extension SessionCoordinator {
                     .runCompleted(
                         WorkflowRunSummary(
                             runID: runID,
+                    lane: lane,
                             workflowID: workflow.id,
                             workflow: workflow.presentation,
                             trigger: .recordDelivery,
@@ -903,7 +841,7 @@ public extension SessionCoordinator {
                         )
                     )
                 )
-                await recordStage(.completed, runID: runID, workflow: workflow.presentation)
+                await runDiagnostics.recordStage(.completed, runID: runID, workflow: workflow.presentation)
             } catch {
                 await finishRecordedAction(
                     runID: runID,
@@ -917,7 +855,7 @@ public extension SessionCoordinator {
                     isActive: receiptIsActive,
                     termination: .failed(stage: .delivering, code: .processing)
                 )
-                await recordStage(.failed, runID: runID, workflow: workflow.presentation)
+                await runDiagnostics.recordStage(.failed, runID: runID, workflow: workflow.presentation)
                 await publishFailure(
                     runID: runID,
                     workflow: workflow.presentation,
@@ -927,11 +865,11 @@ public extension SessionCoordinator {
             return .blocked
         }
         state = .delivering(runID)
-        await recordStage(.delivering, runID: runID, workflow: recordDeliveryWorkflow)
+        await runDiagnostics.recordStage(.delivering, runID: runID, workflow: recordDeliveryWorkflow)
 
         guard let action = actionRegistry.action(for: selectedActionID) else {
             try? await recordDeliveryCoordinator.failDelivery(lease.id)
-            await recordStage(.failed, runID: runID, workflow: recordDeliveryWorkflow)
+            await runDiagnostics.recordStage(.failed, runID: runID, workflow: recordDeliveryWorkflow)
             await finishRunReceipt(
                 runID: runID,
                 isActive: receiptIsActive,
@@ -954,7 +892,7 @@ public extension SessionCoordinator {
                 isActive: receiptIsActive,
                 termination: .failed(stage: .delivering, code: .processing)
             )
-            await recordStage(.failed, runID: runID, workflow: workflow.presentation)
+            await runDiagnostics.recordStage(.failed, runID: runID, workflow: workflow.presentation)
             await publishFailure(
                 runID: runID,
                 workflow: workflow.presentation,
@@ -1022,7 +960,7 @@ public extension SessionCoordinator {
                     isActive: receiptIsActive,
                     termination: .partiallyCompleted(code: .processing)
                 )
-                await recordStage(.failed, runID: runID, workflow: workflow.presentation)
+                await runDiagnostics.recordStage(.failed, runID: runID, workflow: workflow.presentation)
                 await publishFailure(
                     runID: runID,
                     workflow: workflow.presentation,
@@ -1039,7 +977,7 @@ public extension SessionCoordinator {
                     isActive: receiptIsActive,
                     termination: .partiallyCompleted(code: .processing)
                 )
-                await recordStage(.failed, runID: runID, workflow: workflow.presentation)
+                await runDiagnostics.recordStage(.failed, runID: runID, workflow: workflow.presentation)
                 await publishFailure(
                     runID: runID,
                     workflow: workflow.presentation,
@@ -1056,6 +994,7 @@ public extension SessionCoordinator {
                 .runCompleted(
                     WorkflowRunSummary(
                         runID: runID,
+                    lane: lane,
                         workflowID: workflow.id,
                         workflow: workflow.presentation,
                         trigger: .recordDelivery,
@@ -1063,7 +1002,7 @@ public extension SessionCoordinator {
                     )
                 )
             )
-            await recordStage(.completed, runID: runID, workflow: workflow.presentation)
+            await runDiagnostics.recordStage(.completed, runID: runID, workflow: workflow.presentation)
             state = .idle
             return deliverySummary.successfulActionCount > 0 ? (deliverySink == .systemClipboard ? .copied : .delivered) : .blocked
         } catch {
@@ -1091,7 +1030,7 @@ public extension SessionCoordinator {
                 )
             )
             try? await recordDeliveryCoordinator.failDelivery(lease.id)
-            await recordStage(.failed, runID: runID, workflow: workflow.presentation)
+            await runDiagnostics.recordStage(.failed, runID: runID, workflow: workflow.presentation)
             await publishFailure(runID: runID, workflow: workflow.presentation, message: error.localizedDescription)
             state = .idle
         }
@@ -1147,7 +1086,8 @@ private extension SessionCoordinator {
         let receiptRegistration = await beginRunReceipt(
             runID: runID,
             workflowID: workflow.id,
-            trigger: trigger
+            trigger: trigger,
+            historyWorkflow: workflow
         )
         if receiptRegistration == .duplicate {
             await publishFailure(
@@ -1188,14 +1128,16 @@ private extension SessionCoordinator {
     func beginRunReceipt(
         runID: UUID,
         workflowID: UUID?,
-        trigger: WorkflowRunTriggerKind
+        trigger: WorkflowRunTriggerKind,
+        historyWorkflow: WorkflowDefinition? = nil
     ) async -> RunReceiptRegistration {
         guard let runReceiptRecorder else { return .inactive }
         do {
             try await runReceiptRecorder.begin(
                 runID: runID,
                 workflowID: workflowID,
-                trigger: trigger
+                trigger: trigger,
+                historyWorkflow: historyWorkflow
             )
             return .active
         } catch let error as WorkflowRunReceiptRecorderError {
@@ -1352,8 +1294,8 @@ private extension SessionCoordinator {
                 result: WorkflowActionResultCode(result),
                 receiptIsActive: receiptIsActive
             )
-            await eventBus.publish(.actionExecuted(actionID: actionID, result: result))
-            await recordAction(
+            await eventBus.publish(.actionExecuted(run: .init(runID: runID, lane: lane), actionID: actionID, result: result))
+            await runDiagnostics.recordAction(
                 runID: runID,
                 workflow: workflow,
                 actionID: actionID,
@@ -1375,7 +1317,7 @@ private extension SessionCoordinator {
                 result: .failed,
                 receiptIsActive: receiptIsActive
             )
-            await recordAction(
+            await runDiagnostics.recordAction(
                 runID: runID,
                 workflow: workflow,
                 actionID: actionID,
@@ -1390,8 +1332,8 @@ private extension SessionCoordinator {
             result: WorkflowActionResultCode(result),
             receiptIsActive: receiptIsActive
         )
-        await eventBus.publish(.actionExecuted(actionID: actionID, result: result))
-        await recordAction(
+        await eventBus.publish(.actionExecuted(run: .init(runID: runID, lane: lane), actionID: actionID, result: result))
+        await runDiagnostics.recordAction(
             runID: runID,
             workflow: workflow,
             actionID: actionID,
@@ -1480,91 +1422,13 @@ private extension SessionCoordinator {
         await eventBus.publish(.runCancelled(summary))
     }
 
-    private func recordStage(
-        _ stage: WorkflowRunStage,
-        runID: UUID,
-        workflow: WorkflowPresentation,
-        metadata: [String: String] = [:]
-    ) async {
-        guard let diagnostics else { return }
-        await diagnostics.record(
-            DiagnosticEvent(
-                runID: runID,
-                subsystem: .session,
-                level: .debug,
-                event: "session.stage",
-                message: "Workflow entered the \(stage.rawValue) stage.",
-                metadata: [
-                    "stage": stage.rawValue,
-                    "workflow": workflow.fallbackName,
-                ].merging(metadata) { _, new in new }
-            )
-        )
-    }
 
-    private func recordTransformStep(
-        runID: UUID,
-        workflow: WorkflowPresentation,
-        step: PostProcessStep,
-        transformerID: String
-    ) async {
-        guard let diagnostics else { return }
-        await diagnostics.record(
-            DiagnosticEvent(
-                runID: runID,
-                subsystem: .session,
-                level: .debug,
-                event: "session.transform.step",
-                message: "Applied post-process step \(step.kind.rawValue).",
-                metadata: [
-                    "workflow": workflow.fallbackName,
-                    "stepID": step.id.uuidString,
-                    "stepKind": step.kind.rawValue,
-                    "transformerID": transformerID,
-                ]
-            )
-        )
-    }
 
-    private func recordAction(
-        runID: UUID,
-        workflow: WorkflowPresentation,
-        actionID: String,
-        result: ActionResult
-    ) async {
-        guard let diagnostics else { return }
-        await diagnostics.record(
-            DiagnosticEvent(
-                runID: runID,
-                subsystem: .session,
-                level: .debug,
-                event: "session.action",
-                message: "Executed output action \(actionID).",
-                metadata: [
-                    "workflow": workflow.fallbackName,
-                    "actionID": actionID,
-                    "resultCode": diagnosticResultCode(for: result),
-                ]
-            )
-        )
-    }
 
-    private func diagnosticResultCode(for result: ActionResult) -> String {
-        switch result {
-        case .injected:
-            return "injected"
-        case .copiedToClipboard:
-            return "copiedToClipboard"
-        case .storedRecord:
-            return "storedRecord"
-        case .externalOutput:
-            return "externalOutput"
-        case .skipped:
-            return "skipped"
-        case .failed:
-            return "failed"
-        }
-    }
+
+
+
+
 
     private func startRunSession(
         for workflow: WorkflowDefinition,
@@ -1572,7 +1436,7 @@ private extension SessionCoordinator {
         trigger: WorkflowRunTriggerKind,
         contextSnapshot: ContextSnapshot,
         recognitionOptions providedRecognitionOptions: SpeechRecognitionRequestOptions? = nil,
-        compilationInput: WorkflowPlanInput? = nil,
+        compilationInput: WorkflowInputKind? = nil,
         receiptIsActive: Bool
     ) async throws -> RunSession {
         let startedAt = Date()
@@ -1581,6 +1445,7 @@ private extension SessionCoordinator {
             .runStarted(
                 RunSnapshot(
                     runID: runID,
+                    lane: lane,
                     workflowID: workflow.id,
                     workflow: workflow.presentation,
                     trigger: trigger,
@@ -1588,7 +1453,7 @@ private extension SessionCoordinator {
                 )
             )
         )
-        await recordStage(
+        await runDiagnostics.recordStage(
             .preparing,
             runID: runID,
             workflow: workflow.presentation,
@@ -1598,7 +1463,7 @@ private extension SessionCoordinator {
             ]
         )
 
-        await eventBus.publish(.contextCaptured(contextSnapshot))
+        await eventBus.publish(.contextCaptured(run: .init(runID: runID, lane: lane), snapshot: contextSnapshot))
         var recognitionOptions: SpeechRecognitionRequestOptions
         if let providedRecognitionOptions {
             recognitionOptions = providedRecognitionOptions
@@ -1664,7 +1529,7 @@ private extension SessionCoordinator {
             )
         }
 
-        await recordStage(
+        await runDiagnostics.recordStage(
             .recognizing,
             runID: session.runID,
             workflow: session.presentation,
@@ -1707,12 +1572,12 @@ private extension SessionCoordinator {
             guard !recognition.bestText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw SessionError.noSpeech
             }
-            return (recognition, processingDurationMilliseconds(since: startedAt))
+            return (recognition, textExecutor.processingDurationMilliseconds(since: startedAt))
         } catch {
-            let durationMilliseconds = processingDurationMilliseconds(since: startedAt)
+            let durationMilliseconds = textExecutor.processingDurationMilliseconds(since: startedAt)
             let result: WorkflowStepResultCode = error is CancellationError ? .cancelled : .failed
-            try? await finishProcessReceipt(session, result: result, durationMilliseconds: durationMilliseconds)
-            _ = await recordTextStep(
+            try? await textExecutor.finishProcessReceipt(session, result: result, durationMilliseconds: durationMilliseconds)
+            _ = await textExecutor.recordTextStep(
                 kind: .recognizeSpeech, result: result,
                 durationMilliseconds: durationMilliseconds, in: session
             )
@@ -1765,7 +1630,7 @@ private extension SessionCoordinator {
         }
 
         state = .resolving(session.runID)
-        await recordStage(
+        await runDiagnostics.recordStage(
             .resolving,
             runID: session.runID,
             workflow: session.presentation,
@@ -1778,259 +1643,20 @@ private extension SessionCoordinator {
         )
         let outcome = await candidateResolver.resolve(resolutionCase)
         await eventBus.publish(
-            .candidateResolutionFinished(caseID: resolutionCase.id, resolvedText: outcome.result.bestText)
+            .candidateResolutionFinished(run: .init(runID: session.runID, lane: lane), caseID: resolutionCase.id, resolvedText: outcome.result.bestText)
         )
         return outcome.result
     }
 
-    private func transformText(
-        from recognition: RecognitionResult,
-        in session: RunSession,
-        initialSteps: [WorkflowTextStep],
-        correctionContext: RunContextPreparation.Frozen? = nil,
-        allowsSpeechTextFallback: Bool = false
-    ) async throws -> TextTransformationResult {
-        var finalText = recognition.bestText
-        var references = correctionContext?.receipt
-        var languageModelInputTexts: [String] = []
-        var languageModelTraces: [LanguageModelTrace] = []
-        var processingSteps = initialSteps
-        var didRecordTransformStage = false
-        var pendingSteps = Array(session.resolvedPlan.declaration.process.steps.reversed())
-        while let processStep = pendingSteps.popLast() {
-            try Task.checkCancellation()
-            if processStep.kind == .recognizeSpeech || processStep.kind == .resolveUncertainty { continue }
-            let inputText = finalText
-            var processingStartedAt: UInt64?
-            var durationMilliseconds: UInt64?
-            if session.receiptIsActive, let runReceiptRecorder,
-               let index = session.resolvedPlan.declaration.process.allSteps.firstIndex(where: { $0.id == processStep.id }) {
-                try await runReceiptRecorder.beginStep(runID: session.runID, stepIndex: index, kind: processStep.kind)
-            }
-            do {
-            switch processStep.kind {
-            case .conditional:
-                guard let condition = processStep.condition else {
-                    throw WorkflowDocumentError("process", "An if step is missing its condition.")
-                }
-                let selected = try condition.evaluate(text: finalText, context: session.contextSnapshot)
-                pendingSteps.append(contentsOf: (selected ? processStep.thenSteps ?? [] : processStep.elseSteps ?? []).reversed())
-                try await finishProcessReceipt(session, result: selected ? .thenBranch : .elseBranch)
-                processingSteps.append(await recordTextStep(
-                    kind: .conditional, result: selected ? .thenBranch : .elseBranch, in: session
-                ))
-                continue
-            case .recognizeSpeech, .resolveUncertainty:
-                continue
-            case .applyVocabulary:
-                let result = VocabularyRuleApplicator.apply(
-                    text: finalText,
-                    rules: session.resolvedPlan.replacementRules
-                )
-                finalText = result.text
-                if result.changed || !result.issues.isEmpty {
-                    if !didRecordTransformStage {
-                        await recordStage(
-                            .transforming,
-                            runID: session.runID,
-                            workflow: session.presentation,
-                            metadata: [
-                                "stepCount": String(
-                                    session.resolvedPlan.declaration.process.steps.count
-                                ),
-                                "vocabularyApplicationCount": String(result.applications.count),
-                                "vocabularyIssueCount": String(result.issues.count),
-                            ]
-                        )
-                        didRecordTransformStage = true
-                    }
-                    await recordVocabularyApplication(result, in: session)
-                }
-                try await finishProcessReceipt(session, result: .completed)
-                processingSteps.append(await recordTextStep(
-                    kind: processStep.kind, text: finalText, previousText: inputText, in: session
-                ))
-                continue
-            case .snippetReplacement, .llmRewrite, .llmAnswer, .normalizeWhitespace:
-                break
-            }
-            guard let step = processStep.postProcessStep else { continue }
-            if !didRecordTransformStage {
-                await recordStage(
-                    .transforming,
-                    runID: session.runID,
-                    workflow: session.presentation,
-                    metadata: [
-                        "stepCount": String(
-                            session.resolvedPlan.declaration.process.steps.count
-                        ),
-                    ]
-                )
-                didRecordTransformStage = true
-            }
-            guard let transformer = transformerRegistry.transformer(for: step.kind) else {
-                throw SessionError.missingTransformer(step.kind)
-            }
-            if step.kind == .llmRewrite || step.kind == .llmAnswer {
-                languageModelInputTexts.append(finalText)
-            }
-            var tokenUsage: LanguageModelTokenUsage?
-            do {
-                var correctionRequest = step.kind == .llmRewrite ? correctionContext?.request : nil
-                // References stay frozen; explicit candidate choices and local vocabulary still update the transcript.
-                correctionRequest?.transcript = finalText
-                let context = TransformContext(
-                    runID: session.runID,
-                    workflow: session.workflow,
-                    contextSnapshot: session.contextSnapshot,
-                    recognitionResult: recognition,
-                    correctionRequest: correctionRequest
-                )
-                processingStartedAt = processingClock()
-                if let tracedTransformer = transformer as? any TracedTextTransformer,
-                   step.kind == .llmRewrite || step.kind == .llmAnswer {
-                    let result = try await tracedTransformer.transformWithTrace(
-                        text: finalText,
-                        step: step,
-                        context: context
-                    )
-                    finalText = result.text
-                    if let request = correctionContext?.request {
-                        if request.referenceImage != nil { references?.image = .sent }
-                        if request.imageSummary != nil { references?.imageSummary = .sent }
-                        if request.memorySummary != nil { references?.memorySummary = .sent }
-                    }
-                    languageModelTraces.append(result.trace)
-                    tokenUsage = result.trace.tokenUsage
-                } else {
-                    finalText = try await transformer.transform(
-                        text: finalText,
-                        step: step,
-                        context: context
-                    )
-                }
-                durationMilliseconds = processingStartedAt.flatMap(processingDurationMilliseconds)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as any SpeechTextFallbackEligibleError
-                where allowsSpeechTextFallback
-                    && step.kind == .llmRewrite
-                    && error.allowsSpeechTextFallback
-            {
-                durationMilliseconds = processingStartedAt.flatMap(processingDurationMilliseconds)
-                if let request = correctionContext?.request {
-                    if request.referenceImage != nil { references?.image = .deliveryUnconfirmed }
-                    if request.imageSummary != nil { references?.imageSummary = .deliveryUnconfirmed }
-                    if request.memorySummary != nil { references?.memorySummary = .deliveryUnconfirmed }
-                }
-                await recordSpeechTextTransformFallback(
-                    runID: session.runID,
-                    workflow: session.presentation,
-                    step: step,
-                    transformerID: transformer.id
-                )
-                try await finishProcessReceipt(session, result: .skipped, durationMilliseconds: durationMilliseconds)
-                processingSteps.append(await recordTextStep(
-                    kind: processStep.kind, result: .skipped,
-                    text: finalText, previousText: inputText,
-                    durationMilliseconds: durationMilliseconds, in: session
-                ))
-                continue
-            }
-            try Task.checkCancellation()
-            await eventBus.publish(.transformationApplied(stepID: step.id, text: finalText))
-            await recordTransformStep(
-                runID: session.runID,
-                workflow: session.presentation,
-                step: step,
-                transformerID: transformer.id
-            )
-            try await finishProcessReceipt(session, result: .completed, durationMilliseconds: durationMilliseconds)
-            processingSteps.append(await recordTextStep(
-                kind: processStep.kind, text: finalText, previousText: inputText,
-                tokenUsage: tokenUsage, durationMilliseconds: durationMilliseconds, in: session
-            ))
-            } catch {
-                durationMilliseconds = durationMilliseconds ?? processingStartedAt.flatMap(processingDurationMilliseconds)
-                try? await finishProcessReceipt(
-                    session, result: error is CancellationError ? .cancelled : .failed,
-                    durationMilliseconds: durationMilliseconds
-                )
-                _ = await recordTextStep(
-                    kind: processStep.kind,
-                    result: error is CancellationError ? .cancelled : .failed,
-                    durationMilliseconds: durationMilliseconds,
-                    in: session
-                )
-                throw error
-            }
-        }
 
-        return TextTransformationResult(
-            finalText: finalText,
-            languageModelInputTexts: languageModelInputTexts,
-            languageModelTraces: languageModelTraces,
-            processingSteps: processingSteps,
-            references: references
-        )
-    }
 
-    private func recordTextStep(
-        kind: WorkflowProcessStepKind,
-        result: WorkflowStepResultCode = .completed,
-        text: String? = nil,
-        previousText: String? = nil,
-        tokenUsage: LanguageModelTokenUsage? = nil,
-        durationMilliseconds: UInt64? = nil,
-        in session: RunSession
-    ) async -> WorkflowTextStep {
-        let step = WorkflowTextStep(
-            kind: kind, result: result, outputText: text,
-            didChange: previousText.map { $0 != text }, tokenUsage: tokenUsage,
-            durationMilliseconds: durationMilliseconds
-        )
-        await eventBus.publish(.runTextStepRecorded(runID: session.runID, step: step))
-        return step
-    }
 
-    private func processingDurationMilliseconds(since startedAt: UInt64) -> UInt64? {
-        let finishedAt = processingClock()
-        guard finishedAt >= startedAt else { return nil }
-        return (finishedAt - startedAt) / 1_000_000
-    }
 
-    private func finishProcessReceipt(
-        _ session: RunSession, result: WorkflowStepResultCode,
-        durationMilliseconds: UInt64? = nil
-    ) async throws {
-        guard session.receiptIsActive, let runReceiptRecorder else { return }
-        try await runReceiptRecorder.finishStep(runID: session.runID, result: result, durationMilliseconds: durationMilliseconds)
-    }
 
-    private func recordSpeechTextTransformFallback(
-        runID: UUID,
-        workflow: WorkflowPresentation,
-        step: PostProcessStep,
-        transformerID: String
-    ) async {
-        guard let diagnostics else { return }
-        await diagnostics.record(
-            DiagnosticEvent(
-                runID: runID,
-                subsystem: .session,
-                level: .warning,
-                event: "session.transform.fallback",
-                message: "A recoverable speech-text transform failed; recognized text was retained.",
-                metadata: [
-                    "workflow": workflow.fallbackName,
-                    "stepKind": step.kind.rawValue,
-                    "transformerID": transformerID,
-                    "outcome": "preserved",
-                    "reason": "request-failed",
-                ]
-            )
-        )
-    }
+
+
+
+
 
     private func vocabularyContext(in session: RunSession) -> VocabularyRuleContext {
         VocabularyRuleContext(
@@ -2041,28 +1667,7 @@ private extension SessionCoordinator {
         )
     }
 
-    private func recordVocabularyApplication(
-        _ result: VocabularyApplicationResult,
-        in session: RunSession
-    ) async {
-        guard let diagnostics else { return }
-        let replacementCount = result.applications.reduce(0) { $0 + $1.matchCount }
-        await diagnostics.record(
-            DiagnosticEvent(
-                runID: session.runID,
-                subsystem: .session,
-                level: result.issues.isEmpty ? .debug : .warning,
-                event: "session.vocabulary.applied",
-                message: "Applied vocabulary mappings to recognized text.",
-                metadata: [
-                    "workflow": session.presentation.fallbackName,
-                    "applicationCount": String(result.applications.count),
-                    "replacementCount": String(replacementCount),
-                    "issueCount": String(result.issues.count),
-                ]
-            )
-        )
-    }
+
 
     private func recordUnsupportedRecognitionHints(
         count: Int,
@@ -2124,13 +1729,13 @@ private extension SessionCoordinator {
         let deliveryMetadata = [
             "actionCount": String(session.resolvedPlan.declaration.output.actions.count),
         ]
-        await recordStage(
+        await runDiagnostics.recordStage(
             .delivering,
             runID: session.runID,
             workflow: session.presentation,
             metadata: deliveryMetadata
         )
-        let actionContext = ActionContext(
+        var actionContext = ActionContext(
             runID: session.runID,
             workflow: session.workflow,
             contextSnapshot: session.contextSnapshot,
@@ -2147,6 +1752,7 @@ private extension SessionCoordinator {
             guard let action = actionRegistry.action(for: reference.id) else {
                 throw SessionError.missingAction(reference.id)
             }
+            actionContext.actionConfiguration = session.resolvedPlan.outputConfigurations[actionIndex]
             let result: ActionResult
             do {
                 try Task.checkCancellation()
@@ -2208,6 +1814,7 @@ private extension SessionCoordinator {
     ) async -> WorkflowRunSummary {
         let summary = WorkflowRunSummary(
             runID: session.runID,
+                    lane: lane,
             workflowID: session.workflow.id,
             workflow: session.presentation,
             trigger: session.trigger,
@@ -2218,7 +1825,7 @@ private extension SessionCoordinator {
         await eventBus.publish(
             .runCompleted(summary)
         )
-        await recordStage(
+        await runDiagnostics.recordStage(
             .completed,
             runID: session.runID,
             workflow: session.presentation,
@@ -2229,13 +1836,7 @@ private extension SessionCoordinator {
     }
 }
 
-private struct TextTransformationResult: Sendable, Equatable {
-    let finalText: String
-    let languageModelInputTexts: [String]
-    let languageModelTraces: [LanguageModelTrace]
-    let processingSteps: [WorkflowTextStep]
-    var references: CorrectionReferenceReceipt? = nil
-}
+
 
 private enum RunReceiptRegistration: Sendable, Equatable {
     case active

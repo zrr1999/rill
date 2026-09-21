@@ -251,58 +251,11 @@ public enum WakeWordSettingsUpdateResult: Sendable, Equatable {
 @MainActor
 @Observable
 public final class AppModel {
-  static let vocabularyRulesSettingKey = AppSettingKey(rawValue: "vocabulary.rules")!
-  static let vocabularyLibrarySettingKey = AppSettingKey.vocabularyLibrary
-  static let workflowLibrarySettingKey = AppSettingKey.workflowLibrary
+  static let vocabularyRulesSettingKey = AppSettingsCodec.vocabularyRulesSettingKey
+  static let vocabularyLibrarySettingKey = AppSettingsCodec.vocabularyLibrarySettingKey
+  static let workflowLibrarySettingKey = AppSettingsCodec.workflowLibrarySettingKey
 
-  static let settingsLoadKeys: [AppSettingKey] = [
-    .interfaceLanguage,
-    .customWorkflows,
-    workflowLibrarySettingKey,
-    .workflowEnabledStates,
-    .systemClipboardCaptureEnabled,
-    .legacyClipboardCaptureEnabled,
-    .recordMergeSimilar,
-    .legacyClipboardMergeSimilarItems,
-    .recordHistoryVisibility,
-    .legacyClipboardHistoryVisibility,
-    .recordPanelHotkey,
-    .legacyClipboardPanelHotkey,
-    .preferredSpeechEngine,
-    .localSpeechModel,
-    .localSpeechDownloadedModels,
-    .localSpeechPrewarm,
-    .enabledSpeechModels,
-    .residentSpeechModels,
-    .residentSpeechBudgetConfirmation,
-    .speechModelMeasuredPeaks,
-    .ttsModel,
-    .legacyWhisperKitModel,
-    .legacyWhisperKitDownloadedModels,
-    .legacyWhisperKitCustomModel,
-    .legacyWhisperKitModelRepo,
-    .legacyWhisperKitModelFolder,
-    .legacyWhisperKitLanguage,
-    .legacyWhisperKitDownloadIfNeeded,
-    .legacyWhisperKitPrewarm,
-    .openAIBaseURL,
-    .openAIModel,
-    vocabularyRulesSettingKey,
-    vocabularyLibrarySettingKey,
-    .privacySensitiveAppRules,
-    .privacyCloudConfirmationRequired,
-    .privacyCloudProcessingAuthorizations,
-    .privacyHistoryPreviewMode,
-    .privacySecureInputConservativeMode,
-    .recordRetentionPeriod,
-    .legacyClipboardHistoryRetentionPeriod,
-    .runHistoryRetentionPeriod,
-    .failedAudioRecoveryEnabled,
-    .benchmarkRecordingArchiveEnabled,
-    .builtinPushToTalkOutputMode,
-    .longRecordingModeEnabled,
-    .recordingDurationLimit,
-  ]
+  static let settingsLoadKeys = AppSettingsCodec.settingsLoadKeys
 
   static let debouncedStringSettingKeys: Set<AppSettingKey> = [
     .localSpeechModel,
@@ -323,27 +276,46 @@ public final class AppModel {
     .normalizeWhitespace
   ]
 
-  public internal(set) var builtInWorkflows: [WorkflowDefinition]
-  public internal(set) var customWorkflows: [WorkflowDefinition] = []
-  public internal(set) var workflows: [WorkflowDefinition]
-  public internal(set) var workflowLibraryAvailability: StoredSettingsDomainAvailability =
-    .available
-  public internal(set) var workflowTriggerConflicts: [WorkflowTriggerConflict] = []
-  public internal(set) var workflowConflictIDsByWorkflowID: [UUID: [UUID]] = [:]
+  public internal(set) var builtInWorkflows: [WorkflowDefinition] {
+    get { workflowLibrary.builtInWorkflows }
+    set { workflowLibrary.builtInWorkflows = newValue }
+  }
+  public internal(set) var customWorkflows: [WorkflowDefinition] {
+    get { workflowLibrary.customWorkflows }
+    set { workflowLibrary.customWorkflows = newValue }
+  }
+  public internal(set) var workflows: [WorkflowDefinition] {
+    get { workflowLibrary.workflows }
+    set { workflowLibrary.workflows = newValue }
+  }
+  public internal(set) var workflowLibraryAvailability: StoredSettingsDomainAvailability {
+    get { workflowLibrary.workflowLibraryAvailability }
+    set { workflowLibrary.workflowLibraryAvailability = newValue }
+  }
+  public internal(set) var workflowTriggerConflicts: [WorkflowTriggerConflict] {
+    get { workflowLibrary.workflowTriggerConflicts }
+    set { workflowLibrary.workflowTriggerConflicts = newValue }
+  }
+  public internal(set) var workflowConflictIDsByWorkflowID: [UUID: [UUID]] {
+    get { workflowLibrary.workflowConflictIDsByWorkflowID }
+    set { workflowLibrary.workflowConflictIDsByWorkflowID = newValue }
+  }
   public var workflowConfigurationDirectoryURL: URL? {
     workflowFileStore?.configurationDirectoryURL
   }
   public let localPersistenceStatus: LocalPersistenceStatus
   public internal(set) var selectedSidebarSection: SidebarSection = .stream
   public let recordWorkspace: RecordWorkspaceModel
-  public var runHistoryScope: RunHistoryScope = .recentRuns {
-    didSet {
-      guard oldValue != runHistoryScope else { return }
-      resetRunHistoryBrowsing()
-    }
+  public let history: RunHistoryModel
+  public var runHistoryScope: RunHistoryScope {
+    get { history.runHistoryScope }
+    set { history.runHistoryScope = newValue }
   }
   internal var settingsNavigationRequest: SettingsNavigationRequest?
-  internal var historyNavigationRequest: HistoryNavigationRequest?
+  internal var historyNavigationRequest: HistoryNavigationRequest? {
+    get { history.historyNavigationRequest }
+    set { history.historyNavigationRequest = newValue }
+  }
   internal var workflowEditorNavigationRequest: WorkflowEditorNavigationRequest?
   public var language: AppLanguage { didSet { handleLanguageChange(from: oldValue) } }
   public var systemClipboardCaptureEnabled: Bool {
@@ -365,28 +337,7 @@ public final class AppModel {
   public var recordingDurationLimit: RecordingDurationLimit {
     didSet { handleRecordingDurationLimitChange(from: oldValue) }
   }
-  public var localSpeechModelOption: LegacyWhisperModelOption {
-    didSet { handleLegacyWhisperModelOptionChange(from: oldValue) }
-  }
-  public var legacyWhisperKitCustomModel: String {
-    didSet { handleLegacyWhisperCustomModelChange(from: oldValue) }
-  }
   public var localSpeechModel: String { didSet { handleLocalSpeechModelChange(from: oldValue) } }
-  public var legacyWhisperKitModelRepo: String {
-    didSet { handleLegacyWhisperModelRepoChange(from: oldValue) }
-  }
-  public var legacyWhisperKitModelToken: String {
-    didSet { handleLegacyWhisperModelTokenChange(from: oldValue) }
-  }
-  public var legacyWhisperKitModelFolder: String {
-    didSet { handleLegacyWhisperModelFolderChange(from: oldValue) }
-  }
-  public var legacyWhisperKitLanguage: String {
-    didSet { handleLegacyWhisperLanguageChange(from: oldValue) }
-  }
-  public var legacyWhisperKitDownloadIfNeeded: Bool {
-    didSet { handleLegacyWhisperDownloadIfNeededChange(from: oldValue) }
-  }
   public var localSpeechPrewarm: Bool { didSet { handleLocalSpeechPrewarmChange(from: oldValue) } }
   public var enabledSpeechModelIDs: Set<String> {
     didSet { handleEnabledSpeechModelIDsChange(from: oldValue) }
@@ -400,7 +351,9 @@ public final class AppModel {
   public internal(set) var measuredSpeechModelPeakByteCounts: [String: UInt64] = [:]
   public internal(set) var pendingResidentSpeechModelIDs: Set<String>?
   public internal(set) var speechModelPoolDegradedByMemoryPressure = false
-  public internal(set) var settingsSaveState: SettingsSaveState = .saved
+  public let workflowLibrary: WorkflowLibraryModel
+  public let settings: SettingsPersistenceModel
+  public var settingsSaveState: SettingsSaveState { settings.saveState }
   public internal(set) var unavailableScalarSettingKeys: Set<AppSettingKey> = []
   public internal(set) var retryingUnavailableScalarSettingsDomains: Set<ScalarSettingsDomain> = []
   public var openAIAPIKey: String { didSet {
@@ -424,8 +377,15 @@ public final class AppModel {
     OpenAIConfigurationVerificationState = .idle
   public internal(set) var openAIVerificationFailure: OpenAIVerificationFailure?
   public var contextMemory: ContextMemoryModel?
-  public var isRunning = false
-  public internal(set) var isLoadingSettings = true
+  public let voice = VoiceRunModel()
+  public var isRunning: Bool {
+    get { voice.isRunning }
+    set { voice.isRunning = newValue }
+  }
+  public internal(set) var isLoadingSettings: Bool {
+    get { settings.isLoading }
+    set { settings.isLoading = newValue }
+  }
   public internal(set) var isRetryingUnavailableSettingsDomains = false
   var workflowAudioRunState: WorkflowAudioRunState = .idle
   public internal(set) var localSpeechPreparationState: LocalSpeechPreparationState = .idle
@@ -444,7 +404,10 @@ public final class AppModel {
   public let defaultLocalSpeechModelIdentifier: String?
   public let localSpeechPhysicalMemoryGiB: Int
   public var workflowEditorError: String?
-  public var workflowLibraryError: String?
+  public var workflowLibraryError: String? {
+    get { workflowLibrary.workflowLibraryError }
+    set { workflowLibrary.workflowLibraryError = newValue }
+  }
   public internal(set) var wakeWordResourceState: VoiceAssistantResourceState = .notInstalled
   public internal(set) var wakeWordRuntimeState: WakeWordRuntimePresentationState = .disabled
   public let ttsModelOptions: [TTSModelOption]
@@ -479,38 +442,51 @@ public final class AppModel {
   public var isSystemClipboardCaptureControlTransitioning: Bool {
     systemClipboardCaptureControlSnapshot.state.isTransitioning
   }
-  public var lastCompletedText: String?
+  public var lastCompletedText: String? {
+    get { voice.lastCompletedText }
+    set { voice.lastCompletedText = newValue }
+  }
   public var lastFailure: String?
   public var eventFeed: [EventFeedEntry] = []
   public internal(set) var diagnosticEvents: [DiagnosticEvent] = []
   public internal(set) var diagnosticsLoadState: DiagnosticsLoadState = .loading
-  public internal(set) var vocabularyRules: [VocabularyRule] = [] {
-    didSet {
-      if !isApplyingVocabularyLibrary {
-        let migration = VocabularyLegacyMigrator.migrate(vocabularyRules)
-        vocabularyCollections = migration.collections
-        vocabularyCollectionBindings = migration.bindings
-        vocabularyRuleSource.updateCollections(vocabularyCollections)
-        rebuildWorkflowLibrary()
-      }
-      guard oldValue != vocabularyRules else { return }
-      guard !isApplyingVocabularyLibrary else { return }
-      persistVocabularyLibrary()
+  public let vocabulary: VocabularyLibraryModel
+  public internal(set) var vocabularyRules: [VocabularyRule] {
+    get { vocabulary.vocabularyRules }
+    set {
+      let changed = newValue != vocabulary.vocabularyRules
+      vocabulary.setLegacyRules(newValue)
+      guard !vocabulary.isApplying else { return }
+      rebuildWorkflowLibrary()
+      if changed { persistVocabularyLibrary() }
     }
   }
-  public internal(set) var vocabularyCollections: [VocabularyCollection] = [.personal()]
-  public internal(set) var vocabularyCollectionBindings: [VocabularyCollectionBinding] = [
-    VocabularyCollectionBinding(collectionID: VocabularyCollection.personalID),
-  ]
-  public internal(set) var workflowCustomizations: [WorkflowCustomization] = []
-  public internal(set) var vocabularyRulesAvailability: StoredSettingsDomainAvailability =
-    .available
-  public internal(set) var vocabularyRulesError: String?
+  public internal(set) var vocabularyCollections: [VocabularyCollection] {
+    get { vocabulary.vocabularyCollections }
+    set { vocabulary.vocabularyCollections = newValue }
+  }
+  public internal(set) var vocabularyCollectionBindings: [VocabularyCollectionBinding] {
+    get { vocabulary.vocabularyCollectionBindings }
+    set { vocabulary.vocabularyCollectionBindings = newValue }
+  }
+  public internal(set) var workflowCustomizations: [WorkflowCustomization] {
+    get { workflowLibrary.workflowCustomizations }
+    set { workflowLibrary.workflowCustomizations = newValue }
+  }
+  public internal(set) var vocabularyRulesAvailability: StoredSettingsDomainAvailability {
+    get { vocabulary.availability }
+    set { vocabulary.availability = newValue }
+  }
+  public internal(set) var vocabularyRulesError: String? {
+    get { vocabulary.error }
+    set { vocabulary.error = newValue }
+  }
   public internal(set) var privacyPolicySettings: PrivacyPolicySettings = .defaults {
     didSet {
       guard oldValue != privacyPolicySettings else { return }
       if !isLoadingPrivacySettings { contextMemory?.invalidateAuthorization() }
       invalidateWorkflowExplanation()
+      history.previewMode = privacyPolicySettings.historyPreviewMode
       if oldValue.historyPreviewMode != privacyPolicySettings.historyPreviewMode {
         resetRunHistoryBrowsingForPrivacyChange()
       }
@@ -527,6 +503,7 @@ public final class AppModel {
   public internal(set) var recordRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
   public internal(set) var runHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod {
     didSet {
+      history.runHistoryRetentionPeriod = runHistoryRetentionPeriod
       guard oldValue != runHistoryRetentionPeriod else { return }
       resetRunHistoryBrowsing()
     }
@@ -539,15 +516,42 @@ public final class AppModel {
   public internal(set) var localHistoryMaintenanceBlockedReason: String?
   public internal(set) var lastLocalHistoryRemovedCount = 0
   public internal(set) var lastPreservedActiveRecordCount = 0
-  public internal(set) var historyLoadState: HistoryLoadState = .loaded
-  public internal(set) var historyRecords: [WorkflowResultRecord] = []
-  public internal(set) var runHistoryBrowseLoadState: HistoryLoadState = .loaded
-  public internal(set) var runHistoryPage: RunHistoryPage?
-  public internal(set) var isRunHistoryPageTransitioning = false
-  public internal(set) var runHistoryPaginationFailed = false
-  public internal(set) var runHistoryHasNewerEntries = false
-  public internal(set) var runHistoryDeepLinkState: RunHistoryDeepLinkState = .idle
-  public internal(set) var workflowRunReceiptsByRunID: [UUID: WorkflowRunReceipt] = [:]
+  public internal(set) var historyLoadState: HistoryLoadState {
+    get { history.historyLoadState }
+    set { history.historyLoadState = newValue }
+  }
+  public internal(set) var historyRecords: [WorkflowResultRecord] {
+    get { history.historyRecords }
+    set { history.historyRecords = newValue }
+  }
+  public internal(set) var runHistoryBrowseLoadState: HistoryLoadState {
+    get { history.runHistoryBrowseLoadState }
+    set { history.runHistoryBrowseLoadState = newValue }
+  }
+  public internal(set) var runHistoryPage: RunHistoryPage? {
+    get { history.runHistoryPage }
+    set { history.runHistoryPage = newValue }
+  }
+  public internal(set) var isRunHistoryPageTransitioning: Bool {
+    get { history.isRunHistoryPageTransitioning }
+    set { history.isRunHistoryPageTransitioning = newValue }
+  }
+  public internal(set) var runHistoryPaginationFailed: Bool {
+    get { history.runHistoryPaginationFailed }
+    set { history.runHistoryPaginationFailed = newValue }
+  }
+  public internal(set) var runHistoryHasNewerEntries: Bool {
+    get { history.runHistoryHasNewerEntries }
+    set { history.runHistoryHasNewerEntries = newValue }
+  }
+  public internal(set) var runHistoryDeepLinkState: RunHistoryDeepLinkState {
+    get { history.runHistoryDeepLinkState }
+    set { history.runHistoryDeepLinkState = newValue }
+  }
+  public internal(set) var workflowRunReceiptsByRunID: [UUID: WorkflowRunReceipt] {
+    get { history.workflowRunReceiptsByRunID }
+    set { history.workflowRunReceiptsByRunID = newValue }
+  }
   public internal(set) var failedAudioRecoveryReceipts: [FailedAudioRecoveryReceipt] = []
   public internal(set) var failedAudioRecoveryEnabled = false
   public internal(set) var isUpdatingFailedAudioRecovery = false
@@ -686,11 +690,6 @@ public final class AppModel {
   var waitForLiveSubtitleMeterRefresh: @Sendable (Duration) async throws -> Void = { duration in
     try await Task.sleep(for: duration)
   }
-  let warmLocalSpeechForCaptureAction:
-    @Sendable (
-      LocalSpeechSettings,
-      @escaping @Sendable (Progress) -> Void
-    ) async throws -> String
   let prepareLocalSpeechAction:
     @Sendable (
       LocalSpeechSettings,
@@ -733,15 +732,15 @@ public final class AppModel {
   let requestMicrophoneAction: () -> Void
   let openAccessibilitySettingsAction: () -> Void
   let openMicrophoneSettingsAction: () -> Void
-  var requestGlobalInputAction: () -> Void = {}
-  var retryGlobalInputAction: () -> Void = {}
+  let requestGlobalInputAction: () -> Void
+  let retryGlobalInputAction: () -> Void
   var beginRecordPanelShortcutRecordingAction: () -> UUID = { UUID() }
   var endRecordPanelShortcutRecordingAction: (UUID) -> Void = { _ in }
   var commitRecordPanelShortcutRecordingAction: (UUID, UInt16) -> Void = { _, _ in }
   var showRecordPanelAction: () -> Void = {}
   var setSystemClipboardCaptureEnabledAction: (Bool, UInt64) -> Void = { _, _ in }
   var ignoreNextExternalClipboardChangeAction: () -> Void = {}
-  var workflowLibraryChangedAction: @MainActor () -> Void = {}
+  let workflowLibraryChangedAction: @MainActor () -> Void
   var prepareWakeWordModelAction:
     @Sendable (@escaping @Sendable (Double) -> Void) async throws -> String = { _ in
       throw NSError(
@@ -777,12 +776,6 @@ public final class AppModel {
   var updateRecordPanelHotkeyAction: (HotkeyBindingDescriptor) -> Void = { _ in }
   var updateLiveSubtitlePanelAction: @MainActor (LiveSubtitleSnapshot?, AppLanguage) -> Void = {
     _, _ in
-  }
-
-  public func installWorkflowLibraryChangedAction(
-    _ action: @escaping @MainActor () -> Void
-  ) {
-    workflowLibraryChangedAction = action
   }
 
   public func installVoiceAssistantResourceActions(
@@ -837,7 +830,7 @@ public final class AppModel {
   public func updateSpeechPlaybackState(isActive: Bool) {
     isSpeechPlaybackActive = isActive
   }
-  var pendingRuns: [UUID: PendingRunInfo] = [:]
+  var pendingRuns: [UUID: RunSnapshot] { voice.runs }
   var pendingInteractiveWorkflowTask: Task<Void, Never>?
   var interactiveWorkflowTaskGeneration = 0
   var workflowAudioActionTasks: [UUID: Task<Void, Never>] = [:]
@@ -845,24 +838,49 @@ public final class AppModel {
   var eventListenerBarrierContinuations: [UUID: CheckedContinuation<Void, Never>] = [:]
   var eventListenerShutdownTask: Task<Void, Never>?
   var hasStoppedEventListener = false
-  var activeRunID: UUID?
-  var workflowEnabledStates: [UUID: Bool] = [:]
+  var activeRunID: UUID? {
+    get { voice.activeRunID }
+    set { voice.activeRunID = newValue }
+  }
+  var workflowEnabledStates: [UUID: Bool] {
+    get { workflowLibrary.workflowEnabledStates }
+    set { workflowLibrary.workflowEnabledStates = newValue }
+  }
   public internal(set) var isUpdatingWorkflowEnabledStates = false
-  var workflowFileURLsByID: [UUID: URL] = [:]
-  var workflowFileSourcesByID: [UUID: String] = [:]
-  public internal(set) var workflowFileIssues: [WorkflowFileIssue] = []
-  var invalidWorkflowFileIDs: Set<UUID> = []
+  var workflowFileURLsByID: [UUID: URL] {
+    get { workflowLibrary.workflowFileURLsByID }
+    set { workflowLibrary.workflowFileURLsByID = newValue }
+  }
+  var workflowFileSourcesByID: [UUID: String] {
+    get { workflowLibrary.workflowFileSourcesByID }
+    set { workflowLibrary.workflowFileSourcesByID = newValue }
+  }
+  public internal(set) var workflowFileIssues: [WorkflowFileIssue] {
+    get { workflowLibrary.workflowFileIssues }
+    set { workflowLibrary.workflowFileIssues = newValue }
+  }
+  var invalidWorkflowFileIDs: Set<UUID> {
+    get { workflowLibrary.invalidWorkflowFileIDs }
+    set { workflowLibrary.invalidWorkflowFileIDs = newValue }
+  }
   @ObservationIgnored var workflowFileMonitorTask: Task<Void, Never>?
-  var workflowFileLoadGeneration = 0
-  var usesWorkflowFilesAsSource = false
-  var hasModifiedWorkflowLibrary = false
+  var workflowFileLoadGeneration: Int {
+    get { workflowLibrary.workflowFileLoadGeneration }
+    set { workflowLibrary.workflowFileLoadGeneration = newValue }
+  }
+  var usesWorkflowFilesAsSource: Bool {
+    get { workflowLibrary.usesWorkflowFilesAsSource }
+    set { workflowLibrary.usesWorkflowFilesAsSource = newValue }
+  }
+  var hasModifiedWorkflowLibrary: Bool {
+    get { workflowLibrary.hasModifiedWorkflowLibrary }
+    set { workflowLibrary.hasModifiedWorkflowLibrary = newValue }
+  }
   var isRestoringSettings = false
   /// Keys changed by the user after the initial snapshot read started but
   /// before it was applied. The older snapshot must not overwrite them.
   var settingsKeysModifiedDuringInitialLoad: Set<AppSettingKey> = []
-  let persistenceWrites = PersistenceWriteCoordinator()
-  var failedSettingsStoreWrites: [AppSettingKey: RetryableSettingsStoreWrite] = [:]
-  var retryingSettingsStoreWriteKeys: Set<AppSettingKey> = []
+  var persistenceWrites: PersistenceWriteCoordinator { settings.writes }
   var settingsLoadGeneration = 0
   var unavailableSettingsDomainRetryGeneration = 0
   var scalarSettingsRetryGenerations: [ScalarSettingsDomain: Int] = [:]
@@ -877,13 +895,22 @@ public final class AppModel {
   var historyLoadGeneration = 0
   var runReceiptLoadGeneration = 0
   var historyProjectionLoadTasks: [UUID: Task<Void, Never>] = [:]
-  var runHistoryBrowseTask: Task<Void, Never>?
-  var runHistoryBrowseGeneration = 0
-  var runHistoryCurrentPageLocator: RunHistoryPageLocator?
-  var runHistoryNewerPageLocators: [RunHistoryPageLocator] = []
-  var terminalReceiptTimestampByRunID: [UUID: Date] = [:]
-  var terminalReceiptWriteGenerationByRunID: [UUID: RunHistoryWriteGeneration] = [:]
-  var terminalReceiptTimestampOrder: [UUID] = []
+  var runHistoryBrowseTask: Task<Void, Never>? {
+    get { history.runHistoryBrowseTask }
+    set { history.runHistoryBrowseTask = newValue }
+  }
+  var runHistoryBrowseGeneration: Int {
+    get { history.runHistoryBrowseGeneration }
+    set { history.runHistoryBrowseGeneration = newValue }
+  }
+  var runHistoryCurrentPageLocator: RunHistoryPageLocator? {
+    get { history.runHistoryCurrentPageLocator }
+    set { history.runHistoryCurrentPageLocator = newValue }
+  }
+  var runHistoryNewerPageLocators: [RunHistoryPageLocator] {
+    get { history.runHistoryNewerPageLocators }
+    set { history.runHistoryNewerPageLocators = newValue }
+  }
   var historyRetentionRerunRequested = false
   var historyRetentionSettingsLoadError: String?
   var historyRetentionSettingsWriteError: String?
@@ -893,7 +920,6 @@ public final class AppModel {
   var localHistoryMaintenanceTasks: [UUID: Task<Void, Never>] = [:]
   var periodicHistoryRetentionMaintenanceTask: Task<Void, Never>?
   var diagnosticsLoadGeneration = 0
-  var localSpeechReadinessGeneration = 0
   var localSpeechPreparationGeneration = 0
   let localSpeechPreparationTaskOwner = LocalSpeechPreparationTaskOwner()
   var residentSpeechModelSynchronizationTask: Task<Void, Never>?
@@ -909,12 +935,16 @@ public final class AppModel {
   var hasBegunApplicationShutdown = false {
     didSet {
       guard hasBegunApplicationShutdown, !oldValue else { return }
+      history.hasBegunApplicationShutdown = true
       cancelPendingLiveSubtitleMeterRefresh()
     }
   }
   let workflowExplanationTaskOwner = WorkflowExplanationTaskOwner()
   var workflowExplanationGeneration = 0
-  var isApplyingVocabularyLibrary = false
+  var isApplyingVocabularyLibrary: Bool {
+    get { vocabulary.isApplying }
+    set { vocabulary.isApplying = newValue }
+  }
   let liveSubtitlePreparingHideDelay: Duration
 
   public init(
@@ -951,13 +981,6 @@ public final class AppModel {
     localSpeechPhysicalMemoryGiB: Int = Int(
       ProcessInfo.processInfo.physicalMemory / 1_073_741_824
     ),
-    warmLocalSpeechForCaptureAction:
-      @escaping @Sendable (
-        LocalSpeechSettings,
-        @escaping @Sendable (Progress) -> Void
-      ) async throws -> String = { settings, _ in
-        settings.model
-      },
     prepareLocalSpeechAction:
       @escaping @Sendable (
         LocalSpeechSettings,
@@ -1061,8 +1084,14 @@ public final class AppModel {
     requestAccessibilityAction: @escaping () -> Void,
     requestMicrophoneAction: @escaping () -> Void,
     openAccessibilitySettingsAction: @escaping () -> Void,
-    openMicrophoneSettingsAction: @escaping () -> Void
+    openMicrophoneSettingsAction: @escaping () -> Void,
+    requestGlobalInputAction: @escaping () -> Void,
+    retryGlobalInputAction: @escaping () -> Void,
+    workflowLibraryChangedAction: @escaping @MainActor () -> Void
   ) {
+    self.requestGlobalInputAction = requestGlobalInputAction
+    self.retryGlobalInputAction = retryGlobalInputAction
+    self.workflowLibraryChangedAction = workflowLibraryChangedAction
     let catalogModelIdentifiers = Set(trustedLocalSpeechModels.map(\.id))
     let catalogIsValid =
       catalogModelIdentifiers.count == trustedLocalSpeechModels.count
@@ -1077,22 +1106,17 @@ public final class AppModel {
     let declaredLocalSpeechAvailability =
       localSpeechAvailability
       ?? (localSpeechTrustMaterialAvailable ? .available : .trustMaterialUnavailable)
-    let usesLegacyInjectedTrust =
-      declaredLocalSpeechAvailability.isAvailable
-      && trustedLocalSpeechModels.isEmpty
-      && defaultLocalSpeechModelIdentifier == nil
     let effectiveLocalSpeechAvailability: LocalSpeechAvailability
     if declaredLocalSpeechAvailability.isAvailable {
       effectiveLocalSpeechAvailability =
-        catalogIsValid || usesLegacyInjectedTrust
+        catalogIsValid
         ? .available
         : .trustMaterialUnavailable
     } else {
       effectiveLocalSpeechAvailability = declaredLocalSpeechAvailability
     }
     let exposesTrustedCatalog = effectiveLocalSpeechAvailability.isAvailable && catalogIsValid
-    self.builtInWorkflows = workflows
-    self.workflows = workflows
+    self.workflowLibrary = WorkflowLibraryModel(workflows: workflows)
     self.language = language
     // Capture remains closed until durable settings prove it is enabled.
     // Test and preview compositions that explicitly skip loading retain the
@@ -1104,8 +1128,6 @@ public final class AppModel {
     self.builtinPushToTalkOutputMode = .pasteIntoApp
     self.longRecordingModeEnabled = false
     self.recordingDurationLimit = .fiveMinutes
-    self.localSpeechModelOption = .automatic
-    self.legacyWhisperKitCustomModel = ""
     self.localSpeechModel = defaultLocalSpeechModelIdentifier ?? LocalSpeechSettings().model
     let resolvedDefaultTTSModelIdentifier =
       ttsModelOptions.contains(where: { $0.id == defaultTTSModelIdentifier })
@@ -1114,11 +1136,6 @@ public final class AppModel {
     self.ttsModelOptions = ttsModelOptions
     self.defaultTTSModelIdentifier = resolvedDefaultTTSModelIdentifier
     self.ttsModelIdentifier = resolvedDefaultTTSModelIdentifier
-    self.legacyWhisperKitModelRepo = LocalSpeechSettings().modelRepo
-    self.legacyWhisperKitModelToken = LocalSpeechSettings().modelToken
-    self.legacyWhisperKitModelFolder = LocalSpeechSettings().modelFolder
-    self.legacyWhisperKitLanguage = LocalSpeechSettings().language
-    self.legacyWhisperKitDownloadIfNeeded = LocalSpeechSettings().downloadIfNeeded
     self.localSpeechPrewarm = LocalSpeechSettings().prewarm
     let availableSpeechModelIDs = Set(trustedLocalSpeechModels.map(\.id))
       .union(ttsModelOptions.map(\.id))
@@ -1143,10 +1160,14 @@ public final class AppModel {
     self.candidateResolver = candidateResolver
     self.historyRepository = historyRepository
     self.runHistoryBrowser = runHistoryBrowser
+    self.history = RunHistoryModel(browser: runHistoryBrowser, workflows: self.workflowLibrary)
     self.runReceiptRepository = runReceiptRepository
     self.localHistoryMaintenance = localHistoryMaintenance
     self.diagnosticRepository = diagnosticRepository
     self.settingsStore = settingsStore
+    let settings = SettingsPersistenceModel(store: settingsStore)
+    self.settings = settings
+    self.vocabulary = VocabularyLibraryModel(settings: settings, source: vocabularyRuleSource)
     self.workflowFileStore = workflowFileStore
     self.credentialStore = credentialStore
     self.localPersistenceStatus = localPersistenceStatus
@@ -1165,7 +1186,6 @@ public final class AppModel {
       ? defaultLocalSpeechModelIdentifier
       : nil
     self.localSpeechPhysicalMemoryGiB = max(1, localSpeechPhysicalMemoryGiB)
-    self.warmLocalSpeechForCaptureAction = warmLocalSpeechForCaptureAction
     self.prepareLocalSpeechAction = prepareLocalSpeechAction
     self.synchronizeResidentSpeechModelsAction = synchronizeResidentSpeechModelsAction
     self.prepareEnabledSpeechModelAction = prepareEnabledSpeechModelAction
@@ -1213,20 +1233,13 @@ public final class AppModel {
 
 }
 
-struct PendingRunInfo {
-  let workflowID: UUID
-  let workflow: WorkflowPresentation
-  let trigger: WorkflowRunTriggerKind
-  let isRecordRelated: Bool
-  var processingSteps: [WorkflowTextStep] = []
-}
 
 extension AppModel {
-  nonisolated static let localSpeechRecognizerID = "local-speech"
-  nonisolated static let sherpaOnnxRecognizerID = "sherpa-onnx.local"
-  nonisolated static let sherpaStreamingRecognizerID = "sherpa-onnx.streaming"
-  nonisolated static let workflowOriginMetadataKey = "workflow.origin"
-  nonisolated static let userWorkflowOriginMetadataValue = "user"
+  nonisolated static let localSpeechRecognizerID = AppSettingsCodec.localSpeechRecognizerID
+  nonisolated static let sherpaOnnxRecognizerID = AppSettingsCodec.sherpaOnnxRecognizerID
+  nonisolated static let sherpaStreamingRecognizerID = AppSettingsCodec.sherpaStreamingRecognizerID
+  nonisolated static let workflowOriginMetadataKey = AppSettingsCodec.workflowOriginMetadataKey
+  nonisolated static let userWorkflowOriginMetadataValue = AppSettingsCodec.userWorkflowOriginMetadataValue
   nonisolated static let workflowCatalogMetadataKey = WorkflowMetadataKey.catalog
   nonisolated static let builtinWorkflowCatalogValue = BuiltinWorkflowRoutingValue.catalog
   nonisolated static let triggerGestureMetadataKey = WorkflowMetadataKey.triggerGesture

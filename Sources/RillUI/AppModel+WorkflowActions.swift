@@ -120,9 +120,7 @@ extension AppModel {
   }
 
   public func isWorkflowEnabled(_ workflow: WorkflowDefinition) -> Bool {
-    !invalidWorkflowFileIDs.contains(workflow.id)
-      && WorkflowExecutionPolicy.supports(workflow)
-      && (workflowEnabledStates[workflow.id] ?? true)
+    workflowLibrary.isWorkflowEnabled(workflow)
   }
 
   public func setWorkflowEnabled(_ isEnabled: Bool, for workflowID: UUID) {
@@ -238,14 +236,7 @@ extension AppModel {
   }
 
   public var workflowSelectableLocalSpeechModels: [String] {
-    if !trustedLocalSpeechModels.isEmpty {
-      return trustedLocalSpeechModels.map(\.id).filter(enabledSpeechModelIDs.contains)
-    }
-    let predefinedModels = LegacyWhisperModelOption.allCases.compactMap(\.modelIdentifier)
-    let downloadedCustomModels = downloadedLocalSpeechModels.filter { modelIdentifier in
-      !predefinedModels.contains(modelIdentifier)
-    }
-    return predefinedModels + downloadedCustomModels
+    trustedLocalSpeechModels.map(\.id).filter(enabledSpeechModelIDs.contains)
   }
 
   public var workflowSelectableTTSModels: [String] {
@@ -266,8 +257,6 @@ extension AppModel {
         language == .english
         ? descriptor.englishName
         : descriptor.simplifiedChineseName
-    } else if let option = LegacyWhisperModelOption(rawValue: modelIdentifier) {
-      baseName = UIStrings.localSpeechModelOption(option, language: language)
     } else {
       baseName = modelIdentifier
     }
@@ -279,12 +268,7 @@ extension AppModel {
     return "\(baseName) · \(status)"
   }
 
-  public func localSpeechModelOptionLabel(_ option: LegacyWhisperModelOption) -> String {
-    guard let modelIdentifier = option.modelIdentifier else {
-      return UIStrings.localSpeechModelOption(option, language: language)
-    }
-    return localSpeechModelDisplayName(modelIdentifier, includeStatus: true)
-  }
+
 
   public func useDownloadedLocalSpeechModel(_ modelIdentifier: String) {
     guard areDownloadedLocalSpeechModelsAvailable else {
@@ -292,14 +276,7 @@ extension AppModel {
       return
     }
     workflowLibraryError = nil
-    if let option = LegacyWhisperModelOption(rawValue: modelIdentifier) {
-      localSpeechModelOption = option
-    } else {
-      localSpeechModelOption = .custom
-      legacyWhisperKitCustomModel = modelIdentifier
-    }
-    localSpeechModel = modelIdentifier
-    prepareLocalSpeechModel()
+    selectTrustedLocalSpeechModel(modelIdentifier)
   }
 
   public var selectedTrustedLocalSpeechModelIdentifier: String {
@@ -1234,12 +1211,16 @@ extension AppModel {
 
     if let workflowFileStore {
       do {
-        let fileURL = try await workflowFileStore.save(
-          workflow: workflow,
-          isEnabled: savedEnabledState,
-          replacing: workflowFileURLsByID[workflow.id]
-        )
-        workflowFileURLsByID[workflow.id] = fileURL
+        let fileURL = workflowFileURLsByID[workflow.id]
+        let expected: WorkflowFileExpectation
+        if fileURL != nil {
+          guard let source = workflowFileSourcesByID[workflow.id] else { throw WorkflowFileConflict.changed }
+          expected = .source(source)
+        } else { expected = .missing }
+        let record = try await workflowFileStore.saveDocument(
+          WorkflowDocument(workflow: workflow, isEnabled: savedEnabledState), replacing: fileURL, expected: expected)
+        workflowFileURLsByID[workflow.id] = record.fileURL
+        workflowFileSourcesByID[workflow.id] = record.source
       } catch {
         workflowEditorError = String(
           format: L10n.runText(.workflowTOMLFileSaveFailedFormat, language: language),
@@ -1300,12 +1281,12 @@ extension AppModel {
       builtInWorkflows.contains(where: { $0.id == workflowID }) ? workflows : customWorkflows
     return candidates.contains { candidate in
       candidate.id != workflowID
-        && workflowShadowNameKeys(candidate).contains(normalized)
+        && workflowLibrary.workflowShadowNameKeys(candidate).contains(normalized)
     }
   }
 
   private func uniqueWorkflowName(for baseName: String) -> String {
-    let takenNames = Set(customWorkflows.flatMap(workflowShadowNameKeys))
+    let takenNames = Set(customWorkflows.flatMap(workflowLibrary.workflowShadowNameKeys))
     guard takenNames.contains(WorkflowNameDuplicationPolicy.normalizedName(baseName)) else {
       return baseName
     }
@@ -1323,7 +1304,8 @@ extension AppModel {
     guard let index = customWorkflows.firstIndex(where: { $0.id == workflow.id }) else { return }
     if let workflowFileStore, let fileURL = workflowFileURLsByID[workflow.id] {
       do {
-        try await workflowFileStore.delete(fileURL: fileURL)
+        guard let source = workflowFileSourcesByID[workflow.id] else { throw WorkflowFileConflict.changed }
+        try await workflowFileStore.delete(fileURL: fileURL, expected: .source(source))
       } catch {
         workflowLibraryError = String(
           format: L10n.runText(.workflowTOMLFileRemoveFailedFormat, language: language),
@@ -1361,7 +1343,8 @@ extension AppModel {
 
     if let workflowFileStore, let fileURL = workflowFileURLsByID[workflow.id] {
       do {
-        try await workflowFileStore.delete(fileURL: fileURL)
+        guard let source = workflowFileSourcesByID[workflow.id] else { throw WorkflowFileConflict.changed }
+        try await workflowFileStore.delete(fileURL: fileURL, expected: .source(source))
       } catch {
         workflowEditorError = String(
           format: L10n.runText(.builtInWorkflowOverrideRemoveFailedFormat, language: language),

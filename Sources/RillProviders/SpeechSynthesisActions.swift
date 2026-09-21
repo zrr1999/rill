@@ -80,26 +80,15 @@ public struct SpeakTextAction: OutputAction {
   }
 
   public func execute(text: String, context: ActionContext) async throws -> ActionResult {
-    let configuration =
-      context.workflow.plan.output.actions.first { $0.id == id }?.configuration
-      ?? [:]
-    let provider =
-      configuration[SpeechOutputActionConfigurationKey.provider]
-        .flatMap(SpeechSynthesisProvider.init(rawValue:))
-      ?? .automatic
-    let request = SpeechSynthesisRequest(
-      runID: context.runID,
-      text: text,
-      provider: provider,
-      modelID: configuration[SpeechOutputActionConfigurationKey.model].flatMap {
-        let value = $0.trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? nil : value
-      },
-      voice:
-        configuration[SpeechOutputActionConfigurationKey.voice]
-        ?? Qwen3TTSVoice.vivian.rawValue,
-      language: configuration[SpeechOutputActionConfigurationKey.language]
-    )
+    let configuration: SpeechActionConfiguration
+    do {
+      guard case .speech(let resolved) = try context.configuration(for: id) else {
+        return .failed(SpeechSynthesisActionError.invalidRequest.localizedDescription)
+      }
+      configuration = resolved
+    } catch { return .failed(SpeechSynthesisActionError.invalidRequest.localizedDescription) }
+    let request = SpeechSynthesisRequest(runID: context.runID, text: text, provider: configuration.provider,
+      modelID: configuration.model, voice: configuration.voice, language: configuration.language)
     guard request.isValid else {
       return .failed(SpeechSynthesisActionError.invalidRequest.localizedDescription)
     }

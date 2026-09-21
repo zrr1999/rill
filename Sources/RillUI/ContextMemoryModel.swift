@@ -11,7 +11,7 @@ public final class ContextMemoryModel {
     public private(set) var isSaving = false
     public private(set) var isAuthorized = false
     public private(set) var hasScreenPermission = false
-    public private(set) var error: String?
+    public private(set) var error: ContextMemoryFailure?
     private let repository: any ContextMemoryRepository
     private let settingsStore: any SettingsStore
     private let activate: @MainActor (ContextFeatureSettings) async throws -> Bool
@@ -41,7 +41,7 @@ public final class ContextMemoryModel {
     }
 
     public func load() {
-        guard loadTask == nil else { return }
+        guard !stopped, loadTask == nil else { return }
         let revision = revision
         loadTask = Task {
             defer { isLoading = false; loadTask = nil }
@@ -60,19 +60,20 @@ public final class ContextMemoryModel {
                 await refresh()
             } catch is CancellationError { return }
             catch {
-                self.error = "Context settings could not be loaded. 上下文设置读取失败。"
+                self.error = .settingsLoad
             }
         }
     }
 
     public func invalidateAuthorization() {
+        guard !stopped else { return }
         _ = suspendAuthorization()
         settings.providerFingerprint = nil
         let value = settings
         let write = persist(value)
         let task = Task {
             do { try await write.value }
-            catch { self.error = "Authorization revocation could not be saved. 撤权设置保存失败。" }
+            catch { self.error = .revocation }
         }
         writes.track(task)
     }
@@ -117,58 +118,71 @@ public final class ContextMemoryModel {
                 isAuthorized = authorized
                 error = nil
             } catch {
-                self.error = "Context settings could not be saved or authorized. 上下文设置保存或授权失败。"
+                self.error = .authorization
             }
         }
         writes.track(task)
     }
 
     public func refresh() async {
+        guard !stopped else { return }
         do {
-            memories = try await repository.memories()
-            status = try await repository.memoryMaintenanceStatus(now: Date())
+            let memories = try await repository.memories()
+            let status = try await repository.memoryMaintenanceStatus(now: Date())
+            guard !stopped else { return }
+            self.memories = memories
+            self.status = status
             hasScreenPermission = screenPermission(false)
-        } catch { self.error = "Memory storage is unavailable. 记忆存储不可用。" }
+        } catch { if !stopped { self.error = .storage } }
     }
 
-    public func save(_ memory: LongTermMemory) async {
+    @discardableResult
+    public func save(_ memory: LongTermMemory) async -> ContextMemoryMutationResult {
         await mutateMemory { [repository] in
             try await repository.saveMemory(memory, expectedRevision: memory.revision)
         }
     }
 
-    public func delete(_ memory: LongTermMemory) async {
+    @discardableResult
+    public func delete(_ memory: LongTermMemory) async -> ContextMemoryMutationResult {
         await mutateMemory { [repository] in
             try await repository.deleteMemory(id: memory.id, expectedRevision: memory.revision)
         }
     }
 
-    private func mutateMemory(_ operation: @escaping @Sendable () async throws -> Void) async {
-        guard !stopped else { return }
+    private func mutateMemory(_ operation: @escaping @Sendable () async throws -> Void) async -> ContextMemoryMutationResult {
+        guard !stopped else { return .stopped }
         let revision = suspendAuthorization()
-        let task = Task {
+        let task = Task<ContextMemoryMutationResult, Never> {
+            do { try await operation() }
+            catch {
+                self.error = .mutation
+                return .failed(.mutation)
+            }
+            guard revision == self.revision, !stopped else { return .saved }
             do {
-                try await operation()
-                guard revision == self.revision, !stopped else { return }
                 let authorized = try await activate(settings)
-                guard revision == self.revision, !stopped else { return }
+                guard revision == self.revision, !stopped else { return .saved }
                 isAuthorized = authorized
+                error = nil
                 await refresh()
-            } catch { self.error = "Memory could not be changed. 请刷新后重试。" }
+            } catch { self.error = .authorization }
+            return .saved
         }
-        writes.track(task)
-        await task.value
+        writes.track(Task { _ = await task.value })
+        return await task.value
     }
 
     public func recordCorrection(_ correction: ConfirmedMemoryCorrection, recordID: UUID) {
+        guard !stopped else { return }
         let task = Task {
             do { try await repository.recordUserCorrection(correction, recordID: recordID) }
-            catch { self.error = "Correction could not be linked to history. 无法将纠正关联到历史。" }
+            catch { self.error = .correction }
         }
         writes.track(task)
     }
 
-    public func scheduleMaintenance() { maintain() }
+    public func scheduleMaintenance() { if !stopped { maintain() } }
 
     public func shutdown() async {
         stopped = true

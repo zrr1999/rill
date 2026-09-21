@@ -4,6 +4,25 @@ import Testing
 @testable import RillRuntime
 
 struct MemoryMaintenanceRunnerTests {
+    @Test func interruptedRequestDoesNotConsumeAnotherBudgetWhileItsSlotIsOccupied() async throws {
+        let repository = MaintenanceRepositoryProbe()
+        let provider = MaintenanceProviderProbe()
+        let token = ContextReferenceAuthorization(providerFingerprint: "fixture")
+        let runner = MemoryMaintenanceRunner(repository: repository, eligible: { true }, session: {
+            MemoryMaintenanceSession(authorization: token, workflowIDs: [], consolidator: provider)
+        })
+        let first = Task { await runner.runIfEligible() }
+        await provider.waitUntilEntered()
+        await runner.interrupt()
+        await first.value
+        await runner.runIfEligible()
+        #expect(await repository.preparations == 1)
+        #expect(await repository.commits == 0)
+        await provider.release()
+        await runner.shutdown()
+        #expect(await repository.commits == 0)
+    }
+
     @Test func activityPreemptsUncooperativeBackgroundRequestAndDiscardsItsLateResult() async throws {
         let repository = MaintenanceRepositoryProbe()
         let activity = MaintenanceActivityProbe()
@@ -37,8 +56,15 @@ private actor MaintenanceActivityProbe {
 private actor MaintenanceProviderProbe: MemoryConsolidating {
     private(set) var entered = false
     private var continuation: CheckedContinuation<MemoryConsolidationResult, Never>?
+    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+    func waitUntilEntered() async {
+        if entered { return }
+        await withCheckedContinuation { entryWaiters.append($0) }
+    }
     func consolidate(_ batch: MemoryConsolidationBatch) async throws -> MemoryConsolidationResult {
         entered = true
+        for waiter in entryWaiters { waiter.resume() }
+        entryWaiters.removeAll()
         return await withCheckedContinuation { continuation = $0 }
     }
     func release() { continuation?.resume(returning: .init(memories: [])); continuation = nil }

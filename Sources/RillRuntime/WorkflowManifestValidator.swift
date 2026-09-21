@@ -5,9 +5,11 @@ public enum WorkflowManifestValidationError: Error, LocalizedError, Equatable {
     case missingRecognizer(workflowID: UUID, recognizerID: String)
     case missingTransformer(workflowID: UUID, stepKind: PostProcessStepKind)
     case missingAction(workflowID: UUID, actionID: String)
+    case invalidPlan(workflowID: UUID, message: String)
 
     public var errorDescription: String? {
         switch self {
+        case .invalidPlan(_, let message): return message
         case .missingRecognizer(_, let recognizerID):
             return "No speech recognizer is registered for \(recognizerID)."
         case .missingTransformer(_, let stepKind):
@@ -19,18 +21,15 @@ public enum WorkflowManifestValidationError: Error, LocalizedError, Equatable {
 }
 
 public struct WorkflowManifestValidator: Sendable {
-    private let recognizerRegistry: SpeechRecognizerRegistry
-    private let transformerRegistry: TextTransformerRegistry
-    private let actionRegistry: OutputActionRegistry
+    private let compiler: WorkflowPlanCompiler
 
     public init(
         recognizerRegistry: SpeechRecognizerRegistry,
         transformerRegistry: TextTransformerRegistry,
         actionRegistry: OutputActionRegistry
     ) {
-        self.recognizerRegistry = recognizerRegistry
-        self.transformerRegistry = transformerRegistry
-        self.actionRegistry = actionRegistry
+        compiler = WorkflowPlanCompiler(recognizerRegistry: recognizerRegistry,
+            transformerRegistry: transformerRegistry, actionRegistry: actionRegistry)
     }
 
     public func validate(_ manifest: WorkflowManifest) throws {
@@ -39,33 +38,18 @@ public struct WorkflowManifestValidator: Sendable {
             // visible but fail closed through WorkflowExecutionPolicy until
             // every runtime component is registered.
             guard workflow.availability == .active else { continue }
-            guard let route = workflow.plan.setup.speechRoute else {
-                throw WorkflowManifestValidationError.missingRecognizer(
-                    workflowID: workflow.id,
-                    recognizerID: ""
-                )
-            }
-            if recognizerRegistry.recognizer(for: route.recognizerID) == nil {
-                throw WorkflowManifestValidationError.missingRecognizer(
-                    workflowID: workflow.id,
-                    recognizerID: route.recognizerID
-                )
-            }
-
-            for step in workflow.plan.process.allSteps {
-                guard let kind = step.kind.postProcessKind else { continue }
-                guard transformerRegistry.transformer(for: kind) == nil else { continue }
-                throw WorkflowManifestValidationError.missingTransformer(
-                    workflowID: workflow.id,
-                    stepKind: kind
-                )
-            }
-
-            for action in workflow.plan.output.actions where actionRegistry.action(for: action.id) == nil {
-                throw WorkflowManifestValidationError.missingAction(
-                    workflowID: workflow.id,
-                    actionID: action.id
-                )
+            do { _ = try compiler.validate(workflow: workflow) }
+            catch let error as WorkflowPlanCompilationError {
+                switch error {
+                case .missingRecognizer(let id):
+                    throw WorkflowManifestValidationError.missingRecognizer(workflowID: workflow.id, recognizerID: id)
+                case .missingTransformer(let kind):
+                    throw WorkflowManifestValidationError.missingTransformer(workflowID: workflow.id, stepKind: kind)
+                case .missingAction(let id):
+                    throw WorkflowManifestValidationError.missingAction(workflowID: workflow.id, actionID: id)
+                default:
+                    throw WorkflowManifestValidationError.invalidPlan(workflowID: workflow.id, message: error.localizedDescription)
+                }
             }
         }
     }

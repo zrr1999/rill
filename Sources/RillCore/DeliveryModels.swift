@@ -10,6 +10,7 @@ public enum ActionResult: Sendable, Equatable {
 }
 
 public struct ActionContext: Sendable, Equatable {
+    public var actionConfiguration: WorkflowActionConfiguration?
     public var runID: UUID
     public var workflow: WorkflowDefinition
     public var contextSnapshot: ContextSnapshot
@@ -33,6 +34,7 @@ public struct ActionContext: Sendable, Equatable {
         startedAt: Date,
         finishedAt: Date
     ) {
+        self.actionConfiguration = nil
         self.runID = runID
         self.workflow = workflow
         self.contextSnapshot = contextSnapshot
@@ -42,6 +44,12 @@ public struct ActionContext: Sendable, Equatable {
         self.startedAt = startedAt
         self.finishedAt = finishedAt
     }
+    public func configuration(for actionID: String) throws -> WorkflowActionConfiguration {
+        if let actionConfiguration { return actionConfiguration }
+        return try WorkflowActionConfiguration(workflow.plan.output.actions.first { $0.id == actionID }
+            ?? OutputActionReference(id: actionID))
+    }
+
 }
 
 /// One executed text-processing step, retained in encrypted activity history.
@@ -123,7 +131,22 @@ public struct RecognitionCorrectionSource: Codable, Sendable, Equatable {
     }
 }
 
+public enum WorkflowRunLane: String, Sendable, Equatable, Codable {
+    case primary
+    case assistant
+}
+
+public struct WorkflowRunIdentity: Sendable, Equatable {
+    public let runID: UUID
+    public let lane: WorkflowRunLane
+    public init(runID: UUID, lane: WorkflowRunLane = .primary) {
+        self.runID = runID
+        self.lane = lane
+    }
+}
+
 public struct WorkflowRunSummary: Sendable, Equatable {
+    public let lane: WorkflowRunLane
     public var runID: UUID
     public var workflowID: UUID
     public var workflow: WorkflowPresentation
@@ -135,6 +158,7 @@ public struct WorkflowRunSummary: Sendable, Equatable {
 
     public init(
         runID: UUID,
+        lane: WorkflowRunLane = .primary,
         workflowID: UUID,
         workflow: WorkflowPresentation,
         trigger: WorkflowRunTriggerKind,
@@ -143,6 +167,7 @@ public struct WorkflowRunSummary: Sendable, Equatable {
         finishedAt: Date = Date(),
         contextHistoryUpdate: CorrectionHistoryUpdate? = nil
     ) {
+        self.lane = lane
         self.runID = runID
         self.workflowID = workflowID
         self.workflow = workflow
@@ -155,6 +180,7 @@ public struct WorkflowRunSummary: Sendable, Equatable {
 }
 
 public struct RunSnapshot: Sendable, Equatable {
+    public let lane: WorkflowRunLane
     public var runID: UUID
     public var workflowID: UUID
     public var workflow: WorkflowPresentation
@@ -163,11 +189,13 @@ public struct RunSnapshot: Sendable, Equatable {
 
     public init(
         runID: UUID,
+        lane: WorkflowRunLane = .primary,
         workflowID: UUID,
         workflow: WorkflowPresentation,
         trigger: WorkflowRunTriggerKind,
         startedAt: Date = Date()
     ) {
+        self.lane = lane
         self.runID = runID
         self.workflowID = workflowID
         self.workflow = workflow

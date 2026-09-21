@@ -31,17 +31,21 @@ public enum WorkflowPlanCompilationError: Error, LocalizedError, Sendable, Equat
 }
 
 public struct ResolvedWorkflowPlan: Sendable, Equatable {
-    public var declaration: WorkflowPlan
-    public var recognizerID: String?
-    public var recognitionHints: RecognitionHints
-    public var replacementRules: [VocabularyRule]
-    public var activeVocabularyCollectionCount: Int
-    public var validHotwordCount: Int
-    public var omittedHotwordCount: Int
-    public var rejectedHotwordCount: Int
-    public var recognizerAcceptsHotwords: Bool
+    public let outputConfigurations: [WorkflowActionConfiguration]
+    public let steps: [CompiledWorkflowStep]
+    public let declaration: WorkflowPlan
+    public let recognizerID: String?
+    public let recognitionHints: RecognitionHints
+    public let replacementRules: [VocabularyRule]
+    public let activeVocabularyCollectionCount: Int
+    public let validHotwordCount: Int
+    public let omittedHotwordCount: Int
+    public let rejectedHotwordCount: Int
+    public let recognizerAcceptsHotwords: Bool
 
-    public init(
+    init(
+        outputConfigurations: [WorkflowActionConfiguration],
+        steps: [CompiledWorkflowStep],
         declaration: WorkflowPlan,
         recognizerID: String?,
         recognitionHints: RecognitionHints,
@@ -52,6 +56,8 @@ public struct ResolvedWorkflowPlan: Sendable, Equatable {
         rejectedHotwordCount: Int,
         recognizerAcceptsHotwords: Bool
     ) {
+        self.outputConfigurations = outputConfigurations
+        self.steps = steps
         self.declaration = declaration
         self.recognizerID = recognizerID
         self.recognitionHints = recognitionHints
@@ -86,38 +92,13 @@ public struct WorkflowPlanCompiler: Sendable {
         workflow: WorkflowDefinition,
         collections: [VocabularyCollection],
         context: VocabularyRuleContext,
-        input inputOverride: WorkflowPlanInput? = nil,
+        input inputOverride: WorkflowInputKind? = nil,
         allowEmptyOutput: Bool = false
     ) throws -> ResolvedWorkflowPlan {
-        let hasRecognitionStep = workflow.plan.process.allSteps.contains {
-            $0.kind == .recognizeSpeech
-        }
-        let inferredInput: WorkflowPlanInput =
-            workflow.plan.setup.speechRoute != nil || hasRecognitionStep ? .audio : .text
-        let input = inputOverride ?? inferredInput
-        var validationPlan = workflow.plan
-        if inputOverride == .text, inferredInput == .audio {
-            validationPlan = validationPlan.acceptingTextInput()
-        }
-        do {
-            try WorkflowPlanValidator.validate(
-                validationPlan,
-                input: input,
-                requireOutput: !allowEmptyOutput
-            )
-        } catch {
-            throw WorkflowPlanCompilationError.invalidPlan(error.localizedDescription)
-        }
-
-        let recognizer: (any SpeechRecognizer)?
-        if input == .audio, let route = workflow.plan.setup.speechRoute {
-            guard let registered = recognizerRegistry.recognizer(for: route.recognizerID) else {
-                throw WorkflowPlanCompilationError.missingRecognizer(route.recognizerID)
-            }
-            recognizer = registered
-        } else {
-            recognizer = nil
-        }
+        let input = try validate(workflow: workflow, input: inputOverride, allowEmptyOutput: allowEmptyOutput)
+        let recognizer = input == .audio
+            ? workflow.plan.setup.speechRoute.flatMap { recognizerRegistry.recognizer(for: $0.recognizerID) }
+            : nil
 
         var collectionIDs = Set<UUID>()
         var entryIDs = Set<UUID>()
@@ -138,18 +119,6 @@ public struct WorkflowPlanCompiler: Sendable {
             throw WorkflowPlanCompilationError.missingVocabularyCollection(binding.collectionID)
         }
 
-        for step in workflow.plan.process.allSteps {
-            guard let kind = step.kind.postProcessKind else { continue }
-            guard transformerRegistry.transformer(for: kind) != nil else {
-                throw WorkflowPlanCompilationError.missingTransformer(kind)
-            }
-        }
-        for action in workflow.plan.output.actions {
-            guard actionRegistry.action(for: action.id) != nil else {
-                throw WorkflowPlanCompilationError.missingAction(action.id)
-            }
-        }
-
         let vocabulary = VocabularyCollectionResolver.resolve(
             bindings: workflow.plan.setup.vocabularyBindings,
             collections: collections,
@@ -160,7 +129,11 @@ public struct WorkflowPlanCompiler: Sendable {
         ).resolve(rules: vocabulary.hotwordRules)
         let acceptsHotwords = recognizer?.capabilities.supports(.keyterm) ?? false
 
+        var nextIndex = 0
+        let steps = try CompiledWorkflowStep.compile(workflow.plan.process.steps, nextIndex: &nextIndex)
         return ResolvedWorkflowPlan(
+            outputConfigurations: try workflow.plan.output.actions.map(WorkflowActionConfiguration.init),
+            steps: steps,
             declaration: workflow.plan,
             recognizerID: recognizer?.id,
             recognitionHints: acceptsHotwords ? hints.hints : .empty,
@@ -172,4 +145,35 @@ public struct WorkflowPlanCompiler: Sendable {
             recognizerAcceptsHotwords: acceptsHotwords
         )
     }
+    func validate(
+        workflow: WorkflowDefinition,
+        input inputOverride: WorkflowInputKind? = nil,
+        allowEmptyOutput: Bool = false
+    ) throws -> WorkflowInputKind {
+        let input = inputOverride ?? workflow.inputKind
+        let plan = inputOverride == .text && workflow.inputKind == .audio
+            ? workflow.plan.acceptingTextInput() : workflow.plan
+        do { try WorkflowPlanValidator.validate(plan, input: input, requireOutput: !allowEmptyOutput) }
+        catch { throw WorkflowPlanCompilationError.invalidPlan(error.localizedDescription) }
+        if input == .audio, let route = plan.setup.speechRoute,
+           recognizerRegistry.recognizer(for: route.recognizerID) == nil {
+            throw WorkflowPlanCompilationError.missingRecognizer(route.recognizerID)
+        }
+        for step in workflow.plan.process.allSteps {
+            guard let kind = step.kind.postProcessKind else { continue }
+            guard transformerRegistry.transformer(for: kind) != nil else {
+                throw WorkflowPlanCompilationError.missingTransformer(kind)
+            }
+        }
+        for action in workflow.plan.output.actions {
+            do { _ = try WorkflowActionConfiguration(action) }
+            catch { throw WorkflowPlanCompilationError.invalidPlan(error.localizedDescription) }
+            guard actionRegistry.action(for: action.id) != nil else {
+                throw WorkflowPlanCompilationError.missingAction(action.id)
+            }
+        }
+
+        return input
+    }
+
 }

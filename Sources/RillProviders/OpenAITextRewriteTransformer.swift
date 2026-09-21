@@ -610,7 +610,7 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
             maxOutputTokens: Self.maximumOutputTokens,
             disablesThinking: usesDeepSeekRewrite,
             temperature: usesDeepSeekRewrite ? 0.1 : nil,
-            timeoutInterval: usesDeepSeekRewrite ? LLMTextProcessing.rewriteTimeout : 60
+            timeoutInterval: usesDeepSeekRewrite ? LanguageModelProviderDescriptor(settings: settings).rewriteTimeout : 60
         )
         if let correction {
             request.instructions = ContextCorrectionPrompts.correction
@@ -682,15 +682,16 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
         }
     }
 
+    private let requestOperations = BoundedOperation(maxConcurrentOperations: 2)
+
+    public func shutdown() async { await requestOperations.shutdown() }
+
     private func createResponse(
         request: OpenAIResponsesRequest, apiKey: String, bounded: Bool
     ) async throws -> OpenAIResponsesResult {
         let client = clientFactory()
-        guard bounded else {
-            return try await client.createResponse(request: request, apiKey: apiKey)
-        }
         do {
-            return try await BoundedOperation.run(timeout: deepSeekTimeout) {
+            return try await requestOperations.run(timeout: bounded ? deepSeekTimeout : .seconds(request.timeoutInterval)) {
                 try await client.createResponse(request: request, apiKey: apiKey)
             }
         } catch is OperationDeadlineError {

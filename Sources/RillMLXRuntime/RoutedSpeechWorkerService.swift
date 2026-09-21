@@ -1,4 +1,4 @@
-import RillProviders
+import RillSpeechContracts
 
 /// Routes only reviewed model identities to worker-side engines.
 ///

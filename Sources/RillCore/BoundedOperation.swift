@@ -1,17 +1,37 @@
 import Foundation
 
-public enum OperationDeadlineError: Error, Sendable { case timedOut }
+public enum OperationDeadlineError: Error, Sendable, Equatable {
+    case timedOut
+    case capacityExceeded
+    case stopped
+}
 
-/// Unlike task-group teardown, returning at the deadline never joins an uncooperative dependency.
-public enum BoundedOperation {
-    public static func run<Value: Sendable>(
+/// A resource owner retains timed-out operations until the dependency actually returns.
+public actor BoundedOperation {
+    private let capacity: Int
+    private var operations: [UUID: Task<Void, Never>] = [:]
+    private var stopped = false
+
+    public init(maxConcurrentOperations: Int = 1) {
+        precondition(maxConcurrentOperations > 0)
+        capacity = maxConcurrentOperations
+    }
+
+    public var pendingOperationCount: Int { operations.count }
+
+    public func run<Value: Sendable>(
         timeout: Duration,
         operation: @escaping @Sendable () async throws -> Value
     ) async throws -> Value {
+        try Task.checkCancellation()
+        guard !stopped else { throw OperationDeadlineError.stopped }
+        guard operations.count < capacity else { throw OperationDeadlineError.capacityExceeded }
+        let id = UUID()
         let race = DeadlineResult<Value>()
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
         let work = Task {
+            defer { operations.removeValue(forKey: id) }
             do {
                 try Task.checkCancellation()
                 guard clock.now < deadline else { throw OperationDeadlineError.timedOut }
@@ -22,6 +42,7 @@ public enum BoundedOperation {
             }
             catch { race.finish(.failure(error)) }
         }
+        operations[id] = work
         let timer = Task {
             do {
                 try await clock.sleep(until: deadline)
@@ -36,6 +57,13 @@ public enum BoundedOperation {
             timer.cancel()
             race.finish(.failure(CancellationError()))
         }
+    }
+
+    public func shutdown() async {
+        stopped = true
+        let accepted = Array(operations.values)
+        for operation in accepted { operation.cancel() }
+        for operation in accepted { await operation.value }
     }
 }
 

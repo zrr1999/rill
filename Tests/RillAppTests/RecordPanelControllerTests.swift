@@ -38,7 +38,7 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
       requestAccessibilityAction: {},
       requestMicrophoneAction: {},
       openAccessibilitySettingsAction: {},
-      openMicrophoneSettingsAction: {}
+      openMicrophoneSettingsAction: {}, requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {}
     )
   }
 

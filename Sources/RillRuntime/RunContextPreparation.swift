@@ -9,6 +9,7 @@ public final class RunContextPreparation: @unchecked Sendable {
     }
 
     private let lock = NSLock()
+    private let operations: BoundedOperation
     private let authorization: ContextReferenceAuthorization
     private let audioLifetime: AudioCaptureLifetime
     private let saveLateSummary: @Sendable (ScreenReferenceSummary, ContextReferenceAuthorization) async -> Void
@@ -25,7 +26,9 @@ public final class RunContextPreparation: @unchecked Sendable {
 
     private init(image: CorrectionReferenceImage?, receipt: CorrectionReferenceReceipt,
                  authorization: ContextReferenceAuthorization, audioLifetime: AudioCaptureLifetime,
+                 operations: BoundedOperation = BoundedOperation(maxConcurrentOperations: 3),
                  saveLateSummary: @escaping @Sendable (ScreenReferenceSummary, ContextReferenceAuthorization) async -> Void) {
+        self.operations = operations
         self.image = image
         self.receipt = receipt
         self.authorization = ContextReferenceAuthorization(parent: authorization)
@@ -46,6 +49,7 @@ public final class RunContextPreparation: @unchecked Sendable {
         summarizer: any CorrectionContextSummarizing,
         memories: @escaping @Sendable () async throws -> [LongTermMemory],
         authorization: ContextReferenceAuthorization, audioLifetime: AudioCaptureLifetime,
+        operations: BoundedOperation = BoundedOperation(maxConcurrentOperations: 3),
         captureTimeout: Duration = .milliseconds(250), summaryTimeout: Duration = .seconds(10),
         saveLateSummary: @escaping @Sendable (ScreenReferenceSummary, ContextReferenceAuthorization) async -> Void = { _, _ in }
     ) async throws -> RunContextPreparation {
@@ -55,7 +59,7 @@ public final class RunContextPreparation: @unchecked Sendable {
         var receipt = CorrectionReferenceReceipt()
         if screenEnabled && canSendImages {
             do {
-                image = try await BoundedOperation.run(timeout: captureTimeout) {
+                image = try await operations.run(timeout: captureTimeout) {
                     guard authorization.isValid, audioLifetime.isActive else { throw CancellationError() }
                     return try await capture.capture(focus: focus, excludingApplications: excludedApplications)
                 }
@@ -70,7 +74,7 @@ public final class RunContextPreparation: @unchecked Sendable {
         receipt.memorySummary = memoryEnabled ? .pending : .disabled
         let preparation = RunContextPreparation(
             image: image, receipt: receipt, authorization: authorization,
-            audioLifetime: audioLifetime, saveLateSummary: saveLateSummary
+            audioLifetime: audioLifetime, operations: operations, saveLateSummary: saveLateSummary
         )
         let capturedImage = image
         preparation.startAction = { [weak preparation] in
@@ -100,9 +104,9 @@ public final class RunContextPreparation: @unchecked Sendable {
         lock.withLock {
             guard isValid, !hasFrozen else { return }
             if let image {
-                imageTask = Task { [weak self] in
+                imageTask = Task { [weak self, operations] in
                     do {
-                        let summary = try await BoundedOperation.run(timeout: timeout) {
+                        let summary = try await operations.run(timeout: timeout) {
                             try await summarizer.summarizeImage(image)
                         }
                         guard summary.isValid else { throw ContextCorrectionError.invalidReference }
@@ -113,9 +117,9 @@ public final class RunContextPreparation: @unchecked Sendable {
                 }
             }
             if memoryEnabled {
-                memoryTask = Task { [weak self] in
+                memoryTask = Task { [weak self, operations] in
                     do {
-                        let summary: CorrectionMemorySummary? = try await BoundedOperation.run(timeout: timeout) {
+                        let summary: CorrectionMemorySummary? = try await operations.run(timeout: timeout) {
                             let selected = Array(try await memories().prefix(5))
                             guard !selected.isEmpty else { return nil }
                             return try await summarizer.summarizeMemories(selected)
