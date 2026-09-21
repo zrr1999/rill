@@ -33,6 +33,13 @@ ci-clean:
 build-release:
     bash scripts/build_xcode_release.sh
 
+# Inspect or clear inactive shared worker artifacts.
+cache-status:
+    scripts/swift_locked.sh cache status
+
+cache-clean:
+    scripts/swift_locked.sh cache clean
+
 # Assemble a local release artifact.
 release:
     bash scripts/release.sh

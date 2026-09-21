@@ -24,8 +24,14 @@ import tempfile
 
 PROJECT = Path(__file__).resolve().parent.parent
 RELEASE_ARGUMENTS = [
-    "--build-system", "swiftbuild", "--manifest-cache", "none",
-    "--configuration", "release", "--arch", "arm64",
+    "--build-system",
+    "swiftbuild",
+    "--manifest-cache",
+    "none",
+    "--configuration",
+    "release",
+    "--arch",
+    "arm64",
 ]
 STALE_CACHE = re.compile(
     r"clang dependency scanning failure|unable to resolve module dependency|Failed to clone"
@@ -97,7 +103,7 @@ def option(arguments: list[str], names: tuple[str, ...], default: str) -> str:
             value = arguments[index + 1]
         for name in names:
             if argument.startswith(name + "="):
-                value = argument[len(name) + 1:]
+                value = argument[len(name) + 1 :]
     return value
 
 
@@ -105,9 +111,22 @@ def build_settings(arguments: list[str]) -> list[str]:
     """Product selection and test filters do not invalidate the build arena."""
     result = []
     valued = {
-        "-Xswiftc", "-Xcc", "-Xcxx", "-Xlinker", "-Xxcbuild", "--build-system",
-        "--arch", "--triple", "--sdk", "--toolchain", "--swift-sdk", "--toolset",
-        "--sanitize", "--traits", "-debug-info-format", "--experimental-lto-mode",
+        "-Xswiftc",
+        "-Xcc",
+        "-Xcxx",
+        "-Xlinker",
+        "-Xxcbuild",
+        "--build-system",
+        "--arch",
+        "--triple",
+        "--sdk",
+        "--toolchain",
+        "--swift-sdk",
+        "--toolset",
+        "--sanitize",
+        "--traits",
+        "-debug-info-format",
+        "--experimental-lto-mode",
     }
     index = 0
     while index < len(arguments):
@@ -115,12 +134,14 @@ def build_settings(arguments: list[str]) -> list[str]:
         if value in valued:
             if index + 1 >= len(arguments):
                 raise BuildError(f"Missing value for {value}")
-            result.extend(arguments[index:index + 2])
+            result.extend(arguments[index : index + 2])
             index += 2
             continue
         if any(value.startswith(name + "=") for name in valued) or value in {
-            "--enable-code-coverage", "--disable-code-coverage",
-            "--enable-all-traits", "--disable-default-traits",
+            "--enable-code-coverage",
+            "--disable-code-coverage",
+            "--enable-all-traits",
+            "--disable-default-traits",
         }:
             result.append(value)
         index += 1
@@ -128,25 +149,54 @@ def build_settings(arguments: list[str]) -> list[str]:
 
 
 def toolchain_identity(root: Path, *, require_metal: bool) -> dict[str, str]:
-    result = subprocess.run(["xcrun", "metal", "-v"], cwd=root, capture_output=True, text=True)
+    result = subprocess.run(
+        ["xcrun", "metal", "-v"], cwd=root, capture_output=True, text=True
+    )
     if result.returncode and require_metal:
         raise BuildError(
             "The selected Xcode cannot execute its Metal compiler. Install the matching "
             "component with 'xcodebuild -downloadComponent MetalToolchain' or select "
             f"a compatible Xcode using DEVELOPER_DIR. {result.stderr.strip()}"
         )
-    return {
+    identity = {
         "swift": capture(["swift", "--version"], root),
         "swiftc": capture(["xcrun", "-f", "swiftc"], root),
         "xcode": capture(["xcodebuild", "-version"], root),
         "sdk": capture(["xcrun", "--show-sdk-path"], root),
         "sdkBuild": capture(["xcrun", "--show-sdk-build-version"], root),
-        "metal": (result.stdout + result.stderr).strip() if not result.returncode else "unavailable",
+        "metal": (result.stdout + result.stderr).strip()
+        if not result.returncode
+        else "unavailable",
     }
+    compiler_environment = {
+        name: os.environ[name]
+        for name in (
+            "DEVELOPER_DIR",
+            "TOOLCHAINS",
+            "SDKROOT",
+            "SWIFT_EXEC",
+            "CC",
+            "CXX",
+            "MACOSX_DEPLOYMENT_TARGET",
+            "CFLAGS",
+            "CXXFLAGS",
+            "OTHER_SWIFT_FLAGS",
+            "CPATH",
+            "C_INCLUDE_PATH",
+            "CPLUS_INCLUDE_PATH",
+            "LIBRARY_PATH",
+        )
+        if name in os.environ
+    }
+    if compiler_environment:
+        identity["compilerEnvironment"] = digest(compiler_environment)
+    return identity
 
 
 def source_inputs(root: Path) -> dict[str, str]:
-    result = capture(["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], root)
+    result = capture(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"], root
+    )
     inputs = {}
     for name in sorted(set(result.split("\0")) - {""}):
         path = root / name
@@ -168,7 +218,8 @@ def file_manifest(root: Path) -> dict[str, dict[str, object]]:
             raise BuildError(f"Symlink in build artifact: {path}")
         if path.is_file():
             result[path.relative_to(root).as_posix()] = {
-                "sha256": sha256(path), "mode": stat.S_IMODE(path.stat().st_mode),
+                "sha256": sha256(path),
+                "mode": stat.S_IMODE(path.stat().st_mode),
             }
         elif not path.is_dir():
             raise BuildError(f"Unsupported build artifact: {path}")
@@ -180,10 +231,16 @@ class BuildContext:
         self.root = root.resolve()
         self.configuration = configuration
         default = ".artifacts/build/release" if configuration == "release" else ".build"
-        self.scratch = (self.root / option(arguments, ("--scratch-path", "--build-path"), default)).resolve()
-        if self.scratch == self.root or self.root.is_relative_to(self.scratch):
-            raise BuildError("A build scratch path must not contain the source checkout")
-        self.lock_path = self.root / ".artifacts/build/locks" / (digest(str(self.scratch))[:24] + ".lock")
+        self.scratch = (
+            self.root / option(arguments, ("--scratch-path", "--build-path"), default)
+        ).resolve()
+        if self.scratch == self.root or not self.scratch.is_relative_to(self.root):
+            raise BuildError("A build scratch path must be inside its source checkout")
+        self.lock_path = (
+            self.root
+            / ".artifacts/build/locks"
+            / (digest(str(self.scratch))[:24] + ".lock")
+        )
         if self.lock_path.is_relative_to(self.scratch):
             raise BuildError("The scratch path must not contain the build lock")
         self.arguments = arguments
@@ -199,26 +256,44 @@ class BuildContext:
         elif self.scratch.exists():
             subprocess.run(
                 ["swift", "package", "--scratch-path", str(self.scratch), "clean"],
-                cwd=self.root, check=True,
+                cwd=self.root,
+                check=True,
             )
         self.fingerprint_path.unlink(missing_ok=True)
 
     def environment(self) -> dict[str, object]:
         return {
-            "version": 1, "project": str(self.root),
-            "toolchain": toolchain_identity(self.root, require_metal=self.configuration == "release"),
-            "configuration": self.configuration, "settings": build_settings(self.arguments),
+            "version": 1,
+            "project": str(self.root),
+            "toolchain": toolchain_identity(
+                self.root, require_metal=self.configuration == "release"
+            ),
+            "configuration": self.configuration,
+            "settings": build_settings(self.arguments),
             "manifest": sha256(self.root / "Package.swift"),
-            "resolved": sha256(self.root / "Package.resolved") if (self.root / "Package.resolved").exists() else None,
+            "resolved": sha256(self.root / "Package.resolved")
+            if (self.root / "Package.resolved").exists()
+            else None,
         }
 
     def prepare(self, environment: dict[str, object]) -> None:
-        cached = self.fingerprint_path.read_text().strip() if self.fingerprint_path.exists() else ""
-        if self.scratch.exists() and digest(environment) != cached:
+        cached = (
+            self.fingerprint_path.read_text().strip()
+            if self.fingerprint_path.exists()
+            else ""
+        )
+        has_products = self.scratch.exists() and any(
+            path.name
+            not in {"artifacts", "checkouts", "repositories", "workspace-state.json"}
+            for path in self.scratch.iterdir()
+        )
+        if (cached or has_products) and digest(environment) != cached:
             self.clean()
         self.scratch.mkdir(parents=True, exist_ok=True)
 
-    def swift(self, subcommand: str, arguments: list[str], *, quiet: bool = False) -> str:
+    def swift(
+        self, subcommand: str, arguments: list[str], *, quiet: bool = False
+    ) -> str:
         command = ["swift", subcommand, "--force-resolved-versions"]
         if subcommand == "test":
             command += ["-Xswiftc", "-warnings-as-errors"]
@@ -226,8 +301,14 @@ class BuildContext:
         if quiet:
             return capture(command, self.root)
         with tempfile.TemporaryFile(mode="w+t") as log:
-            process = subprocess.Popen(command, cwd=self.root, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT, text=True, start_new_session=True)
+            process = subprocess.Popen(
+                command,
+                cwd=self.root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                start_new_session=True,
+            )
             try:
                 assert process.stdout is not None
                 for line in process.stdout:
@@ -244,7 +325,9 @@ class BuildContext:
             raise BuildFailure(status, output)
         return output
 
-    def build(self, subcommand: str, arguments: list[str], environment: dict[str, object]) -> None:
+    def build(
+        self, subcommand: str, arguments: list[str], environment: dict[str, object]
+    ) -> None:
         self.prepare(environment)
         try:
             self.swift(subcommand, arguments)
@@ -258,22 +341,61 @@ class BuildContext:
         self.fingerprint_path.write_text(digest(environment) + "\n")
 
 
-def make_receipt(context: BuildContext, bin_path: Path, result_file: Path, inputs: dict[str, str]) -> None:
+def make_receipt(
+    context: BuildContext,
+    bin_path: Path,
+    result_file: Path,
+    inputs: dict[str, str],
+    *,
+    worker_products: Path | None = None,
+    worker_cache: dict | None = None,
+    products: list[str] | None = None,
+) -> None:
     result_file.parent.mkdir(parents=True, exist_ok=True)
-    directory = Path(tempfile.mkdtemp(prefix=result_file.name + ".products-", dir=result_file.parent))
+    directory = Path(
+        tempfile.mkdtemp(prefix=result_file.name + ".products-", dir=result_file.parent)
+    )
     try:
+        sources = {}
         for path in bin_path.iterdir():
-            if path.name.endswith(".bundle"):
-                shutil.copytree(path, directory / path.name)
-            elif path.is_file() and os.access(path, os.X_OK) and path.suffix == "":
-                shutil.copy2(path, directory / path.name)
-        write_json(result_file, {
-            "schemaVersion": 1, "sourceRoot": str(context.root), "sourceFingerprint": digest(inputs),
-            "configuration": "release", "architecture": "arm64",
-            "buildDirectory": str(bin_path), "productsDirectory": str(directory),
-            "checkoutsDirectory": str(context.scratch / "checkouts"),
-            "workerCache": {"status": "off", "key": None}, "files": file_manifest(directory),
-        })
+            if path.name.endswith(".bundle") or (
+                path.is_file()
+                and os.access(path, os.X_OK)
+                and path.suffix == ""
+                and (products is None or path.name in products)
+            ):
+                sources[path.name] = path
+        if worker_products:
+            for path in worker_products.iterdir():
+                previous = sources.get(path.name)
+                if previous is not None and path.is_dir():
+                    if file_manifest(previous) != file_manifest(path):
+                        raise BuildError(f"Conflicting resource bundle: {path.name}")
+                sources[path.name] = path
+        if products is not None and not set(products).issubset(sources):
+            raise BuildError("A runtime product is missing from the release build")
+        for name, path in sources.items():
+            if path.is_symlink():
+                raise BuildError(f"Symlink in build output: {path}")
+            if path.is_dir():
+                shutil.copytree(path, directory / name, symlinks=True)
+            else:
+                shutil.copy2(path, directory / name)
+        write_json(
+            result_file,
+            {
+                "schemaVersion": 1,
+                "sourceRoot": str(context.root),
+                "sourceFingerprint": digest(inputs),
+                "configuration": "release",
+                "architecture": "arm64",
+                "buildDirectory": str(bin_path),
+                "productsDirectory": str(directory),
+                "checkoutsDirectory": str(context.scratch / "checkouts"),
+                "workerCache": worker_cache or {"status": "off", "key": None},
+                "files": file_manifest(directory),
+            },
+        )
     except BaseException:
         shutil.rmtree(directory)
         raise
@@ -281,49 +403,163 @@ def make_receipt(context: BuildContext, bin_path: Path, result_file: Path, input
 
 def receipt_products(path: Path, root: Path) -> dict[str, object]:
     receipt = json.loads(path.read_text())
-    if receipt.get("schemaVersion") != 1 or receipt.get("sourceRoot") != str(root.resolve()):
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("schemaVersion") != 1
+        or receipt.get("sourceRoot") != str(root.resolve())
+    ):
         raise BuildError("Build receipt belongs to a different source checkout")
     if receipt.get("sourceFingerprint") != digest(source_inputs(root)):
         raise BuildError("Source changed after the release build; build again")
+    if (
+        receipt.get("configuration") != "release"
+        or receipt.get("architecture") != "arm64"
+    ):
+        raise BuildError("Unsupported build receipt configuration")
+    if not isinstance(receipt.get("productsDirectory"), str) or not receipt.get(
+        "files"
+    ):
+        raise BuildError("Incomplete build receipt")
     if receipt.get("files") != file_manifest(Path(receipt["productsDirectory"])):
         raise BuildError("Build receipt products changed; build again")
     return receipt
 
 
 def release(arguments: list[str]) -> None:
+    import worker_artifact_cache as worker
+
     parser = argparse.ArgumentParser(description="Build all arm64 Release products.")
     parser.add_argument("--show-bin-path", action="store_true")
     parser.add_argument("--result-file", type=Path)
     parser.add_argument("--worker-cache", choices=("auto", "off"), default="auto")
     options = parser.parse_args(arguments)
     context = BuildContext(PROJECT, "release", RELEASE_ARGUMENTS)
+    mode = "off" if os.environ.get("CI", "").lower() == "true" else options.worker_cache
     with context.lock():
-        bin_path = Path(context.swift("build", RELEASE_ARGUMENTS + ["--show-bin-path"], quiet=True))
+        bin_path = Path(
+            context.swift("build", RELEASE_ARGUMENTS + ["--show-bin-path"], quiet=True)
+        )
         if options.show_bin_path:
             print(bin_path)
             return
         environment = context.environment()
         inputs = source_inputs(PROJECT)
-        context.build("build", RELEASE_ARGUMENTS, environment)
-        if source_inputs(PROJECT) != inputs:
-            raise BuildError("Source changed during the release build; retry from stable inputs")
-        if options.result_file:
-            make_receipt(context, bin_path, options.result_file.resolve(), inputs)
+        graph = worker.package_graph(PROJECT, context.scratch)
+        with worker.release_worker(context, graph, environment, mode) as (
+            cache,
+            entry,
+            state,
+        ):
+            identity, cached_products = entry if entry else (None, None)
+            if cached_products:
+                for product in worker.runtime_products(graph):
+                    if product != worker.WORKER:
+                        context.build(
+                            "build",
+                            RELEASE_ARGUMENTS + ["--product", product],
+                            environment,
+                        )
+            else:
+                context.build("build", RELEASE_ARGUMENTS, environment)
+            if source_inputs(PROJECT) != inputs:
+                raise BuildError(
+                    "Source changed during the release build; retry from stable inputs"
+                )
+            if identity is not None:
+                if worker.input_identity(PROJECT, graph, environment) != identity:
+                    raise BuildError(
+                        "Worker inputs changed during the build; retry from stable inputs"
+                    )
+                try:
+                    worker.verify_checkouts(PROJECT, context.scratch / "checkouts")
+                except (worker.Uncacheable, OSError) as error:
+                    info(f"Worker cache bypass: {error}")
+                    if cached_products:
+                        context.build(
+                            "build",
+                            RELEASE_ARGUMENTS + ["--product", worker.WORKER],
+                            environment,
+                        )
+                    cached_products = None
+                    state["status"] = "bypass"
+                else:
+                    if not cached_products:
+                        # Validate the executable before publishing; assembly verifies its copy again.
+                        subprocess.run(
+                            [
+                                "bash",
+                                str(PROJECT / "scripts/verify_release_executable.sh"),
+                                str(bin_path / worker.WORKER),
+                            ],
+                            check=True,
+                        )
+                        try:
+                            cached_products = cache.publish(
+                                state["key"], bin_path, identity, graph
+                            )
+                        except OSError as error:
+                            info(
+                                f"Worker cache write failed; keeping the local build: {error}"
+                            )
+                            state["status"] = "bypass"
+            if source_inputs(PROJECT) != inputs:
+                raise BuildError(
+                    "Source changed before the product snapshot; retry the build"
+                )
+            if options.result_file:
+                make_receipt(
+                    context,
+                    bin_path,
+                    options.result_file.resolve(),
+                    inputs,
+                    worker_products=cached_products,
+                    worker_cache=state,
+                    products=worker.runtime_products(graph),
+                )
+            info(f"Release products ready; worker cache={state['status']}")
 
 
 def main(arguments: list[str] | None = None) -> None:
     arguments = sys.argv[1:] if arguments is None else arguments
     if not arguments:
-        raise BuildError("usage: swift_locked.sh <build|test|clean|release|receipt> [arguments...]")
+        raise BuildError(
+            "usage: swift_locked.sh <build|test|clean|release|receipt> [arguments...]"
+        )
     subcommand, *arguments = arguments
     if subcommand == "release":
         release(arguments)
         return
+    if subcommand == "cache":
+        import worker_artifact_cache as worker
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("operation", choices=("status", "clean"))
+        options = parser.parse_args(arguments)
+        cache = worker.WorkerCache()
+        if options.operation == "clean":
+            print(json.dumps(cache.prune(0), indent=2))
+        else:
+            entries = cache.status()
+            print(
+                json.dumps(
+                    {
+                        "directory": str(cache.root),
+                        "entries": len(entries),
+                        "bytes": sum(item["bytes"] for item in entries),
+                        "limitBytes": worker.LIMIT_BYTES,
+                    },
+                    indent=2,
+                )
+            )
+        return
     if subcommand == "receipt":
         parser = argparse.ArgumentParser()
         parser.add_argument("path", type=Path)
-        parser.add_argument("--field", required=True,
-                            choices=("productsDirectory", "checkoutsDirectory", "buildDirectory"))
+        parser.add_argument(
+            "--field",
+            required=True,
+            choices=("productsDirectory", "checkoutsDirectory", "buildDirectory"),
+        )
         options = parser.parse_args(arguments)
         print(receipt_products(options.path, PROJECT)[options.field])
         return
@@ -336,8 +572,16 @@ def main(arguments: list[str] | None = None) -> None:
     context = BuildContext(root, configuration, arguments)
     with context.lock():
         if subcommand == "clean":
+            parser = argparse.ArgumentParser()
+            parser.add_argument("--configuration", "-c", choices=("debug", "release"))
+            parser.add_argument("--package-path")
+            parser.add_argument("--scratch-path", "--build-path")
+            parser.parse_args(arguments)
             context.clean()
-        elif any(argument in arguments for argument in ("--help", "-h", "--help-hidden", "--show-bin-path")):
+        elif any(
+            argument in arguments
+            for argument in ("--help", "-h", "--help-hidden", "--show-bin-path")
+        ):
             context.swift(subcommand, arguments)
         else:
             context.build(subcommand, arguments, context.environment())
@@ -348,6 +592,7 @@ def interrupt_build(signum, frame):
 
 
 if __name__ == "__main__":
+    sys.modules["build_driver"] = sys.modules[__name__]
     signal.signal(signal.SIGTERM, interrupt_build)
     try:
         main()

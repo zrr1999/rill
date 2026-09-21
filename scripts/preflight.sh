@@ -146,6 +146,7 @@ uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --check
 
 info "Checking release signing and notarization policy..."
 bash "$SCRIPT_DIR/tests/release_config_test.sh"
+uv run --no-build --locked --script "$SCRIPT_DIR/tests/worker_cache_test.py"
 
 info "Checking app icon generation..."
 bash "$SCRIPT_DIR/tests/app_icon_test.sh"
@@ -166,7 +167,8 @@ bash "$SCRIPT_DIR/verify_release_executable.sh" "$BUILD_DIR/RillApp"
 bash "$SCRIPT_DIR/verify_release_executable.sh" "$BUILD_DIR/RillSpeechWorker"
 
 info "Checking locked third-party license and notice provenance..."
-uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
+RILL_TEST_CHECKOUTS_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field checkoutsDirectory)" \
+  uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
 
 info "Checking relocatable SwiftPM resource accessors..."
 verify_xcode_resource_accessor "RillMacOS_RillApp"
@@ -192,6 +194,7 @@ codesign --force --options runtime --sign - \
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker"
 codesign --force --options runtime --sign - "$PACKAGE_SMOKE_ROOT/Rill.app"
 codesign --verify --deep --strict --verbose=2 "$PACKAGE_SMOKE_ROOT/Rill.app"
+"$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker" </dev/null
 cmp -s \
   "$PROJECT_DIR/PRIVACY.md" \
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/PRIVACY.md" ||

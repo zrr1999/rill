@@ -80,6 +80,28 @@ Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/rele
 完整预检和打包使用绑定源码摘要的构建回执及独立产物快照；装配过程中源码或
 产物不匹配会失败。许可证验证读取该次构建实际使用的依赖 checkouts。
 
+### 跨 worktree 的 worker 产物缓存
+
+本地 Release 默认复用完整的 `RillSpeechWorker` 和依赖资源，缓存位于
+`~/Library/Caches/Rill/BuildArtifacts/worker-v1/`，只允许当前用户访问。
+缓存键包含求值后的包声明、worker 传递依赖的实际文件内容、锁文件、工具链、
+SDK、Metal 及构建参数；增加、删除或修改未提交文件也参与判断。仅修改 App/UI
+可继续命中。无法完整确定输入、依赖 checkout 有改动或条目损坏时，回退源码构建。
+
+- `just cache-status` 显示容量，`just cache-clean` 删除非活动条目。
+- 默认限制 10 GiB，成功使用后按最近使用情况淘汰；活动条目持有锁。
+- `scripts/build_xcode_release.sh --worker-cache off` 强制使用源码。
+- `--result-file PATH` 写入带校验值的 JSON 回执及产品快照；PATH 应放在被 Git
+  忽略的目录或工作区之外。`assemble_app_bundle.sh --build-result PATH` 消费该回执。
+- `--show-bin-path` 仍返回当前 SwiftPM 产品目录。缓存命中的 worker 可以来自
+  独立目录，装配时应使用回执；不要假定该目录含有缓存命中的 worker。
+- `RILL_BUILD_CACHE_DIR` 可将缓存定向到独立测试目录。正式公证发布及 CI 始终关闭
+  worker 缓存；缓存不替代完整测试，新 worktree 首次测试仍需编译测试依赖。
+
+构建回执将产品复制到其父目录中的独立快照，预检和发布脚本会自动清理自己的
+临时快照。手动指定回执目录时，由调用者在装配完成后清理该目录。共享缓存中的
+文件不参与签名；所有签名都在当前装配目录中完成。
+
 ## 改动边界
 
 模块依赖应保持单向；完整依赖图与状态归属见 [架构说明](docs/architecture.md)：

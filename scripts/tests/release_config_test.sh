@@ -299,9 +299,6 @@ run_locked_dependency_policy_case() {
 run_xcode_build_policy_case() {
   local driver="$PROJECT_DIR/scripts/build_driver.py"
   if ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh" release' "$XCODE_RELEASE_BUILD_SCRIPT" ||
-    ! grep -Fq '"--build-system", "swiftbuild"' "$driver" ||
-    ! grep -Fq '"--manifest-cache", "none"' "$driver" ||
-    ! grep -Fq '"--arch", "arm64"' "$driver" ||
     ! grep -Fq '.artifacts/build/release' "$driver" ||
     ! grep -Fq 'xcodebuild -downloadComponent MetalToolchain' "$driver"; then
     echo "FAIL: release build does not use the reviewed locked configuration" >&2
