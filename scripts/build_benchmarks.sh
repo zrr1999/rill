@@ -17,7 +17,7 @@ case "${1:-}" in
     hooks="$PWD/.artifacts/benchmarks/instrument-hooks-$revision"
     mkdir -p "$(dirname "$archive")" "$hooks"
     if [[ ! -f "$archive" ]]; then
-      curl --fail --location --silent --show-error \
+      curl --fail --location --proto '=https' --proto-redir '=https' --silent --show-error \
         "https://github.com/CodSpeedHQ/instrument-hooks/archive/$revision.tar.gz" \
         -o "$archive"
     fi
