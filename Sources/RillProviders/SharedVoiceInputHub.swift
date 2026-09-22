@@ -355,9 +355,6 @@ public actor SharedVoiceInputHub {
       // A configured, stopped VoiceProcessingIO graph can still affect other
       // applications. Release the complete frontend whenever ownership moves
       // away from this channel; the processor remains reusable on the next run.
-      // Tear it down before finishing the stream so the continuation's
-      // asynchronous termination callback cannot race shutdown and stop the
-      // same retained session twice.
       processor?.shutdown()
     } else {
       processor?.stopRecording()
