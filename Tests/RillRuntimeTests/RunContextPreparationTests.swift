@@ -4,6 +4,8 @@ import Testing
 @testable import RillRuntime
 
 struct RunContextPreparationTests {
+    private static let captureSetupTimeout: Duration = .seconds(2)
+
     @Test func explicitSelectionVocabularyAndCleanupSurviveWithoutRefreshingFrozenReferences() async throws {
         let imageGate = ContextTestGate<ScreenReferenceSummary>()
         let preparation = try await prepare(summarizer: ContextTestSummarizer(
@@ -58,10 +60,12 @@ struct RunContextPreparationTests {
             focus: ContextSnapshot.empty.focus, screenEnabled: true, memoryEnabled: false, excludedApplications: [],
             capture: ContextTestCapture { try image() }, summarizer: ContextTestSummarizer(), memories: { [] },
             authorization: grant, audioLifetime: AudioCaptureLifetime(runID: UUID()),
+            captureTimeout: Self.captureSetupTimeout,
             saveLateSummary: { summary, authorization in
                 await pendingWrite.wait()
                 if authorization.isValid { await late.record(summary) }
             })
+        try #require(preparation.preparedReceipt.image == .ready)
         preparation.recordingStarted()
         try await waitUntil { preparation.preparedReceipt.imageSummary == .ready }
         _ = try preparation.freeze(transcript: "正文")
@@ -251,7 +255,7 @@ struct RunContextPreparationTests {
                          summarizer: ContextTestSummarizer = ContextTestSummarizer(),
                          memories: [LongTermMemory] = [],
                          authorization: ContextReferenceAuthorization = ContextReferenceAuthorization(providerFingerprint: "fixture"),
-                         captureTimeout: Duration = .seconds(2), summaryTimeout: Duration = .seconds(10),
+                         captureTimeout: Duration = RunContextPreparationTests.captureSetupTimeout, summaryTimeout: Duration = .seconds(10),
                          late: ContextLateSummaryProbe = ContextLateSummaryProbe()) async throws -> RunContextPreparation {
         try await RunContextPreparation.prepare(
             focus: .init(applicationName: "Editor", bundleIdentifier: "test.editor", processIdentifier: 1,
@@ -276,7 +280,7 @@ struct RunContextPreparationTests {
 
     private func waitUntil(_ ready: @Sendable () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while !ready(), ContinuousClock.now < deadline { await Task.yield() }
+        while !ready(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(1)) }
         try #require(ready())
     }
 }
