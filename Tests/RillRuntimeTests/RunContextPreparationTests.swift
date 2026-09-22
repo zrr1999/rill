@@ -289,7 +289,7 @@ private actor ContextTestGate<Value: Sendable> {
 }
 private actor ContextLateSummaryProbe {
     private(set) var count = 0
-    func record(_ summary: ScreenReferenceSummary) { count += 1 }
+    func record(_: ScreenReferenceSummary) { count += 1 }
 
     func wait() async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(2))

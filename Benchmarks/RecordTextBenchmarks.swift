@@ -78,6 +78,7 @@ private struct PreviewWorkload {
     let input: String
     let expected: String
 
+    // CodSpeed recognizes this required prefix when trimming benchmark call stacks.
     @inline(never)
     func __codspeed_root_frame__run() -> Int {
         var outputBytes = 0
