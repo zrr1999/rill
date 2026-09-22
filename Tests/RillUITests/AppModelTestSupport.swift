@@ -386,16 +386,19 @@ actor UITestLocalHistoryMaintenance: LocalHistoryMaintaining {
   private var results: [LocalHistoryMaintenanceResult]
   private let fallbackResult: LocalHistoryMaintenanceResult
   private let delay: Duration
+  private let onRetention: (@Sendable () -> Void)?
 
   init(
     results: [LocalHistoryMaintenanceResult] = [],
     delay: Duration = .zero,
+    onRetention: (@Sendable () -> Void)? = nil,
     fallbackResult: LocalHistoryMaintenanceResult = .completed(
       LocalHistoryMaintenanceCounts()
     )
   ) {
     self.results = results
     self.delay = delay
+    self.onRetention = onRetention
     self.fallbackResult = fallbackResult
   }
 
@@ -405,6 +408,7 @@ actor UITestLocalHistoryMaintenance: LocalHistoryMaintaining {
     now: Date
   ) async -> LocalHistoryMaintenanceResult {
     calls.append(.performRetention(recordRetention, runRetention))
+    onRetention?()
     try? await Task.sleep(for: delay)
     return nextResult()
   }
