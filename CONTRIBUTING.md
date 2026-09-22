@@ -200,9 +200,11 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。`Required CI` 
 `Policy - PR` 在 `pull_request_target` 上先规范化标题，再校验标题和正文。
 独立的改名 job 只把 `imgbot[bot]` 的 `[ImgBot] Optimize images` 改为
 `⚡ perf(assets): optimize images`，保留其他作者和人工设置的标题；写权限只授予该 job。
-改名结果直接传给同一工作流的校验 job，不依赖 `GITHUB_TOKEN` 产生的 `edited` 事件。
-校验 job 只有读取权限，通过 API 读取事件中 base commit 的 PR 模板；两个 job 都不检出
-或执行仓库代码。
+改名前重新检查当前作者和标题；后续校验 job 通过 API 一次读取当前标题和正文，
+不依赖 `GITHUB_TOKEN` 产生的 `edited` 事件。校验 job 只有读取权限，使用事件中
+base commit 的 PR 模板；两个 job 都不检出或执行仓库代码。修改 Policy 工作流本身时，
+额外通过 `pull_request` 运行只读校验，让新触发配置在进入默认分支前也能验证。
+两种事件使用独立并发组；普通源码与 ImgBot 图片 PR 只使用 `pull_request_target`。
 提交信息由本地 prek
 `commit-msg` hook（`zendev-message-check`）校验，CI 不逐条扫描提交。
 
