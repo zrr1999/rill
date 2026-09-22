@@ -130,31 +130,61 @@ struct RunContextPreparationTests {
     }
 
     @Test func captureDeadlineDiscardsAnUncooperativeLateFrame() async throws {
+        let lateFrame = try image()
         let gate = ContextTestGate<CorrectionReferenceImage>()
-        let capture = ContextTestCapture { await gate.wait() }
-        let preparation = try await prepare(capture: capture, captureTimeout: .milliseconds(5))
-        try await gate.started()
-        let frozen = try preparation.freeze(transcript: "正文")
+        let completed = ContextTestGate<Result<RunContextPreparation, Error>>()
+        let preparationTask = Task {
+            do {
+                let preparation = try await prepare(
+                    capture: ContextTestCapture { await gate.wait() }, captureTimeout: .seconds(1)
+                )
+                await completed.resolve(.success(preparation))
+            } catch { await completed.resolve(.failure(error)) }
+        }
+        let frozenResult: Result<RunContextPreparation.Frozen, Error>
+        do {
+            try await gate.started()
+            let preparation = try await completed.resolved().get()
+            frozenResult = .success(try preparation.freeze(transcript: "正文"))
+        } catch { frozenResult = .failure(error) }
+        // Release before draining, including when the deadline implementation joins the capture.
+        await gate.resolve(lateFrame)
+        await preparationTask.value
+        let frozen = try frozenResult.get()
         #expect(frozen.receipt.image == .timedOut)
-        #expect(frozen.request.referenceImage == nil)
-        await gate.resolve(try image())
         #expect(frozen.request.referenceImage == nil)
     }
 
     @Test func summaryDeadlinesDoNotJoinUncooperativeRequests() async throws {
+        let memory = sampleMemory()
+        let lateMemory = try CorrectionMemorySummary(memoryIDs: [memory.id], terms: ["late"], corrections: [])
         let imageGate = ContextTestGate<ScreenReferenceSummary>()
+        let memoryGate = ContextTestGate<CorrectionMemorySummary>()
         let preparation = try await prepare(
-            summarizer: ContextTestSummarizer(image: { await imageGate.wait() }, memory: { throw TestFailure.failed }),
-            memories: [sampleMemory()], summaryTimeout: .milliseconds(5)
+            summarizer: ContextTestSummarizer(
+                image: { await imageGate.wait() }, memory: { await memoryGate.wait() }
+            ),
+            memories: [memory], summaryTimeout: .seconds(1)
         )
         preparation.recordingStarted()
-        try await imageGate.started()
-        try await waitUntil { preparation.preparedReceipt.imageSummary == .timedOut }
-        let frozen = try preparation.freeze(transcript: "正文")
-        #expect(frozen.request.imageSummary == nil)
-        #expect(frozen.receipt.memorySummary == .failed)
+        let frozenResult: Result<RunContextPreparation.Frozen, Error>
+        do {
+            try await imageGate.started()
+            try await memoryGate.started()
+            try await waitUntil {
+                preparation.preparedReceipt.imageSummary == .timedOut
+                    && preparation.preparedReceipt.memorySummary == .timedOut
+            }
+            frozenResult = .success(try preparation.freeze(transcript: "正文"))
+        } catch { frozenResult = .failure(error) }
         await imageGate.resolve(ScreenReferenceSummary(terms: ["late"], observations: []))
+        await memoryGate.resolve(lateMemory)
+        preparation.cancel()
+        let frozen = try frozenResult.get()
+        #expect(frozen.receipt.imageSummary == .timedOut)
+        #expect(frozen.receipt.memorySummary == .timedOut)
         #expect(frozen.request.imageSummary == nil)
+        #expect(frozen.request.memorySummary == nil)
     }
 
     @Test func cancellationAndRevocationPreventFreezeAndLateWrites() async throws {
@@ -279,6 +309,14 @@ private actor ContextTestGate<Value: Sendable> {
             try await Task.sleep(for: .milliseconds(1))
         }
         try #require(hasStarted, "The dependency did not start before the test deadline")
+    }
+
+    func resolved() async throws -> Value {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while resolvedValue == nil, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        return try #require(resolvedValue, "Preparation did not return while its dependency was held")
     }
 
     func resolve(_ value: Value) {
