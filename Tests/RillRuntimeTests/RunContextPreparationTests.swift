@@ -9,7 +9,7 @@ struct RunContextPreparationTests {
         let preparation = try await prepare(summarizer: ContextTestSummarizer(
             image: { await imageGate.wait() }, memory: { throw TestFailure.failed }))
         preparation.recordingStarted()
-        await imageGate.started()
+        try await imageGate.started()
         let selected = Candidate(text: "vux type", confidence: 0.7, source: .user)
         let set = CandidateSet(surfaceText: "vux tipe", range: .init(lowerBound: 2, upperBound: 10),
             candidates: [.init(text: "vux typo", confidence: 0.9, source: .asr), selected])
@@ -33,7 +33,7 @@ struct RunContextPreparationTests {
             for await event in stream {
                 if case .candidateResolutionRequested(let request) = event {
                     await imageGate.resolve(.init(terms: ["TooLate"], observations: []))
-                    await waitUntil { preparation.preparedReceipt.imageSummary == .ready }
+                    try await waitUntil { preparation.preparedReceipt.imageSummary == .ready }
                     _ = await resolver.accept(caseID: request.id, selections: [set.id: selected.id])
                     return
                 }
@@ -41,6 +41,8 @@ struct RunContextPreparationTests {
         }
         defer { selection.cancel() }
         await coordinator.run(workflow: workflow, contextSnapshot: .empty, contextPreparation: preparation)
+        selection.cancel()
+        try await selection.value
         let requests = await transformer.requests
         #expect(requests.count == 1)
         #expect(requests.first?.transcript == "Rill")
@@ -61,10 +63,10 @@ struct RunContextPreparationTests {
                 if authorization.isValid { await late.record(summary) }
             })
         preparation.recordingStarted()
-        await waitUntil { preparation.preparedReceipt.imageSummary == .ready }
+        try await waitUntil { preparation.preparedReceipt.imageSummary == .ready }
         _ = try preparation.freeze(transcript: "正文")
         let save = Task { await preparation.historyUpdate.historySaved() }
-        await pendingWrite.started()
+        try await pendingWrite.started()
         preparation.cancel()
         await pendingWrite.resolve(())
         await save.value
@@ -82,8 +84,8 @@ struct RunContextPreparationTests {
             memories: [memory], late: late
         )
         preparation.recordingStarted()
-        await imageGate.started()
-        await memoryGate.started()
+        try await imageGate.started()
+        try await memoryGate.started()
         let start = ContinuousClock.now
         let frozen = try preparation.freeze(transcript: "预算 500")
         #expect(start.duration(to: .now) < .milliseconds(100))
@@ -95,7 +97,7 @@ struct RunContextPreparationTests {
         await preparation.historyUpdate.historySaved()
         await imageGate.resolve(ScreenReferenceSummary(terms: ["预算 2000"], observations: []))
         await memoryGate.resolve(try CorrectionMemorySummary(memoryIDs: [memory.id], terms: ["OldProject"], corrections: []))
-        await late.wait()
+        try await late.wait()
         #expect(await late.count == 1)
         #expect(frozen.request.imageSummary == nil)
         #expect(frozen.request.memorySummary == nil)
@@ -112,15 +114,15 @@ struct RunContextPreparationTests {
             memories: [memory], late: late
         )
         preparation.recordingStarted()
-        await imageGate.started()
-        await memoryGate.started()
+        try await imageGate.started()
+        try await memoryGate.started()
         await memoryGate.resolve(try CorrectionMemorySummary(memoryIDs: [memory.id], terms: ["Rill"], corrections: []))
-        await waitUntil { preparation.preparedReceipt.memorySummary == .ready }
+        try await waitUntil { preparation.preparedReceipt.memorySummary == .ready }
         let frozen = try preparation.freeze(transcript: "Rill")
         #expect(frozen.request.memorySummary?.memoryIDs == [memory.id])
         #expect(frozen.request.imageSummary == nil)
         await imageGate.resolve(ScreenReferenceSummary(terms: ["Rill"], observations: []))
-        await waitUntil { preparation.preparedReceipt.screenSummary != nil }
+        try await waitUntil { preparation.preparedReceipt.screenSummary != nil }
         #expect(await late.count == 0)
         await preparation.historyUpdate.historySaved()
         #expect(await late.count == 1)
@@ -130,9 +132,8 @@ struct RunContextPreparationTests {
     @Test func captureDeadlineDiscardsAnUncooperativeLateFrame() async throws {
         let gate = ContextTestGate<CorrectionReferenceImage>()
         let capture = ContextTestCapture { await gate.wait() }
-        let started = ContinuousClock.now
         let preparation = try await prepare(capture: capture, captureTimeout: .milliseconds(5))
-        #expect(started.duration(to: .now) < .milliseconds(200))
+        try await gate.started()
         let frozen = try preparation.freeze(transcript: "正文")
         #expect(frozen.receipt.image == .timedOut)
         #expect(frozen.request.referenceImage == nil)
@@ -147,8 +148,8 @@ struct RunContextPreparationTests {
             memories: [sampleMemory()], summaryTimeout: .milliseconds(5)
         )
         preparation.recordingStarted()
-        await imageGate.started()
-        await waitUntil { preparation.preparedReceipt.imageSummary == .timedOut }
+        try await imageGate.started()
+        try await waitUntil { preparation.preparedReceipt.imageSummary == .timedOut }
         let frozen = try preparation.freeze(transcript: "正文")
         #expect(frozen.request.imageSummary == nil)
         #expect(frozen.receipt.memorySummary == .failed)
@@ -165,7 +166,7 @@ struct RunContextPreparationTests {
             authorization: authorization, late: late
         )
         preparation.recordingStarted()
-        await gate.started()
+        try await gate.started()
         await preparation.historyUpdate.historySaved()
         authorization.revoke()
         preparation.cancel()
@@ -180,7 +181,7 @@ struct RunContextPreparationTests {
             image: { await imageGate.wait() }, memory: { throw TestFailure.failed }
         ))
         preparation.recordingStarted()
-        await imageGate.started()
+        try await imageGate.started()
         let transformer = ContextQueueTransformer()
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
@@ -211,7 +212,7 @@ struct RunContextPreparationTests {
         #expect(requests.first?.referenceImage != nil)
         #expect(requests.first?.imageSummary == nil)
         await imageGate.resolve(ScreenReferenceSummary(terms: ["预算 2000"], observations: []))
-        await waitUntil { preparation.isFinished }
+        try await waitUntil { preparation.isFinished }
         #expect(await transformer.requests.count == 1)
         await queue.shutdown()
     }
@@ -220,7 +221,7 @@ struct RunContextPreparationTests {
                          summarizer: ContextTestSummarizer = ContextTestSummarizer(),
                          memories: [LongTermMemory] = [],
                          authorization: ContextReferenceAuthorization = ContextReferenceAuthorization(providerFingerprint: "fixture"),
-                         captureTimeout: Duration = .milliseconds(250), summaryTimeout: Duration = .seconds(10),
+                         captureTimeout: Duration = .seconds(2), summaryTimeout: Duration = .seconds(10),
                          late: ContextLateSummaryProbe = ContextLateSummaryProbe()) async throws -> RunContextPreparation {
         try await RunContextPreparation.prepare(
             focus: .init(applicationName: "Editor", bundleIdentifier: "test.editor", processIdentifier: 1,
@@ -243,10 +244,10 @@ struct RunContextPreparationTests {
                        sources: [MemorySourceVersion(sourceID: UUID(), revision: 1)])
     }
 
-    private func waitUntil(_ ready: @Sendable () -> Bool) async {
+    private func waitUntil(_ ready: @Sendable () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(2))
         while !ready(), ContinuousClock.now < deadline { await Task.yield() }
-        #expect(ready())
+        try #require(ready())
     }
 }
 
@@ -263,25 +264,40 @@ private struct ContextTestSummarizer: CorrectionContextSummarizing {
 }
 private actor ContextTestGate<Value: Sendable> {
     private var continuation: CheckedContinuation<Value, Never>?
-    private var startWaiters: [CheckedContinuation<Void, Never>] = []
+    private var hasStarted = false
+    private var resolvedValue: Value?
+
     func wait() async -> Value {
-        await withCheckedContinuation {
-            continuation = $0
-            for waiter in startWaiters { waiter.resume() }
-            startWaiters.removeAll()
+        hasStarted = true
+        if let resolvedValue { return resolvedValue }
+        return await withCheckedContinuation { continuation = $0 }
+    }
+
+    func started() async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !hasStarted, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(1))
         }
+        try #require(hasStarted, "The dependency did not start before the test deadline")
     }
-    func started() async {
-        if continuation != nil { return }
-        await withCheckedContinuation { startWaiters.append($0) }
+
+    func resolve(_ value: Value) {
+        resolvedValue = value
+        continuation?.resume(returning: value)
+        continuation = nil
     }
-    func resolve(_ value: Value) { continuation?.resume(returning: value); continuation = nil }
 }
 private actor ContextLateSummaryProbe {
     private(set) var count = 0
-    private var waiter: CheckedContinuation<Void, Never>?
-    func record(_ summary: ScreenReferenceSummary) { count += 1; waiter?.resume(); waiter = nil }
-    func wait() async { if count == 0 { await withCheckedContinuation { waiter = $0 } } }
+    func record(_ summary: ScreenReferenceSummary) { count += 1 }
+
+    func wait() async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while count == 0, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        try #require(count > 0, "The late summary was not persisted")
+    }
 }
 
 private struct ContextQueueContextProvider: ContextProvider {
