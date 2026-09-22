@@ -336,19 +336,12 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     harness.model.setSpeechModelResident(models[1].id, resident: true)
     harness.model.setSpeechModelResident(models[0].id, resident: false)
 
-    await waitUntil {
-      // The asynchronous probe is checked below; keep yielding until the
-      // synchronization chain itself has had time to drain.
-      harness.model.residentSpeechModelIDs == [models[1].id]
-    }
-    try? await Task.sleep(for: .milliseconds(80))
+    await harness.model.residentSpeechModelSynchronizationTask?.value
 
+    XCTAssertEqual(harness.model.residentSpeechModelIDs, [models[1].id])
     let calls = await probe.snapshot()
-    XCTAssertEqual(calls.count, 2)
-    XCTAssertEqual(calls[0].added, [models[1].id])
-    XCTAssertTrue(calls[0].removed.isEmpty)
-    XCTAssertTrue(calls[1].added.isEmpty)
-    XCTAssertEqual(calls[1].removed, [models[0].id])
+    XCTAssertEqual(calls.map(\.added), [[models[1].id], []])
+    XCTAssertEqual(calls.map(\.removed), [[], [models[0].id]])
   }
 
   func testResidentModelBudgetRequiresExplicitConfirmationAndInvalidatesOnChange() {

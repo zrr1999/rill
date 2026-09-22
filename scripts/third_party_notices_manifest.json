@@ -51,6 +51,11 @@
           "kind": "license",
           "path": "LICENSE",
           "sha256": "44326a4ea062241ae6fc26ee2ec90bdc81af7eb7b9d3966181b733fa69d42057"
+        },
+        {
+          "kind": "license",
+          "path": "Source/Cmlx/json/LICENSE.MIT",
+          "sha256": "86b998c792894ccb911a1cb7994f7a9652894e7a094c0b5e45be2f553f45cf14"
         }
       ]
     },
