@@ -19,6 +19,10 @@ jobs:
     name: Release preflight
     runs-on: macos-26
     timeout-minutes: 45
+    env:
+      SWIFT_BUILD_CACHE_PATHS: |
+        .build
+        .artifacts/build/release
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -43,6 +47,21 @@ jobs:
           tool_dir="$RUNNER_TEMP/gitleaks-bin"
           bash scripts/install_gitleaks.sh --destination "$tool_dir"
           echo "$tool_dir" >> "$GITHUB_PATH"
+
+      - name: Identify the build toolchain
+        id: toolchain
+        run: |
+          identity="$(xcodebuild -version; swift --version; xcrun --show-sdk-build-version)"
+          echo "key=$(printf '%s' "$identity" | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Swift build arenas
+        id: build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.SWIFT_BUILD_CACHE_PATHS }}
+          key: swift-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py', 'scripts/worker_artifact_cache.py') }}-${{ github.sha }}
+          restore-keys: |
+            swift-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py', 'scripts/worker_artifact_cache.py') }}-
 
       - name: Resolve locked SwiftPM dependencies
         run: |
@@ -69,7 +88,21 @@ jobs:
         run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
 
       - name: Run preflight
-        run: bash scripts/preflight.sh --clean
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            bash scripts/preflight.sh
+          else
+            bash scripts/preflight.sh --clean
+          fi
+
+      - name: Save Swift build arenas
+        if: ${{ !cancelled() && steps.build-cache.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.SWIFT_BUILD_CACHE_PATHS }}
+          key: ${{ steps.build-cache.outputs.cache-primary-key }}
 
   verify:
     name: Required CI

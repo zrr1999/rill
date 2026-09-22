@@ -19,6 +19,10 @@ build product="RillApp":
 test:
     bash scripts/test.sh
 
+# Build and validate the production performance workloads.
+bench:
+    bash scripts/build_benchmarks.sh
+
 # Reproduce the complete local CI gate.
 ci:
     just check
