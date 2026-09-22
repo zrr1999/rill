@@ -471,19 +471,25 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
   }
 
   func testTimeoutWaitsForTermThenKillAndReapsPID() async throws {
-    let supervisor = makeSupervisor(
-      script: "trap '' TERM; IFS= read -r request || exit 0; while :; do :; done",
-      response: ""
-    )
-    let startedAt = ContinuousClock.now
+    let response = makeSuccessResponse(requestID: speechWorkerTestRequestID, generation: 1)
+    let script = """
+      trap '' TERM
+      IFS= read -r request || exit 0
+      printf '%s' "$1"
+      IFS= read -r request || exit 0
+      while :; do :; done
+      """
+    let supervisor = makeSupervisor(script: script, response: response)
     let payload = makePayload()
-    let task = Task {
-      try await supervisor.recognize(payload, timeout: .milliseconds(20))
-    }
-    let pid = try await waitForPID(supervisor)
+    // A completed exchange confirms the child installed its TERM handler.
+    let ready = try await supervisor.recognize(payload, timeout: .seconds(2))
+    XCTAssertEqual(ready.bestText, "worker result")
+    let activePIDBeforeTimeout = await supervisor.activeProcessIdentifier()
+    let pid = try XCTUnwrap(activePIDBeforeTimeout)
+    let startedAt = ContinuousClock.now
 
     do {
-      _ = try await task.value
+      _ = try await supervisor.recognize(payload, timeout: .milliseconds(20))
       XCTFail("Expected the worker request to time out")
     } catch {
       XCTAssertEqual(error as? SpeechWorkerClientError, .requestTimedOut)
