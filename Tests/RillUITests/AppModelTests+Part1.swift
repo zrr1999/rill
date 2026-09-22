@@ -1122,7 +1122,7 @@ extension AppModelTests {
         await waitForEventProcessing(harness)
         XCTAssertEqual(harness.model.liveSubtitleSnapshot?.phase, .preparing)
 
-        try? await Task.sleep(for: .milliseconds(140))
+        await harness.model.pendingLiveSubtitleHideTask?.value
 
         XCTAssertNil(harness.model.liveSubtitleSnapshot)
     }

@@ -334,11 +334,10 @@ final class AppModelRunReceiptTests: XCTestCase {
             runReceiptRepository: receiptRepository
         )
 
-        let loaded = await waitUntil {
-            harness.model.workflowRunReceipt(for: requiredRunID) == requiredReceipt
-        }
+        await waitForHistoryMaintenance(harness)
+        await harness.model.waitForHistoryProjectionLoads()
 
-        XCTAssertTrue(loaded)
+        XCTAssertEqual(harness.model.workflowRunReceipt(for: requiredRunID), requiredReceipt)
     }
 
     func testPersistedVoiceTriggerKeepsCustomResultVisibleAfterWorkflowRemoval() async {

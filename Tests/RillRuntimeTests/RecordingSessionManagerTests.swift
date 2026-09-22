@@ -1054,11 +1054,24 @@ final class RecordingSessionManagerTests: XCTestCase {
 
     func testStreamReleaseRetargetsToExactRunWhenStartupFinishesBeforeDebounce() async throws {
         let fixture = try makeStreamHotkeyPreparationFixture(longRecordingModeEnabled: false)
+        let releaseReceived = expectation(description: "Pending start received release")
+        let events = await fixture.eventBus.stream()
+        let observation = Task {
+            for await event in events {
+                if case .diagnostic(let diagnostic) = event,
+                   diagnostic.event == "recording.hotkey.released" {
+                    releaseReceived.fulfill()
+                    return
+                }
+            }
+        }
+        defer { observation.cancel() }
         await fixture.manager.start()
 
         fixture.hotkeyTap.testingEmit(.pushToTalkPressed(.fnHold))
         await fixture.workflowProvider.waitUntilEntered()
         fixture.hotkeyTap.testingEmit(.pushToTalkReleased(.fnHold))
+        await fulfillment(of: [releaseReceived], timeout: 2)
         await fixture.workflowProvider.release()
         await fixture.manager.waitForStartOperationsToDrainForTesting()
 
@@ -1072,14 +1085,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         let hasPendingStart = await fixture.manager.hasPendingStreamHotkeyStartForTesting
         XCTAssertFalse(hasPendingStart)
 
-        try? await Task.sleep(for: .milliseconds(180))
-        for _ in 0..<100 {
-            let lifecycle = await fixture.audioCaptureService.lifecycleCounts()
-            if lifecycle.finish == 1, await fixture.manager.currentState() == .idle {
-                break
-            }
-            await Task.yield()
-        }
+        await fixture.manager.waitForHotkeyLifecycleTasksToDrainForTesting()
 
         let lifecycle = await fixture.audioCaptureService.lifecycleCounts()
         let finalState = await fixture.manager.currentState()

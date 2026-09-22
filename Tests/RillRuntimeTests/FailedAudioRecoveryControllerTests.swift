@@ -119,25 +119,25 @@ private struct RecoveryProbeAction: OutputAction {
     }
 }
 
+private enum RecoveryBarrierError: Error { case notEntered }
+
 private actor RecoveryMaterializationBarrier {
     private var entered = false
-    private var enteredWaiter: CheckedContinuation<Void, Never>?
     private var releaseWaiter: CheckedContinuation<Void, Never>?
 
     func hold() async {
         entered = true
-        enteredWaiter?.resume()
-        enteredWaiter = nil
         await withCheckedContinuation { continuation in
             releaseWaiter = continuation
         }
     }
 
-    func waitUntilEntered() async {
-        guard !entered else { return }
-        await withCheckedContinuation { continuation in
-            enteredWaiter = continuation
+    func waitUntilEntered() async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !entered, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(1))
         }
+        guard entered else { throw RecoveryBarrierError.notEntered }
     }
 
     func release() {
@@ -329,17 +329,23 @@ private actor RecoveryControllerStoreProbe: FailedAudioRecoveryStore {
 
 private actor RecoveryTemporaryCleanupProbe {
     private var failuresRemaining: Int
+    private var successBarrier: RecoveryMaterializationBarrier?
     private(set) var attemptCount = 0
 
-    init(failureCount: Int) {
+    init(failureCount: Int, successBarrier: RecoveryMaterializationBarrier? = nil) {
         failuresRemaining = failureCount
+        self.successBarrier = successBarrier
     }
 
-    func cleanup() -> Bool {
+    func cleanup() async -> Bool {
         attemptCount += 1
         if failuresRemaining > 0 {
             failuresRemaining -= 1
             return false
+        }
+        if let barrier = successBarrier {
+            successBarrier = nil
+            await barrier.hold()
         }
         return true
     }
@@ -1203,7 +1209,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
         let retry = Task {
             try await controller.retry(id: receipt.id, workflow: workflow)
         }
-        await materializationBarrier.waitUntilEntered()
+        try await materializationBarrier.waitUntilEntered()
         await settings.replace(with: PrivacyPolicySettings(
             sensitiveAppRules: [
                 SensitiveAppRule(
@@ -1299,48 +1305,42 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     }
 
     func testEnabledControllerPurgesAtEarliestExpirationDeadline() async throws {
-        let workflow = makeWorkflow()
-        let now = Date()
-        var receipt = makeReceipt(workflowID: workflow.id)
-        receipt.createdAt = now.addingTimeInterval(-1)
-        receipt.expiresAt = now.addingTimeInterval(0.05)
-        let store = RecoveryControllerStoreProbe(receipt: receipt)
-        let controller = makeController(
-            store: store,
-            recognitionShouldFail: false,
-            currentDate: { Date() }
-        )
-
-        try await controller.refresh(isEnabled: true)
-        try await Task.sleep(for: .milliseconds(180))
-
-        let snapshot = await store.snapshot()
-        XCTAssertTrue(snapshot.receipts.isEmpty)
+        try await assertExpirationCleanup(failureCount: 0)
     }
 
     func testExpirationCleanupRetriesAfterTransientFailure() async throws {
+        try await assertExpirationCleanup(failureCount: 1)
+    }
+
+    private func assertExpirationCleanup(failureCount: Int) async throws {
         let workflow = makeWorkflow()
-        let now = Date()
+        let now = Date(timeIntervalSince1970: 100)
+        let clock = LockedRecoveryDate(now)
         var receipt = makeReceipt(workflowID: workflow.id)
         receipt.createdAt = now.addingTimeInterval(-1)
-        receipt.expiresAt = now.addingTimeInterval(0.03)
-        let store = RecoveryControllerStoreProbe(
-            receipt: receipt,
-            purgeFailureCount: 1
-        )
+        receipt.expiresAt = now.addingTimeInterval(0.05)
+        let store = RecoveryControllerStoreProbe(receipt: receipt, purgeFailureCount: failureCount)
+        let eventBus = EventBus()
+        let (completed, observation) = await observeRecoveryEvent(on: eventBus) { event in
+            if case .failedAudioRecoveryUpdated(let receipts) = event { return receipts.isEmpty }
+            return false
+        }
+        defer { observation.cancel() }
         let controller = makeController(
             store: store,
             recognitionShouldFail: false,
-            currentDate: { Date() },
+            eventBus: eventBus,
+            currentDate: { clock.read() },
             initialMaintenanceRetryInterval: 0.02,
             maximumMaintenanceRetryInterval: 0.04
         )
 
         try await controller.refresh(isEnabled: true)
-        try await Task.sleep(for: .milliseconds(220))
+        clock.set(receipt.expiresAt)
+        await fulfillment(of: [completed], timeout: 5)
 
         let snapshot = await store.snapshot()
-        XCTAssertGreaterThanOrEqual(snapshot.purgeCount, 2)
+        XCTAssertGreaterThanOrEqual(snapshot.purgeCount, failureCount + 1)
         XCTAssertTrue(snapshot.receipts.isEmpty)
     }
 
@@ -1365,7 +1365,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             maximumMaintenanceRetryInterval: 0.02
         )
         try await controller.refresh(isEnabled: true)
-        await purgeBarrier.waitUntilEntered()
+        try await purgeBarrier.waitUntilEntered()
 
         let completion = RecoveryShutdownCompletionProbe()
         let shutdownTask = Task {
@@ -1442,24 +1442,50 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     }
 
     func testPlaintextCleanupFailureRetriesAndBlocksNewRecoveryRetry() async throws {
+        try await assertPlaintextCleanupBlocksRetry(isEnabled: false)
+    }
+
+    func testEnabledStartupReconcilesCrashPlaintextBeforeAllowingRetry() async throws {
+        try await assertPlaintextCleanupBlocksRetry(isEnabled: true)
+    }
+
+    private func assertPlaintextCleanupBlocksRetry(isEnabled: Bool) async throws {
         let workflow = makeWorkflow()
         let receipt = makeReceipt(workflowID: workflow.id)
         let store = RecoveryControllerStoreProbe(receipt: receipt)
-        let cleanupProbe = RecoveryTemporaryCleanupProbe(failureCount: 2)
+        let successBarrier = RecoveryMaterializationBarrier()
+        let cleanupProbe = RecoveryTemporaryCleanupProbe(
+            failureCount: 2,
+            successBarrier: successBarrier
+        )
+        let eventBus = EventBus()
+        let (completed, observation) = await observeRecoveryEvent(on: eventBus) { event in
+            if case .diagnostic(let diagnostic) = event {
+                return diagnostic.event == "audio-recovery.plaintext-cleanup-completed"
+            }
+            return false
+        }
+        defer { observation.cancel() }
         let controller = makeController(
             store: store,
             recognitionShouldFail: false,
+            eventBus: eventBus,
             cleanupRecoveryTemporaryFiles: { await cleanupProbe.cleanup() },
             initialMaintenanceRetryInterval: 0.01,
             maximumMaintenanceRetryInterval: 0.02
         )
 
-        do {
-            try await controller.refresh(isEnabled: false)
-            XCTFail("Expected the initial plaintext sweep to fail.")
-        } catch let error as FailedAudioRecoveryController.ControllerError {
-            XCTAssertEqual(error, .plaintextCleanupPending)
+        if isEnabled {
+            try await controller.refresh(isEnabled: true)
+        } else {
+            do {
+                try await controller.refresh(isEnabled: false)
+                XCTFail("Expected the initial plaintext sweep to fail.")
+            } catch let error as FailedAudioRecoveryController.ControllerError {
+                XCTAssertEqual(error, .plaintextCleanupPending)
+            }
         }
+        try await successBarrier.waitUntilEntered()
         do {
             _ = try await controller.retry(id: receipt.id, workflow: workflow)
             XCTFail("Expected pending plaintext cleanup to block retry.")
@@ -1467,37 +1493,14 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             XCTAssertEqual(error, .plaintextCleanupPending)
         }
 
-        try await Task.sleep(for: .milliseconds(120))
+        await successBarrier.release()
+        await fulfillment(of: [completed], timeout: 5)
         let attemptCount = await cleanupProbe.attemptCount
-        XCTAssertGreaterThanOrEqual(attemptCount, 3)
-    }
-
-    func testEnabledStartupReconcilesCrashPlaintextBeforeAllowingRetry() async throws {
-        let workflow = makeWorkflow()
-        let receipt = makeReceipt(workflowID: workflow.id)
-        let store = RecoveryControllerStoreProbe(receipt: receipt)
-        let cleanupProbe = RecoveryTemporaryCleanupProbe(failureCount: 2)
-        let controller = makeController(
-            store: store,
-            recognitionShouldFail: false,
-            cleanupRecoveryTemporaryFiles: { await cleanupProbe.cleanup() },
-            initialMaintenanceRetryInterval: 0.01,
-            maximumMaintenanceRetryInterval: 0.02
-        )
-
-        try await controller.refresh(isEnabled: true)
-        do {
-            _ = try await controller.retry(id: receipt.id, workflow: workflow)
-            XCTFail("Expected crash-plaintext cleanup to block retry.")
-        } catch let error as FailedAudioRecoveryController.ControllerError {
-            XCTAssertEqual(error, .plaintextCleanupPending)
+        XCTAssertEqual(attemptCount, 3)
+        if isEnabled {
+            let result = try await controller.retry(id: receipt.id, workflow: workflow)
+            XCTAssertEqual(result, .completed)
         }
-
-        try await Task.sleep(for: .milliseconds(120))
-        let result = try await controller.retry(id: receipt.id, workflow: workflow)
-        XCTAssertEqual(result, .completed)
-        let attemptCount = await cleanupProbe.attemptCount
-        XCTAssertGreaterThanOrEqual(attemptCount, 3)
     }
 
     func testOptOutWaitsForInFlightPreserveAndPerformsFinalSweep() async throws {
@@ -1613,10 +1616,28 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
         XCTAssertTrue(storeSnapshot.receipts.isEmpty)
     }
 
+    private func observeRecoveryEvent(
+        on eventBus: EventBus,
+        matching predicate: @escaping @Sendable (RillEvent) -> Bool
+    ) async -> (XCTestExpectation, Task<Void, Never>) {
+        let completed = expectation(description: "Recovery state committed")
+        let events = await eventBus.stream()
+        let observation = Task {
+            for await event in events {
+                if predicate(event) {
+                    completed.fulfill()
+                    return
+                }
+            }
+        }
+        return (completed, observation)
+    }
+
     private func makeController(
         store: any FailedAudioRecoveryStore,
         recognitionShouldFail: Bool,
         recognitionShouldCancel: Bool = false,
+        eventBus: EventBus = EventBus(),
         outputProbe: RecoveryOutputProbe = RecoveryOutputProbe(),
         privacyRunGate: PrivacyRunGate? = PrivacyRunGate(
             settingsProvider: {
@@ -1639,7 +1660,6 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
         initialMaintenanceRetryInterval: TimeInterval = 5,
         maximumMaintenanceRetryInterval: TimeInterval = 5 * 60
     ) -> FailedAudioRecoveryController {
-        let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
         let coordinator = SessionCoordinator(
             contextProvider: RecoveryControllerContextProvider(),

@@ -19,6 +19,10 @@ build product="RillApp":
 test:
     scripts/swift_locked.sh test --parallel
 
+# Build and validate the production performance workloads.
+bench:
+    bash scripts/build_benchmarks.sh
+
 # Reproduce the complete local CI gate.
 ci:
     just check
