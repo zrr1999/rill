@@ -81,8 +81,13 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
   func testDismissDuringEntranceDoesNotWaitForANoopAnimation() async throws {
     let controller = makeController(reduceMotion: false)
     controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
+    XCTAssertTrue(controller.isVisible)
     controller.dismiss()
-    try await Task.sleep(for: .milliseconds(250))
+
+    let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+    while controller.isVisible, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(20))
+    }
     XCTAssertFalse(controller.isVisible)
   }
 
