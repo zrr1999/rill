@@ -70,6 +70,50 @@ class BuildDriverTests(unittest.TestCase):
         )
         self.assertNotEqual(build.build_settings(["-Xswiftc", "-O"]), [])
 
+    def test_metal_remount_reuses_outputs_but_compiler_changes_invalidate_them(self):
+        first_mount = self.root / "mount-one/metal"
+        second_mount = self.root / "mount-two/metal"
+        for compiler in (first_mount, second_mount):
+            compiler.parent.mkdir()
+            compiler.write_bytes(b"same metal compiler")
+
+        def environment(compiler, version="Metal version one"):
+            def capture(command, root):
+                if command == ["xcrun", "-f", "metal"]:
+                    return str(compiler)
+                return "stable toolchain"
+
+            result = subprocess.CompletedProcess(
+                args=["xcrun", "metal", "-v"],
+                returncode=0,
+                stdout="",
+                stderr=f"{version}\nInstalledDir: {compiler.parent}\n",
+            )
+            with (
+                patch.object(build, "capture", side_effect=capture),
+                patch.object(build.subprocess, "run", return_value=result),
+            ):
+                return self.context.environment()
+
+        with (
+            patch.object(self.context, "swift"),
+            patch.object(self.context, "clean") as clean,
+        ):
+            self.context.build("build", [], environment(first_mount))
+            product = self.context.scratch / "built-product"
+            product.write_bytes(b"compiled output")
+            self.context.build("build", [], environment(second_mount))
+            clean.assert_not_called()
+            self.assertEqual(product.read_bytes(), b"compiled output")
+
+            second_mount.write_bytes(b"changed metal compiler")
+            self.context.build("build", [], environment(second_mount))
+            self.assertEqual(clean.call_count, 1)
+            self.context.build(
+                "build", [], environment(second_mount, "Metal version two")
+            )
+            self.assertEqual(clean.call_count, 2)
+
     def test_swiftpm_metadata_after_clean_does_not_trigger_another_clean(self):
         self.context.scratch.mkdir(parents=True)
         for name in ("CACHEDIR.TAG", ".lock", ".buildSystem_debug"):
