@@ -1,0 +1,37 @@
+name: "CI - Benchmarks"
+
+on:
+  pull_request:
+    paths:
+      - Sources/RillCore/RecordTextFormatting.swift
+      - Benchmarks/**
+      - scripts/build_benchmarks.sh
+      - .github/workflows/ci-benchmarks.yml
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-benchmarks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmarks:
+    name: Record preview benchmarks
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and validate benchmark workloads
+        run: bash scripts/build_benchmarks.sh --codspeed
+      - name: Measure with CodSpeed
+        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
+        with:
+          mode: walltime
+          run: .artifacts/benchmarks/record-text
