@@ -201,7 +201,8 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。`Required CI` 
 独立的改名 job 只把 `imgbot[bot]` 的 `[ImgBot] Optimize images` 改为
 `⚡ perf(assets): optimize images`，保留其他作者和人工设置的标题；写权限只授予该 job。
 改名结果直接传给同一工作流的校验 job，不依赖 `GITHUB_TOKEN` 产生的 `edited` 事件。
-校验 job 只有读取权限，固定检出事件中的 base commit，永不检出或执行 PR head。
+校验 job 只有读取权限，通过 API 读取事件中 base commit 的 PR 模板；两个 job 都不检出
+或执行仓库代码。
 提交信息由本地 prek
 `commit-msg` hook（`zendev-message-check`）校验，CI 不逐条扫描提交。
 
