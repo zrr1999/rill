@@ -151,6 +151,9 @@ uv run --no-build --locked --script "$SCRIPT_DIR/tests/worker_cache_test.py"
 info "Checking app icon generation..."
 bash "$SCRIPT_DIR/tests/app_icon_test.sh"
 
+info "Checking performance benchmark workloads..."
+bash "$SCRIPT_DIR/build_benchmarks.sh"
+
 PACKAGE_SMOKE_ROOT="$(mktemp -d)"
 cleanup() {
   rm -rf "$PACKAGE_SMOKE_ROOT"

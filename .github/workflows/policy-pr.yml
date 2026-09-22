@@ -1,8 +1,9 @@
 name: "Policy - PR"
 
 on:
-  pull_request:
-    types: [opened, edited, reopened, synchronize]
+  # Validate metadata without checking out or executing repository code.
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
 
 permissions:
   contents: read
@@ -12,21 +13,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  normalize-title:
+    name: Normalize ImgBot PR title
+    if: >-
+      github.event.pull_request.user.login == 'imgbot[bot]' &&
+      github.event.pull_request.title == '[ImgBot] Optimize images'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    outputs:
+      title: ${{ steps.rename.outputs.title }}
+    steps:
+      - name: Normalize ImgBot title
+        id: rename
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          NORMALIZED_TITLE: '⚡ perf(assets): optimize images'
+        run: |
+          gh api \
+            --method PATCH \
+            --header "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/${GH_REPO}/pulls/${PR_NUMBER}" \
+            --raw-field "title=$NORMALIZED_TITLE"
+          echo "title=$NORMALIZED_TITLE" >> "$GITHUB_OUTPUT"
+
   message:
     name: PR message
+    needs: normalize-title
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           version: "0.12.17"
 
+      - name: Read the PR body template
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          gh api \
+            --header "Accept: application/vnd.github.raw+json" \
+            "repos/${GH_REPO}/contents/.github/pull_request_template.md?ref=${BASE_SHA}" \
+            > "$RUNNER_TEMP/pr-body-template.md"
+
       - name: Check PR title and body
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_TITLE: ${{ needs.normalize-title.outputs.title || github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           uvx --no-build --from zendev==0.4.0 \
@@ -34,4 +70,4 @@ jobs:
             zendev message check --title --profile zendev --text "$PR_TITLE"
           uvx --no-build --from zendev==0.4.0 \
             --with zendev-commit==0.4.0 --with zendev-review==0.4.0 \
-            zendev message check --body --text "$PR_BODY"
+            zendev message check --body --template "$RUNNER_TEMP/pr-body-template.md" --text "$PR_BODY"

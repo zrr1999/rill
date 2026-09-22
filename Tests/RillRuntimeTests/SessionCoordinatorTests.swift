@@ -2484,12 +2484,20 @@ extension SessionCoordinatorTests {
         XCTAssertEqual(pendingWhileFirstRunIsActive, 1)
         XCTAssertTrue(secondOutputWhileFirstRunIsActive.isEmpty)
 
+        let drained = expectation(description: "Captured audio queue drained")
+        let updates = await eventBus.stream()
+        let observation = Task {
+            for await event in updates {
+                if case .audioProcessingQueueUpdated(let snapshot) = event, snapshot.pendingCount == 0 {
+                    drained.fulfill()
+                    return
+                }
+            }
+        }
+        defer { observation.cancel() }
         await firstRunGate.resume()
         _ = await firstTask.value
-        for _ in 0..<200 {
-            if await secondRunProbe.snapshot() == ["recognized"] { break }
-            try? await Task.sleep(for: .milliseconds(2))
-        }
+        await fulfillment(of: [drained], timeout: 5)
 
         let completedSecondOutputs = await secondRunProbe.snapshot()
         let finalPendingCount = await queue.pendingCount

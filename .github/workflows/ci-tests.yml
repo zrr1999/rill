@@ -44,6 +44,22 @@ jobs:
           bash scripts/install_gitleaks.sh --destination "$tool_dir"
           echo "$tool_dir" >> "$GITHUB_PATH"
 
+      - name: Identify the build toolchain
+        id: toolchain
+        run: |
+          identity="$(xcodebuild -version; swift --version; xcrun --show-sdk-build-version)"
+          echo "key=$(printf '%s' "$identity" | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Swift build arenas
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .build
+            .artifacts/build/release
+          key: swift-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py', 'scripts/worker_artifact_cache.py') }}-${{ github.sha }}
+          restore-keys: |
+            swift-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py', 'scripts/worker_artifact_cache.py') }}-
+
       - name: Resolve locked SwiftPM dependencies
         run: |
           swift package --force-resolved-versions resolve
@@ -69,7 +85,14 @@ jobs:
         run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
 
       - name: Run preflight
-        run: bash scripts/preflight.sh --clean
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            bash scripts/preflight.sh
+          else
+            bash scripts/preflight.sh --clean
+          fi
 
   verify:
     name: Required CI

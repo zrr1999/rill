@@ -70,8 +70,15 @@ just cache-status
 ```
 
 确认回执 `workerCache.status` 为 `hit`，构建日志没有 MLX/worker 编译，且独立
-装配结果包含当前工作区的 App 与资源。不要复制或共享 `.build` 或 Release 的
-SwiftPM 数据库。正式公证发布和 PR CI 始终关闭 worker 缓存并执行干净预检。
+装配结果包含当前工作区的 App 与资源。不要在本地 worktree 之间复制或共享
+`.build` 或 Release 的 SwiftPM 数据库。
+
+PR CI 在 GitHub runner 的同一路径恢复 SwiftPM 构建缓存，缓存键包含操作系统、
+架构、Xcode/Swift/SDK 身份、Package 声明、锁文件和构建驱动。构建驱动仍核对
+物理路径、工具链、参数和依赖指纹；不匹配时清理对应 arena，SwiftPM 再判断源码
+需要重新编译的部分。缓存只减少重复编译，测试、安全检查及签名装配均照常执行。
+独立的 worker 产物缓存仍在所有 CI 中关闭；主分支 push、手动 CI 和正式公证
+发布继续执行干净预检。上表是本地历史测量，不代表 GitHub 缓存的实际提速比例。
 
 本次原始日志与分项 JSON 保存在 owning worktree 的
 `.artifacts/build-performance/`；验证 App 位于相邻
