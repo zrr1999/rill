@@ -191,19 +191,18 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 
 | Workflow | 显示名称 | 职责 |
 | --- | --- | --- |
-| [policy-pr.yml](.github/workflows/policy-pr.yml) | Policy - PR | PR 标题和正文 |
-| [automation-pr-title.yml](.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题 |
+| [policy-pr.yml](.github/workflows/policy-pr.yml) | Policy - PR | 规范化 ImgBot 默认标题，并校验 PR 标题和正文 |
 | [ci-tests.yml](.github/workflows/ci-tests.yml) | CI - Tests | macOS 测试、依赖和发布预检 |
 
 job ID 使用小写 kebab-case，检查名称描述具体职责。`Required CI` 和 `PR message`
 是主分支保护要引用的检查名称；改名时必须同步服务端配置及发布文档。
 
-`Automation - PR Title` 在 `pull_request_target` 上只通过 GitHub API 改名，永不检出 PR head
-或任何仓库代码。
-它只把 `imgbot[bot]` 的 `[ImgBot] Optimize images` 改为 `⚡ perf(assets): optimize images`，
-保留其他作者和人工设置的标题；写权限只授予该 job。
-`Policy - PR` 使用普通 `pull_request` 校验标题和正文，不调用自动化工作流。
-自动化改名会触发 `edited`，policy 随后按新标题重新运行。提交信息由本地 prek
+`Policy - PR` 在 `pull_request_target` 上先规范化标题，再校验标题和正文。
+独立的改名 job 只把 `imgbot[bot]` 的 `[ImgBot] Optimize images` 改为
+`⚡ perf(assets): optimize images`，保留其他作者和人工设置的标题；写权限只授予该 job。
+改名结果直接传给同一工作流的校验 job，不依赖 `GITHUB_TOKEN` 产生的 `edited` 事件。
+校验 job 只有读取权限，固定检出事件中的 base commit，永不检出或执行 PR head。
+提交信息由本地 prek
 `commit-msg` hook（`zendev-message-check`）校验，CI 不逐条扫描提交。
 
 ## 生成文件
@@ -256,8 +255,8 @@ bash scripts/check_commit_messages.sh origin/main HEAD
 ```
 
 主分支应要求 `Required CI` 和 `PR message` 通过，并限制直接推送和绕过规则。
-仓库仅启用 rebase 合并来保留已通过 hook 校验的 message；若维护者重新启用
-squash，最终生成的 message 必须重新经过同一校验器。GitHub 的计划、权限和
+仓库采用 squash 合并；合并前用同一校验器核对最终提交信息，不能仅依赖分支上的
+本地提交检查。GitHub 的计划、权限和
 仓库设置决定这些规则是否实际生效；提交 CI 配置不等于已经启用服务端保护。
 
 ## 发布权限
