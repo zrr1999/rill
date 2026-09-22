@@ -734,14 +734,19 @@ extension AppModelTests {
     }
 
     func testPeriodicRetentionMaintenanceRunsAgainAfterInitialLoad() async {
-        let maintenance = UITestLocalHistoryMaintenance()
+        let retentionRuns = expectation(description: "initial and periodic retention")
+        retentionRuns.expectedFulfillmentCount = 2
+        retentionRuns.assertForOverFulfill = false
+        let maintenance = UITestLocalHistoryMaintenance(onRetention: {
+            retentionRuns.fulfill()
+        })
         let harness = makeHarness(
             settingsStore: UITestSettingsStore(),
             historyRetentionMaintenanceInterval: .milliseconds(40),
             localHistoryMaintenance: maintenance
         )
 
-        try? await Task.sleep(for: .milliseconds(150))
+        await fulfillment(of: [retentionRuns], timeout: 5)
 
         let maintenanceCalls = await maintenance.callSnapshot()
         let retentionCalls = maintenanceCalls.filter { call in

@@ -42,8 +42,15 @@ final class SharedVoiceInputArbitrationTests: XCTestCase {
   func testProducerSwitchesFrontendsAndReleasesVoiceProcessingWhenInteractiveRunEnds()
     async throws
   {
-    let ambientProbe = VoiceInputFrontendLifecycleProbe()
-    let interactiveProbe = VoiceInputFrontendLifecycleProbe()
+    let ambientPreempted = expectation(description: "ambient frontend released on preemption")
+    let ambientReleased = expectation(description: "resumed ambient frontend released")
+    let interactiveReleased = expectation(description: "interactive frontend released")
+    let ambientProbe = VoiceInputFrontendLifecycleProbe(
+      releaseExpectations: [ambientPreempted, ambientReleased]
+    )
+    let interactiveProbe = VoiceInputFrontendLifecycleProbe(
+      releaseExpectations: [interactiveReleased]
+    )
     let hub = SharedVoiceInputHub(
       ambientProcessor: AppleVoiceProcessingAudioProcessor(
         sessionFactory: VoiceInputFrontendSessionFactory(probe: ambientProbe)
@@ -55,21 +62,40 @@ final class SharedVoiceInputArbitrationTests: XCTestCase {
 
     let ambient = try await hub.subscribe(channel: .ambientWakeWord)
     XCTAssertEqual(ambientProbe.snapshot(), .init(configure: 1, start: 1, stop: 0))
+    XCTAssertEqual(ambientProbe.liveFrontendCount, 1)
     XCTAssertEqual(interactiveProbe.snapshot(), .zero)
+    XCTAssertEqual(interactiveProbe.liveFrontendCount, 0)
 
     let interactive = try await hub.subscribe(channel: .interactiveRecognition)
-    XCTAssertEqual(ambientProbe.snapshot(), .init(configure: 1, start: 1, stop: 1))
+    await fulfillment(of: [ambientPreempted], timeout: 2)
+    let suspendedAmbient = ambientProbe.snapshot()
+    XCTAssertEqual(suspendedAmbient.configure, 1)
+    XCTAssertEqual(suspendedAmbient.start, 1)
+    XCTAssertGreaterThanOrEqual(suspendedAmbient.stop, 1)
+    XCTAssertEqual(ambientProbe.liveFrontendCount, 0)
     XCTAssertEqual(interactiveProbe.snapshot(), .init(configure: 1, start: 1, stop: 0))
+    XCTAssertEqual(interactiveProbe.liveFrontendCount, 1)
 
     await hub.unsubscribe(id: interactive.id)
-    XCTAssertEqual(interactiveProbe.snapshot(), .init(configure: 1, start: 1, stop: 1))
-    XCTAssertEqual(ambientProbe.snapshot(), .init(configure: 2, start: 2, stop: 1))
+    await fulfillment(of: [interactiveReleased], timeout: 2)
+    let stoppedInteractive = interactiveProbe.snapshot()
+    XCTAssertEqual(stoppedInteractive.configure, 1)
+    XCTAssertEqual(stoppedInteractive.start, 1)
+    XCTAssertGreaterThanOrEqual(stoppedInteractive.stop, 1)
+    XCTAssertEqual(interactiveProbe.liveFrontendCount, 0)
+    let resumedAmbient = ambientProbe.snapshot()
+    XCTAssertEqual(resumedAmbient.configure, 2)
+    XCTAssertEqual(resumedAmbient.start, 2)
+    XCTAssertGreaterThanOrEqual(resumedAmbient.stop, 1)
+    XCTAssertEqual(ambientProbe.liveFrontendCount, 1)
 
     await hub.unsubscribe(id: ambient.id)
+    await fulfillment(of: [ambientReleased], timeout: 2)
     let finalAmbientSnapshot = ambientProbe.snapshot()
     XCTAssertEqual(finalAmbientSnapshot.configure, 2)
     XCTAssertEqual(finalAmbientSnapshot.start, 2)
     XCTAssertGreaterThanOrEqual(finalAmbientSnapshot.stop, 2)
+    XCTAssertEqual(ambientProbe.liveFrontendCount, 0)
     await hub.shutdown()
   }
 }
@@ -87,6 +113,28 @@ private final class VoiceInputFrontendLifecycleProbe: @unchecked Sendable {
   private var configureCount = 0
   private var startCount = 0
   private var stopCount = 0
+  private var frontendCount = 0
+  private var releaseExpectations: [XCTestExpectation]
+
+  init(releaseExpectations: [XCTestExpectation]) {
+    self.releaseExpectations = releaseExpectations
+  }
+
+  var liveFrontendCount: Int {
+    lock.withLock { frontendCount }
+  }
+
+  func recordFrontendCreated() {
+    lock.withLock { frontendCount += 1 }
+  }
+
+  func recordFrontendReleased() {
+    let expectation = lock.withLock {
+      frontendCount -= 1
+      return releaseExpectations.isEmpty ? nil : releaseExpectations.removeFirst()
+    }
+    expectation?.fulfill()
+  }
 
   func recordConfigure() {
     lock.withLock { configureCount += 1 }
@@ -128,6 +176,11 @@ private final class VoiceInputFrontendSession:
 
   init(probe: VoiceInputFrontendLifecycleProbe) {
     self.probe = probe
+    probe.recordFrontendCreated()
+  }
+
+  deinit {
+    probe.recordFrontendReleased()
   }
 
   func configureVoiceProcessing() throws {
