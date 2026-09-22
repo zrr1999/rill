@@ -711,14 +711,14 @@ extension AppModelTests {
             settingsStore: UITestSettingsStore(),
             localHistoryMaintenance: maintenance
         )
-        try? await Task.sleep(for: .milliseconds(120))
+        await waitForHistoryMaintenance(harness)
         await maintenance.resetCalls()
 
         harness.model.performLocalHistoryRetention(now: Date(timeIntervalSince1970: 100))
         harness.model.performLocalHistoryRetention(now: Date(timeIntervalSince1970: 200))
         XCTAssertTrue(harness.model.historyRetentionRerunRequested)
 
-        try? await Task.sleep(for: .milliseconds(220))
+        await waitForHistoryMaintenance(harness)
 
         let maintenanceCalls = await maintenance.callSnapshot()
         XCTAssertEqual(

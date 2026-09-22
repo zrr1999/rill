@@ -30,8 +30,9 @@ just install
 just check
 just build          # 默认只构建 Debug RillApp
 just test
+just bench          # 校验离线性能样本；CodSpeed 用法见 Benchmarks/README.md
 just ci             # 保留增量产物的完整门禁
-just ci-clean       # 与每个 PR 一样的干净构建门禁
+just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 ```
 
 `just check` 只运行 prek 内建检查以及上游提供的 TOML、Actionlint 和 Typos
@@ -182,7 +183,7 @@ git diff --check
 git diff --cached --check
 ```
 
-`scripts/preflight.sh` 会先运行依赖安全 policy tests 和 reviewed baseline 离线检查，再用固定版本的 Gitleaks 扫描完整 Git 历史与 tracked + untracked(nonignored) 当前源码快照；之后检查脚本语法、生成物和仓库根发布产物卫生，保留现有增量产物，执行 arm64-only Release 构建、验证最低 macOS 版本、装配并临时签名 App、运行完整测试。CI 在此基础上单独运行 live OSV exact-commit 查询，避免把可用网络伪装成本地确定性门禁。当前源码扫描拒绝 symlink 与非普通文件，并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。`just ci-clean` / `scripts/preflight.sh --clean` 在开始时分别清理 Debug 和 Release；GitHub PR CI 与正式公证发布强制使用此模式。预检不能替代在 macOS 14 的 Apple Silicon 真机上验证最终公证包，也不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
+`scripts/preflight.sh` 会先运行依赖安全 policy tests 和 reviewed baseline 离线检查，再用固定版本的 Gitleaks 扫描完整 Git 历史与 tracked + untracked(nonignored) 当前源码快照；之后检查脚本语法、生成物和仓库根发布产物卫生，保留现有增量产物，执行 arm64-only Release 构建、验证最低 macOS 版本、装配并临时签名 App、运行完整测试。CI 在此基础上单独运行 live OSV exact-commit 查询，避免把可用网络伪装成本地确定性门禁。当前源码扫描拒绝 symlink 与非普通文件，并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。`just ci-clean` / `scripts/preflight.sh --clean` 在开始时分别清理 Debug 和 Release；GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可恢复由工具链、依赖和构建驱动分键的 SwiftPM 缓存，并经过相同的构建指纹及完整门禁验证。预检不能替代在 macOS 14 的 Apple Silicon 真机上验证最终公证包，也不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
 
 修复竞态或生命周期问题时，应优先使用可控的 fake、barrier 或 lease 写确定性测试；不要依赖固定 `sleep` 猜测时序。涉及 SwiftUI/AppKit 焦点、系统权限、全局快捷键、VoiceOver、签名或公证时，除自动化测试外还需记录真实环境验收结果。
 
@@ -197,19 +198,22 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 
 | Workflow | 显示名称 | 职责 |
 | --- | --- | --- |
-| [policy-pr.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/policy-pr.yml) | Policy - PR | PR 标题和正文 |
-| [automation-pr-title.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题 |
+| [policy-pr.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/policy-pr.yml) | Policy - PR | 规范化 ImgBot 默认标题，并校验 PR 标题和正文 |
 | [ci-tests.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-tests.yml) | CI - Tests | Linux 文档构建，以及按修改范围运行的 macOS 测试、依赖和发布预检 |
+| [ci-benchmarks.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-benchmarks.yml) | CI - Benchmarks | CodSpeed 文本预览性能测量 |
 
 job ID 使用小写 kebab-case，检查名称描述具体职责。`Required CI` 和 `PR message`
 是主分支保护要引用的检查名称；改名时必须同步服务端配置及发布文档。
 
-`Automation - PR Title` 在 `pull_request_target` 上只通过 GitHub API 改名，永不检出 PR head
-或任何仓库代码。
-它只把 `imgbot[bot]` 的 `[ImgBot] Optimize images` 改为 `⚡ perf(assets): optimize images`，
-保留其他作者和人工设置的标题；写权限只授予该 job。
-`Policy - PR` 使用普通 `pull_request` 校验标题和正文，不调用自动化工作流。
-自动化改名会触发 `edited`，policy 随后按新标题重新运行。提交信息由本地 prek
+`Policy - PR` 在 `pull_request_target` 上先规范化标题，再校验标题和正文。
+独立的改名 job 只把 `imgbot[bot]` 的 `[ImgBot] Optimize images` 改为
+`⚡ perf(assets): optimize images`，保留其他作者和人工设置的标题；写权限只授予该 job。
+改名前重新检查当前作者和标题；后续校验 job 通过 API 一次读取当前标题和正文，
+不依赖 `GITHUB_TOKEN` 产生的 `edited` 事件。校验 job 只有读取权限，使用事件中
+base commit 的 PR 模板；两个 job 都不检出或执行仓库代码。修改 Policy 工作流本身时，
+额外通过 `pull_request` 运行只读校验，让新触发配置在进入默认分支前也能验证。
+两种事件使用独立并发组；普通源码与 ImgBot 图片 PR 只使用 `pull_request_target`。
+提交信息由本地 prek
 `commit-msg` hook（`zendev-message-check`）校验，CI 不逐条扫描提交。
 
 ## 生成文件
@@ -262,8 +266,8 @@ bash scripts/check_commit_messages.sh origin/main HEAD
 ```
 
 主分支应要求 `Required CI` 和 `PR message` 通过，并限制直接推送和绕过规则。
-仓库仅启用 rebase 合并来保留已通过 hook 校验的 message；若维护者重新启用
-squash，最终生成的 message 必须重新经过同一校验器。GitHub 的计划、权限和
+仓库采用 squash 合并；合并前用同一校验器核对最终提交信息，不能仅依赖分支上的
+本地提交检查。GitHub 的计划、权限和
 仓库设置决定这些规则是否实际生效；提交 CI 配置不等于已经启用服务端保护。
 
 ## 发布权限
