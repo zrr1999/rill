@@ -164,10 +164,19 @@ def toolchain_identity(root: Path, *, require_metal: bool) -> dict[str, str]:
         "xcode": capture(["xcodebuild", "-version"], root),
         "sdk": capture(["xcrun", "--show-sdk-path"], root),
         "sdkBuild": capture(["xcrun", "--show-sdk-build-version"], root),
-        "metal": (result.stdout + result.stderr).strip()
+        # Metal toolchain mount paths are transient; hash the executable instead.
+        "metal": "\n".join(
+            line
+            for line in (result.stdout + result.stderr).strip().splitlines()
+            if not line.startswith("InstalledDir:")
+        )
         if not result.returncode
         else "unavailable",
     }
+    if not result.returncode:
+        identity["metalCompilerSHA256"] = sha256(
+            Path(capture(["xcrun", "-f", "metal"], root))
+        )
     compiler_environment = {
         name: os.environ[name]
         for name in (
