@@ -23,6 +23,11 @@ xcuserdata/
 __pycache__/
 *.py[cod]
 
+# Cloudflare local state and credentials
+/.wrangler/
+/.dev.vars*
+/.env*
+
 # IDE
 .cursor/
 .vscode/

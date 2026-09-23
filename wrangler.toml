@@ -1,0 +1,13 @@
+name = "rill-docs"
+compatibility_date = "2026-09-23"
+workers_dev = true
+preview_urls = true
+
+[[routes]]
+pattern = "rill.zrr.dev"
+custom_domain = true
+
+[assets]
+directory = "./.artifacts/docs/site"
+html_handling = "auto-trailing-slash"
+not_found_handling = "404-page"
