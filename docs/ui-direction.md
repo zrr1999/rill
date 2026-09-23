@@ -48,6 +48,8 @@
 - 原生控件和转场优先；自定义状态变化不阻塞输入。分别适配减少动态效果、减少透明度和提高对比度；减少透明度时字幕与快捷面板使用不透明系统背景。
 - 文案走 UIStrings/L10n 双语表；SF Symbols 复用 RillSystemSymbol。保存和复制反馈以真实结果为准。
 
+应用与菜单栏的图标语言、状态区分和源文件维护见 [图标设计](icon-design.md)。
+
 ## 验证边界
 
 模型与查询测试覆盖分页、取消、失效记录、独立设置导航和失败结果；原生 AppKit 测试覆盖焦点。UIRenderEvidenceTests 与 RecordQuickPanelRenderTests 使用临时样例数据导出渲染证据。

@@ -11,6 +11,7 @@ import io
 import json
 import sys
 import tempfile
+import tomllib
 import unittest
 from contextlib import redirect_stdout
 from datetime import datetime, timezone
@@ -427,8 +428,18 @@ class DependencySecurityTests(unittest.TestCase):
         self.assertTrue(script_paths)
         for script_path in script_paths:
             with self.subTest(script=script_path.relative_to(PROJECT_DIR)):
+                content = script_path.read_text(encoding="utf-8")
+                if script_path == SCRIPTS_DIR / "docs.py":
+                    self.assertTrue(content.startswith(expected_header.split("# dependencies")[0]))
+                    metadata = content.split("# /// script\n", 1)[1].split("# ///\n", 1)[0]
+                    config = tomllib.loads("\n".join(line.removeprefix("# ") for line in metadata.splitlines()))
+                    self.assertEqual(config["requires-python"], ">=3.11")
+                    self.assertEqual(len(config["dependencies"]), 1)
+                    self.assertRegex(config["dependencies"][0], r"^zensical==\d+\.\d+\.\d+$")
+                    self.assertTrue(script_path.with_suffix(".py.lock").is_file())
+                    continue
                 self.assertTrue(
-                    script_path.read_text(encoding="utf-8").startswith(expected_header)
+                    content.startswith(expected_header)
                 )
 
 if __name__ == "__main__":

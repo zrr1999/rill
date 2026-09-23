@@ -11,6 +11,14 @@ check:
     uvx prek==0.5.3 validate-config prek.toml
     uvx prek==0.5.3 -c prek.toml run --all-files
 
+# Build the documentation and reject broken links and anchors.
+docs:
+    uv run --no-build --locked --script scripts/docs.py build
+
+# Preview documentation and refresh when its Markdown sources change.
+docs-serve port="8000":
+    uv run --no-build --locked --script scripts/docs.py serve --port {{quote(port)}}
+
 # Build one Debug product; application changes do not compile MLX.
 build product="RillApp":
     scripts/swift_locked.sh build --product {{quote(product)}}
@@ -26,11 +34,13 @@ bench:
 # Reproduce the complete local CI gate.
 ci:
     just check
+    just docs
     bash scripts/preflight.sh
 
 # Reproduce the clean CI gate, without worker artifact reuse.
 ci-clean:
     just check
+    just docs
     bash scripts/preflight.sh --clean
 
 # Build and validate the arm64 release products.

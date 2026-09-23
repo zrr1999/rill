@@ -15,8 +15,66 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docs:
+    name: Documentation and change scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      app: ${{ steps.scope.outputs.app }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install pinned uv
+        # v10.1.0
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: "0.12.17"
+
+      - name: Build documentation with locked dependencies
+        run: uv run --no-build --locked --script scripts/docs.py build
+
+      - name: Install pinned prek
+        uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece # v3.0.0
+        with:
+          install-only: true
+          prek-version: "0.5.3"
+
+      - name: Run repository quality gates
+        run: |
+          prek --version
+          prek validate-config prek.toml
+          prek -c prek.toml run --all-files
+
+      - name: Select the application verification lane
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          app=true
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            git diff --name-only --no-renames -z "$PR_BASE...$PR_HEAD" > "$RUNNER_TEMP/changed-paths"
+            app=false
+            count=0
+            while IFS= read -r -d '' path; do
+              count=$((count + 1))
+              case "$path" in
+                docs/*.md|CONTRIBUTING.md|zensical.toml) ;;
+                *) app=true ;;
+              esac
+            done < "$RUNNER_TEMP/changed-paths"
+            if [[ "$count" == 0 ]]; then app=true; fi
+          fi
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+
   preflight:
     name: Release preflight
+    needs: docs
     runs-on: macos-26
     timeout-minutes: 45
     env:
@@ -29,12 +87,6 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-
-      - name: Install pinned prek
-        uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece # v3.0.0
-        with:
-          install-only: true
-          prek-version: "0.5.3"
 
       - name: Install pinned uv
         # v10.1.0
@@ -55,6 +107,7 @@ jobs:
           echo "key=$(printf '%s' "$identity" | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
       - name: Restore Swift build arenas
+        if: ${{ needs.docs.outputs.app == 'true' }}
         id: build-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -64,20 +117,15 @@ jobs:
             swift-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py', 'scripts/worker_artifact_cache.py') }}-
 
       - name: Resolve locked SwiftPM dependencies
+        if: ${{ needs.docs.outputs.app == 'true' }}
         run: |
           swift package --force-resolved-versions resolve
           git diff --exit-code -- Package.resolved
 
-      - name: Run repository quality gates
-        run: |
-          prek --version
-          gitleaks version
-          prek validate-config prek.toml
-          prek -c prek.toml run --all-files
-
       - name: Show toolchain versions
         run: |
           uv --version
+          gitleaks version
           swift --version
           sw_vers
           xcodebuild -version
@@ -85,9 +133,11 @@ jobs:
           uv run --no-build --locked --script scripts/report_python_version.py
 
       - name: Query live OSV for locked SwiftPM commits
+        if: ${{ needs.docs.outputs.app == 'true' }}
         run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
 
       - name: Run preflight
+        if: ${{ needs.docs.outputs.app == 'true' }}
         env:
           EVENT_NAME: ${{ github.event_name }}
         run: |
@@ -96,6 +146,10 @@ jobs:
           else
             bash scripts/preflight.sh --clean
           fi
+
+      - name: Scan secrets for documentation-only changes
+        if: ${{ needs.docs.outputs.app == 'false' }}
+        run: bash scripts/check_secrets.sh
 
       - name: Save Swift build arenas
         if: ${{ github.ref == 'refs/heads/main' && !cancelled() && steps.build-cache.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true' }}

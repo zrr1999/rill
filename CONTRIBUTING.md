@@ -133,10 +133,17 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 | [PRIVACY.md](PRIVACY.md) | 随 App 分发的技术隐私与数据流说明 |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md) | 第三方依赖与模型的许可及来源证据 |
 | [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[工作流](docs/workflow-toml.md)、[上下文纠错](docs/contextual-correction.md)、[UI](docs/ui-direction.md) | 开发者维护的模块、状态、执行与界面契约 |
+| [图标设计](docs/icon-design.md) | 应用与菜单栏图标的设计说明、预览及资源维护入口 |
 | [发布步骤](docs/releasing.md)、[验收清单](docs/release-qa-checklist.md) | 维护者发布流程和特定候选包的验收要求 |
 
 用户说明集中在 README；技术契约保留在所属文档，通过链接引用。
 `docs/` 中的研究、计划和历史 QA 记录提供背景，不作为当前产品能力或发布通过的依据。
+
+文档站使用 Zensical；`just docs` 严格构建并检查链接，`just docs-serve` 提供自动刷新的
+本地预览。页面清单、依赖锁定与站点交付边界见 [文档站维护](docs/documentation.md)。
+站点直接使用上述正文，不维护另一份文档副本。`scripts/docs.py` 是 Python 辅助脚本中
+唯一使用第三方依赖的入口；Zensical 与传递依赖由随脚本提交的锁文件固定，不随 App 分发。
+
 修改产品行为时同步对应使用说明和契约，避免在多个计划文件中重复维护使用手册。
 
 ## 改动边界
@@ -192,8 +199,9 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 
 | Workflow | 显示名称 | 职责 |
 | --- | --- | --- |
-| [policy-pr.yml](.github/workflows/policy-pr.yml) | Policy - PR | 规范化 ImgBot 默认标题，并校验 PR 标题和正文 |
-| [ci-tests.yml](.github/workflows/ci-tests.yml) | CI - Tests | macOS 测试、依赖和发布预检 |
+| [policy-pr.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/policy-pr.yml) | Policy - PR | 规范化 ImgBot 默认标题，并校验 PR 标题和正文 |
+| [ci-tests.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-tests.yml) | CI - Tests | Linux 文档构建，以及按修改范围运行的 macOS 测试、依赖和发布预检 |
+| [ci-benchmarks.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-benchmarks.yml) | CI - Benchmarks | CodSpeed 文本预览性能测量 |
 
 job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接报告检查结果，
 不额外设置汇总 job。
@@ -243,7 +251,7 @@ ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本�
   `zendev-message-check --profile zendev`。提交信息在本地 hook 中校验；CI 不扫描
   PR 或主分支的完整提交历史。
 - CI 的 `PR message` 检查英文标题的 ZenDev 格式，并按
-  [.github/pull_request_template.md](.github/pull_request_template.md) 验证描述章节。
+  [.github/pull_request_template.md](https://github.com/zrr1999/rill/blob/main/.github/pull_request_template.md) 验证描述章节。
   PR 标题必须使用英文；描述可使用中文。
 - 一个提交表达一个可审阅的意图，说明最终行为和实际测试结果。
   人工验收未完成时明确记录，不能用单元测试或本地开发签名代替。
