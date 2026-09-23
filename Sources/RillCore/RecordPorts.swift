@@ -3,12 +3,15 @@ import Foundation
 public struct RecordCaptureEnvelope: Sendable, Equatable {
     public var draft: RecordDraft
     public var requestedCollectionIDs: [RecordCollectionID]
+    public var bufferEntryID: BufferEntryID?
 
     public init(
         draft: RecordDraft,
-        requestedCollectionIDs: [RecordCollectionID] = []
+        requestedCollectionIDs: [RecordCollectionID] = [],
+        bufferEntryID: BufferEntryID? = nil
     ) {
         precondition(requestedCollectionIDs.count <= RecordGraphLimits.maximumRouteCollections)
+        self.bufferEntryID = bufferEntryID
         self.draft = draft
         self.requestedCollectionIDs = requestedCollectionIDs
     }
