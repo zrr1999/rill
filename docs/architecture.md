@@ -138,9 +138,9 @@ See [Record architecture](record-architecture.md) for graph invariants and
 
 Run `just ci` for the repository hooks, release build and packaging checks, and
 complete test suite. `scripts/test.sh` runs domain tests with four workers and
-native UI/application tests serially. CI runs that suite once through `preflight.sh --clean`, alongside the
-release build and packaging checks. Local preflight preserves incremental
-build artifacts; clean CI and notarization disable worker artifact reuse.
+native platform, UI, and application tests serially. CI executes the same suite
+through `preflight.sh`. Build modes and cache boundaries are defined in the
+[contribution guide](https://github.com/zrr1999/rill/blob/main/CONTRIBUTING.md).
 `check_module_boundaries.py` checks SwiftPM dependencies and compiler-reported
 imports. Optional `just test-render` and `just test-stress` capture rendering and
 large-catalog evidence separately from normal gates.

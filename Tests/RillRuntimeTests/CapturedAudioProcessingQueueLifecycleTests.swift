@@ -840,6 +840,49 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     }
 
+    func testCancellationAfterAuthorizationClaimCleansUnresolvedCapture() async throws {
+        let fileURL = try makeAudioFile()
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        let executionProbe = AudioLifecycleExecutionProbe()
+        let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 0)
+        let queue = await makeQueue(
+            recognitionShouldFail: false,
+            executionProbe: executionProbe,
+            rejectedCapturedAudioRemoval: { capturedAudio in
+                try await cleanupProbe.remove(capturedAudio)
+            }
+        )
+        let claimReturned = expectation(description: "Authorization succeeds while the drain task is cancelled")
+        let transfer = await queue.enqueue(
+            authorizationLease: makeAudioProcessingTestLease(
+                runID: UUID(),
+                workflow: makeWorkflow(),
+                beforeClaimReturns: {
+                    withUnsafeCurrentTask { $0?.cancel() }
+                    claimReturned.fulfill()
+                }
+            ),
+            triggerEvent: nil,
+            deferredCapture: .resolved(
+                try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+            )
+        )
+        XCTAssertEqual(transfer, .accepted)
+        await fulfillment(of: [claimReturned], timeout: 2)
+
+        await queue.shutdown()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+        let pendingCount = await queue.pendingCount
+        let cleanup = await cleanupProbe.snapshot()
+        let execution = await executionProbe.snapshot()
+        XCTAssertEqual(pendingCount, 0)
+        XCTAssertEqual(cleanup.attempts, 1)
+        XCTAssertEqual(execution.context, 0)
+        XCTAssertEqual(execution.recognition, 0)
+        XCTAssertEqual(execution.action, 0)
+    }
+
     func testRunCancellationDuringAcceptedTransferWindowCleansExactlyOnce() async throws {
         let fileURL = try makeAudioFile()
         defer { try? FileManager.default.removeItem(at: fileURL) }
