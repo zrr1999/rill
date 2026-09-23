@@ -124,12 +124,15 @@ actor MLXAudioSwiftQwenTTSEngine: MLXAudioSwiftTTSInferenceEngine {
         sampleRate: loadedModel.model.sampleRate,
         fileURL: outputURL
       )
-      return MLXAudioSwiftTTSOutput(
+      let output = MLXAudioSwiftTTSOutput(
         audioFileURL: outputURL,
         sampleRate: Double(loadedModel.model.sampleRate),
         channelCount: 1,
         durationSeconds: Double(samples.count) / Double(loadedModel.model.sampleRate)
       )
+      // The WAV and scalar metadata are independent of MLX generation buffers.
+      Memory.clearCache()
+      return output
     } catch is CancellationError {
       try? FileManager.default.removeItem(at: outputURL)
       throw CancellationError()

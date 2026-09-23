@@ -13,6 +13,7 @@ enum RillSpeechWorkerMain {
       log("invalid_arguments", to: standardIO.diagnosticOutput)
       exit(EX_USAGE)
     }
+    SpeechWorkerMLXCachePolicy.apply()
     let status = await run(standardIO: standardIO)
     exit(status)
   }
