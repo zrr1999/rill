@@ -453,14 +453,14 @@ public actor CapturedAudioProcessingQueue {
             )
 
             var capturedAudioForCleanup: CapturedAudio?
-            var claimSucceeded = false
+            var captureResolutionStarted = false
             do {
                 try Task.checkCancellation()
                 let authorizationClaim = try await job.authorizationLease.claim(
                     triggerEvent: job.triggerEvent
                 )
-                claimSucceeded = true
                 try Task.checkCancellation()
+                captureResolutionStarted = true
                 let capturedAudio = try await job.deferredCapture.value()
                 capturedAudioForCleanup = capturedAudio
                 try Task.checkCancellation()
@@ -499,7 +499,7 @@ public actor CapturedAudioProcessingQueue {
                         runID: job.runID
                     )
                     capturedAudioForCleanup = nil
-                } else if !claimSucceeded {
+                } else if !captureResolutionStarted {
                     if Task.isCancelled {
                         scheduleCancelledDeferredCaptureCleanup(
                             job.deferredCapture,
