@@ -125,10 +125,11 @@ extension L10n {
     case (.freeSpace, .english): "Space to reclaim"
     case (.freeSpace, .simplifiedChinese): "预计释放空间"
     case (.capacityWarning, .english):
-      "History has reached 50% of its capacity. You can review cleanup at any time."
-    case (.capacityWarning, .simplifiedChinese): "历史用量已达到容量的 50%，可随时查看并清理。"
-    case (.capacityFull, .english): "History is full. Review cleanup to resume saving new records."
-    case (.capacityFull, .simplifiedChinese): "历史容量已满，确认清理后可继续保存新记录。"
+      "History has reached 50% of its configured limit. You can review cleanup at any time."
+    case (.capacityWarning, .simplifiedChinese): "历史用量已达到设定上限的 50%，可随时查看并清理。"
+    case (.capacityFull, .english):
+      "History exceeds its configured limit. Review cleanup to resume saving new records."
+    case (.capacityFull, .simplifiedChinese): "历史用量超过设定上限，确认清理后可继续保存新记录。"
     case (.cleanupChanged, .english):
       "Records changed. Review the updated cleanup before confirming again."
     case (.cleanupChanged, .simplifiedChinese): "记录已变化，请查看更新后的清理范围并重新确认。"
