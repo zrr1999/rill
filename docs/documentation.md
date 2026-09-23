@@ -49,8 +49,9 @@ Zensical 当前的搜索对话框仍使用英文，文档内容可用中文搜�
 本地预览检查窄窗口、键盘搜索、深浅主题、架构 Mermaid 图，以及 TOML 与 Schema 下载。
 搜索至少覆盖「语音识别」「剪贴板」「润色」和 `record_duration`。
 
-CI 始终在 Linux 构建文档、运行 prek，并保留 `Required CI` 汇总检查。纯文档修改
-仍在 macOS 扫描完整 Git 历史和当前源码中的密钥，但跳过 Swift/MLX 构建与应用测试。
+CI 通过 `Documentation and change scope` 在 Linux 构建文档并运行 prek，
+通过 `Release preflight` 在 macOS 执行预检。纯文档修改仍扫描完整 Git 历史和
+当前源码中的密钥，但跳过 Swift/MLX 构建与应用测试。
 随 App 分发的根目录文档、工作流 Schema、代码、脚本和 CI 配置变化仍运行完整预检。
 
 当前提供可部署的静态产物和本地预览，尚未配置线上站点。选定托管位置后再设置
