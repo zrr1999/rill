@@ -172,6 +172,37 @@ output-action timing; older records without measurements show “Not recorded”
 These are input diagnostics, not a workflow profiling requirement for ordinary
 speech use.
 
+### Optional Jev polishing prediction
+
+In Settings → text provider, enter a TypeSafe API key and enable Jev polishing
+prediction for the current app session. Smart Cleanup can then skip its
+`llm-rewrite` request when Jev considers the complete text ready to use unchanged.
+The normal ordered outputs still save and deliver that text. History records a
+skipped rewrite with no LLM request trace, token count or LLM duration; prediction
+latency is not reported as LLM execution time.
+
+Custom cleanup workflows opt in through the existing options dictionary:
+
+```toml
+[options]
+"text.polishing-gate" = "jev"
+```
+
+The switch defaults off, and neither the key nor the switch is persisted.
+Enabling it authorizes sending the current transcript and that step's rewrite
+instructions to `api.typesafe.ai`. Audio, clipboard/selection context, screen
+images and memory references are excluded. Runs using correction references
+continue directly to the configured LLM; answer steps and voice assistants never
+use this gate. Current and source-app privacy rules are checked before and after
+prediction; cancellation or a privacy restriction stops the run.
+
+Only a validated `jev-1.13.0` score with both confidence and the probability of
+“already usable unchanged” at least 0.9 skips rewriting. These are conservative
+decision thresholds, not a measured accuracy claim. Uncertainty, service errors,
+malformed responses, missing credentials or the two-second prediction deadline
+keep the original rewrite path. Text over 1,800 UTF-8 bytes or instructions over
+4,000 bytes also use that path without truncation. No automatic retries occur.
+
 An `if` requires `condition` and may contain `then` and `else` step arrays. The
 selected branch receives the current text and returns the text used by the next
 step. The other branch is not executed. There are at most 256 process steps,

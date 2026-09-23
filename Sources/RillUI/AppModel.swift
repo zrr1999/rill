@@ -306,6 +306,7 @@ public final class AppModel {
   public let localPersistenceStatus: LocalPersistenceStatus
   public internal(set) var selectedSidebarSection: SidebarSection = .records
   public let recordWorkspace: RecordWorkspaceModel
+  public let jevPolishing: JevPolishingSettingsModel
   public let history: RunHistoryModel
   public var runHistoryScope: RunHistoryScope {
     get { history.runHistoryScope }
@@ -957,6 +958,7 @@ public final class AppModel {
     sessionCoordinator: SessionCoordinator,
     outputActionRegistry: OutputActionRegistry,
     recordWorkspace: RecordWorkspaceModel? = nil,
+    jevPolishingSettingsSource: JevPolishingSettingsSource = JevPolishingSettingsSource(),
     candidateResolver: CandidateResolver,
     historyRepository: (any HistoryRepository)? = nil,
     runHistoryBrowser: (any RunHistoryBrowsing)? = nil,
@@ -1161,6 +1163,7 @@ public final class AppModel {
     self.sessionCoordinator = sessionCoordinator
     self.outputActionRegistry = outputActionRegistry
     self.recordWorkspace = recordWorkspace ?? RecordWorkspaceModel(store: RecordStore())
+    self.jevPolishing = JevPolishingSettingsModel(source: jevPolishingSettingsSource)
     self.candidateResolver = candidateResolver
     self.historyRepository = historyRepository
     self.runHistoryBrowser = runHistoryBrowser
