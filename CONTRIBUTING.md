@@ -195,8 +195,8 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 | [policy-pr.yml](.github/workflows/policy-pr.yml) | Policy - PR | 规范化 ImgBot 默认标题，并校验 PR 标题和正文 |
 | [ci-tests.yml](.github/workflows/ci-tests.yml) | CI - Tests | macOS 测试、依赖和发布预检 |
 
-job ID 使用小写 kebab-case，检查名称描述具体职责。`Required CI` 和 `PR message`
-是主分支保护要引用的检查名称；改名时必须同步服务端配置及发布文档。
+job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接报告检查结果，
+不额外设置汇总 job。
 
 `Policy - PR` 在 `pull_request_target` 上先规范化标题，再校验标题和正文。
 独立的改名 job 只把 `imgbot[bot]` 的 `[ImgBot] Optimize images` 改为
@@ -258,7 +258,8 @@ bash scripts/check_commit_messages.sh
 bash scripts/check_commit_messages.sh origin/main HEAD
 ```
 
-主分支应要求 `Required CI` 和 `PR message` 通过，并限制直接推送和绕过规则。
+主分支保护由维护者在仓库 rules 中配置；required checks 直接引用实际 job 的
+检查名称。改名时应核对已有规则的引用。
 仓库采用 squash 合并；合并前用同一校验器核对最终提交信息，不能仅依赖分支上的
 本地提交检查。GitHub 的计划、权限和
 仓库设置决定这些规则是否实际生效；提交 CI 配置不等于已经启用服务端保护。

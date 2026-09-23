@@ -10,8 +10,8 @@ Rill 的正式版本由 Git 标签决定。开发构建使用 `0.0.0-dev+<commit
 2. 明确版本号、支持的 macOS/硬件、启用的语音模型以及已知限制。
 3. 确认 [AGPL-3.0-only 许可证](../LICENSE) 和对应源码交付准备完毕，
    [SECURITY.md](../SECURITY.md) 中的私密报告渠道已可用，GitHub Actions 实际运行成功。
-   启用主分支保护，要求
-   `Required CI`、`PR message`，并限制直接推送和绕过。
+   按[贡献约定](../CONTRIBUTING.md#提交与-pull-request)核对仓库 rules 中的检查要求，
+   并限制直接推送和绕过。
 4. 从候选提交运行 `just ci-clean`、`bash scripts/check_commit_messages.sh` 和
    `uv run --script scripts/check_dependency_security.py --live-osv`。
    保存日志、版本信息和预期跳过项，并确认该提交的 GitHub CI 通过。
