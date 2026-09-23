@@ -37,6 +37,14 @@ jobs:
       - name: Build documentation with locked dependencies
         run: uv run --no-build --locked --script scripts/docs.py build
 
+      - name: Install Node.js for Cloudflare validation
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+
+      - name: Validate Cloudflare static assets without deploying
+        run: npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run
+
       - name: Install pinned prek
         uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece # v3.0.0
         with:
@@ -64,7 +72,7 @@ jobs:
             while IFS= read -r -d '' path; do
               count=$((count + 1))
               case "$path" in
-                docs/*.md|CONTRIBUTING.md|zensical.toml) ;;
+                docs/*.md|CONTRIBUTING.md|zensical.toml|wrangler.toml) ;;
                 *) app=true ;;
               esac
             done < "$RUNNER_TEMP/changed-paths"

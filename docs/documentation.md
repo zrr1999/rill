@@ -49,10 +49,76 @@ Zensical 当前的搜索对话框仍使用英文，文档内容可用中文搜�
 本地预览检查窄窗口、键盘搜索、深浅主题、架构 Mermaid 图，以及 TOML 与 Schema 下载。
 搜索至少覆盖「语音识别」「剪贴板」「润色」和 `record_duration`。
 
-CI 通过 `Documentation and change scope` 在 Linux 构建文档并运行 prek，
+CI 通过 `Documentation and change scope` 在 Linux 构建文档、验证 Cloudflare
+静态资产配置并运行 prek，
 通过 `Release preflight` 在 macOS 执行预检。纯文档修改仍扫描完整 Git 历史和
 当前源码中的密钥，但跳过 Swift/MLX 构建与应用测试。
 随 App 分发的根目录文档、工作流 Schema、代码、脚本和 CI 配置变化仍运行完整预检。
 
-当前提供可部署的静态产物和本地预览，尚未配置线上站点。选定托管位置后再设置
-`site_url`、对应源码版本和部署流程。
+## Cloudflare 托管
+
+文档站使用 [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)，
+与 zendev、zrr.dev 使用同一托管方式。Worker 名称为 `rill-docs`，正式域名为
+`https://rill.zrr.dev/`。`zensical.toml` 的 `site_url` 决定 canonical URL 与 sitemap；
+`wrangler.toml` 管理静态产物目录、域名、目录索引和 404 行为。
+无需 Worker 脚本，也不包含 App 运行时或用户数据。
+
+仅在验证或部署 Cloudflare 时需要 Node.js 22+ 和 npm。与 zendev 一样，
+仓库不维护 Node.js 文档包；通过 npx 调用固定版本的 Wrangler，
+Zensical 继续由 `scripts/docs.py.lock` 锁定。普通 `just docs` 仍只需要 uv 和 just。
+从仓库根目录验证：
+
+```sh
+just docs
+npx --yes --ignore-scripts wrangler@4.136.3 deploy --dry-run
+```
+
+npx 将工具缓存到 npm 缓存目录，不在仓库生成 `package.json`、锁文件或
+`node_modules/`。上述 dry-run 不需要 Cloudflare 登录，也不会上传资源；
+它不能证明线上域名、TLS 或 Git 集成已经生效。
+
+### 自动构建
+
+在 Cloudflare 的 Workers & Pages 中连接 GitHub 仓库 `zrr1999/rill`，
+使用 [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)
+配置以下项目。已有 Worker 时从 **Settings > Build** 连接仓库。
+
+| 设置 | 值 |
+| --- | --- |
+| Worker 名称 | `rill-docs`，必须与 `wrangler.toml` 一致 |
+| 根目录 | `/` |
+| 生产分支 | `main` |
+| 构建命令 | `python -m pip install uv==0.12.17 && uv run --no-build --locked --script scripts/docs.py build` |
+| 部署命令 | `npx --yes --ignore-scripts wrangler@4.136.3 deploy` |
+| 非生产分支命令 | `npx --yes --ignore-scripts wrangler@4.136.3 versions upload` |
+| 非生产分支构建 | 需要预览的分支均包含托管配置后启用 |
+| 构建变量 | `NODE_VERSION=22`、`PYTHON_VERSION=3.13.3`、`SKIP_DEPENDENCY_INSTALL=true` |
+
+上述命令在仓库根目录执行。先构建再上传：Wrangler 的 `assets.directory`
+指向 `.artifacts/docs/site/`，
+只安装依赖不会生成该目录。生产部署更新正式域名和默认 `workers.dev` 地址；
+非生产分支只上传版本并生成预览 URL，不替换正式站点。
+Cloudflare Git 集成提供构建状态；GitHub Actions 只做验证，不重复部署。
+构建命令显式安装与 GitHub CI 相同版本的 uv，不依赖构建镜像预装它。
+跳过平台的自动依赖安装；构建命令使用 Python 脚本锁文件，npx 禁用安装脚本。
+Python 固定为构建镜像的默认版本，避免每次安装最新补丁版本。
+
+### 手动部署与验收
+
+在拥有 `zrr.dev` 域名的 Cloudflare 账户中运行 `npx --yes --ignore-scripts wrangler@4.136.3 login`，
+用 `npx --yes --ignore-scripts wrangler@4.136.3 whoami` 核对账户。无人值守部署使用
+`CLOUDFLARE_API_TOKEN` 和 `CLOUDFLARE_ACCOUNT_ID`；凭据只配置在受保护的
+环境中，不写入仓库。Workers Builds 使用 Cloudflare 管理的构建凭据。
+
+```sh
+# 在仓库根目录执行
+just docs
+npx --yes --ignore-scripts wrangler@4.136.3 versions upload  # 上传预览版本
+npx --yes --ignore-scripts wrangler@4.136.3 deploy           # 部署到正式域名
+```
+
+首次部署会按 `routes` 创建自定义域名；若目标已有 DNS 记录，先核对记录用途，
+不要覆盖其他服务。部署后确认 Cloudflare 中的源码分支与 commit，检查 HTTPS 首页、
+`/docs/architecture/`、搜索、`/docs/examples/conditional-workflow.toml`、
+`/docs/schemas/workflow-v2.schema.json` 和不存在路径的 404。
+PR 预览还应确认正式站点的部署版本未改变。

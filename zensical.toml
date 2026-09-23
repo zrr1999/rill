@@ -1,5 +1,6 @@
 [project]
 site_name = "Rill"
+site_url = "https://rill.zrr.dev/"
 site_description = "macOS 语音输入、Record 与可配置工作流"
 repo_url = "https://github.com/zrr1999/rill"
 repo_name = "zrr1999/rill"
