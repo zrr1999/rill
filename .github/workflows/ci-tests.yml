@@ -157,17 +157,3 @@ jobs:
         with:
           path: ${{ env.SWIFT_BUILD_CACHE_PATHS }}
           key: ${{ steps.build-cache.outputs.cache-primary-key }}
-
-  verify:
-    name: Required CI
-    if: ${{ always() }}
-    needs:
-      - docs
-      - preflight
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require every verification lane
-        # v1.2.2
-        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe
-        with:
-          jobs: ${{ toJSON(needs) }}
