@@ -3,6 +3,12 @@ import XCTest
 @testable import RillUI
 
 private actor FailThenSucceedHistoryRepository: HistoryRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func save(_ value: WorkflowResultRecord, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await (self as any HistoryRepository).save(value)
+    }
+
     enum LoadError: Error {
         case unavailable
     }

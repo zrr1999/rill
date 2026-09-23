@@ -186,15 +186,16 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
   }
 
   public func delete(fileURL: URL) async throws {
-    let destinationURL = try validatedDirectChild(fileURL)
-    let values = try destinationURL.resourceValues(forKeys: [
-      .isRegularFileKey,
-      .isSymbolicLinkKey,
-    ])
-    guard values.isRegularFile == true, values.isSymbolicLink != true else {
-      throw WorkflowFileStoreError.unsupportedFile
-    }
-    try FileManager.default.removeItem(at: destinationURL)
+    let source = try await readSource(at: fileURL)
+    try await delete(fileURL: fileURL, expected: .source(source))
+  }
+
+  public func delete(fileURL: URL, expected: WorkflowFileExpectation) async throws {
+    let destination = try validatedDirectChild(fileURL)
+    let source = try await readSource(at: destination)
+    guard let id = Self.identifyWorkflow(source) else { throw WorkflowFileConflict.changed }
+    try await Self.writer.delete(at: destination, expected: expected,
+      historyDirectory: stateDirectoryURL.appendingPathComponent(id.uuidString))
   }
 
   public static func encode(
@@ -232,7 +233,7 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
         "User workflow files cannot reference built-in localized titles."
       )
     }
-    let input: WorkflowPlanInput = workflow.plan.setup.speechRoute == nil ? .text : .audio
+    let input: WorkflowInputKind = workflow.inputKind
     do {
       try WorkflowPlanValidator.validate(workflow.plan, input: input)
     } catch {

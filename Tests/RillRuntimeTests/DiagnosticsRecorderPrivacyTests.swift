@@ -3,6 +3,12 @@ import XCTest
 @testable import RillRuntime
 
 private actor DiagnosticPrivacyRepository: DiagnosticRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await (self as any DiagnosticRepository).save(value)
+    }
+
     private var savedEvents: [DiagnosticEvent] = []
 
     func save(_ event: DiagnosticEvent) async throws {
@@ -25,6 +31,12 @@ private struct SensitiveRepositoryError: Error, LocalizedError {
 }
 
 private actor FailingDiagnosticPrivacyRepository: DiagnosticRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await save(value)
+    }
+
     func save(_ event: DiagnosticEvent) async throws {
         throw SensitiveRepositoryError()
     }

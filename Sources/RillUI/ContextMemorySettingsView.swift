@@ -46,7 +46,7 @@ struct ContextMemorySettingsView: View {
             }
             Text("\(memory.status.foregroundRequestsToday) " + text("foreground summary requests today (main corrections appear in history)", "今日前台摘要请求（主纠错请求见历史）"))
                 .font(.caption).foregroundStyle(.secondary)
-            if let error = memory.error { Text(error).font(.caption).foregroundStyle(.red) }
+            if let error = memory.error { Text(L10n.contextMemoryFailure(error).string(for: language)).font(.caption).foregroundStyle(.red) }
         }
         .disabled(memory.isLoading || memory.isSaving)
         .confirmationDialog(text("Authorize context processing", "授权上下文处理"), isPresented: $showConsent) {
@@ -141,7 +141,7 @@ private struct MemoryManagementView: View {
                     }.buttonStyle(.borderless)
                 }.padding(.vertical, 8)
             }
-            if let error = model.error { Text(error).foregroundStyle(.red) }
+            if let error = model.error { Text(L10n.contextMemoryFailure(error).string(for: language)).foregroundStyle(.red) }
         }.padding(20).frame(minWidth: 660, minHeight: 440)
             .task { await model.refresh() }
             .sheet(item: $editing) { memory in
@@ -162,7 +162,9 @@ private struct MemoryManagementView: View {
 private struct MemoryEditor: View {
     @State var memory: LongTermMemory
     let language: AppLanguage
-    let save: (LongTermMemory) async -> Void
+    let save: (LongTermMemory) async -> ContextMemoryMutationResult
+    @State private var isSaving = false
+    @State private var failure: ContextMemoryFailure?
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack {
@@ -179,13 +181,24 @@ private struct MemoryEditor: View {
                     get: { memory.expiresAt ?? Date() }, set: { memory.expiresAt = $0 }
                 ))
             }
+            if let failure { Text(L10n.contextMemoryFailure(failure).string(for: language)).foregroundStyle(.red) }
             HStack {
                 Button(language == .simplifiedChinese ? "取消" : "Cancel") { dismiss() }
                 Button(language == .simplifiedChinese ? "保存并确认" : "Save & confirm") {
                     memory.confirm()
-                    Task { await save(memory); dismiss() }
-                }.disabled(!memory.isValid)
+                    isSaving = true
+                    Task {
+                        let result = await save(memory)
+                        isSaving = false
+                        switch result {
+                        case .saved: dismiss()
+                        case .failed(let error): failure = error
+                        case .stopped: failure = .unavailable
+                        }
+                    }
+                }.disabled(!memory.isValid || isSaving)
             }
         }.padding(20).frame(width: 540)
+            .interactiveDismissDisabled(isSaving)
     }
 }

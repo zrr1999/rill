@@ -4,21 +4,8 @@ import XCTest
 
 @MainActor
 final class VoiceSetupReadinessTests: XCTestCase {
-    func testPriorLocalPreparationRecordDoesNotCountAsCurrentReadiness() {
-        let harness = makeHarness(
-            permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
-        )
-        harness.model.preferredSpeechEngine = .local
-        harness.model.localSpeechPrewarm = false
-        harness.model.localSpeechModel = "openai_whisper-tiny"
-        harness.model.downloadedLocalSpeechModels = ["openai_whisper-tiny"]
-
-        XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreviouslyPrepared)
-        XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
-    }
-
     func testMissingProductionTrustMaterialOverridesHistoryAndCurrentReadyState() async {
-        let prepareProbe = WhisperKitPrepareProbe()
+        let prepareProbe = SpeechPreparationProbe()
         let harness = makeHarness(
             localSpeechTrustMaterialAvailable: false,
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted),
@@ -32,9 +19,9 @@ final class VoiceSetupReadinessTests: XCTestCase {
         // unavailable. Select local explicitly so this test exercises the
         // fail-closed local readiness path rather than the cloud fallback.
         harness.model.preferredSpeechEngine = .local
-        harness.model.downloadedLocalSpeechModels = ["openai_whisper-tiny"]
+        harness.model.downloadedLocalSpeechModels = ["qwen3-asr-0.6b-mlx-8bit"]
         harness.model.localSpeechPreparationState = .ready
-        harness.model.localSpeechPreparedModelIdentifier = "openai_whisper-tiny"
+        harness.model.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
 
         XCTAssertEqual(
             harness.model.voiceSetupReadiness.provider,
@@ -101,7 +88,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         )
         harness.model.preferredSpeechEngine = .local
         harness.model.localSpeechPreparationState = .ready
-        harness.model.localSpeechPreparedModelIdentifier = "openai_whisper-tiny"
+        harness.model.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
 
         XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localReady)
         XCTAssertTrue(harness.model.voiceSetupReadiness.isComplete)
@@ -115,7 +102,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         harness.model.preferredSpeechEngine = .local
         harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
         harness.model.localSpeechPreparationState = .ready
-        harness.model.localSpeechPreparedModelIdentifier = "openai_whisper-tiny"
+        harness.model.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
 
         XCTAssertFalse(harness.model.voiceSetupReadiness.accessibilityRequired)
         XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
@@ -132,7 +119,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         harness.model.preferredSpeechEngine = .local
         harness.model.builtinPushToTalkOutputMode = .pasteIntoApp
         harness.model.localSpeechPreparationState = .ready
-        harness.model.localSpeechPreparedModelIdentifier = "openai_whisper-tiny"
+        harness.model.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
 
         XCTAssertTrue(harness.model.voiceSetupReadiness.accessibilityRequired)
         XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
@@ -171,7 +158,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
 
 
     func testSelectingRecordedLocalModelRunsPreparationAndDoesNotFabricateReadyOnFailure() async {
-        let probe = WhisperKitPrepareProbe()
+        let probe = SpeechPreparationProbe()
         let expectedError = NSError(
             domain: "VoiceSetupReadinessTests",
             code: 1,
@@ -185,33 +172,33 @@ final class VoiceSetupReadinessTests: XCTestCase {
             }
         )
         harness.model.preferredSpeechEngine = .local
-        harness.model.downloadedLocalSpeechModels = ["openai_whisper-tiny"]
+        harness.model.downloadedLocalSpeechModels = ["qwen3-asr-0.6b-mlx-8bit"]
 
-        harness.model.useDownloadedLocalSpeechModel("openai_whisper-tiny")
+        harness.model.useDownloadedLocalSpeechModel("qwen3-asr-0.6b-mlx-8bit")
         await waitForEventProcessing(harness)
 
         let snapshot = await probe.snapshot()
         XCTAssertEqual(snapshot.prepareCount, 1)
-        XCTAssertEqual(snapshot.lastSettings?.model, "openai_whisper-tiny")
+        XCTAssertEqual(snapshot.lastSettings?.model, "qwen3-asr-0.6b-mlx-8bit")
         XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
         XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreparationFailed)
         XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
     }
 
-    func testBackgroundWarmupFailureIsVisibleInReadiness() async {
+    func testExplicitPreparationFailureIsVisibleInReadiness() async {
         let providerCanary =
             "path=/Users/private/background-model token=background-secret digest=abcdef0123456789"
         let settingsStore = UITestSettingsStore(
             storage: [
                 .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
-                .localSpeechModel: "openai_whisper-tiny",
+                .localSpeechModel: "qwen3-asr-0.6b-mlx-8bit",
                 .localSpeechPrewarm: "true",
             ]
         )
         let harness = makeHarness(
             settingsStore: settingsStore,
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted),
-            warmLocalSpeechForCaptureAction: { _, _ in
+            prepareLocalSpeechAction: { _, _ in
                 throw NSError(
                     domain: "VoiceSetupReadinessTests",
                     code: 2,
@@ -220,7 +207,9 @@ final class VoiceSetupReadinessTests: XCTestCase {
             }
         )
 
-        try? await Task.sleep(for: .milliseconds(300))
+        await harness.model.waitForInitialVoiceConfiguration()
+        harness.model.prepareLocalSpeechModel()
+        await harness.model.waitForLocalSpeechPreparation()
 
         XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
         let expected = L10n.localSpeechPreparationFailure(.generic)

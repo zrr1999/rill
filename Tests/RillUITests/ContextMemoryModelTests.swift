@@ -5,6 +5,17 @@ import Testing
 
 @MainActor
 struct ContextMemoryModelTests {
+    @Test func failedSaveRetainsAnActionableResult() async {
+        let repository = ContextUIRepository(failsWrites: true)
+        let model = ContextMemoryModel(repository: repository, settingsStore: UITestSettingsStore(storage: [:]),
+            activate: { _ in true }, revoke: {}, fingerprint: { "fixture" }, screenPermission: { _ in false }, maintain: {})
+        let memory = LongTermMemory(scope: .init(workflowID: UUID(), applicationBundleID: nil, language: nil),
+            summary: "Retained draft", evidenceKind: .userStatement, sources: [.init(sourceID: UUID(), revision: 1)])
+        #expect(await model.save(memory) == .failed(.mutation))
+        #expect(model.error == .mutation)
+        await model.shutdown()
+    }
+
     @Test(arguments: [false, true])
     func shutdownFlushesAcceptedEditsAndRejectsNewOnes(deleting: Bool) async throws {
         let repository = ContextUIRepository()
@@ -24,16 +35,20 @@ struct ContextMemoryModelTests {
         }
         while await !repository.entered && ContinuousClock.now < deadline { await Task.yield() }
         #expect(await repository.entered)
+        var shutdownStarted = false
         var shutdownCompleted = false
-        let shutdown = Task { await model.shutdown(); shutdownCompleted = true }
-        try await Task.sleep(for: .milliseconds(25))
+        let shutdown = Task { shutdownStarted = true; await model.shutdown(); shutdownCompleted = true }
+        while !shutdownStarted { await Task.yield() }
         #expect(!shutdownCompleted)
         await repository.release()
-        await operation.value
+        #expect(await operation.value == .saved)
         await shutdown.value
         #expect(shutdownCompleted)
-        await model.save(memory)
-        await model.delete(memory)
+        #expect(await model.save(memory) == .stopped)
+        #expect(await model.delete(memory) == .stopped)
+        model.invalidateAuthorization()
+        model.recordCorrection(.init(original: "Ril", corrected: "Rill"), recordID: UUID())
+        model.scheduleMaintenance()
         #expect(await repository.writeCount == 1)
         let stored = try #require(try await store.string(forKey: .contextFeatureSettings))
         #expect(try JSONDecoder().decode(ContextFeatureSettings.self, from: Data(stored.utf8)).providerFingerprint == "fixture")
@@ -64,7 +79,7 @@ struct ContextMemoryModelTests {
         #expect(await repository.entered)
         model.invalidateAuthorization()
         await repository.release()
-        await operation.value
+        #expect(await operation.value == .saved)
         #expect(!model.isAuthorized)
         #expect(activations == 1)
         await model.shutdown()
@@ -77,6 +92,8 @@ private actor ContextUIRepository: ContextMemoryRepository {
     private(set) var entered = false
     private(set) var writeCount = 0
     private var continuation: CheckedContinuation<Void, Never>?
+    private let failsWrites: Bool
+    init(failsWrites: Bool = false) { self.failsWrites = failsWrites }
     private func pause() async {
         entered = true
         writeCount += 1
@@ -86,8 +103,14 @@ private actor ContextUIRepository: ContextMemoryRepository {
     func setContextAuthorization(_ id: UUID?) async throws {}
     func recordForegroundContextRequest(authorization: ContextReferenceAuthorization, now: Date) async throws {}
     func memories() async throws -> [LongTermMemory] { [] }
-    func saveMemory(_ memory: LongTermMemory, expectedRevision: Int64) async throws { await pause() }
-    func deleteMemory(id: UUID, expectedRevision: Int64) async throws { await pause() }
+    func saveMemory(_ memory: LongTermMemory, expectedRevision: Int64) async throws {
+        if failsWrites { throw ContextCorrectionError.authorizationChanged }
+        await pause()
+    }
+    func deleteMemory(id: UUID, expectedRevision: Int64) async throws {
+        if failsWrites { throw ContextCorrectionError.authorizationChanged }
+        await pause()
+    }
     func relevantMemories(scope: ContextMemoryScope, now: Date) async throws -> [LongTermMemory] { [] }
     func prepareMemoryBatch(authorizationID: UUID, allowedWorkflowIDs: Set<UUID>, excludedApplications: Set<String>, now: Date) async throws -> MemoryConsolidationBatch? { nil }
     func commitMemoryBatch(_ batch: MemoryConsolidationBatch, result: MemoryConsolidationResult) async throws {}

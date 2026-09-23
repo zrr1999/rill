@@ -69,7 +69,7 @@ final class QueuedAudioAuthorizationLeaseTests: XCTestCase {
             runID: runID,
             workflow: workflow
         )
-        workflow.pipeline.recognizerID = "remote.speech"
+        workflow.plan.setup.speechRoute?.recognizerID = "remote.speech"
 
         let claim = try await lease.claim(
             triggerEvent: WorkflowTriggerEvent(
@@ -311,9 +311,8 @@ private func makeLeaseWorkflow() -> WorkflowDefinition {
 
 private func makeCloudLeaseWorkflow() -> WorkflowDefinition {
     var workflow = makeLeaseWorkflow()
-    workflow.pipeline.postProcessSteps = [
-        PostProcessStep(kind: .llmRewrite, prompt: "Rewrite")
-    ]
+    workflow.plan.process.steps.removeAll { $0.kind.postProcessKind != nil }
+    workflow.plan.process.steps.append(WorkflowProcessStep(kind: .llmRewrite, prompt: "Rewrite"))
     return workflow
 }
 

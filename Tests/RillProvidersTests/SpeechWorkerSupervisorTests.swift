@@ -1,3 +1,4 @@
+@testable import RillSpeechContracts
 import Darwin
 import Foundation
 import XCTest

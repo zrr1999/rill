@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import RillPersistence
 @testable import RillCore
 @testable import RillRuntime
 
@@ -120,6 +121,12 @@ private actor FailOnceWorkflowRunReceiptRepository: WorkflowRunReceiptRepository
 }
 
 private actor SuspendedDeadLetterRetryRepository: WorkflowRunReceiptRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
+        try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+    }
+
     private var insertCallCount = 0
     private var stored: [UUID: WorkflowRunReceipt] = [:]
     private var retryIsSuspended = false
@@ -168,6 +175,27 @@ private actor SuspendedDeadLetterRetryRepository: WorkflowRunReceiptRepository {
 }
 
 final class WorkflowRunReceiptRecorderTests: XCTestCase {
+    func testRuntimePersistsBodyAndReceiptWithoutPresentationConsumer() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try SQLitePersistenceStore(databaseURL: directory.appendingPathComponent("history.sqlite"),
+            localDataProtector: AESGCMDataProtector(key: Data(repeating: 7, count: AESGCMDataProtector.keyByteCount)))
+        let recorder = WorkflowRunReceiptRecorder(repository: store, eventBus: EventBus())
+        let workflow = WorkflowDefinition(name: "Headless voice", pipeline: .init(recognizerID: "test", outputActions: []),
+            ui: .init(symbolName: "waveform", accentColorName: "blue"))
+        let runID = UUID()
+        try await recorder.begin(runID: runID, workflowID: workflow.id, trigger: .hotkey, historyWorkflow: workflow)
+        await recorder.recordResult(runID: runID, finalText: "Final text", correctionSource: nil, historyUpdate: nil)
+        let receipt = try await recorder.finish(runID: runID, termination: .completed)
+        let records = try await store.records(matching: .init(runID: runID))
+        let receipts = try await store.receipts(matching: .init(runID: runID))
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.finalText, "Final text")
+        XCTAssertEqual(records.first?.timestamp.timeIntervalSince1970, receipt.timestamp.timeIntervalSince1970)
+        XCTAssertEqual(receipts, [receipt])
+    }
+
     func testRecorderPersistsBeforePublishingAndBoundsOrderedActionDetails() async throws {
         let repository = InMemoryWorkflowRunReceiptRepository()
         let eventBus = EventBus()

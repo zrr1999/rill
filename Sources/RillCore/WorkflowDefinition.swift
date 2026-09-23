@@ -521,8 +521,7 @@ public struct WorkflowDefinition: Identifiable, Codable, Sendable, Equatable {
 
     /// Schema-v1 compatibility projection. New runtime code must consume `plan`.
     public var pipeline: PipelineDeclaration {
-        get { PipelineDeclaration(plan: plan) }
-        set { plan = newValue.workflowPlan(metadata: metadata) }
+        PipelineDeclaration(plan: plan)
     }
 
     public init(

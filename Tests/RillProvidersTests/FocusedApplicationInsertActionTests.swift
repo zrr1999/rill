@@ -50,7 +50,7 @@ final class FocusedApplicationInsertActionTests: XCTestCase {
                 pipeline: PipelineDeclaration(
                     recognizerID: "test.recognizer",
                     outputActions: [
-                        OutputActionReference(id: BuiltinRecordActionID.focusedApplicationInsert),
+                        OutputActionReference(id: RecordActionID.focusedApplicationInsert),
                     ]
                 ),
                 ui: WorkflowUIConfig(symbolName: "text.insert", accentColorName: "blue")

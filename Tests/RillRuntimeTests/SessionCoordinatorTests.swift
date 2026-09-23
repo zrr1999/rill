@@ -382,6 +382,12 @@ private enum BlockingDiagnosticTarget: Sendable {
 }
 
 private actor BlockingDiagnosticRepository: DiagnosticRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await (self as any DiagnosticRepository).save(value)
+    }
+
     private let target: BlockingDiagnosticTarget
     private let gate: BlockingGate
     private var savedEvents: [DiagnosticEvent] = []
@@ -468,6 +474,28 @@ private struct BlockingQueueAction: OutputAction {
 }
 
 final class SessionCoordinatorTests: XCTestCase {
+    func testCancelledRunStillDeliversTerminalUnderBackpressure() async {
+        let bus = EventBus(maxBufferedEvents: 1)
+        let coordinator = SessionCoordinator(contextProvider: MockContextProvider(),
+            recognizerRegistry: .init(recognizers: [MockRecognizer(result: .init(rawText: "text", bestText: "text"))]),
+            transformerRegistry: .init(transformers: []), actionRegistry: .init(actions: [ProbeAction(probe: ActionProbe())]),
+            candidateResolver: CandidateResolver(eventBus: bus), eventBus: bus)
+        let runID = UUID()
+        let workflow = WorkflowDefinition(name: "Cancelled", pipeline: .init(recognizerID: "mock.recognizer",
+            outputActions: [.init(id: "probe.action")]), ui: .init(symbolName: "waveform", accentColorName: "blue"))
+        await bus.publish(.recordPanelRequested)
+        let run = Task { await coordinator.run(workflow: workflow, runID: runID, contextSnapshot: .empty) }
+        run.cancel()
+        var iterator = bus.lifecycleDeliveryStream.makeAsyncIterator()
+        while let delivery = await iterator.next() {
+            if case .event(.runCancelled(let summary)) = delivery {
+                XCTAssertEqual(summary.runID, runID)
+                break
+            }
+        }
+        await run.value
+    }
+
     func testCoordinatorResolvesAndPassesTypedRecognitionOptions() async {
         let eventBus = EventBus()
         let requestProbe = RecognitionRequestProbe()
@@ -622,7 +650,7 @@ final class SessionCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(probeValues, ["hello transformed"])
         XCTAssertTrue(events.contains { event in
-            if case .recognitionCompleted(let recognition) = event {
+            if case .recognitionCompleted(_, let recognition) = event {
                 return recognition.bestText == "hello"
             }
             return false
@@ -903,7 +931,7 @@ final class SessionCoordinatorTests: XCTestCase {
         let events = await collector.value
 
         XCTAssertTrue(events.contains { event in
-            if case .actionExecuted(actionID: "probe.action", result: .skipped("captured")) = event {
+            if case .actionExecuted(run: _, actionID: "probe.action", result: .skipped("captured")) = event {
                 return true
             }
             return false
@@ -2040,7 +2068,7 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(failure.stage, .delivering)
         XCTAssertEqual(failure.code, .processing)
         XCTAssertTrue(events.contains { event in
-            if case .actionExecuted(actionID: "reported.failure", result: .failed(failureCanary)) = event {
+            if case .actionExecuted(run: _, actionID: "reported.failure", result: .failed(failureCanary)) = event {
                 return true
             }
             return false
@@ -2113,6 +2141,7 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(receipt.actionDetails.map(\.result), [.injected])
         XCTAssertTrue(events.contains { event in
             if case .actionExecuted(
+                run: _,
                 actionID: "selected.record.action",
                 result: .injected
             ) = event {

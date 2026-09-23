@@ -84,7 +84,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
 
     func testWorkflowEnabledStateLoaderRejectsInvalidAndNormalizedDuplicateIdentifiers() throws {
         XCTAssertThrowsError(
-            try AppModel.loadWorkflowEnabledStates(
+            try AppSettingsCodec.loadWorkflowEnabledStates(
                 from: "{\"not-a-workflow-id\":false}"
             )
         )
@@ -94,7 +94,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
         let lowercase = workflowID.uuidString.lowercased()
         XCTAssertNotEqual(uppercase, lowercase)
         XCTAssertThrowsError(
-            try AppModel.loadWorkflowEnabledStates(
+            try AppSettingsCodec.loadWorkflowEnabledStates(
                 from: "{\"\(uppercase)\":true,\"\(lowercase)\":false}"
             )
         )
@@ -256,7 +256,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
         XCTAssertNil(activity.setCounts[.localSpeechDownloadedModels])
         XCTAssertNil(activity.removeCounts[.localSpeechDownloadedModels])
 
-        let recoveredModels = ["reviewed-local-model"]
+        let recoveredModels = ["qwen3-asr-0.6b-mlx-8bit"]
         let recoveredPayload = String(
             decoding: try JSONEncoder().encode(recoveredModels),
             as: UTF8.self

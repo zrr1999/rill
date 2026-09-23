@@ -391,7 +391,7 @@ struct ClipboardCaptureLatencyTests {
     await controller.start(initialClipboardCaptureEnabled: false)
     let stream = await eventBus.stream()
     var iterator = stream.makeAsyncIterator()
-    let marker = RillEvent.contextCaptured(.empty)
+    let marker = RillEvent.contextCaptured(run: .init(runID: UUID()), snapshot: .empty)
     await controller.testingHandleHotkey(.recordPanelRequested)
     await eventBus.publish(marker)
     var events: [RillEvent] = []

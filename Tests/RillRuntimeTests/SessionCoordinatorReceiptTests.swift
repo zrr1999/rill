@@ -96,6 +96,12 @@ private struct ReceiptBlockingAction: OutputAction {
 private struct ReceiptRepositoryPrivateError: Error {}
 
 private actor InsertFailingReceiptRepository: WorkflowRunReceiptRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
+        try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+    }
+
     func insertTerminal(_ receipt: WorkflowRunReceipt) async throws {
         throw ReceiptRepositoryPrivateError()
     }
@@ -109,6 +115,12 @@ private actor InsertFailingReceiptRepository: WorkflowRunReceiptRepository {
 }
 
 private actor ClearBarrierRejectingReceiptRepository: WorkflowRunReceiptRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func insertTerminal(_ value: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw WorkflowRunReceiptRepositoryError.writeObsoletedByClearBarrier(runID: value.runID) }
+        try await (self as any WorkflowRunReceiptRepository).insertTerminal(value)
+    }
+
     private var insertAttempts = 0
 
     func insertTerminal(_ receipt: WorkflowRunReceipt) async throws {

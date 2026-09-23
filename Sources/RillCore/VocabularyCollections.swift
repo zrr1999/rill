@@ -130,13 +130,16 @@ public struct VocabularyLibraryDocument: Codable, Sendable, Equatable {
 
     public var schemaVersion: Int
     public var collections: [VocabularyCollection]
+    public var defaultBindings: [VocabularyCollectionBinding]?
 
     public init(
         schemaVersion: Int = currentSchemaVersion,
-        collections: [VocabularyCollection]
+        collections: [VocabularyCollection],
+        defaultBindings: [VocabularyCollectionBinding]? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.collections = collections
+        self.defaultBindings = defaultBindings
     }
 }
 
@@ -252,6 +255,21 @@ public struct VocabularyLegacyMigrationResult: Sendable, Equatable {
 }
 
 public enum VocabularyLegacyMigrator {
+    /// Legacy editors show one scope per entry. Runtime matching uses all bindings.
+    public static func project(
+        _ collections: [VocabularyCollection], bindings: [VocabularyCollectionBinding]
+    ) -> [VocabularyRule] {
+        collections.flatMap { collection in
+            let condition = bindings.first { $0.collectionID == collection.id }?.condition
+            let scope = VocabularyRuleScope(
+                bundleIdentifier: condition?.bundleIdentifier,
+                recordCollectionID: condition?.recordCollectionID,
+                locale: condition?.locale
+            )
+            return collection.entries.map { $0.legacyRule(scope: scope) }
+        }
+    }
+
     public static func migrate(_ rules: [VocabularyRule]) -> VocabularyLegacyMigrationResult {
         let grouped = Dictionary(grouping: rules, by: \.scope)
         var collections: [VocabularyCollection] = []

@@ -266,8 +266,8 @@ final class RecordCatalogTests: XCTestCase {
     else { throw TestError.sqlite }
     defer { sqlite3_close(database) }
     try SQLiteWriterBarrier.registerCapability(on: database)
-    try SQLiteCatalogWriterBarrier.register(on: database)
-    try SQLiteMemoryWriterBarrier.register(on: database)
+    try SQLiteSchemaWriterBarrier.catalog.register(on: database)
+    try SQLiteSchemaWriterBarrier.memory.register(on: database)
     guard
       sqlite3_exec(
         database, "UPDATE record_payload_blobs SET payload = zeroblob(length(payload));", nil, nil,

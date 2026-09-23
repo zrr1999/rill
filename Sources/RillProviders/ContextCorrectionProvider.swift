@@ -1,18 +1,13 @@
-import CryptoKit
 import Foundation
 import RillCore
 
 public enum ContextProviderIdentity {
     public static func fingerprint(_ settings: OpenAISettings) -> String {
-        let fields = [settings.baseURL, settings.model, settings.apiKey]
-        return SHA256.hash(data: Data(fields.map { "\($0.utf8.count):\($0)" }.joined().utf8))
-            .map { String(format: "%02x", $0) }.joined()
+        LanguageModelProviderDescriptor(settings: settings).authorizationFingerprint
     }
 
     public static func supportsImages(_ settings: OpenAISettings) -> Bool {
-        let endpoint = URLComponents(string: settings.baseURL.trimmingCharacters(in: .whitespacesAndNewlines))
-        return endpoint?.scheme == "https" && endpoint?.host?.lowercased() == "api.deepseek.com"
-            && settings.model == LLMTextProcessing.deepSeekModel
+        LanguageModelProviderDescriptor(settings: settings).supportsReferenceImages
     }
 
     static func validate(_ authorization: ContextReferenceAuthorization?, settings: OpenAISettings) throws {
@@ -59,20 +54,24 @@ enum ContextCorrectionPrompts {
 }
 
 public struct ContextCorrectionProvider: CorrectionContextSummarizing, MemoryConsolidating {
+    private let operations: BoundedOperation
     private let settingsProvider: @Sendable () async throws -> OpenAISettings
     private let authorization: ContextReferenceAuthorization
     private let clientFactory: OpenAIResponsesClientFactory
     private let onRequest: @Sendable () async throws -> Void
 
     public init(settingsProvider: @escaping @Sendable () async throws -> OpenAISettings,
-                authorization: ContextReferenceAuthorization, onRequest: @escaping @Sendable () async throws -> Void = {}) {
+                authorization: ContextReferenceAuthorization,
+                operations: BoundedOperation = BoundedOperation(maxConcurrentOperations: 2), onRequest: @escaping @Sendable () async throws -> Void = {}) {
         self.init(settingsProvider: settingsProvider, authorization: authorization,
-                  clientFactory: { MacPawOpenAIResponsesClient() }, onRequest: onRequest)
+                  clientFactory: { MacPawOpenAIResponsesClient() }, operations: operations, onRequest: onRequest)
     }
 
     init(settingsProvider: @escaping @Sendable () async throws -> OpenAISettings,
          authorization: ContextReferenceAuthorization, clientFactory: @escaping OpenAIResponsesClientFactory,
+         operations: BoundedOperation = BoundedOperation(maxConcurrentOperations: 2),
          onRequest: @escaping @Sendable () async throws -> Void = {}) {
+        self.operations = operations
         self.settingsProvider = settingsProvider
         self.authorization = authorization
         self.clientFactory = clientFactory
@@ -216,7 +215,7 @@ public struct ContextCorrectionProvider: CorrectionContextSummarizing, MemoryCon
         try Task.checkCancellation()
         try ContextProviderIdentity.validate(authorization, settings: settings)
         let client = clientFactory()
-        let response = try await BoundedOperation.run(timeout: .seconds(timeout)) {
+        let response = try await operations.run(timeout: .seconds(timeout)) {
             try await client.createResponse(request: request, apiKey: settings.apiKey)
         }
         try ContextProviderIdentity.validate(authorization, settings: settings)

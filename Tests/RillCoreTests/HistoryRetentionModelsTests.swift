@@ -95,6 +95,12 @@ final class HistoryRetentionModelsTests: XCTestCase {
 }
 
 private actor LegacyDiagnosticRepository: DiagnosticRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await (self as any DiagnosticRepository).save(value)
+    }
+
     func save(_ event: DiagnosticEvent) async throws {}
 
     func events(matching query: DiagnosticQuery) async throws -> [DiagnosticEvent] {

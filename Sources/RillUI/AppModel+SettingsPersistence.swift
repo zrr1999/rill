@@ -227,7 +227,7 @@ enum StoredSettingsDomain: Sendable, Hashable {
   case vocabularyRules
 }
 
-struct StoredAppSettingsSnapshot {
+struct StoredAppSettingsSnapshot: Sendable {
   let persistentSettingsStoreWasAvailable: Bool
   let unavailableSettingKeys: Set<AppSettingKey>
   let legacyLocalSpeechMigrationValues: [AppSettingKey: String]
@@ -243,12 +243,6 @@ struct StoredAppSettingsSnapshot {
   let ttsModel: String?
   let localSpeechModel: String?
   let downloadedLocalSpeechModels: [String]
-  let legacyWhisperKitCustomModel: String?
-  let legacyWhisperKitModelRepo: String?
-  let legacyWhisperKitModelToken: String?
-  let legacyWhisperKitModelFolder: String?
-  let legacyWhisperKitLanguage: String?
-  let legacyWhisperKitDownloadIfNeeded: String?
   let localSpeechPrewarm: String?
   let enabledSpeechModels: String?
   let residentSpeechModels: String?
@@ -280,7 +274,7 @@ struct InitialWorkflowFileLoad: Sendable {
   let didMigrateLegacyWorkflows: Bool
 }
 
-private struct RecoverableStoredSettingsDomains: Sendable {
+struct RecoverableStoredSettingsDomains: Sendable {
   let customWorkflows: [WorkflowDefinition]?
   let workflowFiles: WorkflowFileLoadResult?
   let workflowEnabledStates: [UUID: Bool]?
@@ -293,11 +287,11 @@ enum StoredSettingsCollectionValidationError: Error {
   case duplicateIdentifier
 }
 
-private enum WorkflowFileMigrationError: Error {
+enum WorkflowFileMigrationError: Error {
   case verificationFailed
 }
 
-private struct LegacyLocalSpeechSettingResolution {
+struct LegacyLocalSpeechSettingResolution {
   let value: String?
   let usedLegacyValue: Bool
   let isUnavailable: Bool
@@ -308,101 +302,10 @@ extension AppModel {
     ScalarSettingsDomain.allCases.flatMap(\.settingKeys)
   )
 
-  static func loadAndMigrateWorkflowFiles(
-    from workflowFileStore: (any WorkflowFileStore)?,
-    legacyWorkflows: [WorkflowDefinition],
-    enabledStates: [UUID: Bool]
-  ) async -> InitialWorkflowFileLoad? {
-    guard let workflowFileStore else { return nil }
-    var initial = await workflowFileStore.load()
-    guard
-      initial.discoveredFileCount == 0,
-      initial.issues.isEmpty,
-      !legacyWorkflows.isEmpty
-    else {
-      return InitialWorkflowFileLoad(
-        result: initial,
-        didMigrateLegacyWorkflows: false
-      )
-    }
+  private static let privacySettingKeys = AppSettingsCodec.privacySettingKeys
 
-    var createdFiles: [URL] = []
-    do {
-      for workflow in legacyWorkflows.sorted(by: {
-        $0.id.uuidString < $1.id.uuidString
-      }) {
-        let fileURL = try await workflowFileStore.save(
-          workflow: normalizeCustomWorkflow(workflow),
-          isEnabled: enabledStates[workflow.id] ?? true,
-          replacing: nil
-        )
-        createdFiles.append(fileURL)
-      }
-      initial = await workflowFileStore.load()
-      guard
-        initial.issues.isEmpty,
-        initial.records.count == legacyWorkflows.count
-      else {
-        throw WorkflowFileMigrationError.verificationFailed
-      }
-      return InitialWorkflowFileLoad(
-        result: initial,
-        didMigrateLegacyWorkflows: true
-      )
-    } catch {
-      for fileURL in createdFiles {
-        try? await workflowFileStore.delete(fileURL: fileURL)
-      }
-      initial.issues.append(
-        WorkflowFileIssue(
-          filename: workflowFileStore.configurationDirectoryURL.lastPathComponent,
-          message:
-            "Existing workflows could not be migrated to TOML; the legacy library remains active."
-        )
-      )
-      return InitialWorkflowFileLoad(
-        result: initial,
-        didMigrateLegacyWorkflows: false
-      )
-    }
-  }
-
-  static func retireLegacyWorkflowDefinitions(
-    in settingsStore: (any SettingsStore)?,
-    preserving customizations: [WorkflowCustomization]
-  ) async {
-    guard let settingsStore else { return }
-    let document = WorkflowLibraryDocument(
-      customWorkflows: [],
-      customizations: customizations
-    )
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys]
-    guard let data = try? encoder.encode(document) else { return }
-    do {
-      try await settingsStore.setString(
-        String(decoding: data, as: UTF8.self),
-        forKey: workflowLibrarySettingKey
-      )
-      try await settingsStore.removeValue(forKey: .customWorkflows)
-    } catch {
-      // TOML already verified successfully and remains authoritative. Retaining
-      // the legacy payload is a safe, retryable cleanup failure.
-    }
-  }
-
-  private static let privacySettingKeys: Set<AppSettingKey> = [
-    .privacySensitiveAppRules,
-    .privacyCloudConfirmationRequired,
-    .privacyCloudProcessingAuthorizations,
-    .privacyHistoryPreviewMode,
-    .privacySecureInputConservativeMode,
-  ]
-
-  private static let openAIConfigurationSettingKeys: Set<AppSettingKey> = [
-    .openAIBaseURL,
-    .openAIModel,
-  ]
+  private static let openAIConfigurationSettingKeys = AppSettingsCodec
+    .openAIConfigurationSettingKeys
 
   public func hasUnavailableScalarSettings(in domain: ScalarSettingsDomain) -> Bool {
     !unavailableScalarSettingKeys.isDisjoint(with: domain.settingKeys)
@@ -459,12 +362,12 @@ extension AppModel {
         return
       }
       do {
-        let settings = try await Self.loadStoredAppSettings(
+        let settings = try await AppSettingsCodec.loadStoredAppSettings(
           from: settingsStore,
           credentialStore: credentialStore,
           requiresPersistentPrivacySettings: requiresPersistentPrivacySettings
         )
-        let workflowFiles = await Self.loadAndMigrateWorkflowFiles(
+        let workflowFiles = await AppSettingsCodec.loadAndMigrateWorkflowFiles(
           from: workflowFileStore,
           legacyWorkflows: settings.customWorkflows,
           enabledStates: settings.workflowEnabledStates
@@ -478,7 +381,7 @@ extension AppModel {
         }
         self.applyStoredSettings(settings, workflowFiles: workflowFiles)
         if workflowFiles?.didMigrateLegacyWorkflows == true {
-          await Self.retireLegacyWorkflowDefinitions(
+          await AppSettingsCodec.retireLegacyWorkflowDefinitions(
             in: settingsStore,
             preserving: settings.workflowCustomizations
           )
@@ -536,291 +439,6 @@ extension AppModel {
     taskOwner.replaceActive(in: slot, id: taskID, with: task)
   }
 
-  private static func resolveLegacyLocalSpeechSetting(
-    currentKey: AppSettingKey,
-    legacyKey: AppSettingKey,
-    in snapshot: SettingsStoreReadSnapshot
-  ) -> LegacyLocalSpeechSettingResolution {
-    if snapshot.unavailableKeys.contains(currentKey) {
-      return LegacyLocalSpeechSettingResolution(
-        value: nil,
-        usedLegacyValue: false,
-        isUnavailable: true
-      )
-    }
-    if let currentValue = snapshot.values[currentKey] {
-      return LegacyLocalSpeechSettingResolution(
-        value: currentValue,
-        usedLegacyValue: false,
-        isUnavailable: false
-      )
-    }
-    if snapshot.unavailableKeys.contains(legacyKey) {
-      return LegacyLocalSpeechSettingResolution(
-        value: nil,
-        usedLegacyValue: false,
-        isUnavailable: true
-      )
-    }
-    return LegacyLocalSpeechSettingResolution(
-      value: snapshot.values[legacyKey],
-      usedLegacyValue: snapshot.values[legacyKey] != nil,
-      isUnavailable: false
-    )
-  }
-
-  static func loadStoredAppSettings(
-    from settingsStore: (any SettingsStore)?,
-    credentialStore: (any SecureCredentialStore)? = nil,
-    requiresPersistentPrivacySettings: Bool = false
-  ) async throws -> StoredAppSettingsSnapshot {
-    let storedSnapshot: SettingsStoreReadSnapshot
-    if let settingsStore {
-      storedSnapshot = try await settingsStore.settingsSnapshot(
-        forKeys: Self.settingsLoadKeys
-      )
-    } else {
-      storedSnapshot = SettingsStoreReadSnapshot(
-        values: [:],
-        unavailableKeys: Set(Self.settingsLoadKeys)
-      )
-    }
-    var storedSettings = storedSnapshot.values
-    var unavailableSettingKeys = storedSnapshot.unavailableKeys
-    var legacyLocalSpeechMigrationValues: [AppSettingKey: String] = [:]
-    if storedSettings[.preferredSpeechEngine] == "cloud" {
-      storedSettings[.preferredSpeechEngine] = PreferredSpeechEngine.local.rawValue
-      legacyLocalSpeechMigrationValues[.preferredSpeechEngine] =
-        PreferredSpeechEngine.local.rawValue
-    }
-    let legacyLocalSpeechKeyPairs: [(AppSettingKey, AppSettingKey)] = [
-      (AppSettingKey.localSpeechModel, .legacyWhisperKitModel),
-      (.localSpeechDownloadedModels, .legacyWhisperKitDownloadedModels),
-      (.localSpeechPrewarm, .legacyWhisperKitPrewarm),
-    ]
-    for (currentKey, legacyKey) in legacyLocalSpeechKeyPairs {
-      let resolution = Self.resolveLegacyLocalSpeechSetting(
-        currentKey: currentKey,
-        legacyKey: legacyKey,
-        in: storedSnapshot
-      )
-      unavailableSettingKeys.remove(currentKey)
-      unavailableSettingKeys.remove(legacyKey)
-      if resolution.isUnavailable {
-        storedSettings.removeValue(forKey: currentKey)
-        unavailableSettingKeys.insert(currentKey)
-      } else if let value = resolution.value {
-        storedSettings[currentKey] = value
-        if resolution.usedLegacyValue {
-          legacyLocalSpeechMigrationValues[currentKey] = value
-        }
-      } else {
-        storedSettings.removeValue(forKey: currentKey)
-      }
-    }
-    unavailableSettingKeys.formUnion(
-      Self.invalidScalarSettingKeys(in: storedSettings)
-    )
-    for key in unavailableSettingKeys {
-      legacyLocalSpeechMigrationValues.removeValue(forKey: key)
-    }
-    var loadWarnings: [StoredSettingsLoadWarning] = []
-    var unavailableDomains: Set<StoredSettingsDomain> = []
-    if !unavailableSettingKeys.isEmpty {
-      loadWarnings.append(.storedValuesUnavailable)
-    }
-    if !unavailableSettingKeys.isDisjoint(with: [
-      .customWorkflows,
-      Self.workflowLibrarySettingKey,
-      .workflowEnabledStates,
-    ]) {
-      unavailableDomains.insert(.workflowLibrary)
-    }
-    if unavailableSettingKeys.contains(.localSpeechDownloadedModels) {
-      unavailableDomains.insert(.downloadedModelMetadata)
-    }
-    if unavailableSettingKeys.contains(Self.vocabularyRulesSettingKey)
-      || unavailableSettingKeys.contains(Self.vocabularyLibrarySettingKey)
-    {
-      unavailableDomains.insert(.vocabularyRules)
-    }
-
-    let customWorkflows: [WorkflowDefinition]
-    let workflowCustomizations: [WorkflowCustomization]
-    do {
-      if let library = try Self.loadWorkflowLibrary(
-        from: storedSettings[Self.workflowLibrarySettingKey]
-      ) {
-        customWorkflows = library.customWorkflows
-        workflowCustomizations = library.customizations
-      } else {
-        customWorkflows = try Self.loadCustomWorkflows(from: storedSettings[.customWorkflows])
-        workflowCustomizations = []
-      }
-    } catch {
-      customWorkflows = []
-      workflowCustomizations = []
-      loadWarnings.append(.customWorkflows)
-      unavailableDomains.insert(.workflowLibrary)
-    }
-
-    let workflowEnabledStates: [UUID: Bool]
-    do {
-      workflowEnabledStates = try Self.loadWorkflowEnabledStates(
-        from: storedSettings[.workflowEnabledStates])
-    } catch {
-      workflowEnabledStates = [:]
-      loadWarnings.append(.workflowEnabledStates)
-      unavailableDomains.insert(.workflowLibrary)
-    }
-
-    let downloadedLocalSpeechModels: [String]
-    do {
-      downloadedLocalSpeechModels = try Self.loadDownloadedLocalSpeechModels(
-        from: storedSettings[.localSpeechDownloadedModels]
-      )
-    } catch {
-      downloadedLocalSpeechModels = []
-      legacyLocalSpeechMigrationValues.removeValue(forKey: .localSpeechDownloadedModels)
-      loadWarnings.append(.downloadedModelMetadata)
-      unavailableDomains.insert(.downloadedModelMetadata)
-    }
-
-    let vocabularyRules: [VocabularyRule]
-    let vocabularyCollections: [VocabularyCollection]
-    let vocabularyBindings: [VocabularyCollectionBinding]
-    do {
-      if let library = try Self.loadVocabularyLibrary(
-        from: storedSettings[Self.vocabularyLibrarySettingKey]
-      ) {
-        vocabularyCollections = library.collections
-        vocabularyRules = library.collections.flatMap { collection in
-          collection.entries.map { $0.legacyRule() }
-        }
-        vocabularyBindings =
-          workflowCustomizations.lazy.compactMap(\.vocabularyBindings).first
-          ?? customWorkflows.lazy.map(\.plan.setup.vocabularyBindings).first {
-            !$0.isEmpty
-          }
-          ?? library.collections.map { collection in
-            VocabularyCollectionBinding(collectionID: collection.id)
-          }
-      } else {
-        vocabularyRules = try Self.loadVocabularyRules(
-          from: storedSettings[Self.vocabularyRulesSettingKey])
-        let migration = VocabularyLegacyMigrator.migrate(vocabularyRules)
-        vocabularyCollections = migration.collections
-        vocabularyBindings = migration.bindings
-      }
-    } catch {
-      vocabularyRules = []
-      vocabularyCollections = [.personal()]
-      vocabularyBindings = [
-        VocabularyCollectionBinding(collectionID: VocabularyCollection.personalID),
-      ]
-      loadWarnings.append(.vocabularyRules)
-      unavailableDomains.insert(.vocabularyRules)
-    }
-
-    let privacyPolicySettings: PrivacyPolicySettings
-    let privacySettingsWereInvalid: Bool
-    do {
-      guard settingsStore != nil || !requiresPersistentPrivacySettings else {
-        throw PrivacyPolicySettingsSourceError.unavailable(
-          "Persistent settings storage is unavailable."
-        )
-      }
-      guard unavailableSettingKeys.isDisjoint(with: Self.privacySettingKeys) else {
-        throw PrivacyPolicySettingsSourceError.unavailable(
-          "A protected privacy setting is unavailable."
-        )
-      }
-      privacyPolicySettings = try Self.decodePrivacyPolicySettings(from: storedSettings)
-      privacySettingsWereInvalid = false
-    } catch {
-      privacyPolicySettings = .defaults
-      privacySettingsWereInvalid = true
-    }
-
-    let openAIAPIKey: String?
-    let openAICredentialAvailability: OpenAICredentialAvailability
-    if let credentialStore {
-      do {
-        openAIAPIKey = try await credentialStore.credential(for: .openAIAPIKey)
-        openAICredentialAvailability =
-          unavailableSettingKeys.isDisjoint(
-            with: Self.openAIConfigurationSettingKeys
-          )
-          ? Self.openAICredentialAvailability(for: openAIAPIKey)
-          : .inaccessible
-      } catch {
-        openAIAPIKey = nil
-        openAICredentialAvailability = .inaccessible
-        loadWarnings.append(.openAICredential)
-      }
-    } else {
-      openAIAPIKey = nil
-      openAICredentialAvailability = .inaccessible
-    }
-
-    return StoredAppSettingsSnapshot(
-      persistentSettingsStoreWasAvailable: settingsStore != nil,
-      unavailableSettingKeys: unavailableSettingKeys,
-      legacyLocalSpeechMigrationValues: legacyLocalSpeechMigrationValues,
-      language: storedSettings[.interfaceLanguage],
-      customWorkflows: customWorkflows,
-      workflowCustomizations: workflowCustomizations,
-      workflowLibraryNeedsMigration:
-        storedSettings[Self.workflowLibrarySettingKey] == nil
-          && storedSettings[.customWorkflows] != nil,
-      workflowEnabledStates: workflowEnabledStates,
-      systemClipboardCaptureEnabled: storedSettings[.systemClipboardCaptureEnabled]
-        ?? storedSettings[.legacyClipboardCaptureEnabled],
-      recordHistoryVisibility: storedSettings[.recordHistoryVisibility]
-        ?? storedSettings[.legacyClipboardHistoryVisibility],
-      recordPanelHotkey: storedSettings[.recordPanelHotkey]
-        ?? storedSettings[.legacyClipboardPanelHotkey],
-      preferredSpeechEngine: storedSettings[.preferredSpeechEngine],
-      ttsModel: storedSettings[.ttsModel],
-      localSpeechModel: storedSettings[.localSpeechModel],
-      downloadedLocalSpeechModels: downloadedLocalSpeechModels,
-      legacyWhisperKitCustomModel: storedSettings[.legacyWhisperKitCustomModel],
-      legacyWhisperKitModelRepo: storedSettings[.legacyWhisperKitModelRepo],
-      legacyWhisperKitModelToken: nil,
-      legacyWhisperKitModelFolder: storedSettings[.legacyWhisperKitModelFolder],
-      legacyWhisperKitLanguage: storedSettings[.legacyWhisperKitLanguage],
-      legacyWhisperKitDownloadIfNeeded: storedSettings[.legacyWhisperKitDownloadIfNeeded],
-      localSpeechPrewarm: storedSettings[.localSpeechPrewarm],
-      enabledSpeechModels: storedSettings[.enabledSpeechModels],
-      residentSpeechModels: storedSettings[.residentSpeechModels],
-      residentSpeechBudgetConfirmation:
-        storedSettings[.residentSpeechBudgetConfirmation],
-      speechModelMeasuredPeaks: storedSettings[.speechModelMeasuredPeaks],
-      openAIAPIKey: openAIAPIKey,
-      openAICredentialAvailability: openAICredentialAvailability,
-      openAIBaseURL: storedSettings[.openAIBaseURL],
-      openAIModel: storedSettings[.openAIModel],
-      vocabularyRules: vocabularyRules,
-      vocabularyCollections: vocabularyCollections,
-      vocabularyBindings: vocabularyBindings,
-      vocabularyLibraryNeedsMigration:
-        storedSettings[Self.vocabularyLibrarySettingKey] == nil
-          && storedSettings[Self.vocabularyRulesSettingKey] != nil,
-      privacyPolicySettings: privacyPolicySettings,
-      privacySettingsWereInvalid: privacySettingsWereInvalid,
-      recordRetentionPeriod: storedSettings[.recordRetentionPeriod]
-        ?? storedSettings[.legacyClipboardHistoryRetentionPeriod],
-      runHistoryRetentionPeriod: storedSettings[.runHistoryRetentionPeriod],
-      failedAudioRecoveryEnabled: storedSettings[.failedAudioRecoveryEnabled],
-      benchmarkRecordingArchiveEnabled: storedSettings[.benchmarkRecordingArchiveEnabled],
-      builtinPushToTalkOutputMode: storedSettings[.builtinPushToTalkOutputMode],
-      longRecordingModeEnabled: storedSettings[.longRecordingModeEnabled],
-      recordingDurationLimit: storedSettings[.recordingDurationLimit],
-      loadWarnings: loadWarnings,
-      unavailableDomains: unavailableDomains
-    )
-  }
-
   func applyStoredSettings(
     _ settings: StoredAppSettingsSnapshot,
     workflowFiles: InitialWorkflowFileLoad? = nil
@@ -875,8 +493,6 @@ extension AppModel {
     performLocalHistoryRetention(startPeriodicMaintenanceAfterCompletion: true)
     if shouldPrepareLocalSpeechModel {
       prepareLocalSpeechModel()
-    } else {
-      queueLocalSpeechReadinessIfNeeded()
     }
   }
 
@@ -1048,9 +664,7 @@ extension AppModel {
 
     let usesTOMLSource: Bool
     if let workflowFiles {
-      usesTOMLSource = workflowFiles.result.discoveredFileCount > 0
-        || settings.customWorkflows.isEmpty
-        || workflowFiles.didMigrateLegacyWorkflows
+      usesTOMLSource = settings.customWorkflows.isEmpty || workflowFiles.didMigrateLegacyWorkflows
     } else {
       usesTOMLSource = false
     }
@@ -1058,7 +672,10 @@ extension AppModel {
     if usesTOMLSource, let workflowFiles {
       usesWorkflowFilesAsSource = true
       customWorkflows = workflowFiles.result.records.map(\.workflow)
-      workflowFileSourcesByID = Dictionary(uniqueKeysWithValues: workflowFiles.result.records.compactMap { record in record.source.map { (record.workflow.id, $0) } })
+      workflowFileSourcesByID = Dictionary(
+        uniqueKeysWithValues: workflowFiles.result.records.compactMap { record in
+          record.source.map { (record.workflow.id, $0) }
+        })
       workflowFileIssues = workflowFiles.result.issues
       invalidWorkflowFileIDs = Set(workflowFileIssues.compactMap(\.workflowID))
       workflowFileURLsByID = Dictionary(
@@ -1073,7 +690,8 @@ extension AppModel {
           }
         }
       }
-      workflowEnabledStates = storedDomainUnavailable
+      workflowEnabledStates =
+        storedDomainUnavailable
         ? [:]
         : settings.workflowEnabledStates
       for record in workflowFiles.result.records {
@@ -1082,10 +700,19 @@ extension AppModel {
     } else {
       usesWorkflowFilesAsSource = false
       customWorkflows = settings.customWorkflows
-      workflowFileURLsByID = [:]
+      let partialRecords = workflowFiles?.result.records ?? []
+      workflowFileURLsByID = Dictionary(
+        uniqueKeysWithValues: partialRecords.map {
+          ($0.workflow.id, $0.fileURL)
+        })
+      workflowFileSourcesByID = Dictionary(
+        uniqueKeysWithValues: partialRecords.compactMap { record in
+          record.source.map { (record.workflow.id, $0) }
+        })
       workflowEnabledStates = settings.workflowEnabledStates
     }
-    workflowCustomizations = storedDomainUnavailable
+    workflowCustomizations =
+      storedDomainUnavailable
       ? []
       : settings.workflowCustomizations
 
@@ -1123,11 +750,16 @@ extension AppModel {
       workflowFileURLsByID[workflow.id].map { invalidNames.contains($0.lastPathComponent) } ?? false
     }
     workflowFileIssues = result.issues
-    invalidWorkflowFileIDs = Set(result.issues.compactMap(\.workflowID)).union(retainedInvalid.map(\.id))
+    invalidWorkflowFileIDs = Set(result.issues.compactMap(\.workflowID)).union(
+      retainedInvalid.map(\.id))
     let validIDs = Set(result.records.map { $0.workflow.id })
-    customWorkflows = result.records.map(\.workflow) + retainedInvalid.filter { !validIDs.contains($0.id) }
+    customWorkflows =
+      result.records.map(\.workflow) + retainedInvalid.filter { !validIDs.contains($0.id) }
     let invalidURLs = workflowFileURLsByID.filter { invalidWorkflowFileIDs.contains($0.key) }
-    workflowFileSourcesByID = Dictionary(uniqueKeysWithValues: result.records.compactMap { record in record.source.map { (record.workflow.id, $0) } })
+    workflowFileSourcesByID = Dictionary(
+      uniqueKeysWithValues: result.records.compactMap { record in
+        record.source.map { (record.workflow.id, $0) }
+      })
     workflowFileURLsByID = Dictionary(
       uniqueKeysWithValues: result.records.map {
         ($0.workflow.id, $0.fileURL)
@@ -1154,7 +786,8 @@ extension AppModel {
     let visibleIssues = issues.prefix(3).map { issue in
       "\(issue.filename): \(issue.message)"
     }
-    let suffix = issues.count > visibleIssues.count
+    let suffix =
+      issues.count > visibleIssues.count
       ? " (+\(issues.count - visibleIssues.count) more)"
       : ""
     let heading = L10n.runText(.workflowTOMLIssuesHeading, language: language)
@@ -1173,7 +806,8 @@ extension AppModel {
       applyResolvedClipboardCapturePreference(enabled: false)
     } else if shouldApplyStoredSetting(.systemClipboardCaptureEnabled) {
       applyResolvedClipboardCapturePreference(
-        enabled: settings.systemClipboardCaptureEnabled.flatMap(Self.storedBooleanIfValid) ?? false
+        enabled: settings.systemClipboardCaptureEnabled.flatMap(
+          AppSettingsCodec.storedBooleanIfValid) ?? false
       )
     }
 
@@ -1217,7 +851,8 @@ extension AppModel {
     if shouldApplyStoredSetting(.longRecordingModeEnabled),
       let rawLongRecordingMode = settings.longRecordingModeEnabled
     {
-      longRecordingModeEnabled = Self.storedBoolean(rawLongRecordingMode, defaultValue: false)
+      longRecordingModeEnabled = AppSettingsCodec.storedBoolean(
+        rawLongRecordingMode, defaultValue: false)
     }
 
     if shouldApplyStoredSetting(.recordingDurationLimit),
@@ -1239,23 +874,20 @@ extension AppModel {
     } else if shouldApplyStoredSetting(.localSpeechDownloadedModels) {
       downloadedLocalSpeechModelsAvailability = .available
       downloadedLocalSpeechModelsError = nil
-      downloadedLocalSpeechModels =
-        trustedLocalSpeechModels.isEmpty
-        ? settings.downloadedLocalSpeechModels
-        : settings.downloadedLocalSpeechModels.filter { modelIdentifier in
-          trustedLocalSpeechModels.contains(where: { $0.id == modelIdentifier })
-        }
+      downloadedLocalSpeechModels = settings.downloadedLocalSpeechModels.filter { modelIdentifier in
+        trustedLocalSpeechModels.contains(where: { $0.id == modelIdentifier })
+      }
     }
-    if shouldApplyStoredSetting(.localSpeechModel) {
-      localSpeechModelOption = LegacyWhisperModelOption(
-        storedModelValue: settings.localSpeechModel
-      )
+    if shouldApplyStoredModel, let model = settings.localSpeechModel {
+      localSpeechModel = model
     }
-    applyStoredLegacyWhisperModelStrings(settings)
-    applyStoredLegacyWhisperBooleans(settings)
+    if shouldApplyStoredSetting(.localSpeechPrewarm), let prewarm = settings.localSpeechPrewarm {
+      localSpeechPrewarm = AppSettingsCodec.storedBoolean(
+        prewarm, defaultValue: LocalSpeechSettings().prewarm)
+    }
     if shouldApplyStoredSetting(.enabledSpeechModels),
       let rawValue = settings.enabledSpeechModels,
-      let values = try? Self.loadDownloadedLocalSpeechModels(from: rawValue)
+      let values = try? AppSettingsCodec.loadDownloadedLocalSpeechModels(from: rawValue)
     {
       enabledSpeechModelIDs = Set(values).intersection(
         speechModelResourceCatalog.map(\.id)
@@ -1263,12 +895,12 @@ extension AppModel {
     }
     if shouldApplyStoredSetting(.residentSpeechModels),
       let rawValue = settings.residentSpeechModels,
-      let values = try? Self.loadDownloadedLocalSpeechModels(from: rawValue)
+      let values = try? AppSettingsCodec.loadDownloadedLocalSpeechModels(from: rawValue)
     {
       residentSpeechModelIDs = Set(values).intersection(enabledSpeechModelIDs)
     }
     if shouldApplyStoredSetting(.speechModelMeasuredPeaks),
-      let values = try? Self.loadMeasuredSpeechModelPeaks(
+      let values = try? AppSettingsCodec.loadMeasuredSpeechModelPeaks(
         from: settings.speechModelMeasuredPeaks
       )
     {
@@ -1276,7 +908,8 @@ extension AppModel {
       measuredSpeechModelPeakByteCounts = values.filter { catalogIDs.contains($0.key) }
     }
     if shouldApplyStoredSetting(.residentSpeechBudgetConfirmation) {
-      let value = settings.residentSpeechBudgetConfirmation?
+      let value =
+        settings.residentSpeechBudgetConfirmation?
         .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
       residentSpeechBudgetConfirmation =
         value == residentSpeechModelBudget.confirmationFingerprint ? value : nil
@@ -1318,71 +951,6 @@ extension AppModel {
       localSpeechModel = storedModel
     } else {
       localSpeechModel = defaultLocalSpeechModelIdentifier
-    }
-    // Production trusted catalogs never honor ambient repository, folder,
-    // or bearer-token state left by older unverified-model settings.
-    legacyWhisperKitModelRepo = ""
-    legacyWhisperKitModelToken = ""
-    legacyWhisperKitModelFolder = ""
-  }
-
-  func applyStoredLegacyWhisperModelStrings(_ settings: StoredAppSettingsSnapshot) {
-    if shouldApplyStoredSetting(.legacyWhisperKitCustomModel),
-      let customModel = settings.legacyWhisperKitCustomModel
-    {
-      legacyWhisperKitCustomModel = customModel
-    } else if shouldApplyStoredSetting(.legacyWhisperKitCustomModel),
-      shouldApplyStoredSetting(.localSpeechModel),
-      localSpeechModelOption == .custom,
-      let model = settings.localSpeechModel
-    {
-      legacyWhisperKitCustomModel = model
-    }
-
-    if shouldApplyStoredSetting(.localSpeechModel),
-      let model = settings.localSpeechModel
-    {
-      localSpeechModel = model
-    }
-    if shouldApplyStoredSetting(.legacyWhisperKitModelRepo),
-      let repo = settings.legacyWhisperKitModelRepo
-    {
-      legacyWhisperKitModelRepo = repo
-    }
-    if shouldApplyStoredSetting(.legacyWhisperKitModelToken),
-      let token = settings.legacyWhisperKitModelToken
-    {
-      legacyWhisperKitModelToken = token
-    }
-    if shouldApplyStoredSetting(.legacyWhisperKitModelFolder),
-      let folder = settings.legacyWhisperKitModelFolder
-    {
-      legacyWhisperKitModelFolder = folder
-    }
-    if shouldApplyStoredSetting(.legacyWhisperKitLanguage),
-      let language = settings.legacyWhisperKitLanguage
-    {
-      legacyWhisperKitLanguage = language
-    }
-  }
-
-  func applyStoredLegacyWhisperBooleans(_ settings: StoredAppSettingsSnapshot) {
-    if shouldApplyStoredSetting(.legacyWhisperKitDownloadIfNeeded),
-      let downloadIfNeeded = settings.legacyWhisperKitDownloadIfNeeded
-    {
-      legacyWhisperKitDownloadIfNeeded = Self.storedBoolean(
-        downloadIfNeeded,
-        defaultValue: LocalSpeechSettings().downloadIfNeeded
-      )
-    }
-
-    if shouldApplyStoredSetting(.localSpeechPrewarm),
-      let prewarm = settings.localSpeechPrewarm
-    {
-      localSpeechPrewarm = Self.storedBoolean(
-        prewarm,
-        defaultValue: LocalSpeechSettings().prewarm
-      )
     }
   }
 
@@ -1457,7 +1025,7 @@ extension AppModel {
             (.localSpeechPrewarm, .legacyWhisperKitPrewarm),
           ]
           for (currentKey, legacyKey) in legacyLocalSpeechKeyPairs {
-            let resolution = Self.resolveLegacyLocalSpeechSetting(
+            let resolution = AppSettingsCodec.resolveLegacyLocalSpeechSetting(
               currentKey: currentKey,
               legacyKey: legacyKey,
               in: snapshot
@@ -1477,7 +1045,7 @@ extension AppModel {
             }
           }
         }
-        let invalidKeys = Self.invalidScalarSettingKeys(in: recoveredValues)
+        let invalidKeys = AppSettingsCodec.invalidScalarSettingKeys(in: recoveredValues)
         recoveredUnavailableKeys.formUnion(invalidKeys)
         for key in invalidKeys {
           legacyMigrationValues.removeValue(forKey: key)
@@ -1526,7 +1094,6 @@ extension AppModel {
         self.unavailableScalarSettingKeys.subtract(domain.settingKeys)
         if domain == .localSpeech {
           self.synchronizeLocalSpeechSettingsSource()
-          self.queueLocalSpeechReadinessIfNeeded()
         }
         self.retryingUnavailableScalarSettingsDomains.remove(domain)
         self.append(
@@ -1590,7 +1157,7 @@ extension AppModel {
         async let storedCredential = credentialStore.credential(for: .openAIAPIKey)
         let (snapshot, credential) = try await (settingsSnapshot, storedCredential)
         let unavailableKeys = snapshot.unavailableKeys
-          .union(Self.invalidScalarSettingKeys(in: snapshot.values))
+          .union(AppSettingsCodec.invalidScalarSettingKeys(in: snapshot.values))
           .intersection(ScalarSettingsDomain.openAI.settingKeys)
         guard unavailableKeys.isEmpty else {
           throw ProviderSettingsPersistenceError.unavailableStoredSettings
@@ -1621,7 +1188,7 @@ extension AppModel {
         )
         self.retryingUnavailableScalarSettingsDomains.remove(.openAI)
         self.openAICredentialAvailability =
-          Self.openAICredentialAvailability(for: credential)
+          AppSettingsCodec.openAICredentialAvailability(for: credential)
         self.workflowLibraryChangedAction()
         self.append(
           english: L10n.runText(.openAISettingsAvailableAgain, language: .english),
@@ -1673,7 +1240,8 @@ extension AppModel {
       }
     case .systemClipboard:
       applyResolvedClipboardCapturePreference(
-        enabled: values[.systemClipboardCaptureEnabled].flatMap(Self.storedBooleanIfValid) ?? false
+        enabled: values[.systemClipboardCaptureEnabled].flatMap(
+          AppSettingsCodec.storedBooleanIfValid) ?? false
       )
       if let rawValue = values[.recordHistoryVisibility],
         let visibility = RecordHistoryVisibility(rawValue: rawValue)
@@ -1695,29 +1263,11 @@ extension AppModel {
         ttsModelIdentifier = modelIdentifier
       }
     case .localSpeech:
-      if !preservingLocalSpeechModel {
-        if let model = values[.localSpeechModel] {
-          localSpeechModelOption = LegacyWhisperModelOption(storedModelValue: model)
-        }
-        if let customModel = values[.legacyWhisperKitCustomModel] {
-          legacyWhisperKitCustomModel = customModel
-        } else if localSpeechModelOption == .custom,
-          let model = values[.localSpeechModel]
-        {
-          legacyWhisperKitCustomModel = model
-        }
-        if let model = values[.localSpeechModel] { localSpeechModel = model }
-      }
-      if let repo = values[.legacyWhisperKitModelRepo] { legacyWhisperKitModelRepo = repo }
-      if let folder = values[.legacyWhisperKitModelFolder] { legacyWhisperKitModelFolder = folder }
-      if let language = values[.legacyWhisperKitLanguage] { legacyWhisperKitLanguage = language }
-      if let rawValue = values[.legacyWhisperKitDownloadIfNeeded],
-        let value = Self.storedBooleanIfValid(rawValue)
-      {
-        legacyWhisperKitDownloadIfNeeded = value
+      if !preservingLocalSpeechModel, let model = values[.localSpeechModel] {
+        localSpeechModel = model
       }
       if let rawValue = values[.localSpeechPrewarm],
-        let value = Self.storedBooleanIfValid(rawValue)
+        let value = AppSettingsCodec.storedBooleanIfValid(rawValue)
       {
         localSpeechPrewarm = value
       }
@@ -1740,7 +1290,7 @@ extension AppModel {
         builtinPushToTalkOutputMode = outputMode
       }
       if let rawValue = values[.longRecordingModeEnabled],
-        let value = Self.storedBooleanIfValid(rawValue)
+        let value = AppSettingsCodec.storedBooleanIfValid(rawValue)
       {
         longRecordingModeEnabled = value
       }
@@ -1750,17 +1300,6 @@ extension AppModel {
         recordingDurationLimit = value
       }
     }
-  }
-
-  static func openAICredentialAvailability(for credential: String?)
-    -> OpenAICredentialAvailability
-  {
-    guard let credential,
-      !credential.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    else {
-      return .missing
-    }
-    return .available
   }
 
   func applyStoredVocabularySettings(_ settings: StoredAppSettingsSnapshot) {
@@ -1774,7 +1313,7 @@ extension AppModel {
       isApplyingVocabularyLibrary = true
       vocabularyCollections = settings.vocabularyCollections
       vocabularyCollectionBindings = settings.vocabularyBindings
-      vocabularyRules = Self.sortedVocabularyRules(settings.vocabularyRules)
+      vocabularyRules = AppSettingsCodec.sortedVocabularyRules(settings.vocabularyRules)
       isApplyingVocabularyLibrary = false
       vocabularyRuleSource.updateCollections(vocabularyCollections)
       if settings.workflowLibraryNeedsMigration
@@ -1897,7 +1436,7 @@ extension AppModel {
         return
       }
       do {
-        let recovered = try await Self.loadRecoverableStoredSettingsDomains(
+        let recovered = try await AppSettingsCodec.loadRecoverableStoredSettingsDomains(
           from: settingsStore,
           workflowFileStore: workflowFileStore
         )
@@ -1959,7 +1498,10 @@ extension AppModel {
       if let workflowFiles = recovered.workflowFiles {
         usesWorkflowFilesAsSource = true
         self.customWorkflows = workflowFiles.records.map(\.workflow)
-        workflowFileSourcesByID = Dictionary(uniqueKeysWithValues: workflowFiles.records.compactMap { record in record.source.map { (record.workflow.id, $0) } })
+        workflowFileSourcesByID = Dictionary(
+          uniqueKeysWithValues: workflowFiles.records.compactMap { record in
+            record.source.map { (record.workflow.id, $0) }
+          })
         workflowFileIssues = workflowFiles.issues
         invalidWorkflowFileIDs = Set(workflowFiles.issues.compactMap(\.workflowID))
         workflowFileURLsByID = Dictionary(
@@ -2161,7 +1703,7 @@ extension AppModel {
     markSettingModifiedDuringInitialLoad(key)
     guard !isRestoringSettings else { return }
     guard !unavailableScalarSettingKeys.contains(key) else { return }
-    guard let category = Self.settingsSaveCategory(for: key) else {
+    guard let category = AppSettingsCodec.settingsSaveCategory(for: key) else {
       assertionFailure("A specialized settings key was routed through ordinary persistence.")
       return
     }
@@ -2209,7 +1751,8 @@ extension AppModel {
       switch result {
       case .success:
         if credentialKey == .openAIAPIKey {
-          self.openAICredentialAvailability = Self.openAICredentialAvailability(for: value)
+          self.openAICredentialAvailability = AppSettingsCodec.openAICredentialAvailability(
+            for: value)
           self.workflowLibraryChangedAction()
         }
       case .failure(is CancellationError):
@@ -2233,98 +1776,14 @@ extension AppModel {
     debounceDuration: Duration = .zero,
     operation: @escaping SettingsStoreWriteOperation
   ) {
-    let retryableWrite = RetryableSettingsStoreWrite(
-      category: category,
-      operation: operation
-    )
-    guard let settingsStore else {
-      recordFailedSettingsStoreWrite(retryableWrite, for: key)
-      return
-    }
-    scheduleRetryableSettingsStoreWrite(
-      retryableWrite,
-      for: key,
-      settingsStore: settingsStore,
-      debounceDuration: debounceDuration
-    )
-  }
-
-  func scheduleRetryableSettingsStoreWrite(
-    _ retryableWrite: RetryableSettingsStoreWrite,
-    for key: AppSettingKey,
-    settingsStore: any SettingsStore,
-    debounceDuration: Duration
-  ) {
-    if failedSettingsStoreWrites[key] != nil {
-      retryingSettingsStoreWriteKeys.insert(key)
-      refreshSettingsSaveState()
-    }
-    persistenceWrites.replace(for: key, debounce: debounceDuration) {
-      try await retryableWrite.operation(settingsStore)
-    } completion: { [weak self] result in
-      guard let self else { return }
-      switch result {
-      case .success:
-        self.failedSettingsStoreWrites[key] = nil
-        self.retryingSettingsStoreWriteKeys.remove(key)
-        self.refreshSettingsSaveState()
-      case .failure(is CancellationError):
-        self.retryingSettingsStoreWriteKeys.remove(key)
-        self.refreshSettingsSaveState()
-      case .failure:
-        self.recordFailedSettingsStoreWrite(retryableWrite, for: key)
-      }
+    settings.submit(key: key, category: category, debounce: debounceDuration, operation: operation)
+    { [weak self] in
+      self?.appendSettingsSaveFailureEvent()
     }
   }
 
   public func retryUnsavedSettingsSave() {
-    let writes = failedSettingsStoreWrites.sorted { lhs, rhs in
-      lhs.key.rawValue < rhs.key.rawValue
-    }
-    guard !writes.isEmpty else { return }
-    guard let settingsStore else {
-      appendSettingsSaveFailureEvent()
-      return
-    }
-
-    retryingSettingsStoreWriteKeys.formUnion(writes.map(\.key))
-    refreshSettingsSaveState()
-    for (key, retryableWrite) in writes {
-      scheduleRetryableSettingsStoreWrite(
-        retryableWrite,
-        for: key,
-        settingsStore: settingsStore,
-        debounceDuration: .zero
-      )
-    }
-  }
-
-  func recordFailedSettingsStoreWrite(
-    _ retryableWrite: RetryableSettingsStoreWrite,
-    for key: AppSettingKey
-  ) {
-    failedSettingsStoreWrites[key] = retryableWrite
-    retryingSettingsStoreWriteKeys.remove(key)
-    refreshSettingsSaveState()
-    appendSettingsSaveFailureEvent()
-  }
-
-  func refreshSettingsSaveState() {
-    guard !failedSettingsStoreWrites.isEmpty else {
-      retryingSettingsStoreWriteKeys.removeAll()
-      settingsSaveState = .saved
-      return
-    }
-    let categories = Set(failedSettingsStoreWrites.values.map(\.category))
-      .sorted { $0.rawValue < $1.rawValue }
-    let summary = UnsavedSettingsSummary(
-      affectedChangeCount: failedSettingsStoreWrites.count,
-      categories: categories
-    )
-    settingsSaveState =
-      retryingSettingsStoreWriteKeys.isEmpty
-      ? .unsaved(summary)
-      : .retrying(summary)
+    settings.retry { [weak self] in self?.appendSettingsSaveFailureEvent() }
   }
 
   func appendSettingsSaveFailureEvent() {
@@ -2332,72 +1791,6 @@ extension AppModel {
       english: L10n.runText(.settingsSaveFailedRetry, language: .english),
       simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)
     )
-  }
-
-  static func settingsSaveCategory(for key: AppSettingKey) -> SettingsSaveCategory? {
-    switch key {
-    case .interfaceLanguage:
-      .interface
-    case .systemClipboardCaptureEnabled,
-      .recordHistoryVisibility,
-      .recordPanelHotkey,
-      .recordMergeSimilar:
-      .systemClipboard
-    case .preferredSpeechEngine,
-      .ttsModel,
-      .localSpeechModel,
-      .localSpeechDownloadedModels,
-      .localSpeechPrewarm,
-      .enabledSpeechModels,
-      .residentSpeechModels,
-      .residentSpeechBudgetConfirmation,
-      .speechModelMeasuredPeaks,
-      .openAIBaseURL,
-      .openAIModel:
-      .speech
-    case .builtinPushToTalkOutputMode, .longRecordingModeEnabled, .recordingDurationLimit:
-      .input
-    case .vocabularyRules, .vocabularyLibrary:
-      .vocabulary
-    case .customWorkflows, .workflowLibrary, .workflowEnabledStates:
-      .workflows
-    case .contextFeatureSettings, .selectedWorkflowID,
-      .webhookConfigurationProtectionState,
-      .legacyWhisperKitModel,
-      .legacyWhisperKitDownloadedModels,
-      .legacyWhisperKitCustomModel,
-      .legacyWhisperKitModelRepo,
-      .legacyWhisperKitModelToken,
-      .legacyWhisperKitModelFolder,
-      .legacyWhisperKitLanguage,
-      .legacyWhisperKitDownloadIfNeeded,
-      .legacyWhisperKitPrewarm,
-      .retiredDeepgramAPIKey,
-      .retiredDeepgramBaseURL,
-      .retiredDeepgramModel,
-      .retiredDeepgramLanguage,
-      .openAIAPIKey,
-      .privacySensitiveAppRules,
-      .privacyCloudConfirmationRequired,
-      .privacyCloudProcessingAuthorizations,
-      .privacyHistoryPreviewMode,
-      .privacySecureInputConservativeMode,
-      .recordRetentionPeriod,
-      .runHistoryRetentionPeriod,
-      .localHistoryMaintenanceState,
-      .failedAudioRecoveryEnabled,
-      .benchmarkRecordingArchiveEnabled,
-      .legacyClipboardGlobalMode,
-      .legacyClipboardAppModes,
-      .legacyClipboardRoutePreferences,
-      .legacyClipboardPersistedState,
-      .legacyClipboardHistoryRetentionPeriod,
-      .legacyClipboardCaptureEnabled,
-      .legacyClipboardMergeSimilarItems,
-      .legacyClipboardHistoryVisibility,
-      .legacyClipboardPanelHotkey:
-      nil
-    }
   }
 
   public func flushPendingPersistenceWrites() async {
@@ -2452,11 +1845,11 @@ extension AppModel {
     ]
     var retryDelayIndex = 0
 
-    while !failedSettingsStoreWrites.isEmpty {
+    while settings.hasUnsavedWrites {
       guard !Task.isCancelled else { return }
       retryUnsavedSettingsSave()
       await flushPendingPersistenceWrites()
-      guard !failedSettingsStoreWrites.isEmpty else { return }
+      guard settings.hasUnsavedWrites else { return }
 
       do {
         try await retrySleep(retryDelays[retryDelayIndex])
@@ -2469,219 +1862,10 @@ extension AppModel {
     }
   }
 
-  static func loadWorkflowEnabledStates(
-    from rawValue: String?
-  ) throws -> [UUID: Bool] {
-    guard let rawValue, !rawValue.isEmpty else { return [:] }
-    let data = Data(rawValue.utf8)
-    let decoded = try JSONDecoder().decode([String: Bool].self, from: data)
-    var enabledStates: [UUID: Bool] = [:]
-    for entry in decoded {
-      guard let workflowID = UUID(uuidString: entry.key) else {
-        throw StoredSettingsCollectionValidationError.invalidIdentifier
-      }
-      guard enabledStates.updateValue(entry.value, forKey: workflowID) == nil else {
-        throw StoredSettingsCollectionValidationError.duplicateIdentifier
-      }
-    }
-    return enabledStates
-  }
-
-  static func loadDownloadedLocalSpeechModels(
-    from rawValue: String?
-  ) throws -> [String] {
-    guard let rawValue, !rawValue.isEmpty else { return [] }
-    let data = Data(rawValue.utf8)
-    let decoded = try JSONDecoder().decode([String].self, from: data)
-    guard Set(decoded).count == decoded.count else {
-      throw StoredSettingsCollectionValidationError.duplicateIdentifier
-    }
-    return decoded.sorted()
-  }
-
-  static func loadMeasuredSpeechModelPeaks(
-    from rawValue: String?
-  ) throws -> [String: UInt64] {
-    guard let rawValue, !rawValue.isEmpty else { return [:] }
-    let decoded = try JSONDecoder().decode(
-      [String: UInt64].self,
-      from: Data(rawValue.utf8)
-    )
-    guard decoded.allSatisfy({ entry in
-      let identifier = entry.key.trimmingCharacters(in: .whitespacesAndNewlines)
-      return identifier == entry.key
-        && !identifier.isEmpty
-        && identifier.utf8.count <= 256
-        && entry.value > 0
-    }) else {
-      throw StoredSettingsCollectionValidationError.invalidIdentifier
-    }
-    return decoded
-  }
-
-  static func loadVocabularyRules(from rawValue: String?) throws -> [VocabularyRule] {
-    guard let rawValue, !rawValue.isEmpty else { return [] }
-    let data = Data(rawValue.utf8)
-    let decoded = try JSONDecoder().decode([VocabularyRule].self, from: data)
-    guard Set(decoded.map(\.id)).count == decoded.count else {
-      throw StoredSettingsCollectionValidationError.duplicateIdentifier
-    }
-    return sortedVocabularyRules(decoded)
-  }
-
-  static func loadVocabularyLibrary(
-    from rawValue: String?
-  ) throws -> VocabularyLibraryDocument? {
-    guard let rawValue, !rawValue.isEmpty else { return nil }
-    let document = try JSONDecoder().decode(
-      VocabularyLibraryDocument.self,
-      from: Data(rawValue.utf8)
-    )
-    guard document.schemaVersion == VocabularyLibraryDocument.currentSchemaVersion else {
-      throw StoredSettingsCollectionValidationError.invalidIdentifier
-    }
-    guard Set(document.collections.map(\.id)).count == document.collections.count else {
-      throw StoredSettingsCollectionValidationError.duplicateIdentifier
-    }
-    let entries = document.collections.flatMap(\.entries)
-    guard Set(entries.map(\.id)).count == entries.count else {
-      throw StoredSettingsCollectionValidationError.duplicateIdentifier
-    }
-    return document
-  }
-
-  private static func loadRecoverableStoredSettingsDomains(
-    from settingsStore: any SettingsStore,
-    workflowFileStore: (any WorkflowFileStore)? = nil
-  ) async throws -> RecoverableStoredSettingsDomains {
-    let keys: [AppSettingKey] = [
-      .customWorkflows,
-      .workflowEnabledStates,
-      .localSpeechDownloadedModels,
-      .legacyWhisperKitDownloadedModels,
-      vocabularyRulesSettingKey,
-    ]
-    let snapshot = try await settingsStore.settingsSnapshot(forKeys: keys)
-    let unavailableKeys = snapshot.unavailableKeys
-
-    let workflowDomainIsReadable = unavailableKeys.isDisjoint(with: [
-      .customWorkflows,
-      .workflowEnabledStates,
-    ])
-    let workflowFiles = await workflowFileStore?.load()
-    var customWorkflows: [WorkflowDefinition]?
-    var workflowEnabledStates: [UUID: Bool]?
-    if workflowDomainIsReadable {
-      do {
-        customWorkflows = workflowFiles == nil
-          ? try loadCustomWorkflows(from: snapshot.values[.customWorkflows])
-          : nil
-        workflowEnabledStates = try loadWorkflowEnabledStates(
-          from: snapshot.values[.workflowEnabledStates]
-        )
-      } catch {
-        customWorkflows = nil
-        workflowEnabledStates = nil
-      }
-    } else {
-      customWorkflows = nil
-      workflowEnabledStates = nil
-    }
-
-    let downloadedResolution = resolveLegacyLocalSpeechSetting(
-      currentKey: .localSpeechDownloadedModels,
-      legacyKey: .legacyWhisperKitDownloadedModels,
-      in: snapshot
-    )
-    let downloadedLocalSpeechModels: [String]?
-    if downloadedResolution.isUnavailable {
-      downloadedLocalSpeechModels = nil
-    } else {
-      downloadedLocalSpeechModels = try? loadDownloadedLocalSpeechModels(
-        from: downloadedResolution.value
-      )
-      if downloadedResolution.usedLegacyValue,
-        downloadedLocalSpeechModels != nil,
-        let value = downloadedResolution.value
-      {
-        try await settingsStore.setStringsAtomically([
-          .localSpeechDownloadedModels: value
-        ])
-      }
-    }
-
-    let vocabularyRules: [VocabularyRule]?
-    if unavailableKeys.contains(vocabularyRulesSettingKey) {
-      vocabularyRules = nil
-    } else {
-      vocabularyRules = try? loadVocabularyRules(
-        from: snapshot.values[vocabularyRulesSettingKey]
-      )
-    }
-
-    return RecoverableStoredSettingsDomains(
-      customWorkflows: customWorkflows,
-      workflowFiles: workflowFiles,
-      workflowEnabledStates: workflowEnabledStates,
-      downloadedLocalSpeechModels: downloadedLocalSpeechModels,
-      vocabularyRules: vocabularyRules
-    )
-  }
-
-  static func sortedVocabularyRules(_ rules: [VocabularyRule]) -> [VocabularyRule] {
-    rules.sorted { lhs, rhs in
-      if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
-      if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
-      return lhs.id.uuidString < rhs.id.uuidString
-    }
-  }
-
-  static func normalizeCustomWorkflow(_ workflow: WorkflowDefinition) -> WorkflowDefinition {
-    var workflow = workflow
-    workflow.titleKey = nil
-    workflow.metadata[workflowOriginMetadataKey] = userWorkflowOriginMetadataValue
-    if ["whisperkit.local", "auto", sherpaOnnxRecognizerID, sherpaStreamingRecognizerID]
-      .contains(workflow.plan.setup.speechRoute?.recognizerID ?? "")
-    {
-      workflow.plan.setup.speechRoute?.recognizerID = localSpeechRecognizerID
-    }
-    if workflow.plan.setup.speechRoute?.recognizerID == "deepgram.prerecorded" {
-      workflow.plan.setup.speechRoute?.recognizerID = localSpeechRecognizerID
-      workflow.plan.setup.speechRoute?.providerModel = nil
-      workflow.metadata["provider"] = "local-speech"
-      workflow.metadata.removeValue(forKey: "deepgram.model")
-    }
-    if workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride] == nil,
-      let legacyModelOverride = workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride]
-    {
-      workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride] = legacyModelOverride
-    }
-    workflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyWhisperKitModelOverride)
-    return workflow
-  }
-
   func currentLocalSpeechSettings() -> LocalSpeechSettings {
-    if !trustedLocalSpeechModels.isEmpty {
-      return LocalSpeechSettings(
-        model: selectedTrustedLocalSpeechModelIdentifier,
-        modelRepo: "",
-        modelToken: "",
-        modelFolder: "",
-        language: "",
-        downloadIfNeeded: true,
-        prewarm: localSpeechPrewarm,
-        enabledModelIDs: enabledSpeechModelIDs,
-        residentModelIDs: residentSpeechModelIDs,
-        residentBudgetConfirmation: residentSpeechBudgetConfirmation
-      )
-    }
-    return LocalSpeechSettings(
-      model: localSpeechModel,
-      modelRepo: legacyWhisperKitModelRepo,
-      modelToken: legacyWhisperKitModelToken,
-      modelFolder: legacyWhisperKitModelFolder,
-      language: legacyWhisperKitLanguage,
-      downloadIfNeeded: legacyWhisperKitDownloadIfNeeded,
+    LocalSpeechSettings(
+      model: selectedTrustedLocalSpeechModelIdentifier,
+      modelRepo: "", modelToken: "", modelFolder: "", language: "", downloadIfNeeded: true,
       prewarm: localSpeechPrewarm,
       enabledModelIDs: enabledSpeechModelIDs,
       residentModelIDs: residentSpeechModelIDs,
@@ -2866,7 +2050,8 @@ extension AppModel {
   func persistVocabularyLibrary() {
     markSettingModifiedDuringInitialLoad(Self.vocabularyLibrarySettingKey)
     guard !isRestoringSettings, areVocabularyRulesAvailable else { return }
-    let document = VocabularyLibraryDocument(collections: vocabularyCollections)
+    let document = VocabularyLibraryDocument(
+      collections: vocabularyCollections, defaultBindings: vocabularyCollectionBindings)
     persistRetryableSettingsStoreWrite(
       for: Self.vocabularyLibrarySettingKey,
       category: .vocabulary
@@ -2888,7 +2073,7 @@ extension AppModel {
       customizations: workflowCustomizations
     )
     let vocabularyDocument = VocabularyLibraryDocument(
-      collections: vocabularyCollections
+      collections: vocabularyCollections, defaultBindings: vocabularyCollectionBindings
     )
     Task { [weak self, settingsStore] in
       do {
@@ -2932,7 +2117,7 @@ extension AppModel {
     let policy = privacyPolicySettings
     let values: [AppSettingKey: String]
     do {
-      values = try Self.privacySettingsStorageValues(for: policy)
+      values = try AppSettingsCodec.privacySettingsStorageValues(for: policy)
     } catch {
       privacySettingsSaveError = localizedPrivacySettingsSaveFailure()
       isSavingPrivacySettings = false
@@ -3016,7 +2201,7 @@ extension AppModel {
             "A protected privacy setting is unavailable."
           )
         }
-        let policy = try Self.decodePrivacyPolicySettings(from: snapshot.values)
+        let policy = try AppSettingsCodec.decodePrivacyPolicySettings(from: snapshot.values)
         guard taskOwner.isActive(in: slot, id: taskID),
           !Task.isCancelled,
           !self.hasBegunApplicationShutdown
@@ -3070,150 +2255,8 @@ extension AppModel {
     await pendingPrivacySettingsWriteTask?.value
   }
 
-  static func privacySettingsStorageValues(
-    for policy: PrivacyPolicySettings
-  ) throws -> [AppSettingKey: String] {
-    let rules = try SensitiveAppRule.mergingRecommendedDefaults(with: policy.sensitiveAppRules)
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys]
-    let data = try encoder.encode(rules)
-    return [
-      .privacySensitiveAppRules: String(decoding: data, as: UTF8.self),
-      .privacyCloudConfirmationRequired: policy.cloudConfirmationRequired ? "true" : "false",
-      .privacyCloudProcessingAuthorizations: String(
-        decoding: try encoder.encode(policy.cloudProcessingAuthorizations),
-        as: UTF8.self
-      ),
-      .privacyHistoryPreviewMode: policy.historyPreviewMode.rawValue,
-      .privacySecureInputConservativeMode: policy.secureInputConservativeMode ? "true" : "false",
-    ]
-  }
-
-  static func decodePrivacyPolicySettings(
-    from values: [AppSettingKey: String]
-  ) throws -> PrivacyPolicySettings {
-    var policy = PrivacyPolicySettings.defaults
-    if let rawRules = values[.privacySensitiveAppRules], !rawRules.isEmpty {
-      let decoded = try JSONDecoder().decode(
-        [SensitiveAppRule].self,
-        from: Data(rawRules.utf8)
-      )
-      policy.sensitiveAppRules = try SensitiveAppRule.mergingRecommendedDefaults(with: decoded)
-    }
-    if let rawCloudConfirmation = values[.privacyCloudConfirmationRequired] {
-      policy.cloudConfirmationRequired = storedBoolean(
-        rawCloudConfirmation,
-        defaultValue: true
-      )
-    }
-    if let rawAuthorizations = values[.privacyCloudProcessingAuthorizations],
-      !rawAuthorizations.isEmpty
-    {
-      let authorizations = try JSONDecoder().decode(
-        [CloudProcessingAuthorization].self,
-        from: Data(rawAuthorizations.utf8)
-      )
-      guard Set(authorizations.map(\.id)).count == authorizations.count,
-        Set(authorizations.map(\.workflowID)).count == authorizations.count,
-        authorizations.allSatisfy({ !$0.scopeFingerprint.isEmpty })
-      else {
-        throw PrivacyPolicySettingsSourceError.unavailable(
-          "Cloud-processing authorizations are invalid."
-        )
-      }
-      policy.cloudProcessingAuthorizations = authorizations
-    }
-    if let rawHistoryPreviewMode = values[.privacyHistoryPreviewMode],
-      let historyPreviewMode = PrivacyHistoryPreviewMode(rawValue: rawHistoryPreviewMode)
-    {
-      policy.historyPreviewMode = historyPreviewMode
-    }
-    if let rawSecureInputMode = values[.privacySecureInputConservativeMode] {
-      policy.secureInputConservativeMode = storedBoolean(
-        rawSecureInputMode,
-        defaultValue: true
-      )
-    }
-    return policy
-  }
-
   private func localizedPrivacySettingsSaveFailure() -> String {
     L10n.runText(.privacySaveFailedSessionOnly, language: language)
-  }
-
-  static func storedBoolean(_ value: String, defaultValue: Bool) -> Bool {
-    storedBooleanIfValid(value) ?? defaultValue
-  }
-
-  static func storedBooleanIfValid(_ value: String) -> Bool? {
-    switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-    case "1", "true", "yes", "on": true
-    case "0", "false", "no", "off": false
-    default: nil
-    }
-  }
-
-  static func invalidScalarSettingKeys(
-    in values: [AppSettingKey: String]
-  ) -> Set<AppSettingKey> {
-    var invalidKeys: Set<AppSettingKey> = []
-
-    if let value = values[.interfaceLanguage], AppLanguage(rawValue: value) == nil {
-      invalidKeys.insert(.interfaceLanguage)
-    }
-    if let value = values[.recordHistoryVisibility],
-      RecordHistoryVisibility(rawValue: value) == nil
-    {
-      invalidKeys.insert(.recordHistoryVisibility)
-    }
-    if let value = values[.systemClipboardCaptureEnabled], storedBooleanIfValid(value) == nil {
-      invalidKeys.insert(.systemClipboardCaptureEnabled)
-    }
-    if let value = values[.recordPanelHotkey],
-      HotkeyBindingDescriptor(storageString: value).storageString != value
-    {
-      invalidKeys.insert(.recordPanelHotkey)
-    }
-    if let value = values[.preferredSpeechEngine],
-      PreferredSpeechEngine(rawValue: value) == nil
-    {
-      invalidKeys.insert(.preferredSpeechEngine)
-    }
-    if let value = values[.localSpeechPrewarm], storedBooleanIfValid(value) == nil {
-      invalidKeys.insert(.localSpeechPrewarm)
-    }
-    if let value = values[.speechModelMeasuredPeaks],
-      (try? loadMeasuredSpeechModelPeaks(from: value)) == nil
-    {
-      invalidKeys.insert(.speechModelMeasuredPeaks)
-    }
-    if let value = values[.builtinPushToTalkOutputMode],
-      BuiltinPushToTalkOutputMode(rawValue: value) == nil
-    {
-      invalidKeys.insert(.builtinPushToTalkOutputMode)
-    }
-    if let value = values[.longRecordingModeEnabled], storedBooleanIfValid(value) == nil {
-      invalidKeys.insert(.longRecordingModeEnabled)
-    }
-    if let value = values[.recordingDurationLimit],
-      RecordingDurationLimit(rawValue: value) == nil
-    {
-      invalidKeys.insert(.recordingDurationLimit)
-    }
-    if let value = values[.openAIBaseURL],
-      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      !OpenAISettings.isValidBaseURL(value)
-    {
-      invalidKeys.insert(.openAIBaseURL)
-    }
-    if let value = values[.openAIModel],
-      !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-      !OpenAISettings.isValidModelIdentifier(value)
-    {
-      invalidKeys.insert(.openAIModel)
-    }
-
-    return invalidKeys
   }
 
   func persistWorkflowEnabledStates() {

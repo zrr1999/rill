@@ -7,6 +7,8 @@ import RillUI
 
 @MainActor
 final class ContextMemoryController {
+    private let preparationOperations = BoundedOperation(maxConcurrentOperations: 3)
+    private let referenceRequests = BoundedOperation(maxConcurrentOperations: 3)
     private let repository: any ContextMemoryRepository
     private let history: any HistoryRepository
     private let settingsStore: any SettingsStore
@@ -94,7 +96,7 @@ final class ContextMemoryController {
               workflow.supportsContextualCorrection else { return nil }
         let preparation: RunContextPreparation?
         do {
-            preparation = try await BoundedOperation.run(timeout: .milliseconds(250)) { [weak self] in
+            preparation = try await preparationOperations.run(timeout: .milliseconds(250)) { [weak self] in
                 try await self?.prepareWithinBudget(runID: runID, workflow: workflow, context: context,
                                                    recognitionOptions: recognitionOptions, audioLifetime: audioLifetime)
             }
@@ -126,7 +128,7 @@ final class ContextMemoryController {
         try Task.checkCancellation()
         let scope = ContextMemoryScope(workflowID: workflow.id, applicationBundleID: context.focus.bundleIdentifier,
                                        language: recognitionOptions.language ?? workflow.metadata[WorkflowMetadataKey.languageOverride])
-        let summarizer = ContextCorrectionProvider(settingsProvider: providerSettings, authorization: token) { [repository] in
+        let summarizer = ContextCorrectionProvider(settingsProvider: providerSettings, authorization: token, operations: referenceRequests) { [repository] in
             try await repository.recordForegroundContextRequest(authorization: token, now: Date())
         }
         let preparation = try await RunContextPreparation.prepare(
@@ -135,7 +137,7 @@ final class ContextMemoryController {
             memoryEnabled: settings.memoryEnabled, canSendImages: ContextProviderIdentity.supportsImages(provider),
             excludedApplications: excluded, capture: capture, summarizer: summarizer,
             memories: { [repository] in try await repository.relevantMemories(scope: scope, now: Date()) },
-            authorization: token, audioLifetime: audioLifetime,
+            authorization: token, audioLifetime: audioLifetime, operations: preparationOperations,
             saveLateSummary: { [repository, weak self] summary, runAuthorization in
                 guard runAuthorization.isValid else { return }
                 do {
@@ -170,7 +172,7 @@ final class ContextMemoryController {
         return MemoryMaintenanceSession(
             authorization: token, workflowIDs: settings.authorizedWorkflowIDs,
             excludedApplications: Set(privacy.sensitiveAppRules.filter(\.enabled).map(\.normalizedBundleIdentifier)),
-            consolidator: ContextCorrectionProvider(settingsProvider: providerSettings, authorization: token)
+            consolidator: ContextCorrectionProvider(settingsProvider: providerSettings, authorization: token, operations: referenceRequests)
         )
     }
 
@@ -197,6 +199,9 @@ final class ContextMemoryController {
         nextIdleTask?.cancel()
         await maintenance.shutdown()
         await model?.contextMemory?.shutdown()
+        await preparationOperations.shutdown()
+        await referenceRequests.shutdown()
+        await nextIdleTask?.value
         try? await repository.setContextAuthorization(nil)
     }
 }

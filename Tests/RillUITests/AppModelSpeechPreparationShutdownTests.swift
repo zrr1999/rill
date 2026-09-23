@@ -4,7 +4,7 @@ import XCTest
 @testable import RillCore
 @testable import RillUI
 
-private actor CancellationIgnoringWhisperKitProvider {
+private actor CancellationIgnoringSpeechProvider {
   private var prepareCallCount = 0
   private var receivedSettings: LocalSpeechSettings?
   private var didStart = false
@@ -81,11 +81,11 @@ private actor CancellationIgnoringWhisperKitProvider {
   }
 }
 
-private actor CancellationIgnoringWhisperKitProviderQueue {
-  private let providers: [CancellationIgnoringWhisperKitProvider]
+private actor CancellationIgnoringSpeechProviderQueue {
+  private let providers: [CancellationIgnoringSpeechProvider]
   private var nextProviderIndex = 0
 
-  init(_ providers: [CancellationIgnoringWhisperKitProvider]) {
+  init(_ providers: [CancellationIgnoringSpeechProvider]) {
     self.providers = providers
   }
 
@@ -99,7 +99,7 @@ private actor CancellationIgnoringWhisperKitProviderQueue {
   }
 }
 
-private actor WhisperKitShutdownCompletionProbe {
+private actor SpeechShutdownCompletionProbe {
   private var completed = false
 
   func markCompleted() {
@@ -113,105 +113,12 @@ private actor WhisperKitShutdownCompletionProbe {
 
 @MainActor
 final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
-  func testPersistedLocalSelectionLoadsRuntimeWhenCoreMLPrewarmIsDisabled() async {
-    let modelIdentifier = "persisted-local-model"
-    let settingsStore = UITestSettingsStore(
-      storage: [
-        .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
-        .localSpeechModel: modelIdentifier,
-        .localSpeechPrewarm: "false",
-      ]
-    )
-    let provider = CancellationIgnoringWhisperKitProvider()
-    let harness = makeHarness(
-      settingsStore: settingsStore,
-      warmLocalSpeechForCaptureAction: { settings, progressCallback in
-        await provider.prepare(
-          settings: settings,
-          progressCallback: progressCallback
-        )
-      }
-    )
-
-    await provider.waitUntilStarted()
-
-    let requestedSettings = await provider.settingsSnapshot()
-    XCTAssertEqual(requestedSettings?.model, modelIdentifier)
-    XCTAssertEqual(requestedSettings?.prewarm, false)
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .preparing)
-    XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
-
-    await provider.emitProgress(completed: 25, total: 100)
-    await waitUntil {
-      harness.model.localSpeechPreparationProgress == 0.25
-    }
-    XCTAssertEqual(harness.model.localSpeechPreparationCompletedUnitCount, 25)
-    XCTAssertEqual(harness.model.localSpeechPreparationTotalUnitCount, 100)
-
-    await provider.release(returning: modelIdentifier)
-    await waitUntil {
-      harness.model.localSpeechPreparationState == .ready
-    }
-
-    XCTAssertEqual(harness.model.localSpeechPreparationProgress, 1)
-    XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, modelIdentifier)
-  }
-
-
-  func testChangingModelRetiresOldReadinessAndOnlyPublishesReplacement() async {
-    let firstModel = "first-local-model"
-    let secondModel = "second-local-model"
-    let settingsStore = UITestSettingsStore(
-      storage: [
-        .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
-        .localSpeechModel: firstModel,
-        .localSpeechPrewarm: "false",
-      ]
-    )
-    let firstProvider = CancellationIgnoringWhisperKitProvider()
-    let secondProvider = CancellationIgnoringWhisperKitProvider()
-    let providerQueue = CancellationIgnoringWhisperKitProviderQueue([
-      firstProvider,
-      secondProvider,
-    ])
-    let harness = makeHarness(
-      settingsStore: settingsStore,
-      warmLocalSpeechForCaptureAction: { settings, progressCallback in
-        await providerQueue.prepare(
-          settings: settings,
-          progressCallback: progressCallback
-        )
-      }
-    )
-    await firstProvider.waitUntilStarted()
-
-    harness.model.localSpeechModel = secondModel
-    await secondProvider.waitUntilStarted()
-    let replacementSettings = await secondProvider.settingsSnapshot()
-    XCTAssertEqual(replacementSettings?.model, secondModel)
-    XCTAssertEqual(replacementSettings?.prewarm, false)
-
-    await firstProvider.release(returning: firstModel)
-    await waitForEventProcessing(harness)
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .preparing)
-    XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
-    XCTAssertFalse(harness.model.downloadedLocalSpeechModels.contains(firstModel))
-
-    await secondProvider.release(returning: secondModel)
-    await waitUntil {
-      harness.model.localSpeechPreparationState == .ready
-    }
-
-    XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, secondModel)
-    XCTAssertFalse(harness.model.downloadedLocalSpeechModels.contains(firstModel))
-    XCTAssertTrue(harness.model.downloadedLocalSpeechModels.contains(secondModel))
-  }
 
   func testUserCancelBeforeScheduledPreparationDoesNotStartProvider() async {
     let settingsStore = UITestSettingsStore(
       storage: [.localSpeechPrewarm: "false"]
     )
-    let provider = CancellationIgnoringWhisperKitProvider()
+    let provider = CancellationIgnoringSpeechProvider()
     let harness = makeHarness(
       settingsStore: settingsStore,
       prepareLocalSpeechAction: { _, progressCallback in
@@ -237,7 +144,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     let settingsStore = UITestSettingsStore(
       storage: [.localSpeechPrewarm: "false"]
     )
-    let provider = CancellationIgnoringWhisperKitProvider()
+    let provider = CancellationIgnoringSpeechProvider()
     let harness = makeHarness(
       settingsStore: settingsStore,
       prepareLocalSpeechAction: { _, progressCallback in
@@ -281,9 +188,9 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     let settingsStore = UITestSettingsStore(
       storage: [.localSpeechPrewarm: "false"]
     )
-    let firstProvider = CancellationIgnoringWhisperKitProvider()
-    let secondProvider = CancellationIgnoringWhisperKitProvider()
-    let providerQueue = CancellationIgnoringWhisperKitProviderQueue([
+    let firstProvider = CancellationIgnoringSpeechProvider()
+    let secondProvider = CancellationIgnoringSpeechProvider()
+    let providerQueue = CancellationIgnoringSpeechProviderQueue([
       firstProvider,
       secondProvider,
     ])
@@ -297,7 +204,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
 
     harness.model.prepareLocalSpeechModel()
     await firstProvider.waitUntilStarted()
-    harness.model.legacyWhisperKitLanguage = "zh"
+    harness.model.localSpeechPrewarm = true
     XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
     harness.model.prepareLocalSpeechModel()
     await secondProvider.waitUntilStarted()
@@ -313,13 +220,13 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     await waitUntil {
       harness.model.localSpeechPreparationProgress == 0.75
     }
-    await secondProvider.release(returning: "replacement-model")
+    await secondProvider.release(returning: "qwen3-asr-0.6b-mlx-8bit")
     await waitUntil {
       harness.model.localSpeechPreparationState == .ready
     }
 
-    XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, "replacement-model")
-    XCTAssertEqual(harness.model.downloadedLocalSpeechModels, ["replacement-model"])
+    XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, "qwen3-asr-0.6b-mlx-8bit")
+    XCTAssertEqual(harness.model.downloadedLocalSpeechModels, ["qwen3-asr-0.6b-mlx-8bit"])
     XCTAssertFalse(
       harness.model.eventFeed.contains { $0.english.contains("retired-model") }
     )
@@ -331,9 +238,9 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     let settingsStore = UITestSettingsStore(
       storage: [.localSpeechPrewarm: "false"]
     )
-    let retiredProvider = CancellationIgnoringWhisperKitProvider()
-    let activeProvider = CancellationIgnoringWhisperKitProvider()
-    let providerQueue = CancellationIgnoringWhisperKitProviderQueue([
+    let retiredProvider = CancellationIgnoringSpeechProvider()
+    let activeProvider = CancellationIgnoringSpeechProvider()
+    let providerQueue = CancellationIgnoringSpeechProviderQueue([
       retiredProvider,
       activeProvider,
     ])
@@ -351,7 +258,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     harness.model.prepareLocalSpeechModel()
     await activeProvider.waitUntilStarted()
 
-    let completion = WhisperKitShutdownCompletionProbe()
+    let completion = SpeechShutdownCompletionProbe()
     let shutdownTask = Task {
       await harness.model.stopLocalSpeechPreparationForApplicationShutdown()
       await completion.markCompleted()
@@ -380,7 +287,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     let settingsStore = UITestSettingsStore(
       storage: [.localSpeechPrewarm: "false"]
     )
-    let provider = CancellationIgnoringWhisperKitProvider()
+    let provider = CancellationIgnoringSpeechProvider()
     let harness = makeHarness(
       settingsStore: settingsStore,
       prepareLocalSpeechAction: { _, progressCallback in
@@ -396,7 +303,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
       harness.model.localSpeechPreparationProgress == 0.5
     }
 
-    let completion = WhisperKitShutdownCompletionProbe()
+    let completion = SpeechShutdownCompletionProbe()
     let shutdownTask = Task {
       await harness.model.stopLocalSpeechPreparationForApplicationShutdown()
       await harness.model.flushPendingPersistenceWrites()
@@ -425,49 +332,6 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
       harness.model.eventFeed.contains { $0.english.contains("late-manual-model") }
     )
     await harness.model.drainAndStopEventListenerForApplicationShutdown()
-  }
-
-  func testShutdownReleasesCancellationIgnoringBackgroundReadinessWithPrewarmDisabled() async {
-    let settingsStore = UITestSettingsStore(
-      storage: [
-        .preferredSpeechEngine: PreferredSpeechEngine.local.rawValue,
-        .localSpeechModel: "test-model",
-        .localSpeechPrewarm: "false",
-      ]
-    )
-    let provider = CancellationIgnoringWhisperKitProvider()
-    let harness = makeHarness(
-      settingsStore: settingsStore,
-      warmLocalSpeechForCaptureAction: { settings, progressCallback in
-        await provider.prepare(
-          settings: settings,
-          progressCallback: progressCallback
-        )
-      }
-    )
-    await provider.waitUntilStarted()
-
-    let completion = WhisperKitShutdownCompletionProbe()
-    let shutdownTask = Task {
-      await harness.model.stopLocalSpeechPreparationForApplicationShutdown()
-      await harness.model.flushPendingPersistenceWrites()
-      await completion.markCompleted()
-    }
-    await provider.waitUntilCancellationObserved()
-    await waitUntilAsync {
-      await completion.isCompleted()
-    }
-
-    await provider.release(returning: "late-warmup-model")
-    await shutdownTask.value
-
-    let settings = await settingsStore.activitySnapshot()
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
-    XCTAssertEqual(harness.model.localSpeechPreparationProgress, 0)
-    XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
-    XCTAssertTrue(harness.model.downloadedLocalSpeechModels.isEmpty)
-    XCTAssertNil(settings.storage[.localSpeechDownloadedModels])
-    XCTAssertNil(settings.setCounts[.localSpeechDownloadedModels])
   }
 
   private func waitUntil(

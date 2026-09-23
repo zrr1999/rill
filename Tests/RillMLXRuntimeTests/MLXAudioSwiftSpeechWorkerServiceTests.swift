@@ -1,11 +1,10 @@
+@testable import RillSpeechContracts
 import CryptoKit
 import Foundation
 import XCTest
 
 @testable import RillCore
 @testable import RillMLXRuntime
-@testable import RillProviders
-
 final class MLXAudioSwiftSpeechWorkerServiceTests: XCTestCase {
   func testTTSInventoryUsesPublishedReceiptAndFileInventory() throws {
     let root = try makeTemporaryDirectory()

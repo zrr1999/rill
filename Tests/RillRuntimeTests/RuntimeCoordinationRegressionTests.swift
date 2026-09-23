@@ -39,6 +39,12 @@ private struct RegressionRecognizer: SpeechRecognizer {
 }
 
 private actor StageBlockingDiagnosticRepository: DiagnosticRepository {
+    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
+    func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await (self as any DiagnosticRepository).save(value)
+    }
+
     private let blockedStage: String
     private var observedBlockedStage = false
     private var waiters: [CheckedContinuation<Void, Never>] = []

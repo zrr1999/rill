@@ -83,7 +83,7 @@ quality results. Community quantizations alone do not pass the public model gate
 ## Trust and installation boundary
 
 The unified routing catalog lives in
-`Sources/RillProviders/LocalSpeechModelCatalog.swift`; sherpa trust anchors
+`Sources/RillSpeechContracts/LocalSpeechModelCatalog.swift`; sherpa trust anchors
 remain in `SherpaOnnxModelCatalog.swift`. A sherpa production install:
 
 1. accepts only exact model IDs in the public distributable set and rejects

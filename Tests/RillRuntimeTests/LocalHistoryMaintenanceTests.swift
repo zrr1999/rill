@@ -782,6 +782,11 @@ private actor HistoryMaintenanceClipboardStore: RecordHistoryMaintaining {
 }
 
 private actor HistoryMaintenanceRunRepository: HistoryRepository {
+    func save(_ value: WorkflowResultRecord, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await (self as any HistoryRepository).save(value)
+    }
+
     private var pruneResults: [Result<Int, HistoryMaintenanceTestError>]
     private var clearResults: [Result<Int, HistoryMaintenanceTestError>]
     private var deletionCalls = 0
@@ -854,6 +859,11 @@ private actor HistoryMaintenanceRunRepository: HistoryRepository {
 }
 
 private actor BlockingBoundedHistoryRepository: HistoryRepository {
+    func save(_ value: WorkflowResultRecord, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await save(value)
+    }
+
     private var deletionStarted = false
     private var startWaiters: [CheckedContinuation<Void, Never>] = []
     private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
@@ -925,6 +935,11 @@ private actor BlockingBoundedHistoryRepository: HistoryRepository {
 }
 
 private actor HistoryMaintenanceDiagnosticRepository: DiagnosticRepository {
+    func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
+        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
+        try await (self as any DiagnosticRepository).save(value)
+    }
+
     private var pruneResults: [Result<Int, HistoryMaintenanceTestError>]
     private var clearResults: [Result<Int, HistoryMaintenanceTestError>]
     private var deletionCalls = 0

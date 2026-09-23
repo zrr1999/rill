@@ -16,6 +16,7 @@ public struct MemoryMaintenanceSession: Sendable {
 }
 
 public actor MemoryMaintenanceRunner {
+    private let operations = BoundedOperation()
     private let repository: any ContextMemoryRepository
     private let eligible: @Sendable () async -> Bool
     private let session: @Sendable () async -> MemoryMaintenanceSession?
@@ -48,16 +49,19 @@ public actor MemoryMaintenanceRunner {
             }
             defer { monitor.cancel() }
             do {
-                guard var batch = try await repository.prepareMemoryBatch(
-                    authorizationID: session.authorization.id, allowedWorkflowIDs: session.workflowIDs, excludedApplications: session.excludedApplications, now: Date()
-                ) else { return }
-                batch.authorization = session.authorization
-                try Task.checkCancellation()
-                guard session.authorization.isValid, await eligible() else { return }
-                let frozenBatch = batch
-                let result = try await BoundedOperation.run(timeout: .seconds(30)) {
-                    try await session.consolidator.consolidate(frozenBatch)
+                let prepared = try await operations.run(timeout: .seconds(30)) {
+                    guard session.authorization.isValid, await eligible() else { return nil as (MemoryConsolidationBatch, MemoryConsolidationResult)? }
+                    guard var batch = try await repository.prepareMemoryBatch(
+                        authorizationID: session.authorization.id, allowedWorkflowIDs: session.workflowIDs,
+                        excludedApplications: session.excludedApplications, now: Date()
+                    ) else { return nil }
+                    batch.authorization = session.authorization
+                    try Task.checkCancellation()
+                    guard session.authorization.isValid, await eligible() else { return nil }
+                    let result = try await session.consolidator.consolidate(batch)
+                    return (batch, result)
                 }
+                guard let (batch, result) = prepared else { return }
                 try Task.checkCancellation()
                 guard session.authorization.isValid, await eligible() else { return }
                 try await repository.commitMemoryBatch(batch, result: result)
@@ -72,8 +76,10 @@ public actor MemoryMaintenanceRunner {
 
     public func interrupt() { work?.cancel() }
 
-    public func shutdown() {
+    public func shutdown() async {
         stopped = true
         work?.cancel()
+        await work?.value
+        await operations.shutdown()
     }
 }

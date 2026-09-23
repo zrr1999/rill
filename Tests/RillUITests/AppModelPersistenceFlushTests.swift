@@ -111,69 +111,6 @@ private actor PersistenceFlushCompletionProbe {
     }
 }
 
-private actor PersistenceFlushHistoryRepository: HistoryRepository {
-    private var storedRecords: [WorkflowResultRecord] = []
-    private var shouldBlockWrites = false
-    private var saveStarted = false
-    private var saveStartedWaiters: [CheckedContinuation<Void, Never>] = []
-    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
-
-    func save(_ record: WorkflowResultRecord) async throws {
-        saveStarted = true
-        let observations = saveStartedWaiters
-        saveStartedWaiters.removeAll()
-        observations.forEach { $0.resume() }
-        if shouldBlockWrites {
-            await withCheckedContinuation { continuation in
-                releaseWaiters.append(continuation)
-            }
-        }
-        storedRecords.append(record)
-    }
-
-    func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord] {
-        storedRecords.filter { record in
-            query.runID.map { record.runID == $0 } ?? true
-        }
-    }
-
-    func deleteRecords(olderThan cutoff: Date) async throws -> Int {
-        let oldCount = storedRecords.count
-        storedRecords.removeAll { $0.timestamp < cutoff }
-        return oldCount - storedRecords.count
-    }
-
-    func deleteRecords(through upperBound: Date) async throws -> Int {
-        let oldCount = storedRecords.count
-        storedRecords.removeAll { $0.timestamp <= upperBound }
-        return oldCount - storedRecords.count
-    }
-
-    func deleteAllRecords() async throws -> Int {
-        let oldCount = storedRecords.count
-        storedRecords.removeAll()
-        return oldCount
-    }
-
-    func blockWrites() {
-        shouldBlockWrites = true
-    }
-
-    func waitUntilSaveStarts() async {
-        guard !saveStarted else { return }
-        await withCheckedContinuation { continuation in
-            saveStartedWaiters.append(continuation)
-        }
-    }
-
-    func releaseWrites() {
-        shouldBlockWrites = false
-        let waiters = releaseWaiters
-        releaseWaiters.removeAll()
-        waiters.forEach { $0.resume() }
-    }
-}
-
 @MainActor
 final class AppModelPersistenceFlushTests: XCTestCase {
     func testFlushWaitsForLatestSettingsCredentialAndPrivacyWrites() async {
@@ -215,107 +152,32 @@ final class AppModelPersistenceFlushTests: XCTestCase {
         XCTAssertEqual(snapshot.credentials[.openAIAPIKey], "latest-key")
     }
 
-    func testShutdownDrainsTerminalEventAndFlushWaitsForHistoryWrite() async throws {
-        let historyRepository = PersistenceFlushHistoryRepository()
+    func testShutdownDrainsPresentationWithoutWritingHistoryFromTerminalEvents() async throws {
+        let repository = InMemoryHistoryRepository()
         let workflow = makeBuiltinPushToTalkWorkflow()
-        let harness = makeHarness(
-            workflows: [workflow],
-            historyRepository: historyRepository
-        )
-        await historyRepository.blockWrites()
-        let runID = UUID()
-
-        await harness.eventBus.publish(
-            .runStarted(
-                RunSnapshot(
-                    runID: runID,
-                    workflowID: workflow.id,
-                    workflow: workflow.presentation,
-                    trigger: .hotkey
-                )
-            )
-        )
-        await harness.eventBus.publish(
-            .runCompleted(
-                WorkflowRunSummary(
-                    runID: runID,
-                    workflowID: workflow.id,
-                    workflow: workflow.presentation,
-                    trigger: .hotkey,
-                    finalText: "terminal result"
-                )
-            )
-        )
-
-        async let firstDrain: Void = harness.model
-            .drainAndStopEventListenerForApplicationShutdown()
-        async let concurrentDrain: Void = harness.model
-            .drainAndStopEventListenerForApplicationShutdown()
-        _ = await (firstDrain, concurrentDrain)
-        await historyRepository.waitUntilSaveStarts()
-
-        let completion = PersistenceFlushCompletionProbe()
-        let flushTask = Task {
-            await harness.model.flushPendingPersistenceWrites()
-            await completion.markCompleted()
-        }
-        await Task.yield()
-        let completedWhileHistoryWriteWasBlocked = await completion.isCompleted()
-        XCTAssertFalse(completedWhileHistoryWriteWasBlocked)
-
-        await historyRepository.releaseWrites()
-        await flushTask.value
-
-        let completedAfterHistoryWriteWasReleased = await completion.isCompleted()
-        XCTAssertTrue(completedAfterHistoryWriteWasReleased)
-        let stored = try await historyRepository.records(
-            matching: HistoryQuery(runID: runID)
-        )
-        XCTAssertEqual(stored.first?.finalText, "terminal result")
-        XCTAssertEqual(harness.model.recentVoiceResultRecords.first?.runID, runID)
+        let harness = makeHarness(workflows: [workflow], historyRepository: repository)
+        let id = UUID()
+        await harness.eventBus.publish(.runStarted(.init(runID: id, workflowID: workflow.id,
+            workflow: workflow.presentation, trigger: .hotkey)))
+        await harness.eventBus.publish(.runCompleted(.init(runID: id, workflowID: workflow.id,
+            workflow: workflow.presentation, trigger: .hotkey, finalText: "terminal result")))
+        async let first: Void = harness.model.drainAndStopEventListenerForApplicationShutdown()
+        async let second: Void = harness.model.drainAndStopEventListenerForApplicationShutdown()
+        _ = await (first, second)
+        await harness.model.flushPendingPersistenceWrites()
+        let stored = try await repository.records(matching: .all)
+        XCTAssertTrue(stored.isEmpty)
+        XCTAssertEqual(harness.model.lastCompletedText, "terminal result")
+        XCTAssertFalse(harness.model.isRunning)
     }
 
-    func testImmediateFailureBeforeListenerTaskRunsIsPersistedDuringShutdown() async throws {
-        let historyRepository = InMemoryHistoryRepository()
-        let workflow = makeBuiltinPushToTalkWorkflow()
-        let harness = makeHarness(
-            workflows: [workflow],
-            historyRepository: historyRepository
-        )
-        let runID = UUID()
-
-        // Intentionally do not yield or sleep after AppModel initialization.
-        // The lifecycle delivery stream is reserved when EventBus is created,
-        // so terminal events cannot fall into a subscription-registration gap.
-        await harness.eventBus.publish(
-            .runStarted(
-                RunSnapshot(
-                    runID: runID,
-                    workflowID: workflow.id,
-                    workflow: workflow.presentation,
-                    trigger: .hotkey
-                )
-            )
-        )
-        await harness.eventBus.publish(
-            .runFailed(
-                runID: runID,
-                workflow: nil,
-                message: "Immediate failure"
-            )
-        )
-
+    func testImmediateSessionOnlyHistoryBeforeListenerStartsSurvivesShutdown() async throws {
+        let harness = makeHarness()
+        let record = WorkflowResultRecord(runID: UUID(), workflow: .init(fallbackName: "Failed run"),
+            finalText: "recoverable text", outcome: .failed, trigger: .hotkey)
+        await harness.eventBus.publish(.runHistoryUpdated(.sessionOnly(record)))
         await harness.model.drainAndStopEventListenerForApplicationShutdown()
-        await harness.model.flushPendingPersistenceWrites()
-
-        let stored = try await historyRepository.records(
-            matching: HistoryQuery(runID: runID)
-        )
-        XCTAssertEqual(stored.first?.outcome, .failed)
-        XCTAssertEqual(
-            stored.first?.failureMessage,
-            HistoryFailureSanitizer.genericMessage
-        )
-        XCTAssertEqual(stored.first?.trigger, .hotkey)
+        XCTAssertEqual(harness.model.historyRecords.first?.id, record.id)
+        XCTAssertEqual(harness.model.historyRecords.first?.finalText, "recoverable text")
     }
 }

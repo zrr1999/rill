@@ -1,3 +1,4 @@
+import RillSpeechContracts
 import AppKit
 import Dispatch
 import Foundation
@@ -445,6 +446,13 @@ private struct PersistenceBackends {
   let startupDiagnostic: DiagnosticEvent?
 }
 
+private struct UnavailableWorkflowRunReceiptRepository: WorkflowRunReceiptRepository {
+  func insertTerminal(_ receipt: WorkflowRunReceipt) async throws { throw RunHistoryGenerationError.unsupported }
+  func receipts(matching query: WorkflowRunReceiptQuery) async throws -> [WorkflowRunReceipt] { throw RunHistoryGenerationError.unsupported }
+  func deleteReceipts(olderThan cutoff: Date) async throws -> Int { throw RunHistoryGenerationError.unsupported }
+  func deleteAllReceipts() async throws -> Int { throw RunHistoryGenerationError.unsupported }
+}
+
 private struct UnavailableRunHistoryBrowser: RunHistoryBrowsing {
   private enum UnavailableError: Error {
     case durableStorageUnavailable
@@ -477,7 +485,7 @@ private struct CoreServices {
   let eventBus: EventBus
   let persistence: PersistenceBackends
   let diagnostics: DiagnosticsRecorder
-  let runReceiptRecorder: WorkflowRunReceiptRecorder?
+  let runReceiptRecorder: WorkflowRunReceiptRecorder
   let recordCollectionEventScheduler: RecordCollectionEventScheduler
   let recordStore: RecordStore
   let recordIngestion: RecordIngestionCoordinator
@@ -501,6 +509,7 @@ private struct PlatformServices {
 }
 
 private struct ProviderServices {
+  let textRewriteTransformer: OpenAITextRewriteTransformer
   let diagnosticsAudioCaptureService: AVAudioCaptureService
   let managedTemporaryAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner
   let markdownFileAppendCoordinator: MarkdownFileAppendCoordinator
@@ -735,24 +744,6 @@ private enum AppContainerFactory {
     speechModelPoolPresentationBridge.attach(model)
     cloudProcessingAuthorizationBridge.attach(model)
     liveAudioCancellationPresentationBridge.attach(model)
-    model.installWorkflowLibraryChangedAction {
-      Task {
-        await runtime.wakeWordCoordinator?.reconcile()
-      }
-    }
-    model.installGlobalInputActions(
-      request: {
-        _ = platform.permissionGate.requestGlobalInputAccess()
-        Task {
-          await runtime.globalInputOwner.retryInstallation()
-        }
-      },
-      retry: {
-        Task {
-          await runtime.globalInputOwner.retryInstallation()
-        }
-      }
-    )
     model.updatePermissionSnapshot(platform.permissionGate.snapshot)
     let startupTaskCoordinator = startBackgroundServices(
       model: model,
@@ -783,13 +774,11 @@ private enum AppContainerFactory {
       eventBus: eventBus,
       repository: persistence.diagnosticRepository
     )
-    let runReceiptRecorder = persistence.runReceiptRepository.map { repository in
-      WorkflowRunReceiptRecorder(
-        repository: repository,
-        eventBus: eventBus,
-        diagnostics: diagnostics
-      )
-    }
+    let runReceiptRecorder = WorkflowRunReceiptRecorder(
+      repository: persistence.runReceiptRepository ?? UnavailableWorkflowRunReceiptRepository(),
+      eventBus: eventBus,
+      diagnostics: diagnostics
+    )
     let recordCollectionEventScheduler = RecordCollectionEventScheduler(
       receiptRecorder: runReceiptRecorder,
       diagnostics: diagnostics,
@@ -1005,6 +994,7 @@ private enum AppContainerFactory {
       }
     )
     let workflowAudioCaptureService = RealtimeAudioCaptureService(
+      legacyCaptureService: AVAudioCaptureService(cleanupOwner: managedTemporaryAudioCleanupOwner),
       streamingPreviewService: streamingPreviewService,
       liveUpdateHandler: { snapshot in
         let projected = await platform.cursorTextPreviewCoordinator.project(snapshot)
@@ -1073,6 +1063,9 @@ private enum AppContainerFactory {
       }
     )
     return ProviderServices(
+      textRewriteTransformer: OpenAITextRewriteTransformer(
+        settingsProvider: openAISettingsProvider,
+        diagnosticReporter: { event in await core.diagnostics.record(event) }),
       diagnosticsAudioCaptureService: AVAudioCaptureService(
         cleanupOwner: managedTemporaryAudioCleanupOwner
       ),
@@ -1115,12 +1108,7 @@ private enum AppContainerFactory {
       transformerRegistry: TextTransformerRegistry(
         transformers: [
           WhitespaceNormalizerTransformer(),
-          OpenAITextRewriteTransformer(
-            settingsProvider: providers.openAISettingsProvider,
-            diagnosticReporter: { event in
-              await core.diagnostics.record(event)
-            }
-          ),
+          providers.textRewriteTransformer,
         ]
       ),
       actionRegistry: OutputActionRegistry(
@@ -1188,6 +1176,7 @@ private enum AppContainerFactory {
       recognitionAudioCleanupOwner: providers.managedTemporaryAudioCleanupOwner
     )
     let assistantCoordinator = makeCoordinator(
+      lane: .assistant,
       core: core,
       platform: platform,
       registries: registries,
@@ -1374,6 +1363,7 @@ private enum AppContainerFactory {
   }
 
   private static func makeCoordinator(
+    lane: WorkflowRunLane = .primary,
     core: CoreServices,
     platform: PlatformServices,
     registries: Registries,
@@ -1382,6 +1372,7 @@ private enum AppContainerFactory {
   ) -> SessionCoordinator {
     SessionCoordinator(
       contextProvider: platform.contextProvider,
+      lane: lane,
       privacyContextProvider: {
         await platform.contextProvider.capturePrivacyContext()
       },
@@ -1810,6 +1801,7 @@ private enum AppContainerFactory {
           async let assistantQueueShutdown: Void =
             runtime.assistantAudioProcessingQueue.shutdown()
           _ = await (interactiveQueueShutdown, assistantQueueShutdown)
+          await providers.textRewriteTransformer.shutdown()
         },
         shutdownSpeechPlayback: {
           providers.ttsMemoryPressureSource.cancel()
@@ -1922,28 +1914,6 @@ private enum AppModelFactory {
       defaultLocalSpeechModelIdentifier: providers.defaultLocalSpeechModelIdentifier,
       ttsModelOptions: AppBootstrap.ttsModelOptions,
       defaultTTSModelIdentifier: SpeechSynthesisModelCatalog.defaultModel.id.rawValue,
-      warmLocalSpeechForCaptureAction: { settings, _ in
-        do {
-          let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
-            settings: settings
-          )
-          let backend = try LocalSpeechModelCatalog.backend(for: modelIdentifier)
-          return try await AppBootstrap.prepareLocalSpeechModel(
-            prepareModel: {
-              try await providers.localSpeechRecognizer.prepareForUse(of: backend)
-              return try await providers.mlxAudioSwiftRecognizer.prepareModel(
-                modelIdentifier: modelIdentifier,
-                downloadIfNeeded: settings.downloadIfNeeded
-              )
-            }
-          )
-        } catch {
-          guard let failure = AppBootstrap.localSpeechPreparationFailure(for: error) else {
-            throw CancellationError()
-          }
-          throw failure
-        }
-      },
       prepareLocalSpeechAction: { settings, progressCallback in
         do {
           let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
@@ -2184,6 +2154,16 @@ private enum AppModelFactory {
       },
       openMicrophoneSettingsAction: {
         platform.permissionGate.openMicrophoneSettings()
+      },
+      requestGlobalInputAction: {
+        _ = platform.permissionGate.requestGlobalInputAccess()
+        Task { await runtime.globalInputOwner.retryInstallation() }
+      },
+      retryGlobalInputAction: {
+        Task { await runtime.globalInputOwner.retryInstallation() }
+      },
+      workflowLibraryChangedAction: {
+        Task { await runtime.wakeWordCoordinator?.reconcile() }
       }
     )
     guard let resolvedModel = model else {

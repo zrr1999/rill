@@ -121,69 +121,6 @@ extension SettingsView {
                   .foregroundStyle(.secondary)
                   .accessibilityIdentifier("settings.local-speech.streaming-preview-model")
                 }
-              } else {
-                Picker(
-                  UIStrings.text(.localSpeechModel, language: model.language),
-                  selection: $model.localSpeechModelOption
-                ) {
-                  ForEach(LegacyWhisperModelOption.allCases) { option in
-                    Text(model.localSpeechModelOptionLabel(option))
-                      .tag(option)
-                  }
-                }
-                .pickerStyle(.menu)
-              }
-
-            }
-
-            if model.trustedLocalSpeechModels.isEmpty {
-              if !model.downloadedLocalSpeechModels.isEmpty {
-                VStack(alignment: .leading, spacing: RillSpacing.row) {
-                  Text(UIStrings.text(.localSpeechDownloadedModels, language: model.language))
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                  ScrollView(.horizontal, showsIndicators: true) {
-                    HStack(spacing: RillSpacing.row) {
-                      ForEach(model.downloadedLocalSpeechModels, id: \.self) { modelIdentifier in
-                        Button(
-                          model.localSpeechModelDisplayName(modelIdentifier, includeStatus: true)
-                        ) {
-                          model.useDownloadedLocalSpeechModel(modelIdentifier)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(
-                          model.isLoadingSettings
-                            || model.localSpeechModel == modelIdentifier
-                        )
-                      }
-                    }
-                  }
-                }
-              }
-
-              if model.localSpeechModelOption == .custom {
-                VStack(alignment: .leading, spacing: RillSpacing.row) {
-                  TextField(
-                    UIStrings.text(.legacyWhisperKitCustomModel, language: model.language),
-                    text: $model.legacyWhisperKitCustomModel
-                  )
-                  .textFieldStyle(.roundedBorder)
-                  .onSubmit {
-                    model.prepareLocalSpeechModel()
-                  }
-
-                  HStack(alignment: .center, spacing: RillSpacing.card) {
-                    Text(UIStrings.text(.legacyWhisperKitCustomModelHint, language: model.language))
-                      .font(.caption)
-                      .foregroundStyle(.secondary)
-                    Spacer()
-                    Button(UIStrings.text(.localSpeechPrepare, language: model.language)) {
-                      model.prepareLocalSpeechModel()
-                    }
-                    .disabled(model.isLoadingSettings)
-                  }
-                }
               }
             }
 
