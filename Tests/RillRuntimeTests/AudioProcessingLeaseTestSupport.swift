@@ -7,7 +7,8 @@ func makeAudioProcessingTestLease(
     workflow: WorkflowDefinition,
     context: ContextSnapshot = .empty,
     recognitionOptions: SpeechRecognitionRequestOptions = .empty,
-    contextPreparation: RunContextPreparation? = nil
+    contextPreparation: RunContextPreparation? = nil,
+    beforeClaimReturns: @Sendable @escaping () async -> Void = {}
 ) -> AuthorizedAudioProcessingLease {
     let payload = AuthorizedAudioProcessingLease.Payload(
         runID: runID,
@@ -29,6 +30,7 @@ func makeAudioProcessingTestLease(
             guard triggerEvent?.workflowID == nil || triggerEvent?.workflowID == payload.workflow.id else {
                 throw PrivacyRunGate.GateError.audioProcessingAuthorizationInvalid
             }
+            await beforeClaimReturns()
             return AuthorizedAudioProcessingClaim.PolicyState(
                 settings: payload.policySettings,
                 decision: payload.decision,
