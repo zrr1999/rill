@@ -245,6 +245,16 @@ Complete the pass in both App languages.
       text/input-method edit, and parent shortcuts stay inactive while a sheet or
       confirmation is present.
 
+- [ ] In the clipboard panel and main Record inspector, preview a captured image,
+      open the larger image, then close it with Escape. A second Escape closes
+      the quick-panel preview before dismissing the panel; no paste occurs.
+- [ ] Preview a multi-file record (image, PDF, text), navigate previous/next in
+      Quick Look, and close the sheet. Confirm the parent stays open and its
+      original paste target is retained. Check missing/unreadable files and
+      unsupported thumbnail formats, and verify media does not autoplay.
+- [ ] Switch records rapidly and close previews while thumbnails load. Only the
+      current record appears, and ordinary copy/paste and search stay responsive.
+
 ## Speech and privacy paths
 
 - [ ] For `cloud-only`, local setup and preparation remain unavailable across

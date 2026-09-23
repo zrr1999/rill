@@ -358,7 +358,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
 
     private func handleEscape() {
         guard let panel, quickPanelModel?.cleanup.isWorking != true else { return }
-        if panel.attachedSheet == nil, quickPanelModel?.preview != nil { quickPanelModel?.closePreview(); return }
+        if panel.attachedSheet == nil, quickPanelModel?.isPreviewVisible == true { quickPanelModel?.closePreview(); return }
         switch RecordPanelModalPolicy.escapeDestination(
             hasAttachedSheet: panel.attachedSheet != nil
         ) {

@@ -14,6 +14,8 @@ Quick-panel keyword, pinyin, and approximate text matching run locally on stored
 
 Optional **Search by meaning** downloads a fixed, verified Qwen3 embedding model only after the user chooses the download action. Hugging Face and its download infrastructure receive normal model-download network metadata, but no search query or record content. Queries, eligible text/file names, source identity, and tags are processed in a separate local helper. Derived vectors remain in a 128 MiB logical-content memory cache, are invalidated for changed tags/deleted records, and are cleared at shutdown; they are not persisted or uploaded. The helper releases its model after 30 idle seconds. Long records have bounded partial coverage; image contents and referenced-file contents are not read for semantic search.
 
+Image previews decode stored image bytes in memory, including the larger-image sheet; Rill does not export plaintext image files for preview. Visible file previews read the referenced file's current metadata and use macOS Quick Look for thumbnails. Opening a full file preview explicitly lets Quick Look read that file. Rill does not copy or upload its contents or persist thumbnails; macOS Quick Look and file providers may use their own caches or retrieve provider-managed files. Closing a preview cancels thumbnail requests and releases Rill's preview resources.
+
 Rill does not operate an analytics or advertising endpoint in this build. Sanitized runtime diagnostics are stored locally and are not uploaded by Rill itself.
 
 ## Network destinations
@@ -87,6 +89,8 @@ Rill 在用户发起语音采集时处理麦克风音频。唤醒词监听默认
 - **Markdown 文件输出：**工作流可把最终文本追加到用户选择的本地 Markdown 路径；Rill 不会上传该文件。追加使用同目录原子事务，并拒绝链接路径、多重硬链接、非 UTF-8 内容和超过 64 MiB 的文件。
 
 数据到达第三方服务或用户自动化后，适用其自身的留存、账户与隐私条款。Rill 的本地历史控制无法删除这些目的地持有的数据。
+
+图片预览和大图在内存中解码已保存的图片，Rill 不为预览导出明文图片文件。可见文件预览读取引用路径当前的元数据，并通过 macOS Quick Look 生成缩略图；主动打开完整预览后，Quick Look 会读取该文件。Rill 不复制或上传文件正文，也不持久化缩略图；macOS Quick Look 和文件提供商可能使用各自缓存或获取由提供商管理的文件。关闭预览会取消缩略图请求并释放 Rill 的预览资源。
 
 “按含义补充”是可选功能，只有点击下载按钮后才获取固定版本、经校验的本地搜索模型（约 1.2 GB）。下载服务会收到普通网络连接元数据，但查询、记录正文、文件名、来源和标签均在本机的独立辅助进程中处理，不上传。向量只保存在限额为 128 MiB 逻辑内容的内存缓存中；标签变化、记录删除会使缓存失效，退出时清空，不新增持久化索引。模型在空闲 30 秒后释放。长记录仅搜索部分内容，不读取图片或文件引用指向的正文。权重存放于 `~/Library/Application Support/Rill/Models/record-search`，卸载 App 不会自动移除；下次主动下载会清理中断下载的临时文件。
 

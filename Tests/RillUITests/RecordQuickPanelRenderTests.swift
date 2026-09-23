@@ -43,7 +43,7 @@ final class RecordQuickPanelRenderTests: XCTestCase {
           onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}
         )
         .environment(\.colorScheme, dark ? .dark : .light))
-      try render(
+      try await render(
         view, size: NSSize(width: width, height: 560), dark: dark,
         to: output.appendingPathComponent("quick-panel-\(dark ? "dark" : "light")-\(width).png"))
       }
@@ -51,7 +51,7 @@ final class RecordQuickPanelRenderTests: XCTestCase {
       let cleanup = NSHostingView(
         rootView: RecordCleanupSheet(model: panel.cleanup, language: .simplifiedChinese)
           .environment(\.colorScheme, dark ? .dark : .light))
-      try render(
+      try await render(
         cleanup, size: NSSize(width: 480, height: 360), dark: dark,
         to: output.appendingPathComponent("cleanup-\(dark ? "dark" : "light").png"))
       panel.cleanup.cancel()
@@ -85,7 +85,7 @@ final class RecordQuickPanelRenderTests: XCTestCase {
           model: panel, language: dark ? .english : .simplifiedChinese, capturePaused: false,
           onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {})
           .environment(\.colorScheme, dark ? .dark : .light))
-        try render(view, size: NSSize(width: 620, height: 560), dark: dark,
+        try await render(view, size: NSSize(width: 620, height: 560), dark: dark,
           to: output.appendingPathComponent("semantic-\(missing ? "download" : "ready")-\(dark ? "dark" : "light").png"))
       }
       await panel.shutdown()
@@ -93,9 +93,59 @@ final class RecordQuickPanelRenderTests: XCTestCase {
     }
   }
 
+  func testRenderImageAndFilePreviews() async throws {
+    guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+      throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR for image and file preview evidence.")
+    }
+    let output = URL(fileURLWithPath: directory)
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+    let imageData = try RecordPreviewFixture.imageData()
+    let imageURL = output.appendingPathComponent("preview-sample.png")
+    try imageData.write(to: imageURL)
+    let textURL = output.appendingPathComponent("preview-notes.txt")
+    try Data("Rill clipboard preview\nLocal file contents.\n".utf8).write(to: textURL)
+    let pdfURL = output.appendingPathComponent("preview-document.pdf")
+    var page = CGRect(x: 0, y: 0, width: 600, height: 400)
+    let pdf = try XCTUnwrap(CGContext(pdfURL as CFURL, mediaBox: &page, nil))
+    pdf.beginPDFPage(nil)
+    pdf.setFillColor(CGColor(red: 0.16, green: 0.79, blue: 0.72, alpha: 1))
+    pdf.fill(CGRect(x: 60, y: 80, width: 480, height: 240))
+    pdf.endPDFPage()
+    pdf.closePDF()
+    let urls = [imageURL, pdfURL, textURL, output.appendingPathComponent("missing-file.txt")]
+    let store = RecordStore()
+    let image = try await store.ingest(.init(payload: .image(imageData),
+      provenance: .init(source: .init(kind: .systemClipboard), sourceApplicationName: "Preview")), into: [])
+    let files = try await store.ingest(.init(payload: .files(urls),
+      provenance: .init(source: .init(kind: .systemClipboard), sourceApplicationName: "Finder")), into: [])
+    let panel = RecordQuickPanelModel(store: store)
+    panel.start(sourceBundleIdentifier: nil)
+    defer { panel.stop() }
+    for _ in 0..<100 where panel.results.count < 2 { await waitForMainRunLoopDefaultMode() }
+    panel.togglePreview()
+    for record in [image, files] {
+      panel.selectedID = record.id
+      for _ in 0..<100 where panel.preview?.id != record.id { await waitForMainRunLoopDefaultMode() }
+      XCTAssertEqual(panel.preview?.id, record.id)
+      for dark in [false, true] {
+        for width in [620, 900] {
+          let language: AppLanguage = dark ? .english : .simplifiedChinese
+          let view = NSHostingView(rootView: RecordQuickPanelView(
+            model: panel, language: language, capturePaused: false,
+            onPaste: { _ in XCTFail("Preview must not paste.") },
+            onCopy: { _ in XCTFail("Preview must not copy.") }, onShowRecord: { _ in }, onClose: {})
+            .environment(\.colorScheme, dark ? .dark : .light))
+          try await render(view, size: NSSize(width: width, height: 560), dark: dark,
+            to: output.appendingPathComponent("preview-\(record.record.payload.kind)-\(dark ? "dark" : "light")-\(width).png"),
+            settle: true)
+        }
+      }
+    }
+  }
+
   private func render<Content: View>(
-    _ view: NSHostingView<Content>, size: NSSize, dark: Bool, to url: URL
-  ) throws {
+    _ view: NSHostingView<Content>, size: NSSize, dark: Bool, to url: URL, settle: Bool = false
+  ) async throws {
     let previous = NSApplication.shared.appearance
     NSApplication.shared.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
     defer { NSApplication.shared.appearance = previous }
@@ -107,6 +157,7 @@ final class RecordQuickPanelRenderTests: XCTestCase {
     window.contentView = view
     view.frame = NSRect(origin: .zero, size: size)
     window.layoutIfNeeded()
+    if settle { try await Task.sleep(for: .seconds(1)) }
     view.layoutSubtreeIfNeeded()
     let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
     view.cacheDisplay(in: view.bounds, to: bitmap)

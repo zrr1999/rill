@@ -132,7 +132,7 @@ public struct RecordQuickPanelView: View {
           onPaste(subject)
         },
         onCancel: {
-          if model.preview != nil { model.closePreview() } else { onClose() }
+          if model.isPreviewVisible { model.closePreview() } else { onClose() }
         }
       )
       .frame(height: 30)
@@ -155,7 +155,7 @@ public struct RecordQuickPanelView: View {
           Image(systemName: RillSystemSymbol.docTextMagnifyingglass.rawValue)
         }
         .help(text(.preview)).accessibilityLabel(text(.preview)).disabled(
-          model.selectedRecord == nil)
+          model.selectedRecord == nil && !model.isPreviewVisible)
         Button(action: onClose) { Image(systemName: RillSystemSymbol.xmarkCircleFill.rawValue) }
           .help(text(.close)).accessibilityLabel(text(.close))
       }
@@ -165,18 +165,18 @@ public struct RecordQuickPanelView: View {
       if model.canSearchByMeaning { semanticControls }
       Divider()
       GeometryReader { geometry in
-        if RecordQuickPanelLayoutPolicy.usesSidePreview(width: geometry.size.width), let preview = model.preview {
+        if RecordQuickPanelLayoutPolicy.usesSidePreview(width: geometry.size.width), model.isPreviewVisible {
           HSplitView {
             resultList.frame(minWidth: 300, idealWidth: 360)
-            RecordQuickPreview(record: preview.record, language: language)
+            contentPreview(compact: false)
               .padding(RillSpacing.panel).frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
           }
         } else {
           VStack(spacing: 0) {
             resultList
-            if let preview = model.preview {
+            if model.isPreviewVisible {
               Divider()
-              RecordQuickPreview(record: preview.record, language: language)
+              contentPreview(compact: true)
                 .frame(maxHeight: 180).padding(RillSpacing.row)
             }
           }
@@ -218,6 +218,19 @@ public struct RecordQuickPanelView: View {
       RecordCleanupSheet(model: model.cleanup, language: language)
     }
     .accessibilityIdentifier("records.quick-panel")
+  }
+
+  private func contentPreview(compact: Bool) -> some View {
+    ScrollView {
+      if let preview = model.preview {
+        RecordContentPreview(record: preview.record, language: language, imageHeight: compact ? 120 : 240)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      } else if model.isLoadingPreview || model.isSearching {
+        ProgressView().controlSize(.small)
+      } else {
+        Text(text(.recordUnavailable)).foregroundStyle(.secondary)
+      }
+    }
   }
 
   private var resultList: some View {
@@ -302,6 +315,10 @@ public struct RecordQuickPanelView: View {
     row(item, index: index).tag(item.id).id(item.id)
       .onTapGesture(count: 2) { onPaste(item.reuseSubject) }
       .contextMenu {
+        Button(text(.preview)) {
+          model.selectedID = item.id
+          if !model.isPreviewVisible { model.togglePreview() }
+        }
         Button(text(.paste)) { onPaste(item.reuseSubject) }
         Button(text(.copy)) { onCopy(item.reuseSubject) }
         Button(text(item.metadata.isPinned ? .unpin : .pinned)) {
@@ -343,22 +360,6 @@ public struct RecordQuickPanelView: View {
     .contentShape(Rectangle())
     .accessibilityElement(children: .combine)
     .accessibilityAction(named: Text(text(.paste))) { onPaste(item.reuseSubject) }
-  }
-}
-
-private struct RecordQuickPreview: View {
-  let record: Record
-  let language: AppLanguage
-  var body: some View {
-    ScrollView {
-      switch record.payload {
-      case .text(let text): RecordTextPreview(text: text, language: language)
-      case .image(let data):
-        RecordImagePreview(id: record.id, data: data)
-      case .files(let urls):
-        VStack(alignment: .leading) { ForEach(urls, id: \.self) { Text($0.lastPathComponent) } }
-      }
-    }
   }
 }
 
