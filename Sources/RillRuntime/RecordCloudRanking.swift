@@ -49,7 +49,7 @@ public actor RecordCloudRanking {
   public func setKey(_ key: String) throws {
     guard !closed else { throw CancellationError() }
     guard active == nil else { throw RecordRankingError.busy }
-    guard key.isEmpty || ((8...512).contains(key.utf8.count) && key.utf8.allSatisfy({ (33...126).contains($0) }))
+    guard key.isEmpty || JevAPIKey.isValid(key)
     else { throw RecordRankingError.invalidInput }
     apiKey = key
   }
