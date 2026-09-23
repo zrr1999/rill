@@ -197,6 +197,9 @@ grep -Fq 'b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5' \
 grep -Fq 'dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709' \
   "$PROJECT_DIR/scripts/install_gitleaks.sh" \
   || fail "Darwin x64 release hash is not pinned"
+grep -Fq '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb' \
+  "$PROJECT_DIR/scripts/install_gitleaks.sh" \
+  || fail "Linux x64 release hash is not pinned"
 grep -Fq 'bash "$SCRIPT_DIR/check_secrets.sh"' "$PROJECT_DIR/scripts/preflight.sh" \
   || fail "preflight does not invoke secret scanning"
 echo "Secret scan policy tests passed"

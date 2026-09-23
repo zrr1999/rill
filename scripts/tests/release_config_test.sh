@@ -277,9 +277,6 @@ run_notarized_source_case() {
 }
 
 run_locked_dependency_policy_case() {
-  # Invocation, clean isolation, and lock behavior have executable tests; avoid
-  # assertions tied to the old number or spelling of clean commands.
-  uv run --no-build --locked --script "$PROJECT_DIR/scripts/tests/build_driver_test.py"
   if grep -Eq '(^|[[:space:]])swift[[:space:]]+(build|test|package clean)([[:space:]]|$)' \
     "$PREFLIGHT_SCRIPT" "$RELEASE_SCRIPT" "$TEST_SUITE_SCRIPT"; then
     echo "FAIL: release scripts bypass the locked build driver" >&2

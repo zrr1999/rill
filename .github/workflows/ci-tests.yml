@@ -72,9 +72,21 @@ jobs:
           fi
           echo "app=$app" >> "$GITHUB_OUTPUT"
 
+      - name: Install pinned Gitleaks for documentation-only changes
+        if: ${{ steps.scope.outputs.app == 'false' }}
+        run: |
+          tool_dir="$RUNNER_TEMP/gitleaks-bin"
+          bash scripts/install_gitleaks.sh --destination "$tool_dir"
+          echo "$tool_dir" >> "$GITHUB_PATH"
+
+      - name: Scan secrets for documentation-only changes
+        if: ${{ steps.scope.outputs.app == 'false' }}
+        run: bash scripts/check_secrets.sh
+
   preflight:
     name: Release preflight
     needs: docs
+    if: ${{ needs.docs.outputs.app == 'true' }}
     runs-on: macos-26
     timeout-minutes: 45
     env:
@@ -107,7 +119,6 @@ jobs:
           echo "key=$(printf '%s' "$identity" | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
       - name: Restore Swift build arenas
-        if: ${{ needs.docs.outputs.app == 'true' }}
         id: build-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -117,7 +128,6 @@ jobs:
             swift-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', 'scripts/build_driver.py', 'scripts/worker_artifact_cache.py') }}-
 
       - name: Resolve locked SwiftPM dependencies
-        if: ${{ needs.docs.outputs.app == 'true' }}
         run: |
           swift package --force-resolved-versions resolve
           git diff --exit-code -- Package.resolved
@@ -133,11 +143,9 @@ jobs:
           uv run --no-build --locked --script scripts/report_python_version.py
 
       - name: Query live OSV for locked SwiftPM commits
-        if: ${{ needs.docs.outputs.app == 'true' }}
         run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv
 
       - name: Run preflight
-        if: ${{ needs.docs.outputs.app == 'true' }}
         env:
           EVENT_NAME: ${{ github.event_name }}
         run: |
@@ -146,10 +154,6 @@ jobs:
           else
             bash scripts/preflight.sh --clean
           fi
-
-      - name: Scan secrets for documentation-only changes
-        if: ${{ needs.docs.outputs.app == 'false' }}
-        run: bash scripts/check_secrets.sh
 
       - name: Save Swift build arenas
         if: ${{ github.ref == 'refs/heads/main' && !cancelled() && steps.build-cache.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true' }}

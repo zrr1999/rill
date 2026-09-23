@@ -27,6 +27,10 @@ build product="RillApp":
 test:
     bash scripts/test.sh
 
+# Test build, release, security, and asset scripts without building the app.
+test-scripts:
+    bash scripts/tests/run.sh
+
 # Build and validate the production performance workloads.
 bench:
     bash scripts/build_benchmarks.sh
