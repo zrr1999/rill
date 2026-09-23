@@ -6,7 +6,7 @@ SOURCE_PNG="${1:?usage: generate_app_icon.sh SOURCE_PNG OUTPUT_ICNS}"
 OUTPUT_ICNS="${2:?usage: generate_app_icon.sh SOURCE_PNG OUTPUT_ICNS}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 RENDITION_RENDERER="$SCRIPT_DIR/render_app_icon_renditions.swift"
-EXPECTED_SOURCE_SHA256="086b83f80d2a07bff4fcb4a42a35f8c90464dbcc0835d2fa6f3b8220d7256b03"
+EXPECTED_SOURCE_SHA256="bff6a4c0ffb39a31ca09eb43953eb58113161c81308d5012578f89c205f3f876"
 MAX_SOURCE_BYTES=$((500 * 1024))
 
 error() {

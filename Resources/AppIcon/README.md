@@ -8,8 +8,11 @@ with `sips`. The reviewed PNG was then stripped of metadata and quantized to
 tracked source below the repository's 500 KiB limit while preserving a 0.0026
 normalized RMSE against the resized generated source.
 
-Reviewed 1024 px source SHA-256:
-`086b83f80d2a07bff4fcb4a42a35f8c90464dbcc0835d2fa6f3b8220d7256b03`
+ImgBot subsequently compressed both PNG files losslessly. Decoding the original
+and optimized files to 8-bit RGBA produces identical pixels for each image.
+
+Reviewed 1024 px source SHA-256 after lossless compression:
+`bff6a4c0ffb39a31ca09eb43953eb58113161c81308d5012578f89c205f3f876`
 
 Original generated 1254 px source SHA-256:
 `ca15d8bbd7347b73d48ddcb5c94435e28e3c8fd4e6b6f5033f55ec379485de73`
@@ -47,7 +50,7 @@ the [macOS 26 icon-system session][apple-wwdc25].
 `AppIcon-1024.png` is an earlier built-in-image-generation exploration with a
 dark indigo background, stacked clipboard cards, and a vertical waveform. Its
 SHA-256 is
-`b46882c00fa077792de5f4e58d0a0b395781f2331e50a06ae5cd5e9f0550d09d`.
+`8611aea5769098ec420d05399f14e75835ec320cceee96c78d87762a1bc526f3`.
 Its exact prompt metadata was not retained, so it is noncanonical and must not
 be wired into release assembly.
 
