@@ -265,9 +265,10 @@ struct ClipboardCaptureLatencyTests {
   @Test
   func idlePollingAvoidsRepeatedDescriptorsAndPayloadReads() async throws {
     let (controller, pasteboard, _) = await makeHarness()
-    await controller.testingPollExternalClipboardIfNeeded()
+    let tick = ContinuousClock.now
+    await controller.testingPollExternalClipboardIfNeeded(at: tick)
     let initialDescriptorReads = pasteboard.descriptorReadCount
-    for _ in 0..<20 { await controller.testingPollExternalClipboardIfNeeded() }
+    for _ in 0..<20 { await controller.testingPollExternalClipboardIfNeeded(at: tick) }
     #expect(pasteboard.descriptorReadCount == initialDescriptorReads)
     #expect(pasteboard.payloadReadCount == 0)
     await controller.stop()
@@ -331,6 +332,20 @@ struct ClipboardCaptureLatencyTests {
     await controller.testingPollExternalClipboardIfNeeded()
     #expect(try await store.snapshot().records.map(\.record.payload) == [.text("saved after retry")])
     #expect(pasteboard.payloadReadCount == 1)
+    await controller.stop()
+  }
+
+  @Test
+  func capturesHistoryWhenBufferReservationFails() async throws {
+    let persistence = ClipboardRetryPersistence(failures: 0)
+    let store = RecordStore(persistence: persistence)
+    _ = try await store.snapshot()
+    await persistence.failNextCommits(3)
+    let (controller, pasteboard, _) = await makeHarness(store: store)
+    pasteboard.replaceExternally(with: .init(plainText: "history survives", changeCount: 2))
+    await controller.testingPollExternalClipboardIfNeeded()
+    #expect(try await store.snapshot().records.map(\.record.payload) == [.text("history survives")])
+    #expect(try await store.bufferSnapshot().remainingCount == 0)
     await controller.stop()
   }
 
@@ -585,12 +600,15 @@ private final class ClipboardFocusProbe {
 private struct ClipboardLatencyTimeout: Error {}
 
 private actor ClipboardRetryPersistence: RecordCatalogPersistenceStore {
-  private var hasFailed = false
+  private var failuresRemaining: Int
+
+  init(failures: Int = 1) { failuresRemaining = failures }
+  func failNextCommits(_ count: Int) { failuresRemaining = count }
 
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
   func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 {
-    if !hasFailed {
-      hasFailed = true
+    if failuresRemaining > 0 {
+      failuresRemaining -= 1
       throw RecordStoreError.persistenceUnavailable
     }
     return (snapshot.expectedRevision ?? 0) + 1

@@ -44,6 +44,24 @@ import Testing
     #expect(await transport.insert("A", into: target) == .unconfirmed)
   }
 
+  @Test func invalidAccessibilitySelectionNeverWritesOrPostsKeys() async {
+    let element = BufferTextTarget()
+    element.update {
+      $0.supportsReplacement = true
+      $0.selection = NSRange(location: NSNotFound, length: 0)
+    }
+    let target = RecordBufferTextOutput.Target(
+      element: element, isCurrent: { true },
+      post: { _ in
+        Issue.record("Invalid AX selection must not fall through to key events")
+        return false
+      })
+    let transport = RecordBufferTextOutput(
+      capture: { target }, modifiersHeld: { false }, isSecure: { false })
+    #expect(await transport.insert("A", into: target) == .rejected)
+    #expect(element.value == "selected")
+  }
+
   @Test func ignoredEventsRemainUnconfirmedAndFocusDriftStopsChunks() async {
     let element = BufferTextTarget()
     var calls = 0

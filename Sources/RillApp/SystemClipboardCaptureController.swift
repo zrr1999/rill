@@ -50,7 +50,7 @@ public actor SystemClipboardCaptureController {
     var sourceApplication: FocusedApplicationIdentity
     var privacy: InitialClipboardPrivacyEvaluation
     var byteCount: Int
-    var bufferReservation: BufferInputReservation
+    var bufferReservation: BufferInputReservation?
   }
 
   private static let privacyCheckInterval = Duration.milliseconds(750)
@@ -707,9 +707,7 @@ extension SystemClipboardCaptureController {
     let captureOperation = beginCaptureOperation(controlRevision: captureRevision)
     defer { finishCaptureOperation(captureOperation.id) }
 
-    let bufferReservation: BufferInputReservation
-    do { bufferReservation = try await self.bufferReservation(for: descriptor.changeCount) }
-    catch { return }
+    let bufferReservation = try? await self.bufferReservation(for: descriptor.changeCount)
     var acceptedBufferInput = false
     defer {
       if acceptedBufferInput {
@@ -848,12 +846,17 @@ extension SystemClipboardCaptureController {
       var attempts = 0
       while true {
         do {
-          try await capture.bufferReservation.committed.value
+          var bufferEntryID: BufferEntryID?
+          if let reservation = capture.bufferReservation {
+            if case .success = await reservation.committed.result {
+              bufferEntryID = reservation.id
+            }
+          }
           _ = try await recordStore.captureSystemClipboard(
             snapshot: capture.snapshot,
             sourceApplication: capture.sourceApplication,
             allowsWorkflowCapture: capture.privacy.decision.allowsWorkflowCapture,
-            bufferEntryID: capture.bufferReservation.id
+            bufferEntryID: bufferEntryID
           )
           if !capture.privacy.decision.allowsWorkflowCapture {
             await recordCaptureDecision(
@@ -881,7 +884,9 @@ extension SystemClipboardCaptureController {
           break
         }
       }
-      await cancelBufferInputWithRetry(capture.bufferReservation.id)
+      if let reservation = capture.bufferReservation {
+        await cancelBufferInputWithRetry(reservation.id)
+      }
       pendingClipboardCaptures.removeFirst()
       pendingClipboardByteCount -= capture.byteCount
     }

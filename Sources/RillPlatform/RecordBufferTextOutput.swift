@@ -78,6 +78,10 @@ public final class RecordBufferTextOutput {
     guard !Task.isCancelled, !isSecure(), target.isCurrent() else { return .rejected }
     let range = target.element.selectedRange()
     if target.element.supportsSelectedTextReplacement(), let range {
+      guard range.location >= 0, range.location != NSNotFound, range.length >= 0,
+        range.location <= Int.max - range.length,
+        range.location <= Int.max - text.utf16.count
+      else { return .rejected }
       let end = NSRange(location: range.location + text.utf16.count, length: 0)
       // A failed AX write may already have changed text or selection. Do not fall through.
       guard target.element.replaceText(in: range, with: text, selection: end) else {
