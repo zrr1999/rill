@@ -43,8 +43,8 @@ class BuildError(Exception):
 
 
 class BuildFailure(BuildError):
-    def __init__(self, status: int, output: str):
-        super().__init__(f"Swift build failed (exit {status})")
+    def __init__(self, subcommand: str, status: int, output: str):
+        super().__init__(f"Swift {subcommand} failed (exit {status})")
         self.output = output
 
 
@@ -358,7 +358,7 @@ class BuildContext:
             log.seek(0)
             output = log.read()
         if status:
-            raise BuildFailure(status, output)
+            raise BuildFailure(subcommand, status, output)
         return output
 
     def build(

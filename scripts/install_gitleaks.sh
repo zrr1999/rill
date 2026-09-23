@@ -15,7 +15,7 @@ usage() {
   cat <<EOF
 Usage: $0 --destination DIR
 
-Downloads and verifies Gitleaks $GITLEAKS_VERSION for the current macOS architecture.
+Downloads and verifies Gitleaks $GITLEAKS_VERSION for macOS or Linux x64.
 EOF
 }
 
@@ -37,21 +37,23 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 [[ -n "$DESTINATION" ]] || error "--destination is required"
-[[ "$(uname -s)" == "Darwin" ]] || error "Only macOS installer assets are supported"
-
 ASSET_NAME=""
 EXPECTED_SHA256=""
-case "$(uname -m)" in
-arm64)
+case "$(uname -s)/$(uname -m)" in
+Darwin/arm64)
   ASSET_NAME="gitleaks_${GITLEAKS_VERSION}_darwin_arm64.tar.gz"
   EXPECTED_SHA256="b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5"
   ;;
-x86_64)
+Darwin/x86_64)
   ASSET_NAME="gitleaks_${GITLEAKS_VERSION}_darwin_x64.tar.gz"
   EXPECTED_SHA256="dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709"
   ;;
+Linux/x86_64)
+  ASSET_NAME="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+  EXPECTED_SHA256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+  ;;
 *)
-  error "Unsupported macOS architecture: $(uname -m)"
+  error "Unsupported platform: $(uname -s)/$(uname -m)"
   ;;
 esac
 

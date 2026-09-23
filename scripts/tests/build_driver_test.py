@@ -136,7 +136,7 @@ class BuildDriverTests(unittest.TestCase):
                 self.context,
                 "swift",
                 side_effect=[
-                    build.BuildFailure(1, "clang dependency scanning failure"),
+                    build.BuildFailure("build", 1, "clang dependency scanning failure"),
                     "",
                 ],
             ) as swift:
@@ -145,7 +145,7 @@ class BuildDriverTests(unittest.TestCase):
                 clean.assert_called_once()
             clean.reset_mock()
             with patch.object(
-                self.context, "swift", side_effect=build.BuildFailure(1, "type error")
+                self.context, "swift", side_effect=build.BuildFailure("build", 1, "type error")
             ):
                 with self.assertRaises(build.BuildFailure):
                     self.context.build("build", [], {})
@@ -173,7 +173,7 @@ class BuildDriverTests(unittest.TestCase):
         def compile_error(*args, **kwargs):
             partial.parent.mkdir(parents=True)
             partial.write_text("completed dependency")
-            raise build.BuildFailure(1, "type error in application")
+            raise build.BuildFailure("build", 1, "type error in application")
 
         with patch.object(self.context, "swift", side_effect=compile_error):
             with self.assertRaises(build.BuildFailure):

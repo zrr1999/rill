@@ -127,14 +127,11 @@ uv run --no-build --locked --script "$SCRIPT_DIR/check_module_boundaries.py"
 info "Checking Record domain boundary..."
 bash "$SCRIPT_DIR/check_record_domain_boundary.sh"
 
-info "Checking dependency security policy..."
-uv run --script "$SCRIPT_DIR/tests/dependency_security_test.py"
+info "Running script policy tests..."
+bash "$SCRIPT_DIR/tests/run.sh"
 
 info "Checking any locked source-control dependencies against the reviewed offline advisory baseline..."
 uv run --script "$SCRIPT_DIR/check_dependency_security.py"
-
-info "Checking secret scan policy..."
-bash "$SCRIPT_DIR/tests/secret_scan_test.sh"
 
 info "Scanning Git history and the current source snapshot for secrets..."
 bash "$SCRIPT_DIR/check_secrets.sh"
@@ -146,13 +143,6 @@ fi
 
 info "Checking generated built-in workflow artifacts..."
 uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --check
-
-info "Checking release signing and notarization policy..."
-bash "$SCRIPT_DIR/tests/release_config_test.sh"
-uv run --no-build --locked --script "$SCRIPT_DIR/tests/worker_cache_test.py"
-
-info "Checking app icon generation..."
-bash "$SCRIPT_DIR/tests/app_icon_test.sh"
 
 info "Checking performance benchmark workloads..."
 bash "$SCRIPT_DIR/build_benchmarks.sh"

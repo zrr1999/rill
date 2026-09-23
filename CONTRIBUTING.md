@@ -30,6 +30,7 @@ just install
 just check
 just build          # 默认只构建 Debug RillApp
 just test
+just test-scripts   # 独立运行构建、发布、安全和图标脚本测试
 just bench          # 校验离线性能样本；CodSpeed 用法见 Benchmarks/README.md
 just ci             # 保留增量产物的完整门禁
 just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
@@ -39,6 +40,10 @@ just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 检查；不在 Git hook 中运行整仓构建、完整历史扫描或项目策略测试。
 这些项目专用检查集中在 `just ci` / `scripts/preflight.sh`，生成物和安全门禁
 仍然是提交前必须完成的检查。新增通用检查时优先复用维护中的上游工具。
+
+`scripts/tests/run.sh` 是脚本策略测试的统一入口，由 `just test-scripts` 和
+完整预检共同调用；各测试文件只负责自己的行为，不再嵌套运行其他测试套件。
+第三方许可证检查需要真实依赖 checkout，仍在预检完成 Release 构建后执行。
 
 不要删除、绕过或手工改写 `Package.resolved`。所有 SwiftPM 构建和测试都应通过 `scripts/swift_locked.sh` 运行，以保证使用仓库锁定的依赖图。
 
@@ -205,6 +210,11 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 
 job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接报告检查结果，
 不额外设置汇总 job。
+
+`CI - Tests` 的 Linux job 负责文档、通用质量检查和改动范围判定。仅修改
+`docs/*.md`、`CONTRIBUTING.md` 或 `zensical.toml` 的 PR 在 Linux 完成秘密扫描，
+跳过整个 macOS job。其他改动、空 diff、main 推送和手动运行都执行完整应用预检。
+`README.md` 随 App 分发，因此仍走应用预检。
 
 `Policy - PR` 在 `pull_request_target` 上先规范化标题，再校验标题和正文。
 独立的改名 job 只把 `imgbot[bot]` 的 `[ImgBot] Optimize images` 改为
