@@ -156,6 +156,30 @@ lock excludes concurrent publishers and allows the next explicit download to rec
 abandoned staging. No record text is sent to the model host. See `LOCAL_MODEL_NOTICES.md`
 and `PRIVACY.md` for the model and data boundaries.
 
+### Optional cloud comparison
+
+`RecordCloudRanking` owns the transient Jev credential and one active operation behind the
+Core `RecordRankingProvider` port. AppBootstrap injects `JevRecordRankingProvider`; the
+workspace owns service shutdown and panel models own cancelled tasks until drained.
+The ordinary local search path never calls the service. The explicit comparison action
+interleaves the current filtered literal and semantic lists, deduplicates IDs and selects
+at most ten non-image records. Runtime resolves payloads from RecordStore, clips text/file
+basenames to 1,800 UTF-8 bytes without splitting scalars, and returns an immutable preview.
+A single-use, ten-minute review must be explicitly confirmed before the fixed HTTPS request.
+
+Source identity, capture exclusions, current focus policy and catalog revision are checked
+before sending and after receiving. Query/filter/catalog changes and panel closure invalidate
+the UI review and cancel outstanding work. A provider that ignores cancellation retains the
+single active slot until it settles; late results cannot publish. Privacy changes after send
+cannot retract data already received by TypeSafe. No automatic retries or remote error bodies
+reach UI/diagnostics. The provider refuses redirects and validates bounded JSON, model identity,
+score IDs, ranges and probability consistency. Neither the key nor scores are persisted.
+
+The sheet shows separate 0–2 scores, elapsed request/validation time and token usage. Selecting
+a candidate only sets the existing quick-panel selected ID; it does not reorder the local list,
+write the clipboard, deliver a record, consume membership, or change the Record graph.
+Real-key network acceptance and macOS keyboard/secure-field behavior require separate QA.
+
 ## Limits
 
 `RecordStorageLimits.productDefault` admits up to 10,000 Records and 512 MiB of

@@ -95,6 +95,7 @@ public final class RecordQuickPanelModel {
   public private(set) var message: QuickRecordText?
   public private(set) var nextOffset: Int?
   public let cleanup: RecordCleanupModel
+  public let jev: RecordJevPanelModel?
   public private(set) var semanticResults: [RecordSummary] = []
   public private(set) var semanticState: RecordSemanticPanelState = .idle
   public private(set) var semanticProgress: RecordSemanticSearchProgress?
@@ -113,9 +114,10 @@ public final class RecordQuickPanelModel {
   private var resultMatching: RecordQueryMatching = .literal
   private var resultsRevision: UInt64?
 
-  public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil) {
+  public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, cloudRanking: RecordCloudRanking? = nil) {
     self.store = store
     self.semanticSearch = semanticSearch
+    jev = cloudRanking.map { RecordJevPanelModel(service: $0) }
     cleanup = RecordCleanupModel(store: store)
   }
   isolated deinit {
@@ -172,6 +174,7 @@ public final class RecordQuickPanelModel {
   public func shutdown() async {
     isClosed = true
     stop()
+    await jev?.shutdown()
     cleanup.seal()
     let pendingSemanticTasks = Array(semanticTasks.values)
     for task in pendingSemanticTasks { await task.value }
@@ -191,6 +194,7 @@ public final class RecordQuickPanelModel {
   public var selectedRecord: RecordSummary? { selectableResults.first { $0.id == selectedID } }
 
   public func cancelSemanticSearch() {
+    jev?.invalidate()
     semanticRequestID = nil
     for task in semanticTasks.values { task.cancel() }
     semanticResults = []
@@ -317,6 +321,29 @@ public final class RecordQuickPanelModel {
   public func loadMore() {
     guard let nextOffset, !isSearching else { return }
     scheduleSearch(offset: nextOffset)
+  }
+
+  public var canCompareWithJev: Bool {
+    jev != nil && !isSearching && semanticState != .working && !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && selectableResults.contains { $0.header.kind != .image }
+  }
+
+  public func compareWithJev() {
+    guard !isClosed, canCompareWithJev else { return }
+    var ids: [RecordID] = []
+    for index in 0..<max(results.count, semanticResults.count) {
+      for list in [results, semanticResults] where list.indices.contains(index) {
+        let item = list[index]
+        if item.header.kind != .image && !ids.contains(item.id) { ids.append(item.id) }
+      }
+      if ids.count >= 10 { break }
+    }
+    jev?.prepare(query: searchText, recordIDs: Array(ids.prefix(10)))
+  }
+
+  public func selectJevCandidate(_ id: RecordID) {
+    guard !isClosed, selectableResults.contains(where: { $0.id == id }) else { return }
+    selectedID = id
   }
 
   private func scheduleSearch(offset: Int = 0) {

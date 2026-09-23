@@ -163,6 +163,18 @@ public struct RecordQuickPanelView: View {
       .padding(.horizontal, RillSpacing.panel)
       .padding(.bottom, RillSpacing.row)
       if model.canSearchByMeaning { semanticControls }
+      if let jev = model.jev {
+        HStack {
+          Button(L10n.jev(.open, language: language)) { model.compareWithJev() }
+            .disabled(!model.canCompareWithJev)
+            .accessibilityIdentifier("records.jev-review")
+          Spacer()
+        }
+        .controlSize(.small).padding(.horizontal, RillSpacing.panel).padding(.bottom, RillSpacing.row)
+        .sheet(isPresented: Binding(get: { jev.isPresented }, set: { if !$0 { jev.invalidate() } })) {
+          RecordJevSheet(model: jev, language: language, onSelect: model.selectJevCandidate)
+        }
+      }
       Divider()
       GeometryReader { geometry in
         if RecordQuickPanelLayoutPolicy.usesSidePreview(width: geometry.size.width), model.isPreviewVisible {

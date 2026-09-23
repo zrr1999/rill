@@ -143,6 +143,42 @@ final class RecordQuickPanelRenderTests: XCTestCase {
     }
   }
 
+  func testRenderJevReviewAndResults() async throws {
+    guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+      throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR for native Jev evidence.")
+    }
+    let output = URL(fileURLWithPath: directory)
+    try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+    for dark in [false, true] {
+      for scored in [false, true] {
+        let fixture = JevPanelFixture()
+        let first = try await fixture.insert("git reset --soft HEAD~1")
+        let second = try await fixture.insert("git revert HEAD")
+        let model = RecordJevPanelModel(service: fixture.service)
+        model.prepare(query: "撤销上次提交，但保留代码改动", recordIDs: [first.id, second.id])
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while model.state == .preparing, ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertEqual(model.state, .review)
+        if scored {
+          model.setKey("unit-test-key")
+          while !model.isConfigured, ContinuousClock.now < deadline { await Task.yield() }
+          model.confirm()
+          while model.state == .scoring, ContinuousClock.now < deadline { await Task.yield() }
+          XCTAssertEqual(model.state, .ready)
+        }
+        let view = NSHostingView(rootView: RecordJevSheet(model: model,
+          language: dark ? .english : .simplifiedChinese, onSelect: { _ in
+            // Rendering only; selection behavior is covered by RecordJevPanelTests.
+          })
+          .environment(\.colorScheme, dark ? .dark : .light))
+        try await render(view, size: NSSize(width: 540, height: 620), dark: dark,
+          to: output.appendingPathComponent("jev-\(scored ? "result" : "review")-\(dark ? "dark" : "light").png"))
+        await model.shutdown()
+        await fixture.service.shutdown()
+      }
+    }
+  }
+
   private func render<Content: View>(
     _ view: NSHostingView<Content>, size: NSSize, dark: Bool, to url: URL, settle: Bool = false
   ) async throws {
