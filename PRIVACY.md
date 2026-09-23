@@ -10,6 +10,10 @@ Rill processes microphone audio during explicit voice capture. Wake-word listeni
 
 Clipboard monitoring can capture allowed text, images, and copied-file references. Rill skips capture when Secure Input, an unknown focus boundary, a configured sensitive application, a protected pasteboard type, or an explicit capture-exclusion tag requires it to fail closed.
 
+Quick-panel keyword, pinyin, and approximate text matching run locally on stored records. Folded text and pinyin stay in a capacity-bounded memory cache; this fast path adds no persistent index, downloads no model, and sends no queries or records to an external service.
+
+Optional **Search by meaning** downloads a fixed, verified Qwen3 embedding model only after the user chooses the download action. Hugging Face and its download infrastructure receive normal model-download network metadata, but no search query or record content. Queries, eligible text/file names, source identity, and tags are processed in a separate local helper. Derived vectors remain in a 128 MiB logical-content memory cache, are invalidated for changed tags/deleted records, and are cleared at shutdown; they are not persisted or uploaded. The helper releases its model after 30 idle seconds. Long records have bounded partial coverage; image contents and referenced-file contents are not read for semantic search.
+
 Rill does not operate an analytics or advertising endpoint in this build. Sanitized runtime diagnostics are stored locally and are not uploaded by Rill itself.
 
 ## Network destinations
@@ -32,6 +36,8 @@ Voice activity history also retains the recognized text and each executed text-p
 Clipboard history and run/diagnostic history default to 30 days. The user can independently select 1 day, 1 week, 30 days, 1 year, or no automatic pruning. Automatic clipboard pruning preserves pinned items. Explicitly clearing clipboard history removes pinned history but preserves items that are still active in a Stack, Queue, or List so pending delivery is not silently destroyed.
 
 Failed-audio recovery is off by default. If explicitly enabled, eligible pre-delivery failures can be stored encrypted for at most 24 hours, with a maximum of 3 entries, 16 MiB per entry, and 32 MiB total. Recovery controls allow individual deletion or clearing all retained failed recordings.
+
+Search weights are stored under `~/Library/Application Support/Rill/Models/record-search` (about 1.2 GB, plus download staging). Abandoned download staging is reclaimed on the next explicit download. Removing the App does not delete these weights.
 
 Downloaded ASR models remain under `~/Library/Application Support/Rill/Models/mlx-audio-swift`; synthesis models and Hugging Face download caches use their own Rill-managed model/cache directories. The ASR catalog currently requires approximately 1.01 GB for the 0.6B model or 2.46 GB for the 1.7B model, plus temporary download/cache space. Old sherpa-onnx directories can remain after an upgrade but are not the current recognition runtime. Removing the App does not automatically remove downloaded models or caches. Model weights do not contain the user's recordings or transcripts.
 
@@ -57,7 +63,7 @@ This notice covers Rill's current behavior only. macOS, DeepSeek, OpenAI, Apple 
 
 # Rill 技术隐私与数据流说明
 
-更新日期：2026-09-19
+更新日期：2026-09-21
 
 本文说明当前 Rill 构建的数据行为，是面向产品的技术披露；它不替代未来分发渠道可能要求的正式法律隐私政策。
 
@@ -66,6 +72,8 @@ This notice covers Rill's current behavior only. macOS, DeepSeek, OpenAI, Apple 
 Rill 在用户发起语音采集时处理麦克风音频。唤醒词监听默认关闭；开启后，本地麦克风、VAD 和 ASR 路径会持续工作，直到用户停止监听。仅预加载模型不会占用麦克风。根据工作流和隐私设置，它还可能处理选中文本、已保存的剪贴板条目、作用域词汇、工作流配置、投递结果，以及不含正文的诊断与运行收据元数据。
 
 剪贴板监听可捕获策略允许的文本、图片和复制文件引用。遇到 Secure Input、未知焦点边界、已配置的敏感 App、受保护的粘贴板类型或明确的捕获排除标签时，Rill 会采用 fail-closed 策略跳过捕获。
+
+快捷面板在本机对已保存记录执行关键词、拼音和近似文字匹配。规范化正文与拼音数据只在有容量上限的内存缓存中保留；这条快速检索路径不新增持久化搜索索引、不下载搜索模型，也不向外部服务发送查询或记录。
 
 当前构建没有 Rill 自营的分析或广告上报端点。经过净化的运行诊断仅保存在本机，Rill 不会主动上传这些诊断。
 
@@ -79,6 +87,8 @@ Rill 在用户发起语音采集时处理麦克风音频。唤醒词监听默认
 - **Markdown 文件输出：**工作流可把最终文本追加到用户选择的本地 Markdown 路径；Rill 不会上传该文件。追加使用同目录原子事务，并拒绝链接路径、多重硬链接、非 UTF-8 内容和超过 64 MiB 的文件。
 
 数据到达第三方服务或用户自动化后，适用其自身的留存、账户与隐私条款。Rill 的本地历史控制无法删除这些目的地持有的数据。
+
+“按含义补充”是可选功能，只有点击下载按钮后才获取固定版本、经校验的本地搜索模型（约 1.2 GB）。下载服务会收到普通网络连接元数据，但查询、记录正文、文件名、来源和标签均在本机的独立辅助进程中处理，不上传。向量只保存在限额为 128 MiB 逻辑内容的内存缓存中；标签变化、记录删除会使缓存失效，退出时清空，不新增持久化索引。模型在空闲 30 秒后释放。长记录仅搜索部分内容，不读取图片或文件引用指向的正文。权重存放于 `~/Library/Application Support/Rill/Models/record-search`，卸载 App 不会自动移除；下次主动下载会清理中断下载的临时文件。
 
 ## 本地存储与留存
 

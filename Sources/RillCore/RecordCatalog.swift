@@ -116,22 +116,30 @@ public struct RecordCatalogSnapshot: Sendable, Equatable {
     capacity: .init(count: 0, byteCount: 0))
 }
 
+public enum RecordQueryMatching: Sendable, Equatable {
+  case literal
+  case approximate
+}
+
 public struct RecordQuery: Sendable, Equatable {
   public var text: String
   public var collectionID: RecordCollectionID?
   public var sourceBundleIdentifier: String?
   public var kind: RecordPayloadKind?
   public var pinnedOnly: Bool
+  public var matching: RecordQueryMatching
 
   public init(
     text: String = "", collectionID: RecordCollectionID? = nil,
-    sourceBundleIdentifier: String? = nil, kind: RecordPayloadKind? = nil, pinnedOnly: Bool = false
+    sourceBundleIdentifier: String? = nil, kind: RecordPayloadKind? = nil, pinnedOnly: Bool = false,
+    matching: RecordQueryMatching = .literal
   ) {
     self.text = text
     self.collectionID = collectionID
     self.sourceBundleIdentifier = sourceBundleIdentifier
     self.kind = kind
     self.pinnedOnly = pinnedOnly
+    self.matching = matching
   }
 }
 

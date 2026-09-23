@@ -162,6 +162,7 @@ public struct RecordQuickPanelView: View {
       .controlSize(.small)
       .padding(.horizontal, RillSpacing.panel)
       .padding(.bottom, RillSpacing.row)
+      if model.canSearchByMeaning { semanticControls }
       Divider()
       GeometryReader { geometry in
         if RecordQuickPanelLayoutPolicy.usesSidePreview(width: geometry.size.width), let preview = model.preview {
@@ -223,24 +224,22 @@ public struct RecordQuickPanelView: View {
       ScrollViewReader { proxy in
         List(selection: $model.selectedID) {
           ForEach(Array(model.results.enumerated()), id: \.element.id) { index, item in
-            row(item, index: index).tag(item.id).id(item.id)
-              .onTapGesture(count: 2) { onPaste(item.reuseSubject) }
-              .contextMenu {
-                Button(text(.paste)) { onPaste(item.reuseSubject) }
-                Button(text(.copy)) { onCopy(item.reuseSubject) }
-                Button(text(item.metadata.isPinned ? .unpin : .pinned)) {
-                  Task { await model.togglePin(item) }
-                }
-                Button(text(.showInRecords)) { onShowRecord(item.id) }
-              }
+            selectableRow(item, index: index)
           }
           if model.nextOffset != nil {
             Button(text(.loadMore)) { model.loadMore() }.disabled(model.isSearching)
           }
+          if !model.additionalSemanticResults.isEmpty {
+            Section(text(.semanticCandidates)) {
+              ForEach(Array(model.additionalSemanticResults.enumerated()), id: \.element.id) { index, item in
+                selectableRow(item, index: model.results.count + index)
+              }
+            }
+          }
         }
         .listStyle(.inset)
         .overlay {
-          if model.results.isEmpty && !model.isSearching {
+          if model.selectableResults.isEmpty && !model.isSearching && model.semanticState != .working {
             ContentUnavailableView(
               model.searchText.isEmpty ? text(.noRecords) : text(.noResults),
               systemImage: RillSystemSymbol.tray.rawValue)
@@ -249,6 +248,66 @@ public struct RecordQuickPanelView: View {
         .onChange(of: model.selectedID) { _, id in
           if let id { proxy.scrollTo(id) }
         }
+      }
+  }
+
+  private var semanticControls: some View {
+    VStack(alignment: .leading, spacing: RillSpacing.row) {
+      HStack {
+        if model.semanticState == .working {
+          ProgressView().controlSize(.small)
+          Text(semanticProgressText).font(.caption).foregroundStyle(.secondary)
+          Spacer()
+          Button(text(.cancel)) { model.cancelSemanticSearch() }
+        } else {
+          Button(text(model.semanticState == .needsModel ? .downloadSearchModel : .meaningSearch)) {
+            model.searchByMeaning(downloadIfNeeded: model.semanticState == .needsModel)
+          }.disabled(model.isSearching)
+          Spacer()
+        }
+      }
+      if let status = semanticStatus {
+        Text(text(status)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .controlSize(.small)
+    .padding(.horizontal, RillSpacing.panel)
+    .padding(.bottom, RillSpacing.row)
+    .accessibilityIdentifier("records.semantic-search")
+  }
+
+  private var semanticProgressText: String {
+    switch model.semanticProgress {
+    case .indexing(let completed, let total):
+      language == .english ? "Preparing records \(completed) / \(total)" : "正在准备记录 \(completed) / \(total)"
+    case .preparing(let fraction) where fraction > 0 && fraction < 1:
+      language == .english ? "Downloading \(Int(fraction * 100))%" : "正在下载 \(Int(fraction * 100))%"
+    default: text(.preparingSearchModel)
+    }
+  }
+
+  private var semanticStatus: QuickRecordText? {
+    switch model.semanticState {
+    case .needsModel: .localSearchNotice
+    case .failed: .semanticFailed
+    case .changed: .semanticChanged
+    case .invalidQuery: .semanticQueryTooLong
+    case .ready:
+      model.semanticLimitedRecordCount > 0 ? .semanticLimited : (model.additionalSemanticResults.isEmpty ? .semanticNoResults : nil)
+    default: nil
+    }
+  }
+
+  private func selectableRow(_ item: RecordSummary, index: Int) -> some View {
+    row(item, index: index).tag(item.id).id(item.id)
+      .onTapGesture(count: 2) { onPaste(item.reuseSubject) }
+      .contextMenu {
+        Button(text(.paste)) { onPaste(item.reuseSubject) }
+        Button(text(.copy)) { onCopy(item.reuseSubject) }
+        Button(text(item.metadata.isPinned ? .unpin : .pinned)) {
+          Task { await model.togglePin(item) }
+        }
+        Button(text(.showInRecords)) { onShowRecord(item.id) }
       }
   }
 

@@ -28,6 +28,8 @@ public enum SpeechWorkerOperation: String, Codable, Sendable, Equatable {
   case prepareTTSModel
   case synthesizeSpeech
   case releaseTTSModel
+  case prepareEmbeddingModel
+  case embedText
 }
 
 /// One bounded worker-side engine. The process entry point owns framing and
@@ -136,6 +138,18 @@ public struct SpeechWorkerSynthesisPayload: Codable, Sendable, Equatable {
   }
 }
 
+public struct SpeechWorkerEmbeddingPayload: Codable, Sendable, Equatable {
+  public var modelID: String
+  public var text: String
+  public var purpose: RecordEmbeddingPurpose
+
+  public init(modelID: String, text: String, purpose: RecordEmbeddingPurpose) {
+    self.modelID = modelID
+    self.text = text
+    self.purpose = purpose
+  }
+}
+
 public enum SpeechWorkerRequestPayload: Codable, Sendable, Equatable {
   case prepareModel(SpeechWorkerModelPreparationPayload)
   case recognizeOffline(SpeechWorkerRecognitionPayload)
@@ -143,6 +157,8 @@ public enum SpeechWorkerRequestPayload: Codable, Sendable, Equatable {
   case prepareTTSModel(SpeechWorkerModelPreparationPayload)
   case synthesizeSpeech(SpeechWorkerSynthesisPayload)
   case releaseTTSModel(SpeechWorkerModelPreparationPayload)
+  case prepareEmbeddingModel(SpeechWorkerModelPreparationPayload)
+  case embedText(SpeechWorkerEmbeddingPayload)
 }
 
 /// Internal unary request view. Its wire representation is always a v5
@@ -162,6 +178,8 @@ public struct SpeechWorkerRequest: Sendable, Equatable {
     case .prepareTTSModel: .prepareTTSModel
     case .synthesizeSpeech: .synthesizeSpeech
     case .releaseTTSModel: .releaseTTSModel
+    case .prepareEmbeddingModel: .prepareEmbeddingModel
+    case .embedText: .embedText
     }
   }
 
@@ -180,9 +198,10 @@ public struct SpeechWorkerRequest: Sendable, Equatable {
     get {
       switch payload {
       case .prepareModel(let value), .releaseModel(let value),
-        .prepareTTSModel(let value), .releaseTTSModel(let value):
+        .prepareTTSModel(let value), .releaseTTSModel(let value),
+        .prepareEmbeddingModel(let value):
         value
-      case .recognizeOffline, .synthesizeSpeech:
+      case .recognizeOffline, .synthesizeSpeech, .embedText:
         nil
       }
     }
@@ -197,7 +216,9 @@ public struct SpeechWorkerRequest: Sendable, Equatable {
         payload = .prepareTTSModel(newValue)
       case .releaseTTSModel:
         payload = .releaseTTSModel(newValue)
-      case .recognizeOffline, .synthesizeSpeech:
+      case .prepareEmbeddingModel:
+        payload = .prepareEmbeddingModel(newValue)
+      case .recognizeOffline, .synthesizeSpeech, .embedText:
         break
       }
     }
@@ -212,6 +233,11 @@ public struct SpeechWorkerRequest: Sendable, Equatable {
       guard let newValue, case .synthesizeSpeech = payload else { return }
       payload = .synthesizeSpeech(newValue)
     }
+  }
+
+  public var embeddingPayload: SpeechWorkerEmbeddingPayload? {
+    guard case .embedText(let value) = payload else { return nil }
+    return value
   }
 
   public init(
@@ -399,6 +425,7 @@ public enum SpeechWorkerResponsePayload: Codable, Sendable, Equatable {
   case progress(SpeechWorkerProgress)
   case recognitionCompleted(SpeechWorkerRecognitionResult)
   case synthesisCompleted(SpeechWorkerSynthesisResult)
+  case embeddingCompleted(RecordTextEmbedding)
   case modelPrepared(String)
   case modelReleased(String)
   case failure(SpeechWorkerFailureCode)
@@ -417,7 +444,7 @@ public struct SpeechWorkerResponse: Sendable, Equatable {
     switch payload {
     case .progress: .progress
     case .failure: .failure
-    case .recognitionCompleted, .synthesisCompleted, .modelPrepared, .modelReleased:
+    case .recognitionCompleted, .synthesisCompleted, .embeddingCompleted, .modelPrepared, .modelReleased:
       .success
     }
   }
@@ -429,6 +456,11 @@ public struct SpeechWorkerResponse: Sendable, Equatable {
 
   public var synthesisResult: SpeechWorkerSynthesisResult? {
     guard case .synthesisCompleted(let value) = payload else { return nil }
+    return value
+  }
+
+  public var embeddingResult: RecordTextEmbedding? {
+    guard case .embeddingCompleted(let value) = payload else { return nil }
     return value
   }
 
@@ -644,6 +676,16 @@ public enum SpeechWorkerProtocolCodec {
       throw SpeechWorkerProtocolError.invalidRequest
     }
     switch request.operation {
+    case .prepareEmbeddingModel:
+      guard let payload = request.modelPreparationPayload,
+        payload.modelID == RecordEmbeddingModelCatalog.modelID
+      else { throw SpeechWorkerProtocolError.invalidRequest }
+    case .embedText:
+      guard let payload = request.embeddingPayload,
+        payload.modelID == RecordEmbeddingModelCatalog.modelID,
+        !payload.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        payload.text.utf8.count <= 48 * 1_024
+      else { throw SpeechWorkerProtocolError.invalidRequest }
     case .prepareModel, .releaseModel:
       guard request.recognitionPayload == nil,
         request.synthesisPayload == nil,
@@ -732,6 +774,7 @@ public enum SpeechWorkerProtocolCodec {
         [
           response.result != nil,
           response.synthesisResult != nil,
+          response.embeddingResult != nil,
           response.preparedModelID != nil,
           response.releasedModelID != nil,
         ].filter({ $0 }).count == 1
@@ -754,6 +797,11 @@ public enum SpeechWorkerProtocolCodec {
         else {
           throw SpeechWorkerProtocolError.invalidResponse
         }
+      }
+      if let result = response.embeddingResult {
+        guard (1...16).contains(result.vectors.count), result.vectors.allSatisfy({ vector in
+          vector.count == 1_024 && vector.allSatisfy(\.isFinite)
+        }) else { throw SpeechWorkerProtocolError.invalidResponse }
       }
       if let preparedModelID = response.preparedModelID,
         !isBoundedPlainText(preparedModelID, maximumByteCount: 128)

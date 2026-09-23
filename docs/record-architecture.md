@@ -64,6 +64,78 @@ The migration is forward-only. There is no dual runtime or downgrade contract.
 Old workflow TOML names remain accepted at the file-loader boundary and are
 normalized immediately; canonical serialization uses Record terminology only.
 
+## Local quick-panel search
+
+`RecordQuery` defaults to case- and accent-insensitive literal AND matching
+across payload text, file names, source identity, and tags. Source, kind, pin,
+and collection filters apply before reading a payload. Results retain recency
+order; each store call scans at most 256 records. The quick panel scans further
+pages until it fills 50 results or reaches the end.
+
+Only when the entire literal search is empty does the quick panel retry with
+`matching: .approximate`. This mode adds ASCII word prefixes, anchored
+subsequences, bounded adjacent-transposition/edit matching, and Chinese full
+pinyin or initials from Foundation transliteration. All query terms must match.
+It does not score or reorder literal results. Pagination retains the matching
+mode and rejects pages from a different catalog revision. Other callers keep
+literal behavior unless they explicitly opt in.
+
+Approximation accepts up to eight ASCII terms and 160 UTF-8 bytes. URL queries,
+absolute paths, and single-token queries containing three consecutive digits
+remain literal. Numeric terms in an expanded multi-term query must retain a
+whole token match. Pinyin terms require 3–40 letters, full syllable boundaries,
+and common CJK characters; polyphonic names, dialects, Chinese synonyms, and
+semantic paraphrases are not guaranteed. No result is an acceptable outcome.
+
+`RecordStore` owns a transient FIFO cache of folded payload text and derived
+search data, budgeted together at 16 MiB of logical content (not heap RSS).
+Payloads are immutable; deleted records lose their cached data, while mutable
+tags are read from the current catalog. Transliteration runs off the store
+actor, checks cancellation between bounded chunks, and validates the catalog
+revision before publishing results. A cold full-history miss can read and
+prepare every eligible payload; this is not a persistent inverted index.
+
+This path uses no model, downloaded data, server, telemetry, or new persistent
+index. Clipboard capture and explicit output retain their existing owners.
+Store/model tests do not establish physical keyboard, IME, focus, or paste
+acceptance; those require the macOS checklist.
+
+### Optional semantic candidates
+
+`RecordSemanticSearch` receives a Core `RecordEmbeddingProvider` port; AppBootstrap injects
+`RecordWorkerEmbedder` with its own supervised helper process. The panel's explicit
+meaning-search action leaves literal/approximate results first and appends a deduplicated
+candidate section without replacing the selected ID. Missing weights show a separate
+1.2 GB download action. Neither opening the App nor typing invokes a download.
+
+The actor serializes superseding searches through cancellation and a drained predecessor,
+applies source/kind/pin/collection filters before payload reads, and checks the catalog
+revision before returning. Numeric identifier tokens with three consecutive digits must
+match exactly; standalone URLs and absolute paths remain on the literal path. Image content
+is excluded. File records contribute names only. Scores are maximum chunk cosine similarities,
+not calibrated probabilities or acceptance thresholds; the ten nearest eligible records
+may include unrelated candidates.
+The validated 1,024-dimension vectors are scored with Swift SIMD, keeping platform math
+SDKs out of Runtime.
+
+Qwen3-Embedding-0.6B runs in the helper via the existing locked MLX graph. Queries have a
+256-token limit; document windows are 248 tokens with stride 192 and a maximum of 16
+(first 15 plus last). Large UTF-8/JSON inputs are bounded before IPC. Partial coverage is
+reported rather than presented as exhaustive. The 128 MiB logical vector cache is transient,
+observes committed catalog changes for deletion/tag invalidation, and is cleared at shutdown.
+Resident vectors are scored before admitting missing records, so crossing the cache budget
+does not turn every warm query into a full re-encode. Failed or cancelled searches reconcile
+against the current catalog and retain only still-valid vectors for the next query.
+Cold indexing may visit every eligible record. UI progress is throttled and cancellation
+retains the task until its worker operation settles. The workspace owns final shutdown;
+the provider retires the helper after 30 idle seconds.
+
+Model downloads use an exact revision and file inventory with size/SHA-256 verification,
+reject links and extra model-loader inputs, and publish only verified staging. A filesystem
+lock excludes concurrent publishers and allows the next explicit download to reclaim
+abandoned staging. No record text is sent to the model host. See `LOCAL_MODEL_NOTICES.md`
+and `PRIVACY.md` for the model and data boundaries.
+
 ## Limits
 
 `RecordStorageLimits.productDefault` admits up to 10,000 Records and 512 MiB of

@@ -53,7 +53,7 @@ flowchart TD
 | Persistence | SQLite connection, schema migration, encryption, and transactional repositories. |
 | UI | Observable presentation state, feature models, and SwiftUI/AppKit views. |
 | App | Composition, application lifecycle, and window/controller integration. |
-| MLXRuntime / SpeechWorker | Local model execution in the separate speech process. |
+| MLXRuntime / SpeechWorker | Local ASR, TTS, and record-embedding execution in separate supervised helper processes. |
 
 Runtime receives system effects through injected ports or closures. For example,
 `RecordingSessionManager` owns the validity of a

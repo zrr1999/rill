@@ -521,6 +521,7 @@ private struct ProviderServices {
   let localSpeechStartupDiagnostic: DiagnosticEvent
   let speechWorkerSupervisor: SpeechWorkerSupervisor
   let ttsSpeechWorkerSupervisor: SpeechWorkerSupervisor
+  let recordEmbedder: RecordWorkerEmbedder
   let mlxAudioSwiftRecognizer: MLXAudioSwiftWorkerRecognizer
   let localSpeechRecognizer: RoutedLocalSpeechRecognizer
   let streamingPreviewService: SpeechWorkerStreamingPreviewService
@@ -964,6 +965,8 @@ private enum AppContainerFactory {
     let ttsSpeechWorkerSupervisor = SpeechWorkerSupervisor(
       configuration: .init(executableURL: speechWorkerExecutableURL)
     )
+    let recordEmbedder = RecordWorkerEmbedder(supervisor: SpeechWorkerSupervisor(
+      configuration: .init(executableURL: speechWorkerExecutableURL)))
     let mlxAudioSwiftRecognizer = MLXAudioSwiftWorkerRecognizer(
       supervisor: speechWorkerSupervisor,
       settingsProvider: {
@@ -1079,6 +1082,7 @@ private enum AppContainerFactory {
       localSpeechStartupDiagnostic: localSpeechStartupDiagnostic,
       speechWorkerSupervisor: speechWorkerSupervisor,
       ttsSpeechWorkerSupervisor: ttsSpeechWorkerSupervisor,
+      recordEmbedder: recordEmbedder,
       mlxAudioSwiftRecognizer: mlxAudioSwiftRecognizer,
       localSpeechRecognizer: localSpeechRecognizer,
       streamingPreviewService: streamingPreviewService,
@@ -1895,7 +1899,8 @@ private enum AppModelFactory {
       eventBus: core.eventBus,
       sessionCoordinator: runtime.coordinator,
       outputActionRegistry: registries.actionRegistry,
-      recordWorkspace: RecordWorkspaceModel(store: core.recordStore),
+      recordWorkspace: RecordWorkspaceModel(store: core.recordStore,
+        semanticSearch: RecordSemanticSearch(store: core.recordStore, embedder: providers.recordEmbedder)),
       candidateResolver: core.candidateResolver,
       historyRepository: core.persistence.historyRepository,
       runHistoryBrowser: core.persistence.runHistoryBrowser,
