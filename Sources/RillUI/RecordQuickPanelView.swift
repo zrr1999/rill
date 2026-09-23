@@ -94,7 +94,12 @@ public struct RecordCleanupSheet: View {
 
 }
 
+enum RecordQuickPanelLayoutPolicy {
+  static func usesSidePreview(width: CGFloat) -> Bool { width >= 760 }
+}
+
 public struct RecordQuickPanelView: View {
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   @Bindable private var model: RecordQuickPanelModel
   private let language: AppLanguage
   private let onPaste: (RecordReuseSubject) -> Void
@@ -158,6 +163,63 @@ public struct RecordQuickPanelView: View {
       .padding(.horizontal, RillSpacing.panel)
       .padding(.bottom, RillSpacing.row)
       Divider()
+      GeometryReader { geometry in
+        if RecordQuickPanelLayoutPolicy.usesSidePreview(width: geometry.size.width), let preview = model.preview {
+          HSplitView {
+            resultList.frame(minWidth: 300, idealWidth: 360)
+            RecordQuickPreview(record: preview.record, language: language)
+              .padding(RillSpacing.panel).frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
+          }
+        } else {
+          VStack(spacing: 0) {
+            resultList
+            if let preview = model.preview {
+              Divider()
+              RecordQuickPreview(record: preview.record, language: language)
+                .frame(maxHeight: 180).padding(RillSpacing.row)
+            }
+          }
+        }
+      }
+      Divider()
+      VStack(alignment: .leading, spacing: RillSpacing.row) {
+        if capturePaused { Text(text(.capturePaused)).font(.caption).foregroundStyle(.secondary) }
+        if let message = model.cleanup.plan == nil
+          ? (model.cleanup.message ?? model.message) : model.message
+        {
+          Text(text(message)).font(.caption).foregroundStyle(
+            message == .copied ? Color.secondary : Color.orange)
+        }
+        HStack {
+          Text("↑↓").foregroundStyle(.secondary).accessibilityHidden(true)
+          Text(text(.paste) + " ↩").font(.caption).foregroundStyle(.secondary)
+          Spacer()
+          Button(text(.copy)) {
+            if let subject = model.selectedRecord?.reuseSubject { onCopy(subject) }
+          }
+          .disabled(model.selectedRecord == nil)
+          Button(RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language), action: pasteSelection).disabled(model.selectedRecord == nil)
+        }
+        .controlSize(.small)
+        RecordCapacityView(capacity: model.capacity, language: language) {
+          Task { await model.cleanup.request() }
+        }
+      }.padding(RillSpacing.panel)
+    }
+    .background {
+      if reduceTransparency { Color(nsColor: .windowBackgroundColor) }
+      else { Rectangle().fill(.regularMaterial) }
+    }
+    .sheet(
+      isPresented: Binding(
+        get: { model.cleanup.plan != nil }, set: { if !$0 { model.cleanup.cancel() } })
+    ) {
+      RecordCleanupSheet(model: model.cleanup, language: language)
+    }
+    .accessibilityIdentifier("records.quick-panel")
+  }
+
+  private var resultList: some View {
       ScrollViewReader { proxy in
         List(selection: $model.selectedID) {
           ForEach(Array(model.results.enumerated()), id: \.element.id) { index, item in
@@ -188,44 +250,6 @@ public struct RecordQuickPanelView: View {
           if let id { proxy.scrollTo(id) }
         }
       }
-      if let preview = model.preview {
-        Divider()
-        RecordQuickPreview(record: preview.record, language: language)
-          .frame(maxHeight: 180).padding(RillSpacing.row)
-      }
-      Divider()
-      VStack(alignment: .leading, spacing: RillSpacing.row) {
-        if capturePaused { Text(text(.capturePaused)).font(.caption).foregroundStyle(.secondary) }
-        if let message = model.cleanup.plan == nil
-          ? (model.cleanup.message ?? model.message) : model.message
-        {
-          Text(text(message)).font(.caption).foregroundStyle(
-            message == .copied ? Color.secondary : Color.orange)
-        }
-        HStack {
-          Text("↑↓").foregroundStyle(.secondary).accessibilityHidden(true)
-          Text(text(.paste) + " ↩").font(.caption).foregroundStyle(.secondary)
-          Spacer()
-          Button(text(.copy)) {
-            if let subject = model.selectedRecord?.reuseSubject { onCopy(subject) }
-          }
-          .disabled(model.selectedRecord == nil)
-          Button(text(.paste), action: pasteSelection).disabled(model.selectedRecord == nil)
-        }
-        .controlSize(.small)
-        RecordCapacityView(capacity: model.capacity, language: language) {
-          Task { await model.cleanup.request() }
-        }
-      }.padding(RillSpacing.panel)
-    }
-    .background(.regularMaterial)
-    .sheet(
-      isPresented: Binding(
-        get: { model.cleanup.plan != nil }, set: { if !$0 { model.cleanup.cancel() } })
-    ) {
-      RecordCleanupSheet(model: model.cleanup, language: language)
-    }
-    .accessibilityIdentifier("records.quick-panel")
   }
 
   private func text(_ key: QuickRecordText) -> String { L10n.quickRecord(key, language: language) }

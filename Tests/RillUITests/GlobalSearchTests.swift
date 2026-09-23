@@ -19,6 +19,8 @@ final class GlobalSearchIndexTests: XCTestCase {
                 .language,
                 .privacy,
                 .storage,
+                .contextMemory,
+                .diagnostics,
             ]
         )
     }
@@ -88,41 +90,6 @@ final class GlobalSearchIndexTests: XCTestCase {
                 isPresented: true,
                 query: "new query",
                 state: .searching
-            )
-        )
-    }
-
-    func testOnlyCurrentHistorySearchRequestMayPublish() {
-        let current = makeHistorySearchRequest(query: "new", retryGeneration: 2)
-        let staleQuery = makeHistorySearchRequest(query: "old", retryGeneration: 2)
-        let staleRetry = makeHistorySearchRequest(query: "new", retryGeneration: 1)
-
-        XCTAssertTrue(
-            GlobalHistorySearchRequestPolicy.canPublish(
-                request: current,
-                current: current,
-                isCancelled: false
-            )
-        )
-        XCTAssertFalse(
-            GlobalHistorySearchRequestPolicy.canPublish(
-                request: staleQuery,
-                current: current,
-                isCancelled: false
-            )
-        )
-        XCTAssertFalse(
-            GlobalHistorySearchRequestPolicy.canPublish(
-                request: staleRetry,
-                current: current,
-                isCancelled: false
-            )
-        )
-        XCTAssertFalse(
-            GlobalHistorySearchRequestPolicy.canPublish(
-                request: current,
-                current: current,
-                isCancelled: true
             )
         )
     }
@@ -316,20 +283,7 @@ final class GlobalSearchIndexTests: XCTestCase {
         )
     }
 
-    private func makeHistorySearchRequest(
-        query: String,
-        retryGeneration: Int
-    ) -> GlobalHistorySearchTaskIdentity {
-        GlobalHistorySearchTaskIdentity(
-            isPresented: true,
-            query: query,
-            language: AppLanguage.english.rawValue,
-            previewMode: PrivacyHistoryPreviewMode.full.rawValue,
-            retentionPeriod: HistoryRetentionPeriod.thirtyDays.rawValue,
-            workflowSearchSnapshot: [],
-            retryGeneration: retryGeneration
-        )
-    }
+
 }
 
 @MainActor
@@ -341,7 +295,7 @@ extension AppModelTests {
 
         harness.model.showSettings(.speech)
         let firstSettingsRequest = try XCTUnwrap(harness.model.settingsNavigationRequest)
-        XCTAssertEqual(harness.model.selectedSidebarSection, .settings)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertEqual(firstSettingsRequest.section, .speech)
 
         harness.model.showSettings(.privacy)
@@ -377,23 +331,23 @@ extension AppModelTests {
         XCTAssertNil(harness.model.workflowEditorNavigationRequest)
     }
 
-    func testPlainAndSupersedingRoutesDiscardStaleDetailRequests() async throws {
+    func testMainWindowRoutesPreserveIndependentSettingsNavigation() async throws {
         let harness = makeHarness(workflow: makeDefaultWorkflow())
         await waitForEventProcessing(harness)
 
         harness.model.showSettings(.speech)
         XCTAssertNotNil(harness.model.settingsNavigationRequest)
         harness.model.selectSidebarSection(.stream)
-        XCTAssertNil(harness.model.settingsNavigationRequest)
+        XCTAssertNotNil(harness.model.settingsNavigationRequest)
 
         harness.model.showHistoryEntry(UUID())
         XCTAssertNotNil(harness.model.historyNavigationRequest)
         harness.model.showSettings(.privacy)
-        XCTAssertNil(harness.model.historyNavigationRequest)
+        XCTAssertNotNil(harness.model.historyNavigationRequest)
         XCTAssertEqual(harness.model.settingsNavigationRequest?.section, .privacy)
 
         harness.model.showHistoryEntry(UUID())
-        XCTAssertNil(harness.model.settingsNavigationRequest)
+        XCTAssertNotNil(harness.model.settingsNavigationRequest)
         XCTAssertNotNil(harness.model.historyNavigationRequest)
         harness.model.selectSidebarSection(.records)
         XCTAssertNil(harness.model.historyNavigationRequest)

@@ -1207,7 +1207,7 @@ extension AppModelTests {
     func testShowRunHistorySelectsStreamSection() {
         let harness = makeHarness()
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
 
         harness.model.showRunHistory()
 
@@ -1229,13 +1229,14 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertEqual(
             harness.model.recordWorkspace.selectedCollectionID,
-            harness.model.recordWorkspace.snapshot.collections.first?.id
+            nil
         )
 
         harness.model.showRecordCollection(collectionID)
         harness.model.selectSidebarSection(.settings)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, .settings)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
+        XCTAssertTrue(harness.model.consumeSettingsPresentation())
         XCTAssertEqual(harness.model.recordWorkspace.selectedCollectionID, collectionID)
     }
 

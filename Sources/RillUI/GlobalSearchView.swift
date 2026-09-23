@@ -10,6 +10,10 @@ struct GlobalSearchResultsView: View {
     let results: [GlobalSearchResult]
     let selectedResultID: String?
     let historySearchState: GlobalHistorySearchState
+    var recordSearchState: GlobalHistorySearchState = .idle
+    var hasMore = false
+    var onLoadMore: () -> Void = {}
+    var onRecordRetry: () -> Void = {}
     let historyFailureActionTitle: String
     let language: AppLanguage
     let focusRequest: Int
@@ -91,9 +95,24 @@ struct GlobalSearchResultsView: View {
                 .frame(minHeight: 32)
             }
 
+            if recordSearchState == .searching || recordSearchState == .failed {
+                HStack {
+                    if recordSearchState == .searching { ProgressView().controlSize(.small) }
+                    Text(L10n.workspace(recordSearchState == .failed ? .recordsUnavailable : .recordsSearching, language: language))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    if recordSearchState == .failed {
+                        Button(GlobalSearchText.historyRetry(language: language), action: onRecordRetry)
+                    }
+                }.padding(.horizontal, RillSpacing.section).padding(.vertical, RillSpacing.row)
+            }
+
             ScrollViewReader { proxy in
                 ScrollView {
-                    if results.isEmpty {
+                    if results.isEmpty && (recordSearchState == .searching || historySearchState == .searching) {
+                        ProgressView(L10n.quickRecord(.searching, language: language))
+                            .frame(maxWidth: .infinity, minHeight: Self.emptyStateMinHeight)
+                    } else if results.isEmpty {
                         ContentUnavailableView(
                             GlobalSearchText.noResultsTitle(language: language),
                             systemImage: RillSystemSymbol.magnifyingglass.rawValue,
@@ -122,7 +141,12 @@ struct GlobalSearchResultsView: View {
                                 }
                             }
                         }
-                        .padding(RillSpacing.page)
+                        .padding(RillSpacing.panel)
+                        if hasMore {
+                            Button(L10n.workspace(.loadMore, language: language), action: onLoadMore)
+                                .disabled(recordSearchState == .searching || historySearchState == .searching)
+                                .padding()
+                        }
                     }
                 }
                 .accessibilityIdentifier("global-search.results")
@@ -319,31 +343,31 @@ private struct GlobalSearchResultRow: View {
             HStack(alignment: .top, spacing: RillSpacing.card) {
                 Image(systemName: result.symbolName)
                     .frame(width: Self.iconSize, height: Self.iconSize)
-                    .foregroundStyle(.tint)
+                    .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .accentColor)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(result.title)
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .primary)
                         .lineLimit(1)
                     if let detail = result.detail {
                         Text(detail)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
                             .lineLimit(1)
                     }
                     if let preview = result.preview {
                         Text(preview)
                             .font(.callout)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
                             .lineLimit(2)
                     }
                 }
 
                 Spacer(minLength: 8)
                 Image(systemName: RillSystemSymbol.arrowForward.rawValue)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(isSelected ? Color(nsColor: .selectedTextColor) : .secondary)
                     .accessibilityHidden(true)
             }
             .padding(RillSpacing.card)
@@ -351,7 +375,12 @@ private struct GlobalSearchResultRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .rillSelection(isSelected, cornerRadius: RillRadius.section)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: RillRadius.chip)
+                    .fill(Color(nsColor: .selectedContentBackgroundColor))
+            }
+        }
         .onHover { isHovered in
             if isHovered {
                 onHighlight(result.id)

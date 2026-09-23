@@ -15,10 +15,13 @@ public final class RecordWorkspaceModel {
     public var selectedCollectionID: RecordCollectionID?
     public var selectedRecordID: RecordID?
     public var searchText = "" { didSet { if searchText != oldValue { scheduleSearch() } } }
-    public var showsPinnedOnly = false
-    /// Panel-mode session filter: when set, only records captured from this
-    /// application remain visible. Not persisted.
-    public var sourceAppFilterBundleIdentifier: String?
+    public var payloadKindFilter: RecordPayloadKind? { didSet { repairRecordSelection() } }
+    public private(set) var revealedRecordID: RecordID?
+    public private(set) var unavailableRecordID: RecordID?
+    public private(set) var navigationGeneration = 0
+    public var showsPinnedOnly = false { didSet { repairRecordSelection() } }
+    /// Session-only source filter shared by list and detail selection.
+    public var sourceAppFilterBundleIdentifier: String? { didSet { repairRecordSelection() } }
     public private(set) var isLoading = false
     public private(set) var isMutating = false
     public private(set) var errorMessage: String?
@@ -130,6 +133,7 @@ public final class RecordWorkspaceModel {
                projection.header.provenance.sourceBundleIdentifier != sourceAppFilterBundleIdentifier {
                 return false
             }
+            if let payloadKindFilter, projection.header.kind != payloadKindFilter { return false }
             guard !showsPinnedOnly || projection.metadata.isPinned else { return false }
             guard !query.isEmpty else { return true }
             return searchMatches.contains(projection.id)
@@ -218,9 +222,51 @@ public final class RecordWorkspaceModel {
         }
     }
 
+    public func cancelNavigation() {
+        navigationGeneration &+= 1
+        revealedRecordID = nil
+        unavailableRecordID = nil
+    }
+
     public func selectCollection(_ id: RecordCollectionID?) {
+        cancelNavigation()
         selectedCollectionID = id
-        selectedRecordID = nil
+        repairRecordSelection()
+    }
+
+    public func searchRecords(_ text: String, offset: Int = 0, limit: Int = 20) async throws -> RecordQueryPage {
+        var records: [RecordSummary] = []
+        var nextOffset: Int? = offset
+        var revision: UInt64?
+        repeat {
+            try Task.checkCancellation()
+            let page = try await store.query(.init(text: text), offset: nextOffset ?? 0, limit: limit - records.count)
+            if let revision, revision != page.revision { throw RecordStoreError.membershipChanged }
+            revision = page.revision
+            records.append(contentsOf: page.records)
+            nextOffset = page.nextOffset
+        } while nextOffset != nil && records.count < limit
+        return RecordQueryPage(revision: revision ?? 0, records: records, nextOffset: nextOffset)
+    }
+
+    public func revealRecord(_ id: RecordID) async {
+        navigationGeneration &+= 1
+        let generation = navigationGeneration
+        revealedRecordID = id
+        unavailableRecordID = nil
+        selectedCollectionID = nil
+        searchText = ""
+        showsPinnedOnly = false
+        sourceAppFilterBundleIdentifier = nil
+        payloadKindFilter = nil
+        await refresh()
+        guard generation == navigationGeneration, !Task.isCancelled else { return }
+        if snapshot.records.contains(where: { $0.id == id }) {
+            selectedRecordID = id
+        } else {
+            selectedRecordID = nil
+            unavailableRecordID = id
+        }
     }
 
     public func createCollection(name: String, preset: RecordCollectionPreset) async {
@@ -398,9 +444,13 @@ public final class RecordWorkspaceModel {
            !snapshot.collections.contains(where: { $0.id == selectedCollectionID }) {
             self.selectedCollectionID = nil
         }
-        if let selectedRecordID,
-           !snapshot.records.contains(where: { $0.id == selectedRecordID }) {
-            self.selectedRecordID = nil
+        repairRecordSelection()
+    }
+
+    private func repairRecordSelection() {
+        guard !isSearching else { return }
+        if selectedRecordID == nil || !visibleRecords.contains(where: { $0.id == selectedRecordID }) {
+            selectedRecordID = visibleRecords.first?.id
         }
     }
 

@@ -31,7 +31,12 @@ final class RecordQuickPanelRenderTests: XCTestCase {
     panel.start(sourceBundleIdentifier: nil)
     defer { panel.stop() }
     for _ in 0..<100 where panel.results.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+    panel.pasteTargetName = "Notes"
+    panel.togglePreview()
+    for _ in 0..<100 where panel.preview == nil { await waitForMainRunLoopDefaultMode() }
+    XCTAssertNotNil(panel.preview)
     for dark in [false, true] {
+      for width in [620, 900] {
       let view = NSHostingView(
         rootView: RecordQuickPanelView(
           model: panel, language: .simplifiedChinese, capturePaused: false,
@@ -39,8 +44,9 @@ final class RecordQuickPanelRenderTests: XCTestCase {
         )
         .environment(\.colorScheme, dark ? .dark : .light))
       try render(
-        view, size: NSSize(width: 620, height: 560), dark: dark,
-        to: output.appendingPathComponent("quick-panel-\(dark ? "dark" : "light").png"))
+        view, size: NSSize(width: width, height: 560), dark: dark,
+        to: output.appendingPathComponent("quick-panel-\(dark ? "dark" : "light")-\(width).png"))
+      }
       await panel.cleanup.request()
       let cleanup = NSHostingView(
         rootView: RecordCleanupSheet(model: panel.cleanup, language: .simplifiedChinese)
@@ -55,6 +61,9 @@ final class RecordQuickPanelRenderTests: XCTestCase {
   private func render<Content: View>(
     _ view: NSHostingView<Content>, size: NSSize, dark: Bool, to url: URL
   ) throws {
+    let previous = NSApplication.shared.appearance
+    NSApplication.shared.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+    defer { NSApplication.shared.appearance = previous }
     let window = NSWindow(
       contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered,
       defer: false)

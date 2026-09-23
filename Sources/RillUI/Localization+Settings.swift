@@ -50,6 +50,8 @@ extension L10n {
     }
 
     static func settingsSectionSummary(_ section: SettingsSection, language: AppLanguage) -> String {
+        if section == .contextMemory { return workspace(.contextMemorySummary, language: language) }
+        if section == .diagnostics { return workspace(.diagnosticsSummary, language: language) }
         let key: SettingsTextKey =
             switch section {
             case .permissions: .settingsSummaryPermissions
@@ -60,7 +62,8 @@ extension L10n {
             case .vocabulary: .settingsSummaryVocabulary
             case .language: .settingsSummaryLanguage
             case .privacy: .settingsSummaryPrivacy
-            case .storage: .settingsSummaryStorage
+            case .storage, .diagnostics: .settingsSummaryStorage
+            case .contextMemory: .settingsSummaryVocabulary
             }
         return settingsText(key, language: language)
     }

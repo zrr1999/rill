@@ -197,9 +197,9 @@ cannot be confused with deleting stored content.
 
 Complete the pass in both App languages.
 
-- [ ] The Activity page (including the run timeline with Recent Runs/Recent
-      Results filters), Clipboard, Workflows, Diagnostics, and Settings have a coherent VoiceOver
-      reading and focus order.
+- [ ] All Records, collections, Activity, Workflows, and all six panes of the
+      independent Settings window have a coherent VoiceOver reading and focus order.
+      Settings → Data → Diagnostics remains accessible without changing the main route.
 - [ ] Restricted history previews expose only the same truncated text shown
       visually; disabled previews expose no body text.
 - [ ] Run History can move Older then Newer without duplicates or jumps, a new
@@ -207,7 +207,9 @@ Complete the pass in both App languages.
       deep link is explained instead of showing a false empty state.
 - [ ] Global search remains responsive while searching a large retained history;
       a superseded query never publishes stale matches, and a history failure
-      leaves page, workflow, and settings results usable.
+      leaves record, collection, page, workflow, and settings results usable.
+      Record results come first, Show More retains selection, and a deleted record
+      reports that it is unavailable rather than selecting a different item.
 - [ ] Global-search arrow selection moves VoiceOver focus to exactly one current
       result; Return opens the announced result, and refreshed results never
       leave focus on an item that disappeared.
@@ -220,17 +222,20 @@ Complete the pass in both App languages.
       progress, success, and failure states are announced once and remain
       understandable without color.
 - [ ] Escape, Tab, Shift-Tab, Space, Return, and arrow-key behavior is predictable.
-- [ ] In the main window, with the Activity sidebar row focused, Down opens the
-      first collection directly below Activity and a second Down selects the next
-      collection; entering Clipboard does not move focus into Search or clear the sidebar
-      first responder after the mouse event finishes.
-- [ ] Selecting top-level Clipboard exits any selected clipboard group. Search
+- [ ] From All Records, Down visits each collection, Activity, then Workflows.
+      Changing the list selection keeps sidebar keyboard focus after mouse tracking.
+      At content widths below 700pt, Back restores the selected row; searching for
+      the same record again enters and focuses its detail. Search never pastes.
+- [ ] Selecting All Records exits any selected collection. Search
       gains a visible focus ring only after explicit focus, and Tab/Shift-Tab use
       the native key-view order.
-- [ ] History empty-state → Dashboard, Dashboard setup → Settings/Diagnostics,
-      and Diagnostics → Settings move keyboard and VoiceOver focus to the newly
-      selected sidebar row. Re-selecting the current route does not steal focus
-      from a control being edited in its detail.
+- [ ] Cmd-comma and the sidebar Settings button open the same native Settings
+      window. Search and failure recovery open the exact pane and expanded section,
+      including context memory after it has been collapsed. Closing Settings restores
+      the main window with its collection, selection and scroll position intact.
+- [ ] Ordinary main-window routes restore sidebar focus; typed Record and History
+      destinations focus the selected detail. Re-selecting an ordinary current route
+      does not steal focus from an edited control.
 - [ ] Floating panels restore focus and do not pass keystrokes into the foreground
       App. No disabled sheet entry is reachable through keyboard or accessibility
       actions.

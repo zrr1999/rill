@@ -5,6 +5,7 @@ struct ContextMemorySettingsView: View {
     @Bindable var memory: ContextMemoryModel
     let workflows: [WorkflowDefinition]
     let language: AppLanguage
+    @Binding var isExpanded: Bool
     @State private var pendingScreen = false
     @State private var pendingMemory = false
     @State private var showConsent = false
@@ -15,7 +16,7 @@ struct ContextMemorySettingsView: View {
     }
 
     var body: some View {
-        DisclosureGroup(text("Context correction & memory", "上下文纠错与记忆")) {
+        DisclosureGroup(text("Context correction & memory", "上下文纠错与记忆"), isExpanded: $isExpanded) {
             Text(text("Speech remains the only content source. References help correct recognition errors.",
                       "语音识别正文是唯一内容主体；参考仅用于纠正识别错误。"))
                 .font(.caption).foregroundStyle(.secondary)
