@@ -45,9 +45,7 @@ extension AppModelTests {
         )
 
         harness.model.runWorkflow(harness.workflow)
-        for _ in 0..<20 where harness.model.isRunning {
-            await Task.yield()
-        }
+        await harness.model.waitForInteractiveWorkflowRun()
 
         let actionCount = await harness.actionLog.snapshot()
         let coordinatorState = await harness.model.sessionCoordinator.currentState()
