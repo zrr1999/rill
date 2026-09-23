@@ -118,6 +118,23 @@ run-specific process/database observations, not estimates from field layouts.
 The fixture starts with 10,000 immutable text Records; it measures the additional
 buffer indexes and encrypted entries without counting payload creation again.
 
+On 2026-09-23, the same host and fixture were measured again with the current
+failure-path fixes and the test runner shown below:
+
+| Operation | P50 | P95 | P99 |
+| --- | ---: | ---: | ---: |
+| Enqueue existing Record | 0.155 | 0.185 | 0.754 |
+| Next projection | 0.004 | 0.005 | 0.005 |
+| Load payload and persist attempt | 0.144 | 0.162 | 0.323 |
+| Commit consumption | 0.116 | 0.141 | 0.270 |
+
+The resident-memory increment was 3,342,336 bytes, and the encrypted database
+increment was 4,767,744 bytes. Two immediate repeat runs measured resident
+increments of 3,063,808 and 1,835,008 bytes and database increments of
+4,767,744 and 4,759,552 bytes, respectively. Their enqueue P95 values were
+0.182 and 0.192 ms. The variation in resident memory across the three runs
+does not establish a buffer regression from the earlier single run.
+
 A separate 24-sample named-pasteboard-to-encrypted-history test on the same machine
 measured baseline P50/P95/max 57.206/61.596/82.824 ms, and updated
 58.864/63.079/63.484 ms on the initial continuous-output implementation
