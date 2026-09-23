@@ -159,6 +159,26 @@ private extension SystemClipboardSnapshot {
 @MainActor
 struct ClipboardCaptureLatencyTests {
   @Test(arguments: [false, true])
+  func slowClipboardReadKeepsItsOriginalInputPosition(advertisesText: Bool) async throws {
+    let (controller, pasteboard, store) = await makeHarness()
+    pasteboard.advertisesTextBeforeData = advertisesText
+    pasteboard.replaceExternally(with: .init(plainText: "", changeCount: 2))
+    let start = ContinuousClock.now
+    await controller.testingPollExternalClipboardIfNeeded(at: start)
+    let speech = try await store.reserveBufferInput(in: RecordBuffer.speechID)
+    _ = try await store.ingest(.init(payload: .text("speech"), provenance: .init(source: .init(kind: .user))), into: [], fulfilling: speech)
+    pasteboard.replaceExternally(with: .init(plainText: "copy", changeCount: 2))
+    await controller.testingPollExternalClipboardIfNeeded(at: start + .milliseconds(100))
+    let first = try await store.beginBufferOutput()
+    #expect(first.record.payload == .text("speech"))
+    try await store.finishBufferOutput(first.entry.id)
+    let second = try await store.beginBufferOutput()
+    #expect(second.record.payload == .text("copy"))
+    try await store.finishBufferOutput(second.entry.id)
+    await controller.stop()
+  }
+
+  @Test(arguments: [false, true])
   func retriesAnUnfinishedCopyWithoutAnotherChangeCount(advertisesText: Bool) async throws {
     let (controller, pasteboard, store) = await makeHarness()
     pasteboard.advertisesTextBeforeData = advertisesText
@@ -564,7 +584,7 @@ private final class ClipboardFocusProbe {
 
 private struct ClipboardLatencyTimeout: Error {}
 
-private actor ClipboardRetryPersistence: RecordGraphPersistenceStore {
+private actor ClipboardRetryPersistence: RecordCatalogPersistenceStore {
   private var hasFailed = false
 
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
@@ -576,9 +596,15 @@ private actor ClipboardRetryPersistence: RecordGraphPersistenceStore {
     return (snapshot.expectedRevision ?? 0) + 1
   }
   func removeRecordGraph() async throws -> RecordGraphRemovalResult { .removed }
+  func loadRecordCatalog() async throws -> RecordCatalogRead? { nil }
+  func loadRecordPayload(_ reference: RecordGraphPersistenceBlobReference) async throws -> Data { throw RecordStoreError.recordUnavailable }
+  func commitRecordCatalog(_ mutation: RecordCatalogMutation) async throws -> Int64 {
+    try await replaceRecordGraph(with: .init(expectedRevision: mutation.expectedRevision, graph: Data(), newPayloadBlobs: [], retainedPayloadBlobReferences: []))
+  }
+
 }
 
-private actor ClipboardBlockingPersistence: RecordGraphPersistenceStore {
+private actor ClipboardBlockingPersistence: RecordCatalogPersistenceStore {
   private var writeStarted = false
   private var writeGate: CheckedContinuation<Void, Never>?
   private var observers: [CheckedContinuation<Void, Never>] = []
@@ -602,6 +628,12 @@ private actor ClipboardBlockingPersistence: RecordGraphPersistenceStore {
     writeGate?.resume()
     writeGate = nil
   }
+  func loadRecordCatalog() async throws -> RecordCatalogRead? { nil }
+  func loadRecordPayload(_ reference: RecordGraphPersistenceBlobReference) async throws -> Data { throw RecordStoreError.recordUnavailable }
+  func commitRecordCatalog(_ mutation: RecordCatalogMutation) async throws -> Int64 {
+    try await replaceRecordGraph(with: .init(expectedRevision: mutation.expectedRevision, graph: Data(), newPayloadBlobs: [], retainedPayloadBlobReferences: []))
+  }
+
 }
 
 final class SystemClipboardCaptureControllerTests: XCTestCase {

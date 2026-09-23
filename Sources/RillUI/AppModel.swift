@@ -327,6 +327,13 @@ public final class AppModel {
     didSet { handleClipboardCaptureEnabledChange(from: oldValue) }
   }
   public internal(set) var clipboardCapturePreferenceRevision: UInt64 = 0
+  public var bufferOutputHotkeyBinding: HotkeyBindingDescriptor = .keyboardShortcut(.outputNext) {
+    didSet {
+      guard oldValue != bufferOutputHotkeyBinding else { return }
+      persistStringSetting(bufferOutputHotkeyBinding.storageString, for: .bufferOutputHotkey)
+      updateBufferOutputHotkeyAction(bufferOutputHotkeyBinding)
+    }
+  }
   public var recordPanelHotkeyBinding: HotkeyBindingDescriptor {
     didSet { handleRecordPanelHotkeyChange(from: oldValue) }
   }
@@ -778,6 +785,7 @@ public final class AppModel {
       )
     }
   var stopSpeechPlaybackAction: @MainActor () -> Bool = { false }
+  var updateBufferOutputHotkeyAction: (HotkeyBindingDescriptor) -> Void = { _ in }
   var updateRecordPanelHotkeyAction: (HotkeyBindingDescriptor) -> Void = { _ in }
   var updateLiveSubtitlePanelAction: @MainActor (LiveSubtitleSnapshot?, AppLanguage) -> Void = {
     _, _ in

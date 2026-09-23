@@ -65,6 +65,7 @@ public enum AppSettingKey: String, Codable, Sendable, Equatable {
   case recordHistoryVisibility = "record.history-visibility"
   case legacyClipboardHistoryVisibility = "clipboard.history-visibility"
   case recordPanelHotkey = "record.panel-hotkey"
+  case bufferOutputHotkey = "record.output-next-hotkey"
   case legacyClipboardPanelHotkey = "clipboard.panel-hotkey"
 }
 

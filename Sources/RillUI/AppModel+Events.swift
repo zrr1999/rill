@@ -365,6 +365,8 @@ extension AppModel {
                 english: presentation.english,
                 simplifiedChinese: presentation.simplifiedChinese
             )
+        case .recordBufferOutputRequested:
+            recordWorkspace.buffers.outputAction(nil)
         case .recordPanelRequested:
             showRecordPanel()
         case .runHistoryUpdated(let update):

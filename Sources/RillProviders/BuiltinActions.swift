@@ -14,7 +14,8 @@ public struct RecordStoreAction: OutputAction {
         _ = try await ingestion.ingest(
             RecordCaptureEnvelope(
                 draft: record,
-                requestedCollectionIDs: context.workflow.targetRecordCollectionIDs
+                requestedCollectionIDs: context.workflow.targetRecordCollectionIDs,
+                bufferEntryID: context.bufferEntryID
             )
         )
         return .storedRecord

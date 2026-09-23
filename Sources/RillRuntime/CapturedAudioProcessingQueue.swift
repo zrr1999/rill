@@ -34,6 +34,7 @@ public actor CapturedAudioProcessingQueue {
         let triggerEvent: WorkflowTriggerEvent?
         let deferredCapture: DeferredCapturedAudio
         let enqueuedAt: Date
+        let bufferReservation: Task<BufferInputReservation?, Error>
 
         var runID: UUID { authorizationLease.runID }
         var workflow: WorkflowDefinition { authorizationLease.workflow }
@@ -53,6 +54,7 @@ public actor CapturedAudioProcessingQueue {
     private let ownershipTransferObserver: @Sendable (UUID) async -> Void
 
     private var pendingJobs: [Job] = []
+    private var lastBufferObservation: Task<BufferInputReservation?, Error>?
     private var activeJob: Job?
     private var drainTask: Task<Void, Never>?
     private var drainGeneration: UInt64 = 0
@@ -158,14 +160,23 @@ public actor CapturedAudioProcessingQueue {
 
         // No suspension is permitted between the synchronous lease transition
         // above and this append. At every instant exactly one owner exists.
+        let previousObservation = lastBufferObservation
+        let bufferReservation = Task {
+            _ = try? await previousObservation?.value
+            return try await sessionCoordinator.observeCollectedSpeech(runID: runID, workflow: workflow)
+        }
+        lastBufferObservation = bufferReservation
         pendingJobs.append(
             Job(
                 authorizationLease: authorizationLease,
                 triggerEvent: triggerEvent,
                 deferredCapture: deferredCapture,
-                enqueuedAt: Date()
+                enqueuedAt: Date(),
+                bufferReservation: bufferReservation
             )
         )
+        // Assign input order before acknowledging submission, without waiting for disk.
+        _ = try? await bufferReservation.value
         await ownershipTransferObserver(runID)
         await recordDiagnostic(
             event: "audio-processing.enqueued",
@@ -237,6 +248,10 @@ public actor CapturedAudioProcessingQueue {
             activeJob.deferredCapture.cancel()
         }
         activeDrainTask?.cancel()
+        for job in abandonedJobs {
+            _ = try? await job.bufferReservation.value
+            await sessionCoordinator.finishCollectedSpeech(runID: job.runID)
+        }
         if let activeDrainTask {
             await activeDrainTask.value
         }
@@ -274,6 +289,10 @@ public actor CapturedAudioProcessingQueue {
             activeDrainTask?.cancel()
         } else {
             activeDrainTask = nil
+        }
+        for job in abandonedJobs {
+            _ = try? await job.bufferReservation.value
+            await sessionCoordinator.finishCollectedSpeech(runID: job.runID)
         }
         if let activeDrainTask {
             await activeDrainTask.value
@@ -456,6 +475,9 @@ public actor CapturedAudioProcessingQueue {
             var captureResolutionStarted = false
             do {
                 try Task.checkCancellation()
+                let reservation = try await job.bufferReservation.value
+                try await reservation?.committed.value
+                try Task.checkCancellation()
                 let authorizationClaim = try await job.authorizationLease.claim(
                     triggerEvent: job.triggerEvent
                 )
@@ -529,6 +551,8 @@ public actor CapturedAudioProcessingQueue {
                 }
             }
 
+            _ = try? await job.bufferReservation.value
+            await sessionCoordinator.finishCollectedSpeech(runID: job.runID)
             if let capturedAudioForCleanup {
                 await removeManagedTemporaryFile(from: capturedAudioForCleanup, for: job)
             }

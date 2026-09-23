@@ -393,7 +393,7 @@ public actor CursorTextPreviewCoordinator {
     }
 }
 
-private final class SystemCursorTextPreviewTarget: CursorTextPreviewTarget, @unchecked Sendable {
+final class SystemCursorTextPreviewTarget: CursorTextPreviewTarget, @unchecked Sendable {
     private let element: AXUIElement
     private let processIdentifier: pid_t
 
