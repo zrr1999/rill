@@ -56,6 +56,7 @@ extension L10n {
             switch section {
             case .permissions: .settingsSummaryPermissions
             case .speech: .settingsSummarySpeech
+            case .providers: .settingsSummaryProviders
             case .input: .settingsSummaryInput
             case .voiceAssistant: .settingsSummaryVoiceAssistant
             case .recordPanel: .settingsSummaryRecordPanel
@@ -607,6 +608,9 @@ extension L10n {
             english: "Clipboard capture and panel shortcut",
             simplifiedChinese: "剪贴板捕获与面板快捷键"
         ),
+        .settingsSummaryProviders: .init(
+            english: "LLM and Jev API keys", simplifiedChinese: "LLM 与 Jev 的 API 配置"
+        ),
         .settingsSummarySpeech: .init(
             english: "Provider configuration and available model pool",
             simplifiedChinese: "提供商配置与可用模型池"
@@ -850,6 +854,7 @@ enum SettingsTextKey: String, CaseIterable, Sendable {
     case settingsSummaryPrivacy
     case settingsSummaryRecordPanel
     case settingsSummarySpeech
+    case settingsSummaryProviders
     case settingsSummaryStorage
     case settingsSummaryVocabulary
     case settingsSummaryVoiceAssistant

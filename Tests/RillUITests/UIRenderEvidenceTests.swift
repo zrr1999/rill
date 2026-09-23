@@ -70,6 +70,26 @@ final class UIRenderEvidenceTests: XCTestCase {
         await workspace.shutdown()
     }
 
+    func testRenderAPIProviderSettings() async throws {
+        guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+            throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+        }
+        let output = URL(fileURLWithPath: directory, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let fixture = JevPanelFixture()
+        let workspace = RecordWorkspaceModel(store: fixture.store, cloudRanking: fixture.service)
+        let model = makeHarness(recordWorkspace: workspace).model
+        for language in AppLanguage.allCases {
+            model.setInterfaceLanguage(language)
+            for dark in [false, true] {
+                model.showSettings(.providers)
+                try await render(SettingsView(model: model, pane: .voice), size: NSSize(width: 760, height: 1100),
+                    dark: dark, to: output.appendingPathComponent("api-providers-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+            }
+        }
+        await workspace.shutdown()
+    }
+
     private func seedRecords(_ store: RecordStore) async throws -> [(String, RecordID)] {
         let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 480, pixelsHigh: 280,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))

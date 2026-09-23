@@ -240,10 +240,6 @@ extension SettingsView {
       )
       .disabled(model.hasUnavailableScalarSettings(in: .localSpeech))
 
-      Divider()
-
-      llmProviderSettingsSection
-
       Text(UIStrings.text(.settingsSpeechEngineDescription, language: model.language))
         .font(.caption)
         .foregroundStyle(.secondary)

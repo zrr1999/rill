@@ -4,6 +4,7 @@ import SwiftUI
 public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
     case permissions
     case speech
+    case providers
     case input
     case voiceAssistant
     case recordPanel
@@ -32,6 +33,8 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
             L10n.privacyText(.title, language: language)
         case .storage:
             L10n.historySettingsText(.title, language: language)
+        case .providers:
+            L10n.jev(.providersTitle, language: language)
         case .speech:
             UIStrings.text(.settingsSpeechEngine, language: language)
         case .vocabulary:
@@ -53,6 +56,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         case .privacy: RillSystemSymbol.handRaised.rawValue
         case .storage: RillSystemSymbol.externaldrive.rawValue
         case .speech: RillSystemSymbol.waveformPathEcg.rawValue
+        case .providers: RillSystemSymbol.globe.rawValue
         case .vocabulary: RillSystemSymbol.textBadgeCheckmark.rawValue
         case .input: RillSystemSymbol.micBadgePlus.rawValue
         case .voiceAssistant: RillSystemSymbol.waveformBadgeMic.rawValue
@@ -79,7 +83,9 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         case .storage:
             "storage retention history clear recovery data 保留 历史 清理 恢复 本地 数据"
         case .speech:
-            "providers speech stt tts mlx qwen openai llm api key model local 提供商 语音 识别 合成 音色 模型 大模型 本地 密钥"
+            "speech stt tts mlx qwen model local 语音 识别 合成 音色 模型 本地"
+        case .providers:
+            "providers openai deepseek llm api key jev typesafe 提供商 大模型 密钥 排序 润色"
         case .vocabulary:
             "vocabulary hotword mapping replacement keyterm 词汇 热词 映射 替换"
         case .input:
@@ -97,7 +103,7 @@ public enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .general: [.language]
         case .input: [.input, .recordPanel]
-        case .voice: [.speech, .voiceAssistant]
+        case .voice: [.speech, .providers, .voiceAssistant]
         case .vocabulary: [.vocabulary, .contextMemory]
         case .privacy: [.permissions, .privacy]
         case .data: [.storage, .diagnostics]
@@ -122,7 +128,7 @@ extension SettingsSection {
         switch self {
         case .language: .general
         case .input, .recordPanel: .input
-        case .speech, .voiceAssistant: .voice
+        case .speech, .providers, .voiceAssistant: .voice
         case .vocabulary, .contextMemory: .vocabulary
         case .permissions, .privacy: .privacy
         case .storage, .diagnostics: .data

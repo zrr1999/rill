@@ -5,24 +5,23 @@ struct RecordJevSheet: View {
   @Bindable var model: RecordJevPanelModel
   let language: AppLanguage
   let onSelect: (RecordID) -> Void
-  @State private var apiKey = ""
-  @FocusState private var isEditingKey: Bool
+  let onConfigure: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: RillSpacing.row) {
       Text(text(.title)).font(.title2.weight(.semibold))
       Text(text(.disclosure)).font(.callout).foregroundStyle(.secondary)
       HStack {
-        SecureField("TypeSafe API Key", text: $apiKey)
-          .textFieldStyle(.roundedBorder).focused($isEditingKey).accessibilityIdentifier("records.jev-key")
-        Button(text(.saveKey)) {
-          isEditingKey = false
-          model.setKey(apiKey.trimmingCharacters(in: .whitespacesAndNewlines))
-          apiKey = ""
-        }.disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        Button(text(.clearKey)) { model.setKey(""); apiKey = "" }.disabled(!model.isConfigured)
-      }.disabled(model.isWorking)
-      Text(text(model.isConfigured ? .keyReady : .keyNotice)).font(.caption).foregroundStyle(.secondary)
+        Text(text(model.isConfigured ? .keyReady : .configureNotice))
+          .font(.caption).foregroundStyle(.secondary)
+        Spacer()
+        Button(text(.openSettings)) {
+          model.invalidate()
+          onConfigure()
+        }
+        .disabled(model.isWorking)
+        .accessibilityIdentifier("records.jev-settings")
+      }
       if let review = model.review {
         ScrollView {
           VStack(alignment: .leading, spacing: RillSpacing.row) {
@@ -64,7 +63,7 @@ struct RecordJevSheet: View {
         Spacer()
         Button(text(.close)) { model.invalidate() }.keyboardShortcut(.cancelAction)
         if model.state == .review {
-          Button(text(.send)) { isEditingKey = false; apiKey = ""; model.confirm() }
+          Button(text(.send)) { model.confirm() }
             .disabled(!model.isConfigured).buttonStyle(.borderedProminent)
             .accessibilityIdentifier("records.jev-send")
         }
@@ -72,7 +71,7 @@ struct RecordJevSheet: View {
     }
     .padding(RillSpacing.panel).frame(width: 540)
     .background(Color(nsColor: .windowBackgroundColor))
-    .onDisappear { apiKey = ""; model.invalidate() }
+    .onDisappear { model.invalidate() }
   }
 
   private func text(_ key: JevText) -> String { L10n.jev(key, language: language) }
