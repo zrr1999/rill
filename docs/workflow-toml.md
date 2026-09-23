@@ -149,6 +149,29 @@ resolution belong at the root. `prompt` belongs to generation/snippet steps;
 `uncertainty` belongs to resolution and includes `mode`, `confidence_threshold`
 and `timeout_seconds`. Optional step `description` is for the author.
 
+Optional `record_duration` selects measured milliseconds for that process step.
+It defaults to `true` for `recognize-speech`, `llm-rewrite` and `llm-answer`, and
+`false` for other kinds. The setting also works in `then` and `else` steps. It
+controls both content-free receipts and text history; execution, text retention
+and privacy authorization are unchanged. Unexecuted branches have no measurement.
+Failed, cancelled and fallback calls retain elapsed time when timing is enabled.
+
+```toml
+[[process]]
+id = "polish"
+kind = "llm-rewrite"
+prompt = "Correct transcription errors while preserving meaning."
+record_duration = true
+```
+
+Recognition timing covers the final recognition executor; LLM timing covers the
+transformer call, including request preparation and response parsing. Neither
+includes recording, queueing or delivery. Candidate resolution, when opted in,
+measures its own wait. The run card separately shows captured audio length and
+output-action timing; older records without measurements show “Not recorded”.
+These are input diagnostics, not a workflow profiling requirement for ordinary
+speech use.
+
 An `if` requires `condition` and may contain `then` and `else` step arrays. The
 selected branch receives the current text and returns the text used by the next
 step. The other branch is not executed. There are at most 256 process steps,

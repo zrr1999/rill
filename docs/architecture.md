@@ -4,6 +4,18 @@ Rill separates domain contracts, runtime decisions, external effects, and UI
 state. `Package.swift` defines the module graph; `AppBootstrap` assembles the
 concrete implementations.
 
+Speech recognition and text input are the product capabilities. Workflows are a
+reusable composition layer for those capabilities; they do not own microphone,
+input-method composition, or model resource lifetimes. Future input-method entry
+points should reuse vocabulary, transformation and delivery contracts while
+retaining their own input lifecycle.
+
+Run cards join content-free receipts with optional text history and run-scoped
+diagnostics. Recording length comes from captured audio; selected process steps
+and output actions retain monotonic elapsed milliseconds. A step's TOML
+`record_duration` controls measurement in both receipts and text history. Missing
+measurements remain absent, including older receipts and unexecuted branches.
+
 ## Module dependencies
 
 Arrows point from a consumer to its dependencies.

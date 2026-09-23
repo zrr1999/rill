@@ -89,8 +89,8 @@ public struct WorkflowRunStageSnapshot: Codable, Sendable, Equatable {
 
 /// A privacy-bounded duration classification used by persisted run receipts.
 ///
-/// Overall run and delivery durations use these buckets. Processing steps may
-/// additionally retain their measured duration in milliseconds.
+/// Overall runs retain buckets; selected processing steps and output actions
+/// can additionally retain their measured duration in milliseconds.
 public enum WorkflowRunDurationBucket: String, Codable, Sendable, Equatable, CaseIterable {
     case under250ms
     case ms250To999
@@ -285,15 +285,18 @@ public struct WorkflowActionReceipt: Codable, Sendable, Equatable {
     public let actionIndex: Int
     public let result: WorkflowActionResultCode
     public let duration: WorkflowRunDurationBucket
+    public let durationMilliseconds: UInt64?
 
     public init(
         actionIndex: Int,
         result: WorkflowActionResultCode,
-        duration: WorkflowRunDurationBucket
+        duration: WorkflowRunDurationBucket,
+        durationMilliseconds: UInt64? = nil
     ) {
         self.actionIndex = actionIndex
         self.result = result
         self.duration = duration
+        self.durationMilliseconds = durationMilliseconds
     }
 }
 
@@ -327,9 +330,9 @@ public enum WorkflowRunReceiptValidationError: Error, Sendable, Equatable {
 ///
 /// The receipt deliberately excludes workflow names, component identifiers,
 /// source metadata, text statistics, free-form failures, paths, endpoints, and
-/// exact overall durations. Individual processing steps can retain measured
-/// milliseconds. `timestamp` is the terminal timeline coordinate; no recording
-/// start timestamp is retained.
+/// exact overall durations. Recording length, selected processing steps and
+/// output actions can retain measured milliseconds. `timestamp` is the terminal
+/// timeline coordinate; no recording start timestamp is retained.
 public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
     public static let currentSchemaVersion = 2
     public static let maximumActionDetails = 32
@@ -344,6 +347,7 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
     public let stepDetails: [WorkflowStepReceipt]
     public let actionDetails: [WorkflowActionReceipt]
     public let detailsTruncated: Bool
+    public let recordingDurationMilliseconds: UInt64?
 
     public var id: UUID { runID }
     public var outcome: WorkflowRunOutcome { termination.outcome }
@@ -357,7 +361,8 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
         termination: WorkflowRunTermination,
         stepDetails: [WorkflowStepReceipt] = [],
         actionDetails: [WorkflowActionReceipt] = [],
-        detailsTruncated: Bool = false
+        detailsTruncated: Bool = false,
+        recordingDurationMilliseconds: UInt64? = nil
     ) throws {
         try self.init(
             schemaVersion: Self.currentSchemaVersion,
@@ -369,7 +374,8 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
             termination: termination,
             stepDetails: stepDetails,
             actionDetails: actionDetails,
-            detailsTruncated: detailsTruncated
+            detailsTruncated: detailsTruncated,
+            recordingDurationMilliseconds: recordingDurationMilliseconds
         )
     }
 
@@ -383,7 +389,8 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
         termination: WorkflowRunTermination,
         stepDetails: [WorkflowStepReceipt],
         actionDetails: [WorkflowActionReceipt],
-        detailsTruncated: Bool
+        detailsTruncated: Bool,
+        recordingDurationMilliseconds: UInt64?
     ) throws {
         guard schemaVersion == 1 || schemaVersion == Self.currentSchemaVersion else {
             throw WorkflowRunReceiptValidationError.unsupportedSchemaVersion(schemaVersion)
@@ -416,6 +423,7 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
         self.termination = termination
         self.actionDetails = actionDetails
         self.detailsTruncated = detailsTruncated
+        self.recordingDurationMilliseconds = recordingDurationMilliseconds
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -429,6 +437,7 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
         case stepDetails
         case actionDetails
         case detailsTruncated
+        case recordingDurationMilliseconds
     }
 
     public init(from decoder: any Decoder) throws {
@@ -443,7 +452,8 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
             termination: container.decode(WorkflowRunTermination.self, forKey: .termination),
             stepDetails: container.decodeIfPresent([WorkflowStepReceipt].self, forKey: .stepDetails) ?? [],
             actionDetails: container.decode([WorkflowActionReceipt].self, forKey: .actionDetails),
-            detailsTruncated: container.decode(Bool.self, forKey: .detailsTruncated)
+            detailsTruncated: container.decode(Bool.self, forKey: .detailsTruncated),
+            recordingDurationMilliseconds: container.decodeIfPresent(UInt64.self, forKey: .recordingDurationMilliseconds)
         )
     }
 
@@ -459,6 +469,7 @@ public struct WorkflowRunReceipt: Identifiable, Codable, Sendable, Equatable {
         if schemaVersion >= 2 { try container.encode(stepDetails, forKey: .stepDetails) }
         try container.encode(actionDetails, forKey: .actionDetails)
         try container.encode(detailsTruncated, forKey: .detailsTruncated)
+        try container.encodeIfPresent(recordingDurationMilliseconds, forKey: .recordingDurationMilliseconds)
     }
 }
 

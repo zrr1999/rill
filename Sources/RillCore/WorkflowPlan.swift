@@ -243,17 +243,24 @@ public struct WorkflowProcessStep: Identifiable, Codable, Sendable, Equatable {
     public var kind: WorkflowProcessStepKind
     public var prompt: String?
     public var uncertaintyPolicy: UncertaintyPolicy?
+    public var recordDuration: Bool?
+
+    public var recordsDuration: Bool {
+        recordDuration ?? [.recognizeSpeech, .llmRewrite, .llmAnswer].contains(kind)
+    }
 
     public init(
         id: UUID = UUID(),
         kind: WorkflowProcessStepKind,
         prompt: String? = nil,
-        uncertaintyPolicy: UncertaintyPolicy? = nil
+        uncertaintyPolicy: UncertaintyPolicy? = nil,
+        recordDuration: Bool? = nil
     ) {
         self.id = id
         self.kind = kind
         self.prompt = prompt
         self.uncertaintyPolicy = uncertaintyPolicy
+        self.recordDuration = recordDuration
     }
 
     public init(_ step: PostProcessStep) {

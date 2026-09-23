@@ -48,6 +48,28 @@ struct WorkflowDocumentCodecTests {
         "user.team" = "design"
         """
 
+    @Test func timingSelectionRoundTripsAndDefaultsToSpeechAndLanguageModelCalls() throws {
+        let codec = WorkflowDocumentCodec()
+        let source = Self.source
+            .replacingOccurrences(of: "kind = \"normalize-whitespace\"", with: "kind = \"normalize-whitespace\"\nrecord_duration = true")
+            .replacingOccurrences(of: "kind = \"llm-answer\"", with: "kind = \"llm-answer\"\nrecord_duration = false")
+        let document = try codec.decode(source)
+        let steps = document.workflow.plan.process.allSteps
+        #expect(steps.map(\.recordsDuration) == [false, true, false])
+        #expect(steps.map(\.recordDuration) == [nil, true, false])
+        #expect(try codec.decode(codec.encode(document)) == document)
+        #expect(WorkflowProcessStep(kind: .recognizeSpeech).recordsDuration)
+        #expect(WorkflowProcessStep(kind: .llmRewrite).recordsDuration)
+        #expect(WorkflowProcessStep(kind: .llmAnswer).recordsDuration)
+        #expect(!WorkflowProcessStep(kind: .applyVocabulary).recordsDuration)
+    }
+
+    @Test func rejectsNonBooleanTimingSelection() {
+        let source = Self.source.replacingOccurrences(
+            of: "kind = \"normalize-whitespace\"", with: "kind = \"normalize-whitespace\"\nrecord_duration = \"true\"")
+        #expect(throws: (any Error).self) { try WorkflowDocumentCodec().decode(source) }
+    }
+
     @Test func roundTripPreservesBranchesOrderAndMetadata() throws {
         let codec = WorkflowDocumentCodec()
         let document = try codec.decode(Self.source)

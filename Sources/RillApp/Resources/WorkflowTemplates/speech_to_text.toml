@@ -26,6 +26,7 @@ streaming_profile = "realtime"
 [[process]]
 id = "D0000000-0000-4000-8000-000000000101"
 kind = "recognize-speech"
+record_duration = true
 
 [[process]]
 id = "D0000000-0000-4000-8000-000000000102"

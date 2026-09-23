@@ -113,6 +113,21 @@ extension AppModel {
     loadDiagnostics()
   }
 
+  func diagnostics(for runID: UUID) async throws -> [DiagnosticEvent] {
+    let generation = diagnosticsLoadGeneration
+    let events: [DiagnosticEvent]
+    if let diagnosticRepository {
+      events = try await diagnosticRepository.events(matching: DiagnosticQuery(runID: runID, limit: 20))
+    } else {
+      events = Array(Self.sortedDiagnosticEvents(diagnosticEvents.filter { $0.runID == runID }).prefix(20))
+    }
+    try Task.checkCancellation()
+    guard !hasBegunApplicationShutdown, diagnosticsLoadGeneration == generation else {
+      throw CancellationError()
+    }
+    return events.map(DiagnosticEventSanitizer.sanitize)
+  }
+
   func applyDiagnosticEvents(_ events: [DiagnosticEvent]) {
     guard !events.isEmpty else { return }
     diagnosticEvents = Array(
