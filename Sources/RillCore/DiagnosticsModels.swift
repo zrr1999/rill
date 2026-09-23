@@ -102,3 +102,11 @@ public struct DiagnosticQuery: Sendable, Equatable {
         self.limit = limit
     }
 }
+
+/// Monotonic durations shared by content-free diagnostic producers.
+public enum DiagnosticTiming {
+    public static func milliseconds(since start: ContinuousClock.Instant) -> String {
+        let parts = start.duration(to: .now).components
+        return String(max(0, parts.seconds * 1_000 + parts.attoseconds / 1_000_000_000_000_000))
+    }
+}

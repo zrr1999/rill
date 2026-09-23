@@ -4,6 +4,8 @@ import Foundation
 import RillCore
 
 public actor TextInjectionEngine {
+    @TaskLocal private static var diagnosticRunID: UUID?
+
     static let maximumKeyboardEventLength = 20
     private static let clipboardSettleDelay: Duration = .milliseconds(100)
     private static let focusRestoreSettleDelay: Duration = .milliseconds(180)
@@ -197,6 +199,7 @@ public actor TextInjectionEngine {
         var transaction: SystemClipboardPort.TemporaryWriteTransaction
         var expectedChangeCount: Int
         var deliveryCompleted: Bool
+        var runID: UUID?
     }
 
     private var isTemporaryClipboardTransactionActive = false
@@ -215,6 +218,17 @@ public actor TextInjectionEngine {
     }
 
     public func inject(
+        _ text: String,
+        method: InjectionMethod = .clipboardPaste,
+        targetFocus: FocusSnapshot? = nil,
+        runID: UUID? = nil
+    ) async throws {
+        try await Self.$diagnosticRunID.withValue(runID) {
+            try await injectText(text, method: method, targetFocus: targetFocus)
+        }
+    }
+
+    private func injectText(
         _ text: String,
         method: InjectionMethod = .clipboardPaste,
         targetFocus: FocusSnapshot? = nil
@@ -278,6 +292,16 @@ public actor TextInjectionEngine {
     }
 
     public func injectClipboardSnapshot(
+        _ snapshot: SystemClipboardSnapshot,
+        targetFocus: FocusSnapshot? = nil,
+        runID: UUID? = nil
+    ) async throws {
+        try await Self.$diagnosticRunID.withValue(runID) {
+            try await injectSnapshot(snapshot, targetFocus: targetFocus)
+        }
+    }
+
+    private func injectSnapshot(
         _ snapshot: SystemClipboardSnapshot,
         targetFocus: FocusSnapshot? = nil
     ) async throws {
@@ -406,11 +430,21 @@ public actor TextInjectionEngine {
             ]
         )
         try await verifyTargetFocus(target)
+        let dispatchStart = ContinuousClock.now
         try await simulatePaste()
-        try? await Task.sleep(for: Self.postPasteSettleDelay)
+        let settleStart = ContinuousClock.now
+        await recordDiagnostic(
+            event: "clipboard.inject.paste.posted",
+            message: "Paste command posted; target consumption is not observed.",
+            metadata: ["pasteDispatchMillis": DiagnosticTiming.milliseconds(since: dispatchStart)]
+        )
+        // Diagnostic persistence uses the same protection window rather than
+        // adding another delay before the full post-paste wait.
+        try? await Task.sleep(until: settleStart.advanced(by: Self.postPasteSettleDelay), clock: .continuous)
         await recordDiagnostic(
             event: "clipboard.inject.paste.end",
-            message: "Finished posting Command-V to the current frontmost app."
+            message: "Finished waiting after the paste command.",
+            metadata: ["pasteSettleMillis": DiagnosticTiming.milliseconds(since: settleStart)]
         )
         return true
     }
@@ -500,7 +534,8 @@ public actor TextInjectionEngine {
         pendingClipboardRecovery = PendingClipboardRecovery(
             transaction: transaction,
             expectedChangeCount: retryChangeCount,
-            deliveryCompleted: reason.deliveryCompleted
+            deliveryCompleted: reason.deliveryCompleted,
+            runID: Self.diagnosticRunID
         )
         let retryOutcome = await attemptClipboardRestore(
             transaction,
@@ -522,12 +557,14 @@ public actor TextInjectionEngine {
         let reason: SystemClipboardRestoreReason = pendingClipboardRecovery.deliveryCompleted
             ? .pasteFinished
             : .pasteFailed
-        let outcome = await attemptClipboardRestore(
-            pendingClipboardRecovery.transaction,
-            expectedChangeCount: pendingClipboardRecovery.expectedChangeCount,
-            reason: reason,
-            isRetry: true
-        )
+        let outcome = await Self.$diagnosticRunID.withValue(pendingClipboardRecovery.runID) {
+            await attemptClipboardRestore(
+                pendingClipboardRecovery.transaction,
+                expectedChangeCount: pendingClipboardRecovery.expectedChangeCount,
+                reason: reason,
+                isRetry: true
+            )
+        }
         switch outcome {
         case .restored, .skippedChangeCount:
             self.pendingClipboardRecovery = nil
@@ -543,6 +580,7 @@ public actor TextInjectionEngine {
         reason: SystemClipboardRestoreReason,
         isRetry: Bool
     ) async -> SystemClipboardPort.TemporaryRestoreOutcome {
+        let restoreStart = ContinuousClock.now
         let outcome = await temporaryClipboardRestorer(transaction, expectedChangeCount)
         let message: String
         let outcomeName: String
@@ -571,6 +609,7 @@ public actor TextInjectionEngine {
             metadata["deliveryCompleted"] = String(reason.deliveryCompleted)
             metadata["retrySafe"] = String(!reason.deliveryCompleted)
         }
+        metadata["durationMillis"] = DiagnosticTiming.milliseconds(since: restoreStart)
         if isRetry {
             metadata["restoreAttempt"] = "retry"
         }
@@ -716,6 +755,7 @@ public actor TextInjectionEngine {
         guard let diagnosticReporter else { return }
         await diagnosticReporter(
             DiagnosticEvent(
+                runID: Self.diagnosticRunID,
                 subsystem: .systemClipboard,
                 level: level,
                 event: event,

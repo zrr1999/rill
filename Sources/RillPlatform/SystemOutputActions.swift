@@ -73,7 +73,7 @@ public struct FocusedApplicationInsertAction: OutputAction {
     do {
       switch record.payload {
       case .text(let text):
-        try await engine.inject(text, targetFocus: context.contextSnapshot.focus)
+        try await engine.inject(text, targetFocus: context.contextSnapshot.focus, runID: context.runID)
       case .image(let data):
         try await engine.injectClipboardSnapshot(
           SystemClipboardSnapshot(
@@ -82,7 +82,8 @@ public struct FocusedApplicationInsertAction: OutputAction {
             changeCount: 0,
             captureTags: record.provenance.captureTags
           ),
-          targetFocus: context.contextSnapshot.focus
+          targetFocus: context.contextSnapshot.focus,
+          runID: context.runID
         )
       case .files(let files):
         try await engine.injectClipboardSnapshot(
@@ -92,7 +93,8 @@ public struct FocusedApplicationInsertAction: OutputAction {
             changeCount: 0,
             captureTags: record.provenance.captureTags
           ),
-          targetFocus: context.contextSnapshot.focus
+          targetFocus: context.contextSnapshot.focus,
+          runID: context.runID
         )
       }
     } catch let error as TextInjectionEngine.InjectionError

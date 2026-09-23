@@ -53,7 +53,8 @@ struct WorkflowRunDiagnostics: Sendable {
     runID: UUID,
     workflow: WorkflowPresentation,
     actionID: String,
-    result: ActionResult
+    result: ActionResult,
+    durationMilliseconds: String? = nil
   ) async {
     guard let diagnostics else { return }
     await diagnostics.record(
@@ -67,7 +68,7 @@ struct WorkflowRunDiagnostics: Sendable {
           "workflow": workflow.fallbackName,
           "actionID": actionID,
           "resultCode": diagnosticResultCode(for: result),
-        ]
+        ].merging(durationMilliseconds.map { ["durationMillis": $0] } ?? [:]) { _, new in new }
       )
     )
   }

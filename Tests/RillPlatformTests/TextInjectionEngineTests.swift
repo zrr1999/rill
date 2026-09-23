@@ -4,6 +4,35 @@ import XCTest
 @testable import RillPlatform
 
 final class TextInjectionEngineTests: XCTestCase {
+    func testPasteDiagnosticsPreserveRunIdentityAndSeparateDispatchFromRestore() async throws {
+        let pasteboard = await makePasteboard()
+        _ = await pasteboard.writeSnapshot(SystemClipboardSnapshot(plainText: "original", changeCount: 0))
+        let probe = TextInjectionDiagnosticProbe()
+        let runID = UUID()
+        let engine = TextInjectionEngine(
+            pasteboard: pasteboard, accessibilityChecker: { true },
+            diagnosticReporter: { await probe.record($0) },
+            pasteCommandSender: { true },
+            temporaryClipboardRestorer: { transaction, expected in
+                let events = await probe.snapshot()
+                XCTAssertTrue(events.contains { $0.event == "clipboard.inject.paste.posted" })
+                XCTAssertTrue(events.contains { $0.event == "clipboard.inject.paste.end" })
+                return await pasteboard.restore(transaction, ifChangeCountIs: expected)
+            }
+        )
+        try await engine.inject("replacement", runID: runID)
+        let events = await probe.snapshot()
+        XCTAssertFalse(events.isEmpty)
+        XCTAssertTrue(events.allSatisfy { $0.runID == runID })
+        let posted = try XCTUnwrap(events.first { $0.event == "clipboard.inject.paste.posted" })
+        let restored = try XCTUnwrap(events.first { $0.event == "clipboard.inject.restore" })
+        XCTAssertNotNil(posted.metadata["pasteDispatchMillis"].flatMap(Int.init))
+        XCTAssertNotNil(restored.metadata["durationMillis"].flatMap(Int.init))
+        let original = await pasteboard.currentSnapshot()
+        XCTAssertEqual(original.plainText, "original")
+        XCTAssertEqual(DiagnosticEventSanitizer.sanitize(posted).event, posted.event)
+    }
+
     func testInjectFailsWhenAccessibilityPermissionIsMissing() async {
         let pasteboard = await MainActor.run { SystemClipboardPort() }
         let engine = TextInjectionEngine(
@@ -449,7 +478,7 @@ final class TextInjectionEngineTests: XCTestCase {
         XCTAssertEqual(restored, fixture.originalContents)
         XCTAssertEqual(restoreEvent.level, .debug)
         XCTAssertEqual(
-            restoreEvent.metadata,
+            restoreEvent.metadata.filter { $0.key != "durationMillis" },
             [
                 "outcome": "restored",
                 "reason": "paste-finished",
@@ -458,6 +487,7 @@ final class TextInjectionEngineTests: XCTestCase {
     }
 
     func testSuccessfulDeliveryWithRestoreWriteFailureReturnsNonRetryableFixedError() async throws {
+        let runID = UUID()
         let pasteboard = await makePasteboard()
         _ = await pasteboard.writePlainText("original clipboard")
         let diagnostics = TextInjectionDiagnosticProbe()
@@ -478,7 +508,7 @@ final class TextInjectionEngineTests: XCTestCase {
         )
 
         do {
-            try await engine.inject(payloadCanary)
+            try await engine.inject(payloadCanary, runID: runID)
             XCTFail("A failed exact restore after delivery must not report success.")
         } catch let error as TextInjectionEngine.InjectionError {
             XCTAssertEqual(error, .deliveredButClipboardRestorationFailed)
@@ -509,7 +539,7 @@ final class TextInjectionEngineTests: XCTestCase {
         XCTAssertEqual(current.plainText, payloadCanary)
         XCTAssertEqual(restoreEvent.level, .error)
         XCTAssertEqual(
-            restoreEvent.metadata,
+            restoreEvent.metadata.filter { $0.key != "durationMillis" },
             [
                 "deliveryCompleted": "true",
                 "outcome": "write-failed",
@@ -524,7 +554,7 @@ final class TextInjectionEngineTests: XCTestCase {
         })
 
         do {
-            try await engine.inject("new delivery must remain blocked")
+            try await engine.inject("new delivery must remain blocked", runID: UUID())
             XCTFail("Pending clipboard recovery must settle before another delivery starts.")
         } catch let error as TextInjectionEngine.InjectionError {
             XCTAssertEqual(error, .temporaryClipboardTransactionInProgress)
@@ -533,6 +563,8 @@ final class TextInjectionEngineTests: XCTestCase {
         }
         let pasteCountAfterBlockedRecovery = await paste.snapshot()
         XCTAssertEqual(pasteCountAfterBlockedRecovery, 1)
+        let recoveryEvents = await diagnostics.snapshot().filter { $0.event == "clipboard.inject.restore" }
+        XCTAssertTrue(recoveryEvents.allSatisfy { $0.runID == runID })
     }
 
     func testRestoreWriteFailureRetriesWithoutRepeatingDeliveredPaste() async throws {
@@ -681,7 +713,7 @@ final class TextInjectionEngineTests: XCTestCase {
         XCTAssertEqual(current.plainText, "external winner")
         XCTAssertEqual(restoreEvent.level, .debug)
         XCTAssertEqual(
-            restoreEvent.metadata,
+            restoreEvent.metadata.filter { $0.key != "durationMillis" },
             [
                 "outcome": "skipped-change-count",
                 "reason": "paste-finished",
