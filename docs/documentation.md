@@ -31,12 +31,12 @@ just docs
 ## 收录范围
 
 `zensical.toml` 的 `project.nav` 是页面清单，也是导航的唯一配置。
-`project.extra.docs_assets` 列出可下载的许可证、工作流示例与 JSON Schema。
+`project.extra.docs_assets` 列出页面图片，以及可下载的许可证、工作流示例与 JSON Schema。
 构建入口把这些文件按仓库相对路径复制到 `.artifacts/docs/source/`，README 自动成为首页。
 唯一的链接转换是将 `LICENSE` 导出为 `LICENSE.txt` 并调整生成页面中的下载链接，
 避免预览服务器把无扩展名 URL 当作目录；许可证内容不变。不要手工编辑生成目录。
 
-增加页面时，先在仓库维护正文，再加入 `nav`。页面引用的新下载资源加入
+增加页面时，先在仓库维护正文，再加入 `nav`。页面引用的新图片和下载资源加入
 `docs_assets`。代码和工作流配置的链接指向 GitHub 源码，不把源码当站点页面复制。
 研究、计划和历史 QA 记录默认不收录；它们不能证明当前功能已实现或发布验收已通过。
 
