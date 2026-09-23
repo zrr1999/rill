@@ -485,7 +485,7 @@ extension AppModelTests {
             settingsStore: settingsStore,
             localHistoryMaintenance: reloadedMaintenance
         )
-        await waitForHistoryMaintenance(harness)
+        await waitForHistoryMaintenance(reloadedHarness)
 
         XCTAssertEqual(reloadedHarness.model.recordRetentionPeriod, .oneWeek)
         XCTAssertEqual(reloadedHarness.model.runHistoryRetentionPeriod, .thirtyDays)
