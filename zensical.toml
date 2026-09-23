@@ -16,6 +16,7 @@ nav = [
     { "工作流 TOML" = "docs/workflow-toml.md" },
     { "上下文纠错" = "docs/contextual-correction.md" },
     { "界面方向" = "docs/ui-direction.md" },
+    { "图标设计" = "docs/icon-design.md" },
     { "构建性能" = "docs/build-performance.md" },
   ] },
   { "维护" = [
@@ -32,9 +33,10 @@ nav = [
 ]
 
 [project.extra]
-# Sources outside the navigation that must also be available for download.
+# Sources outside the navigation that must also be available in the site.
 docs_assets = [
   "LICENSE",
+  "docs/assets/rill-icon-family.png",
   "docs/examples/conditional-workflow.toml",
   "docs/schemas/workflow-v2.schema.json",
 ]
