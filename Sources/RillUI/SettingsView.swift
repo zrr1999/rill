@@ -353,6 +353,24 @@ extension SettingsView {
 
       Divider()
 
+      Text(model.language == .simplifiedChinese ? "输出下一项" : "Output Next").font(.headline)
+      HotkeyRecorderView(
+        binding: model.bufferOutputHotkeyBinding,
+        language: model.language,
+        beginRecordPanelShortcutRecording: { model.beginRecordPanelShortcutRecording() },
+        endRecordPanelShortcutRecording: { model.endRecordPanelShortcutRecording($0) },
+        commitRecordPanelShortcutRecording: { model.commitRecordPanelShortcutRecording($0, keyCode: $1) },
+        onRecord: { model.setBufferOutputHotkeyShortcut($0) },
+        onReset: { model.setBufferOutputHotkeyShortcut(.outputNext) },
+        commandLabel: model.language == .simplifiedChinese ? "输出下一项快捷键" : "Output Next shortcut",
+        identifier: "settings.output-next-hotkey"
+      )
+      if model.bufferOutputHotkeyBinding == model.recordPanelHotkeyBinding {
+        Text(model.language == .simplifiedChinese ? "快捷键冲突：请修改其中一个绑定。" : "Shortcut conflict: change one binding.")
+          .foregroundStyle(.red)
+      }
+      Divider()
+      Text(model.language == .simplifiedChinese ? "剪贴板面板" : "Clipboard panel").font(.headline)
       HotkeyRecorderView(
         binding: model.recordPanelHotkeyBinding,
         language: model.language,

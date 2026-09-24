@@ -27,6 +27,7 @@ public final class RecordWorkspaceModel {
     public private(set) var errorMessage: String?
     public private(set) var pendingCollectionDeletion: RecordCollectionDeletionImpact?
 
+    public let buffers: RecordBufferModel
     public let cleanup: RecordCleanupModel
     public private(set) var retentionSuggestionCount = 0
     private var collectionDeletionPlan: RecordCleanupPlan?
@@ -43,6 +44,7 @@ public final class RecordWorkspaceModel {
 
     public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, cloudRanking: RecordCloudRanking? = nil) {
         self.store = store
+        buffers = RecordBufferModel(store: store)
         self.semanticSearch = semanticSearch
         jevSettings = cloudRanking.map { JevAPISettingsModel(service: $0) }
         cleanup = RecordCleanupModel(store: store)
@@ -61,6 +63,7 @@ public final class RecordWorkspaceModel {
         searchTask?.cancel()
         await mutationTask?.value
         await cleanup.shutdown()
+        await buffers.shutdown()
         await semanticSearch?.shutdown()
         await jevSettings?.shutdown()
     }
@@ -358,7 +361,12 @@ public final class RecordWorkspaceModel {
     }
 
     public func makeQuickPanelModel() -> RecordQuickPanelModel {
-        RecordQuickPanelModel(store: store, semanticSearch: semanticSearch, jevSettings: jevSettings)
+        RecordQuickPanelModel(
+            store: store,
+            semanticSearch: semanticSearch,
+            jevSettings: jevSettings,
+            buffers: buffers
+        )
     }
 
     public func replaceText(

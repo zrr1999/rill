@@ -89,6 +89,7 @@ public enum ScalarSettingsDomain: String, CaseIterable, Identifiable, Sendable, 
         .systemClipboardCaptureEnabled,
         .recordHistoryVisibility,
         .recordPanelHotkey,
+        .bufferOutputHotkey,
       ]
     case .speechRoute:
       [.preferredSpeechEngine, .ttsModel]
@@ -238,6 +239,7 @@ struct StoredAppSettingsSnapshot: Sendable {
   let workflowEnabledStates: [UUID: Bool]
   let systemClipboardCaptureEnabled: String?
   let recordHistoryVisibility: String?
+  let bufferOutputHotkey: String?
   let recordPanelHotkey: String?
   let preferredSpeechEngine: String?
   let ttsModel: String?
@@ -818,6 +820,10 @@ extension AppModel {
       recordHistoryVisibility = visibility
     }
 
+    if shouldApplyStoredSetting(.bufferOutputHotkey), let value = settings.bufferOutputHotkey,
+      case .keyboardShortcut = HotkeyBindingDescriptor(storageString: value) {
+      bufferOutputHotkeyBinding = HotkeyBindingDescriptor(storageString: value)
+    }
     if shouldApplyStoredSetting(.recordPanelHotkey) {
       recordPanelHotkeyBinding = HotkeyBindingDescriptor(
         storageString: settings.recordPanelHotkey
@@ -1247,6 +1253,9 @@ extension AppModel {
         let visibility = RecordHistoryVisibility(rawValue: rawValue)
       {
         recordHistoryVisibility = visibility
+      }
+      if let rawValue = values[.bufferOutputHotkey] {
+        bufferOutputHotkeyBinding = HotkeyBindingDescriptor(storageString: rawValue)
       }
       if let rawValue = values[.recordPanelHotkey] {
         recordPanelHotkeyBinding = HotkeyBindingDescriptor(storageString: rawValue)

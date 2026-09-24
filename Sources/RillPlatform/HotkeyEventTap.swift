@@ -56,6 +56,8 @@ public final class HotkeyEventTap: GlobalInputSource, @unchecked Sendable {
     private var recordPanelShortcutRecordingCommitKeyCodes: [UUID: CGKeyCode] = [:]
     private var recordPanelHotkeyBinding: HotkeyBindingDescriptor = .doubleCommand
     private var doubleCommandTapRecognizer = DoubleCommandTapRecognizer()
+    private var bufferOutputBinding: HotkeyBindingDescriptor = .keyboardShortcut(.outputNext)
+    private var bufferOutputRecognizer = RecordPanelShortcutRecognizer()
     private var recordPanelShortcutRecognizer = RecordPanelShortcutRecognizer()
     private var pushToTalkRecognizer = PushToTalkGestureRecognizer()
     private var liveAudioEscapeRecognizer = LiveAudioEscapeRecognizer()
@@ -132,6 +134,14 @@ public final class HotkeyEventTap: GlobalInputSource, @unchecked Sendable {
             }
             recordPanelShortcutRecognizer.reset()
             doubleCommandTapRecognizer.reset()
+        }
+    }
+
+    public func setBufferOutputHotkeyBinding(_ binding: HotkeyBindingDescriptor) {
+        withLock {
+            guard case .keyboardShortcut(let shortcut) = binding, GlobalHotkeyPolicy.accepts(shortcut) else { return }
+            bufferOutputBinding = binding
+            bufferOutputRecognizer.reset()
         }
     }
 
@@ -384,6 +394,7 @@ extension HotkeyEventTap {
         releaseCommittedRecordPanelShortcutRecordingSuspensions { _ in true }
         doubleCommandTapRecognizer.reset()
         recordPanelShortcutRecognizer.reset()
+        bufferOutputRecognizer.reset()
         liveAudioEscapeRecognizer.reset()
         _ = pushToTalkRecognizer.interrupt()
     }
@@ -398,6 +409,7 @@ extension HotkeyEventTap {
             !physicalKeyStateProvider($0)
         }
         recordPanelShortcutRecognizer.reset()
+        bufferOutputRecognizer.reset()
         doubleCommandTapRecognizer.reset()
         liveAudioEscapeRecognizer.resetLatch()
         let activeGesture = pushToTalkRecognizer.activeGesture
@@ -509,6 +521,19 @@ extension HotkeyEventTap {
             if let emittedEvent {
                 emit(emittedEvent)
             }
+            return nil
+        }
+
+        let bufferHandling = withLock {
+            guard recordPanelShortcutRecordingSuspensions.isEmpty,
+                  bufferOutputBinding != recordPanelHotkeyBinding else {
+                bufferOutputRecognizer.reset()
+                return RecordPanelShortcutRecognizerOutput.passThrough
+            }
+            return bufferOutputRecognizer.handle(type: type, keyCode: keyCode, flags: event.flags, binding: bufferOutputBinding)
+        }
+        if case .swallow(let shouldEmit) = bufferHandling {
+            if shouldEmit { emit(.recordBufferOutputRequested) }
             return nil
         }
 

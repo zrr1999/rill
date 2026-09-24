@@ -65,7 +65,7 @@ actor, so cancelling a recording suppresses a cue still waiting to be played.
 
 | State | Owner | Boundary |
 | --- | --- | --- |
-| Records, memberships, routes, leases, and persistence revision | `RecordStore` | Commands commit before publishing catalog updates or collection events. |
+| Records, memberships, buffers, routes, leases, and persistence revision | `RecordStore` | Commands commit before publishing catalog updates or collection events. |
 | SQLite connection and transactions | `SQLitePersistenceStore` | Settings, history, and catalog extensions share one actor and connection. A transaction never suspends between statements. |
 | Active recording and its cleanup | `RecordingSessionManager` | Cancellation invalidates cue tokens and retains pending work until it settles. |
 | Authorized workflow run | `SessionCoordinator` | Frozen workflow/context and resolved provider plan remain attached to one run. |

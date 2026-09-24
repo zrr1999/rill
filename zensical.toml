@@ -14,6 +14,7 @@ nav = [
     { "贡献指南" = "CONTRIBUTING.md" },
     { "架构与状态归属" = "docs/architecture.md" },
     { "Record 存储与交付" = "docs/record-architecture.md" },
+    { "连续输出" = "docs/continuous-output.md" },
     { "工作流 TOML" = "docs/workflow-toml.md" },
     { "上下文纠错" = "docs/contextual-correction.md" },
     { "界面方向" = "docs/ui-direction.md" },

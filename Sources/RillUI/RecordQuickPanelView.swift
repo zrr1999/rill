@@ -140,6 +140,17 @@ public struct RecordQuickPanelView: View {
       )
       .frame(height: 30)
       .padding(RillSpacing.panel)
+      HStack(spacing: 8) {
+        Text(language == .simplifiedChinese ? "下一项" : "Next").fontWeight(.medium)
+        Text(model.buffers.snapshot?.nextHeader?.preview ?? (model.buffers.snapshot?.next == nil ? "—" : (language == .simplifiedChinese ? "处理中" : "Processing")))
+          .lineLimit(1)
+        Spacer(minLength: 4)
+        Text(model.buffers.snapshot?.nextHeader?.provenance.sourceApplicationName ?? "")
+          .lineLimit(1).foregroundStyle(.secondary)
+        Text("\(model.buffers.snapshot?.remainingCount ?? 0)").monospacedDigit()
+      }
+      .font(.caption).padding(.horizontal, RillSpacing.panel).padding(.bottom, 8)
+      .accessibilityIdentifier("quick-records.next-output")
       HStack(spacing: RillSpacing.row) {
         Toggle(text(.pinned), isOn: $model.pinnedOnly).toggleStyle(.button)
         Toggle(text(.currentApp), isOn: $model.currentAppOnly).toggleStyle(.button).disabled(

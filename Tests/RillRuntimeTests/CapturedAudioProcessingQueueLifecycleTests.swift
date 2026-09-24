@@ -242,9 +242,17 @@ private struct AudioLifecycleRecognizer: SpeechRecognizer {
 private struct AudioLifecycleAction: OutputAction {
     let id = "audio-lifecycle.action"
     let probe: AudioLifecycleExecutionProbe
+    var recordStore: RecordStore?
 
     func execute(text: String, context: ActionContext) async throws -> ActionResult {
         await probe.recordAction()
+        if let recordStore {
+            _ = try await recordStore.ingest(
+                .init(payload: .text(text), provenance: .init(source: .init(kind: .voiceInput))),
+                into: [], fulfilling: context.bufferEntryID
+            )
+            return .storedRecord
+        }
         return .copiedToClipboard
     }
 }
@@ -362,6 +370,58 @@ private actor BenchmarkArchiveStoreProbe: BenchmarkRecordingArchiveStore {
 }
 
 final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
+    func testCollectedSpeechPositionsExistBeforeDeferredAudioAndCancelCleanly() async throws {
+        let store = RecordStore()
+        let queue = await makeQueue(recognitionShouldFail: false, recordStore: store)
+        var workflow = makeWorkflow()
+        workflow.metadata[WorkflowMetadataKey.collectSpeech] = "true"
+        let runIDs = [UUID(), UUID()]
+        for runID in runIDs {
+            await queue.enqueue(
+                authorizationLease: makeAudioProcessingTestLease(runID: runID, workflow: workflow),
+                triggerEvent: nil,
+                deferredCapture: DeferredCapturedAudio(task: Task {
+                    try await Task.sleep(for: .seconds(5))
+                    throw CancellationError()
+                })
+            )
+        }
+        let clipboard = try await store.reserveBufferInput(in: RecordBuffer.clipboardID)
+        let positions = try await store.entries(in: RecordBuffer.speechID)
+        XCTAssertEqual(positions.count, 2)
+        XCTAssertTrue(positions.allSatisfy { $0.state == .preparing && $0.id.sequence < clipboard.sequence })
+        await queue.cancel(runID: runIDs[0])
+        let remaining = try await store.entries(in: RecordBuffer.speechID)
+        XCTAssertEqual(remaining.map(\.id), positions.dropFirst().map(\.id))
+        await queue.cancel(runID: runIDs[1])
+        await queue.shutdown()
+        let cancelled = try await store.entries(in: RecordBuffer.speechID)
+        XCTAssertTrue(cancelled.isEmpty)
+    }
+
+    func testOnlySuccessfulCollectionModeFillsSpeechBuffer() async throws {
+        for (collects, fails) in [(false, false), (true, false), (true, true)] {
+            let store = RecordStore()
+            let queue = await makeQueue(recognitionShouldFail: fails, recordStore: store)
+            var workflow = makeWorkflow()
+            if collects { workflow.metadata[WorkflowMetadataKey.collectSpeech] = "true" }
+            let file = try makeAudioFile()
+            defer { try? FileManager.default.removeItem(at: file) }
+            await queue.enqueue(
+                authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: workflow),
+                triggerEvent: nil,
+                deferredCapture: .resolved(try makeCapturedAudio(fileURL: file, ownership: .managedTemporary))
+            )
+            await waitUntilDrained(queue)
+            let entries = try await store.entries(in: RecordBuffer.speechID)
+            let records = try await store.catalogSnapshot().records
+            XCTAssertEqual(entries.count, collects && !fails ? 1 : 0)
+            XCTAssertEqual(records.count, fails ? 0 : 1)
+            if collects && !fails { XCTAssertEqual(entries.first?.recordID, records.first?.id) }
+            await queue.shutdown()
+        }
+    }
+
     func testLegacyClipboardWorkflowCleansManagedTemporaryFileWithoutProcessing() async throws {
         let fileURL = try makeAudioFile()
         defer { try? FileManager.default.removeItem(at: fileURL) }
@@ -1062,6 +1122,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
 
     private func makeQueue(
         recognitionShouldFail: Bool,
+        recordStore: RecordStore? = nil,
         recoveryStore: (any FailedAudioRecoveryStore)? = nil,
         recoveryEnabled: Bool = false,
         benchmarkArchiveStore: (any BenchmarkRecordingArchiveStore)? = nil,
@@ -1091,9 +1152,10 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
             ),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(
-                actions: [AudioLifecycleAction(probe: executionProbe)]
+                actions: [AudioLifecycleAction(probe: executionProbe, recordStore: recordStore)]
             ),
             candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
+            recordStore: recordStore ?? RecordStore(),
             eventBus: eventBus,
             diagnostics: diagnostics
         )

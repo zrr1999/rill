@@ -839,6 +839,7 @@ private enum AppContainerFactory {
       }
     )
     let cursorTextPreviewCoordinator = CursorTextPreviewCoordinator(
+      injectionEngine: injectionEngine,
       diagnosticReporter: { diagnostic in
         let textLengthBucket = switch diagnostic.textLength {
         case 0: "empty"
@@ -2155,7 +2156,7 @@ private enum AppModelFactory {
         _ = platform.pasteboard.writePlainText(text)
       },
       deliverNextRecordAction: {
-        Task { await runtime.systemClipboardCaptureController.deliverNextRecord() }
+        model?.recordWorkspace.buffers.outputAction(nil)
       },
       permissionSnapshot: platform.permissionGate.snapshot,
       refreshPermissionsAction: {
@@ -2194,6 +2195,16 @@ private enum AppModelFactory {
     guard let resolvedModel = model else {
       preconditionFailure("AppModel was not initialized")
     }
+    resolvedModel.installBufferOutputHotkeyAction { platform.hotkeyTap.setBufferOutputHotkeyBinding($0) }
+    let bufferOutput = BufferOutputController(
+      store: core.recordStore, model: resolvedModel, injectionEngine: platform.injectionEngine)
+    resolvedModel.recordWorkspace.buffers.outputAction = { bufferOutput.output($0) }
+    resolvedModel.recordWorkspace.buffers.showMessageAction = { bufferOutput.showMessage($0) }
+    resolvedModel.recordWorkspace.buffers.confirmAction = { bufferOutput.confirm() }
+    resolvedModel.recordWorkspace.buffers.retryAction = { bufferOutput.retry() }
+    resolvedModel.recordWorkspace.buffers.cancelAction = { bufferOutput.cancel() }
+    resolvedModel.recordWorkspace.buffers.shutdownAction = { await bufferOutput.shutdown() }
+    resolvedModel.recordWorkspace.buffers.start()
     resolvedModel.installVoiceAssistantResourceActions(
       prepareWakeWordModel: { progressCallback in
         guard providers.wakeWordTriggerSource != nil else {

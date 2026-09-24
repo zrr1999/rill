@@ -67,6 +67,7 @@ public enum WorkflowExecutionPlanResolver {
         )
         switch (outputDependsOnSettings, output) {
         case (true, .builtinPasteIntoApplication):
+            resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.collectSpeech)
             resolvedWorkflow.plan.output.actions = [
                 OutputActionReference(id: "record.store"),
                 OutputActionReference(id: "focused-application.insert"),
@@ -76,6 +77,8 @@ public enum WorkflowExecutionPlanResolver {
                 RecordCollection.voiceInputID.rawValue.uuidString
             resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
         case (true, .builtinSaveToVoiceGroup):
+            resolvedWorkflow.metadata[WorkflowMetadataKey.collectSpeech] = "true"
+            resolvedWorkflow.metadata[WorkflowMetadataKey.livePreviewPlacement] = LivePreviewPlacement.overlay.rawValue
             resolvedWorkflow.plan.output.actions = [OutputActionReference(id: "record.store")]
             resolvedWorkflow.plan.output.deliveryPolicy = .init(strategy: .collectionFirst)
             resolvedWorkflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] =

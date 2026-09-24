@@ -448,3 +448,21 @@ other speech-scope branch `N/A` in the copied candidate checklist; leaving both
 branches unresolved is not acceptable. A feature can be treated as out of scope
 only when its UI, documentation, and stored-configuration migration are updated
 in the same release.
+
+## Continuous output (Command-Shift-V)
+
+Use the exact candidate and an isolated test database. Application compatibility
+is established per app and content type; see [continuous output](continuous-output.md).
+
+- [ ] Native Command-C/X/V pass through with capture on/off and with pending entries.
+- [ ] Default and custom Output Next shortcuts work, report conflicts, and do not repeat while held.
+- [ ] Verify Chinese IME, emoji, long multiline text, selection replacement, shortcut release,
+      and focus changes. No output may press Return to send or submit.
+- [ ] Confirm unverified text explicitly, then advance exactly once. Retry targets the same entry.
+- [ ] Accept/cancel image, promised PNG, single-file and multi-file drags. Originals remain unchanged.
+      Rejection, missing source, write failure, or partial delivery retains the fixed entry.
+- [ ] Record general-pasteboard contents and changeCount before and after text/image/file output,
+      cancellation, retry, and confirmation. Repeat with a newer external copy during output;
+      only that external copy may change the general pasteboard.
+- [ ] Restart with ready and unconfirmed entries; ready entries persist and unconfirmed ones cannot resend automatically.
+- [ ] Legacy buffers are disabled after migration, default buffers are empty, and Raycast history is not backfilled.

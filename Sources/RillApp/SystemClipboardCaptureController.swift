@@ -50,6 +50,7 @@ public actor SystemClipboardCaptureController {
     var sourceApplication: FocusedApplicationIdentity
     var privacy: InitialClipboardPrivacyEvaluation
     var byteCount: Int
+    var bufferReservation: BufferInputReservation?
   }
 
   private static let privacyCheckInterval = Duration.milliseconds(750)
@@ -91,6 +92,9 @@ public actor SystemClipboardCaptureController {
   private var lastObservedFocusIdentitySample: FocusPrivacyIdentitySample?
   private var lastPrivacyDiagnosticChangeCount: Int?
   private var nextClipboardPrivacyCheck: ContinuousClock.Instant?
+  private var bufferCancellationTask: Task<Void, Never>?
+  private var bufferCancellationRetries: [BufferEntryID: Task<Void, Never>] = [:]
+  private var observedBufferInput: (changeCount: Int, reservation: BufferInputReservation)?
   private var clipboardReadRetry:
     (changeCount: Int, focus: FocusPrivacyIdentitySample, attempts: Int, nextAttempt: ContinuousClock.Instant?)?
   private var pendingClipboardCaptures: [PendingClipboardCapture] = []
@@ -204,6 +208,11 @@ public actor SystemClipboardCaptureController {
     await waitForDeliveryOperation()
     await waitForInFlightCaptureOperations()
     await clipboardPersistenceTask?.value
+    await bufferCancellationTask?.value
+    let cancellationRetries = Array(bufferCancellationRetries.values)
+    for task in cancellationRetries { task.cancel() }
+    for task in cancellationRetries { await task.value }
+    bufferCancellationRetries.removeAll()
     _ = transitionCaptureControl(to: .paused)
     finishStop()
   }
@@ -357,6 +366,7 @@ public actor SystemClipboardCaptureController {
     await waitForInFlightCaptureOperations()
     guard isCurrentControlState(.pausing, revision: transitionRevision) else { return }
     await clipboardPersistenceTask?.value
+    await bufferCancellationTask?.value
     guard isCurrentControlState(.pausing, revision: transitionRevision) else { return }
 
     let pausedRevision = transitionCaptureControl(to: .paused)
@@ -595,18 +605,23 @@ extension SystemClipboardCaptureController {
       return
     }
 
+    if let observedBufferInput, observedBufferInput.changeCount != descriptor.changeCount {
+      abandonObservedBufferInput()
+    }
     let crossedPrivacyIdentity =
       lastObservedFocusIdentitySample.map {
         !focusSample.hasSamePrivacyIdentity(as: $0)
       } ?? false
     if let retry = clipboardReadRetry, !retry.focus.hasSamePrivacyIdentity(as: focusSample) {
       clipboardReadRetry = nil
+      abandonObservedBufferInput()
     }
 
     guard evaluation.allowsClipboardCapture else {
       lastObservedPasteboardChangeCount = descriptor.changeCount
       lastObservedFocusIdentitySample = focusSample
       clipboardReadRetry = nil
+      abandonObservedBufferInput()
       await recordCaptureDecision(
         evaluation.decision,
         context: evaluation.context,
@@ -640,8 +655,20 @@ extension SystemClipboardCaptureController {
       lastObservedFocusIdentitySample = focusSample
       clipboardReadRetry?.nextAttempt = nil
       if !crossedPrivacyIdentity {
+        if captureControlSnapshot.state == .active {
+          let operation = beginCaptureOperation(controlRevision: observedControlRevision)
+          defer { finishCaptureOperation(operation.id) }
+          let isOwned = await pasteboard.ownsClipboardChangeCount(descriptor.changeCount)
+          guard isCaptureOperationCurrent(operation) else { return }
+          if !isOwned { _ = try? await bufferReservation(for: descriptor.changeCount) }
+          guard isCaptureOperationCurrent(operation) else {
+            abandonObservedBufferInput()
+            return
+          }
+        }
         retryClipboardReadIfNeeded(changeCount: descriptor.changeCount, focus: focusSample, at: now)
       }
+      if clipboardReadRetry?.nextAttempt == nil { abandonObservedBufferInput() }
       return
     }
     let isOwnedChangeCount = await pasteboard.ownsClipboardChangeCount(descriptor.changeCount)
@@ -676,14 +703,23 @@ extension SystemClipboardCaptureController {
       return
     }
 
-    let routeContext = RecordRouteContext(
-      applicationName: focusSample.focus.applicationName,
-      bundleIdentifier: focusSample.focus.bundleIdentifier
-    )
     let captureRevision = captureControlSnapshot.revision
     let captureOperation = beginCaptureOperation(controlRevision: captureRevision)
     defer { finishCaptureOperation(captureOperation.id) }
 
+    let bufferReservation = try? await self.bufferReservation(for: descriptor.changeCount)
+    var acceptedBufferInput = false
+    defer {
+      if !acceptedBufferInput,
+        clipboardReadRetry?.changeCount != descriptor.changeCount || clipboardReadRetry?.nextAttempt == nil {
+        abandonObservedBufferInput()
+      }
+    }
+    guard isCaptureOperationCurrent(captureOperation) else { return }
+    let routeContext = RecordRouteContext(
+      applicationName: focusSample.focus.applicationName,
+      bundleIdentifier: focusSample.focus.bundleIdentifier
+    )
     let descriptorBeforePayloadRead = await pasteboard.currentClipboardDescriptor()
     guard isCaptureOperationCurrent(captureOperation) else { return }
     let focusBeforePayloadRead = await focusIdentitySampleProvider()
@@ -783,22 +819,23 @@ extension SystemClipboardCaptureController {
       + snapshot.fileURLs.reduce(0) { $0 + $1.absoluteString.utf8.count }
     // Accepted snapshots survive a newer copy; disk latency must not delay polling.
     // Backpressure bounds both the number of captures and retained rich payloads.
-    if pendingClipboardCaptures.count >= 8
-      || pendingClipboardByteCount + byteCount > 64 * 1_024 * 1_024
-    {
-      await clipboardPersistenceTask?.value
-    }
     pendingClipboardCaptures.append(
       PendingClipboardCapture(
         snapshot: snapshot,
         sourceApplication: focusedApplicationIdentity(routeContext),
         privacy: evaluation,
-        byteCount: byteCount
+        byteCount: byteCount,
+        bufferReservation: bufferReservation
       )
     )
+    acceptedBufferInput = true
+    observedBufferInput = nil
     pendingClipboardByteCount += byteCount
     if clipboardPersistenceTask == nil {
       clipboardPersistenceTask = Task { await self.persistPendingClipboardCaptures() }
+    }
+    if pendingClipboardCaptures.count > 8 || pendingClipboardByteCount > 64 * 1_024 * 1_024 {
+      await clipboardPersistenceTask?.value
     }
   }
 
@@ -807,11 +844,21 @@ extension SystemClipboardCaptureController {
       var attempts = 0
       while true {
         do {
-          _ = try await recordStore.captureSystemClipboard(
+          var bufferEntryID: BufferEntryID?
+          if let reservation = capture.bufferReservation {
+            if case .success = await reservation.committed.result {
+              bufferEntryID = reservation.id
+            }
+          }
+          let record = try await recordStore.captureSystemClipboard(
             snapshot: capture.snapshot,
             sourceApplication: capture.sourceApplication,
-            allowsWorkflowCapture: capture.privacy.decision.allowsWorkflowCapture
+            allowsWorkflowCapture: capture.privacy.decision.allowsWorkflowCapture,
+            bufferEntryID: bufferEntryID
           )
+          if bufferEntryID == nil {
+            await eventBus.publish(.recordBufferInputFailed(recordID: record.id))
+          }
           if !capture.privacy.decision.allowsWorkflowCapture {
             await recordCaptureDecision(
               capture.privacy.decision,
@@ -838,10 +885,49 @@ extension SystemClipboardCaptureController {
           break
         }
       }
+      if let reservation = capture.bufferReservation {
+        await cancelBufferInputWithRetry(reservation.id)
+      }
       pendingClipboardCaptures.removeFirst()
       pendingClipboardByteCount -= capture.byteCount
     }
     clipboardPersistenceTask = nil
+  }
+
+  private func bufferReservation(for changeCount: Int) async throws -> BufferInputReservation {
+    if let observedBufferInput, observedBufferInput.changeCount == changeCount { return observedBufferInput.reservation }
+    abandonObservedBufferInput()
+    let reservation = try await recordStore.observeBufferInput(in: RecordBuffer.clipboardID)
+    observedBufferInput = (changeCount, reservation)
+    return reservation
+  }
+
+  private func abandonObservedBufferInput() {
+    guard let reservation = observedBufferInput?.reservation else { return }
+    observedBufferInput = nil
+    let previous = bufferCancellationTask
+    bufferCancellationTask = Task {
+      await previous?.value
+      _ = try? await reservation.committed.value
+      await cancelBufferInputWithRetry(reservation.id)
+    }
+  }
+
+  private func cancelBufferInputWithRetry(_ id: BufferEntryID) async {
+    do { try await recordStore.cancelBufferInput(id) }
+    catch {
+      guard !stopped, bufferCancellationRetries[id] == nil else { return }
+      bufferCancellationRetries[id] = Task {
+        while !Task.isCancelled {
+          do {
+            try await Task.sleep(for: .milliseconds(250))
+            try await recordStore.cancelBufferInput(id)
+            break
+          } catch { if Task.isCancelled { break } }
+        }
+        bufferCancellationRetries.removeValue(forKey: id)
+      }
+    }
   }
 
   private func isClipboardReadRetryDue(changeCount: Int, at now: ContinuousClock.Instant) -> Bool {
@@ -900,6 +986,7 @@ extension SystemClipboardCaptureController {
     captureControlSnapshot.revision &+= 1
     captureControlSnapshot.state = state
     clipboardReadRetry = nil
+    abandonObservedBufferInput()
     return captureControlSnapshot.revision
   }
 
@@ -1083,6 +1170,9 @@ extension SystemClipboardCaptureController {
 
   fileprivate func handleHotkey(_ event: HotkeyEventTap.Event) async {
     switch event {
+    case .recordBufferOutputRequested:
+      guard !stopped else { return }
+      await eventBus.publish(.recordBufferOutputRequested)
     case .recordPanelRequested:
       guard !stopped else { return }
       await eventBus.publish(.recordPanelRequested)
@@ -1115,6 +1205,8 @@ extension SystemClipboardCaptureController {
   func testingHandleHotkey(_ event: HotkeyEventTap.Event) async {
     await handleHotkey(event)
   }
+
+  func testingPendingClipboardCaptureCount() -> Int { pendingClipboardCaptures.count }
 
   func testingCaptureControlSnapshot() -> SystemClipboardCaptureControlSnapshot {
     captureControlSnapshot

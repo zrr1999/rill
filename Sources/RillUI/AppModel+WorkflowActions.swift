@@ -1106,7 +1106,10 @@ extension AppModel {
   }
 
   public func setRecordPanelHotkeyShortcut(_ shortcut: KeyboardShortcut) {
-    guard GlobalHotkeyPolicy.accepts(shortcut) else { return }
+    guard GlobalHotkeyPolicy.accepts(shortcut), .keyboardShortcut(shortcut) != bufferOutputHotkeyBinding else {
+      lastFailure = language == .simplifiedChinese ? "快捷键与输出下一项冲突。" : "Shortcut conflicts with Output Next."
+      return
+    }
     recordPanelHotkeyBinding = .keyboardShortcut(shortcut)
   }
 
@@ -1421,4 +1424,20 @@ extension AppModel {
     pendingInteractiveWorkflowTask = nil
   }
 
+}
+
+
+extension AppModel {
+  public func setBufferOutputHotkeyShortcut(_ shortcut: KeyboardShortcut) {
+    guard GlobalHotkeyPolicy.accepts(shortcut), .keyboardShortcut(shortcut) != recordPanelHotkeyBinding else {
+      lastFailure = language == .simplifiedChinese ? "快捷键与剪贴板面板冲突。" : "Shortcut conflicts with the clipboard panel."
+      return
+    }
+    bufferOutputHotkeyBinding = .keyboardShortcut(shortcut)
+  }
+
+  public func installBufferOutputHotkeyAction(_ action: @escaping (HotkeyBindingDescriptor) -> Void) {
+    updateBufferOutputHotkeyAction = action
+    action(bufferOutputHotkeyBinding)
+  }
 }

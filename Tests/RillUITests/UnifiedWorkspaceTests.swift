@@ -5,6 +5,24 @@ import XCTest
 
 @MainActor
 final class UnifiedWorkspaceTests: XCTestCase {
+    func testBufferInputFailureShowsRecoveryWithoutInterruptingTheActiveRun() {
+        let model = makeHarness().model
+        model.language = .english
+        let activeRunID = UUID()
+        model.activeRunID = activeRunID
+        model.isRunning = true
+        var messages: [String] = []
+        model.recordWorkspace.buffers.showMessageAction = { messages.append($0) }
+
+        model.handle(.recordBufferInputFailed(recordID: RecordID()))
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertTrue(messages.first?.contains("All Records") == true)
+        XCTAssertTrue(messages.first?.contains("Add to") == true)
+        XCTAssertEqual(model.activeRunID, activeRunID)
+        XCTAssertTrue(model.isRunning)
+    }
+
     func testAllRecordsIsDefaultAndSettingsPreservesContentNavigation() async throws {
         let model = makeHarness().model
         await model.recordWorkspace.refresh()

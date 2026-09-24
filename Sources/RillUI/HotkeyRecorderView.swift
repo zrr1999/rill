@@ -67,6 +67,8 @@ struct HotkeyRecorderView: View {
     let commitRecordPanelShortcutRecording: (UUID, UInt16) -> Void
     let onRecord: (RillCore.KeyboardShortcut) -> Void
     let onReset: () -> Void
+    var commandLabel: String? = nil
+    var identifier = "settings.clipboard-hotkey"
 
     @State private var isRecording = false
     @State private var recordingSuspensionID: UUID?
@@ -102,9 +104,9 @@ struct HotkeyRecorderView: View {
                     )
             }
             .contentShape(RoundedRectangle(cornerRadius: RillRadius.row, style: .continuous))
-            .accessibilityLabel(UIStrings.text(.recordPanelHotkeyRecorderLabel, language: language))
+            .accessibilityLabel(commandLabel ?? UIStrings.text(.recordPanelHotkeyRecorderLabel, language: language))
             .accessibilityValue(Text(currentBindingLabel))
-            .accessibilityIdentifier("settings.clipboard-hotkey.keycap")
+            .accessibilityIdentifier("\(identifier).keycap")
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isRecording)
 
             HStack(spacing: 10) {
@@ -118,17 +120,17 @@ struct HotkeyRecorderView: View {
                 ) {
                     isRecording ? cancelRecording() : startRecording()
                 }
-                .accessibilityLabel(UIStrings.text(.recordPanelHotkeyRecorderLabel, language: language))
+                .accessibilityLabel(commandLabel ?? UIStrings.text(.recordPanelHotkeyRecorderLabel, language: language))
                 .accessibilityValue(Text(currentBindingLabel))
                 .accessibilityHint(UIStrings.text(.recordPanelHotkeyHint, language: language))
-                .accessibilityIdentifier("settings.clipboard-hotkey.record")
+                .accessibilityIdentifier("\(identifier).record")
 
                 Button(UIStrings.text(.recordPanelHotkeyReset, language: language)) {
                     cancelRecording()
                     onReset()
                 }
                 .help(L10n.settingsText(.settingsHotkeyResetHelp, language: language))
-                .accessibilityIdentifier("settings.clipboard-hotkey.reset")
+                .accessibilityIdentifier("\(identifier).reset")
             }
 
             Text(UIStrings.text(.recordPanelHotkeyHint, language: language))

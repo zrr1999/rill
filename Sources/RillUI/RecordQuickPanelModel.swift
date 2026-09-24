@@ -94,6 +94,7 @@ public final class RecordQuickPanelModel {
   public private(set) var preview: RecordProjection?
   public private(set) var message: QuickRecordText?
   public private(set) var nextOffset: Int?
+  public let buffers: RecordBufferModel
   public let cleanup: RecordCleanupModel
   public let jev: RecordJevPanelModel?
   public private(set) var semanticResults: [RecordSummary] = []
@@ -114,7 +115,13 @@ public final class RecordQuickPanelModel {
   private var resultMatching: RecordQueryMatching = .literal
   private var resultsRevision: UInt64?
 
-  public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, jevSettings: JevAPISettingsModel? = nil) {
+  public init(
+    store: RecordStore,
+    semanticSearch: RecordSemanticSearch? = nil,
+    jevSettings: JevAPISettingsModel? = nil,
+    buffers: RecordBufferModel? = nil
+  ) {
+    self.buffers = buffers ?? RecordBufferModel(store: store)
     self.store = store
     self.semanticSearch = semanticSearch
     jev = jevSettings.map { RecordJevPanelModel(settings: $0) }
@@ -128,6 +135,7 @@ public final class RecordQuickPanelModel {
   }
 
   public func start(sourceBundleIdentifier: String?) {
+    buffers.start()
     stop()
     self.sourceBundleIdentifier = sourceBundleIdentifier
     searchText = ""

@@ -180,31 +180,44 @@ struct WorkflowDocumentCodecTests {
             at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
         let store = XDGWorkflowFileStore(configurationDirectoryURL: directory)
         let stream = await store.changes()
-        let observed = Task {
-            var events = 0
-            for await _ in stream {
-                events += 1
-                if events == 3 { return true }
-            }
-            return false
-        }
-        defer { observed.cancel() }
         let document = try store.decodeDocument(Self.source)
         let record = try await store.saveDocument(document, replacing: nil, expected: .missing)
-        try await Task.sleep(for: .milliseconds(600))
-        try (Self.source + "\n# atomic").write(
-            to: record.fileURL, atomically: true, encoding: .utf8)
-        try await Task.sleep(for: .milliseconds(600))
-        let handle = try FileHandle(forWritingTo: record.fileURL)
-        try handle.seekToEnd()
-        try handle.write(contentsOf: Data("\n# in place".utf8))
-        try handle.close()
+        let original = try #require(record.source)
+        let replacement = Self.source + "\n# atomic"
+        let observed = Task {
+            var changes = stream.makeAsyncIterator()
+            try #require(await observesSource(original, in: store, from: &changes))
+
+            try replacement.write(to: record.fileURL, atomically: true, encoding: .utf8)
+            try #require(await observesSource(replacement, in: store, from: &changes))
+
+            let handle = try FileHandle(forWritingTo: record.fileURL)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data("\n# in place".utf8))
+            try handle.close()
+            try #require(await observesSource(replacement + "\n# in place", in: store, from: &changes))
+        }
         let timeout = Task {
-            try? await Task.sleep(for: .seconds(4))
+            do { try await Task.sleep(for: .seconds(4)) } catch { return }
             observed.cancel()
         }
-        #expect(await observed.value)
-        timeout.cancel()
+        defer {
+            observed.cancel()
+            timeout.cancel()
+        }
+        try await observed.value
+    }
+
+    private func observesSource(
+        _ expected: String,
+        in store: XDGWorkflowFileStore,
+        from changes: inout AsyncStream<Void>.Iterator
+    ) async -> Bool {
+        while await changes.next() != nil {
+            let loaded = await store.load()
+            if loaded.records.first?.source == expected { return true }
+        }
+        return false
     }
 
     private func temporaryDirectory() -> URL {

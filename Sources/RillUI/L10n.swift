@@ -307,8 +307,8 @@ public enum L10n {
       simplifiedChinese: "输入到当前 App 并记录"
     ),
     .menuDeliverNextRecord: .init(
-      english: "Paste Top Clipboard Queue Item",
-      simplifiedChinese: "粘贴队列顶部条目"
+      english: "Output Next Item",
+      simplifiedChinese: "输出下一项"
     ),
     .menuTurnOffClipboardCapture: .init(
       english: "Turn Off Clipboard Capture",

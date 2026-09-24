@@ -1,6 +1,6 @@
 # Record architecture
 
-Status: accepted, Record catalog v2 / SQLite schema 13.
+Status: accepted, Record catalog v3 / SQLite schema 14.
 
 ## Decision
 
@@ -9,7 +9,7 @@ clipboard is one source and one sink. It does not own stored content, grouping,
 routing, delivery state, or workflow history.
 
 `RecordStore` is the single actor that owns immutable Records and the mutable
-metadata, activity, membership, collection, route, lease, and persistence CAS
+metadata, activity, membership, collection, buffer, route, lease, and persistence CAS
 coordinates around them. `RecordIngestionCoordinator` owns source → privacy →
 route → atomic ingest. `RecordDeliveryCoordinator` owns target route → exact
 membership lease → sink → content-free receipt.
@@ -43,7 +43,11 @@ previews, capture controls, privacy changes, and shutdown never write back to
 the clipboard. The capture port exposes reads only; the global input tap has no
 native paste interception or replay path.
 
-Only explicitly requested output uses the shared delivery workflow. Text,
+Command-Shift-V uses independent buffers and clipboard-free text or native drag
+output; see [continuous output](continuous-output.md) for its confirmation,
+reservation, and migration contracts.
+
+Other explicitly requested output uses the shared delivery workflow. Text,
 images, and files all use its target checks and conditional clipboard transaction;
 restoration must preserve a newer external copy. Pausing history capture does
 not disable explicit output.
@@ -70,13 +74,14 @@ manage their own rendering, caches, and access behavior.
 
 ## Persistence and migration
 
-SQLite schema 13 stores encrypted catalog nodes and immutable payload blobs
+SQLite schema 14 stores encrypted catalog nodes and immutable payload blobs
 separately. The catalog holds headers and previews; payloads are loaded on demand
 through a bounded cache. Metadata-only changes retain the payload ciphertext.
 
 The pre-Record clipboard graph is decoded only by `LegacyClipboardMigration`.
-Record graph v1 remains readable and is converted to catalog v2 on the next
-commit. Catalog mutations, payload writes, and legacy-row removal share one
+Record graph v1 and catalog v2 remain readable and migrate forward to catalog v3.
+Legacy pending memberships become disabled buffers; new default buffers start
+empty. Encrypted buffer deltas share the graph transaction and revision owner. Catalog mutations, payload writes, and legacy-row removal share one
 transaction with revision checks and authenticated readback. A failed commit
 rolls back the database transaction and the RecordStore's committed graph state.
 
@@ -185,8 +190,11 @@ Real-key network acceptance and macOS keyboard/secure-field behavior require sep
 `RecordStorageLimits.productDefault` admits up to 10,000 Records and 512 MiB of
 payload, with per-item limits of 1 MiB text and 32 MiB images. Each Record may
 have at most 32 memberships, the graph at most 320,000 memberships, and each
-route at most 32 collection references. Pinned Records and Records with any
-active membership are protected from automatic retention. Clipboard transfer
+route at most 32 collection references. Retention review protects pinned or
+tagged Records, Records in collections other than Inbox, buffered Records,
+and active output leases. Explicit single-Record deletion removes its buffer
+references atomically, except while that Record is being output or awaiting
+confirmation. Clipboard transfer
 budgets are separate from the durable catalog's storage limits.
 
 ## Module and lifecycle boundaries
