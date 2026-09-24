@@ -250,7 +250,7 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
   uv run --script scripts/generate_third_party_notices.py --check
   ```
 
-- App 图标的受审源文件是 `Resources/AppIcon/AppIcon-1024-routed-voice-cursor.png`；`scripts/render_app_icon_renditions.swift` 生成包含透明圆角和小尺寸光学调整的传统 macOS renditions，`scripts/generate_app_icon.sh` 再装配 ICNS。图标来源与受审 SHA-256 记录在同目录 `README.md` 中。`scripts/release.sh` 默认把本地产物写入被忽略的 `.artifacts/release/`；仓库根目录禁止出现 `Rill.app`、`Rill.dmg` 或 `Rill.dmg.sha256`，也不应提交临时装配目录、本地发布产物或 `.rill-release.*` 私有 staging。
+- 图标的矢量事实源是 `Resources/AppIcon/Rill.svg` 和 `RillMenuBar.svg`。修改后运行 `scripts/render_brand_assets.sh`（需要 librsvg），同步提交受审 PNG、菜单栏 PDF 和同目录 `README.md` 中的 SHA-256；PNG 的新 hash 也须同步到 ICNS 生成器和图标测试。`scripts/render_app_icon_renditions.swift` 从 PNG 生成包含透明圆角和小尺寸光学调整的传统 macOS renditions，`scripts/generate_app_icon.sh` 再装配 ICNS。正常构建直接使用已提交的 PNG/PDF，不依赖 SVG 工具。`scripts/release.sh` 默认把本地产物写入被忽略的 `.artifacts/release/`；仓库根目录禁止出现 `Rill.app`、`Rill.dmg` 或 `Rill.dmg.sha256`，也不应提交临时装配目录、本地发布产物或 `.rill-release.*` 私有 staging。
 
 生成器、事实源和生成结果应放在同一个提交中。
 

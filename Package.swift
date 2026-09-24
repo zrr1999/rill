@@ -93,6 +93,8 @@ let package = Package(
       resources: [
         .process("Resources/BuiltinWorkflowManifest.json"),
         .process("Resources/BuiltinWorkflows.toml"),
+        .process("Resources/RillMenuBarTemplate.pdf"),
+        .process("Resources/RillMenuBarRecordsTemplate.pdf"),
         .copy("Resources/WorkflowTemplates"),
       ]
     ),

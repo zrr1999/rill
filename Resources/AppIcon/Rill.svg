@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Rill — voice flowing into text</title>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="0.8" y2="1">
+      <stop stop-color="#153C3D"/>
+      <stop offset="1" stop-color="#08272D"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#background)" d="M0 0H1024V1024H0Z"/>
+  <g fill="none" stroke="#F4EEDC" stroke-width="70" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M172 464H205C272 464 276 376 356 376C444 376 451 526 582 526H822"/>
+    <path d="M172 632H450C528 632 538 526 606 526"/>
+  </g>
+  <circle cx="606" cy="526" r="60" fill="#FF7466"/>
+  <path d="M822 328V704" fill="none" stroke="#FF7466" stroke-width="68" stroke-linecap="round"/>
+</svg>
