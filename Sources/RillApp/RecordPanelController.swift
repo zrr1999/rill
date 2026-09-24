@@ -777,6 +777,7 @@ private struct FloatingRecordView: View {
     let onShowRecord: () -> Void
     let onClose: () -> Void
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         RecordQuickPanelView(
@@ -787,7 +788,12 @@ private struct FloatingRecordView: View {
                 onShowRecord()
                 NSApp.activate(ignoringOtherApps: true)
                 openWindow(id: "main")
-            }, onClose: onClose
+            }, onClose: onClose, onConfigureJev: {
+                onShowRecord()
+                model.showSettings(.providers)
+                if model.consumeSettingsPresentation() { openSettings() }
+                NSApp.activate(ignoringOtherApps: true)
+            }
         )
         .frame(minWidth: RecordPanelController.minimumPanelSize.width,
                minHeight: RecordPanelController.minimumPanelSize.height)

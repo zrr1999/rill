@@ -11,14 +11,18 @@ public final class RecordJevPanelModel {
   public private(set) var state: State = .idle
   public private(set) var review: RecordRankingReview?
   public private(set) var result: RecordCloudRankingResult?
-  public private(set) var isConfigured = false
+  public var isConfigured: Bool { settings.isConfigured && !settings.isSaving }
+  public let settings: JevAPISettingsModel
   public var isPresented = false
   private let service: RecordCloudRanking
   private var generation: UInt64 = 0
   private var tasks: [UUID: Task<Void, Never>] = [:]
   private var closed = false
 
-  public init(service: RecordCloudRanking) { self.service = service }
+  public init(settings: JevAPISettingsModel) {
+    self.settings = settings
+    self.service = settings.service
+  }
   isolated deinit { for task in tasks.values { task.cancel() } }
 
   public var isWorking: Bool { state == .preparing || state == .scoring }
@@ -29,20 +33,10 @@ public final class RecordJevPanelModel {
     isPresented = true
     state = .preparing
     run { [self] in
-      isConfigured = await service.isConfigured
       let prepared = try await service.prepare(query: query, recordIDs: recordIDs)
       try Task.checkCancellation()
       review = prepared
       state = .review
-    }
-  }
-
-  public func setKey(_ value: String) {
-    guard !closed, !isWorking else { return }
-    run { [self] in
-      try await service.setKey(value)
-      try Task.checkCancellation()
-      isConfigured = await service.isConfigured
     }
   }
 

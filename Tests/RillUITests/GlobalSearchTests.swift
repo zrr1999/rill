@@ -12,6 +12,7 @@ final class GlobalSearchIndexTests: XCTestCase {
             [
                 .permissions,
                 .speech,
+                .providers,
                 .input,
                 .voiceAssistant,
                 .recordPanel,
@@ -157,7 +158,10 @@ final class GlobalSearchIndexTests: XCTestCase {
         )
 
         let speechSettings = GlobalSearchIndex.filter(results, query: "openai key")
-        XCTAssertEqual(speechSettings.map(\.destination), [.settings(.speech)])
+        XCTAssertEqual(speechSettings.map(\.destination), [.settings(.providers)])
+        for query in ["Jev", "TypeSafe", "DeepSeek", "API 密钥"] {
+            XCTAssertEqual(GlobalSearchIndex.filter(results, query: query).map(\.destination), [.settings(.providers)])
+        }
         XCTAssertTrue(
             GlobalSearchIndex.filter(results, query: "sensevoice").isEmpty,
             "Preview-only model names must not leak into the public search index."

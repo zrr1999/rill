@@ -2,6 +2,16 @@ import RillCore
 import SwiftUI
 
 extension SettingsView {
+  var apiProviderSettingsSection: some View {
+    settingsDisclosure(.providers) {
+      if let settings = model.recordWorkspace.jevSettings {
+        JevAPISettingsView(settings: settings, language: model.language)
+        Divider()
+      }
+      llmProviderSettingsSection
+    }
+  }
+
   var llmProviderSettingsSection: some View {
     VStack(alignment: .leading, spacing: RillSpacing.card) {
       Text(L10n.string(.settingsOpenAITitle, language: model.language))

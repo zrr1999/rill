@@ -206,7 +206,7 @@ public struct SettingsView: View {
         case .input:
           Section { builtinPushToTalkSection; recordPanelSection }
         case .voice:
-          Section { speechEngineSection; voiceAssistantResourcesSection }
+          Section { speechEngineSection; apiProviderSettingsSection; voiceAssistantResourcesSection }
         case .vocabulary:
           Section {
             vocabularySection

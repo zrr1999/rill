@@ -40,7 +40,7 @@ final class RecordQuickPanelRenderTests: XCTestCase {
       let view = NSHostingView(
         rootView: RecordQuickPanelView(
           model: panel, language: .simplifiedChinese, capturePaused: false,
-          onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}
+          onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: {}
         )
         .environment(\.colorScheme, dark ? .dark : .light))
       try await render(
@@ -83,7 +83,7 @@ final class RecordQuickPanelRenderTests: XCTestCase {
       for dark in [false, true] {
         let view = NSHostingView(rootView: RecordQuickPanelView(
           model: panel, language: dark ? .english : .simplifiedChinese, capturePaused: false,
-          onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {})
+          onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: {})
           .environment(\.colorScheme, dark ? .dark : .light))
         try await render(view, size: NSSize(width: 620, height: 560), dark: dark,
           to: output.appendingPathComponent("semantic-\(missing ? "download" : "ready")-\(dark ? "dark" : "light").png"))
@@ -133,7 +133,7 @@ final class RecordQuickPanelRenderTests: XCTestCase {
           let view = NSHostingView(rootView: RecordQuickPanelView(
             model: panel, language: language, capturePaused: false,
             onPaste: { _ in XCTFail("Preview must not paste.") },
-            onCopy: { _ in XCTFail("Preview must not copy.") }, onShowRecord: { _ in }, onClose: {})
+            onCopy: { _ in XCTFail("Preview must not copy.") }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: {})
             .environment(\.colorScheme, dark ? .dark : .light))
           try await render(view, size: NSSize(width: width, height: 560), dark: dark,
             to: output.appendingPathComponent("preview-\(record.record.payload.kind)-\(dark ? "dark" : "light")-\(width).png"),
@@ -154,13 +154,13 @@ final class RecordQuickPanelRenderTests: XCTestCase {
         let fixture = JevPanelFixture()
         let first = try await fixture.insert("git reset --soft HEAD~1")
         let second = try await fixture.insert("git revert HEAD")
-        let model = RecordJevPanelModel(service: fixture.service)
+        let model = RecordJevPanelModel(settings: JevAPISettingsModel(service: fixture.service))
         model.prepare(query: "撤销上次提交，但保留代码改动", recordIDs: [first.id, second.id])
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while model.state == .preparing, ContinuousClock.now < deadline { await Task.yield() }
         XCTAssertEqual(model.state, .review)
         if scored {
-          model.setKey("unit-test-key")
+          model.settings.setKey("unit-test-key")
           while !model.isConfigured, ContinuousClock.now < deadline { await Task.yield() }
           model.confirm()
           while model.state == .scoring, ContinuousClock.now < deadline { await Task.yield() }
@@ -169,7 +169,7 @@ final class RecordQuickPanelRenderTests: XCTestCase {
         let view = NSHostingView(rootView: RecordJevSheet(model: model,
           language: dark ? .english : .simplifiedChinese, onSelect: { _ in
             // Rendering only; selection behavior is covered by RecordJevPanelTests.
-          })
+          }, onConfigure: {})
           .environment(\.colorScheme, dark ? .dark : .light))
         try await render(view, size: NSSize(width: 540, height: 620), dark: dark,
           to: output.appendingPathComponent("jev-\(scored ? "result" : "review")-\(dark ? "dark" : "light").png"))

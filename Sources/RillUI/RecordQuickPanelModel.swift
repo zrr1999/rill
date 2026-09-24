@@ -114,10 +114,10 @@ public final class RecordQuickPanelModel {
   private var resultMatching: RecordQueryMatching = .literal
   private var resultsRevision: UInt64?
 
-  public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, cloudRanking: RecordCloudRanking? = nil) {
+  public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, jevSettings: JevAPISettingsModel? = nil) {
     self.store = store
     self.semanticSearch = semanticSearch
-    jev = cloudRanking.map { RecordJevPanelModel(service: $0) }
+    jev = jevSettings.map { RecordJevPanelModel(settings: $0) }
     cleanup = RecordCleanupModel(store: store)
   }
   isolated deinit {

@@ -3,11 +3,22 @@ import RillCore
 enum JevText: CaseIterable {
   case title, open, disclosure, saveKey, clearKey, keyReady, keyNotice, fragment, candidate, score
   case select, rubric, working, close, send
+  case providersTitle, settingsDescription, configureNotice, openSettings, invalidKey
 }
 
 extension L10n {
   static func jev(_ key: JevText, language: AppLanguage) -> String {
     switch (key, language) {
+    case (.providersTitle, .english): "API Providers"
+    case (.providersTitle, .simplifiedChinese): "API 服务"
+    case (.settingsDescription, .english): "Use a TypeSafe API key for optional Jev candidate scoring. Each request requires reviewing and confirming the content to send."
+    case (.settingsDescription, .simplifiedChinese): "配置 TypeSafe API Key，用于可选的 Jev 候选评分。每次发送前都需要预览并确认内容。"
+    case (.configureNotice, .english): "Add a Jev key in Settings → Voice & Models → API Providers."
+    case (.configureNotice, .simplifiedChinese): "请在设置 → 语音与模型 → API 服务中配置 Jev Key。"
+    case (.openSettings, .english): "Configure Jev API…"
+    case (.openSettings, .simplifiedChinese): "配置 Jev API…"
+    case (.invalidKey, .english): "Enter a TypeSafe API key with 8–512 visible ASCII characters and no spaces."
+    case (.invalidKey, .simplifiedChinese): "请输入 8–512 个可见 ASCII 字符的 TypeSafe API Key，中间不能包含空格。"
     case (.title, .english): "Review with Jev"
     case (.title, .simplifiedChinese): "使用 Jev 比较候选"
     case (.open, .english): "Compare with Jev…"
