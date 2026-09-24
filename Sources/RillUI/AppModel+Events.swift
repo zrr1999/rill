@@ -374,7 +374,7 @@ extension AppModel {
             )
             recordWorkspace.buffers.message = message.string(for: language)
             append(english: message.english, simplifiedChinese: message.simplifiedChinese)
-            recordWorkspace.buffers.showMessageAction()
+            recordWorkspace.buffers.showMessageAction?()
         case .recordPanelRequested:
             showRecordPanel()
         case .runHistoryUpdated(let update):
