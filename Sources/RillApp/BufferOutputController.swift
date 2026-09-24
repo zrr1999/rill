@@ -19,6 +19,10 @@ final class BufferOutputController: NSObject {
   private var isClosed = false
   private var dragGeneration: UInt64 = 0
   private var dragStarted = false
+  private var isPresentingDrag = false
+  private var pendingMessage: String?
+
+  var isVisible: Bool { panel?.isVisible ?? false }
 
   init(
     store: RecordStore, model: AppModel, injectionEngine: TextInjectionEngine,
@@ -44,6 +48,7 @@ final class BufferOutputController: NSObject {
       defer {
         task = nil
         model.recordWorkspace.buffers.isSending = false
+        presentPendingMessageIfPossible()
       }
       do {
         if let manualEntry { try await store.requestBufferEntry(manualEntry) }
@@ -114,6 +119,7 @@ final class BufferOutputController: NSObject {
   private func settle(_ entry: BufferEntryID) async throws {
     try await store.finishBufferOutput(entry)
     panel?.orderOut(nil)
+    isPresentingDrag = false
     retainedDragViews.removeAll()
     model?.recordWorkspace.buffers.message = nil
   }
@@ -121,7 +127,10 @@ final class BufferOutputController: NSObject {
   func confirm() {
     guard !isClosed, task == nil, dragSettlementTask == nil else { return }
     task = Task {
-      defer { task = nil }
+      defer {
+        task = nil
+        presentPendingMessageIfPossible()
+      }
       guard let active = try? await store.bufferSnapshot().active else { return }
       do { try await settle(active.id) } catch {
         notify("状态保存失败；内容不会再次发送。", "Settlement failed. The item will not be sent again.")
@@ -132,7 +141,10 @@ final class BufferOutputController: NSObject {
   func retry() {
     guard !isClosed, task == nil, dragSettlementTask == nil else { return }
     task = Task {
-      defer { task = nil }
+      defer {
+        task = nil
+        presentPendingMessageIfPossible()
+      }
       guard let active = try? await store.bufferSnapshot().active, active.state != .delivered else {
         return
       }
@@ -151,10 +163,13 @@ final class BufferOutputController: NSObject {
     task?.cancel()
     // A cancellation after any external effect remains guarded for confirmation.
     panel?.orderOut(nil)
+    isPresentingDrag = false
+    presentPendingMessageIfPossible()
   }
 
   func shutdown() async {
     isClosed = true
+    pendingMessage = nil
     task?.cancel()
     await task?.value
     await dragSettlementTask?.value
@@ -169,13 +184,23 @@ final class BufferOutputController: NSObject {
     panel?.orderOut(nil)
   }
 
-  func showMessage() {
-    guard task == nil, dragSettlementTask == nil, retainedDragViews.isEmpty else { return }
+  func showMessage(_ message: String) {
+    guard !isClosed else { return }
+    pendingMessage = message
+    presentPendingMessageIfPossible()
+  }
+
+  private func presentPendingMessageIfPossible() {
+    guard !isClosed, task == nil, dragSettlementTask == nil, !isPresentingDrag,
+      let message = pendingMessage, let model else { return }
+    pendingMessage = nil
+    model.recordWorkspace.buffers.message = message
     showConfirmation()
   }
 
   private func showConfirmation() {
     guard let model else { return }
+    isPresentingDrag = false
     show(
       content: NSHostingView(
         rootView: RecordBufferStatusView(
@@ -183,6 +208,7 @@ final class BufferOutputController: NSObject {
   }
 
   private func showDrag(_ output: BufferOutput) {
+    isPresentingDrag = true
     let stack = NSStackView()
     stack.orientation = .vertical
     stack.spacing = 10
@@ -210,7 +236,10 @@ final class BufferOutputController: NSObject {
         self.dragSettlementTask == nil
       else { return }
       self.dragSettlementTask = Task {
-        defer { self.dragSettlementTask = nil }
+        defer {
+          self.dragSettlementTask = nil
+          self.presentPendingMessageIfPossible()
+        }
         await self.finish(result, entry: output.entry.id)
       }
     }
@@ -242,11 +271,15 @@ final class BufferOutputController: NSObject {
     return true
   }
 
-  @objc private func cancelDrag() {
+  @objc func cancelDrag() {
     guard !isClosed, task == nil, dragSettlementTask == nil, let model else { return }
     panel?.orderOut(nil)
+    isPresentingDrag = false
     task = Task {
-      defer { task = nil }
+      defer {
+        task = nil
+        presentPendingMessageIfPossible()
+      }
       if let active = try? await store.bufferSnapshot().active {
         dragGeneration += 1
         if dragStarted {

@@ -8,6 +8,88 @@ import Testing
 @testable import RillUI
 
 @MainActor struct BufferOutputControllerTests {
+  @Test(arguments: [false, true])
+  func inputFailureWaitsForTextOutputAndDoesNotReopenAfterShutdown(shutdown: Bool) async throws {
+    let store = RecordStore()
+    _ = try await enqueue(.text("first"), store: store)
+    let model = makeModel(store)
+    model.language = .english
+    let element = BufferVerifiableTarget()
+    let target = RecordBufferTextOutput.Target(
+      element: element, isCurrent: { true }, post: { _ in
+        Issue.record("Verified AX output must not post keyboard events")
+        return false
+      })
+    let modifier = BufferModifierGate()
+    let controller = BufferOutputController(
+      store: store, model: model, injectionEngine: makeInjectionEngine(),
+      textOutput: .init(
+        capture: { target },
+        modifiersHeld: {
+          modifier.wasChecked = true
+          return modifier.isHeld
+        }, isSecure: { false }),
+      isRillFrontmost: { false })
+    model.recordWorkspace.buffers.showMessageAction = { controller.showMessage($0) }
+    let clipboardCount = NSPasteboard.general.changeCount
+
+    controller.output()
+    try await waitUntil { modifier.wasChecked }
+    model.handle(.recordBufferInputFailed(recordID: RecordID()))
+    #expect(model.recordWorkspace.buffers.message == nil)
+    #expect(!controller.isVisible)
+
+    if shutdown {
+      await controller.shutdown()
+      #expect(!controller.isVisible)
+      #expect(element.value.isEmpty)
+      #expect(try await store.bufferSnapshot().remainingCount == 1)
+    } else {
+      modifier.isHeld = false
+      try await waitUntil { !model.recordWorkspace.buffers.isSending }
+      #expect(element.value == "first")
+      #expect(try await store.bufferSnapshot().remainingCount == 0)
+      #expect(model.recordWorkspace.buffers.message?.contains("All Records") == true)
+      #expect(controller.isVisible)
+      await controller.shutdown()
+    }
+    #expect(NSPasteboard.general.changeCount == clipboardCount)
+  }
+
+  @Test(arguments: [false, true])
+  func inputFailureIsShownAfterCancellingAnUnstartedDrag(notifyBeforeCancel: Bool) async throws {
+    let store = RecordStore()
+    let id = try await enqueue(.image(Data([1])), store: store)
+    let model = makeModel(store)
+    model.language = .english
+    let controller = BufferOutputController(
+      store: store, model: model, injectionEngine: makeInjectionEngine(),
+      textOutput: .init(capture: { nil }, modifiersHeld: { false }, isSecure: { false }),
+      isRillFrontmost: { false })
+    model.recordWorkspace.buffers.showMessageAction = { controller.showMessage($0) }
+    let clipboardCount = NSPasteboard.general.changeCount
+
+    controller.output()
+    try await waitUntil { !model.recordWorkspace.buffers.isSending }
+    #expect(try await store.bufferSnapshot().active?.id == id)
+    if notifyBeforeCancel {
+      model.handle(.recordBufferInputFailed(recordID: RecordID()))
+      #expect(model.recordWorkspace.buffers.message == nil)
+    }
+    controller.cancelDrag()
+    try await waitUntil { try await store.bufferSnapshot().active == nil }
+    if !notifyBeforeCancel {
+      model.handle(.recordBufferInputFailed(recordID: RecordID()))
+    }
+    try await waitUntil {
+      controller.isVisible && model.recordWorkspace.buffers.message?.contains("All Records") == true
+    }
+    #expect(try await store.bufferSnapshot().next?.id == id)
+    #expect(try await store.bufferSnapshot().remainingCount == 1)
+    #expect(NSPasteboard.general.changeCount == clipboardCount)
+    await controller.shutdown()
+  }
+
   @Test func uncertainOutputRequiresExplicitRetryAndKeepsTheExactItem() async throws {
     let store = RecordStore()
     let first = try await enqueue(.text("first"), store: store)
@@ -175,4 +257,31 @@ private struct BufferUnverifiableTarget: CursorTextPreviewTarget {
 
 @MainActor private final class BufferCancellationProbe {
   weak var controller: BufferOutputController?
+}
+
+@MainActor private final class BufferModifierGate {
+  var isHeld = true
+  var wasChecked = false
+}
+
+private final class BufferVerifiableTarget: CursorTextPreviewTarget, @unchecked Sendable {
+  private let lock = NSLock()
+  private var storedValue = ""
+  private var selection = NSRange(location: 0, length: 0)
+
+  var value: String { lock.withLock { storedValue } }
+
+  func isFocused() -> Bool { true }
+  func supportsSelectedTextReplacement() -> Bool { true }
+  func selectedRange() -> NSRange? { lock.withLock { selection } }
+  func selectedText(in range: NSRange) -> String? {
+    lock.withLock { (storedValue as NSString).substring(with: range) }
+  }
+  func replaceText(in range: NSRange, with text: String, selection: NSRange) -> Bool {
+    lock.withLock {
+      storedValue = (storedValue as NSString).replacingCharacters(in: range, with: text)
+      self.selection = selection
+      return true
+    }
+  }
 }

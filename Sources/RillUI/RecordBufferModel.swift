@@ -12,7 +12,7 @@ public final class RecordBufferModel {
   public var confirmAction: () -> Void = {}
   public var retryAction: () -> Void = {}
   public var cancelAction: () -> Void = {}
-  public var showMessageAction: (() -> Void)?
+  public var showMessageAction: ((String) -> Void)?
   public var shutdownAction: () async -> Void = {}
   private let store: RecordStore
   private var observation: Task<Void, Never>?
