@@ -1,3 +1,4 @@
+@testable import RillSpeech
 @preconcurrency import AVFoundation
 import Foundation
 import XCTest

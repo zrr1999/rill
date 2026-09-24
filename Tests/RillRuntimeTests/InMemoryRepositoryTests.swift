@@ -1,7 +1,8 @@
+
+@testable import RillCore
+@testable import RillWorkflows
 import Foundation
 import XCTest
-@testable import RillCore
-@testable import RillRuntime
 
 final class InMemoryRepositoryTests: XCTestCase {
     func testHistoryRepositorySanitizesFailureMessagesAtItsBoundary() async throws {

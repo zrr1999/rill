@@ -1,6 +1,7 @@
-import XCTest
+
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+import XCTest
 
 private actor DiagnosticPrivacyRepository: DiagnosticRepository {
     func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }

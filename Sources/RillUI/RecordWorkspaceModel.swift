@@ -1,7 +1,7 @@
+import RillRecords
 import Foundation
 import Observation
 import RillCore
-import RillRuntime
 
 /// UI-owned projection of the Record graph. The actor remains the only state
 /// owner; this model only keeps a refreshable snapshot and user navigation.

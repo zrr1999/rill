@@ -4,7 +4,9 @@ import Testing
 import UniformTypeIdentifiers
 
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 @testable import RillUI
 
 @MainActor

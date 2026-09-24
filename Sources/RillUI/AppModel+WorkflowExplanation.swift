@@ -1,6 +1,6 @@
+import RillWorkflows
 import Foundation
 import RillCore
-import RillRuntime
 
 extension AppModel {
     public func explainWorkflowBeforeRun(_ requestedWorkflow: WorkflowDefinition) {

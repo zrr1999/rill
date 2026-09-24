@@ -242,14 +242,9 @@ public enum LocalSpeechModelCatalog {
   }
 
   public static func effectiveModelIdentifier(
-    settings: LocalSpeechSettings,
-    workflow: WorkflowDefinition? = nil
+    settings: LocalSpeechSettings, modelOverride: String? = nil
   ) -> String {
-    if let workflow,
-      let override =
-        (workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride]
-        ?? workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])?
-        .trimmingCharacters(in: .whitespacesAndNewlines),
+    if let override = modelOverride?.trimmingCharacters(in: .whitespacesAndNewlines),
       !override.isEmpty
     {
       return normalizedLegacyModelID(override)

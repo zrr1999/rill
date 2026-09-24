@@ -1,6 +1,6 @@
+import RillWorkflows
 import Foundation
 import RillCore
-import RillRuntime
 
 actor WorkflowAudioRunController {
   enum RunError: Error, LocalizedError, Equatable {

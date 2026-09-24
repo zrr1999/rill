@@ -2,7 +2,9 @@ import AppKit
 import SwiftUI
 import XCTest
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 @testable import RillUI
 
 /// Opt-in rendered evidence with ephemeral services, never the user's settings or clipboard.

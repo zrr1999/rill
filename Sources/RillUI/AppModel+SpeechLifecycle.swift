@@ -1,6 +1,5 @@
 import Foundation
 import RillCore
-import RillRuntime
 
 extension AppModel {
   public func prepareLocalSpeechModel() {

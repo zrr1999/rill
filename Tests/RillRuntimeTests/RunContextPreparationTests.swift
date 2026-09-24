@@ -1,7 +1,9 @@
+
+@testable import RillCore
+@testable import RillKnowledge
+@testable import RillWorkflows
 import Foundation
 import Testing
-@testable import RillCore
-@testable import RillRuntime
 
 struct RunContextPreparationTests {
     private static let captureSetupTimeout: Duration = .seconds(2)

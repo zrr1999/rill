@@ -1,9 +1,9 @@
+@testable import RillWorkflows
 import XCTest
 
 @testable import RillApp
 @testable import RillCore
 @testable import RillPlatform
-@testable import RillRuntime
 
 private final class GlobalInputOwnerProbe: @unchecked Sendable {
   private let lock = NSLock()

@@ -1,7 +1,9 @@
+
+@testable import RillCore
+@testable import RillRecords
+@testable import RillWorkflows
 import Foundation
 import XCTest
-@testable import RillCore
-@testable import RillRuntime
 
 private struct ReceiptContextProvider: ContextProvider {
     func captureContext() async -> ContextSnapshot { .empty }

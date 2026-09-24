@@ -1,7 +1,8 @@
+
+@testable import RillCore
+@testable import RillWorkflows
 import Foundation
 import XCTest
-@testable import RillCore
-@testable import RillRuntime
 
 private actor WorkflowExplainProbe {
     private var recognitionCount = 0

@@ -1,3 +1,4 @@
+@testable import RillSpeech
 import XCTest
 
 @testable import RillProviders

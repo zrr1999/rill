@@ -5,7 +5,10 @@ import XCTest
 @testable import RillCore
 @testable import RillPersistence
 @testable import RillProviders
-@testable import RillRuntime
+@testable import RillSpeech
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 
 /// Opt-in measurement through encrypted storage and the real supervised MLX helper.
 final class RecordNativeSemanticScaleTests: XCTestCase {

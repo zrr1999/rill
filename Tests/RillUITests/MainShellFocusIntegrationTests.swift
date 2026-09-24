@@ -1,7 +1,7 @@
+@testable import RillWorkflows
 import AppKit
 import SwiftUI
 import RillCore
-import RillRuntime
 import XCTest
 
 @testable import RillUI

@@ -2,7 +2,8 @@ import Foundation
 import XCTest
 
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillRecords
+@testable import RillWorkflows
 
 final class RecordStoreTests: XCTestCase {
     func testOneCaptureCreatesOneRecordWithMultipleMemberships() async throws {
@@ -14,10 +15,12 @@ final class RecordStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(projection.memberships.count, 2)
-        XCTAssertEqual(Set(projection.memberships.map(\.collectionID)), [
-            RecordCollection.inboxID,
-            second.id,
-        ])
+        XCTAssertEqual(
+            Set(projection.memberships.map(\.collectionID)),
+            [
+                RecordCollection.inboxID,
+                second.id,
+            ])
         let snapshot = try await store.snapshot()
         XCTAssertEqual(snapshot.records.count, 1)
     }
@@ -79,7 +82,8 @@ final class RecordStoreTests: XCTestCase {
             .consumed
         )
         XCTAssertEqual(
-            updated.memberships.first(where: { $0.collectionID == RecordCollection.inboxID })?.state,
+            updated.memberships.first(where: { $0.collectionID == RecordCollection.inboxID })?
+                .state,
             .active
         )
     }
@@ -150,10 +154,12 @@ final class RecordStoreTests: XCTestCase {
 
         let loadedOriginal = try await store.record(id: original.id)
         XCTAssertTrue(try XCTUnwrap(loadedOriginal).memberships.isEmpty)
-        XCTAssertEqual(Set(replacement.memberships.map(\.collectionID)), [
-            RecordCollection.inboxID,
-            second.id,
-        ])
+        XCTAssertEqual(
+            Set(replacement.memberships.map(\.collectionID)),
+            [
+                RecordCollection.inboxID,
+                second.id,
+            ])
     }
 
     func testCaptureRouteUsesStableUnionAndDeliveryRouteUsesHighestPriorityStableID() async throws {
@@ -447,16 +453,20 @@ final class RecordStoreTests: XCTestCase {
         let events = await sink.events()
         XCTAssertEqual(events.map(\.kind), [.recordCreated, .recordEdited, .recordRemoved])
         XCTAssertEqual(events.map(\.recordID), [created.id, replacement.id, replacement.id])
-        XCTAssertEqual(events.map(\.membershipID), [
-            originalMembership.id,
-            replacementMembership.id,
-            replacementMembership.id,
-        ])
-        XCTAssertEqual(events.map(\.membershipRevision), [
-            originalMembership.revision,
-            replacementMembership.revision,
-            replacementMembership.revision,
-        ])
+        XCTAssertEqual(
+            events.map(\.membershipID),
+            [
+                originalMembership.id,
+                replacementMembership.id,
+                replacementMembership.id,
+            ])
+        XCTAssertEqual(
+            events.map(\.membershipRevision),
+            [
+                originalMembership.revision,
+                replacementMembership.revision,
+                replacementMembership.revision,
+            ])
         XCTAssertTrue(events.allSatisfy { $0.storeRevision > 0 })
     }
 
@@ -560,8 +570,8 @@ private actor RecordCollectionEventProbe: RecordCollectionEventSink {
     }
 }
 
-private extension RecordStore {
-    func createCollection(
+extension RecordStore {
+    fileprivate func createCollection(
         named name: String,
         preset: RecordCollectionPreset = .stack
     ) async throws -> RecordCollection {

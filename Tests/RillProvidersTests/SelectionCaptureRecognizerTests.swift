@@ -1,5 +1,7 @@
-import XCTest
+
 @testable import RillCore
+@testable import RillWorkflows
+import XCTest
 @testable import RillProviders
 
 final class SelectionCaptureRecognizerTests: XCTestCase {

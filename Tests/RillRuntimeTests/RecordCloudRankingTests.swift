@@ -2,7 +2,9 @@ import Foundation
 import Testing
 
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 
 struct RecordCloudRankingTests {
   @Test func reviewIsBoundedAndDoesNotCallProviderUntilConfirmed() async throws {

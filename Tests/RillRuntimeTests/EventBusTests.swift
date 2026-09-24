@@ -1,7 +1,7 @@
+@testable import RillWorkflows
 import XCTest
 
 @testable import RillCore
-@testable import RillRuntime
 
 final class EventBusTests: XCTestCase {
   func testCancellingBlockedPublicationWithdrawsPendingEvent() async {

@@ -161,8 +161,12 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 RillCore          领域模型与协议
 RillPlatform      macOS 系统边界
 RillSpeechContracts Worker 协议、流式合同与本地模型清单
-RillProviders     识别客户端、变换与外部输出实现
-RillRuntime       会话协调与运行生命周期
+RillProviders     云服务客户端、变换与外部输出实现
+RillSpeech        语音采集、识别、合成与 worker 调用
+RillClipboard     系统剪贴板观察与采集
+RillRecords       记录、搜索、投递与复用
+RillKnowledge     词汇建议与上下文记忆
+RillWorkflows     工作流编排与运行生命周期
 RillPersistence   加密持久化
 RillUI            SwiftUI、功能状态所有者与 AppModel 编排
 RillApp           组合根

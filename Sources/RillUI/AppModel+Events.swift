@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import RillCore
-import RillRuntime
 
 private enum EventFeedPrivacyBodyKind {
     case recognition

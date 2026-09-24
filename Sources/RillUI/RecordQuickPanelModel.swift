@@ -1,7 +1,7 @@
+import RillRecords
 import Foundation
 import Observation
 import RillCore
-import RillRuntime
 
 @MainActor @Observable
 public final class RecordCleanupModel {

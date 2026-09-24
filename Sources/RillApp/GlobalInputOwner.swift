@@ -1,7 +1,7 @@
+import RillWorkflows
 import Foundation
 import RillCore
 import RillPlatform
-import RillRuntime
 
 /// Owns the process-wide lifecycle of the single shared global-input producer.
 ///
