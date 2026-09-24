@@ -1,0 +1,65 @@
+name: "Automation - PR Title"
+
+on:
+  # Read PR metadata only; never check out code or download run artifacts.
+  workflow_run: # zizmor: ignore[dangerous-triggers]
+    workflows: ["Policy - PR"]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: automation-pr-title-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  title:
+    name: Normalize ImgBot PR title
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Normalize the title and rerun PR policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          POLICY_RUN_ID: ${{ github.event.workflow_run.id }}
+          NORMALIZED_TITLE: '⚡ perf(assets): optimize images'
+        run: |
+          candidates="$(gh api --method GET "repos/${GH_REPO}/pulls" \
+            --field state=open --field "head=${HEAD_REPO%%/*}:${HEAD_BRANCH}" \
+            --field per_page=100)"
+          pr_number="$(jq --raw-output \
+            --arg repo "$HEAD_REPO" --arg branch "$HEAD_BRANCH" --arg sha "$HEAD_SHA" '
+            [.[] | select(.head.repo.full_name == $repo and .head.ref == $branch and .head.sha == $sha)] |
+            if length == 1 then .[0].number else empty end
+          ' <<< "$candidates")"
+          if [[ -z "$pr_number" ]]; then
+            exit 0
+          fi
+
+          current_pr="$(gh api "repos/${GH_REPO}/pulls/${pr_number}")"
+          if ! jq --exit-status \
+            --arg repo "$HEAD_REPO" --arg branch "$HEAD_BRANCH" --arg sha "$HEAD_SHA" '
+            .state == "open" and .head.repo.full_name == $repo and .head.ref == $branch and .head.sha == $sha and
+            .user.login == "imgbot[bot]" and .title == "[ImgBot] Optimize images"
+          ' <<< "$current_pr" > /dev/null; then
+            exit 0
+          fi
+
+          gh api \
+            --method PATCH \
+            --silent \
+            --header "X-GitHub-Api-Version: 2026-03-10" \
+            "repos/${GH_REPO}/pulls/${pr_number}" \
+            --raw-field "title=$NORMALIZED_TITLE"
+          # GITHUB_TOKEN edits do not trigger edited workflows. The completed
+          # run rereads live metadata when rerun; a normalized title stops here.
+          gh run rerun "$POLICY_RUN_ID" --repo "$GH_REPO"

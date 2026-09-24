@@ -1,60 +1,21 @@
 name: "Policy - PR"
 
 on:
-  # Check changes to this policy before its target-side version is on main.
   pull_request:
-    types: [opened, edited, reopened, synchronize, ready_for_review]
-    paths:
-      - .github/workflows/policy-pr.yml
-  # Validate metadata without checking out or executing repository code.
-  pull_request_target:
     types: [opened, edited, reopened, synchronize, ready_for_review]
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
-  group: policy-pr-${{ github.event.pull_request.number }}-${{ github.event_name }}
+  group: policy-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  normalize-title:
-    name: Normalize ImgBot PR title
-    if: >-
-      github.event_name == 'pull_request_target' &&
-      github.event.pull_request.user.login == 'imgbot[bot]' &&
-      github.event.pull_request.title == '[ImgBot] Optimize images'
-    runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-    steps:
-      - name: Normalize ImgBot title
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          NORMALIZED_TITLE: '⚡ perf(assets): optimize images'
-        run: |
-          current_pr="$(gh api "repos/${GH_REPO}/pulls/${PR_NUMBER}")"
-          if ! jq --exit-status \
-            '.user.login == "imgbot[bot]" and .title == "[ImgBot] Optimize images"' \
-            <<< "$current_pr" > /dev/null; then
-            exit 0
-          fi
-          gh api \
-            --method PATCH \
-            --header "X-GitHub-Api-Version: 2026-03-10" \
-            "repos/${GH_REPO}/pulls/${PR_NUMBER}" \
-            --raw-field "title=$NORMALIZED_TITLE"
-
   message:
     name: PR message
-    needs: normalize-title
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
     steps:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:

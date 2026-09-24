@@ -204,7 +204,8 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 
 | Workflow | 显示名称 | 职责 |
 | --- | --- | --- |
-| [policy-pr.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/policy-pr.yml) | Policy - PR | 规范化 ImgBot 默认标题，并校验 PR 标题和正文 |
+| [policy-pr.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/policy-pr.yml) | Policy - PR | 只读校验 PR 标题和正文 |
+| [automation-pr-title.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题后，重跑对应的 PR 检查 |
 | [ci-tests.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-tests.yml) | CI - Tests | Linux 文档构建，以及按修改范围运行的 macOS 测试、依赖和发布预检 |
 | [ci-benchmarks.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-benchmarks.yml) | CI - Benchmarks | CodSpeed 文本预览性能测量 |
 
@@ -216,15 +217,19 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
 跳过整个 macOS job。其他改动、空 diff、main 推送和手动运行都执行完整应用预检。
 `README.md` 随 App 分发，因此仍走应用预检。
 
-`Policy - PR` 在 `pull_request_target` 上先规范化标题，再校验标题和正文。
-独立的改名 job 只把 `imgbot[bot]` 的 `[ImgBot] Optimize images` 改为
-`⚡ perf(assets): optimize images`，保留其他作者和人工设置的标题；写权限只授予该 job。
-改名前重新检查当前作者和标题；后续校验 job 通过 API 一次读取当前标题和正文，
-不依赖 `GITHUB_TOKEN` 产生的 `edited` 事件。校验 job 只有读取权限，使用事件中
-base commit 的 PR 模板；两个 job 都不检出或执行仓库代码。修改 Policy 工作流本身时，
-额外通过 `pull_request` 运行只读校验，让新触发配置在进入默认分支前也能验证。
-两种事件使用独立并发组；普通源码与 ImgBot 图片 PR 只使用 `pull_request_target`。
-提交信息由本地 prek
+`Policy - PR` 独立响应 `pull_request` 事件，只有读取权限，通过 API 获取当前
+标题、正文和事件中 base commit 的 PR 模板。它不依赖 Automation，也不豁免机器人。
+
+`Automation - PR Title` 在 Policy 检查失败后响应 `workflow_run` 事件。它按来源
+仓库、分支和提交定位唯一的开放 PR，再检查当前作者与标题，只把 `imgbot[bot]` 的
+`[ImgBot] Optimize images` 改为 `⚡ perf(assets): optimize images`。
+人工标题、其他作者、已关闭的 PR 和已经更新的提交都不修改。
+改名成功后重跑原 Policy run，让检查重新读取当前元数据；这是因为
+[`GITHUB_TOKEN` 改名不会触发 `edited` 工作流](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)。
+已经规范化的标题不会再次触发改名或重跑；正文不合规仍会检查失败。
+`pull-requests: write` 和重跑所需的 `actions: write` 只授予 Automation。
+两个工作流都不检出仓库代码，也不读取上游运行的 artifacts；Automation 进入默认
+分支后生效。提交信息由本地 prek
 `commit-msg` hook（`zendev-message-check`）校验，CI 不逐条扫描提交。
 
 ## 生成文件
