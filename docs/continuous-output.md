@@ -118,8 +118,8 @@ run-specific process/database observations, not estimates from field layouts.
 The fixture starts with 10,000 immutable text Records; it measures the additional
 buffer indexes and encrypted entries without counting payload creation again.
 
-On 2026-09-23, the same host and fixture were measured again with the current
-failure-path fixes and the test runner shown below:
+On 2026-09-23, the same host and debug fixture were measured again with the
+failure-path fixes in commit `4636ec3`:
 
 | Operation | P50 | P95 | P99 |
 | --- | ---: | ---: | ---: |
@@ -144,10 +144,18 @@ jitter; the later P95 was 1.483 ms above the baseline in this small sample.
 It is not a physical copy/paste keystroke latency measurement, and does not prove
 the absence of a native copy/paste latency regression.
 
-Reproduce with:
+The optimized Stack/Queue workloads now run in CodSpeed alongside the text
+preview benchmarks. They measure enqueue, selection and persistent output state
+transitions with 10,000 entries; run logs include per-operation percentiles and
+process/database growth. See [performance benchmarks](https://github.com/zrr1999/rill/blob/main/Benchmarks/README.md)
+for the workload boundaries and instrumentation commands. The debug observations
+above remain historical evidence, not directly comparable CodSpeed baselines.
+
+Run the current benchmark suite and the separate clipboard-capture checks with:
 
 ```sh
-RILL_BUFFER_BENCHMARK=1 RILL_CLIPBOARD_LATENCY=1 scripts/swift_locked.sh test \
+just bench
+RILL_CLIPBOARD_LATENCY=1 scripts/swift_locked.sh test \
   --filter 'RecordBuffer|RecordBufferTextOutput|ClipboardCaptureLatency|BufferHotkey|BufferFilePromise'
 just ci
 ```
