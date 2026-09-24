@@ -1,5 +1,8 @@
 # ASR Dogfood Benchmark 计划
 
+> 历史材料，保留原始研究、计划或验收范围；不代表当前功能或发布结论。
+> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../usage.md)。
+
 > 来源：`docs/competitive-research.md` 与 `docs/technology-selection.md`。
 > 目标：用小样本、低成本的真实使用数据，帮助 Rill 决定本地 ASR 引擎与模型优先级。
 
@@ -132,7 +135,7 @@ Markdown 版：
 固定为 `878702423` bytes、SHA-256
 `393f8a14e2f5fb96746aaab342997a40641001fbd5bf9592a080a8329178ee96`。
 完整 URL、来源与许可证证据见
-[`LOCAL_MODEL_NOTICES.md`](../LOCAL_MODEL_NOTICES.md)。模型准备应在计时前完成；
+[`LOCAL_MODEL_NOTICES.md`](../../../LOCAL_MODEL_NOTICES.md)。模型准备应在计时前完成；
 计时与录音阶段禁网，以免把下载或云端 fallback 混入本地结果。
 
 当前有两条技术 fixture 证据：2026-07-18，当前 arm64 Mac 上的生产

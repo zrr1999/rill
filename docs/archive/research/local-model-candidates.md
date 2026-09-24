@@ -1,5 +1,8 @@
 # Local Model Catalog Review
 
+> 历史材料，保留原始研究、计划或验收范围；不代表当前功能或发布结论。
+> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../usage.md)。
+
 Rill's local speech boundary now routes exact final-model identities to
 sherpa-onnx or the optional Apple Silicon native MLX Swift backend. The 16 GB default
 remains Qwen3-ASR 0.6B INT8; Qwen3-ASR 1.7B 8bit is selectable with a 16 GB
@@ -18,7 +21,7 @@ quality, device coverage, license clearance, or general availability.
 | `streaming-zipformer-small-bilingual-zh-en-preview-int8` | Fixed live-preview model; stable legacy storage ID; not selectable as a final tier | [Streaming Zipformer bilingual INT8](https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2) | `511274346` | `27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8` | `9adc9ead5f64877832a928980b189b12ba36fe192a137ec8c1ae39540b640c62` | Upgraded from the earlier small model; native incremental fixture validation is required before release. |
 
 The complete provenance, attribution, and license-risk record is maintained in
-[`LOCAL_MODEL_NOTICES.md`](../LOCAL_MODEL_NOTICES.md). Qwen does not yet have
+[`LOCAL_MODEL_NOTICES.md`](../../../LOCAL_MODEL_NOTICES.md). Qwen does not yet have
 accepted human microphone quality thresholds or complete coverage across the
 supported Apple Silicon hardware matrix. Do not describe it as generally
 available on the basis of catalog admission.
@@ -159,6 +162,6 @@ and approve:
 The prior Breeze, Cantonese, Whisper tiny, and Whisper large-v3 candidate path
 is retired and is no longer part of the production catalog, downloader, or
 release decision. Historical measurements remain in
-[`asr-dogfood-results.md`](asr-dogfood-results.md) as migration evidence only;
+[`asr-dogfood-results.md`](https://github.com/zrr1999/rill/blob/760640e25b8ceaf45075e8092c4628ab12ad3afd/docs/asr-dogfood-results.md) as migration evidence only;
 they cannot validate sherpa-onnx models or the current recording and endpointing
 path.

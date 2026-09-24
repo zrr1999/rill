@@ -1,5 +1,8 @@
 # Optional Jev clipboard ranking verification
 
+> 历史材料，保留原始研究、计划或验收范围；不代表当前功能或发布结论。
+> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../usage.md)。
+
 Date: 2026-09-21. Base: PR #15, `f68189ca362719ac502b4623be6099f997ac9ceb`.
 Owning branch: `codex/jev-clipboard-ranking`. Environment: macOS 27, arm64;
 the deployment target remains macOS 14.

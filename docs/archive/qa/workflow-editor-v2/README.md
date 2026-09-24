@@ -1,5 +1,8 @@
 # Workflow editor v2 verification
 
+> 历史材料，保留原始研究、计划或验收范围；不代表当前功能或发布结论。
+> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../../usage.md)。
+
 Validation date: 2026-09-15. Working-source base:
 `2eda5e163307aab0e4c92c7c9f9a7b7f3503f2f4` on `main`, with existing and workflow
 changes present. No commit, push, installed-app replacement or second Rill process
