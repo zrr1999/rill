@@ -2199,6 +2199,7 @@ private enum AppModelFactory {
     let bufferOutput = BufferOutputController(
       store: core.recordStore, model: resolvedModel, injectionEngine: platform.injectionEngine)
     resolvedModel.recordWorkspace.buffers.outputAction = { bufferOutput.output($0) }
+    resolvedModel.recordWorkspace.buffers.showMessageAction = { bufferOutput.showMessage() }
     resolvedModel.recordWorkspace.buffers.confirmAction = { bufferOutput.confirm() }
     resolvedModel.recordWorkspace.buffers.retryAction = { bufferOutput.retry() }
     resolvedModel.recordWorkspace.buffers.cancelAction = { bufferOutput.cancel() }

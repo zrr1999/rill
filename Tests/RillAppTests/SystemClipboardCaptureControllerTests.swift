@@ -335,17 +335,34 @@ struct ClipboardCaptureLatencyTests {
     await controller.stop()
   }
 
-  @Test
-  func capturesHistoryWhenBufferReservationFails() async throws {
+  @Test(arguments: [0, 3])
+  func capturesHistoryWhenBufferReservationFails(failures: Int) async throws {
     let persistence = ClipboardRetryPersistence(failures: 0)
     let store = RecordStore(persistence: persistence)
     _ = try await store.snapshot()
-    await persistence.failNextCommits(3)
-    let (controller, pasteboard, _) = await makeHarness(store: store)
+    await persistence.failNextCommits(failures)
+    let eventBus = EventBus()
+    let stream = await eventBus.stream()
+    var events = stream.makeAsyncIterator()
+    let (controller, pasteboard, _) = await makeHarness(store: store, eventBus: eventBus)
     pasteboard.replaceExternally(with: .init(plainText: "history survives", changeCount: 2))
     await controller.testingPollExternalClipboardIfNeeded()
-    #expect(try await store.snapshot().records.map(\.record.payload) == [.text("history survives")])
-    #expect(try await store.bufferSnapshot().remainingCount == 0)
+    let records = try await store.snapshot().records
+    #expect(records.map(\.record.payload) == [.text("history survives")])
+    let record = try #require(records.first)
+    #expect(try await store.bufferSnapshot().remainingCount == (failures == 0 ? 1 : 0))
+    let marker = RillEvent.recordPanelRequested
+    await eventBus.publish(marker)
+    var reported: [RecordID] = []
+    while let event = await events.next(), event != marker {
+      if case .recordBufferInputFailed(let recordID) = event { reported.append(recordID) }
+    }
+    #expect(reported == (failures == 0 ? [] : [record.id]))
+    if failures > 0 {
+      _ = try await store.enqueueRecord(record.id, in: RecordBuffer.clipboardID)
+      #expect(try await store.bufferSnapshot().remainingCount == 1)
+      #expect(try await store.beginBufferOutput().record.id == record.id)
+    }
     await controller.stop()
   }
 
@@ -564,11 +581,14 @@ struct ClipboardCaptureLatencyTests {
     }
   }
 
-  private func makeHarness(store: RecordStore = RecordStore(), focus: ClipboardFocusProbe? = nil) async
+  private func makeHarness(
+    store: RecordStore = RecordStore(), focus: ClipboardFocusProbe? = nil,
+    eventBus: EventBus = EventBus()
+  ) async
     -> (SystemClipboardCaptureController, RecordCaptureTestPasteboard, RecordStore)
   {
     let pasteboard = RecordCaptureTestPasteboard(snapshot: .init(plainText: "initial", changeCount: 1))
-    let controller = makeController(pasteboard: pasteboard, store: store, focus: focus)
+    let controller = makeController(pasteboard: pasteboard, store: store, focus: focus, eventBus: eventBus)
     await controller.start(initialClipboardCaptureEnabled: true)
     await controller.testingStopExternalClipboardMonitor()
     return (controller, pasteboard, store)

@@ -169,6 +169,11 @@ final class BufferOutputController: NSObject {
     panel?.orderOut(nil)
   }
 
+  func showMessage() {
+    guard task == nil, dragSettlementTask == nil, retainedDragViews.isEmpty else { return }
+    showConfirmation()
+  }
+
   private func showConfirmation() {
     guard let model else { return }
     show(

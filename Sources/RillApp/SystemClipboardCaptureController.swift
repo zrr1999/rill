@@ -850,12 +850,15 @@ extension SystemClipboardCaptureController {
               bufferEntryID = reservation.id
             }
           }
-          _ = try await recordStore.captureSystemClipboard(
+          let record = try await recordStore.captureSystemClipboard(
             snapshot: capture.snapshot,
             sourceApplication: capture.sourceApplication,
             allowsWorkflowCapture: capture.privacy.decision.allowsWorkflowCapture,
             bufferEntryID: bufferEntryID
           )
+          if bufferEntryID == nil {
+            await eventBus.publish(.recordBufferInputFailed(recordID: record.id))
+          }
           if !capture.privacy.decision.allowsWorkflowCapture {
             await recordCaptureDecision(
               capture.privacy.decision,

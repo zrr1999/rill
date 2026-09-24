@@ -367,6 +367,14 @@ extension AppModel {
             )
         case .recordBufferOutputRequested:
             recordWorkspace.buffers.outputAction(nil)
+        case .recordBufferInputFailed:
+            let message = LocalizedText(
+                english: "A copied item was saved in All Records but was not added to pending output. Select the record and use Add to in the Output buffers menu to retry.",
+                simplifiedChinese: "一条复制内容已保存在全部记录，但未加入待输出容器。请选中该记录，在待输出容器菜单中选择“加入”重试。"
+            )
+            recordWorkspace.buffers.message = message.string(for: language)
+            append(english: message.english, simplifiedChinese: message.simplifiedChinese)
+            recordWorkspace.buffers.showMessageAction()
         case .recordPanelRequested:
             showRecordPanel()
         case .runHistoryUpdated(let update):
