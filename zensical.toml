@@ -23,6 +23,7 @@ nav = [
   ] },
   { "维护" = [
     { "发布步骤" = "docs/releasing.md" },
+    { "发布说明模板" = "docs/release-notes-template.md" },
     { "发布验收" = "docs/release-qa-checklist.md" },
     { "文档站" = "docs/documentation.md" },
   ] },

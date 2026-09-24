@@ -267,10 +267,43 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
       capturedAudio.durationSeconds,
       Double(samples.count + trailingSamples.count) / 16_000
     )
-    XCTAssertEqual(
-      capturedAudio.metadata["streaming.preview.final"],
-      "你好 world final"
+    XCTAssertNil(capturedAudio.metadata["streaming.preview.final"])
+    XCTAssertEqual(preview.finishCount, 1)
+    for key in ["captureStopMillis", "captureDrainMillis",
+                "capturePreviewRetireMillis", "captureFinalizeMillis"] {
+      XCTAssertNotNil(capturedAudio.metadata[key].flatMap(Int.init))
+    }
+  }
+
+  func testCaptureFinalizationWaitsForPreviewRetirementBeforeFinalizingWAV() async throws {
+    let source = TestLocalSpeechAudioCaptureSource()
+    let gate = PreviewRetirementGate()
+    let runID = UUID()
+    let preview = TestLocalSpeechStreamingPreviewSession(results: [.success("preview")], retirementGate: gate)
+    let writer = try TestLocalSpeechRecordingWriter(
+      fileURL: makeLocalSpeechOutputURL(runID: runID),
+      failure: .none
     )
+    let runtime = LocalSpeechVoiceCaptureRuntime(
+      permissionRequester: { true }, sourceFactory: { source },
+      recordingWriterFactory: { _, _ in writer },
+      streamingPreviewSessionFactory: { _ in preview }
+    )
+    let request = makeLocalSpeechRequest(runID: runID, livePreviewPlacement: .cursor)
+    let start = Task { try await runtime.startCapture(request: request) }
+    try await source.waitUntilStarted()
+    source.emit(samples: Array(repeating: Float(0.2), count: 4_800), cumulativeRMS: [0.005])
+    try await start.value
+    try await preview.waitUntilAcceptedSampleCount(1)
+    let finish = Task { try await runtime.finishCaptureDeferred(for: request).value() }
+    await gate.waitUntilEntered()
+    XCTAssertEqual(writer.finalizeCount, 0, "Capture must retain the writer while the preview retires.")
+    XCTAssertEqual(preview.finishCount, 1)
+    await gate.release()
+    let audio = try await finish.value
+    defer { _ = try? audio.removeManagedTemporaryFile() }
+    XCTAssertEqual(writer.finalizeCount, 1)
+    XCTAssertEqual(writer.frameCount, 4_800)
   }
 
   func testSlowStreamingPreviewStartupDoesNotDelayCaptureAndReplaysPreRoll() async throws {
@@ -1318,9 +1351,13 @@ private final class TestLocalSpeechStreamingPreviewSession:
   private let lock = NSLock()
   private var results: [Result]
   private let finishResult: Result
+  private let retirementGate: PreviewRetirementGate?
   private var acceptedCounts: [Int] = []
+  private var finishes = 0
+  var finishCount: Int { lock.withLock { finishes } }
 
-  init(results: [Result], finishResult: Result = .success("")) {
+  init(results: [Result], finishResult: Result = .success(""), retirementGate: PreviewRetirementGate? = nil) {
+    self.retirementGate = retirementGate
     self.results = results
     self.finishResult = finishResult
   }
@@ -1351,8 +1388,10 @@ private final class TestLocalSpeechStreamingPreviewSession:
     }
   }
 
-  func finish() throws -> String {
-    switch finishResult {
+  func finish() async throws -> String {
+    lock.withLock { finishes += 1 }
+    await retirementGate?.enter()
+    return switch finishResult {
     case .success(let text):
       text
     case .failure:
@@ -1397,6 +1436,8 @@ private final class TestLocalSpeechRecordingWriter: LocalSpeechRecordingWriting,
   private var storedFrameCount = 0
   private var isClosed = false
   private var storedCloseCount = 0
+  private var storedFinalizeCount = 0
+  var finalizeCount: Int { lock.withLock { storedFinalizeCount } }
   private var storedRemoveFrameLimitCount = 0
 
   init(fileURL: URL, failure: Failure) throws {
@@ -1453,6 +1494,7 @@ private final class TestLocalSpeechRecordingWriter: LocalSpeechRecordingWriting,
         throw TestLocalSpeechFailure.writerFinalize
       }
       isClosed = true
+      storedFinalizeCount += 1
       return LocalSpeechRecordingArtifact(fileURL: fileURL, frameCount: storedFrameCount)
     }
   }
@@ -1909,4 +1951,27 @@ private func readLocalSpeechWaveSamples(from url: URL) throws -> [Float] {
   try file.read(into: buffer)
   let channel = try XCTUnwrap(buffer.floatChannelData?.pointee)
   return Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
+}
+
+private actor PreviewRetirementGate {
+  private var entered = false
+  private var enteredWaiters: [CheckedContinuation<Void, Never>] = []
+  private var releaseWaiter: CheckedContinuation<Void, Never>?
+
+  func enter() async {
+    entered = true
+    enteredWaiters.forEach { $0.resume() }
+    enteredWaiters.removeAll()
+    await withCheckedContinuation { releaseWaiter = $0 }
+  }
+
+  func waitUntilEntered() async {
+    if entered { return }
+    await withCheckedContinuation { enteredWaiters.append($0) }
+  }
+
+  func release() {
+    releaseWaiter?.resume()
+    releaseWaiter = nil
+  }
 }

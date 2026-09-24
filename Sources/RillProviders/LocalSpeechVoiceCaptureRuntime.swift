@@ -650,20 +650,30 @@ actor LocalSpeechVoiceCaptureRuntime {
     // generation and writer installed until every chunk already accepted by
     // the bounded stream has been consumed and written.
     finishingGeneration = captureGeneration
+    var timing: [String: String] = [:]
+    let stopStart = ContinuousClock.now
     source.stop()
+    timing["captureStopMillis"] = DiagnosticTiming.milliseconds(since: stopStart)
+    let drainStart = ContinuousClock.now
     continuation.finish()
     await streamTask.value
+    timing["captureDrainMillis"] = DiagnosticTiming.milliseconds(since: drainStart)
 
-    // Seal streaming decode before detaching the session. The returned text is
-    // preview-only; every workflow still runs authoritative offline recognition
-    // against the finalized managed WAV below.
-    let streamingResult = await finishStreamingPreview()
+    // Offline recognition owns final text. Finish still owns worker retirement
+    // (including its decode-drain guard); discard only the unused preview text.
+    let previewStart = ContinuousClock.now
+    streamingPreviewStartupTask?.cancel()
+    streamingPreviewStartupTask = nil
+    pendingStreamingPreviewSamples.removeAll(keepingCapacity: false)
+    _ = try? await streamingPreviewSession?.finish()
+    timing["capturePreviewRetireMillis"] = DiagnosticTiming.milliseconds(since: previewStart)
 
     guard let resources = detach(request: request) else {
       throw RealtimeAudioCaptureService.CaptureError.notCapturing
     }
     await resources.readinessGate.cancel()
 
+    let finalizeStart = ContinuousClock.now
     let artifact: LocalSpeechRecordingArtifact
     do {
       artifact = try resources.recordingWriter.finalize()
@@ -671,12 +681,10 @@ actor LocalSpeechVoiceCaptureRuntime {
       await discardRecording(resources.recordingWriter, for: resources.request)
       throw error
     }
-    var metadata = request.metadata
+    timing["captureFinalizeMillis"] = DiagnosticTiming.milliseconds(since: finalizeStart)
+    var metadata = request.metadata.merging(timing) { _, measured in measured }
     metadata["runID"] = request.runID.uuidString
     metadata["live.provider"] = "local-speech.streaming-preview"
-    if let streamingResult {
-      metadata["streaming.preview.final"] = streamingResult
-    }
     let capturedAudio: CapturedAudio
     do {
       capturedAudio = try CapturedAudio(
@@ -1074,26 +1082,6 @@ actor LocalSpeechVoiceCaptureRuntime {
       readinessGate: readinessGate,
       recordingWriter: recordingWriter
     )
-  }
-
-  private func finishStreamingPreview() async -> String? {
-    streamingPreviewStartupTask?.cancel()
-    streamingPreviewStartupTask = nil
-    pendingStreamingPreviewSamples.removeAll(keepingCapacity: false)
-    let lastHypothesis = streamingPreviewProjection.text.trimmingCharacters(
-      in: .whitespacesAndNewlines
-    )
-    guard let streamingPreviewSession else {
-      return lastHypothesis.isEmpty ? nil : lastHypothesis
-    }
-    do {
-      let finalText = try await streamingPreviewSession.finish().trimmingCharacters(
-        in: .whitespacesAndNewlines
-      )
-      return finalText.isEmpty ? (lastHypothesis.isEmpty ? nil : lastHypothesis) : finalText
-    } catch {
-      return lastHypothesis.isEmpty ? nil : lastHypothesis
-    }
   }
 
   private func startStreamingPreview(

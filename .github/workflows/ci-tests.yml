@@ -148,7 +148,7 @@ jobs:
           sw_vers
           xcodebuild -version
           grep -F '.macOS(.v14)' Package.swift
-          uv run --no-build --locked --script scripts/report_python_version.py
+          uv run --quiet --no-project --python '>=3.11' python --version
 
       - name: Query live OSV for locked SwiftPM commits
         run: uv run --no-build --locked --script scripts/check_dependency_security.py --live-osv

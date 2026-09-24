@@ -1257,6 +1257,7 @@ private extension SessionCoordinator {
         workflow: WorkflowPresentation,
         receiptIsActive: Bool
     ) async throws -> ActionResult {
+        let actionStartedAt = ContinuousClock.now
         try Task.checkCancellation()
         if receiptIsActive, let runReceiptRecorder {
             do {
@@ -1308,7 +1309,8 @@ private extension SessionCoordinator {
                 runID: runID,
                 workflow: workflow,
                 actionID: actionID,
-                result: result
+                result: result,
+                durationMilliseconds: DiagnosticTiming.milliseconds(since: actionStartedAt)
             )
             throw failure
         } catch is CancellationError {
@@ -1330,7 +1332,8 @@ private extension SessionCoordinator {
                 runID: runID,
                 workflow: workflow,
                 actionID: actionID,
-                result: .failed("")
+                result: .failed(""),
+                durationMilliseconds: DiagnosticTiming.milliseconds(since: actionStartedAt)
             )
             throw error
         }
@@ -1346,7 +1349,8 @@ private extension SessionCoordinator {
             runID: runID,
             workflow: workflow,
             actionID: actionID,
-            result: result
+            result: result,
+            durationMilliseconds: DiagnosticTiming.milliseconds(since: actionStartedAt)
         )
         return result
     }
