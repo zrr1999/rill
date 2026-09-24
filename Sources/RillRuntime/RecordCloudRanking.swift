@@ -25,33 +25,32 @@ public struct RecordCloudRankingResult: Sendable {
   }
 }
 
-/// Owns a session-only key and a single-use review. RecordStore remains the catalog authority.
+/// Owns a single-use review and borrows the shared session credential. RecordStore remains the catalog authority.
 public actor RecordCloudRanking {
   private let store: RecordStore
   private let provider: any RecordRankingProvider
   private let privacy: PrivacyPolicySettingsSource
   private let currentFocus: @Sendable () async -> FocusSnapshot
-  private var apiKey = ""
+  public nonisolated let settings: JevSessionSettingsSource
   private var preparedID: UUID?
   private var active: Task<RecordCloudRankingResult, Error>?
   private var closed = false
 
   public init(store: RecordStore, provider: any RecordRankingProvider,
+    settings: JevSessionSettingsSource = JevSessionSettingsSource(),
     privacy: PrivacyPolicySettingsSource, currentFocus: @escaping @Sendable () async -> FocusSnapshot) {
     self.store = store
+    self.settings = settings
     self.provider = provider
     self.privacy = privacy
     self.currentFocus = currentFocus
   }
 
-  public var isConfigured: Bool { !apiKey.isEmpty }
+  public var isConfigured: Bool { settings.isConfigured }
 
   public func setKey(_ key: String) throws {
     guard !closed else { throw CancellationError() }
-    guard active == nil else { throw RecordRankingError.busy }
-    guard key.isEmpty || JevAPIKey.isValid(key)
-    else { throw RecordRankingError.invalidInput }
-    apiKey = key
+    try settings.setKey(key)
   }
 
   public func prepare(query: String, recordIDs: [RecordID]) async throws -> RecordRankingReview {
@@ -63,7 +62,7 @@ public actor RecordCloudRanking {
     else { throw RecordRankingError.invalidInput }
     let snapshot = try await store.catalogSnapshot()
     var candidates: [RecordRankingReview.Candidate] = []
-    let settings = try settings()
+    let settings = try privacySettings()
     for id in recordIDs {
       try Task.checkCancellation()
       guard let record = try await store.record(id: id) else { throw RecordRankingError.changed }
@@ -93,17 +92,18 @@ public actor RecordCloudRanking {
   public func confirm(_ review: RecordRankingReview) async throws -> RecordCloudRankingResult {
     guard !closed else { throw CancellationError() }
     guard active == nil else { throw RecordRankingError.busy }
-    guard !apiKey.isEmpty else { throw RecordRankingError.missingKey }
+    guard let authorization = settings.rankingAuthorization() else { throw RecordRankingError.missingKey }
     guard preparedID == review.id, review.created.duration(to: .now) < .seconds(600)
     else { throw RecordRankingError.changed }
     preparedID = nil
-    let key = apiKey
     let task = Task { [self] in
       try await validate(review)
       try Task.checkCancellation()
+      guard settings.isCurrent(authorization) else { throw RecordRankingError.changed }
       let start = ContinuousClock.now
-      let response = try await provider.score(query: review.query, candidates: review.candidates.map(\.text), apiKey: key)
+      let response = try await provider.score(query: review.query, candidates: review.candidates.map(\.text), apiKey: authorization.apiKey)
       try await validate(review)
+      guard settings.isCurrent(authorization) else { throw RecordRankingError.changed }
       guard response.scores.count == review.candidates.count,
         response.scores.allSatisfy({ $0.isFinite && (0...2).contains($0) })
       else { throw RecordRankingError.invalidResponse }
@@ -119,12 +119,12 @@ public actor RecordCloudRanking {
   public func shutdown() async {
     closed = true
     preparedID = nil
-    apiKey = ""
+    settings.clear()
     active?.cancel()
     _ = await active?.result
   }
 
-  private func settings() throws -> PrivacyPolicySettings {
+  private func privacySettings() throws -> PrivacyPolicySettings {
     do { return try privacy.currentSettings() } catch { throw RecordRankingError.privacyBlocked }
   }
 
@@ -135,7 +135,7 @@ public actor RecordCloudRanking {
     let snapshot = try await store.catalogSnapshot()
     try Task.checkCancellation()
     guard snapshot.revision == review.catalogRevision else { throw RecordRankingError.changed }
-    let settings = try settings()
+    let settings = try privacySettings()
     let context = ContextSnapshot(focus: focus, clipboard: .init(plainText: "", changeCount: 0))
     let decision = PrivacyPolicy.evaluate(context: context, processingDestinations: [.cloudText], settings: settings)
     guard !decision.blocksCloudProcessing, !(focus.secureInput && settings.secureInputConservativeMode)

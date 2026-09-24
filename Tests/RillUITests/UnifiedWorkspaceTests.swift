@@ -30,6 +30,67 @@ final class UnifiedWorkspaceTests: XCTestCase {
         }
     }
 
+    func testSettingItemsResolveTheirPaneAndSearchDestination() {
+        let model = makeHarness().model
+        for item in SettingsItem.allCases {
+            model.showSettings(.privacy, item: item)
+            XCTAssertEqual(model.selectedSettingsPane, .voice)
+            XCTAssertEqual(model.settingsNavigationRequest?.section, .providers)
+            XCTAssertEqual(model.settingsNavigationRequest?.item, item)
+        }
+        let results = GlobalSearchIndex.makeStaticResults(language: .english, workflows: [])
+        XCTAssertTrue(GlobalSearchIndex.filter(results, query: "Jev API").contains { $0.destination == .settingItem(.jevCredential) })
+        XCTAssertTrue(GlobalSearchIndex.filter(results, query: "润色 判断").contains { $0.destination == .settingItem(.jevPolishing) })
+    }
+
+    func testClosingSettingsClearsReturnIntentAndCannotReopenComparison() {
+        let model = makeHarness().model
+        let context = RecordComparisonReturn(query: "sample", resultLimit: 1, candidateIDs: [RecordID()],
+            semanticIDs: [], selectedID: nil, sourceBundleIdentifier: nil, currentAppOnly: false,
+            kind: nil, pinnedOnly: false)
+        var resumed = 0
+        model.offerComparisonReturn(context) { _ in resumed += 1 }
+        let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = SettingsWindowCloseObserver.CloseView { model.discardComparisonReturn() }
+        window.close()
+        XCTAssertNil(model.comparisonReturn)
+        model.resumeComparison()
+        XCTAssertEqual(resumed, 0)
+        model.offerComparisonReturn(context) { value in
+            XCTAssertEqual(value, context)
+            resumed += 1
+        }
+        model.resumeComparison()
+        model.resumeComparison()
+        XCTAssertEqual(resumed, 1)
+        XCTAssertNil(model.comparisonReturn)
+    }
+
+    func testGlobalAndQuickSearchShareFallbackAndLoadMoreUsesCursor() async throws {
+        let store = RecordStore()
+        for index in 0..<25 { _ = try await store.ingest(draft("剪贴板 \(index)"), into: []) }
+        let workspace = RecordWorkspaceModel(store: store)
+        let search = GlobalSearchModel()
+        search.query = "jiantieban"
+        let request = request(search.query)
+        var cursors: [RecordSearchCursor?] = []
+        let records: @MainActor (String, RecordSearchCursor?, Int) async throws -> RecordSearchPage = { text, cursor, limit in
+            cursors.append(cursor)
+            return try await workspace.searchRecords(text, after: cursor, limit: limit)
+        }
+        await search.update(request: request, records: records, history: { _, _ in [] }, language: .english)
+        XCTAssertEqual(search.recordResults.count, 20)
+        search.showMore()
+        await search.update(request: request, records: records, history: { _, _ in [] }, language: .english)
+        XCTAssertEqual(cursors.count, 2)
+        XCTAssertNil(cursors[0])
+        XCTAssertEqual(cursors[1]?.matching, .approximate)
+        XCTAssertEqual(Set(search.recordResults.map(\.id)).count, 25)
+        XCTAssertFalse(search.hasMoreRecords)
+        await workspace.shutdown()
+    }
+
     func testRevealClearsFiltersAndDetectsDeletedRecord() async throws {
         let store = RecordStore()
         let target = try await store.ingest(draft("A saved idea"), into: [])
@@ -108,8 +169,8 @@ final class UnifiedWorkspaceTests: XCTestCase {
         let search = GlobalSearchModel()
         search.query = "match"
         let request = request("match")
-        await search.update(request: request, records: { text, limit in
-            try await workspace.searchRecords(text, limit: limit)
+        await search.update(request: request, records: { text, cursor, limit in
+            try await workspace.searchRecords(text, after: cursor, limit: limit)
         }, history: { _, _ in throw SearchFailure.unavailable }, language: .english)
         XCTAssertEqual(search.recordState, .loaded)
         XCTAssertEqual(search.historyState, .failed)
@@ -122,8 +183,8 @@ final class UnifiedWorkspaceTests: XCTestCase {
     func testClearingSearchRemovesPaginationWithoutQueryingSources() async {
         let search = GlobalSearchModel()
         search.query = "match"
-        await search.update(request: request("match"), records: { _, _ in
-            RecordQueryPage(revision: 1, records: [], nextOffset: 20)
+        await search.update(request: request("match"), records: { _, _, _ in
+            RecordSearchPage(revision: 1, records: [], cursor: .init(query: .init(text: "match"), matching: .literal, revision: 1, offset: 20))
         }, history: { _, limit in
             (0..<limit).map { _ in
                 GlobalSearchResult(destination: .history(UUID()), category: .history, title: "match",
@@ -134,9 +195,9 @@ final class UnifiedWorkspaceTests: XCTestCase {
         XCTAssertTrue(search.hasMoreHistory)
 
         search.query = ""
-        await search.update(request: request(""), records: { _, _ in
+        await search.update(request: request(""), records: { _, _, _ in
             XCTFail("Empty queries must not load records")
-            return RecordQueryPage(revision: 1, records: [], nextOffset: nil)
+            return RecordSearchPage(revision: 1, records: [], cursor: nil)
         }, history: { _, _ in
             XCTFail("Empty queries must not load history")
             return []
@@ -148,11 +209,11 @@ final class UnifiedWorkspaceTests: XCTestCase {
 
     func testSupersededSearchCannotPublishLateResults() async throws {
         let search = GlobalSearchModel()
-        var continuation: CheckedContinuation<RecordQueryPage, Error>?
+        var continuation: CheckedContinuation<RecordSearchPage, Error>?
         let started = expectation(description: "Old query is suspended")
         search.query = "old"
         let old = Task {
-            await search.update(request: request("old"), records: { _, _ in
+            await search.update(request: request("old"), records: { _, _, _ in
                 try await withCheckedThrowingContinuation { value in
                     continuation = value
                     started.fulfill()
@@ -162,8 +223,8 @@ final class UnifiedWorkspaceTests: XCTestCase {
         await fulfillment(of: [started], timeout: 2)
         search.query = "new"
         let current = request("new")
-        await search.update(request: current, records: { _, _ in
-            RecordQueryPage(revision: 2, records: [], nextOffset: nil)
+        await search.update(request: current, records: { _, _, _ in
+            RecordSearchPage(revision: 2, records: [], cursor: nil)
         }, history: { _, _ in [] }, language: .english)
         continuation?.resume(throwing: SearchFailure.unavailable)
         await old.value

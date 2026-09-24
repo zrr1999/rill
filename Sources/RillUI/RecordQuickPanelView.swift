@@ -106,14 +106,14 @@ public struct RecordQuickPanelView: View {
   private let onCopy: (RecordReuseSubject) -> Void
   private let onShowRecord: (RecordID) -> Void
   private let onClose: () -> Void
-  private let onConfigureJev: () -> Void
+  private let onConfigureJev: (SettingsNavigationRequest) -> Void
   private let capturePaused: Bool
 
   public init(
     model: RecordQuickPanelModel, language: AppLanguage, capturePaused: Bool,
     onPaste: @escaping (RecordReuseSubject) -> Void, onCopy: @escaping (RecordReuseSubject) -> Void,
     onShowRecord: @escaping (RecordID) -> Void, onClose: @escaping () -> Void,
-    onConfigureJev: @escaping () -> Void
+    onConfigureJev: @escaping (SettingsNavigationRequest) -> Void
   ) {
     self.model = model
     self.language = language
@@ -175,7 +175,7 @@ public struct RecordQuickPanelView: View {
         }
         .controlSize(.small).padding(.horizontal, RillSpacing.panel).padding(.bottom, RillSpacing.row)
         .sheet(isPresented: Binding(get: { jev.isPresented }, set: { if !$0 { jev.invalidate() } })) {
-          RecordJevSheet(model: jev, language: language, onSelect: model.selectJevCandidate, onConfigure: onConfigureJev)
+          RecordJevSheet(model: jev, language: language, onSelect: model.selectJevCandidate, onConfigure: onConfigureJev, onRetry: model.compareWithJev)
         }
       }
       Divider()

@@ -240,19 +240,8 @@ public final class RecordWorkspaceModel {
         repairRecordSelection()
     }
 
-    public func searchRecords(_ text: String, offset: Int = 0, limit: Int = 20) async throws -> RecordQueryPage {
-        var records: [RecordSummary] = []
-        var nextOffset: Int? = offset
-        var revision: UInt64?
-        repeat {
-            try Task.checkCancellation()
-            let page = try await store.query(.init(text: text), offset: nextOffset ?? 0, limit: limit - records.count)
-            if let revision, revision != page.revision { throw RecordStoreError.membershipChanged }
-            revision = page.revision
-            records.append(contentsOf: page.records)
-            nextOffset = page.nextOffset
-        } while nextOffset != nil && records.count < limit
-        return RecordQueryPage(revision: revision ?? 0, records: records, nextOffset: nextOffset)
+    public func searchRecords(_ text: String, after cursor: RecordSearchCursor? = nil, limit: Int = 20) async throws -> RecordSearchPage {
+        try await RecordSearch.page(in: store, query: .init(text: text), after: cursor, limit: limit)
     }
 
     public func revealRecord(_ id: RecordID) async {

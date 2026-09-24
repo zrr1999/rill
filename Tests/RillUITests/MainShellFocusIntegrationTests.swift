@@ -90,6 +90,30 @@ private actor MissingRunHistoryBrowser: RunHistoryBrowsing {
 
 @MainActor
 final class MainShellFocusIntegrationTests: XCTestCase {
+    func testJevDeepLinkFocusesSecureFieldInsideIndependentSettingsWindow() async throws {
+        _ = NSApplication.shared
+        let fixture = JevPanelFixture()
+        let workspace = RecordWorkspaceModel(store: fixture.store, cloudRanking: fixture.service)
+        let model = makeHarness(recordWorkspace: workspace).model
+        model.showSettings(.providers, item: .jevCredential)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: SettingsWindowView(model: model))
+        window.makeKeyAndOrderFront(nil)
+        defer { tearDown(window) }
+        await settle(window)
+        // SwiftUI's secure control owns a field editor, not an exposed NSTextField.
+        // The other credential field is unavailable in this in-memory harness.
+        let editor = try XCTUnwrap(window.firstResponder as? NSTextView)
+        XCTAssertTrue(editor.isFieldEditor)
+        XCTAssertTrue(editor.isEditable)
+        XCTAssertNil(model.settingsNavigationRequest)
+        XCTAssertEqual(model.selectedSidebarSection, .records)
+        XCTAssertTrue(editor.visibleRect.height > 0)
+        await workspace.shutdown()
+    }
+
     func testGlobalSearchExclusivelyOwnsInteractionAndFocusUntilDismissed() {
         XCTAssertFalse(
             MainShellInteractionPolicy.allowsBackgroundInteraction(

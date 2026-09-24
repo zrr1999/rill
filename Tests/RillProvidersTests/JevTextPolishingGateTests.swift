@@ -59,11 +59,12 @@ struct JevTextPolishingGateTests {
 
   @Test func disabledMissingKeysAndOversizedTextMakeNoRequest() async throws {
     let fixture = fixture()
-    fixture.settings.update(isEnabled: false, apiKey: "unit-test-key")
+    fixture.settings.setPolishingEnabled(false)
     #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context()))
-    fixture.settings.update(isEnabled: true, apiKey: "")
+    fixture.settings.clear()
     #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context()))
-    fixture.settings.update(isEnabled: true, apiKey: "unit-test-key")
+    try fixture.settings.setKey("unit-test-key")
+    fixture.settings.setPolishingEnabled(true)
     #expect(try await !fixture.gate.shouldSkip(text: String(repeating: "中", count: 601), step: step, context: context()))
     #expect(try await !fixture.gate.shouldSkip(text: "  ", step: step, context: context()))
     #expect(PolishingURLProtocol.state.withLock { $0.requests.isEmpty })
@@ -100,7 +101,7 @@ struct JevTextPolishingGateTests {
   @Test func consentRevocationDiscardsPrediction() async throws {
     let fixture = fixture()
     PolishingURLProtocol.state.withLock {
-      $0.onRequest = { fixture.settings.update(isEnabled: false, apiKey: "") }
+      $0.onRequest = { fixture.settings.clear() }
     }
     #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: context()))
     await fixture.gate.shutdown()
@@ -178,12 +179,13 @@ struct JevTextPolishingGateTests {
 
   private func fixture(response: String = response((0.01, 0.01, 0.98, 0.99)), status: Int = 200,
     timeout: Duration = .seconds(2), stalls: Bool = false
-  ) -> (gate: JevTextPolishingGate, settings: JevPolishingSettingsSource, privacy: PrivacyPolicySettingsSource) {
+  ) -> (gate: JevTextPolishingGate, settings: JevSessionSettingsSource, privacy: PrivacyPolicySettingsSource) {
     PolishingURLProtocol.state.withLock { $0 = .init(response: response, status: status, stalls: stalls) }
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [PolishingURLProtocol.self]
-    let settings = JevPolishingSettingsSource()
-    settings.update(isEnabled: true, apiKey: "unit-test-key")
+    let settings = JevSessionSettingsSource()
+    try! settings.setKey("unit-test-key")
+    settings.setPolishingEnabled(true)
     let privacy = PrivacyPolicySettingsSource(initialSettings: .defaults)
     let gate = JevTextPolishingGate(settings: settings, privacy: privacy,
       currentFocus: { Self.focus("example.target") }, client: .init(session: URLSession(configuration: configuration)),

@@ -3,16 +3,29 @@ import RillCore
 enum JevText: CaseIterable {
   case title, open, disclosure, saveKey, clearKey, keyReady, keyNotice, fragment, candidate, score
   case select, rubric, working, close, send
+  case credentialTitle, polishingTitle, returnToComparison, cancelReturn, retryPreview, privacySettings
   case providersTitle, settingsDescription, configureNotice, openSettings, invalidKey
 }
 
 extension L10n {
   static func jev(_ key: JevText, language: AppLanguage) -> String {
     switch (key, language) {
+    case (.credentialTitle, .english): "Jev API Key"
+    case (.credentialTitle, .simplifiedChinese): "Jev API 密钥"
+    case (.polishingTitle, .english): "Jev polishing prediction"
+    case (.polishingTitle, .simplifiedChinese): "Jev 润色判断"
+    case (.returnToComparison, .english): "Return to candidate review"
+    case (.returnToComparison, .simplifiedChinese): "返回候选比较"
+    case (.cancelReturn, .english): "Cancel return"
+    case (.cancelReturn, .simplifiedChinese): "取消返回"
+    case (.retryPreview, .english): "Prepare a new preview"
+    case (.retryPreview, .simplifiedChinese): "重新准备预览"
+    case (.privacySettings, .english): "Review privacy settings…"
+    case (.privacySettings, .simplifiedChinese): "查看隐私设置…"
     case (.providersTitle, .english): "API Providers"
     case (.providersTitle, .simplifiedChinese): "API 服务"
-    case (.settingsDescription, .english): "Use a TypeSafe API key for optional Jev candidate scoring. Each request requires reviewing and confirming the content to send."
-    case (.settingsDescription, .simplifiedChinese): "配置 TypeSafe API Key，用于可选的 Jev 候选评分。每次发送前都需要预览并确认内容。"
+    case (.settingsDescription, .english): "One session key serves Jev candidate scoring and polishing prediction. Candidate scoring requires confirmation each time; automatic polishing prediction has a separate switch below."
+    case (.settingsDescription, .simplifiedChinese): "本次会话的 Key 供候选评分与润色判断共用。候选评分每次发送前须确认；自动润色判断需单独开启下方开关。"
     case (.configureNotice, .english): "Add a Jev key in Settings → Voice & Models → API Providers."
     case (.configureNotice, .simplifiedChinese): "请在设置 → 语音与模型 → API 服务中配置 Jev Key。"
     case (.openSettings, .english): "Configure Jev API…"
@@ -56,8 +69,8 @@ extension L10n {
     switch (error, language) {
     case (.privacyBlocked, .english): "Current privacy rules or an unknown source block cloud processing."
     case (.privacyBlocked, .simplifiedChinese): "当前隐私规则或未知来源阻止了云端处理。"
-    case (.changed, .english): "The preview expired or records changed. Close and prepare a new review."
-    case (.changed, .simplifiedChinese): "预览已过期或记录已变化，请关闭后重新准备。"
+    case (.changed, .english): "The preview expired, authorization changed or records changed. Prepare a new preview."
+    case (.changed, .simplifiedChinese): "预览已过期、授权或记录已变化，请重新准备预览。"
     case (.missingKey, .english): "Enter an API key first."
     case (.missingKey, .simplifiedChinese): "请先填写 API Key。"
     case (.unauthorized, .english): "TypeSafe rejected this key. Check your account and prepare a new review."

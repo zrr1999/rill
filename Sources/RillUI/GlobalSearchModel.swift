@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import RillCore
+import RillRuntime
 
 @MainActor
 @Observable
@@ -14,6 +15,8 @@ final class GlobalSearchModel {
     private(set) var hasMoreRecords = false
     private(set) var hasMoreHistory = false
     private var limit = 20
+    private var recordCursor: RecordSearchCursor?
+    private var loadedRecordLimit = 0
     private var activeRequest: GlobalHistorySearchTaskIdentity?
 
     func reset() {
@@ -26,6 +29,8 @@ final class GlobalSearchModel {
         hasMoreRecords = false
         hasMoreHistory = false
         limit = 20
+        recordCursor = nil
+        loadedRecordLimit = 0
         activeRequest = nil
     }
 
@@ -37,7 +42,7 @@ final class GlobalSearchModel {
 
     func update(
         request: GlobalHistorySearchTaskIdentity,
-        records: @MainActor (String, Int) async throws -> RecordQueryPage,
+        records: @MainActor (String, RecordSearchCursor?, Int) async throws -> RecordSearchPage,
         history: @MainActor (String, Int) async throws -> [GlobalSearchResult],
         language: AppLanguage
     ) async {
@@ -52,6 +57,8 @@ final class GlobalSearchModel {
             hasMoreRecords = false
             hasMoreHistory = false
             limit = 20
+            recordCursor = nil
+            loadedRecordLimit = 0
         }
         activeRequest = request
         guard request.isPresented, !request.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -61,7 +68,6 @@ final class GlobalSearchModel {
             hasMoreHistory = false
             return
         }
-        recordState = .searching
         historyState = .searching
         async let recordSearch: Void = updateRecords(request, search: records, language: language)
         async let historySearch: Void = updateHistory(request, search: history)
@@ -74,14 +80,28 @@ final class GlobalSearchModel {
 
     private func updateRecords(
         _ request: GlobalHistorySearchTaskIdentity,
-        search: @MainActor (String, Int) async throws -> RecordQueryPage,
+        search: @MainActor (String, RecordSearchCursor?, Int) async throws -> RecordSearchPage,
         language: AppLanguage
     ) async {
+        guard loadedRecordLimit < limit || recordState == .failed else { return }
+        guard loadedRecordLimit == 0 || recordCursor != nil else { return }
+        recordState = .searching
         do {
-            let page = try await search(request.query, limit)
+            let page: RecordSearchPage
+            var replacesResults = recordCursor == nil
+            do {
+                page = try await search(request.query, recordCursor, limit - recordResults.count)
+            } catch RecordStoreError.membershipChanged {
+                guard canPublish(request) else { return }
+                page = try await search(request.query, nil, limit)
+                replacesResults = true
+            }
             guard canPublish(request) else { return }
-            recordResults = GlobalSearchIndex.recordResults(page.records, language: language)
-            hasMoreRecords = page.nextOffset != nil
+            let results = GlobalSearchIndex.recordResults(page.records, language: language)
+            if replacesResults { recordResults = results } else { recordResults += results }
+            recordCursor = page.cursor
+            loadedRecordLimit = limit
+            hasMoreRecords = page.cursor != nil
             recordState = .loaded
         } catch {
             guard canPublish(request) else { return }

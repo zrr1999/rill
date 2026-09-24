@@ -246,7 +246,8 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         model: AppModel,
         deliverSelection: @escaping @Sendable (RecordReuseSubject, FocusedApplicationTargetIdentity) async -> RecordReuseOutcome,
         copySelection: @escaping @Sendable (RecordReuseSubject) async -> RecordReuseOutcome = { _ in .blocked },
-        onDeliveryAbort: @escaping @Sendable () async -> Void
+        onDeliveryAbort: @escaping @Sendable () async -> Void,
+        restoring comparison: RecordComparisonReturn? = nil
     ) {
         guard !hasBegunShutdown else { return }
         if isVisible { handleEscape(); return }
@@ -261,6 +262,8 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         }
         let session = model.recordWorkspace.makeQuickPanelModel()
         session.start(sourceBundleIdentifier: previousApplication?.bundleIdentifier)
+        if let comparison { session.restoreComparison(comparison) }
+        model.discardComparisonReturn()
         quickPanelModel = session
         updatePasteTargetPresentation()
         let useSelectedRecord: @MainActor @Sendable (RecordReuseSubject) -> Void = { [weak self] subject in
@@ -293,6 +296,14 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
                     self.pasteTaskOwner.start(reservation)
                 },
                 onShowRecord: { [weak self] in self?.hidePanel(restorePreviousApplication: false) },
+                onConfigureJev: { [weak self, weak model] in
+                    guard let self, let model else { return }
+                    self.prepareForSettings(model: model) { [weak self, weak model] context in
+                        guard let self, let model, !self.hasBegunShutdown else { return }
+                        self.show(model: model, deliverSelection: deliverSelection, copySelection: copySelection,
+                                  onDeliveryAbort: onDeliveryAbort, restoring: context)
+                    }
+                },
                 onClose: { [weak self] in self?.dismiss() }
             )
         )
@@ -341,6 +352,15 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         centerOnActiveScreen(panel)
         self.panel = panel
         present(panel)
+    }
+
+    func prepareForSettings(model: AppModel, resume: @escaping @MainActor (RecordComparisonReturn) -> Void) {
+        if let context = quickPanelModel?.comparisonReturnContext() {
+            model.offerComparisonReturn(context, resume: resume)
+        } else {
+            model.discardComparisonReturn()
+        }
+        hidePanel(restorePreviousApplication: false)
     }
 
     private func handleReuseOutcome(_ result: RecordReuseOutcome, session: RecordQuickPanelModel) {
@@ -489,6 +509,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     }
 
     private func rememberPreviousApplication() {
+        guard pasteTargetProvider == nil else { return }
         if let frontmostApplication = NSWorkspace.shared.frontmostApplication,
            rememberExternalApplication(frontmostApplication) {
             previousApplication = frontmostApplication
@@ -650,6 +671,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     }
 
     private func restorePreviousApplicationIfNeeded(_ application: NSRunningApplication?) async -> Bool {
+        guard !Task.isCancelled, !hasBegunShutdown else { return false }
         guard let application, !application.isTerminated else { return application == nil }
 
         requestForeground(for: application)
@@ -685,11 +707,6 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
     private func requestForeground(for application: NSRunningApplication) {
         application.unhide()
         _ = application.activate(options: [.activateAllWindows])
-        guard let bundleURL = application.bundleURL else { return }
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        configuration.addsToRecentItems = false
-        NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { _, _ in }
     }
 
     private func isFrontmost(_ application: NSRunningApplication) -> Bool {
@@ -775,6 +792,7 @@ private struct FloatingRecordView: View {
     let deliverSelection: @MainActor @Sendable (RecordReuseSubject) -> Void
     let copySelection: (RecordReuseSubject) -> Void
     let onShowRecord: () -> Void
+    let onConfigureJev: () -> Void
     let onClose: () -> Void
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
@@ -788,9 +806,9 @@ private struct FloatingRecordView: View {
                 onShowRecord()
                 NSApp.activate(ignoringOtherApps: true)
                 openWindow(id: "main")
-            }, onClose: onClose, onConfigureJev: {
-                onShowRecord()
-                model.showSettings(.providers)
+            }, onClose: onClose, onConfigureJev: { request in
+                onConfigureJev()
+                model.showSettings(request.section, item: request.item)
                 if model.consumeSettingsPresentation() { openSettings() }
                 NSApp.activate(ignoringOtherApps: true)
             }

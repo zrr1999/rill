@@ -69,7 +69,8 @@ struct RecordCloudRankingTests {
     let task = Task { try await service.confirm(review) }
     await provider.waitUntilEntered()
     task.cancel()
-    await #expect(throws: RecordRankingError.busy) { try await service.setKey("") }
+    try await service.setKey("")
+    #expect(await !service.isConfigured)
     let shutdown = Task { await service.shutdown() }
     await provider.release()
     await #expect(throws: CancellationError.self) { try await task.value }
