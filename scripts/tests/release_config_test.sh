@@ -138,7 +138,7 @@ run_case() {
   local output=""
   local status=0
   local command=(
-    env -u SIGN_IDENTITY -u NOTARY_PROFILE -u RELEASE_OUTPUT_DIR
+    env -u SIGN_IDENTITY -u NOTARY_PROFILE -u NOTARY_KEYCHAIN -u RELEASE_OUTPUT_DIR
     "PATH=$FAKE_BIN:$PATH"
     "FAKE_IDENTITIES=$identities"
   )
@@ -167,6 +167,36 @@ run_case() {
   fi
   if [[ "$output" == *"运行发布预检"* ]]; then
     echo "FAIL: $name (--validate-config unexpectedly started a build)" >&2
+    printf '%s\n' "$output" >&2
+    exit 1
+  fi
+
+  PASSED=$((PASSED + 1))
+  echo "PASS: $name"
+}
+
+run_notary_keychain_case() {
+  local name="$1"
+  local keychain="$2"
+  local expected_status="$3"
+  local expected_fragment="$4"
+  local output=""
+  local status=0
+
+  set +e
+  output="$(env \
+    -u SIGN_IDENTITY \
+    -u NOTARY_PROFILE \
+    -u RELEASE_OUTPUT_DIR \
+    "PATH=$FAKE_BIN:$PATH" \
+    "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" \
+    "NOTARY_KEYCHAIN=$keychain" \
+    bash "$RELEASE_SCRIPT" --notarize --validate-config 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -ne "$expected_status" || "$output" != *"$expected_fragment"* ]]; then
+    echo "FAIL: $name (expected status $expected_status, got $status)" >&2
     printf '%s\n' "$output" >&2
     exit 1
   fi
@@ -2173,6 +2203,25 @@ run_case \
   "<unset>" \
   "" \
   --notarize
+
+run_notary_keychain_case \
+  "notarization rejects a relative keychain path" \
+  "release.keychain-db" \
+  1 \
+  "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径"
+
+run_notary_keychain_case \
+  "notarization rejects a missing keychain" \
+  "$TEST_ROOT/missing.keychain-db" \
+  1 \
+  "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径"
+
+touch "$TEST_ROOT/release.keychain-db"
+run_notary_keychain_case \
+  "notarization accepts an existing absolute keychain path" \
+  "$TEST_ROOT/release.keychain-db" \
+  0 \
+  "签名身份: Developer ID Application: Example Company"
 
 run_invalid_output_dir_case \
   "an explicitly empty release output directory fails closed" \

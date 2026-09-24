@@ -30,6 +30,9 @@ else
 fi
 # notarytool keychain profile 名称
 NOTARY_PROFILE="${NOTARY_PROFILE-Rill}"
+NOTARY_KEYCHAIN="${NOTARY_KEYCHAIN-}"
+# macOS Bash 3.2 在 set -u 下不能直接展开空数组；调用处使用带 + 的展开。
+NOTARY_KEYCHAIN_ARGS=()
 
 # 路径（统一使用 physical path，避免 Swift/Clang module cache 因符号链接路径漂移失效）
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
@@ -777,6 +780,7 @@ run_notarized_release_from_snapshot() {
     RELEASE_OUTPUT_DIR="$output_dir" \
     SIGN_IDENTITY="$SIGN_IDENTITY" \
     NOTARY_PROFILE="$NOTARY_PROFILE" \
+    NOTARY_KEYCHAIN="$NOTARY_KEYCHAIN" \
     bash "$NOTARIZED_SNAPSHOT_DIR/scripts/release.sh" "$@"
   exit_code=$?
   set -e
@@ -974,6 +978,11 @@ validate_release_configuration() {
     [[ -n "${NOTARY_PROFILE:-}" ]] || error "--notarize 需要非空的 NOTARY_PROFILE"
     if [[ "$NOTARY_PROFILE" == *$'\n'* || "$NOTARY_PROFILE" == *$'\r'* ]]; then
       error "NOTARY_PROFILE 不能包含换行符"
+    fi
+    if [[ -n "$NOTARY_KEYCHAIN" ]]; then
+      [[ "$NOTARY_KEYCHAIN" == /* && -f "$NOTARY_KEYCHAIN" ]] || \
+        error "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径"
+      NOTARY_KEYCHAIN_ARGS=(--keychain "$NOTARY_KEYCHAIN")
     fi
     validate_notarized_release_source
   fi
@@ -1275,6 +1284,7 @@ finalize_distribution_dmg() {
   revalidate_notarized_release_source "最终 DMG 公证提交前"
   if ! xcrun notarytool submit "$DMG_PATH" \
     --keychain-profile "$NOTARY_PROFILE" \
+    ${NOTARY_KEYCHAIN_ARGS[@]+"${NOTARY_KEYCHAIN_ARGS[@]}"} \
     --wait \
     --output-format json >"$notary_result"; then
     error "最终 DMG 公证提交失败；请使用 notarytool log 检查对应请求"
@@ -1489,6 +1499,7 @@ if $DO_NOTARIZE && $DO_INSTALL; then
 
   if ! xcrun notarytool submit "$NOTARIZE_ZIP" \
     --keychain-profile "$NOTARY_PROFILE" \
+    ${NOTARY_KEYCHAIN_ARGS[@]+"${NOTARY_KEYCHAIN_ARGS[@]}"} \
     --wait \
     --output-format json >"$NOTARY_RESULT"; then
     error "公证提交失败；请使用 notarytool log 检查对应请求"
