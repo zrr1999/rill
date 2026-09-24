@@ -207,7 +207,7 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 | [policy-pr.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/policy-pr.yml) | Policy - PR | 只读校验 PR 标题和正文 |
 | [automation-pr-title.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题后，重跑对应的 PR 检查 |
 | [ci-tests.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-tests.yml) | CI - Tests | Linux 文档构建，以及按修改范围运行的 macOS 测试、依赖和发布预检 |
-| [ci-benchmarks.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-benchmarks.yml) | CI - Benchmarks | CodSpeed 文本预览性能测量 |
+| [ci-benchmarks.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-benchmarks.yml) | CI - Benchmarks | CodSpeed 文本预览与加密 Stack/Queue 性能测量 |
 
 job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接报告检查结果，
 不额外设置汇总 job。

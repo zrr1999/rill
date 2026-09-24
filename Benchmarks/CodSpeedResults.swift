@@ -5,7 +5,9 @@ enum CodSpeedResults {
     static let integrationName = "rill-swift"
     static let integrationVersion = "1.0.0"
 
-    static func benchmark(name: String, uri: String, samples: [Double]) -> [String: Any] {
+    static func benchmark(
+        name: String, uri: String, samples: [Double], warmupIterations: Int = 1
+    ) -> [String: Any] {
         precondition(samples.count > 1 && samples.allSatisfy { $0 > 0 && $0.isFinite })
         let sorted = samples.sorted()
         let total = samples.reduce(0, +)
@@ -31,7 +33,7 @@ enum CodSpeedResults {
                 "rounds": samples.count, "total_time": total / 1e9,
                 "iqr_outlier_rounds": samples.filter { $0 < q1 - 1.5 * iqr || $0 > q3 + 1.5 * iqr }.count,
                 "stdev_outlier_rounds": samples.filter { abs($0 - mean) > 3 * stdev }.count,
-                "iter_per_round": 1, "warmup_iters": 1,
+                "iter_per_round": 1, "warmup_iters": warmupIterations,
             ] as [String: Any],
         ]
     }

@@ -145,7 +145,7 @@ info "Checking generated built-in workflow artifacts..."
 uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --check
 
 info "Checking performance benchmark workloads..."
-bash "$SCRIPT_DIR/build_benchmarks.sh"
+bash "$SCRIPT_DIR/build_benchmarks.sh" --preview-only
 
 PACKAGE_SMOKE_ROOT="$(mktemp -d)"
 cleanup() {
