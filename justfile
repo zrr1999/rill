@@ -49,7 +49,7 @@ ci-clean:
 
 # Build and validate the arm64 release products.
 build-release:
-    bash scripts/build_xcode_release.sh
+    scripts/swift_locked.sh release
 
 # Inspect or clear inactive shared worker artifacts.
 cache-status:
@@ -61,6 +61,10 @@ cache-clean:
 # Assemble a local release artifact.
 release:
     bash scripts/release.sh
+
+# Build, notarize, and upload a new GitHub Release draft.
+release-github tag notes:
+    bash scripts/github_release.sh {{quote(tag)}} {{quote(notes)}}
 
 # Export native UI render evidence for review.
 test-render:

@@ -3,6 +3,26 @@ import XCTest
 @testable import RillCore
 
 final class DiagnosticEventSanitizerTests: XCTestCase {
+  func testPerformanceCoordinatesSurviveWithoutOpeningFreeTextFields() {
+    for code in ["benchmark-recording.preserved", "benchmark-recording.preserve-failed",
+                 "audio-processing.capture-timing", "session.process.timing",
+                 "clipboard.inject.paste.posted"] {
+      let runID = UUID()
+      let event = DiagnosticEvent(runID: runID, subsystem: .session, level: .debug,
+        event: code, message: "private transcript",
+        metadata: ["durationMillis": "43", "captureStopMillis": "27",
+                   "captureDrainMillis": "private", "capturePreviewRetireMillis": "-1",
+                   "stepKind": "recognizeSpeech", "resultCode": "completed",
+                   "transcript": "private transcript", "apiKey": "secret"])
+      let sanitized = DiagnosticEventSanitizer.sanitize(event)
+      XCTAssertEqual(sanitized.event, code)
+      XCTAssertEqual(sanitized.runID, runID)
+      XCTAssertEqual(sanitized.metadata, ["durationMillis": "43", "captureStopMillis": "27",
+                                         "stepKind": "recognizeSpeech", "resultCode": "completed"])
+      XCTAssertEqual(sanitized.message, DiagnosticEventSanitizer.sanitizedMessage)
+    }
+  }
+
   func testAudioProcessingLaneRetainsOnlyClosedRuntimeValues() {
     for lane in ["assistant", "interactive"] {
       let sanitized = DiagnosticEventSanitizer.sanitize(

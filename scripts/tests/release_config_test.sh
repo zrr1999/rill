@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+# Release CI exports a real keychain; these tests use their own signing fixtures.
+unset NOTARY_KEYCHAIN
+
 # Git exports repository-local variables to hooks. This suite creates and
 # executes independent fixture repositories, so inherited paths such as
 # GIT_INDEX_FILE must not redirect fixture operations into the caller's index.
@@ -32,7 +35,6 @@ RELEASE_ARTIFACT_HYGIENE_SCRIPT="$PROJECT_DIR/scripts/check_release_artifact_hyg
 EXECUTABLE_VERIFIER="$PROJECT_DIR/scripts/verify_release_executable.sh"
 LOCKED_SWIFT_SCRIPT="$PROJECT_DIR/scripts/swift_locked.sh"
 TEST_SUITE_SCRIPT="$PROJECT_DIR/scripts/test.sh"
-XCODE_RELEASE_BUILD_SCRIPT="$PROJECT_DIR/scripts/build_xcode_release.sh"
 PACKAGE_MANIFEST="$PROJECT_DIR/Package.swift"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rill-release-config-tests.XXXXXX")"
 FAKE_BIN="$TEST_ROOT/bin"
@@ -138,7 +140,7 @@ run_case() {
   local output=""
   local status=0
   local command=(
-    env -u SIGN_IDENTITY -u NOTARY_PROFILE -u RELEASE_OUTPUT_DIR
+    env -u SIGN_IDENTITY -u NOTARY_PROFILE -u NOTARY_KEYCHAIN -u RELEASE_OUTPUT_DIR
     "PATH=$FAKE_BIN:$PATH"
     "FAKE_IDENTITIES=$identities"
   )
@@ -167,6 +169,36 @@ run_case() {
   fi
   if [[ "$output" == *"运行发布预检"* ]]; then
     echo "FAIL: $name (--validate-config unexpectedly started a build)" >&2
+    printf '%s\n' "$output" >&2
+    exit 1
+  fi
+
+  PASSED=$((PASSED + 1))
+  echo "PASS: $name"
+}
+
+run_notary_keychain_case() {
+  local name="$1"
+  local keychain="$2"
+  local expected_status="$3"
+  local expected_fragment="$4"
+  local output=""
+  local status=0
+
+  set +e
+  output="$(env \
+    -u SIGN_IDENTITY \
+    -u NOTARY_PROFILE \
+    -u RELEASE_OUTPUT_DIR \
+    "PATH=$FAKE_BIN:$PATH" \
+    "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" \
+    "NOTARY_KEYCHAIN=$keychain" \
+    bash "$RELEASE_SCRIPT" --notarize --validate-config 2>&1)"
+  status=$?
+  set -e
+
+  if [[ "$status" -ne "$expected_status" || "$output" != *"$expected_fragment"* ]]; then
+    echo "FAIL: $name (expected status $expected_status, got $status)" >&2
     printf '%s\n' "$output" >&2
     exit 1
   fi
@@ -292,18 +324,6 @@ run_locked_dependency_policy_case() {
   fi
   PASSED=$((PASSED + 1))
   echo "PASS: locked builds preserve incremental artifacts and clean notarization"
-}
-
-run_xcode_build_policy_case() {
-  local driver="$PROJECT_DIR/scripts/build_driver.py"
-  if ! grep -Fq 'exec "$SCRIPT_DIR/swift_locked.sh" release' "$XCODE_RELEASE_BUILD_SCRIPT" ||
-    ! grep -Fq '.artifacts/build/release' "$driver" ||
-    ! grep -Fq 'xcodebuild -downloadComponent MetalToolchain' "$driver"; then
-    echo "FAIL: release build does not use the reviewed locked configuration" >&2
-    exit 1
-  fi
-  PASSED=$((PASSED + 1))
-  echo "PASS: Release uses an isolated locked SwiftPM graph"
 }
 
 run_executable_package_surface_policy_case() {
@@ -1132,8 +1152,10 @@ assert_preflight_toolchain_case() {
       uv() {
         if [[ "${1-}" == "--version" ]]; then
           printf 'uv %s (test)\n' "$uv_version"
+        elif [[ "$*" == "run --quiet --no-project --python >=3.11 python --version" ]]; then
+          printf 'Python 3.11.0\n'
         else
-          printf '3.11.0\n'
+          return 64
         fi
       }
       swift() {
@@ -1162,7 +1184,7 @@ run_preflight_toolchain_policy_case() {
     "0.11.14" \
     "6.2.0" \
     0 \
-    "Python runtime: 3.11.0"
+    "Python runtime: Python 3.11.0"
   assert_preflight_toolchain_case \
     "preflight reports uv version" \
     "0.11.14" \
@@ -1966,8 +1988,8 @@ codesign --verify --strict --verbose=2 $fixture/Rill.dmg
 hdiutil verify $fixture/Rill.dmg
 revalidate 最终 DMG 公证提交前
 xcrun notarytool submit $fixture/Rill.dmg --keychain-profile Rill-Test --wait --output-format json
-plutil -extract status raw -o - $fixture/dmg-notary-result.json
-plutil -extract id raw -o - $fixture/dmg-notary-result.json
+plutil -extract status raw -o - $fixture/notary-result.json
+plutil -extract id raw -o - $fixture/notary-result.json
 xcrun stapler staple $fixture/Rill.dmg
 xcrun stapler validate $fixture/Rill.dmg
 codesign --verify --strict --verbose=2 $fixture/Rill.dmg
@@ -2051,6 +2073,79 @@ EOF
 
   PASSED=$((PASSED + 1))
   echo "PASS: final DMG is verified before its atomic portable SHA-256 sidecar is published"
+}
+
+run_notarization_result_cases() {
+  local fixture="$TEST_ROOT/notarization-results"
+  local artifact="$fixture/Rill candidate.zip"
+  local scenario=""
+  local keychain=""
+  local expected_status=0
+  local expected_fragment=""
+  local status=0
+  mkdir -p "$fixture"
+  touch "$artifact"
+
+  for scenario in accepted explicit-keychain rejected unavailable invalid-response missing-status; do
+    keychain=""
+    expected_status=1
+    expected_fragment="公证未获接受"
+    case "$scenario" in
+    accepted) expected_status=0; expected_fragment="公证已接受" ;;
+    explicit-keychain)
+      keychain="$fixture/release signing.keychain-db"
+      touch "$keychain"
+      expected_status=0
+      expected_fragment="公证已接受"
+      ;;
+    unavailable) expected_fragment="公证提交失败" ;;
+    esac
+    rm -f "$fixture/accepted"
+    set +e
+    (
+      set -e
+      set --
+      # shellcheck source=/dev/null
+      source "$RELEASE_SCRIPT"
+      RELEASE_TEMP_DIR="$fixture"
+      NOTARY_PROFILE="Rill Test"
+      NOTARY_KEYCHAIN="$keychain"
+      xcrun() {
+        printf '%s\n' "$@" >"$fixture/arguments"
+        case "$scenario" in
+        unavailable) return 1 ;;
+        rejected) printf '%s\n' '{"status":"Invalid","id":"rejected-request"}' ;;
+        invalid-response) printf '%s\n' '{"status"' ;;
+        missing-status) printf '%s\n' '{"id":"missing-status"}' ;;
+        *) printf '%s\n' '{"status":"Accepted","id":"accepted-request"}' ;;
+        esac
+      }
+      notarize_artifact "$artifact"
+      touch "$fixture/accepted"
+    ) >"$fixture/output" 2>&1
+    status=$?
+    set -e
+    if [[ "$status" -ne "$expected_status" ]] ||
+      ! grep -Fq "$expected_fragment" "$fixture/output"; then
+      echo "FAIL: notarization $scenario" >&2
+      cat "$fixture/output" >&2
+      exit 1
+    fi
+    if [[ "$status" -ne 0 && -e "$fixture/accepted" ]]; then
+      echo "FAIL: notarization $scenario continued after failure" >&2
+      exit 1
+    fi
+    {
+      printf '%s\n' notarytool submit "$artifact" --keychain-profile "Rill Test"
+      if [[ -n "$keychain" ]]; then
+        printf '%s\n' --keychain "$keychain"
+      fi
+      printf '%s\n' --wait --output-format json
+    } >"$fixture/expected-arguments"
+    cmp "$fixture/expected-arguments" "$fixture/arguments"
+    PASSED=$((PASSED + 1))
+    echo "PASS: notarization $scenario preserves arguments and accepts only confirmed success"
+  done
 }
 
 run_case \
@@ -2174,6 +2269,25 @@ run_case \
   "" \
   --notarize
 
+run_notary_keychain_case \
+  "notarization rejects a relative keychain path" \
+  "release.keychain-db" \
+  1 \
+  "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径"
+
+run_notary_keychain_case \
+  "notarization rejects a missing keychain" \
+  "$TEST_ROOT/missing.keychain-db" \
+  1 \
+  "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径"
+
+touch "$TEST_ROOT/release.keychain-db"
+run_notary_keychain_case \
+  "notarization accepts an existing absolute keychain path" \
+  "$TEST_ROOT/release.keychain-db" \
+  0 \
+  "签名身份: Developer ID Application: Example Company"
+
 run_invalid_output_dir_case \
   "an explicitly empty release output directory fails closed" \
   "" \
@@ -2213,8 +2327,8 @@ run_reserved_internal_environment_case
 run_literal_plist_key_case
 run_speech_worker_bundle_signing_policy_case
 run_distribution_dmg_policy_case
+run_notarization_result_cases
 run_locked_dependency_policy_case
-run_xcode_build_policy_case
 run_executable_package_surface_policy_case
 run_native_mlx_dependency_policy_case
 run_shell_syntax_policy_case

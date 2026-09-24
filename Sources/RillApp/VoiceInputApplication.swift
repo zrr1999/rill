@@ -90,11 +90,15 @@ struct RillApplication: App {
             SettingsWindowView(model: container.model)
         }
 
-        MenuBarExtra(
-            container.model.localizedMenuBarTitle,
-            systemImage: menuBarSystemSymbol.rawValue
-        ) {
+        MenuBarExtra {
             MenuBarContent(model: container.model)
+        } label: {
+            Label {
+                Text(container.model.localizedMenuBarTitle)
+            } icon: {
+                RillMenuBarIcon.image(for: menuBarSystemSymbol)
+            }
+            .labelStyle(.iconOnly)
         }
         .menuBarExtraStyle(.menu)
     }

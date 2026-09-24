@@ -1,0 +1,152 @@
+name: "CD - Release"
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing vMAJOR.MINOR.PATCH tag on main"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  inspect-tag:
+    name: Verify release tag
+    if: github.repository == 'zrr1999/rill' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      commit: ${{ steps.tag.outputs.commit }}
+      object: ${{ steps.tag.outputs.object }}
+    steps:
+      - name: Check out main with tags
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Resolve an existing tag on main
+        id: tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          tag_object="$(git rev-parse "refs/tags/$RELEASE_TAG")"
+          remote_object="$(git ls-remote --refs origin "refs/tags/$RELEASE_TAG" | cut -f 1)"
+          [[ -n "$remote_object" && "$tag_object" == "$remote_object" ]]
+          commit="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          git merge-base --is-ancestor "$commit" origin/main
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "object=$tag_object" >> "$GITHUB_OUTPUT"
+
+  release-draft:
+    name: Sign, notarize, and draft release
+    needs: inspect-tag
+    runs-on: macos-26
+    timeout-minutes: 120
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the verified commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.inspect-tag.outputs.commit }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Verify source and tag before loading credentials
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          EXPECTED_COMMIT: ${{ needs.inspect-tag.outputs.commit }}
+          EXPECTED_OBJECT: ${{ needs.inspect-tag.outputs.object }}
+        run: |
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_COMMIT" ]]
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG")" == "$EXPECTED_OBJECT" ]]
+          [[ "$(git ls-remote --refs origin "refs/tags/$RELEASE_TAG" | cut -f 1)" == "$EXPECTED_OBJECT" ]]
+          [[ -z "$(git status --porcelain --untracked-files=all)" ]]
+
+      - name: Install pinned uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.17"
+
+      - name: Install pinned Gitleaks
+        run: |
+          tool_dir="$RUNNER_TEMP/gitleaks-bin"
+          bash scripts/install_gitleaks.sh --destination "$tool_dir"
+          echo "$tool_dir" >> "$GITHUB_PATH"
+
+      - name: Generate draft release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          EXPECTED_COMMIT: ${{ needs.inspect-tag.outputs.commit }}
+        run: |
+          notes="$RUNNER_TEMP/rill-release-notes.md"
+          gh api --method POST repos/zrr1999/rill/releases/generate-notes \
+            -f "tag_name=$RELEASE_TAG" -f "target_commitish=$EXPECTED_COMMIT" \
+            --jq .body > "$notes"
+          [[ -s "$notes" ]]
+          cat >> "$notes" <<EOF
+
+          ## Installation and source
+
+          - Apple Silicon; macOS 14.0 or later. No automatic updates.
+          - Download both Rill.dmg and Rill.dmg.sha256, then run shasum -a 256 --check Rill.dmg.sha256.
+          - [Candidate source](https://github.com/zrr1999/rill/tree/$EXPECTED_COMMIT) (AGPL-3.0-only).
+          - Complete the [release QA checklist](https://github.com/zrr1999/rill/blob/$EXPECTED_COMMIT/docs/release-qa-checklist.md) and verify corresponding source before publishing this draft.
+          EOF
+          echo "RELEASE_NOTES=$notes" >> "$GITHUB_ENV"
+
+      - name: Import Developer ID and Notary credentials
+        env:
+          CERT_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
+          CERT_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          for name in CERT_P12_BASE64 CERT_P12_PASSWORD NOTARY_KEY_BASE64 NOTARY_KEY_ID NOTARY_ISSUER_ID; do
+            [[ -n "${!name:-}" ]] || { echo "Missing release environment secret: $name" >&2; exit 1; }
+          done
+          keychain="$RUNNER_TEMP/rill-release.keychain-db"
+          certificate="$RUNNER_TEMP/developer-id.p12"
+          notary_key="$RUNNER_TEMP/notary-key.p8"
+          trap 'rm -f "$certificate" "$notary_key"' EXIT
+          base64 --decode -o "$certificate" <<< "$CERT_P12_BASE64"
+          base64 --decode -o "$notary_key" <<< "$NOTARY_KEY_BASE64"
+          keychain_password="$(openssl rand -hex 32)"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -d user -s "$keychain"
+          security import "$certificate" -k "$keychain" -P "$CERT_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          xcrun notarytool store-credentials Rill \
+            --key "$notary_key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+            --keychain "$keychain" --validate
+          echo "NOTARY_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Build, notarize, and upload a GitHub Release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SIGN_IDENTITY: Developer ID Application
+          NOTARY_PROFILE: Rill
+        run: bash scripts/github_release.sh "$RELEASE_TAG" "$RELEASE_NOTES"
+
+      - name: Remove temporary signing keychain
+        if: always()
+        run: |
+          if [[ -f "$RUNNER_TEMP/rill-release.keychain-db" ]]; then
+            security delete-keychain "$RUNNER_TEMP/rill-release.keychain-db"
+          fi
