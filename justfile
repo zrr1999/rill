@@ -62,6 +62,10 @@ cache-clean:
 release:
     bash scripts/release.sh
 
+# Build, notarize, and upload a new GitHub Release draft.
+release-github tag notes:
+    bash scripts/github_release.sh {{quote(tag)}} {{quote(notes)}}
+
 # Export native UI render evidence for review.
 test-render:
     RILL_UI_SNAPSHOT_DIR="$PWD/.artifacts/ui-renders" scripts/swift_locked.sh test --filter 'Render|UIRenderEvidence'

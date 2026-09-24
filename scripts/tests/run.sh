@@ -13,5 +13,7 @@ echo 'Testing worker artifact caching...'
 uv run --no-build --locked --script "$TEST_DIR/worker_cache_test.py"
 echo 'Testing release configuration...'
 bash "$TEST_DIR/release_config_test.sh"
+echo 'Testing GitHub Release drafts...'
+bash "$TEST_DIR/github_release_test.sh"
 echo 'Testing app icon generation...'
 bash "$TEST_DIR/app_icon_test.sh"

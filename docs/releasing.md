@@ -50,9 +50,48 @@ Gatekeeper 复验。成功后在 `.artifacts/release/` 产生最终 DMG 和
 恢复、物理 Fn、中文输入法、跨应用文本/图片/文件投递、VoiceOver、模型离线使用、
 数据迁移及退出排空。每次重新构建、签名或更换模型后重新确认包身份和受影响项。
 
+## GitHub Release 草稿
+
+维护者本机是当前发布入口：Apple 签名和公证凭据留在 Keychain，GitHub CLI
+负责上传。暂不复制一套云端构建或自动导入证书的流程。参考
+[Spark 的草稿发布流程](https://github.com/zendev-lab/spark/blob/main/.github/workflows/cd-publish.yml)
+与 [Cue 的版本准备流程](https://github.com/zendev-lab/cue/blob/main/.github/workflows/cd-release.yml)，
+Rill 将候选构建、草稿上传和人工公开发布分开；版本仍以现有 Git 标签为准。
+
+安装 `gh` 并登录有仓库 release 写权限的账号。把[发布说明模板](release-notes-template.md)
+复制到仓库外或被忽略的 `.artifacts/` 中，填写版本变化、限制和待完成的验收项。
+确认当前检出已推送的版本标签后，运行（版本号和路径替换为本次候选）：
+
+```bash
+SIGN_IDENTITY="Developer ID Application" NOTARY_PROFILE="Rill" \
+  just release-github v1.2.3 /absolute/path/release-notes.md
+```
+
+此命令会实际提交 Apple 公证并写入 GitHub，只有维护者授权本次候选后才执行。
+它先核对干净 HEAD、本地标签与 GitHub 标签的 commit，拒绝已有 Release，
+随后调用 `scripts/release.sh --notarize` 完成现有全量预检、构建、签名与公证。
+上传前再次核对 HEAD、远端标签与 SHA-256；[GitHub CLI](https://cli.github.com/manual/gh_release_create)
+的 `--verify-tag --draft` 确保不自动造标签、不直接公开发布。
+目标仓库明确为 `zrr1999/rill`，fork 维护者需要先修改脚本中的目标。
+
+每次构建保存在独立的 `.artifacts/release/github-<tag>.<suffix>/`，包含本次
+`release-notes.md`、`Rill.dmg` 与 `Rill.dmg.sha256`。测试通过不代表已经跑过
+真实 Developer ID 公证；本入口尚需维护者用真实凭据验证。
+
+### 上传失败与重试
+
+失败时保留候选目录。先在 GitHub 检查该标签是否留下草稿及已上传的文件；
+不要直接覆盖资产或删掉已公开的版本。若只有上传失败，可在核对草稿的标签、
+本地 DMG 校验和以及已有资产一致后，用 `gh release upload` 补传缺失文件，
+不要使用 `--clobber`。如果创建草稿本身失败，可用 `gh release create` 的
+`--verify-tag --draft --notes-file` 上传同一候选，避免为网络失败重新公证。
+若需要重新构建，应先由维护者处理旧草稿，再重新验收新产物。
+
 ## 对外发布
 
-验收通过后，由维护者创建对应标签的 GitHub Release，上传最终 DMG 和校验文件。
+从草稿下载同一 DMG 和校验文件，在下载目录运行 `shasum -a 256 --check Rill.dmg.sha256`。
+完成上述真机验收后，补齐草稿中的证据链接和升级限制，再由维护者在 GitHub
+点击 Publish release。草稿生成不会代替这一步。
 Release notes 应说明新增行为、最低系统、模型下载需求、升级限制、已知问题和
 安全报告入口，并链接该候选的验证记录。下载入口应指向已发布的实际产物。
 
