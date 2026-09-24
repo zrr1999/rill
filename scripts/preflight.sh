@@ -31,7 +31,7 @@ verify_uv_toolchain() {
   if ! output="$(uv --version 2>&1)"; then
     error "Cannot determine the uv version"
   fi
-  if ! python_version="$(uv run --script "$SCRIPT_DIR/report_python_version.py" 2>&1)"; then
+  if ! python_version="$(uv run --quiet --no-project --python '>=3.11' python --version 2>&1)"; then
     error "Cannot start the uv-managed Python runtime: $python_version"
   fi
   info "uv toolchain: $output; Python runtime: $python_version"
@@ -154,7 +154,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 BUILD_RESULT="$PACKAGE_SMOKE_ROOT/build-result.json"
 info "Building the release configuration..."
-"$SCRIPT_DIR/build_xcode_release.sh" --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
+"$SCRIPT_DIR/swift_locked.sh" release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
 BUILD_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field productsDirectory)"
 RAW_BUILD_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field buildDirectory)"
 
@@ -192,18 +192,10 @@ codesign --force --options runtime --sign - "$PACKAGE_SMOKE_ROOT/Rill.app"
 codesign --verify --deep --strict --verbose=2 "$PACKAGE_SMOKE_ROOT/Rill.app"
 "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker" </dev/null
 
-for document in LICENSE README.md; do
+for document in LICENSE README.md PRIVACY.md LOCAL_MODEL_NOTICES.md; do
   cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" ||
     error "Packaged project document does not match $document"
 done
-cmp -s \
-  "$PROJECT_DIR/PRIVACY.md" \
-  "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/PRIVACY.md" ||
-  error "Packaged technical privacy notice does not match PRIVACY.md"
-cmp -s \
-  "$PROJECT_DIR/LOCAL_MODEL_NOTICES.md" \
-  "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/LOCAL_MODEL_NOTICES.md" ||
-  error "Packaged local model notices do not match LOCAL_MODEL_NOTICES.md"
 cleanup
 trap - EXIT INT TERM
 
