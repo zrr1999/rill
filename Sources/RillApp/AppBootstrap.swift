@@ -510,6 +510,8 @@ private struct PlatformServices {
 
 private struct ProviderServices {
   let textRewriteTransformer: OpenAITextRewriteTransformer
+  let jevPolishingSettings: JevPolishingSettingsSource
+  let jevPolishingGate: JevTextPolishingGate
   let diagnosticsAudioCaptureService: AVAudioCaptureService
   let managedTemporaryAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner
   let markdownFileAppendCoordinator: MarkdownFileAppendCoordinator
@@ -892,6 +894,12 @@ private enum AppContainerFactory {
     speechModelPoolPresentationBridge: SpeechModelPoolPresentationBridge
   ) -> ProviderServices
   {
+    let jevPolishingSettings = JevPolishingSettingsSource()
+    let jevPolishingGate = JevTextPolishingGate(
+      settings: jevPolishingSettings, privacy: core.privacySettingsSource,
+      currentFocus: {
+        await MainActor.run { platform.focusTracker.capturePrivacyIdentitySample().focus }
+      })
     let managedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(
       diagnosticReporter: { diagnostic in
         await core.diagnostics.record(
@@ -1069,6 +1077,8 @@ private enum AppContainerFactory {
       textRewriteTransformer: OpenAITextRewriteTransformer(
         settingsProvider: openAISettingsProvider,
         diagnosticReporter: { event in await core.diagnostics.record(event) }),
+      jevPolishingSettings: jevPolishingSettings,
+      jevPolishingGate: jevPolishingGate,
       diagnosticsAudioCaptureService: AVAudioCaptureService(
         cleanupOwner: managedTemporaryAudioCleanupOwner
       ),
@@ -1176,6 +1186,7 @@ private enum AppContainerFactory {
       core: core,
       platform: platform,
       registries: registries,
+      textPolishingGate: providers.jevPolishingGate,
       recognitionOptionsProvider: recognitionOptionsProvider,
       recognitionAudioCleanupOwner: providers.managedTemporaryAudioCleanupOwner
     )
@@ -1184,6 +1195,7 @@ private enum AppContainerFactory {
       core: core,
       platform: platform,
       registries: registries,
+      textPolishingGate: providers.jevPolishingGate,
       recognitionOptionsProvider: recognitionOptionsProvider,
       recognitionAudioCleanupOwner: providers.managedTemporaryAudioCleanupOwner
     )
@@ -1371,6 +1383,7 @@ private enum AppContainerFactory {
     core: CoreServices,
     platform: PlatformServices,
     registries: Registries,
+    textPolishingGate: any TextPolishingGate,
     recognitionOptionsProvider: @escaping RecognitionOptionsProvider,
     recognitionAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner
   ) -> SessionCoordinator {
@@ -1382,6 +1395,7 @@ private enum AppContainerFactory {
       },
       recognizerRegistry: registries.recognizerRegistry,
       transformerRegistry: registries.transformerRegistry,
+      textPolishingGate: textPolishingGate,
       actionRegistry: registries.actionRegistry,
       candidateResolver: core.candidateResolver,
       recordStore: core.recordStore,
@@ -1805,6 +1819,7 @@ private enum AppContainerFactory {
           async let assistantQueueShutdown: Void =
             runtime.assistantAudioProcessingQueue.shutdown()
           _ = await (interactiveQueueShutdown, assistantQueueShutdown)
+          await providers.jevPolishingGate.shutdown()
           await providers.textRewriteTransformer.shutdown()
         },
         shutdownSpeechPlayback: {
@@ -1905,6 +1920,7 @@ private enum AppModelFactory {
           privacy: core.privacySettingsSource, currentFocus: {
             await MainActor.run { platform.focusTracker.capturePrivacyIdentitySample().focus }
           })),
+      jevPolishingSettingsSource: providers.jevPolishingSettings,
       candidateResolver: core.candidateResolver,
       historyRepository: core.persistence.historyRepository,
       runHistoryBrowser: core.persistence.runHistoryBrowser,

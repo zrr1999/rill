@@ -23,6 +23,7 @@ struct WorkflowTextExecutor: Sendable {
   let diagnostics: DiagnosticsRecorder?
   let lane: WorkflowRunLane
   let processingClock: @Sendable () -> UInt64
+  var textPolishingGate: (any TextPolishingGate)? = nil
   private var runDiagnostics: WorkflowRunDiagnostics { .init(diagnostics: diagnostics) }
 
   func transformText(
@@ -122,9 +123,6 @@ struct WorkflowTextExecutor: Sendable {
         guard let transformer = transformerRegistry.transformer(for: step.kind) else {
           throw SessionCoordinator.SessionError.missingTransformer(step.kind)
         }
-        if step.kind == .llmRewrite || step.kind == .llmAnswer {
-          languageModelInputTexts.append(finalText)
-        }
         var tokenUsage: LanguageModelTokenUsage?
         do {
           var correctionRequest = step.kind == .llmRewrite ? correctionContext?.request : nil
@@ -137,6 +135,22 @@ struct WorkflowTextExecutor: Sendable {
             recognitionResult: recognition,
             correctionRequest: correctionRequest
           )
+          // Prediction time is not LLM execution time. A skipped request has no LLM duration or trace.
+          processingStartedAt = nil
+          if step.kind == .llmRewrite, let textPolishingGate,
+            try await textPolishingGate.shouldSkip(text: finalText, step: step, context: context) {
+            try Task.checkCancellation()
+            try await finishProcessReceipt(session, result: .skipped)
+            processingSteps.append(
+              await recordTextStep(
+                kind: processStep.kind, result: .skipped, text: finalText, previousText: inputText, in: session
+              ))
+            continue
+          }
+          try Task.checkCancellation()
+          if step.kind == .llmRewrite || step.kind == .llmAnswer {
+            languageModelInputTexts.append(finalText)
+          }
           processingStartedAt = processStep.recordsDuration ? processingClock() : nil
           if let tracedTransformer = transformer as? any TracedTextTransformer,
             step.kind == .llmRewrite || step.kind == .llmAnswer

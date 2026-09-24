@@ -68,6 +68,7 @@ public actor SessionCoordinator {
     private let privacyContextProvider: @Sendable () async -> ContextSnapshot
     private let recognizerRegistry: SpeechRecognizerRegistry
     private let transformerRegistry: TextTransformerRegistry
+    private let textPolishingGate: (any TextPolishingGate)?
     private let actionRegistry: OutputActionRegistry
     private let workflowPlanCompiler: WorkflowPlanCompiler
     private let candidateResolver: CandidateResolver
@@ -92,7 +93,8 @@ public actor SessionCoordinator {
     private var runDiagnostics: WorkflowRunDiagnostics { .init(diagnostics: diagnostics) }
     private var textExecutor: WorkflowTextExecutor {
         .init(transformerRegistry: transformerRegistry, runReceiptRecorder: runReceiptRecorder,
-              eventBus: eventBus, diagnostics: diagnostics, lane: lane, processingClock: processingClock)
+              eventBus: eventBus, diagnostics: diagnostics, lane: lane, processingClock: processingClock,
+              textPolishingGate: textPolishingGate)
     }
 
     public init(
@@ -101,6 +103,7 @@ public actor SessionCoordinator {
         privacyContextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
         recognizerRegistry: SpeechRecognizerRegistry,
         transformerRegistry: TextTransformerRegistry,
+        textPolishingGate: (any TextPolishingGate)? = nil,
         actionRegistry: OutputActionRegistry,
         candidateResolver: CandidateResolver,
         recordStore: RecordStore = RecordStore(),
@@ -125,6 +128,7 @@ public actor SessionCoordinator {
         self.privacyContextProvider = privacyContextProvider
         self.recognizerRegistry = recognizerRegistry
         self.transformerRegistry = transformerRegistry
+        self.textPolishingGate = textPolishingGate
         self.actionRegistry = actionRegistry
         self.workflowPlanCompiler = WorkflowPlanCompiler(
             recognizerRegistry: recognizerRegistry,
