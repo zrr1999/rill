@@ -170,6 +170,8 @@ public struct SettingsView: View {
   @State var wakeListeningDraftEnabled: Bool
   @State var isApplyingWakeWordSettings = false
   @State var wakeWordSettingsError: String?
+  @FocusState var focusedSettingsItem: SettingsItem?
+  @AccessibilityFocusState var accessibilityFocusedSettingsItem: SettingsItem?
   @FocusState private var focusedSettingsSection: SettingsSection?
   @FocusState var wakePhrasesFieldFocused: Bool
   @AccessibilityFocusState private var accessibilityFocusedSettingsSection: SettingsSection?
@@ -520,12 +522,18 @@ extension SettingsView {
     // Navigation scroll, not decorative motion: keep the fixed duration
     // easing so section positioning stays predictable.
     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-      proxy.scrollTo(request.section, anchor: .top)
+      if let item = request.item { proxy.scrollTo(item, anchor: .top) }
+      else { proxy.scrollTo(request.section, anchor: .top) }
     }
     await waitForMainRunLoopDefaultMode()
     guard !Task.isCancelled, model.settingsNavigationRequest?.id == request.id else { return }
-    focusedSettingsSection = request.section
-    accessibilityFocusedSettingsSection = request.section
+    if let item = request.item {
+      focusedSettingsItem = item
+      accessibilityFocusedSettingsItem = item
+    } else {
+      focusedSettingsSection = request.section
+      accessibilityFocusedSettingsSection = request.section
+    }
     model.settingsNavigationRequest = nil
   }
 

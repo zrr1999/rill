@@ -8,6 +8,7 @@ enum GlobalSearchDestination: Hashable, Sendable {
     case workflow(UUID)
     case history(UUID)
     case settings(SettingsSection)
+    case settingItem(SettingsItem)
 
     var stableID: String {
         switch self {
@@ -19,6 +20,8 @@ enum GlobalSearchDestination: Hashable, Sendable {
             "workflow.\(id.uuidString)"
         case .history(let id):
             "history.\(id.uuidString)"
+        case .settingItem(let item):
+            "settings.item.\(item.rawValue)"
         case .settings(let section):
             "settings.\(section.rawValue)"
         }
@@ -355,6 +358,11 @@ enum GlobalSearchIndex {
                 searchableText: "\(title) \(detail) \(section.searchKeywords)",
                 timestamp: nil
             )
+        } + SettingsItem.allCases.map { item in
+            let title = L10n.jev(item.title, language: language)
+            return GlobalSearchResult(destination: .settingItem(item), category: .settings,
+                title: title, detail: item.section.title(language: language), preview: nil,
+                symbolName: item.section.symbolName, searchableText: "\(title) \(item.searchKeywords)", timestamp: nil)
         }
     }
 

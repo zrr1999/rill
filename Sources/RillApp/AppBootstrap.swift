@@ -510,7 +510,7 @@ private struct PlatformServices {
 
 private struct ProviderServices {
   let textRewriteTransformer: OpenAITextRewriteTransformer
-  let jevPolishingSettings: JevPolishingSettingsSource
+  let jevSessionSettings: JevSessionSettingsSource
   let jevPolishingGate: JevTextPolishingGate
   let diagnosticsAudioCaptureService: AVAudioCaptureService
   let managedTemporaryAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner
@@ -894,9 +894,9 @@ private enum AppContainerFactory {
     speechModelPoolPresentationBridge: SpeechModelPoolPresentationBridge
   ) -> ProviderServices
   {
-    let jevPolishingSettings = JevPolishingSettingsSource()
+    let jevSessionSettings = JevSessionSettingsSource()
     let jevPolishingGate = JevTextPolishingGate(
-      settings: jevPolishingSettings, privacy: core.privacySettingsSource,
+      settings: jevSessionSettings, privacy: core.privacySettingsSource,
       currentFocus: {
         await MainActor.run { platform.focusTracker.capturePrivacyIdentitySample().focus }
       })
@@ -1077,7 +1077,7 @@ private enum AppContainerFactory {
       textRewriteTransformer: OpenAITextRewriteTransformer(
         settingsProvider: openAISettingsProvider,
         diagnosticReporter: { event in await core.diagnostics.record(event) }),
-      jevPolishingSettings: jevPolishingSettings,
+      jevSessionSettings: jevSessionSettings,
       jevPolishingGate: jevPolishingGate,
       diagnosticsAudioCaptureService: AVAudioCaptureService(
         cleanupOwner: managedTemporaryAudioCleanupOwner
@@ -1917,10 +1917,10 @@ private enum AppModelFactory {
       recordWorkspace: RecordWorkspaceModel(store: core.recordStore,
         semanticSearch: RecordSemanticSearch(store: core.recordStore, embedder: providers.recordEmbedder),
         cloudRanking: RecordCloudRanking(store: core.recordStore, provider: JevRecordRankingProvider(),
+          settings: providers.jevSessionSettings,
           privacy: core.privacySettingsSource, currentFocus: {
             await MainActor.run { platform.focusTracker.capturePrivacyIdentitySample().focus }
           })),
-      jevPolishingSettingsSource: providers.jevPolishingSettings,
       candidateResolver: core.candidateResolver,
       historyRepository: core.persistence.historyRepository,
       runHistoryBrowser: core.persistence.runHistoryBrowser,

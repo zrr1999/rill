@@ -97,14 +97,16 @@ final class RecordPanelControllerTests: XCTestCase {
     func testMarkedTextPreventsBothPanelDigitDispatchPathsFromPasting() async throws {
         let target = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.Editor")
         let store = RecordStore()
-        _ = try await store.ingest(.init(payload: .text("history"), provenance: .init(source: .init(kind: .systemClipboard))), into: [])
+        let record = try await store.ingest(.init(payload: .text("中文 history"), provenance: .init(source: .init(kind: .systemClipboard))), into: [])
         let workspace = RecordWorkspaceModel(store: store)
         let probe = RecordPanelDeliveryProbe()
+        let delivered = expectation(description: "Committed IME query can deliver its visible result")
         let controller = RecordPanelController(
             pasteTargetProvider: { target }, pasteTargetRestorer: { _ in true }, reduceMotionProvider: { true })
         let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
         controller.show(model: makeModel(recordWorkspace: workspace), deliverSelection: { subject, target in
             await probe.record(subject, target: target)
+            delivered.fulfill()
             return .delivered
         }, onDeliveryAbort: {})
         let deadline = ContinuousClock.now.advanced(by: .seconds(2))
@@ -129,10 +131,16 @@ final class RecordPanelControllerTests: XCTestCase {
         XCTAssertTrue(marked.subjects.isEmpty)
         XCTAssertTrue(controller.isVisible)
         editor.unmarkText()
+        // Committing the composition may update the query before the shortcut arrives.
+        let searchDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while (controller.quickPanelModel?.isSearching == true || controller.quickPanelModel?.results.isEmpty != false),
+              ContinuousClock.now < searchDeadline { await Task.yield() }
+        XCTAssertEqual(controller.quickPanelModel?.results.map(\.id), [record.id])
         XCTAssertTrue(window.performKeyEquivalent(with: event))
-        await waitForPasteWork()
+        await fulfillment(of: [delivered], timeout: 2)
         let unmarked = await probe.snapshot()
-        XCTAssertEqual(unmarked.subjects.count, 1)
+        XCTAssertEqual(unmarked.subjects.map(\.recordID), [record.id])
+        XCTAssertEqual(unmarked.targets, [target])
         await controller.shutdown()
     }
 

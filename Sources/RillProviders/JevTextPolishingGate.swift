@@ -3,20 +3,20 @@ import RillCore
 
 /// Optional transcript-only prediction. Uncertain or unavailable predictions keep the rewrite.
 public struct JevTextPolishingGate: TextPolishingGate {
-  private let settings: JevPolishingSettingsSource
+  private let settings: JevSessionSettingsSource
   private let privacy: PrivacyPolicySettingsSource
   private let currentFocus: @Sendable () async -> FocusSnapshot
   private let client: JevScoreClient
   private let timeout: Duration
   private let operations = BoundedOperation(maxConcurrentOperations: 2)
 
-  public init(settings: JevPolishingSettingsSource, privacy: PrivacyPolicySettingsSource,
+  public init(settings: JevSessionSettingsSource, privacy: PrivacyPolicySettingsSource,
     currentFocus: @escaping @Sendable () async -> FocusSnapshot) {
     self.init(settings: settings, privacy: privacy, currentFocus: currentFocus,
       client: JevScoreClient())
   }
 
-  init(settings: JevPolishingSettingsSource, privacy: PrivacyPolicySettingsSource,
+  init(settings: JevSessionSettingsSource, privacy: PrivacyPolicySettingsSource,
     currentFocus: @escaping @Sendable () async -> FocusSnapshot, client: JevScoreClient,
     timeout: Duration = .seconds(2)) {
     self.settings = settings
@@ -80,7 +80,7 @@ public struct JevTextPolishingGate: TextPolishingGate {
   }
 
   public func shutdown() async {
-    settings.update(isEnabled: false, apiKey: "")
+    settings.clear()
     await operations.shutdown()
   }
 
