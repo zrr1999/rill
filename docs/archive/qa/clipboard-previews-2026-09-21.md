@@ -1,5 +1,8 @@
 # Clipboard image and file preview verification
 
+> 历史材料，保留原始研究、计划或验收范围；不代表当前功能或发布结论。
+> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../usage.md)。
+
 Date: 2026-09-21. Base: `0143854dd9bbe6ffc61e978f90710a3f2f9657d2`.
 Environment: macOS 27.0 (26A428), arm64; deployment target remains macOS 14.
 

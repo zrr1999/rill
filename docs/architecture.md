@@ -161,3 +161,37 @@ Boundary regressions use controllable stores and suspended
 operations to verify ordering, cancellation, and shutdown behavior. Physical
 Fn input, haptics, microphone use, paste, and accessibility still require the
 device checks in the [release QA checklist](release-qa-checklist.md).
+
+## Current implementation choices
+
+Local recognition uses native `mlx-audio-swift` through a supervised worker, with
+Qwen3-ASR 0.6B as the default and 1.7B as an optional larger model. Streaming text
+is a preview; the final decode of the captured recording owns the delivered text.
+Pinned artifacts and licenses belong in `LOCAL_MODEL_NOTICES.md` and the model
+catalogs, not a second selection table. Historical engine comparisons are in
+[archived research](archive/research/technology-selection.md).
+
+SQLite persistence owns encrypted records, history and memory. LLM transport uses
+the configured Responses-compatible provider; workflow execution does not depend
+on its SDK types. Vocabulary bindings distinguish recognition hints from explicit
+post-recognition replacement; `VocabularyLibraryModel` updates the runtime source
+and persisted defaults together. Prospective guard rules and prompt-variable
+designs in the archive are not supported product contracts.
+
+`JevSessionSettingsSource` is the sole session credential owner. The composition
+root injects it into candidate ranking and the polishing gate. UI consent is
+separate from possession of a valid-format key. Replacement/clearing revokes old
+authorization identities synchronously; responses are revalidated before use.
+No key or comparison-return intent is persisted. A return intent contains query,
+filters, selection and IDs only; returning reloads current summaries and prepares
+a fresh review without sending it.
+
+`RecordSearch` coordinates literal-first scans and approximate fallback for global
+search and the quick panel. Its cursor binds query, matching mode, catalog revision
+and offset. It owns no content index; `RecordStore` remains authoritative. Each
+presentation owner cancels stale work and guards publication separately.
+
+Durable workflow receipts retain executed positions, step kinds, result codes,
+ordered output receipts and opted-in measured durations. They omit prompts,
+names, paths and sample bodies. Older receipt versions remain readable; history
+uses each receipt's own step kinds rather than today's edited workflow.

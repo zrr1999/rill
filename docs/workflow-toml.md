@@ -1,8 +1,7 @@
 # Rill workflow TOML specification
 
-For setup and everyday use, start with the [README workflow guide](../README.md#工作流).
-This document defines the file format and runtime contracts for maintainers and
-advanced workflow authors.
+For setup and everyday use, start with the [workflow guide](workflows.md).
+This reference describes the supported file format and behavior for workflow authors.
 
 User workflows are plain TOML files edited in an external text editor. Rill has
 no built-in workflow editor. The Workflows page manages files, templates and activation.
@@ -253,11 +252,7 @@ stores its answer before speaking it. The speech templates also save before
 delivery, so a later delivery failure does not discard the saved text. The explicit
 "Save Voice Record Only" output mode omits insertion.
 
-Durable receipt v2
-stores only executed process positions, fixed step kinds, branch/result codes,
-coarse duration buckets and ordered output receipts. It stores no prompts, names,
-paths or sample bodies. History renders each receipt's own step kinds rather than
-mapping an old run onto a newly edited workflow. Receipt v1 remains readable.
+History shows the steps and results from that run. Missing timing measurements remain absent; editing a workflow does not rewrite its earlier runs.
 
 ## Migration and built-ins
 
@@ -274,7 +269,7 @@ user workflow file.
 
 ## LLM Provider and smart cleanup
 
-Settings → Speech → **LLM Provider** is the single OpenAI-compatible Responses
+Settings → Voice & Models → API Providers → **LLM Provider** is the single OpenAI-compatible Responses
 API configuration for cleanup, assistant answers and custom text workflows.
 Set the Base URL, API key and model there. Existing settings and Keychain storage
 remain compatible; workflows do not select a separate provider or credential.

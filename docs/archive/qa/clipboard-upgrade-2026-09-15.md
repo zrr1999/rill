@@ -1,5 +1,8 @@
 # Clipboard upgrade — 2026-09-15
 
+> 历史材料，保留原始研究、计划或验收范围；不代表当前功能或发布结论。
+> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../usage.md)。
+
 ## Implemented contracts
 
 - Product Record limits: 10,000 records and 512 MiB of encoded payload. Both active and history-only records share the same budget. Each record still permits at most 32 memberships, and existing per-item content limits apply.

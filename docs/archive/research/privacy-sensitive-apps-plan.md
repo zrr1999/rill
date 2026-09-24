@@ -1,5 +1,8 @@
 # 隐私与敏感 App 排除计划
 
+> 历史材料，保留原始研究、计划或验收范围；不代表当前功能或发布结论。
+> 归档基线：main `9e786a6`。当前使用说明见 [用户指南](../../usage.md)。
+
 > 来源：同类工具研究中 Raycast Clipboard、Superwhisper、open-wispr、Wispr Flow 等产品的隐私/上下文经验。
 > 目标：让用户清楚知道 Rill 何时捕获剪贴板、何时保存历史、何时调用云端 provider，并能安全排除敏感 App。
 
