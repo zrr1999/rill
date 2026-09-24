@@ -3,7 +3,9 @@ name: "CI - Benchmarks"
 on:
   pull_request:
     paths:
-      - Sources/RillCore/RecordTextFormatting.swift
+      - Sources/RillCore/**
+      - Sources/RillRuntime/**
+      - Sources/RillPersistence/**
       - Benchmarks/**
       - scripts/build_benchmarks.sh
       - .github/workflows/ci-benchmarks.yml
@@ -21,9 +23,9 @@ concurrency:
 
 jobs:
   benchmarks:
-    name: Record preview benchmarks
+    name: Record benchmarks
     runs-on: macos-26
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -34,4 +36,6 @@ jobs:
         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         with:
           mode: walltime
-          run: .artifacts/benchmarks/record-text
+          run: |
+            .artifacts/benchmarks/record-text
+            .artifacts/benchmarks/record-buffer

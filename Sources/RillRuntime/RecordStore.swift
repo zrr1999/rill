@@ -144,6 +144,18 @@ public actor RecordStore {
         var nextMembershipOrdinal: UInt64
     }
 
+    private var buffersByID = Dictionary(uniqueKeysWithValues: RecordBuffer.defaults.map { ($0.id, $0) })
+    private var bufferEntries: [BufferEntryID: BufferEntry] = [:]
+    private var bufferIndexes: [RecordBufferID: BufferIndex] = [:]
+    private var bufferedRecordCounts: [RecordID: Int] = [:]
+    private var nextInputSequence: UInt64 = 1
+    private var nextAllocatedInputSequence: UInt64 = 1
+    private var inputReservationTask: Task<Void, Error>?
+    private var activeBufferOutput: BufferEntryID?
+    private var requestedBufferEntryID: BufferEntryID?
+    private var bufferContinuations: [UUID: AsyncStream<RecordBufferSnapshot>.Continuation] = [:]
+    private var buffersArePersisted = false
+
     private var recordsByID: [RecordID: RecordHeader] = [:]
     private var recordOrder: [RecordID] = []
     private var metadataByRecordID: [RecordID: RecordMetadata] = [:]
@@ -217,7 +229,7 @@ public actor RecordStore {
         isInitialized = persistence == nil
     }
 
-    private func ensureInitialized() async throws {
+    private func ensureInitialized(waitForWrites: Bool = true) async throws {
         if !isInitialized {
             if isInitializing {
                 await withCheckedContinuation { continuation in
@@ -237,7 +249,7 @@ public actor RecordStore {
         if committedGraphState == nil {
             committedGraphState = captureCommittedGraphState()
         }
-        await waitForGraphPersistence()
+        if waitForWrites { await waitForGraphPersistence() }
     }
 
     public func snapshot() async throws -> RecordStoreSnapshot {
@@ -309,9 +321,13 @@ public actor RecordStore {
     @discardableResult
     public func ingest(
         _ draft: RecordDraft,
-        into destinationCollectionIDs: [RecordCollectionID]
+        into destinationCollectionIDs: [RecordCollectionID],
+        fulfilling bufferEntryID: BufferEntryID? = nil
     ) async throws -> RecordProjection {
         try await ensureInitialized()
+        if let bufferEntryID {
+            guard bufferEntries[bufferEntryID]?.state == .preparing else { throw BufferOutputError.unavailable }
+        }
         let destinations = stableUnique(destinationCollectionIDs)
         guard destinations.count <= RecordGraphLimits.maximumRouteCollections else {
             throw RecordStoreError.routeCollectionLimitReached
@@ -356,7 +372,8 @@ public actor RecordStore {
             _ = try addMembershipWithoutPersistence(recordID: record.id, collectionID: collectionID)
         }
         noteMutation()
-        try await persistCurrentGraph()
+        let entry = bufferEntryID.map { BufferEntry(id: $0, recordID: record.id, state: .ready) }
+        try await persistCurrentGraph(fulfilling: entry)
         guard let projection = try await projection(for: record.id) else {
             throw RecordStoreError.invalidGraph
         }
@@ -429,7 +446,10 @@ public actor RecordStore {
     public func deleteRecord(_ recordID: RecordID) async throws {
         try await ensureInitialized()
         guard recordsByID[recordID] != nil else { throw RecordStoreError.recordUnavailable }
-        guard !reuseLeases.values.contains(where: { $0.record.id == recordID }) else { throw RecordStoreError.membershipAlreadyInUse }
+        guard activeBufferOutput.flatMap({ bufferEntries[$0]?.recordID }) != recordID,
+              !reuseLeases.values.contains(where: { $0.record.id == recordID }) else { throw RecordStoreError.membershipAlreadyInUse }
+        let removedBufferEntries = bufferedRecordCounts[recordID, default: 0] == 0 ? []
+            : bufferEntries.values.filter { $0.recordID == recordID }.map(\.id)
         let membershipIDs = membershipIDsByRecordID[recordID, default: []]
         guard membershipIDs.allSatisfy({ !leasedMembershipIDs.contains($0) }) else {
             throw RecordStoreError.membershipAlreadyInUse
@@ -447,7 +467,7 @@ public actor RecordStore {
         membershipIDsByRecordID.removeValue(forKey: recordID)
         durableBlobReferencesByRecordID.removeValue(forKey: recordID)
         noteMutation()
-        try await persistCurrentGraph()
+        try await persistCurrentGraph(removingBufferEntries: removedBufferEntries)
         if let removedRecord {
             await publishCollectionEvents(
                 removedMemberships.map {
@@ -932,7 +952,8 @@ public actor RecordStore {
     public func captureSystemClipboard(
         snapshot: SystemClipboardSnapshot,
         sourceApplication: FocusedApplicationIdentity,
-        allowsWorkflowCapture: Bool
+        allowsWorkflowCapture: Bool,
+        bufferEntryID: BufferEntryID? = nil
     ) async throws -> RecordProjection {
         let payload: RecordPayload
         if let image = snapshot.imagePNGData {
@@ -958,7 +979,7 @@ public actor RecordStore {
             )
         )
         let destinations = try await routedCaptureDestinations(for: envelope)
-        return try await ingest(envelope.draft, into: destinations)
+        return try await ingest(envelope.draft, into: destinations, fulfilling: bufferEntryID)
     }
 
     public func completeDelivery(
@@ -1341,6 +1362,7 @@ extension RecordStore {
                let catalog = try await catalogStore.loadRecordCatalog() {
                 try installCatalog(catalog)
                 hasCatalogPersistence = true
+                try await installBuffers(from: catalog)
                 return
             }
             switch try await persistence.loadRecordGraph() {
@@ -1352,6 +1374,7 @@ extension RecordStore {
                     imageBlobs: imageBlobs
                 )
                 try install(migrated)
+                migrateLegacyBuffers()
                 repositoryRevision = nil
                 durableBlobReferencesByRecordID = [:]
                 try await persistCurrentGraph()
@@ -1379,6 +1402,7 @@ extension RecordStore {
                     uniqueKeysWithValues: persisted.records.map { ($0.id, $0.payloadBlob) }
                 )
                 if persistence is any RecordCatalogPersistenceStore {
+                    migrateLegacyBuffers()
                     committedGraphState = captureCommittedGraphState()
                     try await persistCurrentGraph()
                 }
@@ -1499,33 +1523,43 @@ extension RecordStore {
         revision = 1
     }
 
-    private func persistCurrentGraph() async throws {
+    private func persistCurrentGraph(
+        fulfilling bufferEntry: BufferEntry? = nil,
+        removingBufferEntries removedBufferEntries: [BufferEntryID] = []
+    ) async throws {
         precondition(!isPersistingGraph, "Record graph writes must be serialized.")
         isPersistingGraph = true
         defer { finishGraphPersistence() }
         let rollbackState = committedGraphState
         guard let persistence else {
             if let rollbackState, recordsByID.count < rollbackState.recordsByID.count { admissionWasLimited = false }
+            if let bufferEntry { applyBufferEntry(bufferEntry) }
+            for id in removedBufferEntries { removeBufferEntry(id) }
             trimPayloadCache()
             committedGraphState = captureCommittedGraphState()
             publishSnapshotToObservers()
+            publishBuffers()
             return
         }
         do {
             if let catalogStore = persistence as? any RecordCatalogPersistenceStore {
-                let prepared = try prepareCatalogMutation()
+                let prepared = try prepareCatalogMutation(fulfilling: bufferEntry, removingBufferEntries: removedBufferEntries)
                 repositoryRevision = try await catalogStore.commitRecordCatalog(prepared.mutation)
                 durableBlobReferencesByRecordID = prepared.references
                 hasCatalogPersistence = true
+                buffersArePersisted = true
             } else {
                 let prepared = try preparePersistenceWrite()
                 repositoryRevision = try await persistence.replaceRecordGraph(with: prepared.snapshot)
                 durableBlobReferencesByRecordID = prepared.referencesByRecordID
             }
+            if let bufferEntry { applyBufferEntry(bufferEntry) }
+            for id in removedBufferEntries { removeBufferEntry(id) }
             trimPayloadCache()
             committedGraphState = captureCommittedGraphState()
             if let rollbackState, recordsByID.count < rollbackState.recordsByID.count { admissionWasLimited = false }
             publishSnapshotToObservers()
+            publishBuffers()
         } catch {
             if let rollbackState {
                 restoreCommittedGraphState(rollbackState)
@@ -1761,7 +1795,7 @@ private extension RecordStore {
             }
         }
         let headers = try values(.record, RecordHeader.self, id: { $0.id.description })
-        guard catalog.manifest.schemaVersion == 2, catalog.revision > 0,
+        guard (2...3).contains(catalog.manifest.schemaVersion), catalog.revision > 0,
               Set(catalog.nodes.map(\.key)).count == catalog.nodes.count,
               catalog.references.count == headers.count,
               Set(catalog.references.map(\.recordID)).count == headers.count,
@@ -1796,7 +1830,10 @@ private extension RecordStore {
         dirtyCatalogIDs[kind.rawValue, default: []].insert(id.rawValue)
     }
 
-    func prepareCatalogMutation() throws -> (mutation: RecordCatalogMutation, references: [RecordID: RecordGraphPersistenceBlobReference]) {
+    func prepareCatalogMutation(
+        fulfilling bufferEntry: BufferEntry? = nil,
+        removingBufferEntries removedBufferEntries: [BufferEntryID] = []
+    ) throws -> (mutation: RecordCatalogMutation, references: [RecordID: RecordGraphPersistenceBlobReference]) {
         let old = hasCatalogPersistence ? committedGraphState : nil
         var nodes: [RecordCatalogNode] = []
         var removedKeys: [String] = []
@@ -1834,6 +1871,14 @@ private extension RecordStore {
         }
         let removedBlobs = touchedRecords.filter { recordsByID[$0] == nil }
             .compactMap { committedGraphState?.durableBlobReferencesByRecordID[$0]?.blobID }
+        if !buffersArePersisted {
+            nodes += try bufferCatalogNodes()
+        }
+        if let bufferEntry {
+            nodes.removeAll { $0.key == "bufferEntry/\(bufferEntry.id)" }
+            nodes.append(try bufferNode(bufferEntry))
+        }
+        removedKeys += removedBufferEntries.map { "bufferEntry/\($0)" }
         let mutation = RecordCatalogMutation(
             expectedRevision: repositoryRevision,
             manifest: RecordCatalogManifest(nextMembershipOrdinal: nextMembershipOrdinal, recordOrder: recordOrder, collectionOrder: collectionOrder),
@@ -1934,7 +1979,7 @@ extension RecordStore {
     public func prepareCleanup(olderThan cutoff: Date = .distantFuture) async throws -> RecordCleanupPlan {
         try await ensureInitialized()
         let candidates = recordOrder.reversed().filter { id in
-            guard !reuseLeases.values.contains(where: { $0.record.id == id }),
+            guard bufferedRecordCounts[id, default: 0] == 0, !reuseLeases.values.contains(where: { $0.record.id == id }),
                   let header = recordsByID[id], header.createdAt <= cutoff,
                   header.provenance.source.kind == .systemClipboard,
                   let metadata = metadataByRecordID[id], !metadata.isPinned, metadata.tags.isEmpty else { return false }
@@ -1968,6 +2013,7 @@ extension RecordStore {
             membershipIDs = [id]
         }
         guard membershipIDs.allSatisfy({ !leasedMembershipIDs.contains($0) }),
+              !recordIDs.contains(where: { activeBufferOutput.flatMap({ bufferEntries[$0]?.recordID }) == $0 }),
               !reuseLeases.values.contains(where: { recordIDs.contains($0.record.id) }) else {
             throw RecordStoreError.membershipAlreadyInUse
         }
@@ -2050,5 +2096,352 @@ extension RecordStore {
         let lease = RecordReuseLease(id: UUID(), record: record, sink: sink)
         reuseLeases[lease.id] = lease
         return lease
+    }
+}
+
+extension RecordStore {
+    public func bufferSnapshot() async throws -> RecordBufferSnapshot {
+        try await ensureInitialized()
+        return makeBufferSnapshot()
+    }
+
+    public func bufferStream() async throws -> AsyncStream<RecordBufferSnapshot> {
+        try await ensureInitialized()
+        let token = UUID()
+        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            bufferContinuations[token] = continuation
+            continuation.yield(makeBufferSnapshot())
+            continuation.onTermination = { [weak self] _ in
+                Task { await self?.removeBufferContinuation(token) }
+            }
+        }
+    }
+
+    public func updateBuffer(_ buffer: RecordBuffer) async throws {
+        try await ensureInitialized()
+        guard !buffer.name.isEmpty, buffer.name.utf8.count <= storageLimits.maximumCollectionNameUTF8ByteCount,
+              buffersByID[buffer.id].map({ $0.policy == buffer.policy }) ?? true,
+              buffersByID.count < RecordBuffer.maximumCount || buffersByID[buffer.id] != nil else { throw RecordStoreError.invalidGraph }
+        let node = RecordCatalogNode(kind: .buffer, id: buffer.id.description, value: try encoder.encode(buffer))
+        try await commitBufferChanges(nodes: [node])
+        buffersByID[buffer.id] = buffer
+        publishBuffers()
+    }
+
+    /// Assign order without waiting on the database, so slow writes cannot delay clipboard reads.
+    public func observeBufferInput(in bufferID: RecordBufferID) async throws -> BufferInputReservation {
+        try await ensureInitialized(waitForWrites: false)
+        guard let buffer = buffersByID[bufferID], buffer.policy != .set else { throw BufferOutputError.unavailable }
+        let sequence = max(nextAllocatedInputSequence, nextInputSequence)
+        guard sequence < UInt64.max else { throw BufferOutputError.sequenceExhausted }
+        nextAllocatedInputSequence = sequence + 1
+        let id = BufferEntryID(bufferID: bufferID, sequence: sequence)
+        let previous = inputReservationTask
+        let task = Task {
+            _ = try? await previous?.value
+            for attempt in 0...2 {
+                do { try await self.persistBufferReservation(id); return }
+                catch {
+                    guard attempt < 2 else { throw error }
+                    try await Task.sleep(for: .milliseconds(50))
+                }
+            }
+        }
+        inputReservationTask = task
+        return .init(id: id, committed: task)
+    }
+
+    public func reserveBufferInput(in bufferID: RecordBufferID) async throws -> BufferEntryID {
+        let reservation = try await observeBufferInput(in: bufferID)
+        try await reservation.committed.value
+        return reservation.id
+    }
+
+    private func persistBufferReservation(_ id: BufferEntryID) async throws {
+        try await ensureInitialized()
+        guard bufferEntries.count < RecordGraphLimits.maximumMemberships else { throw RecordStoreError.membershipLimitReached }
+        let entry = BufferEntry(id: id)
+        let next = max(nextInputSequence, id.sequence + 1)
+        try await commitBufferChanges(nodes: [try bufferNode(entry), try bufferClockNode(next)])
+        nextInputSequence = next
+        applyBufferEntry(entry)
+        publishBuffers()
+    }
+
+    @discardableResult
+    public func enqueueRecord(_ recordID: RecordID, in bufferID: RecordBufferID) async throws -> BufferEntryID {
+        try await awaitObservedBufferInputs()
+        guard recordsByID[recordID] != nil, let buffer = buffersByID[bufferID] else { throw BufferOutputError.unavailable }
+        if buffer.policy == .set, let sequence = bufferIndexes[bufferID]?.records[recordID] {
+            return BufferEntryID(bufferID: bufferID, sequence: sequence)
+        }
+        let sequence = max(nextInputSequence, nextAllocatedInputSequence)
+        guard sequence < UInt64.max else { throw BufferOutputError.sequenceExhausted }
+        guard bufferEntries.count < RecordGraphLimits.maximumMemberships else { throw RecordStoreError.membershipLimitReached }
+        let entry = BufferEntry(id: .init(bufferID: bufferID, sequence: sequence), recordID: recordID, state: .ready)
+        let next = sequence + 1
+        nextAllocatedInputSequence = next
+        try await commitBufferChanges(nodes: [try bufferNode(entry), try bufferClockNode(next)])
+        nextInputSequence = next
+        nextAllocatedInputSequence = max(nextAllocatedInputSequence, next)
+        applyBufferEntry(entry)
+        publishBuffers()
+        return entry.id
+    }
+
+    public func cancelBufferInput(_ id: BufferEntryID) async throws {
+        try await ensureInitialized()
+        guard let entry = bufferEntries[id] else { return }
+        guard entry.state == .preparing else { return }
+        try await commitBufferChanges(removed: [id])
+        removeBufferEntry(id)
+        publishBuffers()
+    }
+
+    public func requestBufferEntry(_ id: BufferEntryID) async throws {
+        try await ensureInitialized()
+        guard activeBufferOutput == nil, bufferEntries[id]?.state == .ready else { throw BufferOutputError.busy }
+        requestedBufferEntryID = id
+        publishBuffers()
+    }
+
+    /// A durable delivering marker prevents silent replay after an interrupted process.
+    public func beginBufferOutput(manualEntryID: BufferEntryID? = nil) async throws -> BufferOutput {
+        try await awaitObservedBufferInputs()
+        try Task.checkCancellation()
+        guard activeBufferOutput == nil else { throw BufferOutputError.busy }
+        if let manualEntryID, bufferEntries[manualEntryID] == nil { throw BufferOutputError.unavailable }
+        guard var entry = manualEntryID.flatMap({ bufferEntries[$0] }) ?? nextBufferEntry() else { throw BufferOutputError.empty }
+        guard entry.state != .preparing else { throw BufferOutputError.processing }
+        guard entry.state == .ready, let recordID = entry.recordID else { throw BufferOutputError.busy }
+        activeBufferOutput = entry.id
+        do {
+            guard let record = try await materializedRecord(recordID) else { throw BufferOutputError.unavailable }
+            entry.state = .delivering
+            try await commitBufferChanges(nodes: [try bufferNode(entry)])
+            applyBufferEntry(entry)
+            publishBuffers()
+            return BufferOutput(entry: entry, record: record)
+        } catch {
+            activeBufferOutput = nil
+            throw error
+        }
+    }
+
+    /// Verified external delivery is latched in memory before persistence is attempted.
+    /// Retrying this command only commits state; it never calls an output transport.
+    public func finishBufferOutput(_ id: BufferEntryID) async throws {
+        try await ensureInitialized()
+        guard activeBufferOutput == id, var entry = bufferEntries[id], entry.recordID != nil else { throw BufferOutputError.unavailable }
+        entry.state = .delivered
+        applyBufferEntry(entry)
+        publishBuffers()
+        if buffersByID[id.bufferID]?.policy == .set {
+            entry.state = .ready
+            try await commitBufferChanges(nodes: [try bufferNode(entry)])
+            applyBufferEntry(entry)
+        } else {
+            try await commitBufferChanges(removed: [id])
+            removeBufferEntry(id)
+        }
+        activeBufferOutput = nil
+        requestedBufferEntryID = nil
+        publishBuffers()
+    }
+
+    public func markBufferOutputUnconfirmed(_ id: BufferEntryID) async throws {
+        try await ensureInitialized()
+        guard activeBufferOutput == id, var entry = bufferEntries[id], entry.state != .delivered else { throw BufferOutputError.unavailable }
+        entry.state = .awaitingConfirmation
+        // Retain the in-memory guard even if this write fails; disk already says delivering.
+        applyBufferEntry(entry)
+        publishBuffers()
+        try await commitBufferChanges(nodes: [try bufferNode(entry)])
+    }
+
+    /// Explicit rejection/cancel or a user's retry decision releases the fixed item.
+    public func retryBufferOutput(_ id: BufferEntryID, keepSelected: Bool = false) async throws {
+        try await ensureInitialized()
+        guard activeBufferOutput == id, var entry = bufferEntries[id], entry.state != .delivered else { throw BufferOutputError.unavailable }
+        entry.state = .ready
+        try await commitBufferChanges(nodes: [try bufferNode(entry)])
+        applyBufferEntry(entry)
+        activeBufferOutput = nil
+        requestedBufferEntryID = keepSelected ? id : nil
+        publishBuffers()
+    }
+
+    public func entries(in bufferID: RecordBufferID) async throws -> [BufferEntry] {
+        try await ensureInitialized()
+        var sequence = bufferIndexes[bufferID]?.first
+        var result: [BufferEntry] = []
+        while let current = sequence {
+            if let entry = bufferEntries[.init(bufferID: bufferID, sequence: current)] { result.append(entry) }
+            sequence = bufferIndexes[bufferID]?.links[current]?.next
+        }
+        return result
+    }
+}
+
+private extension RecordStore {
+    func awaitObservedBufferInputs() async throws {
+        while true {
+            let observedSequence = nextAllocatedInputSequence
+            _ = try? await inputReservationTask?.value
+            try await ensureInitialized()
+            if observedSequence == nextAllocatedInputSequence { return }
+        }
+    }
+
+    func nextBufferEntry() -> BufferEntry? {
+        if let requestedBufferEntryID, let entry = bufferEntries[requestedBufferEntryID] { return entry }
+        let buffer = buffersByID.values.filter { $0.isEnabled && $0.policy != .set }
+            .max { (bufferIndexes[$0.id]?.last ?? 0) < (bufferIndexes[$1.id]?.last ?? 0) }
+        guard let buffer, let index = bufferIndexes[buffer.id],
+              let sequence = buffer.policy == .stack ? index.last : index.first else { return nil }
+        return bufferEntries[.init(bufferID: buffer.id, sequence: sequence)]
+    }
+
+    func makeBufferSnapshot() -> RecordBufferSnapshot {
+        let active = activeBufferOutput.flatMap { bufferEntries[$0] }
+        let next = active ?? nextBufferEntry()
+        return .init(
+            buffers: buffersByID.values.sorted { $0.id.description < $1.id.description }.map {
+                .init(buffer: $0, count: bufferIndexes[$0.id]?.count ?? 0)
+            }, next: next, nextHeader: next?.recordID.flatMap { recordsByID[$0] }, active: active)
+    }
+
+    func publishBuffers() {
+        guard !bufferContinuations.isEmpty else { return }
+        let snapshot = makeBufferSnapshot()
+        for continuation in bufferContinuations.values { continuation.yield(snapshot) }
+    }
+
+    func removeBufferContinuation(_ id: UUID) { bufferContinuations.removeValue(forKey: id) }
+
+    func applyBufferEntry(_ entry: BufferEntry) {
+        let old = bufferEntries.updateValue(entry, forKey: entry.id)
+        if old == nil { bufferIndexes[entry.id.bufferID, default: BufferIndex()].append(entry.id.sequence) }
+        if old?.recordID != entry.recordID {
+            if let oldID = old?.recordID { bufferedRecordCounts[oldID, default: 0] -= 1 }
+            if let recordID = entry.recordID {
+                bufferedRecordCounts[recordID, default: 0] += 1
+                if buffersByID[entry.id.bufferID]?.policy == .set {
+                    bufferIndexes[entry.id.bufferID, default: BufferIndex()].records[recordID] = entry.id.sequence
+                }
+            }
+        }
+    }
+
+    func removeBufferEntry(_ id: BufferEntryID) {
+        guard let entry = bufferEntries.removeValue(forKey: id) else { return }
+        if requestedBufferEntryID == id { requestedBufferEntryID = nil }
+        bufferIndexes[id.bufferID]?.remove(id.sequence)
+        if let recordID = entry.recordID {
+            bufferedRecordCounts[recordID, default: 0] -= 1
+            if bufferedRecordCounts[recordID] == 0 { bufferedRecordCounts.removeValue(forKey: recordID) }
+            bufferIndexes[id.bufferID]?.records.removeValue(forKey: recordID)
+        }
+    }
+
+    func bufferNode(_ entry: BufferEntry) throws -> RecordCatalogNode {
+        .init(kind: .bufferEntry, id: entry.id.description, value: try encoder.encode(entry))
+    }
+
+    func bufferClockNode(_ sequence: UInt64) throws -> RecordCatalogNode {
+        .init(kind: .bufferClock, id: "input-sequence", value: try encoder.encode(sequence))
+    }
+
+    func bufferCatalogNodes() throws -> [RecordCatalogNode] {
+        try buffersByID.values.map { .init(kind: .buffer, id: $0.id.description, value: try encoder.encode($0)) }
+            + bufferEntries.values.map { try bufferNode($0) } + [bufferClockNode(nextInputSequence)]
+    }
+
+    func commitBufferChanges(nodes: [RecordCatalogNode] = [], removed: [BufferEntryID] = []) async throws {
+        await waitForGraphPersistence()
+        isPersistingGraph = true
+        defer { finishGraphPersistence() }
+        if let persistence {
+            guard let catalog = persistence as? any RecordCatalogPersistenceStore else { throw RecordStoreError.persistenceUnavailable }
+            let manifest = RecordCatalogManifest(nextMembershipOrdinal: nextMembershipOrdinal, recordOrder: recordOrder, collectionOrder: collectionOrder)
+            var upserts = nodes
+            if !buffersArePersisted {
+                let changed = Set(nodes.map(\.key))
+                upserts += try bufferCatalogNodes().filter { !changed.contains($0.key) }
+            }
+            do {
+                repositoryRevision = try await catalog.commitRecordCatalog(.init(
+                    expectedRevision: repositoryRevision, manifest: manifest, upserts: upserts,
+                    removedKeys: removed.map { "bufferEntry/\($0)" }, newPayloadBlobs: [], removedPayloadBlobIDs: [],
+                    preservesManifest: buffersArePersisted))
+            } catch { throw RecordStoreError.persistenceUnavailable }
+            buffersArePersisted = true
+        }
+        revision += 1
+        committedGraphState?.revision = revision
+        committedGraphState?.repositoryRevision = repositoryRevision
+    }
+
+    func installBuffers(from catalog: RecordCatalogRead) async throws {
+        if catalog.manifest.schemaVersion == 2 {
+            migrateLegacyBuffers()
+            try await commitBufferChanges()
+            return
+        }
+        let nodes = catalog.nodes
+        let buffers = try nodes.filter { $0.kind == .buffer }.map { node in
+            let buffer = try decoder.decode(RecordBuffer.self, from: node.value)
+            guard node.id == buffer.id.description, !buffer.name.isEmpty,
+                  buffer.name.utf8.count <= storageLimits.maximumCollectionNameUTF8ByteCount else { throw RecordStoreError.invalidGraph }
+            return buffer
+        }
+        guard buffers.count <= RecordBuffer.maximumCount, buffers.contains(where: { $0.id == RecordBuffer.clipboardID }),
+              buffers.contains(where: { $0.id == RecordBuffer.speechID }),
+              let clock = nodes.first(where: { $0.kind == .bufferClock && $0.id == "input-sequence" }) else { throw RecordStoreError.invalidGraph }
+        buffersByID = Dictionary(uniqueKeysWithValues: buffers.map { ($0.id, $0) })
+        nextInputSequence = try decoder.decode(UInt64.self, from: clock.value)
+        guard nextInputSequence > 0 else { throw RecordStoreError.invalidGraph }
+        let entries = try nodes.filter { $0.kind == .bufferEntry }.map { node in
+            let entry = try decoder.decode(BufferEntry.self, from: node.value)
+            guard node.id == entry.id.description, buffersByID[entry.id.bufferID] != nil,
+                  entry.id.sequence > 0, entry.id.sequence < nextInputSequence,
+                  (entry.recordID == nil) == (entry.state == .preparing),
+                  entry.recordID.map({ recordsByID[$0] != nil }) ?? (entry.state == .preparing) else { throw RecordStoreError.invalidGraph }
+            return entry
+        }.sorted { $0.id.sequence < $1.id.sequence }
+        guard entries.count <= RecordGraphLimits.maximumMemberships, Set(entries.map { $0.id.sequence }).count == entries.count else { throw RecordStoreError.invalidGraph }
+        var removed: [BufferEntryID] = []
+        var changed: [RecordCatalogNode] = []
+        for var entry in entries {
+            if entry.state == .preparing { removed.append(entry.id); continue }
+            if entry.state != .ready {
+                guard activeBufferOutput == nil else { throw RecordStoreError.invalidGraph }
+                activeBufferOutput = entry.id
+                if entry.state == .delivering {
+                    entry.state = .awaitingConfirmation
+                    changed.append(try bufferNode(entry))
+                }
+            }
+            if buffersByID[entry.id.bufferID]?.policy == .set, let recordID = entry.recordID,
+               bufferIndexes[entry.id.bufferID]?.records[recordID] != nil { throw RecordStoreError.invalidGraph }
+            applyBufferEntry(entry)
+        }
+        buffersArePersisted = true
+        if !removed.isEmpty || !changed.isEmpty { try await commitBufferChanges(nodes: changed, removed: removed) }
+    }
+
+    func migrateLegacyBuffers() {
+        var legacyIDs: [RecordCollectionID: RecordBufferID] = [:]
+        for collection in collectionsByID.values where collection.consumptionPolicy == .consumeAfterSuccessfulDelivery {
+            let id = RecordBufferID(collection.id.rawValue)
+            buffersByID[id] = .init(id: id, name: collection.name, policy: collection.selectionPolicy == .oldestFirst ? .queue : .stack,
+                                   isEnabled: false, legacyCollectionID: collection.id)
+            legacyIDs[collection.id] = id
+        }
+        for membership in membershipsByID.values.sorted(by: { $0.ordinal < $1.ordinal }) where membership.state == .active {
+            guard let bufferID = legacyIDs[membership.collectionID] else { continue }
+            applyBufferEntry(.init(id: .init(bufferID: bufferID, sequence: nextInputSequence), recordID: membership.recordID, state: .ready))
+            nextInputSequence += 1
+        }
     }
 }

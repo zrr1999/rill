@@ -208,7 +208,7 @@ final class RecordCatalogTests: XCTestCase {
     XCTAssertEqual(before.deliveryRules, after.deliveryRules)
     XCTAssertEqual(try rawBlobs(at: fixture.url), ciphertext)
     let catalog = try await fixture.persistence.loadRecordCatalog()
-    XCTAssertEqual(catalog?.manifest.schemaVersion, 2)
+    XCTAssertEqual(catalog?.manifest.schemaVersion, 3)
     do {
       _ = try await oldStore.ingest(draft("obsolete writer"), into: [])
       XCTFail("Old graph API must reject a catalog")

@@ -29,6 +29,10 @@ final class RecordCatalogStressTests: XCTestCase {
     }
     for rule in seed.captureRules { try node(.captureRule, id: rule.id.description, value: rule) }
     for rule in seed.deliveryRules { try node(.deliveryRule, id: rule.id.description, value: rule) }
+    for buffer in RecordBuffer.defaults {
+      nodes.append(.init(kind: .buffer, id: buffer.id.description, value: try encoder.encode(buffer)))
+    }
+    nodes.append(.init(kind: .bufferClock, id: "input-sequence", value: try encoder.encode(UInt64(1))))
     var order: [RecordID] = []
     var blobs: [RecordGraphPersistenceBlob] = []
     var totalBytes = 0
