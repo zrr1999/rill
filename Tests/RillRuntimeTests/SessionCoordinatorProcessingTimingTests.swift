@@ -151,6 +151,13 @@ final class SessionCoordinatorProcessingTimingTests: XCTestCase {
         XCTAssertEqual(receipt.stepDetails.filter { [.recognizeSpeech, .llmRewrite, .llmAnswer].contains($0.kind) }.map(\.durationMilliseconds), [1_234, 2_500, 87])
         XCTAssertEqual(receipt.actionDetails.first?.duration, .m1Plus)
         XCTAssertEqual(summary.finalText, "recognized transformed transformed")
+        let diagnostics = await harness.diagnostics.snapshot(matching: .init(runID: summary.runID))
+        let timings = diagnostics.filter { $0.event == "session.process.timing" }
+        XCTAssertEqual(timings.count, 3)
+        for (kind, duration) in [("recognizeSpeech", "1234"), ("llmRewrite", "2500"), ("llmAnswer", "87")] {
+            XCTAssertEqual(timings.first { $0.metadata["stepKind"] == kind }?.metadata["durationMillis"], duration)
+        }
+        XCTAssertTrue(timings.allSatisfy { $0.metadata["resultCode"] == "completed" })
     }
 
     func testTextInputDoesNotInventRecognitionDuration() async throws {
@@ -220,9 +227,10 @@ private func makeProcessingHarness(
     recognition: ProcessingTestOutcome = .success,
     transformation: ProcessingTestOutcome = .success,
     candidateSets: [CandidateSet] = []
-) -> (coordinator: SessionCoordinator, workflow: WorkflowDefinition, repository: InMemoryWorkflowRunReceiptRepository, eventBus: EventBus, resolver: CandidateResolver) {
+) -> (coordinator: SessionCoordinator, workflow: WorkflowDefinition, repository: InMemoryWorkflowRunReceiptRepository, eventBus: EventBus, resolver: CandidateResolver, diagnostics: DiagnosticsRecorder) {
     let clock = ProcessingTestClock()
     let eventBus = EventBus()
+    let diagnostics = DiagnosticsRecorder()
     let repository = InMemoryWorkflowRunReceiptRepository()
     let resolver = CandidateResolver(eventBus: eventBus)
     let workflow = WorkflowDefinition(
@@ -240,10 +248,11 @@ private func makeProcessingHarness(
         transformerRegistry: TextTransformerRegistry(transformers: [ProcessingTestTransformer(clock: clock, outcome: transformation)]),
         actionRegistry: OutputActionRegistry(actions: [ProcessingTestAction(clock: clock)]),
         candidateResolver: resolver, eventBus: eventBus,
+        diagnostics: diagnostics,
         runReceiptRecorder: WorkflowRunReceiptRecorder(repository: repository, monotonicClock: { clock.now() }),
         processingClock: { clock.now() }
     )
-    return (coordinator, workflow, repository, eventBus, resolver)
+    return (coordinator, workflow, repository, eventBus, resolver, diagnostics)
 }
 
 private func processingCandidateSet() -> CandidateSet {

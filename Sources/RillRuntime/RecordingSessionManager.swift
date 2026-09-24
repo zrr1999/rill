@@ -1615,13 +1615,16 @@ extension RecordingSessionManager {
     // Stopping the privacy-sensitive input is the first suspension point
     // after the release/stop gesture. Diagnostics and feedback must never
     // extend the microphone boundary.
+    let captureFinishStart = ContinuousClock.now
     let deferredCapture = try await audioCaptureService.finishCaptureDeferred()
+    let captureFinishMillis = DiagnosticTiming.milliseconds(since: captureFinishStart)
     guard ownsFinishingRecording(runID: runID, operationID: operationID),
       !Task.isCancelled
     else {
       await discard(deferredCapture, runID: runID)
       return
     }
+    let captureSealStart = ContinuousClock.now
     do {
       try await liveAudioSession.sealCapture()
     } catch {
@@ -1635,7 +1638,10 @@ extension RecordingSessionManager {
       await discard(deferredCapture, runID: runID)
       return
     }
+    let captureSealMillis = DiagnosticTiming.milliseconds(since: captureSealStart)
+    let captureCueStart = ContinuousClock.now
     await recordingCueAction(.stopped, stopCueToken)
+    let captureCueMillis = DiagnosticTiming.milliseconds(since: captureCueStart)
     stopCueToken.invalidate()
     guard ownsFinishingRecording(runID: runID, operationID: operationID),
       !Task.isCancelled
@@ -1648,7 +1654,10 @@ extension RecordingSessionManager {
       event: "recording.finishing",
       message:
         "Push-to-talk recording finished for \(gesture.rawValue) and is being queued for background processing.",
-      runID: runID
+      runID: runID,
+      metadata: ["captureFinishMillis": captureFinishMillis,
+                 "captureSealMillis": captureSealMillis,
+                 "captureCueMillis": captureCueMillis]
     )
     guard ownsFinishingRecording(runID: runID, operationID: operationID),
       !Task.isCancelled

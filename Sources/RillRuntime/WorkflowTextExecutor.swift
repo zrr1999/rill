@@ -262,6 +262,14 @@ struct WorkflowTextExecutor: Sendable {
       didChange: previousText.map { $0 != text }, tokenUsage: tokenUsage,
       durationMilliseconds: durationMilliseconds
     )
+    if let durationMilliseconds, let diagnostics {
+      await diagnostics.record(DiagnosticEvent(
+        runID: session.runID, subsystem: .session, level: .debug,
+        event: "session.process.timing", message: "Measured workflow processing step.",
+        metadata: ["stepKind": kind.rawValue, "resultCode": result.rawValue,
+                   "durationMillis": String(durationMilliseconds)]
+      ))
+    }
     await runReceiptRecorder?.recordTextStep(runID: session.runID, step: step)
     await eventBus.publish(.runTextStepRecorded(runID: session.runID, step: step))
     return step

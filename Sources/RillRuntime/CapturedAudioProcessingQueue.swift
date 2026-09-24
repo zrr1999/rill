@@ -463,6 +463,17 @@ public actor CapturedAudioProcessingQueue {
                 captureResolutionStarted = true
                 let capturedAudio = try await job.deferredCapture.value()
                 capturedAudioForCleanup = capturedAudio
+                let timingKeys = ["captureStopMillis", "captureDrainMillis",
+                                  "capturePreviewRetireMillis", "captureFinalizeMillis"]
+                let timing = capturedAudio.metadata.filter { timingKeys.contains($0.key) }
+                if !timing.isEmpty {
+                    await recordDiagnostic(
+                        event: "audio-processing.capture-timing",
+                        message: "Capture finalization timings.", runID: job.runID,
+                        metadata: timing
+                    )
+                }
+
                 try Task.checkCancellation()
                 let authorization = try await authorizationClaim.finalize()
                 try Task.checkCancellation()
