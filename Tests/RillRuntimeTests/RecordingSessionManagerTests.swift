@@ -3018,10 +3018,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         await manager.processHotkeyEvent(try XCTUnwrap(interruptionRelease))
         try? await Task.sleep(for: .milliseconds(180))
         await audioCaptureService.allowStartToFinish()
-        for _ in 0..<100 {
-            if case .recording = await manager.currentState() { break }
-            await Task.yield()
-        }
+        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
         guard case .recording = await manager.currentState() else {
             await manager.stopForApplicationShutdown()
             await queue.shutdown()
