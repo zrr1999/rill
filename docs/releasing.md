@@ -73,10 +73,10 @@ Rill 将候选构建、草稿上传和人工公开发布分开；版本仍以现
 | `APPLE_NOTARY_ISSUER_ID` | 团队 API Issuer ID |
 
 配置完成、候选代码与 `vMAJOR.MINOR.PATCH` 标签已在 `main` 上通过审核后，
-由维护者在 Actions → CD - GitHub Release 手动输入标签，或运行：
+由维护者在 Actions → CD - Release 手动输入标签，或运行：
 
 ```bash
-gh workflow run cd-github-release.yml --ref main -f tag=v1.2.3
+gh workflow run cd-release.yml --ref main -f tag=v1.2.3
 ```
 
 无凭据的 job 先验证标签存在且指向 `main` 历史中的提交。发布 job 仅在

@@ -18,7 +18,7 @@
 ```bash
 swift --version
 xcrun metal -v
-uv run --script scripts/report_python_version.py
+uv run --quiet --no-project --python '>=3.11' python --version
 scripts/swift_locked.sh build
 bash scripts/test.sh
 ```
@@ -96,7 +96,7 @@ SDK、Metal 及构建参数；增加、删除或修改未提交文件也参与�
 
 - `just cache-status` 显示容量，`just cache-clean` 删除非活动条目。
 - 默认限制 10 GiB，成功使用后按最近使用情况淘汰；活动条目持有锁。
-- `scripts/build_xcode_release.sh --worker-cache off` 强制使用源码。
+- `scripts/swift_locked.sh release --worker-cache off` 强制使用源码。
 - `--result-file PATH` 写入带校验值的 JSON 回执及产品快照；PATH 应放在被 Git
   忽略的目录或工作区之外。`assemble_app_bundle.sh --build-result PATH` 消费该回执。
 - `--show-bin-path` 仍返回当前 SwiftPM 产品目录。缓存命中的 worker 可以来自
@@ -208,7 +208,7 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 | [automation-pr-title.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题后，重跑对应的 PR 检查 |
 | [ci-tests.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-tests.yml) | CI - Tests | Linux 文档构建，以及按修改范围运行的 macOS 测试、依赖和发布预检 |
 | [ci-benchmarks.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-benchmarks.yml) | CI - Benchmarks | CodSpeed 文本预览性能测量 |
-| [cd-github-release.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/cd-github-release.yml) | CD - GitHub Release | 手动验证版本标签，经受保护环境审核后签名、公证并上传 Release 草稿 |
+| [cd-release.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/cd-release.yml) | CD - Release | 手动验证版本标签，经受保护环境审核后签名、公证并上传 Release 草稿 |
 
 job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接报告检查结果，
 不额外设置汇总 job。

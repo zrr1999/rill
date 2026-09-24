@@ -19,7 +19,6 @@ BUNDLE_ID="dev.zrr.Rill"
 SPEECH_WORKER_NAME="RillSpeechWorker"
 SPEECH_WORKER_IDENTIFIER="dev.zrr.Rill.SpeechWorker"
 MLX_RESOURCE_BUNDLE_NAME="mlx-swift_Cmlx.bundle"
-MIN_MACOS="14.0"
 
 # 签名身份（Developer ID Application 用于分发，Apple Development 用于本地）
 SIGN_IDENTITY_WAS_SET=false
@@ -31,13 +30,10 @@ fi
 # notarytool keychain profile 名称
 NOTARY_PROFILE="${NOTARY_PROFILE-Rill}"
 NOTARY_KEYCHAIN="${NOTARY_KEYCHAIN-}"
-# macOS Bash 3.2 在 set -u 下不能直接展开空数组；调用处使用带 + 的展开。
-NOTARY_KEYCHAIN_ARGS=()
 
 # 路径（统一使用 physical path，避免 Swift/Clang module cache 因符号链接路径漂移失效）
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-BUILD_DIR=""
 RELEASE_OUTPUT_DIR="${RELEASE_OUTPUT_DIR-$PROJECT_DIR/.artifacts/release}"
 APP_BUNDLE=""
 DMG_PATH=""
@@ -982,7 +978,6 @@ validate_release_configuration() {
     if [[ -n "$NOTARY_KEYCHAIN" ]]; then
       [[ "$NOTARY_KEYCHAIN" == /* && -f "$NOTARY_KEYCHAIN" ]] || \
         error "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径"
-      NOTARY_KEYCHAIN_ARGS=(--keychain "$NOTARY_KEYCHAIN")
     fi
     validate_notarized_release_source
   fi
@@ -1263,11 +1258,28 @@ publish_distribution_dmg_sidecar() {
   write_sha256_sidecar "$DMG_PATH"
 }
 
-finalize_distribution_dmg() {
-  local notary_result="$RELEASE_TEMP_DIR/dmg-notary-result.json"
+notarize_artifact() {
+  local artifact="$1"
+  local notary_result="$RELEASE_TEMP_DIR/notary-result.json"
   local notary_status=""
   local notary_id=""
+  local arguments=(--keychain-profile "$NOTARY_PROFILE")
 
+  if [[ -n "$NOTARY_KEYCHAIN" ]]; then
+    arguments+=(--keychain "$NOTARY_KEYCHAIN")
+  fi
+  arguments+=(--wait --output-format json)
+  if ! xcrun notarytool submit "$artifact" "${arguments[@]}" >"$notary_result"; then
+    error "公证提交失败；请使用 notarytool log 检查对应请求"
+  fi
+  notary_status="$(plutil -extract status raw -o - "$notary_result" 2>/dev/null || true)"
+  notary_id="$(plutil -extract id raw -o - "$notary_result" 2>/dev/null || true)"
+  [[ "$notary_status" == "Accepted" ]] || \
+    error "公证未获接受（状态: ${notary_status:-unknown}，请求: ${notary_id:-unknown}）"
+  info "公证已接受（请求: ${notary_id}）"
+}
+
+finalize_distribution_dmg() {
   info "签名最终 DMG ($RESOLVED_SIGN_IDENTITY_NAME)..."
   codesign --force --timestamp \
     --sign "$RESOLVED_SIGN_IDENTITY" \
@@ -1282,18 +1294,7 @@ finalize_distribution_dmg() {
 
   info "提交最终 DMG 公证..."
   revalidate_notarized_release_source "最终 DMG 公证提交前"
-  if ! xcrun notarytool submit "$DMG_PATH" \
-    --keychain-profile "$NOTARY_PROFILE" \
-    ${NOTARY_KEYCHAIN_ARGS[@]+"${NOTARY_KEYCHAIN_ARGS[@]}"} \
-    --wait \
-    --output-format json >"$notary_result"; then
-    error "最终 DMG 公证提交失败；请使用 notarytool log 检查对应请求"
-  fi
-  notary_status="$(plutil -extract status raw -o - "$notary_result" 2>/dev/null || true)"
-  notary_id="$(plutil -extract id raw -o - "$notary_result" 2>/dev/null || true)"
-  [[ "$notary_status" == "Accepted" ]] || \
-    error "最终 DMG 公证未获接受（状态: ${notary_status:-unknown}，请求: ${notary_id:-unknown}）"
-  info "最终 DMG 公证已接受（请求: ${notary_id}）"
+  notarize_artifact "$DMG_PATH"
 
   info "装订最终 DMG 公证票据..."
   xcrun stapler staple "$DMG_PATH"
@@ -1425,7 +1426,7 @@ fi
 WORKER_CACHE="auto"
 $DO_NOTARIZE && WORKER_CACHE="off"
 BUILD_RESULT="$RELEASE_TEMP_DIR/build-result.json"
-"$SCRIPT_DIR/build_xcode_release.sh" --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
+"$SCRIPT_DIR/swift_locked.sh" release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
 revalidate_notarized_release_source "构建后"
 
 resolve_build_identity
@@ -1494,21 +1495,8 @@ if $DO_NOTARIZE && $DO_INSTALL; then
   revalidate_notarized_release_source "公证提交前"
 
   NOTARIZE_ZIP="$RELEASE_TEMP_DIR/$APP_NAME-notarize.zip"
-  NOTARY_RESULT="$RELEASE_TEMP_DIR/notary-result.json"
   ditto -c -k --keepParent "$APP_BUNDLE" "$NOTARIZE_ZIP"
-
-  if ! xcrun notarytool submit "$NOTARIZE_ZIP" \
-    --keychain-profile "$NOTARY_PROFILE" \
-    ${NOTARY_KEYCHAIN_ARGS[@]+"${NOTARY_KEYCHAIN_ARGS[@]}"} \
-    --wait \
-    --output-format json >"$NOTARY_RESULT"; then
-    error "公证提交失败；请使用 notarytool log 检查对应请求"
-  fi
-  NOTARY_STATUS="$(plutil -extract status raw -o - "$NOTARY_RESULT" 2>/dev/null || true)"
-  NOTARY_ID="$(plutil -extract id raw -o - "$NOTARY_RESULT" 2>/dev/null || true)"
-  [[ "$NOTARY_STATUS" == "Accepted" ]] || \
-    error "公证未获接受（状态: ${NOTARY_STATUS:-unknown}，请求: ${NOTARY_ID:-unknown}）"
-  info "公证已接受（请求: ${NOTARY_ID}）"
+  notarize_artifact "$NOTARIZE_ZIP"
 
   info "装订公证票据..."
   xcrun stapler staple "$APP_BUNDLE"

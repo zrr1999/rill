@@ -65,7 +65,7 @@ Core/Providers 编译算成 worker 专属编译。还核对了对象文件时间
 独立 worktree 后修改 `RillUI` 或 App 资源，并运行：
 
 ```bash
-scripts/build_xcode_release.sh --result-file .artifacts/benchmark/result.json
+scripts/swift_locked.sh release --result-file .artifacts/benchmark/result.json
 just cache-status
 ```
 

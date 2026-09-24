@@ -1,4 +1,4 @@
-name: "CD - GitHub Release"
+name: "CD - Release"
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cd-github-release-${{ inputs.tag }}
+  group: cd-release-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:

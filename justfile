@@ -49,7 +49,7 @@ ci-clean:
 
 # Build and validate the arm64 release products.
 build-release:
-    bash scripts/build_xcode_release.sh
+    scripts/swift_locked.sh release
 
 # Inspect or clear inactive shared worker artifacts.
 cache-status:
