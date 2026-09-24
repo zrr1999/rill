@@ -25,3 +25,5 @@
 - [Rill UI redesign — local verification](qa/ui-redesign-2026-09-21.md)
 - [Clipboard image and file preview verification](qa/clipboard-previews-2026-09-21.md)
 - [Workflow editor v2 verification](qa/workflow-editor-v2/README.md)
+
+- [Input method verification — 2026-09-21](qa/input-method-2026-09-21.md)

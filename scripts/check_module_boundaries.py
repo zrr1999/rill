@@ -18,9 +18,14 @@ DEPENDENCIES = {
     "RillSpeech": {"RillCore", "RillPlatform", "RillSpeechContracts"},
     "RillClipboard": {"RillCore", "RillPlatform", "RillRecords"},
     "RillWorkflows": {"RillCore", "RillSpeechContracts", "RillSpeech", "RillRecords", "RillKnowledge"},
+    "CRime": set(),
+    "RillInputMethodContracts": set(),
+    "RillInputMethodIPC": {"RillInputMethodContracts"},
+    "RillInputMethodKit": {"CRime", "RillInputMethodContracts", "RillInputMethodIPC"},
+    "RillInputMethod": {"RillInputMethodKit", "RillInputMethodContracts"},
     "RillPersistence": {"RillCore"},
-    "RillUI": {"RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"},
-    "RillPlatform": {"RillCore", "TOML"},
+    "RillUI": {"RillCore", "RillInputMethodContracts", "RillInputMethodIPC", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"},
+    "RillPlatform": {"RillCore", "RillInputMethodContracts", "TOML"},
     "RillProviders": {"RillCore", "RillSpeechContracts", "RillSpeech", "OpenAI"},
     "RillSpeechWorker": {"RillCore", "RillSpeechContracts", "RillMLXRuntime"},
 }
@@ -42,7 +47,7 @@ def main() -> None:
     mlx_dependencies = {next(iter(dependency.values()))[0] for dependency in targets["RillMLXRuntime"]["dependencies"]}
     if mlx_dependencies & {"RillSpeech", "RillProviders", "RillPlatform", "RillApp", "OpenAI", "TOML"}:
         raise SystemExit("MLX runtime must depend on shared speech contracts without host providers")
-    for name in ("RillCore", "RillRecords", "RillKnowledge", "RillWorkflows", "RillSpeechContracts"):
+    for name in ("RillCore", "RillRecords", "RillKnowledge", "RillWorkflows", "RillSpeechContracts", "RillInputMethodContracts"):
         sources = sorted(str(path) for path in (ROOT / "Sources" / name).rglob("*.swift"))
         imports = set(output("swiftc", "-frontend", "-emit-imported-modules", *sources).splitlines())
         allowed = DOMAIN_IMPORTS | DEPENDENCIES[name]

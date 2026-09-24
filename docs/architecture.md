@@ -26,6 +26,13 @@ flowchart TD
     UI --> Knowledge
     UI --> Records
     UI --> Speech
+    UI --> Contract[RillInputMethodContracts]
+    UI --> IPC[RillInputMethodIPC]
+    IPC --> Contract
+    IME[RillInputMethod] --> IMK[RillInputMethodKit]
+    IMK --> Contract
+    IMK --> IPC
+    IMK --> Rime[CRime / pinned librime]
     Worker[RillSpeechWorker] --> MLX[RillMLXRuntime]
     Worker --> SpeechContracts[RillSpeechContracts]
     MLX --> SpeechContracts
@@ -47,12 +54,15 @@ flowchart TD
 | Records | Record graph, collection/search/retention operations, ingestion and delivery interaction. `RecordStore` remains the sole graph owner. |
 | Knowledge | Vocabulary suggestions and context memory preparation/maintenance. Their authorization and scopes stay separate. |
 | Workflows | Trigger/session orchestration, selected-text input, workflow execution, cancellation and receipts. It connects Record reuse to workflow execution. |
+| InputMethod / InputMethodKit | Independent InputMethodKit process, Rime sessions and nonactivating AppKit candidates. No application, speech, workflow or database dependency. |
+| InputMethodContracts | Versioned messages and installation paths shared by the two processes. |
+| InputMethodIPC | Nonblocking local stream transport, framing and mutual process identity checks using the macOS Security adapter. |
 | Platform / Providers / Persistence | macOS adapters, text/output providers, and the single SQLite connection/transaction owner. |
 | UI / App | Observable feature models and views; composition, lifecycle and navigation. |
 | SpeechContracts / MLXRuntime / SpeechWorker | Lightweight worker contracts and local model execution in a separate process; the worker does not import Speech or host providers. |
 
 `SpeechFeatureModel`, `SystemClipboardFeatureModel`, `WorkflowLibraryModel`,
-`KnowledgeFeatureModel` own their observable state.
+`KnowledgeFeatureModel` and `InputMethodFeatureModel` own their observable state.
 Speech owns the existing `VoiceRunModel`; Knowledge owns `VocabularyLibraryModel`
 and context-memory presentation. The existing settings persistence model remains
 the single owner of settings read/write lifecycle.

@@ -207,6 +207,7 @@ public struct SettingsView: View {
           Section { languageSection }
         case .input:
           Section { builtinPushToTalkSection; recordPanelSection }
+          if let input = model.inputMethod { InputMethodSettingsView(input: input) }
         case .voice:
           Section { speechEngineSection; apiProviderSettingsSection; voiceAssistantResourcesSection }
         case .vocabulary:

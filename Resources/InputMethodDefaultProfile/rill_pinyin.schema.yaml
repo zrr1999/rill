@@ -1,0 +1,46 @@
+schema:
+  schema_id: rill_pinyin
+  name: Rill 轻量拼音
+  version: '1'
+switches:
+  - name: ascii_mode
+    reset: 0
+    states: [中文, 英文]
+engine:
+  processors: [ascii_composer, key_binder, speller, punctuator, selector, navigator, express_editor]
+  segmentors: [ascii_segmentor, abc_segmentor, punct_segmentor, fallback_segmentor]
+  translators: [punct_translator, script_translator]
+speller:
+  alphabet: abcdefghijklmnopqrstuvwxyz
+  delimiter: " '"
+  algebra:
+    - derive/^([nl])ue$/$1ve/
+    - derive/^([jqxy])u/$1v/
+translator:
+  dictionary: pinyin_simp
+  enable_user_dict: true
+  preedit_format:
+    - xform/([nl])v/$1ü/
+    - xform/([jqxy])v/$1u/
+menu:
+  page_size: 6
+key_binder:
+  bindings:
+    - {when: paging, accept: minus, send: Page_Up}
+    - {when: has_menu, accept: equal, send: Page_Down}
+    - {when: paging, accept: comma, send: Page_Up}
+    - {when: has_menu, accept: period, send: Page_Down}
+punctuator:
+  half_shape:
+    ',': '，'
+    '.': '。'
+    '?': '？'
+    '!': '！'
+    ':': '：'
+    ';': '；'
+    '(': '（'
+    ')': '）'
+    '[': '【'
+    ']': '】'
+    '<': '《'
+    '>': '》'

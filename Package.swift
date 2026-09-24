@@ -7,6 +7,7 @@ let package = Package(
   products: [
     .executable(name: "RillApp", targets: ["RillApp"]),
     .executable(name: "RillSpeechWorker", targets: ["RillSpeechWorker"]),
+    .executable(name: "RillInputMethod", targets: ["RillInputMethod"]),
   ],
   dependencies: [
     .package(
@@ -34,10 +35,18 @@ let package = Package(
   ],
   targets: [
     .target(name: "RillCore"),
+    .target(name: "CRime", linkerSettings: [.linkedLibrary("dl")]),
+    .target(name: "RillInputMethodContracts"),
+    .target(name: "RillInputMethodIPC", dependencies: ["RillInputMethodContracts"],
+      linkerSettings: [.linkedFramework("Security")]),
+    .target(name: "RillInputMethodKit", dependencies: ["CRime", "RillInputMethodContracts", "RillInputMethodIPC"],
+      linkerSettings: [.linkedFramework("InputMethodKit"), .linkedFramework("Carbon")]),
+    .executableTarget(name: "RillInputMethod", dependencies: ["RillInputMethodKit", "RillInputMethodContracts"]),
     .target(name: "RillSpeechContracts", dependencies: ["RillCore"]),
     .target(
       name: "RillPlatform",
       dependencies: [
+        "RillInputMethodContracts",
         "RillCore",
         .product(name: "TOML", package: "swift-toml"),
       ],
@@ -83,7 +92,7 @@ let package = Package(
         .linkedLibrary("sqlite3")
       ]
     ),
-    .target(name: "RillUI", dependencies: ["RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"]),
+    .target(name: "RillUI", dependencies: ["RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"]),
     .executableTarget(
       name: "RillApp",
       dependencies: [
@@ -112,6 +121,8 @@ let package = Package(
         "RillMLXRuntime",
       ]
     ),
+    .testTarget(name: "RillKnowledgeTests", dependencies: ["RillKnowledge"]),
+    .testTarget(name: "RillInputMethodTests", dependencies: ["RillInputMethodIPC", "RillInputMethodContracts", "RillInputMethodKit"]),
     .testTarget(name: "RillCoreTests", dependencies: ["RillCore"]),
     .testTarget(
       name: "RillPersistenceTests",
@@ -151,7 +162,7 @@ let package = Package(
     ),
     .testTarget(
       name: "RillUITests",
-      dependencies: ["RillCore", "RillPlatform", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillUI"]
+      dependencies: ["RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillPlatform", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillUI"]
     ),
     .testTarget(
       name: "RillAppTests",

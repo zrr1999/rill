@@ -336,11 +336,12 @@ run_executable_package_surface_policy_case() {
   published_product_count="$(grep -Ec '^[[:space:]]*\.[[:alnum:]_]+\(' <<<"$product_block" || true)"
   executable_product_count="$(grep -Ec '^[[:space:]]*\.executable\(' <<<"$product_block" || true)"
   library_product_count="$(grep -Ec '^[[:space:]]*\.library\(' <<<"$product_block" || true)"
-  if [[ "$published_product_count" -ne 2 ]] ||
-    [[ "$executable_product_count" -ne 2 ]] ||
+  if [[ "$published_product_count" -ne 3 ]] ||
+    [[ "$executable_product_count" -ne 3 ]] ||
     ! grep -Fq '.executable(name: "RillApp", targets: ["RillApp"])' "$PACKAGE_MANIFEST" ||
-    ! grep -Fq '.executable(name: "RillSpeechWorker", targets: ["RillSpeechWorker"])' "$PACKAGE_MANIFEST"; then
-    echo "FAIL: Package.swift must publish exactly the RillApp and RillSpeechWorker executable products" >&2
+    ! grep -Fq '.executable(name: "RillSpeechWorker", targets: ["RillSpeechWorker"])' "$PACKAGE_MANIFEST" ||
+    ! grep -Fq '.executable(name: "RillInputMethod", targets: ["RillInputMethod"])' "$PACKAGE_MANIFEST"; then
+    echo "FAIL: Package.swift must publish exactly RillApp, RillSpeechWorker and RillInputMethod" >&2
     exit 1
   fi
   if [[ "$library_product_count" -ne 0 ]]; then
@@ -349,7 +350,7 @@ run_executable_package_surface_policy_case() {
   fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: SwiftPM publishes only the App and supervised speech worker executables"
+  echo "PASS: SwiftPM publishes only the App, speech worker and input method executables"
 }
 
 run_native_mlx_dependency_policy_case() {

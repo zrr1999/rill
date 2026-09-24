@@ -256,6 +256,8 @@ public final class AppModel {
   public let speech: SpeechFeatureModel
   public let systemClipboard: SystemClipboardFeatureModel
   public let knowledge: KnowledgeFeatureModel
+  public var inputMethod: InputMethodFeatureModel?
+
   static let vocabularyRulesSettingKey = AppSettingsCodec.vocabularyRulesSettingKey
   static let vocabularyLibrarySettingKey = AppSettingsCodec.vocabularyLibrarySettingKey
   static let workflowLibrarySettingKey = AppSettingsCodec.workflowLibrarySettingKey

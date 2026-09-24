@@ -748,6 +748,14 @@ private enum AppContainerFactory {
       return true
     }
     contextMemoryController?.attach(model)
+    let inputMethodInstaller = RimeProfileInstaller(
+      helperBundle: Bundle.main.bundleURL.appendingPathComponent(
+        "Contents/Helpers/RillInputMethod.app"))
+    model.installInputMethodFeature(
+      privacy: { try core.privacySettingsSource.currentSettings() },
+      install: { source in
+        try await inputMethodInstaller.install(from: source)
+      })
     runtime.workflowSelectionBridge.model = model
     runtime.systemClipboardCaptureControlBridge.model = model
     runtime.globalInputCapabilityBridge.attach(model)
@@ -1798,6 +1806,7 @@ private enum AppContainerFactory {
           )
         },
         stopSettingsReads: {
+          await model.inputMethod?.shutdown()
           await runtime.contextMemoryController?.shutdown()
           await model.stopSettingsReadTasksForApplicationShutdown()
         },
