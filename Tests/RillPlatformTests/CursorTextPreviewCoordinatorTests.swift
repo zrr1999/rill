@@ -1,9 +1,11 @@
+import AppKit
 import Foundation
 import XCTest
 
 @testable import RillCore
 @testable import RillPlatform
 
+@MainActor
 final class CursorTextPreviewCoordinatorTests: XCTestCase {
   func testCursorPreviewReplacesSelectionUpdatesTailAndCommitsFinalText() async {
     let target = MockCursorTarget(content: "Say old now", selection: NSRange(location: 4, length: 3))
@@ -72,6 +74,9 @@ final class CursorTextPreviewCoordinatorTests: XCTestCase {
   func testMissingPermissionAndUnsupportedTargetFallBackWithoutWriting() async {
     let target = MockCursorTarget(content: "kept", selection: NSRange(location: 4, length: 0))
     let permissionDenied = CursorTextPreviewCoordinator(
+      injectionEngine: TextInjectionEngine(
+        pasteboard: SystemClipboardPort(pasteboard: NSPasteboard.withUniqueName()),
+        accessibilityChecker: { true }),
       accessibilityChecker: { false },
       secureInputChecker: { false },
       targetProvider: { target },
@@ -116,6 +121,9 @@ final class CursorTextPreviewCoordinatorTests: XCTestCase {
 
   private func makeCoordinator(target: MockCursorTarget) -> CursorTextPreviewCoordinator {
     CursorTextPreviewCoordinator(
+      injectionEngine: TextInjectionEngine(
+        pasteboard: SystemClipboardPort(pasteboard: NSPasteboard.withUniqueName()),
+        accessibilityChecker: { true }),
       accessibilityChecker: { true },
       secureInputChecker: { false },
       targetProvider: { target },

@@ -6,14 +6,14 @@ import RillCore
 /// Explicit output only. No pasteboard port, paste shortcut, or restoration path.
 @MainActor
 public final class RecordBufferTextOutput {
-  public struct Target {
+  public struct Target: Sendable {
     let element: any CursorTextPreviewTarget
-    let isCurrent: @MainActor () -> Bool
-    let post: @MainActor ([UInt16]) -> Bool
+    let isCurrent: @MainActor @Sendable () -> Bool
+    let post: @MainActor @Sendable ([UInt16]) -> Bool
 
     public init(
-      element: any CursorTextPreviewTarget, isCurrent: @escaping @MainActor () -> Bool,
-      post: @escaping @MainActor ([UInt16]) -> Bool
+      element: any CursorTextPreviewTarget, isCurrent: @escaping @MainActor @Sendable () -> Bool,
+      post: @escaping @MainActor @Sendable ([UInt16]) -> Bool
     ) {
       self.element = element
       self.isCurrent = isCurrent

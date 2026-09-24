@@ -21,7 +21,7 @@ import Testing
         return true
       })
     let controller = BufferOutputController(
-      store: store, model: model,
+      store: store, model: model, injectionEngine: makeInjectionEngine(),
       textOutput: .init(capture: { target }, modifiersHeld: { false }, isSecure: { false }),
       isRillFrontmost: { false })
     let clipboardCount = NSPasteboard.general.changeCount
@@ -64,7 +64,7 @@ import Testing
         return true
       })
     let controller = BufferOutputController(
-      store: store, model: model,
+      store: store, model: model, injectionEngine: makeInjectionEngine(),
       textOutput: .init(capture: { target }, modifiersHeld: { false }, isSecure: { false }),
       isRillFrontmost: { false })
     cancellation.controller = controller
@@ -85,7 +85,7 @@ import Testing
     let store = RecordStore()
     let model = makeModel(store)
     let controller = BufferOutputController(
-      store: store, model: model,
+      store: store, model: model, injectionEngine: makeInjectionEngine(),
       textOutput: .init(capture: { nil }, modifiersHeld: { false }, isSecure: { false }),
       isRillFrontmost: { false })
     let clipboardCount = NSPasteboard.general.changeCount
@@ -101,6 +101,12 @@ import Testing
     #expect(try await store.bufferSnapshot().active == nil)
     #expect(try await store.bufferSnapshot().next?.id == id)
     #expect(NSPasteboard.general.changeCount == clipboardCount)
+  }
+
+  private func makeInjectionEngine() -> TextInjectionEngine {
+    TextInjectionEngine(
+      pasteboard: SystemClipboardPort(pasteboard: NSPasteboard.withUniqueName()),
+      accessibilityChecker: { true })
   }
 
   private func enqueue(_ payload: RecordPayload, store: RecordStore) async throws -> BufferEntryID {

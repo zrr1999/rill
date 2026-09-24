@@ -10,6 +10,7 @@ final class BufferOutputController: NSObject {
   private let store: RecordStore
   private weak var model: AppModel?
   private let textOutput: RecordBufferTextOutput
+  private let injectionEngine: TextInjectionEngine
   private let isRillFrontmost: () -> Bool
   private var task: Task<Void, Never>?
   private var dragSettlementTask: Task<Void, Never>?
@@ -20,7 +21,8 @@ final class BufferOutputController: NSObject {
   private var dragStarted = false
 
   init(
-    store: RecordStore, model: AppModel, textOutput: RecordBufferTextOutput = .init(),
+    store: RecordStore, model: AppModel, injectionEngine: TextInjectionEngine,
+    textOutput: RecordBufferTextOutput = .init(),
     isRillFrontmost: @escaping () -> Bool = {
       NSWorkspace.shared.frontmostApplication?.processIdentifier
         == ProcessInfo.processInfo.processIdentifier
@@ -29,6 +31,7 @@ final class BufferOutputController: NSObject {
     self.store = store
     self.model = model
     self.textOutput = textOutput
+    self.injectionEngine = injectionEngine
     self.isRillFrontmost = isRillFrontmost
     super.init()
   }
@@ -73,7 +76,7 @@ final class BufferOutputController: NSObject {
             notify("此输入控件不支持输出，内容已保留。", "This control cannot receive text. The item is retained.")
             return
           }
-          let result = await textOutput.insert(text, into: target)
+          let result = await injectionEngine.insertBufferText(text, into: target, using: textOutput)
           await finish(result, entry: output.entry.id)
         case .image, .files:
           showDrag(output)

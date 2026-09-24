@@ -349,34 +349,46 @@ struct ClipboardCaptureLatencyTests {
     await controller.stop()
   }
 
-  @Test(arguments: [false, true])
-  func capturesConsecutiveCopiesWhilePersistenceIsBlockedAndDrains(stop: Bool) async throws {
+  @Test(arguments: [false, true], [3, 9])
+  func capturesConsecutiveCopiesWhilePersistenceIsBlockedAndDrains(stop: Bool, count: Int) async throws {
     let persistence = ClipboardBlockingPersistence()
     let store = RecordStore(persistence: persistence)
     let (controller, pasteboard, _) = await makeHarness(store: store)
-    pasteboard.replaceExternally(with: .init(plainText: "first", changeCount: 2))
-    await controller.testingPollExternalClipboardIfNeeded(waitForPersistence: false)
-    await persistence.waitUntilWriting()
-    pasteboard.replaceExternally(with: .init(plainText: "second", changeCount: 3))
-    await controller.testingPollExternalClipboardIfNeeded(waitForPersistence: false)
-    pasteboard.replaceExternally(with: .init(plainText: "third", changeCount: 4))
-    await controller.testingPollExternalClipboardIfNeeded(waitForPersistence: false)
-    #expect(pasteboard.payloadReadCount == 3)
+    for index in 1..<count {
+      pasteboard.replaceExternally(with: .init(plainText: "copy \(index)", changeCount: index + 1))
+      await controller.testingPollExternalClipboardIfNeeded(waitForPersistence: false)
+      if index == 1 { await persistence.waitUntilWriting() }
+    }
+    pasteboard.replaceExternally(with: .init(plainText: "copy \(count)", changeCount: count + 1))
+    let lastCapture = Task { await controller.testingPollExternalClipboardIfNeeded(waitForPersistence: false) }
+    let acceptanceDeadline = ContinuousClock.now + .seconds(2)
+    while await controller.testingPendingClipboardCaptureCount() < count,
+          ContinuousClock.now < acceptanceDeadline { await Task.yield() }
+    #expect(await controller.testingPendingClipboardCaptureCount() == count)
+    #expect(pasteboard.payloadReadCount == count)
 
     let drain = Task {
       if stop { await controller.stop() }
       else { await controller.setClipboardCapturePaused(true) }
     }
+    let pauseDeadline = ContinuousClock.now + .seconds(2)
+    while await controller.testingCaptureControlSnapshot().state != .pausing,
+          ContinuousClock.now < pauseDeadline { await Task.yield() }
+    #expect(await controller.testingCaptureControlSnapshot().state == .pausing)
     await persistence.releaseWrite()
+    await lastCapture.value
     await drain.value
     let records = try await store.snapshot().records
-    #expect(records.count == 3)
-    for text in ["first", "second", "third"] {
-      #expect(records.contains { $0.record.payload == .text(text) })
+    #expect(records.count == count)
+    #expect(try await store.bufferSnapshot().remainingCount == count)
+    for index in (1...count).reversed() {
+      let entry = try await store.beginBufferOutput()
+      #expect(entry.record.payload == .text("copy \(index)"))
+      try await store.finishBufferOutput(entry.entry.id)
     }
-    pasteboard.replaceExternally(with: .init(plainText: "after pausing", changeCount: 5))
+    pasteboard.replaceExternally(with: .init(plainText: "after pausing", changeCount: count + 2))
     await controller.testingPollExternalClipboardIfNeeded()
-    #expect(try await store.snapshot().records.count == 3)
+    #expect(try await store.snapshot().records.count == count)
     await controller.stop()
   }
 

@@ -710,9 +710,8 @@ extension SystemClipboardCaptureController {
     let bufferReservation = try? await self.bufferReservation(for: descriptor.changeCount)
     var acceptedBufferInput = false
     defer {
-      if acceptedBufferInput {
-        observedBufferInput = nil
-      } else if clipboardReadRetry?.changeCount != descriptor.changeCount || clipboardReadRetry?.nextAttempt == nil {
+      if !acceptedBufferInput,
+        clipboardReadRetry?.changeCount != descriptor.changeCount || clipboardReadRetry?.nextAttempt == nil {
         abandonObservedBufferInput()
       }
     }
@@ -820,11 +819,6 @@ extension SystemClipboardCaptureController {
       + snapshot.fileURLs.reduce(0) { $0 + $1.absoluteString.utf8.count }
     // Accepted snapshots survive a newer copy; disk latency must not delay polling.
     // Backpressure bounds both the number of captures and retained rich payloads.
-    if pendingClipboardCaptures.count >= 8
-      || pendingClipboardByteCount + byteCount > 64 * 1_024 * 1_024
-    {
-      await clipboardPersistenceTask?.value
-    }
     pendingClipboardCaptures.append(
       PendingClipboardCapture(
         snapshot: snapshot,
@@ -835,9 +829,13 @@ extension SystemClipboardCaptureController {
       )
     )
     acceptedBufferInput = true
+    observedBufferInput = nil
     pendingClipboardByteCount += byteCount
     if clipboardPersistenceTask == nil {
       clipboardPersistenceTask = Task { await self.persistPendingClipboardCaptures() }
+    }
+    if pendingClipboardCaptures.count > 8 || pendingClipboardByteCount > 64 * 1_024 * 1_024 {
+      await clipboardPersistenceTask?.value
     }
   }
 
@@ -1204,6 +1202,8 @@ extension SystemClipboardCaptureController {
   func testingHandleHotkey(_ event: HotkeyEventTap.Event) async {
     await handleHotkey(event)
   }
+
+  func testingPendingClipboardCaptureCount() -> Int { pendingClipboardCaptures.count }
 
   func testingCaptureControlSnapshot() -> SystemClipboardCaptureControlSnapshot {
     captureControlSnapshot

@@ -40,6 +40,7 @@ public actor CursorTextPreviewCoordinator {
 
     private struct Transaction {
         let runID: UUID
+        let outputLease: TextInjectionEngine.OutputLease
         let target: any CursorTextPreviewTarget
         let originalRange: NSRange
         let originalText: String
@@ -49,6 +50,7 @@ public actor CursorTextPreviewCoordinator {
         var lastWriteAt: Date?
     }
 
+    private let injectionEngine: TextInjectionEngine
     private let accessibilityChecker: @Sendable () -> Bool
     private let secureInputChecker: @Sendable () -> Bool
     private let targetProvider: TargetProvider
@@ -59,8 +61,10 @@ public actor CursorTextPreviewCoordinator {
     private var overlayRuns: Set<UUID> = []
     private var blockedRuns: [UUID: String] = [:]
     private var closedRuns: [UUID] = []
+    private var isShuttingDown = false
 
     public init(
+        injectionEngine: TextInjectionEngine,
         accessibilityChecker: @escaping @Sendable () -> Bool = { AXIsProcessTrusted() },
         secureInputChecker: @escaping @Sendable () -> Bool = { IsSecureEventInputEnabled() },
         targetProvider: TargetProvider? = nil,
@@ -68,6 +72,7 @@ public actor CursorTextPreviewCoordinator {
         now: @escaping @Sendable () -> Date = Date.init,
         diagnosticReporter: @escaping DiagnosticReporter = { _ in }
     ) {
+        self.injectionEngine = injectionEngine
         self.accessibilityChecker = accessibilityChecker
         self.secureInputChecker = secureInputChecker
         self.targetProvider = targetProvider ?? { SystemCursorTextPreviewTarget.capture() }
@@ -83,7 +88,7 @@ public actor CursorTextPreviewCoordinator {
         var projected = snapshot
         let runID = snapshot.runID
 
-        guard !closedRuns.contains(runID) else {
+        guard !isShuttingDown, !closedRuns.contains(runID) else {
             projected.livePreviewPlacement = .overlay
             return projected
         }
@@ -115,6 +120,7 @@ public actor CursorTextPreviewCoordinator {
     }
 
     public func commit(runID: UUID, finalText: String) async -> CursorTextPreviewCommitResult {
+        markClosed(runID: runID)
         defer { close(runID: runID) }
         if let reason = blockedRuns.removeValue(forKey: runID) {
             await report(runID: runID, code: "blocked", length: finalText.count, reason: reason)
@@ -128,6 +134,7 @@ public actor CursorTextPreviewCoordinator {
         }
         guard !current.previewText.isEmpty else {
             transaction = nil
+            await injectionEngine.releaseCursorPreview(current.outputLease)
             return .useStandardInjection
         }
         guard current.target.isFocused(),
@@ -149,7 +156,8 @@ public actor CursorTextPreviewCoordinator {
             with: finalText,
             selection: finalSelection
         ) else {
-            blockedRuns[runID] = "final-replacement-failed"
+            transaction = nil
+            await injectionEngine.releaseCursorPreview(current.outputLease)
             await report(
                 runID: runID,
                 code: "blocked",
@@ -159,12 +167,14 @@ public actor CursorTextPreviewCoordinator {
             return .blocked(reason: "final-replacement-failed")
         }
         transaction = nil
+        await injectionEngine.releaseCursorPreview(current.outputLease)
         await report(runID: runID, code: "committed", length: finalText.count)
         return .committed
     }
 
     /// Ends a non-direct, failed, or cancelled run without retaining preview text.
     public func finish(runID: UUID) async {
+        markClosed(runID: runID)
         if transaction?.runID == runID {
             _ = await rollbackCurrent(reason: "run-finished-without-commit")
         }
@@ -174,6 +184,7 @@ public actor CursorTextPreviewCoordinator {
     }
 
     public func shutdown() async {
+        isShuttingDown = true
         if transaction != nil {
             _ = await rollbackCurrent(reason: "application-shutdown")
         }
@@ -197,17 +208,32 @@ public actor CursorTextPreviewCoordinator {
             await report(runID: runID, code: "fallback", length: 0, reason: "secure-input")
             return false
         }
+        guard let lease = await injectionEngine.reserveCursorPreview() else {
+            if transaction?.runID == runID { return true }
+            guard !isShuttingDown, !closedRuns.contains(runID) else { return false }
+            overlayRuns.insert(runID)
+            await report(runID: runID, code: "fallback", length: 0, reason: "output-in-progress")
+            return false
+        }
+        guard !isShuttingDown, !Task.isCancelled, accessibilityChecker(), !secureInputChecker(),
+              !closedRuns.contains(runID),
+              !overlayRuns.contains(runID), transaction == nil else {
+            await injectionEngine.releaseCursorPreview(lease)
+            return false
+        }
         guard let target = targetProvider(), target.isFocused(),
               target.supportsSelectedTextReplacement(),
               let selectedRange = target.selectedRange(),
               let selectedText = target.selectedText(in: selectedRange)
         else {
             overlayRuns.insert(runID)
+            await injectionEngine.releaseCursorPreview(lease)
             await report(runID: runID, code: "fallback", length: 0, reason: "unsupported-target")
             return false
         }
         transaction = Transaction(
             runID: runID,
+            outputLease: lease,
             target: target,
             originalRange: selectedRange,
             originalText: selectedText,
@@ -221,7 +247,8 @@ public actor CursorTextPreviewCoordinator {
     }
 
     private func updatePreview(runID: UUID, text: String) async -> Bool {
-        guard var current = transaction, current.runID == runID else { return false }
+        guard !isShuttingDown, !closedRuns.contains(runID),
+              var current = transaction, current.runID == runID else { return false }
         if let lastWriteAt = current.lastWriteAt,
            now().timeIntervalSince(lastWriteAt) < minimumWriteInterval {
             return true
@@ -264,6 +291,7 @@ public actor CursorTextPreviewCoordinator {
         guard current.target.selectedText(in: current.previewRange) == current.previewText else {
             blockedRuns[runID] = "target-content-changed"
             transaction = nil
+            await injectionEngine.releaseCursorPreview(current.outputLease)
             await report(
                 runID: runID,
                 code: "blocked",
@@ -301,6 +329,7 @@ public actor CursorTextPreviewCoordinator {
     private func downgradeCurrent(reason: String) async -> Bool {
         guard let current = transaction else { return false }
         let runID = current.runID
+        overlayRuns.insert(runID)
         let outcome = await rollbackCurrent(reason: reason)
         switch outcome {
         case .restored:
@@ -316,10 +345,12 @@ public actor CursorTextPreviewCoordinator {
         guard let current = transaction else { return .restored }
         transaction = nil
         if current.previewText.isEmpty {
+            await injectionEngine.releaseCursorPreview(current.outputLease)
             await report(runID: current.runID, code: "rolled-back", length: 0, reason: reason)
             return .restored
         }
         guard current.target.selectedText(in: current.previewRange) == current.previewText else {
+            await injectionEngine.releaseCursorPreview(current.outputLease)
             await report(
                 runID: current.runID,
                 code: "blocked",
@@ -337,6 +368,7 @@ public actor CursorTextPreviewCoordinator {
             with: current.originalText,
             selection: restoredSelection
         ) else {
+            await injectionEngine.releaseCursorPreview(current.outputLease)
             await report(
                 runID: current.runID,
                 code: "blocked",
@@ -345,6 +377,7 @@ public actor CursorTextPreviewCoordinator {
             )
             return .conflict
         }
+        await injectionEngine.releaseCursorPreview(current.outputLease)
         await report(
             runID: current.runID,
             code: "rolled-back",
@@ -366,9 +399,11 @@ public actor CursorTextPreviewCoordinator {
     }
 
     private func close(runID: UUID) {
-        if transaction?.runID == runID { transaction = nil }
         overlayRuns.remove(runID)
         blockedRuns.removeValue(forKey: runID)
+    }
+
+    private func markClosed(runID: UUID) {
         closedRuns.append(runID)
         if closedRuns.count > 64 {
             closedRuns.removeFirst(closedRuns.count - 64)

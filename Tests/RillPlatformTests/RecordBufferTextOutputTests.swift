@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 
@@ -79,6 +80,123 @@ import Testing
     #expect(calls == 1)
   }
 
+  @Test(arguments: ["finish", "commit", "conflict", "shutdown", "empty"])
+  func cursorPreviewHoldsOutputUntilItsTerminalBoundary(terminal: String) async throws {
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    let engine = makeEngine(pasteboard)
+    let element = BufferTextTarget()
+    element.update { $0.supportsReplacement = true }
+    let target = RecordBufferTextOutput.Target(element: element, isCurrent: { true }, post: { _ in false })
+    let output = RecordBufferTextOutput(capture: { target }, modifiersHeld: { false }, isSecure: { false })
+    let cursor = CursorTextPreviewCoordinator(
+      injectionEngine: engine, accessibilityChecker: { true }, secureInputChecker: { false },
+      targetProvider: { element }, minimumWriteInterval: 0)
+    let runID = UUID()
+    _ = await cursor.project(cursorSnapshot(runID, text: terminal == "empty" ? "" : "preview"))
+    #expect(await engine.insertBufferText("buffer", into: target, using: output) == .rejected)
+    await #expect(throws: TextInjectionEngine.InjectionError.temporaryClipboardTransactionInProgress) {
+      try await engine.inject("voice", method: .keyboard)
+    }
+    switch terminal {
+    case "commit":
+      #expect(await cursor.commit(runID: runID, finalText: "final") == .committed)
+    case "conflict":
+      element.update { $0.text = "external" }
+      _ = await cursor.project(cursorSnapshot(runID, text: "new preview"))
+      #expect(await cursor.commit(runID: runID, finalText: "final") == .blocked(reason: "target-content-changed"))
+    case "shutdown":
+      await cursor.shutdown()
+      #expect(await cursor.project(cursorSnapshot(UUID(), text: "late")).livePreviewPlacement == .overlay)
+    default:
+      await cursor.finish(runID: runID)
+    }
+    let lease = try #require(await engine.reserveCursorPreview())
+    await engine.releaseCursorPreview(lease)
+    await engine.drainPendingClipboardRecoveryForApplicationShutdown()
+  }
+
+  @Test func concurrentUpdatesForOneRunReleaseTheSameOutputLease() async throws {
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    let engine = makeEngine(pasteboard)
+    let element = BufferTextTarget()
+    element.update { $0.supportsReplacement = true }
+    let cursor = CursorTextPreviewCoordinator(
+      injectionEngine: engine, accessibilityChecker: { true }, secureInputChecker: { false },
+      targetProvider: { element }, minimumWriteInterval: 0)
+    for _ in 0..<32 {
+      let runID = UUID()
+      let snapshot = cursorSnapshot(runID, text: "preview")
+      async let first = cursor.project(snapshot)
+      async let second = cursor.project(snapshot)
+      _ = await (first, second)
+      _ = await cursor.commit(runID: runID, finalText: "final")
+      let lease = try #require(await engine.reserveCursorPreview())
+      await engine.releaseCursorPreview(lease)
+    }
+  }
+
+  @Test func activeBufferRejectsVoiceAndDowngradesCursorPreviewWithoutWriting() async throws {
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    let engine = makeEngine(pasteboard)
+    let element = BufferTextTarget()
+    element.update { $0.supportsReplacement = true }
+    let target = RecordBufferTextOutput.Target(element: element, isCurrent: { true }, post: { _ in false })
+    let modifiers = OutputModifierState()
+    let started = AsyncStream<Void>.makeStream()
+    let output = RecordBufferTextOutput(capture: { target }, modifiersHeld: {
+      started.continuation.yield(())
+      return modifiers.held
+    }, isSecure: { false })
+    let delivery = Task { await engine.insertBufferText("buffer", into: target, using: output) }
+    var iterator = started.stream.makeAsyncIterator()
+    _ = await iterator.next()
+    let cursor = CursorTextPreviewCoordinator(
+      injectionEngine: engine, accessibilityChecker: { true }, secureInputChecker: { false },
+      targetProvider: { element })
+    #expect(await cursor.project(cursorSnapshot(UUID(), text: "preview")).livePreviewPlacement == .overlay)
+    #expect(element.value == "selected")
+    await #expect(throws: TextInjectionEngine.InjectionError.temporaryClipboardTransactionInProgress) {
+      try await engine.inject("voice", method: .keyboard)
+    }
+    modifiers.held = false
+    #expect(await delivery.value == .verified)
+    #expect(element.value == "buffer")
+    try await engine.inject("voice", method: .keyboard)
+  }
+
+  @Test func activeKeyboardDeliveryRejectsBufferAndCancellationReleasesOutput() async throws {
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    let gate = OutputKeyboardGate()
+    let engine = TextInjectionEngine(
+      pasteboard: SystemClipboardPort(pasteboard: pasteboard), accessibilityChecker: { true },
+      keyboardChunkSender: { _ in await gate.enter(); return true })
+    let element = BufferTextTarget()
+    element.update { $0.supportsReplacement = true }
+    let target = RecordBufferTextOutput.Target(element: element, isCurrent: { true }, post: { _ in false })
+    let output = RecordBufferTextOutput(capture: { target }, modifiersHeld: { false }, isSecure: { false })
+    let voice = Task { try await engine.inject(String(repeating: "voice", count: 10), method: .keyboard) }
+    await gate.waitUntilEntered()
+    #expect(await engine.insertBufferText("buffer", into: target, using: output) == .rejected)
+    #expect(element.value == "selected")
+    voice.cancel()
+    await gate.release()
+    _ = try? await voice.value
+    #expect(await engine.insertBufferText("buffer", into: target, using: output) == .verified)
+  }
+
+  private func makeEngine(_ pasteboard: NSPasteboard) -> TextInjectionEngine {
+    TextInjectionEngine(pasteboard: SystemClipboardPort(pasteboard: pasteboard),
+      accessibilityChecker: { true }, keyboardChunkSender: { _ in true })
+  }
+
+  private func cursorSnapshot(_ runID: UUID, text: String) -> LiveSubtitleSnapshot {
+    .init(runID: runID, phase: .transcribing, hypothesisText: text, livePreviewPlacement: .cursor)
+  }
+
   @Test func secureFieldOrCancelledOperationNeverSends() async {
     let element = BufferTextTarget()
     let target = RecordBufferTextOutput.Target(
@@ -133,3 +251,21 @@ private final class LockedState {
     return body(&value)
   }
 }
+
+private actor OutputKeyboardGate {
+  private var entered = false
+  private var observers: [CheckedContinuation<Void, Never>] = []
+  private var continuation: CheckedContinuation<Void, Never>?
+  func enter() async {
+    entered = true
+    for observer in observers { observer.resume() }
+    observers.removeAll()
+    await withCheckedContinuation { continuation = $0 }
+  }
+  func waitUntilEntered() async {
+    if !entered { await withCheckedContinuation { observers.append($0) } }
+  }
+  func release() { continuation?.resume(); continuation = nil }
+}
+
+@MainActor private final class OutputModifierState { var held = true }

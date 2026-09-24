@@ -839,6 +839,7 @@ private enum AppContainerFactory {
       }
     )
     let cursorTextPreviewCoordinator = CursorTextPreviewCoordinator(
+      injectionEngine: injectionEngine,
       diagnosticReporter: { diagnostic in
         let textLengthBucket = switch diagnostic.textLength {
         case 0: "empty"
@@ -2195,7 +2196,8 @@ private enum AppModelFactory {
       preconditionFailure("AppModel was not initialized")
     }
     resolvedModel.installBufferOutputHotkeyAction { platform.hotkeyTap.setBufferOutputHotkeyBinding($0) }
-    let bufferOutput = BufferOutputController(store: core.recordStore, model: resolvedModel)
+    let bufferOutput = BufferOutputController(
+      store: core.recordStore, model: resolvedModel, injectionEngine: platform.injectionEngine)
     resolvedModel.recordWorkspace.buffers.outputAction = { bufferOutput.output($0) }
     resolvedModel.recordWorkspace.buffers.confirmAction = { bufferOutput.confirm() }
     resolvedModel.recordWorkspace.buffers.retryAction = { bufferOutput.retry() }
