@@ -344,14 +344,14 @@ public struct RecordWorkspaceView: View {
     private var recordList: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Picker(L10n.workspace(.allTypes, language: language), selection: Binding(get: { workspace.payloadKindFilter }, set: workspace.setPayloadKindFilter)) {
+                Picker(L10n.workspace(.allTypes, language: language), selection: Binding(get: { workspace.payloadKindFilter }, set: { workspace.setPayloadKindFilter($0) })) {
                     Text(L10n.workspace(.allTypes, language: language)).tag(Optional<RecordPayloadKind>.none)
                     Text(L10n.quickRecord(.text, language: language)).tag(Optional(RecordPayloadKind.text))
                     Text(L10n.recordText(.imagePayload, language: language)).tag(Optional(RecordPayloadKind.image))
                     Text(L10n.quickRecord(.files, language: language)).tag(Optional(RecordPayloadKind.files))
                 }.labelsHidden()
                 Spacer(minLength: 0)
-                Toggle(isOn: Binding(get: { workspace.showsPinnedOnly }, set: workspace.setShowsPinnedOnly)) {
+                Toggle(isOn: Binding(get: { workspace.showsPinnedOnly }, set: { workspace.setShowsPinnedOnly($0) })) {
                     Image(systemName: RillSystemSymbol.pinFill.rawValue)
                 }
                 .toggleStyle(.button)
@@ -362,7 +362,7 @@ public struct RecordWorkspaceView: View {
                         .toggleStyle(.button)
                         .disabled(sourceAppContext?.bundleIdentifier == nil)
                 } else {
-                    Picker(L10n.workspace(.source, language: language), selection: Binding(get: { workspace.sourceAppFilterBundleIdentifier }, set: workspace.setSourceAppFilter)) {
+                    Picker(L10n.workspace(.source, language: language), selection: Binding(get: { workspace.sourceAppFilterBundleIdentifier }, set: { workspace.setSourceAppFilter($0) })) {
                         Text(L10n.workspace(.allSources, language: language)).tag(Optional<String>.none)
                         ForEach(recordSources, id: \.id) { source in
                             Text(source.name).tag(Optional(source.id))

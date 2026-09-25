@@ -129,7 +129,7 @@ public struct RecordQuickPanelView: View {
   public var body: some View {
     VStack(spacing: 0) {
       RecordSearchField(
-        text: Binding(get: { model.searchText }, set: model.setSearchText), placeholder: text(.search), onMove: model.moveSelection,
+        text: Binding(get: { model.searchText }, set: { model.setSearchText($0) }), placeholder: text(.search), onMove: model.moveSelection,
         onSubmit: pasteSelection,
         onDigit: { index in
           guard let subject = model.subject(at: index) else { return }
@@ -142,10 +142,10 @@ public struct RecordQuickPanelView: View {
       .frame(height: 30)
       .padding(RillSpacing.panel)
       HStack(spacing: RillSpacing.row) {
-        Toggle(text(.pinned), isOn: Binding(get: { model.pinnedOnly }, set: model.setPinnedOnly)).toggleStyle(.button)
-        Toggle(text(.currentApp), isOn: Binding(get: { model.currentAppOnly }, set: model.setCurrentAppOnly)).toggleStyle(.button).disabled(
+        Toggle(text(.pinned), isOn: Binding(get: { model.pinnedOnly }, set: { model.setPinnedOnly($0) })).toggleStyle(.button)
+        Toggle(text(.currentApp), isOn: Binding(get: { model.currentAppOnly }, set: { model.setCurrentAppOnly($0) })).toggleStyle(.button).disabled(
           !model.canFilterCurrentApp)
-        Picker(text(.allTypes), selection: Binding(get: { model.kind }, set: model.setKind)) {
+        Picker(text(.allTypes), selection: Binding(get: { model.kind }, set: { model.setKind($0) })) {
           Text(text(.allTypes)).tag(RecordPayloadKind?.none)
           Text(text(.text)).tag(RecordPayloadKind?.some(.text))
           Text(text(.image)).tag(RecordPayloadKind?.some(.image))
@@ -258,7 +258,7 @@ public struct RecordQuickPanelView: View {
 
   private var resultList: some View {
       ScrollViewReader { proxy in
-        List(selection: Binding(get: { model.selectedID }, set: model.select)) {
+        List(selection: Binding(get: { model.selectedID }, set: { model.select($0) })) {
           ForEach(Array(model.results.enumerated()), id: \.element.id) { index, item in
             selectableRow(item, index: index)
           }
