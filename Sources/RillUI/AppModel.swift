@@ -48,8 +48,7 @@ public final class AppModel {
   public var selectedSettingsPane: SettingsPane = .general
   public internal(set) var settingsPresentationGeneration = 0
   var handledSettingsPresentationGeneration = 0
-  @ObservationIgnored var copyRecordAction:
-    @MainActor (RecordReuseSubject) async -> RecordReuseOutcome = { _ in .blocked }
+  let recordInteractions: RecordInteractionServices
   internal var workflowEditorNavigationRequest: WorkflowEditorNavigationRequest?
 
   public internal(set) var clipboardCapturePreferenceRevision: UInt64 = 0
@@ -224,14 +223,8 @@ public final class AppModel {
   let openMicrophoneSettingsAction: () -> Void
   let requestGlobalInputAction: () -> Void
   let retryGlobalInputAction: () -> Void
-  var beginRecordPanelShortcutRecordingAction: () -> UUID = { UUID() }
-  var endRecordPanelShortcutRecordingAction: (UUID) -> Void = { _ in }
-  var commitRecordPanelShortcutRecordingAction: (UUID, UInt16) -> Void = { _, _ in }
-  var showRecordPanelAction: () -> Void = {}
-  var setSystemClipboardCaptureEnabledAction: (Bool, UInt64) -> Void = { _, _ in }
-  var ignoreNextExternalClipboardChangeAction: () -> Void = {}
+  var showRecordPanelAction: (() -> Void)?
   let workflowLibraryChangedAction: @MainActor () -> Void
-  var updateRecordPanelHotkeyAction: (HotkeyBindingDescriptor) -> Void = { _ in }
 
   public func updateWakeWordRuntimeState(_ state: WakeWordRuntimePresentationState) {
     self.voice.wakeWordRuntimeState = state
@@ -254,8 +247,6 @@ public final class AppModel {
   var eventListenerBarrierContinuations: [UUID: CheckedContinuation<Void, Never>] = [:]
   var eventListenerShutdownTask: Task<Void, Never>?
   var hasStoppedEventListener = false
-  /// Keys changed by the user after the initial snapshot read started but
-  /// before it was applied. The older snapshot must not overwrite them.
   var persistenceWrites: PersistenceWriteCoordinator { settings.writes }
   var clipboardUpdateDebounceTask: Task<Void, Never>?
   private(set) var hasBegunApplicationShutdown = false
@@ -342,7 +333,8 @@ public final class AppModel {
     requestGlobalInputAction: @escaping () -> Void,
     retryGlobalInputAction: @escaping () -> Void,
     workflowLibraryChangedAction: @escaping @MainActor () -> Void,
-    voiceResourceServices: VoiceResourceServices
+    voiceResourceServices: VoiceResourceServices,
+    recordInteractionServices: RecordInteractionServices
   ) {
     self.requestGlobalInputAction = requestGlobalInputAction
     self.retryGlobalInputAction = retryGlobalInputAction
@@ -404,6 +396,7 @@ public final class AppModel {
     self.sessionCoordinator = sessionCoordinator
     self.outputActionRegistry = outputActionRegistry
     self.recordWorkspace = recordWorkspace
+    self.recordInteractions = recordInteractionServices
     self.candidateResolver = candidateResolver
     self.historyRepository = historyRepository
     self.runHistoryBrowser = runHistoryBrowser
@@ -468,6 +461,8 @@ public final class AppModel {
     self.requestMicrophoneAction = requestMicrophoneAction
     self.openAccessibilitySettingsAction = openAccessibilitySettingsAction
     self.openMicrophoneSettingsAction = openMicrophoneSettingsAction
+    recordInteractions.setCaptureEnabled(settings.systemClipboardCaptureEnabled, clipboardCapturePreferenceRevision)
+    recordInteractions.updateHotkey(settings.recordPanelHotkeyBinding)
     synchronizeWorkflowEnabledStates()
     if loadsPersistentSettingsOnInitialization {
       loadSettings()

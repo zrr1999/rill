@@ -974,15 +974,6 @@ extension AppModel {
     showRecordPanelAction = action
   }
 
-  public func installSystemClipboardCaptureControlActions(
-    setEnabled: @escaping (Bool, UInt64) -> Void,
-    ignoreNextExternalChange: @escaping () -> Void
-  ) {
-    setSystemClipboardCaptureEnabledAction = setEnabled
-    ignoreNextExternalClipboardChangeAction = ignoreNextExternalChange
-    setEnabled(self.settings.systemClipboardCaptureEnabled, clipboardCapturePreferenceRevision)
-  }
-
   public func toggleClipboardCaptureEnabled() {
     _ = setSystemClipboardCaptureEnabled(!self.settings.systemClipboardCaptureEnabled)
   }
@@ -996,7 +987,7 @@ extension AppModel {
     guard self.settings.systemClipboardCaptureEnabled,
       systemClipboardCaptureControlSnapshot.state == .active
     else { return }
-    ignoreNextExternalClipboardChangeAction()
+    recordInteractions.ignoreNextExternalChange()
   }
 
   public func updateSystemClipboardCaptureControlState(_ snapshot: SystemClipboardCaptureControlSnapshot) {
@@ -1007,15 +998,8 @@ extension AppModel {
     systemClipboardCaptureControlSnapshot = snapshot
   }
 
-  public func installRecordPanelHotkeyAction(
-    _ action: @escaping (HotkeyBindingDescriptor) -> Void
-  ) {
-    updateRecordPanelHotkeyAction = action
-    action(self.settings.recordPanelHotkeyBinding)
-  }
-
   public func showRecordPanel() {
-    showRecordPanelAction()
+    showRecordPanelAction?()
   }
 
   public func selectSidebarSection(_ section: SidebarSection) {
@@ -1077,14 +1061,8 @@ extension AppModel {
     await recordWorkspace.revealRecord(id)
   }
 
-  public func installRecordCopyAction(
-    _ action: @escaping @MainActor (RecordReuseSubject) async -> RecordReuseOutcome
-  ) {
-    copyRecordAction = action
-  }
-
   public func copyRecord(_ subject: RecordReuseSubject) async -> RecordReuseOutcome {
-    await copyRecordAction(subject)
+    await recordInteractions.copy(subject)
   }
 
   public func showHistoryEntry(_ entryID: UUID) {

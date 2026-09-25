@@ -641,7 +641,8 @@ func makeHarness(
     },
   writeClipboardTextAction: @escaping @MainActor (String) -> Void = { _ in },
   showRecordPanelAction: @escaping @Sendable () async -> Void = {},
-  voiceResourceServices: VoiceResourceServices = makeVoiceResourceServicesForTesting()
+  voiceResourceServices: VoiceResourceServices = makeVoiceResourceServicesForTesting(),
+  recordInteractionServices: RecordInteractionServices = makeRecordInteractionServicesForTesting()
 ) -> AppModelTestHarness {
   let eventBus = EventBus()
   let actionLog = ProbeActionLog()
@@ -746,7 +747,8 @@ func makeHarness(
     requestMicrophoneAction: {},
     openAccessibilitySettingsAction: {},
     openMicrophoneSettingsAction: {}, requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {},
-    voiceResourceServices: voiceResourceServices
+    voiceResourceServices: voiceResourceServices,
+    recordInteractionServices: recordInteractionServices
   )
   model.installRecordPanelAction {
     Task {

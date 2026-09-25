@@ -21,12 +21,7 @@ struct AppContainer {
   let shutdown: @Sendable () async -> Void
   let setLiveAudioEscapeCancellationRunID: @Sendable (UUID?) -> Void
   let removeLiveAudioDurationLimit: @Sendable (UUID) async -> Bool
-  let setSystemClipboardCaptureEnabled: @Sendable (Bool, UInt64) -> Void
-  let ignoreNextExternalClipboardChange: @Sendable () -> Void
-  let updateRecordPanelHotkey: @Sendable (HotkeyBindingDescriptor) -> Void
-  let beginRecordPanelShortcutRecording: @Sendable () -> UUID
-  let endRecordPanelShortcutRecording: @Sendable (UUID) -> Void
-  let commitRecordPanelShortcutRecording: @Sendable (UUID, UInt16) -> Void
+
 }
 
 @MainActor
@@ -1921,34 +1916,6 @@ private enum AppContainerFactory {
           .removeMaximumDurationLimit(runID: runID)
         let results = await (recordingRemoval, workflowRemoval)
         return results.0 || results.1
-      },
-      setSystemClipboardCaptureEnabled: { isEnabled, preferenceRevision in
-        Task {
-          await runtime.systemClipboardCaptureController.setSystemClipboardCaptureEnabled(
-            isEnabled,
-            preferenceRevision: preferenceRevision
-          )
-        }
-      },
-      ignoreNextExternalClipboardChange: {
-        Task {
-          await runtime.systemClipboardCaptureController.ignoreNextExternalClipboardChange()
-        }
-      },
-      updateRecordPanelHotkey: { binding in
-        platform.hotkeyTap.setRecordPanelHotkeyBinding(binding)
-      },
-      beginRecordPanelShortcutRecording: {
-        platform.hotkeyTap.beginRecordPanelShortcutRecording()
-      },
-      endRecordPanelShortcutRecording: { suspensionID in
-        platform.hotkeyTap.endRecordPanelShortcutRecording(suspensionID)
-      },
-      commitRecordPanelShortcutRecording: { suspensionID, keyCode in
-        platform.hotkeyTap.commitRecordPanelShortcutRecording(
-          suspensionID,
-          keyCode: keyCode
-        )
       }
     )
   }
@@ -1956,6 +1923,44 @@ private enum AppContainerFactory {
 
 @MainActor
 private enum AppModelFactory {
+  private static func makeRecordInteractionServices(
+    platform: PlatformServices, runtime: RuntimeServices
+  ) -> RecordInteractionServices {
+    RecordInteractionServices(
+      copy: { subject in
+        await runtime.systemClipboardCaptureController.recordDelivery.reuseRecord(subject, copyOnly: true)
+      },
+      setCaptureEnabled: { isEnabled, preferenceRevision in
+        Task {
+          await runtime.systemClipboardCaptureController.setSystemClipboardCaptureEnabled(
+            isEnabled,
+            preferenceRevision: preferenceRevision
+          )
+        }
+      },
+      ignoreNextExternalChange: {
+        Task {
+          await runtime.systemClipboardCaptureController.ignoreNextExternalClipboardChange()
+        }
+      },
+      updateHotkey: { binding in
+        platform.hotkeyTap.setRecordPanelHotkeyBinding(binding)
+      },
+      beginShortcutRecording: {
+        platform.hotkeyTap.beginRecordPanelShortcutRecording()
+      },
+      endShortcutRecording: { suspensionID in
+        platform.hotkeyTap.endRecordPanelShortcutRecording(suspensionID)
+      },
+      commitShortcutRecording: { suspensionID, keyCode in
+        platform.hotkeyTap.commitRecordPanelShortcutRecording(
+          suspensionID,
+          keyCode: keyCode
+        )
+      }
+    )
+  }
+
   private static func makeVoiceResourceServices(providers: ProviderServices) -> VoiceResourceServices {
     VoiceResourceServices(
       prepareWakeWordModel: { progressCallback in
@@ -2006,8 +2011,8 @@ private enum AppModelFactory {
     registries: Registries,
     runtime: RuntimeServices
   ) -> AppModel {
-    var model: AppModel?
-    model = AppModel(
+    weak var model: AppModel?
+    let resolvedModel = AppModel(
       workflows: runtime.workflows,
       eventBus: core.eventBus,
       sessionCoordinator: runtime.coordinator,
@@ -2298,11 +2303,10 @@ private enum AppModelFactory {
       workflowLibraryChangedAction: {
         Task { await runtime.wakeWordCoordinator?.reconcile() }
       },
-      voiceResourceServices: makeVoiceResourceServices(providers: providers)
+      voiceResourceServices: makeVoiceResourceServices(providers: providers),
+      recordInteractionServices: makeRecordInteractionServices(platform: platform, runtime: runtime)
     )
-    guard let resolvedModel = model else {
-      preconditionFailure("AppModel was not initialized")
-    }
+    model = resolvedModel
     if let wakeWordTriggerSource = providers.wakeWordTriggerSource {
       Task { @MainActor [weak resolvedModel] in
         for await status in wakeWordTriggerSource.statusStream() {

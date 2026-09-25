@@ -153,7 +153,8 @@ public func makeAppModelForTesting(
     requestGlobalInputAction: @escaping () -> Void,
     retryGlobalInputAction: @escaping () -> Void,
     workflowLibraryChangedAction: @escaping @MainActor () -> Void,
-    voiceResourceServices: VoiceResourceServices = makeVoiceResourceServicesForTesting()
+    voiceResourceServices: VoiceResourceServices = makeVoiceResourceServicesForTesting(),
+    recordInteractionServices: RecordInteractionServices = makeRecordInteractionServicesForTesting()
 ) -> AppModel {
   AppModel(
     workflows: initialWorkflows,
@@ -217,7 +218,8 @@ public func makeAppModelForTesting(
     requestGlobalInputAction: requestGlobalInputAction,
     retryGlobalInputAction: retryGlobalInputAction,
     workflowLibraryChangedAction: workflowLibraryChangedAction,
-    voiceResourceServices: voiceResourceServices
+    voiceResourceServices: voiceResourceServices,
+    recordInteractionServices: recordInteractionServices
   )
 }
 
@@ -238,3 +240,20 @@ public func makeVoiceResourceServicesForTesting(
 }
 
 public enum VoiceResourceTestError: Error { case unavailable }
+
+
+@MainActor
+public func makeRecordInteractionServicesForTesting(
+  copy: @escaping (RecordReuseSubject) async -> RecordReuseOutcome = { _ in .blocked },
+  setCaptureEnabled: @escaping (Bool, UInt64) -> Void = { _, _ in },
+  ignoreNextExternalChange: @escaping () -> Void = {},
+  updateHotkey: @escaping (HotkeyBindingDescriptor) -> Void = { _ in },
+  beginShortcutRecording: @escaping () -> UUID = { UUID() },
+  endShortcutRecording: @escaping (UUID) -> Void = { _ in },
+  commitShortcutRecording: @escaping (UUID, UInt16) -> Void = { _, _ in }
+) -> RecordInteractionServices {
+  .init(copy: copy, setCaptureEnabled: setCaptureEnabled,
+    ignoreNextExternalChange: ignoreNextExternalChange, updateHotkey: updateHotkey,
+    beginShortcutRecording: beginShortcutRecording, endShortcutRecording: endShortcutRecording,
+    commitShortcutRecording: commitShortcutRecording)
+}

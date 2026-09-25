@@ -1,21 +1,24 @@
 import XCTest
+import RillTestSupport
 @testable import RillCore
 @testable import RillUI
 
 @MainActor
 extension AppModelTests {
     func testSystemClipboardCaptureControlsForwardActionsAndReflectControllerState() {
-        let harness = makeHarness()
         var enablementRequests: [Bool] = []
         var preferenceRevisions: [UInt64] = []
         var ignoreNextRequestCount = 0
-        harness.model.installSystemClipboardCaptureControlActions(
-            setEnabled: { enabled, revision in
-                enablementRequests.append(enabled)
-                preferenceRevisions.append(revision)
-            },
-            ignoreNextExternalChange: { ignoreNextRequestCount += 1 }
+        let harness = makeHarness(
+            recordInteractionServices: makeRecordInteractionServicesForTesting(
+                setCaptureEnabled: { enabled, revision in
+                    enablementRequests.append(enabled)
+                    preferenceRevisions.append(revision)
+                },
+                ignoreNextExternalChange: { ignoreNextRequestCount += 1 }
+            )
         )
+
         XCTAssertEqual(enablementRequests, [true])
         XCTAssertEqual(preferenceRevisions, [0])
 

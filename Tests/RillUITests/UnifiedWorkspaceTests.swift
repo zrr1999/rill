@@ -1,3 +1,4 @@
+import RillTestSupport
 import XCTest
 @testable import RillCore
 @testable import RillWorkflows
@@ -241,10 +242,11 @@ final class UnifiedWorkspaceTests: XCTestCase {
     }
 
     func testWorkspaceCopyIsExplicitAndReportsActualOutcome() async throws {
-        let model = makeHarness().model
         let subject = RecordReuseSubject(recordID: RecordID(), metadataRevision: 0)
         var received: RecordReuseSubject?
-        model.installRecordCopyAction { value in received = value; return .storageUnavailable }
+        let model = makeHarness(recordInteractionServices: makeRecordInteractionServicesForTesting(
+            copy: { value in received = value; return .storageUnavailable }
+        )).model
         XCTAssertNil(received)
         let outcome = await model.copyRecord(subject)
         XCTAssertEqual(received, subject)

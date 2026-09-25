@@ -26,7 +26,7 @@ extension AppModel {
   }
 
   private func publishClipboardCapturePreferenceToRuntime() {
-    setSystemClipboardCaptureEnabledAction(
+    recordInteractions.setCaptureEnabled(
       self.settings.systemClipboardCaptureEnabled,
       clipboardCapturePreferenceRevision
     )
@@ -35,7 +35,7 @@ extension AppModel {
   func handleRecordPanelHotkeyChange(from oldValue: HotkeyBindingDescriptor) {
     guard oldValue != self.settings.recordPanelHotkeyBinding else { return }
     persistRecordPanelHotkeyPreference()
-    updateRecordPanelHotkeyAction(self.settings.recordPanelHotkeyBinding)
+    recordInteractions.updateHotkey(self.settings.recordPanelHotkeyBinding)
   }
 
   func handlePreferredSpeechEngineChange(from oldValue: PreferredSpeechEngine) {

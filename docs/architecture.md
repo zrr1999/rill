@@ -296,3 +296,9 @@ Platform 的 `BenchmarkCorpusExporter` 负责认证读取、私有暂存和原�
 隐私变化对历史、词库上下文和工作流解释的失效。活动保留期限只有 RunHistoryModel
 一份状态，更新期限和查询失效在同一个命令中完成。
 Record 输出端在构造时校验唯一身份，重复身份返回类型化错误；删除运行期替换注册入口。
+
+
+Record 复制、剪贴板采集控制和快捷键录制通过必需的 `RecordInteractionServices`
+在 AppModel 构造时注入。首次设置快照读取前先发布当前关闭状态与快捷键；恢复后以
+单调 revision 发布生效值。AppContainer 不再保存同一组转发闭包，App 启动不再补装
+可静默失效的默认实现。窗口展示回调仍由窗口生命周期安装；测试替身只在测试工厂定义。

@@ -18,9 +18,6 @@ struct RillApplication: App {
         let recordPanelController: RecordPanelController = RecordPanelController()
         let liveSubtitlePanelController = LiveSubtitlePanelController()
 
-        container.model.installRecordCopyAction { subject in
-            await container.systemClipboardCaptureController.recordDelivery.reuseRecord(subject, copyOnly: true)
-        }
         container.model.installRecordPanelAction { [recordPanelController, model = container.model] in
             recordPanelController.show(
                 model: model,
@@ -40,18 +37,6 @@ struct RillApplication: App {
                 }
             )
         }
-        container.model.installSystemClipboardCaptureControlActions(
-            setEnabled: container.setSystemClipboardCaptureEnabled,
-            ignoreNextExternalChange: container.ignoreNextExternalClipboardChange
-        )
-        container.model.installRecordPanelHotkeyAction { binding in
-            container.updateRecordPanelHotkey(binding)
-        }
-        container.model.installRecordPanelShortcutRecordingActions(
-            begin: container.beginRecordPanelShortcutRecording,
-            end: container.endRecordPanelShortcutRecording,
-            commit: container.commitRecordPanelShortcutRecording
-        )
         container.model.voice.installLiveSubtitlePanelAction {
             [liveSubtitlePanelController] snapshot, language in
             let cancellableRunID = snapshot.flatMap { snapshot in
