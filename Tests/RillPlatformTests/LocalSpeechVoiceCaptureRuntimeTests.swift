@@ -377,38 +377,6 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     XCTAssertEqual(projection.text, "天气如何呢")
   }
 
-  func testStreamingPreviewProjectionRemovesQwenLanguageEnvelopeAndRestartFragments() {
-    var projection = LocalSpeechStreamingPreviewProjection()
-
-    projection.observe("language")
-    XCTAssertEqual(projection.text, "")
-
-    projection.observe("language Ch")
-    XCTAssertEqual(projection.text, "")
-
-    projection.observe("language Chinese<")
-    XCTAssertEqual(projection.text, "")
-
-    projection.observe("language Chinese<asr_text")
-    XCTAssertEqual(projection.text, "")
-
-    projection.observe("language None")
-    XCTAssertEqual(projection.text, "")
-
-    projection.observe("language None<asr_text>我是一只猪。")
-    XCTAssertEqual(projection.text, "我是一只猪。")
-
-    projection.observe(
-      "language None<asr_text>我是一只猪。 language None<asr_text>"
-    )
-    XCTAssertEqual(projection.text, "我是一只猪。")
-
-    projection.observe(
-      "language None<asr_text>我是一只猪。<|im_end|> language Chinese"
-    )
-    XCTAssertEqual(projection.text, "我是一只猪。")
-  }
-
   func testStreamingPreviewProjectionRemovesDuplicatedExtensionOverlap() {
     var projection = LocalSpeechStreamingPreviewProjection()
 

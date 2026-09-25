@@ -1440,13 +1440,23 @@ extension L10n {
     case (.simplifiedChinese, .menuBar):
       return "菜单栏"
     case (.english, .hotkey):
-      return metadata["trigger.gesture"] ?? "Hotkey"
+      return hotkeyGesture(metadata["trigger.gesture"], language: language)
     case (.simplifiedChinese, .hotkey):
-      return metadata["trigger.gesture"] ?? "快捷键"
+      return hotkeyGesture(metadata["trigger.gesture"], language: language)
     case (.english, .wakeWord):
       return "Wake Word"
     case (.simplifiedChinese, .wakeWord):
       return "唤醒词"
+    }
+  }
+
+  private static func hotkeyGesture(_ value: String?, language: AppLanguage) -> String {
+    switch (language, value.flatMap(PushToTalkGesture.init(rawValue:))) {
+    case (.english, .fnHold): "Hold Fn"
+    case (.simplifiedChinese, .fnHold): "按住 Fn"
+    case (_, .controlOptionShiftSpace): "⌃⌥⇧Space"
+    case (.english, nil): value ?? "Hotkey"
+    case (.simplifiedChinese, nil): value ?? "快捷键"
     }
   }
 

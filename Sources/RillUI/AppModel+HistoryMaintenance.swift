@@ -465,7 +465,7 @@ extension AppModel {
                 }
             }
             loadHistory(reconcileRunPresentation: reconcileRunPresentation)
-            resetRunHistoryBrowsing()
+            history.resetRunHistoryBrowsing()
         }
         guard !hasBegunApplicationShutdown else { return }
         if diagnostics {

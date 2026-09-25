@@ -778,7 +778,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics,
             privacyRunGate: privacyGate,
-            contextProvider: { await probe.readContext() },
+
             privacyContextProvider: { await probe.readContext() },
             authorizedContextProvider: { _ in await probe.readContext() },
             recognitionOptionsProvider: { _, _ in await probe.resolveOptions() },
@@ -907,7 +907,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics,
             privacyRunGate: privacyGate,
-            contextProvider: { makeRecoveryPrivacyContext() },
+
             privacyContextProvider: { makeRecoveryPrivacyContext() },
             authorizedContextProvider: { decision in
                 makeRecoveryPrivacyContext().applying(decision)
@@ -1686,7 +1686,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics,
             privacyRunGate: privacyRunGate,
-            contextProvider: { makeRecoveryPrivacyContext() },
+
             privacyContextProvider: { makeRecoveryPrivacyContext() },
             authorizedContextProvider: { decision in
                 makeRecoveryPrivacyContext().applying(decision)

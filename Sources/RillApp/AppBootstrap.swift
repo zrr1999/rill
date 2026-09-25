@@ -1218,9 +1218,6 @@ private enum AppContainerFactory {
         eventBus: core.eventBus,
         diagnostics: core.diagnostics,
         privacyRunGate: preparedPrivacyRunGate,
-        contextProvider: {
-          await platform.contextProvider.captureContext()
-        },
         privacyContextProvider: {
           await platform.contextProvider.capturePrivacyContext()
         },

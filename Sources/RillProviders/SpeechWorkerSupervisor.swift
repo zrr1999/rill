@@ -18,7 +18,7 @@ public final class SpeechWorkerStreamingSession: @unchecked Sendable {
   private var nextSequence: UInt64 = 1
   private var isTerminal = false
 
-  fileprivate init(
+  init(
     id: UUID,
     requestID: UUID,
     generation: UInt64,

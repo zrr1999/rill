@@ -226,7 +226,7 @@ public struct HistoryTimelineView: View {
             uniquingKeysWith: { first, _ in first }
         )
         let viewState = HistoryViewState(
-            loadState: model.effectiveRunHistoryLoadState,
+            loadState: model.history.effectiveRunHistoryLoadState,
             hasEntries: !visibleEntries.isEmpty
         )
 
@@ -238,7 +238,7 @@ public struct HistoryTimelineView: View {
                     Text(L10n.text(.historyDescription, language: model.language))
                 }
                 Spacer(minLength: 12)
-                if case .loaded = model.effectiveRunHistoryLoadState {
+                if case .loaded = model.history.effectiveRunHistoryLoadState {
                     Text(
                         L10n.loadedRunCount(
                             visibleEntries.count,
@@ -315,7 +315,7 @@ public struct HistoryTimelineView: View {
                         Button(
                             L10n.text(.historyRetryLoad, language: model.language)
                         ) {
-                            model.retryRunHistoryDeepLink()
+                            model.history.retryRunHistoryDeepLink()
                         }
                         .accessibilityIdentifier("history.deep-link.retry")
                     }
@@ -333,8 +333,8 @@ public struct HistoryTimelineView: View {
                 case .loaded(isEmpty: true):
                     VStack(alignment: .leading, spacing: 16) {
                         emptyState
-                        if model.usesPagedRunHistory,
-                           model.canLoadNewerRunHistoryPage {
+                        if model.history.usesPagedRunHistory,
+                           model.history.canLoadNewerRunHistoryPage {
                             paginationControls
                         }
                     }
@@ -345,7 +345,7 @@ public struct HistoryTimelineView: View {
                             entries: visibleEntries,
                             workflowsByID: workflowsByID
                         )
-                        if model.usesPagedRunHistory {
+                        if model.history.usesPagedRunHistory {
                             paginationControls
                         }
                     }
@@ -361,15 +361,15 @@ public struct HistoryTimelineView: View {
             id: HistoryNavigationTaskIdentity(
                 requestID: model.history.historyNavigationRequest?.id,
                 visibleEntryIDs: visibleEntries.map(\.id),
-                loadState: model.effectiveRunHistoryLoadState,
+                loadState: model.history.effectiveRunHistoryLoadState,
                 deepLinkState: model.history.runHistoryDeepLinkState
             )
         ) {
-            await model.resolveRunHistoryDeepLinkIfNeeded()
-            guard case .loaded = model.effectiveRunHistoryLoadState,
+            await model.history.resolveRunHistoryDeepLinkIfNeeded()
+            guard case .loaded = model.history.effectiveRunHistoryLoadState,
                   let request = model.history.historyNavigationRequest,
                   request.scope == model.history.runHistoryScope,
-                  let visibleEntryID = model.visibleRunHistoryEntryID(
+                  let visibleEntryID = model.history.visibleRunHistoryEntryID(
                     matching: request.entryID
                   ),
                   visibleEntries.contains(where: { $0.id == visibleEntryID }) else {
@@ -490,7 +490,7 @@ public struct HistoryTimelineView: View {
     private var paginationControls: some View {
         HStack(spacing: 12) {
             Button {
-                model.loadNewerRunHistoryPage()
+                model.history.loadNewerRunHistoryPage()
             } label: {
                 Label(
                     L10n.text(.historyNewerPage, language: model.language),
@@ -498,7 +498,7 @@ public struct HistoryTimelineView: View {
                 )
             }
             .disabled(
-                !model.canLoadNewerRunHistoryPage
+                !model.history.canLoadNewerRunHistoryPage
                     || model.history.isRunHistoryPageTransitioning
             )
             .accessibilityIdentifier("history.pagination.newer")
@@ -512,7 +512,7 @@ public struct HistoryTimelineView: View {
             Spacer()
 
             Button {
-                model.loadOlderRunHistoryPage()
+                model.history.loadOlderRunHistoryPage()
             } label: {
                 Label(
                     L10n.text(.historyOlderPage, language: model.language),
@@ -520,7 +520,7 @@ public struct HistoryTimelineView: View {
                 )
             }
             .disabled(
-                !model.canLoadOlderRunHistoryPage
+                !model.history.canLoadOlderRunHistoryPage
                     || model.history.isRunHistoryPageTransitioning
             )
             .accessibilityIdentifier("history.pagination.older")
@@ -538,7 +538,7 @@ public struct HistoryTimelineView: View {
                 .accessibilityHidden(true)
             Text(
                 L10n.text(
-                    model.usesPagedRunHistory && model.canLoadNewerRunHistoryPage
+                    model.history.usesPagedRunHistory && model.history.canLoadNewerRunHistoryPage
                         ? .historyPageEmpty
                         : emptyKey,
                     language: model.language
@@ -1161,7 +1161,7 @@ public struct HistoryTimelineView: View {
     }
 
     private var entries: [HistoryTimelineEntry] {
-        model.displayedRunHistoryEntries
+        model.history.displayedRunHistoryEntries
     }
 
     private var emptyKey: L10n.InterfaceKey { .historyEmpty }

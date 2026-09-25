@@ -110,7 +110,7 @@ public actor SpeechWorkerStreamingPreviewService {
   }
 }
 
-private final class SpeechWorkerStreamingPreviewSession:
+final class SpeechWorkerStreamingPreviewSession:
   LocalSpeechStreamingPreviewSession,
   @unchecked Sendable
 {
@@ -154,7 +154,9 @@ private final class SpeechWorkerStreamingPreviewSession:
   }
 
   var providesVoiceActivity: Bool { true }
-  var hasConfirmedText: Bool { lock.withLock { !state.confirmed.isEmpty } }
+  var hasConfirmedText: Bool {
+    !QwenStreamingText.sanitize(lock.withLock { state.confirmed }).isEmpty
+  }
 
   deinit {
     eventTask?.cancel()
@@ -268,11 +270,12 @@ private final class SpeechWorkerStreamingPreviewSession:
   }
 
   private func currentText() -> String {
-    lock.withLock {
+    let rawText = lock.withLock {
       if !state.completed.isEmpty { return state.completed }
       if state.confirmed.isEmpty { return state.provisional }
       if state.provisional.isEmpty { return state.confirmed }
       return state.confirmed + " " + state.provisional
     }
+    return QwenStreamingText.sanitize(rawText)
   }
 }

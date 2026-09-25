@@ -378,20 +378,20 @@ final class RunHistoryBrowsingUITests: XCTestCase {
 
         let loadedFirst = await waitUntil { harness.model.history.runHistoryPage == firstPage }
         XCTAssertTrue(loadedFirst)
-        harness.model.loadOlderRunHistoryPage()
+        harness.model.history.loadOlderRunHistoryPage()
         let loadedOlder = await waitUntil { harness.model.history.runHistoryPage == olderPage }
         XCTAssertTrue(loadedOlder)
         XCTAssertEqual(harness.model.history.runHistoryPage?.entries.map(\.id), [olderEntry.id])
-        XCTAssertTrue(harness.model.canLoadNewerRunHistoryPage)
+        XCTAssertTrue(harness.model.history.canLoadNewerRunHistoryPage)
 
-        harness.model.loadNewerRunHistoryPage()
+        harness.model.history.loadNewerRunHistoryPage()
         let returnedToFirst = await waitUntil { harness.model.history.runHistoryPage == firstPage }
         XCTAssertTrue(returnedToFirst)
         XCTAssertEqual(harness.model.history.runHistoryPage?.entries.count, 1)
 
         let requests = await browser.requests()
         XCTAssertEqual(requests.count, 2)
-        XCTAssertTrue(requests.allSatisfy { $0.limit == AppModel.runHistoryPageSize })
+        XCTAssertTrue(requests.allSatisfy { $0.limit == RunHistoryModel.runHistoryPageSize })
         let containingCalls = await browser.containingCallSnapshot()
         XCTAssertEqual(containingCalls.inSession, 1)
         XCTAssertEqual(containingCalls.fresh, 0)
@@ -424,15 +424,15 @@ final class RunHistoryBrowsingUITests: XCTestCase {
 
         let loadedNewest = await waitUntil { harness.model.history.runHistoryPage == newestPage }
         XCTAssertTrue(loadedNewest)
-        harness.model.loadOlderRunHistoryPage()
+        harness.model.history.loadOlderRunHistoryPage()
         let loadedOlder = await waitUntil { harness.model.history.runHistoryPage == olderPage }
         XCTAssertTrue(loadedOlder)
 
-        harness.model.noteNewRunAvailableForHistoryBrowsing()
+        harness.model.history.noteNewRunAvailableForHistoryBrowsing()
         XCTAssertEqual(harness.model.history.runHistoryPage, olderPage)
         XCTAssertTrue(harness.model.history.runHistoryHasNewerEntries)
 
-        harness.model.loadNewerRunHistoryPage()
+        harness.model.history.loadNewerRunHistoryPage()
         let loadedRefresh = await waitUntil { harness.model.history.runHistoryPage == refreshedPage }
         XCTAssertTrue(loadedRefresh)
         XCTAssertFalse(harness.model.history.runHistoryHasNewerEntries)
@@ -458,7 +458,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
 
         let loaded = await waitUntil { harness.model.history.runHistoryPage == page }
         XCTAssertTrue(loaded)
-        harness.model.loadOlderRunHistoryPage()
+        harness.model.history.loadOlderRunHistoryPage()
         let failed = await waitUntil { harness.model.history.runHistoryPaginationFailed }
         XCTAssertTrue(failed)
         XCTAssertEqual(harness.model.history.runHistoryPage, page)
@@ -479,7 +479,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
 
         let missingID = UUID()
         harness.model.showHistoryEntry(missingID)
-        await harness.model.resolveRunHistoryDeepLinkIfNeeded()
+        await harness.model.history.resolveRunHistoryDeepLinkIfNeeded()
 
         XCTAssertEqual(harness.model.history.runHistoryDeepLinkState, .expired(entryID: missingID))
         XCTAssertEqual(harness.model.history.runHistoryPage, page)
@@ -512,7 +512,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         harness.model.history.runHistoryScope = .recentResults
         let loadedResults = await waitUntil { harness.model.history.runHistoryPage == resultsPage }
         XCTAssertTrue(loadedResults)
-        harness.model.noteNewRunAvailableForHistoryBrowsing()
+        harness.model.history.noteNewRunAvailableForHistoryBrowsing()
         let loadedRefresh = await waitUntil { harness.model.history.runHistoryPage == refreshedPage }
         XCTAssertTrue(loadedRefresh)
         XCTAssertFalse(harness.model.history.runHistoryHasNewerEntries)
@@ -548,15 +548,15 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         XCTAssertTrue(loaded)
 
         harness.model.showHistoryEntry(targetEntry.id)
-        await harness.model.resolveRunHistoryDeepLinkIfNeeded()
+        await harness.model.history.resolveRunHistoryDeepLinkIfNeeded()
         XCTAssertEqual(
             harness.model.history.runHistoryDeepLinkState,
             .failed(entryID: targetEntry.id)
         )
         XCTAssertEqual(harness.model.history.runHistoryPage, currentPage)
 
-        harness.model.retryRunHistoryDeepLink()
-        await harness.model.resolveRunHistoryDeepLinkIfNeeded()
+        harness.model.history.retryRunHistoryDeepLink()
+        await harness.model.history.resolveRunHistoryDeepLinkIfNeeded()
         XCTAssertEqual(
             harness.model.history.runHistoryDeepLinkState,
             .resolved(entryID: targetEntry.id)
@@ -576,32 +576,32 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         XCTAssertTrue(loaded)
 
         let baselineCount = await browser.requestSnapshot().limits.count
-        let full = try await harness.model.searchRunHistory(
+        let full = try await harness.model.history.searchRunHistory(
             query: tailCanary,
             language: .english,
             previewMode: .full
         )
-        let restricted = try await harness.model.searchRunHistory(
+        let restricted = try await harness.model.history.searchRunHistory(
             query: tailCanary,
             language: .english,
             previewMode: .restricted
         )
-        let metadataOnly = try await harness.model.searchRunHistory(
+        let metadataOnly = try await harness.model.history.searchRunHistory(
             query: "Search Workflow",
             language: .english,
             previewMode: .disabled
         )
-        let position75 = try await harness.model.searchRunHistory(
+        let position75 = try await harness.model.history.searchRunHistory(
             query: "POSITION-75-CANARY",
             language: .english,
             previewMode: .full
         )
-        let position175 = try await harness.model.searchRunHistory(
+        let position175 = try await harness.model.history.searchRunHistory(
             query: "POSITION-175-CANARY",
             language: .english,
             previewMode: .full
         )
-        let noMatch = try await harness.model.searchRunHistory(
+        let noMatch = try await harness.model.history.searchRunHistory(
             query: "NO-SUCH-500-ENTRY-CANARY",
             language: .english,
             previewMode: .full
@@ -620,7 +620,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         XCTAssertEqual(searchAccesses.first, .full)
         XCTAssertTrue(searchAccesses.contains(.restrictedPreview))
         XCTAssertTrue(searchAccesses.contains(.metadataOnly))
-        XCTAssertTrue(requests.limits.allSatisfy { $0 <= AppModel.runHistoryPageSize })
+        XCTAssertTrue(requests.limits.allSatisfy { $0 <= RunHistoryModel.runHistoryPageSize })
         // full common match reaches the 20-result cap on page 1; restricted
         // and no-match queries scan all 10 pages. Sparse canaries at rows 75
         // and 175 also scan to the end because more matches may exist later.
@@ -630,7 +630,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
     func testUnavailableBrowserIsAWarningNotAFalseNoMatch() async {
         let harness = makeHarness()
         do {
-            _ = try await harness.model.searchRunHistory(
+            _ = try await harness.model.history.searchRunHistory(
                 query: "anything",
                 language: .english,
                 previewMode: .full
@@ -679,7 +679,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         let loaded = await waitUntil { harness.model.history.runHistoryPage == page }
         XCTAssertTrue(loaded)
         XCTAssertEqual(
-            harness.model.visibleRunHistoryEntryID(matching: recordID),
+            harness.model.history.visibleRunHistoryEntryID(matching: recordID),
             entry.id
         )
     }
@@ -692,7 +692,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         XCTAssertTrue(loaded)
 
         let alphaTask = Task { @MainActor in
-            try await harness.model.searchRunHistory(
+            try await harness.model.history.searchRunHistory(
                 query: "alpha",
                 language: .english,
                 previewMode: .full
@@ -701,7 +701,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         await browser.waitUntilAlphaIsSuspended()
         alphaTask.cancel()
 
-        let betaResults = try await harness.model.searchRunHistory(
+        let betaResults = try await harness.model.history.searchRunHistory(
             query: "beta",
             language: .english,
             previewMode: .full

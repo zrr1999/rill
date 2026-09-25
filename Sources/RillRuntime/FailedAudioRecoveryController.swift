@@ -76,7 +76,6 @@ public actor FailedAudioRecoveryController {
         eventBus: EventBus,
         diagnostics: DiagnosticsRecorder? = nil,
         privacyRunGate: PrivacyRunGate? = nil,
-        contextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
         privacyContextProvider: (@Sendable () async -> ContextSnapshot)? = nil,
         authorizedContextProvider: (@Sendable (PrivacyPolicyDecision) async -> ContextSnapshot)? = nil,
         recognitionOptionsProvider: @escaping @Sendable (

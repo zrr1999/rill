@@ -285,7 +285,7 @@ extension AppModel {
                 simplifiedChinese: "工作流开始：\(L10n.workflowName(run.workflow, language: .simplifiedChinese))"
             )
         case .runReceiptRepositoryChanged(let change):
-            noteNewRunAvailableForHistoryBrowsing()
+            history.noteNewRunAvailableForHistoryBrowsing()
             // The event is only an invalidation edge. A clear may have removed
             // the receipt after its insert returned but before event delivery,
             // so discard the old projection and admit only a fresh repository
@@ -520,7 +520,7 @@ extension AppModel {
     }
 
     private func cacheHistoryRecord(_ record: WorkflowResultRecord) {
-        noteNewRunAvailableForHistoryBrowsing()
+        history.noteNewRunAvailableForHistoryBrowsing()
         self.history.historyRecords.removeAll { $0.id == record.id }
         self.history.historyRecords.insert(record, at: 0)
         if self.history.historyRecords.count > 50 {

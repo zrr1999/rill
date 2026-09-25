@@ -628,7 +628,7 @@ public final class AppModel {
       localSpeechSettingsSource.update(currentLocalSpeechSettings())
     }
     loadHistory()
-    resetRunHistoryBrowsing()
+    history.resetRunHistoryBrowsing()
     loadDiagnostics()
     startListening()
   }
@@ -792,7 +792,7 @@ extension AppModel {
     invalidateWorkflowExplanation()
     history.previewMode = privacyPolicySettings.historyPreviewMode
     if oldValue.historyPreviewMode != privacyPolicySettings.historyPreviewMode {
-      resetRunHistoryBrowsingForPrivacyChange()
+      history.resetRunHistoryBrowsingForPrivacyChange()
     }
     if !isLoadingPrivacySettings, privacySettingsLoadError == nil {
       privacySettingsSource.update(privacyPolicySettings)
@@ -805,7 +805,7 @@ extension AppModel {
     runHistoryRetentionPeriod = newValue
     history.runHistoryRetentionPeriod = runHistoryRetentionPeriod
     guard oldValue != runHistoryRetentionPeriod else { return }
-    resetRunHistoryBrowsing()
+    history.resetRunHistoryBrowsing()
   }
 
   func applyCurrentCaptureLiveSubtitleSnapshot(_ newValue: LiveSubtitleSnapshot?) {

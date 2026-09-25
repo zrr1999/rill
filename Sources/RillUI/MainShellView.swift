@@ -643,7 +643,7 @@ extension MainShellView {
                 try await model.recordWorkspace.searchRecords(query, limit: limit)
             },
             history: { query, limit in
-                try await model.searchRunHistory(
+                try await model.history.searchRunHistory(
                     query: query, language: model.language,
                     previewMode: model.privacyPolicySettings.historyPreviewMode, limit: limit
                 )
