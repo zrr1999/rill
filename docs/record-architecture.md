@@ -12,7 +12,9 @@ routing, delivery state, or workflow history.
 metadata, activity, membership, collection, route, lease, and persistence CAS
 coordinates around them. `RecordIngestionCoordinator` owns source → privacy →
 route → atomic ingest. `RecordDeliveryCoordinator` owns target route → exact
-membership lease → sink → content-free receipt.
+membership lease → sink → content-free receipt. Sink identities are checked once at construction; duplicate
+identities return `RegistrationError.duplicateSink` before any lease or output.
+The sink registry is immutable for the coordinator lifetime.
 
 ## Invariants
 

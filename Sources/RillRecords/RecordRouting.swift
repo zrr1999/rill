@@ -46,20 +46,33 @@ public actor RecordIngestionCoordinator: RecordIngestionSink {
 public actor RecordDeliveryCoordinator {
     private let store: RecordStore
     private let router: RecordRouter
-    private var sinks: [RecordSinkIdentity: any RecordSink]
+    private let sinks: [RecordSinkIdentity: any RecordSink]
+
+    public enum RegistrationError: Error, Sendable, Equatable {
+        case duplicateSink(RecordSinkIdentity)
+    }
+
+    public init(store: RecordStore, router: RecordRouter? = nil) {
+        self.store = store
+        self.router = router ?? RecordRouter(store: store)
+        self.sinks = [:]
+    }
 
     public init(
         store: RecordStore,
         router: RecordRouter? = nil,
-        sinks: [any RecordSink] = []
-    ) {
+        sinks: [any RecordSink]
+    ) throws {
+        var registered: [RecordSinkIdentity: any RecordSink] = [:]
+        for sink in sinks {
+            guard registered[sink.identity] == nil else {
+                throw RegistrationError.duplicateSink(sink.identity)
+            }
+            registered[sink.identity] = sink
+        }
         self.store = store
         self.router = router ?? RecordRouter(store: store)
-        self.sinks = Dictionary(uniqueKeysWithValues: sinks.map { ($0.identity, $0) })
-    }
-
-    public func register(_ sink: any RecordSink) {
-        sinks[sink.identity] = sink
+        self.sinks = registered
     }
 
     public struct Preparation: Sendable, Equatable {

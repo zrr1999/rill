@@ -55,7 +55,7 @@ final class RecordRoutingTests: XCTestCase {
             )
         ])
         let probe = RoutingSinkProbe()
-        let coordinator = RecordDeliveryCoordinator(
+        let coordinator = try RecordDeliveryCoordinator(
             store: store,
             sinks: [RoutingRecordSink(identity: .systemClipboard, probe: probe)]
         )
@@ -87,7 +87,7 @@ final class RecordRoutingTests: XCTestCase {
             into: [RecordCollection.inboxID]
         )
         let probe = RoutingSinkProbe(shouldFail: true)
-        let coordinator = RecordDeliveryCoordinator(
+        let coordinator = try RecordDeliveryCoordinator(
             store: store,
             sinks: [RoutingRecordSink(identity: .focusedApplication, probe: probe)]
         )
@@ -122,7 +122,7 @@ final class RecordRoutingTests: XCTestCase {
             sink: .focusedApplication,
             deliveredAt: deliveredAt
         )
-        let coordinator = RecordDeliveryCoordinator(
+        let coordinator = try RecordDeliveryCoordinator(
             store: store,
             sinks: [FixedReceiptSink(receipt: sinkReceipt)]
         )
@@ -149,7 +149,7 @@ final class RecordRoutingTests: XCTestCase {
             membershipID: membership.id,
             sink: .focusedApplication
         )
-        let coordinator = RecordDeliveryCoordinator(
+        let coordinator = try RecordDeliveryCoordinator(
             store: store,
             sinks: [FixedReceiptSink(receipt: forgedReceipt)]
         )
@@ -201,6 +201,26 @@ final class RecordRoutingTests: XCTestCase {
             RecordCollection.inboxID,
             destination.id,
         ])
+    }
+
+    func testDuplicateSinkFailsBeforeAnyDeliveryOrLease() async throws {
+        let store = RecordStore()
+        let record = try await store.ingest(draft("keep pending"), into: [RecordCollection.inboxID])
+        let before = try await store.snapshot()
+        let probe = RoutingSinkProbe()
+        let sink = RoutingRecordSink(identity: .focusedApplication, probe: probe)
+
+        XCTAssertThrowsError(try RecordDeliveryCoordinator(store: store, sinks: [sink, sink])) { error in
+            XCTAssertEqual(error as? RecordDeliveryCoordinator.RegistrationError, .duplicateSink(.focusedApplication))
+        }
+        let after = try await store.snapshot()
+        XCTAssertEqual(after, before)
+        let requests = await probe.requests()
+        XCTAssertTrue(requests.isEmpty)
+        let lease = try await store.beginDelivery(
+            sourceCollectionIDs: [RecordCollection.inboxID], sink: .focusedApplication
+        )
+        XCTAssertEqual(lease.record.id, record.id)
     }
 
     private func draft(_ text: String, source: RecordSourceKind = .systemClipboard) -> RecordDraft {
