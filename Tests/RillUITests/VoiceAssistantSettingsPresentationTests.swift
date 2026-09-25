@@ -84,41 +84,6 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     XCTAssertEqual(activity.setCounts[.ttsModel], 1)
   }
 
-  func testUnavailableAndInactiveResourcesHideInapplicableActions() {
-    let visibility = VoiceAssistantSettingsActionVisibility(
-      wakeWordState: .unavailable(.distributionLicenseUnverified),
-      ttsState: .ready,
-      isSpeechPlaybackActive: false
-    )
-
-    XCTAssertFalse(visibility.showsWakeWordPreparation)
-    XCTAssertFalse(visibility.showsTTSPreparation)
-    XCTAssertFalse(visibility.showsStopPlayback)
-  }
-
-  func testOnlyCurrentlyAvailableActionsAreShown() {
-    let visibility = VoiceAssistantSettingsActionVisibility(
-      wakeWordState: .failed("network"),
-      ttsState: .notInstalled,
-      isSpeechPlaybackActive: true
-    )
-
-    XCTAssertTrue(visibility.showsWakeWordPreparation)
-    XCTAssertTrue(visibility.showsTTSPreparation)
-    XCTAssertTrue(visibility.showsStopPlayback)
-  }
-
-  func testPreparationInProgressHidesDuplicateDownloadActions() {
-    let visibility = VoiceAssistantSettingsActionVisibility(
-      wakeWordState: .preparing(progress: 0.25),
-      ttsState: .preparing(progress: nil),
-      isSpeechPlaybackActive: false
-    )
-
-    XCTAssertFalse(visibility.showsWakeWordPreparation)
-    XCTAssertFalse(visibility.showsTTSPreparation)
-  }
-
   @MainActor
   func testWakeWordSettingsCreateAndEnableDefaultDictationWorkflow() async {
     let harness = makeHarness(

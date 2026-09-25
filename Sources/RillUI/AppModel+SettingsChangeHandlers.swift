@@ -5,7 +5,7 @@ extension AppModel {
   func handleLanguageChange(from oldValue: AppLanguage) {
     guard oldValue != self.settings.language else { return }
     persistLanguagePreference()
-    syncLiveSubtitlePanel()
+    voice.syncLiveSubtitlePanel()
     refreshUnavailableStoredSettingsDomainErrors()
   }
 

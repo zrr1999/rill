@@ -149,14 +149,14 @@ extension AppModel {
   }
 
   private var voiceSetupPrivacyReadiness: VoiceSetupPrivacyReadiness {
-    if isLoadingPrivacySettings {
+    if settings.isLoadingPrivacySettings {
       return .loading
     }
-    if privacySettingsLoadError != nil {
+    if settings.privacySettingsLoadError != nil {
       return .unavailable
     }
     return .available(
-      cloudConfirmationRequired: privacyPolicySettings.cloudConfirmationRequired
+      cloudConfirmationRequired: settings.privacyPolicySettings.cloudConfirmationRequired
     )
   }
 

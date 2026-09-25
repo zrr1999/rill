@@ -243,13 +243,13 @@ extension AppModel {
     let privacy: VoiceAssistantPrivacyReadiness
     if !requiresLLM {
       privacy = .notRequired
-    } else if isLoadingPrivacySettings {
+    } else if self.settings.isLoadingPrivacySettings {
       privacy = .loading
-    } else if privacySettingsLoadError != nil {
+    } else if self.settings.privacySettingsLoadError != nil {
       privacy = .unavailable
     } else {
       privacy = .ready(
-        cloudConfirmationRequired: privacyPolicySettings.cloudConfirmationRequired
+        cloudConfirmationRequired: self.settings.privacyPolicySettings.cloudConfirmationRequired
       )
     }
 

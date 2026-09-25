@@ -500,8 +500,8 @@ extension MainShellView {
             isPresented: isGlobalSearchPresented,
             query: search.query,
             language: model.settings.language.rawValue,
-            previewMode: model.privacyPolicySettings.historyPreviewMode.rawValue,
-            retentionPeriod: model.runHistoryRetentionPeriod.rawValue,
+            previewMode: model.settings.privacyPolicySettings.historyPreviewMode.rawValue,
+            retentionPeriod: model.history.runHistoryRetentionPeriod.rawValue,
             workflowSearchSnapshot: model.workflowLibrary.workflows.map {
                 "\($0.id.uuidString):\(L10n.workflowName($0.presentation, language: model.settings.language))"
             },
@@ -647,7 +647,7 @@ extension MainShellView {
             history: { query, limit in
                 try await model.history.searchRunHistory(
                     query: query, language: model.settings.language,
-                    previewMode: model.privacyPolicySettings.historyPreviewMode, limit: limit
+                    previewMode: model.settings.privacyPolicySettings.historyPreviewMode, limit: limit
                 )
             },
             language: model.settings.language

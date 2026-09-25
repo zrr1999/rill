@@ -52,7 +52,7 @@ public final class RunHistoryModel {
   private let runHistoryBrowser: (any RunHistoryBrowsing)?
   private let library: WorkflowLibraryModel
   var previewMode: PrivacyHistoryPreviewMode = .restricted
-  var runHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
+  public private(set) var runHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
   var hasBegunApplicationShutdown = false
   private(set) var runHistoryScope: RunHistoryScope = .recentRuns
 
@@ -674,5 +674,13 @@ actor DiagnosticEventRelay {
     bufferedEvents = []
     guard !batch.isEmpty else { return }
     await deliver(batch)
+  }
+}
+
+extension RunHistoryModel {
+  func applyRunHistoryRetentionPeriod(_ period: HistoryRetentionPeriod) {
+    guard runHistoryRetentionPeriod != period else { return }
+    runHistoryRetentionPeriod = period
+    resetRunHistoryBrowsing()
   }
 }

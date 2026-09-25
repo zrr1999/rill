@@ -77,7 +77,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
 
         XCTAssertFalse(harness.model.history.areHistoryRetentionSettingsAvailable)
         XCTAssertNotNil(harness.model.history.historyRetentionSettingsError)
-        XCTAssertNotNil(harness.model.privacySettingsLoadError)
+        XCTAssertNotNil(harness.model.settings.privacySettingsLoadError)
         XCTAssertThrowsError(try source.currentSettings())
         assertSentinelIsAbsent(from: harness.model)
     }
@@ -100,7 +100,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
 
         XCTAssertEqual(harness.model.settings.recordHistoryVisibility, .all)
         XCTAssertFalse(source.hasAvailableSettings)
-        XCTAssertNotNil(harness.model.privacySettingsLoadError)
+        XCTAssertNotNil(harness.model.settings.privacySettingsLoadError)
         let activity = await store.activitySnapshot()
         XCTAssertEqual(activity.storage[.privacyCloudConfirmationRequired], sentinel)
         XCTAssertNil(activity.setCounts[.privacyCloudConfirmationRequired])
@@ -117,11 +117,11 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         await harness.model.waitForInitialVoiceConfiguration()
 
         harness.model.setPrivacyCloudConfirmationRequired(false)
-        await harness.model.waitForPendingPrivacySettingsWrite()
+        await harness.model.settings.writes.flush()
 
-        XCTAssertNotNil(harness.model.privacySettingsSaveError)
-        XCTAssertFalse(harness.model.isSavingPrivacySettings)
-        XCTAssertFalse(harness.model.privacyPolicySettings.cloudConfirmationRequired)
+        XCTAssertNotNil(harness.model.settings.privacySettingsSaveError)
+        XCTAssertFalse(harness.model.settings.isSavingPrivacySettings)
+        XCTAssertFalse(harness.model.settings.privacyPolicySettings.cloudConfirmationRequired)
         assertSentinelIsAbsent(from: harness.model)
     }
 
@@ -340,8 +340,8 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
     ) {
         let visibleText = [
             model.lastFailure,
-            model.privacySettingsLoadError,
-            model.privacySettingsSaveError,
+            model.settings.privacySettingsLoadError,
+            model.settings.privacySettingsSaveError,
             model.history.historyRetentionSettingsError,
         ]
         .compactMap { $0 }

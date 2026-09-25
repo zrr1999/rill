@@ -130,17 +130,18 @@ struct WorkflowDocumentLibraryView: View {
                         Text(L10n.workflowTrigger(workflow.trigger, metadata: workflow.metadata, language: model.settings.language))
                     }
                     VStack(alignment: .leading, spacing: RillSpacing.row) {
-                        Text(L10n.workflowExplanationCopy(.transforms, language: model.settings.language)).font(.headline)
-                        ForEach(Array(workflow.plan.process.allSteps.enumerated()), id: \.offset) { index, step in
-                            Text("\(index + 1). " + WorkflowStepPresentation.stepTitle(step.kind, language: model.settings.language))
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: RillSpacing.row) {
                         Text(L10n.workflowExplanationCopy(.outputs, language: model.settings.language)).font(.headline)
                         ForEach(Array(workflow.plan.output.actions.enumerated()), id: \.offset) { index, action in
                             Text("\(index + 1). " + L10n.actionName(action.id, language: model.settings.language))
                         }
                     }
+                    DisclosureGroup(L10n.workflowExplanationCopy(.transforms, language: model.settings.language)) {
+                        VStack(alignment: .leading, spacing: RillSpacing.row) {
+                            ForEach(Array(workflow.plan.process.allSteps.enumerated()), id: \.offset) { index, step in
+                                Text("\(index + 1). " + WorkflowStepPresentation.stepTitle(step.kind, language: model.settings.language))
+                            }
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }.id(workflow.id)
                     HStack {
                         Button(L10n.workflowDocument(.labelOpenFile, language: model.settings.language)) { open(workflow) }
                             .accessibilityIdentifier("workflow.document.open.\(workflow.id)")

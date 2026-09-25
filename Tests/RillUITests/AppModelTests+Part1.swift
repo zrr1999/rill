@@ -1100,26 +1100,12 @@ extension AppModelTests {
         XCTAssertEqual(resolvedHotkeyWorkflow?.pipeline.recognizerID, "custom.hotkey.recognizer")
     }
 
-    func testPreparingLiveSubtitleSnapshotAutoHidesWhenNoFurtherUpdatesArrive() async {
-        let harness = makeHarness(liveSubtitlePreparingHideDelay: .milliseconds(80))
-        let snapshot = LiveSubtitleSnapshot(runID: UUID(), phase: .preparing, providerID: "whisperkit.stream")
-
-        await waitForEventProcessing(harness)
-        await harness.eventBus.publish(.liveSubtitleUpdated(snapshot))
-        await waitForEventProcessing(harness)
-        XCTAssertEqual(harness.model.liveSubtitleSnapshot?.phase, .preparing)
-
-        await harness.model.pendingLiveSubtitleHideTask?.value
-
-        XCTAssertNil(harness.model.liveSubtitleSnapshot)
-    }
-
     func testLiveSubtitlePanelActionReceivesModelUpdates() async {
         let harness = makeHarness()
         let probe = LiveSubtitlePanelProbe()
         let runID = UUID()
 
-        harness.model.installLiveSubtitlePanelAction { snapshot, language in
+        harness.model.voice.installLiveSubtitlePanelAction { snapshot, language in
             Task { await probe.record(snapshot: snapshot, language: language) }
         }
         await waitForEventProcessing(harness)
@@ -1186,8 +1172,8 @@ extension AppModelTests {
         )
         await waitForEventProcessing(harness)
 
-        XCTAssertEqual(harness.model.liveSubtitleSnapshot?.runID, currentRunID)
-        XCTAssertEqual(harness.model.liveSubtitleSnapshot?.phase, .preparing)
+        XCTAssertEqual(harness.model.voice.liveSubtitleSnapshot?.runID, currentRunID)
+        XCTAssertEqual(harness.model.voice.liveSubtitleSnapshot?.phase, .preparing)
     }
 
     func testAudioProcessingQueueDoesNotOpenASecondOverlayWithoutActiveCapture() async {
@@ -1206,7 +1192,7 @@ extension AppModelTests {
         )
         await waitForEventProcessing(harness)
 
-        XCTAssertNil(harness.model.liveSubtitleSnapshot)
+        XCTAssertNil(harness.model.voice.liveSubtitleSnapshot)
         XCTAssertTrue(harness.model.hasActiveOrQueuedVoiceRun)
     }
 
@@ -1237,10 +1223,10 @@ extension AppModelTests {
         )
         await waitForEventProcessing(harness)
 
-        XCTAssertEqual(harness.model.liveSubtitleSnapshot?.runID, liveRunID)
-        XCTAssertEqual(harness.model.liveSubtitleSnapshot?.phase, .transcribing)
-        XCTAssertEqual(harness.model.liveSubtitleSnapshot?.queuedRunCount, 3)
-        XCTAssertEqual(harness.model.liveSubtitleSnapshot?.prefersCompactLayout, false)
+        XCTAssertEqual(harness.model.voice.liveSubtitleSnapshot?.runID, liveRunID)
+        XCTAssertEqual(harness.model.voice.liveSubtitleSnapshot?.phase, .transcribing)
+        XCTAssertEqual(harness.model.voice.liveSubtitleSnapshot?.queuedRunCount, 3)
+        XCTAssertEqual(harness.model.voice.liveSubtitleSnapshot?.prefersCompactLayout, false)
 
         await harness.eventBus.publish(
             .liveSubtitleUpdated(
@@ -1249,7 +1235,7 @@ extension AppModelTests {
         )
         await waitForEventProcessing(harness)
 
-        XCTAssertNil(harness.model.liveSubtitleSnapshot)
+        XCTAssertNil(harness.model.voice.liveSubtitleSnapshot)
         XCTAssertTrue(harness.model.hasActiveOrQueuedVoiceRun)
     }
 

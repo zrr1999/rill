@@ -5,7 +5,7 @@ import RillCore
 extension SettingsView {
   var privacySection: some View {
     settingsDisclosure(.privacy) {
-      if model.isLoadingPrivacySettings {
+      if model.settings.isLoadingPrivacySettings {
         Label(
           L10n.privacyText(.loading, language: model.settings.language),
           systemImage: RillSystemSymbol.hourglass.rawValue
@@ -14,7 +14,7 @@ extension SettingsView {
         .foregroundStyle(.secondary)
       }
 
-      if let loadError = model.privacySettingsLoadError {
+      if let loadError = model.settings.privacySettingsLoadError {
         VStack(alignment: .leading, spacing: 6) {
           Label(loadError, systemImage: RillSystemSymbol.exclamationmarkShield.rawValue)
             .font(.caption)
@@ -31,11 +31,11 @@ extension SettingsView {
             }
           }
           .buttonStyle(.bordered)
-          .disabled(model.isLoadingPrivacySettings)
+          .disabled(model.settings.isLoadingPrivacySettings)
         }
       }
 
-      if let saveError = model.privacySettingsSaveError {
+      if let saveError = model.settings.privacySettingsSaveError {
         VStack(alignment: .leading, spacing: 6) {
           Label(saveError, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
             .font(.caption)
@@ -45,7 +45,7 @@ extension SettingsView {
           }
           .buttonStyle(.bordered)
         }
-      } else if model.isSavingPrivacySettings {
+      } else if model.settings.isSavingPrivacySettings {
         Label(
           L10n.privacyText(.saving, language: model.settings.language),
           systemImage: RillSystemSymbol.arrowTriangle2Circlepath.rawValue
@@ -86,7 +86,7 @@ extension SettingsView {
       Toggle(
         L10n.privacyText(PrivacySettingsTextKey.cloudConfirmation, language: model.settings.language),
         isOn: Binding(
-          get: { model.privacyPolicySettings.cloudConfirmationRequired },
+          get: { model.settings.privacyPolicySettings.cloudConfirmationRequired },
           set: { model.setPrivacyCloudConfirmationRequired($0) }
         )
       )
@@ -98,7 +98,7 @@ extension SettingsView {
       .font(.caption)
       .foregroundStyle(.secondary)
 
-      if !model.privacyPolicySettings.cloudProcessingAuthorizations.isEmpty {
+      if !model.settings.privacyPolicySettings.cloudProcessingAuthorizations.isEmpty {
         VStack(alignment: .leading, spacing: 8) {
           HStack {
             Text(
@@ -115,7 +115,7 @@ extension SettingsView {
           }
 
           ForEach(
-            model.privacyPolicySettings.cloudProcessingAuthorizations.sorted {
+            model.settings.privacyPolicySettings.cloudProcessingAuthorizations.sorted {
               $0.grantedAt > $1.grantedAt
             }
           ) { authorization in
@@ -151,7 +151,7 @@ extension SettingsView {
         L10n.privacyText(
           PrivacySettingsTextKey.secureInputConservativeMode, language: model.settings.language),
         isOn: Binding(
-          get: { model.privacyPolicySettings.secureInputConservativeMode },
+          get: { model.settings.privacyPolicySettings.secureInputConservativeMode },
           set: { model.setPrivacySecureInputConservativeMode($0) }
         )
       )
@@ -166,7 +166,7 @@ extension SettingsView {
       Picker(
         L10n.privacyText(PrivacySettingsTextKey.historyPreviewMode, language: model.settings.language),
         selection: Binding(
-          get: { model.privacyPolicySettings.historyPreviewMode },
+          get: { model.settings.privacyPolicySettings.historyPreviewMode },
           set: { model.setPrivacyHistoryPreviewMode($0) }
         )
       ) {
@@ -206,12 +206,12 @@ extension SettingsView {
       sensitiveAppRuleEditor
         .disabled(privacySettingsControlsDisabled)
 
-      if model.privacyPolicySettings.sensitiveAppRules.isEmpty {
+      if model.settings.privacyPolicySettings.sensitiveAppRules.isEmpty {
         Text(L10n.settingsText(.settingsSensitiveAppRulesEmpty, language: model.settings.language))
           .font(.caption)
           .foregroundStyle(.secondary)
       } else {
-        ForEach(model.privacyPolicySettings.sensitiveAppRules) { rule in
+        ForEach(model.settings.privacyPolicySettings.sensitiveAppRules) { rule in
           sensitiveAppRuleRow(rule)
             .disabled(privacySettingsControlsDisabled)
         }
@@ -220,7 +220,7 @@ extension SettingsView {
   }
 
   var privacySettingsControlsDisabled: Bool {
-    model.isLoadingPrivacySettings || model.privacySettingsLoadError != nil
+    model.settings.isLoadingPrivacySettings || model.settings.privacySettingsLoadError != nil
   }
 
   var sensitiveAppRuleEditor: some View {
@@ -342,7 +342,7 @@ extension SettingsView {
   }
 
   func sensitiveAppRule(_ ruleID: UUID) -> SensitiveAppRule? {
-    model.privacyPolicySettings.sensitiveAppRules.first { $0.id == ruleID }
+    model.settings.privacyPolicySettings.sensitiveAppRules.first { $0.id == ruleID }
   }
 
   func saveSensitiveAppRule() {

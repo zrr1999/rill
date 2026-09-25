@@ -52,7 +52,7 @@ struct RillApplication: App {
             end: container.endRecordPanelShortcutRecording,
             commit: container.commitRecordPanelShortcutRecording
         )
-        container.model.installLiveSubtitlePanelAction {
+        container.model.voice.installLiveSubtitlePanelAction {
             [liveSubtitlePanelController] snapshot, language in
             let cancellableRunID = snapshot.flatMap { snapshot in
                 LiveSubtitlePresentationPolicy.isAudioCaptureActive(phase: snapshot.phase)

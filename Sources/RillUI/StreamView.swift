@@ -78,7 +78,7 @@ public struct StreamView: View {
         StreamActivityPresentation.make(
             isRunning: model.voice.isRunning,
             workflowAudioRunState: model.voice.workflowAudioRunState,
-            isAudioProcessingQueueVisible: model.audioProcessingQueueSnapshot?.isVisible ?? false,
+            isAudioProcessingQueueVisible: model.voice.audioProcessingQueueSnapshot?.isVisible ?? false,
             language: model.settings.language,
             activeStage: model.voice.activeStage
         )
@@ -208,7 +208,7 @@ public struct StreamView: View {
     private func eventFeedRow(_ entry: EventFeedEntry) -> some View {
         let presentation = entry.presentation(
             for: model.settings.language,
-            historyPreviewMode: model.privacyPolicySettings.historyPreviewMode
+            historyPreviewMode: model.settings.privacyPolicySettings.historyPreviewMode
         )
         return Text(presentation.text)
             .lineLimit(presentation.lineLimit)
@@ -234,7 +234,9 @@ extension StreamView {
                 .foregroundStyle(.secondary)
 
             setupPermissionRows(readiness)
-            providerSetupRows(readiness.provider)
+            if !readiness.provider.isReady {
+                providerSetupRows(readiness.provider)
+            }
             privacySetupRows(readiness)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -243,29 +245,27 @@ extension StreamView {
 
     @ViewBuilder
     private func setupPermissionRows(_ readiness: VoiceSetupReadiness) -> some View {
-        globalInputSetupRow(readiness.globalInput)
-
-        permissionSetupRow(
-            title: L10n.text(.microphone, language: model.settings.language),
-            state: readiness.microphone,
-            isRequired: true,
-            readyDetail: .voiceSetupMicrophoneReady,
-            neededDetail: .voiceSetupMicrophoneNeeded,
-            requestAction: model.requestMicrophonePermission,
-            openSettingsAction: model.openMicrophoneSettings
-        )
-
-        permissionSetupRow(
-            title: L10n.text(.accessibility, language: model.settings.language),
-            state: readiness.accessibility,
-            isRequired: readiness.accessibilityRequired,
-            readyDetail: .voiceSetupAccessibilityReady,
-            neededDetail: readiness.accessibilityRequired
-                ? .voiceSetupAccessibilityNeeded
-                : .voiceSetupAccessibilityOptional,
-            requestAction: model.requestAccessibilityPermission,
-            openSettingsAction: model.openAccessibilitySettings
-        )
+        if !readiness.globalInput.isAvailable {
+            globalInputSetupRow(readiness.globalInput)
+        }
+        if readiness.microphone != .granted {
+            permissionSetupRow(
+                title: L10n.text(.microphone, language: model.settings.language),
+                state: readiness.microphone,
+                neededDetail: .voiceSetupMicrophoneNeeded,
+                requestAction: model.requestMicrophonePermission,
+                openSettingsAction: model.openMicrophoneSettings
+            )
+        }
+        if readiness.accessibilityRequired, readiness.accessibility != .granted {
+            permissionSetupRow(
+                title: L10n.text(.accessibility, language: model.settings.language),
+                state: readiness.accessibility,
+                neededDetail: .voiceSetupAccessibilityNeeded,
+                requestAction: model.requestAccessibilityPermission,
+                openSettingsAction: model.openAccessibilitySettings
+            )
+        }
     }
 
     @ViewBuilder
@@ -313,17 +313,11 @@ extension StreamView {
     private func permissionSetupRow(
         title: String,
         state: PermissionState,
-        isRequired: Bool,
-        readyDetail: L10n.InterfaceKey,
         neededDetail: L10n.InterfaceKey,
         requestAction: @escaping () -> Void,
         openSettingsAction: @escaping () -> Void
     ) -> some View {
-        if state == .granted {
-            setupRow(title: title, detail: readyDetail, symbol: RillSystemSymbol.checkmarkCircleFill.rawValue, color: .green)
-        } else if !isRequired {
-            setupRow(title: title, detail: neededDetail, symbol: RillSystemSymbol.circleDashed.rawValue, color: .secondary)
-        } else if state == .unknown {
+        if state == .unknown {
             setupRow(
                 title: title,
                 detail: neededDetail,

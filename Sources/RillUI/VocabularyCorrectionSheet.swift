@@ -48,7 +48,7 @@ public struct VocabularyCorrectionSheet: View {
         }
         .frame(minWidth: 520, idealWidth: 620, minHeight: 420, idealHeight: 600)
         .interactiveDismissDisabled(isSavingText)
-        .onChange(of: model.privacyPolicySettings.historyPreviewMode) { _, mode in
+        .onChange(of: model.settings.privacyPolicySettings.historyPreviewMode) { _, mode in
             if mode == .disabled {
                 dismiss()
             }
@@ -352,7 +352,7 @@ public struct VocabularyCorrectionSheet: View {
 
     private func saveText() {
         guard let workflowRunID, !isSavingText, !model.isApplicationShuttingDown,
-              model.privacyPolicySettings.historyPreviewMode != .disabled else { return }
+              model.settings.privacyPolicySettings.historyPreviewMode != .disabled else { return }
         isSavingText = true
         let text = draft.correctedText
         let operationID = correctionOperationID

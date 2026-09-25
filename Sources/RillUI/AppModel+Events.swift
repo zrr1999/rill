@@ -161,9 +161,9 @@ extension AppModel {
     /// when the requested run still owns the manual capture, including after
     /// its final hidden presentation update.
     public func markLiveAudioRunStoppedByUser(runID: UUID) {
-        let matchesWorkflowAudioCapture = workflowAudioCaptureRunID == runID
-        let matchesUntrackedVisibleCapture = workflowAudioCaptureRunID == nil
-            && currentCaptureLiveSubtitleSnapshot?.runID == runID
+        let matchesWorkflowAudioCapture = voice.workflowAudioCaptureRunID == runID
+        let matchesUntrackedVisibleCapture = voice.workflowAudioCaptureRunID == nil
+            && voice.currentCaptureLiveSubtitleSnapshot?.runID == runID
         guard matchesWorkflowAudioCapture || matchesUntrackedVisibleCapture else { return }
         if self.voice.activeRunID == runID {
             self.voice.activeRunID = nil
@@ -172,13 +172,13 @@ extension AppModel {
         self.voice.isRunning = !pendingRuns.isEmpty
         self.voice.workflowAudioRunState = .idle
         if matchesWorkflowAudioCapture {
-            workflowAudioCaptureRunID = nil
+            voice.workflowAudioCaptureRunID = nil
         }
-        if currentCaptureLiveSubtitleSnapshot?.runID == runID {
-            applyCurrentCaptureLiveSubtitleSnapshot(nil)
-            lastLiveSubtitleMeterRefreshAt = nil
+        if voice.currentCaptureLiveSubtitleSnapshot?.runID == runID {
+            voice.applyCurrentCaptureLiveSubtitleSnapshot(nil)
+            voice.lastLiveSubtitleMeterRefreshAt = nil
         }
-        refreshLiveSubtitlePresentation()
+        voice.refreshLiveSubtitlePresentation()
         append(
             english: "Recording stopped.",
             simplifiedChinese: "录音已停止。"
@@ -312,10 +312,10 @@ extension AppModel {
                 kind: .recognition
             )
         case .liveSubtitleUpdated(let snapshot):
-            applyLiveSubtitleUpdate(snapshot)
+            voice.applyLiveSubtitleUpdate(snapshot)
         case .audioProcessingQueueUpdated(let snapshot):
-            audioProcessingQueueSnapshot = snapshot.isVisible ? snapshot : nil
-            refreshLiveSubtitlePresentation()
+            voice.audioProcessingQueueSnapshot = snapshot.isVisible ? snapshot : nil
+            voice.refreshLiveSubtitlePresentation()
         case .failedAudioRecoveryUpdated(let receipts):
             self.voice.failedAudioRecoveryReceipts = receipts
             let recoveredRunIDs = Set(receipts.map(\.originalRunID))
@@ -411,9 +411,9 @@ extension AppModel {
                     simplifiedChinese: "非语音工作流已完成。"
                 )
             }
-            scheduleLiveSubtitleHide()
+            voice.scheduleLiveSubtitleHide()
         case .runCancelled(let summary):
-            let cancelledCurrentCapture = currentCaptureLiveSubtitleSnapshot?.runID == summary.runID
+            let cancelledCurrentCapture = voice.currentCaptureLiveSubtitleSnapshot?.runID == summary.runID
             let cancelledWorkflowAudioCapture = retireWorkflowAudioCapture(
                 matching: summary.runID
             )
@@ -438,14 +438,14 @@ extension AppModel {
                     ? "工作流在部分完成后已取消。"
                     : "工作流已取消。"
             )
-            scheduleLiveSubtitleHide()
+            voice.scheduleLiveSubtitleHide()
         case .runFailed(let failedRunID, _, let message):
             let failurePresentation = RunFailurePresentation.localizedText(for: message)
             if failedRunID == self.voice.activeRunID || self.voice.activeRunID == nil {
                 lastFailure = failurePresentation.string(for: self.settings.language)
             }
             let failedCurrentCapture = failedRunID != nil
-                && currentCaptureLiveSubtitleSnapshot?.runID == failedRunID
+                && voice.currentCaptureLiveSubtitleSnapshot?.runID == failedRunID
             let failedActiveRun = failedRunID.map { self.voice.activeRunID == $0 } ?? false
             let failedWorkflowAudioCapture = retireWorkflowAudioCapture(
                 matching: failedRunID
@@ -461,7 +461,7 @@ extension AppModel {
                 english: failurePresentation.english,
                 simplifiedChinese: failurePresentation.simplifiedChinese
             )
-            scheduleLiveSubtitleHide()
+            voice.scheduleLiveSubtitleHide()
         case .diagnostic(let event):
             applyDiagnosticEvents([event])
         }
@@ -470,12 +470,12 @@ extension AppModel {
     @discardableResult
     private func retireWorkflowAudioCapture(matching runID: UUID?) -> Bool {
         guard let runID else { return false }
-        let matchesTrackedCapture = workflowAudioCaptureRunID == runID
-        let matchesUntrackedVisibleCapture = workflowAudioCaptureRunID == nil
-            && currentCaptureLiveSubtitleSnapshot?.runID == runID
+        let matchesTrackedCapture = voice.workflowAudioCaptureRunID == runID
+        let matchesUntrackedVisibleCapture = voice.workflowAudioCaptureRunID == nil
+            && voice.currentCaptureLiveSubtitleSnapshot?.runID == runID
             && self.voice.workflowAudioRunState != .idle
         guard matchesTrackedCapture || matchesUntrackedVisibleCapture else { return false }
-        workflowAudioCaptureRunID = nil
+        voice.workflowAudioCaptureRunID = nil
         self.voice.workflowAudioRunState = .idle
         return true
     }
@@ -506,19 +506,6 @@ extension AppModel {
         history.append(entry)
     }
 
-    func scheduleLiveSubtitleHide(after delay: Duration = .seconds(1)) {
-        guard currentCaptureLiveSubtitleSnapshot != nil else { return }
-        let currentRunID = currentCaptureLiveSubtitleSnapshot?.runID
-        pendingLiveSubtitleHideTask?.cancel()
-        pendingLiveSubtitleHideTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: delay)
-            guard let self, self.currentCaptureLiveSubtitleSnapshot?.runID == currentRunID else { return }
-            self.applyCurrentCaptureLiveSubtitleSnapshot(nil)
-            self.lastLiveSubtitleMeterRefreshAt = nil
-            self.refreshLiveSubtitlePresentation()
-        }
-    }
-
     private func cacheHistoryRecord(_ record: WorkflowResultRecord) {
         history.noteNewRunAvailableForHistoryBrowsing()
         self.history.historyRecords.removeAll { $0.id == record.id }
@@ -542,7 +529,7 @@ extension AppModel {
         self.history.historyLoadState = .loading
         self.history.historyLoadGeneration += 1
         let generation = self.history.historyLoadGeneration
-        let since = runHistoryRetentionPeriod.cutoffDate(relativeTo: Date())
+        let since = history.runHistoryRetentionPeriod.cutoffDate(relativeTo: Date())
         let taskID = UUID()
         let task = Task { @MainActor [weak self, historyRepository] in
             guard let self else { return }
@@ -606,7 +593,7 @@ extension AppModel {
         }
         self.history.runReceiptLoadGeneration += 1
         let generation = self.history.runReceiptLoadGeneration
-        let since = runHistoryRetentionPeriod.cutoffDate(relativeTo: Date())
+        let since = history.runHistoryRetentionPeriod.cutoffDate(relativeTo: Date())
         let requiredRunIDs = additionalRunIDs.union(
             self.history.historyRecords.compactMap(\.runID)
         )
@@ -688,12 +675,12 @@ extension AppModel {
         self.voice.pendingResolution = nil
         self.history.eventFeed.removeAll()
         voice.reset()
-        applyCurrentCaptureLiveSubtitleSnapshot(nil)
-        workflowAudioCaptureRunID = nil
-        liveSubtitleSnapshot = nil
-        lastLiveSubtitleMeterRefreshAt = nil
-        pendingLiveSubtitleHideTask?.cancel()
-        pendingLiveSubtitleHideTask = nil
+        voice.applyCurrentCaptureLiveSubtitleSnapshot(nil)
+        voice.workflowAudioCaptureRunID = nil
+        voice.liveSubtitleSnapshot = nil
+        voice.lastLiveSubtitleMeterRefreshAt = nil
+        voice.pendingLiveSubtitleHideTask?.cancel()
+        voice.pendingLiveSubtitleHideTask = nil
     }
 
     func isVoiceHistoryRecord(_ record: WorkflowResultRecord) -> Bool { history.isVoiceHistoryRecord(record) }

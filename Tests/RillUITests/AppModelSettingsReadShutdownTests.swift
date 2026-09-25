@@ -490,7 +490,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             privacySettingsSource: privacySettingsSource
         )
         await waitUntil { !harness.model.settings.isLoading }
-        XCTAssertNotNil(harness.model.privacySettingsLoadError)
+        XCTAssertNotNil(harness.model.settings.privacySettingsLoadError)
         XCTAssertThrowsError(try privacySettingsSource.currentSettings())
 
         await settingsStore.setUnavailableKeys([])
@@ -499,7 +499,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
 
         harness.model.retryPrivacySettingsLoad()
         await gate.waitUntilEntered()
-        XCTAssertTrue(harness.model.isLoadingPrivacySettings)
+        XCTAssertTrue(harness.model.settings.isLoadingPrivacySettings)
         XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 1)
 
         let completion = SettingsReadShutdownCompletionProbe()
@@ -510,12 +510,12 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await gate.waitUntilCancellationObserved()
         let completionCountWhileBlocked = await completion.count()
         XCTAssertEqual(completionCountWhileBlocked, 0)
-        XCTAssertFalse(harness.model.isLoadingPrivacySettings)
+        XCTAssertFalse(harness.model.settings.isLoadingPrivacySettings)
 
         await gate.release()
         await shutdownTask.value
 
-        XCTAssertNotNil(harness.model.privacySettingsLoadError)
+        XCTAssertNotNil(harness.model.settings.privacySettingsLoadError)
         XCTAssertThrowsError(try privacySettingsSource.currentSettings())
         let protectedSnapshot = try await settingsStore.settingsSnapshot(
             forKeys: Array(protectedKeys)
@@ -536,7 +536,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             privacySettingsSource: privacySettingsSource
         )
         await waitUntil { !harness.model.settings.isLoading }
-        let initialPolicy = harness.model.privacyPolicySettings
+        let initialPolicy = harness.model.settings.privacyPolicySettings
 
         await harness.model.stopSettingsReadTasksForApplicationShutdown()
         harness.model.setPrivacyCloudConfirmationRequired(
@@ -549,7 +549,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         harness.model.retryPrivacySettingsSave()
         await harness.model.flushPendingPersistenceWrites()
 
-        XCTAssertEqual(harness.model.privacyPolicySettings, initialPolicy)
+        XCTAssertEqual(harness.model.settings.privacyPolicySettings, initialPolicy)
         XCTAssertEqual(try? privacySettingsSource.currentSettings(), initialPolicy)
         let storedValues = await settingsStore.storedValue(
             for: .privacyCloudConfirmationRequired

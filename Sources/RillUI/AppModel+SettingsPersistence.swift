@@ -344,7 +344,7 @@ extension AppModel {
       vocabularyRuleSource.markUnavailable(
         reason: "Persistent settings storage is unavailable."
       )
-      isLoadingPrivacySettings = false
+      self.settings.isLoadingPrivacySettings = false
       self.history.areHistoryRetentionSettingsAvailable = false
       self.history.historyRetentionSettingsLoadError = L10n.runText(
         .retentionStorageUnavailableDefaults,
@@ -354,7 +354,7 @@ extension AppModel {
       if !privacySettingsSource.hasAvailableSettings {
         let reason = "Persistent settings storage is unavailable."
         privacySettingsSource.markUnavailable(reason: reason)
-        privacySettingsLoadError = L10n.runText(.privacyLoadBlocked, language: self.settings.language)
+        self.settings.privacySettingsLoadError = L10n.runText(.privacyLoadBlocked, language: self.settings.language)
       }
       return
     }
@@ -430,11 +430,11 @@ extension AppModel {
         self.markStoredSettingsDomainUnavailable(.workflowLibrary)
         self.markStoredSettingsDomainUnavailable(.downloadedModelMetadata)
         self.markStoredSettingsDomainUnavailable(.vocabularyRules)
-        self.isLoadingPrivacySettings = false
+        self.settings.isLoadingPrivacySettings = false
         self.privacySettingsSource.markUnavailable(
           reason: "Configuration storage could not be loaded."
         )
-        self.privacySettingsLoadError = L10n.runText(
+        self.settings.privacySettingsLoadError = L10n.runText(
           .privacyLoadBlockedRetry,
           language: self.settings.language
         )
@@ -546,7 +546,7 @@ extension AppModel {
         .recordRetentionPeriod
       )
     )
-    applyRunHistoryRetentionPeriod(resolvedHistoryRetentionPeriod(
+    history.applyRunHistoryRetentionPeriod(resolvedHistoryRetentionPeriod(
       settings.runHistoryRetentionPeriod,
       isRecordSetting: false,
       settingWasUnavailable: settings.unavailableSettingKeys.contains(
@@ -1547,13 +1547,13 @@ extension AppModel {
 
   func applyStoredPrivacySettings(_ settings: StoredAppSettingsSnapshot) {
     applyPrivacyPolicySettings(settings.privacyPolicySettings)
-    isLoadingPrivacySettings = false
+    self.settings.isLoadingPrivacySettings = false
     if settings.privacySettingsWereInvalid {
-      privacySettingsLoadError = L10n.runText(.privacySettingsDamaged, language: self.settings.language)
+      self.settings.privacySettingsLoadError = L10n.runText(.privacySettingsDamaged, language: self.settings.language)
       privacySettingsSource.markUnavailable(reason: "Privacy settings are damaged.")
     } else {
-      privacySettingsLoadError = nil
-      privacySettingsSource.update(privacyPolicySettings)
+      self.settings.privacySettingsLoadError = nil
+      privacySettingsSource.update(self.settings.privacyPolicySettings)
     }
   }
 
@@ -1804,7 +1804,7 @@ extension AppModel {
     }
     self.settings.unavailableSettingsDomainRetryGeneration &+= 1
     self.settings.isLoading = false
-    isLoadingPrivacySettings = false
+    self.settings.isLoadingPrivacySettings = false
     self.settings.isRetryingUnavailableSettingsDomains = false
     self.settings.settingsKeysModifiedDuringInitialLoad.removeAll()
     self.voice.shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = false
@@ -1881,7 +1881,7 @@ extension AppModel {
 
   func setPrivacyCloudConfirmationRequired(_ isRequired: Bool) {
     guard privacySettingsAreEditable else { return }
-    var policy = privacyPolicySettings
+    var policy = self.settings.privacyPolicySettings
     policy.cloudConfirmationRequired = isRequired
     applyPrivacyPolicySettings(policy)
   }
@@ -1891,7 +1891,7 @@ extension AppModel {
     _ authorization: CloudProcessingAuthorization
   ) -> Bool {
     guard privacySettingsAreEditable else { return false }
-    var policy = privacyPolicySettings
+    var policy = self.settings.privacyPolicySettings
     policy.cloudProcessingAuthorizations.removeAll {
       $0.workflowID == authorization.workflowID
     }
@@ -1902,30 +1902,30 @@ extension AppModel {
 
   func revokeCloudProcessingAuthorization(_ authorizationID: UUID) {
     guard privacySettingsAreEditable else { return }
-    var policy = privacyPolicySettings
+    var policy = self.settings.privacyPolicySettings
     policy.cloudProcessingAuthorizations.removeAll { $0.id == authorizationID }
     applyPrivacyPolicySettings(policy)
   }
 
   func revokeAllCloudProcessingAuthorizations() {
     guard privacySettingsAreEditable else { return }
-    guard !privacyPolicySettings.cloudProcessingAuthorizations.isEmpty else { return }
-    var policy = privacyPolicySettings
+    guard !self.settings.privacyPolicySettings.cloudProcessingAuthorizations.isEmpty else { return }
+    var policy = self.settings.privacyPolicySettings
     policy.cloudProcessingAuthorizations = []
     applyPrivacyPolicySettings(policy)
   }
 
   func setPrivacySecureInputConservativeMode(_ isEnabled: Bool) {
     guard privacySettingsAreEditable else { return }
-    var policy = privacyPolicySettings
+    var policy = self.settings.privacyPolicySettings
     policy.secureInputConservativeMode = isEnabled
     applyPrivacyPolicySettings(policy)
   }
 
   func setPrivacyHistoryPreviewMode(_ mode: PrivacyHistoryPreviewMode) {
     guard privacySettingsAreEditable else { return }
-    guard privacyPolicySettings.historyPreviewMode != mode else { return }
-    var policy = privacyPolicySettings
+    guard self.settings.privacyPolicySettings.historyPreviewMode != mode else { return }
+    var policy = self.settings.privacyPolicySettings
     policy.historyPreviewMode = mode
     applyPrivacyPolicySettings(policy)
   }
@@ -1959,7 +1959,7 @@ extension AppModel {
       bundleIdentifier: bundleIdentifier,
       applicationName: applicationName
     ).normalizedAndValidated()
-    var policy = privacyPolicySettings
+    var policy = self.settings.privacyPolicySettings
     policy.sensitiveAppRules = try SensitiveAppRule.mergingRecommendedDefaults(
       with: policy.sensitiveAppRules + [rule]
     )
@@ -1972,15 +1972,15 @@ extension AppModel {
     applicationName: String?
   ) throws {
     try ensurePrivacySettingsAreEditable()
-    guard let index = privacyPolicySettings.sensitiveAppRules.firstIndex(where: { $0.id == ruleID })
+    guard let index = self.settings.privacyPolicySettings.sensitiveAppRules.firstIndex(where: { $0.id == ruleID })
     else {
       throw SensitiveAppRuleValidationError.ruleNotFound
     }
-    guard !privacyPolicySettings.sensitiveAppRules[index].isRecommended else {
+    guard !self.settings.privacyPolicySettings.sensitiveAppRules[index].isRecommended else {
       throw SensitiveAppRuleValidationError.recommendedRuleCannotBeEdited
     }
 
-    var policy = privacyPolicySettings
+    var policy = self.settings.privacyPolicySettings
     policy.sensitiveAppRules[index].bundleIdentifier = bundleIdentifier
     policy.sensitiveAppRules[index].applicationName = applicationName
     policy.sensitiveAppRules = try SensitiveAppRule.mergingRecommendedDefaults(
@@ -1991,21 +1991,21 @@ extension AppModel {
 
   func deleteSensitiveAppRule(_ ruleID: UUID) throws {
     try ensurePrivacySettingsAreEditable()
-    guard let rule = privacyPolicySettings.sensitiveAppRules.first(where: { $0.id == ruleID })
+    guard let rule = self.settings.privacyPolicySettings.sensitiveAppRules.first(where: { $0.id == ruleID })
     else {
       throw SensitiveAppRuleValidationError.ruleNotFound
     }
     guard !rule.isRecommended else {
       throw SensitiveAppRuleValidationError.recommendedRuleCannotBeEdited
     }
-    var policy = privacyPolicySettings
+    var policy = self.settings.privacyPolicySettings
     policy.sensitiveAppRules.removeAll { $0.id == ruleID }
     applyPrivacyPolicySettings(policy)
   }
 
   func restoreRecommendedSensitiveAppRules() throws {
     try ensurePrivacySettingsAreEditable()
-    var policy = privacyPolicySettings
+    var policy = self.settings.privacyPolicySettings
     policy.sensitiveAppRules = try SensitiveAppRule.restoringRecommendedDefaults(
       whileKeepingCustomRules: policy.sensitiveAppRules
     )
@@ -2014,28 +2014,28 @@ extension AppModel {
 
   private func updateSensitiveAppRule(_ ruleID: UUID, mutate: (inout SensitiveAppRule) -> Void) {
     guard privacySettingsAreEditable else { return }
-    guard let index = privacyPolicySettings.sensitiveAppRules.firstIndex(where: { $0.id == ruleID })
+    guard let index = self.settings.privacyPolicySettings.sensitiveAppRules.firstIndex(where: { $0.id == ruleID })
     else { return }
-    var policy = privacyPolicySettings
+    var policy = self.settings.privacyPolicySettings
     mutate(&policy.sensitiveAppRules[index])
     applyPrivacyPolicySettings(policy)
   }
 
   private var privacySettingsAreEditable: Bool {
     !hasBegunApplicationShutdown
-      && !isLoadingPrivacySettings
-      && privacySettingsLoadError == nil
+      && !self.settings.isLoadingPrivacySettings
+      && self.settings.privacySettingsLoadError == nil
   }
 
   private func ensurePrivacySettingsAreEditable() throws {
     if hasBegunApplicationShutdown {
       throw PrivacyPolicySettingsSourceError.notReady
     }
-    if isLoadingPrivacySettings {
+    if self.settings.isLoadingPrivacySettings {
       throw PrivacyPolicySettingsSourceError.notReady
     }
-    if let privacySettingsLoadError {
-      throw PrivacyPolicySettingsSourceError.unavailable(privacySettingsLoadError)
+    if let error = settings.privacySettingsLoadError {
+      throw PrivacyPolicySettingsSourceError.unavailable(error)
     }
   }
 
@@ -2073,58 +2073,11 @@ extension AppModel {
   }
 
   func persistPrivacyPolicySettings() {
-    guard !hasBegunApplicationShutdown, !self.settings.isRestoringSettings else { return }
-    guard let settingsStore else {
-      privacySettingsSaveError = L10n.runText(
-        .privacySaveStorageUnavailable,
-        language: self.settings.language
-      )
-      isSavingPrivacySettings = false
-      return
+    settings.persistPrivacyPolicySettings { [weak self] in
+      self?.append(
+        english: L10n.runText(.privacySaveFailedRetry, language: .english),
+        simplifiedChinese: L10n.runText(.privacySaveFailedRetry, language: .simplifiedChinese))
     }
-    let policy = privacyPolicySettings
-    let values: [AppSettingKey: String]
-    do {
-      values = try AppSettingsCodec.privacySettingsStorageValues(for: policy)
-    } catch {
-      privacySettingsSaveError = localizedPrivacySettingsSaveFailure()
-      isSavingPrivacySettings = false
-      return
-    }
-
-    privacySettingsWriteGeneration += 1
-    let generation = privacySettingsWriteGeneration
-    let previousTask = pendingPrivacySettingsWriteTask
-    isSavingPrivacySettings = true
-    let task = Task { [weak self, settingsStore, previousTask] in
-      await previousTask?.value
-      do {
-        try await settingsStore.setStringsAtomically(values)
-        await MainActor.run {
-          guard let self, self.privacySettingsWriteGeneration == generation else { return }
-          self.pendingPrivacySettingsWriteTask = nil
-          self.isSavingPrivacySettings = false
-          self.privacySettingsSaveError = nil
-        }
-      } catch {
-        await MainActor.run {
-          guard let self else { return }
-          self.append(
-            english: L10n.runText(.privacySaveFailedRetry, language: .english),
-            simplifiedChinese: L10n.runText(
-              .privacySaveFailedRetry,
-              language: .simplifiedChinese
-            )
-          )
-          guard self.privacySettingsWriteGeneration == generation else { return }
-          self.pendingPrivacySettingsWriteTask = nil
-          self.isSavingPrivacySettings = false
-          self.privacySettingsSaveError = self.localizedPrivacySettingsSaveFailure()
-        }
-      }
-    }
-    pendingPrivacySettingsWriteTask = task
-    persistenceWrites.track(task)
   }
 
   func retryPrivacySettingsSave() {
@@ -2132,8 +2085,8 @@ extension AppModel {
   }
 
   func retryPrivacySettingsLoad() {
-    guard !hasBegunApplicationShutdown, !isLoadingPrivacySettings else { return }
-    isLoadingPrivacySettings = true
+    guard !hasBegunApplicationShutdown, !self.settings.isLoadingPrivacySettings else { return }
+    self.settings.isLoadingPrivacySettings = true
     workflowLibraryChangedAction()
     let settingsStore = self.settingsStore
     let settingKeys: [AppSettingKey] = [
@@ -2179,8 +2132,8 @@ extension AppModel {
         self.settings.isRestoringSettings = true
         self.applyPrivacyPolicySettings(policy)
         self.settings.isRestoringSettings = false
-        self.isLoadingPrivacySettings = false
-        self.privacySettingsLoadError = nil
+        self.settings.isLoadingPrivacySettings = false
+        self.settings.privacySettingsLoadError = nil
         self.privacySettingsSource.update(policy)
         self.workflowLibraryChangedAction()
       } catch is CancellationError {
@@ -2192,8 +2145,8 @@ extension AppModel {
         else {
           return
         }
-        self.isLoadingPrivacySettings = false
-        self.privacySettingsLoadError = L10n.runText(
+        self.settings.isLoadingPrivacySettings = false
+        self.settings.privacySettingsLoadError = L10n.runText(
           .privacyLoadFailedRepairStorage,
           language: self.settings.language
         )
@@ -2207,24 +2160,16 @@ extension AppModel {
   }
 
   func resetPrivacySettingsToSafeDefaults() {
-    guard !hasBegunApplicationShutdown, !isLoadingPrivacySettings else { return }
+    guard !hasBegunApplicationShutdown, !self.settings.isLoadingPrivacySettings else { return }
     let defaults = PrivacyPolicySettings.defaults
-    isLoadingPrivacySettings = false
-    privacySettingsLoadError = nil
+    self.settings.isLoadingPrivacySettings = false
+    self.settings.privacySettingsLoadError = nil
     self.settings.isRestoringSettings = true
     applyPrivacyPolicySettings(defaults)
     self.settings.isRestoringSettings = false
     privacySettingsSource.update(defaults)
     workflowLibraryChangedAction()
     persistPrivacyPolicySettings()
-  }
-
-  func waitForPendingPrivacySettingsWrite() async {
-    await pendingPrivacySettingsWriteTask?.value
-  }
-
-  private func localizedPrivacySettingsSaveFailure() -> String {
-    L10n.runText(.privacySaveFailedSessionOnly, language: self.settings.language)
   }
 
   func persistWorkflowEnabledStates() {

@@ -12,6 +12,13 @@ struct SettingsStringWrite: Sendable {
 
 @MainActor @Observable
 public final class SettingsPersistenceModel {
+  public internal(set) var privacyPolicySettings: PrivacyPolicySettings = .defaults
+
+  public internal(set) var isLoadingPrivacySettings = false
+  public internal(set) var isSavingPrivacySettings = false
+  public internal(set) var privacySettingsLoadError: String?
+  public internal(set) var privacySettingsSaveError: String?
+
   public internal(set) var language: AppLanguage
   public internal(set) var systemClipboardCaptureEnabled: Bool = false
   public internal(set) var recordPanelHotkeyBinding: HotkeyBindingDescriptor = .doubleCommand
@@ -210,4 +217,47 @@ public enum OpenAIConfigurationVerificationState: Sendable, Equatable {
   case verifying
   case verified
   case failed
+}
+
+extension SettingsPersistenceModel {
+  func persistPrivacyPolicySettings(onFailure: @escaping @MainActor () -> Void) {
+    guard !hasBegunApplicationShutdown, !isRestoringSettings else { return }
+    guard let settingsStore = store else {
+      privacySettingsSaveError = L10n.runText(
+        .privacySaveStorageUnavailable,
+        language: language
+      )
+      isSavingPrivacySettings = false
+      return
+    }
+    let policy = privacyPolicySettings
+    let values: [AppSettingKey: String]
+    do {
+      values = try AppSettingsCodec.privacySettingsStorageValues(for: policy)
+    } catch {
+      privacySettingsSaveError = localizedPrivacySettingsSaveFailure()
+      isSavingPrivacySettings = false
+      return
+    }
+
+    isSavingPrivacySettings = true
+    writes.replace(for: Set(values.keys)) {
+      try await settingsStore.setStringsAtomically(values)
+    } completion: { [weak self] result, _ in
+      guard let self else { return }
+      isSavingPrivacySettings = false
+      switch result {
+      case .success:
+        privacySettingsSaveError = nil
+      case .failure:
+        privacySettingsSaveError = localizedPrivacySettingsSaveFailure()
+        onFailure()
+      }
+    }
+  }
+
+  private func localizedPrivacySettingsSaveFailure() -> String {
+    L10n.runText(.privacySaveFailedSessionOnly, language: language)
+  }
+
 }

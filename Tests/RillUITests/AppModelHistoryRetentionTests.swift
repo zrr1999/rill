@@ -289,7 +289,7 @@ extension AppModelTests {
         await waitForHistoryMaintenance(harness)
 
         XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
-        XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .thirtyDays)
+        XCTAssertEqual(harness.model.history.runHistoryRetentionPeriod, .thirtyDays)
     }
 
     func testRetentionMutationIsRejectedWhileInitialSettingsReadIsPending() async {
@@ -340,7 +340,7 @@ extension AppModelTests {
         await waitForHistoryMaintenance(harness)
 
         XCTAssertEqual(harness.model.recordRetentionPeriod, .forever)
-        XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .forever)
+        XCTAssertEqual(harness.model.history.runHistoryRetentionPeriod, .forever)
         XCTAssertTrue(harness.model.history.areHistoryRetentionSettingsAvailable)
         XCTAssertNotNil(harness.model.history.historyRetentionSettingsError)
         XCTAssertTrue(
@@ -362,7 +362,7 @@ extension AppModelTests {
         await waitForHistoryMaintenance(harness)
 
         XCTAssertEqual(harness.model.recordRetentionPeriod, .forever)
-        XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .oneWeek)
+        XCTAssertEqual(harness.model.history.runHistoryRetentionPeriod, .oneWeek)
         XCTAssertTrue(harness.model.history.areHistoryRetentionSettingsAvailable)
         XCTAssertNotNil(harness.model.history.historyRetentionSettingsError)
         let activity = await settingsStore.activitySnapshot()
@@ -386,7 +386,7 @@ extension AppModelTests {
         await waitForHistoryMaintenance(harness)
 
         XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
-        XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .thirtyDays)
+        XCTAssertEqual(harness.model.history.runHistoryRetentionPeriod, .thirtyDays)
         XCTAssertFalse(harness.model.history.areHistoryRetentionSettingsAvailable)
         XCTAssertNotNil(harness.model.history.historyRetentionSettingsError)
         XCTAssertNil(harness.model.history.periodicHistoryRetentionMaintenanceTask)
@@ -406,7 +406,7 @@ extension AppModelTests {
         await waitForHistoryMaintenance(harness)
 
         XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
-        XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .thirtyDays)
+        XCTAssertEqual(harness.model.history.runHistoryRetentionPeriod, .thirtyDays)
         XCTAssertFalse(harness.model.history.areHistoryRetentionSettingsAvailable)
         XCTAssertNotNil(harness.model.history.historyRetentionSettingsError)
         XCTAssertNil(harness.model.history.periodicHistoryRetentionMaintenanceTask)
@@ -428,7 +428,7 @@ extension AppModelTests {
         await waitForHistoryMaintenance(harness)
 
         XCTAssertEqual(harness.model.recordRetentionPeriod, .forever)
-        XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .forever)
+        XCTAssertEqual(harness.model.history.runHistoryRetentionPeriod, .forever)
         XCTAssertTrue(harness.model.history.areHistoryRetentionSettingsAvailable)
         XCTAssertNil(harness.model.history.historyRetentionSettingsError)
     }
@@ -487,7 +487,7 @@ extension AppModelTests {
         await waitForHistoryMaintenance(reloadedHarness)
 
         XCTAssertEqual(reloadedHarness.model.recordRetentionPeriod, .oneWeek)
-        XCTAssertEqual(reloadedHarness.model.runHistoryRetentionPeriod, .thirtyDays)
+        XCTAssertEqual(reloadedHarness.model.history.runHistoryRetentionPeriod, .thirtyDays)
     }
 
     func testRetentionPersistenceFailureDoesNotChangeSettingOrStartCleanup() async {
@@ -583,7 +583,7 @@ extension AppModelTests {
                 simplifiedChinese: "清理前内容"
             ),
         ]
-        harness.model.liveSubtitleSnapshot = LiveSubtitleSnapshot(
+        harness.model.voice.liveSubtitleSnapshot = LiveSubtitleSnapshot(
             runID: UUID(),
             phase: .processing,
             confirmedText: "subtitle-before-clear"
@@ -599,7 +599,7 @@ extension AppModelTests {
         XCTAssertNil(harness.model.voice.lastCompletedText)
         XCTAssertNil(harness.model.lastFailure)
         XCTAssertTrue(harness.model.history.eventFeed.isEmpty)
-        XCTAssertNil(harness.model.liveSubtitleSnapshot)
+        XCTAssertNil(harness.model.voice.liveSubtitleSnapshot)
     }
 
     func testPendingMaintenanceIsVisibleAndRetryable() async {
@@ -661,7 +661,7 @@ extension AppModelTests {
         )
         await waitForHistoryMaintenance(harness)
         await maintenance.resetCalls()
-        harness.model.audioProcessingQueueSnapshot = AudioProcessingQueueSnapshot(
+        harness.model.voice.audioProcessingQueueSnapshot = AudioProcessingQueueSnapshot(
             processingRunID: UUID(),
             pendingCount: 1
         )
@@ -852,7 +852,7 @@ extension AppModelTests {
         await harness.model.flushPendingPersistenceWrites()
 
         XCTAssertEqual(readLatch.currentReadCount(), readCountBeforeWrite)
-        XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .thirtyDays)
+        XCTAssertEqual(harness.model.history.runHistoryRetentionPeriod, .thirtyDays)
         XCTAssertTrue(harness.model.history.historyProjectionLoadTasks.isEmpty)
         let writeCountBeforeRejectedMutation = await settingsStore.runRetentionWriteCount()
 

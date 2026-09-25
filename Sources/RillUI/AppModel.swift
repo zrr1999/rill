@@ -93,28 +93,9 @@ public final class AppModel {
   }
   public var lastFailure: String?
   public let vocabulary: VocabularyLibraryModel
-  public private(set) var privacyPolicySettings: PrivacyPolicySettings = .defaults
-
-  public internal(set) var isLoadingPrivacySettings = false
-  public internal(set) var isSavingPrivacySettings = false
-  public internal(set) var privacySettingsLoadError: String?
-  public internal(set) var privacySettingsSaveError: String?
   public internal(set) var recordRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
-  public private(set) var runHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
 
   public let benchmarkArchive: BenchmarkRecordingArchiveModel
-  // The floating panel is driven through `updateLiveSubtitlePanelAction`, not
-  // through a SwiftUI view observing AppModel. Keeping its 25 Hz meter state
-  // outside Observation prevents every audio frame from invalidating the main
-  // application view graph.
-  @ObservationIgnored public internal(set) var liveSubtitleSnapshot: LiveSubtitleSnapshot?
-  @ObservationIgnored private(set) var currentCaptureLiveSubtitleSnapshot: LiveSubtitleSnapshot?
-
-  var workflowAudioCaptureRunID: UUID?
-  var audioProcessingQueueSnapshot: AudioProcessingQueueSnapshot?
-  @ObservationIgnored var lastLiveSubtitleMeterRefreshAt: ContinuousClock.Instant?
-  @ObservationIgnored var pendingLiveSubtitleMeterSnapshot: LiveSubtitleSnapshot?
-
   public var enabledManualWorkflows: [WorkflowDefinition] {
     enabledWorkflows(for: .manual)
   }
@@ -168,7 +149,7 @@ public final class AppModel {
     recordCount > 0 && permissionSnapshot.accessibility == .granted
   }
   public var hasActiveOrQueuedVoiceRun: Bool {
-    self.voice.isRunning || (audioProcessingQueueSnapshot?.isVisible ?? false)
+    self.voice.isRunning || (voice.audioProcessingQueueSnapshot?.isVisible ?? false)
   }
   public var isLocalHistoryMaintenanceAvailable: Bool {
     localHistoryMaintenance != nil
@@ -213,10 +194,6 @@ public final class AppModel {
   let localSpeechSettingsSource: LocalSpeechSettingsSource
   let settingsWriteDebounceDuration: Duration
   let historyRetentionMaintenanceInterval: Duration?
-  let liveSubtitleMeterRefreshInterval: Duration = .milliseconds(40)
-  var waitForLiveSubtitleMeterRefresh: @Sendable (Duration) async throws -> Void = { duration in
-    try await Task.sleep(for: duration)
-  }
   let synchronizeResidentSpeechModelsAction:
     @Sendable (_ added: Set<String>, _ removed: Set<String>) async -> Void
   let prepareEnabledSpeechModelAction: @Sendable (_ modelID: String) async -> Void
@@ -255,9 +232,6 @@ public final class AppModel {
   var ignoreNextExternalClipboardChangeAction: () -> Void = {}
   let workflowLibraryChangedAction: @MainActor () -> Void
   var updateRecordPanelHotkeyAction: (HotkeyBindingDescriptor) -> Void = { _ in }
-  var updateLiveSubtitlePanelAction: @MainActor (LiveSubtitleSnapshot?, AppLanguage) -> Void = {
-    _, _ in
-  }
 
   public func updateWakeWordRuntimeState(_ state: WakeWordRuntimePresentationState) {
     self.voice.wakeWordRuntimeState = state
@@ -283,15 +257,9 @@ public final class AppModel {
   /// Keys changed by the user after the initial snapshot read started but
   /// before it was applied. The older snapshot must not overwrite them.
   var persistenceWrites: PersistenceWriteCoordinator { settings.writes }
-  var pendingPrivacySettingsWriteTask: Task<Void, Never>?
-  var privacySettingsWriteGeneration = 0
-  var pendingLiveSubtitleHideTask: Task<Void, Never>?
-  @ObservationIgnored var pendingLiveSubtitleMeterRefreshTask: Task<Void, Never>?
-  @ObservationIgnored var liveSubtitleMeterRefreshGeneration = 0
   var clipboardUpdateDebounceTask: Task<Void, Never>?
   private(set) var hasBegunApplicationShutdown = false
 
-  let liveSubtitlePreparingHideDelay: Duration
 
   public init(
     workflows initialWorkflows: [WorkflowDefinition],
@@ -442,6 +410,7 @@ public final class AppModel {
     self.history = RunHistoryModel(browser: runHistoryBrowser, workflows: self.workflowLibrary, maintenanceSleep: historyMaintenanceSleep)
     self.voice = VoiceRunModel(settings: settings, resources: voiceResourceServices,
       supportedTTSModelIDs: Set(ttsModelOptions.map(\.id)),
+      liveSubtitlePreparingHideDelay: liveSubtitlePreparingHideDelay,
       resourceAvailabilityChanged: workflowLibraryChangedAction,
       prepareLocalSpeech: prepareLocalSpeechAction,
       releaseLocalSpeech: releaseLocalSpeechRuntimeAction,
@@ -467,10 +436,9 @@ public final class AppModel {
     self.vocabularyRuleSource = vocabularyRuleSource
     self.privacySettingsSource = privacySettingsSource
     self.localSpeechSettingsSource = localSpeechSettingsSource
-    self.isLoadingPrivacySettings = !privacySettingsSource.hasAvailableSettings
+    self.settings.isLoadingPrivacySettings = !privacySettingsSource.hasAvailableSettings
     self.settingsWriteDebounceDuration = settingsWriteDebounceDuration
     self.historyRetentionMaintenanceInterval = historyRetentionMaintenanceInterval
-    self.liveSubtitlePreparingHideDelay = liveSubtitlePreparingHideDelay
     self.localSpeechAvailability = effectiveLocalSpeechAvailability
     self.localSpeechTrustMaterialAvailable = effectiveLocalSpeechAvailability.isAvailable
     self.trustedLocalSpeechModels = exposesTrustedCatalog ? trustedLocalSpeechModels : []
@@ -672,39 +640,19 @@ extension AppModel {
   }
 
   func applyPrivacyPolicySettings(_ newValue: PrivacyPolicySettings) {
-    let oldValue = privacyPolicySettings
-    privacyPolicySettings = newValue
-    guard oldValue != privacyPolicySettings else { return }
-    if !isLoadingPrivacySettings { contextMemory?.invalidateAuthorization() }
+    let oldValue = self.settings.privacyPolicySettings
+    self.settings.privacyPolicySettings = newValue
+    guard oldValue != self.settings.privacyPolicySettings else { return }
+    if !self.settings.isLoadingPrivacySettings { contextMemory?.invalidateAuthorization() }
     workflowLibrary.cancelWorkflowExplanation()
-    history.previewMode = privacyPolicySettings.historyPreviewMode
-    if oldValue.historyPreviewMode != privacyPolicySettings.historyPreviewMode {
+    history.previewMode = self.settings.privacyPolicySettings.historyPreviewMode
+    if oldValue.historyPreviewMode != self.settings.privacyPolicySettings.historyPreviewMode {
       history.resetRunHistoryBrowsingForPrivacyChange()
     }
-    if !isLoadingPrivacySettings, privacySettingsLoadError == nil {
-      privacySettingsSource.update(privacyPolicySettings)
+    if !self.settings.isLoadingPrivacySettings, self.settings.privacySettingsLoadError == nil {
+      privacySettingsSource.update(self.settings.privacyPolicySettings)
     }
     persistPrivacyPolicySettings()
-  }
-
-  func applyRunHistoryRetentionPeriod(_ newValue: HistoryRetentionPeriod) {
-    let oldValue = runHistoryRetentionPeriod
-    runHistoryRetentionPeriod = newValue
-    history.runHistoryRetentionPeriod = runHistoryRetentionPeriod
-    guard oldValue != runHistoryRetentionPeriod else { return }
-    history.resetRunHistoryBrowsing()
-  }
-
-  func applyCurrentCaptureLiveSubtitleSnapshot(_ newValue: LiveSubtitleSnapshot?) {
-    let oldValue = currentCaptureLiveSubtitleSnapshot
-    currentCaptureLiveSubtitleSnapshot = newValue
-    guard
-      hasLiveSubtitleSemanticChange(
-        from: oldValue,
-        to: currentCaptureLiveSubtitleSnapshot
-      )
-    else { return }
-    cancelPendingLiveSubtitleMeterRefresh()
   }
 
   func applyRecordHistoryVisibility(_ newValue: RecordHistoryVisibility) {
@@ -723,6 +671,6 @@ extension AppModel {
     settings.beginShutdown()
     voice.stopResourcePreparationForApplicationShutdown()
     workflowLibrary.cancelWorkflowExplanation()
-    cancelPendingLiveSubtitleMeterRefresh()
+    voice.stopPresentationForApplicationShutdown()
   }
 }

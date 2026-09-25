@@ -72,7 +72,7 @@ extension AppModel {
     self.voice.workflowAudioActionTasks.removeAll()
     self.voice.isRunning = false
     self.voice.workflowAudioRunState = .idle
-    workflowAudioCaptureRunID = nil
+    voice.workflowAudioCaptureRunID = nil
   }
 
   /// Waits for the interactive workflow accepted before this call to finish.
@@ -538,7 +538,7 @@ extension AppModel {
       if self.settings.openAIConfigurationVerificationState == .failed {
         return .openAIVerificationFailed(self.settings.openAIVerificationFailure)
       }
-      guard !isLoadingPrivacySettings, privacySettingsLoadError == nil else {
+      guard !self.settings.isLoadingPrivacySettings, self.settings.privacySettingsLoadError == nil else {
         return .privacySettingsUnavailable
       }
     }
@@ -833,14 +833,14 @@ extension AppModel {
           guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
           self.voice.isRunning = false
           self.voice.workflowAudioRunState = .idle
-          self.workflowAudioCaptureRunID = nil
+          self.voice.workflowAudioCaptureRunID = nil
         }
       } catch {
         await MainActor.run {
           guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
           self.voice.isRunning = false
           self.voice.workflowAudioRunState = .idle
-          self.workflowAudioCaptureRunID = nil
+          self.voice.workflowAudioCaptureRunID = nil
           let failure = WorkflowOperationFailureStage.audioCaptureStart.presentation
           self.lastFailure = failure.string(for: self.settings.language)
           self.append(
@@ -870,7 +870,7 @@ extension AppModel {
         await MainActor.run {
           self.voice.isRunning = false
           self.voice.workflowAudioRunState = .idle
-          self.workflowAudioCaptureRunID = nil
+          self.voice.workflowAudioCaptureRunID = nil
           let failure = WorkflowOperationFailureStage.audioTranscription.presentation
           self.lastFailure = failure.string(for: self.settings.language)
           self.append(

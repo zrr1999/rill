@@ -7,6 +7,14 @@ import Testing
 
 @MainActor
 struct VoiceRunModelTests {
+  @Test func preparationIsOfferedOnlyForMissingOrFailedResources() {
+    #expect(VoiceAssistantResourceState.notInstalled.canPrepare)
+    #expect(VoiceAssistantResourceState.failed("unavailable").canPrepare)
+    #expect(!VoiceAssistantResourceState.ready.canPrepare)
+    #expect(!VoiceAssistantResourceState.preparing(progress: nil).canPrepare)
+    #expect(!VoiceAssistantResourceState.unavailable(.distributionLicenseUnverified).canPrepare)
+  }
+
   @Test func shutdownBeforeScheduledSpeechPreparationDoesNotStartProvider() async {
     let probe = SpeechPreparationProbe()
     let app = makeHarness(prepareLocalSpeechAction: { settings, _ in

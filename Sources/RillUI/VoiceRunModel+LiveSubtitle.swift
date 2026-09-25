@@ -1,11 +1,19 @@
 import Foundation
 import RillCore
-import RillWorkflows
-import RillRecords
-import RillKnowledge
-import RillSpeech
 
-extension AppModel {
+extension VoiceRunModel {
+  func applyCurrentCaptureLiveSubtitleSnapshot(_ newValue: LiveSubtitleSnapshot?) {
+    let oldValue = currentCaptureLiveSubtitleSnapshot
+    currentCaptureLiveSubtitleSnapshot = newValue
+    guard
+      hasLiveSubtitleSemanticChange(
+        from: oldValue,
+        to: currentCaptureLiveSubtitleSnapshot
+      )
+    else { return }
+    cancelPendingLiveSubtitleMeterRefresh()
+  }
+
   func hasLiveSubtitleSemanticChange(
     from current: LiveSubtitleSnapshot?,
     to snapshot: LiveSubtitleSnapshot?
@@ -53,7 +61,7 @@ extension AppModel {
     _ snapshot: LiveSubtitleSnapshot,
     after delay: Duration
   ) {
-    guard !hasBegunApplicationShutdown else { return }
+    guard !settings.hasBegunApplicationShutdown else { return }
     if pendingLiveSubtitleMeterSnapshot?.runID == snapshot.runID,
       pendingLiveSubtitleMeterRefreshTask != nil
     {
@@ -83,7 +91,7 @@ extension AppModel {
     guard generation == liveSubtitleMeterRefreshGeneration else { return }
     pendingLiveSubtitleMeterRefreshTask = nil
     guard
-      !hasBegunApplicationShutdown,
+      !settings.hasBegunApplicationShutdown,
       let pendingSnapshot = pendingLiveSubtitleMeterSnapshot,
       pendingSnapshot.runID == runID,
       let currentSnapshot = currentCaptureLiveSubtitleSnapshot,
@@ -117,12 +125,13 @@ extension AppModel {
   }
 
   func applyLiveSubtitleUpdate(_ snapshot: LiveSubtitleSnapshot) {
+    guard !settings.hasBegunApplicationShutdown else { return }
     let currentLiveRunID = currentCaptureLiveSubtitleSnapshot?.runID
     if snapshot.isVisible || currentLiveRunID == nil || currentLiveRunID == snapshot.runID {
-      pendingLiveSubtitleHideTask?.cancel()
+      cancelLiveSubtitleHide()
     }
     if snapshot.isVisible {
-      if workflowAudioCaptureRunID == nil, self.voice.workflowAudioRunState != .idle {
+      if workflowAudioCaptureRunID == nil, workflowAudioRunState != .idle {
         workflowAudioCaptureRunID = snapshot.runID
       }
       if shouldUpdateLiveSubtitleSnapshot(snapshot) {
@@ -135,8 +144,8 @@ extension AppModel {
         }
       }
     } else if currentCaptureLiveSubtitleSnapshot?.runID == snapshot.runID {
-      if case .recording(let workflowID) = self.voice.workflowAudioRunState {
-        self.voice.workflowAudioRunState = .transcribing(workflowID: workflowID)
+      if case .recording(let workflowID) = workflowAudioRunState {
+        workflowAudioRunState = .transcribing(workflowID: workflowID)
       }
       applyCurrentCaptureLiveSubtitleSnapshot(nil)
       lastLiveSubtitleMeterRefreshAt = nil
@@ -145,6 +154,10 @@ extension AppModel {
   }
 
   func refreshLiveSubtitlePresentation() {
+    guard !settings.hasBegunApplicationShutdown else {
+      setLiveSubtitlePresentation(nil)
+      return
+    }
     if var captureSnapshot = currentCaptureLiveSubtitleSnapshot, captureSnapshot.isVisible {
       captureSnapshot.queuedRunCount = queuedBackgroundRunCount(from: audioProcessingQueueSnapshot)
       setLiveSubtitlePresentation(captureSnapshot)
@@ -162,11 +175,44 @@ extension AppModel {
   }
 
   func syncLiveSubtitlePanel() {
-    updateLiveSubtitlePanelAction(liveSubtitleSnapshot, self.settings.language)
+    updateLiveSubtitlePanelAction?(liveSubtitleSnapshot, self.settings.language)
   }
 
   func queuedBackgroundRunCount(from snapshot: AudioProcessingQueueSnapshot?) -> Int {
     snapshot?.pendingCount ?? 0
   }
 
+}
+
+extension VoiceRunModel {
+  func scheduleLiveSubtitleHide(after delay: Duration = .seconds(1)) {
+    guard !settings.hasBegunApplicationShutdown,
+      let runID = currentCaptureLiveSubtitleSnapshot?.runID
+    else { return }
+    cancelLiveSubtitleHide()
+    let wait = waitForLiveSubtitleHide
+    pendingLiveSubtitleHideTask = Task { @MainActor [weak self, wait] in
+      do { try await wait(delay) } catch { return }
+      guard let self, !Task.isCancelled, !settings.hasBegunApplicationShutdown,
+        currentCaptureLiveSubtitleSnapshot?.runID == runID
+      else { return }
+      pendingLiveSubtitleHideTask = nil
+      applyCurrentCaptureLiveSubtitleSnapshot(nil)
+      lastLiveSubtitleMeterRefreshAt = nil
+      refreshLiveSubtitlePresentation()
+    }
+  }
+
+  func cancelLiveSubtitleHide() {
+    pendingLiveSubtitleHideTask?.cancel()
+    pendingLiveSubtitleHideTask = nil
+  }
+
+  func stopPresentationForApplicationShutdown() {
+    cancelPendingLiveSubtitleMeterRefresh()
+    cancelLiveSubtitleHide()
+    applyCurrentCaptureLiveSubtitleSnapshot(nil)
+    lastLiveSubtitleMeterRefreshAt = nil
+    setLiveSubtitlePresentation(nil)
+  }
 }

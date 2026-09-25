@@ -22,7 +22,7 @@ extension SettingsView {
       Picker(
         L10n.historySettingsText(.runRetention, language: model.settings.language),
         selection: Binding(
-          get: { model.runHistoryRetentionPeriod },
+          get: { model.history.runHistoryRetentionPeriod },
           set: { model.setRunHistoryRetentionPeriod($0) }
         )
       ) {

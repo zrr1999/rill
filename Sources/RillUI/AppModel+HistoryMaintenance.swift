@@ -32,7 +32,7 @@ extension AppModel {
     public func setRunHistoryRetentionPeriod(_ period: HistoryRetentionPeriod) {
         updateHistoryRetentionPeriod(
             period,
-            currentPeriod: runHistoryRetentionPeriod,
+            currentPeriod: history.runHistoryRetentionPeriod,
             key: .runHistoryRetentionPeriod,
             isRecordSetting: false
         )
@@ -132,7 +132,7 @@ extension AppModel {
         guard let localHistoryMaintenance else {
             self.history.shouldStartPeriodicHistoryRetentionMaintenance = false
             guard recordRetentionPeriod != .forever ||
-                runHistoryRetentionPeriod != .forever else {
+                history.runHistoryRetentionPeriod != .forever else {
                 return
             }
             self.history.localHistoryMaintenanceBlockedReason = L10n.runText(
@@ -147,7 +147,7 @@ extension AppModel {
         }
         guard beginLocalHistoryMaintenance() else { return }
         let recordRetention = recordRetentionPeriod
-        let runRetention = runHistoryRetentionPeriod
+        let runRetention = history.runHistoryRetentionPeriod
 
         let taskID = UUID()
         let task = Task { @MainActor [weak self, localHistoryMaintenance] in
@@ -264,7 +264,7 @@ extension AppModel {
                     self.recordRetentionPeriod = period
                     self.history.clipboardHistoryRetentionSettingIsInvalid = false
                 } else {
-                    self.applyRunHistoryRetentionPeriod(period)
+                    self.history.applyRunHistoryRetentionPeriod(period)
                     self.history.runHistoryRetentionSettingIsInvalid = false
                 }
                 self.refreshHistoryRetentionSettingsErrorPresentation()
@@ -445,7 +445,7 @@ extension AppModel {
             self.history.runReceiptLoadGeneration += 1
             if clearRunReceiptCacheBeforeRefresh {
                 self.history.workflowRunReceiptsByRunID.removeAll()
-            } else if let cutoff = runHistoryRetentionPeriod.cutoffDate(relativeTo: Date()) {
+            } else if let cutoff = history.runHistoryRetentionPeriod.cutoffDate(relativeTo: Date()) {
                 self.history.workflowRunReceiptsByRunID = self.history.workflowRunReceiptsByRunID.filter {
                     $0.value.timestamp >= cutoff
                 }

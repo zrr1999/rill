@@ -604,7 +604,7 @@ public struct HistoryTimelineView: View {
                             }
                         }
                         if expandedEntryID != entry.id,
-                           case .visible(let preview, _) = HistoryPreviewPresentation(text: entry.record?.finalText, mode: model.privacyPolicySettings.historyPreviewMode, language: model.settings.language) {
+                           case .visible(let preview, _) = HistoryPreviewPresentation(text: entry.record?.finalText, mode: model.settings.privacyPolicySettings.historyPreviewMode, language: model.settings.language) {
                             Text(preview).lineLimit(2).font(.body).foregroundStyle(.secondary)
                         }
                     }
@@ -649,7 +649,7 @@ public struct HistoryTimelineView: View {
                     .foregroundStyle(recovery.outputState == nil ? Color.secondary : Color.orange)
                     .accessibilityIdentifier("history.recovery-status")
             }
-            if model.privacyPolicySettings.historyPreviewMode == .full, let record = entry.record {
+            if model.settings.privacyPolicySettings.historyPreviewMode == .full, let record = entry.record {
                 HStack {
                     if let text = record.finalText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         RillCopyButton(title: L10n.recoveryCopyTitle(original: false, language: model.settings.language), language: model.settings.language) {
@@ -686,7 +686,7 @@ public struct HistoryTimelineView: View {
             if let record = entry.record {
                 if VocabularyCorrectionDraft.isEligible(
                     record: record,
-                    privacyPreviewMode: model.privacyPolicySettings.historyPreviewMode
+                    privacyPreviewMode: model.settings.privacyPolicySettings.historyPreviewMode
                 ) {
                     Button {
                         correctionRecord = record
@@ -773,7 +773,7 @@ public struct HistoryTimelineView: View {
                                 DisclosureGroup(L10n.historyRunDetail(.textResults, language: model.settings.language)) {
                                     HistoryTextStepsView(
                                         steps: textSteps,
-                                        previewMode: model.privacyPolicySettings.historyPreviewMode,
+                                        previewMode: model.settings.privacyPolicySettings.historyPreviewMode,
                                         language: model.settings.language
                                     )
                                 }
@@ -1066,7 +1066,7 @@ public struct HistoryTimelineView: View {
         hasProtectedPreview: Bool
     ) -> some View {
         if hasProtectedPreview,
-           model.privacyPolicySettings.historyPreviewMode == .disabled {
+           model.settings.privacyPolicySettings.historyPreviewMode == .disabled {
             Label(
                 L10n.privacyText(
                     PrivacySettingsTextKey.historyPreviewHidden,
@@ -1079,7 +1079,7 @@ public struct HistoryTimelineView: View {
         } else {
             HistoryPreviewContent(
                 text: text,
-                mode: model.privacyPolicySettings.historyPreviewMode,
+                mode: model.settings.privacyPolicySettings.historyPreviewMode,
                 language: model.settings.language
             ) { text, lineLimit in
                 RillTextPreview(text: text, permitsExpansion: lineLimit == nil, language: model.settings.language)

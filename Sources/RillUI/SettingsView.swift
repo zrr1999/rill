@@ -63,33 +63,6 @@ enum LLMModelSelection: String, CaseIterable, Identifiable {
   }
 }
 
-struct VoiceAssistantSettingsActionVisibility: Equatable {
-  let showsWakeWordPreparation: Bool
-  let showsTTSPreparation: Bool
-  let showsStopPlayback: Bool
-
-  init(
-    wakeWordState: VoiceAssistantResourceState,
-    ttsState: VoiceAssistantResourceState,
-    isSpeechPlaybackActive: Bool
-  ) {
-    showsWakeWordPreparation = Self.showsPreparation(for: wakeWordState)
-    showsTTSPreparation = Self.showsPreparation(for: ttsState)
-    showsStopPlayback = isSpeechPlaybackActive
-  }
-
-  private static func showsPreparation(
-    for state: VoiceAssistantResourceState
-  ) -> Bool {
-    switch state {
-    case .notInstalled, .failed:
-      true
-    case .preparing, .ready, .unavailable:
-      false
-    }
-  }
-}
-
 enum SettingsPermissionAction: Equatable {
   case none
   case request
@@ -504,7 +477,7 @@ extension SettingsView {
       return model.settings.language.displayName
     case .storage:
       return L10n.historySettingsText(.runRetention, language: model.settings.language) + " · "
-        + L10n.historyRetentionPeriod(model.runHistoryRetentionPeriod, language: model.settings.language)
+        + L10n.historyRetentionPeriod(model.history.runHistoryRetentionPeriod, language: model.settings.language)
     default:
       return L10n.settingsSectionSummary(section, language: model.settings.language)
     }
@@ -622,7 +595,7 @@ extension SettingsView {
     case .benchmarkRecordingArchive:
       model.benchmarkArchive.clear()
     case .sensitiveAppRule(let ruleID):
-      if let rule = model.privacyPolicySettings.sensitiveAppRules.first(where: {
+      if let rule = model.settings.privacyPolicySettings.sensitiveAppRules.first(where: {
         $0.id == ruleID
       }) {
         deleteSensitiveAppRule(rule)

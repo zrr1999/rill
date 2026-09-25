@@ -21,7 +21,7 @@ extension SettingsView {
         readyText: L10n.settingsText(.settingsWakeWordASRReady, language: model.settings.language)
       )
 
-      if voiceAssistantActionVisibility.showsWakeWordPreparation {
+      if model.voice.wakeWordResourceState.canPrepare {
         Button(
           resourcePreparationButtonTitle(
             state: model.voice.wakeWordResourceState,
@@ -157,14 +157,6 @@ extension SettingsView {
       .font(.caption)
       .foregroundStyle(.orange)
     }
-  }
-
-  var voiceAssistantActionVisibility: VoiceAssistantSettingsActionVisibility {
-    VoiceAssistantSettingsActionVisibility(
-      wakeWordState: model.voice.wakeWordResourceState,
-      ttsState: model.voice.ttsResourceState,
-      isSpeechPlaybackActive: model.voice.isSpeechPlaybackActive
-    )
   }
 
   var voiceAssistantSetupOverview: some View {

@@ -1,10 +1,6 @@
 import Foundation
 import Observation
 import RillCore
-import RillKnowledge
-import RillRecords
-import RillSpeech
-import RillWorkflows
 
 @MainActor @Observable
 public final class VoiceRunModel {
@@ -12,6 +8,28 @@ public final class VoiceRunModel {
   let resources: VoiceResourceServices
   let resourceAvailabilityChanged: @MainActor () -> Void
   let wakeWordPreparationTaskOwner = LocalSpeechPreparationTaskOwner()
+
+  // Meter frames update the floating panel without invalidating the application view graph.
+  @ObservationIgnored public internal(set) var liveSubtitleSnapshot: LiveSubtitleSnapshot?
+  @ObservationIgnored var currentCaptureLiveSubtitleSnapshot: LiveSubtitleSnapshot?
+
+  var workflowAudioCaptureRunID: UUID?
+  var audioProcessingQueueSnapshot: AudioProcessingQueueSnapshot?
+  @ObservationIgnored var lastLiveSubtitleMeterRefreshAt: ContinuousClock.Instant?
+  @ObservationIgnored var pendingLiveSubtitleMeterSnapshot: LiveSubtitleSnapshot?
+
+  let liveSubtitleMeterRefreshInterval: Duration = .milliseconds(40)
+  var waitForLiveSubtitleMeterRefresh: @Sendable (Duration) async throws -> Void = { duration in
+    try await Task.sleep(for: duration)
+  }
+  var waitForLiveSubtitleHide: @Sendable (Duration) async throws -> Void = {
+    try await Task.sleep(for: $0)
+  }
+  let liveSubtitlePreparingHideDelay: Duration
+  var pendingLiveSubtitleHideTask: Task<Void, Never>?
+  @ObservationIgnored var pendingLiveSubtitleMeterRefreshTask: Task<Void, Never>?
+  @ObservationIgnored var liveSubtitleMeterRefreshGeneration = 0
+  var updateLiveSubtitlePanelAction: (@MainActor (LiveSubtitleSnapshot?, AppLanguage) -> Void)?
 
   let prepareLocalSpeech:
     @Sendable (LocalSpeechSettings, @escaping @Sendable (Progress) -> Void) async throws -> String
@@ -21,7 +39,8 @@ public final class VoiceRunModel {
 
   init(
     settings: SettingsPersistenceModel, resources: VoiceResourceServices,
-    supportedTTSModelIDs: Set<String>, resourceAvailabilityChanged: @escaping @MainActor () -> Void,
+    supportedTTSModelIDs: Set<String>, liveSubtitlePreparingHideDelay: Duration,
+    resourceAvailabilityChanged: @escaping @MainActor () -> Void,
     prepareLocalSpeech:
       @escaping @Sendable (LocalSpeechSettings, @escaping @Sendable (Progress) -> Void) async throws
       -> String,
@@ -32,6 +51,7 @@ public final class VoiceRunModel {
     self.settings = settings
     self.resources = resources
     self.resourceAvailabilityChanged = resourceAvailabilityChanged
+    self.liveSubtitlePreparingHideDelay = liveSubtitlePreparingHideDelay
     self.prepareLocalSpeech = prepareLocalSpeech
     self.releaseLocalSpeech = releaseLocalSpeech
     self.stopLocalSpeech = stopLocalSpeech
@@ -162,6 +182,13 @@ public enum VoiceAssistantResourceState: Sendable, Equatable {
   case ready
   case failed(String)
   case unavailable(VoiceAssistantResourceUnavailableReason)
+
+  var canPrepare: Bool {
+    switch self {
+    case .notInstalled, .failed: true
+    case .preparing, .ready, .unavailable: false
+    }
+  }
 
   public var isPreparing: Bool {
     if case .preparing = self { return true }
