@@ -515,6 +515,7 @@ private struct ProviderServices {
   let textRewriteTransformer: OpenAITextRewriteTransformer
   let jevSessionSettings: JevSessionSettingsSource
   let jevPolishingGate: JevTextPolishingGate
+  let hotwordSelection: HotwordSelection
   let diagnosticsAudioCaptureService: AVAudioCaptureService
   let managedTemporaryAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner
   let markdownFileAppendCoordinator: MarkdownFileAppendCoordinator
@@ -1095,6 +1096,10 @@ private enum AppContainerFactory {
         diagnosticReporter: { event in await core.diagnostics.record(event) }),
       jevSessionSettings: jevSessionSettings,
       jevPolishingGate: jevPolishingGate,
+      hotwordSelection: HotwordSelection(
+        provider: JevHotwordRankingProvider(), settings: jevSessionSettings, privacy: core.privacySettingsSource,
+        currentFocus: { platform.focusTracker.capturePrivacyIdentitySample().focus },
+        report: { event in await core.diagnostics.record(event) }),
       diagnosticsAudioCaptureService: AVAudioCaptureService(
         cleanupOwner: managedTemporaryAudioCleanupOwner
       ),
@@ -1175,6 +1180,32 @@ private enum AppContainerFactory {
     )
     privacyRunGate.prepareCorrectionContext = { runID, workflow, context, options, lifetime in
       try await contextMemoryController?.prepare(runID: runID, workflow: workflow, context: context, recognitionOptions: options, audioLifetime: lifetime)
+    }
+    let liveRecognition = LiveRecognitionContextResolver(
+      compiler: WorkflowPlanCompiler(recognizerRegistry: registries.recognizerRegistry,
+        transformerRegistry: registries.transformerRegistry, actionRegistry: registries.actionRegistry),
+      collections: { try core.vocabularyRuleSource.currentCollections() },
+      selection: providers.hotwordSelection,
+      sanitize: LocalSpeechRecognitionPolicy.sanitizedQwenHotwords,
+      report: { event in await core.diagnostics.record(event) })
+    privacyRunGate.prepareLiveRecognition = { runID, workflow, context, options, lifetime in
+      var frozen = options
+      if ["local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming", "auto"]
+        .contains(workflow.plan.setup.speechRoute?.recognizerID ?? "") {
+        let settings = try providers.localSpeechSettingsSource.currentSettings()
+        let model = LocalSpeechModelCatalog.effectiveModelIdentifier(settings: settings,
+          modelOverride: SpeechRequestConfiguration(workflow: workflow).modelOverride)
+        if MLXAudioModelCatalog.distributableModelIdentifiers.contains(model) {
+          frozen.modelIdentifier = model
+          frozen.language = LocalSpeechRecognitionPolicy.resolvedLanguage(
+            requestLanguage: options.language,
+            workflowLanguage: workflow.plan.setup.speechRoute?.language
+              ?? workflow.metadata[WorkflowMetadataKey.languageOverride],
+            configurationLanguage: settings.language)
+        }
+      }
+      return try await liveRecognition.prepare(runID: runID, workflow: workflow,
+        context: context, options: frozen, lifetime: lifetime)
     }
     let preparedPrivacyRunGate = privacyRunGate
     let recognitionOptionsProvider: RecognitionOptionsProvider = { workflow, _ in
@@ -1839,6 +1870,7 @@ private enum AppContainerFactory {
             runtime.assistantAudioProcessingQueue.shutdown()
           _ = await (interactiveQueueShutdown, assistantQueueShutdown)
           await providers.jevPolishingGate.shutdown()
+          await providers.hotwordSelection.shutdown()
           await providers.textRewriteTransformer.shutdown()
         },
         shutdownSpeechPlayback: {
@@ -1939,7 +1971,8 @@ private enum AppModelFactory {
           settings: providers.jevSessionSettings,
           privacy: core.privacySettingsSource, currentFocus: {
             await MainActor.run { platform.focusTracker.capturePrivacyIdentitySample().focus }
-          })),
+          }),
+        hotwordSelection: providers.hotwordSelection),
       candidateResolver: core.candidateResolver,
       historyRepository: core.persistence.historyRepository,
       runHistoryBrowser: core.persistence.runHistoryBrowser,

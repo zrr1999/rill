@@ -13,13 +13,17 @@ public struct RecognitionHints: Sendable, Equatable {
 public struct SpeechRecognitionRequestOptions: Sendable, Equatable {
   public var language: String?
   public var hints: RecognitionHints
+  /// A live run freezes its local model and language at admission.
+  public var modelIdentifier: String?
 
   public init(
     language: String? = nil,
-    hints: RecognitionHints = .empty
+    hints: RecognitionHints = .empty,
+    modelIdentifier: String? = nil
   ) {
     self.language = language
     self.hints = hints
+    self.modelIdentifier = modelIdentifier
   }
 
   public static let empty = SpeechRecognitionRequestOptions()

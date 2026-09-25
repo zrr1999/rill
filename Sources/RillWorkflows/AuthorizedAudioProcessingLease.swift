@@ -20,6 +20,7 @@ public actor AuthorizedAudioProcessingLease {
         let liveAuthorizationState: LiveAudioSessionAuthorizationState?
         let audioLifetime: AudioCaptureLifetime?
         let contextPreparation: RunContextPreparation?
+        let preparedRecognition: PreparedRecognitionContext?
 
         init(
             runID: UUID,
@@ -32,7 +33,8 @@ public actor AuthorizedAudioProcessingLease {
             processingDestinations: [PrivacyProcessingDestination],
             liveAuthorizationState: LiveAudioSessionAuthorizationState? = nil,
             audioLifetime: AudioCaptureLifetime? = nil,
-            contextPreparation: RunContextPreparation? = nil
+            contextPreparation: RunContextPreparation? = nil,
+            preparedRecognition: PreparedRecognitionContext? = nil
         ) {
             self.runID = runID
             self.workflow = workflow
@@ -45,6 +47,7 @@ public actor AuthorizedAudioProcessingLease {
             self.liveAuthorizationState = liveAuthorizationState
             self.audioLifetime = audioLifetime
             self.contextPreparation = contextPreparation
+            self.preparedRecognition = preparedRecognition
         }
     }
 
@@ -57,6 +60,7 @@ public actor AuthorizedAudioProcessingLease {
     private nonisolated let liveAuthorizationState: LiveAudioSessionAuthorizationState?
     private nonisolated let audioLifetime: AudioCaptureLifetime?
     nonisolated let contextPreparation: RunContextPreparation?
+    nonisolated let preparedRecognition: PreparedRecognitionContext?
     private let payload: Payload
     private let claimValidator: @Sendable (
         Payload,
@@ -90,6 +94,7 @@ public actor AuthorizedAudioProcessingLease {
         liveAuthorizationState = payload.liveAuthorizationState
         audioLifetime = payload.audioLifetime
         contextPreparation = payload.contextPreparation
+        preparedRecognition = payload.preparedRecognition
     }
 
     /// Atomically transfers a sealed live capture from its controller to the
@@ -127,6 +132,7 @@ public actor AuthorizedAudioProcessingLease {
     /// Used when queue ownership is abandoned during application shutdown.
     public nonisolated func cancel() {
         contextPreparation?.cancel()
+        preparedRecognition?.hotwordPreparation?.cancel()
         guard let liveAuthorizationState else {
             _ = audioLifetime?.cancel()
             return

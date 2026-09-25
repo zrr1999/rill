@@ -9,6 +9,9 @@ extension SettingsView {
           focusedItem: $focusedSettingsItem, accessibilityFocusedItem: $accessibilityFocusedSettingsItem)
           .id(SettingsItem.jevCredential)
         jevPolishingSettingsSection(settings)
+        if settings.supportsHotwordSelection {
+          JevHotwordSettingsView(settings: settings, language: model.language)
+        }
         Divider()
       }
       llmProviderSettingsSection

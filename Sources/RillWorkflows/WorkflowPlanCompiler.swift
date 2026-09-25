@@ -35,7 +35,8 @@ public struct ResolvedWorkflowPlan: Sendable, Equatable {
     public let steps: [CompiledWorkflowStep]
     public let declaration: WorkflowPlan
     public let recognizerID: String?
-    public let recognitionHints: RecognitionHints
+    public internal(set) var recognitionHints: RecognitionHints
+    public let recognitionCandidates: [HotwordCandidate]
     public let replacementRules: [VocabularyRule]
     public let activeVocabularyCollectionCount: Int
     public let validHotwordCount: Int
@@ -54,13 +55,15 @@ public struct ResolvedWorkflowPlan: Sendable, Equatable {
         validHotwordCount: Int,
         omittedHotwordCount: Int,
         rejectedHotwordCount: Int,
-        recognizerAcceptsHotwords: Bool
+        recognizerAcceptsHotwords: Bool,
+        recognitionCandidates: [HotwordCandidate] = []
     ) {
         self.outputConfigurations = outputConfigurations
         self.steps = steps
         self.declaration = declaration
         self.recognizerID = recognizerID
         self.recognitionHints = recognitionHints
+        self.recognitionCandidates = recognitionCandidates
         self.replacementRules = replacementRules
         self.activeVocabularyCollectionCount = activeVocabularyCollectionCount
         self.validHotwordCount = validHotwordCount
@@ -142,7 +145,8 @@ public struct WorkflowPlanCompiler: Sendable {
             validHotwordCount: hints.validKeytermCount,
             omittedHotwordCount: hints.omittedKeytermCount,
             rejectedHotwordCount: hints.rejectedKeytermCount,
-            recognizerAcceptsHotwords: acceptsHotwords
+            recognizerAcceptsHotwords: acceptsHotwords,
+            recognitionCandidates: acceptsHotwords ? hints.candidates : []
         )
     }
     func validate(

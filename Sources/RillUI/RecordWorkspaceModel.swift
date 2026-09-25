@@ -1,3 +1,4 @@
+import RillWorkflows
 import RillRecords
 import Foundation
 import Observation
@@ -41,10 +42,11 @@ public final class RecordWorkspaceModel {
     private var searchMatches: Set<RecordID> = []
     public private(set) var isSearching = false
 
-    public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, cloudRanking: RecordCloudRanking? = nil) {
+    public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, cloudRanking: RecordCloudRanking? = nil,
+                hotwordSelection: HotwordSelection? = nil) {
         self.store = store
         self.semanticSearch = semanticSearch
-        jevSettings = cloudRanking.map { JevAPISettingsModel(service: $0) }
+        jevSettings = cloudRanking.map { JevAPISettingsModel(service: $0, hotwordSelection: hotwordSelection) }
         cleanup = RecordCleanupModel(store: store)
     }
 

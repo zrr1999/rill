@@ -38,7 +38,7 @@ public actor RoutedLocalSpeechRecognizer: SpeechRecognizer {
 
   public func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
     let settings = try await settingsProvider()
-    let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
+    let modelIdentifier = request.options.modelIdentifier ?? LocalSpeechModelCatalog.effectiveModelIdentifier(
       settings: settings,
       modelOverride: request.configuration.modelOverride
     )
