@@ -799,21 +799,18 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     XCTAssertEqual(cancelled.finishCount, 0)
     XCTAssertEqual(request.audioLifetime?.state, .revoked(.captureCancelled))
 
-    var matchingFailure: String?
-    for _ in 0..<100 where matchingFailure == nil {
-      for event in await eventProbe.snapshot() {
-        if case .runFailed(let runID, _, let message) = event,
-          runID == request.runID
-        {
-          matchingFailure = message
-          break
-        }
-      }
-      if matchingFailure == nil {
-        await Task.yield()
-      }
+    let expected = RillEvent.runDiscarded(runID: request.runID)
+    for _ in 0..<100 {
+      if await eventProbe.snapshot().contains(expected) { break }
+      await Task.yield()
     }
-    XCTAssertEqual(matchingFailure, HistoryFailureSanitizer.noSpeechMessage)
+    let events = await eventProbe.snapshot()
+    XCTAssertTrue(events.contains(expected))
+    XCTAssertFalse(events.contains { event in
+      if case .runFailed(let runID, _, _) = event { return runID == request.runID }
+      if case .runReceiptRepositoryChanged(let change) = event { return change.runID == request.runID }
+      return false
+    })
 
     await controller.cancelRun(runID: restartedRunID)
     await controller.shutdown()

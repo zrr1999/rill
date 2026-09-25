@@ -406,6 +406,21 @@ extension AppModel {
                 )
             }
             scheduleLiveSubtitleHide()
+        case .runDiscarded(let runID):
+            let ownsPresentation = activeRunID == runID
+            let discardedCapture = retireWorkflowAudioCapture(matching: runID)
+            voice.finish(runID)
+            if ownsPresentation || discardedCapture {
+                isRunning = !pendingRuns.isEmpty
+                if activeRunID == runID { activeRunID = nil }
+                lastFailure = nil
+            }
+            if currentCaptureLiveSubtitleSnapshot?.runID == runID {
+                currentCaptureLiveSubtitleSnapshot = nil
+                lastLiveSubtitleMeterRefreshAt = nil
+            }
+            if pendingResolution?.runID == runID { pendingResolution = nil }
+            refreshLiveSubtitlePresentation()
         case .runCancelled(let summary):
             let cancelledCurrentCapture = currentCaptureLiveSubtitleSnapshot?.runID == summary.runID
             let cancelledWorkflowAudioCapture = retireWorkflowAudioCapture(

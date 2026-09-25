@@ -405,7 +405,7 @@ public actor FailedAudioRecoveryController {
             )
             return cleanupPending ? .completedCleanupPending : .completed
 
-        case .cancelled:
+        case .cancelled, .noInput:
             var stateCleanupPending = plaintextCleanupPending
             do {
                 try await store.restoreAfterFailedRetry(id: id, attemptID: attemptID)

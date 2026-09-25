@@ -579,15 +579,13 @@ public actor CapturedAudioProcessingQueue {
         for job: Job
     ) async {
         guard let benchmarkRecordingArchiveController else { return }
-        let archiveOutcome: BenchmarkRecordingOutcome =
-            switch outcome {
-            case .completed:
-                .completed
-            case .cancelled:
-                .cancelled
-            case .failed:
-                .failed
-            }
+        let archiveOutcome: BenchmarkRecordingOutcome
+        switch outcome {
+        case .completed: archiveOutcome = .completed
+        case .cancelled: archiveOutcome = .cancelled
+        case .failed: archiveOutcome = .failed
+        case .noInput: return
+        }
         var metadata = capturedAudio.metadata
         metadata["recognizerID"] = job.workflow.plan.setup.speechRoute?.recognizerID
         do {

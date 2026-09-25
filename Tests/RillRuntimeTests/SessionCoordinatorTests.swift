@@ -741,7 +741,59 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(deliveredValues, ["question | first | second"])
     }
 
-    func testWhitespaceOnlyRecognitionFailsBeforeCompletionTransformOrDelivery() async throws {
+    func testShortAudioSkipsRecognitionAndReceiptButBoundaryDurationIsAccepted() async throws {
+        let eventBus = EventBus()
+        let repository = InMemoryWorkflowRunReceiptRepository()
+        let recorder = WorkflowRunReceiptRecorder(repository: repository, eventBus: eventBus)
+        let recognitionProbe = RecognitionRequestProbe()
+        let actionProbe = ActionProbe()
+        let workflow = WorkflowDefinition(
+            name: "Short input",
+            pipeline: PipelineDeclaration(
+                recognizerID: "options.probe",
+                outputActions: [OutputActionReference(id: "probe.action")],
+                uncertaintyPolicy: .init(mode: .off)
+            ),
+            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
+        )
+        let coordinator = SessionCoordinator(
+            contextProvider: MockContextProvider(),
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [
+                OptionsProbeRecognizer(supportsKeyterms: false, probe: recognitionProbe),
+            ]),
+            transformerRegistry: TextTransformerRegistry(transformers: []),
+            actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: actionProbe)]),
+            candidateResolver: CandidateResolver(eventBus: eventBus),
+            eventBus: eventBus, runReceiptRecorder: recorder
+        )
+        for duration in [0, 0.01, 0.299, 0.3] {
+            let runID = UUID()
+            let audio = try CapturedAudio(
+                durationSeconds: duration,
+                format: .init(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
+                inlineData: Data([0])
+            )
+            let outcome = await coordinator.runReportingOutcome(
+                workflow: workflow, runID: runID, capturedAudio: audio, contextSnapshot: .empty
+            )
+            let receipts = try await repository.receipts(matching: .init(runID: runID))
+            let requests = await recognitionProbe.snapshot()
+            let actions = await actionProbe.snapshot()
+            if duration < 0.3 {
+                XCTAssertEqual(outcome, .noInput)
+                XCTAssertTrue(receipts.isEmpty)
+                XCTAssertTrue(requests.isEmpty)
+                XCTAssertTrue(actions.isEmpty)
+            } else {
+                guard case .completed = outcome else { return XCTFail("300 ms input must be recognized") }
+                XCTAssertEqual(receipts.count, 1)
+                XCTAssertEqual(requests.count, 1)
+                XCTAssertEqual(actions.count, 1)
+            }
+        }
+    }
+
+    func testWhitespaceOnlyVoiceInputIsDiscardedWithoutHistoryTransformOrDelivery() async throws {
         let eventBus = EventBus()
         let repository = InMemoryWorkflowRunReceiptRepository()
         let recorder = WorkflowRunReceiptRecorder(repository: repository, eventBus: eventBus)
@@ -778,7 +830,7 @@ final class SessionCoordinatorTests: XCTestCase {
             var events: [RillEvent] = []
             for await event in stream {
                 events.append(event)
-                if case .runFailed = event { break }
+                if case .runDiscarded = event { break }
             }
             return events
         }
@@ -793,26 +845,19 @@ final class SessionCoordinatorTests: XCTestCase {
         let actions = await actionProbe.snapshot()
         let receipts = try await repository.receipts(matching: .init(runID: runID))
 
-        XCTAssertEqual(
-            result,
-            .failed(
-                WorkflowRunFailureSummary(
-                    runID: runID,
-                    stage: .recognizing,
-                    code: .noSpeech
-                )
-            )
-        )
-        XCTAssertEqual(
-            receipts.first?.termination,
-            .failed(stage: .recognizing, code: .noSpeech)
-        )
+        XCTAssertEqual(result, .noInput)
+        XCTAssertTrue(receipts.isEmpty)
+        let pendingCount = await recorder.pendingRunCount()
+        let state = await coordinator.currentState()
+        XCTAssertEqual(pendingCount, 0)
+        XCTAssertEqual(state, .idle)
         XCTAssertEqual(actions, [])
-        XCTAssertTrue(events.contains { event in
-            if case .runFailed(let eventRunID, _, let message) = event {
-                return eventRunID == runID
-                    && message == SessionCoordinator.SessionError.noSpeech.localizedDescription
-            }
+        XCTAssertTrue(events.contains(.runDiscarded(runID: runID)))
+        XCTAssertFalse(events.contains { event in
+            if case .runFailed = event { return true }
+            if case .runTextStepRecorded = event { return true }
+            if case .runReceiptRepositoryChanged = event { return true }
+            if case .runHistoryUpdated = event { return true }
             return false
         })
         XCTAssertFalse(events.contains { event in
@@ -831,6 +876,21 @@ final class SessionCoordinatorTests: XCTestCase {
             if case .runCompleted = event { return true }
             return false
         })
+
+        // An explicit recovery retry keeps a failure receipt and remains retryable.
+        let retryID = UUID()
+        let retry = await coordinator.runReportingOutcome(
+            workflow: workflow, runID: retryID, contextSnapshot: .empty,
+            receiptTrigger: .failedAudioRecovery
+        )
+        XCTAssertEqual(retry, .failed(.init(runID: retryID, stage: .recognizing, code: .noSpeech)))
+        let retryReceipts = try await repository.receipts(matching: .init(runID: retryID))
+        XCTAssertEqual(retryReceipts.first?.termination, .failed(stage: .recognizing, code: .noSpeech))
+
+        let next = await coordinator.runReportingOutcome(
+            workflow: workflow, contextSnapshot: .empty, preRecognizedText: "Next input"
+        )
+        guard case .completed = next else { return XCTFail("The next input must run normally") }
     }
 
     func testPreRecognizedWakeCommandSkipsRecognizerAndKeepsWorkflowPipeline() async {
