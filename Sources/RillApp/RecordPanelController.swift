@@ -26,7 +26,7 @@ enum RecordPanelModalPolicy {
     }
 
     static func waitForAutoHideDelay(
-        _ delay: Duration = .milliseconds(90)
+        _ delay: Duration
     ) async -> Bool {
         do {
             try await Task.sleep(for: delay)
@@ -727,11 +727,14 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
 
     private func scheduleHideOnFocusLoss() {
         pendingFocusHideTask?.cancel()
+        // A focus loss during presentation still needs a decision when the
+        // suppression ends; dropping it leaves a visible panel that cannot type.
+        let delay = max(.milliseconds(90), ContinuousClock.now.duration(to: autoHideSuppressedUntil))
         pendingFocusHideTask = Task { @MainActor [weak self] in
-            guard await RecordPanelModalPolicy.waitForAutoHideDelay() else {
+            guard await RecordPanelModalPolicy.waitForAutoHideDelay(delay) else {
                 return
             }
-            guard let self else { return }
+            guard let self, !self.hasBegunShutdown, self.panel?.isKeyWindow != true else { return }
             guard RecordPanelModalPolicy.shouldAutoHide(
                 isVisible: self.isVisible,
                 hasAttachedSheet: self.panel?.attachedSheet != nil,
