@@ -92,6 +92,24 @@ final class UIRenderEvidenceTests: XCTestCase {
         await workspace.shutdown()
     }
 
+    func testRenderFocusedSettingsDisclosure() async throws {
+        guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+            throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+        }
+        let output = URL(fileURLWithPath: directory, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let model = makeHarness().model
+        for language in AppLanguage.allCases {
+            model.setInterfaceLanguage(language)
+            for dark in [false, true] {
+                model.showSettings(.storage)
+                try await render(SettingsView(model: model, pane: .data), size: NSSize(width: 760, height: 640),
+                    dark: dark, focusWindow: true,
+                    to: output.appendingPathComponent("settings-focus-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+            }
+        }
+    }
+
     private func seedRecords(_ store: RecordStore) async throws -> [(String, RecordID)] {
         let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 480, pixelsHigh: 280,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
@@ -118,7 +136,9 @@ final class UIRenderEvidenceTests: XCTestCase {
         return ids
     }
 
-    private func render<Content: View>(_ content: Content, size: NSSize, dark: Bool, to url: URL) async throws {
+    private func render<Content: View>(
+        _ content: Content, size: NSSize, dark: Bool, focusWindow: Bool = false, to url: URL
+    ) async throws {
         let originalAppearance = NSApplication.shared.appearance
         let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         NSApplication.shared.appearance = appearance
@@ -129,7 +149,7 @@ final class UIRenderEvidenceTests: XCTestCase {
         window.isReleasedWhenClosed = false
         window.contentView = view
         view.frame = NSRect(origin: .zero, size: size)
-        window.orderFront(nil)
+        if focusWindow { window.makeKeyAndOrderFront(nil) } else { window.orderFront(nil) }
         defer { window.orderOut(nil); window.close() }
         for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
         window.layoutIfNeeded()
