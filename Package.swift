@@ -48,6 +48,7 @@ let package = Package(
     .target(
       name: "RillProviders",
       dependencies: [
+        "RillSpeech",
         "RillSpeechContracts",
         "RillCore",
         .product(name: "OpenAI", package: "OpenAI"),
@@ -70,7 +71,11 @@ let package = Package(
         .product(name: "HuggingFace", package: "swift-huggingface"),
       ]
     ),
-    .target(name: "RillRuntime", dependencies: ["RillCore"]),
+    .target(name: "RillRecords", dependencies: ["RillCore"]),
+    .target(name: "RillKnowledge", dependencies: ["RillCore"]),
+    .target(name: "RillSpeech", dependencies: ["RillCore", "RillPlatform", "RillSpeechContracts"]),
+    .target(name: "RillClipboard", dependencies: ["RillCore", "RillPlatform", "RillRecords"]),
+    .target(name: "RillWorkflows", dependencies: ["RillSpeechContracts", "RillCore", "RillSpeech", "RillRecords", "RillKnowledge"]),
     .target(
       name: "RillPersistence",
       dependencies: ["RillCore"],
@@ -78,15 +83,16 @@ let package = Package(
         .linkedLibrary("sqlite3")
       ]
     ),
-    .target(name: "RillUI", dependencies: [ "RillCore", "RillRuntime"]),
+    .target(name: "RillUI", dependencies: ["RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"]),
     .executableTarget(
       name: "RillApp",
       dependencies: [
+        "RillClipboard",
         "RillSpeechContracts",
         "RillCore",
         "RillPlatform",
         "RillProviders",
-        "RillRuntime",
+        "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech",
         "RillPersistence",
         "RillUI",
       ],
@@ -118,12 +124,13 @@ let package = Package(
         "RillPersistence",
         "RillPlatform",
         "RillProviders",
-        "RillRuntime",
+        "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech",
       ]
     ),
     .testTarget(
       name: "RillProvidersTests",
       dependencies: [
+        "RillSpeech", "RillWorkflows",
         "RillSpeechContracts",
         "RillCore",
         "RillPlatform",
@@ -144,17 +151,18 @@ let package = Package(
     ),
     .testTarget(
       name: "RillUITests",
-      dependencies: ["RillCore", "RillPlatform", "RillRuntime", "RillUI"]
+      dependencies: ["RillCore", "RillPlatform", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillUI"]
     ),
     .testTarget(
       name: "RillAppTests",
       dependencies: [
+        "RillClipboard",
         "RillSpeechContracts",
         "RillApp",
         "RillCore",
         "RillPlatform",
         "RillProviders",
-        "RillRuntime",
+        "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech",
       ]
     ),
   ]

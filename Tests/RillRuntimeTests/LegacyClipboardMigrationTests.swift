@@ -1,8 +1,8 @@
+@testable import RillRecords
 import Foundation
 import XCTest
 
 @testable import RillCore
-@testable import RillRuntime
 
 final class LegacyClipboardMigrationTests: XCTestCase {
     func testTextImageFilesModesMetadataActivityAndRoutesMigrateDeterministically() throws {

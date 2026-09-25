@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillRecords
 
 struct RecordSearchTests {
   @Test func fallbackPaginationKeepsMatchingModeAndRejectsChangedCatalogOrQuery() async throws {

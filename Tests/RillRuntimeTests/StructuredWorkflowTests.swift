@@ -1,8 +1,8 @@
+
+@testable import RillWorkflows
 import Foundation
 import RillCore
 import Testing
-
-@testable import RillRuntime
 
 private actor StructuredOutputProbe {
     var deliveries: [String] = []

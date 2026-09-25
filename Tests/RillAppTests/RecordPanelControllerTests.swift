@@ -1,9 +1,9 @@
+@testable import RillWorkflows
 import AppKit
 import XCTest
 
 @testable import RillApp
 @testable import RillCore
-@testable import RillRuntime
 @testable import RillUI
 
 private struct RecordPanelReduceMotionTestContextProvider: ContextProvider {

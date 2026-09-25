@@ -1,6 +1,6 @@
+import RillRecords
 import AppKit
 import RillCore
-import RillRuntime
 import SwiftUI
 
 enum RecordWorkspacePresentation: Equatable {

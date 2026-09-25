@@ -1,4 +1,5 @@
 @testable import RillSpeechContracts
+@testable import RillSpeech
 import XCTest
 
 @testable import RillCore

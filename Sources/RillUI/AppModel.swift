@@ -1,7 +1,9 @@
 import Foundation
 import Observation
 import RillCore
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
 
 public enum OpenAICredentialAvailability: Sendable, Equatable {
   case loading
@@ -251,6 +253,9 @@ public enum WakeWordSettingsUpdateResult: Sendable, Equatable {
 @MainActor
 @Observable
 public final class AppModel {
+  public let speech: SpeechFeatureModel
+  public let systemClipboard: SystemClipboardFeatureModel
+  public let knowledge: KnowledgeFeatureModel
   static let vocabularyRulesSettingKey = AppSettingsCodec.vocabularyRulesSettingKey
   static let vocabularyLibrarySettingKey = AppSettingsCodec.vocabularyLibrarySettingKey
   static let workflowLibrarySettingKey = AppSettingsCodec.workflowLibrarySettingKey
@@ -324,39 +329,9 @@ public final class AppModel {
   }
   internal var workflowEditorNavigationRequest: WorkflowEditorNavigationRequest?
   public var language: AppLanguage { didSet { handleLanguageChange(from: oldValue) } }
-  public var systemClipboardCaptureEnabled: Bool {
-    didSet { handleClipboardCaptureEnabledChange(from: oldValue) }
-  }
-  public internal(set) var clipboardCapturePreferenceRevision: UInt64 = 0
   public var recordPanelHotkeyBinding: HotkeyBindingDescriptor {
     didSet { handleRecordPanelHotkeyChange(from: oldValue) }
   }
-  public var preferredSpeechEngine: PreferredSpeechEngine {
-    didSet { handlePreferredSpeechEngineChange(from: oldValue) }
-  }
-  public var builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode {
-    didSet { handleBuiltinPushToTalkOutputModeChange(from: oldValue) }
-  }
-  public var longRecordingModeEnabled: Bool {
-    didSet { handleLongRecordingModeChange(from: oldValue) }
-  }
-  public var recordingDurationLimit: RecordingDurationLimit {
-    didSet { handleRecordingDurationLimitChange(from: oldValue) }
-  }
-  public var localSpeechModel: String { didSet { handleLocalSpeechModelChange(from: oldValue) } }
-  public var localSpeechPrewarm: Bool { didSet { handleLocalSpeechPrewarmChange(from: oldValue) } }
-  public var enabledSpeechModelIDs: Set<String> {
-    didSet { handleEnabledSpeechModelIDsChange(from: oldValue) }
-  }
-  public var residentSpeechModelIDs: Set<String> {
-    didSet { handleResidentSpeechModelIDsChange(from: oldValue) }
-  }
-  public var residentSpeechBudgetConfirmation: String? {
-    didSet { handleResidentSpeechBudgetConfirmationChange(from: oldValue) }
-  }
-  public internal(set) var measuredSpeechModelPeakByteCounts: [String: UInt64] = [:]
-  public internal(set) var pendingResidentSpeechModelIDs: Set<String>?
-  public internal(set) var speechModelPoolDegradedByMemoryPressure = false
   public let workflowLibrary: WorkflowLibraryModel
   public let settings: SettingsPersistenceModel
   public var settingsSaveState: SettingsSaveState { settings.saveState }
@@ -382,8 +357,7 @@ public final class AppModel {
   public internal(set) var openAIConfigurationVerificationState:
     OpenAIConfigurationVerificationState = .idle
   public internal(set) var openAIVerificationFailure: OpenAIVerificationFailure?
-  public var contextMemory: ContextMemoryModel?
-  public let voice = VoiceRunModel()
+  public var voice: VoiceRunModel { speech.voice }
   public var isRunning: Bool {
     get { voice.isRunning }
     set { voice.isRunning = newValue }
@@ -394,36 +368,11 @@ public final class AppModel {
   }
   public internal(set) var isRetryingUnavailableSettingsDomains = false
   var workflowAudioRunState: WorkflowAudioRunState = .idle
-  public internal(set) var localSpeechPreparationState: LocalSpeechPreparationState = .idle
-  public internal(set) var localSpeechPreparationProgress: Double = 0
-  public internal(set) var localSpeechPreparationCompletedUnitCount: Int64 = 0
-  public internal(set) var localSpeechPreparationTotalUnitCount: Int64 = 0
-  public internal(set) var localSpeechPreparedModelIdentifier: String?
-  public internal(set) var downloadedLocalSpeechModels: [String] = []
-  public internal(set) var downloadedLocalSpeechModelsAvailability:
-    StoredSettingsDomainAvailability = .available
-  public internal(set) var downloadedLocalSpeechModelsError: String?
-  public var localSpeechPreparationError: String?
-  public let localSpeechAvailability: LocalSpeechAvailability
-  public let localSpeechTrustMaterialAvailable: Bool
-  public let trustedLocalSpeechModels: [LocalSpeechModelDescriptor]
-  public let defaultLocalSpeechModelIdentifier: String?
-  public let localSpeechPhysicalMemoryGiB: Int
   public var workflowEditorError: String?
   public var workflowLibraryError: String? {
     get { workflowLibrary.workflowLibraryError }
     set { workflowLibrary.workflowLibraryError = newValue }
   }
-  public internal(set) var wakeWordResourceState: VoiceAssistantResourceState = .notInstalled
-  public internal(set) var wakeWordRuntimeState: WakeWordRuntimePresentationState = .disabled
-  public let ttsModelOptions: [TTSModelOption]
-  public let defaultTTSModelIdentifier: String
-  public var ttsModelIdentifier: String {
-    didSet { handleTTSModelIdentifierChange(from: oldValue) }
-  }
-  public internal(set) var downloadedTTSModelIdentifiers: Set<String> = []
-  public internal(set) var ttsResourceState: VoiceAssistantResourceState = .notInstalled
-  public internal(set) var isSpeechPlaybackActive = false
   public internal(set) var workflowExplanationState: WorkflowExplanationLoadState = .idle
   public var pendingResolution: CandidateResolutionCase?
   public var permissionSnapshot: PermissionSnapshot
@@ -435,10 +384,6 @@ public final class AppModel {
     guard let projection = recordWorkspace.snapshot.records.first else { return nil }
     return projection.header.kind == .text ? projection.header.preview : nil
   }
-  public internal(set) var systemClipboardCaptureControlSnapshot = SystemClipboardCaptureControlSnapshot(
-    revision: 0,
-    state: .paused
-  )
   public var isClipboardCapturePaused: Bool {
     systemClipboardCaptureControlSnapshot.state.isPaused
   }
@@ -456,7 +401,7 @@ public final class AppModel {
   public var eventFeed: [EventFeedEntry] = []
   public internal(set) var diagnosticEvents: [DiagnosticEvent] = []
   public internal(set) var diagnosticsLoadState: DiagnosticsLoadState = .loading
-  public let vocabulary: VocabularyLibraryModel
+  public var vocabulary: VocabularyLibraryModel { knowledge.vocabulary }
   public internal(set) var vocabularyRules: [VocabularyRule] {
     get { vocabulary.vocabularyRules }
     set {
@@ -801,7 +746,7 @@ public final class AppModel {
     prepareWakeWordModelAction = prepareWakeWordModel
     prepareTTSModelAction = prepareTTSModel
     selectTTSModelAction = selectTTSModel
-    self.downloadedTTSModelIdentifiers = downloadedTTSModelIdentifiers.intersection(
+    speech.downloadedTTSModelIdentifiers = downloadedTTSModelIdentifiers.intersection(
       Set(ttsModelOptions.map(\.id))
     )
     selectTTSModelAction(ttsModelIdentifier)
@@ -1095,6 +1040,11 @@ public final class AppModel {
     retryGlobalInputAction: @escaping () -> Void,
     workflowLibraryChangedAction: @escaping @MainActor () -> Void
   ) {
+    let speech = SpeechFeatureModel()
+    self.speech = speech
+    let systemClipboard = SystemClipboardFeatureModel()
+    self.systemClipboard = systemClipboard
+
     self.requestGlobalInputAction = requestGlobalInputAction
     self.retryGlobalInputAction = retryGlobalInputAction
     self.workflowLibraryChangedAction = workflowLibraryChangedAction
@@ -1127,22 +1077,22 @@ public final class AppModel {
     // Capture remains closed until durable settings prove it is enabled.
     // Test and preview compositions that explicitly skip loading retain the
     // historical enabled behavior when they still provide a settings store.
-    self.systemClipboardCaptureEnabled = settingsStore != nil && !loadsPersistentSettingsOnInitialization
+    systemClipboard.systemClipboardCaptureEnabled = settingsStore != nil && !loadsPersistentSettingsOnInitialization
     self.recordHistoryVisibility = .remainingOnly
     self.recordPanelHotkeyBinding = .doubleCommand
-    self.preferredSpeechEngine = .local
-    self.builtinPushToTalkOutputMode = .pasteIntoApp
-    self.longRecordingModeEnabled = false
-    self.recordingDurationLimit = .fiveMinutes
-    self.localSpeechModel = defaultLocalSpeechModelIdentifier ?? LocalSpeechSettings().model
+    speech.preferredSpeechEngine = .local
+    speech.builtinPushToTalkOutputMode = .pasteIntoApp
+    speech.longRecordingModeEnabled = false
+    speech.recordingDurationLimit = .fiveMinutes
+    speech.localSpeechModel = defaultLocalSpeechModelIdentifier ?? LocalSpeechSettings().model
     let resolvedDefaultTTSModelIdentifier =
       ttsModelOptions.contains(where: { $0.id == defaultTTSModelIdentifier })
       ? defaultTTSModelIdentifier
       : (ttsModelOptions.first(where: \.isDefault)?.id ?? ttsModelOptions.first?.id ?? "")
-    self.ttsModelOptions = ttsModelOptions
-    self.defaultTTSModelIdentifier = resolvedDefaultTTSModelIdentifier
-    self.ttsModelIdentifier = resolvedDefaultTTSModelIdentifier
-    self.localSpeechPrewarm = LocalSpeechSettings().prewarm
+    speech.ttsModelOptions = ttsModelOptions
+    speech.defaultTTSModelIdentifier = resolvedDefaultTTSModelIdentifier
+    speech.ttsModelIdentifier = resolvedDefaultTTSModelIdentifier
+    speech.localSpeechPrewarm = LocalSpeechSettings().prewarm
     let availableSpeechModelIDs = Set(trustedLocalSpeechModels.map(\.id))
       .union(ttsModelOptions.map(\.id))
     let defaultEnabledSpeechModelIDs = LocalSpeechSettings().enabledModelIDs
@@ -1150,11 +1100,11 @@ public final class AppModel {
     let resolvedEnabledSpeechModelIDs = defaultEnabledSpeechModelIDs.isEmpty
       ? Set([resolvedDefaultTTSModelIdentifier].filter { !$0.isEmpty })
       : defaultEnabledSpeechModelIDs
-    self.enabledSpeechModelIDs = resolvedEnabledSpeechModelIDs
-    self.residentSpeechModelIDs = LocalSpeechSettings().residentModelIDs
+    speech.enabledSpeechModelIDs = resolvedEnabledSpeechModelIDs
+    speech.residentSpeechModelIDs = LocalSpeechSettings().residentModelIDs
       .intersection(resolvedEnabledSpeechModelIDs)
-    self.residentSpeechBudgetConfirmation = nil
-    self.pendingResidentSpeechModelIDs = nil
+    speech.residentSpeechBudgetConfirmation = nil
+    speech.pendingResidentSpeechModelIDs = nil
     self.openAIAPIKey = ""
     self.openAIBaseURL = OpenAISettings().baseURL
     self.openAIModel = OpenAISettings().model
@@ -1173,7 +1123,7 @@ public final class AppModel {
     self.settingsStore = settingsStore
     let settings = SettingsPersistenceModel(store: settingsStore)
     self.settings = settings
-    self.vocabulary = VocabularyLibraryModel(settings: settings, source: vocabularyRuleSource)
+    self.knowledge = KnowledgeFeatureModel(vocabulary: VocabularyLibraryModel(settings: settings, source: vocabularyRuleSource))
     self.workflowFileStore = workflowFileStore
     self.credentialStore = credentialStore
     self.localPersistenceStatus = localPersistenceStatus
@@ -1184,14 +1134,14 @@ public final class AppModel {
     self.settingsWriteDebounceDuration = settingsWriteDebounceDuration
     self.historyRetentionMaintenanceInterval = historyRetentionMaintenanceInterval
     self.liveSubtitlePreparingHideDelay = liveSubtitlePreparingHideDelay
-    self.localSpeechAvailability = effectiveLocalSpeechAvailability
-    self.localSpeechTrustMaterialAvailable = effectiveLocalSpeechAvailability.isAvailable
-    self.trustedLocalSpeechModels = exposesTrustedCatalog ? trustedLocalSpeechModels : []
-    self.defaultLocalSpeechModelIdentifier =
+    speech.localSpeechAvailability = effectiveLocalSpeechAvailability
+    speech.localSpeechTrustMaterialAvailable = effectiveLocalSpeechAvailability.isAvailable
+    speech.trustedLocalSpeechModels = exposesTrustedCatalog ? trustedLocalSpeechModels : []
+    speech.defaultLocalSpeechModelIdentifier =
       exposesTrustedCatalog
       ? defaultLocalSpeechModelIdentifier
       : nil
-    self.localSpeechPhysicalMemoryGiB = max(1, localSpeechPhysicalMemoryGiB)
+    speech.localSpeechPhysicalMemoryGiB = max(1, localSpeechPhysicalMemoryGiB)
     self.prepareLocalSpeechAction = prepareLocalSpeechAction
     self.synchronizeResidentSpeechModelsAction = synchronizeResidentSpeechModelsAction
     self.prepareEnabledSpeechModelAction = prepareEnabledSpeechModelAction

@@ -3,7 +3,7 @@ import XCTest
 
 @testable import RillApp
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
 
 private actor WorkflowAudioEventProbe {
   private var events: [RillEvent] = []
@@ -1499,7 +1499,8 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     try await controller.startRun(workflow: workflow1, binding: TriggerBinding.hotkey)
     let snapshot1 = await audioCaptureService.snapshot()
     XCTAssertNotNil(snapshot1.request)
-    XCTAssertEqual(snapshot1.request?.workflow.name, "First Workflow")
+    XCTAssertEqual(
+      snapshot1.request?.configuration, SpeechRequestConfiguration(workflow: workflow1))
 
     // Configure finishCaptureDeferred to throw
     await audioCaptureService.setFinishShouldThrow(true)
@@ -1535,7 +1536,8 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
 
     XCTAssertEqual(snapshot2.cancelCount, 1)
     XCTAssertNotNil(snapshot2.request, "The second run should remain active")
-    XCTAssertEqual(snapshot2.request?.workflow.name, "Second Workflow")
+    XCTAssertEqual(
+      snapshot2.request?.configuration, SpeechRequestConfiguration(workflow: workflow2))
     await controller.cancelRun(runID: snapshot2.request?.runID)
     await realProcessingQueue.shutdown()
   }

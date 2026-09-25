@@ -1,7 +1,8 @@
 import Foundation
 import Testing
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillRecords
+@testable import RillWorkflows
 import RillProviders
 
 struct SessionCoordinatorPolishingGateTests {

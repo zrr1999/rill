@@ -1,6 +1,8 @@
 import Foundation
 import RillCore
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
 
 extension AppModel {
   func addVocabularyRule(

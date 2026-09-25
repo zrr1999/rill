@@ -4,7 +4,7 @@ import XCTest
 
 @testable import RillCore
 @testable import RillPersistence
-@testable import RillRuntime
+@testable import RillRecords
 
 final class RecordCatalogTests: XCTestCase {
   func testCapacityWarnsAtEitherHalfThresholdAndClearsBelowBoth() {

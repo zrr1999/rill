@@ -1,6 +1,6 @@
 import Observation
 import RillCore
-import RillRuntime
+import RillRecords
 
 @MainActor @Observable
 public final class JevAPISettingsModel {

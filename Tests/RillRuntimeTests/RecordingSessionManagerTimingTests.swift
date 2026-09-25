@@ -1,9 +1,9 @@
+@testable import RillWorkflows
 import Foundation
 import XCTest
 
 @testable import RillCore
 @testable import RillPlatform
-@testable import RillRuntime
 
 private struct RecordingTimingContextProvider: ContextProvider {
     func captureContext() async -> ContextSnapshot { .empty }

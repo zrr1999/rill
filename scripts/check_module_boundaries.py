@@ -13,11 +13,15 @@ ROOT = Path(__file__).resolve().parents[1]
 DEPENDENCIES = {
     "RillCore": set(),
     "RillSpeechContracts": {"RillCore"},
-    "RillRuntime": {"RillCore"},
+    "RillRecords": {"RillCore"},
+    "RillKnowledge": {"RillCore"},
+    "RillSpeech": {"RillCore", "RillPlatform", "RillSpeechContracts"},
+    "RillClipboard": {"RillCore", "RillPlatform", "RillRecords"},
+    "RillWorkflows": {"RillCore", "RillSpeechContracts", "RillSpeech", "RillRecords", "RillKnowledge"},
     "RillPersistence": {"RillCore"},
-    "RillUI": {"RillCore", "RillRuntime"},
+    "RillUI": {"RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"},
     "RillPlatform": {"RillCore", "TOML"},
-    "RillProviders": {"RillCore", "RillSpeechContracts", "OpenAI"},
+    "RillProviders": {"RillCore", "RillSpeechContracts", "RillSpeech", "OpenAI"},
     "RillSpeechWorker": {"RillCore", "RillSpeechContracts", "RillMLXRuntime"},
 }
 DOMAIN_IMPORTS = {"Foundation", "CryptoKit", "Dispatch", "Darwin", "RillCore"}
@@ -36,12 +40,15 @@ def main() -> None:
         if actual != expected:
             raise SystemExit(f"{name}: expected dependencies {sorted(expected)}, found {sorted(actual)}")
     mlx_dependencies = {next(iter(dependency.values()))[0] for dependency in targets["RillMLXRuntime"]["dependencies"]}
-    if mlx_dependencies & {"RillProviders", "RillPlatform", "RillApp", "OpenAI", "TOML"}:
+    if mlx_dependencies & {"RillSpeech", "RillProviders", "RillPlatform", "RillApp", "OpenAI", "TOML"}:
         raise SystemExit("MLX runtime must depend on shared speech contracts without host providers")
-    for name in ("RillCore", "RillRuntime", "RillSpeechContracts"):
+    for name in ("RillCore", "RillRecords", "RillKnowledge", "RillWorkflows", "RillSpeechContracts"):
         sources = sorted(str(path) for path in (ROOT / "Sources" / name).rglob("*.swift"))
         imports = set(output("swiftc", "-frontend", "-emit-imported-modules", *sources).splitlines())
-        if unexpected := imports - DOMAIN_IMPORTS:
+        allowed = DOMAIN_IMPORTS | DEPENDENCIES[name]
+        if name == "RillKnowledge":
+            allowed |= {"NaturalLanguage"}
+        if unexpected := imports - allowed:
             raise SystemExit(f"{name}: platform or SDK imports escaped their adapters: {sorted(unexpected)}")
     print("Module boundaries passed (SwiftPM graph and parsed imports)")
 

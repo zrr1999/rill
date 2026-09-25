@@ -2,11 +2,29 @@ import Foundation
 
 public struct RecognitionRequest: Sendable, Equatable {
     public var runID: UUID
-    public var workflow: WorkflowDefinition
-    public var contextSnapshot: ContextSnapshot
+    public var configuration: SpeechRequestConfiguration
+    public var selectedText: String
+    public var clipboardText: String
+    public var clipboardExcluded: Bool
     public var triggerEvent: WorkflowTriggerEvent?
     public var capturedAudio: CapturedAudio?
     public var options: SpeechRecognitionRequestOptions
+
+    public init(
+        runID: UUID,
+        configuration: SpeechRequestConfiguration,
+        capturedAudio: CapturedAudio?,
+        options: SpeechRecognitionRequestOptions = .empty
+    ) {
+        self.runID = runID
+        self.configuration = configuration
+        self.capturedAudio = capturedAudio
+        self.options = options
+        selectedText = ""
+        clipboardText = ""
+        clipboardExcluded = true
+        triggerEvent = nil
+    }
 
     public init(
         runID: UUID,
@@ -17,8 +35,10 @@ public struct RecognitionRequest: Sendable, Equatable {
         options: SpeechRecognitionRequestOptions = .empty
     ) {
         self.runID = runID
-        self.workflow = workflow
-        self.contextSnapshot = contextSnapshot
+        self.configuration = SpeechRequestConfiguration(workflow: workflow)
+        self.selectedText = contextSnapshot.focus.selectedText
+        self.clipboardText = contextSnapshot.clipboard.plainText
+        self.clipboardExcluded = contextSnapshot.clipboard.excludesWorkflowCapture
         self.triggerEvent = triggerEvent
         self.capturedAudio = capturedAudio
         self.options = options
@@ -137,8 +157,8 @@ public protocol SpeechRecognizer: Sendable {
 /// context is read or audio capture begins.
 public typealias RecognitionRunPreflight = @Sendable (WorkflowDefinition) async throws -> Void
 
-public extension SpeechRecognizer {
-    var capabilities: SpeechRecognizerCapabilities { .none }
+extension SpeechRecognizer {
+    public var capabilities: SpeechRecognizerCapabilities { .none }
 }
 
 public struct DeferredCapturedAudio: Sendable {
@@ -202,23 +222,23 @@ public protocol AudioCaptureService: Sendable {
     func shutdown() async
 }
 
-public extension AudioCaptureService {
-    func finishCaptureDeferred() async throws -> DeferredCapturedAudio {
+extension AudioCaptureService {
+    public func finishCaptureDeferred() async throws -> DeferredCapturedAudio {
         let capturedAudio = try await finishCapture()
         return .resolved(capturedAudio)
     }
 
     /// Compatibility behavior for services that can only host one capture.
     /// Run-aware services should override this method to reject stale cancellation.
-    func cancelCapture(runID: UUID) async {
+    public func cancelCapture(runID: UUID) async {
         await cancelCapture()
     }
 
-    func removeMaximumDurationLimit(runID _: UUID) async -> Bool {
+    public func removeMaximumDurationLimit(runID _: UUID) async -> Bool {
         false
     }
 
-    func shutdown() async {
+    public func shutdown() async {
         await cancelCapture()
     }
 }
@@ -239,8 +259,8 @@ public protocol SpeechSynthesizer: Sendable {
     func releaseResources() async
 }
 
-public extension SpeechSynthesizer {
-    func releaseResources() async {}
+extension SpeechSynthesizer {
+    public func releaseResources() async {}
 }
 
 public protocol SpeechPlaybackService: Sendable {
@@ -252,7 +272,8 @@ public protocol SpeechPlaybackService: Sendable {
 public protocol TextTransformer: Sendable {
     var id: String { get }
     var supportedKinds: [PostProcessStepKind] { get }
-    func transform(text: String, step: PostProcessStep, context: TransformContext) async throws -> String
+    func transform(text: String, step: PostProcessStep, context: TransformContext) async throws
+        -> String
 }
 
 /// A transformer that can return the exact, credential-free request trace
@@ -291,10 +312,10 @@ public enum OutputActionPayloadError: Error, LocalizedError, Sendable, Equatable
     }
 }
 
-public extension OutputAction {
+extension OutputAction {
     /// Compatibility for text-only actions. The orchestration boundary always
     /// sends a RecordDraft and rejects unsupported payloads explicitly.
-    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+    public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
         guard case .text(let text) = record.payload else {
             throw OutputActionPayloadError.unsupportedPayload(
                 actionID: id,
@@ -304,7 +325,7 @@ public extension OutputAction {
         return try await execute(text: text, context: context)
     }
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    public func execute(text: String, context: ActionContext) async throws -> ActionResult {
         let draft = RecordDraft(
             payload: .text(text),
             provenance: RecordProvenance(
@@ -376,19 +397,19 @@ public enum HistoryRepositoryMaintenanceError: Error, Sendable, Equatable {
     case boundedDeletionUnsupported
 }
 
-public extension HistoryRepository {
-    func save(
+extension HistoryRepository {
+    public func save(
         _ record: WorkflowResultRecord,
         generation: RunHistoryWriteGeneration
     ) async throws {
         throw RunHistoryGenerationError.unsupported
     }
 
-    func deleteRecords(through upperBound: Date) async throws -> Int {
+    public func deleteRecords(through upperBound: Date) async throws -> Int {
         throw HistoryRepositoryMaintenanceError.boundedDeletionUnsupported
     }
 
-    func deleteRecords(
+    public func deleteRecords(
         obsoletedBy transition: RunHistoryClearTransition,
         preservingLegacyRowsAfter legacyUpperBound: Date?
     ) async throws -> Int {
@@ -425,20 +446,19 @@ public protocol WorkflowRunReceiptRepository: RunHistoryGenerationSource {
     func deleteAllReceipts() async throws -> Int
 }
 
-public extension WorkflowRunReceiptRepository {
-    func insertTerminal(
+extension WorkflowRunReceiptRepository {
+    public func insertTerminal(
         _ receipt: WorkflowRunReceipt,
         generation: RunHistoryWriteGeneration
     ) async throws {
         throw RunHistoryGenerationError.unsupported
     }
 
-    func deleteReceipts(through upperBound: Date) async throws -> Int {
+    public func deleteReceipts(through upperBound: Date) async throws -> Int {
         throw HistoryRepositoryMaintenanceError.boundedDeletionUnsupported
     }
 
-
-    func deleteReceipts(
+    public func deleteReceipts(
         obsoletedBy transition: RunHistoryClearTransition,
         preservingLegacyRowsAfter legacyUpperBound: Date?
     ) async throws -> Int {
@@ -480,29 +500,29 @@ public enum DiagnosticRepositoryMaintenanceError: Error, Sendable, Equatable {
     case deletionUnsupported
 }
 
-public extension DiagnosticHistoryMaintaining {
-    func deleteEvents(olderThan cutoff: Date) async throws -> Int {
+extension DiagnosticHistoryMaintaining {
+    public func deleteEvents(olderThan cutoff: Date) async throws -> Int {
         throw DiagnosticRepositoryMaintenanceError.deletionUnsupported
     }
 
-    func deleteEvents(through upperBound: Date) async throws -> Int {
+    public func deleteEvents(through upperBound: Date) async throws -> Int {
         throw DiagnosticRepositoryMaintenanceError.deletionUnsupported
     }
 
-    func deleteEvents(
+    public func deleteEvents(
         obsoletedBy transition: RunHistoryClearTransition,
         preservingLegacyRowsAfter legacyUpperBound: Date?
     ) async throws -> Int {
         throw RunHistoryGenerationError.unsupported
     }
 
-    func deleteAllEvents() async throws -> Int {
+    public func deleteAllEvents() async throws -> Int {
         throw DiagnosticRepositoryMaintenanceError.deletionUnsupported
     }
 }
 
-public extension DiagnosticRepository {
-    func save(
+extension DiagnosticRepository {
+    public func save(
         _ event: DiagnosticEvent,
         generation: RunHistoryWriteGeneration
     ) async throws {
@@ -540,8 +560,8 @@ public protocol SettingsStore: Sendable {
     func removeValue(forKey key: AppSettingKey) async throws
 }
 
-public extension SettingsStore {
-    func strings(forKeys keys: [AppSettingKey]) async throws -> [AppSettingKey: String] {
+extension SettingsStore {
+    public func strings(forKeys keys: [AppSettingKey]) async throws -> [AppSettingKey: String] {
         var values: [AppSettingKey: String] = [:]
 
         for key in keys {
@@ -553,7 +573,9 @@ public extension SettingsStore {
         return values
     }
 
-    func settingsSnapshot(forKeys keys: [AppSettingKey]) async throws -> SettingsStoreReadSnapshot {
+    public func settingsSnapshot(forKeys keys: [AppSettingKey]) async throws
+        -> SettingsStoreReadSnapshot
+    {
         SettingsStoreReadSnapshot(values: try await strings(forKeys: keys))
     }
 }

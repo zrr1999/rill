@@ -1,6 +1,6 @@
+import RillWorkflows
 import Foundation
 import RillCore
-import RillRuntime
 
 private enum WorkflowExecutionSupportIssue: Equatable {
   case legacyClipboardAutomationUnsupported

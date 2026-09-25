@@ -1,7 +1,7 @@
+import RillWorkflows
 import AppKit
 import Foundation
 import RillCore
-import RillRuntime
 
 extension AppModel {
   func synchronizeWorkflowEnabledStates() { workflowLibrary.synchronizeWorkflowEnabledStates() }

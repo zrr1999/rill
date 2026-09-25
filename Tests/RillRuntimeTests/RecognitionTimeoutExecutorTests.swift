@@ -1,8 +1,8 @@
+@testable import RillWorkflows
 import Foundation
 import XCTest
 
 @testable import RillCore
-@testable import RillRuntime
 
 private struct TimeoutTestContextProvider: ContextProvider {
   func captureContext() async -> ContextSnapshot { .empty }
