@@ -12,7 +12,8 @@ private struct StructuredOutput: OutputAction {
     let id: String
     let probe: StructuredOutputProbe
     var fails = false
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         await probe.record(id + ":" + text)
         return fails ? .failed("fixture failure") : .copiedToClipboard
     }
@@ -104,7 +105,7 @@ struct StructuredWorkflowTests {
         let receipts = InMemoryWorkflowRunReceiptRepository()
         let eventBus = EventBus()
         let coordinator = SessionCoordinator(
-            contextProvider: StructuredContext(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: [StructuredTransformer()]),
             actionRegistry: OutputActionRegistry(actions: [

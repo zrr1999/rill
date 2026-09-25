@@ -318,7 +318,7 @@ final class AppModelRunReceiptTests: XCTestCase {
         )
 
         let loaded = await waitUntil {
-            harness.model.historyRecords.contains { $0.runID == runID }
+            harness.model.history.historyRecords.contains { $0.runID == runID }
         }
 
         XCTAssertTrue(loaded)
@@ -355,7 +355,7 @@ final class AppModelRunReceiptTests: XCTestCase {
         )
 
         let loaded = await waitUntil {
-            harness.model.historyRecords.contains { $0.runID == runID }
+            harness.model.history.historyRecords.contains { $0.runID == runID }
         }
 
         XCTAssertTrue(loaded)
@@ -400,7 +400,7 @@ final class AppModelRunReceiptTests: XCTestCase {
         )
 
         let loaded = await waitUntil {
-            harness.model.historyRecords.count == 2
+            harness.model.history.historyRecords.count == 2
                 && harness.model.workflowRunReceipt(for: legacyVoiceRunID) == voiceReceipt
                 && harness.model.workflowRunReceipt(for: conflictingRunID) == conflictingReceipt
         }
@@ -605,7 +605,7 @@ final class AppModelRunReceiptTests: XCTestCase {
 
         let storedHistory = try await historyRepository.records(matching: .all)
         XCTAssertTrue(storedHistory.isEmpty)
-        XCTAssertFalse(harness.model.historyRecords.contains { $0.runID == receipt.runID })
+        XCTAssertFalse(harness.model.history.historyRecords.contains { $0.runID == receipt.runID })
     }
 
     private func makeReceipt(

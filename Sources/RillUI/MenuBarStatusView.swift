@@ -496,7 +496,7 @@ public struct MenuBarStatusView: View {
         text: L10n.string(.applicationShutdownDetail, language: model.language)
       )
       .accessibilityIdentifier("menu.status.shutdown-detail")
-    } else if panelState.voiceSetupStatus == .ready || model.isRunning || model.lastFailure != nil {
+    } else if panelState.voiceSetupStatus == .ready || model.voice.isRunning || model.lastFailure != nil {
       Label(panelState.statusTitle, systemImage: panelState.statusSystemImage)
         .accessibilityIdentifier("menu.status.summary")
     } else {
@@ -551,8 +551,8 @@ public struct MenuBarStatusView: View {
   private var panelState: MenuBarOperationPanelState {
     MenuBarOperationPanelState(
       language: model.language,
-      isRunning: model.isRunning,
-      lastCompletedText: model.lastCompletedText,
+      isRunning: model.voice.isRunning,
+      lastCompletedText: model.voice.lastCompletedText,
       lastFailure: model.lastFailure,
       recordCount: model.recordCount,
       canDeliverNextRecord: model.canDeliverNextRecord,

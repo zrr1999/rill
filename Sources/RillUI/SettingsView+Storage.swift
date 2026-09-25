@@ -43,7 +43,7 @@ extension SettingsView {
         )
       )
       .disabled(
-        model.isLoadingSettings
+        model.settings.isLoading
           || model.isUpdatingFailedAudioRecovery
           || !model.retryingFailedAudioRecoveryIDs.isEmpty
       )
@@ -101,7 +101,7 @@ extension SettingsView {
         )
       )
       .disabled(
-        model.isLoadingSettings
+        model.settings.isLoading
           || model.isUpdatingBenchmarkRecordingArchive
       )
 
@@ -224,7 +224,7 @@ extension SettingsView {
   }
 
   var localHistoryControlsDisabled: Bool {
-    model.isLoadingSettings || model.isUpdatingHistoryRetentionSettings
+    model.settings.isLoading || model.isUpdatingHistoryRetentionSettings
       || model.isLocalHistoryMaintenanceRunning
   }
 

@@ -81,3 +81,19 @@ public protocol BenchmarkRecordingArchiveStore: Sendable {
   func delete(runID: UUID) async throws
   func deleteAll() async throws
 }
+
+/// Explicit evaluation reads are separate from the live capture write port.
+public struct BenchmarkRecording: Sendable {
+  public let receipt: BenchmarkRecordingReceipt
+  public let audioBytes: Data
+
+  public init(receipt: BenchmarkRecordingReceipt, audioBytes: Data) {
+    self.receipt = receipt
+    self.audioBytes = audioBytes
+  }
+}
+
+public protocol BenchmarkRecordingArchiveReading: Sendable {
+  func recordingIDs() async throws -> [UUID]
+  func recording(runID: UUID) async throws -> BenchmarkRecording
+}

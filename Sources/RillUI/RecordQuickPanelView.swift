@@ -100,6 +100,7 @@ enum RecordQuickPanelLayoutPolicy {
 
 public struct RecordQuickPanelView: View {
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+  @State private var showsAdvancedSearch = false
   @Bindable private var model: RecordQuickPanelModel
   private let language: AppLanguage
   private let onPaste: (RecordReuseSubject) -> Void
@@ -165,6 +166,8 @@ public struct RecordQuickPanelView: View {
       .controlSize(.small)
       .padding(.horizontal, RillSpacing.panel)
       .padding(.bottom, RillSpacing.row)
+      if model.canSearchByMeaning || model.jev != nil {
+        DisclosureGroup(text(.advancedSearch), isExpanded: $showsAdvancedSearch) {
       if model.canSearchByMeaning { semanticControls }
       if let jev = model.jev {
         HStack {
@@ -177,6 +180,11 @@ public struct RecordQuickPanelView: View {
         .sheet(isPresented: Binding(get: { jev.isPresented }, set: { if !$0 { jev.invalidate() } })) {
           RecordJevSheet(model: jev, language: language, onSelect: model.selectJevCandidate, onConfigure: onConfigureJev)
         }
+      }
+        }
+        .font(.caption)
+        .padding(.horizontal, RillSpacing.panel)
+        .padding(.bottom, RillSpacing.row)
       }
       Divider()
       GeometryReader { geometry in

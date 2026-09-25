@@ -71,13 +71,13 @@ final class HistoryLoadStateTests: XCTestCase {
         let harness = makeHarness(historyRepository: repository)
 
         let failed = await waitUntil {
-            harness.model.historyLoadState == .failed(.repositoryUnavailable)
+            harness.model.history.historyLoadState == .failed(.repositoryUnavailable)
         }
         XCTAssertTrue(failed)
-        XCTAssertTrue(harness.model.historyRecords.isEmpty)
+        XCTAssertTrue(harness.model.history.historyRecords.isEmpty)
         XCTAssertEqual(
             HistoryViewState(
-                loadState: harness.model.historyLoadState,
+                loadState: harness.model.history.historyLoadState,
                 hasEntries: false
             ),
             .failed(.repositoryUnavailable)
@@ -85,11 +85,11 @@ final class HistoryLoadStateTests: XCTestCase {
 
         await repository.allowReads()
         harness.model.retryHistoryLoad()
-        XCTAssertEqual(harness.model.historyLoadState, .loading)
+        XCTAssertEqual(harness.model.history.historyLoadState, .loading)
 
         let loaded = await waitUntil {
-            harness.model.historyLoadState == .loaded
-                && harness.model.historyRecords == [record]
+            harness.model.history.historyLoadState == .loaded
+                && harness.model.history.historyRecords == [record]
         }
         XCTAssertTrue(loaded)
     }

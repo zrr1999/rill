@@ -109,14 +109,14 @@ struct WorkflowTextFileTests {
         let model = makeHarness(settingsStore: UITestSettingsStore(), workflowFileStore: store).model
         await model.waitForInitialVoiceConfiguration()
         let legacy = [makeDefaultWorkflow(), makeDefaultWorkflow()]
-        model.customWorkflows = legacy
-        model.usesWorkflowFilesAsSource = false
+        model.workflowLibrary.customWorkflows = legacy
+        model.workflowLibrary.usesWorkflowFilesAsSource = false
         let opened = await model.workflowFileForEditing(legacy[0])
         #expect(opened == nil)
-        #expect(model.customWorkflows == legacy)
-        #expect(!model.usesWorkflowFilesAsSource)
+        #expect(model.workflowLibrary.customWorkflows == legacy)
+        #expect(!model.workflowLibrary.usesWorkflowFilesAsSource)
         #expect(await store.load().records.isEmpty)
-        #expect(model.workflowLibraryError != nil)
+        #expect(model.workflowLibrary.workflowLibraryError != nil)
         await model.stopSettingsReadTasksForApplicationShutdown()
         await model.flushPendingPersistenceWrites()
     }
@@ -131,7 +131,7 @@ struct WorkflowTextFileTests {
         let source = "# My instructions and comments\n" + (try String(contentsOf: url, encoding: .utf8))
         try source.write(to: url, atomically: true, encoding: .utf8)
         await model.reloadWorkflowFiles()
-        let workflow = try #require(model.customWorkflows.first)
+        let workflow = try #require(model.workflowLibrary.customWorkflows.first)
         #expect(workflow.metadata["text.provider"] == nil)
         #expect(!model.isWorkflowEnabled(workflow))
         let reopened = await model.workflowFileForEditing(workflow)

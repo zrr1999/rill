@@ -5,7 +5,7 @@ import RillCore
 extension SettingsView {
   var vocabularySection: some View {
     settingsDisclosure(.vocabulary) {
-      if let vocabularyRulesError = model.vocabularyRulesError {
+      if let vocabularyRulesError = model.vocabulary.error {
         settingsDomainLoadFailure(
           message: vocabularyRulesError,
           retryIdentifier: "settings.vocabulary.retry"
@@ -17,7 +17,7 @@ extension SettingsView {
           .font(.callout)
           .foregroundStyle(.secondary)
 
-        ForEach(model.vocabularyCollections) { collection in
+        ForEach(model.vocabulary.vocabularyCollections) { collection in
           HStack {
             Label(
               collection.name,
@@ -48,7 +48,7 @@ extension SettingsView {
       }
       .disabled(!model.areVocabularyRulesAvailable)
     }
-    .disabled(model.isLoadingSettings)
+    .disabled(model.settings.isLoading)
   }
 
   func settingsDomainLoadFailure(

@@ -30,7 +30,7 @@ final class HistoryRunCardRenderTests: XCTestCase {
                     recordingDurationMilliseconds: 12_500
                 )
                 let legacyID = UUID()
-                model.historyRecords = [WorkflowResultRecord(
+                model.history.historyRecords = [WorkflowResultRecord(
                     runID: runID,
                     workflow: WorkflowPresentation(fallbackName: language == .english ? "Smart Cleanup" : "智能整理"),
                     finalText: nil, failureMessage: HistoryFailureSanitizer.genericMessage,
@@ -40,7 +40,7 @@ final class HistoryRunCardRenderTests: XCTestCase {
                     failureMessage: HistoryFailureSanitizer.genericMessage,
                     timestamp: Date().addingTimeInterval(-3_600), outcome: .failed, trigger: .hotkey
                 )]
-                model.workflowRunReceiptsByRunID = [runID: receipt]
+                model.history.workflowRunReceiptsByRunID = [runID: receipt]
                 model.diagnosticEvents = [DiagnosticEvent(
                     runID: runID, subsystem: .session, level: .error,
                     event: "session.failure", message: "Diagnostic event recorded.",

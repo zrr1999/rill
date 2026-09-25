@@ -70,7 +70,7 @@ actor, so cancelling a recording suppresses a cue still waiting to be played.
 | Active recording and its cleanup | `RecordingSessionManager` | Cancellation invalidates cue tokens and retains pending work until it settles. |
 | Authorized workflow run | `SessionCoordinator` | Frozen workflow/context and resolved provider plan remain attached to one run. |
 | UI settings reads | `AppModelSettingsReadTaskOwner` | Replaced reads remain owned until drained; shutdown rejects new reads. |
-| UI persistence tasks | `PersistenceWriteCoordinator` | Replacement writes serialize per setting key; all accepted tasks remain tracked until completion. |
+| UI persistence tasks | `PersistenceWriteCoordinator` | Overlapping single-key and atomic multi-key writes serialize; all accepted tasks remain tracked until completion. |
 | Unsaved settings and retry policy | `SettingsPersistenceModel` | Latest-write completion updates visible state; failures retain the exact value to retry. `AppSettingsCodec` owns stored-value decoding and migration. |
 | Voice presentation | `VoiceRunModel` | Progress is accepted only from the currently presented run and lane. |
 | History browsing | `RunHistoryModel` | Read sessions, page locators, deep links, and privacy-scoped queries have one owner. |
@@ -109,6 +109,49 @@ The speech model pool owns model loading. UI selection and explicit preparation
 use the injected trusted catalog; legacy custom model keys are migration inputs,
 not a second active configuration or automatic preparation path.
 
+## Recognition and presentation boundaries
+
+The authorization entry freezes the model ID, language, vocabulary revision and
+resolved hints. Capture preview and final recognition use that same snapshot.
+Execution still checks live authorization and model enablement; changing the
+selected model during capture never silently redirects the admitted request.
+`RecognitionRequest` contains run identity, priority, context needed for selection
+capture, audio and recognition options. Providers no longer receive a workflow
+or re-resolve its route. Vocabulary collections remain within Runtime; the
+provider receives only the resolved hints.
+
+Offline and streaming hint capabilities are distinct. Current Qwen streaming
+reports requested keyterms as unsupported. Final recognition keeps established
+candidate limits and applies a complete-prompt token budget using the loaded
+model tokenizer. Omitted terms are counted, never truncated. Tail PCM accepted
+before capture stops reaches both WAV storage and an active preview session;
+diagnostics count delivered preview samples and drained tail samples. Preview
+observations are host timestamps, not proof of screen presentation.
+
+`WorkflowAudioRunController` belongs to Runtime. Its preparing, starting,
+recording and stopping states keep the corresponding run resources together;
+finishing work retains its existing independent cleanup ownership. `AppModel`
+callers access existing feature owners directly rather than through duplicate
+state forwarding. Remaining settings commands and lifecycle coordination still
+live in AppModel; this is not yet a claim that all its responsibilities migrated.
+
+`OutputAction.execute(record:context:)` is the sole required output entry.
+Text convenience calls convert once to a Record draft. Output action results,
+including uncertain delivery, keep the existing receipt contract and must never
+cause an automatic repeat send.
+
+Atomic settings migration, its legacy recovery copy, ordinary edits and retries
+share `PersistenceWriteCoordinator`. An overlapping edit waits for the whole
+older transaction; it cannot cancel the transaction's unrelated keys. Failures
+remain visible and retain current per-key retry values. Shutdown drains accepted
+migration writes as well as user edits.
+
+`RecordStore` has one graph value type for live state and the committed rollback
+value. Publication still follows a successful commit. SQLite schema/migration
+and diagnostic operations are extensions of the same actor and connection.
+`RecordQuerySession` binds pagination to one catalog revision; workspace and
+quick-panel consumers retain their own result limits, and reject mixed pages.
+
 ## Workflow representation
 
 Workflow TOML under the XDG configuration directory is the durable source of
@@ -120,7 +163,8 @@ providers and vocabulary. Validated process steps become an immutable enum-based
 execution plan, so the interpreter does not repeatedly interpret optional DTO fields.
 Output configuration is validated and frozen by action position, including repeated
 action kinds with different destinations. `WorkflowTextExecutor` executes the
-compiled steps; `SessionCoordinator` owns admission and output delivery, and
+compiled text steps; `WorkflowOutputExecutor` owns ordered output actions and their
+receipt settlement. `SessionCoordinator` owns admission and stage transitions, and
 `WorkflowRunDiagnostics` records execution progress. Manifest checks use the same
 semantic compiler as execution.
 
@@ -154,7 +198,9 @@ native platform, UI, and application tests serially. CI executes the same suite
 through `preflight.sh`. Build modes and cache boundaries are defined in the
 [contribution guide](https://github.com/zrr1999/rill/blob/main/CONTRIBUTING.md).
 `check_module_boundaries.py` checks SwiftPM dependencies and compiler-reported
-imports. Optional `just test-render` and `just test-stress` capture rendering and
+imports for every production and test target, including direct dependency
+declarations. `scripts/swift_locked.sh test-domain` selects a reduced graph from
+the same manifest into a separate cache; it cannot replace the full CI gate. Optional `just test-render` and `just test-stress` capture rendering and
 large-catalog evidence separately from normal gates.
 
 Boundary regressions use controllable stores and suspended

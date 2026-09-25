@@ -18,9 +18,30 @@ DEPENDENCIES = {
     "RillUI": {"RillCore", "RillRuntime"},
     "RillPlatform": {"RillCore", "TOML"},
     "RillProviders": {"RillCore", "RillSpeechContracts", "OpenAI"},
+    "RillApp": {"RillCore", "RillSpeechContracts", "RillRuntime", "RillPlatform",
+                "RillProviders", "RillPersistence", "RillUI"},
+    "RillMLXRuntime": {"RillCore", "RillSpeechContracts", "MLXAudioCore", "MLXAudioSTT",
+                       "MLXAudioTTS", "MLXAudioVAD", "MLX", "MLXNN", "MLXEmbedders",
+                       "MLXHuggingFace", "MLXLMCommon", "Tokenizers", "HuggingFace"},
     "RillSpeechWorker": {"RillCore", "RillSpeechContracts", "RillMLXRuntime"},
 }
-DOMAIN_IMPORTS = {"Foundation", "CryptoKit", "Dispatch", "Darwin", "RillCore"}
+FOUNDATION_IMPORTS = {"Foundation", "CryptoKit", "Dispatch", "Darwin"}
+SYSTEM_IMPORTS = {
+    "RillCore": FOUNDATION_IMPORTS,
+    "RillSpeechContracts": FOUNDATION_IMPORTS,
+    "RillRuntime": FOUNDATION_IMPORTS,
+    "RillMLXRuntime": FOUNDATION_IMPORTS,
+    "RillSpeechWorker": FOUNDATION_IMPORTS,
+    "RillPersistence": FOUNDATION_IMPORTS | {"OSLog", "SQLite3"},
+    "RillProviders": FOUNDATION_IMPORTS | {"AVFoundation", "AudioToolbox", "OSLog"},
+    "RillPlatform": FOUNDATION_IMPORTS | {"AVFoundation", "AppKit", "ApplicationServices",
+        "Carbon", "CoreGraphics", "ImageIO", "Observation", "ScreenCaptureKit", "Security",
+        "UniformTypeIdentifiers"},
+    "RillUI": FOUNDATION_IMPORTS | {"AppKit", "Carbon", "ImageIO", "Observation", "Quartz",
+        "QuartzCore", "QuickLookThumbnailing", "SwiftUI", "UniformTypeIdentifiers"},
+    "RillApp": FOUNDATION_IMPORTS | {"AppKit", "ApplicationServices", "Combine", "QuartzCore", "SwiftUI"},
+}
+TEST_IMPORTS = set().union(*SYSTEM_IMPORTS.values()) | {"Testing", "XCTest", "os"}
 
 
 def output(*command: str) -> str:
@@ -35,14 +56,21 @@ def main() -> None:
         actual = {next(iter(dependency.values()))[0] for dependency in dependencies}
         if actual != expected:
             raise SystemExit(f"{name}: expected dependencies {sorted(expected)}, found {sorted(actual)}")
-    mlx_dependencies = {next(iter(dependency.values()))[0] for dependency in targets["RillMLXRuntime"]["dependencies"]}
-    if mlx_dependencies & {"RillProviders", "RillPlatform", "RillApp", "OpenAI", "TOML"}:
-        raise SystemExit("MLX runtime must depend on shared speech contracts without host providers")
-    for name in ("RillCore", "RillRuntime", "RillSpeechContracts"):
-        sources = sorted(str(path) for path in (ROOT / "Sources" / name).rglob("*.swift"))
-        imports = set(output("swiftc", "-frontend", "-emit-imported-modules", *sources).splitlines())
-        if unexpected := imports - DOMAIN_IMPORTS:
-            raise SystemExit(f"{name}: platform or SDK imports escaped their adapters: {sorted(unexpected)}")
+    production = {name for name, target in targets.items() if target["type"] != "test"}
+    if production != DEPENDENCIES.keys():
+        raise SystemExit(f"Every production target needs an explicit policy: {sorted(production ^ DEPENDENCIES.keys())}")
+    for name, target in targets.items():
+        is_test = target["type"] == "test"
+        source_root = ROOT / ("Tests" if is_test else "Sources") / name
+        sources = sorted(str(path) for path in source_root.rglob("*.swift"))
+        if not sources:
+            raise SystemExit(f"{name}: no source files checked")
+        imports = {module.split(".")[0] for module in output(
+            "swiftc", "-frontend", "-swift-version", "6", "-module-name", name, "-emit-imported-modules", *sources).splitlines()}
+        declared = {next(iter(dependency.values()))[0] for dependency in target["dependencies"]}
+        permitted = declared | (TEST_IMPORTS if is_test else SYSTEM_IMPORTS[name])
+        if unexpected := imports - permitted:
+            raise SystemExit(f"{name}: undeclared or forbidden imports: {sorted(unexpected)}")
     print("Module boundaries passed (SwiftPM graph and parsed imports)")
 
 

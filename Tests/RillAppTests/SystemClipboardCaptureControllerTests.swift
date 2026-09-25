@@ -41,7 +41,8 @@ private struct SelectedRecordInsertAction: OutputAction {
     self.pasteboard = pasteboard
   }
 
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      let text = try record.requireText(for: id)
     if let pasteboard {
       let descriptor = await pasteboard.currentClipboardDescriptor()
       let transaction = try await pasteboard.beginTemporaryClipboardWrite(
@@ -428,7 +429,7 @@ struct ClipboardCaptureLatencyTests {
     let executionFocus = targetChanged ? changedFocus : focus
     let probe = ExplicitRecordOutputProbe()
     let coordinator = SessionCoordinator(
-      contextProvider: RecordCaptureTestContextProvider(),
+
       privacyContextProvider: { ContextSnapshot(focus: executionFocus, clipboard: .init(plainText: "native copy", changeCount: 1)) },
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -533,9 +534,8 @@ struct ClipboardCaptureLatencyTests {
   )
     -> SystemClipboardCaptureController
   {
-    let context = RecordCaptureTestContextProvider()
     let coordinator = SessionCoordinator(
-      contextProvider: context,
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -639,7 +639,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
     let eventBus = EventBus()
     let probe = SelectedRecordDeliveryProbe()
     let coordinator = SessionCoordinator(
-      contextProvider: RecordCaptureTestContextProvider(),
+
       privacyContextProvider: { context },
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -715,7 +715,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
       )
     }
     let coordinator = SessionCoordinator(
-      contextProvider: RecordCaptureTestContextProvider(),
+
       privacyContextProvider: { context },
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -764,7 +764,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
 
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: RecordCaptureTestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -816,7 +816,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
     let store = RecordStore()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: RecordCaptureTestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),

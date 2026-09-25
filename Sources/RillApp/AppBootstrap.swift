@@ -677,7 +677,7 @@ private enum AppContainerFactory {
     @Sendable (
       WorkflowDefinition,
       ContextSnapshot
-    ) async -> SpeechRecognitionRequestOptions
+    ) async throws -> SpeechRecognitionRequestOptions
 
   private static let keychainServiceIdentifier = "dev.zrr.Rill.credentials"
   private static let webhookKeychainServiceIdentifier = "dev.zrr.Rill.webhook-configuration"
@@ -1050,6 +1050,10 @@ private enum AppContainerFactory {
       wakeWordTriggerSource = WakeWordTriggerSource(
         hub: sharedVoiceInputHub,
         recognizer: localSpeechRecognizer,
+        recognitionOptionsProvider: { workflow in
+          LocalSpeechModelCatalog.recognitionOptions(
+            settings: try localSpeechSettingsSource.currentSettings(), workflow: workflow)
+        },
         vadSessionFactory: {
           await streamingPreviewService.makeVADSession()
         }
@@ -1161,18 +1165,24 @@ private enum AppContainerFactory {
       try await contextMemoryController?.prepare(runID: runID, workflow: workflow, context: context, recognitionOptions: options, audioLifetime: lifetime)
     }
     let preparedPrivacyRunGate = privacyRunGate
-    let recognitionOptionsProvider: RecognitionOptionsProvider = { workflow, _ in
-      let language: String?
-      switch workflow.plan.setup.speechRoute?.recognizerID {
-      case "local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming", "auto":
-        // Local workers resolve workflow overrides and otherwise detect the language.
-        language = nil
-      default:
-        language = AppSettingsLoader.trimmedNonEmpty(
-          workflow.metadata[WorkflowMetadataKey.languageOverride]
-        )
+    let recognitionOptionsProvider: RecognitionOptionsProvider = { workflow, context in
+      let vocabulary = workflow.plan.setup.vocabularyBindings.isEmpty
+        ? nil : try core.vocabularyRuleSource.snapshot()
+      var options = SpeechRecognitionRequestOptions(language: workflow.plan.setup.speechRoute?.language)
+      if workflow.plan.setup.speechRoute != nil {
+        options = LocalSpeechModelCatalog.recognitionOptions(
+          settings: try providers.localSpeechSettingsSource.currentSettings(), workflow: workflow)
       }
-      return SpeechRecognitionRequestOptions(language: language)
+      options.vocabulary = vocabulary
+      let resolved = VocabularyCollectionResolver.resolve(
+        bindings: workflow.plan.setup.vocabularyBindings,
+        collections: vocabulary?.collections ?? [],
+        context: VocabularyRuleContext(
+          contextSnapshot: context,
+          recordCollectionID: workflow.legacyTargetRecordCollectionID,
+          locale: options.language))
+      options.hints = VocabularyRecognitionHintResolver().resolve(rules: resolved.hotwordRules).hints
+      return options
     }
     let recognitionRunPreflight = AppBootstrap.makeRecognitionRunPreflight(
       trustedLocalModelIdentifiers: Set(providers.trustedLocalSpeechModels.map(\.id)),
@@ -1278,9 +1288,6 @@ private enum AppContainerFactory {
       capturedAudioProcessingQueue: assistantQueue,
       diagnostics: core.diagnostics,
       eventBus: core.eventBus,
-      contextProvider: {
-        await platform.contextProvider.captureContext()
-      },
       privacyContextProvider: {
         await platform.contextProvider.capturePrivacyContext()
       },
@@ -1388,7 +1395,7 @@ private enum AppContainerFactory {
     recognitionAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner
   ) -> SessionCoordinator {
     SessionCoordinator(
-      contextProvider: platform.contextProvider,
+
       lane: lane,
       privacyContextProvider: {
         await platform.contextProvider.capturePrivacyContext()
@@ -2922,7 +2929,7 @@ final class WorkflowSelectionBridge {
 
   func recordCollectionWorkflowRegistrations() -> [RecordCollectionWorkflowRegistration] {
     guard let model else { return [] }
-    return model.workflows.compactMap { workflow in
+    return model.workflowLibrary.workflows.compactMap { workflow in
       AppBootstrap.makeRecordCollectionWorkflowRegistration(
         for: workflow,
         isEnabled: model.isWorkflowEnabled(workflow)

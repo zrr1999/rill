@@ -87,7 +87,7 @@ extension AppModel {
   }
 
   public func disableWakeWordListening() {
-    for workflow in workflows where
+    for workflow in self.workflowLibrary.workflows where
       workflow.trigger == .wakeWord && isWorkflowEnabled(workflow)
     {
       setWorkflowEnabled(false, for: workflow.id)
@@ -117,19 +117,19 @@ extension AppModel {
       return .failed(activationError)
     }
     let editableWorkflow = sourceWorkflow.flatMap { workflow in
-      customWorkflows.first(where: { $0.id == workflow.id })
+      self.workflowLibrary.customWorkflows.first(where: { $0.id == workflow.id })
     }
     let savedWorkflowID: UUID?
     if let editableWorkflow,
-      let index = customWorkflows.firstIndex(where: {
+      let index = self.workflowLibrary.customWorkflows.firstIndex(where: {
         $0.id == editableWorkflow.id
       })
     {
-      guard !isLoadingSettings, isWorkflowLibraryAvailable else {
+      guard !self.settings.isLoading, isWorkflowLibraryAvailable else {
         return .failed(L10n.runText(.workflowLibraryUnavailable, language: language))
       }
-      hasModifiedWorkflowLibrary = true
-      var updatedWorkflow = customWorkflows[index]
+      self.workflowLibrary.hasModifiedWorkflowLibrary = true
+      var updatedWorkflow = self.workflowLibrary.customWorkflows[index]
       updatedWorkflow.plan.setup.wakeWord = WakeWordConfiguration(
         phrases: normalizedPhrases
       )
@@ -137,17 +137,17 @@ extension AppModel {
         do {
           let fileURL = try await workflowFileStore.save(
             workflow: updatedWorkflow,
-            isEnabled: workflowEnabledStates[updatedWorkflow.id] ?? true,
-            replacing: workflowFileURLsByID[updatedWorkflow.id]
+            isEnabled: self.workflowLibrary.workflowEnabledStates[updatedWorkflow.id] ?? true,
+            replacing: self.workflowLibrary.workflowFileURLsByID[updatedWorkflow.id]
           )
-          workflowFileURLsByID[updatedWorkflow.id] = fileURL
+          self.workflowLibrary.workflowFileURLsByID[updatedWorkflow.id] = fileURL
         } catch {
           return .failed(localizedWorkflowFileSaveError(error))
         }
       }
-      customWorkflows[index] = updatedWorkflow
+      self.workflowLibrary.customWorkflows[index] = updatedWorkflow
       workflowEditorError = nil
-      workflowLibraryError = nil
+      self.workflowLibrary.workflowLibraryError = nil
       rebuildWorkflowLibrary()
       persistWorkflowEnabledStates()
       persistCustomWorkflows()
@@ -163,7 +163,7 @@ extension AppModel {
       )
       savedWorkflowID = editableWorkflow.id
     } else if let sourceWorkflow {
-      guard !isLoadingSettings, isWorkflowLibraryAvailable else {
+      guard !self.settings.isLoading, isWorkflowLibraryAvailable else {
         return .failed(L10n.runText(.workflowLibraryUnavailable, language: language))
       }
       var customizedWorkflow = sourceWorkflow
@@ -179,19 +179,19 @@ extension AppModel {
         do {
           let fileURL = try await workflowFileStore.save(
             workflow: customizedWorkflow,
-            isEnabled: workflowEnabledStates[customizedWorkflow.id] ?? false,
+            isEnabled: self.workflowLibrary.workflowEnabledStates[customizedWorkflow.id] ?? false,
             replacing: nil
           )
-          workflowFileURLsByID[customizedWorkflow.id] = fileURL
+          self.workflowLibrary.workflowFileURLsByID[customizedWorkflow.id] = fileURL
         } catch {
           return .failed(localizedWorkflowFileSaveError(error))
         }
       }
 
-      hasModifiedWorkflowLibrary = true
-      customWorkflows.insert(customizedWorkflow, at: 0)
+      self.workflowLibrary.hasModifiedWorkflowLibrary = true
+      self.workflowLibrary.customWorkflows.insert(customizedWorkflow, at: 0)
       workflowEditorError = nil
-      workflowLibraryError = nil
+      self.workflowLibrary.workflowLibraryError = nil
       rebuildWorkflowLibrary()
       persistCustomWorkflows()
       append(
@@ -212,13 +212,13 @@ extension AppModel {
       draft.eventType = .wakeWord
       draft.wakePhrasesText = normalizedPhrases.joined(separator: "\n")
 
-      let previousCustomWorkflowIDs = Set(customWorkflows.map(\.id))
+      let previousCustomWorkflowIDs = Set(self.workflowLibrary.customWorkflows.map(\.id))
       workflowEditorError = nil
       await saveWorkflowDraft(draft)
       if let workflowEditorError {
         return .failed(workflowEditorError)
       }
-      savedWorkflowID = customWorkflows.first(where: {
+      savedWorkflowID = self.workflowLibrary.customWorkflows.first(where: {
         $0.trigger == .wakeWord
           && !previousCustomWorkflowIDs.contains($0.id)
       })?.id
@@ -227,7 +227,7 @@ extension AppModel {
       return .failed(L10n.runText(.wakeWorkflowNotFound, language: language))
     }
 
-    for workflow in workflows where
+    for workflow in self.workflowLibrary.workflows where
       workflow.trigger == .wakeWord
         && workflow.id != savedWorkflowID
         && isWorkflowEnabled(workflow)
@@ -235,8 +235,8 @@ extension AppModel {
       setWorkflowEnabled(false, for: workflow.id)
     }
     setWorkflowEnabled(enableListening, for: savedWorkflowID)
-    if let workflowLibraryError {
-      return .failed(workflowLibraryError)
+    if let libraryError = self.workflowLibrary.workflowLibraryError {
+      return .failed(libraryError)
     }
     return .saved
   }
@@ -247,11 +247,11 @@ extension AppModel {
   }
 
   private var wakeWordSettingsWorkflow: WorkflowDefinition? {
-    workflows.first(where: {
+    self.workflowLibrary.workflows.first(where: {
       $0.trigger == .wakeWord && isWorkflowEnabled($0)
     })
-      ?? customWorkflows.first(where: { $0.trigger == .wakeWord })
-      ?? workflows.first(where: { $0.trigger == .wakeWord })
+      ?? self.workflowLibrary.customWorkflows.first(where: { $0.trigger == .wakeWord })
+      ?? self.workflowLibrary.workflows.first(where: { $0.trigger == .wakeWord })
   }
 
   private func voiceAssistantReadiness(
@@ -264,7 +264,7 @@ extension AppModel {
     let llm: VoiceAssistantLLMReadiness
     if !requiresLLM {
       llm = .notRequired
-    } else if isLoadingSettings {
+    } else if self.settings.isLoading {
       llm = .loading
     } else {
       switch openAICredentialAvailability {

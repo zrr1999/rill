@@ -396,6 +396,11 @@ actor LocalSpeechVoiceCaptureRuntime {
   private var streamingPreviewStartupTask: Task<Void, Never>?
   private var streamingPreviewSession: (any LocalSpeechStreamingPreviewSession)?
   private var pendingStreamingPreviewSamples: [Float] = []
+  private var captureStartedAt: ContinuousClock.Instant?
+  private var firstPreviewObservedMillis: String?
+  private var stablePreviewObservedMillis: String?
+  private var streamingPreviewSampleCount = 0
+  private var drainedTailSampleCount = 0
   private var streamingPreviewProjection = LocalSpeechStreamingPreviewProjection()
   private var recordingStartedAt: Date?
   private var recordingDurationLimitRemoved = false
@@ -522,6 +527,7 @@ actor LocalSpeechVoiceCaptureRuntime {
       request.triggerEvent?.metadata[SharedVoiceInputMetadata.handoffID]
         .flatMap(UUID.init(uuidString:))
     )
+    captureStartedAt = .now
     let audioStream = source.startStreaming()
     let readinessGate = LocalSpeechCaptureReadinessGate()
 
@@ -536,6 +542,10 @@ actor LocalSpeechVoiceCaptureRuntime {
     pcmActivityRevision = 0
     recordingGeneration = nil
     finishingGeneration = nil
+    streamingPreviewSampleCount = 0
+    firstPreviewObservedMillis = nil
+    stablePreviewObservedMillis = nil
+    drainedTailSampleCount = 0
     pendingStartupTermination = nil
     endpointDetector = request.endpointControl.map { SpeechEndpointDetector(policy: $0.policy) }
     voiceActivityDetector = newVoiceActivityDetector
@@ -667,6 +677,14 @@ actor LocalSpeechVoiceCaptureRuntime {
     pendingStreamingPreviewSamples.removeAll(keepingCapacity: false)
     _ = try? await streamingPreviewSession?.finish()
     timing["capturePreviewRetireMillis"] = DiagnosticTiming.milliseconds(since: previewStart)
+    timing["firstPreviewObservedMillis"] = firstPreviewObservedMillis
+    timing["stablePreviewObservedMillis"] = stablePreviewObservedMillis
+    timing["captureTailSampleCount"] = String(drainedTailSampleCount)
+    timing["previewDeliveredSampleCount"] = String(streamingPreviewSampleCount)
+    timing["previewKeytermStatus"] = (request.options.hints.keyterms.isEmpty
+      ? RecognitionHintApplicationStatus.notRequested
+      : streamingPreviewSession?.keytermStatus ?? .unavailable).rawValue
+    timing["previewRequestedKeytermCount"] = String(request.options.hints.keyterms.count)
 
     guard let resources = detach(request: request) else {
       throw RealtimeAudioCaptureService.CaptureError.notCapturing
@@ -770,6 +788,8 @@ actor LocalSpeechVoiceCaptureRuntime {
       }
       do {
         try recordingWriter.append(buffer)
+        drainedTailSampleCount += buffer.count
+        acceptPreviewSamples(buffer)
       } catch {
         await failActiveStream(generation: generation)
       }
@@ -791,20 +811,7 @@ actor LocalSpeechVoiceCaptureRuntime {
         )
       }
     }
-    if let previewSession = streamingPreviewSession {
-      do {
-        streamingPreviewProjection.observe(
-          try previewSession.accept(samples: buffer)
-        )
-      } catch {
-        // A preview failure must not discard the managed recording. Endpoint
-        // control simply stops receiving fresh VAD events for this run.
-        try? previewSession.cancel()
-        streamingPreviewSession = nil
-      }
-    } else if streamingPreviewStartupTask != nil {
-      appendPendingStreamingPreviewSamples(buffer)
-    }
+    acceptPreviewSamples(buffer)
     let observedSpeech: Bool
     do {
       observedSpeech = try observeEndpointSamples(
@@ -1058,6 +1065,10 @@ actor LocalSpeechVoiceCaptureRuntime {
     cancelPCMInactivityWatchdog()
     recordingGeneration = nil
     finishingGeneration = nil
+    streamingPreviewSampleCount = 0
+    firstPreviewObservedMillis = nil
+    stablePreviewObservedMillis = nil
+    drainedTailSampleCount = 0
     pendingStartupTermination = nil
     pcmActivityRevision = 0
     endpointDetector = nil
@@ -1130,6 +1141,8 @@ actor LocalSpeechVoiceCaptureRuntime {
       streamingPreviewProjection.observe(
         try session.accept(samples: preRoll)
       )
+      streamingPreviewSampleCount += preRoll.count
+      observePreviewTiming(session)
       if recordingGeneration == generation, let activeRequest {
         await publish(
           phase: .recording,
@@ -1141,6 +1154,32 @@ actor LocalSpeechVoiceCaptureRuntime {
     } catch {
       try? session.cancel()
       streamingPreviewSession = nil
+    }
+  }
+
+  private func observePreviewTiming(_ session: any LocalSpeechStreamingPreviewSession) {
+    guard let captureStartedAt else { return }
+    if firstPreviewObservedMillis == nil, !streamingPreviewProjection.text.isEmpty {
+      firstPreviewObservedMillis = DiagnosticTiming.milliseconds(since: captureStartedAt)
+    }
+    if stablePreviewObservedMillis == nil, session.hasConfirmedText {
+      stablePreviewObservedMillis = DiagnosticTiming.milliseconds(since: captureStartedAt)
+    }
+  }
+
+  private func acceptPreviewSamples(_ samples: [Float]) {
+    if let session = streamingPreviewSession {
+      do {
+        streamingPreviewProjection.observe(try session.accept(samples: samples))
+        streamingPreviewSampleCount += samples.count
+        observePreviewTiming(session)
+      } catch {
+        // Preview failure never discards the authoritative WAV recording.
+        try? session.cancel()
+        streamingPreviewSession = nil
+      }
+    } else if streamingPreviewStartupTask != nil {
+      appendPendingStreamingPreviewSamples(samples)
     }
   }
 

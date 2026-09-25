@@ -475,66 +475,44 @@ public struct RecordWorkspaceView: View {
     @ViewBuilder
     private var recordInspector: some View {
         if let record = selectedRecord {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        Text(sourceName(record.record.provenance)).font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        if let copySelection {
-                            Button {
-                                guard !isCopying else { return }
-                                isCopying = true
-                                Task {
-                                    let outcome = await copySelection(RecordReuseSubject(recordID: record.id, metadataRevision: record.metadata.revision))
-                                    isCopying = false
-                                    guard selectedRecord?.id == record.id else { return }
-                                    copyFeedback = outcome.feedback
-                                }
-                            } label: {
-                                Label(L10n.workspace(.copy, language: language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
-                            }
-                            .disabled(isCopying)
-                            .accessibilityIdentifier("records.copy")
-                        }
-                    }
-                    if let copyFeedback {
-                        Text(L10n.quickRecord(copyFeedback, language: language))
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                    payloadPreview(record.record)
-                        .focusable().focused($detailFocused)
-                        .accessibilityFocused($detailAccessibilityFocused)
-                        .accessibilityIdentifier("records.detail")
-                    if let deliverSelection,
-                       let subject = workspace.selectedListDeliverySubject {
+            VStack(spacing: 0) {
+                HStack {
+                    Text(sourceName(record.record.provenance)).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    if let copySelection {
                         Button {
-                            deliverSelection(subject)
+                            guard !isCopying else { return }
+                            isCopying = true
+                            Task {
+                                let outcome = await copySelection(RecordReuseSubject(recordID: record.id, metadataRevision: record.metadata.revision))
+                                isCopying = false
+                                guard selectedRecord?.id == record.id else { return }
+                                copyFeedback = outcome.feedback
+                            }
                         } label: {
+                            Label(L10n.workspace(.copy, language: language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
+                        }
+                        .disabled(isCopying)
+                        .accessibilityIdentifier("records.copy")
+                    }
+                    if let deliverSelection, let subject = workspace.selectedListDeliverySubject {
+                        Button { deliverSelection(subject) } label: {
                             Label(
                                 RecordDeliveryTitle.make(applicationName: sourceAppContext?.applicationName, language: language),
-                                systemImage: RillSystemSymbol.textInsert.rawValue
-                            )
+                                systemImage: RillSystemSymbol.textInsert.rawValue)
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(workspace.isMutating)
                     }
-                    HStack {
+                    Menu {
                         Button {
-                            Task {
-                                await workspace.updateMetadata(
-                                    for: record,
-                                    isPinned: !record.metadata.isPinned
-                                )
-                            }
+                            Task { await workspace.updateMetadata(for: record, isPinned: !record.metadata.isPinned) }
                         } label: {
                             Label(
                                 record.metadata.isPinned
                                     ? UIStrings.text(.clipboardUnpinItem, language: language)
                                     : UIStrings.text(.clipboardPinItem, language: language),
-                                systemImage: record.metadata.isPinned
-                                    ? RillSystemSymbol.pinSlash.rawValue
-                                    : RillSystemSymbol.pin.rawValue
-                            )
+                                systemImage: record.metadata.isPinned ? RillSystemSymbol.pinSlash.rawValue : RillSystemSymbol.pin.rawValue)
                         }
                         Button {
                             collectionIDsToAdd = []
@@ -542,21 +520,16 @@ public struct RecordWorkspaceView: View {
                         } label: {
                             Label(L10n.recordText(.addToCollections, language: language), systemImage: RillSystemSymbol.rectangleStackBadgePlus.rawValue)
                         }
-                    }
-                    membershipInspector(record)
-                    DisclosureGroup(L10n.presentation(.metadata, language: language)) {
-                        metadataInspector(record)
-                    }
-                    if case .text(let textValue) = record.record.payload,
-                       let membership = preferredMembership(for: record) {
-                        Button(L10n.presentation(.editText, language: language)) {
-                            replacementRecordID = record.id
-                            replacementText = textValue
-                            replacesInAllCollections = false
+                        if case .text(let textValue) = record.record.payload,
+                           let membership = preferredMembership(for: record) {
+                            Button(L10n.presentation(.editText, language: language)) {
+                                replacementRecordID = record.id
+                                replacementText = textValue
+                                replacesInAllCollections = false
+                            }
+                            .disabled(membership.state != .active || workspace.isMutating)
                         }
-                        .disabled(membership.state != .active || workspace.isMutating)
-                    }
-                    Menu {
+                        Divider()
                         Button(role: .destructive) {
                             Task { await workspace.deleteRecord(record.id) }
                         } label: {
@@ -567,16 +540,32 @@ public struct RecordWorkspaceView: View {
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
-
+                    .disabled(workspace.isMutating)
                 }
                 .padding(16)
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if let copyFeedback {
+                            Text(L10n.quickRecord(copyFeedback, language: language)).font(.callout).foregroundStyle(.secondary)
+                        }
+                        payloadPreview(record.record)
+                            .focusable().focused($detailFocused)
+                            .accessibilityFocused($detailAccessibilityFocused)
+                            .accessibilityIdentifier("records.detail")
+                        membershipInspector(record)
+                        DisclosureGroup(L10n.presentation(.metadata, language: language)) {
+                            metadataInspector(record)
+                        }
+                    }
+                    .padding(16)
+                }
             }
         } else {
             ContentUnavailableView(
                 L10n.recordText(.selectRecordPrompt, language: language),
-                systemImage: RillSystemSymbol.docTextMagnifyingglass.rawValue
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                systemImage: RillSystemSymbol.docTextMagnifyingglass.rawValue)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

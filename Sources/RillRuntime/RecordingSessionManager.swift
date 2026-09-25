@@ -119,7 +119,7 @@ public actor RecordingSessionManager {
     @Sendable (
       WorkflowDefinition,
       ContextSnapshot
-    ) async -> SpeechRecognitionRequestOptions
+    ) async throws -> SpeechRecognitionRequestOptions
   private let runPreflight: RecognitionRunPreflight
   private let liveAuthorizationMonitorInterval: Duration
   private let longRecordingModeProvider: @Sendable () async -> Bool
@@ -192,7 +192,7 @@ public actor RecordingSessionManager {
       @escaping @Sendable (
         WorkflowDefinition,
         ContextSnapshot
-      ) async -> SpeechRecognitionRequestOptions = { _, _ in .empty },
+      ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
     runPreflight: @escaping RecognitionRunPreflight = { _ in },
     liveAuthorizationMonitorInterval: Duration = .milliseconds(50),
     longRecordingModeProvider: @escaping @Sendable () async -> Bool = { false },

@@ -221,7 +221,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
     }
 
     private func waitUntilSettingsLoadFinishes(_ model: AppModel) async {
-        await waitUntil { !model.isLoadingSettings }
+        await waitUntil { !model.settings.isLoading }
     }
 
     private func waitUntil(_ predicate: @escaping @MainActor () -> Bool) async {

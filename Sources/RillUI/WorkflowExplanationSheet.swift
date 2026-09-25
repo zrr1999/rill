@@ -90,7 +90,7 @@ struct WorkflowExplanationSheet: View {
             failureView(reason)
         default:
             failureView(WorkflowExplanationSelectionState.unavailableFailure(
-                workflowExists: model.workflows.contains(where: { $0.id == workflowID })
+                workflowExists: model.workflowLibrary.workflows.contains(where: { $0.id == workflowID })
             ))
         }
     }
@@ -103,7 +103,7 @@ struct WorkflowExplanationSheet: View {
     }
 
     private func refresh() {
-        guard let workflow = model.workflows.first(where: { $0.id == workflowID }) else {
+        guard let workflow = model.workflowLibrary.workflows.first(where: { $0.id == workflowID }) else {
             model.cancelWorkflowExplanation()
             return
         }

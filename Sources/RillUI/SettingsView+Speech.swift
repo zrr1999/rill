@@ -74,7 +74,7 @@ extension SettingsView {
                 }
                 .pickerStyle(.menu)
                 .disabled(
-                  model.isLoadingSettings
+                  model.settings.isLoading
                     || !model.canMutateScalarSettings(in: .localSpeech)
                 )
                 .accessibilityIdentifier("settings.local-speech.model")
@@ -106,7 +106,7 @@ extension SettingsView {
                       model.selectRecommendedLocalSpeechModel()
                     }
                     .controlSize(.small)
-                    .disabled(model.isLoadingSettings)
+                    .disabled(model.settings.isLoading)
                     .accessibilityIdentifier(
                       "settings.local-speech.use-hardware-recommendation"
                     )
@@ -346,7 +346,7 @@ extension SettingsView {
             ) {
               Text(speechModelDisplayName(descriptor))
             }
-            .disabled(model.isLoadingSettings)
+            .disabled(model.settings.isLoading)
 
             Toggle(
               L10n.settingsText(.settingsKeepResident, language: model.language),
@@ -358,7 +358,7 @@ extension SettingsView {
             .toggleStyle(.checkbox)
             .controlSize(.small)
             .disabled(
-              model.isLoadingSettings
+              model.settings.isLoading
                 || !model.enabledSpeechModelIDs.contains(descriptor.id)
             )
           }

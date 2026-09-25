@@ -74,7 +74,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       defaultTTSModelIdentifier: int8.id
     )
 
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
     XCTAssertEqual(harness.model.ttsModelIdentifier, bf16.id)
 
     XCTAssertTrue(harness.model.setPreferredTTSModel(int4.id))
@@ -151,7 +151,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
 
     XCTAssertEqual(result, .saved)
     guard
-      let workflow = harness.model.customWorkflows.first(where: {
+      let workflow = harness.model.workflowLibrary.customWorkflows.first(where: {
         $0.trigger == .wakeWord
       })
     else {
@@ -185,7 +185,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
         destination: .copyToClipboard
       )
     )
-    let before = try XCTUnwrap(harness.model.customWorkflows.first)
+    let before = try XCTUnwrap(harness.model.workflowLibrary.customWorkflows.first)
 
     let result = await harness.model.updateWakeWordSettings(
       phrases: ["你好 Rill"],
@@ -194,7 +194,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
 
     XCTAssertEqual(result, .saved)
     let after = try XCTUnwrap(
-      harness.model.customWorkflows.first(where: { $0.id == before.id })
+      harness.model.workflowLibrary.customWorkflows.first(where: { $0.id == before.id })
     )
     XCTAssertEqual(after.plan.setup.wakeWord?.phrases, ["你好 Rill"])
     XCTAssertEqual(after.plan.process, before.plan.process)
@@ -262,7 +262,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     )
     harness.model.installWakeWordConfigurationValidationAction { _ in }
     await waitUntil {
-      !harness.model.isLoadingSettings
+      !harness.model.settings.isLoading
         && harness.model.openAICredentialAvailability == .available
     }
     harness.model.updateWakeWordResourceState(.ready)
@@ -273,14 +273,14 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     )
 
     XCTAssertEqual(result, .saved)
-    let customized = try XCTUnwrap(harness.model.customWorkflows.first)
+    let customized = try XCTUnwrap(harness.model.workflowLibrary.customWorkflows.first)
     XCTAssertEqual(customized.id, builtinAssistant.id)
     XCTAssertEqual(customized.plan.setup.wakeWord?.phrases, ["你好 Rill"])
     XCTAssertEqual(customized.plan.process, builtinAssistant.plan.process)
     XCTAssertEqual(customized.plan.output, builtinAssistant.plan.output)
     XCTAssertTrue(harness.model.isWorkflowEnabled(customized))
     XCTAssertTrue(harness.model.isWorkflowEnabled(builtinAssistant))
-    XCTAssertEqual(harness.model.workflows.map(\.id), [builtinAssistant.id])
+    XCTAssertEqual(harness.model.workflowLibrary.workflows.map(\.id), [builtinAssistant.id])
   }
 
   @MainActor
@@ -297,7 +297,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       )
     )
     await waitUntil {
-      !harness.model.isLoadingSettings
+      !harness.model.settings.isLoading
         && harness.model.openAICredentialAvailability == .available
     }
     harness.model.updateWakeWordResourceState(.ready)
@@ -324,7 +324,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       )
     )
     await waitUntil {
-      !harness.model.isLoadingSettings
+      !harness.model.settings.isLoading
         && harness.model.openAICredentialAvailability == .available
     }
     harness.model.updateWakeWordResourceState(.ready)
@@ -358,7 +358,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     harness.model.setWorkflowEnabled(true, for: assistant.id)
     XCTAssertFalse(harness.model.isWorkflowEnabled(assistant))
     XCTAssertEqual(
-      harness.model.workflowLibraryError,
+      harness.model.workflowLibrary.workflowLibraryError,
       "The current LLM configuration failed verification. Fix it or verify it again before enabling this workflow."
     )
   }
@@ -377,14 +377,14 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       )
     )
     await waitUntil {
-      !harness.model.isLoadingSettings
+      !harness.model.settings.isLoading
         && harness.model.openAICredentialAvailability == .available
     }
     harness.model.language = .english
 
     harness.model.setWorkflowEnabled(true, for: assistant.id)
     XCTAssertEqual(
-      harness.model.workflowLibraryError,
+      harness.model.workflowLibrary.workflowLibraryError,
       "Grant microphone access before enabling wake-word listening."
     )
 
@@ -393,14 +393,14 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     )
     harness.model.setWorkflowEnabled(true, for: assistant.id)
     XCTAssertEqual(
-      harness.model.workflowLibraryError,
+      harness.model.workflowLibrary.workflowLibraryError,
       "Prepare the selected local ASR model before enabling wake-word listening."
     )
 
     harness.model.updateWakeWordResourceState(.ready)
     harness.model.setWorkflowEnabled(true, for: assistant.id)
     XCTAssertTrue(harness.model.isWorkflowEnabled(assistant))
-    XCTAssertNil(harness.model.workflowLibraryError)
+    XCTAssertNil(harness.model.workflowLibrary.workflowLibraryError)
   }
 
   @MainActor
@@ -417,7 +417,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       XCTFail("Expected invalid wake-word settings to fail")
       return
     }
-    XCTAssertTrue(harness.model.customWorkflows.isEmpty)
+    XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
   }
 
   @MainActor

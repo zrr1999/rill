@@ -113,7 +113,8 @@ private struct RecoveryProbeAction: OutputAction {
     let id = "recovery-controller.action"
     let probe: RecoveryOutputProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.record()
         return .copiedToClipboard
     }
@@ -755,7 +756,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
         let coordinator = SessionCoordinator(
-            contextProvider: RecoveryExecutionBoundaryContextProvider(probe: probe),
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RecoveryExecutionBoundaryRecognizer(probe: probe)]
             ),
@@ -879,7 +880,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             diagnostics: diagnostics
         )
         let coordinator = SessionCoordinator(
-            contextProvider: RecoveryControllerContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RecoveryControllerRecognizer(shouldFail: false)]
             ),
@@ -1171,7 +1172,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
         let coordinator = SessionCoordinator(
-            contextProvider: RecoveryExecutionBoundaryContextProvider(probe: executionProbe),
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RecoveryExecutionBoundaryRecognizer(probe: executionProbe)]
             ),
@@ -1662,7 +1663,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
     ) -> FailedAudioRecoveryController {
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
         let coordinator = SessionCoordinator(
-            contextProvider: RecoveryControllerContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     RecoveryControllerRecognizer(

@@ -5,7 +5,7 @@ import RillRuntime
 extension AppModel {
   public func prepareLocalSpeechModel() {
     guard !hasBegunApplicationShutdown,
-      !isLoadingSettings,
+      !self.settings.isLoading,
       localSpeechPreparationState != .preparing
     else {
       return

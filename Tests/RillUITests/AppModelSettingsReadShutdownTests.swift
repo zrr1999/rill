@@ -326,7 +326,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await gate.waitUntilCancellationObserved()
         let completionCountWhileBlocked = await completion.count()
         XCTAssertEqual(completionCountWhileBlocked, 0)
-        XCTAssertFalse(harness.model.isLoadingSettings)
+        XCTAssertFalse(harness.model.settings.isLoading)
 
         await gate.release()
         await shutdownTask.value
@@ -346,7 +346,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             settingsStore: settingsStore,
             credentialStore: credentialStore
         )
-        await waitUntil { !harness.model.isLoadingSettings }
+        await waitUntil { !harness.model.settings.isLoading }
         XCTAssertEqual(harness.model.openAIAPIKey, "initial-key")
 
         try await credentialStore.setCredential("late-key", for: .openAIAPIKey)
@@ -393,7 +393,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             unavailableKeys: [.interfaceLanguage]
         )
         let harness = makeHarness(settingsStore: settingsStore)
-        await waitUntil { !harness.model.isLoadingSettings }
+        await waitUntil { !harness.model.settings.isLoading }
         let initialLanguage = harness.model.language
         let recoveredLanguage: AppLanguage = initialLanguage == .english
             ? .simplifiedChinese
@@ -438,8 +438,8 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             unavailableKeys: [.customWorkflows]
         )
         let harness = makeHarness(settingsStore: settingsStore)
-        await waitUntil { !harness.model.isLoadingSettings }
-        XCTAssertEqual(harness.model.workflowLibraryAvailability, .unavailable)
+        await waitUntil { !harness.model.settings.isLoading }
+        XCTAssertEqual(harness.model.workflowLibrary.workflowLibraryAvailability, .unavailable)
 
         await settingsStore.setUnavailableKeys([])
         let gate = CancellationIgnoringSettingsReadGate()
@@ -463,7 +463,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await gate.release()
         await shutdownTask.value
 
-        XCTAssertEqual(harness.model.workflowLibraryAvailability, .unavailable)
+        XCTAssertEqual(harness.model.workflowLibrary.workflowLibraryAvailability, .unavailable)
         XCTAssertFalse(
             harness.model.eventFeed.contains {
                 $0.english == "Protected settings were loaded again without overwriting stored data."
@@ -489,7 +489,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             settingsStore: settingsStore,
             privacySettingsSource: privacySettingsSource
         )
-        await waitUntil { !harness.model.isLoadingSettings }
+        await waitUntil { !harness.model.settings.isLoading }
         XCTAssertNotNil(harness.model.privacySettingsLoadError)
         XCTAssertThrowsError(try privacySettingsSource.currentSettings())
 
@@ -535,7 +535,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             settingsStore: settingsStore,
             privacySettingsSource: privacySettingsSource
         )
-        await waitUntil { !harness.model.isLoadingSettings }
+        await waitUntil { !harness.model.settings.isLoading }
         let initialPolicy = harness.model.privacyPolicySettings
 
         await harness.model.stopSettingsReadTasksForApplicationShutdown()

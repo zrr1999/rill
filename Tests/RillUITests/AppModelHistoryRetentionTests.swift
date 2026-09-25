@@ -305,7 +305,7 @@ extension AppModelTests {
             localHistoryMaintenance: maintenance
         )
         await settingsStore.waitUntilBatchReadIsSuspended()
-        XCTAssertTrue(harness.model.isLoadingSettings)
+        XCTAssertTrue(harness.model.settings.isLoading)
 
         harness.model.setRecordRetentionPeriod(.forever)
         await Task.yield()
@@ -319,7 +319,7 @@ extension AppModelTests {
         await settingsStore.resumeBatchRead()
         await waitForHistoryMaintenance(harness)
 
-        XCTAssertFalse(harness.model.isLoadingSettings)
+        XCTAssertFalse(harness.model.settings.isLoading)
         XCTAssertEqual(harness.model.recordRetentionPeriod, .oneDay)
         let storedValue = try? await settingsStore.string(
             forKey: .recordRetentionPeriod
@@ -576,7 +576,7 @@ extension AppModelTests {
                 message: "diagnostic-before-clear"
             ),
         ]
-        harness.model.lastCompletedText = "transcript-before-clear"
+        harness.model.voice.lastCompletedText = "transcript-before-clear"
         harness.model.lastFailure = "failure-before-clear"
         harness.model.eventFeed = [
             EventFeedEntry(
@@ -597,7 +597,7 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.lastLocalHistoryRemovedCount, 5)
         XCTAssertEqual(harness.model.lastPreservedActiveRecordCount, 0)
         XCTAssertTrue(harness.model.diagnosticEvents.isEmpty)
-        XCTAssertNil(harness.model.lastCompletedText)
+        XCTAssertNil(harness.model.voice.lastCompletedText)
         XCTAssertNil(harness.model.lastFailure)
         XCTAssertTrue(harness.model.eventFeed.isEmpty)
         XCTAssertNil(harness.model.liveSubtitleSnapshot)
@@ -644,7 +644,7 @@ extension AppModelTests {
         )
         await waitForHistoryMaintenance(harness)
         await maintenance.resetCalls()
-        harness.model.isRunning = true
+        harness.model.voice.isRunning = true
 
         harness.model.clearRunHistory()
 
@@ -886,7 +886,7 @@ extension AppModelTests {
         await settingsReadStop.value
         await waitForHistoryMaintenance(harness)
 
-        XCTAssertFalse(harness.model.isLoadingSettings)
+        XCTAssertFalse(harness.model.settings.isLoading)
         XCTAssertTrue(harness.model.localHistoryMaintenanceTasks.isEmpty)
         XCTAssertNil(harness.model.periodicHistoryRetentionMaintenanceTask)
         let calls = await maintenance.callSnapshot()

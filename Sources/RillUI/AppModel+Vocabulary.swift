@@ -60,13 +60,13 @@ extension AppModel {
   }
 
   func deleteVocabularyCollection(_ collectionID: UUID) {
-    guard !isLoadingSettings, areVocabularyRulesAvailable,
+    guard !self.settings.isLoading, areVocabularyRulesAvailable,
       collectionID != VocabularyCollection.personalID,
-      vocabularyCollections.contains(where: { $0.id == collectionID })
+      self.vocabulary.vocabularyCollections.contains(where: { $0.id == collectionID })
     else { return }
-    vocabularyCollections.removeAll { $0.id == collectionID }
-    vocabularyCollectionBindings.removeAll { $0.collectionID == collectionID }
-    workflowCustomizations = workflowCustomizations.map { customization in
+    self.vocabulary.vocabularyCollections.removeAll { $0.id == collectionID }
+    self.vocabulary.vocabularyCollectionBindings.removeAll { $0.collectionID == collectionID }
+    self.workflowLibrary.workflowCustomizations = self.workflowLibrary.workflowCustomizations.map { customization in
       var customization = customization
       customization.vocabularyBindings?.removeAll {
         $0.collectionID == collectionID
@@ -81,12 +81,12 @@ extension AppModel {
     _ bindings: [VocabularyCollectionBinding],
     for workflowID: UUID
   ) {
-    if let index = workflowCustomizations.firstIndex(where: {
+    if let index = self.workflowLibrary.workflowCustomizations.firstIndex(where: {
       $0.workflowID == workflowID
     }) {
-      workflowCustomizations[index].vocabularyBindings = bindings
+      self.workflowLibrary.workflowCustomizations[index].vocabularyBindings = bindings
     } else {
-      workflowCustomizations.append(
+      self.workflowLibrary.workflowCustomizations.append(
         WorkflowCustomization(
           workflowID: workflowID,
           vocabularyBindings: bindings
@@ -98,7 +98,7 @@ extension AppModel {
   }
 
   private func commitVocabularyLibraryChange() {
-    guard !isLoadingSettings, areVocabularyRulesAvailable else { return }
+    guard !self.settings.isLoading, areVocabularyRulesAvailable else { return }
     vocabulary.commit()
     rebuildWorkflowLibrary()
     persistVocabularyLibrary()

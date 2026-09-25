@@ -243,7 +243,7 @@ public struct VocabularyCorrectionSheet: View {
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .disabled(draft.proposedRule == nil || model.isLoadingSettings)
+            .disabled(draft.proposedRule == nil || model.settings.isLoading)
         }
     }
 
@@ -305,7 +305,7 @@ public struct VocabularyCorrectionSheet: View {
     ) -> [VocabularyCollection] {
         guard let scope else { return [] }
         let compatibleIDs = Set(model.vocabularyCollectionIDs(compatibleWith: scope))
-        return model.vocabularyCollections.filter { compatibleIDs.contains($0.id) }
+        return model.vocabulary.vocabularyCollections.filter { compatibleIDs.contains($0.id) }
     }
 
     private func unknownScopeLabel(_ field: VocabularyCorrectionScopeField) -> String {

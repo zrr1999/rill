@@ -74,7 +74,8 @@ private struct ProcessingTestAction: OutputAction {
     let id = "timed.action"
     let clock: ProcessingTestClock
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         clock.advance(milliseconds: 60_000)
         return .copiedToClipboard
     }
@@ -243,7 +244,7 @@ private func makeProcessingHarness(
         ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
     let coordinator = SessionCoordinator(
-        contextProvider: ProcessingTestContext(),
+
         recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ProcessingTestRecognizer(clock: clock, outcome: recognition, candidateSets: candidateSets)]),
         transformerRegistry: TextTransformerRegistry(transformers: [ProcessingTestTransformer(clock: clock, outcome: transformation)]),
         actionRegistry: OutputActionRegistry(actions: [ProcessingTestAction(clock: clock)]),

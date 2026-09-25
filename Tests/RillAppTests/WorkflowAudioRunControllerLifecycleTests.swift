@@ -51,7 +51,7 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
         let captureService = ManagedFileAudioCaptureService(fileURL: fileURL)
         let eventBus = EventBus()
         let coordinator = SessionCoordinator(
-            contextProvider: WorkflowAudioCleanupContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -97,7 +97,7 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
         let captureService = ManagedFileAudioCaptureService(fileURL: fileURL)
         let eventBus = EventBus()
         let coordinator = SessionCoordinator(
-            contextProvider: WorkflowAudioCleanupContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -138,7 +138,7 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
         let captureService = ManagedFileAudioCaptureService(fileURL: fileURL)
         let eventBus = EventBus()
         let coordinator = SessionCoordinator(
-            contextProvider: WorkflowAudioCleanupContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),

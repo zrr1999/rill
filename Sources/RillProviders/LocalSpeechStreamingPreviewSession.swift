@@ -1,5 +1,6 @@
 import RillSpeechContracts
 import Foundation
+import RillCore
 
 /// Capture-side seam for worker-owned streaming preview and VAD events.
 ///
@@ -8,6 +9,8 @@ import Foundation
 /// snapshots, so model preparation never acquires the microphone.
 public protocol LocalSpeechStreamingPreviewSession: AnyObject, Sendable {
   var providesVoiceActivity: Bool { get }
+  var hasConfirmedText: Bool { get }
+  var keytermStatus: RecognitionHintApplicationStatus { get }
   func accept(samples: [Float]) throws -> String
   func drainVoiceActivity() -> [SpeechWorkerVADActivity]
   func finish() async throws -> String
@@ -16,6 +19,8 @@ public protocol LocalSpeechStreamingPreviewSession: AnyObject, Sendable {
 
 public extension LocalSpeechStreamingPreviewSession {
   var providesVoiceActivity: Bool { false }
+  var hasConfirmedText: Bool { false }
+  var keytermStatus: RecognitionHintApplicationStatus { .unsupported }
   func drainVoiceActivity() -> [SpeechWorkerVADActivity] { [] }
   func cancel() throws {}
 }

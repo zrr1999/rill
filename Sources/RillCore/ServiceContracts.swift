@@ -1,25 +1,26 @@
 import Foundation
 
+public enum RecognitionPriority: String, Sendable, Equatable {
+    case interactive, foregroundFinal, wakeCandidate
+}
+
 public struct RecognitionRequest: Sendable, Equatable {
-    public var runID: UUID
-    public var workflow: WorkflowDefinition
-    public var contextSnapshot: ContextSnapshot
-    public var triggerEvent: WorkflowTriggerEvent?
+    public let runID: UUID
+    public let contextSnapshot: ContextSnapshot
+    public let priority: RecognitionPriority
     public var capturedAudio: CapturedAudio?
-    public var options: SpeechRecognitionRequestOptions
+    public let options: SpeechRecognitionRequestOptions
 
     public init(
         runID: UUID,
-        workflow: WorkflowDefinition,
         contextSnapshot: ContextSnapshot,
-        triggerEvent: WorkflowTriggerEvent? = nil,
+        priority: RecognitionPriority = .foregroundFinal,
         capturedAudio: CapturedAudio? = nil,
         options: SpeechRecognitionRequestOptions = .empty
     ) {
         self.runID = runID
-        self.workflow = workflow
         self.contextSnapshot = contextSnapshot
-        self.triggerEvent = triggerEvent
+        self.priority = priority
         self.capturedAudio = capturedAudio
         self.options = options
     }
@@ -272,52 +273,6 @@ public protocol TracedTextTransformer: TextTransformer {
 /// transformer failure is recoverable.
 public protocol SpeechTextFallbackEligibleError: Error {
     var allowsSpeechTextFallback: Bool { get }
-}
-
-public protocol OutputAction: Sendable {
-    var id: String { get }
-    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult
-    func execute(text: String, context: ActionContext) async throws -> ActionResult
-}
-
-public enum OutputActionPayloadError: Error, LocalizedError, Sendable, Equatable {
-    case unsupportedPayload(actionID: String, payloadKind: RecordPayloadKind)
-
-    public var errorDescription: String? {
-        switch self {
-        case .unsupportedPayload(let actionID, let payloadKind):
-            "Action \(actionID) does not support \(payloadKind.rawValue) records."
-        }
-    }
-}
-
-public extension OutputAction {
-    /// Compatibility for text-only actions. The orchestration boundary always
-    /// sends a RecordDraft and rejects unsupported payloads explicitly.
-    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-        guard case .text(let text) = record.payload else {
-            throw OutputActionPayloadError.unsupportedPayload(
-                actionID: id,
-                payloadKind: record.payload.kind
-            )
-        }
-        return try await execute(text: text, context: context)
-    }
-
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        let draft = RecordDraft(
-            payload: .text(text),
-            provenance: RecordProvenance(
-                source: RecordSourceIdentity(kind: .workflow),
-                sourceApplicationName: context.contextSnapshot.focus.applicationName,
-                sourceBundleIdentifier: context.contextSnapshot.focus.bundleIdentifier,
-                workflowID: context.workflow.id,
-                workflowRunID: context.runID,
-                workflow: context.workflow.presentation
-            )
-        )
-        return try await execute(record: draft, context: context)
-    }
 }
 
 public protocol WorkflowCatalog: Sendable {

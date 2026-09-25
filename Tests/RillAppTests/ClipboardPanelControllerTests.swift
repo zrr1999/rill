@@ -475,7 +475,7 @@ final class RecordPanelControllerTests: XCTestCase {
         let resolver = CandidateResolver(eventBus: eventBus)
         let actionRegistry = OutputActionRegistry(actions: [])
         let coordinator = SessionCoordinator(
-            contextProvider: RecordPanelDigitTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: actionRegistry,

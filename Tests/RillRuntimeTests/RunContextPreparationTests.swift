@@ -20,7 +20,7 @@ struct RunContextPreparationTests {
         let bus = EventBus()
         let resolver = CandidateResolver(eventBus: bus)
         let transformer = ContextQueueTransformer()
-        let coordinator = SessionCoordinator(contextProvider: ContextQueueContextProvider(),
+        let coordinator = SessionCoordinator(
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ContextQueueRecognizer(result: recognition)]),
             transformerRegistry: TextTransformerRegistry(transformers: [transformer]),
             actionRegistry: OutputActionRegistry(actions: [ContextQueueAction()]), candidateResolver: resolver, eventBus: bus,
@@ -220,7 +220,7 @@ struct RunContextPreparationTests {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
         let coordinator = SessionCoordinator(
-            contextProvider: ContextQueueContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ContextQueueRecognizer()]),
             transformerRegistry: TextTransformerRegistry(transformers: [transformer]),
             actionRegistry: OutputActionRegistry(actions: [ContextQueueAction()]),
@@ -365,5 +365,8 @@ private actor ContextQueueTransformer: TextTransformer {
 
 private struct ContextQueueAction: OutputAction {
     let id = "context.output"
-    func execute(text: String, context: ActionContext) async throws -> ActionResult { .copiedToClipboard }
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
+        return .copiedToClipboard
+    }
 }

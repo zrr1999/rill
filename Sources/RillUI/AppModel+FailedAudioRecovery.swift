@@ -22,7 +22,7 @@ public extension AppModel {
 
     func setFailedAudioRecoveryEnabled(_ isEnabled: Bool) {
         guard !hasBegunApplicationShutdown,
-              !isLoadingSettings,
+              !self.settings.isLoading,
               isEnabled != failedAudioRecoveryEnabled,
               !isUpdatingFailedAudioRecovery else {
             return
@@ -164,7 +164,7 @@ public extension AppModel {
             )
             return
         }
-        guard let workflow = workflows.first(where: { $0.id == receipt.workflowID }) else {
+        guard let workflow = self.workflowLibrary.workflows.first(where: { $0.id == receipt.workflowID }) else {
             failedAudioRecoveryError = L10n.runText(
                 .recoveryWorkflowUnavailable,
                 language: language

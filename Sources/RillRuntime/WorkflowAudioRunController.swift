@@ -1,14 +1,13 @@
 import Foundation
 import RillCore
-import RillRuntime
 
-actor WorkflowAudioRunController {
-  enum RunError: Error, LocalizedError, Equatable {
+public actor WorkflowAudioRunController {
+  public enum RunError: Error, LocalizedError, Equatable {
     case alreadyRecording
     case notRecording
     case shuttingDown
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
       switch self {
       case .alreadyRecording:
         return "A workflow recording is already in progress."
@@ -28,7 +27,8 @@ actor WorkflowAudioRunController {
 
   private enum State: Sendable {
     case idle
-    case preparing(UUID)
+    case preparing(runID: UUID, workflow: WorkflowDefinition)
+    case starting(runID: UUID, workflow: WorkflowDefinition, session: AuthorizedLiveAudioSession)
     case recording(
       runID: UUID,
       workflow: WorkflowDefinition,
@@ -63,7 +63,7 @@ actor WorkflowAudioRunController {
     @Sendable (
       WorkflowDefinition,
       ContextSnapshot
-    ) async -> SpeechRecognitionRequestOptions
+    ) async throws -> SpeechRecognitionRequestOptions
   private let runPreflight: RecognitionRunPreflight
   private let liveAuthorizationMonitorInterval: Duration
   private let recognizerDurationProvider: @Sendable (String) -> Double?
@@ -71,9 +71,6 @@ actor WorkflowAudioRunController {
   private let privacyRunGate: PrivacyRunGate?
   private let cleanupOwner: ManagedTemporaryAudioCleanupOwner
   private var state: State = .idle
-  private var preparingRunID: UUID?
-  private var preparingWorkflow: WorkflowDefinition?
-  private var preparingLiveAudioSession: AuthorizedLiveAudioSession?
   private var finishingRuns: [UUID: FinishingRun] = [:]
   private var captureSignalSubscriptions: [UUID: CaptureSignalSubscription] = [:]
   private var captureSignalDrainTasks: [UUID: Task<Void, Never>] = [:]
@@ -83,19 +80,18 @@ actor WorkflowAudioRunController {
   private var diagnosticTailTask: Task<Void, Never>?
   private var diagnosticQueueSealed = false
 
-  init(
+  public init(
     audioCaptureService: any AudioCaptureService,
     capturedAudioProcessingQueue: CapturedAudioProcessingQueue,
     diagnostics: DiagnosticsRecorder? = nil,
     eventBus: EventBus? = nil,
-    contextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
     privacyContextProvider: (@Sendable () async -> ContextSnapshot)? = nil,
     authorizedContextProvider: (@Sendable (PrivacyPolicyDecision) async -> ContextSnapshot)? = nil,
     recognitionOptionsProvider:
       @escaping @Sendable (
         WorkflowDefinition,
         ContextSnapshot
-      ) async -> SpeechRecognitionRequestOptions = { _, _ in .empty },
+      ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
     runPreflight: @escaping RecognitionRunPreflight = { _ in },
     liveAuthorizationMonitorInterval: Duration = .milliseconds(50),
     recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
@@ -120,16 +116,16 @@ actor WorkflowAudioRunController {
     self.cleanupOwner = cleanupOwner
   }
 
-  var isIdle: Bool {
-    if case .idle = state { return finishingRuns.isEmpty && preparingRunID == nil }
+  public var isIdle: Bool {
+    if case .idle = state { return finishingRuns.isEmpty }
     return false
   }
 
-  func startRun(workflow: WorkflowDefinition, binding: TriggerBinding) async throws {
+  public func startRun(workflow: WorkflowDefinition, binding: TriggerBinding) async throws {
     try await startRun(workflow: workflow, binding: binding, triggerEvent: nil)
   }
 
-  func startRun(
+  public func startRun(
     workflow: WorkflowDefinition,
     binding: TriggerBinding,
     triggerEvent suppliedTriggerEvent: WorkflowTriggerEvent?
@@ -153,9 +149,7 @@ actor WorkflowAudioRunController {
       }
     }
     let runID = suppliedTriggerEvent?.id ?? UUID()
-    state = .preparing(runID)
-    preparingRunID = runID
-    preparingWorkflow = workflow
+    state = .preparing(runID: runID, workflow: workflow)
     var issuedLiveAudioSession: AuthorizedLiveAudioSession?
     do {
       await publishLiveSubtitleSnapshot(
@@ -191,13 +185,12 @@ actor WorkflowAudioRunController {
       }
       issuedLiveAudioSession = liveAudioSession
       guard lifecycle == .accepting,
-        isPreparing(runID),
-        preparingRunID == runID
+        isPreparing(runID)
       else {
         await liveAudioSession.cancel()
         throw CancellationError()
       }
-      preparingLiveAudioSession = liveAudioSession
+      state = .starting(runID: runID, workflow: workflow, session: liveAudioSession)
       try await liveAudioSession.startMonitoring()
       guard lifecycle == .accepting, isPreparing(runID) else {
         await liveAudioSession.cancel()
@@ -270,11 +263,6 @@ actor WorkflowAudioRunController {
           maximumDurationSeconds: maximumDurationSeconds
         )
       }
-      if preparingRunID == runID {
-        preparingRunID = nil
-        preparingWorkflow = nil
-        preparingLiveAudioSession = nil
-      }
     } catch {
       await issuedLiveAudioSession?.cancel()
       // `cancel()` crosses another actor. A user stop can therefore retire
@@ -282,11 +270,6 @@ actor WorkflowAudioRunController {
       // that boundary so a stale start failure cannot resurrect its panel.
       let terminalPreviewPhase: LiveSubtitlePhase =
         error is CancellationError || !isPreparing(runID) ? .hidden : .failed
-      if preparingRunID == runID {
-        preparingRunID = nil
-        preparingWorkflow = nil
-        preparingLiveAudioSession = nil
-      }
       await publishLiveSubtitleSnapshot(
         runID: runID,
         workflow: workflow,
@@ -305,14 +288,14 @@ actor WorkflowAudioRunController {
     )
   }
 
-  func finishRun() async throws {
+  public func finishRun() async throws {
     let task: Task<Void, Error>?
     switch state {
     case .recording:
       task = beginFinishingCurrentRun()
     case .stopping(let runID):
       task = finishingRuns[runID]?.task
-    case .idle, .preparing:
+    case .idle, .preparing, .starting:
       task = nil
     }
 
@@ -320,7 +303,7 @@ actor WorkflowAudioRunController {
     try await task.value
   }
 
-  func removeMaximumDurationLimit(runID requestedRunID: UUID) async -> Bool {
+  public func removeMaximumDurationLimit(runID requestedRunID: UUID) async -> Bool {
     guard lifecycle == .accepting,
       case .recording(let runID, _, _, _) = state,
       runID == requestedRunID
@@ -576,7 +559,7 @@ actor WorkflowAudioRunController {
     }
   }
 
-  func cancelRun(runID requestedRunID: UUID? = nil) async {
+  public func cancelRun(runID requestedRunID: UUID? = nil) async {
     var activeCaptureToCancel:
       (
         runID: UUID,
@@ -594,15 +577,15 @@ actor WorkflowAudioRunController {
     switch state {
     case .idle:
       break
-    case .preparing(let runID):
+    case .preparing(let runID, _):
       if requestedRunID == nil || requestedRunID == runID {
-        activeCaptureToCancel = (runID, preparingLiveAudioSession)
+        activeCaptureToCancel = (runID, nil)
         state = .stopping(runID)
-        if preparingRunID == runID {
-          preparingRunID = nil
-          preparingWorkflow = nil
-          preparingLiveAudioSession = nil
-        }
+      }
+    case .starting(let runID, _, let session):
+      if requestedRunID == nil || requestedRunID == runID {
+        activeCaptureToCancel = (runID, session)
+        state = .stopping(runID)
       }
     case .recording(let runID, _, _, let liveAudioSession):
       if requestedRunID == nil || requestedRunID == runID {
@@ -811,7 +794,7 @@ actor WorkflowAudioRunController {
     await cleanupOwner.drain(runID: runID)
   }
 
-  func shutdown() async {
+  public func shutdown() async {
     switch lifecycle {
     case .accepting:
       lifecycle = .shuttingDown
@@ -855,18 +838,14 @@ actor WorkflowAudioRunController {
     where currentRunID == runID:
       workflow = currentWorkflow
       retireCaptureSignalSubscription(runID: runID)
-    case .preparing(let currentRunID) where currentRunID == runID:
-      workflow = preparingWorkflow
+    case .preparing(let currentRunID, let currentWorkflow) where currentRunID == runID,
+         .starting(let currentRunID, let currentWorkflow, _) where currentRunID == runID:
+      workflow = currentWorkflow
     default:
       return
     }
 
     state = .stopping(runID)
-    if preparingRunID == runID {
-      preparingRunID = nil
-      preparingWorkflow = nil
-      preparingLiveAudioSession = nil
-    }
     let message = LiveAudioSessionError.authorizationInvalidated(reason).localizedDescription
     await audioCaptureService.cancelCapture(runID: runID)
     releaseCaptureBoundary(runID: runID)
@@ -887,8 +866,12 @@ actor WorkflowAudioRunController {
   }
 
   private func isPreparing(_ runID: UUID) -> Bool {
-    guard case .preparing(let currentRunID) = state else { return false }
-    return currentRunID == runID
+    switch state {
+    case .preparing(let currentRunID, _), .starting(let currentRunID, _, _):
+      return currentRunID == runID
+    default:
+      return false
+    }
   }
 
   private func publishLiveSubtitleSnapshot(

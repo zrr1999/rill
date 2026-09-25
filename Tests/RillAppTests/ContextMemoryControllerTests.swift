@@ -59,7 +59,7 @@ struct ContextMemoryControllerTests {
         let bus = EventBus()
         let resolver = CandidateResolver(eventBus: bus)
         let actions = OutputActionRegistry(actions: [])
-        let coordinator = SessionCoordinator(contextProvider: EmptyContextProvider(),
+        let coordinator = SessionCoordinator(
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []), actionRegistry: actions,
             candidateResolver: resolver, eventBus: bus)

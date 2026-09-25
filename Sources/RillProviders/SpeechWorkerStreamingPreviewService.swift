@@ -26,18 +26,11 @@ public actor SpeechWorkerStreamingPreviewService {
     do {
       let settings = try await settingsProvider()
       let workflow = request.workflow
-      let modelID = LocalSpeechModelCatalog.effectiveModelIdentifier(
-        settings: settings,
-        workflow: workflow
-      )
-      guard MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelID),
+      guard let modelID = request.options.modelID,
+        MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelID),
         settings.enabledModelIDs.contains(modelID)
-      else {
-        return nil
-      }
-      let language =
-        workflow.metadata[WorkflowMetadataKey.languageOverride]
-        ?? settings.language
+      else { return nil }
+      let language = request.options.language
       let profile = SpeechWorkerStreamingProfile(
         rawValue: workflow.metadata[WorkflowMetadataKey.streamingProfile] ?? ""
       ) ?? Self.defaultProfile(for: request)
@@ -57,6 +50,7 @@ public actor SpeechWorkerStreamingPreviewService {
       return SpeechWorkerStreamingPreviewSession(
         workerSession: workerSession,
         modelID: modelID,
+        keytermStatus: request.options.hints.keyterms.isEmpty ? .notRequested : .unsupported,
         measuredPeakObserver: measuredPeakObserver
       )
     } catch {
@@ -90,6 +84,7 @@ public actor SpeechWorkerStreamingPreviewService {
       return SpeechWorkerStreamingPreviewSession(
         workerSession: workerSession,
         modelID: modelID,
+        keytermStatus: .notRequested,
         measuredPeakObserver: measuredPeakObserver
       )
     } catch {
@@ -131,6 +126,7 @@ private final class SpeechWorkerStreamingPreviewSession:
 
   private let workerSession: SpeechWorkerStreamingSession
   private let modelID: String
+  let keytermStatus: RecognitionHintApplicationStatus
   private let measuredPeakObserver: @Sendable (String, UInt64) async -> Void
   private let lock = NSLock()
   private var state = State()
@@ -139,10 +135,12 @@ private final class SpeechWorkerStreamingPreviewSession:
   init(
     workerSession: SpeechWorkerStreamingSession,
     modelID: String,
+    keytermStatus: RecognitionHintApplicationStatus,
     measuredPeakObserver: @escaping @Sendable (String, UInt64) async -> Void
   ) {
     self.workerSession = workerSession
     self.modelID = modelID
+    self.keytermStatus = keytermStatus
     self.measuredPeakObserver = measuredPeakObserver
     eventTask = Task { [weak self] in
       do {
@@ -156,6 +154,7 @@ private final class SpeechWorkerStreamingPreviewSession:
   }
 
   var providesVoiceActivity: Bool { true }
+  var hasConfirmedText: Bool { lock.withLock { !state.confirmed.isEmpty } }
 
   deinit {
     eventTask?.cancel()

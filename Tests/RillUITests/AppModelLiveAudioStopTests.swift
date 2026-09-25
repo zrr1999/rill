@@ -33,7 +33,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
@@ -62,7 +62,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         await startGate.fail(message: "Microphone unavailable")
         await harness.model.waitForWorkflowAudioActions()
 
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
@@ -85,7 +85,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         harness.model.runWorkflow(workflow)
         await harness.model.waitForWorkflowAudioActions()
 
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
@@ -97,7 +97,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
 
         await harness.model.stopInteractiveWorkflowRunsForApplicationShutdown()
 
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
@@ -116,7 +116,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
@@ -135,7 +135,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
             .runFailed(runID: nil, workflow: nil, message: "Unidentified failure.")
         )
 
-        XCTAssertTrue(harness.model.isRunning)
+        XCTAssertTrue(harness.model.voice.isRunning)
         XCTAssertEqual(
             harness.model.workflowAudioRunState,
             .transcribing(workflowID: workflowID)
@@ -159,7 +159,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
@@ -186,7 +186,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
@@ -198,13 +198,13 @@ final class AppModelLiveAudioStopTests: XCTestCase {
 
         harness.model.markLiveAudioRunStoppedByUser(runID: UUID())
 
-        XCTAssertTrue(harness.model.isRunning)
+        XCTAssertTrue(harness.model.voice.isRunning)
         XCTAssertEqual(harness.model.liveSubtitleSnapshot?.runID, runID)
         XCTAssertEqual(harness.model.workflowAudioCaptureRunID, runID)
 
         harness.model.markLiveAudioRunStoppedByUser(runID: runID)
 
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertNil(harness.model.liveSubtitleSnapshot)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
@@ -216,7 +216,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         workflowID: UUID = UUID(),
         providerID: String = "whisperkit.stream"
     ) {
-        model.isRunning = true
+        model.voice.isRunning = true
         model.workflowAudioRunState = .recording(workflowID: workflowID)
         model.handle(
             .liveSubtitleUpdated(

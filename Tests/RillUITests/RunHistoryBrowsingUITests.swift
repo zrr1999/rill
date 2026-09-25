@@ -376,18 +376,18 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         )
         let harness = makeHarness(runHistoryBrowser: browser)
 
-        let loadedFirst = await waitUntil { harness.model.runHistoryPage == firstPage }
+        let loadedFirst = await waitUntil { harness.model.history.runHistoryPage == firstPage }
         XCTAssertTrue(loadedFirst)
         harness.model.loadOlderRunHistoryPage()
-        let loadedOlder = await waitUntil { harness.model.runHistoryPage == olderPage }
+        let loadedOlder = await waitUntil { harness.model.history.runHistoryPage == olderPage }
         XCTAssertTrue(loadedOlder)
-        XCTAssertEqual(harness.model.runHistoryPage?.entries.map(\.id), [olderEntry.id])
+        XCTAssertEqual(harness.model.history.runHistoryPage?.entries.map(\.id), [olderEntry.id])
         XCTAssertTrue(harness.model.canLoadNewerRunHistoryPage)
 
         harness.model.loadNewerRunHistoryPage()
-        let returnedToFirst = await waitUntil { harness.model.runHistoryPage == firstPage }
+        let returnedToFirst = await waitUntil { harness.model.history.runHistoryPage == firstPage }
         XCTAssertTrue(returnedToFirst)
-        XCTAssertEqual(harness.model.runHistoryPage?.entries.count, 1)
+        XCTAssertEqual(harness.model.history.runHistoryPage?.entries.count, 1)
 
         let requests = await browser.requests()
         XCTAssertEqual(requests.count, 2)
@@ -422,20 +422,20 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         )
         let harness = makeHarness(runHistoryBrowser: browser)
 
-        let loadedNewest = await waitUntil { harness.model.runHistoryPage == newestPage }
+        let loadedNewest = await waitUntil { harness.model.history.runHistoryPage == newestPage }
         XCTAssertTrue(loadedNewest)
         harness.model.loadOlderRunHistoryPage()
-        let loadedOlder = await waitUntil { harness.model.runHistoryPage == olderPage }
+        let loadedOlder = await waitUntil { harness.model.history.runHistoryPage == olderPage }
         XCTAssertTrue(loadedOlder)
 
         harness.model.noteNewRunAvailableForHistoryBrowsing()
-        XCTAssertEqual(harness.model.runHistoryPage, olderPage)
-        XCTAssertTrue(harness.model.runHistoryHasNewerEntries)
+        XCTAssertEqual(harness.model.history.runHistoryPage, olderPage)
+        XCTAssertTrue(harness.model.history.runHistoryHasNewerEntries)
 
         harness.model.loadNewerRunHistoryPage()
-        let loadedRefresh = await waitUntil { harness.model.runHistoryPage == refreshedPage }
+        let loadedRefresh = await waitUntil { harness.model.history.runHistoryPage == refreshedPage }
         XCTAssertTrue(loadedRefresh)
-        XCTAssertFalse(harness.model.runHistoryHasNewerEntries)
+        XCTAssertFalse(harness.model.history.runHistoryHasNewerEntries)
 
         let requests = await browser.requests()
         XCTAssertEqual(requests.count, 3)
@@ -456,13 +456,13 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         let browser = ScriptedRunHistoryBrowser(pageOutcomes: [.page(page), .failure])
         let harness = makeHarness(runHistoryBrowser: browser)
 
-        let loaded = await waitUntil { harness.model.runHistoryPage == page }
+        let loaded = await waitUntil { harness.model.history.runHistoryPage == page }
         XCTAssertTrue(loaded)
         harness.model.loadOlderRunHistoryPage()
-        let failed = await waitUntil { harness.model.runHistoryPaginationFailed }
+        let failed = await waitUntil { harness.model.history.runHistoryPaginationFailed }
         XCTAssertTrue(failed)
-        XCTAssertEqual(harness.model.runHistoryPage, page)
-        XCTAssertFalse(harness.model.isRunHistoryPageTransitioning)
+        XCTAssertEqual(harness.model.history.runHistoryPage, page)
+        XCTAssertFalse(harness.model.history.isRunHistoryPageTransitioning)
     }
 
     func testDeepLinkMissingFromFreshSnapshotIsExplicitlyExpired() async throws {
@@ -474,15 +474,15 @@ final class RunHistoryBrowsingUITests: XCTestCase {
             containingOutcomes: [.missing]
         )
         let harness = makeHarness(runHistoryBrowser: browser)
-        let loaded = await waitUntil { harness.model.runHistoryPage == page }
+        let loaded = await waitUntil { harness.model.history.runHistoryPage == page }
         XCTAssertTrue(loaded)
 
         let missingID = UUID()
         harness.model.showHistoryEntry(missingID)
         await harness.model.resolveRunHistoryDeepLinkIfNeeded()
 
-        XCTAssertEqual(harness.model.runHistoryDeepLinkState, .expired(entryID: missingID))
-        XCTAssertEqual(harness.model.runHistoryPage, page)
+        XCTAssertEqual(harness.model.history.runHistoryDeepLinkState, .expired(entryID: missingID))
+        XCTAssertEqual(harness.model.history.runHistoryPage, page)
     }
 
     func testScopeResetAndNewRunAutomaticallyRefreshCaptureFreshFirstPages() async throws {
@@ -506,16 +506,16 @@ final class RunHistoryBrowsingUITests: XCTestCase {
             pageOutcomes: [.page(allPage), .page(resultsPage), .page(refreshedPage)]
         )
         let harness = makeHarness(runHistoryBrowser: browser)
-        let loadedAll = await waitUntil { harness.model.runHistoryPage == allPage }
+        let loadedAll = await waitUntil { harness.model.history.runHistoryPage == allPage }
         XCTAssertTrue(loadedAll)
 
-        harness.model.runHistoryScope = .recentResults
-        let loadedResults = await waitUntil { harness.model.runHistoryPage == resultsPage }
+        harness.model.history.runHistoryScope = .recentResults
+        let loadedResults = await waitUntil { harness.model.history.runHistoryPage == resultsPage }
         XCTAssertTrue(loadedResults)
         harness.model.noteNewRunAvailableForHistoryBrowsing()
-        let loadedRefresh = await waitUntil { harness.model.runHistoryPage == refreshedPage }
+        let loadedRefresh = await waitUntil { harness.model.history.runHistoryPage == refreshedPage }
         XCTAssertTrue(loadedRefresh)
-        XCTAssertFalse(harness.model.runHistoryHasNewerEntries)
+        XCTAssertFalse(harness.model.history.runHistoryHasNewerEntries)
 
         let recordedRequests = await browser.requests()
         let scopes = recordedRequests.compactMap { request -> RunHistoryBrowseScope? in
@@ -544,24 +544,24 @@ final class RunHistoryBrowsingUITests: XCTestCase {
             containingOutcomes: [.failure, .page(targetPage)]
         )
         let harness = makeHarness(runHistoryBrowser: browser)
-        let loaded = await waitUntil { harness.model.runHistoryPage == currentPage }
+        let loaded = await waitUntil { harness.model.history.runHistoryPage == currentPage }
         XCTAssertTrue(loaded)
 
         harness.model.showHistoryEntry(targetEntry.id)
         await harness.model.resolveRunHistoryDeepLinkIfNeeded()
         XCTAssertEqual(
-            harness.model.runHistoryDeepLinkState,
+            harness.model.history.runHistoryDeepLinkState,
             .failed(entryID: targetEntry.id)
         )
-        XCTAssertEqual(harness.model.runHistoryPage, currentPage)
+        XCTAssertEqual(harness.model.history.runHistoryPage, currentPage)
 
         harness.model.retryRunHistoryDeepLink()
         await harness.model.resolveRunHistoryDeepLinkIfNeeded()
         XCTAssertEqual(
-            harness.model.runHistoryDeepLinkState,
+            harness.model.history.runHistoryDeepLinkState,
             .resolved(entryID: targetEntry.id)
         )
-        XCTAssertEqual(harness.model.runHistoryPage, targetPage)
+        XCTAssertEqual(harness.model.history.runHistoryPage, targetPage)
     }
 
     func testSearchUsesStorageEnforcedPrivacyAndCapsResults() async throws {
@@ -572,7 +572,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
             + tailCanary
         let browser = PrivacyAwareRunHistoryBrowser(workflow: workflow, fullText: body)
         let harness = makeHarness(workflows: [workflow], runHistoryBrowser: browser)
-        let loaded = await waitUntil { harness.model.runHistoryPage != nil }
+        let loaded = await waitUntil { harness.model.history.runHistoryPage != nil }
         XCTAssertTrue(loaded)
 
         let baselineCount = await browser.requestSnapshot().limits.count
@@ -676,7 +676,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         let browser = ScriptedRunHistoryBrowser(pageOutcomes: [.page(page)])
         let harness = makeHarness(runHistoryBrowser: browser)
 
-        let loaded = await waitUntil { harness.model.runHistoryPage == page }
+        let loaded = await waitUntil { harness.model.history.runHistoryPage == page }
         XCTAssertTrue(loaded)
         XCTAssertEqual(
             harness.model.visibleRunHistoryEntryID(matching: recordID),
@@ -688,7 +688,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         let workflow = makeSearchWorkflow(name: "Cancellation Workflow")
         let browser = OutOfOrderRunHistoryBrowser(workflow: workflow)
         let harness = makeHarness(workflows: [workflow], runHistoryBrowser: browser)
-        let loaded = await waitUntil { harness.model.runHistoryPage != nil }
+        let loaded = await waitUntil { harness.model.history.runHistoryPage != nil }
         XCTAssertTrue(loaded)
 
         let alphaTask = Task { @MainActor in

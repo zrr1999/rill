@@ -178,9 +178,9 @@ extension AppModel {
         historyLoadGeneration += 1
         runReceiptLoadGeneration += 1
         diagnosticsLoadGeneration += 1
-        runHistoryBrowseGeneration += 1
-        runHistoryBrowseTask?.cancel()
-        runHistoryBrowseTask = nil
+        self.history.runHistoryBrowseGeneration += 1
+        self.history.runHistoryBrowseTask?.cancel()
+        self.history.runHistoryBrowseTask = nil
         for task in historyProjectionLoadTasks.values {
             task.cancel()
         }
@@ -236,7 +236,7 @@ extension AppModel {
         // Accepting a user mutation before that snapshot settles can let the
         // late read overwrite a newer, longer period and start irreversible
         // cleanup with stale policy. The Settings UI mirrors this guard.
-        guard !isLoadingSettings else { return }
+        guard !self.settings.isLoading else { return }
         guard !isUpdatingHistoryRetentionSettings, !isLocalHistoryMaintenanceRunning else { return }
         guard !isRestoringSettings else { return }
         guard let settingsStore else {
@@ -458,9 +458,9 @@ extension AppModel {
             // read fails; retention removes only locally known expired rows.
             runReceiptLoadGeneration += 1
             if clearRunReceiptCacheBeforeRefresh {
-                workflowRunReceiptsByRunID.removeAll()
+                self.history.workflowRunReceiptsByRunID.removeAll()
             } else if let cutoff = runHistoryRetentionPeriod.cutoffDate(relativeTo: Date()) {
-                workflowRunReceiptsByRunID = workflowRunReceiptsByRunID.filter {
+                self.history.workflowRunReceiptsByRunID = self.history.workflowRunReceiptsByRunID.filter {
                     $0.value.timestamp >= cutoff
                 }
             }

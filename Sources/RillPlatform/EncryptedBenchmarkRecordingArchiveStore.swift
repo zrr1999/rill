@@ -7,7 +7,7 @@ import RillCore
 /// Audio and metadata use separate authenticated fields under the same root key as
 /// other protected local Rill content. The directory marker binds an unbounded archive
 /// without decrypting every audio artifact during application startup.
-public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveStore {
+public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveStore, BenchmarkRecordingArchiveReading {
   public enum ExistingKeyProbeResult: Sendable, Equatable {
     case unbound
     case boundAndValid
@@ -167,6 +167,46 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
       runID: runID
     )
     return receipt
+  }
+
+  public func recordingIDs() async throws -> [UUID] {
+    try fileManager.contentsOfDirectory(atPath: directoryURL.path)
+      .filter { $0.hasSuffix(Self.receiptSuffix) }
+      .compactMap { UUID(uuidString: String($0.dropLast(Self.receiptSuffix.count))) }
+      .sorted { $0.uuidString < $1.uuidString }
+  }
+
+  public func recording(runID: UUID) async throws -> BenchmarkRecording {
+    do {
+      let receiptBytes = try readProtectedArtifact(at: receiptURL(for: runID), runID: runID, field: "receipt")
+      let receipt = try JSONDecoder().decode(BenchmarkRecordingReceipt.self, from: receiptBytes)
+      guard receipt.schemaVersion == 1, receipt.runID == runID,
+        receipt.durationSeconds.isFinite, receipt.durationSeconds >= 0,
+        receipt.plaintextByteCount >= 0 else {
+        throw BenchmarkRecordingArchiveError.invalidEntry
+      }
+      let audio = try readProtectedArtifact(at: audioURL(for: runID), runID: runID, field: "audio")
+      guard audio.count == receipt.plaintextByteCount else {
+        throw BenchmarkRecordingArchiveError.invalidEntry
+      }
+      return BenchmarkRecording(receipt: receipt, audioBytes: audio)
+    } catch {
+      throw BenchmarkRecordingArchiveError.invalidEntry
+    }
+  }
+
+  private func readProtectedArtifact(at url: URL, runID: UUID, field: String) throws -> Data {
+    let descriptor = Darwin.open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+    guard descriptor >= 0 else { throw BenchmarkRecordingArchiveError.invalidEntry }
+    let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+    defer { try? file.close() }
+    var information = stat()
+    guard fstat(descriptor, &information) == 0,
+      information.st_mode & S_IFMT == S_IFREG,
+      let envelope = try file.readToEnd() else {
+      throw BenchmarkRecordingArchiveError.invalidEntry
+    }
+    return try localDataProtector.openBinary(envelope, context: Self.protectionContext(runID: runID, field: field))
   }
 
   public func delete(runID: UUID) async throws {

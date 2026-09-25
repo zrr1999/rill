@@ -5,6 +5,9 @@ TEST_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 
 echo 'Testing dependency security policy...'
 uv run --script "$TEST_DIR/dependency_security_test.py"
+echo 'Testing paired ASR comparisons...'
+uv run --script "$TEST_DIR/asr_benchmark_test.py"
+uv run --script "$TEST_DIR/asr_replay_test.py"
 echo 'Testing diagnostic export...'
 uv run --script "$TEST_DIR/diagnostic_export_test.py"
 echo 'Testing secret scanning...'

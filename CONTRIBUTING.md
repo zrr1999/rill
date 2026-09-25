@@ -30,6 +30,7 @@ just install
 just check
 just build          # 默认只构建 Debug RillApp
 just test
+scripts/swift_locked.sh test-domain --filter SessionCoordinatorTests
 just test-scripts   # 独立运行构建、发布、安全和图标脚本测试
 just bench          # 校验离线性能样本；CodSpeed 用法见 Benchmarks/README.md
 just ci             # 保留增量产物的完整门禁
@@ -83,6 +84,9 @@ Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/rele
 
 `just build RillApp` 适合 App/UI 日常修改，不编译语音 worker 和 MLX。
 `swift test --filter` 只限定测试执行范围，不保证缩小首次编译范围。
+`test-domain` 从同一份 Package.swift 排除 App、UI、MLX 和原生验收测试目标，
+保留领域测试所需的依赖，并使用独立的 `.artifacts/build/domain-tests`。锁文件校验不变；
+完整 CI 仍使用未裁剪的生产图。该模式不替代 `just ci` 或 Release 模型验收。
 完整预检和打包使用绑定源码摘要的构建回执及独立产物快照；装配过程中源码或
 产物不匹配会失败。许可证验证读取该次构建实际使用的依赖 checkouts。
 

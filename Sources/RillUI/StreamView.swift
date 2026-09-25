@@ -76,7 +76,7 @@ public struct StreamView: View {
 
     private var streamActivityPresentation: StreamActivityPresentation? {
         StreamActivityPresentation.make(
-            isRunning: model.isRunning,
+            isRunning: model.voice.isRunning,
             workflowAudioRunState: model.workflowAudioRunState,
             isAudioProcessingQueueVisible: model.audioProcessingQueueSnapshot?.isVisible ?? false,
             language: model.language

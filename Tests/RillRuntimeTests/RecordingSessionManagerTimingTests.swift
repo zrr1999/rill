@@ -570,7 +570,7 @@ private func makeManager(
 ) -> RecordingSessionManager {
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-        contextProvider: RecordingTimingContextProvider(),
+
         recognizerRegistry: SpeechRecognizerRegistry(
             recognizers: [RecordingTimingRecognizer()]
         ),

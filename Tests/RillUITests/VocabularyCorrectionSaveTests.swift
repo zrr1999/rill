@@ -31,7 +31,7 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
         XCTAssertEqual(harness.model.saveVocabularyCorrectionRule(rule), .created(ruleID: rule.id))
         let collectionID = try XCTUnwrap(harness.model.vocabularyCollectionIDs(compatibleWith: scope).first)
         let secondScope = VocabularyRuleScope(locale: "zh-CN")
-        harness.model.vocabularyCollectionBindings.append(.init(collectionID: collectionID,
+        harness.model.vocabulary.vocabularyCollectionBindings.append(.init(collectionID: collectionID,
             condition: .init(locale: secondScope.locale)))
         harness.model.setVocabularyRuleEnabled(rule.id, isEnabled: false)
         await harness.model.flushPendingPersistenceWrites()
@@ -43,7 +43,7 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
         otherScopeRule.scope = secondScope
         XCTAssertEqual(reloaded.model.saveVocabularyCorrectionRule(otherScopeRule), .reused(ruleID: rule.id))
         XCTAssertEqual(reloaded.model.saveVocabularyCorrectionRule(rule), .reused(ruleID: rule.id))
-        XCTAssertEqual(reloaded.model.vocabularyCollections.flatMap(\.entries).count, 1)
+        XCTAssertEqual(reloaded.model.vocabulary.vocabularyCollections.flatMap(\.entries).count, 1)
     }
 
     func testExactDuplicateIsReusedAndReenabledInsteadOfAppended() throws {

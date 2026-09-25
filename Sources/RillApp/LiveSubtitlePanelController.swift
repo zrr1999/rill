@@ -21,8 +21,8 @@ enum LiveSubtitlePanelGeometry {
     LiveSubtitleOverlayMetrics.maximumSurfaceWidth
   }
 
-  static func preferredSurfaceSize(for snapshot: LiveSubtitleSnapshot) -> NSSize {
-    if !LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot) {
+  static func preferredSurfaceSize(for snapshot: LiveSubtitleSnapshot, expanded: Bool? = nil) -> NSSize {
+    if !(expanded ?? LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot)) {
       return NSSize(
         width: LiveSubtitleOverlayMetrics.compactSurfaceWidth,
         height: LiveSubtitleOverlayMetrics.compactSurfaceHeight
@@ -34,9 +34,9 @@ enum LiveSubtitlePanelGeometry {
     )
   }
 
-  static func cornerRadius(for snapshot: LiveSubtitleSnapshot?) -> CGFloat {
+  static func cornerRadius(for snapshot: LiveSubtitleSnapshot?, expanded: Bool? = nil) -> CGFloat {
     guard let snapshot else { return LiveSubtitleOverlayMetrics.compactCornerRadius }
-    return LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot)
+    return (expanded ?? LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot))
       ? LiveSubtitleOverlayMetrics.standardCornerRadius
       : LiveSubtitleOverlayMetrics.compactCornerRadius
   }
@@ -111,6 +111,7 @@ enum LiveSubtitlePanelAnimationPolicy {
 private struct LiveSubtitlePanelPresentation {
   let snapshot: LiveSubtitleSnapshot
   let language: AppLanguage
+  let expandedLayout: Bool
 }
 
 enum LiveSubtitlePanelPresentationPolicy {
@@ -129,21 +130,26 @@ enum LiveSubtitlePanelPresentationPolicy {
 private final class LiveSubtitlePanelPresentationModel: ObservableObject {
   @Published private(set) var presentation: LiveSubtitlePanelPresentation
   let meterModel: VoiceActivityMeterModel
+  private var layout = LiveSubtitleLayoutState()
 
   init(snapshot: LiveSubtitleSnapshot, language: AppLanguage) {
+    layout.update(snapshot)
     presentation = LiveSubtitlePanelPresentation(
       snapshot: LiveSubtitlePanelPresentationPolicy.structuralSnapshot(snapshot),
-      language: language
+      language: language,
+      expandedLayout: layout.isExpanded
     )
     meterModel = VoiceActivityMeterModel(levels: snapshot.levelMeter)
   }
 
   @discardableResult
   func update(snapshot: LiveSubtitleSnapshot, language: AppLanguage) -> Bool {
+    layout.update(snapshot)
     meterModel.update(levels: snapshot.levelMeter)
     let nextPresentation = LiveSubtitlePanelPresentation(
       snapshot: LiveSubtitlePanelPresentationPolicy.structuralSnapshot(snapshot),
-      language: language
+      language: language,
+      expandedLayout: layout.isExpanded
     )
     guard presentation.snapshot != nextPresentation.snapshot
       || presentation.language != nextPresentation.language
@@ -162,6 +168,7 @@ private struct LiveSubtitlePanelRootView: View {
     LiveSubtitleOverlay(
       snapshot: model.presentation.snapshot,
       language: model.presentation.language,
+      expandedLayout: model.presentation.expandedLayout,
       includesShadow: false,
       meterModel: model.meterModel
     )
@@ -326,7 +333,8 @@ final class LiveSubtitlePanelController {
     guard isNewRun || presentationDidChange else { return }
     let visibleFrame = isNewRun ? visibleFrameResolver() : currentVisibleFrame
     let surfaceSize = LiveSubtitlePanelGeometry.constrainedSurfaceSize(
-      LiveSubtitlePanelGeometry.preferredSurfaceSize(for: snapshot),
+      LiveSubtitlePanelGeometry.preferredSurfaceSize(
+        for: snapshot, expanded: presentationModel.presentation.expandedLayout),
       visibleFrame: visibleFrame
     )
 
@@ -442,7 +450,8 @@ final class LiveSubtitlePanelController {
     view.layer?.isOpaque = false
     view.layer?.masksToBounds = true
     view.layer?.cornerCurve = .continuous
-    view.layer?.cornerRadius = LiveSubtitlePanelGeometry.cornerRadius(for: snapshot)
+    view.layer?.cornerRadius = LiveSubtitlePanelGeometry.cornerRadius(
+      for: snapshot, expanded: presentationModel?.presentation.expandedLayout)
   }
 
   private func configureAccessibility(of panel: NSPanel, language: AppLanguage) {

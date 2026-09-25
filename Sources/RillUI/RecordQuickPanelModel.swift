@@ -364,14 +364,11 @@ public final class RecordQuickPanelModel {
     isSearching = true
     searchTask = Task { [weak self, store] in
       do {
-        var scanOffset = offset
+        var cursor = RecordQuerySession(query: query, offset: offset, revision: previousRevision)
         var matches: [RecordSummary] = []
-        var scanRevision = previousRevision
         repeat {
-          let page = try await store.query(query, offset: scanOffset, limit: 50 - matches.count)
+          guard let page = try await cursor.next(in: store, limit: 50 - matches.count) else { break }
           guard !Task.isCancelled, let self, self.searchGeneration == generation else { return }
-          if let scanRevision, scanRevision != page.revision { throw RecordStoreError.membershipChanged }
-          scanRevision = page.revision
           matches += page.records
           if offset == 0 { self.results = matches }
           self.nextOffset = page.nextOffset
@@ -382,11 +379,10 @@ public final class RecordQuickPanelModel {
             !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
           {
             query.matching = .approximate
-            scanOffset = 0
+            cursor = RecordQuerySession(query: query, revision: cursor.revision)
             continue
           }
-          guard let next = page.nextOffset, matches.count < 50 else { break }
-          scanOffset = next
+          guard page.nextOffset != nil, matches.count < 50 else { break }
         } while true
         guard !Task.isCancelled, let self, self.searchGeneration == generation else { return }
         if offset != 0 { self.results += matches }

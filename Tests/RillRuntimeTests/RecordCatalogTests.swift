@@ -7,6 +7,37 @@ import XCTest
 @testable import RillRuntime
 
 final class RecordCatalogTests: XCTestCase {
+  func testQuerySessionRejectsCatalogChangesBetweenPages() async throws {
+    let store = RecordStore()
+    _ = try await store.ingest(draft("first"), into: [])
+    _ = try await store.ingest(draft("second"), into: [])
+    var session = RecordQuerySession(query: .init())
+    let first = try await session.next(in: store, limit: 1)
+    XCTAssertEqual(first?.records.count, 1)
+    _ = try await store.ingest(draft("arrived between pages"), into: [])
+    do {
+      _ = try await session.next(in: store, limit: 1)
+      XCTFail("Pages from different revisions must never be merged")
+    } catch let error as RecordStoreError {
+      XCTAssertEqual(error, .membershipChanged)
+    }
+  }
+
+  func testQuerySessionExhaustsWithoutRepeatingRecords() async throws {
+    let store = RecordStore()
+    let a = try await store.ingest(draft("first"), into: [])
+    let b = try await store.ingest(draft("second"), into: [])
+    var session = RecordQuerySession(query: .init())
+    var identifiers: [RecordID] = []
+    while let page = try await session.next(in: store, limit: 1) {
+      identifiers.append(contentsOf: page.records.map(\.id))
+    }
+    XCTAssertEqual(Set(identifiers), [a.id, b.id])
+    XCTAssertEqual(identifiers.count, 2)
+    let exhausted = try await session.next(in: store, limit: 1)
+    XCTAssertNil(exhausted)
+  }
+
   func testCapacityWarnsAtEitherHalfThresholdAndClearsBelowBoth() {
     XCTAssertFalse(RecordCapacity(count: 4_999, byteCount: 256 * 1_024 * 1_024 - 1).isWarning)
     XCTAssertTrue(RecordCapacity(count: 5_000, byteCount: 0).isWarning)

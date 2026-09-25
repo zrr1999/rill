@@ -211,7 +211,7 @@ public struct SettingsView: View {
           Section {
             vocabularySection
             if let memory = model.contextMemory {
-              ContextMemorySettingsView(memory: memory, workflows: model.workflows.filter(\.supportsContextualCorrection), language: model.language, isExpanded: settingsDisclosureBinding(for: .contextMemory))
+              ContextMemorySettingsView(memory: memory, workflows: model.workflowLibrary.workflows.filter(\.supportsContextualCorrection), language: model.language, isExpanded: settingsDisclosureBinding(for: .contextMemory))
                 .id(SettingsSection.contextMemory)
                 .accessibilityIdentifier("settings.section.contextMemory")
                 .focusable()

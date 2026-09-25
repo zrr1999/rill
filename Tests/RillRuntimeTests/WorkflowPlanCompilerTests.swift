@@ -35,12 +35,38 @@ private struct CompilerTransformer: TextTransformer {
 private struct CompilerAction: OutputAction {
     var id = "compiler.action"
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        .copiedToClipboard
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
+        return .copiedToClipboard
     }
 }
 
 final class WorkflowPlanCompilerTests: XCTestCase {
+    func testDuplicateRegistrationsFailWithoutSelectingAProvider() throws {
+        let recognizer = CompilerRecognizer(id: "same", acceptsHotwords: true)
+        let recognizers = SpeechRecognizerRegistry(recognizers: [recognizer, recognizer])
+        XCTAssertNil(recognizers.recognizer(for: "same"))
+        XCTAssertThrowsError(try recognizers.validate()) {
+            XCTAssertEqual($0 as? ComponentRegistrationError, .duplicateRecognizer("same"))
+        }
+        let actions = OutputActionRegistry(actions: [CompilerAction(), CompilerAction()])
+        XCTAssertNil(actions.action(for: "compiler.action"))
+        XCTAssertThrowsError(try actions.validate()) {
+            XCTAssertEqual($0 as? ComponentRegistrationError, .duplicateOutput("compiler.action"))
+        }
+        let transformers = TextTransformerRegistry(transformers: [CompilerTransformer(), CompilerTransformer()])
+        XCTAssertNil(transformers.transformer(for: .normalizeWhitespace))
+        XCTAssertThrowsError(try transformers.validate()) {
+            XCTAssertEqual($0 as? ComponentRegistrationError, .duplicateTransformer("compiler.transformer"))
+        }
+        let compiler = WorkflowPlanCompiler(recognizerRegistry: recognizers,
+            transformerRegistry: .init(transformers: []), actionRegistry: .init(actions: []))
+        XCTAssertThrowsError(try compiler.compile(workflow: makeVoiceWorkflow(collectionID: UUID()),
+                                                collections: [], context: .init())) {
+            XCTAssertEqual($0 as? ComponentRegistrationError, .duplicateRecognizer("same"))
+        }
+    }
+
     func testRepeatedOutputIDsKeepIndependentFrozenConfiguration() throws {
         let compiler = WorkflowPlanCompiler(recognizerRegistry: .init(recognizers: []),
             transformerRegistry: .init(transformers: []),

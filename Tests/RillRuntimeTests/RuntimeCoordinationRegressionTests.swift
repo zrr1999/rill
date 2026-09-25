@@ -23,7 +23,8 @@ private struct RegressionProbeAction: OutputAction {
     let id = "regression.action"
     let probe: RegressionActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         await probe.record(text)
         return .skipped("captured")
     }
@@ -173,7 +174,7 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let actionProbe = RegressionActionProbe()
         let coordinator = SessionCoordinator(
-            contextProvider: RegressionContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RegressionRecognizer(text: "second run")]
             ),
@@ -223,7 +224,7 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
         let actionProbe = RegressionActionProbe()
         let resolver = CandidateResolver(eventBus: eventBus)
         let coordinator = SessionCoordinator(
-            contextProvider: RegressionContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RegressionRecognizer(text: "queued text")]
             ),

@@ -9,7 +9,6 @@ final class SelectionCaptureRecognizerTests: XCTestCase {
         let result = try await recognizer.recognize(
             RecognitionRequest(
                 runID: UUID(),
-                workflow: makeWorkflow(),
                 contextSnapshot: makeContext(
                     selectedText: "",
                     clipboard: SystemClipboardSnapshot(plainText: "clipboard text", changeCount: 1)
@@ -27,7 +26,6 @@ final class SelectionCaptureRecognizerTests: XCTestCase {
             _ = try await recognizer.recognize(
                 RecognitionRequest(
                     runID: UUID(),
-                    workflow: makeWorkflow(),
                     contextSnapshot: makeContext(
                         selectedText: "",
                         clipboard: SystemClipboardSnapshot(
@@ -52,7 +50,6 @@ final class SelectionCaptureRecognizerTests: XCTestCase {
         let result = try await recognizer.recognize(
             RecognitionRequest(
                 runID: UUID(),
-                workflow: makeWorkflow(),
                 contextSnapshot: makeContext(
                     selectedText: "selected text",
                     clipboard: SystemClipboardSnapshot(

@@ -176,8 +176,9 @@ private struct QueuedWhitespaceRecognizer: SpeechRecognizer {
 private struct QueuedNoopAction: OutputAction {
     let id = "record.store"
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        .skipped("queue-policy-test")
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
+        return .skipped("queue-policy-test")
     }
 }
 
@@ -262,7 +263,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
         )
         let eventBus = EventBus()
         let coordinator = SessionCoordinator(
-            contextProvider: QueuedPolicyContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [QueuedWhitespaceRecognizer(id: "whitespace.recognizer")]
             ),
@@ -351,7 +352,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
         let eventBus = EventBus()
         let recognition = QueuedRecognitionBarrier(blockedRunID: UUID())
         let coordinator = SessionCoordinator(
-            contextProvider: QueuedPolicyContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     QueuedPolicyRecognizer(id: "sherpa-onnx.local", barrier: recognition),
@@ -569,7 +570,7 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
     let eventBus = EventBus()
     let recognition = QueuedRecognitionBarrier(blockedRunID: firstRunID)
     let coordinator = SessionCoordinator(
-        contextProvider: QueuedPolicyContextProvider(),
+
         recognizerRegistry: SpeechRecognizerRegistry(
             recognizers: [
                 QueuedPolicyRecognizer(id: "sherpa-onnx.local", barrier: recognition),

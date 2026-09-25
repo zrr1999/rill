@@ -10,11 +10,11 @@ struct WorkflowDocumentLibraryView: View {
     @State private var pendingDeletion: WorkflowDefinition?
     @State private var explanation: WorkflowExplanationSheetRequest?
 
-    private var selection: WorkflowDefinition? { model.workflows.first { $0.id == selectedID } }
+    private var selection: WorkflowDefinition? { model.workflowLibrary.workflows.first { $0.id == selectedID } }
 
     var body: some View {
         VStack(spacing: 0) {
-            if let error = model.workflowLibraryError {
+            if let error = model.workflowLibrary.workflowLibraryError {
                 Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
                     .font(.callout).foregroundStyle(.orange).textSelection(.enabled).padding()
             }
@@ -42,9 +42,9 @@ struct WorkflowDocumentLibraryView: View {
         }
         .navigationTitle(L10n.workflowDocument(.labelWorkflows, language: model.language))
         .toolbar { ToolbarItemGroup { libraryActions } }
-        .task(id: model.isLoadingSettings) {
-            if !model.isLoadingSettings { await model.reloadWorkflowFiles() }
-            if selectedID == nil { selectedID = model.workflows.first?.id }
+        .task(id: model.settings.isLoading) {
+            if !model.settings.isLoading { await model.reloadWorkflowFiles() }
+            if selectedID == nil { selectedID = model.workflowLibrary.workflows.first?.id }
         }
         .task(id: model.workflowEditorNavigationRequest?.id) {
             guard let request = model.workflowEditorNavigationRequest else { return }
@@ -52,7 +52,7 @@ struct WorkflowDocumentLibraryView: View {
             showsCompactList = false
             model.workflowEditorNavigationRequest = nil
         }
-        .onChange(of: model.workflows.map(\.id)) { _, ids in
+        .onChange(of: model.workflowLibrary.workflows.map(\.id)) { _, ids in
             if selectedID == nil || !ids.contains(where: { $0 == selectedID }) { selectedID = ids.first }
         }
         .sheet(item: $explanation, onDismiss: model.cancelWorkflowExplanation) { request in
@@ -67,7 +67,7 @@ struct WorkflowDocumentLibraryView: View {
                 guard let workflow = pendingDeletion else { return }
                 pendingDeletion = nil
                 Task {
-                    if model.builtInWorkflows.contains(where: { $0.id == workflow.id }) {
+                    if model.workflowLibrary.builtInWorkflows.contains(where: { $0.id == workflow.id }) {
                         await model.restoreBuiltInWorkflowToDefault(workflow)
                     } else { await model.deleteCustomWorkflow(workflow) }
                     await model.reloadWorkflowFiles()
@@ -78,7 +78,7 @@ struct WorkflowDocumentLibraryView: View {
 
     private var workflowList: some View {
         List(selection: Binding(get: { selectedID }, set: { selectedID = $0; showsCompactList = false })) {
-            ForEach(model.workflows) { workflow in
+            ForEach(model.workflowLibrary.workflows) { workflow in
                 HStack(spacing: RillSpacing.row) {
                     Image(systemName: RillSystemSymbol.resolvedName(workflow.ui.symbolName)).frame(width: 24)
                     VStack(alignment: .leading, spacing: RillSpacing.compact) {
@@ -94,7 +94,7 @@ struct WorkflowDocumentLibraryView: View {
                     }
                 }.padding(.vertical, RillSpacing.row).tag(workflow.id)
             }
-            ForEach(Array(model.workflowFileIssues.enumerated()), id: \.offset) { _, issue in
+            ForEach(Array(model.workflowLibrary.workflowFileIssues.enumerated()), id: \.offset) { _, issue in
                 Button {
                     if let directory = model.workflowConfigurationDirectoryURL { openFile(directory.appendingPathComponent(issue.filename)) }
                 } label: {
@@ -121,7 +121,7 @@ struct WorkflowDocumentLibraryView: View {
                             get: { model.isWorkflowEnabled(workflow) },
                             set: { model.setWorkflowEnabled($0, for: workflow.id) }
                         )).toggleStyle(.switch).fixedSize()
-                            .disabled(model.invalidWorkflowFileIDs.contains(workflow.id) || model.isUpdatingWorkflowEnabledStates || model.isLoadingSettings)
+                            .disabled(model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id) || model.isUpdatingWorkflowEnabledStates || model.settings.isLoading)
                     }
                     if let readiness = model.workflowEnablementError(for: workflow) {
                         Label(readiness, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue).foregroundStyle(.orange)
@@ -147,14 +147,14 @@ struct WorkflowDocumentLibraryView: View {
                         Button(L10n.workflowDocument(workflow.inputKind == .audio ? .labelRun : .labelRunClipboardText, language: model.language)) {
                             if workflow.inputKind == .audio { model.runWorkflow(workflow) }
                             else if let text = NSPasteboard.general.string(forType: .string) { model.runWorkflowText(text, workflow: workflow) }
-                        }.disabled(!model.isWorkflowEnabled(workflow) || model.isRunning || model.invalidWorkflowFileIDs.contains(workflow.id))
+                        }.disabled(!model.isWorkflowEnabled(workflow) || model.voice.isRunning || model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id))
                         Menu {
                             Button(UIStrings.workflowExplanationCopy(.button, language: model.language)) {
                                 model.explainWorkflowBeforeRun(workflow)
                                 explanation = .init(workflowID: workflow.id)
                             }
                             Button(L10n.workflowDocument(.labelDuplicate, language: model.language)) { open(workflow, duplicate: true) }
-                            Button(L10n.workflowDocument(model.builtInWorkflows.contains(where: { $0.id == workflow.id }) ? .labelRestoreDefault : .labelDelete, language: model.language), role: .destructive) { pendingDeletion = workflow }
+                            Button(L10n.workflowDocument(model.workflowLibrary.builtInWorkflows.contains(where: { $0.id == workflow.id }) ? .labelRestoreDefault : .labelDelete, language: model.language), role: .destructive) { pendingDeletion = workflow }
                         } label: { Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue) }
                         .help(L10n.workflowDocument(.labelMoreActions, language: model.language))
                     }
@@ -170,7 +170,7 @@ struct WorkflowDocumentLibraryView: View {
         Button {
             Task { if let url = await model.newWorkflowFile() { openFile(url) } }
         } label: { Label(L10n.workflowDocument(.labelNewWorkflow, language: model.language), systemImage: RillSystemSymbol.plus.rawValue) }
-            .disabled(model.isLoadingSettings || !model.isWorkflowLibraryAvailable)
+            .disabled(model.settings.isLoading || !model.isWorkflowLibraryAvailable)
         Menu {
             Button(L10n.workflowDocument(.labelImportTOML, language: model.language), action: importFile)
             if let directory = model.workflowConfigurationDirectoryURL {
@@ -178,7 +178,7 @@ struct WorkflowDocumentLibraryView: View {
             }
             Button(L10n.workflowDocument(.labelReloadFiles, language: model.language)) { Task { await model.reloadWorkflowFiles() } }
             Divider()
-            ForEach(model.builtInWorkflows) { workflow in
+            ForEach(model.workflowLibrary.builtInWorkflows) { workflow in
                 Button(L10n.workflowDocument(.labelNewFrom, language: model.language) + model.localizedWorkflowName(for: workflow)) { open(workflow, duplicate: true) }
             }
         } label: { Label(L10n.workflowDocument(.labelMoreActions, language: model.language), systemImage: RillSystemSymbol.ellipsisCircle.rawValue) }

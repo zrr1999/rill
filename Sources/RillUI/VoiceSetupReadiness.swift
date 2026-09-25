@@ -89,7 +89,7 @@ extension AppModel {
   }
 
   private var hasEnabledCursorLivePreview: Bool {
-    workflows.contains { workflow in
+    workflowLibrary.workflows.contains { workflow in
       isWorkflowEnabled(workflow)
         && workflow.livePreviewIsEnabled
         && workflow.resolvedLivePreviewPlacement == .cursor
@@ -97,7 +97,7 @@ extension AppModel {
   }
 
   private var voiceSetupProviderReadiness: VoiceSetupProviderReadiness {
-    guard !isLoadingSettings else { return .loading }
+    guard !settings.isLoading else { return .loading }
 
     guard localSpeechAvailability.isAvailable else {
       return .localUnavailable(localSpeechAvailability)

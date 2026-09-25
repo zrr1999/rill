@@ -473,7 +473,7 @@ extension MainShellView {
             case .section(.settings):
                 model.settingsNavigationRequest?.id
             case .section(.stream):
-                model.historyNavigationRequest?.id
+                model.history.historyNavigationRequest?.id
             case .section, .recordCollection, .workflow:
                 nil
             }
@@ -488,7 +488,7 @@ extension MainShellView {
         GlobalSearchIndex.filter(
             GlobalSearchIndex.makeStaticResults(
                 language: model.language,
-                workflows: model.workflows
+                workflows: model.workflowLibrary.workflows
             ) + GlobalSearchIndex.collectionResults(model.recordWorkspace.snapshot.collections, language: model.language)
                 + search.results(matching: globalHistorySearchTaskIdentity),
             query: search.query
@@ -502,7 +502,7 @@ extension MainShellView {
             language: model.language.rawValue,
             previewMode: model.privacyPolicySettings.historyPreviewMode.rawValue,
             retentionPeriod: model.runHistoryRetentionPeriod.rawValue,
-            workflowSearchSnapshot: model.workflows.map {
+            workflowSearchSnapshot: model.workflowLibrary.workflows.map {
                 "\($0.id.uuidString):\(UIStrings.workflowName($0.presentation, language: model.language))"
             },
             retryGeneration: globalHistorySearchRetryGeneration,
@@ -659,8 +659,8 @@ extension MainShellView {
         case .section(.records):
             return model.recordWorkspace.revealedRecordID != nil
         case .section(.stream):
-            guard model.historyNavigationRequest != nil else { return false }
-            switch model.runHistoryDeepLinkState {
+            guard model.history.historyNavigationRequest != nil else { return false }
+            switch model.history.runHistoryDeepLinkState {
             case .expired, .failed:
                 return false
             case .idle, .resolving, .resolved:

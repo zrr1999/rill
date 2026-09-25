@@ -14,7 +14,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
                 return settings.model
             }
         )
-        harness.model.isLoadingSettings = false
+        harness.model.settings.isLoading = false
         // Production defaults to cloud when trusted local model material is
         // unavailable. Select local explicitly so this test exercises the
         // fail-closed local readiness path rather than the cloud fallback.
@@ -47,7 +47,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
             localSpeechAvailability: .architectureUnsupported,
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
         )
-        harness.model.isLoadingSettings = false
+        harness.model.settings.isLoading = false
 
         XCTAssertEqual(harness.model.localSpeechAvailability, .architectureUnsupported)
         XCTAssertFalse(harness.model.localSpeechTrustMaterialAvailable)
@@ -136,7 +136,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
             globalInputCapability: .available
         )
         harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
-        harness.model.workflows.append(
+        harness.model.workflowLibrary.workflows.append(
             WorkflowDefinition(
                 name: "Cursor preview",
                 trigger: .manual,

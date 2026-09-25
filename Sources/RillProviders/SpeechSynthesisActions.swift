@@ -79,7 +79,8 @@ public struct SpeakTextAction: OutputAction {
     self.playbackStateChanged = playbackStateChanged
   }
 
-  public func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      let text = try record.requireText(for: id)
     let configuration: SpeechActionConfiguration
     do {
       guard case .speech(let resolved) = try context.configuration(for: id) else {

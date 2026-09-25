@@ -162,11 +162,11 @@ extension AppModel {
         let matchesUntrackedVisibleCapture = workflowAudioCaptureRunID == nil
             && currentCaptureLiveSubtitleSnapshot?.runID == runID
         guard matchesWorkflowAudioCapture || matchesUntrackedVisibleCapture else { return }
-        if activeRunID == runID {
-            activeRunID = nil
+        if self.voice.activeRunID == runID {
+            self.voice.activeRunID = nil
         }
         voice.finish(runID)
-        isRunning = !pendingRuns.isEmpty
+        self.voice.isRunning = !pendingRuns.isEmpty
         workflowAudioRunState = .idle
         if matchesWorkflowAudioCapture {
             workflowAudioCaptureRunID = nil
@@ -290,7 +290,7 @@ extension AppModel {
             // the receipt after its insert returned but before event delivery,
             // so discard the old projection and admit only a fresh repository
             // snapshot. A failed reload therefore remains fail-closed.
-            workflowRunReceiptsByRunID.removeValue(forKey: change.runID)
+            self.history.workflowRunReceiptsByRunID.removeValue(forKey: change.runID)
             loadRunReceipts(requiredRunIDs: [change.runID])
         case .contextCaptured(_, let context):
             let appName = context.focus.applicationName ?? "Unknown"
@@ -320,7 +320,7 @@ extension AppModel {
                 }
         case .failedAudioRecoveryUnavailable(let runID, let reason):
             failedAudioRecoveryUnavailableReasonsByRunID[runID] = reason
-            let retainedRunIDs = Set(historyRecords.compactMap(\.runID)).union([runID])
+            let retainedRunIDs = Set(self.history.historyRecords.compactMap(\.runID)).union([runID])
             failedAudioRecoveryUnavailableReasonsByRunID =
                 failedAudioRecoveryUnavailableReasonsByRunID.filter {
                     retainedRunIDs.contains($0.key)
@@ -379,15 +379,15 @@ extension AppModel {
                 )
             }
         case .runCompleted(let summary):
-            let ownsPresentation = activeRunID == summary.runID
+            let ownsPresentation = self.voice.activeRunID == summary.runID
             voice.complete(summary)
             let completedWorkflowAudioCapture = retireWorkflowAudioCapture(
                 matching: summary.runID
             )
             if (ownsPresentation || completedWorkflowAudioCapture) && pendingRuns.isEmpty {
-                isRunning = false
-                if activeRunID == summary.runID {
-                    activeRunID = nil
+                self.voice.isRunning = false
+                if self.voice.activeRunID == summary.runID {
+                    self.voice.activeRunID = nil
                 }
             }
             if ownsPresentation { lastFailure = nil }
@@ -412,13 +412,13 @@ extension AppModel {
             let cancelledWorkflowAudioCapture = retireWorkflowAudioCapture(
                 matching: summary.runID
             )
-            if activeRunID == summary.runID
+            if self.voice.activeRunID == summary.runID
                 || cancelledCurrentCapture
                 || cancelledWorkflowAudioCapture
             {
-                isRunning = false
-                if activeRunID == summary.runID {
-                    activeRunID = nil
+                self.voice.isRunning = false
+                if self.voice.activeRunID == summary.runID {
+                    self.voice.activeRunID = nil
                 }
             }
             voice.finish(summary.runID)
@@ -436,19 +436,19 @@ extension AppModel {
             scheduleLiveSubtitleHide()
         case .runFailed(let failedRunID, _, let message):
             let failurePresentation = RunFailurePresentation.localizedText(for: message)
-            if failedRunID == activeRunID || activeRunID == nil {
+            if failedRunID == self.voice.activeRunID || self.voice.activeRunID == nil {
                 lastFailure = failurePresentation.string(for: language)
             }
             let failedCurrentCapture = failedRunID != nil
                 && currentCaptureLiveSubtitleSnapshot?.runID == failedRunID
-            let failedActiveRun = failedRunID.map { activeRunID == $0 } ?? false
+            let failedActiveRun = failedRunID.map { self.voice.activeRunID == $0 } ?? false
             let failedWorkflowAudioCapture = retireWorkflowAudioCapture(
                 matching: failedRunID
             )
             if failedActiveRun || failedCurrentCapture || failedWorkflowAudioCapture {
-                isRunning = false
+                self.voice.isRunning = false
                 if failedActiveRun {
-                    activeRunID = nil
+                    self.voice.activeRunID = nil
                 }
             }
             if let failedRunID { voice.finish(failedRunID) }
@@ -519,10 +519,10 @@ extension AppModel {
 
     private func cacheHistoryRecord(_ record: WorkflowResultRecord) {
         noteNewRunAvailableForHistoryBrowsing()
-        historyRecords.removeAll { $0.id == record.id }
-        historyRecords.insert(record, at: 0)
-        if historyRecords.count > 50 {
-            historyRecords.removeLast(historyRecords.count - 50)
+        self.history.historyRecords.removeAll { $0.id == record.id }
+        self.history.historyRecords.insert(record, at: 0)
+        if self.history.historyRecords.count > 50 {
+            self.history.historyRecords.removeLast(self.history.historyRecords.count - 50)
         }
     }
 
@@ -530,14 +530,14 @@ extension AppModel {
         guard !hasBegunApplicationShutdown else { return }
         loadRunReceipts()
         guard let historyRepository else {
-            historyLoadState = .loaded
+            self.history.historyLoadState = .loaded
             if reconcileRunPresentation {
-                historyRecords.removeAll()
+                self.history.historyRecords.removeAll()
                 reconcileRunDerivedPresentation(with: [])
             }
             return
         }
-        historyLoadState = .loading
+        self.history.historyLoadState = .loading
         historyLoadGeneration += 1
         let generation = historyLoadGeneration
         let since = runHistoryRetentionPeriod.cutoffDate(relativeTo: Date())
@@ -559,8 +559,8 @@ extension AppModel {
                       self.historyLoadGeneration == generation else {
                     return
                 }
-                self.historyRecords = stored
-                self.historyLoadState = .loaded
+                self.history.historyRecords = stored
+                self.history.historyLoadState = .loaded
                 self.loadRunReceipts(
                     requiredRunIDs: Set(stored.compactMap(\.runID))
                 )
@@ -579,10 +579,10 @@ extension AppModel {
                     return
                 }
                 if reconcileRunPresentation {
-                    self.historyRecords.removeAll()
+                    self.history.historyRecords.removeAll()
                     self.reconcileRunDerivedPresentation(with: [])
                 }
-                self.historyLoadState = .failed(.repositoryUnavailable)
+                self.history.historyLoadState = .failed(.repositoryUnavailable)
                 self.append(
                     english: "History repository is unavailable.",
                     simplifiedChinese: "历史记录仓库不可用。"
@@ -599,14 +599,14 @@ extension AppModel {
     func loadRunReceipts(requiredRunIDs additionalRunIDs: Set<UUID> = []) {
         guard !hasBegunApplicationShutdown else { return }
         guard let runReceiptRepository else {
-            workflowRunReceiptsByRunID.removeAll()
+            self.history.workflowRunReceiptsByRunID.removeAll()
             return
         }
         runReceiptLoadGeneration += 1
         let generation = runReceiptLoadGeneration
         let since = runHistoryRetentionPeriod.cutoffDate(relativeTo: Date())
         let requiredRunIDs = additionalRunIDs.union(
-            historyRecords.compactMap(\.runID)
+            self.history.historyRecords.compactMap(\.runID)
         )
         let taskID = UUID()
         let task = Task { @MainActor [weak self, runReceiptRepository] in
@@ -631,7 +631,7 @@ extension AppModel {
                       self.runReceiptLoadGeneration == generation else {
                     return
                 }
-                self.workflowRunReceiptsByRunID = Dictionary(
+                self.history.workflowRunReceiptsByRunID = Dictionary(
                     receipts.map { ($0.runID, $0) },
                     uniquingKeysWith: { existing, _ in existing }
                 )
@@ -668,11 +668,11 @@ extension AppModel {
 
     public func workflowRunReceipt(for runID: UUID?) -> WorkflowRunReceipt? {
         guard let runID else { return nil }
-        return workflowRunReceiptsByRunID[runID]
+        return self.history.workflowRunReceiptsByRunID[runID]
     }
 
     private func reconcileRunDerivedPresentation(with records: [WorkflowResultRecord]) {
-        lastCompletedText = records.first(where: { record in
+        self.voice.lastCompletedText = records.first(where: { record in
             record.outcome == .completed &&
                 !(record.finalText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         })?.finalText

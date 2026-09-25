@@ -40,7 +40,7 @@ public actor FailedAudioRecoveryController {
     private let recognitionOptionsProvider: @Sendable (
         WorkflowDefinition,
         ContextSnapshot
-    ) async -> SpeechRecognitionRequestOptions
+    ) async throws -> SpeechRecognitionRequestOptions
     private let runPreflight: RecognitionRunPreflight
     private let currentDate: @Sendable () -> Date
     private let removeManagedRecoveryTemporaryFile: @Sendable (CapturedAudio) throws -> Void
@@ -82,7 +82,7 @@ public actor FailedAudioRecoveryController {
         recognitionOptionsProvider: @escaping @Sendable (
             WorkflowDefinition,
             ContextSnapshot
-        ) async -> SpeechRecognitionRequestOptions = { _, _ in .empty },
+        ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
         runPreflight: @escaping RecognitionRunPreflight = { _ in },
         currentDate: @escaping @Sendable () -> Date = { Date() },
         removeManagedRecoveryTemporaryFile: @escaping @Sendable (CapturedAudio) throws -> Void = {

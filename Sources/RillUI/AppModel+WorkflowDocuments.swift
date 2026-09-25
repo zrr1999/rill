@@ -14,11 +14,11 @@ extension AppModel {
     }
 
     public func workflowFileForEditing(_ workflow: WorkflowDefinition, duplicate: Bool = false) async -> URL? {
-        guard !hasBegunApplicationShutdown, !isLoadingSettings, isWorkflowLibraryAvailable,
+        guard !hasBegunApplicationShutdown, !self.settings.isLoading, isWorkflowLibraryAvailable,
             let workflowFileStore else { return nil }
-        if !duplicate, let fileURL = workflowFileURLsByID[workflow.id] { return fileURL }
-        guard usesWorkflowFilesAsSource || customWorkflows.isEmpty else {
-            workflowLibraryError = language == .simplifiedChinese
+        if !duplicate, let fileURL = self.workflowLibrary.workflowFileURLsByID[workflow.id] { return fileURL }
+        guard self.workflowLibrary.usesWorkflowFilesAsSource || self.workflowLibrary.customWorkflows.isEmpty else {
+            self.workflowLibrary.workflowLibraryError = language == .simplifiedChinese
                 ? "旧工作流尚未完成 TOML 迁移。请修复工作流目录并重新启动，再创建或打开文件；现有工作流已保留。"
                 : "The legacy workflow library has not migrated to TOML. Repair the workflow directory and restart before creating or opening a file; existing workflows are preserved."
             return nil
@@ -40,13 +40,13 @@ extension AppModel {
                 isEnabled: duplicate ? false : isWorkflowEnabled(workflow)
             )
             let record = try await workflowFileStore.saveDocument(document, replacing: nil, expected: .missing)
-            usesWorkflowFilesAsSource = true
-            hasModifiedWorkflowLibrary = true
+            self.workflowLibrary.usesWorkflowFilesAsSource = true
+            self.workflowLibrary.hasModifiedWorkflowLibrary = true
             await reloadWorkflowFiles()
             persistCustomWorkflows()
             return record.fileURL
         } catch {
-            workflowLibraryError = error.localizedDescription
+            self.workflowLibrary.workflowLibraryError = error.localizedDescription
             return nil
         }
     }
@@ -64,7 +64,7 @@ extension AppModel {
             ),
             ui: WorkflowUIConfig(symbolName: "sparkles", accentColorName: "blue")
         )
-        workflowEnabledStates[workflow.id] = false
+        self.workflowLibrary.workflowEnabledStates[workflow.id] = false
         return await workflowFileForEditing(workflow)
     }
 
@@ -79,20 +79,20 @@ extension AppModel {
             let document = try workflowFileStore.decodeDocument(String(contentsOf: url, encoding: .utf8))
             return await workflowFileForEditing(document.workflow, duplicate: true)
         } catch {
-            workflowLibraryError = error.localizedDescription
+            self.workflowLibrary.workflowLibraryError = error.localizedDescription
             return nil
         }
     }
 
     public func runWorkflowText(_ text: String, workflow saved: WorkflowDefinition) {
-        guard !hasBegunApplicationShutdown, !isLoadingSettings, !isRunning,
+        guard !hasBegunApplicationShutdown, !self.settings.isLoading, !self.voice.isRunning,
             !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-            isWorkflowEnabled(saved), !invalidWorkflowFileIDs.contains(saved.id),
+            isWorkflowEnabled(saved), !self.workflowLibrary.invalidWorkflowFileIDs.contains(saved.id),
             isWorkflowExecutionSupported(saved) else { return }
         var workflow = saved
         workflow.declaredInputKind = .text
         workflow.plan = workflow.plan.acceptingTextInput()
-        isRunning = true
+        self.voice.isRunning = true
         interactiveWorkflowTaskGeneration += 1
         let generation = interactiveWorkflowTaskGeneration
         pendingInteractiveWorkflowTask = Task { @MainActor [weak self] in
@@ -105,9 +105,9 @@ extension AppModel {
                 try Task.checkCancellation()
                 await self.sessionCoordinator.runRecognizedText(text, authorizedContext: authorization)
             } catch is CancellationError {
-                self.isRunning = false
+                self.voice.isRunning = false
             } catch {
-                self.isRunning = false
+                self.voice.isRunning = false
                 self.lastFailure = self.language == .simplifiedChinese
                     ? "工作流未能完成，请检查隐私和服务商设置。"
                     : "The workflow could not finish. Review Privacy and provider settings."

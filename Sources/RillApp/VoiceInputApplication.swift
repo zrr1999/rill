@@ -105,7 +105,7 @@ struct RillApplication: App {
 
     private var menuBarSystemSymbol: RillSystemSymbol {
         MenuBarSystemSymbolPolicy.symbol(
-            isVoiceRunActive: container.model.isRunning,
+            isVoiceRunActive: container.model.voice.isRunning,
             globalInputCapability: container.model.globalInputCapability,
             systemClipboardCaptureEnabled: container.model.systemClipboardCaptureEnabled,
             clipboardCaptureState: container.model.systemClipboardCaptureControlSnapshot.state,

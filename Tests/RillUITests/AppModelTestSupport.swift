@@ -40,7 +40,8 @@ struct UITestAction: OutputAction {
     self.log = log
   }
 
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      _ = try record.requireText(for: id)
     await log.increment()
     return .copiedToClipboard
   }
@@ -654,7 +655,7 @@ func makeHarness(
     ]
   )
   let coordinator = SessionCoordinator(
-    contextProvider: UITestContextProvider(),
+
     recognizerRegistry: SpeechRecognizerRegistry(
       recognizers: [
         UITestRecognizer(

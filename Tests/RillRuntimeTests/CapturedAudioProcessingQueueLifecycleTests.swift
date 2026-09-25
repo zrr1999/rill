@@ -243,7 +243,8 @@ private struct AudioLifecycleAction: OutputAction {
     let id = "audio-lifecycle.action"
     let probe: AudioLifecycleExecutionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.recordAction()
         return .copiedToClipboard
     }
@@ -1080,7 +1081,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         let eventBus = EventBus()
         let diagnostics = providedDiagnostics ?? DiagnosticsRecorder(eventBus: eventBus)
         let coordinator = SessionCoordinator(
-            contextProvider: AudioLifecycleContextProvider(probe: executionProbe),
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     AudioLifecycleRecognizer(

@@ -435,7 +435,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let eventBus = EventBus()
     var deliveryIterator = eventBus.lifecycleDeliveryStream.makeAsyncIterator()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -503,7 +503,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let eventBus = EventBus()
     var deliveryIterator = eventBus.lifecycleDeliveryStream.makeAsyncIterator()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -579,7 +579,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -655,7 +655,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -732,7 +732,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     }
     defer { eventTask.cancel() }
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -846,7 +846,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -921,7 +921,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     await audioCaptureService.setShouldRevokeLifetimeBeforeStartReturns(true)
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -972,7 +972,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1040,7 +1040,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1099,7 +1099,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1161,7 +1161,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1249,7 +1249,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let captureService = TransferredWorkflowCaptureService(capturedAudio: capturedAudio)
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1327,7 +1327,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1393,7 +1393,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1407,10 +1407,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
         sessionCoordinator: coordinator,
         eventBus: eventBus
       ),
-      contextProvider: {
-        XCTFail("A missing privacy gate must not read full context.")
-        return .empty
-      },
       recognitionOptionsProvider: { _, context in
         await optionsProbe.resolve(context: context, options: .empty)
       }
@@ -1451,7 +1447,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
     let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1545,7 +1541,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let eventBus = EventBus()
     let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1580,7 +1576,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       diagnostics: diagnostics,
-      contextProvider: { privacyContext },
       privacyContextProvider: { privacyContext },
       authorizedContextProvider: { decision in privacyContext.applying(decision) },
       recognitionOptionsProvider: { _, context in
@@ -1623,7 +1618,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1643,7 +1638,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
         sessionCoordinator: coordinator,
         eventBus: eventBus
       ),
-      contextProvider: { await ordering.readContext() },
       privacyContextProvider: { await ordering.readContext() },
       authorizedContextProvider: { _ in await ordering.readContext() },
       recognitionOptionsProvider: { _, _ in await ordering.resolveOptions() },
@@ -1682,7 +1676,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1705,7 +1699,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
         sessionCoordinator: coordinator,
         eventBus: eventBus
       ),
-      contextProvider: { await ordering.readContext() },
       privacyContextProvider: { await ordering.readContext() },
       authorizedContextProvider: { _ in await ordering.readContext() },
       recognitionOptionsProvider: { _, _ in await ordering.resolveOptions() },
@@ -1748,7 +1741,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let coordinator = SessionCoordinator(
-      contextProvider: TestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
@@ -1778,7 +1771,6 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let controller = WorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
-      contextProvider: { expectedContext },
       privacyContextProvider: { expectedContext },
       authorizedContextProvider: { decision in expectedContext.applying(decision) },
       recognitionOptionsProvider: { _, context in

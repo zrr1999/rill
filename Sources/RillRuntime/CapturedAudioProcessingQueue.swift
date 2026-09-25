@@ -464,7 +464,10 @@ public actor CapturedAudioProcessingQueue {
                 let capturedAudio = try await job.deferredCapture.value()
                 capturedAudioForCleanup = capturedAudio
                 let timingKeys = ["captureStopMillis", "captureDrainMillis",
-                                  "capturePreviewRetireMillis", "captureFinalizeMillis"]
+                                  "capturePreviewRetireMillis", "captureFinalizeMillis",
+                                  "captureTailSampleCount", "previewDeliveredSampleCount",
+                                  "previewKeytermStatus", "previewRequestedKeytermCount",
+                                  "firstPreviewObservedMillis", "stablePreviewObservedMillis"]
                 let timing = capturedAudio.metadata.filter { timingKeys.contains($0.key) }
                 if !timing.isEmpty {
                     await recordDiagnostic(

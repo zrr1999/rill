@@ -160,7 +160,7 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
         )
         let eventBus = EventBus()
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingCleanupContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -226,7 +226,7 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
         )
         let eventBus = EventBus()
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingCleanupContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),

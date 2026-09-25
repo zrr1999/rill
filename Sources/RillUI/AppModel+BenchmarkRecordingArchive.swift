@@ -4,7 +4,7 @@ import RillCore
 public extension AppModel {
   func setBenchmarkRecordingArchiveEnabled(_ isEnabled: Bool) {
     guard !hasBegunApplicationShutdown,
-      !isLoadingSettings,
+      !self.settings.isLoading,
       isEnabled != benchmarkRecordingArchiveEnabled,
       !isUpdatingBenchmarkRecordingArchive
     else {

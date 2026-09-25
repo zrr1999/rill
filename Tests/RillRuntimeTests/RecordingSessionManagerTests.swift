@@ -287,7 +287,8 @@ private struct RecordingAction: OutputAction {
     let id = "recording.action"
     let probe: RecordingActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         await probe.record(text)
         return .copiedToClipboard
     }
@@ -717,7 +718,7 @@ private func makeRecordingFocusTargetFixture(
     )
     let audioCaptureService = MockAudioCaptureService(audio: audio)
     let coordinator = SessionCoordinator(
-        contextProvider: RecordingTestContextProvider(),
+
         recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
         transformerRegistry: TextTransformerRegistry(transformers: []),
         actionRegistry: OutputActionRegistry(actions: []),
@@ -775,7 +776,7 @@ private func makeStreamHotkeyFinishingFixture(
     )
     let audioCaptureService = BlockingFinishAudioCaptureService(audio: audio)
     let coordinator = SessionCoordinator(
-        contextProvider: RecordingTestContextProvider(),
+
         recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
         transformerRegistry: TextTransformerRegistry(transformers: []),
         actionRegistry: OutputActionRegistry(actions: []),
@@ -835,7 +836,7 @@ private func makeStreamHotkeyPreparationFixture(
     )
     let workflowProvider = RecordingWorkflowProviderGate(workflow: workflow)
     let coordinator = SessionCoordinator(
-        contextProvider: RecordingTestContextProvider(),
+
         recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
         transformerRegistry: TextTransformerRegistry(transformers: []),
         actionRegistry: OutputActionRegistry(actions: []),
@@ -894,7 +895,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             )
         )
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -958,7 +959,7 @@ final class RecordingSessionManagerTests: XCTestCase {
     func testApplicationShutdownRejectsLateAndNewRecordingStarts() async throws {
         let eventBus = EventBus()
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -1457,7 +1458,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -1738,7 +1739,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red")
         )
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -1907,7 +1908,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let captureService = MockAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -2019,7 +2020,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -2100,7 +2101,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -2316,7 +2317,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -2408,7 +2409,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [BlockingRecordingRecognizer(probe: requestProbe, gate: gate)]
             ),
@@ -2485,7 +2486,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             hints: RecognitionHints(keyterms: ["Rill", "multi word"])
         )
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: requestProbe)]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: actionProbe)]),
@@ -2538,8 +2539,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         XCTAssertEqual(captureRequest?.liveSubtitleNetworkUsage, .unknown)
         XCTAssertEqual(recognitionRequest?.capturedAudio, audio)
         XCTAssertEqual(recognitionRequest?.options, expectedOptions)
-        XCTAssertEqual(recognitionRequest?.triggerEvent?.binding, .hotkey)
-        XCTAssertEqual(recognitionRequest?.triggerEvent?.metadata["gesture"], HotkeyEventTap.PushToTalkGesture.fnHold.rawValue)
+        XCTAssertEqual(recognitionRequest?.priority, .interactive)
         XCTAssertEqual(actionValues, ["recorded"])
         XCTAssertEqual(currentState, RecordingSessionManager.State.idle)
         XCTAssertTrue(events.contains { event in
@@ -2568,7 +2568,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -2622,7 +2622,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -2689,7 +2689,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: requestProbe)]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: RecordingActionProbe())]),
@@ -2730,9 +2730,9 @@ final class RecordingSessionManagerTests: XCTestCase {
 
         let captureRequest = await audioCaptureService.snapshot()
         let recognitionRequest = await requestProbe.snapshot()
+        XCTAssertEqual(recognitionRequest?.priority, .interactive)
 
         XCTAssertEqual(captureRequest?.triggerEvent?.metadata["gesture"], HotkeyEventTap.PushToTalkGesture.controlOptionShiftSpace.rawValue)
-        XCTAssertEqual(recognitionRequest?.triggerEvent?.metadata["gesture"], HotkeyEventTap.PushToTalkGesture.controlOptionShiftSpace.rawValue)
     }
 
     func testPushToTalkReleaseDuringPreparationFinishesAfterStartupCompletes() async throws {
@@ -2757,7 +2757,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: requestProbe)]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: actionProbe)]),
@@ -2839,7 +2839,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: RecordingRequestProbe())]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: RecordingActionProbe())]),
@@ -2912,7 +2912,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: RecordingRequestProbe())]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: RecordingActionProbe())]),
@@ -2978,7 +2978,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -3067,7 +3067,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
         let gestureState = GestureStateBox(isActive: true)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: RecordingRequestProbe())]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: RecordingActionProbe())]),
@@ -3127,7 +3127,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
         let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),

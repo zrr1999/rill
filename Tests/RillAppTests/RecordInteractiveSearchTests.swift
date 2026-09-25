@@ -116,7 +116,7 @@ final class RecordInteractiveSearchTests: XCTestCase {
     let resolver = CandidateResolver(eventBus: bus)
     let actions = OutputActionRegistry(actions: [])
     let coordinator = SessionCoordinator(
-      contextProvider: PublicSearchContext(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []), actionRegistry: actions,
       candidateResolver: resolver, eventBus: bus)

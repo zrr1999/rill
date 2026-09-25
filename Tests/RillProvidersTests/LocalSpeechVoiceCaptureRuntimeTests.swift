@@ -498,6 +498,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
 
   func testFinishDrainsEveryAcceptedTailChunkBeforeFinalizingWaveFile() async throws {
     let source = TestLocalSpeechAudioCaptureSource()
+    let preview = TestLocalSpeechStreamingPreviewSession(results: [])
     let publishGate = LocalSpeechRecordingPublishGate()
     let voiceActivityDetector = TestLocalSpeechVoiceActivityDetector([
       .observations(Self.silenceObservations(count: 3)),
@@ -508,6 +509,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
       permissionRequester: { true },
       sourceFactory: { source },
       voiceActivityDetectorFactory: { _ in voiceActivityDetector },
+      streamingPreviewSessionFactory: { _ in preview },
       liveUpdateHandler: { snapshot in
         await publishGate.observe(snapshot)
       }
@@ -547,6 +549,9 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     for (actual, expected) in zip(actualSamples, expectedSamples) {
       XCTAssertEqual(actual, expected, accuracy: 0.0001)
     }
+    XCTAssertEqual(preview.acceptedSampleCounts.reduce(0, +), expectedSamples.count)
+    XCTAssertEqual(capturedAudio.metadata["captureTailSampleCount"], "3200")
+    XCTAssertEqual(capturedAudio.metadata["previewDeliveredSampleCount"], String(expectedSamples.count))
     XCTAssertEqual(source.stopCount, 1)
     XCTAssertEqual(voiceActivityDetector.acceptedSampleCounts, [4_800, 1_600])
   }

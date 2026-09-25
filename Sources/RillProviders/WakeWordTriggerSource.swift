@@ -65,6 +65,7 @@ public actor WakeWordTriggerSource: TriggerSource {
 
   private let hub: SharedVoiceInputHub
   private let recognizer: any SpeechRecognizer
+  private let recognitionOptionsProvider: @Sendable (WorkflowDefinition) async throws -> SpeechRecognitionRequestOptions
   private let vadSessionFactory:
     @Sendable () async -> (any LocalSpeechStreamingPreviewSession)?
   private nonisolated let eventStream: AsyncStream<WorkflowTriggerEvent>
@@ -93,11 +94,13 @@ public actor WakeWordTriggerSource: TriggerSource {
   public init(
     hub: SharedVoiceInputHub,
     recognizer: any SpeechRecognizer,
+    recognitionOptionsProvider: @escaping @Sendable (WorkflowDefinition) async throws -> SpeechRecognitionRequestOptions,
     vadSessionFactory: @escaping @Sendable () async ->
       (any LocalSpeechStreamingPreviewSession)? = { nil }
   ) {
     self.hub = hub
     self.recognizer = recognizer
+    self.recognitionOptionsProvider = recognitionOptionsProvider
     self.vadSessionFactory = vadSessionFactory
     let (eventStream, eventContinuation) =
       AsyncStream<WorkflowTriggerEvent>.makeStream(
@@ -362,15 +365,13 @@ public actor WakeWordTriggerSource: TriggerSource {
       _ = try? capturedAudio.removeManagedTemporaryFile()
     }
     do {
-      var options = SpeechRecognitionRequestOptions.empty
+      var options = try await recognitionOptionsProvider(workflow)
       options.hints.keyterms = phrases
-      var candidateWorkflow = workflow
-      candidateWorkflow.metadata["speech.task-priority"] = "wake-candidate"
       let result = try await recognizer.recognize(
         RecognitionRequest(
           runID: recognitionID,
-          workflow: candidateWorkflow,
           contextSnapshot: .empty,
+          priority: .wakeCandidate,
           capturedAudio: capturedAudio,
           options: options
         )

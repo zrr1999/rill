@@ -1,5 +1,6 @@
 // swift-tools-version: 6.2
 import PackageDescription
+import Foundation
 
 let package = Package(
   name: "RillMacOS",
@@ -63,6 +64,7 @@ let package = Package(
         .product(name: "MLXAudioTTS", package: "mlx-audio-swift"),
         .product(name: "MLXAudioVAD", package: "mlx-audio-swift"),
         .product(name: "MLX", package: "mlx-swift"),
+        .product(name: "MLXNN", package: "mlx-swift"),
         .product(name: "MLXEmbedders", package: "mlx-swift-lm"),
         .product(name: "MLXHuggingFace", package: "mlx-swift-lm"),
         .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
@@ -128,6 +130,7 @@ let package = Package(
         "RillCore",
         "RillPlatform",
         "RillProviders",
+        .product(name: "OpenAI", package: "OpenAI"),
       ]
     ),
     .testTarget(
@@ -155,7 +158,20 @@ let package = Package(
         "RillPlatform",
         "RillProviders",
         "RillRuntime",
+        "RillPersistence",
+        "RillUI",
       ]
     ),
   ]
 )
+
+// One target declaration serves both full CI and the opt-in domain test build.
+// Dependencies and Package.resolved remain identical to the production graph.
+if ProcessInfo.processInfo.environment["RILL_BUILD_PROFILE"] == "domain-tests" {
+  let excluded: Set<String> = [
+    "RillApp", "RillUI", "RillSpeechWorker", "RillMLXRuntime",
+    "RillAppTests", "RillUITests", "RillMLXRuntimeTests", "RillPlatformTests",
+  ]
+  package.targets.removeAll { excluded.contains($0.name) }
+  package.products = []
+}

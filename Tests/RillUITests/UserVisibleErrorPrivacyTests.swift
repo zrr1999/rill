@@ -159,7 +159,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         harness.model.runWorkflow(harness.workflow)
         await harness.model.waitForInteractiveWorkflowRun()
         XCTAssertNotNil(harness.model.lastFailure)
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         assertSentinelIsAbsent(from: harness.model)
     }
 

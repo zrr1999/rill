@@ -19,7 +19,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     let store = UITestSettingsStore(storage: invalidValues)
     let harness = makeHarness(settingsStore: store)
 
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     XCTAssertEqual(
       harness.model.unavailableScalarSettingKeys,
@@ -46,7 +46,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
     )
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     harness.model.language =
       harness.model.language == .english
@@ -76,7 +76,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
     )
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     let initialLanguage = harness.model.language
     let initialClipboardCaptureEnabled = harness.model.systemClipboardCaptureEnabled
@@ -118,7 +118,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
     )
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     await store.setUnavailableKeys([])
     for domain in [
@@ -165,7 +165,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       settingsStore: store,
       settingsWriteDebounceDuration: .zero
     )
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
     let initialLanguage = harness.model.language
     let initialClipboardCaptureEnabled = harness.model.systemClipboardCaptureEnabled
     let initialEngine = harness.model.preferredSpeechEngine
@@ -216,7 +216,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       settingsStore: store,
       localSpeechSettingsSource: source
     )
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     XCTAssertThrowsError(try source.currentSettings()) { error in
       XCTAssertEqual(error as? LocalSpeechSettingsSourceError, .unavailable)
@@ -243,7 +243,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     let harness = makeHarness(settingsStore: store)
 
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     XCTAssertEqual(harness.model.localSpeechModel, "qwen3-asr-1.7b-mlx-8bit")
     XCTAssertFalse(harness.model.localSpeechPrewarm)
@@ -264,7 +264,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     let harness = makeHarness(settingsStore: store)
 
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.localSpeechModel, "qwen3-asr-0.6b-mlx-8bit")
@@ -297,7 +297,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     harness.model.localSpeechPrewarm = true
     await harness.model.flushPendingPersistenceWrites()
     await store.resumeBatchRead()
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertTrue(harness.model.localSpeechPrewarm)
@@ -317,7 +317,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     let harness = makeHarness(settingsStore: store)
 
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .localSpeech))
     let activity = await store.activitySnapshot()
@@ -332,7 +332,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     let harness = makeHarness(settingsStore: store)
 
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .localSpeech))
     XCTAssertEqual(harness.model.localSpeechModel, "qwen3-asr-1.7b-mlx-8bit")
@@ -355,7 +355,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       trustedLocalSpeechModels: models,
       defaultLocalSpeechModelIdentifier: defaultModel
     )
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     await store.setUnavailableKeys([])
     harness.model.retryUnavailableScalarSettings(in: .localSpeech)
@@ -388,7 +388,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       trustedLocalSpeechModels: models,
       defaultLocalSpeechModelIdentifier: defaultModel
     )
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     await store.setUnavailableKeys([])
     await store.suspendNextBatchRead()
@@ -425,7 +425,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       credentialStore: credentials,
       settingsWriteDebounceDuration: .zero
     )
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     XCTAssertEqual(harness.model.openAIAPIKey, "stored-openai-key")
     XCTAssertEqual(harness.model.openAIBaseURL, "https://gateway.example.com/openai/v1")
@@ -465,7 +465,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       }
     )
     await waitUntil {
-      !harness.model.isLoadingSettings
+      !harness.model.settings.isLoading
         && harness.model.openAICredentialAvailability == .available
     }
 
@@ -506,7 +506,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       }
     )
     await waitUntil {
-      !harness.model.isLoadingSettings
+      !harness.model.settings.isLoading
         && harness.model.openAICredentialAvailability == .available
     }
 
@@ -554,12 +554,12 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       usesEphemeralSettingsStoreWhenNil: false,
       credentialStore: credentials
     )
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
 
     XCTAssertEqual(harness.model.unavailableScalarSettingKeys, AppModel.scalarSettingsKeys)
-    XCTAssertEqual(harness.model.workflowLibraryAvailability, .unavailable)
+    XCTAssertEqual(harness.model.workflowLibrary.workflowLibraryAvailability, .unavailable)
     XCTAssertEqual(harness.model.downloadedLocalSpeechModelsAvailability, .unavailable)
-    XCTAssertEqual(harness.model.vocabularyRulesAvailability, .unavailable)
+    XCTAssertEqual(harness.model.vocabulary.availability, .unavailable)
     XCTAssertEqual(harness.model.openAIAPIKey, "keychain-only-key")
     XCTAssertEqual(harness.model.openAICredentialAvailability, .inaccessible)
 

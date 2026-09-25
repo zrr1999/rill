@@ -92,7 +92,7 @@ struct SessionCoordinatorPolishingGateTests {
     let receipts = InMemoryWorkflowRunReceiptRepository()
     let workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.titleKey == .smartCleanup })
     let coordinator = SessionCoordinator(
-      contextProvider: PolishingContextProvider(),
+
       recognizerRegistry: .init(recognizers: []),
       transformerRegistry: .init(transformers: [WhitespaceNormalizerTransformer(), transformer]),
       textPolishingGate: gate,
@@ -142,7 +142,8 @@ private actor PolishingDeliveryProbe: OutputAction {
   var texts: [String] = []
   var wasStoredBeforeDelivery = false
   init(store: RecordStore) { self.store = store }
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      let text = try record.requireText(for: id)
     texts.append(text)
     let snapshot = try await store.catalogSnapshot()
     if let id = snapshot.records.first?.id {

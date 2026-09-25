@@ -91,7 +91,8 @@ private struct TimeoutProbeAction: OutputAction {
   let id = "probe.action"
   let probe: TimeoutActionProbe
 
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      _ = try record.requireText(for: id)
     await probe.record(context.workflow.name)
     return .copiedToClipboard
   }
@@ -464,17 +465,11 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
   }
 
   private func makeRequest(
-    recognizerID: String,
+    recognizerID _: String,
     capturedAudio: CapturedAudio? = nil
   ) -> RecognitionRequest {
-    let workflow = makeWorkflow(
-      name: "Timeout Executor Workflow",
-      recognizerID: recognizerID,
-      outputActions: []
-    )
     return RecognitionRequest(
       runID: UUID(),
-      workflow: workflow,
       contextSnapshot: .empty,
       capturedAudio: capturedAudio
     )
@@ -503,7 +498,7 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
     diagnostics: DiagnosticsRecorder? = nil
   ) -> SessionCoordinator {
     SessionCoordinator(
-      contextProvider: TimeoutTestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: recognizers),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(

@@ -50,7 +50,8 @@ public struct WebhookPostAction: OutputAction {
         self.privacyAuthorizationProvider = privacyAuthorizationProvider
     }
 
-    public func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         do {
             guard case .webhook(let url, let headers) = try context.configuration(for: id) else {
                 return .failed("Webhook configuration is invalid.")
@@ -123,7 +124,8 @@ public struct ShortcutsRunAction: OutputAction {
         self.runner = runner
     }
 
-    public func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         do {
             guard case .shortcut(let shortcutName) = try context.configuration(for: id) else {
                 return .failed("Shortcut configuration is invalid.")
@@ -558,7 +560,8 @@ public struct MarkdownAppendAction: OutputAction {
         self.appender = appender
     }
 
-    public func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         do {
             guard case .markdown(let fileURL) = try context.configuration(for: id) else {
                 return .failed("Markdown configuration is invalid.")

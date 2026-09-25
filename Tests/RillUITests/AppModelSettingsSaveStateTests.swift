@@ -120,7 +120,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
     await harness.model.waitForInitialVoiceConfiguration()
     await harness.model.flushPendingPersistenceWrites()
 
-    XCTAssertFalse(harness.model.isLoadingSettings)
+    XCTAssertFalse(harness.model.settings.isLoading)
     XCTAssertEqual(harness.model.localSpeechModel, defaultModel)
     XCTAssertEqual(try source.currentSettings().model, defaultModel)
     XCTAssertEqual(

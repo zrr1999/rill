@@ -6,7 +6,7 @@ extension AppModel {
     public func explainWorkflowBeforeRun(_ requestedWorkflow: WorkflowDefinition) {
         cancelWorkflowExplanation()
 
-        guard let workflow = workflows.first(where: { $0.id == requestedWorkflow.id }) else {
+        guard let workflow = self.workflowLibrary.workflows.first(where: { $0.id == requestedWorkflow.id }) else {
             workflowExplanationState = .failed(
                 workflowID: requestedWorkflow.id,
                 reason: .workflowUnavailable
@@ -86,7 +86,7 @@ extension AppModel {
     ) {
         guard generation == workflowExplanationGeneration else { return }
 
-        guard workflows.contains(where: { $0.id == workflowID }) else {
+        guard self.workflowLibrary.workflows.contains(where: { $0.id == workflowID }) else {
             workflowExplanationState = .failed(
                 workflowID: workflowID,
                 reason: .workflowUnavailable

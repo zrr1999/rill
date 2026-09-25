@@ -101,8 +101,9 @@ private struct AppBootstrapExplanationTransformer: TextTransformer {
 private struct AppBootstrapExplanationAction: OutputAction {
   let id = "focused-application.insert"
 
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
-    .injected
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      _ = try record.requireText(for: id)
+    return .injected
   }
 }
 

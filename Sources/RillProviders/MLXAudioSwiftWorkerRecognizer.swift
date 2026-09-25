@@ -98,10 +98,9 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
     }
 
     let settings = try await settingsProvider()
-    let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
-      settings: settings,
-      workflow: request.workflow
-    )
+    guard let modelIdentifier = request.options.modelID else {
+      throw LocalSpeechSettingsSourceError.notReady
+    }
     guard let modelID = MLXAudioModelID(rawValue: modelIdentifier),
       MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelIdentifier)
     else {
@@ -110,18 +109,12 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
     guard settings.enabledModelIDs.contains(modelIdentifier) else {
       throw LocalSpeechModelSelectionError.modelNotEnabled(modelIdentifier)
     }
-    let language = LocalSpeechRecognitionPolicy.resolvedLanguage(
-      requestLanguage: request.options.language,
-      workflowLanguage: request.workflow.metadata[WorkflowMetadataKey.languageOverride],
-      configurationLanguage: settings.language
-    )
+    let keyterms = LocalSpeechRecognitionPolicy.sanitizedQwenHotwords(request.options.hints.keyterms)
     let payload = SpeechWorkerRecognitionPayload(
       runID: request.runID,
       modelID: modelID.rawValue,
-      language: language,
-      keyterms: LocalSpeechRecognitionPolicy.sanitizedQwenHotwords(
-        request.options.hints.keyterms
-      ),
+      language: request.options.language,
+      keyterms: keyterms,
       threadCount: 1,
       audioFilePath: audioFileURL.standardizedFileURL.path,
       audioDurationSeconds: capturedAudio.durationSeconds,
@@ -144,10 +137,14 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
       payload,
       priority: Self.taskPriority(for: request)
     )
+    var metadata = result.metadata
+    let workerOmitted = Int(metadata["provider.keyterms_omitted"] ?? "0") ?? 0
+    metadata["provider.keyterms_omitted"] = String(
+      request.options.hints.keyterms.count - keyterms.count + workerOmitted)
     return RecognitionResult(
       rawText: result.rawText,
       bestText: result.bestText,
-      metadata: result.metadata,
+      metadata: metadata,
       processingDurationMillis: result.processingDurationMillis
     )
   }
@@ -266,13 +263,11 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
   private static func taskPriority(
     for request: RecognitionRequest
   ) -> SpeechWorkerTaskPriority {
-    if request.workflow.metadata["speech.task-priority"] == "wake-candidate" {
-      return .wakeCandidate
+    switch request.priority {
+    case .interactive: .interactive
+    case .foregroundFinal: .foregroundFinal
+    case .wakeCandidate: .wakeCandidate
     }
-    if request.triggerEvent?.binding == .hotkey {
-      return .interactive
-    }
-    return .foregroundFinal
   }
 }
 

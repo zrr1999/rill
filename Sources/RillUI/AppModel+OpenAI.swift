@@ -3,7 +3,7 @@ import RillCore
 extension AppModel {
   public var canVerifyOpenAIConfiguration: Bool {
     !hasBegunApplicationShutdown
-      && !isLoadingSettings
+      && !self.settings.isLoading
       && openAICredentialAvailability == .available
       && !hasUnavailableScalarSettings(in: .openAI)
       && OpenAISettings.isValidBaseURL(openAIBaseURL)

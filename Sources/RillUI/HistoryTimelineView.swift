@@ -222,7 +222,7 @@ public struct HistoryTimelineView: View {
     public var body: some View {
         let visibleEntries = entries
         let workflowsByID = Dictionary(
-            model.workflows.map { ($0.id, $0.presentation) },
+            model.workflowLibrary.workflows.map { ($0.id, $0.presentation) },
             uniquingKeysWith: { first, _ in first }
         )
         let viewState = HistoryViewState(
@@ -262,7 +262,7 @@ public struct HistoryTimelineView: View {
                     .foregroundStyle(.red)
             }
 
-            if case .expired = model.runHistoryDeepLinkState {
+            if case .expired = model.history.runHistoryDeepLinkState {
                 Label {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(
@@ -289,7 +289,7 @@ public struct HistoryTimelineView: View {
                 .accessibilityIdentifier("history.deep-link.expired")
             }
 
-            if model.runHistoryPaginationFailed {
+            if model.history.runHistoryPaginationFailed {
                 HStack(spacing: 10) {
                     Label(
                         UIStrings.text(.historyPaginationFailed, language: model.language),
@@ -311,7 +311,7 @@ public struct HistoryTimelineView: View {
                         .accessibilityIdentifier(
                             "history.pagination.open-storage-settings"
                         )
-                    } else if case .failed = model.runHistoryDeepLinkState {
+                    } else if case .failed = model.history.runHistoryDeepLinkState {
                         Button(
                             UIStrings.text(.historyRetryLoad, language: model.language)
                         ) {
@@ -359,16 +359,16 @@ public struct HistoryTimelineView: View {
         }
         .task(
             id: HistoryNavigationTaskIdentity(
-                requestID: model.historyNavigationRequest?.id,
+                requestID: model.history.historyNavigationRequest?.id,
                 visibleEntryIDs: visibleEntries.map(\.id),
                 loadState: model.effectiveRunHistoryLoadState,
-                deepLinkState: model.runHistoryDeepLinkState
+                deepLinkState: model.history.runHistoryDeepLinkState
             )
         ) {
             await model.resolveRunHistoryDeepLinkIfNeeded()
             guard case .loaded = model.effectiveRunHistoryLoadState,
-                  let request = model.historyNavigationRequest,
-                  request.scope == model.runHistoryScope,
+                  let request = model.history.historyNavigationRequest,
+                  request.scope == model.history.runHistoryScope,
                   let visibleEntryID = model.visibleRunHistoryEntryID(
                     matching: request.entryID
                   ),
@@ -376,14 +376,14 @@ public struct HistoryTimelineView: View {
                 return
             }
             await Task.yield()
-            guard model.historyNavigationRequest?.id == request.id else { return }
+            guard model.history.historyNavigationRequest?.id == request.id else { return }
             // Navigation scroll, not decorative motion: keep the fixed
             // duration easing so entry positioning stays predictable.
             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
                 proxy.scrollTo(visibleEntryID, anchor: .center)
             }
             await Task.yield()
-            guard model.historyNavigationRequest?.id == request.id else { return }
+            guard model.history.historyNavigationRequest?.id == request.id else { return }
             expandedEntryID = visibleEntryID
             focusedTarget = .entry(visibleEntryID)
             accessibilityFocusedTarget = .entry(visibleEntryID)
@@ -499,11 +499,11 @@ public struct HistoryTimelineView: View {
             }
             .disabled(
                 !model.canLoadNewerRunHistoryPage
-                    || model.isRunHistoryPageTransitioning
+                    || model.history.isRunHistoryPageTransitioning
             )
             .accessibilityIdentifier("history.pagination.newer")
 
-            if model.isRunHistoryPageTransitioning {
+            if model.history.isRunHistoryPageTransitioning {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityIdentifier("history.pagination.loading")
@@ -521,7 +521,7 @@ public struct HistoryTimelineView: View {
             }
             .disabled(
                 !model.canLoadOlderRunHistoryPage
-                    || model.isRunHistoryPageTransitioning
+                    || model.history.isRunHistoryPageTransitioning
             )
             .accessibilityIdentifier("history.pagination.older")
         }
@@ -820,7 +820,7 @@ public struct HistoryTimelineView: View {
         let isRetrying = model.retryingFailedAudioRecoveryIDs.contains(receipt.id)
         let anotherRetryIsRunning = !model.retryingFailedAudioRecoveryIDs.isEmpty
             && !isRetrying
-        let workflowIsAvailable = model.workflows.contains { $0.id == receipt.workflowID }
+        let workflowIsAvailable = model.workflowLibrary.workflows.contains { $0.id == receipt.workflowID }
         return VStack(alignment: .leading, spacing: 6) {
             if !receipt.status.canRetry {
                 Label(

@@ -81,7 +81,7 @@ final class EventFeedPrivacyPresentationTests: XCTestCase {
             runID: runID, workflow: harness.workflow.presentation, message: "provider unavailable"
         ))
         await harness.model.flushPendingPersistenceWrites()
-        let record = try XCTUnwrap(harness.model.historyRecords.first { $0.runID == runID })
+        let record = try XCTUnwrap(harness.model.history.historyRecords.first { $0.runID == runID })
         XCTAssertEqual(record.outcome, .failed)
         XCTAssertEqual(record.correctionSource?.processingSteps, steps)
         XCTAssertNil(record.finalText)

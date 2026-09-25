@@ -68,15 +68,18 @@ public struct LiveSubtitleOverlay: View {
 
   public let snapshot: LiveSubtitleSnapshot
   public let language: AppLanguage
+  private let expandedLayout: Bool
   private let includesShadow: Bool
   private let meterModel: VoiceActivityMeterModel?
 
   public init(
     snapshot: LiveSubtitleSnapshot,
     language: AppLanguage,
+    expandedLayout: Bool? = nil,
     includesShadow: Bool = true,
     meterModel: VoiceActivityMeterModel? = nil
   ) {
+    self.expandedLayout = expandedLayout ?? LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot)
     self.snapshot = snapshot
     self.language = language
     self.includesShadow = includesShadow
@@ -103,7 +106,7 @@ public struct LiveSubtitleOverlay: View {
 
   private var surface: some View {
     Group {
-      if LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot) {
+      if expandedLayout {
         expandedBody
       } else {
         compactBody
@@ -206,7 +209,7 @@ public struct LiveSubtitleOverlay: View {
 
   private var networkUsageDisclosure: some View {
     let usage = snapshot.networkUsage ?? .unknown
-    let showsTitle = LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot)
+    let showsTitle = expandedLayout
     let tint = networkUsageTint(usage)
     return HStack(spacing: 4) {
       Image(systemName: LiveSubtitleInteractionPolicy.networkDisclosureSymbolName(usage))
@@ -244,16 +247,7 @@ public struct LiveSubtitleOverlay: View {
   }
 
   private func networkUsageTint(_ usage: LiveSubtitleNetworkUsage) -> Color {
-    // Four-color status semantics (docs/ui-direction.md §4): offline is a
-    // caution, online is ready, unknown stays neutral.
-    switch usage {
-    case .offline:
-      .orange
-    case .online:
-      .green
-    case .unknown:
-      secondaryTextColor
-    }
+    secondaryTextColor
   }
 
   private var liveText: Text {
@@ -395,7 +389,7 @@ public struct LiveSubtitleOverlay: View {
     .black.opacity(colorSchemeContrast == .increased ? 0.2 : 0.13)
   }
   private var cornerRadius: CGFloat {
-    LiveSubtitlePresentationPolicy.usesExpandedLayout(snapshot)
+    expandedLayout
       ? LiveSubtitleOverlayMetrics.standardCornerRadius
       : LiveSubtitleOverlayMetrics.compactCornerRadius
   }
@@ -427,13 +421,13 @@ enum LiveSubtitleInteractionPolicy {
   ) -> String {
     switch (usage, language) {
     case (.offline, .english):
-      "Offline — processed entirely on this Mac"
+      "On this Mac — processed locally"
     case (.offline, .simplifiedChinese):
-      "离线 — 全程在本机处理"
+      "本机 — 全程在本机处理"
     case (.online, .english):
-      "Online — this workflow uses a network service"
+      "Network steps — this workflow uses a network service"
     case (.online, .simplifiedChinese):
-      "联网 — 此工作流会使用网络服务"
+      "包含联网步骤 — 此工作流会使用网络服务"
     case (.unknown, .english):
       "Network use could not be determined"
     case (.unknown, .simplifiedChinese):
@@ -446,10 +440,10 @@ enum LiveSubtitleInteractionPolicy {
     language: AppLanguage
   ) -> String {
     switch (usage, language) {
-    case (.offline, .english): "Offline"
-    case (.offline, .simplifiedChinese): "离线"
-    case (.online, .english): "Online"
-    case (.online, .simplifiedChinese): "联网"
+    case (.offline, .english): "On this Mac"
+    case (.offline, .simplifiedChinese): "本机"
+    case (.online, .english): "Network steps"
+    case (.online, .simplifiedChinese): "包含联网步骤"
     case (.unknown, .english): "Unknown"
     case (.unknown, .simplifiedChinese): "未知"
     }

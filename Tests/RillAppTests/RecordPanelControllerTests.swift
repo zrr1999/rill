@@ -17,7 +17,7 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     let resolver = CandidateResolver(eventBus: eventBus)
     let actionRegistry = OutputActionRegistry(actions: [])
     let coordinator = SessionCoordinator(
-      contextProvider: RecordPanelReduceMotionTestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: actionRegistry,

@@ -5,7 +5,7 @@ import RillRuntime
 extension AppModel {
   func rebuildWorkflowLibrary() {
     invalidateWorkflowExplanation()
-    workflowLibrary.rebuild(defaultVocabularyBindings: vocabularyCollectionBindings)
+    workflowLibrary.rebuild(defaultVocabularyBindings: self.vocabulary.vocabularyCollectionBindings)
     workflowLibraryChangedAction()
   }
 
@@ -17,8 +17,8 @@ extension AppModel {
     markSettingModifiedDuringInitialLoad(Self.workflowLibrarySettingKey)
     guard !isRestoringSettings, isWorkflowLibraryAvailable else { return }
     let document = WorkflowLibraryDocument(
-      customWorkflows: usesWorkflowFilesAsSource ? [] : customWorkflows,
-      customizations: workflowCustomizations
+      customWorkflows: self.workflowLibrary.usesWorkflowFilesAsSource ? [] : self.workflowLibrary.customWorkflows,
+      customizations: self.workflowLibrary.workflowCustomizations
     )
     persistRetryableSettingsStoreWrite(
       for: Self.workflowLibrarySettingKey,

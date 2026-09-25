@@ -65,7 +65,8 @@ private struct ToggleAction: OutputAction {
   let id = "toggle.action"
   let probe: ToggleActionProbe
 
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      let text = try record.requireText(for: id)
     await probe.record(text)
     return .copiedToClipboard
   }
@@ -143,7 +144,7 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
       cueOrderProbe: cueOrderProbe
     )
     let coordinator = SessionCoordinator(
-      contextProvider: ToggleTestContextProvider(),
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: [
         ToggleRecognizer(probe: requestProbe)
       ]),
@@ -229,8 +230,7 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
     XCTAssertEqual(finalState, .idle)
     XCTAssertEqual(finalFinishCallCount, 1)
     XCTAssertEqual(recognitionRequest?.capturedAudio, audio)
-    XCTAssertEqual(recognitionRequest?.triggerEvent?.sourceID, "long-recording")
-    XCTAssertEqual(recognitionRequest?.triggerEvent?.metadata["controlMode"], "toggle")
+    XCTAssertEqual(recognitionRequest?.priority, .interactive)
     XCTAssertEqual(actionValues, ["recorded"])
     XCTAssertEqual(
       cueOrder,

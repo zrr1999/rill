@@ -131,7 +131,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
       defaultLocalSpeechModelIdentifier: models[0].id
     )
 
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.localSpeechModel, models[0].id)
@@ -163,7 +163,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
         defaultLocalSpeechModelIdentifier: models[0].id
       )
 
-      await waitUntil { !harness.model.isLoadingSettings }
+      await waitUntil { !harness.model.settings.isLoading }
       await harness.model.flushPendingPersistenceWrites()
 
       XCTAssertEqual(harness.model.localSpeechModel, model.id)
@@ -192,7 +192,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     harness.model.selectTrustedLocalSpeechModel(models[1].id)
     await harness.model.flushPendingPersistenceWrites()
     await settingsStore.resumeBatchRead()
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.localSpeechModel, models[1].id)
@@ -427,7 +427,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
       trustedLocalSpeechModels: [model],
       defaultLocalSpeechModelIdentifier: modelID
     )
-    await waitUntil { !harness.model.isLoadingSettings }
+    await waitUntil { !harness.model.settings.isLoading }
     harness.model.residentSpeechBudgetConfirmation =
       harness.model.residentSpeechModelBudget.confirmationFingerprint
 
@@ -453,7 +453,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
       trustedLocalSpeechModels: [model],
       defaultLocalSpeechModelIdentifier: modelID
     )
-    await waitUntil { !restored.model.isLoadingSettings }
+    await waitUntil { !restored.model.settings.isLoading }
     XCTAssertEqual(
       restored.model.speechModelResourceCatalog.first?.measuredPeakByteCount,
       1_200_000_000

@@ -206,13 +206,13 @@ public final class RecordWorkspaceModel {
         isSearching = true
         searchTask = Task { [weak self, store] in
             do {
-                var offset = 0
-                repeat {
-                    let page = try await store.query(.init(text: query), offset: offset, limit: 100)
+                var cursor = RecordQuerySession(query: .init(text: query))
+                var matches: Set<RecordID> = []
+                while let page = try await cursor.next(in: store, limit: 100) {
                     guard !Task.isCancelled, let self, self.searchText.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
-                    self.searchMatches.formUnion(page.records.map(\.id))
-                    if let next = page.nextOffset { offset = next } else { break }
-                } while true
+                    matches.formUnion(page.records.map(\.id))
+                }
+                self?.searchMatches = matches
                 guard !Task.isCancelled else { return }
                 self?.isSearching = false
                 self?.repairSelection()
@@ -242,17 +242,12 @@ public final class RecordWorkspaceModel {
 
     public func searchRecords(_ text: String, offset: Int = 0, limit: Int = 20) async throws -> RecordQueryPage {
         var records: [RecordSummary] = []
-        var nextOffset: Int? = offset
-        var revision: UInt64?
-        repeat {
-            try Task.checkCancellation()
-            let page = try await store.query(.init(text: text), offset: nextOffset ?? 0, limit: limit - records.count)
-            if let revision, revision != page.revision { throw RecordStoreError.membershipChanged }
-            revision = page.revision
+        var cursor = RecordQuerySession(query: .init(text: text), offset: offset)
+        let limit = max(1, limit)
+        while records.count < limit, let page = try await cursor.next(in: store, limit: limit - records.count) {
             records.append(contentsOf: page.records)
-            nextOffset = page.nextOffset
-        } while nextOffset != nil && records.count < limit
-        return RecordQueryPage(revision: revision ?? 0, records: records, nextOffset: nextOffset)
+        }
+        return RecordQueryPage(revision: cursor.revision ?? 0, records: records, nextOffset: cursor.nextOffset)
     }
 
     public func revealRecord(_ id: RecordID) async {

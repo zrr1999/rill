@@ -28,7 +28,7 @@ extension AppModel {
   }
 
   func synchronizeResidentSpeechModels(from previousModelIDs: Set<String>) {
-    guard !isLoadingSettings, !isRestoringSettings, !hasBegunApplicationShutdown else {
+    guard !self.settings.isLoading, !isRestoringSettings, !hasBegunApplicationShutdown else {
       return
     }
 

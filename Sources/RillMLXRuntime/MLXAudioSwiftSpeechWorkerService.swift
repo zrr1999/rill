@@ -45,6 +45,9 @@ struct MLXAudioSwiftInferenceOutput: Sendable, Equatable {
   let text: String
   let detectedLanguage: String?
   let processingDurationMillis: Int
+  var promptTokenCount: Int? = nil
+  var includedKeytermCount: Int? = nil
+  var omittedKeytermCount: Int? = nil
 }
 
 protocol MLXAudioSwiftInferenceEngine: Sendable {
@@ -484,6 +487,12 @@ public actor MLXAudioSwiftSpeechWorkerService:
           "provider.model": payload.modelID,
           "provider.runtime": "mlx-audio-swift-0.1.3",
         ]
+        if let model = MLXAudioModelID(rawValue: payload.modelID) {
+          metadata["provider.model_revision"] = MLXAudioModelCatalog.descriptor(for: model).revision
+        }
+        if let tokens = output.promptTokenCount { metadata["provider.prompt_tokens"] = String(tokens) }
+        if let included = output.includedKeytermCount { metadata["provider.keyterms_used"] = String(included) }
+        if let omitted = output.omittedKeytermCount { metadata["provider.keyterms_omitted"] = String(omitted) }
         if let detectedLanguage = output.detectedLanguage {
           metadata["provider.detected_language"] = detectedLanguage
         }
@@ -761,7 +770,12 @@ actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
       throw MLXAudioSwiftRuntimeError.modelLoadFailed
     }
     let resolvedLanguage = MLXAudioSwiftQwenOptions.resolvedLanguage(language)
-    let context = MLXAudioSwiftQwenOptions.context(from: keyterms)
+    guard let tokenizer = loadedModel.model.tokenizer else {
+      throw MLXAudioSwiftRuntimeError.modelLoadFailed
+    }
+    let prompt = RecognitionPromptBudget.resolve(keyterms: keyterms, maximumTokens: 64) {
+      tokenizer.encode(text: $0).count
+    }
     let lease = try await decodeGate.acquire()
     defer { lease.release() }
     let output: STTOutput
@@ -772,7 +786,7 @@ actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
       for try await event in loadedModel.model.generateStream(
         audio: audio,
         temperature: 0,
-        context: context,
+        context: prompt.context,
         language: resolvedLanguage
       ) {
         try Task.checkCancellation()
@@ -796,7 +810,10 @@ actor MLXAudioSwiftQwenEngine: MLXAudioSwiftInferenceEngine {
     let result = MLXAudioSwiftInferenceOutput(
       text: output.text.trimmingCharacters(in: .whitespacesAndNewlines),
       detectedLanguage: output.language ?? resolvedLanguage,
-      processingDurationMillis: durationMillis
+      processingDurationMillis: durationMillis,
+      promptTokenCount: prompt.tokenCount,
+      includedKeytermCount: prompt.includedCount,
+      omittedKeytermCount: prompt.omittedCount
     )
     // The Sendable output owns no MLX buffers. Reclaim decode intermediates only
     // after it is complete so cancellation and streaming model lifetimes remain intact.

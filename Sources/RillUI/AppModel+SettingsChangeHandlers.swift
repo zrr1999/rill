@@ -44,7 +44,7 @@ extension AppModel {
     persistPreferredSpeechEnginePreference()
     guard !isRestoringSettings else { return }
     setLocalSpeechRuntimeEnabledAction(preferredSpeechEngine == .local)
-    if isLoadingSettings {
+    if self.settings.isLoading {
       shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = preferredSpeechEngine == .local
       return
     }
