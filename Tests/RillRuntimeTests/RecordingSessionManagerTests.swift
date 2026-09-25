@@ -584,7 +584,7 @@ private func collectRecordingEvents(
     var events: [RillEvent] = []
     for await event in stream {
         if case .diagnostic(let diagnostic) = event,
-            diagnostic.event == marker
+            diagnostic.name == .diagnosticBoundary && diagnostic.message == marker
         {
             break
         }
@@ -602,8 +602,8 @@ private func publishRecordingEventMarker(
             DiagnosticEvent(
                 subsystem: .platform,
                 level: .debug,
-                event: marker,
-                message: "Recording test event marker."
+                event: .diagnosticBoundary,
+                message: marker
             )
         )
     )

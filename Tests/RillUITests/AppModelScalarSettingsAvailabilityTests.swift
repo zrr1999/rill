@@ -25,11 +25,11 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       harness.model.settings.unavailableScalarSettingKeys,
       Set(invalidValues.keys)
     )
-    XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .interface))
-    XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
-    XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .speechRoute))
-    XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .localSpeech))
-    XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .input))
+    XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .interface))
+    XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
+    XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .speechRoute))
+    XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .localSpeech))
+    XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .input))
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.storage, invalidValues)
     XCTAssertTrue(activity.setCounts.isEmpty)
@@ -56,7 +56,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.storage[.interfaceLanguage], storedLanguage)
     XCTAssertNil(activity.setCounts[.interfaceLanguage])
-    XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .interface))
+    XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .interface))
   }
 
   func testUnavailableProductionScalarCommandsRejectMemoryAndStorageMutation() async {
@@ -128,9 +128,9 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     ] {
       harness.model.retryUnavailableScalarSettings(in: domain)
       await waitUntil {
-        !harness.model.isRetryingUnavailableScalarSettings(in: domain)
+        !harness.model.settings.isRetryingUnavailableScalarSettings(in: domain)
       }
-      XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: domain))
+      XCTAssertFalse(harness.model.settings.hasUnavailableScalarSettings(in: domain))
     }
 
     XCTAssertTrue(harness.model.setInterfaceLanguage(.simplifiedChinese))
@@ -224,10 +224,10 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await store.setUnavailableKeys([])
     harness.model.retryUnavailableScalarSettings(in: .localSpeech)
     await waitUntil {
-      !harness.model.isRetryingUnavailableScalarSettings(in: .localSpeech)
+      !harness.model.settings.isRetryingUnavailableScalarSettings(in: .localSpeech)
     }
 
-    XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .localSpeech))
+    XCTAssertFalse(harness.model.settings.hasUnavailableScalarSettings(in: .localSpeech))
     XCTAssertEqual(try source.currentSettings().model, "qwen3-asr-1.7b-mlx-8bit")
   }
 
@@ -318,7 +318,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
     await waitUntil { !harness.model.settings.isLoading }
 
-    XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .localSpeech))
+    XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .localSpeech))
     let activity = await store.activitySnapshot()
     XCTAssertTrue(activity.atomicSnapshots.isEmpty)
     XCTAssertEqual(activity.storage[.localSpeechModel], "protected-new-model")
@@ -333,7 +333,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
     await waitUntil { !harness.model.settings.isLoading }
 
-    XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .localSpeech))
+    XCTAssertFalse(harness.model.settings.hasUnavailableScalarSettings(in: .localSpeech))
     XCTAssertEqual(harness.model.settings.localSpeechModel, "qwen3-asr-1.7b-mlx-8bit")
     let activity = await store.activitySnapshot()
     XCTAssertTrue(activity.atomicSnapshots.isEmpty)
@@ -359,8 +359,8 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await store.setUnavailableKeys([])
     harness.model.retryUnavailableScalarSettings(in: .localSpeech)
     await waitUntil {
-      !harness.model.isRetryingUnavailableScalarSettings(in: .localSpeech)
-        && !harness.model.hasUnavailableScalarSettings(in: .localSpeech)
+      !harness.model.settings.isRetryingUnavailableScalarSettings(in: .localSpeech)
+        && !harness.model.settings.hasUnavailableScalarSettings(in: .localSpeech)
     }
     await harness.model.flushPendingPersistenceWrites()
 
@@ -396,8 +396,8 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     harness.model.applyLocalSpeechModel(selectedModel)
     await store.resumeBatchRead()
     await waitUntil {
-      !harness.model.isRetryingUnavailableScalarSettings(in: .localSpeech)
-        && !harness.model.hasUnavailableScalarSettings(in: .localSpeech)
+      !harness.model.settings.isRetryingUnavailableScalarSettings(in: .localSpeech)
+        && !harness.model.settings.hasUnavailableScalarSettings(in: .localSpeech)
     }
     await harness.model.flushPendingPersistenceWrites()
 
@@ -468,7 +468,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
         && harness.model.settings.openAICredentialAvailability == .available
     }
 
-    harness.model.verifyOpenAIConfiguration()
+    harness.model.settings.verifyOpenAIConfiguration()
     await waitUntil {
       harness.model.settings.openAIConfigurationVerificationState == .verified
     }
@@ -484,7 +484,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
 
     harness.model.applyOpenAIBaseURL("http://public.example.com/v1")
-    XCTAssertFalse(harness.model.canVerifyOpenAIConfiguration)
+    XCTAssertFalse(harness.model.settings.canVerifyOpenAIConfiguration)
   }
 
   func testOpenAIVerificationPreservesSafeFailureCategoryUntilSettingsChange() async {
@@ -509,7 +509,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
         && harness.model.settings.openAICredentialAvailability == .available
     }
 
-    harness.model.verifyOpenAIConfiguration()
+    harness.model.settings.verifyOpenAIConfiguration()
     await waitUntil {
       harness.model.settings.openAIConfigurationVerificationState == .failed
     }

@@ -391,10 +391,15 @@ enum AppBootstrap {
     if let blockReason = event.blockReason {
       metadata["blockReason"] = blockReason.rawValue
     }
+    let name: DiagnosticEventName = switch event.outcome {
+    case .completed: .historyMaintenanceCompleted
+    case .pending: .historyMaintenancePending
+    case .blocked: .historyMaintenanceBlocked
+    }
     return DiagnosticEvent(
       subsystem: .platform,
       level: level,
-      event: "history.maintenance.\(event.outcome.rawValue)",
+      event: name,
       message: message,
       metadata: metadata
     )
@@ -430,8 +435,8 @@ enum AppBootstrap {
       subsystem: .platform,
       level: hasFailures ? .warning : .info,
       event: hasFailures
-        ? "temporary-files.cleanup.pending"
-        : "temporary-files.cleanup.completed",
+        ? .temporaryFilesCleanupPending
+        : .temporaryFilesCleanupCompleted,
       message: hasFailures
         ? "Temporary artifact cleanup requires a retry."
         : "Temporary artifact cleanup completed.",
@@ -461,7 +466,7 @@ private struct PersistenceBackends {
   let residuePurger: (any StorageResiduePurging)?
   let temporaryFileCleanupService: RillTemporaryFileCleanupService
   let failedAudioRecoveryStore: (any FailedAudioRecoveryStore)?
-  let benchmarkRecordingArchiveStore: (any BenchmarkRecordingArchiveStore)?
+  let benchmarkRecordingArchiveStore: (any BenchmarkRecordingArchiveStore & BenchmarkRecordingArchiveReading)?
   let startupDiagnostic: DiagnosticEvent?
 }
 
@@ -893,7 +898,7 @@ private enum AppContainerFactory {
             runID: diagnostic.runID,
             subsystem: .platform,
             level: diagnostic.resultCode == "blocked" ? .warning : .debug,
-            event: "accessibility.cursor-preview",
+            event: .accessibilityCursorPreview,
             message: "Updated the run-scoped cursor preview transaction.",
             metadata: metadata
           )
@@ -973,7 +978,7 @@ private enum AppContainerFactory {
       level: localSpeechTrustMaterialIsAvailable ? .info : .warning,
       event:
         localSpeechTrustMaterialIsAvailable
-        ? "provider.local-speech.available" : "provider.local-speech.unavailable",
+        ? .providerLocalSpeechAvailable : .providerLocalSpeechUnavailable,
       message:
         localSpeechTrustMaterialIsAvailable
         ? "Release-pinned MLX speech worker, Silero VAD, and model catalog are available."
@@ -1708,7 +1713,7 @@ private enum AppContainerFactory {
                 DiagnosticEvent(
                   subsystem: .platform,
                   level: .error,
-                  event: "audio-recovery.storage-unavailable",
+                  event: .audioRecoveryStorageUnavailable,
                   message:
                     "Failed recording recovery is enabled, but protected storage is unavailable.",
                   metadata: ["runtime": "disabled"]
@@ -1727,7 +1732,7 @@ private enum AppContainerFactory {
                   DiagnosticEvent(
                     subsystem: .platform,
                     level: .warning,
-                    event: "audio-recovery.opt-out-cleanup-failed",
+                    event: .audioRecoveryOptOutCleanupFailed,
                     message: "Disabled failed recording recovery artifacts could not be removed.",
                     metadata: ["reason": "storage-unavailable"]
                   )
@@ -1744,7 +1749,7 @@ private enum AppContainerFactory {
               DiagnosticEvent(
                 subsystem: .platform,
                 level: .warning,
-                event: "audio-recovery.startup-failed",
+                event: .audioRecoveryStartupFailed,
                 message: "Failed recording recovery maintenance could not complete.",
                 metadata: ["reason": "storage-unavailable"]
               )
@@ -1771,7 +1776,7 @@ private enum AppContainerFactory {
                 DiagnosticEvent(
                   subsystem: .platform,
                   level: .error,
-                  event: "benchmark-recording.storage-unavailable",
+                  event: .benchmarkRecordingStorageUnavailable,
                   message:
                     "Benchmark recording retention is enabled, but protected storage is unavailable.",
                   metadata: ["runtime": "disabled"]
@@ -1999,6 +2004,7 @@ private enum AppModelFactory {
       loadsPersistentSettingsOnInitialization: true,
       settingsWriteDebounceDuration: .milliseconds(300),
       historyRetentionMaintenanceInterval: .seconds(86_400),
+      historyMaintenanceSleep: { try await Task.sleep(for: $0) },
       liveSubtitlePreparingHideDelay: .seconds(15),
       localSpeechAvailability: providers.localSpeechAvailability,
       trustedLocalSpeechModels: providers.trustedLocalSpeechModels,
@@ -2063,7 +2069,7 @@ private enum AppModelFactory {
               DiagnosticEvent(
                 subsystem: .providers,
                 level: .warning,
-                event: "provider.speech-model.resident-load-failed",
+                event: .providerSpeechModelResidentLoadFailed,
                 message: "A resident speech model could not be loaded.",
                 metadata: ["modelID": modelID]
               )
@@ -2113,7 +2119,7 @@ private enum AppModelFactory {
             DiagnosticEvent(
               subsystem: .providers,
               level: .warning,
-              event: "provider.speech-model.download-failed",
+              event: .providerSpeechModelDownloadFailed,
               message: "An enabled speech model could not be downloaded.",
               metadata: ["modelID": modelID]
             )
@@ -2142,7 +2148,7 @@ private enum AppModelFactory {
             DiagnosticEvent(
               subsystem: .providers,
               level: .error,
-              event: "provider.local-speech.worker-shutdown-failed",
+              event: .providerLocalSpeechWorkerShutdownFailed,
               message: "A local speech worker could not be confirmed stopped.",
               metadata: ["workerIsolation": "subprocess"]
             )
@@ -2206,6 +2212,8 @@ private enum AppModelFactory {
         }
         await controller.refresh(isEnabled: isEnabled)
       },
+      benchmarkArchiveReader: core.persistence.benchmarkRecordingArchiveStore,
+      benchmarkCorpusExporter: core.persistence.benchmarkRecordingArchiveStore.map { BenchmarkCorpusExporter(archive: $0) },
       authorizeWorkflowRunAction: runtime.authorizeWorkflowRunAction,
       explainResolvedWorkflowAction: AppBootstrap.makeWorkflowExplanationAction(
         service: WorkflowExplainService(
@@ -2480,7 +2488,7 @@ private enum AppPersistence {
         startupDiagnostic: DiagnosticEvent(
           subsystem: .session,
           level: startupDiagnosticLevel,
-          event: "persistence.sqlite.ready",
+          event: .persistenceSqliteReady,
           message: startupDiagnosticMessage,
           metadata: ["keychainKeyState": keychainKeyState]
         )
@@ -2489,7 +2497,7 @@ private enum AppPersistence {
       return makeSessionOnlyBackends(
         reason: .keychainTemporarilyUnavailable,
         temporaryFileCleanupService: temporaryFileCleanupService,
-        diagnosticEvent: "persistence.keychain.temporarily-unavailable",
+        diagnosticEvent: .persistenceKeychainTemporarilyUnavailable,
         diagnosticMessage:
           "The local data protection key is temporarily unavailable. "
           + "Using in-memory storage until the next launch."
@@ -2498,7 +2506,7 @@ private enum AppPersistence {
       return makeSessionOnlyBackends(
         reason: .persistentStorageUnavailable,
         temporaryFileCleanupService: temporaryFileCleanupService,
-        diagnosticEvent: "persistence.sqlite.fallback",
+        diagnosticEvent: .persistenceSqliteFallback,
         diagnosticMessage:
           "SQLite persistence could not be initialized. Falling back to in-memory storage."
       )
@@ -2508,7 +2516,7 @@ private enum AppPersistence {
   private static func makeSessionOnlyBackends(
     reason: LocalPersistenceStatus.SessionOnlyReason,
     temporaryFileCleanupService: RillTemporaryFileCleanupService,
-    diagnosticEvent: String,
+    diagnosticEvent: DiagnosticEventName,
     diagnosticMessage: String
   ) -> PersistenceBackends {
     PersistenceBackends(
@@ -2651,7 +2659,7 @@ enum WorkflowManifestResource {
       return LoadResult(
         manifest: fallback,
         diagnostic: manifestDiagnostic(
-          event: "workflow-manifest.bundle.missing",
+          event: .workflowManifestBundleMissing,
           metadata: [
             "reason": "resource-unavailable",
             "source": "packaged-resource",
@@ -2669,7 +2677,7 @@ enum WorkflowManifestResource {
       return LoadResult(
         manifest: manifest,
         diagnostic: manifestDiagnostic(
-          event: "workflow-manifest.loaded",
+          event: .workflowManifestLoaded,
           level: .info,
           metadata: ["source": "packaged-resource"]
         )
@@ -2678,7 +2686,7 @@ enum WorkflowManifestResource {
       return LoadResult(
         manifest: fallback,
         diagnostic: manifestDiagnostic(
-          event: "workflow-manifest.fallback",
+          event: .workflowManifestFallback,
           metadata: [
             "reason": "load-or-validation-failed",
             "source": "packaged-resource",
@@ -2741,7 +2749,7 @@ enum WorkflowManifestResource {
   }
 
   private static func manifestDiagnostic(
-    event: String,
+    event: DiagnosticEventName,
     level: DiagnosticLevel = .warning,
     metadata: [String: String] = [:]
   ) -> DiagnosticEvent {
@@ -2754,11 +2762,11 @@ enum WorkflowManifestResource {
     )
   }
 
-  private static func manifestDiagnosticMessage(for event: String) -> String {
+  private static func manifestDiagnosticMessage(for event: DiagnosticEventName) -> String {
     switch event {
-    case "workflow-manifest.loaded":
+    case .workflowManifestLoaded:
       return "Loaded workflow manifest from the app bundle."
-    case "workflow-manifest.fallback":
+    case .workflowManifestFallback:
       return "Failed to load the workflow manifest. Falling back to the built-in catalog."
     default:
       return "Workflow manifest resource was not found. Falling back to the built-in catalog."
@@ -2773,7 +2781,7 @@ extension WebhookConfigurationMigrationEvent {
       return DiagnosticEvent(
         subsystem: .platform,
         level: .info,
-        event: "security.webhook-configuration.protected",
+        event: .securityWebhookConfigurationProtected,
         message: "Legacy Webhook configuration protection is ready.",
         metadata: ["protectedActionCount": String(protectedActionCount)]
       )
@@ -2781,7 +2789,7 @@ extension WebhookConfigurationMigrationEvent {
       return DiagnosticEvent(
         subsystem: .platform,
         level: .warning,
-        event: "security.webhook-configuration.purge-pending",
+        event: .securityWebhookConfigurationPurgePending,
         message:
           "Webhook values are protected, but physical SQLite cleanup is still pending and workflow library writes remain locked.",
         metadata: ["protectedActionCount": String(protectedActionCount)]
@@ -2790,7 +2798,7 @@ extension WebhookConfigurationMigrationEvent {
       return DiagnosticEvent(
         subsystem: .platform,
         level: .error,
-        event: "security.webhook-configuration.blocked",
+        event: .securityWebhookConfigurationBlocked,
         message:
           "Legacy Webhook configuration could not be protected, so custom workflows were quarantined.",
         metadata: ["reason": reason.diagnosticDescription]
@@ -2828,30 +2836,38 @@ extension WebhookConfigurationMigrationBlockReason {
 
 extension SecureCredentialStoreEvent {
   fileprivate var diagnosticEvent: DiagnosticEvent {
+    let name: DiagnosticEventName
     let level: DiagnosticLevel
     let message: String
     switch kind {
     case .migrationSucceeded:
+      name = .credentialsMigrationSucceeded
       level = .info
       message = "A legacy credential was migrated to macOS Keychain."
     case .legacyCleanupFailed:
+      name = .credentialsLegacyCleanupFailed
       level = .warning
       message =
         "A credential is available in Keychain, but its legacy settings value could not be removed."
     case .migrationFailed:
+      name = .credentialsMigrationFailed
       level = .error
       message =
         "A legacy credential could not be migrated to macOS Keychain; the legacy value was preserved."
     case .secureReadFailed:
+      name = .credentialsSecureReadFailed
       level = .error
       message = "macOS Keychain could not read a credential. Plaintext fallback was not used."
     case .secureWriteFailed:
+      name = .credentialsSecureWriteFailed
       level = .error
       message = "macOS Keychain could not save a credential."
     case .secureRemovalFailed:
+      name = .credentialsSecureRemovalFailed
       level = .error
       message = "macOS Keychain could not remove a credential."
     case .legacyReadFailed:
+      name = .credentialsLegacyReadFailed
       level = .error
       message = "Legacy credential storage could not be checked."
     }
@@ -2863,7 +2879,7 @@ extension SecureCredentialStoreEvent {
     return DiagnosticEvent(
       subsystem: .platform,
       level: level,
-      event: "credentials.\(kind.rawValue)",
+      event: name,
       message: message,
       metadata: metadata
     )

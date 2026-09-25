@@ -605,14 +605,14 @@ public struct MarkdownPostCommitCleanupDiagnostic: Sendable, Equatable {
         self.outcome = outcome
     }
 
-    public var event: String {
+    public var event: DiagnosticEventName {
         switch outcome {
         case .retryPending:
-            "markdown-append.cleanup-retry-pending"
+            .markdownAppendCleanupRetryPending
         case .completedAfterRetry:
-            "markdown-append.cleanup-completed-after-retry"
+            .markdownAppendCleanupCompletedAfterRetry
         case .indeterminate:
-            "markdown-append.cleanup-indeterminate"
+            .markdownAppendCleanupIndeterminate
         }
     }
 

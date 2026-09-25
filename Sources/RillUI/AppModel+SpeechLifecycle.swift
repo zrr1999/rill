@@ -13,7 +13,7 @@ extension AppModel {
     else {
       return
     }
-    guard !hasUnavailableScalarSettings(in: .localSpeech) else {
+    guard !settings.hasUnavailableScalarSettings(in: .localSpeech) else {
       self.voice.localSpeechPreparationError = ProviderSettingsPersistenceError.unavailableStoredSettings
         .message(language: self.settings.language)
       return

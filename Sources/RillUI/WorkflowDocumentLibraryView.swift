@@ -55,7 +55,7 @@ struct WorkflowDocumentLibraryView: View {
         .onChange(of: model.workflowLibrary.workflows.map(\.id)) { _, ids in
             if selectedID == nil || !ids.contains(where: { $0 == selectedID }) { selectedID = ids.first }
         }
-        .sheet(item: $explanation, onDismiss: model.cancelWorkflowExplanation) { request in
+        .sheet(item: $explanation, onDismiss: model.workflowLibrary.cancelWorkflowExplanation) { request in
             WorkflowExplanationSheet(model: model, workflowID: request.workflowID)
         }
         .confirmationDialog(
@@ -150,7 +150,7 @@ struct WorkflowDocumentLibraryView: View {
                         }.disabled(!model.isWorkflowEnabled(workflow) || model.voice.isRunning || model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id))
                         Menu {
                             Button(L10n.workflowExplanationCopy(.button, language: model.settings.language)) {
-                                model.explainWorkflowBeforeRun(workflow)
+                                model.workflowLibrary.explainWorkflowBeforeRun(workflow)
                                 explanation = .init(workflowID: workflow.id)
                             }
                             Button(L10n.workflowDocument(.labelDuplicate, language: model.settings.language)) { open(workflow, duplicate: true) }

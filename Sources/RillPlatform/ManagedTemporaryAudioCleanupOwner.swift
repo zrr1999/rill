@@ -21,12 +21,12 @@ public actor ManagedTemporaryAudioCleanupOwner: ManagedTemporaryAudioCleaning {
             self.outcome = outcome
         }
 
-        public var event: String {
+        public var event: DiagnosticEventName {
             switch outcome {
             case .retryPending:
-                "managed-audio.cleanup-retry-pending"
+                .managedAudioCleanupRetryPending
             case .completedAfterRetry:
-                "managed-audio.cleanup-completed-after-retry"
+                .managedAudioCleanupCompletedAfterRetry
             }
         }
 

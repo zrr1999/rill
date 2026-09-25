@@ -254,7 +254,7 @@ public actor TextInjectionEngine {
                 return
             }
             await recordDiagnostic(
-                event: "clipboard.inject.text.prepare",
+                event: .clipboardInjectTextPrepare,
                 message: "Preparing clipboard-based text injection.",
                 metadata: [
                     "textLength": String(text.count)
@@ -323,7 +323,7 @@ public actor TextInjectionEngine {
         }
 
         await recordDiagnostic(
-            event: "clipboard.inject.snapshot.prepare",
+            event: .clipboardInjectSnapshotPrepare,
             message: "Preparing clipboard snapshot injection.",
             metadata: [
                 "plainTextLength": String(snapshot.plainText.count),
@@ -405,7 +405,7 @@ public actor TextInjectionEngine {
     private func postPasteCommand(targetFocus: FocusSnapshot? = nil) async throws -> Bool {
         guard accessibilityChecker() else {
             await recordDiagnostic(
-                event: "clipboard.inject.paste.blocked",
+                event: .clipboardInjectPasteBlocked,
                 message: "Clipboard paste injection was blocked because accessibility permission is missing.",
                 level: .error
             )
@@ -421,7 +421,7 @@ public actor TextInjectionEngine {
             throw InjectionError.accessibilityPermissionRequired
         }
         await recordDiagnostic(
-            event: "clipboard.inject.paste.begin",
+            event: .clipboardInjectPasteBegin,
             message: "Posting Command-V to the current frontmost app.",
             metadata: [
                 "eventTap": PasteCommandSender.eventTapName,
@@ -434,7 +434,7 @@ public actor TextInjectionEngine {
         try await simulatePaste()
         let settleStart = ContinuousClock.now
         await recordDiagnostic(
-            event: "clipboard.inject.paste.posted",
+            event: .clipboardInjectPastePosted,
             message: "Paste command posted; target consumption is not observed.",
             metadata: ["pasteDispatchMillis": DiagnosticTiming.milliseconds(since: dispatchStart)]
         )
@@ -442,7 +442,7 @@ public actor TextInjectionEngine {
         // adding another delay before the full post-paste wait.
         try? await Task.sleep(until: settleStart.advanced(by: Self.postPasteSettleDelay), clock: .continuous)
         await recordDiagnostic(
-            event: "clipboard.inject.paste.end",
+            event: .clipboardInjectPasteEnd,
             message: "Finished waiting after the paste command.",
             metadata: ["pasteSettleMillis": DiagnosticTiming.milliseconds(since: settleStart)]
         )
@@ -614,7 +614,7 @@ public actor TextInjectionEngine {
             metadata["restoreAttempt"] = "retry"
         }
         await recordDiagnostic(
-            event: "clipboard.inject.restore",
+            event: .clipboardInjectRestore,
             message: message,
             level: level,
             metadata: metadata
@@ -644,7 +644,7 @@ public actor TextInjectionEngine {
         target: FocusIdentity?
     ) async throws {
         await recordDiagnostic(
-            event: "clipboard.inject.keyboard-fallback",
+            event: .clipboardInjectKeyboardFallback,
             message: "Used keyboard injection to preserve a protected clipboard.",
             metadata: [
                 "protections": protections.map(\.rawValue).joined(separator: ",")
@@ -676,7 +676,7 @@ public actor TextInjectionEngine {
         let target = FocusIdentity(targetFocus)
         guard target.isVerifiable else {
             await recordFocusFailure(
-                event: "clipboard.inject.focus.unverifiable",
+                event: .clipboardInjectFocusUnverifiable,
                 activationAttempted: false,
                 activationSucceeded: false
             )
@@ -691,8 +691,8 @@ public actor TextInjectionEngine {
         let activated = await focusController.activate(target)
         await recordDiagnostic(
             event: activated
-                ? "clipboard.inject.focus.activation-requested"
-                : "clipboard.inject.focus.activation-failed",
+                ? .clipboardInjectFocusActivationRequested
+                : .clipboardInjectFocusActivationFailed,
             message: activated
                 ? "Requested foreground focus for the app that started voice input."
                 : "Could not restore the target app before text injection.",
@@ -720,7 +720,7 @@ public actor TextInjectionEngine {
         let current = await focusController.currentIdentity()
         guard target.matches(current) else {
             await recordFocusFailure(
-                event: "clipboard.inject.focus.changed",
+                event: .clipboardInjectFocusChanged,
                 activationAttempted: false,
                 activationSucceeded: false
             )
@@ -729,7 +729,7 @@ public actor TextInjectionEngine {
     }
 
     private func recordFocusFailure(
-        event: String,
+        event: DiagnosticEventName,
         activationAttempted: Bool,
         activationSucceeded: Bool
     ) async {
@@ -747,7 +747,7 @@ public actor TextInjectionEngine {
     }
 
     private func recordDiagnostic(
-        event: String,
+        event: DiagnosticEventName,
         message: String,
         level: DiagnosticLevel = .debug,
         metadata: [String: String] = [:]

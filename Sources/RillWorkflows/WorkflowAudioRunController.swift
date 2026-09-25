@@ -297,7 +297,7 @@ public actor WorkflowAudioRunController {
     }
     enqueueDiagnostic(
       level: .info,
-      event: "workflow.audio-recording.started",
+      event: .workflowAudioRecordingStarted,
       message: "Started recording for \(workflow.name).",
       runID: runID
     )
@@ -331,7 +331,7 @@ public actor WorkflowAudioRunController {
     captureSignalSubscriptions[runID]?.watchdogTask.cancel()
     enqueueDiagnostic(
       level: .info,
-      event: "workflow.audio-recording.maximum-duration-removed",
+      event: .workflowAudioRecordingMaximumDurationRemoved,
       message: "The user removed Rill's duration limit for the active recording.",
       runID: runID
     )
@@ -436,7 +436,7 @@ public actor WorkflowAudioRunController {
     retireCaptureSignalSubscription(runID: runID)
     enqueueDiagnostic(
       level: signal.reason == .inputEndedUnexpectedly ? .error : .info,
-      event: "workflow.audio-recording.terminal-signal",
+      event: .workflowAudioRecordingTerminalSignal,
       message: "Audio capture reached a terminal condition.",
       runID: runID,
       metadata: [
@@ -760,7 +760,7 @@ public actor WorkflowAudioRunController {
       removeFinishingRun(runID: runID, operationID: operationID)
       enqueueDiagnostic(
         level: .info,
-        event: "workflow.audio-recording.queued",
+        event: .workflowAudioRecordingQueued,
         message: "Captured audio for \(workflow.name) and queued background workflow processing.",
         runID: runID
       )
@@ -783,7 +783,7 @@ public actor WorkflowAudioRunController {
       }
       enqueueDiagnostic(
         level: .error,
-        event: "workflow.audio-recording.failed",
+        event: .workflowAudioRecordingFailed,
         message: "Captured audio could not be queued for workflow processing.",
         runID: runID
       )
@@ -905,7 +905,7 @@ public actor WorkflowAudioRunController {
     )
     enqueueDiagnostic(
       level: .warning,
-      event: "workflow.audio-live-authorization-revoked",
+      event: .workflowAudioLiveAuthorizationRevoked,
       message: message,
       runID: runID,
       metadata: ["reason": reason.rawValue]
@@ -945,7 +945,7 @@ public actor WorkflowAudioRunController {
 
   private func enqueueDiagnostic(
     level: DiagnosticLevel,
-    event: String,
+    event: DiagnosticEventName,
     message: String,
     runID: UUID,
     metadata: [String: String] = [:]

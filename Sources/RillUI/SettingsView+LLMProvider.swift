@@ -99,7 +99,7 @@ extension SettingsView {
         }
       }
       .pickerStyle(.menu)
-      .disabled(model.hasUnavailableScalarSettings(in: .openAI))
+      .disabled(model.settings.hasUnavailableScalarSettings(in: .openAI))
       .accessibilityIdentifier("settings.openai.model")
 
       Text(L10n.settingsOpenAIModelID(model.settings.openAIModel, language: model.settings.language))
@@ -121,9 +121,9 @@ extension SettingsView {
 
       HStack(spacing: 10) {
         Button(L10n.string(.settingsOpenAIVerify, language: model.settings.language)) {
-          model.verifyOpenAIConfiguration()
+          model.settings.verifyOpenAIConfiguration()
         }
-        .disabled(!model.canVerifyOpenAIConfiguration)
+        .disabled(!model.settings.canVerifyOpenAIConfiguration)
         .accessibilityIdentifier("settings.openai.verify")
 
         switch model.settings.openAIConfigurationVerificationState {

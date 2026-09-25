@@ -9,7 +9,7 @@ extension SettingsView {
         [
           ScalarSettingsDomain.speechRoute,
           .localSpeech,
-        ].filter { model.hasUnavailableScalarSettings(in: $0) }
+        ].filter { model.settings.hasUnavailableScalarSettings(in: $0) }
       ) { domain in
         unavailableScalarSettingsWarning(domain)
       }
@@ -75,7 +75,7 @@ extension SettingsView {
                 .pickerStyle(.menu)
                 .disabled(
                   model.settings.isLoading
-                    || !model.canMutateScalarSettings(in: .localSpeech)
+                    || !model.settings.canMutateScalarSettings(in: .localSpeech)
                 )
                 .accessibilityIdentifier("settings.local-speech.model")
 
@@ -238,7 +238,7 @@ extension SettingsView {
         reduceMotion ? nil : .easeInOut(duration: 0.15),
         value: model.voice.localSpeechPreparationState
       )
-      .disabled(model.hasUnavailableScalarSettings(in: .localSpeech))
+      .disabled(model.settings.hasUnavailableScalarSettings(in: .localSpeech))
 
       Text(L10n.text(.settingsSpeechEngineDescription, language: model.settings.language))
         .font(.caption)

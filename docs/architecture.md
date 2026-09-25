@@ -263,3 +263,13 @@ returns, then transfers it to the shared cleanup owner. File ownership and path
 validation remain mandatory. Legacy JSON manifest decoding stays in Core; only
 the migration adapter reads the file. Runtime test defaults live in
 `RillDomainTestSupport`, which is excluded from production dependencies.
+
+### 评测、诊断和功能命令
+
+`DiagnosticEventName` 是诊断生产端的固定事件类型；字符串只在 JSON/SQLite 边界出现，
+未知持久化事件转换为 invalid sentinel，保留旧格式兼容。敏感内容仍由既有清洗器限制。
+`BenchmarkRecordingArchiveModel` 单独拥有设置写入、元数据选择、授权和导出任务；
+Platform 的 `BenchmarkCorpusExporter` 负责认证读取、私有暂存和原子发布。
+历史维护周期任务归 `RunHistoryModel`，时钟显式注入；测试控制 tick 和完成条件。
+设置可用性、LLM 验证及其代际取消归 `SettingsPersistenceModel`，工作流解释的任务、
+失效和回执校验归 `WorkflowLibraryModel`；视图直接发出功能命令，不再经过 AppModel 转发。

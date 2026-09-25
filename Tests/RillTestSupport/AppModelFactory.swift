@@ -33,6 +33,7 @@ public func makeAppModelForTesting(
     loadsPersistentSettingsOnInitialization: Bool = true,
     settingsWriteDebounceDuration: Duration = .milliseconds(300),
     historyRetentionMaintenanceInterval: Duration? = .seconds(86_400),
+    historyMaintenanceSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
     liveSubtitlePreparingHideDelay: Duration = .seconds(15),
     localSpeechTrustMaterialAvailable: Bool = false,
     localSpeechAvailability: LocalSpeechAvailability? = nil,
@@ -112,6 +113,8 @@ public func makeAppModelForTesting(
     refreshBenchmarkRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void = { _ in
       throw BenchmarkRecordingArchiveError.storageUnavailable
     },
+    benchmarkArchiveReader: (any BenchmarkRecordingArchiveReading)? = nil,
+    benchmarkCorpusExporter: (any BenchmarkCorpusExporting)? = nil,
     authorizeWorkflowRunAction:
       @escaping @Sendable (
         WorkflowDefinition
@@ -173,6 +176,7 @@ public func makeAppModelForTesting(
     loadsPersistentSettingsOnInitialization: loadsPersistentSettingsOnInitialization,
     settingsWriteDebounceDuration: settingsWriteDebounceDuration,
     historyRetentionMaintenanceInterval: historyRetentionMaintenanceInterval,
+    historyMaintenanceSleep: historyMaintenanceSleep,
     liveSubtitlePreparingHideDelay: liveSubtitlePreparingHideDelay,
     localSpeechAvailability: localSpeechAvailability ?? (localSpeechTrustMaterialAvailable ? .available : .trustMaterialUnavailable),
     trustedLocalSpeechModels: trustedLocalSpeechModels,
@@ -196,6 +200,8 @@ public func makeAppModelForTesting(
     loadFailedAudioRecoveryReceiptsAction: loadFailedAudioRecoveryReceiptsAction,
     clearBenchmarkRecordingArchiveAction: clearBenchmarkRecordingArchiveAction,
     refreshBenchmarkRecordingArchiveAction: refreshBenchmarkRecordingArchiveAction,
+    benchmarkArchiveReader: benchmarkArchiveReader,
+    benchmarkCorpusExporter: benchmarkCorpusExporter,
     authorizeWorkflowRunAction: authorizeWorkflowRunAction,
     explainResolvedWorkflowAction: explainResolvedWorkflowAction,
     writeClipboardTextAction: writeClipboardTextAction,

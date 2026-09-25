@@ -224,7 +224,7 @@ def main():
     root = Path(__file__).resolve().parents[1]
     receipt = build_driver.receipt_products(args.build_receipt, root)
     executable = Path(receipt["productsDirectory"]) / "RillSpeechWorker"
-    cases = asr_benchmark.read_corpus(args.corpus)
+    cases = asr_benchmark.read_corpus(args.corpus, require_references=False)
     configuration_bytes = args.configuration.read_bytes()
     configuration = json.loads(configuration_bytes)
     model = configuration["model_id"]

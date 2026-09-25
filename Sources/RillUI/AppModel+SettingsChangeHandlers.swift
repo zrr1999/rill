@@ -40,7 +40,7 @@ extension AppModel {
 
   func handlePreferredSpeechEngineChange(from oldValue: PreferredSpeechEngine) {
     guard oldValue != self.settings.preferredSpeechEngine else { return }
-    invalidateWorkflowExplanation()
+    workflowLibrary.cancelWorkflowExplanation()
     persistPreferredSpeechEnginePreference()
     guard !self.settings.isRestoringSettings else { return }
     setLocalSpeechRuntimeEnabledAction(self.settings.preferredSpeechEngine == .local)
@@ -71,7 +71,7 @@ extension AppModel {
 
   func handleBuiltinPushToTalkOutputModeChange(from oldValue: BuiltinPushToTalkOutputMode) {
     guard oldValue != self.settings.builtinPushToTalkOutputMode else { return }
-    invalidateWorkflowExplanation()
+    workflowLibrary.cancelWorkflowExplanation()
     persistBuiltinPushToTalkOutputModePreference()
   }
 
@@ -143,11 +143,7 @@ extension AppModel {
 
   func handleOpenAIAPIKeyChange(from oldValue: String) {
     guard oldValue != self.settings.openAIAPIKey else { return }
-    self.settings.openAIVerificationTask?.cancel()
-    self.settings.openAIVerificationTask = nil
-    self.settings.openAIVerificationGeneration &+= 1
-    self.settings.openAIVerificationFailure = nil
-    self.settings.openAIConfigurationVerificationState = .idle
+    self.settings.invalidateOpenAIVerification()
     let previousAvailability = self.settings.openAICredentialAvailability
     if !self.settings.isRestoringSettings {
       self.settings.openAICredentialLoadGeneration &+= 1
@@ -199,11 +195,7 @@ extension AppModel {
     default:
       validityChanged = false
     }
-    self.settings.openAIVerificationTask?.cancel()
-    self.settings.openAIVerificationTask = nil
-    self.settings.openAIVerificationGeneration &+= 1
-    self.settings.openAIVerificationFailure = nil
-    self.settings.openAIConfigurationVerificationState = .idle
+    self.settings.invalidateOpenAIVerification()
     if validityChanged || verificationWasFailed {
       workflowLibraryChangedAction()
     }

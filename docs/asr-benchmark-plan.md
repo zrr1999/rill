@@ -89,8 +89,12 @@ uv run --script scripts/asr_benchmark.py \
 ## Release worker 回放
 
 `EncryptedBenchmarkRecordingArchiveStore` 提供独立的只读评测接口，逐条校验 receipt、
-音频认证与长度，拒绝符号链接；不会在应用启动时解密整个归档。真实归档的导出选择界面
-仍待接入。已有获授权 PCM WAV 可以直接使用下面的工具；不要绕过归档加密读取明文。
+音频认证与长度，拒绝符号链接；不会在应用启动时解密整个归档。在“设置 → 存储”中可选择归档录音、
+声明麦克风/合成/公开 fixture 来源、选择开发集或保留验收集，并明确授权导出到本地私有目录。
+导出只包含选中的 WAV、SHA256、待填写参考文本的 corpus 和说明文件；不填虚假的空白参考。
+目录权限为 0700，文件为 0600；取消/失败清理暂存目录，无法清理时显示剩余目录并提供 Finder 入口。
+该剩余目录提示保留在本次应用会话中。导出不上传；仍需本人听取并标注参考文本。
+已有获授权 PCM WAV 也可以使用下面的工具。
 
 ```sh
 scripts/swift_locked.sh release --result-file /private/path/release.json
@@ -142,3 +146,27 @@ configuration 指定 `model_id`、仓库锁定的 `model_revision`、可选 `lan
 范围是该 worker 进程生命周期的最大 RSS，包含模型加载；不是 App+worker 总峰值。
 比较器拒绝不同测量范围的配对。生命周期/合成音频实验只报告原始结果，
 不能越过真人语料和产品路径门槛启用新默认策略。
+
+## Release 宿主处理路径
+
+`scripts/product_path_benchmark.py` 通过生产 SessionCoordinator、真实 Release worker、词汇处理、
+空白规范化、加密 SQLite 提交和隔离输出端运行清单。它不访问麦克风、不粘贴、不下载模型，
+也不写入用户数据库。配置中的 `replacements` 是 `pattern` / `replacement` 对；没有 LLM 步骤。
+
+```sh
+uv run --script scripts/product_path_benchmark.py --build-receipt /private/path/release.json \
+  --corpus /private/path/corpus.json --configuration /private/path/configuration.json \
+  --cache-state warm --repetitions 3 --output /private/path/host-warm.jsonl
+```
+
+该工具使用同一 manifest 的 Release 领域测试构建范围，Debug/Release 缓存分别隔离。
+完整 CI 仍构建全部生产目标、运行全量测试。`first_inference` 在每个计分请求前显式释放和加载模型；
+`warm` 先运行一条独立留存的非计分热身，然后重复完整清单。热身失败会中止运行。
+`host_replay_to_final_ms`、`host_replay_to_saved_ms` 和 `host_replay_to_isolated_dispatch_ms`
+从宿主准入前开始计时；后两者仅在实际保存/派发时存在，不等同于松键或真实应用粘贴。
+识别得到无语音时，验证本次没有 Record 提交和输出，只记录真实 raw 及识别耗时；不伪造后处理或保存结果。
+
+结果核对实际 worker 模型与 revision，结果音频摘要必须匹配当前 corpus；源码/产物在前后校验均有效才标为
+`evidence_validation: passed`。中断、构建失败或身份失效的报告不能用于比较；完整行集含运行失败时返回非零。
+各阶段正文和热身结果只保留在私有报告，不进入诊断或仓库。合成录音、缺少人工标注或缺少总峰值内存时，
+宿主报告仍不能通过完整质量与性能准入门槛。

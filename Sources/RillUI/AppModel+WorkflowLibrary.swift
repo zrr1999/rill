@@ -7,7 +7,7 @@ import RillSpeech
 
 extension AppModel {
   func rebuildWorkflowLibrary() {
-    invalidateWorkflowExplanation()
+    workflowLibrary.cancelWorkflowExplanation()
     workflowLibrary.rebuild(defaultVocabularyBindings: self.vocabulary.vocabularyCollectionBindings)
     workflowLibraryChangedAction()
   }

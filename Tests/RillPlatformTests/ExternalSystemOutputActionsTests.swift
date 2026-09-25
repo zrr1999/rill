@@ -779,7 +779,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
         )
         let diagnostics = await diagnosticProbe.snapshot()
         XCTAssertEqual(diagnostics.map(\.outcome), [.indeterminate])
-        let diagnosticText = diagnostics.flatMap { [$0.event, $0.message] }.joined(separator: " ")
+        let diagnosticText = diagnostics.flatMap { [$0.event.rawValue, $0.message] }.joined(separator: " ")
         XCTAssertFalse(diagnosticText.contains(directory.path))
         XCTAssertFalse(diagnosticText.contains("possibly committed"))
     }
@@ -1060,7 +1060,7 @@ final class ExternalSystemOutputActionsTests: XCTestCase {
             diagnostics.map(\.outcome),
             [.retryPending, .completedAfterRetry]
         )
-        let diagnosticText = diagnostics.flatMap { [$0.event, $0.message] }.joined(separator: " ")
+        let diagnosticText = diagnostics.flatMap { [$0.event.rawValue, $0.message] }.joined(separator: " ")
         XCTAssertFalse(diagnosticText.contains(fileURL.path))
         XCTAssertFalse(diagnosticText.contains("appended once"))
         XCTAssertEqual(

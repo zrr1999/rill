@@ -112,9 +112,7 @@ public final class AppModel {
   public internal(set) var recordRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
   public private(set) var runHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
 
-  public internal(set) var benchmarkRecordingArchiveEnabled = false
-  public internal(set) var isUpdatingBenchmarkRecordingArchive = false
-  public var benchmarkRecordingArchiveError: String?
+  public let benchmarkArchive: BenchmarkRecordingArchiveModel
   // The floating panel is driven through `updateLiveSubtitlePanelAction`, not
   // through a SwiftUI view observing AppModel. Keeping its 25 Hz meter state
   // outside Observation prevents every audio frame from invalidating the main
@@ -243,7 +241,6 @@ public final class AppModel {
   let startWorkflowAudioRunAction:
     @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void
   let finishWorkflowAudioRunAction: @Sendable () async throws -> Void
-  let verifyOpenAIConfigurationAction: @Sendable (OpenAISettings) async throws -> Void
   let retryFailedAudioRecoveryAction:
     @Sendable (
       UUID,
@@ -254,16 +251,10 @@ public final class AppModel {
   let refreshFailedAudioRecoveryAction: @Sendable (Bool) async throws -> Void
   let loadFailedAudioRecoveryReceiptsAction:
     @Sendable () async throws -> [FailedAudioRecoveryReceipt]
-  let clearBenchmarkRecordingArchiveAction: @Sendable () async throws -> Void
-  let refreshBenchmarkRecordingArchiveAction: @Sendable (Bool) async throws -> Void
   let authorizeWorkflowRunAction:
     @Sendable (
       WorkflowDefinition
     ) async throws -> AuthorizedWorkflowRunContext
-  let explainResolvedWorkflowAction:
-    @Sendable (
-      WorkflowResolvedExecutionPlan
-    ) async throws -> WorkflowExplanationReceipt
   let writeClipboardTextAction: @MainActor (String) -> Void
   let deliverNextRecordAction: () -> Void
   let refreshPermissionsAction: () -> Void
@@ -409,6 +400,7 @@ public final class AppModel {
     loadsPersistentSettingsOnInitialization: Bool,
     settingsWriteDebounceDuration: Duration,
     historyRetentionMaintenanceInterval: Duration?,
+    historyMaintenanceSleep: @escaping @Sendable (Duration) async throws -> Void,
     liveSubtitlePreparingHideDelay: Duration,
     localSpeechAvailability: LocalSpeechAvailability,
     trustedLocalSpeechModels: [LocalSpeechModelDescriptor],
@@ -445,6 +437,8 @@ public final class AppModel {
       @escaping @Sendable () async throws -> [FailedAudioRecoveryReceipt],
     clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void,
     refreshBenchmarkRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void,
+    benchmarkArchiveReader: (any BenchmarkRecordingArchiveReading)?,
+    benchmarkCorpusExporter: (any BenchmarkCorpusExporting)?,
     authorizeWorkflowRunAction:
       @escaping @Sendable (
         WorkflowDefinition
@@ -491,9 +485,12 @@ public final class AppModel {
       effectiveLocalSpeechAvailability = declaredLocalSpeechAvailability
     }
     let exposesTrustedCatalog = effectiveLocalSpeechAvailability.isAvailable && catalogIsValid
-    let settings = SettingsPersistenceModel(store: settingsStore, language: language)
+    let settings = SettingsPersistenceModel(store: settingsStore, language: language,
+      verifyOpenAIConfiguration: verifyOpenAIConfigurationAction,
+      configurationChanged: workflowLibraryChangedAction)
     self.settings = settings
-    self.workflowLibrary = WorkflowLibraryModel(workflows: initialWorkflows)
+    self.workflowLibrary = WorkflowLibraryModel(workflows: initialWorkflows,
+      settings: settings, explain: explainResolvedWorkflowAction)
     // Capture remains closed until durable settings prove it is enabled.
     // Test and preview compositions that explicitly skip loading retain the
     // historical enabled behavior when they still provide a settings store.
@@ -526,7 +523,7 @@ public final class AppModel {
     self.candidateResolver = candidateResolver
     self.historyRepository = historyRepository
     self.runHistoryBrowser = runHistoryBrowser
-    self.history = RunHistoryModel(browser: runHistoryBrowser, workflows: self.workflowLibrary)
+    self.history = RunHistoryModel(browser: runHistoryBrowser, workflows: self.workflowLibrary, maintenanceSleep: historyMaintenanceSleep)
     self.runReceiptRepository = runReceiptRepository
     self.localHistoryMaintenance = localHistoryMaintenance
     self.diagnosticRepository = diagnosticRepository
@@ -558,16 +555,15 @@ public final class AppModel {
     self.stopLocalSpeechRuntimeAction = stopLocalSpeechRuntimeAction
     self.startWorkflowAudioRunAction = startWorkflowAudioRunAction
     self.finishWorkflowAudioRunAction = finishWorkflowAudioRunAction
-    self.verifyOpenAIConfigurationAction = verifyOpenAIConfigurationAction
     self.retryFailedAudioRecoveryAction = retryFailedAudioRecoveryAction
     self.deleteFailedAudioRecoveryAction = deleteFailedAudioRecoveryAction
     self.clearFailedAudioRecoveryAction = clearFailedAudioRecoveryAction
     self.refreshFailedAudioRecoveryAction = refreshFailedAudioRecoveryAction
     self.loadFailedAudioRecoveryReceiptsAction = loadFailedAudioRecoveryReceiptsAction
-    self.clearBenchmarkRecordingArchiveAction = clearBenchmarkRecordingArchiveAction
-    self.refreshBenchmarkRecordingArchiveAction = refreshBenchmarkRecordingArchiveAction
+    self.benchmarkArchive = BenchmarkRecordingArchiveModel(settings: settings, store: settingsStore,
+      reader: benchmarkArchiveReader, exporter: benchmarkCorpusExporter,
+      refresh: refreshBenchmarkRecordingArchiveAction, clear: clearBenchmarkRecordingArchiveAction)
     self.authorizeWorkflowRunAction = authorizeWorkflowRunAction
-    self.explainResolvedWorkflowAction = explainResolvedWorkflowAction
     self.writeClipboardTextAction = writeClipboardTextAction
     self.deliverNextRecordAction = deliverNextRecordAction
     self.refreshPermissionsAction = refreshPermissionsAction
@@ -751,7 +747,7 @@ extension AppModel {
     privacyPolicySettings = newValue
     guard oldValue != privacyPolicySettings else { return }
     if !isLoadingPrivacySettings { contextMemory?.invalidateAuthorization() }
-    invalidateWorkflowExplanation()
+    workflowLibrary.cancelWorkflowExplanation()
     history.previewMode = privacyPolicySettings.historyPreviewMode
     if oldValue.historyPreviewMode != privacyPolicySettings.historyPreviewMode {
       history.resetRunHistoryBrowsingForPrivacyChange()
@@ -794,6 +790,9 @@ extension AppModel {
     hasBegunApplicationShutdown = true
     guard hasBegunApplicationShutdown, !oldValue else { return }
     history.hasBegunApplicationShutdown = true
+    benchmarkArchive.beginShutdown()
+    settings.beginShutdown()
+    workflowLibrary.cancelWorkflowExplanation()
     cancelPendingLiveSubtitleMeterRefresh()
   }
 }

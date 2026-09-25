@@ -169,7 +169,7 @@ public final class HotwordSelection {
     let elapsed = start.duration(to: .now).components
     let millis = max(0, elapsed.seconds * 1_000 + elapsed.attoseconds / 1_000_000_000_000_000)
     await report(DiagnosticEvent(runID: runID, subsystem: .session, level: .debug,
-      event: "hotword-ranking.completed", message: "Hotword ranking completed.",
+      event: .hotwordRankingCompleted, message: "Hotword ranking completed.",
       metadata: ["hotwordRankingOutcome": outcome, "hotwordCandidateCount": String(candidates.count),
         "durationMillis": String(millis)]))
   }

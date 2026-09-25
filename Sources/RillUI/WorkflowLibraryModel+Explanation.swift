@@ -5,12 +5,13 @@ import RillRecords
 import RillKnowledge
 import RillSpeech
 
-extension AppModel {
+extension WorkflowLibraryModel {
     public func explainWorkflowBeforeRun(_ requestedWorkflow: WorkflowDefinition) {
+        guard !settings.hasBegunApplicationShutdown else { return }
         cancelWorkflowExplanation()
 
-        guard let workflow = self.workflowLibrary.workflows.first(where: { $0.id == requestedWorkflow.id }) else {
-            self.workflowLibrary.workflowExplanationState = .failed(
+        guard let workflow = self.workflows.first(where: { $0.id == requestedWorkflow.id }) else {
+            self.workflowExplanationState = .failed(
                 workflowID: requestedWorkflow.id,
                 reason: .workflowUnavailable
             )
@@ -26,7 +27,7 @@ extension AppModel {
             outputResolution = .builtinSaveToVoiceGroup
         }
 
-        let generation = self.workflowLibrary.workflowExplanationGeneration
+        let generation = self.workflowExplanationGeneration
         switch WorkflowExecutionPlanResolver.resolve(
             workflow,
             initiatedBy: .manual,
@@ -40,10 +41,10 @@ extension AppModel {
                 generation: generation
             )
         case .resolved(let plan):
-            self.workflowLibrary.workflowExplanationState = .loading(workflowID: workflow.id)
+            self.workflowExplanationState = .loading(workflowID: workflow.id)
             let explain = explainResolvedWorkflowAction
             let taskID = UUID()
-            let taskOwner = self.workflowLibrary.workflowExplanationTaskOwner
+            let taskOwner = self.workflowExplanationTaskOwner
             let task = Task { @MainActor [weak self, explain, taskOwner] in
                 defer { taskOwner.finish(id: taskID) }
                 do {
@@ -64,22 +65,18 @@ extension AppModel {
                     )
                 }
             }
-            self.workflowLibrary.workflowExplanationTaskOwner.replace(id: taskID, with: task)
+            self.workflowExplanationTaskOwner.replace(id: taskID, with: task)
         }
     }
 
     public func cancelWorkflowExplanation() {
-        self.workflowLibrary.workflowExplanationGeneration += 1
-        self.workflowLibrary.workflowExplanationTaskOwner.cancel()
-        self.workflowLibrary.workflowExplanationState = .idle
-    }
-
-    func invalidateWorkflowExplanation() {
-        cancelWorkflowExplanation()
+        self.workflowExplanationGeneration += 1
+        self.workflowExplanationTaskOwner.cancel()
+        self.workflowExplanationState = .idle
     }
 
     func waitForWorkflowExplanationTasks() async {
-        await self.workflowLibrary.workflowExplanationTaskOwner.waitUntilIdle()
+        await self.workflowExplanationTaskOwner.waitUntilIdle()
     }
 
     private func finishWorkflowExplanation(
@@ -87,23 +84,23 @@ extension AppModel {
         workflowID: UUID,
         generation: Int
     ) {
-        guard generation == self.workflowLibrary.workflowExplanationGeneration else { return }
+        guard generation == self.workflowExplanationGeneration else { return }
 
-        guard self.workflowLibrary.workflows.contains(where: { $0.id == workflowID }) else {
-            self.workflowLibrary.workflowExplanationState = .failed(
+        guard self.workflows.contains(where: { $0.id == workflowID }) else {
+            self.workflowExplanationState = .failed(
                 workflowID: workflowID,
                 reason: .workflowUnavailable
             )
             return
         }
         guard receipt.workflowID == workflowID, receipt.trigger == .manual else {
-            self.workflowLibrary.workflowExplanationState = .failed(
+            self.workflowExplanationState = .failed(
                 workflowID: workflowID,
                 reason: .invalidReceipt
             )
             return
         }
-        self.workflowLibrary.workflowExplanationState = .loaded(receipt)
+        self.workflowExplanationState = .loaded(receipt)
     }
 
     private func failWorkflowExplanation(
@@ -111,8 +108,8 @@ extension AppModel {
         generation: Int,
         reason: WorkflowExplanationFailure
     ) {
-        guard generation == self.workflowLibrary.workflowExplanationGeneration else { return }
-        self.workflowLibrary.workflowExplanationState = .failed(workflowID: workflowID, reason: reason)
+        guard generation == self.workflowExplanationGeneration else { return }
+        self.workflowExplanationState = .failed(workflowID: workflowID, reason: reason)
     }
 
     nonisolated static func unavailableWorkflowExplanation(

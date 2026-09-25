@@ -11,11 +11,14 @@ enum SettingsDestructiveConfirmation: Sendable {
 
 enum SettingsSheetDestination: Identifiable {
   case privacyNotice(PrivacyNoticeDocument)
+  case benchmarkArchive
 
   var id: String {
     switch self {
     case .privacyNotice:
       return "privacy-notice"
+    case .benchmarkArchive:
+      return "benchmark-archive"
     }
   }
 }
@@ -247,6 +250,8 @@ public struct SettingsView: View {
       switch destination {
       case .privacyNotice(let document):
         PrivacyNoticeSheet(document: document, language: model.settings.language)
+      case .benchmarkArchive:
+        BenchmarkRecordingArchiveSheet(model: model.benchmarkArchive, language: model.settings.language)
       }
     }
     .confirmationDialog(
@@ -325,7 +330,7 @@ public struct SettingsView: View {
 extension SettingsView {
   private var recordPanelSection: some View {
     settingsDisclosure(.recordPanel) {
-      if model.hasUnavailableScalarSettings(in: .systemClipboard) {
+      if model.settings.hasUnavailableScalarSettings(in: .systemClipboard) {
         unavailableScalarSettingsWarning(.systemClipboard)
       }
 
@@ -339,7 +344,7 @@ extension SettingsView {
           set: { model.setSystemClipboardCaptureEnabled($0) }
         )
       )
-      .disabled(!model.canMutateScalarSettings(in: .systemClipboard))
+      .disabled(!model.settings.canMutateScalarSettings(in: .systemClipboard))
       .accessibilityIdentifier("settings.systemClipboard.capture-enabled")
 
       Text(
@@ -375,7 +380,7 @@ extension SettingsView {
           model.resetRecordPanelHotkeyBinding()
         }
       )
-      .disabled(model.hasUnavailableScalarSettings(in: .systemClipboard))
+      .disabled(model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
 
       Text(L10n.text(.settingsRecordPanelDescription, language: model.settings.language))
         .font(.caption)
@@ -385,7 +390,7 @@ extension SettingsView {
 
   private var languageSection: some View {
     settingsDisclosure(.language) {
-      if model.hasUnavailableScalarSettings(in: .interface) {
+      if model.settings.hasUnavailableScalarSettings(in: .interface) {
         unavailableScalarSettingsWarning(.interface)
       }
 
@@ -404,7 +409,7 @@ extension SettingsView {
       // Keep the two language segments compact instead of stretching across
       // the full form width.
       .frame(maxWidth: 260)
-      .disabled(!model.canMutateScalarSettings(in: .interface))
+      .disabled(!model.settings.canMutateScalarSettings(in: .interface))
 
       Text(L10n.text(.settingsLanguageDescription, language: model.settings.language))
         .font(.caption)
@@ -615,7 +620,7 @@ extension SettingsView {
     case .failedAudioRecovery:
       model.clearFailedAudioRecoveries()
     case .benchmarkRecordingArchive:
-      model.clearBenchmarkRecordingArchive()
+      model.benchmarkArchive.clear()
     case .sensitiveAppRule(let ruleID):
       if let rule = model.privacyPolicySettings.sensitiveAppRules.first(where: {
         $0.id == ruleID
@@ -716,7 +721,7 @@ extension SettingsView {
         Button {
           model.retryUnavailableScalarSettings(in: domain)
         } label: {
-          if model.isRetryingUnavailableScalarSettings(in: domain) {
+          if model.settings.isRetryingUnavailableScalarSettings(in: domain) {
             HStack(spacing: 8) {
               ProgressView()
                 .controlSize(.small)
@@ -726,7 +731,7 @@ extension SettingsView {
             Text(L10n.settingsText(.settingsRetryLoading, language: model.settings.language))
           }
         }
-        .disabled(model.isRetryingUnavailableScalarSettings(in: domain))
+        .disabled(model.settings.isRetryingUnavailableScalarSettings(in: domain))
         .accessibilityIdentifier("settings.scalar-unavailable.\(domain.rawValue).retry")
       }
     }
@@ -793,7 +798,7 @@ extension SettingsView {
 
   private var builtinPushToTalkSection: some View {
     settingsDisclosure(.input) {
-      if model.hasUnavailableScalarSettings(in: .input) {
+      if model.settings.hasUnavailableScalarSettings(in: .input) {
         unavailableScalarSettingsWarning(.input)
       }
 
@@ -804,7 +809,7 @@ extension SettingsView {
           set: { model.setLongRecordingModeEnabled($0) }
         )
       )
-      .disabled(!model.canMutateScalarSettings(in: .input))
+      .disabled(!model.settings.canMutateScalarSettings(in: .input))
 
       Text(L10n.string(.settingsLongRecordingModeDescription, language: model.settings.language))
         .font(.caption)
@@ -822,7 +827,7 @@ extension SettingsView {
         }
       }
       .pickerStyle(.menu)
-      .disabled(!model.canMutateScalarSettings(in: .input))
+      .disabled(!model.settings.canMutateScalarSettings(in: .input))
 
       Text(L10n.string(.settingsRecordingDurationLimitDescription, language: model.settings.language))
         .font(.caption)
@@ -840,7 +845,7 @@ extension SettingsView {
         }
       }
       .pickerStyle(.segmented)
-      .disabled(!model.canMutateScalarSettings(in: .input))
+      .disabled(!model.settings.canMutateScalarSettings(in: .input))
       Text(L10n.text(.settingsBuiltinPushToTalkDescription, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)

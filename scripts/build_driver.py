@@ -583,7 +583,10 @@ def main(arguments: list[str] | None = None) -> None:
         if option(arguments, ("--scratch-path", "--build-path"), None) is not None:
             raise BuildError("Domain tests own their isolated build directory")
         os.environ["RILL_BUILD_PROFILE"] = "domain-tests"
-        arguments += ["--scratch-path", ".artifacts/build/domain-tests"]
+        domain_configuration = option(arguments, ("--configuration", "-c"), "debug")
+        if domain_configuration not in ("debug", "release"):
+            raise BuildError(f"Unsupported domain test configuration: {domain_configuration}")
+        arguments += ["--scratch-path", f".artifacts/build/domain-tests/{domain_configuration}"]
         subcommand = "test"
     if subcommand == "release":
         release(arguments)

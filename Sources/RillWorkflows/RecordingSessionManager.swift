@@ -315,7 +315,7 @@ public actor RecordingSessionManager {
       cancelActiveDeferredRelease()
       enqueueDiagnostic(
         level: .debug,
-        event: "recording.hotkey.pressed",
+        event: .recordingHotkeyPressed,
         message: "Received push-to-talk press for \(gesture.rawValue).",
         runID: activeRunID
       )
@@ -359,7 +359,7 @@ public actor RecordingSessionManager {
     case .pushToTalkReleased(let gesture):
       enqueueDiagnostic(
         level: .debug,
-        event: "recording.hotkey.released",
+        event: .recordingHotkeyReleased,
         message: "Received push-to-talk release for \(gesture.rawValue).",
         runID: activeRunID
       )
@@ -389,7 +389,7 @@ public actor RecordingSessionManager {
         guard pending.gesture == gesture else {
           enqueueDiagnostic(
             level: .debug,
-            event: "recording.hotkey.cross-gesture-ignored",
+            event: .recordingHotkeyCrossGestureIgnored,
             message:
               "Ignored \(gesture.rawValue) while \(pending.gesture.rawValue) was still preparing.",
             runID: nil
@@ -403,7 +403,7 @@ public actor RecordingSessionManager {
         pendingStreamHotkeyStart = pending
         enqueueDiagnostic(
           level: .debug,
-          event: "recording.hotkey.pressed",
+          event: .recordingHotkeyPressed,
           message: "Received push-to-talk press for \(gesture.rawValue).",
           runID: nil
         )
@@ -430,7 +430,7 @@ public actor RecordingSessionManager {
       cancelActiveDeferredRelease()
       enqueueDiagnostic(
         level: .debug,
-        event: "recording.hotkey.pressed",
+        event: .recordingHotkeyPressed,
         message: "Received push-to-talk press for \(gesture.rawValue).",
         runID: nil
       )
@@ -446,7 +446,7 @@ public actor RecordingSessionManager {
         pendingStreamHotkeyStart = pending
         enqueueDiagnostic(
           level: .debug,
-          event: "recording.hotkey.released",
+          event: .recordingHotkeyReleased,
           message: "Received push-to-talk release for \(gesture.rawValue).",
           runID: nil
         )
@@ -490,7 +490,7 @@ public actor RecordingSessionManager {
   ) async {
     enqueueDiagnostic(
       level: .warning,
-      event: "recording.global-input-unavailable",
+      event: .recordingGlobalInputUnavailable,
       message: "Global input became unavailable, so the active recording gesture was cancelled.",
       runID: activeRunID
     )
@@ -566,7 +566,7 @@ public actor RecordingSessionManager {
       cancelActivePushToTalkStartTask()
       enqueueDiagnostic(
         level: .debug,
-        event: "recording.toggle.cancelled-before-start",
+        event: .recordingToggleCancelledBeforeStart,
         message:
           "Long recording toggle was pressed again while capture was still preparing, so startup was cancelled.",
         runID: runID
@@ -871,7 +871,7 @@ public actor RecordingSessionManager {
     activeLiveAudioSession = liveAudioSession
     enqueueDiagnostic(
       level: .debug,
-      event: "recording.prepare.begin",
+      event: .recordingPrepareBegin,
       message:
         "Push-to-talk preparing with \(gesture.rawValue) using workflow \(workflow.name) and recognizer \(workflow.plan.setup.speechRoute?.recognizerID ?? "unconfigured").",
       runID: runID
@@ -985,7 +985,7 @@ public actor RecordingSessionManager {
       )
       enqueueDiagnostic(
         level: .info,
-        event: "recording.started",
+        event: .recordingStarted,
         message: "Push-to-talk recording started with \(pendingStart.gesture.rawValue).",
         runID: pendingStart.runID
       )
@@ -1074,7 +1074,7 @@ public actor RecordingSessionManager {
     if activeControlMode == .toggle {
       enqueueDiagnostic(
         level: .debug,
-        event: "recording.toggle.release-ignored",
+        event: .recordingToggleReleaseIgnored,
         message: "Ignored release because long recording mode stops on the next press.",
         runID: activeRunID
       )
@@ -1085,7 +1085,7 @@ public actor RecordingSessionManager {
     case .preparing(let runID):
       enqueueDiagnostic(
         level: .debug,
-        event: "recording.release.deferred",
+        event: .recordingReleaseDeferred,
         message:
           "Push-to-talk was released while audio capture was still preparing, so cancellation will wait briefly to absorb transient Fn jitter.",
         runID: runID
@@ -1133,7 +1133,7 @@ public actor RecordingSessionManager {
     cancelMaximumDurationTask(runID: runID)
     enqueueDiagnostic(
       level: .info,
-      event: "recording.maximum-duration-removed",
+      event: .recordingMaximumDurationRemoved,
       message: "The user removed Rill's duration limit for the active recording.",
       runID: runID
     )
@@ -1322,7 +1322,7 @@ extension RecordingSessionManager {
   {
     enqueueDiagnostic(
       level: .error,
-      event: "recording.failure",
+      event: .recordingFailure,
       message: message,
       runID: runID
     )
@@ -1387,7 +1387,7 @@ extension RecordingSessionManager {
 
     enqueueDiagnostic(
       level: .error,
-      event: "recording.capture-service-failed",
+      event: .recordingCaptureServiceFailed,
       message:
         "The active microphone stream ended unexpectedly, so the exact recording run was cancelled.",
       runID: runID
@@ -1420,7 +1420,7 @@ extension RecordingSessionManager {
 
   fileprivate func enqueueDiagnostic(
     level: DiagnosticLevel,
-    event: String,
+    event: DiagnosticEventName,
     message: String,
     runID: UUID?,
     metadata: [String: String] = [:]
@@ -1487,7 +1487,7 @@ extension RecordingSessionManager {
     }
     enqueueDiagnostic(
       level: .warning,
-      event: "recording.maximum-duration-reached",
+      event: .recordingMaximumDurationReached,
       message: "Recording reached its safety duration limit and is being finalized.",
       runID: runID
     )
@@ -1653,7 +1653,7 @@ extension RecordingSessionManager {
     }
     enqueueDiagnostic(
       level: .debug,
-      event: "recording.finishing",
+      event: .recordingFinishing,
       message:
         "Push-to-talk recording finished for \(gesture.rawValue) and is being queued for background processing.",
       runID: runID,
@@ -1703,7 +1703,7 @@ extension RecordingSessionManager {
     removeFinishingRecording(runID: runID, operationID: operationID)
     enqueueDiagnostic(
       level: .info,
-      event: "recording.queued",
+      event: .recordingQueued,
       message: "Push-to-talk recording was queued for background workflow processing.",
       runID: runID
     )
@@ -1756,7 +1756,7 @@ extension RecordingSessionManager {
     if pushToTalkGestureStateProvider(gesture) {
       enqueueDiagnostic(
         level: .debug,
-        event: "recording.deferred-release-ignored",
+        event: .recordingDeferredReleaseIgnored,
         message:
           "Ignored a deferred push-to-talk release because the gesture still appears active.",
         runID: activeRunID
@@ -1800,7 +1800,7 @@ extension RecordingSessionManager {
     if !gestureWasChecked, pushToTalkGestureStateProvider(gesture) {
       enqueueDiagnostic(
         level: .debug,
-        event: "recording.deferred-release-ignored",
+        event: .recordingDeferredReleaseIgnored,
         message:
           "Ignored a deferred push-to-talk release because the gesture still appears active.",
         runID: runID
@@ -1812,7 +1812,7 @@ extension RecordingSessionManager {
     case .preparing(let currentRunID) where currentRunID == runID:
       enqueueDiagnostic(
         level: .debug,
-        event: "recording.cancelled-after-deferred-release",
+        event: .recordingCancelledAfterDeferredRelease,
         message: "Push-to-talk remained released during startup, so live capture was cancelled.",
         runID: runID
       )
@@ -1820,7 +1820,7 @@ extension RecordingSessionManager {
     case .recording(let currentRunID) where currentRunID == runID:
       enqueueDiagnostic(
         level: .debug,
-        event: "recording.finished-after-deferred-release",
+        event: .recordingFinishedAfterDeferredRelease,
         message:
           "Push-to-talk was released during startup and remained released after recording became active, so the active run is finishing now.",
         runID: runID
@@ -2007,7 +2007,7 @@ extension RecordingSessionManager {
     let message = LiveAudioSessionError.authorizationInvalidated(reason).localizedDescription
     enqueueDiagnostic(
       level: .warning,
-      event: "recording.live-authorization-revoked",
+      event: .recordingLiveAuthorizationRevoked,
       message: "Live recording stopped because its privacy authorization changed.",
       runID: runID,
       metadata: ["reason": reason.rawValue]

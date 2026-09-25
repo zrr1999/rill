@@ -384,7 +384,6 @@ extension AppModelTests {
         )
 
         await waitForHistoryMaintenance(harness)
-        try? await Task.sleep(for: .milliseconds(80))
 
         XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
         XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .thirtyDays)
@@ -405,7 +404,6 @@ extension AppModelTests {
         )
 
         await waitForHistoryMaintenance(harness)
-        try? await Task.sleep(for: .milliseconds(80))
 
         XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
         XCTAssertEqual(harness.model.runHistoryRetentionPeriod, .thirtyDays)
@@ -573,7 +571,7 @@ extension AppModelTests {
             DiagnosticEvent(
                 subsystem: .session,
                 level: .info,
-                event: "diagnostic.before-clear",
+                event: .diagnosticBeforeClear,
                 message: "diagnostic-before-clear"
             ),
         ]
@@ -707,7 +705,7 @@ extension AppModelTests {
     }
 
     func testRetentionRequestDuringMaintenanceRunsAgainWithCurrentPeriods() async {
-        let maintenance = UITestLocalHistoryMaintenance(delay: .milliseconds(80))
+        let maintenance = UITestLocalHistoryMaintenance()
         let harness = makeHarness(
             settingsStore: UITestSettingsStore(),
             localHistoryMaintenance: maintenance
@@ -735,27 +733,24 @@ extension AppModelTests {
     }
 
     func testPeriodicRetentionMaintenanceRunsAgainAfterInitialLoad() async {
-        let retentionRuns = expectation(description: "initial and periodic retention")
-        retentionRuns.expectedFulfillmentCount = 2
-        retentionRuns.assertForOverFulfill = false
-        let maintenance = UITestLocalHistoryMaintenance(onRetention: {
-            retentionRuns.fulfill()
-        })
-        let harness = makeHarness(
-            settingsStore: UITestSettingsStore(),
-            historyRetentionMaintenanceInterval: .milliseconds(40),
-            localHistoryMaintenance: maintenance
-        )
-
-        await fulfillment(of: [retentionRuns], timeout: 5)
-
-        let maintenanceCalls = await maintenance.callSnapshot()
-        let retentionCalls = maintenanceCalls.filter { call in
-            if case .performRetention = call { return true }
-            return false
-        }
-        XCTAssertGreaterThanOrEqual(retentionCalls.count, 2)
-        XCTAssertTrue(harness.model.isLocalHistoryMaintenanceAvailable)
+        let clock = HistoryMaintenanceClock()
+        let maintenance = UITestLocalHistoryMaintenance()
+        let harness = makeHarness(settingsStore: UITestSettingsStore(),
+            historyRetentionMaintenanceInterval: .seconds(60),
+            historyMaintenanceSleep: { try await clock.sleep(for: $0) },
+            localHistoryMaintenance: maintenance)
+        await waitForHistoryMaintenance(harness)
+        await clock.waitUntilSleeping()
+        let initial = await maintenance.callSnapshot()
+        XCTAssertEqual(initial.count, 1)
+        await clock.advance()
+        await clock.waitUntilSleeping()
+        await harness.model.waitForLocalHistoryMaintenance()
+        let calls = await maintenance.callSnapshot()
+        XCTAssertEqual(calls.count, 2)
+        await harness.model.stopLocalHistoryMaintenanceForApplicationShutdown()
+        let pending = await clock.pendingCount
+        XCTAssertEqual(pending, 0)
     }
 
     func testShutdownWaitsForActiveHistoryMaintenanceWithoutCancellingIt() async {

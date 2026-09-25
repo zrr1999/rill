@@ -732,7 +732,7 @@ extension AppModelTests {
 
         let activity = await settingsStore.activitySnapshot()
 
-        XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
+        XCTAssertFalse(harness.model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
         XCTAssertEqual(activity.storage[.recordMergeSimilar], "legacy-value")
         XCTAssertTrue(activity.setCounts.isEmpty)
         XCTAssertTrue(activity.removeCounts.isEmpty)
@@ -819,7 +819,7 @@ extension AppModelTests {
                 timestamp: baseTimestamp,
                 subsystem: .session,
                 level: .info,
-                event: "diagnostic.stored.older",
+                event: .diagnosticStoredOlder,
                 message: "Older stored event"
             )
         )
@@ -828,7 +828,7 @@ extension AppModelTests {
                 timestamp: baseTimestamp.addingTimeInterval(2),
                 subsystem: .session,
                 level: .info,
-                event: "diagnostic.stored.newer",
+                event: .diagnosticStoredNewer,
                 message: "Newer stored event"
             )
         )
@@ -846,7 +846,7 @@ extension AppModelTests {
                     timestamp: baseTimestamp.addingTimeInterval(1),
                     subsystem: .ui,
                     level: .warning,
-                    event: "diagnostic.live",
+                    event: .diagnosticLive,
                     message: "Live event"
                 )
             )
@@ -864,7 +864,7 @@ extension AppModelTests {
             timestamp: Date(timeIntervalSince1970: 1_000),
             subsystem: .ui,
             level: .info,
-            event: "diagnostic.recovered",
+            untrustedEvent: "diagnostic.recovered",
             message: "Recovered diagnostic"
         )
         let diagnosticRepository = FailThenSucceedDiagnosticRepository(

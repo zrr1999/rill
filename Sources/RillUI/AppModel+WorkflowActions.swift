@@ -429,7 +429,7 @@ extension AppModel {
       return
     }
     if workflow.prefersAutomaticRecognizerSelection,
-      hasUnavailableScalarSettings(in: .speechRoute)
+      settings.hasUnavailableScalarSettings(in: .speechRoute)
     {
       lastFailure = L10n.runText(.speechRoutingSettingsUnavailable, language: self.settings.language)
       append(
@@ -469,7 +469,7 @@ extension AppModel {
     guard isWorkflowEnabled(workflow) else { return false }
     guard
       !workflow.prefersAutomaticRecognizerSelection
-        || !hasUnavailableScalarSettings(in: .speechRoute)
+        || !settings.hasUnavailableScalarSettings(in: .speechRoute)
     else {
       return false
     }
@@ -526,7 +526,7 @@ extension AppModel {
       $0.kind == .llmRewrite || $0.kind == .llmAnswer
     }) {
       guard self.settings.openAICredentialAvailability == .available,
-        !hasUnavailableScalarSettings(in: .openAI)
+        !settings.hasUnavailableScalarSettings(in: .openAI)
       else {
         return .openAIUnavailable(self.settings.openAICredentialAvailability)
       }

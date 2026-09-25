@@ -107,78 +107,78 @@ enum DiagnosticEventPresentation {
     for event: DiagnosticEvent,
     language: AppLanguage
   ) -> String? {
-    switch event.event {
-    case "global-input.installed":
+    switch event.name {
+    case .globalInputInstalled:
       return localized("Global input is ready", "全局输入已就绪", language: language)
-    case "global-input.unavailable":
+    case .globalInputUnavailable:
       return localized("Global input is unavailable", "全局输入不可用", language: language)
-    case "history.maintenance.completed":
+    case .historyMaintenanceCompleted:
       return localized("History cleanup completed", "历史清理已完成", language: language)
-    case "clipboard.capture.paused":
+    case .clipboardCapturePaused:
       return localized("Clipboard capture is paused", "剪贴板捕获已暂停", language: language)
-    case "clipboard.capture.resumed":
+    case .clipboardCaptureResumed:
       return localized("Clipboard capture is active", "剪贴板捕获已开启", language: language)
-    case "temporary-files.cleanup.completed":
+    case .temporaryFilesCleanupCompleted:
       return localized("Temporary recordings cleaned up", "临时录音已清理", language: language)
-    case "security.webhook-configuration.protected":
+    case .securityWebhookConfigurationProtected:
       return localized(
         "Webhook credentials are protected",
         "Webhook 凭据已受保护",
         language: language
       )
-    case "provider.local-speech.available", "provider.sherpa-onnx.available":
+    case .providerLocalSpeechAvailable, .providerSherpaOnnxAvailable:
       return localized(
         "On-device speech support is available",
         "本机语音能力已可用",
         language: language
       )
-    case "workflow-manifest.loaded":
+    case .workflowManifestLoaded:
       return localized("Workflow catalog loaded", "工作流目录已载入", language: language)
-    case "persistence.sqlite.ready":
+    case .persistenceSqliteReady:
       return localized("Local storage is ready", "本地存储已就绪", language: language)
-    case "workflow.audio-recording.started":
+    case .workflowAudioRecordingStarted:
       return localized("Recording started", "已开始录音", language: language)
-    case "workflow.audio-recording.queued":
+    case .workflowAudioRecordingQueued:
       return localized(
         "Recording queued for on-device transcription",
         "录音已进入本机转写队列",
         language: language
       )
-    case "workflow.audio-recording.terminal-signal":
+    case .workflowAudioRecordingTerminalSignal:
       return localized("Recording finished", "录音已结束", language: language)
-    case "recording.started":
+    case .recordingStarted:
       return localized("Recording started", "已开始录音", language: language)
-    case "recording.hotkey.pressed":
+    case .recordingHotkeyPressed:
       return localized("Push-to-talk pressed", "已按下按住说话键", language: language)
-    case "recording.hotkey.released":
+    case .recordingHotkeyReleased:
       return localized("Push-to-talk released", "已松开按住说话键", language: language)
-    case "recording.finishing":
+    case .recordingFinishing:
       return localized("Finishing recording", "正在结束录音", language: language)
-    case "recording.queued":
+    case .recordingQueued:
       return localized(
         "Recording queued for transcription",
         "录音已进入转写队列",
         language: language
       )
-    case "audio-processing.enqueued":
+    case .audioProcessingEnqueued:
       return localized("Audio queued for processing", "音频已进入处理队列", language: language)
-    case "audio-processing.started":
+    case .audioProcessingStarted:
       return localized("Audio processing started", "已开始处理音频", language: language)
-    case "audio-processing.temporary-file-removed":
+    case .audioProcessingTemporaryFileRemoved:
       return localized("Temporary recording removed", "临时录音已清理", language: language)
-    case "session.transform.step":
+    case .sessionTransformStep:
       return localized("Text cleanup applied", "已完成文本整理", language: language)
-    case "session.action":
+    case .sessionAction:
       return localized("Output action completed", "输出动作已完成", language: language)
-    case "clipboard.inject.text.prepare":
+    case .clipboardInjectTextPrepare:
       return localized("Preparing text insertion", "正在准备输入文本", language: language)
-    case "clipboard.inject.paste.begin":
+    case .clipboardInjectPasteBegin:
       return localized("Text insertion started", "已开始输入文本", language: language)
-    case "clipboard.inject.paste.end":
+    case .clipboardInjectPasteEnd:
       return localized("Text insertion finished", "文本输入已完成", language: language)
-    case "clipboard.inject.restore":
+    case .clipboardInjectRestore:
       return localized("Clipboard restored", "剪贴板已恢复", language: language)
-    case "session.stage":
+    case .sessionStage:
       return sessionStageTitle(
         event.metadata["stage"],
         language: language

@@ -165,7 +165,7 @@ final class DiagnosticsRecorderPrivacyTests: XCTestCase {
                 runID: UUID(),
                 subsystem: .providers,
                 level: .error,
-                event: "provider.request.failed",
+                event: .providerRequestFailed,
                 message: "recognized-text-recorder-canary",
                 metadata: [
                     "Authorization": "Bearer authorization-recorder-canary",
@@ -203,7 +203,7 @@ final class DiagnosticsRecorderPrivacyTests: XCTestCase {
             DiagnosticEvent(
                 subsystem: .session,
                 level: .info,
-                event: "session.stage",
+                event: .sessionStage,
                 message: "safe producer message",
                 metadata: ["stage": "completed"]
             )
@@ -242,7 +242,7 @@ final class DiagnosticsRecorderPrivacyTests: XCTestCase {
                 timestamp: Date(timeIntervalSince1970: 10_000),
                 subsystem: .session,
                 level: .info,
-                event: "session.old-intent",
+                untrustedEvent: "session.old-intent",
                 message: "obsolete",
                 metadata: ["stage": "completed"]
             ),
@@ -253,7 +253,7 @@ final class DiagnosticsRecorderPrivacyTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 19),
             subsystem: .session,
             level: .info,
-            event: "session.new-intent",
+            untrustedEvent: "session.new-intent",
             message: "new",
             metadata: ["stage": "completed"]
         )
@@ -277,7 +277,7 @@ final class DiagnosticsRecorderPrivacyTests: XCTestCase {
                 timestamp: Date(timeIntervalSince1970: 100),
                 subsystem: .session,
                 level: .info,
-                event: "session.old",
+                untrustedEvent: "session.old",
                 message: "old"
             )
         )
@@ -294,7 +294,7 @@ final class DiagnosticsRecorderPrivacyTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 1),
             subsystem: .session,
             level: .info,
-            event: "session.new",
+            untrustedEvent: "session.new",
             message: "new"
         )
 

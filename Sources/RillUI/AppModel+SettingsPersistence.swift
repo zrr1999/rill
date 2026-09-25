@@ -332,14 +332,6 @@ extension AppModel {
   private static let openAIConfigurationSettingKeys = AppSettingsCodec
     .openAIConfigurationSettingKeys
 
-  public func hasUnavailableScalarSettings(in domain: ScalarSettingsDomain) -> Bool {
-    !self.settings.unavailableScalarSettingKeys.isDisjoint(with: domain.settingKeys)
-  }
-
-  public func isRetryingUnavailableScalarSettings(in domain: ScalarSettingsDomain) -> Bool {
-    self.settings.retryingUnavailableScalarSettingsDomains.contains(domain)
-  }
-
   func loadSettings() {
     guard settingsStore != nil || credentialStore != nil else {
       self.settings.isLoading = false
@@ -476,7 +468,7 @@ extension AppModel {
     applyStoredPrivacySettings(settings)
     applyStoredHistoryRetentionSettings(settings)
     applyStoredFailedAudioRecoverySetting(settings)
-    applyStoredBenchmarkRecordingArchiveSetting(settings)
+    benchmarkArchive.applyStored(settings.benchmarkRecordingArchiveEnabled, available: settings.persistentSettingsStoreWasAvailable)
     rebuildWorkflowLibrary()
     self.settings.isRestoringSettings = false
     synchronizeLocalSpeechSettingsSource()
@@ -583,25 +575,6 @@ extension AppModel {
           .failedRecoverySettingInvalid,
           language: .simplifiedChinese
         )
-      )
-    }
-  }
-
-  func applyStoredBenchmarkRecordingArchiveSetting(_ settings: StoredAppSettingsSnapshot) {
-    guard settings.persistentSettingsStoreWasAvailable else {
-      benchmarkRecordingArchiveEnabled = false
-      return
-    }
-    switch settings.benchmarkRecordingArchiveEnabled {
-    case "true":
-      benchmarkRecordingArchiveEnabled = true
-    case nil, "", "false":
-      benchmarkRecordingArchiveEnabled = false
-    default:
-      benchmarkRecordingArchiveEnabled = false
-      append(
-        english: L10n.runText(.benchmarkSettingInvalid, language: .english),
-        simplifiedChinese: L10n.runText(.benchmarkSettingInvalid, language: .simplifiedChinese)
       )
     }
   }
@@ -1001,8 +974,8 @@ extension AppModel {
       return
     }
     guard !hasBegunApplicationShutdown,
-      hasUnavailableScalarSettings(in: domain),
-      !isRetryingUnavailableScalarSettings(in: domain),
+      settings.hasUnavailableScalarSettings(in: domain),
+      !settings.isRetryingUnavailableScalarSettings(in: domain),
       let settingsStore
     else {
       return
@@ -1831,9 +1804,6 @@ extension AppModel {
     self.workflowLibrary.workflowFileMonitorTask = nil
     self.settings.settingsLoadGeneration &+= 1
     self.settings.openAICredentialLoadGeneration &+= 1
-    self.settings.openAIVerificationGeneration &+= 1
-    self.settings.openAIVerificationTask?.cancel()
-    self.settings.openAIVerificationTask = nil
     for domain in ScalarSettingsDomain.allCases {
       self.settings.scalarSettingsRetryGenerations[domain, default: 0] &+= 1
     }
@@ -1848,6 +1818,9 @@ extension AppModel {
       self.settings.openAICredentialAvailability = .inaccessible
     }
     await self.settings.settingsReadTaskOwner.cancelAllAndDrain()
+    await settings.waitForOpenAIVerificationTasks()
+    await workflowLibrary.waitForWorkflowExplanationTasks()
+    await benchmarkArchive.waitForOperation()
   }
 
   public func drainPendingSettingsWritesForApplicationShutdown(
@@ -1896,7 +1869,7 @@ extension AppModel {
   func publishCurrentLocalSpeechSettingsToRuntime() {
     guard !self.settings.isLoading,
       !self.settings.isRestoringSettings,
-      !hasUnavailableScalarSettings(in: .localSpeech)
+      !settings.hasUnavailableScalarSettings(in: .localSpeech)
     else {
       return
     }
@@ -1904,7 +1877,7 @@ extension AppModel {
   }
 
   func synchronizeLocalSpeechSettingsSource() {
-    guard !hasUnavailableScalarSettings(in: .localSpeech) else {
+    guard !settings.hasUnavailableScalarSettings(in: .localSpeech) else {
       localSpeechSettingsSource.markUnavailable()
       return
     }

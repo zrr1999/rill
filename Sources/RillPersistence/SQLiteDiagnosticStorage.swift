@@ -230,7 +230,7 @@ extension SQLitePersistenceStore {
       runID: textColumn(in: statement, index: 1).flatMap(UUID.init(uuidString:)),
       subsystem: subsystem,
       level: level,
-      event: event,
+      untrustedEvent: event,
       message: message,
       metadata: metadata
     )

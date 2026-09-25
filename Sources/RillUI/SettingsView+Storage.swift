@@ -96,13 +96,13 @@ extension SettingsView {
       Toggle(
         L10n.string(.settingsBenchmarkRecordingArchive, language: model.settings.language),
         isOn: Binding(
-          get: { model.benchmarkRecordingArchiveEnabled },
-          set: { model.setBenchmarkRecordingArchiveEnabled($0) }
+          get: { model.benchmarkArchive.isEnabled },
+          set: { model.benchmarkArchive.setEnabled($0) }
         )
       )
       .disabled(
         model.settings.isLoading
-          || model.isUpdatingBenchmarkRecordingArchive
+          || model.benchmarkArchive.isUpdating
       )
 
       Text(
@@ -123,9 +123,14 @@ extension SettingsView {
       ) {
         destructiveConfirmation = .benchmarkRecordingArchive
       }
-      .disabled(model.isUpdatingBenchmarkRecordingArchive)
+      .disabled(model.benchmarkArchive.isUpdating)
 
-      if let error = model.benchmarkRecordingArchiveError {
+      Button(L10n.benchmarkArchive(.title, language: model.settings.language)) {
+        presentedSheet = .benchmarkArchive
+      }
+      .disabled(model.benchmarkArchive.isUpdating)
+
+      if let error = model.benchmarkArchive.error {
         Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
           .font(.caption)
           .foregroundStyle(.red)

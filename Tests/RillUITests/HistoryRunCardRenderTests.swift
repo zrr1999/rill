@@ -136,14 +136,14 @@ final class HistoryRunCardRenderTests: XCTestCase {
         ]
         let debugEvent = DiagnosticEvent(
             runID: successID, subsystem: .session, level: .debug,
-            event: "audio-processing.temporary-file-removed", message: "Diagnostic event recorded.",
+            event: .audioProcessingTemporaryFileRemoved, message: "Diagnostic event recorded.",
             metadata: ["lane": "interactive"]
         )
         model.history.diagnosticEvents = [
             debugEvent,
             DiagnosticEvent(
                 runID: failureID, subsystem: .session, level: .error,
-                event: "session.failure", message: "Diagnostic event recorded.",
+                event: .sessionFailure, message: "Diagnostic event recorded.",
                 metadata: ["stage": "transforming", "failureCode": "processing"]
             )
         ]

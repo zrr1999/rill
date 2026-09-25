@@ -62,7 +62,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
 
             XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
             XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
-            XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
+            XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
             XCTAssertFalse(harness.model.setSystemClipboardCaptureEnabled(true))
             let activity = await store.activitySnapshot()
             XCTAssertNil(activity.setCounts[.systemClipboardCaptureEnabled])
@@ -79,7 +79,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
 
         XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
-        XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
+        XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
         XCTAssertFalse(harness.model.setSystemClipboardCaptureEnabled(true))
     }
 
@@ -91,7 +91,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
 
         XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
-        XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
+        XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
         var replayedEnabled: Bool?
         var replayedRevision: UInt64?
         harness.model.installSystemClipboardCaptureControlActions(
@@ -187,11 +187,11 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
         await store.setUnavailableKeys([])
         harness.model.retryUnavailableScalarSettings(in: .systemClipboard)
         await waitUntil {
-            !harness.model.isRetryingUnavailableScalarSettings(in: .systemClipboard)
+            !harness.model.settings.isRetryingUnavailableScalarSettings(in: .systemClipboard)
         }
 
         XCTAssertTrue(harness.model.settings.systemClipboardCaptureEnabled)
-        XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
+        XCTAssertFalse(harness.model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
         XCTAssertEqual(publishedEnabled, [false, true])
         XCTAssertEqual(publishedRevisions, [failedClosedRevision, failedClosedRevision + 1])
         let activity = await store.activitySnapshot()

@@ -51,7 +51,7 @@ public struct LiveRecognitionContextResolver: Sendable {
       plan.recognitionHints = RecognitionHints(keyterms: sanitize(selected.terms))
       preparation = selected.preparation
       await report(DiagnosticEvent(runID: runID, subsystem: .session, level: .debug,
-        event: "hotword-ranking.selected", message: "Recognition hotwords frozen.",
+        event: .hotwordRankingSelected, message: "Recognition hotwords frozen.",
         metadata: ["hotwordCache": selected.status.rawValue, "hotwordCandidateCount": String(candidates.count),
           "hotwordCount": String(plan.recognitionHints.keyterms.count)]))
     }

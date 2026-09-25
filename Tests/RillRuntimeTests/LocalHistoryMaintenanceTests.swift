@@ -405,14 +405,14 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
             timestamp: oldTimestamp,
             subsystem: .session,
             level: .info,
-            event: "history.maintenance.old",
+            untrustedEvent: "history.maintenance.old",
             message: "old"
         )
         let newDiagnostic = DiagnosticEvent(
             timestamp: newTimestamp,
             subsystem: .session,
             level: .info,
-            event: "history.maintenance.new",
+            untrustedEvent: "history.maintenance.new",
             message: "new"
         )
         let diagnostics = InMemoryDiagnosticRepository(

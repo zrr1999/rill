@@ -276,7 +276,7 @@ extension AppModel {
         llm = .credentialInaccessible
       case .available:
         guard
-          !hasUnavailableScalarSettings(in: .openAI),
+          !settings.hasUnavailableScalarSettings(in: .openAI),
           OpenAISettings.isValidBaseURL(self.settings.openAIBaseURL),
           OpenAISettings.isValidModelIdentifier(self.settings.openAIModel)
         else {

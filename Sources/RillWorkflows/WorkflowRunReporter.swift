@@ -18,7 +18,7 @@ struct WorkflowRunReporter: Sendable {
         runID: runID,
         subsystem: .session,
         level: .debug,
-        event: "session.stage",
+        event: .sessionStage,
         message: "Workflow entered the \(stage.rawValue) stage.",
         metadata: [
           "stage": stage.rawValue,
@@ -40,7 +40,7 @@ struct WorkflowRunReporter: Sendable {
         runID: runID,
         subsystem: .session,
         level: .debug,
-        event: "session.transform.step",
+        event: .sessionTransformStep,
         message: "Applied post-process step \(step.kind.rawValue).",
         metadata: [
           "workflow": workflow.fallbackName,
@@ -65,7 +65,7 @@ struct WorkflowRunReporter: Sendable {
         runID: runID,
         subsystem: .session,
         level: .debug,
-        event: "session.action",
+        event: .sessionAction,
         message: "Executed output action \(actionID).",
         metadata: [
           "workflow": workflow.fallbackName,

@@ -109,8 +109,8 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         await waitForListenerSetup(harness)
         harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
 
-        harness.model.explainWorkflowBeforeRun(workflow)
-        await harness.model.waitForWorkflowExplanationTasks()
+        harness.model.workflowLibrary.explainWorkflowBeforeRun(workflow)
+        await harness.model.workflowLibrary.waitForWorkflowExplanationTasks()
 
         let calls = await probe.snapshot()
         let captured = try XCTUnwrap(calls.first)
@@ -134,23 +134,47 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         )
         await waitForListenerSetup(harness)
 
-        harness.model.explainWorkflowBeforeRun(first)
+        harness.model.workflowLibrary.explainWorkflowBeforeRun(first)
         await gate.waitUntilRequested(first.id)
         guard case .loading(let loadingID) = harness.model.workflowLibrary.workflowExplanationState else {
             return XCTFail("Expected loading state")
         }
         XCTAssertEqual(loadingID, first.id)
-        harness.model.explainWorkflowBeforeRun(second)
+        harness.model.workflowLibrary.explainWorkflowBeforeRun(second)
         await gate.waitUntilCancelled(first.id)
         await gate.waitUntilRequested(second.id)
         await gate.resolve(second.id)
         await gate.resolve(first.id)
-        await harness.model.waitForWorkflowExplanationTasks()
+        await harness.model.workflowLibrary.waitForWorkflowExplanationTasks()
 
         guard case .loaded(let receipt) = harness.model.workflowLibrary.workflowExplanationState else {
             return XCTFail("Expected the second workflow explanation")
         }
         XCTAssertEqual(receipt.workflowID, second.id)
+    }
+
+    func testShutdownCancelsAndDrainsExplanationWithoutPublishingLateResult() async {
+        let workflow = makeExplanationWorkflow(name: "Shutdown")
+        let gate = WorkflowExplanationProviderGate()
+        let harness = makeHarness(workflows: [workflow],
+            explainResolvedWorkflowAction: { try await gate.explain($0) })
+        await waitForListenerSetup(harness)
+        harness.model.workflowLibrary.explainWorkflowBeforeRun(workflow)
+        await gate.waitUntilRequested(workflow.id)
+        var drained = false
+        let shutdown = Task { @MainActor in
+            await harness.model.stopSettingsReadTasksForApplicationShutdown()
+            drained = true
+        }
+        await gate.waitUntilCancelled(workflow.id)
+        XCTAssertFalse(drained)
+        XCTAssertEqual(harness.model.workflowLibrary.workflowExplanationState, .idle)
+        await gate.resolve(workflow.id)
+        await shutdown.value
+        XCTAssertTrue(drained)
+        XCTAssertEqual(harness.model.workflowLibrary.workflowExplanationState, .idle)
+        harness.model.workflowLibrary.explainWorkflowBeforeRun(workflow)
+        XCTAssertEqual(harness.model.workflowLibrary.workflowExplanationState, .idle)
     }
 
     func testRoutingSettingChangeCancelsPendingPreview() async {
@@ -163,11 +187,11 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         await waitForListenerSetup(harness)
         harness.model.applyBuiltinPushToTalkOutputMode(.pasteIntoApp)
 
-        harness.model.explainWorkflowBeforeRun(workflow)
+        harness.model.workflowLibrary.explainWorkflowBeforeRun(workflow)
         await gate.waitUntilRequested(workflow.id)
         harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
         await gate.waitUntilCancelled(workflow.id)
-        await harness.model.waitForWorkflowExplanationTasks()
+        await harness.model.workflowLibrary.waitForWorkflowExplanationTasks()
 
         XCTAssertEqual(harness.model.workflowLibrary.workflowExplanationState, .idle)
     }
@@ -185,7 +209,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         )
         await waitForListenerSetup(harness)
 
-        harness.model.explainWorkflowBeforeRun(legacy)
+        harness.model.workflowLibrary.explainWorkflowBeforeRun(legacy)
 
         let calls = await probe.snapshot()
         XCTAssertTrue(calls.isEmpty)
@@ -212,8 +236,8 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         )
         await waitForListenerSetup(harness)
 
-        harness.model.explainWorkflowBeforeRun(workflow)
-        await harness.model.waitForWorkflowExplanationTasks()
+        harness.model.workflowLibrary.explainWorkflowBeforeRun(workflow)
+        await harness.model.workflowLibrary.waitForWorkflowExplanationTasks()
         guard case .failed(let failedID, let reason) = harness.model.workflowLibrary.workflowExplanationState else {
             return XCTFail("Expected a typed provider failure")
         }
@@ -225,7 +249,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         )
 
         let removed = makeExplanationWorkflow(name: "Removed")
-        harness.model.explainWorkflowBeforeRun(removed)
+        harness.model.workflowLibrary.explainWorkflowBeforeRun(removed)
         XCTAssertEqual(
             harness.model.workflowLibrary.workflowExplanationState,
             .failed(workflowID: removed.id, reason: .workflowUnavailable)
@@ -241,11 +265,11 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         )
         await waitForListenerSetup(harness)
 
-        harness.model.explainWorkflowBeforeRun(workflow)
+        harness.model.workflowLibrary.explainWorkflowBeforeRun(workflow)
         await gate.waitUntilRequested(workflow.id)
-        harness.model.cancelWorkflowExplanation()
+        harness.model.workflowLibrary.cancelWorkflowExplanation()
         await gate.waitUntilCancelled(workflow.id)
-        await harness.model.waitForWorkflowExplanationTasks()
+        await harness.model.workflowLibrary.waitForWorkflowExplanationTasks()
 
         XCTAssertEqual(harness.model.workflowLibrary.workflowExplanationState, .idle)
     }

@@ -28,9 +28,42 @@ private actor SettingsWriteGate {
 
 @MainActor
 final class SettingsPersistenceModelTests: XCTestCase {
+  func testShutdownOwnsCancelledVerificationUntilProviderReturns() async {
+    let gate = SettingsWriteGate()
+    let cancelled = SettingsWriteGate()
+    var changes = 0
+    let model = SettingsPersistenceModel(store: nil, language: .english,
+      verifyOpenAIConfiguration: { _ in
+        await withTaskCancellationHandler {
+          await gate.suspend()
+        } onCancel: {
+          Task { await cancelled.suspend() }
+        }
+      }, configurationChanged: { changes += 1 })
+    model.isLoading = false
+    model.openAICredentialAvailability = .available
+    model.verifyOpenAIConfiguration()
+    await gate.waitUntilEntered()
+    model.beginShutdown()
+    var drained = false
+    let shutdown = Task { @MainActor in
+      await model.waitForOpenAIVerificationTasks()
+      drained = true
+    }
+    await cancelled.waitUntilEntered()
+    XCTAssertFalse(drained)
+    await cancelled.resume()
+    await gate.resume()
+    await shutdown.value
+    XCTAssertTrue(drained)
+    XCTAssertEqual(model.openAIConfigurationVerificationState, .idle)
+    XCTAssertEqual(changes, 0)
+    XCTAssertFalse(model.canVerifyOpenAIConfiguration)
+  }
+
   func testFailedTransactionRetriesWithoutOverwritingNewerUserEdit() async throws {
     let store = UITestSettingsStore()
-    let model = SettingsPersistenceModel(store: store, language: .english)
+    let model = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
     await store.rejectNextAtomicWrite()
     model.submitAtomically([
       .workflowLibrary: .init(category: .workflows) { "migrated-workflows" },
@@ -55,7 +88,7 @@ final class SettingsPersistenceModelTests: XCTestCase {
 
   func testFailedTransactionRetriesAllKeysInOneWrite() async throws {
     let store = UITestSettingsStore()
-    let model = SettingsPersistenceModel(store: store, language: .english)
+    let model = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
     await store.rejectNextAtomicWrite()
     model.submitAtomically([
       .workflowLibrary: .init(category: .workflows) { "workflows" },
@@ -73,7 +106,7 @@ final class SettingsPersistenceModelTests: XCTestCase {
 
   func testRetryCannotReplaceNewerInFlightWriteWithOldFailedSnapshot() async throws {
     let store = UITestSettingsStore()
-    let model = SettingsPersistenceModel(store: store, language: .english)
+    let model = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
     let gate = SettingsWriteGate()
     model.submit(
       key: .interfaceLanguage, category: .interface, debounce: .zero,

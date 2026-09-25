@@ -251,7 +251,7 @@ public actor FailedAudioRecoveryController {
                     generation: generation
                 )
                 await recordDiagnostic(
-                    event: "audio-recovery.index-refresh-failed",
+                    event: .audioRecoveryIndexRefreshFailed,
                     runID: originalRunID,
                     level: .warning,
                     metadata: ["outcome": "preserved"]
@@ -394,8 +394,8 @@ public actor FailedAudioRecoveryController {
             }
             await recordDiagnostic(
                 event: cleanupPending
-                    ? "audio-recovery.retry-completed-cleanup-pending"
-                    : "audio-recovery.retry-completed",
+                    ? .audioRecoveryRetryCompletedCleanupPending
+                    : .audioRecoveryRetryCompleted,
                 runID: retryRunID,
                 level: cleanupPending ? .warning : .info,
                 metadata: ["outcome": cleanupPending ? "cleanup-pending" : "completed"]
@@ -431,8 +431,8 @@ public actor FailedAudioRecoveryController {
             )
             await recordDiagnostic(
                 event: stateCleanupPending
-                    ? "audio-recovery.retry-failed-cleanup-pending"
-                    : "audio-recovery.retry-failed",
+                    ? .audioRecoveryRetryFailedCleanupPending
+                    : .audioRecoveryRetryFailed,
                 runID: retryRunID,
                 level: .warning,
                 metadata: [
@@ -465,8 +465,8 @@ public actor FailedAudioRecoveryController {
             }
             await recordDiagnostic(
                 event: cleanupPending
-                    ? "audio-recovery.plaintext-cleanup-failed"
-                    : "audio-recovery.plaintext-cleanup-recovered",
+                    ? .audioRecoveryPlaintextCleanupFailed
+                    : .audioRecoveryPlaintextCleanupRecovered,
                 runID: runID,
                 level: cleanupPending ? .error : .info,
                 metadata: [
@@ -684,7 +684,7 @@ public actor FailedAudioRecoveryController {
             scheduleExpirationMaintenanceRetry(generation: generation)
             guard canPublish(generation: generation) else { return }
             await recordDiagnostic(
-                event: "audio-recovery.expiration-failed",
+                event: .audioRecoveryExpirationFailed,
                 runID: UUID(),
                 level: .warning,
                 metadata: ["outcome": "cleanup-pending"]
@@ -768,14 +768,14 @@ public actor FailedAudioRecoveryController {
         if cleanupSucceeded {
             clearPlaintextCleanupPending()
             await recordDiagnostic(
-                event: "audio-recovery.plaintext-cleanup-completed",
+                event: .audioRecoveryPlaintextCleanupCompleted,
                 runID: UUID(),
                 metadata: ["outcome": "completed"]
             )
         } else {
             schedulePlaintextCleanupRetry()
             await recordDiagnostic(
-                event: "audio-recovery.plaintext-cleanup-retry-failed",
+                event: .audioRecoveryPlaintextCleanupRetryFailed,
                 runID: UUID(),
                 level: .warning,
                 metadata: ["outcome": "cleanup-pending"]
@@ -799,7 +799,7 @@ public actor FailedAudioRecoveryController {
             plaintextCleanupPending = true
             if !didObserveFailure {
                 await recordDiagnostic(
-                    event: "audio-recovery.plaintext-shutdown-cleanup-pending",
+                    event: .audioRecoveryPlaintextShutdownCleanupPending,
                     runID: UUID(),
                     level: .error,
                     metadata: ["outcome": "cleanup-pending"]
@@ -820,7 +820,7 @@ public actor FailedAudioRecoveryController {
         clearPlaintextCleanupPending()
         if didObserveFailure {
             await recordDiagnostic(
-                event: "audio-recovery.plaintext-shutdown-cleanup-completed",
+                event: .audioRecoveryPlaintextShutdownCleanupCompleted,
                 runID: UUID(),
                 metadata: ["outcome": "completed"]
             )
@@ -915,7 +915,7 @@ public actor FailedAudioRecoveryController {
     }
 
     private func recordDiagnostic(
-        event: String,
+        event: DiagnosticEventName,
         runID: UUID,
         level: DiagnosticLevel = .info,
         metadata: [String: String]

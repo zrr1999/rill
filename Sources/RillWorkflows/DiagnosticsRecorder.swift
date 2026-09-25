@@ -57,7 +57,7 @@ public actor DiagnosticsRecorder: DiagnosticHistoryMaintaining {
                         runID: sanitizedEvent.runID,
                         subsystem: .session,
                         level: .error,
-                        event: "diagnostics.repository.save.failed",
+                        event: .diagnosticsRepositorySaveFailed,
                         message: "The diagnostic repository rejected an event.",
                         metadata: ["event": sanitizedEvent.event]
                     )

@@ -89,7 +89,7 @@ final class ManagedTemporaryAudioCleanupOwnerTests: XCTestCase {
         )
         XCTAssertTrue(snapshot.diagnostics.allSatisfy { $0.runID == runID })
         let diagnosticText = snapshot.diagnostics
-            .flatMap { [$0.event, $0.message] }
+            .flatMap { [$0.event.rawValue, $0.message] }
             .joined(separator: " ")
         XCTAssertFalse(diagnosticText.contains(fileURL.path))
         XCTAssertFalse(diagnosticText.contains("private-audio-canary"))

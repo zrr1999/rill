@@ -71,10 +71,33 @@ public final class RunHistoryModel {
   var runHistoryCurrentPageLocator: RunHistoryPageLocator?
   var runHistoryNewerPageLocators: [RunHistoryPageLocator] = []
   var historyNavigationRequest: HistoryNavigationRequest?
-  init(browser: (any RunHistoryBrowsing)?, workflows: WorkflowLibraryModel) {
+  private let maintenanceSleep: @Sendable (Duration) async throws -> Void
+
+  init(browser: (any RunHistoryBrowsing)?, workflows: WorkflowLibraryModel,
+    maintenanceSleep: @escaping @Sendable (Duration) async throws -> Void) {
+    self.maintenanceSleep = maintenanceSleep
     runHistoryBrowser = browser
     library = workflows
   }
+  func startPeriodicMaintenance(interval: Duration, perform: @escaping @MainActor () -> Void) {
+    guard !hasBegunApplicationShutdown, periodicHistoryRetentionMaintenanceTask == nil,
+      interval > .zero else { return }
+    periodicHistoryRetentionMaintenanceTask = Task { [weak self, maintenanceSleep] in
+      while !Task.isCancelled {
+        do { try await maintenanceSleep(interval) } catch { return }
+        guard !Task.isCancelled, self?.hasBegunApplicationShutdown == false else { return }
+        perform()
+      }
+    }
+  }
+
+  func stopPeriodicMaintenance() async {
+    let task = periodicHistoryRetentionMaintenanceTask
+    periodicHistoryRetentionMaintenanceTask = nil
+    task?.cancel()
+    await task?.value
+  }
+
   var recentVoiceHistoryRecords: [WorkflowResultRecord] {
     historyRecords.filter(isVoiceHistoryRecord)
   }

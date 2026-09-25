@@ -521,7 +521,7 @@ final class WorkflowRunReceiptRecorderTests: XCTestCase {
                 DiagnosticEvent(
                     subsystem: .session,
                     level: .debug,
-                    event: "diagnostic.boundary",
+                    event: .diagnosticBoundary,
                     message: "Receipt retry boundary."
                 )
             )

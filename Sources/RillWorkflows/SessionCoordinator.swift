@@ -1266,7 +1266,7 @@ private extension SessionCoordinator {
                     runID: runID,
                     subsystem: .session,
                     level: .error,
-                    event: "session.failure",
+                    event: .sessionFailure,
                     message: message,
                     metadata: failure.map {
                         ["stage": $0.stage.rawValue, "failureCode": $0.code.rawValue]
@@ -1284,7 +1284,7 @@ private extension SessionCoordinator {
                     runID: summary.runID,
                     subsystem: .session,
                     level: .info,
-                    event: "session.cancelled",
+                    event: .sessionCancelled,
                     message: "Workflow run was cancelled.",
                     metadata: [
                         "outcome": summary.wasPartiallyCompleted ? "partial" : "cancelled",
@@ -1481,15 +1481,15 @@ private extension SessionCoordinator {
         session: RunSession
     ) async {
         guard let diagnostics else { return }
-        let event: String
+        let event: DiagnosticEventName
         let message: String
         let metadata = ["recognizerID": recognizerID]
         switch error {
         case .timedOut:
-            event = "session.recognition.timeout"
+            event = .sessionRecognitionTimeout
             message = "Speech recognition exceeded its runtime deadline."
         case .previousOperationStillFinishing:
-            event = "session.recognition.recovery-pending"
+            event = .sessionRecognitionRecoveryPending
             message = "The recognizer is still retiring a previous operation."
         }
         await diagnostics.record(
@@ -1570,7 +1570,7 @@ private extension SessionCoordinator {
                 runID: session.runID,
                 subsystem: .providers,
                 level: .info,
-                event: "session.recognition-hints.unsupported",
+                event: .sessionRecognitionHintsUnsupported,
                 message: "The selected recognizer does not support the resolved recognition hints.",
                 metadata: [
                     "count": String(count),
@@ -1592,7 +1592,7 @@ private extension SessionCoordinator {
                 runID: runID,
                 subsystem: .session,
                 level: .debug,
-                event: "session.workflow-plan.compiled",
+                event: .sessionWorkflowPlanCompiled,
                 message: "Compiled the workflow plan for this run.",
                 metadata: [
                     "workflow": workflow.fallbackName,

@@ -24,7 +24,8 @@ METRICS = ("first_preview_ms", "stable_preview_ms", "release_to_final_ms",
            "release_to_saved_ms", "release_to_paste_posted_ms", "worker_request_ms",
            "worker_inference_ms", "peak_memory_bytes", "model_prepare_ms",
            "stream_prepare_ms", "preview_retire_ms", "worker_first_hypothesis_ms",
-           "worker_first_confirmed_ms")
+           "worker_first_confirmed_ms", "host_replay_to_final_ms",
+           "host_replay_to_saved_ms", "host_replay_to_isolated_dispatch_ms")
 CACHE_STATES = {"cold_process", "cold_model", "first_inference", "warm", "idle_recovery"}
 
 
@@ -66,7 +67,7 @@ def percentiles(values):
             "p95": values[math.ceil(.95 * len(values)) - 1] if values else None}
 
 
-def read_corpus(path):
+def read_corpus(path, *, require_references=True):
     document = json.loads(path.read_text())
     if document.get("schema_version") != 1:
         raise ValueError("Unsupported corpus schema.")
@@ -75,8 +76,10 @@ def read_corpus(path):
         identifier = case["id"]
         if identifier in cases or case["split"] not in {"development", "validation"}:
             raise ValueError("Duplicate case or invalid split.")
-        if not isinstance(case["references"].get("raw"), str) or not case["tags"]:
-            raise ValueError("Every case needs a raw reference and scenario tags.")
+        if not isinstance(case.get("references"), dict) or not case.get("tags"):
+            raise ValueError("Every case needs a references object and scenario tags.")
+        if require_references and not isinstance(case["references"].get("raw"), str):
+            raise ValueError("Quality comparison requires a human raw reference for every case; missing is not silence.")
         if any(not isinstance(value, str) for value in case["references"].values()):
             raise ValueError("References must be text.")
         cases[identifier] = case
@@ -87,6 +90,11 @@ def read_run(path, cases):
     lines = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
     if not lines or lines[0].get("schema_version") != 1:
         raise ValueError("Missing run header.")
+    if (lines[0].get("measurement_scope") == "host_replay_isolated_output"
+            and lines[0].get("evidence_validation") != "passed"):
+        raise ValueError("Host replay identity was not validated; this report cannot be compared.")
+    if lines[0].get("analysis_role") == "warmup":
+        raise ValueError("Warmup observations are retained separately and cannot be scored.")
     identity_keys = ("run_id", "source_revision", "source_digest", "model_id", "model_revision",
                 "configuration_digest", "device", "os_version", "evidence_kind")
     header = {key: lines[0].get(key) for key in identity_keys}
@@ -112,6 +120,8 @@ def read_run(path, cases):
         digest = row["audio_sha256"]
         if not re.fullmatch(r"[a-f0-9]{64}", digest):
             raise ValueError("Invalid audio identity.")
+        if digest != cases[identifier].get("audio_sha256"):
+            raise ValueError("Result audio does not match the current corpus.")
         if identifier in audio_ids and audio_ids[identifier] != digest:
             raise ValueError("A case changed audio between repetitions.")
         audio_ids[identifier] = digest
@@ -187,6 +197,8 @@ def compare(cases, baseline, candidate, target="release_to_final_ms", split="val
         if before_header.get(field) != after_header.get(field):
             raise ValueError(f"Incomparable run identity: {field}.")
     for key in before:
+        if before[key]["audio_sha256"] != cases[key[0]].get("audio_sha256"):
+            raise ValueError("Result audio does not match the current corpus.")
         if before[key]["audio_sha256"] != after[key]["audio_sha256"]:
             raise ValueError("Paired runs must use identical audio bytes.")
     keys = sorted(key for key in before if cases[key[0]]["split"] == split)
@@ -278,7 +290,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--split", choices=("development", "validation"), default="validation")
     parser.add_argument("--purpose", choices=("quality", "performance"), default="quality")
-    parser.add_argument("--target", choices=METRICS[:-1], default="release_to_final_ms")
+    parser.add_argument("--target", choices=[m for m in METRICS if m != "peak_memory_bytes"], default="release_to_final_ms")
     args = parser.parse_args()
     cases = read_corpus(args.corpus)
     report = compare(cases, read_run(args.baseline, cases), read_run(args.candidate, cases), args.target, args.split, args.purpose)

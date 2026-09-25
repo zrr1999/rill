@@ -81,6 +81,31 @@ struct HotwordSelectionTests {
     await fixture.selection.shutdown()
   }
 
+  @Test func failedRecognitionCancelsItsStartedHotwordPreparation() async throws {
+    let fixture = HotwordFixture()
+    let recognizers = SpeechRecognizerRegistry(recognizers: [FailingHotwordRecognizer()])
+    let actions = OutputActionRegistry(actions: [HotwordOutputProbe()])
+    let compiler = WorkflowPlanCompiler(recognizerRegistry: recognizers,
+      transformerRegistry: .init(transformers: []), actionRegistry: actions)
+    let plan = try compiler.compile(workflow: fixture.workflow, collections: fixture.collections,
+      context: VocabularyRuleContext(contextSnapshot: fixture.context))
+    let gate = HotwordCancellationBarrier()
+    let preparation = HotwordRankingPreparation { await gate.runUntilCancelled() }
+    preparation.recordingStarted()
+    await gate.waitUntilStarted()
+    let bus = EventBus()
+    let coordinator = makeTestSessionCoordinator(recognizerRegistry: recognizers,
+      transformerRegistry: .init(transformers: []), actionRegistry: actions,
+      candidateResolver: CandidateResolver(eventBus: bus), eventBus: bus)
+    let result = await coordinator.runReportingOutcome(workflow: fixture.workflow,
+      contextSnapshot: fixture.context, preparedRecognition: .init(options: fixture.options,
+        plan: plan, hotwordPreparation: preparation))
+    guard case .failed = result else { Issue.record("Expected failed recognition"); preparation.cancel(); return }
+    await preparation.wait()
+    #expect(await gate.observedCancellation)
+    #expect(preparation.isFinished)
+  }
+
   @Test func importedAudioDoesNotPrepareOrUploadHotwords() async throws {
     let called = OSAllocatedUnfairLock(initialState: false)
     var gate = PrivacyRunGate(settingsProvider: { .init(cloudConfirmationRequired: false) },
@@ -438,4 +463,35 @@ private actor HotwordCaptureProbe: AudioCaptureService {
       inlineData: Data([0, 0]))
   }
   func cancelCapture() async {}
+}
+
+private struct FailingHotwordRecognizer: SpeechRecognizer {
+  enum Failure: Error { case unavailable }
+  let id = "local-speech"
+  let capabilities = SpeechRecognizerCapabilities(supportedHintKinds: [.keyterm])
+  func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
+    throw Failure.unavailable
+  }
+}
+
+private actor HotwordCancellationBarrier {
+  private var started = false
+  private var suspended: CheckedContinuation<Void, Never>?
+  private var observers: [CheckedContinuation<Void, Never>] = []
+  private(set) var observedCancellation = false
+  func runUntilCancelled() async {
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        started = true
+        observers.forEach { $0.resume() }; observers = []
+        if Task.isCancelled { continuation.resume() } else { suspended = continuation }
+      }
+      observedCancellation = Task.isCancelled
+    } onCancel: { Task { await self.release() } }
+  }
+  func waitUntilStarted() async {
+    if started { return }
+    await withCheckedContinuation { observers.append($0) }
+  }
+  private func release() { suspended?.resume(); suspended = nil }
 }

@@ -65,7 +65,7 @@ struct WorkflowExplanationSheet: View {
             if newPhase == .active {
                 refresh()
             } else {
-                model.cancelWorkflowExplanation()
+                model.workflowLibrary.cancelWorkflowExplanation()
             }
         }
     }
@@ -104,10 +104,10 @@ struct WorkflowExplanationSheet: View {
 
     private func refresh() {
         guard let workflow = model.workflowLibrary.workflows.first(where: { $0.id == workflowID }) else {
-            model.cancelWorkflowExplanation()
+            model.workflowLibrary.cancelWorkflowExplanation()
             return
         }
-        model.explainWorkflowBeforeRun(workflow)
+        model.workflowLibrary.explainWorkflowBeforeRun(workflow)
     }
 
     private func failureView(_ failure: WorkflowExplanationFailure) -> some View {

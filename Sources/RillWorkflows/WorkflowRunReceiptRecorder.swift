@@ -507,7 +507,7 @@ public actor WorkflowRunReceiptRecorder {
                 runID: runID,
                 subsystem: .session,
                 level: .error,
-                event: "run-receipt.persistence.failed",
+                event: .runReceiptPersistenceFailed,
                 message: "A terminal run receipt could not be persisted."
             )
         )

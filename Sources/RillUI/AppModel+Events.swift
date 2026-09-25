@@ -137,7 +137,7 @@ extension AppModel {
       Self.sortedDiagnosticEvents(self.history.diagnosticEvents + events).prefix(200)
     )
     for event in events {
-      if event.event == "session.transform.fallback" {
+      if event.name == .sessionTransformFallback {
         append(
           english: "Text cleanup was skipped; the complete text before cleanup was retained.",
           simplifiedChinese: "未完成智能整理，已保留整理前的完整文本。"

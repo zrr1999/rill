@@ -569,6 +569,7 @@ func makeHarness(
   localSpeechSettingsSource: LocalSpeechSettingsSource = LocalSpeechSettingsSource(),
   settingsWriteDebounceDuration: Duration = .milliseconds(300),
   historyRetentionMaintenanceInterval: Duration? = nil,
+  historyMaintenanceSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
   liveSubtitlePreparingHideDelay: Duration = .seconds(15),
   localSpeechTrustMaterialAvailable: Bool = true,
   localSpeechAvailability: LocalSpeechAvailability? = nil,
@@ -620,6 +621,8 @@ func makeHarness(
   clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void = {},
   refreshBenchmarkRecordingArchiveAction:
     @escaping @Sendable (Bool) async throws -> Void = { _ in },
+  benchmarkArchiveReader: (any BenchmarkRecordingArchiveReading)? = nil,
+  benchmarkCorpusExporter: (any BenchmarkCorpusExporting)? = nil,
   authorizeWorkflowRunAction:
     @escaping @Sendable (
       WorkflowDefinition
@@ -634,7 +637,7 @@ func makeHarness(
     @escaping @Sendable (
       WorkflowResolvedExecutionPlan
     ) async throws -> WorkflowExplanationReceipt = { plan in
-      AppModel.unavailableWorkflowExplanation(for: plan)
+      WorkflowLibraryModel.unavailableWorkflowExplanation(for: plan)
     },
   writeClipboardTextAction: @escaping @MainActor (String) -> Void = { _ in },
   showRecordPanelAction: @escaping @Sendable () async -> Void = {}
@@ -705,6 +708,7 @@ func makeHarness(
     loadsPersistentSettingsOnInitialization: loadsPersistentSettingsOnInitialization,
     settingsWriteDebounceDuration: settingsWriteDebounceDuration,
     historyRetentionMaintenanceInterval: historyRetentionMaintenanceInterval,
+    historyMaintenanceSleep: historyMaintenanceSleep,
     liveSubtitlePreparingHideDelay: liveSubtitlePreparingHideDelay,
     localSpeechTrustMaterialAvailable: localSpeechTrustMaterialAvailable,
     localSpeechAvailability: localSpeechAvailability,
@@ -729,6 +733,8 @@ func makeHarness(
     loadFailedAudioRecoveryReceiptsAction: loadFailedAudioRecoveryReceiptsAction,
     clearBenchmarkRecordingArchiveAction: clearBenchmarkRecordingArchiveAction,
     refreshBenchmarkRecordingArchiveAction: refreshBenchmarkRecordingArchiveAction,
+    benchmarkArchiveReader: benchmarkArchiveReader,
+    benchmarkCorpusExporter: benchmarkCorpusExporter,
     authorizeWorkflowRunAction: authorizeWorkflowRunAction,
     explainResolvedWorkflowAction: explainResolvedWorkflowAction,
     writeClipboardTextAction: writeClipboardTextAction,

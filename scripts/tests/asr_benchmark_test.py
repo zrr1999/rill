@@ -18,7 +18,7 @@ SPEC.loader.exec_module(ASR)
 class BenchmarkTests(unittest.TestCase):
     def setUp(self):
         self.cases = {
-            f"case-{i}": {"split": "validation" if i < 40 else "development",
+            f"case-{i}": {"audio_sha256": f"{i:064x}", "split": "validation" if i < 40 else "development",
                           "references": {stage: "不要删除 Rill 2026" for stage in ASR.STAGES},
                           "tags": ["negative", "mixed"], "required_terms": ["不要", "2026"]}
             for i in range(120)
@@ -35,6 +35,15 @@ class BenchmarkTests(unittest.TestCase):
                 "metrics": {metric: 100 for metric in ASR.METRICS}}
             for i, identifier in enumerate(self.cases) for repetition in (1, 2, 3)
         }
+
+    def test_unannotated_export_can_replay_but_cannot_claim_quality(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "corpus.json"
+            path.write_text(json.dumps({"schema_version": 1, "cases": [{
+                "id": "one", "split": "validation", "tags": ["unreviewed"], "references": {}}]}))
+            self.assertEqual(ASR.read_corpus(path, require_references=False)["one"]["references"], {})
+            with self.assertRaisesRegex(ValueError, "missing is not silence"):
+                ASR.read_corpus(path)
 
     def compare(self, rows=None, **kwargs):
         return ASR.compare(self.cases, (self.header, self.rows),
@@ -113,6 +122,16 @@ class BenchmarkTests(unittest.TestCase):
             path.write_text("\n".join(json.dumps(x) for x in [self.header, row]))
             with self.assertRaises(ValueError):
                 ASR.read_run(path, self.cases)
+
+    def test_stale_results_cannot_use_new_audio_and_references(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "run.jsonl"
+            path.write_text("\n".join(json.dumps(value) for value in [self.header, *self.rows.values()]))
+            self.cases["case-0"]["audio_sha256"] = "f" * 64
+            with self.assertRaisesRegex(ValueError, "current corpus"):
+                ASR.read_run(path, self.cases)
+            with self.assertRaisesRegex(ValueError, "current corpus"):
+                self.compare()
 
     def test_exact_terms_and_silence(self):
         self.assertFalse(ASR.contains("20260", "2026"))

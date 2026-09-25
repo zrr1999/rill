@@ -188,10 +188,7 @@ extension AppModel {
             task.cancel()
         }
 
-        let periodicTask = self.history.periodicHistoryRetentionMaintenanceTask
-        self.history.periodicHistoryRetentionMaintenanceTask = nil
-        periodicTask?.cancel()
-        await periodicTask?.value
+        await history.stopPeriodicMaintenance()
 
         let activeTasks = Array(self.history.localHistoryMaintenanceTasks.values)
         for task in activeTasks {
@@ -416,22 +413,8 @@ extension AppModel {
         guard let interval = historyRetentionMaintenanceInterval else { return }
         guard interval > .zero else { return }
 
-        self.history.periodicHistoryRetentionMaintenanceTask = Task { [weak self] in
-            while !Task.isCancelled {
-                do {
-                    try await Task.sleep(for: interval)
-                } catch {
-                    return
-                }
-                guard !Task.isCancelled else { return }
-
-                let modelStillExists = await MainActor.run { [weak self] in
-                    guard let self else { return false }
-                    self.performLocalHistoryRetention()
-                    return true
-                }
-                guard modelStillExists else { return }
-            }
+        history.startPeriodicMaintenance(interval: interval) { [weak self] in
+            self?.performLocalHistoryRetention()
         }
     }
 

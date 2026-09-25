@@ -232,7 +232,7 @@ struct WorkflowOutputExecutor: Sendable {
                 runID: runID,
                 subsystem: .session,
                 level: .error,
-                event: "run-receipt.coordination.failed",
+                event: .runReceiptCoordinationFailed,
                 message: "Run receipt coordination failed.",
                 metadata: ["reason": reason]
             )

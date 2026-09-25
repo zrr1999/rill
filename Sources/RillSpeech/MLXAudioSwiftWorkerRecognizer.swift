@@ -74,7 +74,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
       throw CancellationError()
     } catch {
       await recordRecognitionDiagnostic(
-        event: "provider.local-speech.recognition.failed",
+        event: .providerLocalSpeechRecognitionFailed,
         level: .error,
         outcome: "failed",
         failureCode: Self.diagnosticFailureCode(error),
@@ -174,7 +174,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
         throw initialError
       }
       await recordRecognitionDiagnostic(
-        event: "provider.local-speech.recognition.retry",
+        event: .providerLocalSpeechRecognitionRetry,
         level: .warning,
         outcome: "pending",
         failureCode: Self.diagnosticFailureCode(initialError),
@@ -189,7 +189,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
           priority: priority
         )
         await recordRecognitionDiagnostic(
-          event: "provider.local-speech.recognition.retry",
+          event: .providerLocalSpeechRecognitionRetry,
           level: .info,
           outcome: "completed",
           failureCode: Self.diagnosticFailureCode(initialError),
@@ -200,7 +200,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
         throw CancellationError()
       } catch {
         await recordRecognitionDiagnostic(
-          event: "provider.local-speech.recognition.retry",
+          event: .providerLocalSpeechRecognitionRetry,
           level: .error,
           outcome: "failed",
           failureCode: Self.diagnosticFailureCode(error),
@@ -212,7 +212,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
   }
 
   private func recordRecognitionDiagnostic(
-    event: String,
+    event: DiagnosticEventName,
     level: DiagnosticLevel,
     outcome: String,
     failureCode: String,

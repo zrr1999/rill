@@ -46,7 +46,7 @@ public final class SettingsPersistenceModel {
   let settingsReadTaskOwner = AppModelSettingsReadTaskOwner()
   var openAICredentialLoadGeneration = 0
   var openAIVerificationGeneration = 0
-  var openAIVerificationTask: Task<Void, Never>?
+  let openAIVerificationTaskOwner = ReplacingTaskOwner()
 
   public internal(set) var isLoading = true
   public private(set) var saveState: SettingsSaveState = .saved
@@ -56,9 +56,45 @@ public final class SettingsPersistenceModel {
   private var retrying: Set<AppSettingKey> = []
   var hasUnsavedWrites: Bool { !failed.isEmpty }
 
-  init(store: (any SettingsStore)?, language: AppLanguage) {
+  let verifyOpenAIConfigurationAction: @Sendable (OpenAISettings) async throws -> Void
+  let configurationChanged: @MainActor () -> Void
+  private(set) var hasBegunApplicationShutdown = false
+
+  init(store: (any SettingsStore)?, language: AppLanguage,
+    verifyOpenAIConfiguration: @escaping @Sendable (OpenAISettings) async throws -> Void,
+    configurationChanged: @escaping @MainActor () -> Void) {
+    self.verifyOpenAIConfigurationAction = verifyOpenAIConfiguration
+    self.configurationChanged = configurationChanged
     self.store = store
     self.language = language
+  }
+
+  public func hasUnavailableScalarSettings(in domain: ScalarSettingsDomain) -> Bool {
+    !unavailableScalarSettingKeys.isDisjoint(with: domain.settingKeys)
+  }
+
+  public func isRetryingUnavailableScalarSettings(in domain: ScalarSettingsDomain) -> Bool {
+    retryingUnavailableScalarSettingsDomains.contains(domain)
+  }
+
+  public func canMutateScalarSettings(in domain: ScalarSettingsDomain) -> Bool {
+    !hasBegunApplicationShutdown && !hasUnavailableScalarSettings(in: domain)
+  }
+
+  func invalidateOpenAIVerification() {
+    openAIVerificationTaskOwner.cancel()
+    openAIVerificationGeneration &+= 1
+    openAIVerificationFailure = nil
+    openAIConfigurationVerificationState = .idle
+  }
+
+  func waitForOpenAIVerificationTasks() async {
+    await openAIVerificationTaskOwner.waitUntilIdle()
+  }
+
+  func beginShutdown() {
+    hasBegunApplicationShutdown = true
+    invalidateOpenAIVerification()
   }
 
   func submit(

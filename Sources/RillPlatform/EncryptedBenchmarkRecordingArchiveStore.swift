@@ -176,7 +176,7 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
       .sorted { $0.uuidString < $1.uuidString }
   }
 
-  public func recording(runID: UUID) async throws -> BenchmarkRecording {
+  public func receipt(runID: UUID) async throws -> BenchmarkRecordingReceipt {
     do {
       let receiptBytes = try readProtectedArtifact(at: receiptURL(for: runID), runID: runID, field: "receipt")
       let receipt = try JSONDecoder().decode(BenchmarkRecordingReceipt.self, from: receiptBytes)
@@ -185,6 +185,13 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
         receipt.plaintextByteCount >= 0 else {
         throw BenchmarkRecordingArchiveError.invalidEntry
       }
+      return receipt
+    } catch { throw BenchmarkRecordingArchiveError.invalidEntry }
+  }
+
+  public func recording(runID: UUID) async throws -> BenchmarkRecording {
+    do {
+      let receipt = try await receipt(runID: runID)
       let audio = try readProtectedArtifact(at: audioURL(for: runID), runID: runID, field: "audio")
       guard audio.count == receipt.plaintextByteCount else {
         throw BenchmarkRecordingArchiveError.invalidEntry

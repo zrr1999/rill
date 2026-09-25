@@ -565,7 +565,7 @@ public struct MenuBarStatusView: View {
       outputMode: model.settings.builtinPushToTalkOutputMode,
       longRecordingModeEnabled: model.settings.longRecordingModeEnabled,
       systemClipboardCaptureEnabled: model.settings.systemClipboardCaptureEnabled,
-      clipboardSettingsAvailable: model.canMutateScalarSettings(in: .systemClipboard),
+      clipboardSettingsAvailable: model.settings.canMutateScalarSettings(in: .systemClipboard),
       clipboardCaptureState: model.systemClipboardCaptureControlSnapshot.state,
       voiceSetupStatus: MenuBarVoiceSetupStatus(readiness: model.voiceSetupReadiness),
       localPersistenceStatus: model.localPersistenceStatus
@@ -590,7 +590,7 @@ public struct MenuBarStatusView: View {
   private func scalarSettingsUnavailableNotice(
     _ domain: ScalarSettingsDomain
   ) -> some View {
-    if model.hasUnavailableScalarSettings(in: domain) {
+    if model.settings.hasUnavailableScalarSettings(in: domain) {
       MenuBarFixedWidthLabel(
         title: domain.unavailableWarning(language: model.settings.language),
         systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
@@ -613,7 +613,7 @@ extension MenuBarStatusView {
       } label: {
         selectionLabel(language.displayName, isSelected: model.settings.language == language)
       }
-      .disabled(!model.canMutateScalarSettings(in: .interface))
+      .disabled(!model.settings.canMutateScalarSettings(in: .interface))
     }
   }
 
@@ -663,7 +663,7 @@ extension MenuBarStatusView {
         isSelected: model.settings.builtinPushToTalkOutputMode == .pasteIntoApp
       )
     }
-    .disabled(!model.canMutateScalarSettings(in: .input))
+    .disabled(!model.settings.canMutateScalarSettings(in: .input))
 
     Button {
       model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
@@ -673,7 +673,7 @@ extension MenuBarStatusView {
         isSelected: model.settings.builtinPushToTalkOutputMode == .saveToVoiceGroup
       )
     }
-    .disabled(!model.canMutateScalarSettings(in: .input))
+    .disabled(!model.settings.canMutateScalarSettings(in: .input))
 
     Divider()
 
@@ -705,7 +705,7 @@ extension MenuBarStatusView {
         isSelected: model.settings.longRecordingModeEnabled
       )
     }
-    .disabled(!model.canMutateScalarSettings(in: .input))
+    .disabled(!model.settings.canMutateScalarSettings(in: .input))
 
     MenuBarFixedWidthText(
       text: L10n.string(.settingsLongRecordingModeDescription, language: model.settings.language)

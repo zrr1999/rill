@@ -35,11 +35,11 @@ struct HistoryRunDetailTests {
     @Test func diagnosticsQueryFindsTheExactRunBeyondGlobalRecentEvents() async throws {
         let runID = UUID()
         let ownEvent = DiagnosticEvent(timestamp: .distantPast, runID: runID,
-                                      subsystem: .session, level: .error, event: "session.failure",
+                                      subsystem: .session, level: .error, event: .sessionFailure,
                                       message: "PRIVATE provider body", metadata: ["apiKey": "PRIVATE-key"])
         let unrelated = (0..<60).map { _ in
             DiagnosticEvent(runID: UUID(), subsystem: .session, level: .info,
-                            event: "session.stage", message: "unrelated")
+                            event: .sessionStage, message: "unrelated")
         }
         let harness = makeHarness(diagnosticRepository: InMemoryDiagnosticRepository(events: [ownEvent] + unrelated))
         await harness.model.waitForInitialVoiceConfiguration()

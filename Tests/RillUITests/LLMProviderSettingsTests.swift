@@ -24,8 +24,8 @@ struct LLMProviderSettingsTests {
         #expect(try await settings.string(forKey: .openAIModel) == "deepseek-flash")
         #expect(try await credentials.credential(for: .openAIAPIKey) == "existing-key")
         #expect(model.settings.openAIBaseURL == "https://gateway.example/v1")
-        model.verifyOpenAIConfiguration()
-        await model.settings.openAIVerificationTask?.value
+        model.settings.verifyOpenAIConfiguration()
+        await model.settings.waitForOpenAIVerificationTasks()
         #expect(model.settings.openAIConfigurationVerificationState == .verified)
         #expect(await verification.settings == OpenAISettings(
             apiKey: "existing-key", baseURL: "https://gateway.example/v1", model: "deepseek-flash"
