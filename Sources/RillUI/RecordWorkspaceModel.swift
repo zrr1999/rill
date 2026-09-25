@@ -356,6 +356,20 @@ public final class RecordWorkspaceModel {
         RecordQuickPanelModel(store: store, semanticSearch: semanticSearch, jevSettings: jevSettings)
     }
 
+    public func saveTextCorrection(
+        workflowRunID: UUID, text: String, operationID: UUID
+    ) async -> Bool {
+        var saved = false
+        await mutate {
+            let correction = try await self.store.saveTextCorrection(
+                workflowRunID: workflowRunID, text: text, operationID: operationID)
+            self.selectedCollectionID = nil
+            self.selectedRecordID = correction.id
+            saved = true
+        }
+        return saved
+    }
+
     public func replaceText(
         membership: RecordMembership,
         text: String,

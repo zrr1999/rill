@@ -29,4 +29,22 @@ struct VoiceRunModelTests {
     model.finish(assistant.runID)
     #expect(!model.isRunning)
   }
+  @Test func stageEventsRemainRunAndLaneScopedAndRecordingTakesPrecedence() {
+    let model = VoiceRunModel()
+    let run = RunSnapshot(runID: UUID(), workflowID: UUID(),
+      workflow: .init(fallbackName: "Speech"), trigger: .hotkey)
+    model.begin(run)
+    model.updateStage(.saving, from: .init(runID: run.runID))
+    #expect(model.activeStage == .saving)
+    model.updateStage(.delivering, from: .init(runID: run.runID, lane: .assistant))
+    #expect(model.activeStage == .saving)
+    model.workflowAudioRunState = .recording(workflowID: UUID())
+    #expect(model.activeStage == .capturingInput)
+    model.workflowAudioRunState = .idle
+    model.finish(run.runID)
+    model.updateStage(.delivering, from: .init(runID: run.runID))
+    #expect(model.activeStage == nil)
+    #expect(!model.isRunning)
+  }
+
 }

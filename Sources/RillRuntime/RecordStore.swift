@@ -16,6 +16,7 @@ public enum RecordStoreError: Error, LocalizedError, Sendable, Equatable {
     case collectionLimitReached
     case routeLimitReached
     case invalidGraph
+    case invalidTextCorrection
     case invalidDeliveryReceipt
     case persistenceUnavailable
 
@@ -35,6 +36,7 @@ public enum RecordStoreError: Error, LocalizedError, Sendable, Equatable {
         case .collectionLimitReached: "The record collection limit has been reached."
         case .routeLimitReached: "The record route limit has been reached."
         case .invalidGraph: "The stored record graph is invalid."
+        case .invalidTextCorrection: "The text correction is empty or no longer matches this edit."
         case .invalidDeliveryReceipt: "The delivery sink returned an invalid receipt."
         case .persistenceUnavailable: "The protected record store is unavailable."
         }
@@ -282,6 +284,38 @@ public actor RecordStore {
             records[id] = try await materializedRecord(id)
         }
         return RecordCollectionProjection(collection: collection, memberships: memberships, recordsByID: records)
+    }
+
+    /// A local correction is a new immutable, history-only Record. It neither
+    /// changes the original nor emits collection events that could deliver it.
+    public func saveTextCorrection(
+        workflowRunID: UUID, text: String, operationID: UUID
+    ) async throws -> RecordProjection {
+        try await ensureInitialized()
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw RecordStoreError.invalidTextCorrection
+        }
+        let identity = "text-correction/\(operationID.uuidString)"
+        if let existing = graphState.recordsByID.values.first(where: {
+            $0.provenance.source.identifier == identity
+        }), let projection = try await projection(for: existing.id) {
+            guard existing.provenance.workflowRunID == workflowRunID,
+                  projection.record.payload.textValue == text else {
+                throw RecordStoreError.invalidTextCorrection
+            }
+            return projection
+        }
+        guard let original = graphState.recordOrder.reversed().compactMap({ graphState.recordsByID[$0] })
+            .first(where: {
+                $0.kind == .text && $0.provenance.workflowRunID == workflowRunID
+                    && $0.provenance.derivedFrom == nil
+            }) else { throw RecordStoreError.recordUnavailable }
+        var provenance = original.provenance
+        provenance.source = RecordSourceIdentity(kind: .user, identifier: identity)
+        provenance.derivedFrom = original.id
+        provenance.supersedes = nil
+        provenance.alternatives = []
+        return try await ingest(RecordDraft(payload: .text(text), provenance: provenance), into: [])
     }
 
     @discardableResult

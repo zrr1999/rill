@@ -93,9 +93,9 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
         : models[1].simplifiedChineseName
     )
 
-    harness.model.preferredSpeechEngine = .local
+    harness.model.applyPreferredSpeechEngine(.local)
     harness.model.selectTrustedLocalSpeechModel(models[1].id)
-    await waitUntil { harness.model.localSpeechPreparationState == .ready }
+    await waitUntil { harness.model.voice.localSpeechPreparationState == .ready }
 
     let snapshot = await probe.snapshot()
     XCTAssertEqual(snapshot.prepareCount, 1)
@@ -103,7 +103,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     XCTAssertEqual(snapshot.lastSettings?.modelRepo, "")
     XCTAssertEqual(snapshot.lastSettings?.modelToken, "")
     XCTAssertEqual(snapshot.lastSettings?.modelFolder, "")
-    XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, models[1].id)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparedModelIdentifier, models[1].id)
 
     harness.model.selectTrustedLocalSpeechModel("unreviewed-model")
     XCTAssertEqual(harness.model.localSpeechModel, models[1].id)
@@ -136,7 +136,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
 
     XCTAssertEqual(harness.model.localSpeechModel, models[0].id)
     XCTAssertEqual(
-      Set(harness.model.downloadedLocalSpeechModels),
+      Set(harness.model.voice.downloadedLocalSpeechModels),
       Set([models[1].id]),
       "The resident model pool owns startup loading; the legacy readiness path must not invent a completed download."
     )
@@ -284,14 +284,14 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
 
     harness.model.prepareLocalSpeechModel()
     await waitUntil {
-      harness.model.localSpeechPreparationState == .idle
-        && harness.model.localSpeechPreparationError != nil
+      harness.model.voice.localSpeechPreparationState == .idle
+        && harness.model.voice.localSpeechPreparationError != nil
     }
 
-    XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
-    XCTAssertFalse(harness.model.downloadedLocalSpeechModels.contains("unreviewed-model"))
+    XCTAssertNil(harness.model.voice.localSpeechPreparedModelIdentifier)
+    XCTAssertFalse(harness.model.voice.downloadedLocalSpeechModels.contains("unreviewed-model"))
     XCTAssertEqual(
-      harness.model.localSpeechPreparationError,
+      harness.model.voice.localSpeechPreparationError,
       L10n.localSpeechPreparationFailure(.trustRoot).string(for: harness.model.language)
     )
   }
@@ -307,16 +307,16 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
         return "unreviewed-model"
       }
     )
-    harness.model.preferredSpeechEngine = .local
-    harness.model.localSpeechPrewarm = true
+    harness.model.applyPreferredSpeechEngine(.local)
+    harness.model.applyLocalSpeechPrewarm(true)
 
     await harness.model.waitForLocalSpeechPreparation()
 
     let snapshot = await probe.snapshot()
     XCTAssertEqual(snapshot.prepareCount, 0)
-    XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
-    XCTAssertNil(harness.model.localSpeechPreparationError)
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
+    XCTAssertNil(harness.model.voice.localSpeechPreparedModelIdentifier)
+    XCTAssertNil(harness.model.voice.localSpeechPreparationError)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
   }
 
   func testResidentModelSynchronizationPreservesRapidSettingChangeOrder() async {
@@ -336,7 +336,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     harness.model.setSpeechModelResident(models[1].id, resident: true)
     harness.model.setSpeechModelResident(models[0].id, resident: false)
 
-    await harness.model.residentSpeechModelSynchronizationTask?.value
+    await harness.model.voice.residentSpeechModelSynchronizationTask?.value
 
     XCTAssertEqual(harness.model.residentSpeechModelIDs, [models[1].id])
     let calls = await probe.snapshot()
@@ -374,7 +374,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     harness.model.setSpeechModelResident(models[1].id, resident: true)
 
     XCTAssertEqual(harness.model.residentSpeechModelIDs, [models[0].id])
-    XCTAssertEqual(harness.model.pendingResidentSpeechModelIDs, Set(models.map(\.id)))
+    XCTAssertEqual(harness.model.voice.pendingResidentSpeechModelIDs, Set(models.map(\.id)))
     XCTAssertTrue(harness.model.pendingResidentSpeechModelBudget?.requiresConfirmation == true)
 
     harness.model.confirmPendingResidentSpeechModels()
@@ -428,8 +428,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
       defaultLocalSpeechModelIdentifier: modelID
     )
     await waitUntil { !harness.model.settings.isLoading }
-    harness.model.residentSpeechBudgetConfirmation =
-      harness.model.residentSpeechModelBudget.confirmationFingerprint
+    harness.model.applyResidentSpeechBudgetConfirmation(harness.model.residentSpeechModelBudget.confirmationFingerprint)
 
     harness.model.recordMeasuredSpeechModelPeak(
       modelID: modelID,

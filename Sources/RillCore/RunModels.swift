@@ -6,6 +6,7 @@ public enum WorkflowRunStage: String, Codable, Sendable, Equatable {
     case recognizing
     case resolving
     case transforming
+    case saving
     case delivering
     case completed
     case failed
@@ -286,17 +287,20 @@ public struct WorkflowActionReceipt: Codable, Sendable, Equatable {
     public let result: WorkflowActionResultCode
     public let duration: WorkflowRunDurationBucket
     public let durationMilliseconds: UInt64?
+    public let failureDisposition: OutputFailureDisposition?
 
     public init(
         actionIndex: Int,
         result: WorkflowActionResultCode,
         duration: WorkflowRunDurationBucket,
-        durationMilliseconds: UInt64? = nil
+        durationMilliseconds: UInt64? = nil,
+        failureDisposition: OutputFailureDisposition? = nil
     ) {
         self.actionIndex = actionIndex
         self.result = result
         self.duration = duration
         self.durationMilliseconds = durationMilliseconds
+        self.failureDisposition = failureDisposition
     }
 }
 

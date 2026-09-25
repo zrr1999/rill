@@ -22,7 +22,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await waitUntil { !harness.model.settings.isLoading }
 
     XCTAssertEqual(
-      harness.model.unavailableScalarSettingKeys,
+      harness.model.settings.unavailableScalarSettingKeys,
       Set(invalidValues.keys)
     )
     XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .interface))
@@ -36,7 +36,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertTrue(activity.removeCounts.isEmpty)
   }
 
-  func testUnavailableScalarDidSetCannotOverwriteOriginalRow() async {
+  func testUnavailableScalarApplyCannotOverwriteOriginalRow() async {
     let storedLanguage = AppLanguage.simplifiedChinese.rawValue
     let store = UITestSettingsStore(
       storage: [.interfaceLanguage: storedLanguage],
@@ -48,10 +48,9 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     await waitUntil { !harness.model.settings.isLoading }
 
-    harness.model.language =
-      harness.model.language == .english
+    harness.model.applyLanguage(harness.model.language == .english
       ? .simplifiedChinese
-      : .english
+      : .english)
     await harness.model.flushPendingPersistenceWrites()
 
     let activity = await store.activitySnapshot()
@@ -268,7 +267,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(harness.model.localSpeechModel, "qwen3-asr-0.6b-mlx-8bit")
-    XCTAssertTrue(harness.model.downloadedLocalSpeechModels.isEmpty)
+    XCTAssertTrue(harness.model.voice.downloadedLocalSpeechModels.isEmpty)
     XCTAssertTrue(harness.model.localSpeechPrewarm)
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.atomicWriteCount, 0)
@@ -294,7 +293,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     await store.waitUntilBatchReadIsSuspended()
 
-    harness.model.localSpeechPrewarm = true
+    harness.model.applyLocalSpeechPrewarm(true)
     await harness.model.flushPendingPersistenceWrites()
     await store.resumeBatchRead()
     await waitUntil { !harness.model.settings.isLoading }
@@ -394,7 +393,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await store.suspendNextBatchRead()
     harness.model.retryUnavailableScalarSettings(in: .localSpeech)
     await store.waitUntilBatchReadIsSuspended()
-    harness.model.localSpeechModel = selectedModel
+    harness.model.applyLocalSpeechModel(selectedModel)
     await store.resumeBatchRead()
     await waitUntil {
       !harness.model.isRetryingUnavailableScalarSettings(in: .localSpeech)
@@ -430,13 +429,13 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertEqual(harness.model.openAIAPIKey, "stored-openai-key")
     XCTAssertEqual(harness.model.openAIBaseURL, "https://gateway.example.com/openai/v1")
     XCTAssertEqual(harness.model.openAIModel, "vendor/custom-model")
-    XCTAssertEqual(harness.model.openAICredentialAvailability, .available)
+    XCTAssertEqual(harness.model.settings.openAICredentialAvailability, .available)
 
-    harness.model.openAIAPIKey = "replacement-openai-key"
-    harness.model.openAIBaseURL = "http://localhost:11434/v1"
-    harness.model.openAIModel = "local-model"
+    harness.model.applyOpenAIAPIKey("replacement-openai-key")
+    harness.model.applyOpenAIBaseURL("http://localhost:11434/v1")
+    harness.model.applyOpenAIModel("local-model")
     await harness.model.flushPendingPersistenceWrites()
-    await waitUntil { harness.model.openAICredentialAvailability == .available }
+    await waitUntil { harness.model.settings.openAICredentialAvailability == .available }
 
     let settingsActivity = await store.activitySnapshot()
     XCTAssertEqual(settingsActivity.storage[.openAIBaseURL], "http://localhost:11434/v1")
@@ -466,12 +465,12 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     await waitUntil {
       !harness.model.settings.isLoading
-        && harness.model.openAICredentialAvailability == .available
+        && harness.model.settings.openAICredentialAvailability == .available
     }
 
     harness.model.verifyOpenAIConfiguration()
     await waitUntil {
-      harness.model.openAIConfigurationVerificationState == .verified
+      harness.model.settings.openAIConfigurationVerificationState == .verified
     }
 
     let settings = await probe.lastSettings()
@@ -484,7 +483,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       )
     )
 
-    harness.model.openAIBaseURL = "http://public.example.com/v1"
+    harness.model.applyOpenAIBaseURL("http://public.example.com/v1")
     XCTAssertFalse(harness.model.canVerifyOpenAIConfiguration)
   }
 
@@ -507,20 +506,20 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     await waitUntil {
       !harness.model.settings.isLoading
-        && harness.model.openAICredentialAvailability == .available
+        && harness.model.settings.openAICredentialAvailability == .available
     }
 
     harness.model.verifyOpenAIConfiguration()
     await waitUntil {
-      harness.model.openAIConfigurationVerificationState == .failed
+      harness.model.settings.openAIConfigurationVerificationState == .failed
     }
 
-    XCTAssertEqual(harness.model.openAIVerificationFailure, .configurationInvalid)
+    XCTAssertEqual(harness.model.settings.openAIVerificationFailure, .configurationInvalid)
 
-    harness.model.openAIModel = "available-model"
+    harness.model.applyOpenAIModel("available-model")
 
-    XCTAssertEqual(harness.model.openAIConfigurationVerificationState, .idle)
-    XCTAssertNil(harness.model.openAIVerificationFailure)
+    XCTAssertEqual(harness.model.settings.openAIConfigurationVerificationState, .idle)
+    XCTAssertNil(harness.model.settings.openAIVerificationFailure)
   }
 
   private func trustedLocalSpeechModels(
@@ -556,12 +555,12 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     await waitUntil { !harness.model.settings.isLoading }
 
-    XCTAssertEqual(harness.model.unavailableScalarSettingKeys, AppModel.scalarSettingsKeys)
+    XCTAssertEqual(harness.model.settings.unavailableScalarSettingKeys, AppModel.scalarSettingsKeys)
     XCTAssertEqual(harness.model.workflowLibrary.workflowLibraryAvailability, .unavailable)
-    XCTAssertEqual(harness.model.downloadedLocalSpeechModelsAvailability, .unavailable)
+    XCTAssertEqual(harness.model.voice.downloadedLocalSpeechModelsAvailability, .unavailable)
     XCTAssertEqual(harness.model.vocabulary.availability, .unavailable)
     XCTAssertEqual(harness.model.openAIAPIKey, "keychain-only-key")
-    XCTAssertEqual(harness.model.openAICredentialAvailability, .inaccessible)
+    XCTAssertEqual(harness.model.settings.openAICredentialAvailability, .inaccessible)
 
     // Local speech uses the process-wide session source rather than
     // forcing a durable write before every run. The source remains typed

@@ -1,3 +1,4 @@
+import RillTestSupport
 import XCTest
 
 @testable import RillCore
@@ -680,7 +681,7 @@ func makeHarness(
     settingsStore != nil
     || credentialStore != nil
     || !usesEphemeralSettingsStoreWhenNil
-  let model = AppModel(
+  let model = makeAppModelForTesting(
     workflows: resolvedWorkflows,
     eventBus: eventBus,
     sessionCoordinator: coordinator,

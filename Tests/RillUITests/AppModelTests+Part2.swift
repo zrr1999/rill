@@ -105,7 +105,7 @@ extension AppModelTests {
         XCTAssertFalse(harness.model.history.historyRecords.contains { $0.runID == runID })
         XCTAssertFalse(harness.model.recentVoiceResultRecords.contains { $0.runID == runID })
         XCTAssertNil(harness.model.voice.lastCompletedText)
-        XCTAssertFalse(harness.model.eventFeed.contains { entry in
+        XCTAssertFalse(harness.model.history.eventFeed.contains { entry in
             entry.english.contains(payloadCanary)
                 || entry.simplifiedChinese.contains(payloadCanary)
         })
@@ -144,7 +144,7 @@ extension AppModelTests {
         await waitForEventProcessing(harness)
         XCTAssertTrue(harness.model.voice.isRunning)
         XCTAssertNotNil(harness.model.pendingRuns[runID])
-        XCTAssertEqual(harness.model.pendingResolution?.runID, runID)
+        XCTAssertEqual(harness.model.voice.pendingResolution?.runID, runID)
 
         await harness.eventBus.publish(
             .runCancelled(
@@ -163,12 +163,12 @@ extension AppModelTests {
         XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertNil(harness.model.voice.activeRunID)
         XCTAssertNil(harness.model.pendingRuns[runID])
-        XCTAssertNil(harness.model.pendingResolution)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertNil(harness.model.voice.pendingResolution)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.lastFailure)
         XCTAssertTrue(storedRecords.isEmpty)
         XCTAssertFalse(harness.model.history.historyRecords.contains { $0.runID == runID })
-        XCTAssertTrue(harness.model.eventFeed.contains { $0.english == "Run cancelled." })
+        XCTAssertTrue(harness.model.history.eventFeed.contains { $0.english == "Run cancelled." })
     }
 
     func testVoiceGroupTargetRunIsShownInRecentVoiceResults() async {
@@ -227,7 +227,7 @@ extension AppModelTests {
                 await probe.record(workflow: workflow, binding: binding)
             }
         )
-        harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
+        harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
 
         harness.model.runWorkflow(workflow, initiatedBy: .hotkey)
         await waitForEventProcessing(harness)
@@ -332,7 +332,7 @@ extension AppModelTests {
             )
         )
 
-        XCTAssertNil(harness.model.workflowEditorError)
+        XCTAssertNil(harness.model.workflowLibrary.workflowEditorError)
         XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.map(\.name), ["Speech Recognition"])
 
         await harness.model.saveWorkflowDraft(
@@ -344,7 +344,7 @@ extension AppModelTests {
             )
         )
 
-        XCTAssertNil(harness.model.workflowEditorError)
+        XCTAssertNil(harness.model.workflowLibrary.workflowEditorError)
         XCTAssertEqual(
             harness.model.workflowLibrary.customWorkflows.map(\.name),
             ["Speech Recognition 2", "Speech Recognition"]
@@ -362,7 +362,7 @@ extension AppModelTests {
         await harness.model.saveWorkflowDraft(draft, editing: beta.id)
 
         XCTAssertEqual(
-            harness.model.workflowEditorError,
+            harness.model.workflowLibrary.workflowEditorError,
             L10n.workflowText(.workflowNameTakenError, language: harness.model.language)
         )
         XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
@@ -381,7 +381,7 @@ extension AppModelTests {
         draft.destination = .copyToClipboard
         await harness.model.saveWorkflowDraft(draft, editing: second.id)
 
-        XCTAssertNil(harness.model.workflowEditorError)
+        XCTAssertNil(harness.model.workflowLibrary.workflowEditorError)
         XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.map(\.name), ["Speech Recognition"])
     }
 
@@ -661,11 +661,11 @@ extension AppModelTests {
         XCTAssertEqual(snapshot.lastSettings?.model, appModelTestTrustedLocalSpeechModels()[1].id)
         XCTAssertEqual(snapshot.reportedProgress, [0.5])
         XCTAssertEqual(harness.model.localSpeechModel, appModelTestTrustedLocalSpeechModels()[1].id)
-        XCTAssertEqual(harness.model.localSpeechPreparationState, .ready)
-        XCTAssertEqual(harness.model.localSpeechPreparationProgress, 1)
-        XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, appModelTestTrustedLocalSpeechModels()[1].id)
-        XCTAssertEqual(harness.model.downloadedLocalSpeechModels, [appModelTestTrustedLocalSpeechModels()[1].id])
-        XCTAssertNil(harness.model.localSpeechPreparationError)
+        XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .ready)
+        XCTAssertEqual(harness.model.voice.localSpeechPreparationProgress, 1)
+        XCTAssertEqual(harness.model.voice.localSpeechPreparedModelIdentifier, appModelTestTrustedLocalSpeechModels()[1].id)
+        XCTAssertEqual(harness.model.voice.downloadedLocalSpeechModels, [appModelTestTrustedLocalSpeechModels()[1].id])
+        XCTAssertNil(harness.model.voice.localSpeechPreparationError)
     }
 
     func testManualLocalSpeechPreparationFailureDoesNotExposeProviderPayload() async throws {
@@ -686,21 +686,21 @@ extension AppModelTests {
         await harness.model.waitForLocalSpeechPreparation()
 
         let expected = L10n.localSpeechPreparationFailure(.generic)
-        XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
+        XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
         XCTAssertEqual(
-            harness.model.localSpeechPreparationError,
+            harness.model.voice.localSpeechPreparationError,
             expected.string(for: harness.model.language)
         )
         let event = try XCTUnwrap(
-            harness.model.eventFeed.last {
+            harness.model.history.eventFeed.last {
                 $0.english == expected.english
                     && $0.simplifiedChinese == expected.simplifiedChinese
             }
         )
         XCTAssertEqual(event.english, expected.english)
         XCTAssertEqual(event.simplifiedChinese, expected.simplifiedChinese)
-        let exposedText = ([harness.model.localSpeechPreparationError ?? ""]
-            + harness.model.eventFeed.flatMap { [$0.english, $0.simplifiedChinese] })
+        let exposedText = ([harness.model.voice.localSpeechPreparationError ?? ""]
+            + harness.model.history.eventFeed.flatMap { [$0.english, $0.simplifiedChinese] })
             .joined(separator: " ")
         XCTAssertFalse(exposedText.contains("/Users/private/manual-model"))
         XCTAssertFalse(exposedText.contains("manual-secret"))
@@ -720,11 +720,11 @@ extension AppModelTests {
 
         let expected = L10n.localSpeechPreparationFailure(.integrity)
         XCTAssertEqual(
-            harness.model.localSpeechPreparationError,
+            harness.model.voice.localSpeechPreparationError,
             expected.string(for: harness.model.language)
         )
         let event = try XCTUnwrap(
-            harness.model.eventFeed.last {
+            harness.model.history.eventFeed.last {
                 $0.english == expected.english
                     && $0.simplifiedChinese == expected.simplifiedChinese
             }
@@ -946,7 +946,7 @@ extension AppModelTests {
             settingsStore: settingsStore
         )
         await harness.model.waitForInitialVoiceConfiguration()
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
 
         harness.model.setWorkflowEnabled(true, for: polish.id)
 
@@ -971,7 +971,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(workflows: [workflow])
         await harness.model.waitForInitialVoiceConfiguration()
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
 
         harness.model.setWorkflowEnabled(true, for: workflow.id)
 
@@ -984,7 +984,7 @@ extension AppModelTests {
 
     func testDisabledManualWorkflowCannotRun() async {
         let harness = makeHarness()
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
 
         harness.model.setWorkflowEnabled(false, for: harness.workflow.id)
         harness.model.runWorkflow(harness.workflow)
@@ -1009,13 +1009,13 @@ extension AppModelTests {
             localSpeechTrustMaterialAvailable: false
         )
         await harness.model.waitForInitialVoiceConfiguration()
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
 
         XCTAssertFalse(harness.model.canTriggerWorkflow(workflow))
         harness.model.runWorkflow(workflow)
 
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertEqual(
             harness.model.lastFailure,
             "This workflow cannot run because this build has no reviewed local speech model. Choose Cloud speech and retry."
@@ -1037,13 +1037,13 @@ extension AppModelTests {
             localSpeechAvailability: .architectureUnsupported
         )
         await harness.model.waitForInitialVoiceConfiguration()
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
 
         XCTAssertFalse(harness.model.canTriggerWorkflow(workflow))
         harness.model.runWorkflow(workflow)
 
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertEqual(
             harness.model.lastFailure,
             "This workflow cannot run because the compatible local speech worker is unavailable. Enable a supported local model and retry."
@@ -1088,7 +1088,7 @@ extension AppModelTests {
         await unavailableHarness.model.saveWorkflowDraft(draft)
 
         XCTAssertTrue(unavailableHarness.model.workflowLibrary.customWorkflows.isEmpty)
-        XCTAssertNotNil(unavailableHarness.model.workflowEditorError)
+        XCTAssertNotNil(unavailableHarness.model.workflowLibrary.workflowEditorError)
 
         let readyHarness = makeHarness()
         readyHarness.model.installWakeWordConfigurationValidationAction { configuration in

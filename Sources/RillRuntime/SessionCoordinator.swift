@@ -90,7 +90,7 @@ public actor SessionCoordinator {
     private let processingClock: @Sendable () -> UInt64
 
     private typealias RunSession = WorkflowRunSession
-    private var runDiagnostics: WorkflowRunDiagnostics { .init(diagnostics: diagnostics) }
+    private var runDiagnostics: WorkflowRunReporter { .init(diagnostics: diagnostics, eventBus: eventBus, lane: lane) }
     private var outputExecutor: WorkflowOutputExecutor {
         .init(actionRegistry: actionRegistry, runReceiptRecorder: runReceiptRecorder,
               eventBus: eventBus, diagnostics: diagnostics, lane: lane)
@@ -1594,15 +1594,6 @@ private extension SessionCoordinator {
         in session: RunSession
     ) async throws -> DeliveryExecutionSummary {
         state = .delivering(session.runID)
-        let deliveryMetadata = [
-            "actionCount": String(session.resolvedPlan.declaration.output.actions.count),
-        ]
-        await runDiagnostics.recordStage(
-            .delivering,
-            runID: session.runID,
-            workflow: session.presentation,
-            metadata: deliveryMetadata
-        )
         return try await outputExecutor.deliver(finalText: finalText, recognition: recognition, in: session)
     }
 

@@ -148,17 +148,17 @@ struct HistoryLoadFailurePresentation: Sendable, Equatable {
     ) -> HistoryLoadFailurePresentation {
         guard persistenceStatus.isSessionOnly else {
             return HistoryLoadFailurePresentation(
-                title: UIStrings.text(.historyLoadFailedTitle, language: language),
-                message: UIStrings.text(.historyLoadFailedDescription, language: language),
-                actionTitle: UIStrings.text(.historyRetryLoad, language: language),
+                title: L10n.text(.historyLoadFailedTitle, language: language),
+                message: L10n.text(.historyLoadFailedDescription, language: language),
+                actionTitle: L10n.text(.historyRetryLoad, language: language),
                 action: .retry
             )
         }
 
         return HistoryLoadFailurePresentation(
-            title: UIStrings.text(.historyLoadSessionOnlyTitle, language: language),
-            message: UIStrings.text(.historyLoadSessionOnlyDescription, language: language),
-            actionTitle: UIStrings.text(.historyLoadSessionOnlyViewStorage, language: language),
+            title: L10n.text(.historyLoadSessionOnlyTitle, language: language),
+            message: L10n.text(.historyLoadSessionOnlyDescription, language: language),
+            actionTitle: L10n.text(.historyLoadSessionOnlyViewStorage, language: language),
             action: .viewStorageSettings
         )
     }
@@ -233,14 +233,14 @@ public struct HistoryTimelineView: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(UIStrings.text(.historyScopeAll, language: model.language))
+                    Text(L10n.text(.historyScopeAll, language: model.language))
                         .font(.headline)
-                    Text(UIStrings.text(.historyDescription, language: model.language))
+                    Text(L10n.text(.historyDescription, language: model.language))
                 }
                 Spacer(minLength: 12)
                 if case .loaded = model.effectiveRunHistoryLoadState {
                     Text(
-                        UIStrings.loadedRunCount(
+                        L10n.loadedRunCount(
                             visibleEntries.count,
                             language: model.language
                         )
@@ -256,7 +256,7 @@ public struct HistoryTimelineView: View {
                 equals: .scopeSummary
             )
 
-            if let error = model.failedAudioRecoveryError {
+            if let error = model.voice.failedAudioRecoveryError {
                 Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
                     .font(.callout)
                     .foregroundStyle(.red)
@@ -266,14 +266,14 @@ public struct HistoryTimelineView: View {
                 Label {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(
-                            UIStrings.text(
+                            L10n.text(
                                 .historyEntryExpiredTitle,
                                 language: model.language
                             )
                         )
                         .font(.headline)
                         Text(
-                            UIStrings.text(
+                            L10n.text(
                                 .historyEntryExpiredDescription,
                                 language: model.language
                             )
@@ -292,7 +292,7 @@ public struct HistoryTimelineView: View {
             if model.history.runHistoryPaginationFailed {
                 HStack(spacing: 10) {
                     Label(
-                        UIStrings.text(.historyPaginationFailed, language: model.language),
+                        L10n.text(.historyPaginationFailed, language: model.language),
                         systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
                     )
                     .font(.callout)
@@ -313,7 +313,7 @@ public struct HistoryTimelineView: View {
                         )
                     } else if case .failed = model.history.runHistoryDeepLinkState {
                         Button(
-                            UIStrings.text(.historyRetryLoad, language: model.language)
+                            L10n.text(.historyRetryLoad, language: model.language)
                         ) {
                             model.retryRunHistoryDeepLink()
                         }
@@ -390,7 +390,7 @@ public struct HistoryTimelineView: View {
         }
         .sheet(item: $correctionRecord) { record in
             if let source = record.correctionSource {
-                VocabularyCorrectionSheet(model: model, source: source, historyRecordID: record.id)
+                VocabularyCorrectionSheet(model: model, source: source, historyRecordID: record.id, workflowRunID: record.runID)
             }
         }
         .confirmationDialog(
@@ -435,7 +435,7 @@ public struct HistoryTimelineView: View {
         VStack(spacing: 12) {
             ProgressView()
                 .controlSize(.large)
-            Text(UIStrings.text(.historyLoading, language: model.language))
+            Text(L10n.text(.historyLoading, language: model.language))
                 .font(.title3)
                 .foregroundStyle(.secondary)
         }
@@ -493,7 +493,7 @@ public struct HistoryTimelineView: View {
                 model.loadNewerRunHistoryPage()
             } label: {
                 Label(
-                    UIStrings.text(.historyNewerPage, language: model.language),
+                    L10n.text(.historyNewerPage, language: model.language),
                     systemImage: RillSystemSymbol.chevronLeft.rawValue
                 )
             }
@@ -515,7 +515,7 @@ public struct HistoryTimelineView: View {
                 model.loadOlderRunHistoryPage()
             } label: {
                 Label(
-                    UIStrings.text(.historyOlderPage, language: model.language),
+                    L10n.text(.historyOlderPage, language: model.language),
                     systemImage: RillSystemSymbol.chevronRight.rawValue
                 )
             }
@@ -537,7 +537,7 @@ public struct HistoryTimelineView: View {
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
             Text(
-                UIStrings.text(
+                L10n.text(
                     model.usesPagedRunHistory && model.canLoadNewerRunHistoryPage
                         ? .historyPageEmpty
                         : emptyKey,
@@ -640,7 +640,7 @@ public struct HistoryTimelineView: View {
 
                 if entry.isRecordRelated || entry.receipt?.trigger == .recordDelivery {
                     Label(
-                        UIStrings.text(.historyStackBadge, language: model.language),
+                        L10n.text(.historyStackBadge, language: model.language),
                         systemImage: RillSystemSymbol.squareStack3dUp.rawValue
                     )
                     .font(.caption)
@@ -666,6 +666,29 @@ public struct HistoryTimelineView: View {
                 entry.record?.finalText,
                 hasProtectedPreview: entry.hasProtectedPreview
             )
+            let recovery = HistoryRecoveryPresentation(receipt: entry.receipt)
+            if let message = recovery.message(language: model.language) {
+                Text(message).font(.callout)
+                    .foregroundStyle(recovery.outputState == nil ? Color.secondary : Color.orange)
+                    .accessibilityIdentifier("history.recovery-status")
+            }
+            if model.privacyPolicySettings.historyPreviewMode == .full, let record = entry.record {
+                HStack {
+                    if let text = record.finalText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        RillCopyButton(title: L10n.recoveryCopyTitle(original: false, language: model.language), language: model.language) {
+                            model.copyTextToClipboard(text)
+                        }
+                    }
+                    if let original = record.correctionSource?.processingSteps?.first(where: { $0.kind == .recognizeSpeech })?.outputText
+                        ?? record.correctionSource?.preMappingText,
+                       !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       original != record.finalText {
+                        RillCopyButton(title: L10n.recoveryCopyTitle(original: true, language: model.language), language: model.language) {
+                            model.copyTextToClipboard(original)
+                        }
+                    }
+                }.buttonStyle(.borderless)
+            }
             HStack(spacing: RillSpacing.row) {
                 Text(L10n.historyRunStatus(entry.status, language: model.language))
                     .foregroundStyle(statusColor(entry.status))
@@ -719,7 +742,7 @@ public struct HistoryTimelineView: View {
                             expandedEntryIDs.insert(entry.id)
                         } label: {
                             Label(
-                                UIStrings.text(.sidebarDiagnostics, language: model.language),
+                                L10n.text(.sidebarDiagnostics, language: model.language),
                                 systemImage: SidebarSection.diagnostics.symbolName
                             )
                         }
@@ -796,7 +819,7 @@ public struct HistoryTimelineView: View {
             }
 
             if let runID = entry.runID,
-               let reason = model.failedAudioRecoveryUnavailableReasonsByRunID[runID] {
+               let reason = model.voice.failedAudioRecoveryUnavailableReasonsByRunID[runID] {
                 Label(
                     model.failedAudioRecoveryUnavailableMessage(reason),
                     systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
@@ -805,7 +828,7 @@ public struct HistoryTimelineView: View {
                 .foregroundStyle(.orange)
             }
 
-            if model.failedAudioRecoveryEnabled,
+            if model.voice.failedAudioRecoveryEnabled,
                let receipt = model.failedAudioRecoveryReceipt(for: entry.runID) {
                 failedAudioRecoveryControls(receipt)
             }
@@ -817,8 +840,8 @@ public struct HistoryTimelineView: View {
     private func failedAudioRecoveryControls(
         _ receipt: FailedAudioRecoveryReceipt
     ) -> some View {
-        let isRetrying = model.retryingFailedAudioRecoveryIDs.contains(receipt.id)
-        let anotherRetryIsRunning = !model.retryingFailedAudioRecoveryIDs.isEmpty
+        let isRetrying = model.voice.retryingFailedAudioRecoveryIDs.contains(receipt.id)
+        let anotherRetryIsRunning = !model.voice.retryingFailedAudioRecoveryIDs.isEmpty
             && !isRetrying
         let workflowIsAvailable = model.workflowLibrary.workflows.contains { $0.id == receipt.workflowID }
         return VStack(alignment: .leading, spacing: 6) {
@@ -861,7 +884,7 @@ public struct HistoryTimelineView: View {
                     .disabled(
                         isRetrying
                             || anotherRetryIsRunning
-                            || model.isUpdatingFailedAudioRecovery
+                            || model.voice.isUpdatingFailedAudioRecovery
                             || !workflowIsAvailable
                     )
                 }
@@ -876,7 +899,7 @@ public struct HistoryTimelineView: View {
                     pendingFailedAudioDeletion = receipt
                 }
                 .buttonStyle(.borderless)
-                .disabled(isRetrying || model.isUpdatingFailedAudioRecovery)
+                .disabled(isRetrying || model.voice.isUpdatingFailedAudioRecovery)
             }
 
             HStack(spacing: 4) {
@@ -1104,11 +1127,11 @@ public struct HistoryTimelineView: View {
         workflowsByID: [UUID: WorkflowPresentation]
     ) -> String {
         if let record = entry.record {
-            return UIStrings.workflowName(record.workflow, language: model.language)
+            return L10n.workflowName(record.workflow, language: model.language)
         }
         if let workflowID = entry.workflowID,
            let workflow = workflowsByID[workflowID] {
-            return UIStrings.workflowName(workflow, language: model.language)
+            return L10n.workflowName(workflow, language: model.language)
         }
         if let trigger = entry.receipt?.trigger {
             return L10n.historyRunTrigger(trigger, language: model.language)
@@ -1141,5 +1164,5 @@ public struct HistoryTimelineView: View {
         model.displayedRunHistoryEntries
     }
 
-    private var emptyKey: UIStrings.Key { .historyEmpty }
+    private var emptyKey: L10n.InterfaceKey { .historyEmpty }
 }

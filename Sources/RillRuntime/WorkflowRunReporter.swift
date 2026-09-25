@@ -1,14 +1,17 @@
 import Foundation
 import RillCore
 
-struct WorkflowRunDiagnostics: Sendable {
+struct WorkflowRunReporter: Sendable {
   let diagnostics: DiagnosticsRecorder?
+  let eventBus: EventBus
+  let lane: WorkflowRunLane
   func recordStage(
     _ stage: WorkflowRunStage,
     runID: UUID,
     workflow: WorkflowPresentation,
     metadata: [String: String] = [:]
   ) async {
+    await eventBus.publish(.runStageChanged(run: .init(runID: runID, lane: lane), stage: stage))
     guard let diagnostics else { return }
     await diagnostics.record(
       DiagnosticEvent(

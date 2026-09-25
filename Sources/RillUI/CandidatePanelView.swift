@@ -24,12 +24,12 @@ public struct CandidatePanelView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(UIStrings.text(.candidateResolution, language: language))
+            Text(L10n.text(.candidateResolution, language: language))
                 .font(.title3.weight(.semibold))
-            Text(UIStrings.text(.candidateResolutionHint, language: language))
+            Text(L10n.text(.candidateResolutionHint, language: language))
                 .foregroundStyle(.secondary)
             Text(
-                UIStrings.candidateModeSummary(
+                L10n.candidateModeSummary(
                     mode: candidateCase.policy.mode,
                     timeoutSeconds: Int(candidateCase.policy.timeoutSeconds),
                     language: language
@@ -44,7 +44,7 @@ public struct CandidatePanelView: View {
                         Text(L10n.candidateSetTitle(index + 1, language: language))
                             .font(.headline)
                         Text(
-                            UIStrings.spanSummary(
+                            L10n.spanSummary(
                                 lowerBound: candidateSet.range.lowerBound,
                                 upperBound: candidateSet.range.upperBound,
                                 language: language
@@ -53,10 +53,10 @@ public struct CandidatePanelView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Text(UIStrings.text(.selectReplacement, language: language))
+                    Text(L10n.text(.selectReplacement, language: language))
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                    Text(UIStrings.text(.ambiguousText, language: language))
+                    Text(L10n.text(.ambiguousText, language: language))
                         .font(.subheadline.weight(.medium))
                     Text(candidateSet.surfaceText)
                         .textSelection(.enabled)
@@ -71,7 +71,7 @@ public struct CandidatePanelView: View {
                                         .font(.body.weight(.medium))
                                     Text(
                                         "\(Int(candidate.confidence * 100))% · "
-                                            + UIStrings.candidateSource(candidate.source, language: language)
+                                            + L10n.candidateSource(candidate.source, language: language)
                                     )
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -89,7 +89,7 @@ public struct CandidatePanelView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(UIStrings.text(.resolvedPreview, language: language))
+                Text(L10n.text(.resolvedPreview, language: language))
                     .font(.headline)
                 Text(resolvedPreview)
                     .textSelection(.enabled)
@@ -99,15 +99,15 @@ public struct CandidatePanelView: View {
             HStack {
                 Spacer(minLength: 0)
 
-                Button(UIStrings.text(.dismiss, language: language), role: .cancel) {
+                Button(L10n.text(.dismiss, language: language), role: .cancel) {
                     onDismiss()
                 }
 
-                Button(UIStrings.text(.useDefaults, language: language)) {
+                Button(L10n.text(.useDefaults, language: language)) {
                     onApply(candidateCase.defaultSelections())
                 }
 
-                Button(UIStrings.text(.applySelection, language: language)) {
+                Button(L10n.text(.applySelection, language: language)) {
                     onApply(mergedSelections())
                 }
                 .keyboardShortcut(.defaultAction)

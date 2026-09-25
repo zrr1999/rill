@@ -3,16 +3,16 @@ import RillCore
 
 extension AppModel {
   func synchronizeWakeWordResourceWithLocalSpeechModel() {
-    if case .preparing = wakeWordResourceState {
+    if case .preparing = self.voice.wakeWordResourceState {
       return
     }
     let selectedModel = selectedTrustedLocalSpeechModelIdentifier
     let updatedState: VoiceAssistantResourceState =
-      !selectedModel.isEmpty && downloadedLocalSpeechModels.contains(selectedModel)
+      !selectedModel.isEmpty && self.voice.downloadedLocalSpeechModels.contains(selectedModel)
       ? .ready
       : .notInstalled
-    guard updatedState != wakeWordResourceState else { return }
-    wakeWordResourceState = updatedState
+    guard updatedState != self.voice.wakeWordResourceState else { return }
+    self.voice.wakeWordResourceState = updatedState
     workflowLibraryChangedAction()
   }
 
@@ -32,56 +32,56 @@ extension AppModel {
   }
 
   public func prepareWakeWordModel() {
-    if case .preparing = wakeWordResourceState {
+    if case .preparing = self.voice.wakeWordResourceState {
       return
     }
-    wakeWordResourceState = .preparing(progress: nil)
+    self.voice.wakeWordResourceState = .preparing(progress: nil)
     Task {
       do {
         let preparedModel = try await prepareWakeWordModelAction { progress in
           Task { @MainActor in
-            self.wakeWordResourceState = .preparing(progress: progress)
+            self.voice.wakeWordResourceState = .preparing(progress: progress)
           }
         }
         recordDownloadedLocalSpeechModel(preparedModel)
-        wakeWordResourceState = .ready
+        self.voice.wakeWordResourceState = .ready
         workflowLibraryChangedAction()
       } catch is CancellationError {
-        wakeWordResourceState = .notInstalled
+        self.voice.wakeWordResourceState = .notInstalled
         workflowLibraryChangedAction()
       } catch let reason as VoiceAssistantResourceUnavailableReason {
-        wakeWordResourceState = .unavailable(reason)
+        self.voice.wakeWordResourceState = .unavailable(reason)
         workflowLibraryChangedAction()
       } catch {
-        wakeWordResourceState = .failed(error.localizedDescription)
+        self.voice.wakeWordResourceState = .failed(error.localizedDescription)
         workflowLibraryChangedAction()
       }
     }
   }
 
   public func prepareTTSModel() {
-    if case .preparing = ttsResourceState {
+    if case .preparing = self.voice.ttsResourceState {
       return
     }
     let modelIdentifier = ttsModelIdentifier
-    ttsResourceState = .preparing(progress: nil)
+    self.voice.ttsResourceState = .preparing(progress: nil)
     Task {
       do {
         try await prepareTTSModelAction(modelIdentifier) { progress in
           Task { @MainActor in
             guard self.ttsModelIdentifier == modelIdentifier else { return }
-            self.ttsResourceState = .preparing(progress: progress)
+            self.voice.ttsResourceState = .preparing(progress: progress)
           }
         }
-        downloadedTTSModelIdentifiers.insert(modelIdentifier)
+        self.voice.downloadedTTSModelIdentifiers.insert(modelIdentifier)
         guard ttsModelIdentifier == modelIdentifier else { return }
-        ttsResourceState = .ready
+        self.voice.ttsResourceState = .ready
       } catch is CancellationError {
         guard ttsModelIdentifier == modelIdentifier else { return }
-        ttsResourceState = .notInstalled
+        self.voice.ttsResourceState = .notInstalled
       } catch {
         guard ttsModelIdentifier == modelIdentifier else { return }
-        ttsResourceState = .failed(error.localizedDescription)
+        self.voice.ttsResourceState = .failed(error.localizedDescription)
       }
     }
   }
@@ -146,7 +146,7 @@ extension AppModel {
         }
       }
       self.workflowLibrary.customWorkflows[index] = updatedWorkflow
-      workflowEditorError = nil
+      self.workflowLibrary.workflowEditorError = nil
       self.workflowLibrary.workflowLibraryError = nil
       rebuildWorkflowLibrary()
       persistWorkflowEnabledStates()
@@ -190,7 +190,7 @@ extension AppModel {
 
       self.workflowLibrary.hasModifiedWorkflowLibrary = true
       self.workflowLibrary.customWorkflows.insert(customizedWorkflow, at: 0)
-      workflowEditorError = nil
+      self.workflowLibrary.workflowEditorError = nil
       self.workflowLibrary.workflowLibraryError = nil
       rebuildWorkflowLibrary()
       persistCustomWorkflows()
@@ -213,10 +213,10 @@ extension AppModel {
       draft.wakePhrasesText = normalizedPhrases.joined(separator: "\n")
 
       let previousCustomWorkflowIDs = Set(self.workflowLibrary.customWorkflows.map(\.id))
-      workflowEditorError = nil
+      self.workflowLibrary.workflowEditorError = nil
       await saveWorkflowDraft(draft)
-      if let workflowEditorError {
-        return .failed(workflowEditorError)
+      if let editorError = self.workflowLibrary.workflowEditorError {
+        return .failed(editorError)
       }
       savedWorkflowID = self.workflowLibrary.customWorkflows.first(where: {
         $0.trigger == .wakeWord
@@ -267,7 +267,7 @@ extension AppModel {
     } else if self.settings.isLoading {
       llm = .loading
     } else {
-      switch openAICredentialAvailability {
+      switch self.settings.openAICredentialAvailability {
       case .loading, .saving:
         llm = .loading
       case .missing:
@@ -283,7 +283,7 @@ extension AppModel {
           llm = .configurationInvalid
           break
         }
-        switch openAIConfigurationVerificationState {
+        switch self.settings.openAIConfigurationVerificationState {
         case .idle:
           llm = .configured
         case .verifying:
@@ -291,7 +291,7 @@ extension AppModel {
         case .verified:
           llm = .verified
         case .failed:
-          llm = .verificationFailed(openAIVerificationFailure)
+          llm = .verificationFailed(self.settings.openAIVerificationFailure)
         }
       }
     }
@@ -316,7 +316,7 @@ extension AppModel {
     if !usesSpeechOutput {
       speechOutput = .notRequired
     } else {
-      switch ttsResourceState {
+      switch self.voice.ttsResourceState {
       case .ready:
         speechOutput = .localVoice
       case .preparing:
@@ -328,7 +328,7 @@ extension AppModel {
 
     return VoiceAssistantReadiness(
       microphone: permissionSnapshot.microphone,
-      localSpeech: wakeWordResourceState,
+      localSpeech: self.voice.wakeWordResourceState,
       llm: llm,
       privacy: privacy,
       speechOutput: speechOutput

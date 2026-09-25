@@ -21,7 +21,7 @@ final class WebhookReleaseGateTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "network.slash", accentColorName: "orange")
         )
         let harness = makeHarness(workflow: workflow)
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
 
         XCTAssertFalse(harness.model.canTriggerWorkflow(workflow))
         harness.model.runWorkflow(workflow)

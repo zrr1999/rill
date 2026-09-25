@@ -13,7 +13,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         hideManualCapture(harness.model, runID: runID)
 
         XCTAssertEqual(
-            harness.model.workflowAudioRunState,
+            harness.model.voice.workflowAudioRunState,
             .transcribing(workflowID: workflowID)
         )
         XCTAssertNil(harness.model.currentCaptureLiveSubtitleSnapshot)
@@ -34,7 +34,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         )
 
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
 
@@ -63,7 +63,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         await harness.model.waitForWorkflowAudioActions()
 
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
 
@@ -86,7 +86,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         await harness.model.waitForWorkflowAudioActions()
 
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
 
@@ -98,7 +98,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         await harness.model.stopInteractiveWorkflowRunsForApplicationShutdown()
 
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
 
@@ -117,7 +117,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         )
 
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
 
@@ -137,7 +137,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
 
         XCTAssertTrue(harness.model.voice.isRunning)
         XCTAssertEqual(
-            harness.model.workflowAudioRunState,
+            harness.model.voice.workflowAudioRunState,
             .transcribing(workflowID: workflowID)
         )
         XCTAssertEqual(harness.model.workflowAudioCaptureRunID, runID)
@@ -160,7 +160,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         )
 
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
 
@@ -187,7 +187,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         )
 
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
 
@@ -206,7 +206,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
 
         XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertNil(harness.model.liveSubtitleSnapshot)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertNil(harness.model.workflowAudioCaptureRunID)
     }
 
@@ -217,7 +217,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         providerID: String = "whisperkit.stream"
     ) {
         model.voice.isRunning = true
-        model.workflowAudioRunState = .recording(workflowID: workflowID)
+        model.voice.workflowAudioRunState = .recording(workflowID: workflowID)
         model.handle(
             .liveSubtitleUpdated(
                 LiveSubtitleSnapshot(

@@ -75,8 +75,8 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertFalse(harness.model.areHistoryRetentionSettingsAvailable)
-        XCTAssertNotNil(harness.model.historyRetentionSettingsError)
+        XCTAssertFalse(harness.model.history.areHistoryRetentionSettingsAvailable)
+        XCTAssertNotNil(harness.model.history.historyRetentionSettingsError)
         XCTAssertNotNil(harness.model.privacySettingsLoadError)
         XCTAssertThrowsError(try source.currentSettings())
         assertSentinelIsAbsent(from: harness.model)
@@ -141,7 +141,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         await waitForHistoryMaintenance(harness)
 
         XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
-        XCTAssertNotNil(harness.model.historyRetentionSettingsError)
+        XCTAssertNotNil(harness.model.history.historyRetentionSettingsError)
         let maintenanceCalls = await maintenance.callSnapshot()
         XCTAssertTrue(maintenanceCalls.isEmpty)
         assertSentinelIsAbsent(from: harness.model)
@@ -184,7 +184,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         )
         await waitForEventProcessing(harness)
 
-        let entry = try XCTUnwrap(harness.model.eventFeed.last)
+        let entry = try XCTUnwrap(harness.model.history.eventFeed.last)
         XCTAssertEqual(entry.english, "An output action failed. Open Diagnostics for a safe summary, then retry.")
         assertSentinelIsAbsent(from: harness.model)
     }
@@ -193,7 +193,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         let harness = makeHarness()
         await waitForListenerSetup(harness)
 
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         await harness.eventBus.publish(
             .runFailed(
                 runID: nil,
@@ -204,7 +204,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         await waitForEventProcessing(harness)
         XCTAssertEqual(harness.model.lastFailure, HistoryFailureSanitizer.noSpeechMessage)
 
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
         await harness.eventBus.publish(
             .runFailed(
                 runID: nil,
@@ -220,7 +220,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         let harness = makeHarness()
         await waitForListenerSetup(harness)
 
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -234,7 +234,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             HistoryFailureSanitizer.globalInputUnavailableMessage
         )
 
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -250,7 +250,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         let harness = makeHarness()
         await waitForListenerSetup(harness)
 
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -264,7 +264,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             HistoryFailureSanitizer.recognitionTimeoutMessage
         )
 
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -283,7 +283,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         let harness = makeHarness()
         await waitForListenerSetup(harness)
 
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -297,7 +297,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             HistoryFailureSanitizer.recognitionRecoveryPendingMessage
         )
 
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -315,11 +315,11 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
     func testUnknownFailedAudioRecoveryErrorUsesFixedBilingualCopy() {
         let harness = makeHarness()
 
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         let english = harness.model.localizedRecoveryErrorDetail(
             UserVisibleErrorPrivacySentinel.backend
         )
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
         let simplifiedChinese = harness.model.localizedRecoveryErrorDetail(
             UserVisibleErrorPrivacySentinel.backend
         )
@@ -342,10 +342,10 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             model.lastFailure,
             model.privacySettingsLoadError,
             model.privacySettingsSaveError,
-            model.historyRetentionSettingsError,
+            model.history.historyRetentionSettingsError,
         ]
         .compactMap { $0 }
-        + model.eventFeed.flatMap { [$0.english, $0.simplifiedChinese] }
+        + model.history.eventFeed.flatMap { [$0.english, $0.simplifiedChinese] }
 
         XCTAssertFalse(
             visibleText.contains { $0.contains(sentinel) },

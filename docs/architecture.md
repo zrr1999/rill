@@ -79,6 +79,24 @@ actor, so cancelling a recording suppresses a cue still waiting to be played.
 | Timed-out external work | `BoundedOperation` | A cancelled caller does not free the resource slot until the underlying operation returns. Shutdown seals and drains accepted work. |
 | Workflow files and enabled state | `XDGWorkflowFileStore` and `WorkflowLibraryModel` | External editors own text editing. File writes check the last loaded source before replacement; file observation reloads validated definitions. |
 
+`AppModel` receives its production services explicitly; `RillTestSupport` supplies
+only test defaults. Feature models own their observable status and accepted task
+collections. Settings changes enter explicit commands; assigning a field no longer
+starts persistence or model work through `didSet`. Business presentation types live
+beside their feature owner, while `L10n` is the single translation entry point.
+
+`WorkflowRunReporter` publishes content-free, run/lane-scoped stage events even
+when diagnostics are disabled. The output executor enters saving or delivering
+at the actual action boundary. UI ignores stages from retired or mismatched runs.
+Failed action receipts optionally carry proof that no output was applied. Missing
+proof, cancelled actions, and legacy receipts remain unconfirmed; recovery never
+automatically repeats an output and exposes existing text first.
+
+Model adapters share `ModelFiles` for downloads, streaming digests and atomic
+filesystem publication. Pinned inventories and receipt policies remain adapter
+owned. A per-model process lock guards abandoned staging cleanup and publication;
+a filesystem swap keeps an existing publication intact until replacement succeeds.
+
 Settings writes and reads have different shutdown contracts. Reads can be
 cancelled and sealed. Accepted writes must finish, including older writes whose
 storage implementation ignores cancellation. `PersistenceWriteCoordinator`

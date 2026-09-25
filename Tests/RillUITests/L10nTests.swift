@@ -23,11 +23,11 @@ final class L10nTests: XCTestCase {
     XCTAssertEqual(
       L10n.string(longRecordingToggleKey, language: .english), "Press Once to Start/Stop")
     XCTAssertEqual(
-      UIStrings.recordingDurationLimit(.twoMinutes, language: .english),
+      L10n.recordingDurationLimit(.twoMinutes, language: .english),
       "2 minutes"
     )
     XCTAssertEqual(
-      UIStrings.recordingDurationLimit(.unlimited, language: .simplifiedChinese),
+      L10n.recordingDurationLimit(.unlimited, language: .simplifiedChinese),
       "无限制"
     )
     XCTAssertEqual(L10n.string(textStylesKey, language: .simplifiedChinese), "文字风格")
@@ -111,36 +111,36 @@ final class L10nTests: XCTestCase {
 
   func testMergedRunHistoryScopeHasConciseBilingualCopy() {
     XCTAssertEqual(
-      UIStrings.text(.historyScopeLabel, language: .english),
+      L10n.text(.historyScopeLabel, language: .english),
       "Run history view"
     )
     XCTAssertEqual(
-      UIStrings.text(.historyScopeLabel, language: .simplifiedChinese),
+      L10n.text(.historyScopeLabel, language: .simplifiedChinese),
       "运行历史视图"
     )
     XCTAssertEqual(
-      UIStrings.text(.historyScopeAll, language: .english),
+      L10n.text(.historyScopeAll, language: .english),
       "Recent Runs"
     )
     XCTAssertEqual(
-      UIStrings.text(.historyScopeAll, language: .simplifiedChinese),
+      L10n.text(.historyScopeAll, language: .simplifiedChinese),
       "最近运行"
     )
     XCTAssertEqual(
-      UIStrings.text(.resultsTitle, language: .english),
+      L10n.text(.resultsTitle, language: .english),
       "Recent Results"
     )
     XCTAssertEqual(
-      UIStrings.text(.resultsTitle, language: .simplifiedChinese),
+      L10n.text(.resultsTitle, language: .simplifiedChinese),
       "最近结果"
     )
-    XCTAssertEqual(UIStrings.loadedRunCount(1, language: .english), "1 run loaded")
-    XCTAssertEqual(UIStrings.loadedRunCount(3, language: .english), "3 runs loaded")
-    XCTAssertEqual(UIStrings.loadedRunCount(3, language: .simplifiedChinese), "已加载 3 条运行")
+    XCTAssertEqual(L10n.loadedRunCount(1, language: .english), "1 run loaded")
+    XCTAssertEqual(L10n.loadedRunCount(3, language: .english), "3 runs loaded")
+    XCTAssertEqual(L10n.loadedRunCount(3, language: .simplifiedChinese), "已加载 3 条运行")
   }
 
   func testAccessibilityControlLabelsAreBilingualAndTargeted() {
-    let simpleKeys: [UIStrings.Key] = [
+    let simpleKeys: [L10n.InterfaceKey] = [
       .sidebarStream,
       .clipboardClearSearch,
       .clipboardSection,
@@ -168,16 +168,16 @@ final class L10nTests: XCTestCase {
     ]
 
     for key in simpleKeys {
-      XCTAssertFalse(UIStrings.text(key, language: .english).isEmpty)
-      XCTAssertFalse(UIStrings.text(key, language: .simplifiedChinese).isEmpty)
+      XCTAssertFalse(L10n.text(key, language: .english).isEmpty)
+      XCTAssertFalse(L10n.text(key, language: .simplifiedChinese).isEmpty)
       XCTAssertNotEqual(
-        UIStrings.text(key, language: .english),
-        UIStrings.text(key, language: .simplifiedChinese)
+        L10n.text(key, language: .english),
+        L10n.text(key, language: .simplifiedChinese)
       )
     }
 
     XCTAssertEqual(
-      UIStrings.targetedAccessibilityLabel(
+      L10n.targetedAccessibilityLabel(
         .workflowMoveStepUp,
         target: "Normalize whitespace",
         language: .english
@@ -185,7 +185,7 @@ final class L10nTests: XCTestCase {
       "Move step up: Normalize whitespace"
     )
     XCTAssertEqual(
-      UIStrings.targetedAccessibilityLabel(
+      L10n.targetedAccessibilityLabel(
         .workflowEdit,
         target: "Daily Notes",
         language: .english
@@ -193,7 +193,7 @@ final class L10nTests: XCTestCase {
       "Edit: Daily Notes"
     )
     XCTAssertEqual(
-      UIStrings.targetedAccessibilityLabel(
+      L10n.targetedAccessibilityLabel(
         .vocabularyDeleteRule,
         target: "Rill → Vox Type",
         language: .simplifiedChinese
@@ -201,7 +201,7 @@ final class L10nTests: XCTestCase {
       "删除词汇规则：Rill → Vox Type"
     )
     XCTAssertEqual(
-      UIStrings.targetedAccessibilityLabel(
+      L10n.targetedAccessibilityLabel(
         .clipboardRemoveTag,
         target: "  ",
         language: .english
@@ -212,22 +212,22 @@ final class L10nTests: XCTestCase {
 
   func testEnglishOnlyWhisperKitPresetIsNotPresentedAsBilingual() {
     XCTAssertEqual(
-      UIStrings.localSpeechModelOption(.distilLargeV3Compact, language: .english),
+      L10n.localSpeechModelOption(.distilLargeV3Compact, language: .english),
       "English Only — Distilled Large v3"
     )
     XCTAssertEqual(
-      UIStrings.localSpeechModelOption(.distilLargeV3Compact, language: .simplifiedChinese),
+      L10n.localSpeechModelOption(.distilLargeV3Compact, language: .simplifiedChinese),
       "仅英语 — Distilled Large v3"
     )
   }
 
   func testLocalSpeechPreparationFailuresHaveFixedBilingualCopy() {
     XCTAssertEqual(
-      UIStrings.text(.localSpeechCancelPreparation, language: .english),
+      L10n.text(.localSpeechCancelPreparation, language: .english),
       "Cancel"
     )
     XCTAssertEqual(
-      UIStrings.text(.localSpeechCancelPreparation, language: .simplifiedChinese),
+      L10n.text(.localSpeechCancelPreparation, language: .simplifiedChinese),
       "取消"
     )
 
@@ -303,55 +303,55 @@ final class L10nTests: XCTestCase {
 
   func testClipboardDeletionMakesMergedScopeAndIrreversibilityExplicit() {
     XCTAssertEqual(
-      UIStrings.clipboardDeleteConfirmationTitle(
+      L10n.clipboardDeleteConfirmationTitle(
         itemCount: 1,
         language: .english
       ),
       "Delete this record?"
     )
     XCTAssertEqual(
-      UIStrings.clipboardDeleteConfirmationTitle(
+      L10n.clipboardDeleteConfirmationTitle(
         itemCount: 1,
         language: .simplifiedChinese
       ),
       "删除这条记录？"
     )
     XCTAssertEqual(
-      UIStrings.clipboardDeleteConfirmationDescription(
+      L10n.clipboardDeleteConfirmationDescription(
         itemCount: 1,
         language: .english
       ),
       "This permanently removes the saved record. This action can't be undone."
     )
     XCTAssertEqual(
-      UIStrings.clipboardDeleteConfirmationDescription(
+      L10n.clipboardDeleteConfirmationDescription(
         itemCount: 1,
         language: .simplifiedChinese
       ),
       "这会永久移除已保存的记录，且无法撤销。"
     )
     XCTAssertEqual(
-      UIStrings.clipboardDeleteConfirmationTitle(
+      L10n.clipboardDeleteConfirmationTitle(
         itemCount: 3,
         language: .english
       ),
       "Delete these 3 merged records?"
     )
     XCTAssertEqual(
-      UIStrings.clipboardDeleteConfirmationTitle(
+      L10n.clipboardDeleteConfirmationTitle(
         itemCount: 3,
         language: .simplifiedChinese
       ),
       "删除这 3 条已合并的记录？"
     )
     XCTAssertTrue(
-      UIStrings.clipboardDeleteConfirmationDescription(
+      L10n.clipboardDeleteConfirmationDescription(
         itemCount: 3,
         language: .english
       ).contains("can't be undone")
     )
     XCTAssertTrue(
-      UIStrings.clipboardDeleteConfirmationDescription(
+      L10n.clipboardDeleteConfirmationDescription(
         itemCount: 3,
         language: .simplifiedChinese
       ).contains("无法撤销")
@@ -359,8 +359,8 @@ final class L10nTests: XCTestCase {
 
     let copy = [AppLanguage.english, .simplifiedChinese].flatMap { language in
       [
-        UIStrings.clipboardDeleteConfirmationTitle(itemCount: 3, language: language),
-        UIStrings.clipboardDeleteConfirmationDescription(itemCount: 3, language: language),
+        L10n.clipboardDeleteConfirmationTitle(itemCount: 3, language: language),
+        L10n.clipboardDeleteConfirmationDescription(itemCount: 3, language: language),
       ]
     }.joined(separator: "\n")
     XCTAssertFalse(copy.contains("private clipboard payload"))

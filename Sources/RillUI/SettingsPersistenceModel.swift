@@ -10,6 +10,24 @@ struct SettingsStringWrite: Sendable {
 
 @MainActor @Observable
 public final class SettingsPersistenceModel {
+  public internal(set) var unavailableScalarSettingKeys: Set<AppSettingKey> = []
+  public internal(set) var retryingUnavailableScalarSettingsDomains: Set<ScalarSettingsDomain> = []
+  public internal(set) var openAICredentialAvailability: OpenAICredentialAvailability = .loading
+  public internal(set) var openAIConfigurationVerificationState:
+    OpenAIConfigurationVerificationState = .idle
+  public internal(set) var openAIVerificationFailure: OpenAIVerificationFailure?
+  public internal(set) var isRetryingUnavailableSettingsDomains = false
+  var isRestoringSettings = false
+  var settingsKeysModifiedDuringInitialLoad: Set<AppSettingKey> = []
+  var settingsLoadGeneration = 0
+  var unavailableSettingsDomainRetryGeneration = 0
+  var scalarSettingsRetryGenerations: [ScalarSettingsDomain: Int] = [:]
+  var localSpeechModelMutationGeneration = 0
+  let settingsReadTaskOwner = AppModelSettingsReadTaskOwner()
+  var openAICredentialLoadGeneration = 0
+  var openAIVerificationGeneration = 0
+  var openAIVerificationTask: Task<Void, Never>?
+
   public internal(set) var isLoading = true
   public private(set) var saveState: SettingsSaveState = .saved
   let writes = PersistenceWriteCoordinator()
@@ -118,4 +136,19 @@ public final class SettingsPersistenceModel {
       categories: Set(failed.values.map(\.category)).sorted { $0.rawValue < $1.rawValue })
     saveState = retrying.isEmpty ? .unsaved(summary) : .retrying(summary)
   }
+}
+
+public enum OpenAICredentialAvailability: Sendable, Equatable {
+  case loading
+  case missing
+  case saving
+  case available
+  case inaccessible
+}
+
+public enum OpenAIConfigurationVerificationState: Sendable, Equatable {
+  case idle
+  case verifying
+  case verified
+  case failed
 }

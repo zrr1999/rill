@@ -1,7 +1,5 @@
 import RillSpeechContracts
-import CryptoKit
 import Foundation
-import HuggingFace
 @preconcurrency import MLX
 import MLXAudioVAD
 @preconcurrency import MLXNN
@@ -232,6 +230,14 @@ struct MLXSileroVADModelStore: Sendable {
       Self.repository.replacingOccurrences(of: "/", with: "_"),
       isDirectory: true
     )
+    if !FileManager.default.fileExists(atPath: publicationParent.path) {
+      guard downloadIfNeeded else {
+        throw MLXAudioSwiftRuntimeError.modelUnavailable(Self.repository)
+      }
+    }
+    try ModelFiles.preparePrivateDirectory(publicationParent)
+    let lease = try ModelDownloadLease(directory: publicationParent, identity: Self.repository)
+    defer { withExtendedLifetime(lease) {} }
     if try Self.validate(publication) {
       return publication
     }
@@ -239,9 +245,9 @@ struct MLXSileroVADModelStore: Sendable {
       throw MLXAudioSwiftRuntimeError.modelUnavailable(Self.repository)
     }
 
-    try Self.preparePrivateDirectory(modelRootURL)
-    try Self.preparePrivateDirectory(publicationParent)
-    try Self.preparePrivateDirectory(hubCacheRootURL)
+    try ModelFiles.preparePrivateDirectory(modelRootURL)
+    try ModelFiles.preparePrivateDirectory(publicationParent)
+    try ModelFiles.preparePrivateDirectory(hubCacheRootURL)
     let staging = publicationParent.appendingPathComponent(
       ".silero-vad-v6.\(UUID().uuidString.lowercased()).partial",
       isDirectory: true
@@ -251,25 +257,15 @@ struct MLXSileroVADModelStore: Sendable {
       withIntermediateDirectories: false,
       attributes: [.posixPermissions: NSNumber(value: 0o700)]
     )
-    var removeStaging = true
-    defer {
-      if removeStaging { try? FileManager.default.removeItem(at: staging) }
-    }
+    defer { try? FileManager.default.removeItem(at: staging) }
 
-    guard let repositoryID = Repo.ID(rawValue: Self.repository) else {
-      throw MLXAudioSwiftRuntimeError.invalidModelStore
-    }
     do {
-      _ = try await HubClient(cache: HubCache(cacheDirectory: hubCacheRootURL))
-        .downloadSnapshot(
-          of: repositoryID,
-          kind: .model,
-          to: staging,
-          revision: Self.revision,
-          matching: Self.files.map(\.path),
-          localFilesOnly: false,
-          maxConcurrentDownloads: 2
-        )
+      try await ModelFiles.download(
+        repository: Self.repository, revision: Self.revision,
+        files: Self.files.map(\.path), to: staging, cache: hubCacheRootURL,
+        concurrency: 2)
+    } catch is CancellationError {
+      throw CancellationError()
     } catch {
       throw MLXAudioSwiftRuntimeError.modelUnavailable(Self.repository)
     }
@@ -281,25 +277,7 @@ struct MLXSileroVADModelStore: Sendable {
       throw MLXAudioSwiftRuntimeError.invalidModelStore
     }
 
-    let quarantine = publicationParent.appendingPathComponent(
-      ".silero-vad-v6.\(UUID().uuidString.lowercased()).replaced",
-      isDirectory: true
-    )
-    if FileManager.default.fileExists(atPath: publication.path) {
-      try FileManager.default.moveItem(at: publication, to: quarantine)
-    }
-    do {
-      try FileManager.default.moveItem(at: staging, to: publication)
-      removeStaging = false
-      try? FileManager.default.removeItem(at: quarantine)
-    } catch {
-      if FileManager.default.fileExists(atPath: quarantine.path),
-        !FileManager.default.fileExists(atPath: publication.path)
-      {
-        try? FileManager.default.moveItem(at: quarantine, to: publication)
-      }
-      throw MLXAudioSwiftRuntimeError.invalidModelStore
-    }
+    try ModelFiles.publish(staging, at: publication)
     return publication
   }
 
@@ -340,41 +318,15 @@ struct MLXSileroVADModelStore: Sendable {
       guard values.isRegularFile == true,
         values.isSymbolicLink != true,
         UInt64(values.fileSize ?? -1) == file.byteCount,
-        try sha256(url) == file.sha256
+        try ModelFiles.sha256(url) == file.sha256
       else { return false }
     }
     return true
   }
 
-  private static func sha256(_ url: URL) throws -> String {
-    let handle = try FileHandle(forReadingFrom: url)
-    defer { try? handle.close() }
-    var hasher = SHA256()
-    while true {
-      let data = try handle.read(upToCount: 4 * 1_024 * 1_024) ?? Data()
-      if data.isEmpty { break }
-      hasher.update(data: data)
-    }
-    return hasher.finalize().map { String(format: "%02x", $0) }.joined()
-  }
 
-  private static func preparePrivateDirectory(_ directory: URL) throws {
-    try FileManager.default.createDirectory(
-      at: directory,
-      withIntermediateDirectories: true,
-      attributes: [.posixPermissions: NSNumber(value: 0o700)]
-    )
-    let values = try directory.resourceValues(
-      forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
-    )
-    guard values.isDirectory == true, values.isSymbolicLink != true else {
-      throw MLXAudioSwiftRuntimeError.invalidModelStore
-    }
-    try FileManager.default.setAttributes(
-      [.posixPermissions: NSNumber(value: 0o700)],
-      ofItemAtPath: directory.path
-    )
-  }
+
+
 
   private static func defaultModelRootURL(
     fileManager: FileManager = .default

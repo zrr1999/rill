@@ -16,7 +16,7 @@ extension SettingsView {
 
       if !model.localSpeechAvailability.isAvailable {
         Label(
-          UIStrings.localSpeechAvailabilityDescription(
+          L10n.localSpeechAvailabilityDescription(
             model.localSpeechAvailability,
             language: model.language
           ),
@@ -31,7 +31,7 @@ extension SettingsView {
         .font(.caption)
         .foregroundStyle(.secondary)
 
-      if let metadataError = model.downloadedLocalSpeechModelsError {
+      if let metadataError = model.voice.downloadedLocalSpeechModelsError {
         settingsDomainLoadFailure(
           message: metadataError,
           retryIdentifier: "settings.local-speech-metadata.retry"
@@ -39,12 +39,12 @@ extension SettingsView {
       }
 
       VStack(alignment: .leading, spacing: RillSpacing.row) {
-          Text(UIStrings.text(.settingsLocalSpeech, language: model.language))
+          Text(L10n.text(.settingsLocalSpeech, language: model.language))
             .font(.subheadline.weight(.medium))
 
           if model.localSpeechTrustMaterialAvailable {
             Text(
-              UIStrings.localSpeechAvailabilityDescription(
+              L10n.localSpeechAvailabilityDescription(
                 model.localSpeechAvailability,
                 language: model.language
               )
@@ -57,7 +57,7 @@ extension SettingsView {
             if model.speechModelResourceCatalog.isEmpty {
               if !model.trustedLocalSpeechModels.isEmpty {
                 Picker(
-                  UIStrings.text(.localSpeechModel, language: model.language),
+                  L10n.text(.localSpeechModel, language: model.language),
                   selection: Binding(
                     get: { model.selectedTrustedLocalSpeechModelIdentifier },
                     set: { _ = model.setPreferredLocalSpeechModel($0) }
@@ -124,14 +124,14 @@ extension SettingsView {
               }
             }
 
-            if model.localSpeechPreparationState == .preparing {
+            if model.voice.localSpeechPreparationState == .preparing {
               let preparationStage = LocalSpeechPreparationPresentation.stage(
-                displayedProgress: model.localSpeechPreparationProgress
+                displayedProgress: model.voice.localSpeechPreparationProgress
               )
               VStack(alignment: .leading, spacing: 6) {
                 HStack {
                   Text(
-                    UIStrings.text(
+                    L10n.text(
                       preparationStage.localizedKey,
                       language: model.language
                     )
@@ -146,7 +146,7 @@ extension SettingsView {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                   }
-                  Button(UIStrings.text(.localSpeechCancelPreparation, language: model.language)) {
+                  Button(L10n.text(.localSpeechCancelPreparation, language: model.language)) {
                     model.cancelLocalSpeechModelPreparation()
                   }
                   .buttonStyle(.bordered)
@@ -163,11 +163,11 @@ extension SettingsView {
                 }
               }
               .transition(.opacity)
-            } else if model.localSpeechPreparationState == .ready {
+            } else if model.voice.localSpeechPreparationState == .ready {
               VStack(alignment: .leading, spacing: RillSpacing.compact) {
                 HStack(alignment: .firstTextBaseline, spacing: RillSpacing.card) {
                   Label(
-                    UIStrings.text(.localSpeechPreparationReady, language: model.language),
+                    L10n.text(.localSpeechPreparationReady, language: model.language),
                     systemImage: RillSystemSymbol.checkmarkCircleFill.rawValue
                   )
                   .foregroundStyle(.green)
@@ -175,14 +175,14 @@ extension SettingsView {
                   Spacer()
 
                   Button(
-                    UIStrings.text(.localSpeechReleaseMemory, language: model.language)
+                    L10n.text(.localSpeechReleaseMemory, language: model.language)
                   ) {
                     model.releaseLocalSpeechModelMemory()
                   }
                   .buttonStyle(.bordered)
                   .controlSize(.small)
                   .help(
-                    UIStrings.text(
+                    L10n.text(
                       .localSpeechReleaseMemoryHint,
                       language: model.language
                     )
@@ -190,7 +190,7 @@ extension SettingsView {
                   .accessibilityIdentifier("settings.local-speech.release-memory")
                 }
 
-                if let preparedModel = model.localSpeechPreparedModelIdentifier {
+                if let preparedModel = model.voice.localSpeechPreparedModelIdentifier {
                   Text(preparedModel)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
@@ -206,18 +206,18 @@ extension SettingsView {
                 }
                 .disabled(
                   !model.canTriggerWorkflow(testWorkflow)
-                    || model.localSpeechPreparationState == .preparing
+                    || model.voice.localSpeechPreparationState == .preparing
                 )
                 .accessibilityIdentifier("settings.local-speech.record-test")
 
-                Text(UIStrings.text(.localSpeechLocalTestHint, language: model.language))
+                Text(L10n.text(.localSpeechLocalTestHint, language: model.language))
                   .font(.caption)
                   .foregroundStyle(.secondary)
               }
             }
 
             Text(
-              UIStrings.text(
+              L10n.text(
                 model.trustedLocalSpeechModels.isEmpty
                   ? .localSpeechPreparationHint
                   : .localSpeechTrustedCatalogHint,
@@ -227,7 +227,7 @@ extension SettingsView {
             .font(.caption)
             .foregroundStyle(.secondary)
 
-            if let error = model.localSpeechPreparationError, !error.isEmpty {
+            if let error = model.voice.localSpeechPreparationError, !error.isEmpty {
               Text(error)
                 .font(.caption)
                 .foregroundStyle(.red)
@@ -236,11 +236,11 @@ extension SettingsView {
         }
       .animation(
         reduceMotion ? nil : .easeInOut(duration: 0.15),
-        value: model.localSpeechPreparationState
+        value: model.voice.localSpeechPreparationState
       )
       .disabled(model.hasUnavailableScalarSettings(in: .localSpeech))
 
-      Text(UIStrings.text(.settingsSpeechEngineDescription, language: model.language))
+      Text(L10n.text(.settingsSpeechEngineDescription, language: model.language))
         .font(.caption)
         .foregroundStyle(.secondary)
     }
@@ -251,9 +251,9 @@ extension SettingsView {
       get: { LLMModelSelection(modelIdentifier: model.openAIModel) },
       set: { selection in
         if let modelIdentifier = selection.modelIdentifier {
-          model.openAIModel = modelIdentifier
+          model.setOpenAIModel(modelIdentifier)
         } else if LLMModelSelection(modelIdentifier: model.openAIModel) != .custom {
-          model.openAIModel = ""
+          model.setOpenAIModel("")
         }
       }
     )
@@ -276,7 +276,7 @@ extension SettingsView {
 
   var openAIVerificationFailureMessage: String {
     L10n.openAIVerificationFailureMessage(
-      model.openAIVerificationFailure,
+      model.settings.openAIVerificationFailure,
       language: model.language
     )
   }
@@ -326,7 +326,7 @@ extension SettingsView {
         .font(.caption)
         .foregroundStyle(.secondary)
 
-        if model.speechModelPoolDegradedByMemoryPressure {
+        if model.voice.speechModelPoolDegradedByMemoryPressure {
           Label(
             L10n.settingsText(.settingsModelPoolDegraded, language: model.language),
             systemImage: RillSystemSymbol.memorychip.rawValue

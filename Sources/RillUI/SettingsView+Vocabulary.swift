@@ -63,7 +63,7 @@ extension SettingsView {
         model.retryUnavailableStoredSettingsDomains()
       }
       .buttonStyle(.bordered)
-      .disabled(model.isRetryingUnavailableSettingsDomains)
+      .disabled(model.settings.isRetryingUnavailableSettingsDomains)
       .accessibilityIdentifier(retryIdentifier)
     }
   }
@@ -83,7 +83,7 @@ extension SettingsView {
   func vocabularyRuleRow(_ rule: VocabularyRule) -> some View {
     HStack(alignment: .top, spacing: 12) {
       Toggle(
-        UIStrings.targetedAccessibilityLabel(
+        L10n.targetedAccessibilityLabel(
           .vocabularyRule,
           target: vocabularyRuleTitle(rule),
           language: model.language
@@ -130,7 +130,7 @@ extension SettingsView {
       }
       .buttonStyle(.plain)
       .accessibilityLabel(
-        UIStrings.targetedAccessibilityLabel(
+        L10n.targetedAccessibilityLabel(
           .vocabularyDeleteRule,
           target: vocabularyRuleTitle(rule),
           language: model.language

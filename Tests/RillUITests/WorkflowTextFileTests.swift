@@ -72,7 +72,7 @@ struct WorkflowTextFileTests {
             settingsWriteDebounceDuration: .zero
         ).model
         await model.waitForInitialVoiceConfiguration()
-        #expect(model.openAICredentialAvailability == .available)
+        #expect(model.settings.openAICredentialAvailability == .available)
         #expect(model.isWorkflowExecutionSupported(cleanup))
         let fileURL = try #require(await model.workflowFileForEditing(cleanup))
         model.setWorkflowEnabled(true, for: cleanup.id)
@@ -85,10 +85,10 @@ struct WorkflowTextFileTests {
         let externalSource = "# Changed by an external editor\n" + (try String(contentsOf: fileURL, encoding: .utf8))
         try externalSource.write(to: fileURL, atomically: true, encoding: .utf8)
         model.setWorkflowEnabled(true, for: dictation.id)
-        #expect(model.isUpdatingWorkflowEnabledStates)
+        #expect(model.workflowLibrary.isUpdatingWorkflowEnabledStates)
         model.setWorkflowEnabled(false, for: cleanup.id)
         await model.flushPendingPersistenceWrites()
-        #expect(!model.isUpdatingWorkflowEnabledStates)
+        #expect(!model.workflowLibrary.isUpdatingWorkflowEnabledStates)
         #expect(!model.isWorkflowEnabled(dictation))
         #expect(model.enabledWorkflows(for: .hotkey).map(\.id) == [cleanup.id])
         #expect(try String(contentsOf: fileURL, encoding: .utf8) == externalSource)

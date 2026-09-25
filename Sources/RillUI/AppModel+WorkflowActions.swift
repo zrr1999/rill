@@ -54,21 +54,21 @@ private enum WorkflowOperationFailureStage {
 
 extension AppModel {
   public func stopInteractiveWorkflowRunsForApplicationShutdown() async {
-    hasBegunApplicationShutdown = true
-    let task = pendingInteractiveWorkflowTask
+    beginApplicationShutdown()
+    let task = self.voice.pendingInteractiveWorkflowTask
     task?.cancel()
     await task?.value
-    pendingInteractiveWorkflowTask = nil
-    let audioTasks = Array(workflowAudioActionTasks.values)
+    self.voice.pendingInteractiveWorkflowTask = nil
+    let audioTasks = Array(self.voice.workflowAudioActionTasks.values)
     for audioTask in audioTasks {
       audioTask.cancel()
     }
     for audioTask in audioTasks {
       await audioTask.value
     }
-    workflowAudioActionTasks.removeAll()
+    self.voice.workflowAudioActionTasks.removeAll()
     self.voice.isRunning = false
-    workflowAudioRunState = .idle
+    self.voice.workflowAudioRunState = .idle
     workflowAudioCaptureRunID = nil
   }
 
@@ -78,7 +78,7 @@ extension AppModel {
   /// mutate presentation state. It is a deterministic completion boundary for
   /// callers that need to observe the result of an explicitly launched run.
   public func waitForInteractiveWorkflowRun() async {
-    while let task = pendingInteractiveWorkflowTask {
+    while let task = self.voice.pendingInteractiveWorkflowTask {
       await task.value
     }
   }
@@ -86,8 +86,8 @@ extension AppModel {
   /// Waits for accepted start/finish actions for an interactive captured-audio
   /// workflow without changing the run state.
   public func waitForWorkflowAudioActions() async {
-    while !workflowAudioActionTasks.isEmpty {
-      let tasks = Array(workflowAudioActionTasks.values)
+    while !self.voice.workflowAudioActionTasks.isEmpty {
+      let tasks = Array(self.voice.workflowAudioActionTasks.values)
       for task in tasks {
         await task.value
       }
@@ -98,7 +98,7 @@ extension AppModel {
     guard !self.settings.isLoading else {
       let message = L10n.runText(.workflowLibraryLoading, language: language)
       if reportingToEditor {
-        workflowEditorError = message
+        self.workflowLibrary.workflowEditorError = message
       } else {
         self.workflowLibrary.workflowLibraryError = message
       }
@@ -110,7 +110,7 @@ extension AppModel {
         self.workflowLibrary.workflowLibraryError
         ?? L10n.runText(.workflowLibraryUnavailable, language: language)
       if reportingToEditor {
-        workflowEditorError = message
+        self.workflowLibrary.workflowEditorError = message
       } else {
         self.workflowLibrary.workflowLibraryError = message
       }
@@ -124,7 +124,7 @@ extension AppModel {
   }
 
   public func setWorkflowEnabled(_ isEnabled: Bool, for workflowID: UUID) {
-    guard !hasBegunApplicationShutdown, !isUpdatingWorkflowEnabledStates else { return }
+    guard !hasBegunApplicationShutdown, !self.workflowLibrary.isUpdatingWorkflowEnabledStates else { return }
     guard workflowLibraryIsReadyForMutation(reportingToEditor: false) else { return }
     guard let workflow = self.workflowLibrary.workflows.first(where: { $0.id == workflowID }) else { return }
 
@@ -136,7 +136,7 @@ extension AppModel {
     if isEnabled {
       let conflicts = conflictingEnabledWorkflowsForActivation(of: workflow)
       guard conflicts.isEmpty else {
-        self.workflowLibrary.workflowLibraryError = UIStrings.workflowEnableConflict(
+        self.workflowLibrary.workflowLibraryError = L10n.workflowEnableConflict(
           trigger: workflow.trigger,
           names: conflicts.map { localizedWorkflowName(for: $0) },
           language: language
@@ -176,10 +176,10 @@ extension AppModel {
     }
     guard !records.isEmpty else { return false }
 
-    isUpdatingWorkflowEnabledStates = true
+    self.workflowLibrary.isUpdatingWorkflowEnabledStates = true
     let task = Task { @MainActor [weak self] in
       guard let self else { return }
-      defer { self.isUpdatingWorkflowEnabledStates = false }
+      defer { self.workflowLibrary.isUpdatingWorkflowEnabledStates = false }
       // Persist deactivations first so a reload cannot enable both Fn self.workflowLibrary.workflows.
       for (workflow, isEnabled, existingURL, source) in records.sorted(by: { !$0.1 && $1.1 }) {
         do {
@@ -244,7 +244,7 @@ extension AppModel {
   }
 
   public func isLocalSpeechModelDownloaded(_ modelIdentifier: String) -> Bool {
-    downloadedLocalSpeechModels.contains(modelIdentifier)
+    self.voice.downloadedLocalSpeechModels.contains(modelIdentifier)
   }
 
   public func localSpeechModelDisplayName(
@@ -263,8 +263,8 @@ extension AppModel {
     guard includeStatus, trustedLocalSpeechModels.isEmpty else { return baseName }
     let status =
       isLocalSpeechModelDownloaded(modelIdentifier)
-      ? UIStrings.text(.localSpeechDownloaded, language: language)
-      : UIStrings.text(.localSpeechNotDownloaded, language: language)
+      ? L10n.text(.localSpeechDownloaded, language: language)
+      : L10n.text(.localSpeechNotDownloaded, language: language)
     return "\(baseName) · \(status)"
   }
 
@@ -352,11 +352,11 @@ extension AppModel {
       return
     }
     if localSpeechModel != modelIdentifier {
-      localSpeechModel = modelIdentifier
+      applyLocalSpeechModel(modelIdentifier)
     }
-    guard !isRestoringSettings else { return }
+    guard !self.settings.isRestoringSettings else { return }
     if self.settings.isLoading {
-      shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = true
+      self.voice.shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = true
       return
     }
     prepareLocalSpeechModel()
@@ -369,7 +369,7 @@ extension AppModel {
   public func copyHistoryFailure(_ record: WorkflowResultRecord) {
     guard let failureMessage = record.failureMessage else { return }
     let payload = [
-      "workflow: \(UIStrings.workflowName(record.workflow, language: language))",
+      "workflow: \(L10n.workflowName(record.workflow, language: language))",
       "timestamp: \(record.timestamp.formatted(date: .numeric, time: .standard))",
       "failure: \(failureMessage)",
     ].joined(separator: "\n")
@@ -382,8 +382,8 @@ extension AppModel {
       .map { "\($0.key)=\($0.value)" }
       .joined(separator: "\n")
     let payload = [
-      "level: \(UIStrings.diagnosticLevel(event.level, language: .english))",
-      "subsystem: \(UIStrings.subsystem(event.subsystem, language: .english))",
+      "level: \(L10n.diagnosticLevel(event.level, language: .english))",
+      "subsystem: \(L10n.subsystem(event.subsystem, language: .english))",
       "time: \(event.timestamp.formatted(date: .numeric, time: .standard))",
       "event: \(event.event)",
       "message: \(event.message)",
@@ -515,25 +515,25 @@ extension AppModel {
       guard permissionSnapshot.microphone == .granted else {
         return .microphonePermissionRequired
       }
-      guard case .ready = wakeWordResourceState else {
+      guard case .ready = self.voice.wakeWordResourceState else {
         return .wakeWordModelNotReady
       }
     }
     if workflow.plan.process.allSteps.contains(where: {
       $0.kind == .llmRewrite || $0.kind == .llmAnswer
     }) {
-      guard openAICredentialAvailability == .available,
+      guard self.settings.openAICredentialAvailability == .available,
         !hasUnavailableScalarSettings(in: .openAI)
       else {
-        return .openAIUnavailable(openAICredentialAvailability)
+        return .openAIUnavailable(self.settings.openAICredentialAvailability)
       }
       guard OpenAISettings.isValidBaseURL(openAIBaseURL),
         OpenAISettings.isValidModelIdentifier(openAIModel)
       else {
         return .openAIConfigurationInvalid
       }
-      if openAIConfigurationVerificationState == .failed {
-        return .openAIVerificationFailed(openAIVerificationFailure)
+      if self.settings.openAIConfigurationVerificationState == .failed {
+        return .openAIVerificationFailed(self.settings.openAIVerificationFailure)
       }
       guard !isLoadingPrivacySettings, privacySettingsLoadError == nil else {
         return .privacySettingsUnavailable
@@ -722,45 +722,45 @@ extension AppModel {
 
   func workflowRunButtonTitle(for workflow: WorkflowDefinition?) -> String {
     guard let workflow else {
-      return UIStrings.text(.runSelectedWorkflow, language: language)
+      return L10n.text(.runSelectedWorkflow, language: language)
     }
 
     if isPreparingWorkflowAudioRun(for: workflow) {
-      return UIStrings.text(.workflowPreparingAudio, language: language)
+      return L10n.text(.workflowPreparingAudio, language: language)
     }
 
     if isRecordingWorkflowAudioRun(for: workflow) {
-      return UIStrings.text(.workflowStopAndTranscribe, language: language)
+      return L10n.text(.workflowStopAndTranscribe, language: language)
     }
 
     if isTranscribingWorkflowAudioRun(for: workflow) {
-      return UIStrings.text(.workflowTranscribing, language: language)
+      return L10n.text(.workflowTranscribing, language: language)
     }
 
     if self.voice.isRunning {
-      return UIStrings.text(.running, language: language)
+      return L10n.text(.running, language: language)
     }
 
     if requiresCapturedAudioForInteractiveRun(workflow) {
-      return UIStrings.text(.workflowRecordAndRun, language: language)
+      return L10n.text(.workflowRecordAndRun, language: language)
     }
 
-    return UIStrings.text(.runSelectedWorkflow, language: language)
+    return L10n.text(.runSelectedWorkflow, language: language)
   }
 
   func workflowMenuButtonTitle(for workflow: WorkflowDefinition) -> String {
     let name = localizedWorkflowName(for: workflow)
 
     if isPreparingWorkflowAudioRun(for: workflow) {
-      return "\(name) · \(UIStrings.text(.workflowPreparingAudio, language: language))"
+      return "\(name) · \(L10n.text(.workflowPreparingAudio, language: language))"
     }
 
     if isRecordingWorkflowAudioRun(for: workflow) {
-      return "\(name) · \(UIStrings.text(.workflowStopAndTranscribe, language: language))"
+      return "\(name) · \(L10n.text(.workflowStopAndTranscribe, language: language))"
     }
 
     if isTranscribingWorkflowAudioRun(for: workflow) {
-      return "\(name) · \(UIStrings.text(.workflowTranscribing, language: language))"
+      return "\(name) · \(L10n.text(.workflowTranscribing, language: language))"
     }
 
     return name
@@ -771,8 +771,8 @@ extension AppModel {
     self.voice.isRunning = true
     lastFailure = nil
 
-    interactiveWorkflowTaskGeneration &+= 1
-    let generation = interactiveWorkflowTaskGeneration
+    self.voice.interactiveWorkflowTaskGeneration &+= 1
+    let generation = self.voice.interactiveWorkflowTaskGeneration
     let task = Task { [weak self, sessionCoordinator, authorizeWorkflowRunAction] in
       guard let self else { return }
       defer { self.finishInteractiveWorkflowTask(generation: generation) }
@@ -797,7 +797,7 @@ extension AppModel {
         )
       }
     }
-    pendingInteractiveWorkflowTask = task
+    self.voice.pendingInteractiveWorkflowTask = task
   }
 
   func startCapturedAudioWorkflowRun(
@@ -805,7 +805,7 @@ extension AppModel {
   ) {
     self.voice.isRunning = true
     lastFailure = nil
-    workflowAudioRunState = .preparing(workflowID: workflow.id)
+    self.voice.workflowAudioRunState = .preparing(workflowID: workflow.id)
 
     let taskID = UUID()
     let task = Task { [weak self, startWorkflowAudioRunAction] in
@@ -816,7 +816,7 @@ extension AppModel {
         try await startWorkflowAudioRunAction(workflow, binding)
         await MainActor.run {
           guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
-          self.workflowAudioRunState = .recording(workflowID: workflow.id)
+          self.voice.workflowAudioRunState = .recording(workflowID: workflow.id)
           self.append(
             english: L10n.runText(.recordingStartedAutoStop, language: .english),
             simplifiedChinese: L10n.runText(
@@ -829,14 +829,14 @@ extension AppModel {
         await MainActor.run {
           guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
           self.voice.isRunning = false
-          self.workflowAudioRunState = .idle
+          self.voice.workflowAudioRunState = .idle
           self.workflowAudioCaptureRunID = nil
         }
       } catch {
         await MainActor.run {
           guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
           self.voice.isRunning = false
-          self.workflowAudioRunState = .idle
+          self.voice.workflowAudioRunState = .idle
           self.workflowAudioCaptureRunID = nil
           let failure = WorkflowOperationFailureStage.audioCaptureStart.presentation
           self.lastFailure = failure.string(for: self.language)
@@ -847,12 +847,12 @@ extension AppModel {
         }
       }
     }
-    workflowAudioActionTasks[taskID] = task
+    self.voice.workflowAudioActionTasks[taskID] = task
   }
 
   func finishCapturedAudioWorkflowRun(for workflow: WorkflowDefinition) {
     guard isRecordingWorkflowAudioRun(for: workflow) else { return }
-    workflowAudioRunState = .transcribing(workflowID: workflow.id)
+    self.voice.workflowAudioRunState = .transcribing(workflowID: workflow.id)
 
     let taskID = UUID()
     let task = Task { [weak self, finishWorkflowAudioRunAction] in
@@ -861,12 +861,12 @@ extension AppModel {
       do {
         try await finishWorkflowAudioRunAction()
         await MainActor.run {
-          self.workflowAudioRunState = .idle
+          self.voice.workflowAudioRunState = .idle
         }
       } catch {
         await MainActor.run {
           self.voice.isRunning = false
-          self.workflowAudioRunState = .idle
+          self.voice.workflowAudioRunState = .idle
           self.workflowAudioCaptureRunID = nil
           let failure = WorkflowOperationFailureStage.audioTranscription.presentation
           self.lastFailure = failure.string(for: self.language)
@@ -877,11 +877,11 @@ extension AppModel {
         }
       }
     }
-    workflowAudioActionTasks[taskID] = task
+    self.voice.workflowAudioActionTasks[taskID] = task
   }
 
   func finishWorkflowAudioActionTask(id: UUID) {
-    workflowAudioActionTasks.removeValue(forKey: id)
+    self.voice.workflowAudioActionTasks.removeValue(forKey: id)
   }
 
   func requiresCapturedAudioForInteractiveRun(_ workflow: WorkflowDefinition) -> Bool {
@@ -899,17 +899,17 @@ extension AppModel {
   }
 
   func isPreparingWorkflowAudioRun(for workflow: WorkflowDefinition) -> Bool {
-    guard case .preparing(let workflowID) = workflowAudioRunState else { return false }
+    guard case .preparing(let workflowID) = self.voice.workflowAudioRunState else { return false }
     return workflowID == workflow.id
   }
 
   func isRecordingWorkflowAudioRun(for workflow: WorkflowDefinition) -> Bool {
-    guard case .recording(let workflowID) = workflowAudioRunState else { return false }
+    guard case .recording(let workflowID) = self.voice.workflowAudioRunState else { return false }
     return workflowID == workflow.id
   }
 
   func isTranscribingWorkflowAudioRun(for workflow: WorkflowDefinition) -> Bool {
-    guard case .transcribing(let workflowID) = workflowAudioRunState else { return false }
+    guard case .transcribing(let workflowID) = self.voice.workflowAudioRunState else { return false }
     return workflowID == workflow.id
   }
 
@@ -1107,11 +1107,11 @@ extension AppModel {
 
   public func setRecordPanelHotkeyShortcut(_ shortcut: KeyboardShortcut) {
     guard GlobalHotkeyPolicy.accepts(shortcut) else { return }
-    recordPanelHotkeyBinding = .keyboardShortcut(shortcut)
+    applyRecordPanelHotkeyBinding(.keyboardShortcut(shortcut))
   }
 
   public func resetRecordPanelHotkeyBinding() {
-    recordPanelHotkeyBinding = .doubleCommand
+    applyRecordPanelHotkeyBinding(.doubleCommand)
   }
 
   public func reportRecordPanelPasteFailure() {
@@ -1127,7 +1127,7 @@ extension AppModel {
   }
 
   public func localizedWorkflowName(for workflow: WorkflowDefinition) -> String {
-    UIStrings.workflowName(workflow.presentation, language: language)
+    L10n.workflowName(workflow.presentation, language: language)
   }
 
   public func defaultWorkflowDraft() -> WorkflowEditorDraft {
@@ -1173,7 +1173,7 @@ extension AppModel {
     guard workflowLibraryIsReadyForMutation(reportingToEditor: true) else { return }
     let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedName.isEmpty else {
-      workflowEditorError = L10n.runText(.workflowNameRequired, language: language)
+      self.workflowLibrary.workflowEditorError = L10n.runText(.workflowNameRequired, language: language)
       return
     }
 
@@ -1187,7 +1187,7 @@ extension AppModel {
           != WorkflowNameDuplicationPolicy.normalizedName(trimmedName)
       } ?? true
       if isRename, workflowNameIsTaken(trimmedName, excluding: workflowID) {
-        workflowEditorError = L10n.workflowText(.workflowNameTakenError, language: language)
+        self.workflowLibrary.workflowEditorError = L10n.workflowText(.workflowNameTakenError, language: language)
         return
       }
     } else {
@@ -1201,7 +1201,7 @@ extension AppModel {
     var sanitizedDraft = draft
     sanitizedDraft.name = resolvedName
     if let validationError = sanitizedDraft.outputValidationError(language: language) {
-      workflowEditorError = validationError
+      self.workflowLibrary.workflowEditorError = validationError
       return
     }
     if sanitizedDraft.eventType == .wakeWord {
@@ -1210,7 +1210,7 @@ extension AppModel {
           WakeWordConfiguration(phrases: sanitizedDraft.wakePhrases)
         )
       } catch {
-        workflowEditorError = L10n.runWakeWordWorkflowSaveFailed(
+        self.workflowLibrary.workflowEditorError = L10n.runWakeWordWorkflowSaveFailed(
           detail: error.localizedDescription,
           language: language
         )
@@ -1248,7 +1248,7 @@ extension AppModel {
         self.workflowLibrary.workflowFileURLsByID[workflow.id] = record.fileURL
         self.workflowLibrary.workflowFileSourcesByID[workflow.id] = record.source
       } catch {
-        workflowEditorError = String(
+        self.workflowLibrary.workflowEditorError = String(
           format: L10n.runText(.workflowTOMLFileSaveFailedFormat, language: language),
           error.localizedDescription
         )
@@ -1268,7 +1268,7 @@ extension AppModel {
       self.workflowLibrary.workflowLibraryError = workflowEnableError(for: supportIssue, language: language)
     } else if desiredEnabledState && !enableConflicts.isEmpty {
       self.workflowLibrary.workflowEnabledStates[workflow.id] = false
-      self.workflowLibrary.workflowLibraryError = UIStrings.workflowEnableConflict(
+      self.workflowLibrary.workflowLibraryError = L10n.workflowEnableConflict(
         trigger: workflow.trigger,
         names: enableConflicts.map { localizedWorkflowName(for: $0) },
         language: language
@@ -1280,7 +1280,7 @@ extension AppModel {
       self.workflowLibrary.workflowLibraryError = nil
     }
 
-    workflowEditorError = nil
+    self.workflowLibrary.workflowEditorError = nil
     rebuildWorkflowLibrary()
     persistWorkflowEnabledStates()
     persistCustomWorkflows()
@@ -1344,7 +1344,7 @@ extension AppModel {
     self.workflowLibrary.customWorkflows.remove(at: index)
     self.workflowLibrary.workflowFileURLsByID.removeValue(forKey: workflow.id)
     self.workflowLibrary.workflowEnabledStates.removeValue(forKey: workflow.id)
-    workflowEditorError = nil
+    self.workflowLibrary.workflowEditorError = nil
     self.workflowLibrary.workflowLibraryError = nil
     rebuildWorkflowLibrary()
     persistWorkflowEnabledStates()
@@ -1372,7 +1372,7 @@ extension AppModel {
         guard let source = self.workflowLibrary.workflowFileSourcesByID[workflow.id] else { throw WorkflowFileConflict.changed }
         try await workflowFileStore.delete(fileURL: fileURL, expected: .source(source))
       } catch {
-        workflowEditorError = String(
+        self.workflowLibrary.workflowEditorError = String(
           format: L10n.runText(.builtInWorkflowOverrideRemoveFailedFormat, language: language),
           error.localizedDescription
         )
@@ -1385,7 +1385,7 @@ extension AppModel {
     self.workflowLibrary.workflowFileURLsByID.removeValue(forKey: workflow.id)
     self.workflowLibrary.workflowCustomizations.removeAll { $0.workflowID == workflow.id }
     self.workflowLibrary.workflowEnabledStates[workflow.id] = defaultWorkflow.isEnabledByDefault
-    workflowEditorError = nil
+    self.workflowLibrary.workflowEditorError = nil
     self.workflowLibrary.workflowLibraryError = nil
     rebuildWorkflowLibrary()
     persistWorkflowEnabledStates()
@@ -1403,22 +1403,22 @@ extension AppModel {
   }
 
   public func acceptResolution(selections: [UUID: UUID]) {
-    guard let pendingResolution else { return }
+    guard let resolution = self.voice.pendingResolution else { return }
     Task {
-      _ = await candidateResolver.accept(caseID: pendingResolution.id, selections: selections)
+      _ = await candidateResolver.accept(caseID: resolution.id, selections: selections)
     }
   }
 
   public func dismissResolution() {
-    guard let pendingResolution else { return }
+    guard let resolution = self.voice.pendingResolution else { return }
     Task {
-      _ = await candidateResolver.dismiss(caseID: pendingResolution.id)
+      _ = await candidateResolver.dismiss(caseID: resolution.id)
     }
   }
 
   func finishInteractiveWorkflowTask(generation: Int) {
-    guard interactiveWorkflowTaskGeneration == generation else { return }
-    pendingInteractiveWorkflowTask = nil
+    guard self.voice.interactiveWorkflowTaskGeneration == generation else { return }
+    self.voice.pendingInteractiveWorkflowTask = nil
   }
 
 }

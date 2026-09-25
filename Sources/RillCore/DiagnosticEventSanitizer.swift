@@ -539,6 +539,7 @@ public enum DiagnosticEventSanitizer {
     ]),
     "stage": .closed([
       "capturingInput",
+      "saving",
       "completed",
       "delivering",
       "failed",

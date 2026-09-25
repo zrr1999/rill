@@ -8,14 +8,14 @@ extension AppModel {
     @discardableResult
     public func setInterfaceLanguage(_ newLanguage: AppLanguage) -> Bool {
         guard canMutateScalarSettings(in: .interface) else { return false }
-        language = newLanguage
+        applyLanguage(newLanguage)
         return true
     }
 
     @discardableResult
     public func setSystemClipboardCaptureEnabled(_ isEnabled: Bool) -> Bool {
         guard canMutateScalarSettings(in: .systemClipboard) else { return false }
-        systemClipboardCaptureEnabled = isEnabled
+        applySystemClipboardCaptureEnabled(isEnabled)
         return true
     }
 
@@ -25,7 +25,7 @@ extension AppModel {
               engine != .local || localSpeechTrustMaterialAvailable else {
             return false
         }
-        preferredSpeechEngine = engine
+        applyPreferredSpeechEngine(engine)
         return true
     }
 
@@ -44,9 +44,9 @@ extension AppModel {
             // Set the exact model before enabling the local route so the route
             // transition prepares only the newly selected backend.
             if localSpeechModel != modelIdentifier {
-                localSpeechModel = modelIdentifier
+                applyLocalSpeechModel(modelIdentifier)
             }
-            preferredSpeechEngine = .local
+            applyPreferredSpeechEngine(.local)
         }
         return true
     }
@@ -56,7 +56,7 @@ extension AppModel {
         guard ttsModelOptions.contains(where: { $0.id == modelIdentifier }) else {
             return false
         }
-        ttsModelIdentifier = modelIdentifier
+        applyTTSModelIdentifier(modelIdentifier)
         return true
     }
 
@@ -65,21 +65,40 @@ extension AppModel {
         _ mode: BuiltinPushToTalkOutputMode
     ) -> Bool {
         guard canMutateScalarSettings(in: .input) else { return false }
-        builtinPushToTalkOutputMode = mode
+        applyBuiltinPushToTalkOutputMode(mode)
         return true
     }
 
     @discardableResult
     public func setLongRecordingModeEnabled(_ isEnabled: Bool) -> Bool {
         guard canMutateScalarSettings(in: .input) else { return false }
-        longRecordingModeEnabled = isEnabled
+        applyLongRecordingModeEnabled(isEnabled)
         return true
     }
 
     @discardableResult
     public func setRecordingDurationLimit(_ limit: RecordingDurationLimit) -> Bool {
         guard canMutateScalarSettings(in: .input) else { return false }
-        recordingDurationLimit = limit
+        applyRecordingDurationLimit(limit)
         return true
+    }
+}
+
+
+extension AppModel {
+    public func setOpenAIAPIKey(_ value: String) {
+        guard !hasBegunApplicationShutdown,
+              settings.openAICredentialAvailability != .inaccessible else { return }
+        applyOpenAIAPIKey(value)
+    }
+
+    public func setOpenAIBaseURL(_ value: String) {
+        guard canMutateScalarSettings(in: .openAI) else { return }
+        applyOpenAIBaseURL(value)
+    }
+
+    public func setOpenAIModel(_ value: String) {
+        guard canMutateScalarSettings(in: .openAI) else { return }
+        applyOpenAIModel(value)
     }
 }

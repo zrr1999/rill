@@ -218,7 +218,7 @@ extension AppModelTests {
         XCTAssertTrue(harness.model.voice.isRunning)
         XCTAssertEqual(
             harness.model.workflowRunButtonTitle(for: workflow),
-            UIStrings.text(.workflowStopAndTranscribe, language: harness.model.language)
+            L10n.text(.workflowStopAndTranscribe, language: harness.model.language)
         )
         XCTAssertTrue(harness.model.canTriggerWorkflow(workflow))
 
@@ -256,10 +256,10 @@ extension AppModelTests {
 
         harness.model.runWorkflow(workflow)
 
-        XCTAssertEqual(harness.model.workflowAudioRunState, .preparing(workflowID: workflow.id))
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .preparing(workflowID: workflow.id))
         XCTAssertEqual(
             harness.model.workflowRunButtonTitle(for: workflow),
-            UIStrings.text(.workflowPreparingAudio, language: harness.model.language)
+            L10n.text(.workflowPreparingAudio, language: harness.model.language)
         )
         XCTAssertFalse(harness.model.canTriggerWorkflow(workflow))
 
@@ -267,16 +267,16 @@ extension AppModelTests {
         await startGate.waitUntilStarted()
 
         let preparingSnapshot = await probe.snapshot()
-        XCTAssertEqual(harness.model.workflowAudioRunState, .preparing(workflowID: workflow.id))
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .preparing(workflowID: workflow.id))
         XCTAssertEqual(preparingSnapshot.finishCount, 0)
 
         await startGate.succeed()
         await waitForEventProcessing(harness)
 
-        XCTAssertEqual(harness.model.workflowAudioRunState, .recording(workflowID: workflow.id))
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .recording(workflowID: workflow.id))
         XCTAssertEqual(
             harness.model.workflowRunButtonTitle(for: workflow),
-            UIStrings.text(.workflowStopAndTranscribe, language: harness.model.language)
+            L10n.text(.workflowStopAndTranscribe, language: harness.model.language)
         )
         XCTAssertTrue(harness.model.canTriggerWorkflow(workflow))
     }
@@ -301,13 +301,13 @@ extension AppModelTests {
         harness.model.runWorkflow(workflow)
         await startGate.waitUntilStarted()
 
-        XCTAssertEqual(harness.model.workflowAudioRunState, .preparing(workflowID: workflow.id))
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .preparing(workflowID: workflow.id))
 
         await startGate.fail(message: "Microphone unavailable")
         await waitForEventProcessing(harness)
 
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
         XCTAssertEqual(
             harness.model.lastFailure,
             harness.model.language == .english
@@ -316,7 +316,7 @@ extension AppModelTests {
         )
         XCTAssertEqual(
             harness.model.workflowRunButtonTitle(for: workflow),
-            UIStrings.text(.workflowRecordAndRun, language: harness.model.language)
+            L10n.text(.workflowRecordAndRun, language: harness.model.language)
         )
     }
 
@@ -332,7 +332,7 @@ extension AppModelTests {
                 ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
             )
         )
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
 
         XCTAssertEqual(harness.model.localizedWorkflowName(for: harness.workflow), "确认后保存")
     }
@@ -462,7 +462,7 @@ extension AppModelTests {
         XCTAssertEqual(activity.storage[.interfaceLanguage], userLanguage.rawValue)
         XCTAssertEqual(activity.storage[.legacyWhisperKitLanguage], "stale-language")
         XCTAssertNil(activity.setCounts[.legacyWhisperKitLanguage])
-        XCTAssertTrue(harness.model.settingsKeysModifiedDuringInitialLoad.isEmpty)
+        XCTAssertTrue(harness.model.settings.settingsKeysModifiedDuringInitialLoad.isEmpty)
     }
 
     func testLocalSpeechRuntimeStaysNotReadyUntilInitialReadPublishesTrustedSnapshot() async throws {
@@ -492,7 +492,7 @@ extension AppModelTests {
 
         // A session edit made while the persisted snapshot is in flight wins
         // for its key, but must not expose a partially restored configuration.
-        harness.model.localSpeechModel = trustedModels[1].id
+        harness.model.applyLocalSpeechModel(trustedModels[1].id)
         XCTAssertEqual(harness.model.localSpeechModel, trustedModels[1].id)
         XCTAssertThrowsError(try source.currentSettings()) { error in
             XCTAssertEqual(error as? LocalSpeechSettingsSourceError, .notReady)
@@ -606,7 +606,7 @@ extension AppModelTests {
         var preparation = await preparationProbe.snapshot()
         XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
         XCTAssertTrue(harness.model.vocabularyRules.isEmpty)
-        XCTAssertTrue(harness.model.downloadedLocalSpeechModels.isEmpty)
+        XCTAssertTrue(harness.model.voice.downloadedLocalSpeechModels.isEmpty)
         XCTAssertEqual(correctionOutcome, .notReady)
         XCTAssertEqual(preparation.prepareCount, 0)
         XCTAssertNil(activity.setCounts[.customWorkflows])
@@ -621,7 +621,7 @@ extension AppModelTests {
         preparation = await preparationProbe.snapshot()
         XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.map(\.id), [storedWorkflow.id])
         XCTAssertEqual(harness.model.vocabularyRules.map(\.id), [storedRule.id])
-        XCTAssertEqual(harness.model.downloadedLocalSpeechModels, storedDownloadedModels)
+        XCTAssertEqual(harness.model.voice.downloadedLocalSpeechModels, storedDownloadedModels)
         XCTAssertEqual(preparation.prepareCount, 0)
         XCTAssertNil(activity.setCounts[.customWorkflows])
         XCTAssertNil(activity.setCounts[.workflowEnabledStates])
@@ -667,7 +667,7 @@ extension AppModelTests {
             appModelTestTrustedLocalSpeechModels()[1].id
         )
         XCTAssertEqual(harness.model.localSpeechModel, appModelTestTrustedLocalSpeechModels()[1].id)
-        XCTAssertEqual(harness.model.localSpeechPreparationState, .ready)
+        XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .ready)
         XCTAssertEqual(
             settingsActivity.storage[.localSpeechModel],
             appModelTestTrustedLocalSpeechModels()[1].id
@@ -693,7 +693,7 @@ extension AppModelTests {
 
         await harness.model.waitForInitialVoiceConfiguration()
         let expectedLanguage: AppLanguage = harness.model.language == .english ? .simplifiedChinese : .english
-        harness.model.language = expectedLanguage
+        harness.model.applyLanguage(expectedLanguage)
         await harness.model.flushPendingPersistenceWrites()
 
         let storedLanguage = try await settingsStore.string(forKey: .interfaceLanguage)
@@ -745,7 +745,7 @@ extension AppModelTests {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        harness.model.recordHistoryVisibility = .all
+        harness.model.applyRecordHistoryVisibility(.all)
         await harness.model.flushPendingPersistenceWrites()
 
         let storedValue = try await settingsStore.string(forKey: .recordHistoryVisibility)
@@ -820,7 +820,7 @@ extension AppModelTests {
 
         await harness.model.waitForHistoryProjectionLoads()
         XCTAssertEqual(
-            harness.model.diagnosticEvents.map(\.event),
+            harness.model.history.diagnosticEvents.map(\.event),
             ["diagnostic.stored.newer", "diagnostic.stored.older"]
         )
 
@@ -838,7 +838,7 @@ extension AppModelTests {
         await waitForEventProcessing(harness)
 
         XCTAssertEqual(
-            harness.model.diagnosticEvents.map(\.event),
+            harness.model.history.diagnosticEvents.map(\.event),
             ["diagnostic.stored.newer", "diagnostic.live", "diagnostic.stored.older"]
         )
     }
@@ -858,10 +858,10 @@ extension AppModelTests {
 
         await harness.model.waitForHistoryProjectionLoads()
 
-        XCTAssertEqual(harness.model.diagnosticsLoadState, .failed)
+        XCTAssertEqual(harness.model.history.diagnosticsLoadState, .failed)
         guard case .failed(let entries) = DiagnosticsView.timelineContent(
-            loadState: harness.model.diagnosticsLoadState,
-            events: harness.model.diagnosticEvents
+            loadState: harness.model.history.diagnosticsLoadState,
+            events: harness.model.history.diagnosticEvents
         ) else {
             return XCTFail("The failed repository load must not be presented as an empty timeline.")
         }
@@ -870,8 +870,8 @@ extension AppModelTests {
         harness.model.refreshDiagnostics()
         await harness.model.waitForHistoryProjectionLoads()
 
-        XCTAssertEqual(harness.model.diagnosticsLoadState, .loaded)
-        XCTAssertEqual(harness.model.diagnosticEvents, [recoveredEvent])
+        XCTAssertEqual(harness.model.history.diagnosticsLoadState, .loaded)
+        XCTAssertEqual(harness.model.history.diagnosticEvents, [recoveredEvent])
         let readCount = await diagnosticRepository.readCount()
         XCTAssertEqual(readCount, 2)
     }
@@ -969,7 +969,7 @@ extension AppModelTests {
         await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(
-            harness.model.downloadedLocalSpeechModels,
+            harness.model.voice.downloadedLocalSpeechModels,
             ["qwen3-asr-0.6b-mlx-8bit"]
         )
     }
@@ -1017,7 +1017,7 @@ extension AppModelTests {
         let harness = makeHarness(settingsStore: settingsStore)
 
         await harness.model.waitForInitialVoiceConfiguration()
-        harness.model.longRecordingModeEnabled = true
+        harness.model.applyLongRecordingModeEnabled(true)
         await harness.model.flushPendingPersistenceWrites()
 
         let snapshot = await settingsStore.activitySnapshot()
@@ -1037,7 +1037,7 @@ extension AppModelTests {
     func testBuiltinHotkeyWorkflowUsesConfiguredVoiceGroupOutputMode() async {
         let harness = makeHarness(workflows: [makeBuiltinPushToTalkWorkflow()])
 
-        harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
+        harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
 
         let resolvedHotkeyWorkflow = harness.model.enabledWorkflows(for: .hotkey).first
 
@@ -1051,7 +1051,7 @@ extension AppModelTests {
     func testAppModelExecutionRoutingMatchesRuntimeResolvedPlan() throws {
         let workflow = makeBuiltinPushToTalkWorkflow()
         let harness = makeHarness(workflows: [workflow])
-        harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
+        harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
 
         let actual = harness.model.enabledWorkflows(for: .hotkey).first
         guard case .resolved(let plan) = WorkflowExecutionPlanResolver.resolve(
@@ -1124,7 +1124,7 @@ extension AppModelTests {
         XCTAssertEqual(updates.last?.snapshot?.runID, runID)
         XCTAssertEqual(updates.last?.snapshot?.phase, .transcribing)
 
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         await waitForEventProcessing(harness)
 
         updates = await probe.snapshot()

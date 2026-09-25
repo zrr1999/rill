@@ -20,36 +20,6 @@ public struct LocalizedText: Equatable, Sendable {
   }
 }
 
-/// A payload-free error boundary for local speech model preparation.
-///
-/// Provider errors must be mapped to one of these allowlisted stages before
-/// they cross into UI state. The generic case is the only fallback for errors
-/// that do not implement the trusted loader contract.
-public struct LocalSpeechPreparationFailure: Error, Equatable, Sendable {
-  public enum Stage: String, CaseIterable, Sendable {
-    case architectureUnsupported = "architecture-unsupported"
-    case trustMaterialUnavailable = "trust-material-unavailable"
-    case trustRoot
-    case resolution
-    case integrity
-    case tokenizer
-    case runtime
-    case generic
-  }
-
-  public let stage: Stage
-
-  public init(stage: Stage) {
-    self.stage = stage
-  }
-}
-
-extension LocalSpeechPreparationFailure: LocalizedError {
-  public var errorDescription: String? {
-    L10n.localSpeechPreparationFailure(stage).english
-  }
-}
-
 public enum L10n {
   public enum Key: String, CaseIterable, Sendable {
     case applicationShutdownDetail
@@ -119,6 +89,8 @@ public enum L10n {
     case vocabularyCorrectionOriginalText
     case vocabularyCorrectionReused
     case vocabularyCorrectionSave
+    case vocabularyCorrectionSaveText
+    case vocabularyCorrectionSaveFailed
     case vocabularyCorrectionScopeDescription
     case vocabularyCorrectionScopeTitle
     case vocabularyCorrectionSuggestions
@@ -433,8 +405,8 @@ public enum L10n {
     ),
     .vocabularyCorrectionDescription: .init(
       english:
-        "Edit the recognition text, then review one suggested rule. Saving never changes delivered history and only affects future runs.",
-      simplifiedChinese: "编辑识别文本并审查一条建议规则。保存不会改写已交付的历史，只影响后续运行。"
+        "Save an edited copy for this recording, or explicitly remember a vocabulary rule for future runs. The original remains available; saving a copy does not send it to another app.",
+      simplifiedChinese: "可以只保存本次录音的修正版，也可以明确记住词汇供以后使用。原始内容会保留，保存修正版不会再次发送到其他应用。"
     ),
     .vocabularyCorrectionHotwordOption: .init(
       english: "Prefer as a recognition hotword",
@@ -461,8 +433,15 @@ public enum L10n {
       simplifiedChinese: "已有的匹配纠正规则已启用，将用于后续运行。"
     ),
     .vocabularyCorrectionSave: .init(
-      english: "Save for Future Runs",
-      simplifiedChinese: "保存并用于后续运行"
+      english: "Remember Vocabulary",
+      simplifiedChinese: "记住词汇"
+    ),
+    .vocabularyCorrectionSaveText: .init(
+      english: "Save Edited Copy", simplifiedChinese: "修正本次文本"
+    ),
+    .vocabularyCorrectionSaveFailed: .init(
+      english: "Could not save the edited copy. The original may be unavailable, or storage needs attention. Try again.",
+      simplifiedChinese: "无法保存修正版。原始记录可能已移除，或本地存储不可用，请重试。"
     ),
     .vocabularyCorrectionScopeDescription: .init(
       english:
@@ -1231,7 +1210,7 @@ enum HistorySettingsTextKey: String, CaseIterable, Sendable {
   case runRetention
   case title
 }
-extension UIStrings {
+extension L10n {
   public static func stackPending(_ count: Int, language: AppLanguage) -> String {
     switch language {
     case .english:

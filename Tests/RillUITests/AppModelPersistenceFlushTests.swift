@@ -126,9 +126,9 @@ final class AppModelPersistenceFlushTests: XCTestCase {
         let expectedLanguage: AppLanguage = harness.model.language == .english
             ? .simplifiedChinese
             : .english
-        harness.model.language = expectedLanguage
-        harness.model.openAIBaseURL = "https://latest.example.test"
-        harness.model.openAIAPIKey = "latest-key"
+        harness.model.applyLanguage(expectedLanguage)
+        harness.model.applyOpenAIBaseURL("https://latest.example.test")
+        harness.model.applyOpenAIAPIKey("latest-key")
         harness.model.setPrivacyCloudConfirmationRequired(false)
 
         let completion = PersistenceFlushCompletionProbe()

@@ -198,3 +198,13 @@ clear barriers retain their transactional guarantees. UI persistence task
 ownership is separate from AppModel's settings presentation and retry policy.
 
 See [Architecture](architecture.md) for the dependency graph and state owners.
+
+
+### Explicit recognition corrections
+
+`RecordStore.saveTextCorrection` resolves the original immutable text by workflow
+run ID and creates a new user-derived Record. It preserves the source and its
+memberships. The correction has no collection membership, so saving it cannot
+trigger routing or repeat delivery. An operation ID makes retries idempotent;
+a deleted original is not resurrected. The workspace owns and drains the accepted
+write. Remembering vocabulary is a separate, scope-visible command.

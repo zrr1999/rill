@@ -22,13 +22,13 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         case .contextMemory:
             L10n.workspace(.contextMemory, language: language)
         case .diagnostics:
-            UIStrings.text(.sidebarDiagnostics, language: language)
+            L10n.text(.sidebarDiagnostics, language: language)
         case .language:
-            UIStrings.text(.settingsLanguage, language: language)
+            L10n.text(.settingsLanguage, language: language)
         case .recordPanel:
-            UIStrings.text(.settingsRecordPanel, language: language)
+            L10n.text(.settingsRecordPanel, language: language)
         case .permissions:
-            UIStrings.text(.permissions, language: language)
+            L10n.text(.permissions, language: language)
         case .privacy:
             L10n.privacyText(.title, language: language)
         case .storage:
@@ -36,11 +36,11 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Sendable {
         case .providers:
             L10n.jev(.providersTitle, language: language)
         case .speech:
-            UIStrings.text(.settingsSpeechEngine, language: language)
+            L10n.text(.settingsSpeechEngine, language: language)
         case .vocabulary:
             L10n.string(.vocabularyTitle, language: language)
         case .input:
-            UIStrings.text(.settingsBuiltinPushToTalk, language: language)
+            L10n.text(.settingsBuiltinPushToTalk, language: language)
         case .voiceAssistant:
             L10n.overlayText(.settingsVoiceAssistantTitle, language: language)
         }

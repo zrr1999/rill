@@ -7,7 +7,7 @@ public extension AppModel {
         for runID: UUID?
     ) -> FailedAudioRecoveryReceipt? {
         guard let runID else { return nil }
-        return failedAudioRecoveryReceipts.first { $0.originalRunID == runID }
+        return self.voice.failedAudioRecoveryReceipts.first { $0.originalRunID == runID }
     }
 
     func failedAudioRecoveryUnavailableMessage(
@@ -23,20 +23,20 @@ public extension AppModel {
     func setFailedAudioRecoveryEnabled(_ isEnabled: Bool) {
         guard !hasBegunApplicationShutdown,
               !self.settings.isLoading,
-              isEnabled != failedAudioRecoveryEnabled,
-              !isUpdatingFailedAudioRecovery else {
+              isEnabled != self.voice.failedAudioRecoveryEnabled,
+              !self.voice.isUpdatingFailedAudioRecovery else {
             return
         }
         guard let settingsStore else {
-            failedAudioRecoveryError = L10n.runText(
+            self.voice.failedAudioRecoveryError = L10n.runText(
                 .recoveryStorageUnavailable,
                 language: language
             )
             return
         }
 
-        isUpdatingFailedAudioRecovery = true
-        failedAudioRecoveryError = nil
+        self.voice.isUpdatingFailedAudioRecovery = true
+        self.voice.failedAudioRecoveryError = nil
         let refreshAction = refreshFailedAudioRecoveryAction
         let task = Task { [weak self, settingsStore] in
             do {
@@ -45,7 +45,7 @@ public extension AppModel {
                     forKey: .failedAudioRecoveryEnabled
                 )
                 await MainActor.run {
-                    self?.failedAudioRecoveryEnabled = isEnabled
+                    self?.voice.failedAudioRecoveryEnabled = isEnabled
                 }
                 do {
                     try await refreshAction(isEnabled)
@@ -59,7 +59,7 @@ public extension AppModel {
                                 forKey: .failedAudioRecoveryEnabled
                             )
                             await MainActor.run {
-                                self?.failedAudioRecoveryEnabled = false
+                                self?.voice.failedAudioRecoveryEnabled = false
                             }
                         } catch {
                             // The durable opt-in remains true, so the UI must
@@ -67,9 +67,9 @@ public extension AppModel {
                             // still stays fail-closed for this session.
                             await MainActor.run {
                                 guard let self else { return }
-                                self.isUpdatingFailedAudioRecovery = false
-                                self.failedAudioRecoveryEnabled = true
-                                self.failedAudioRecoveryError = L10n.runText(
+                                self.voice.isUpdatingFailedAudioRecovery = false
+                                self.voice.failedAudioRecoveryEnabled = true
+                                self.voice.failedAudioRecoveryError = L10n.runText(
                                     .recoveryEnabledStorageUnavailable,
                                     language: self.language
                                 )
@@ -80,14 +80,14 @@ public extension AppModel {
                     throw refreshError
                 }
                 await MainActor.run {
-                    self?.failedAudioRecoveryError = nil
-                    self?.isUpdatingFailedAudioRecovery = false
+                    self?.voice.failedAudioRecoveryError = nil
+                    self?.voice.isUpdatingFailedAudioRecovery = false
                 }
             } catch {
                 await MainActor.run {
                     guard let self else { return }
-                    self.isUpdatingFailedAudioRecovery = false
-                    self.failedAudioRecoveryError = String(
+                    self.voice.isUpdatingFailedAudioRecovery = false
+                    self.voice.failedAudioRecoveryError = String(
                         format: L10n.runText(.recoveryUpdateFailedFormat, language: self.language),
                         self.localizedRecoveryErrorDetail(error)
                     )
@@ -99,53 +99,53 @@ public extension AppModel {
 
     func loadFailedAudioRecoveryReceipts() {
         guard !hasBegunApplicationShutdown else { return }
-        failedAudioRecoveryLoadGeneration &+= 1
-        let generation = failedAudioRecoveryLoadGeneration
-        failedAudioRecoveryLoadTask?.cancel()
-        guard failedAudioRecoveryEnabled else {
-            failedAudioRecoveryReceipts = []
-            failedAudioRecoveryLoadTask = nil
+        self.voice.failedAudioRecoveryLoadGeneration &+= 1
+        let generation = self.voice.failedAudioRecoveryLoadGeneration
+        self.voice.failedAudioRecoveryLoadTask?.cancel()
+        guard self.voice.failedAudioRecoveryEnabled else {
+            self.voice.failedAudioRecoveryReceipts = []
+            self.voice.failedAudioRecoveryLoadTask = nil
             return
         }
         let loadAction = loadFailedAudioRecoveryReceiptsAction
         let task = Task { @MainActor [weak self, loadAction] in
             guard let self else { return }
             defer {
-                if self.failedAudioRecoveryLoadGeneration == generation {
-                    self.failedAudioRecoveryLoadTask = nil
+                if self.voice.failedAudioRecoveryLoadGeneration == generation {
+                    self.voice.failedAudioRecoveryLoadTask = nil
                 }
             }
             do {
                 let receipts = try await loadAction()
                 try Task.checkCancellation()
                 guard !self.hasBegunApplicationShutdown,
-                      self.failedAudioRecoveryLoadGeneration == generation else { return }
-                self.failedAudioRecoveryReceipts = receipts
-                self.failedAudioRecoveryError = nil
+                      self.voice.failedAudioRecoveryLoadGeneration == generation else { return }
+                self.voice.failedAudioRecoveryReceipts = receipts
+                self.voice.failedAudioRecoveryError = nil
             } catch is CancellationError {
                 return
             } catch {
                 guard !self.hasBegunApplicationShutdown,
-                      self.failedAudioRecoveryLoadGeneration == generation else { return }
-                self.failedAudioRecoveryReceipts = []
-                self.failedAudioRecoveryError = String(
+                      self.voice.failedAudioRecoveryLoadGeneration == generation else { return }
+                self.voice.failedAudioRecoveryReceipts = []
+                self.voice.failedAudioRecoveryError = String(
                     format: L10n.runText(.recoveryLoadFailedFormat, language: self.language),
                     self.localizedRecoveryErrorDetail(error)
                 )
             }
         }
-        failedAudioRecoveryLoadTask = task
+        self.voice.failedAudioRecoveryLoadTask = task
     }
 
     func waitForFailedAudioRecoveryLoad() async {
-        while let task = failedAudioRecoveryLoadTask {
+        while let task = self.voice.failedAudioRecoveryLoadTask {
             await task.value
         }
     }
 
     func waitForFailedAudioRecoveryRetries() async {
-        while !failedAudioRecoveryRetryTasks.isEmpty {
-            let tasks = Array(failedAudioRecoveryRetryTasks.values)
+        while !self.voice.failedAudioRecoveryRetryTasks.isEmpty {
+            let tasks = Array(self.voice.failedAudioRecoveryRetryTasks.values)
             for task in tasks {
                 await task.value
             }
@@ -154,43 +154,43 @@ public extension AppModel {
 
     func retryFailedAudioRecovery(_ receipt: FailedAudioRecoveryReceipt) {
         guard !hasBegunApplicationShutdown,
-              !retryingFailedAudioRecoveryIDs.contains(receipt.id) else {
+              !self.voice.retryingFailedAudioRecoveryIDs.contains(receipt.id) else {
             return
         }
         guard receipt.status.canRetry else {
-            failedAudioRecoveryError = L10n.runText(
+            self.voice.failedAudioRecoveryError = L10n.runText(
                 .recoveryRetryDuplicateWarning,
                 language: language
             )
             return
         }
         guard let workflow = self.workflowLibrary.workflows.first(where: { $0.id == receipt.workflowID }) else {
-            failedAudioRecoveryError = L10n.runText(
+            self.voice.failedAudioRecoveryError = L10n.runText(
                 .recoveryWorkflowUnavailable,
                 language: language
             )
             return
         }
 
-        failedAudioRecoveryError = nil
-        retryingFailedAudioRecoveryIDs.insert(receipt.id)
+        self.voice.failedAudioRecoveryError = nil
+        self.voice.retryingFailedAudioRecoveryIDs.insert(receipt.id)
         let retryAction = retryFailedAudioRecoveryAction
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
-                self.retryingFailedAudioRecoveryIDs.remove(receipt.id)
-                self.failedAudioRecoveryRetryTasks.removeValue(forKey: receipt.id)
+                self.voice.retryingFailedAudioRecoveryIDs.remove(receipt.id)
+                self.voice.failedAudioRecoveryRetryTasks.removeValue(forKey: receipt.id)
             }
             do {
                 try Task.checkCancellation()
                 let outcome = try await retryAction(receipt.id, workflow)
                 try Task.checkCancellation()
-                self.failedAudioRecoveryReceipts.removeAll { $0.id == receipt.id }
+                self.voice.failedAudioRecoveryReceipts.removeAll { $0.id == receipt.id }
                 switch outcome {
                 case .completed:
-                    self.failedAudioRecoveryError = nil
+                    self.voice.failedAudioRecoveryError = nil
                 case .completedCleanupPending:
-                    self.failedAudioRecoveryError = L10n.runText(
+                    self.voice.failedAudioRecoveryError = L10n.runText(
                         .recoveryCleanupPending,
                         language: self.language
                     )
@@ -200,13 +200,13 @@ public extension AppModel {
                 // runtime controller restores the retryable receipt and removes
                 // any decrypted temporary audio before returning.
             } catch {
-                self.failedAudioRecoveryError = String(
+                self.voice.failedAudioRecoveryError = String(
                     format: L10n.runText(.recoveryRetryFailedFormat, language: self.language),
                     self.localizedRecoveryErrorDetail(error)
                 )
             }
         }
-        failedAudioRecoveryRetryTasks[receipt.id] = task
+        self.voice.failedAudioRecoveryRetryTasks[receipt.id] = task
     }
 
     /// Prevents new operations, cancels the active index load and every retry,
@@ -214,40 +214,40 @@ public extension AppModel {
     /// decrypted audio.
     /// Call this before draining events or flushing persistence during quit.
     func stopFailedAudioRecoveryRetriesForApplicationShutdown() async {
-        hasBegunApplicationShutdown = true
-        failedAudioRecoveryLoadGeneration &+= 1
-        let loadTask = failedAudioRecoveryLoadTask
-        failedAudioRecoveryLoadTask = nil
+        beginApplicationShutdown()
+        self.voice.failedAudioRecoveryLoadGeneration &+= 1
+        let loadTask = self.voice.failedAudioRecoveryLoadTask
+        self.voice.failedAudioRecoveryLoadTask = nil
         loadTask?.cancel()
         await loadTask?.value
-        let tasks = Array(failedAudioRecoveryRetryTasks.values)
+        let tasks = Array(self.voice.failedAudioRecoveryRetryTasks.values)
         tasks.forEach { $0.cancel() }
         for task in tasks {
             await task.value
         }
-        failedAudioRecoveryRetryTasks.removeAll()
-        retryingFailedAudioRecoveryIDs.removeAll()
+        self.voice.failedAudioRecoveryRetryTasks.removeAll()
+        self.voice.retryingFailedAudioRecoveryIDs.removeAll()
     }
 
     func deleteFailedAudioRecovery(_ receipt: FailedAudioRecoveryReceipt) {
         guard !hasBegunApplicationShutdown,
-              !retryingFailedAudioRecoveryIDs.contains(receipt.id) else {
+              !self.voice.retryingFailedAudioRecoveryIDs.contains(receipt.id) else {
             return
         }
-        isUpdatingFailedAudioRecovery = true
-        failedAudioRecoveryError = nil
+        self.voice.isUpdatingFailedAudioRecovery = true
+        self.voice.failedAudioRecoveryError = nil
         let deleteAction = deleteFailedAudioRecoveryAction
         Task { [weak self] in
             do {
                 try await deleteAction(receipt.id)
                 await MainActor.run {
-                    self?.isUpdatingFailedAudioRecovery = false
+                    self?.voice.isUpdatingFailedAudioRecovery = false
                 }
             } catch {
                 await MainActor.run {
                     guard let self else { return }
-                    self.isUpdatingFailedAudioRecovery = false
-                    self.failedAudioRecoveryError = String(
+                    self.voice.isUpdatingFailedAudioRecovery = false
+                    self.voice.failedAudioRecoveryError = String(
                         format: L10n.runText(.recoveryDeleteFailedFormat, language: self.language),
                         self.localizedRecoveryErrorDetail(error)
                     )
@@ -258,24 +258,24 @@ public extension AppModel {
 
     func clearFailedAudioRecoveries() {
         guard !hasBegunApplicationShutdown,
-              !isUpdatingFailedAudioRecovery,
-              retryingFailedAudioRecoveryIDs.isEmpty else {
+              !self.voice.isUpdatingFailedAudioRecovery,
+              self.voice.retryingFailedAudioRecoveryIDs.isEmpty else {
             return
         }
-        isUpdatingFailedAudioRecovery = true
-        failedAudioRecoveryError = nil
+        self.voice.isUpdatingFailedAudioRecovery = true
+        self.voice.failedAudioRecoveryError = nil
         let clearAction = clearFailedAudioRecoveryAction
         Task { [weak self] in
             do {
                 try await clearAction()
                 await MainActor.run {
-                    self?.isUpdatingFailedAudioRecovery = false
+                    self?.voice.isUpdatingFailedAudioRecovery = false
                 }
             } catch {
                 await MainActor.run {
                     guard let self else { return }
-                    self.isUpdatingFailedAudioRecovery = false
-                    self.failedAudioRecoveryError = String(
+                    self.voice.isUpdatingFailedAudioRecovery = false
+                    self.voice.failedAudioRecoveryError = String(
                         format: L10n.runText(.recoveryClearFailedFormat, language: self.language),
                         self.localizedRecoveryErrorDetail(error)
                     )

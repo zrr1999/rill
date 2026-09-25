@@ -39,9 +39,9 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     )
 
     XCTAssertEqual(harness.model.ttsModelIdentifier, int8.id)
-    XCTAssertEqual(harness.model.ttsResourceState, .notInstalled)
+    XCTAssertEqual(harness.model.voice.ttsResourceState, .notInstalled)
     XCTAssertTrue(harness.model.setPreferredTTSModel(bf16.id))
-    XCTAssertEqual(harness.model.ttsResourceState, .ready)
+    XCTAssertEqual(harness.model.voice.ttsResourceState, .ready)
     XCTAssertFalse(harness.model.setPreferredTTSModel("unreviewed"))
     XCTAssertEqual(harness.model.ttsModelIdentifier, bf16.id)
   }
@@ -263,7 +263,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     harness.model.installWakeWordConfigurationValidationAction { _ in }
     await waitUntil {
       !harness.model.settings.isLoading
-        && harness.model.openAICredentialAvailability == .available
+        && harness.model.settings.openAICredentialAvailability == .available
     }
     harness.model.updateWakeWordResourceState(.ready)
 
@@ -298,7 +298,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     )
     await waitUntil {
       !harness.model.settings.isLoading
-        && harness.model.openAICredentialAvailability == .available
+        && harness.model.settings.openAICredentialAvailability == .available
     }
     harness.model.updateWakeWordResourceState(.ready)
 
@@ -325,27 +325,27 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     )
     await waitUntil {
       !harness.model.settings.isLoading
-        && harness.model.openAICredentialAvailability == .available
+        && harness.model.settings.openAICredentialAvailability == .available
     }
     harness.model.updateWakeWordResourceState(.ready)
-    harness.model.language = .english
+    harness.model.applyLanguage(.english)
 
-    harness.model.openAIBaseURL = "http://not-a-loopback.example"
+    harness.model.applyOpenAIBaseURL("http://not-a-loopback.example")
     XCTAssertEqual(
       harness.model.voiceAssistantReadiness.llm,
       .configurationInvalid
     )
     XCTAssertFalse(harness.model.voiceAssistantReadiness.canEnableListening)
 
-    harness.model.openAIBaseURL = OpenAISettings.defaultBaseURL
+    harness.model.applyOpenAIBaseURL(OpenAISettings.defaultBaseURL)
     harness.model.setWorkflowEnabled(true, for: assistant.id)
     XCTAssertEqual(
       harness.model.enabledWorkflows(for: .wakeWord).map(\.id),
       [assistant.id]
     )
 
-    harness.model.openAIConfigurationVerificationState = .failed
-    harness.model.openAIVerificationFailure = .authenticationFailed
+    harness.model.settings.openAIConfigurationVerificationState = .failed
+    harness.model.settings.openAIVerificationFailure = .authenticationFailed
     XCTAssertEqual(
       harness.model.voiceAssistantReadiness.llm,
       .verificationFailed(.authenticationFailed)
@@ -378,9 +378,9 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     )
     await waitUntil {
       !harness.model.settings.isLoading
-        && harness.model.openAICredentialAvailability == .available
+        && harness.model.settings.openAICredentialAvailability == .available
     }
-    harness.model.language = .english
+    harness.model.applyLanguage(.english)
 
     harness.model.setWorkflowEnabled(true, for: assistant.id)
     XCTAssertEqual(

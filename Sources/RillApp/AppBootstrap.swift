@@ -1941,11 +1941,16 @@ private enum AppModelFactory {
       vocabularyRuleSource: core.vocabularyRuleSource,
       privacySettingsSource: core.privacySettingsSource,
       localSpeechSettingsSource: providers.localSpeechSettingsSource,
+      loadsPersistentSettingsOnInitialization: true,
+      settingsWriteDebounceDuration: .milliseconds(300),
+      historyRetentionMaintenanceInterval: .seconds(86_400),
+      liveSubtitlePreparingHideDelay: .seconds(15),
       localSpeechAvailability: providers.localSpeechAvailability,
       trustedLocalSpeechModels: providers.trustedLocalSpeechModels,
       defaultLocalSpeechModelIdentifier: providers.defaultLocalSpeechModelIdentifier,
       ttsModelOptions: AppBootstrap.ttsModelOptions,
       defaultTTSModelIdentifier: SpeechSynthesisModelCatalog.defaultModel.id.rawValue,
+      localSpeechPhysicalMemoryGiB: Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824),
       prepareLocalSpeechAction: { settings, progressCallback in
         do {
           let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
@@ -2165,6 +2170,7 @@ private enum AppModelFactory {
         Task { await runtime.systemClipboardCaptureController.deliverNextRecord() }
       },
       permissionSnapshot: platform.permissionGate.snapshot,
+      language: .preferred,
       refreshPermissionsAction: {
         platform.permissionGate.refresh()
         model?.updatePermissionSnapshot(platform.permissionGate.snapshot)

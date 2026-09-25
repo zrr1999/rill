@@ -14,7 +14,7 @@ struct HistoryRunDiagnosticsView: View {
                 Text(L10n.historyRunDetail(.diagnostics, language: model.language))
                     .font(.callout.weight(.semibold))
                 Spacer()
-                Button(UIStrings.text(.refreshDiagnostics, language: model.language)) {
+                Button(L10n.text(.refreshDiagnostics, language: model.language)) {
                     refreshID = UUID()
                 }
                 .buttonStyle(.borderless)
@@ -22,10 +22,10 @@ struct HistoryRunDiagnosticsView: View {
             }
             switch loadState {
             case .loading:
-                ProgressView(UIStrings.text(.diagnosticsLoading, language: model.language))
+                ProgressView(L10n.text(.diagnosticsLoading, language: model.language))
                     .controlSize(.small)
             case .failed:
-                Label(UIStrings.text(.diagnosticsLoadFailed, language: model.language),
+                Label(L10n.text(.diagnosticsLoadFailed, language: model.language),
                       systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
                     .foregroundStyle(.red)
             case .loaded:
@@ -51,7 +51,7 @@ struct HistoryRunDiagnosticsView: View {
                 loadState = .failed
             }
         }
-        .onChange(of: model.diagnosticsLoadGeneration) { _, _ in
+        .onChange(of: model.history.diagnosticsLoadGeneration) { _, _ in
             events = []
             refreshID = UUID()
         }

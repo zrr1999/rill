@@ -16,7 +16,7 @@ final class EventFeedPrivacyPresentationTests: XCTestCase {
             kind: .llmRewrite, outputText: "PRIVATE-RESULT", didChange: true,
             tokenUsage: .init(inputTokens: 120, outputTokens: 24, totalTokens: 144)
         )))
-        let entry = try XCTUnwrap(harness.model.eventFeed.last)
+        let entry = try XCTUnwrap(harness.model.history.eventFeed.last)
         for language in AppLanguage.allCases {
             for mode: PrivacyHistoryPreviewMode in [.full, .restricted, .disabled] {
                 let text = entry.presentation(for: language, historyPreviewMode: mode).text
@@ -61,15 +61,15 @@ final class EventFeedPrivacyPresentationTests: XCTestCase {
             WorkflowTextStep(kind: .applyVocabulary, outputText: "替换后正文", didChange: true),
             WorkflowTextStep(kind: .llmRewrite, result: .failed, durationMilliseconds: 5_000)
         ]
-        let feedCount = harness.model.eventFeed.count
+        let feedCount = harness.model.history.eventFeed.count
         for step in steps {
             harness.model.handle(.runTextStepRecorded(runID: runID, step: step))
         }
         harness.model.handle(.runTextStepRecorded(
             runID: UUID(), step: WorkflowTextStep(kind: .recognizeSpeech, outputText: "其他运行")
         ))
-        XCTAssertEqual(harness.model.eventFeed.count, feedCount + steps.count)
-        let replacement = harness.model.eventFeed[feedCount + 1]
+        XCTAssertEqual(harness.model.history.eventFeed.count, feedCount + steps.count)
+        let replacement = harness.model.history.eventFeed[feedCount + 1]
         XCTAssertTrue(replacement.presentation(for: .simplifiedChinese, historyPreviewMode: .full).text.contains("词替换 · 已完成\n替换后正文"))
         XCTAssertFalse(replacement.presentation(for: .simplifiedChinese, historyPreviewMode: .disabled).text.contains("替换后正文"))
         XCTAssertFalse(replacement.simplifiedChinese.contains("替换后正文"))
@@ -100,7 +100,7 @@ final class EventFeedPrivacyPresentationTests: XCTestCase {
             )
         )
 
-        let entry = try XCTUnwrap(harness.model.eventFeed.last)
+        let entry = try XCTUnwrap(harness.model.history.eventFeed.last)
         XCTAssertFalse(entry.english.contains(tailCanary))
         XCTAssertFalse(entry.simplifiedChinese.contains(tailCanary))
 
@@ -182,10 +182,10 @@ final class EventFeedPrivacyPresentationTests: XCTestCase {
         ]
 
         for (event, expectedDisabledText) in events {
-            harness.model.eventFeed.removeAll()
+            harness.model.history.eventFeed.removeAll()
             harness.model.handle(event)
 
-            let entry = try XCTUnwrap(harness.model.eventFeed.last)
+            let entry = try XCTUnwrap(harness.model.history.eventFeed.last)
             let full = entry.presentation(
                 for: .english,
                 historyPreviewMode: .full

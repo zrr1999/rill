@@ -15,7 +15,7 @@ extension AppModel {
 
   func persistWorkflowLibrary() {
     markSettingModifiedDuringInitialLoad(Self.workflowLibrarySettingKey)
-    guard !isRestoringSettings, isWorkflowLibraryAvailable else { return }
+    guard !self.settings.isRestoringSettings, isWorkflowLibraryAvailable else { return }
     let document = WorkflowLibraryDocument(
       customWorkflows: self.workflowLibrary.usesWorkflowFilesAsSource ? [] : self.workflowLibrary.customWorkflows,
       customizations: self.workflowLibrary.workflowCustomizations

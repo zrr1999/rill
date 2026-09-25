@@ -17,14 +17,14 @@ extension SettingsView {
       }
 
       voiceResourceStatus(
-        state: model.wakeWordResourceState,
+        state: model.voice.wakeWordResourceState,
         readyText: L10n.settingsText(.settingsWakeWordASRReady, language: model.language)
       )
 
       if voiceAssistantActionVisibility.showsWakeWordPreparation {
         Button(
           resourcePreparationButtonTitle(
-            state: model.wakeWordResourceState,
+            state: model.voice.wakeWordResourceState,
             resourceNameKey: .settingsLocalASRResourceName
           )
         ) {
@@ -161,9 +161,9 @@ extension SettingsView {
 
   var voiceAssistantActionVisibility: VoiceAssistantSettingsActionVisibility {
     VoiceAssistantSettingsActionVisibility(
-      wakeWordState: model.wakeWordResourceState,
-      ttsState: model.ttsResourceState,
-      isSpeechPlaybackActive: model.isSpeechPlaybackActive
+      wakeWordState: model.voice.wakeWordResourceState,
+      ttsState: model.voice.ttsResourceState,
+      isSpeechPlaybackActive: model.voice.isSpeechPlaybackActive
     )
   }
 
@@ -182,7 +182,7 @@ extension SettingsView {
       .foregroundStyle(readiness.canEnableListening ? .green : .primary)
 
       voiceAssistantReadinessRow(
-        title: UIStrings.text(.microphone, language: model.language),
+        title: L10n.text(.microphone, language: model.language),
         detail: microphoneReadinessDetail(readiness.microphone),
         isReady: readiness.microphone == .granted
       )
@@ -285,7 +285,7 @@ extension SettingsView {
   }
 
   var wakeWordModelIsReady: Bool {
-    if case .ready = model.wakeWordResourceState {
+    if case .ready = model.voice.wakeWordResourceState {
       return true
     }
     return false
@@ -353,11 +353,11 @@ extension SettingsView {
   }
 
   var wakeWordRuntimeStatusText: String {
-    L10n.wakeWordRuntimeStatus(model.wakeWordRuntimeState, language: model.language)
+    L10n.wakeWordRuntimeStatus(model.voice.wakeWordRuntimeState, language: model.language)
   }
 
   var wakeWordRuntimeStatusColor: Color {
-    switch model.wakeWordRuntimeState {
+    switch model.voice.wakeWordRuntimeState {
     case .listening:
       .green
     case .failed:

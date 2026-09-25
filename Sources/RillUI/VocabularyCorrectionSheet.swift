@@ -6,17 +6,22 @@ public struct VocabularyCorrectionSheet: View {
         case conflict
         case invalid
         case notReady
+        case persistence
     }
 
     @Environment(\.dismiss) private var dismiss
     @Bindable private var model: AppModel
     private let historyRecordID: UUID?
+    private let workflowRunID: UUID?
+    @State private var correctionOperationID = UUID()
+    @State private var isSavingText = false
     @State private var draft: VocabularyCorrectionDraft
     @State private var saveIssue: SaveIssue?
     @State private var targetCollectionID: UUID?
 
-    public init(model: AppModel, source: RecognitionCorrectionSource, historyRecordID: UUID? = nil) {
+    public init(model: AppModel, source: RecognitionCorrectionSource, historyRecordID: UUID? = nil, workflowRunID: UUID? = nil) {
         self.historyRecordID = historyRecordID
+        self.workflowRunID = workflowRunID
         self.model = model
         _draft = State(initialValue: VocabularyCorrectionDraft(source: source))
         _targetCollectionID = State(initialValue: VocabularyCollection.personalID)
@@ -42,6 +47,7 @@ public struct VocabularyCorrectionSheet: View {
                 .padding(16)
         }
         .frame(minWidth: 520, idealWidth: 620, minHeight: 420, idealHeight: 600)
+        .interactiveDismissDisabled(isSavingText)
         .onChange(of: model.privacyPolicySettings.historyPreviewMode) { _, mode in
             if mode == .disabled {
                 dismiss()
@@ -73,6 +79,7 @@ public struct VocabularyCorrectionSheet: View {
                 Text(L10n.string(.vocabularyCorrectionCorrectedText, language: model.language))
                     .font(.headline)
                 TextEditor(text: correctedTextBinding)
+                    .disabled(isSavingText)
                     .font(.body)
                     .frame(minHeight: 110)
                     .padding(6)
@@ -218,6 +225,10 @@ public struct VocabularyCorrectionSheet: View {
                     openVocabularySettings()
                 }
             }
+        case .persistence:
+            Label(L10n.string(.vocabularyCorrectionSaveFailed, language: model.language),
+                  systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
+                .foregroundStyle(.red)
         case .notReady:
             Label(
                 L10n.overlayText(.correctionSettingsLoading, language: model.language),
@@ -235,15 +246,27 @@ public struct VocabularyCorrectionSheet: View {
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)
+            .disabled(isSavingText)
 
             Spacer()
 
             Button(L10n.string(.vocabularyCorrectionSave, language: model.language)) {
                 saveRule()
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
-            .disabled(draft.proposedRule == nil || model.settings.isLoading)
+            .disabled(draft.proposedRule == nil || model.settings.isLoading || isSavingText)
+            .accessibilityIdentifier("vocabulary.correction.remember")
+
+            if workflowRunID != nil {
+                Button(L10n.string(.vocabularyCorrectionSaveText, language: model.language)) {
+                    saveText()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(isSavingText || model.recordWorkspace.isMutating
+                    || draft.correctedText == draft.originalText
+                    || draft.correctedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("vocabulary.correction.save-text")
+            }
         }
     }
 
@@ -252,6 +275,7 @@ public struct VocabularyCorrectionSheet: View {
             get: { draft.correctedText },
             set: { text in
                 draft.updateCorrectedText(text)
+                correctionOperationID = UUID()
                 saveIssue = nil
             }
         )
@@ -324,6 +348,25 @@ public struct VocabularyCorrectionSheet: View {
             .font(.callout)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func saveText() {
+        guard let workflowRunID, !isSavingText, !model.isApplicationShuttingDown,
+              model.privacyPolicySettings.historyPreviewMode != .disabled else { return }
+        isSavingText = true
+        let text = draft.correctedText
+        let operationID = correctionOperationID
+        Task { @MainActor in
+            let saved = await model.recordWorkspace.saveTextCorrection(
+                workflowRunID: workflowRunID, text: text, operationID: operationID)
+            isSavingText = false
+            if saved {
+                model.selectSidebarSection(.records)
+                dismiss()
+            } else {
+                saveIssue = .persistence
+            }
+        }
     }
 
     private func saveRule() {

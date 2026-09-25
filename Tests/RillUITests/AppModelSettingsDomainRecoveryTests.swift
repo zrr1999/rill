@@ -39,10 +39,10 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
         let modelHarness = makeHarness(settingsStore: modelStore)
         let modelDomainFailedClosed = await waitUntil {
             !modelHarness.model.settings.isLoading
-                && modelHarness.model.downloadedLocalSpeechModelsAvailability == .unavailable
+                && modelHarness.model.voice.downloadedLocalSpeechModelsAvailability == .unavailable
         }
         XCTAssertTrue(modelDomainFailedClosed)
-        XCTAssertTrue(modelHarness.model.downloadedLocalSpeechModels.isEmpty)
+        XCTAssertTrue(modelHarness.model.voice.downloadedLocalSpeechModels.isEmpty)
 
         let vocabularyID = UUID()
         let firstRule = VocabularyRule(
@@ -144,7 +144,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
             await waitForEventProcessing(harness)
 
             XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
-            XCTAssertNotNil(harness.model.workflowEditorError)
+            XCTAssertNotNil(harness.model.workflowLibrary.workflowEditorError)
             var activity = await settingsStore.activitySnapshot()
             XCTAssertEqual(activity.storage[corruptKey], corruptPayload)
             XCTAssertNil(activity.setCounts[.customWorkflows])
@@ -242,15 +242,15 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
 
         let didLoadUnavailableModelMetadata = await waitUntil {
             !harness.model.settings.isLoading
-                && harness.model.downloadedLocalSpeechModelsAvailability == .unavailable
+                && harness.model.voice.downloadedLocalSpeechModelsAvailability == .unavailable
         }
         XCTAssertTrue(didLoadUnavailableModelMetadata)
-        XCTAssertNotNil(harness.model.downloadedLocalSpeechModelsError)
+        XCTAssertNotNil(harness.model.voice.downloadedLocalSpeechModelsError)
 
         harness.model.recordDownloadedLocalSpeechModel("must-not-overwrite")
         await waitForEventProcessing(harness)
 
-        XCTAssertTrue(harness.model.downloadedLocalSpeechModels.isEmpty)
+        XCTAssertTrue(harness.model.voice.downloadedLocalSpeechModels.isEmpty)
         var activity = await settingsStore.activitySnapshot()
         XCTAssertEqual(activity.storage[.localSpeechDownloadedModels], corruptPayload)
         XCTAssertNil(activity.setCounts[.localSpeechDownloadedModels])
@@ -268,11 +268,11 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
         harness.model.retryUnavailableStoredSettingsDomains()
 
         let didRecoverModelMetadata = await waitUntil {
-            harness.model.downloadedLocalSpeechModelsAvailability == .available
-                && harness.model.downloadedLocalSpeechModels == recoveredModels
+            harness.model.voice.downloadedLocalSpeechModelsAvailability == .available
+                && harness.model.voice.downloadedLocalSpeechModels == recoveredModels
         }
         XCTAssertTrue(didRecoverModelMetadata)
-        XCTAssertNil(harness.model.downloadedLocalSpeechModelsError)
+        XCTAssertNil(harness.model.voice.downloadedLocalSpeechModelsError)
         activity = await settingsStore.activitySnapshot()
         XCTAssertEqual(activity.setCounts[.localSpeechDownloadedModels], 1)
         XCTAssertNil(activity.removeCounts[.localSpeechDownloadedModels])

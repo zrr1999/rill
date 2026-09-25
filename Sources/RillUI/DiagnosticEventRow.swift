@@ -9,12 +9,12 @@ struct DiagnosticEventRow: View {
         let event = entry.event
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(UIStrings.diagnosticLevel(event.level, language: model.language))
+                Text(L10n.diagnosticLevel(event.level, language: model.language))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(diagnosticColor(event.level))
                 Spacer()
                 if event.level == .warning || event.level == .error {
-                    RillCopyButton(title: UIStrings.text(.copy, language: model.language), language: model.language) {
+                    RillCopyButton(title: L10n.text(.copy, language: model.language), language: model.language) {
                         model.copyDiagnosticEvent(event)
                     }
                     .buttonStyle(.borderless)

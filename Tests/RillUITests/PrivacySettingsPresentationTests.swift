@@ -320,7 +320,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         XCTAssertNil(harness.model.privacySettingsLoadError)
         XCTAssertEqual(try privacySettingsSource.currentSettings(), .defaults)
         XCTAssertTrue(
-            harness.model.eventFeed.contains {
+            harness.model.history.eventFeed.contains {
                 $0.english == "The LLM Provider credential could not be read from secure storage."
             }
         )

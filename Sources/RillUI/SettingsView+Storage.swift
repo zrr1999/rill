@@ -38,14 +38,14 @@ extension SettingsView {
       Toggle(
         L10n.string(.settingsFailedAudioRecovery, language: model.language),
         isOn: Binding(
-          get: { model.failedAudioRecoveryEnabled },
+          get: { model.voice.failedAudioRecoveryEnabled },
           set: { model.setFailedAudioRecoveryEnabled($0) }
         )
       )
       .disabled(
         model.settings.isLoading
-          || model.isUpdatingFailedAudioRecovery
-          || !model.retryingFailedAudioRecoveryIDs.isEmpty
+          || model.voice.isUpdatingFailedAudioRecovery
+          || !model.voice.retryingFailedAudioRecoveryIDs.isEmpty
       )
 
       Text(
@@ -68,15 +68,15 @@ extension SettingsView {
           destructiveConfirmation = .failedAudioRecovery
         }
         .disabled(
-          model.failedAudioRecoveryReceipts.isEmpty
-            || model.isUpdatingFailedAudioRecovery
-            || !model.retryingFailedAudioRecoveryIDs.isEmpty
+          model.voice.failedAudioRecoveryReceipts.isEmpty
+            || model.voice.isUpdatingFailedAudioRecovery
+            || !model.voice.retryingFailedAudioRecoveryIDs.isEmpty
         )
         Spacer()
-        if !model.failedAudioRecoveryReceipts.isEmpty {
+        if !model.voice.failedAudioRecoveryReceipts.isEmpty {
           Text(
             L10n.settingsFailedAudioEncryptedCount(
-              model.failedAudioRecoveryReceipts.count,
+              model.voice.failedAudioRecoveryReceipts.count,
               language: model.language
             )
           )
@@ -85,7 +85,7 @@ extension SettingsView {
         }
       }
 
-      if let error = model.failedAudioRecoveryError {
+      if let error = model.voice.failedAudioRecoveryError {
         Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
           .font(.caption)
           .foregroundStyle(.red)
@@ -176,40 +176,40 @@ extension SettingsView {
         }
       }
 
-      if let error = model.historyRetentionSettingsError {
+      if let error = model.history.historyRetentionSettingsError {
         Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
           .font(.caption)
           .foregroundStyle(.red)
       }
 
-      if model.isLocalHistoryMaintenanceRunning {
+      if model.history.isLocalHistoryMaintenanceRunning {
         Label(
           L10n.historySettingsText(.maintenanceRunning, language: model.language),
           systemImage: RillSystemSymbol.arrowTriangle2Circlepath.rawValue
         )
         .font(.caption)
         .foregroundStyle(.secondary)
-      } else if let pendingReason = model.localHistoryMaintenancePendingReason {
+      } else if let pendingReason = model.history.localHistoryMaintenancePendingReason {
         VStack(alignment: .leading, spacing: 6) {
           Label(pendingReason, systemImage: RillSystemSymbol.clockBadgeExclamationmark.rawValue)
             .font(.caption)
             .foregroundStyle(.orange)
           retryLocalHistoryMaintenanceButton
         }
-      } else if let blockedReason = model.localHistoryMaintenanceBlockedReason {
+      } else if let blockedReason = model.history.localHistoryMaintenanceBlockedReason {
         VStack(alignment: .leading, spacing: 6) {
           Label(blockedReason, systemImage: RillSystemSymbol.exclamationmarkOctagon.rawValue)
             .font(.caption)
             .foregroundStyle(.red)
           retryLocalHistoryMaintenanceButton
         }
-      } else if model.lastLocalHistoryRemovedCount > 0
-        || model.lastPreservedActiveRecordCount > 0
+      } else if model.history.lastLocalHistoryRemovedCount > 0
+        || model.history.lastPreservedActiveRecordCount > 0
       {
         Label(
           L10n.historyMaintenanceResult(
-            removedCount: model.lastLocalHistoryRemovedCount,
-            preservedActiveRecordCount: model.lastPreservedActiveRecordCount,
+            removedCount: model.history.lastLocalHistoryRemovedCount,
+            preservedActiveRecordCount: model.history.lastPreservedActiveRecordCount,
             language: model.language
           ),
           systemImage: RillSystemSymbol.checkmarkCircle.rawValue
@@ -224,8 +224,8 @@ extension SettingsView {
   }
 
   var localHistoryControlsDisabled: Bool {
-    model.settings.isLoading || model.isUpdatingHistoryRetentionSettings
-      || model.isLocalHistoryMaintenanceRunning
+    model.settings.isLoading || model.history.isUpdatingHistoryRetentionSettings
+      || model.history.isLocalHistoryMaintenanceRunning
   }
 
   var retryLocalHistoryMaintenanceButton: some View {

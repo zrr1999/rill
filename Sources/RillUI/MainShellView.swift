@@ -25,7 +25,7 @@ public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    public var titleKey: UIStrings.Key {
+    public var titleKey: L10n.InterfaceKey {
         switch self {
         case .stream: return .sidebarStream
         case .workflows: return .sidebarWorkflows
@@ -209,7 +209,7 @@ public struct MainShellView: View {
                     }
                 }
 
-                Section(UIStrings.text(.recordCollections, language: model.language)) {
+                Section(L10n.text(.recordCollections, language: model.language)) {
                     ForEach(model.recordWorkspace.snapshot.collections) { collection in
                         sidebarCollectionRow(collection)
                             .tag(SidebarDestination.recordCollection(collection.id))
@@ -244,7 +244,7 @@ public struct MainShellView: View {
                 ideal: MainShellLayoutMetrics.sidebarColumnIdealWidth,
                 max: MainShellLayoutMetrics.sidebarColumnMaxWidth
             )
-            .navigationTitle(UIStrings.text(.appTitle, language: model.language))
+            .navigationTitle(L10n.text(.appTitle, language: model.language))
         } detail: {
             ZStack {
                 VStack(spacing: 0) {
@@ -503,7 +503,7 @@ extension MainShellView {
             previewMode: model.privacyPolicySettings.historyPreviewMode.rawValue,
             retentionPeriod: model.runHistoryRetentionPeriod.rawValue,
             workflowSearchSnapshot: model.workflowLibrary.workflows.map {
-                "\($0.id.uuidString):\(UIStrings.workflowName($0.presentation, language: model.language))"
+                "\($0.id.uuidString):\(L10n.workflowName($0.presentation, language: model.language))"
             },
             retryGeneration: globalHistorySearchRetryGeneration,
             recordRevision: model.recordWorkspace.snapshot.revision
@@ -708,11 +708,11 @@ extension MainShellView {
 
     private func sidebarSectionRow(_ section: SidebarSection) -> some View {
         Label(
-            (section == .records ? L10n.workspace(.allRecords, language: model.language) : UIStrings.text(section.titleKey, language: model.language)),
+            (section == .records ? L10n.workspace(.allRecords, language: model.language) : L10n.text(section.titleKey, language: model.language)),
             systemImage: section.symbolName
         )
         .tag(SidebarDestination.section(section))
-        .accessibilityLabel((section == .records ? L10n.workspace(.allRecords, language: model.language) : UIStrings.text(section.titleKey, language: model.language)))
+        .accessibilityLabel((section == .records ? L10n.workspace(.allRecords, language: model.language) : L10n.text(section.titleKey, language: model.language)))
         .accessibilityIdentifier("sidebar.\(section.rawValue)")
         .accessibilityFocused(
             $accessibilityFocusedSidebarDestination,
@@ -724,7 +724,7 @@ extension MainShellView {
         VStack(spacing: 0) {
             Divider()
             Button(action: selectSettingsFromSidebarFooter) {
-                Label(UIStrings.text(.sidebarSettings, language: model.language), systemImage: SidebarSection.settings.symbolName)
+                Label(L10n.text(.sidebarSettings, language: model.language), systemImage: SidebarSection.settings.symbolName)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, MainShellLayoutMetrics.sidebarFooterRowHorizontalPadding)
                     .padding(.vertical, MainShellLayoutMetrics.sidebarFooterRowVerticalPadding)

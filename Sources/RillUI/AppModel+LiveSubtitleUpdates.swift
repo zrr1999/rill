@@ -93,7 +93,7 @@ extension AppModel {
 
     pendingLiveSubtitleMeterSnapshot = nil
     lastLiveSubtitleMeterRefreshAt = ContinuousClock.now
-    currentCaptureLiveSubtitleSnapshot = pendingSnapshot
+    applyCurrentCaptureLiveSubtitleSnapshot(pendingSnapshot)
     refreshLiveSubtitlePresentation()
   }
 
@@ -119,11 +119,11 @@ extension AppModel {
       pendingLiveSubtitleHideTask?.cancel()
     }
     if snapshot.isVisible {
-      if workflowAudioCaptureRunID == nil, workflowAudioRunState != .idle {
+      if workflowAudioCaptureRunID == nil, self.voice.workflowAudioRunState != .idle {
         workflowAudioCaptureRunID = snapshot.runID
       }
       if shouldUpdateLiveSubtitleSnapshot(snapshot) {
-        currentCaptureLiveSubtitleSnapshot = snapshot
+        applyCurrentCaptureLiveSubtitleSnapshot(snapshot)
         refreshLiveSubtitlePresentation()
         if snapshot.phase == .failed {
           scheduleLiveSubtitleHide()
@@ -132,10 +132,10 @@ extension AppModel {
         }
       }
     } else if currentCaptureLiveSubtitleSnapshot?.runID == snapshot.runID {
-      if case .recording(let workflowID) = workflowAudioRunState {
-        workflowAudioRunState = .transcribing(workflowID: workflowID)
+      if case .recording(let workflowID) = self.voice.workflowAudioRunState {
+        self.voice.workflowAudioRunState = .transcribing(workflowID: workflowID)
       }
-      currentCaptureLiveSubtitleSnapshot = nil
+      applyCurrentCaptureLiveSubtitleSnapshot(nil)
       lastLiveSubtitleMeterRefreshAt = nil
       refreshLiveSubtitlePresentation()
     }

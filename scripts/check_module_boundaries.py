@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEPENDENCIES = {
     "RillCore": set(),
+    "RillTestSupport": {"RillCore", "RillRuntime", "RillUI"},
     "RillSpeechContracts": {"RillCore"},
     "RillRuntime": {"RillCore"},
     "RillPersistence": {"RillCore"},
@@ -28,6 +29,7 @@ DEPENDENCIES = {
 FOUNDATION_IMPORTS = {"Foundation", "CryptoKit", "Dispatch", "Darwin"}
 SYSTEM_IMPORTS = {
     "RillCore": FOUNDATION_IMPORTS,
+    "RillTestSupport": FOUNDATION_IMPORTS,
     "RillSpeechContracts": FOUNDATION_IMPORTS,
     "RillRuntime": FOUNDATION_IMPORTS,
     "RillMLXRuntime": FOUNDATION_IMPORTS,
@@ -61,7 +63,7 @@ def main() -> None:
         raise SystemExit(f"Every production target needs an explicit policy: {sorted(production ^ DEPENDENCIES.keys())}")
     for name, target in targets.items():
         is_test = target["type"] == "test"
-        source_root = ROOT / ("Tests" if is_test else "Sources") / name
+        source_root = ROOT / target.get("path", str(Path("Tests" if is_test else "Sources") / name))
         sources = sorted(str(path) for path in source_root.rglob("*.swift"))
         if not sources:
             raise SystemExit(f"{name}: no source files checked")

@@ -1,6 +1,5 @@
 import RillSpeechContracts
 import Foundation
-import HuggingFace
 import MLX
 import MLXAudioCore
 import MLXAudioTTS
@@ -207,8 +206,16 @@ struct MLXAudioSwiftTTSModelStore: Sendable {
       for: descriptor,
       modelRootURL: modelRootURL
     )
+    if !FileManager.default.fileExists(atPath: parent.path) {
+      guard downloadIfNeeded else {
+        throw MLXAudioSwiftRuntimeError.modelUnavailable(descriptor.id.rawValue)
+      }
+    }
+    try ModelFiles.preparePrivateDirectory(parent)
+    let lease = try ModelDownloadLease(directory: parent, identity: descriptor.id.rawValue)
+    defer { withExtendedLifetime(lease) {} }
     if FileManager.default.fileExists(atPath: parent.path) {
-      try Self.preparePrivateDirectory(parent)
+      try ModelFiles.preparePrivateDirectory(parent)
       try Self.removeAbandonedEntries(
         in: parent,
         for: descriptor.id
@@ -225,8 +232,8 @@ struct MLXAudioSwiftTTSModelStore: Sendable {
       throw MLXAudioSwiftRuntimeError.modelUnavailable(descriptor.id.rawValue)
     }
 
-    try Self.preparePrivateDirectory(parent)
-    try Self.preparePrivateDirectory(hubCacheRootURL)
+    try ModelFiles.preparePrivateDirectory(parent)
+    try ModelFiles.preparePrivateDirectory(hubCacheRootURL)
     let stagingURL = parent.appendingPathComponent(
       ".\(descriptor.id.rawValue).\(UUID().uuidString.lowercased()).partial",
       isDirectory: true
@@ -238,57 +245,16 @@ struct MLXAudioSwiftTTSModelStore: Sendable {
     )
     defer { try? FileManager.default.removeItem(at: stagingURL) }
 
-    guard let repository = Repo.ID(rawValue: descriptor.repository) else {
-      throw MLXAudioSwiftRuntimeError.invalidModelStore
-    }
-    let sessionConfiguration = URLSessionConfiguration.default
-    sessionConfiguration.waitsForConnectivity = true
-    sessionConfiguration.timeoutIntervalForRequest = 120
-    sessionConfiguration.timeoutIntervalForResource = 3_600
-    let client = HubClient(
-      session: URLSession(configuration: sessionConfiguration),
-      cache: HubCache(cacheDirectory: hubCacheRootURL)
-    )
-    progress(
-      .init(
-        phase: .downloading,
-        completedUnitCount: 0,
-        totalUnitCount: Int64(descriptor.approximateDownloadByteCount)
-      )
-    )
-    var lastDownloadError: Error?
-    for attempt in 1...3 {
-      do {
-        _ = try await client.downloadSnapshot(
-          of: repository,
-          kind: .model,
-          to: stagingURL,
-          revision: descriptor.revision,
-          matching: descriptor.files.map(\.path),
-          localFilesOnly: false,
-          maxConcurrentDownloads: 4,
-          progressHandler: { hubProgress in
-            let total = max(hubProgress.totalUnitCount, 1)
-            progress(
-              .init(
-                phase: .downloading,
-                completedUnitCount: min(max(hubProgress.completedUnitCount, 0), total),
-                totalUnitCount: total
-              )
-            )
-          }
-        )
-        lastDownloadError = nil
-        break
-      } catch is CancellationError {
-        throw CancellationError()
-      } catch {
-        lastDownloadError = error
-        guard attempt < 3 else { break }
-        try await Task.sleep(for: .seconds(attempt * 2))
-      }
-    }
-    if lastDownloadError != nil {
+    progress(.init(phase: .downloading, completedUnitCount: 0,
+      totalUnitCount: Int64(descriptor.approximateDownloadByteCount)))
+    do {
+      try await ModelFiles.download(
+        repository: descriptor.repository, revision: descriptor.revision,
+        files: descriptor.files.map(\.path), to: stagingURL, cache: hubCacheRootURL,
+        attempts: 3, progress: progress)
+    } catch is CancellationError {
+      throw CancellationError()
+    } catch {
       throw MLXAudioSwiftRuntimeError.modelUnavailable(descriptor.id.rawValue)
     }
 
@@ -308,10 +274,7 @@ struct MLXAudioSwiftTTSModelStore: Sendable {
     ) else {
       throw MLXAudioSwiftRuntimeError.invalidModelStore
     }
-    if FileManager.default.fileExists(atPath: publicationURL.path) {
-      try FileManager.default.removeItem(at: publicationURL)
-    }
-    try FileManager.default.moveItem(at: stagingURL, to: publicationURL)
+    try ModelFiles.publish(stagingURL, at: publicationURL)
     return publicationURL
   }
 
@@ -334,23 +297,7 @@ struct MLXAudioSwiftTTSModelStore: Sendable {
     }
   }
 
-  private static func preparePrivateDirectory(_ directory: URL) throws {
-    try FileManager.default.createDirectory(
-      at: directory,
-      withIntermediateDirectories: true,
-      attributes: [.posixPermissions: NSNumber(value: 0o700)]
-    )
-    let values = try directory.resourceValues(
-      forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
-    )
-    guard values.isDirectory == true, values.isSymbolicLink != true else {
-      throw MLXAudioSwiftRuntimeError.invalidModelStore
-    }
-    try FileManager.default.setAttributes(
-      [.posixPermissions: NSNumber(value: 0o700)],
-      ofItemAtPath: directory.path
-    )
-  }
+
 
   private static func defaultHubCacheRootURL(
     fileManager: FileManager = .default

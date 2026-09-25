@@ -3,251 +3,6 @@ import Observation
 import RillCore
 import RillRuntime
 
-public enum OpenAICredentialAvailability: Sendable, Equatable {
-  case loading
-  case missing
-  case saving
-  case available
-  case inaccessible
-}
-
-public enum OpenAIConfigurationVerificationState: Sendable, Equatable {
-  case idle
-  case verifying
-  case verified
-  case failed
-}
-
-public enum LocalSpeechPreparationState: Sendable, Equatable {
-  case idle
-  case preparing
-  case ready
-}
-
-public enum WorkflowExplanationFailure: Sendable, Equatable {
-  case workflowUnavailable
-  case providerUnavailable
-  case invalidReceipt
-}
-
-public enum WorkflowExplanationLoadState: Sendable, Equatable {
-  case idle
-  case loading(workflowID: UUID)
-  case loaded(WorkflowExplanationReceipt)
-  case failed(workflowID: UUID, reason: WorkflowExplanationFailure)
-}
-
-enum WorkflowAudioRunState: Sendable, Equatable {
-  case idle
-  case preparing(workflowID: UUID)
-  case recording(workflowID: UUID)
-  case transcribing(workflowID: UUID)
-}
-
-public enum RecordHistoryVisibility: String, CaseIterable, Identifiable, Sendable, Equatable {
-  case remainingOnly = "remaining-only"
-  case all = "all"
-
-  public var id: String { rawValue }
-}
-
-actor LocalSpeechPreparationProgressRelay {
-  weak var model: AppModel?
-  let operationID: UUID
-
-  init(model: AppModel, operationID: UUID) {
-    self.model = model
-    self.operationID = operationID
-  }
-
-  func update(progress: Progress) async {
-    await MainActor.run { [weak model, operationID] in
-      model?.updateLocalSpeechPreparationProgress(
-        progress,
-        operationID: operationID
-      )
-    }
-  }
-}
-
-actor DiagnosticEventRelay {
-  let flushInterval: Duration
-  let deliver: @Sendable ([DiagnosticEvent]) async -> Void
-
-  var bufferedEvents: [DiagnosticEvent] = []
-  var flushTask: Task<Void, Never>?
-
-  init(
-    flushInterval: Duration = .milliseconds(40),
-    deliver: @escaping @Sendable ([DiagnosticEvent]) async -> Void
-  ) {
-    self.flushInterval = flushInterval
-    self.deliver = deliver
-  }
-
-  func enqueue(_ event: DiagnosticEvent) {
-    bufferedEvents.append(event)
-    guard flushTask == nil else { return }
-    let flushInterval = self.flushInterval
-    flushTask = Task { [weak self] in
-      try? await Task.sleep(for: flushInterval)
-      guard !Task.isCancelled else { return }
-      await self?.flush()
-    }
-  }
-
-  func cancel() {
-    flushTask?.cancel()
-    flushTask = nil
-    bufferedEvents = []
-  }
-
-  func drain() async {
-    flushTask?.cancel()
-    flushTask = nil
-    let batch = bufferedEvents
-    bufferedEvents = []
-    guard !batch.isEmpty else { return }
-    await deliver(batch)
-  }
-
-  private func flush() async {
-    flushTask = nil
-    let batch = bufferedEvents
-    bufferedEvents = []
-    guard !batch.isEmpty else { return }
-    await deliver(batch)
-  }
-}
-
-@MainActor
-final class WorkflowExplanationTaskOwner {
-  private var currentTaskID: UUID?
-  private var tasks: [UUID: Task<Void, Never>] = [:]
-  private var idleWaiters: [CheckedContinuation<Void, Never>] = []
-
-  func replace(id: UUID, with task: Task<Void, Never>) {
-    if let currentTaskID {
-      tasks[currentTaskID]?.cancel()
-    }
-    tasks[id] = task
-    currentTaskID = id
-  }
-
-  func finish(id: UUID) {
-    tasks.removeValue(forKey: id)
-    if currentTaskID == id {
-      currentTaskID = nil
-    }
-    guard tasks.isEmpty else { return }
-    let waiters = idleWaiters
-    idleWaiters.removeAll()
-    for waiter in waiters {
-      waiter.resume()
-    }
-  }
-
-  func cancel() {
-    guard let currentTaskID else { return }
-    tasks[currentTaskID]?.cancel()
-    self.currentTaskID = nil
-  }
-
-  func waitUntilIdle() async {
-    guard !tasks.isEmpty else { return }
-    await withCheckedContinuation { continuation in
-      idleWaiters.append(continuation)
-    }
-  }
-
-  deinit {
-    for task in tasks.values {
-      task.cancel()
-    }
-    for waiter in idleWaiters {
-      waiter.resume()
-    }
-  }
-}
-
-public struct WorkflowTriggerConflict: Identifiable, Equatable, Sendable {
-  public let trigger: TriggerBinding
-  public let workflowIDs: [UUID]
-
-  public var id: String { trigger.rawValue }
-
-  public init(trigger: TriggerBinding, workflowIDs: [UUID]) {
-    self.trigger = trigger
-    self.workflowIDs = workflowIDs
-  }
-}
-
-public enum VoiceAssistantResourceState: Sendable, Equatable {
-  case notInstalled
-  case preparing(progress: Double?)
-  case ready
-  case failed(String)
-  case unavailable(VoiceAssistantResourceUnavailableReason)
-
-  public var isPreparing: Bool {
-    if case .preparing = self { return true }
-    return false
-  }
-}
-
-public enum VoiceAssistantResourceUnavailableReason: Error, Sendable, Equatable {
-  case distributionLicenseUnverified
-}
-
-public struct TTSModelOption: Identifiable, Equatable, Sendable {
-  public let id: String
-  public let precision: String
-  public let approximateDownloadByteCount: UInt64
-  public let isDefault: Bool
-
-  public init(
-    id: String,
-    precision: String,
-    approximateDownloadByteCount: UInt64,
-    isDefault: Bool
-  ) {
-    self.id = id
-    self.precision = precision
-    self.approximateDownloadByteCount = approximateDownloadByteCount
-    self.isDefault = isDefault
-  }
-}
-
-public enum WakeWordRuntimePresentationState: Sendable, Equatable {
-  case disabled
-  case modelMissing
-  case starting
-  case listening
-  case suspended(String)
-  case failed(String)
-}
-
-public struct WakeWordSettingsSnapshot: Sendable, Equatable {
-  public let phrases: [String]
-  public let isEnabled: Bool
-  public let workflowName: String?
-
-  public init(
-    phrases: [String],
-    isEnabled: Bool,
-    workflowName: String?
-  ) {
-    self.phrases = phrases
-    self.isEnabled = isEnabled
-    self.workflowName = workflowName
-  }
-}
-
-public enum WakeWordSettingsUpdateResult: Sendable, Equatable {
-  case saved
-  case failed(String)
-}
-
 @MainActor
 @Observable
 public final class AppModel {
@@ -273,7 +28,7 @@ public final class AppModel {
   static let productionPostProcessStepKinds: Set<PostProcessStepKind> = [
     .llmRewrite,
     .llmAnswer,
-    .normalizeWhitespace
+    .normalizeWhitespace,
   ]
 
   public var workflowConfigurationDirectoryURL: URL? {
@@ -288,99 +43,54 @@ public final class AppModel {
   public var selectedSettingsPane: SettingsPane = .general
   public internal(set) var settingsPresentationGeneration = 0
   var handledSettingsPresentationGeneration = 0
-  @ObservationIgnored var copyRecordAction: @MainActor (RecordReuseSubject) async -> RecordReuseOutcome = { _ in .blocked }
+  @ObservationIgnored var copyRecordAction:
+    @MainActor (RecordReuseSubject) async -> RecordReuseOutcome = { _ in .blocked }
   internal var workflowEditorNavigationRequest: WorkflowEditorNavigationRequest?
-  public var language: AppLanguage { didSet { handleLanguageChange(from: oldValue) } }
-  public var systemClipboardCaptureEnabled: Bool {
-    didSet { handleClipboardCaptureEnabledChange(from: oldValue) }
-  }
+  public private(set) var language: AppLanguage
+
+  public private(set) var systemClipboardCaptureEnabled: Bool
+
   public internal(set) var clipboardCapturePreferenceRevision: UInt64 = 0
-  public var recordPanelHotkeyBinding: HotkeyBindingDescriptor {
-    didSet { handleRecordPanelHotkeyChange(from: oldValue) }
-  }
-  public var preferredSpeechEngine: PreferredSpeechEngine {
-    didSet { handlePreferredSpeechEngineChange(from: oldValue) }
-  }
-  public var builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode {
-    didSet { handleBuiltinPushToTalkOutputModeChange(from: oldValue) }
-  }
-  public var longRecordingModeEnabled: Bool {
-    didSet { handleLongRecordingModeChange(from: oldValue) }
-  }
-  public var recordingDurationLimit: RecordingDurationLimit {
-    didSet { handleRecordingDurationLimitChange(from: oldValue) }
-  }
-  public var localSpeechModel: String { didSet { handleLocalSpeechModelChange(from: oldValue) } }
-  public var localSpeechPrewarm: Bool { didSet { handleLocalSpeechPrewarmChange(from: oldValue) } }
-  public var enabledSpeechModelIDs: Set<String> {
-    didSet { handleEnabledSpeechModelIDsChange(from: oldValue) }
-  }
-  public var residentSpeechModelIDs: Set<String> {
-    didSet { handleResidentSpeechModelIDsChange(from: oldValue) }
-  }
-  public var residentSpeechBudgetConfirmation: String? {
-    didSet { handleResidentSpeechBudgetConfirmationChange(from: oldValue) }
-  }
-  public internal(set) var measuredSpeechModelPeakByteCounts: [String: UInt64] = [:]
-  public internal(set) var pendingResidentSpeechModelIDs: Set<String>?
-  public internal(set) var speechModelPoolDegradedByMemoryPressure = false
+  public private(set) var recordPanelHotkeyBinding: HotkeyBindingDescriptor
+
+  public private(set) var preferredSpeechEngine: PreferredSpeechEngine
+
+  public private(set) var builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode
+
+  public private(set) var longRecordingModeEnabled: Bool
+
+  public private(set) var recordingDurationLimit: RecordingDurationLimit
+
+  public private(set) var localSpeechModel: String
+
+  public private(set) var localSpeechPrewarm: Bool
+
+  public private(set) var enabledSpeechModelIDs: Set<String>
+
+  public private(set) var residentSpeechModelIDs: Set<String>
+
+  public private(set) var residentSpeechBudgetConfirmation: String?
+
   public let workflowLibrary: WorkflowLibraryModel
   public let settings: SettingsPersistenceModel
   public var settingsSaveState: SettingsSaveState { settings.saveState }
-  public internal(set) var unavailableScalarSettingKeys: Set<AppSettingKey> = []
-  public internal(set) var retryingUnavailableScalarSettingsDomains: Set<ScalarSettingsDomain> = []
-  public var openAIAPIKey: String { didSet {
-      if !self.settings.isLoading, oldValue != openAIAPIKey { contextMemory?.invalidateAuthorization() }
-      handleOpenAIAPIKeyChange(from: oldValue)
-    } }
-  public var openAIBaseURL: String {
-    didSet {
-      if !self.settings.isLoading, oldValue != openAIBaseURL { contextMemory?.invalidateAuthorization() }
-      handleOpenAIBaseURLChange(from: oldValue)
-    }
-  }
-  public var openAIModel: String {
-    didSet {
-      if !self.settings.isLoading, oldValue != openAIModel { contextMemory?.invalidateAuthorization() }
-      handleOpenAIModelChange(from: oldValue)
-    }
-  }
-  public internal(set) var openAICredentialAvailability: OpenAICredentialAvailability = .loading
-  public internal(set) var openAIConfigurationVerificationState:
-    OpenAIConfigurationVerificationState = .idle
-  public internal(set) var openAIVerificationFailure: OpenAIVerificationFailure?
+  public private(set) var openAIAPIKey: String
+
+  public private(set) var openAIBaseURL: String
+
+  public private(set) var openAIModel: String
+
   public var contextMemory: ContextMemoryModel?
   public let voice = VoiceRunModel()
-  public internal(set) var isRetryingUnavailableSettingsDomains = false
-  var workflowAudioRunState: WorkflowAudioRunState = .idle
-  public internal(set) var localSpeechPreparationState: LocalSpeechPreparationState = .idle
-  public internal(set) var localSpeechPreparationProgress: Double = 0
-  public internal(set) var localSpeechPreparationCompletedUnitCount: Int64 = 0
-  public internal(set) var localSpeechPreparationTotalUnitCount: Int64 = 0
-  public internal(set) var localSpeechPreparedModelIdentifier: String?
-  public internal(set) var downloadedLocalSpeechModels: [String] = []
-  public internal(set) var downloadedLocalSpeechModelsAvailability:
-    StoredSettingsDomainAvailability = .available
-  public internal(set) var downloadedLocalSpeechModelsError: String?
-  public var localSpeechPreparationError: String?
   public let localSpeechAvailability: LocalSpeechAvailability
   public let localSpeechTrustMaterialAvailable: Bool
   public let trustedLocalSpeechModels: [LocalSpeechModelDescriptor]
   public let defaultLocalSpeechModelIdentifier: String?
   public let localSpeechPhysicalMemoryGiB: Int
-  public var workflowEditorError: String?
-  public internal(set) var wakeWordResourceState: VoiceAssistantResourceState = .notInstalled
-  public internal(set) var wakeWordRuntimeState: WakeWordRuntimePresentationState = .disabled
   public let ttsModelOptions: [TTSModelOption]
   public let defaultTTSModelIdentifier: String
-  public var ttsModelIdentifier: String {
-    didSet { handleTTSModelIdentifierChange(from: oldValue) }
-  }
-  public internal(set) var downloadedTTSModelIdentifiers: Set<String> = []
-  public internal(set) var ttsResourceState: VoiceAssistantResourceState = .notInstalled
-  public internal(set) var isSpeechPlaybackActive = false
-  public internal(set) var workflowExplanationState: WorkflowExplanationLoadState = .idle
-  public var pendingResolution: CandidateResolutionCase?
+  public private(set) var ttsModelIdentifier: String
+
   public var permissionSnapshot: PermissionSnapshot
   public internal(set) var globalInputCapability: GlobalInputCapability = .checking
   public var recordCount: Int {
@@ -390,10 +100,11 @@ public final class AppModel {
     guard let projection = recordWorkspace.snapshot.records.first else { return nil }
     return projection.header.kind == .text ? projection.header.preview : nil
   }
-  public internal(set) var systemClipboardCaptureControlSnapshot = SystemClipboardCaptureControlSnapshot(
-    revision: 0,
-    state: .paused
-  )
+  public internal(set) var systemClipboardCaptureControlSnapshot =
+    SystemClipboardCaptureControlSnapshot(
+      revision: 0,
+      state: .paused
+    )
   public var isClipboardCapturePaused: Bool {
     systemClipboardCaptureControlSnapshot.state.isPaused
   }
@@ -404,9 +115,6 @@ public final class AppModel {
     systemClipboardCaptureControlSnapshot.state.isTransitioning
   }
   public var lastFailure: String?
-  public var eventFeed: [EventFeedEntry] = []
-  public internal(set) var diagnosticEvents: [DiagnosticEvent] = []
-  public internal(set) var diagnosticsLoadState: DiagnosticsLoadState = .loading
   public let vocabulary: VocabularyLibraryModel
   public internal(set) var vocabularyRules: [VocabularyRule] {
     get { vocabulary.vocabularyRules }
@@ -418,48 +126,15 @@ public final class AppModel {
       if changed { persistVocabularyLibrary() }
     }
   }
-  public internal(set) var privacyPolicySettings: PrivacyPolicySettings = .defaults {
-    didSet {
-      guard oldValue != privacyPolicySettings else { return }
-      if !isLoadingPrivacySettings { contextMemory?.invalidateAuthorization() }
-      invalidateWorkflowExplanation()
-      history.previewMode = privacyPolicySettings.historyPreviewMode
-      if oldValue.historyPreviewMode != privacyPolicySettings.historyPreviewMode {
-        resetRunHistoryBrowsingForPrivacyChange()
-      }
-      if !isLoadingPrivacySettings, privacySettingsLoadError == nil {
-        privacySettingsSource.update(privacyPolicySettings)
-      }
-      persistPrivacyPolicySettings()
-    }
-  }
+  public private(set) var privacyPolicySettings: PrivacyPolicySettings = .defaults
+
   public internal(set) var isLoadingPrivacySettings = false
   public internal(set) var isSavingPrivacySettings = false
   public internal(set) var privacySettingsLoadError: String?
   public internal(set) var privacySettingsSaveError: String?
   public internal(set) var recordRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
-  public internal(set) var runHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod {
-    didSet {
-      history.runHistoryRetentionPeriod = runHistoryRetentionPeriod
-      guard oldValue != runHistoryRetentionPeriod else { return }
-      resetRunHistoryBrowsing()
-    }
-  }
-  public internal(set) var isUpdatingHistoryRetentionSettings = false
-  public internal(set) var isLocalHistoryMaintenanceRunning = false
-  public internal(set) var historyRetentionSettingsError: String?
-  public internal(set) var areHistoryRetentionSettingsAvailable = true
-  public internal(set) var localHistoryMaintenancePendingReason: String?
-  public internal(set) var localHistoryMaintenanceBlockedReason: String?
-  public internal(set) var lastLocalHistoryRemovedCount = 0
-  public internal(set) var lastPreservedActiveRecordCount = 0
-  public internal(set) var failedAudioRecoveryReceipts: [FailedAudioRecoveryReceipt] = []
-  public internal(set) var failedAudioRecoveryEnabled = false
-  public internal(set) var isUpdatingFailedAudioRecovery = false
-  public internal(set) var retryingFailedAudioRecoveryIDs: Set<UUID> = []
-  public internal(set) var failedAudioRecoveryUnavailableReasonsByRunID:
-    [UUID: FailedAudioRecoveryError] = [:]
-  public var failedAudioRecoveryError: String?
+  public private(set) var runHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
+
   public internal(set) var benchmarkRecordingArchiveEnabled = false
   public internal(set) var isUpdatingBenchmarkRecordingArchive = false
   public var benchmarkRecordingArchiveError: String?
@@ -468,27 +143,14 @@ public final class AppModel {
   // outside Observation prevents every audio frame from invalidating the main
   // application view graph.
   @ObservationIgnored public internal(set) var liveSubtitleSnapshot: LiveSubtitleSnapshot?
-  @ObservationIgnored var currentCaptureLiveSubtitleSnapshot: LiveSubtitleSnapshot? {
-    didSet {
-      guard
-        hasLiveSubtitleSemanticChange(
-          from: oldValue,
-          to: currentCaptureLiveSubtitleSnapshot
-        )
-      else { return }
-      cancelPendingLiveSubtitleMeterRefresh()
-    }
-  }
+  @ObservationIgnored private(set) var currentCaptureLiveSubtitleSnapshot: LiveSubtitleSnapshot?
+
   var workflowAudioCaptureRunID: UUID?
   var audioProcessingQueueSnapshot: AudioProcessingQueueSnapshot?
   @ObservationIgnored var lastLiveSubtitleMeterRefreshAt: ContinuousClock.Instant?
   @ObservationIgnored var pendingLiveSubtitleMeterSnapshot: LiveSubtitleSnapshot?
-  public var recordHistoryVisibility: RecordHistoryVisibility {
-    didSet {
-      guard oldValue != recordHistoryVisibility else { return }
-      persistRecordHistoryVisibilityPreference()
-    }
-  }
+  public private(set) var recordHistoryVisibility: RecordHistoryVisibility
+
   public var enabledManualWorkflows: [WorkflowDefinition] {
     enabledWorkflows(for: .manual)
   }
@@ -548,8 +210,8 @@ public final class AppModel {
     localHistoryMaintenance != nil
   }
   public var canClearRunHistory: Bool {
-    !hasActiveOrQueuedVoiceRun && !isLocalHistoryMaintenanceRunning
-      && !isUpdatingHistoryRetentionSettings
+    !hasActiveOrQueuedVoiceRun && !self.history.isLocalHistoryMaintenanceRunning
+      && !self.history.isUpdatingHistoryRetentionSettings
   }
   public var recentVoiceHistoryRecords: [WorkflowResultRecord] {
     self.history.historyRecords.filter(isVoiceHistoryRecord)
@@ -561,13 +223,13 @@ public final class AppModel {
     }
   }
   public var localizedWindowTitle: String {
-    UIStrings.text(.appTitle, language: language)
+    L10n.text(.appTitle, language: language)
   }
   public var isApplicationShuttingDown: Bool {
     hasBegunApplicationShutdown
   }
   public var localizedMenuBarTitle: String {
-    UIStrings.text(.menuBarLabel, language: language)
+    L10n.text(.menuBarLabel, language: language)
   }
 
   let eventBus: EventBus
@@ -662,15 +324,15 @@ public final class AppModel {
       )
     }
   var selectTTSModelAction: @Sendable (String) -> Void = { _ in }
-  var validateWakeWordConfigurationAction:
-    @Sendable (WakeWordConfiguration) async throws -> Void = { _ in
+  var validateWakeWordConfigurationAction: @Sendable (WakeWordConfiguration) async throws -> Void =
+    { _ in
       throw NSError(
         domain: "Rill.WakeWord",
         code: 2,
-          userInfo: [
-            NSLocalizedDescriptionKey:
+        userInfo: [
+          NSLocalizedDescriptionKey:
             "Prepare the selected local speech model before saving a wake-word workflow."
-          ]
+        ]
       )
     }
   var stopSpeechPlaybackAction: @MainActor () -> Bool = { false }
@@ -696,12 +358,12 @@ public final class AppModel {
     prepareWakeWordModelAction = prepareWakeWordModel
     prepareTTSModelAction = prepareTTSModel
     selectTTSModelAction = selectTTSModel
-    self.downloadedTTSModelIdentifiers = downloadedTTSModelIdentifiers.intersection(
+    self.voice.downloadedTTSModelIdentifiers = downloadedTTSModelIdentifiers.intersection(
       Set(ttsModelOptions.map(\.id))
     )
     selectTTSModelAction(ttsModelIdentifier)
-    ttsResourceState =
-      self.downloadedTTSModelIdentifiers.contains(ttsModelIdentifier)
+    self.voice.ttsResourceState =
+      self.voice.downloadedTTSModelIdentifiers.contains(ttsModelIdentifier)
       ? .ready
       : .notInstalled
     validateWakeWordConfigurationAction = validateWakeWordConfiguration
@@ -716,80 +378,37 @@ public final class AppModel {
   }
 
   public func updateWakeWordRuntimeState(_ state: WakeWordRuntimePresentationState) {
-    wakeWordRuntimeState = state
+    self.voice.wakeWordRuntimeState = state
     if state == .listening {
-      wakeWordResourceState = .ready
-    } else if state == .modelMissing, wakeWordResourceState == .ready {
-      wakeWordResourceState = .notInstalled
+      self.voice.wakeWordResourceState = .ready
+    } else if state == .modelMissing, self.voice.wakeWordResourceState == .ready {
+      self.voice.wakeWordResourceState = .notInstalled
     }
   }
 
   public func updateWakeWordResourceState(_ state: VoiceAssistantResourceState) {
-    wakeWordResourceState = state
+    self.voice.wakeWordResourceState = state
   }
 
   public func updateSpeechPlaybackState(isActive: Bool) {
-    isSpeechPlaybackActive = isActive
+    self.voice.isSpeechPlaybackActive = isActive
   }
   var pendingRuns: [UUID: RunSnapshot] { voice.runs }
-  var pendingInteractiveWorkflowTask: Task<Void, Never>?
-  var interactiveWorkflowTaskGeneration = 0
-  var workflowAudioActionTasks: [UUID: Task<Void, Never>] = [:]
   var listenerTask: Task<Void, Never>?
   var eventListenerBarrierContinuations: [UUID: CheckedContinuation<Void, Never>] = [:]
   var eventListenerShutdownTask: Task<Void, Never>?
   var hasStoppedEventListener = false
-  public internal(set) var isUpdatingWorkflowEnabledStates = false
-  @ObservationIgnored var workflowFileMonitorTask: Task<Void, Never>?
-  var isRestoringSettings = false
   /// Keys changed by the user after the initial snapshot read started but
   /// before it was applied. The older snapshot must not overwrite them.
-  var settingsKeysModifiedDuringInitialLoad: Set<AppSettingKey> = []
   var persistenceWrites: PersistenceWriteCoordinator { settings.writes }
-  var settingsLoadGeneration = 0
-  var unavailableSettingsDomainRetryGeneration = 0
-  var scalarSettingsRetryGenerations: [ScalarSettingsDomain: Int] = [:]
-  var localSpeechModelMutationGeneration = 0
-  let settingsReadTaskOwner = AppModelSettingsReadTaskOwner()
   var pendingPrivacySettingsWriteTask: Task<Void, Never>?
   var privacySettingsWriteGeneration = 0
   var pendingLiveSubtitleHideTask: Task<Void, Never>?
   @ObservationIgnored var pendingLiveSubtitleMeterRefreshTask: Task<Void, Never>?
   @ObservationIgnored var liveSubtitleMeterRefreshGeneration = 0
   var clipboardUpdateDebounceTask: Task<Void, Never>?
-  var historyLoadGeneration = 0
-  var runReceiptLoadGeneration = 0
-  var historyProjectionLoadTasks: [UUID: Task<Void, Never>] = [:]
-  var historyRetentionRerunRequested = false
-  var historyRetentionSettingsLoadError: String?
-  var historyRetentionSettingsWriteError: String?
-  var clipboardHistoryRetentionSettingIsInvalid = false
-  var runHistoryRetentionSettingIsInvalid = false
-  var shouldStartPeriodicHistoryRetentionMaintenance = false
-  var localHistoryMaintenanceTasks: [UUID: Task<Void, Never>] = [:]
-  var periodicHistoryRetentionMaintenanceTask: Task<Void, Never>?
-  var diagnosticsLoadGeneration = 0
-  var localSpeechPreparationGeneration = 0
-  let localSpeechPreparationTaskOwner = LocalSpeechPreparationTaskOwner()
-  var residentSpeechModelSynchronizationTask: Task<Void, Never>?
-  var residentSpeechModelSynchronizationTasks: [UUID: Task<Void, Never>] = [:]
-  var enabledSpeechModelPreparationTasks: [String: Task<Void, Never>] = [:]
-  var shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = false
-  var openAICredentialLoadGeneration = 0
-  var openAIVerificationGeneration = 0
-  var openAIVerificationTask: Task<Void, Never>?
-  var failedAudioRecoveryRetryTasks: [UUID: Task<Void, Never>] = [:]
-  var failedAudioRecoveryLoadTask: Task<Void, Never>?
-  var failedAudioRecoveryLoadGeneration = 0
-  var hasBegunApplicationShutdown = false {
-    didSet {
-      guard hasBegunApplicationShutdown, !oldValue else { return }
-      history.hasBegunApplicationShutdown = true
-      cancelPendingLiveSubtitleMeterRefresh()
-    }
-  }
-  let workflowExplanationTaskOwner = WorkflowExplanationTaskOwner()
-  var workflowExplanationGeneration = 0
+  private(set) var hasBegunApplicationShutdown = false
+
   let liveSubtitlePreparingHideDelay: Duration
 
   public init(
@@ -797,135 +416,72 @@ public final class AppModel {
     eventBus: EventBus,
     sessionCoordinator: SessionCoordinator,
     outputActionRegistry: OutputActionRegistry,
-    recordWorkspace: RecordWorkspaceModel? = nil,
-    jevPolishingSettingsSource: JevPolishingSettingsSource = JevPolishingSettingsSource(),
+    recordWorkspace: RecordWorkspaceModel,
+    jevPolishingSettingsSource: JevPolishingSettingsSource,
     candidateResolver: CandidateResolver,
-    historyRepository: (any HistoryRepository)? = nil,
-    runHistoryBrowser: (any RunHistoryBrowsing)? = nil,
-    runReceiptRepository: (any WorkflowRunReceiptRepository)? = nil,
-    localHistoryMaintenance: (any LocalHistoryMaintaining)? = nil,
-    diagnosticRepository: (any DiagnosticRepository)? = nil,
-    settingsStore: (any SettingsStore)? = nil,
-    workflowFileStore: (any WorkflowFileStore)? = nil,
-    credentialStore: (any SecureCredentialStore)? = nil,
-    localPersistenceStatus: LocalPersistenceStatus = .ready,
-    vocabularyRuleSource: VocabularyRuleSource = VocabularyRuleSource(initialRules: []),
-    privacySettingsSource: PrivacyPolicySettingsSource = PrivacyPolicySettingsSource(
-      initialSettings: .defaults
-    ),
-    localSpeechSettingsSource: LocalSpeechSettingsSource = LocalSpeechSettingsSource(),
-    loadsPersistentSettingsOnInitialization: Bool = true,
-    settingsWriteDebounceDuration: Duration = .milliseconds(300),
-    historyRetentionMaintenanceInterval: Duration? = .seconds(86_400),
-    liveSubtitlePreparingHideDelay: Duration = .seconds(15),
-    localSpeechTrustMaterialAvailable: Bool = false,
-    localSpeechAvailability: LocalSpeechAvailability? = nil,
-    trustedLocalSpeechModels: [LocalSpeechModelDescriptor] = [],
-    defaultLocalSpeechModelIdentifier: String? = nil,
-    ttsModelOptions: [TTSModelOption] = [],
-    defaultTTSModelIdentifier: String = "",
-    localSpeechPhysicalMemoryGiB: Int = Int(
-      ProcessInfo.processInfo.physicalMemory / 1_073_741_824
-    ),
+    historyRepository: (any HistoryRepository)?,
+    runHistoryBrowser: (any RunHistoryBrowsing)?,
+    runReceiptRepository: (any WorkflowRunReceiptRepository)?,
+    localHistoryMaintenance: (any LocalHistoryMaintaining)?,
+    diagnosticRepository: (any DiagnosticRepository)?,
+    settingsStore: (any SettingsStore)?,
+    workflowFileStore: (any WorkflowFileStore)?,
+    credentialStore: (any SecureCredentialStore)?,
+    localPersistenceStatus: LocalPersistenceStatus,
+    vocabularyRuleSource: VocabularyRuleSource,
+    privacySettingsSource: PrivacyPolicySettingsSource,
+    localSpeechSettingsSource: LocalSpeechSettingsSource,
+    loadsPersistentSettingsOnInitialization: Bool,
+    settingsWriteDebounceDuration: Duration,
+    historyRetentionMaintenanceInterval: Duration?,
+    liveSubtitlePreparingHideDelay: Duration,
+    localSpeechAvailability: LocalSpeechAvailability,
+    trustedLocalSpeechModels: [LocalSpeechModelDescriptor],
+    defaultLocalSpeechModelIdentifier: String?,
+    ttsModelOptions: [TTSModelOption],
+    defaultTTSModelIdentifier: String,
+    localSpeechPhysicalMemoryGiB: Int,
     prepareLocalSpeechAction:
       @escaping @Sendable (
         LocalSpeechSettings,
         @escaping @Sendable (Progress) -> Void
-      ) async throws -> String = { _, _ in
-        throw NSError(
-          domain: "Rill.AppModel",
-          code: 2,
-          userInfo: [NSLocalizedDescriptionKey: "Local speech preparation is not configured."]
-        )
-      },
+      ) async throws -> String,
     synchronizeResidentSpeechModelsAction:
-      @escaping @Sendable (_ added: Set<String>, _ removed: Set<String>) async -> Void = {
-        _, _ in
-      },
+      @escaping @Sendable (_ added: Set<String>, _ removed: Set<String>) async -> Void,
     prepareEnabledSpeechModelAction:
-      @escaping @Sendable (_ modelID: String) async -> Void = { _ in },
-    setLocalSpeechRuntimeEnabledAction: @escaping @Sendable (Bool) -> Void = { _ in },
-    releaseLocalSpeechRuntimeAction: @escaping @Sendable () -> Void = {},
-    stopLocalSpeechRuntimeAction: @escaping @Sendable () async -> Void = {},
+      @escaping @Sendable (_ modelID: String) async -> Void,
+    setLocalSpeechRuntimeEnabledAction: @escaping @Sendable (Bool) -> Void,
+    releaseLocalSpeechRuntimeAction: @escaping @Sendable () -> Void,
+    stopLocalSpeechRuntimeAction: @escaping @Sendable () async -> Void,
     startWorkflowAudioRunAction:
-      @escaping @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void = { _, _ in
-        throw NSError(
-          domain: "Rill.AppModel",
-          code: 3,
-          userInfo: [NSLocalizedDescriptionKey: "Workflow audio capture is not configured."]
-        )
-      },
-    finishWorkflowAudioRunAction: @escaping @Sendable () async throws -> Void = {
-      throw NSError(
-        domain: "Rill.AppModel",
-        code: 4,
-        userInfo: [NSLocalizedDescriptionKey: "Workflow audio completion is not configured."]
-      )
-    },
+      @escaping @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void,
+    finishWorkflowAudioRunAction: @escaping @Sendable () async throws -> Void,
     verifyOpenAIConfigurationAction:
-      @escaping @Sendable (OpenAISettings) async throws -> Void = { _ in
-        throw NSError(
-          domain: "Rill.AppModel.OpenAI",
-          code: 1,
-          userInfo: [NSLocalizedDescriptionKey: "LLM Provider verification is not configured."]
-        )
-      },
+      @escaping @Sendable (OpenAISettings) async throws -> Void,
     retryFailedAudioRecoveryAction:
       @escaping @Sendable (
         UUID,
         WorkflowDefinition
-      ) async throws -> FailedAudioRecoveryController.RetryResult = { _, _ in
-        throw FailedAudioRecoveryError.storageUnavailable
-      },
-    deleteFailedAudioRecoveryAction: @escaping @Sendable (UUID) async throws -> Void = { _ in
-      throw FailedAudioRecoveryError.storageUnavailable
-    },
-    clearFailedAudioRecoveryAction: @escaping @Sendable () async throws -> Void = {
-      throw FailedAudioRecoveryError.storageUnavailable
-    },
-    refreshFailedAudioRecoveryAction: @escaping @Sendable (Bool) async throws -> Void = { _ in
-      throw FailedAudioRecoveryError.storageUnavailable
-    },
+      ) async throws -> FailedAudioRecoveryController.RetryResult,
+    deleteFailedAudioRecoveryAction: @escaping @Sendable (UUID) async throws -> Void,
+    clearFailedAudioRecoveryAction: @escaping @Sendable () async throws -> Void,
+    refreshFailedAudioRecoveryAction: @escaping @Sendable (Bool) async throws -> Void,
     loadFailedAudioRecoveryReceiptsAction:
-      @escaping @Sendable () async throws -> [FailedAudioRecoveryReceipt] = {
-        throw FailedAudioRecoveryError.storageUnavailable
-      },
-    clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void = {
-      throw BenchmarkRecordingArchiveError.storageUnavailable
-    },
-    refreshBenchmarkRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void = { _ in
-      throw BenchmarkRecordingArchiveError.storageUnavailable
-    },
+      @escaping @Sendable () async throws -> [FailedAudioRecoveryReceipt],
+    clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void,
+    refreshBenchmarkRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void,
     authorizeWorkflowRunAction:
       @escaping @Sendable (
         WorkflowDefinition
-      ) async throws -> AuthorizedWorkflowRunContext = { _ in
-        throw SessionCoordinator.SessionError.privacyAuthorizationRequired
-      },
+      ) async throws -> AuthorizedWorkflowRunContext,
     explainResolvedWorkflowAction:
       @escaping @Sendable (
         WorkflowResolvedExecutionPlan
-      ) async throws -> WorkflowExplanationReceipt = { plan in
-        WorkflowExplanationReceipt(
-          workflowID: plan.executionWorkflow.id,
-          trigger: .manual,
-          inputs: [],
-          transforms: [],
-          outputs: [],
-          processingDestinations: [],
-          status: .blocked,
-          issues: [
-            WorkflowExplanationIssue(
-              kind: .privacyEvaluationUnavailable,
-              component: .privacyPolicy
-            )
-          ]
-        )
-      },
+      ) async throws -> WorkflowExplanationReceipt,
     writeClipboardTextAction: @escaping @MainActor (String) -> Void,
     deliverNextRecordAction: @escaping () -> Void,
     permissionSnapshot: PermissionSnapshot,
-    language: AppLanguage = .preferred,
+    language: AppLanguage,
     refreshPermissionsAction: @escaping () -> Void,
     requestAccessibilityAction: @escaping () -> Void,
     requestMicrophoneAction: @escaping () -> Void,
@@ -949,9 +505,7 @@ public final class AppModel {
           && $0.recommendedSystemMemoryGiB >= $0.minimumSystemMemoryGiB
           && $0.hardwareRecommendationPriority >= 0
       }
-    let declaredLocalSpeechAvailability =
-      localSpeechAvailability
-      ?? (localSpeechTrustMaterialAvailable ? .available : .trustMaterialUnavailable)
+    let declaredLocalSpeechAvailability = localSpeechAvailability
     let effectiveLocalSpeechAvailability: LocalSpeechAvailability
     if declaredLocalSpeechAvailability.isAvailable {
       effectiveLocalSpeechAvailability =
@@ -967,7 +521,8 @@ public final class AppModel {
     // Capture remains closed until durable settings prove it is enabled.
     // Test and preview compositions that explicitly skip loading retain the
     // historical enabled behavior when they still provide a settings store.
-    self.systemClipboardCaptureEnabled = settingsStore != nil && !loadsPersistentSettingsOnInitialization
+    self.systemClipboardCaptureEnabled =
+      settingsStore != nil && !loadsPersistentSettingsOnInitialization
     self.recordHistoryVisibility = .remainingOnly
     self.recordPanelHotkeyBinding = .doubleCommand
     self.preferredSpeechEngine = .local
@@ -987,14 +542,14 @@ public final class AppModel {
       .union(ttsModelOptions.map(\.id))
     let defaultEnabledSpeechModelIDs = LocalSpeechSettings().enabledModelIDs
       .intersection(availableSpeechModelIDs)
-    let resolvedEnabledSpeechModelIDs = defaultEnabledSpeechModelIDs.isEmpty
+    let resolvedEnabledSpeechModelIDs =
+      defaultEnabledSpeechModelIDs.isEmpty
       ? Set([resolvedDefaultTTSModelIdentifier].filter { !$0.isEmpty })
       : defaultEnabledSpeechModelIDs
     self.enabledSpeechModelIDs = resolvedEnabledSpeechModelIDs
     self.residentSpeechModelIDs = LocalSpeechSettings().residentModelIDs
       .intersection(resolvedEnabledSpeechModelIDs)
     self.residentSpeechBudgetConfirmation = nil
-    self.pendingResidentSpeechModelIDs = nil
     self.openAIAPIKey = ""
     self.openAIBaseURL = OpenAISettings().baseURL
     self.openAIModel = OpenAISettings().model
@@ -1002,7 +557,7 @@ public final class AppModel {
     self.eventBus = eventBus
     self.sessionCoordinator = sessionCoordinator
     self.outputActionRegistry = outputActionRegistry
-    self.recordWorkspace = recordWorkspace ?? RecordWorkspaceModel(store: RecordStore())
+    self.recordWorkspace = recordWorkspace
     self.jevPolishing = JevPolishingSettingsModel(source: jevPolishingSettingsSource)
     self.candidateResolver = candidateResolver
     self.historyRepository = historyRepository
@@ -1063,9 +618,9 @@ public final class AppModel {
       loadSettings()
     } else {
       self.settings.isLoading = false
-      openAICredentialAvailability = .inaccessible
+      self.settings.openAICredentialAvailability = .inaccessible
       if settingsStore == nil {
-        unavailableScalarSettingKeys.formUnion(
+        self.settings.unavailableScalarSettingKeys.formUnion(
           ScalarSettingsDomain.systemClipboard.settingKeys
         )
         applyResolvedClipboardCapturePreference(enabled: false)
@@ -1080,13 +635,13 @@ public final class AppModel {
 
 }
 
-
 extension AppModel {
   nonisolated static let localSpeechRecognizerID = AppSettingsCodec.localSpeechRecognizerID
   nonisolated static let sherpaOnnxRecognizerID = AppSettingsCodec.sherpaOnnxRecognizerID
   nonisolated static let sherpaStreamingRecognizerID = AppSettingsCodec.sherpaStreamingRecognizerID
   nonisolated static let workflowOriginMetadataKey = AppSettingsCodec.workflowOriginMetadataKey
-  nonisolated static let userWorkflowOriginMetadataValue = AppSettingsCodec.userWorkflowOriginMetadataValue
+  nonisolated static let userWorkflowOriginMetadataValue = AppSettingsCodec
+    .userWorkflowOriginMetadataValue
   nonisolated static let workflowCatalogMetadataKey = WorkflowMetadataKey.catalog
   nonisolated static let builtinWorkflowCatalogValue = BuiltinWorkflowRoutingValue.catalog
   nonisolated static let triggerGestureMetadataKey = WorkflowMetadataKey.triggerGesture
@@ -1120,5 +675,163 @@ extension ActionResult {
     case .failed(let reason):
       return String(format: L10n.runText(.runActionFailedFormat, language: language), reason)
     }
+  }
+}
+
+extension AppModel {
+  func applyLanguage(_ newValue: AppLanguage) {
+    let oldValue = language
+    language = newValue
+    handleLanguageChange(from: oldValue)
+  }
+
+  func applySystemClipboardCaptureEnabled(_ newValue: Bool) {
+    let oldValue = systemClipboardCaptureEnabled
+    systemClipboardCaptureEnabled = newValue
+    handleClipboardCaptureEnabledChange(from: oldValue)
+  }
+
+  func applyRecordPanelHotkeyBinding(_ newValue: HotkeyBindingDescriptor) {
+    let oldValue = recordPanelHotkeyBinding
+    recordPanelHotkeyBinding = newValue
+    handleRecordPanelHotkeyChange(from: oldValue)
+  }
+
+  func applyPreferredSpeechEngine(_ newValue: PreferredSpeechEngine) {
+    let oldValue = preferredSpeechEngine
+    preferredSpeechEngine = newValue
+    handlePreferredSpeechEngineChange(from: oldValue)
+  }
+
+  func applyBuiltinPushToTalkOutputMode(_ newValue: BuiltinPushToTalkOutputMode) {
+    let oldValue = builtinPushToTalkOutputMode
+    builtinPushToTalkOutputMode = newValue
+    handleBuiltinPushToTalkOutputModeChange(from: oldValue)
+  }
+
+  func applyLongRecordingModeEnabled(_ newValue: Bool) {
+    let oldValue = longRecordingModeEnabled
+    longRecordingModeEnabled = newValue
+    handleLongRecordingModeChange(from: oldValue)
+  }
+
+  func applyRecordingDurationLimit(_ newValue: RecordingDurationLimit) {
+    let oldValue = recordingDurationLimit
+    recordingDurationLimit = newValue
+    handleRecordingDurationLimitChange(from: oldValue)
+  }
+
+  func applyLocalSpeechModel(_ newValue: String) {
+    let oldValue = localSpeechModel
+    localSpeechModel = newValue
+    handleLocalSpeechModelChange(from: oldValue)
+  }
+
+  func applyLocalSpeechPrewarm(_ newValue: Bool) {
+    let oldValue = localSpeechPrewarm
+    localSpeechPrewarm = newValue
+    handleLocalSpeechPrewarmChange(from: oldValue)
+  }
+
+  func applyEnabledSpeechModelIDs(_ newValue: Set<String>) {
+    let oldValue = enabledSpeechModelIDs
+    enabledSpeechModelIDs = newValue
+    handleEnabledSpeechModelIDsChange(from: oldValue)
+  }
+
+  func applyResidentSpeechModelIDs(_ newValue: Set<String>) {
+    let oldValue = residentSpeechModelIDs
+    residentSpeechModelIDs = newValue
+    handleResidentSpeechModelIDsChange(from: oldValue)
+  }
+
+  func applyResidentSpeechBudgetConfirmation(_ newValue: String?) {
+    let oldValue = residentSpeechBudgetConfirmation
+    residentSpeechBudgetConfirmation = newValue
+    handleResidentSpeechBudgetConfirmationChange(from: oldValue)
+  }
+
+  func applyOpenAIAPIKey(_ newValue: String) {
+    let oldValue = openAIAPIKey
+    openAIAPIKey = newValue
+    if !self.settings.isLoading, oldValue != openAIAPIKey {
+      contextMemory?.invalidateAuthorization()
+    }
+    handleOpenAIAPIKeyChange(from: oldValue)
+  }
+
+  func applyOpenAIBaseURL(_ newValue: String) {
+    let oldValue = openAIBaseURL
+    openAIBaseURL = newValue
+    if !self.settings.isLoading, oldValue != openAIBaseURL {
+      contextMemory?.invalidateAuthorization()
+    }
+    handleOpenAIBaseURLChange(from: oldValue)
+  }
+
+  func applyOpenAIModel(_ newValue: String) {
+    let oldValue = openAIModel
+    openAIModel = newValue
+    if !self.settings.isLoading, oldValue != openAIModel {
+      contextMemory?.invalidateAuthorization()
+    }
+    handleOpenAIModelChange(from: oldValue)
+  }
+
+  func applyTTSModelIdentifier(_ newValue: String) {
+    let oldValue = ttsModelIdentifier
+    ttsModelIdentifier = newValue
+    handleTTSModelIdentifierChange(from: oldValue)
+  }
+
+  func applyPrivacyPolicySettings(_ newValue: PrivacyPolicySettings) {
+    let oldValue = privacyPolicySettings
+    privacyPolicySettings = newValue
+    guard oldValue != privacyPolicySettings else { return }
+    if !isLoadingPrivacySettings { contextMemory?.invalidateAuthorization() }
+    invalidateWorkflowExplanation()
+    history.previewMode = privacyPolicySettings.historyPreviewMode
+    if oldValue.historyPreviewMode != privacyPolicySettings.historyPreviewMode {
+      resetRunHistoryBrowsingForPrivacyChange()
+    }
+    if !isLoadingPrivacySettings, privacySettingsLoadError == nil {
+      privacySettingsSource.update(privacyPolicySettings)
+    }
+    persistPrivacyPolicySettings()
+  }
+
+  func applyRunHistoryRetentionPeriod(_ newValue: HistoryRetentionPeriod) {
+    let oldValue = runHistoryRetentionPeriod
+    runHistoryRetentionPeriod = newValue
+    history.runHistoryRetentionPeriod = runHistoryRetentionPeriod
+    guard oldValue != runHistoryRetentionPeriod else { return }
+    resetRunHistoryBrowsing()
+  }
+
+  func applyCurrentCaptureLiveSubtitleSnapshot(_ newValue: LiveSubtitleSnapshot?) {
+    let oldValue = currentCaptureLiveSubtitleSnapshot
+    currentCaptureLiveSubtitleSnapshot = newValue
+    guard
+      hasLiveSubtitleSemanticChange(
+        from: oldValue,
+        to: currentCaptureLiveSubtitleSnapshot
+      )
+    else { return }
+    cancelPendingLiveSubtitleMeterRefresh()
+  }
+
+  func applyRecordHistoryVisibility(_ newValue: RecordHistoryVisibility) {
+    let oldValue = recordHistoryVisibility
+    recordHistoryVisibility = newValue
+    guard oldValue != recordHistoryVisibility else { return }
+    persistRecordHistoryVisibilityPreference()
+  }
+
+  func beginApplicationShutdown() {
+    let oldValue = hasBegunApplicationShutdown
+    hasBegunApplicationShutdown = true
+    guard hasBegunApplicationShutdown, !oldValue else { return }
+    history.hasBegunApplicationShutdown = true
+    cancelPendingLiveSubtitleMeterRefresh()
   }
 }

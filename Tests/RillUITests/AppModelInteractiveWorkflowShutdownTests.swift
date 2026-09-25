@@ -16,7 +16,7 @@ final class AppModelInteractiveWorkflowShutdownTests: XCTestCase {
         XCTAssertTrue(harness.model.isApplicationShuttingDown)
         XCTAssertFalse(harness.model.canTriggerWorkflow(harness.workflow))
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertNil(harness.model.pendingInteractiveWorkflowTask)
+        XCTAssertNil(harness.model.voice.pendingInteractiveWorkflowTask)
     }
 
     func testShutdownCancelsInteractiveRunBeforeCancellationIgnoringRecognizerCanAct() async {
@@ -38,7 +38,7 @@ final class AppModelInteractiveWorkflowShutdownTests: XCTestCase {
         let actionCount = await harness.actionLog.snapshot()
         XCTAssertEqual(actionCount, 0)
         XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertNil(harness.model.pendingInteractiveWorkflowTask)
+        XCTAssertNil(harness.model.voice.pendingInteractiveWorkflowTask)
 
         harness.model.runWorkflow(harness.workflow)
         await Task.yield()

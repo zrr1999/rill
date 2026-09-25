@@ -6,7 +6,7 @@ enum LocalSpeechPreparationPresentation {
     case validating
     case loading
 
-    var localizedKey: UIStrings.Key {
+    var localizedKey: L10n.InterfaceKey {
       switch self {
       case .downloading:
         .localSpeechPreparing

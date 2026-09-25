@@ -41,7 +41,7 @@ final class HistoryRunCardRenderTests: XCTestCase {
                     timestamp: Date().addingTimeInterval(-3_600), outcome: .failed, trigger: .hotkey
                 )]
                 model.history.workflowRunReceiptsByRunID = [runID: receipt]
-                model.diagnosticEvents = [DiagnosticEvent(
+                model.history.diagnosticEvents = [DiagnosticEvent(
                     runID: runID, subsystem: .session, level: .error,
                     event: "session.failure", message: "Diagnostic event recorded.",
                     metadata: ["stage": "delivering", "failureCode": "processing"]

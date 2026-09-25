@@ -18,7 +18,7 @@ extension AppModel {
 
   func applyResolvedClipboardCapturePreference(enabled: Bool) {
     guard systemClipboardCaptureEnabled == enabled else {
-      systemClipboardCaptureEnabled = enabled
+      applySystemClipboardCaptureEnabled(enabled)
       return
     }
     clipboardCapturePreferenceRevision &+= 1
@@ -42,10 +42,11 @@ extension AppModel {
     guard oldValue != preferredSpeechEngine else { return }
     invalidateWorkflowExplanation()
     persistPreferredSpeechEnginePreference()
-    guard !isRestoringSettings else { return }
+    guard !self.settings.isRestoringSettings else { return }
     setLocalSpeechRuntimeEnabledAction(preferredSpeechEngine == .local)
     if self.settings.isLoading {
-      shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = preferredSpeechEngine == .local
+      self.voice.shouldPrepareLocalSpeechModelAfterInitialSettingsLoad =
+        preferredSpeechEngine == .local
       return
     }
     if preferredSpeechEngine == .local {
@@ -62,8 +63,8 @@ extension AppModel {
     guard oldValue != ttsModelIdentifier else { return }
     persistStringSetting(ttsModelIdentifier, for: .ttsModel)
     selectTTSModelAction(ttsModelIdentifier)
-    ttsResourceState =
-      downloadedTTSModelIdentifiers.contains(ttsModelIdentifier)
+    self.voice.ttsResourceState =
+      self.voice.downloadedTTSModelIdentifiers.contains(ttsModelIdentifier)
       ? .ready
       : .notInstalled
   }
@@ -84,13 +85,9 @@ extension AppModel {
     persistRecordingDurationLimitPreference()
   }
 
-
-
-
-
   func handleLocalSpeechModelChange(from oldValue: String) {
-    if oldValue != localSpeechModel, !isRestoringSettings {
-      localSpeechModelMutationGeneration &+= 1
+    if oldValue != localSpeechModel, !self.settings.isRestoringSettings {
+      self.settings.localSpeechModelMutationGeneration &+= 1
     }
     guard oldValue != localSpeechModel else { return }
     publishCurrentLocalSpeechSettingsToRuntime()
@@ -98,16 +95,6 @@ extension AppModel {
     synchronizeWakeWordResourceWithLocalSpeechModel()
     persistStringSetting(localSpeechModel, for: .localSpeechModel)
   }
-
-
-
-
-
-
-
-
-
-
 
   func handleLocalSpeechPrewarmChange(from oldValue: Bool) {
     guard oldValue != localSpeechPrewarm else { return }
@@ -120,9 +107,9 @@ extension AppModel {
     guard oldValue != enabledSpeechModelIDs else { return }
     markSettingModifiedDuringInitialLoad(.enabledSpeechModels)
     if !residentSpeechModelIDs.isSubset(of: enabledSpeechModelIDs) {
-      residentSpeechModelIDs.formIntersection(enabledSpeechModelIDs)
+      applyResidentSpeechModelIDs(residentSpeechModelIDs.intersection(enabledSpeechModelIDs))
     }
-    residentSpeechBudgetConfirmation = nil
+    applyResidentSpeechBudgetConfirmation(nil)
     publishCurrentLocalSpeechSettingsToRuntime()
     persistSpeechModelIDSet(enabledSpeechModelIDs, for: .enabledSpeechModels)
   }
@@ -156,17 +143,17 @@ extension AppModel {
 
   func handleOpenAIAPIKeyChange(from oldValue: String) {
     guard oldValue != openAIAPIKey else { return }
-    openAIVerificationTask?.cancel()
-    openAIVerificationTask = nil
-    openAIVerificationGeneration &+= 1
-    openAIVerificationFailure = nil
-    openAIConfigurationVerificationState = .idle
-    let previousAvailability = openAICredentialAvailability
-    if !isRestoringSettings {
-      openAICredentialLoadGeneration &+= 1
-      openAICredentialAvailability = credentialStore == nil ? .inaccessible : .saving
+    self.settings.openAIVerificationTask?.cancel()
+    self.settings.openAIVerificationTask = nil
+    self.settings.openAIVerificationGeneration &+= 1
+    self.settings.openAIVerificationFailure = nil
+    self.settings.openAIConfigurationVerificationState = .idle
+    let previousAvailability = self.settings.openAICredentialAvailability
+    if !self.settings.isRestoringSettings {
+      self.settings.openAICredentialLoadGeneration &+= 1
+      self.settings.openAICredentialAvailability = credentialStore == nil ? .inaccessible : .saving
     }
-    if previousAvailability != openAICredentialAvailability {
+    if previousAvailability != self.settings.openAICredentialAvailability {
       workflowLibraryChangedAction()
     }
     persistSecureCredential(
@@ -198,29 +185,29 @@ extension AppModel {
     key: AppSettingKey
   ) {
     guard oldValue != value else { return }
-    let verificationWasFailed = openAIConfigurationVerificationState == .failed
+    let verificationWasFailed = self.settings.openAIConfigurationVerificationState == .failed
     let validityChanged: Bool
     switch key {
     case .openAIBaseURL:
-      validityChanged = OpenAISettings.isValidBaseURL(oldValue)
+      validityChanged =
+        OpenAISettings.isValidBaseURL(oldValue)
         != OpenAISettings.isValidBaseURL(value)
     case .openAIModel:
-      validityChanged = OpenAISettings.isValidModelIdentifier(oldValue)
+      validityChanged =
+        OpenAISettings.isValidModelIdentifier(oldValue)
         != OpenAISettings.isValidModelIdentifier(value)
     default:
       validityChanged = false
     }
-    openAIVerificationTask?.cancel()
-    openAIVerificationTask = nil
-    openAIVerificationGeneration &+= 1
-    openAIVerificationFailure = nil
-    openAIConfigurationVerificationState = .idle
+    self.settings.openAIVerificationTask?.cancel()
+    self.settings.openAIVerificationTask = nil
+    self.settings.openAIVerificationGeneration &+= 1
+    self.settings.openAIVerificationFailure = nil
+    self.settings.openAIConfigurationVerificationState = .idle
     if validityChanged || verificationWasFailed {
       workflowLibraryChangedAction()
     }
     persistStringSetting(value, for: key)
   }
-
-
 
 }

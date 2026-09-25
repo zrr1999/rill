@@ -1,3 +1,4 @@
+import RillTestSupport
 import AppKit
 import XCTest
 
@@ -120,7 +121,7 @@ final class RecordInteractiveSearchTests: XCTestCase {
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []), actionRegistry: actions,
       candidateResolver: resolver, eventBus: bus)
-    return AppModel(
+    return makeAppModelForTesting(
       workflows: [], eventBus: bus, sessionCoordinator: coordinator, outputActionRegistry: actions,
       recordWorkspace: workspace, candidateResolver: resolver,
       loadsPersistentSettingsOnInitialization: false, writeClipboardTextAction: { _ in },

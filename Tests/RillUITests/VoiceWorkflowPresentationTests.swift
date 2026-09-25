@@ -12,8 +12,8 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
         let presentation = VoiceWorkflowPresentation(workflow: workflow)
         for language in AppLanguage.allCases {
             let detail = presentation.detail(language: language)
-            XCTAssertTrue(detail.contains(UIStrings.actionName("record.store", language: language)))
-            XCTAssertTrue(detail.contains(UIStrings.actionName("focused-application.insert", language: language)))
+            XCTAssertTrue(detail.contains(L10n.actionName("record.store", language: language)))
+            XCTAssertTrue(detail.contains(L10n.actionName("focused-application.insert", language: language)))
         }
     }
 
@@ -101,14 +101,14 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
             metadata: [WorkflowMetadataKey.textStyle: VoiceTextStyle.translateInput.rawValue]
         )
 
-        let englishDetail = UIStrings.workflowDetail(workflow, language: .english)
+        let englishDetail = L10n.workflowDetail(workflow, language: .english)
 
-        XCTAssertEqual(UIStrings.workflowName(workflow.presentation, language: .english), "Translate Input")
-        XCTAssertEqual(UIStrings.workflowName(workflow.presentation, language: .simplifiedChinese), "翻译输入")
+        XCTAssertEqual(L10n.workflowName(workflow.presentation, language: .english), "Translate Input")
+        XCTAssertEqual(L10n.workflowName(workflow.presentation, language: .simplifiedChinese), "翻译输入")
         XCTAssertTrue(englishDetail.contains("Mode: Translate Input"), englishDetail)
         XCTAssertTrue(englishDetail.contains("Speech: Local Speech"), englishDetail)
         XCTAssertTrue(englishDetail.contains("Language: Auto language"), englishDetail)
-        XCTAssertTrue(UIStrings.workflowDetail(workflow, language: .simplifiedChinese).contains("模式：翻译输入"))
+        XCTAssertTrue(L10n.workflowDetail(workflow, language: .simplifiedChinese).contains("模式：翻译输入"))
     }
 
     func testDraftSpeechRouteNormalizesLegacyAutomaticChoiceToLocalASR() {
@@ -187,7 +187,7 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
 
         XCTAssertEqual(
             VoiceWorkflowPresentation(workflow: cleanWorkflow).menuTitle(
-                workflowName: UIStrings.workflowName(cleanWorkflow.presentation, language: .english),
+                workflowName: L10n.workflowName(cleanWorkflow.presentation, language: .english),
                 language: .english
             ),
             "Clean Input"
@@ -323,21 +323,21 @@ final class VoiceWorkflowPresentationTests: XCTestCase {
         markdownDraft.markdownAppendPath = "~/Notes/Capture.md"
         XCTAssertNil(markdownDraft.outputValidationError(language: .english))
 
-        XCTAssertEqual(UIStrings.editorDestination(.runShortcut, language: .english), "Run macOS Shortcut")
+        XCTAssertEqual(L10n.editorDestination(.runShortcut, language: .english), "Run macOS Shortcut")
         XCTAssertEqual(
-            UIStrings.editorDestination(.appendToMarkdown, language: .simplifiedChinese),
+            L10n.editorDestination(.appendToMarkdown, language: .simplifiedChinese),
             "追加到 Obsidian/Markdown"
         )
         XCTAssertEqual(
-            UIStrings.actionName(ExternalOutputActionID.markdownAppend, language: .english),
+            L10n.actionName(ExternalOutputActionID.markdownAppend, language: .english),
             "Append to Markdown"
         )
         XCTAssertEqual(
-            UIStrings.externalOutputHint(.appendToMarkdown, language: .english),
+            L10n.externalOutputHint(.appendToMarkdown, language: .english),
             "Atomically appends to an Obsidian-compatible note in an existing folder. Linked paths and files over 64 MiB are rejected."
         )
         XCTAssertEqual(
-            UIStrings.externalOutputHint(.appendToMarkdown, language: .simplifiedChinese),
+            L10n.externalOutputHint(.appendToMarkdown, language: .simplifiedChinese),
             "原子追加到现有文件夹中的 Obsidian 兼容笔记；拒绝链接路径和超过 64 MiB 的文件。"
         )
     }

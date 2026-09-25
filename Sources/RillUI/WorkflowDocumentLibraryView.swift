@@ -83,7 +83,7 @@ struct WorkflowDocumentLibraryView: View {
                     Image(systemName: RillSystemSymbol.resolvedName(workflow.ui.symbolName)).frame(width: 24)
                     VStack(alignment: .leading, spacing: RillSpacing.compact) {
                         Text(model.localizedWorkflowName(for: workflow)).font(.headline)
-                        Text(UIStrings.workflowTrigger(workflow.trigger, metadata: workflow.metadata, language: model.language))
+                        Text(L10n.workflowTrigger(workflow.trigger, metadata: workflow.metadata, language: model.language))
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
@@ -121,24 +121,24 @@ struct WorkflowDocumentLibraryView: View {
                             get: { model.isWorkflowEnabled(workflow) },
                             set: { model.setWorkflowEnabled($0, for: workflow.id) }
                         )).toggleStyle(.switch).fixedSize()
-                            .disabled(model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id) || model.isUpdatingWorkflowEnabledStates || model.settings.isLoading)
+                            .disabled(model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id) || model.workflowLibrary.isUpdatingWorkflowEnabledStates || model.settings.isLoading)
                     }
                     if let readiness = model.workflowEnablementError(for: workflow) {
                         Label(readiness, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue).foregroundStyle(.orange)
                     }
-                    LabeledContent(UIStrings.workflowExplanationCopy(.trigger, language: model.language)) {
-                        Text(UIStrings.workflowTrigger(workflow.trigger, metadata: workflow.metadata, language: model.language))
+                    LabeledContent(L10n.workflowExplanationCopy(.trigger, language: model.language)) {
+                        Text(L10n.workflowTrigger(workflow.trigger, metadata: workflow.metadata, language: model.language))
                     }
                     VStack(alignment: .leading, spacing: RillSpacing.row) {
-                        Text(UIStrings.workflowExplanationCopy(.transforms, language: model.language)).font(.headline)
+                        Text(L10n.workflowExplanationCopy(.transforms, language: model.language)).font(.headline)
                         ForEach(Array(workflow.plan.process.allSteps.enumerated()), id: \.offset) { index, step in
                             Text("\(index + 1). " + WorkflowStepPresentation.stepTitle(step.kind, language: model.language))
                         }
                     }
                     VStack(alignment: .leading, spacing: RillSpacing.row) {
-                        Text(UIStrings.workflowExplanationCopy(.outputs, language: model.language)).font(.headline)
+                        Text(L10n.workflowExplanationCopy(.outputs, language: model.language)).font(.headline)
                         ForEach(Array(workflow.plan.output.actions.enumerated()), id: \.offset) { index, action in
-                            Text("\(index + 1). " + UIStrings.actionName(action.id, language: model.language))
+                            Text("\(index + 1). " + L10n.actionName(action.id, language: model.language))
                         }
                     }
                     HStack {
@@ -149,7 +149,7 @@ struct WorkflowDocumentLibraryView: View {
                             else if let text = NSPasteboard.general.string(forType: .string) { model.runWorkflowText(text, workflow: workflow) }
                         }.disabled(!model.isWorkflowEnabled(workflow) || model.voice.isRunning || model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id))
                         Menu {
-                            Button(UIStrings.workflowExplanationCopy(.button, language: model.language)) {
+                            Button(L10n.workflowExplanationCopy(.button, language: model.language)) {
                                 model.explainWorkflowBeforeRun(workflow)
                                 explanation = .init(workflowID: workflow.id)
                             }

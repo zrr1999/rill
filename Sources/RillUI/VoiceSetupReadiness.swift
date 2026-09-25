@@ -105,13 +105,13 @@ extension AppModel {
     if !trustedLocalSpeechModels.isEmpty {
       return trustedModelPoolReadiness
     }
-    switch localSpeechPreparationState {
+    switch self.voice.localSpeechPreparationState {
     case .preparing:
-      return .localPreparing(progress: localSpeechPreparationProgress)
+      return .localPreparing(progress: self.voice.localSpeechPreparationProgress)
     case .ready:
       return .localReady
     case .idle:
-      if localSpeechPreparationError != nil {
+      if self.voice.localSpeechPreparationError != nil {
         return .localPreparationFailed
       }
       if hasRecordedPreparationForSelectedLocalModel {
@@ -126,13 +126,13 @@ extension AppModel {
   /// a recorded preparation plus pool membership is sufficient — the user
   /// must not be asked to re-confirm after every relaunch.
   private var trustedModelPoolReadiness: VoiceSetupProviderReadiness {
-    switch localSpeechPreparationState {
+    switch self.voice.localSpeechPreparationState {
     case .preparing:
-      return .localPreparing(progress: localSpeechPreparationProgress)
+      return .localPreparing(progress: self.voice.localSpeechPreparationProgress)
     case .ready:
       return .localReady
     case .idle:
-      if localSpeechPreparationError != nil {
+      if self.voice.localSpeechPreparationError != nil {
         return .localPreparationFailed
       }
       let selected = selectedTrustedLocalSpeechModelIdentifier
@@ -140,7 +140,7 @@ extension AppModel {
         return .localNeedsPreparation(downloadIfNeeded: true)
       }
       if enabledSpeechModelIDs.contains(selected),
-        downloadedLocalSpeechModels.contains(selected)
+        self.voice.downloadedLocalSpeechModels.contains(selected)
       {
         return .localReady
       }
@@ -163,10 +163,10 @@ extension AppModel {
   private var hasRecordedPreparationForSelectedLocalModel: Bool {
     let selectedModel = localSpeechModel.trimmingCharacters(in: .whitespacesAndNewlines)
     if selectedModel.isEmpty {
-      return downloadedLocalSpeechModels.contains {
+      return self.voice.downloadedLocalSpeechModels.contains {
         !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
       }
     }
-    return downloadedLocalSpeechModels.contains(selectedModel)
+    return self.voice.downloadedLocalSpeechModels.contains(selectedModel)
   }
 }

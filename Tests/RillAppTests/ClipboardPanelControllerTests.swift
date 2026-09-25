@@ -1,3 +1,4 @@
+import RillTestSupport
 import AppKit
 import XCTest
 @testable import RillApp
@@ -482,7 +483,7 @@ final class RecordPanelControllerTests: XCTestCase {
             candidateResolver: resolver,
             eventBus: eventBus
         )
-        return AppModel(
+        return makeAppModelForTesting(
             workflows: [],
             eventBus: eventBus,
             sessionCoordinator: coordinator,

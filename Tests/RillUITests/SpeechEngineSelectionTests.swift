@@ -18,11 +18,11 @@ final class SpeechEngineSelectionTests: XCTestCase {
     )
 
     XCTAssertEqual(
-      UIStrings.localSpeechEngine(retired.engine, language: .simplifiedChinese),
+      L10n.localSpeechEngine(retired.engine, language: .simplifiedChinese),
       "旧版本地"
     )
     XCTAssertEqual(
-      UIStrings.localSpeechEngine(mlx.engine, language: .english),
+      L10n.localSpeechEngine(mlx.engine, language: .english),
       "MLX Local"
     )
     XCTAssertEqual(retired.simplifiedChineseName, "Qwen3-ASR · 0.6B · INT8")

@@ -75,7 +75,7 @@ struct VocabularyCollectionCard: View {
             isPresented: $confirmsCollectionDeletion
         ) {
             Button(L10n.recordText(.cancel, language: model.language), role: .cancel) {}
-            Button(UIStrings.text(.clipboardDeleteItem, language: model.language), role: .destructive) {
+            Button(L10n.text(.clipboardDeleteItem, language: model.language), role: .destructive) {
                 model.deleteVocabularyCollection(collection.id)
             }
         } message: {
@@ -114,7 +114,7 @@ struct VocabularyCollectionCard: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
-                        UIStrings.targetedAccessibilityLabel(
+                        L10n.targetedAccessibilityLabel(
                             .vocabularyDeleteRule,
                             target: entryTitle(entry),
                             language: model.language

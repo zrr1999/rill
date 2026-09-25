@@ -40,11 +40,11 @@ enum GlobalSearchResultCategory: Int, CaseIterable, Sendable {
         case .pages:
             L10n.overlayText(.searchCategoryPages, language: language)
         case .workflows:
-            UIStrings.text(.sidebarWorkflows, language: language)
+            L10n.text(.sidebarWorkflows, language: language)
         case .history:
             L10n.overlayText(.searchCategoryRunHistory, language: language)
         case .settings:
-            UIStrings.text(.settingsTitle, language: language)
+            L10n.text(.settingsTitle, language: language)
         }
     }
 }
@@ -122,7 +122,7 @@ enum GlobalSearchText {
     }
 
     static func cancelHelp(language: AppLanguage) -> String {
-        UIStrings.text(.searchCancelShortcutHint, language: language)
+        L10n.text(.searchCancelShortcutHint, language: language)
     }
 
     static func workflowDetail(language: AppLanguage) -> String {
@@ -150,7 +150,7 @@ enum GlobalSearchText {
     }
 
     static func historyRetry(language: AppLanguage) -> String {
-        UIStrings.text(.retryGlobalInput, language: language)
+        L10n.text(.retryGlobalInput, language: language)
     }
 }
 
@@ -256,7 +256,7 @@ enum GlobalSearchIndex {
 
     private static func pageResults(language: AppLanguage) -> [GlobalSearchResult] {
         SidebarSection.allCases.filter { $0 != .settings && $0 != .diagnostics }.map { section in
-            let title = section == .records ? L10n.workspace(.allRecords, language: language) : UIStrings.text(section.titleKey, language: language)
+            let title = section == .records ? L10n.workspace(.allRecords, language: language) : L10n.text(section.titleKey, language: language)
             return GlobalSearchResult(
                 destination: .sidebar(section),
                 category: .pages,
@@ -276,7 +276,7 @@ enum GlobalSearchIndex {
         workflows: [WorkflowDefinition]
     ) -> [GlobalSearchResult] {
         workflows.filter { $0.availability == .active }.map { workflow in
-            let title = UIStrings.workflowName(workflow.presentation, language: language)
+            let title = L10n.workflowName(workflow.presentation, language: language)
             let detail = GlobalSearchText.workflowDetail(language: language)
             return GlobalSearchResult(
                 destination: .workflow(workflow.id),
@@ -304,10 +304,10 @@ enum GlobalSearchIndex {
         return entries.map { entry in
             let title: String
             if let record = entry.record {
-                title = UIStrings.workflowName(record.workflow, language: language)
+                title = L10n.workflowName(record.workflow, language: language)
             } else if let workflowID = entry.workflowID,
                       let presentation = presentationsByWorkflowID[workflowID] {
-                title = UIStrings.workflowName(presentation, language: language)
+                title = L10n.workflowName(presentation, language: language)
             } else {
                 title = GlobalSearchText.genericRun(language: language)
             }

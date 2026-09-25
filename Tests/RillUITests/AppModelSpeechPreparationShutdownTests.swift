@@ -135,8 +135,8 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
 
     let callCount = await provider.callCount()
     XCTAssertEqual(callCount, 0)
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
-    XCTAssertEqual(harness.model.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
     await harness.model.drainAndStopEventListenerForApplicationShutdown()
   }
 
@@ -157,13 +157,13 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     await provider.waitUntilStarted()
     await provider.emitProgress(completed: 1, total: 2)
     await waitUntil {
-      harness.model.localSpeechPreparationProgress == 0.5
+      harness.model.voice.localSpeechPreparationProgress == 0.5
     }
 
     harness.model.cancelLocalSpeechModelPreparation()
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
-    XCTAssertEqual(harness.model.localSpeechPreparationProgress, 0)
-    XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationProgress, 0)
+    XCTAssertNil(harness.model.voice.localSpeechPreparedModelIdentifier)
     await provider.waitUntilCancellationObserved()
 
     await provider.emitProgress(completed: 1, total: 1)
@@ -172,15 +172,15 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     await harness.model.flushPendingPersistenceWrites()
 
     let settings = await settingsStore.activitySnapshot()
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
-    XCTAssertEqual(harness.model.localSpeechPreparationProgress, 0)
-    XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
-    XCTAssertTrue(harness.model.downloadedLocalSpeechModels.isEmpty)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationProgress, 0)
+    XCTAssertNil(harness.model.voice.localSpeechPreparedModelIdentifier)
+    XCTAssertTrue(harness.model.voice.downloadedLocalSpeechModels.isEmpty)
     XCTAssertNil(settings.storage[.localSpeechDownloadedModels])
     XCTAssertFalse(
-      harness.model.eventFeed.contains { $0.english.contains("cancelled-late-model") }
+      harness.model.history.eventFeed.contains { $0.english.contains("cancelled-late-model") }
     )
-    XCTAssertEqual(harness.model.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
     await harness.model.drainAndStopEventListenerForApplicationShutdown()
   }
 
@@ -204,33 +204,33 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
 
     harness.model.prepareLocalSpeechModel()
     await firstProvider.waitUntilStarted()
-    harness.model.localSpeechPrewarm = true
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
+    harness.model.applyLocalSpeechPrewarm(true)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
     harness.model.prepareLocalSpeechModel()
     await secondProvider.waitUntilStarted()
 
     await firstProvider.release(returning: "retired-model")
     await waitForEventProcessing(harness)
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .preparing)
-    XCTAssertEqual(harness.model.localSpeechPreparationProgress, 0)
-    XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
-    XCTAssertTrue(harness.model.downloadedLocalSpeechModels.isEmpty)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .preparing)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationProgress, 0)
+    XCTAssertNil(harness.model.voice.localSpeechPreparedModelIdentifier)
+    XCTAssertTrue(harness.model.voice.downloadedLocalSpeechModels.isEmpty)
 
     await secondProvider.emitProgress(completed: 3, total: 4)
     await waitUntil {
-      harness.model.localSpeechPreparationProgress == 0.75
+      harness.model.voice.localSpeechPreparationProgress == 0.75
     }
     await secondProvider.release(returning: "qwen3-asr-0.6b-mlx-8bit")
     await waitUntil {
-      harness.model.localSpeechPreparationState == .ready
+      harness.model.voice.localSpeechPreparationState == .ready
     }
 
-    XCTAssertEqual(harness.model.localSpeechPreparedModelIdentifier, "qwen3-asr-0.6b-mlx-8bit")
-    XCTAssertEqual(harness.model.downloadedLocalSpeechModels, ["qwen3-asr-0.6b-mlx-8bit"])
+    XCTAssertEqual(harness.model.voice.localSpeechPreparedModelIdentifier, "qwen3-asr-0.6b-mlx-8bit")
+    XCTAssertEqual(harness.model.voice.downloadedLocalSpeechModels, ["qwen3-asr-0.6b-mlx-8bit"])
     XCTAssertFalse(
-      harness.model.eventFeed.contains { $0.english.contains("retired-model") }
+      harness.model.history.eventFeed.contains { $0.english.contains("retired-model") }
     )
-    XCTAssertEqual(harness.model.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
     await harness.model.drainAndStopEventListenerForApplicationShutdown()
   }
 
@@ -269,8 +269,8 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     await waitUntilAsync {
       await completion.isCompleted()
     }
-    XCTAssertEqual(harness.model.localSpeechPreparationTaskOwner.state, .stopped)
-    XCTAssertEqual(harness.model.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationTaskOwner.state, .stopped)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationTaskOwner.trackedTaskCount, 0)
 
     await activeProvider.release(returning: "active-late-model")
     await retiredProvider.release(returning: "retired-late-model")
@@ -279,8 +279,8 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
 
     let didComplete = await completion.isCompleted()
     XCTAssertTrue(didComplete)
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
-    XCTAssertTrue(harness.model.downloadedLocalSpeechModels.isEmpty)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
+    XCTAssertTrue(harness.model.voice.downloadedLocalSpeechModels.isEmpty)
   }
 
   func testShutdownReleasesCancellationIgnoringManualPreparationAndRejectsLateCallbacks() async {
@@ -300,7 +300,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     await provider.waitUntilStarted()
     await provider.emitProgress(completed: 1, total: 2)
     await waitUntil {
-      harness.model.localSpeechPreparationProgress == 0.5
+      harness.model.voice.localSpeechPreparationProgress == 0.5
     }
 
     let completion = SpeechShutdownCompletionProbe()
@@ -322,14 +322,14 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     }
 
     let settings = await settingsStore.activitySnapshot()
-    XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
-    XCTAssertEqual(harness.model.localSpeechPreparationProgress, 0)
-    XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
-    XCTAssertTrue(harness.model.downloadedLocalSpeechModels.isEmpty)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
+    XCTAssertEqual(harness.model.voice.localSpeechPreparationProgress, 0)
+    XCTAssertNil(harness.model.voice.localSpeechPreparedModelIdentifier)
+    XCTAssertTrue(harness.model.voice.downloadedLocalSpeechModels.isEmpty)
     XCTAssertNil(settings.storage[.localSpeechDownloadedModels])
     XCTAssertNil(settings.setCounts[.localSpeechDownloadedModels])
     XCTAssertFalse(
-      harness.model.eventFeed.contains { $0.english.contains("late-manual-model") }
+      harness.model.history.eventFeed.contains { $0.english.contains("late-manual-model") }
     )
     await harness.model.drainAndStopEventListenerForApplicationShutdown()
   }

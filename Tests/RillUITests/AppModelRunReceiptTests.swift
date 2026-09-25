@@ -432,7 +432,7 @@ final class AppModelRunReceiptTests: XCTestCase {
 
         harness.model.clearRunHistory()
         let maintenanceFinished = await waitUntil {
-            !harness.model.isLocalHistoryMaintenanceRunning
+            !harness.model.history.isLocalHistoryMaintenanceRunning
         }
 
         XCTAssertTrue(maintenanceFinished)
@@ -459,7 +459,7 @@ final class AppModelRunReceiptTests: XCTestCase {
 
         harness.model.clearRunHistory()
         let maintenanceFinished = await waitUntil {
-            !harness.model.isLocalHistoryMaintenanceRunning
+            !harness.model.history.isLocalHistoryMaintenanceRunning
         }
         XCTAssertTrue(maintenanceFinished)
         let queryCountBeforeLateEvent = await repository.observedQueryCount()
@@ -584,7 +584,7 @@ final class AppModelRunReceiptTests: XCTestCase {
         )
         harness.model.clearRunHistory()
         let maintenanceFinished = await waitUntil {
-            !harness.model.isLocalHistoryMaintenanceRunning
+            !harness.model.history.isLocalHistoryMaintenanceRunning
                 && harness.model.workflowRunReceipt(for: receipt.runID) == nil
         }
         XCTAssertTrue(maintenanceFinished)

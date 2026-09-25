@@ -1,7 +1,4 @@
-import CryptoKit
-import Darwin
 import Foundation
-import HuggingFace
 import RillSpeechContracts
 
 struct RecordEmbeddingModelStore: Sendable {
@@ -37,19 +34,12 @@ struct RecordEmbeddingModelStore: Sendable {
       throw MLXAudioSwiftRuntimeError.invalidModelStore
     }
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: root.path)
-    let lock = open(
-      root.appendingPathComponent(".download.lock").path, O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC,
-      0o600)
-    guard lock >= 0 else { throw MLXAudioSwiftRuntimeError.invalidModelStore }
-    defer { _ = close(lock) }
-    guard flock(lock, LOCK_EX | LOCK_NB) == 0 else {
-      throw MLXAudioSwiftRuntimeError.invalidModelStore
-    }
-    defer { _ = flock(lock, LOCK_UN) }
+    let lease = try ModelDownloadLease(directory: root, identity: RecordEmbeddingModelCatalog.modelID)
+    defer { withExtendedLifetime(lease) {} }
     // Reclaim only this store's abandoned staging after acquiring the cross-process lock.
     for item in try FileManager.default.contentsOfDirectory(
       at: root, includingPropertiesForKeys: nil)
-    where item.lastPathComponent.hasPrefix(".download-")
+    where (item.lastPathComponent.hasPrefix(".download-") && !item.lastPathComponent.hasSuffix(".lock"))
       || item.lastPathComponent.hasPrefix(".replaced-")
     {
       try FileManager.default.removeItem(at: item)
@@ -59,24 +49,13 @@ struct RecordEmbeddingModelStore: Sendable {
       at: staging, withIntermediateDirectories: false,
       attributes: [.posixPermissions: 0o700])
     defer { try? FileManager.default.removeItem(at: staging) }
-    guard let repository = Repo.ID(rawValue: RecordEmbeddingModelCatalog.repository) else {
-      throw MLXAudioSwiftRuntimeError.invalidModelStore
-    }
     let downloaded = staging.appendingPathComponent("download", isDirectory: true)
     let candidate = staging.appendingPathComponent("model", isDirectory: true)
-    _ = try await HubClient().downloadSnapshot(
-      of: repository, kind: .model, to: downloaded,
+    try await ModelFiles.download(
+      repository: RecordEmbeddingModelCatalog.repository,
       revision: RecordEmbeddingModelCatalog.revision,
-      matching: RecordEmbeddingModelCatalog.files.map(\.path),
-      localFilesOnly: false, maxConcurrentDownloads: 3,
-      progressHandler: { update in
-        progress(
-          .init(
-            phase: .downloading,
-            completedUnitCount: min(
-              max(0, update.completedUnitCount), max(1, update.totalUnitCount)),
-            totalUnitCount: max(1, update.totalUnitCount)))
-      })
+      files: RecordEmbeddingModelCatalog.files.map(\.path), to: downloaded,
+      concurrency: 3, progress: progress)
     try Task.checkCancellation()
     // Hub's cache fast path copies the entire snapshot, even with matching patterns.
     // Move only reviewed regular files into the directory the recursive MLX loader sees.
@@ -98,17 +77,7 @@ struct RecordEmbeddingModelStore: Sendable {
       try FileManager.default.moveItem(at: source, to: destination)
     }
     guard try validate(candidate) else { throw MLXAudioSwiftRuntimeError.invalidModelStore }
-    if FileManager.default.fileExists(atPath: published.path) {
-      let retired = root.appendingPathComponent(".replaced-\(UUID())", isDirectory: true)
-      try FileManager.default.moveItem(at: published, to: retired)
-      do { try FileManager.default.moveItem(at: candidate, to: published) } catch {
-        try? FileManager.default.moveItem(at: retired, to: published)
-        throw error
-      }
-      try? FileManager.default.removeItem(at: retired)
-    } else {
-      try FileManager.default.moveItem(at: candidate, to: published)
-    }
+    try ModelFiles.publish(candidate, at: published)
     return published
   }
 
@@ -148,14 +117,7 @@ struct RecordEmbeddingModelStore: Sendable {
       guard values?.isRegularFile == true, values?.isSymbolicLink != true,
         values?.fileSize == item.byteCount
       else { return false }
-      let handle = try FileHandle(forReadingFrom: file)
-      defer { try? handle.close() }
-      var hash = SHA256()
-      while let block = try handle.read(upToCount: 4 * 1_024 * 1_024), !block.isEmpty {
-        try Task.checkCancellation()
-        hash.update(data: block)
-      }
-      guard hash.finalize().map({ String(format: "%02x", $0) }).joined() == item.sha256 else {
+      guard try ModelFiles.sha256(file) == item.sha256 else {
         return false
       }
     }

@@ -1,3 +1,4 @@
+import RillTestSupport
 import AppKit
 import XCTest
 
@@ -24,7 +25,7 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
       candidateResolver: resolver,
       eventBus: eventBus
     )
-    return AppModel(
+    return makeAppModelForTesting(
       workflows: [],
       eventBus: eventBus,
       sessionCoordinator: coordinator,

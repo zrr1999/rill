@@ -99,6 +99,7 @@ public enum MenuBarVoiceSetupStatus: Sendable, Equatable {
 public struct MenuBarOperationPanelState: Sendable, Equatable {
   public let language: AppLanguage
   public let isRunning: Bool
+  public let activeStage: WorkflowRunStage?
   public let lastCompletedText: String?
   public let lastFailure: String?
   public let recordCount: Int
@@ -115,6 +116,7 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
   public init(
     language: AppLanguage,
     isRunning: Bool,
+    activeStage: WorkflowRunStage? = nil,
     lastCompletedText: String? = nil,
     lastFailure: String? = nil,
     recordCount: Int,
@@ -130,6 +132,7 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
   ) {
     self.language = language
     self.isRunning = isRunning
+    self.activeStage = activeStage
     self.lastCompletedText = lastCompletedText
     self.lastFailure = lastFailure
     self.recordCount = recordCount
@@ -158,7 +161,8 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     }
 
     if isRunning {
-      return L10n.string(.menuStatusRunning, language: language)
+      return activeStage.map { L10n.runStageTitle($0, language: language) }
+        ?? L10n.string(.menuStatusRunning, language: language)
     }
 
     switch voiceSetupStatus {
@@ -358,7 +362,7 @@ public struct MenuBarStatusView: View {
         .keyboardShortcut("o", modifiers: [.command, .shift])
 
         SettingsLink {
-          Label(UIStrings.text(.settingsTitle, language: model.language), systemImage: RillSystemSymbol.gearshape.rawValue)
+          Label(L10n.text(.settingsTitle, language: model.language), systemImage: RillSystemSymbol.gearshape.rawValue)
         }
 
 
@@ -367,7 +371,7 @@ public struct MenuBarStatusView: View {
           openMainWindow()
         } label: {
           Label(
-            UIStrings.text(.historyScopeAll, language: model.language),
+            L10n.text(.historyScopeAll, language: model.language),
             systemImage: RillSystemSymbol.clockArrowCirclepath.rawValue)
         }
 
@@ -461,7 +465,7 @@ public struct MenuBarStatusView: View {
           model.selectSidebarSection(.settings)
           openMainWindow()
         } label: {
-          Label(UIStrings.text(.settingsTitle, language: model.language), systemImage: RillSystemSymbol.gearshape.rawValue)
+          Label(L10n.text(.settingsTitle, language: model.language), systemImage: RillSystemSymbol.gearshape.rawValue)
         }
         .keyboardShortcut(",", modifiers: .command)
 
@@ -552,6 +556,7 @@ public struct MenuBarStatusView: View {
     MenuBarOperationPanelState(
       language: model.language,
       isRunning: model.voice.isRunning,
+      activeStage: model.voice.activeStage,
       lastCompletedText: model.voice.lastCompletedText,
       lastFailure: model.lastFailure,
       recordCount: model.recordCount,
@@ -641,7 +646,7 @@ extension MenuBarStatusView {
       openMainWindow()
     } label: {
       Label(
-        UIStrings.text(.openWorkflowEditor, language: model.language),
+        L10n.text(.openWorkflowEditor, language: model.language),
         systemImage: RillSystemSymbol.squareAndPencil.rawValue)
     }
   }
@@ -750,7 +755,7 @@ extension MenuBarStatusView {
       openMainWindow()
     } label: {
       Label(
-        UIStrings.text(.openWorkflowEditor, language: model.language),
+        L10n.text(.openWorkflowEditor, language: model.language),
         systemImage: RillSystemSymbol.squareAndPencil.rawValue)
     }
   }

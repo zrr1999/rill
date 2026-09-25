@@ -22,9 +22,9 @@ extension SettingsView {
         .font(.caption)
         .foregroundStyle(.secondary)
 
-      switch model.openAICredentialAvailability {
+      switch model.settings.openAICredentialAvailability {
       case .loading:
-        ProgressView(UIStrings.text(.voiceSetupLoading, language: model.language))
+        ProgressView(L10n.text(.voiceSetupLoading, language: model.language))
           .controlSize(.small)
       case .saving:
         ProgressView(L10n.string(.settingsOpenAISaving, language: model.language))
@@ -52,7 +52,7 @@ extension SettingsView {
           .font(.caption)
           .foregroundStyle(.red)
           Spacer()
-          Button(UIStrings.text(.retryCredentialLoad, language: model.language)) {
+          Button(L10n.text(.retryCredentialLoad, language: model.language)) {
             model.retryOpenAICredentialLoad()
           }
         }
@@ -60,15 +60,15 @@ extension SettingsView {
 
       let openAIAPIKeyTitle = L10n.string(.settingsOpenAIAPIKey, language: model.language)
       providerInputRow(openAIAPIKeyTitle) {
-        SecureField(openAIAPIKeyTitle, text: $model.openAIAPIKey)
+        SecureField(openAIAPIKeyTitle, text: Binding(get: { model.openAIAPIKey }, set: { model.setOpenAIAPIKey($0) }))
           .textFieldStyle(.roundedBorder)
-          .disabled(model.openAICredentialAvailability == .inaccessible)
+          .disabled(model.settings.openAICredentialAvailability == .inaccessible)
           .accessibilityIdentifier("settings.openai.api-key")
       }
 
       let openAIBaseURLTitle = L10n.string(.settingsOpenAIBaseURL, language: model.language)
       providerInputRow(openAIBaseURLTitle) {
-        TextField(openAIBaseURLTitle, text: $model.openAIBaseURL)
+        TextField(openAIBaseURLTitle, text: Binding(get: { model.openAIBaseURL }, set: { model.setOpenAIBaseURL($0) }))
           .textFieldStyle(.roundedBorder)
           .accessibilityIdentifier("settings.openai.base-url")
       }
@@ -109,7 +109,7 @@ extension SettingsView {
           language: model.language
         )
         providerInputRow(openAICustomModelTitle) {
-          TextField(openAICustomModelTitle, text: $model.openAIModel)
+          TextField(openAICustomModelTitle, text: Binding(get: { model.openAIModel }, set: { model.setOpenAIModel($0) }))
             .textFieldStyle(.roundedBorder)
             .accessibilityIdentifier("settings.openai.custom-model")
         }
@@ -122,7 +122,7 @@ extension SettingsView {
         .disabled(!model.canVerifyOpenAIConfiguration)
         .accessibilityIdentifier("settings.openai.verify")
 
-        switch model.openAIConfigurationVerificationState {
+        switch model.settings.openAIConfigurationVerificationState {
         case .idle:
           EmptyView()
         case .verifying:
@@ -155,7 +155,7 @@ extension SettingsView {
         .font(.caption)
         .foregroundStyle(.secondary)
     }
-    .disabled(model.openAIConfigurationVerificationState == .verifying)
+    .disabled(model.settings.openAIConfigurationVerificationState == .verifying)
   }
 
   private var jevPolishingSettingsSection: some View {

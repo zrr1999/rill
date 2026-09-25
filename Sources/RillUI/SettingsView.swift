@@ -113,7 +113,7 @@ struct SettingsPermissionPresentation: Equatable {
   ) -> Self {
     if state == .granted {
       return Self(
-        detail: UIStrings.permissionState(state, language: language),
+        detail: L10n.permissionState(state, language: language),
         tone: .success,
         action: .none
       )
@@ -121,7 +121,7 @@ struct SettingsPermissionPresentation: Equatable {
     if !isRequired {
       return Self(
         detail: optionalDetail
-          ?? UIStrings.permissionState(state, language: language),
+          ?? L10n.permissionState(state, language: language),
         tone: .secondary,
         action: .none
       )
@@ -131,13 +131,13 @@ struct SettingsPermissionPresentation: Equatable {
       preconditionFailure("Granted permissions are handled above")
     case .unknown:
       return Self(
-        detail: UIStrings.permissionState(state, language: language),
+        detail: L10n.permissionState(state, language: language),
         tone: .warning,
         action: .request
       )
     case .denied:
       return Self(
-        detail: UIStrings.permissionState(state, language: language),
+        detail: L10n.permissionState(state, language: language),
         tone: .error,
         action: .openSettings
       )
@@ -235,7 +235,7 @@ public struct SettingsView: View {
     .sheet(isPresented: $showsDiagnostics) {
       VStack(spacing: 0) {
         HStack {
-          Text(UIStrings.text(.sidebarDiagnostics, language: model.language)).font(.headline)
+          Text(L10n.text(.sidebarDiagnostics, language: model.language)).font(.headline)
           Spacer()
           Button(L10n.workspace(.done, language: model.language)) { showsDiagnostics = false }
             .keyboardShortcut(.cancelAction)
@@ -280,7 +280,7 @@ public struct SettingsView: View {
     settingsDisclosure(.permissions) {
       HStack {
         Spacer()
-        Button(UIStrings.text(.refreshPermissions, language: model.language)) {
+        Button(L10n.text(.refreshPermissions, language: model.language)) {
           model.refreshPermissions()
         }
       }
@@ -288,10 +288,10 @@ public struct SettingsView: View {
       globalInputPermissionRow(model.globalInputCapability)
 
       permissionRow(
-        title: UIStrings.text(.accessibility, language: model.language),
+        title: L10n.text(.accessibility, language: model.language),
         state: model.permissionSnapshot.accessibility,
         isRequired: model.voiceSetupReadiness.accessibilityRequired,
-        optionalDetail: UIStrings.text(
+        optionalDetail: L10n.text(
           .voiceSetupAccessibilityOptional,
           language: model.language
         ),
@@ -300,7 +300,7 @@ public struct SettingsView: View {
       )
 
       permissionRow(
-        title: UIStrings.text(.microphone, language: model.language),
+        title: L10n.text(.microphone, language: model.language),
         state: model.permissionSnapshot.microphone,
         requestAction: model.requestMicrophonePermission,
         openSettingsAction: model.openMicrophoneSettings
@@ -309,12 +309,12 @@ public struct SettingsView: View {
       if model.voiceSetupReadiness.accessibilityRequired,
         model.permissionSnapshot.accessibility != .granted
       {
-        Text(UIStrings.text(.appNotListedHint, language: model.language))
+        Text(L10n.text(.appNotListedHint, language: model.language))
           .font(.callout)
           .foregroundStyle(.secondary)
       }
 
-      Text(UIStrings.text(.permissionHint, language: model.language))
+      Text(L10n.text(.permissionHint, language: model.language))
         .font(.caption)
         .foregroundStyle(.secondary)
     }
@@ -330,7 +330,7 @@ extension SettingsView {
       }
 
       Toggle(
-        UIStrings.text(
+        L10n.text(
           .settingsClipboardCaptureEnabled,
           language: model.language
         ),
@@ -343,7 +343,7 @@ extension SettingsView {
       .accessibilityIdentifier("settings.systemClipboard.capture-enabled")
 
       Text(
-        UIStrings.text(
+        L10n.text(
           .settingsClipboardCaptureEnabledDescription,
           language: model.language
         )
@@ -377,7 +377,7 @@ extension SettingsView {
       )
       .disabled(model.hasUnavailableScalarSettings(in: .systemClipboard))
 
-      Text(UIStrings.text(.settingsRecordPanelDescription, language: model.language))
+      Text(L10n.text(.settingsRecordPanelDescription, language: model.language))
         .font(.caption)
         .foregroundStyle(.secondary)
     }
@@ -390,7 +390,7 @@ extension SettingsView {
       }
 
       Picker(
-        UIStrings.text(.language, language: model.language),
+        L10n.text(.language, language: model.language),
         selection: Binding(
           get: { model.language },
           set: { model.setInterfaceLanguage($0) }
@@ -406,7 +406,7 @@ extension SettingsView {
       .frame(maxWidth: 260)
       .disabled(!model.canMutateScalarSettings(in: .interface))
 
-      Text(UIStrings.text(.settingsLanguageDescription, language: model.language))
+      Text(L10n.text(.settingsLanguageDescription, language: model.language))
         .font(.caption)
         .foregroundStyle(.secondary)
     }
@@ -423,7 +423,7 @@ extension SettingsView {
     } label: {
       HStack {
         Label(
-          UIStrings.text(.sidebarDiagnostics, language: model.language),
+          L10n.text(.sidebarDiagnostics, language: model.language),
           systemImage: SidebarSection.diagnostics.symbolName
         )
         Spacer()
@@ -485,15 +485,15 @@ extension SettingsView {
   private func settingsSectionSummary(_ section: SettingsSection) -> String {
     switch section {
     case .permissions:
-      return UIStrings.text(.microphone, language: model.language) + " · "
-        + UIStrings.permissionState(model.permissionSnapshot.microphone, language: model.language)
+      return L10n.text(.microphone, language: model.language) + " · "
+        + L10n.permissionState(model.permissionSnapshot.microphone, language: model.language)
     case .speech:
       let name = model.selectedTrustedLocalSpeechModelIdentifier
       return name.isEmpty
-        ? UIStrings.speechEngine(model.preferredSpeechEngine, language: model.language)
-        : UIStrings.speechEngine(model.preferredSpeechEngine, language: model.language) + " · " + name
+        ? L10n.speechEngine(model.preferredSpeechEngine, language: model.language)
+        : L10n.speechEngine(model.preferredSpeechEngine, language: model.language) + " · " + name
     case .input:
-      return UIStrings.builtinPushToTalkOutputMode(model.builtinPushToTalkOutputMode, language: model.language)
+      return L10n.builtinPushToTalkOutputMode(model.builtinPushToTalkOutputMode, language: model.language)
     case .language:
       return model.language.displayName
     case .storage:
@@ -645,11 +645,11 @@ extension SettingsView {
       case .none:
         EmptyView()
       case .request:
-        Button(UIStrings.text(.requestAccess, language: model.language)) {
+        Button(L10n.text(.requestAccess, language: model.language)) {
           requestAction()
         }
       case .openSettings:
-        Button(UIStrings.text(.openSettings, language: model.language)) {
+        Button(L10n.text(.openSettings, language: model.language)) {
           openSettingsAction()
         }
       }
@@ -661,13 +661,13 @@ extension SettingsView {
   ) -> some View {
     Section {
       Label(
-        UIStrings.text(.settingsSaveFailedTitle, language: model.language),
+        L10n.text(.settingsSaveFailedTitle, language: model.language),
         systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
       )
       .foregroundStyle(.orange)
       .accessibilityIdentifier("settings.unsaved.title")
 
-      Text(UIStrings.settingsSaveFailureDescription(summary, language: model.language))
+      Text(L10n.settingsSaveFailureDescription(summary, language: model.language))
         .font(.callout)
         .foregroundStyle(.secondary)
         .accessibilityIdentifier("settings.unsaved.description")
@@ -681,10 +681,10 @@ extension SettingsView {
             HStack(spacing: 8) {
               ProgressView()
                 .controlSize(.small)
-              Text(UIStrings.text(.settingsSaveRetrying, language: model.language))
+              Text(L10n.text(.settingsSaveRetrying, language: model.language))
             }
           } else {
-            Text(UIStrings.text(.settingsSaveRetry, language: model.language))
+            Text(L10n.text(.settingsSaveRetry, language: model.language))
           }
         }
         .disabled(model.settingsSaveState.isRetrying)
@@ -713,7 +713,7 @@ extension SettingsView {
             HStack(spacing: 8) {
               ProgressView()
                 .controlSize(.small)
-              Text(UIStrings.text(.settingsSaveRetrying, language: model.language))
+              Text(L10n.text(.settingsSaveRetrying, language: model.language))
             }
           } else {
             Text(L10n.settingsText(.settingsRetryLoading, language: model.language))
@@ -728,7 +728,7 @@ extension SettingsView {
 
   @ViewBuilder
   private func globalInputPermissionRow(_ capability: GlobalInputCapability) -> some View {
-    let title = UIStrings.text(.globalInput, language: model.language)
+    let title = L10n.text(.globalInput, language: model.language)
     HStack(alignment: .center, spacing: 12) {
       VStack(alignment: .leading, spacing: 4) {
         Text(title)
@@ -742,12 +742,12 @@ extension SettingsView {
       case .checking, .available:
         EmptyView()
       case .permissionRequired:
-        Button(UIStrings.text(.requestAccess, language: model.language)) {
+        Button(L10n.text(.requestAccess, language: model.language)) {
           model.requestGlobalInputPermission()
         }
         .accessibilityIdentifier("settings.global-input.request")
       case .installationFailed:
-        Button(UIStrings.text(.retryGlobalInput, language: model.language)) {
+        Button(L10n.text(.retryGlobalInput, language: model.language)) {
           model.retryGlobalInputInstallation()
         }
         .accessibilityIdentifier("settings.global-input.retry")
@@ -757,7 +757,7 @@ extension SettingsView {
   }
 
   private func globalInputPermissionDetail(_ capability: GlobalInputCapability) -> String {
-    let key: UIStrings.Key =
+    let key: L10n.InterfaceKey =
       switch capability {
       case .checking:
         .voiceSetupGlobalInputChecking
@@ -768,7 +768,7 @@ extension SettingsView {
       case .installationFailed:
         .voiceSetupGlobalInputInstallationFailed
       }
-    return UIStrings.text(key, language: model.language)
+    return L10n.text(key, language: model.language)
   }
 
   private func globalInputPermissionColor(_ capability: GlobalInputCapability) -> Color {
@@ -811,7 +811,7 @@ extension SettingsView {
         )
       ) {
         ForEach(RecordingDurationLimit.allCases) { limit in
-          Text(UIStrings.recordingDurationLimit(limit, language: model.language)).tag(limit)
+          Text(L10n.recordingDurationLimit(limit, language: model.language)).tag(limit)
         }
       }
       .pickerStyle(.menu)
@@ -822,19 +822,19 @@ extension SettingsView {
         .foregroundStyle(.secondary)
 
       Picker(
-        UIStrings.text(.builtinPushToTalkOutputMode, language: model.language),
+        L10n.text(.builtinPushToTalkOutputMode, language: model.language),
         selection: Binding(
           get: { model.builtinPushToTalkOutputMode },
           set: { model.setBuiltinPushToTalkOutputMode($0) }
         )
       ) {
         ForEach(BuiltinPushToTalkOutputMode.allCases) { mode in
-          Text(UIStrings.builtinPushToTalkOutputMode(mode, language: model.language)).tag(mode)
+          Text(L10n.builtinPushToTalkOutputMode(mode, language: model.language)).tag(mode)
         }
       }
       .pickerStyle(.segmented)
       .disabled(!model.canMutateScalarSettings(in: .input))
-      Text(UIStrings.text(.settingsBuiltinPushToTalkDescription, language: model.language))
+      Text(L10n.text(.settingsBuiltinPushToTalkDescription, language: model.language))
         .font(.caption)
         .foregroundStyle(.secondary)
     }

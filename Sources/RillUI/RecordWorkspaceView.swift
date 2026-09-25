@@ -297,7 +297,7 @@ public struct RecordWorkspaceView: View {
             Text(L10n.recordText(.collectionPresetQueue, language: language)).tag(Optional(RecordCollectionPreset.queue))
             Text(L10n.recordText(.collectionPresetList, language: language)).tag(Optional(RecordCollectionPreset.list))
             if collection.matchingPreset == nil {
-                Text(UIStrings.text(.workflowCustom, language: language)).tag(Optional<RecordCollectionPreset>.none)
+                Text(L10n.text(.workflowCustom, language: language)).tag(Optional<RecordCollectionPreset>.none)
             }
         }
         .pickerStyle(.segmented)
@@ -510,8 +510,8 @@ public struct RecordWorkspaceView: View {
                         } label: {
                             Label(
                                 record.metadata.isPinned
-                                    ? UIStrings.text(.clipboardUnpinItem, language: language)
-                                    : UIStrings.text(.clipboardPinItem, language: language),
+                                    ? L10n.text(.clipboardUnpinItem, language: language)
+                                    : L10n.text(.clipboardPinItem, language: language),
                                 systemImage: record.metadata.isPinned ? RillSystemSymbol.pinSlash.rawValue : RillSystemSymbol.pin.rawValue)
                         }
                         Button {
@@ -571,7 +571,7 @@ public struct RecordWorkspaceView: View {
 
     private func membershipInspector(_ record: RecordProjection) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(UIStrings.text(.recordCollections, language: language)).font(.headline)
+            Text(L10n.text(.recordCollections, language: language)).font(.headline)
             if record.memberships.isEmpty {
                 Text(L10n.recordText(.noMembershipHint, language: language))
                 .font(.caption)
@@ -630,7 +630,7 @@ public struct RecordWorkspaceView: View {
             HStack {
                 Spacer()
                 Button(L10n.recordText(.cancel, language: language)) { isCreatingCollection = false }
-                Button(UIStrings.text(.clipboardCreate, language: language)) {
+                Button(L10n.text(.clipboardCreate, language: language)) {
                     let name = newCollectionName
                     let preset = newCollectionPreset
                     isCreatingCollection = false

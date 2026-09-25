@@ -1,3 +1,4 @@
+import RillTestSupport
 import Foundation
 import Testing
 @testable import RillApp
@@ -63,7 +64,7 @@ struct ContextMemoryControllerTests {
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []), actionRegistry: actions,
             candidateResolver: resolver, eventBus: bus)
-        return AppModel(workflows: [], eventBus: bus, sessionCoordinator: coordinator,
+        return makeAppModelForTesting(workflows: [], eventBus: bus, sessionCoordinator: coordinator,
             outputActionRegistry: actions, candidateResolver: resolver, loadsPersistentSettingsOnInitialization: false,
             writeClipboardTextAction: { _ in }, deliverNextRecordAction: {},
             permissionSnapshot: .init(accessibility: .granted, microphone: .granted),

@@ -199,6 +199,8 @@ enum DiagnosticEventPresentation {
       return localized("Recognizing speech on device", "正在本机识别语音", language: language)
     case "transforming":
       return localized("Formatting transcription", "正在整理转写文本", language: language)
+    case "saving":
+      return localized("Saving text", "正在保存文本", language: language)
     case "delivering":
       return localized("Delivering text", "正在投递文本", language: language)
     case "completed":
@@ -212,7 +214,7 @@ enum DiagnosticEventPresentation {
     for event: DiagnosticEvent,
     language: AppLanguage
   ) -> String {
-    let subsystem = UIStrings.subsystem(event.subsystem, language: language)
+    let subsystem = L10n.subsystem(event.subsystem, language: language)
     return language == .english
       ? "\(subsystem) event: \(event.event)"
       : "\(subsystem)事件：\(event.event)"

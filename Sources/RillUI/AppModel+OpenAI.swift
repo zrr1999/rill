@@ -4,57 +4,57 @@ extension AppModel {
   public var canVerifyOpenAIConfiguration: Bool {
     !hasBegunApplicationShutdown
       && !self.settings.isLoading
-      && openAICredentialAvailability == .available
+      && self.settings.openAICredentialAvailability == .available
       && !hasUnavailableScalarSettings(in: .openAI)
       && OpenAISettings.isValidBaseURL(openAIBaseURL)
       && OpenAISettings.isValidModelIdentifier(openAIModel)
-      && openAIConfigurationVerificationState != .verifying
+      && self.settings.openAIConfigurationVerificationState != .verifying
   }
 
   public func verifyOpenAIConfiguration() {
     guard canVerifyOpenAIConfiguration else { return }
-    openAIVerificationTask?.cancel()
-    openAIVerificationGeneration &+= 1
-    let generation = openAIVerificationGeneration
+    self.settings.openAIVerificationTask?.cancel()
+    self.settings.openAIVerificationGeneration &+= 1
+    let generation = self.settings.openAIVerificationGeneration
     let settings = OpenAISettings(
       apiKey: openAIAPIKey,
       baseURL: openAIBaseURL,
       model: openAIModel
     )
-    openAIVerificationFailure = nil
-    openAIConfigurationVerificationState = .verifying
-    openAIVerificationTask = Task { @MainActor [weak self] in
+    self.settings.openAIVerificationFailure = nil
+    self.settings.openAIConfigurationVerificationState = .verifying
+    self.settings.openAIVerificationTask = Task { @MainActor [weak self] in
       guard let self else { return }
       do {
         try await self.verifyOpenAIConfigurationAction(settings)
         guard
           !Task.isCancelled,
           !self.hasBegunApplicationShutdown,
-          self.openAIVerificationGeneration == generation
+          self.settings.openAIVerificationGeneration == generation
         else {
           return
         }
-        self.openAIVerificationFailure = nil
-        self.openAIConfigurationVerificationState = .verified
-        self.openAIVerificationTask = nil
+        self.settings.openAIVerificationFailure = nil
+        self.settings.openAIConfigurationVerificationState = .verified
+        self.settings.openAIVerificationTask = nil
         self.workflowLibraryChangedAction()
       } catch is CancellationError {
-        guard self.openAIVerificationGeneration == generation else { return }
-        self.openAIVerificationFailure = nil
-        self.openAIConfigurationVerificationState = .idle
-        self.openAIVerificationTask = nil
+        guard self.settings.openAIVerificationGeneration == generation else { return }
+        self.settings.openAIVerificationFailure = nil
+        self.settings.openAIConfigurationVerificationState = .idle
+        self.settings.openAIVerificationTask = nil
       } catch {
         guard
           !self.hasBegunApplicationShutdown,
-          self.openAIVerificationGeneration == generation
+          self.settings.openAIVerificationGeneration == generation
         else {
           return
         }
-        self.openAIVerificationFailure =
+        self.settings.openAIVerificationFailure =
           (error as? any OpenAIVerificationFailureProviding)?.openAIVerificationFailure
           ?? .unknown
-        self.openAIConfigurationVerificationState = .failed
-        self.openAIVerificationTask = nil
+        self.settings.openAIConfigurationVerificationState = .failed
+        self.settings.openAIVerificationTask = nil
         self.workflowLibraryChangedAction()
       }
     }

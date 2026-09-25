@@ -5,6 +5,13 @@ import RillRuntime
 
 @MainActor @Observable
 public final class WorkflowLibraryModel {
+  public var workflowEditorError: String?
+  public internal(set) var workflowExplanationState: WorkflowExplanationLoadState = .idle
+  let workflowExplanationTaskOwner = WorkflowExplanationTaskOwner()
+  var workflowExplanationGeneration = 0
+  public internal(set) var isUpdatingWorkflowEnabledStates = false
+  @ObservationIgnored var workflowFileMonitorTask: Task<Void, Never>?
+
   public internal(set) var builtInWorkflows: [WorkflowDefinition]
   public internal(set) var customWorkflows: [WorkflowDefinition] = []
   public internal(set) var workflows: [WorkflowDefinition]
@@ -66,10 +73,10 @@ public final class WorkflowLibraryModel {
     [
       WorkflowNameDuplicationPolicy.normalizedName(workflow.name),
       WorkflowNameDuplicationPolicy.normalizedName(
-        UIStrings.workflowName(workflow.presentation, language: .english)
+        L10n.workflowName(workflow.presentation, language: .english)
       ),
       WorkflowNameDuplicationPolicy.normalizedName(
-        UIStrings.workflowName(workflow.presentation, language: .simplifiedChinese)
+        L10n.workflowName(workflow.presentation, language: .simplifiedChinese)
       ),
     ]
   }
@@ -195,4 +202,83 @@ public final class WorkflowLibraryModel {
       && (workflowEnabledStates[workflow.id] ?? true)
   }
 
+}
+
+
+public enum WorkflowExplanationFailure: Sendable, Equatable {
+  case workflowUnavailable
+  case providerUnavailable
+  case invalidReceipt
+}
+
+
+public enum WorkflowExplanationLoadState: Sendable, Equatable {
+  case idle
+  case loading(workflowID: UUID)
+  case loaded(WorkflowExplanationReceipt)
+  case failed(workflowID: UUID, reason: WorkflowExplanationFailure)
+}
+
+
+@MainActor
+final class WorkflowExplanationTaskOwner {
+  private var currentTaskID: UUID?
+  private var tasks: [UUID: Task<Void, Never>] = [:]
+  private var idleWaiters: [CheckedContinuation<Void, Never>] = []
+
+  func replace(id: UUID, with task: Task<Void, Never>) {
+    if let currentTaskID {
+      tasks[currentTaskID]?.cancel()
+    }
+    tasks[id] = task
+    currentTaskID = id
+  }
+
+  func finish(id: UUID) {
+    tasks.removeValue(forKey: id)
+    if currentTaskID == id {
+      currentTaskID = nil
+    }
+    guard tasks.isEmpty else { return }
+    let waiters = idleWaiters
+    idleWaiters.removeAll()
+    for waiter in waiters {
+      waiter.resume()
+    }
+  }
+
+  func cancel() {
+    guard let currentTaskID else { return }
+    tasks[currentTaskID]?.cancel()
+    self.currentTaskID = nil
+  }
+
+  func waitUntilIdle() async {
+    guard !tasks.isEmpty else { return }
+    await withCheckedContinuation { continuation in
+      idleWaiters.append(continuation)
+    }
+  }
+
+  deinit {
+    for task in tasks.values {
+      task.cancel()
+    }
+    for waiter in idleWaiters {
+      waiter.resume()
+    }
+  }
+}
+
+
+public struct WorkflowTriggerConflict: Identifiable, Equatable, Sendable {
+  public let trigger: TriggerBinding
+  public let workflowIDs: [UUID]
+
+  public var id: String { trigger.rawValue }
+
+  public init(trigger: TriggerBinding, workflowIDs: [UUID]) {
+    self.trigger = trigger
+    self.workflowIDs = workflowIDs
+  }
 }

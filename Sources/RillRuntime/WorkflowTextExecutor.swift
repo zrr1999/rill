@@ -24,7 +24,7 @@ struct WorkflowTextExecutor: Sendable {
   let lane: WorkflowRunLane
   let processingClock: @Sendable () -> UInt64
   var textPolishingGate: (any TextPolishingGate)? = nil
-  private var runDiagnostics: WorkflowRunDiagnostics { .init(diagnostics: diagnostics) }
+  private var runDiagnostics: WorkflowRunReporter { .init(diagnostics: diagnostics, eventBus: eventBus, lane: lane) }
 
   func transformText(
     from recognition: RecognitionResult,

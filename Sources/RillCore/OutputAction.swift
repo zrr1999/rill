@@ -43,3 +43,22 @@ public extension RecordDraft {
         return text
     }
 }
+
+/// A failure is retry-safe only when the adapter proves no output was applied.
+/// Absence of this evidence (including old receipts) means the outcome is unknown.
+public enum OutputFailureDisposition: String, Codable, Sendable, Equatable {
+    case notApplied
+    case unknown
+}
+
+public protocol OutputFailureDescribing: Error {
+    var outputFailureDisposition: OutputFailureDisposition { get }
+}
+
+extension OutputActionPayloadError: OutputFailureDescribing {
+    public var outputFailureDisposition: OutputFailureDisposition { .notApplied }
+}
+
+extension WorkflowActionConfigurationError: OutputFailureDescribing {
+    public var outputFailureDisposition: OutputFailureDisposition { .notApplied }
+}

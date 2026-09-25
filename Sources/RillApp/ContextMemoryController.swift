@@ -159,8 +159,8 @@ final class ContextMemoryController {
         guard !isShuttingDown, settings.memoryEnabled, authorization?.isValid == true,
               IdleMemoryScheduler.idleSeconds >= 5 * 60, let model,
               !model.settings.isLoading, !model.isLoadingPrivacySettings,
-              !model.hasActiveOrQueuedVoiceRun, !model.isLocalHistoryMaintenanceRunning,
-              !model.isSpeechPlaybackActive else { return false }
+              !model.hasActiveOrQueuedVoiceRun, !model.history.isLocalHistoryMaintenanceRunning,
+              !model.voice.isSpeechPlaybackActive else { return false }
         return await runtimeIsIdle()
     }
 

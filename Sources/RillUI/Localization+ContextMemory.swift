@@ -1,15 +1,5 @@
 import Foundation
 
-public enum ContextMemoryFailure: Sendable, Equatable {
-  case settingsLoad, revocation, authorization, storage, mutation, correction, unavailable
-}
-
-public enum ContextMemoryMutationResult: Sendable, Equatable {
-  case saved
-  case failed(ContextMemoryFailure)
-  case stopped
-}
-
 extension L10n {
   static func contextMemoryFailure(_ failure: ContextMemoryFailure) -> LocalizedText {
     switch failure {

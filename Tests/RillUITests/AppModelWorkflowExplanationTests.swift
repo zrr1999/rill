@@ -106,7 +106,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
             }
         )
         await waitForListenerSetup(harness)
-        harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
+        harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
 
         harness.model.explainWorkflowBeforeRun(workflow)
         await harness.model.waitForWorkflowExplanationTasks()
@@ -116,7 +116,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         XCTAssertEqual(calls.count, 1)
         XCTAssertEqual(captured.pipeline.recognizerID, AppModel.localSpeechRecognizerID)
         XCTAssertEqual(captured.pipeline.outputActions.map(\.id), ["focused-application.insert"])
-        guard case .loaded(let receipt) = harness.model.workflowExplanationState else {
+        guard case .loaded(let receipt) = harness.model.workflowLibrary.workflowExplanationState else {
             return XCTFail("Expected a loaded workflow explanation")
         }
         XCTAssertEqual(receipt.trigger, .manual)
@@ -135,7 +135,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
 
         harness.model.explainWorkflowBeforeRun(first)
         await gate.waitUntilRequested(first.id)
-        guard case .loading(let loadingID) = harness.model.workflowExplanationState else {
+        guard case .loading(let loadingID) = harness.model.workflowLibrary.workflowExplanationState else {
             return XCTFail("Expected loading state")
         }
         XCTAssertEqual(loadingID, first.id)
@@ -146,7 +146,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         await gate.resolve(first.id)
         await harness.model.waitForWorkflowExplanationTasks()
 
-        guard case .loaded(let receipt) = harness.model.workflowExplanationState else {
+        guard case .loaded(let receipt) = harness.model.workflowLibrary.workflowExplanationState else {
             return XCTFail("Expected the second workflow explanation")
         }
         XCTAssertEqual(receipt.workflowID, second.id)
@@ -160,15 +160,15 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
             explainResolvedWorkflowAction: { try await gate.explain($0) }
         )
         await waitForListenerSetup(harness)
-        harness.model.builtinPushToTalkOutputMode = .pasteIntoApp
+        harness.model.applyBuiltinPushToTalkOutputMode(.pasteIntoApp)
 
         harness.model.explainWorkflowBeforeRun(workflow)
         await gate.waitUntilRequested(workflow.id)
-        harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
+        harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
         await gate.waitUntilCancelled(workflow.id)
         await harness.model.waitForWorkflowExplanationTasks()
 
-        XCTAssertEqual(harness.model.workflowExplanationState, .idle)
+        XCTAssertEqual(harness.model.workflowLibrary.workflowExplanationState, .idle)
     }
 
     func testLegacyWorkflowIsBlockedWithoutCallingProvider() async {
@@ -188,7 +188,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
 
         let calls = await probe.snapshot()
         XCTAssertTrue(calls.isEmpty)
-        guard case .loaded(let receipt) = harness.model.workflowExplanationState else {
+        guard case .loaded(let receipt) = harness.model.workflowLibrary.workflowExplanationState else {
             return XCTFail("Expected a fail-closed legacy receipt")
         }
         XCTAssertEqual(receipt.status, .blocked)
@@ -213,20 +213,20 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
 
         harness.model.explainWorkflowBeforeRun(workflow)
         await harness.model.waitForWorkflowExplanationTasks()
-        guard case .failed(let failedID, let reason) = harness.model.workflowExplanationState else {
+        guard case .failed(let failedID, let reason) = harness.model.workflowLibrary.workflowExplanationState else {
             return XCTFail("Expected a typed provider failure")
         }
         XCTAssertEqual(failedID, workflow.id)
         XCTAssertEqual(reason, .providerUnavailable)
-        XCTAssertFalse(String(describing: harness.model.workflowExplanationState).contains(canary))
+        XCTAssertFalse(String(describing: harness.model.workflowLibrary.workflowExplanationState).contains(canary))
         XCTAssertFalse(
-            UIStrings.workflowExplanationFailure(reason, language: .english).contains(canary)
+            L10n.workflowExplanationFailure(reason, language: .english).contains(canary)
         )
 
         let removed = makeExplanationWorkflow(name: "Removed")
         harness.model.explainWorkflowBeforeRun(removed)
         XCTAssertEqual(
-            harness.model.workflowExplanationState,
+            harness.model.workflowLibrary.workflowExplanationState,
             .failed(workflowID: removed.id, reason: .workflowUnavailable)
         )
     }
@@ -246,7 +246,7 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
         await gate.waitUntilCancelled(workflow.id)
         await harness.model.waitForWorkflowExplanationTasks()
 
-        XCTAssertEqual(harness.model.workflowExplanationState, .idle)
+        XCTAssertEqual(harness.model.workflowLibrary.workflowExplanationState, .idle)
     }
 
     func testPresentationMapsEveryEffectAndPrivacyReasonWithoutRawValues() {
@@ -347,20 +347,20 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
     }
 
     func testReadyConfirmationAndBlockedStatusCopyRemainsNonAuthorizing() {
-        let ready = UIStrings.workflowExplanationStatusTitle(.ready, language: .english)
-        let readyDetail = UIStrings.workflowExplanationStatusDetail(.ready, language: .english)
-        let confirmation = UIStrings.workflowExplanationStatusTitle(
+        let ready = L10n.workflowExplanationStatusTitle(.ready, language: .english)
+        let readyDetail = L10n.workflowExplanationStatusDetail(.ready, language: .english)
+        let confirmation = L10n.workflowExplanationStatusTitle(
             .requiresConfirmation,
             language: .simplifiedChinese
         )
-        let blocked = UIStrings.workflowExplanationStatusTitle(.blocked, language: .english)
+        let blocked = L10n.workflowExplanationStatusTitle(.blocked, language: .english)
 
         XCTAssertEqual(ready, "Current privacy preview passed")
         XCTAssertTrue(readyDetail.contains("not a full readiness check"))
         XCTAssertTrue(readyDetail.contains("rechecks"))
         XCTAssertEqual(confirmation, "运行时将询问")
         XCTAssertEqual(blocked, "Blocked in this preview")
-        XCTAssertNotEqual(confirmation, UIStrings.workflowExplanationStatusTitle(.blocked, language: .simplifiedChinese))
+        XCTAssertNotEqual(confirmation, L10n.workflowExplanationStatusTitle(.blocked, language: .simplifiedChinese))
     }
 
     func testUnsavedRecognizerOrOutputChangesDisableSavedWorkflowPreview() throws {
@@ -397,11 +397,11 @@ final class AppModelWorkflowExplanationTests: XCTestCase {
             )
         )
         XCTAssertEqual(
-            UIStrings.workflowExplanationCopy(.saveBeforePreview, language: .english),
+            L10n.workflowExplanationCopy(.saveBeforePreview, language: .english),
             "Save the visible changes before previewing this workflow."
         )
         XCTAssertEqual(
-            UIStrings.workflowExplanationCopy(.saveBeforePreview, language: .simplifiedChinese),
+            L10n.workflowExplanationCopy(.saveBeforePreview, language: .simplifiedChinese),
             "请先保存当前可见改动，再预览此工作流。"
         )
         XCTAssertEqual(

@@ -23,7 +23,7 @@ enum WorkflowExplanationCopy {
     case invalidReceipt
 }
 
-extension UIStrings {
+extension L10n {
     static func workflowExplanationCopy(
         _ copy: WorkflowExplanationCopy,
         language: AppLanguage

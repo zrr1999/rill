@@ -7,7 +7,7 @@ struct WorkflowOutputExecutor: Sendable {
     let eventBus: EventBus
     let diagnostics: DiagnosticsRecorder?
     let lane: WorkflowRunLane
-    private var runDiagnostics: WorkflowRunDiagnostics { .init(diagnostics: diagnostics) }
+    private var runDiagnostics: WorkflowRunReporter { .init(diagnostics: diagnostics, eventBus: eventBus, lane: lane) }
 
     func deliver(
         finalText: String,
@@ -95,6 +95,10 @@ struct WorkflowOutputExecutor: Sendable {
         workflow: WorkflowPresentation,
         receiptIsActive: Bool
     ) async throws -> ActionResult {
+        await runDiagnostics.recordStage(
+            actionID == RecordActionID.store ? .saving : .delivering,
+            runID: runID, workflow: workflow,
+            metadata: ["actionCount": String(context.workflow.plan.output.actions.count)])
         let actionStartedAt = ContinuousClock.now
         try Task.checkCancellation()
         if receiptIsActive, let runReceiptRecorder {
@@ -156,7 +160,8 @@ struct WorkflowOutputExecutor: Sendable {
                 runID: runID,
                 actionIndex: actionIndex,
                 result: .cancelled,
-                receiptIsActive: receiptIsActive
+                receiptIsActive: receiptIsActive,
+                failureDisposition: .unknown
             )
             throw CancellationError()
         } catch {
@@ -164,7 +169,8 @@ struct WorkflowOutputExecutor: Sendable {
                 runID: runID,
                 actionIndex: actionIndex,
                 result: .failed,
-                receiptIsActive: receiptIsActive
+                receiptIsActive: receiptIsActive,
+                failureDisposition: (error as? any OutputFailureDescribing)?.outputFailureDisposition ?? .unknown
             )
             await runDiagnostics.recordAction(
                 runID: runID,
@@ -197,14 +203,16 @@ struct WorkflowOutputExecutor: Sendable {
         runID: UUID,
         actionIndex: Int,
         result: WorkflowActionResultCode,
-        receiptIsActive: Bool
+        receiptIsActive: Bool,
+        failureDisposition: OutputFailureDisposition? = nil
     ) async {
         guard receiptIsActive, let runReceiptRecorder else { return }
         do {
             try await runReceiptRecorder.finishAction(
                 runID: runID,
                 actionIndex: actionIndex,
-                result: result
+                result: result,
+                failureDisposition: failureDisposition
             )
         } catch {
             await recordRunReceiptCoordinationFailure(

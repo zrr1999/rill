@@ -4,8 +4,8 @@ import RillRuntime
 
 extension AppModel {
     func startWorkflowFileMonitoring() {
-        guard workflowFileMonitorTask == nil, let workflowFileStore else { return }
-        workflowFileMonitorTask = Task { @MainActor [weak self] in
+        guard self.workflowLibrary.workflowFileMonitorTask == nil, let workflowFileStore else { return }
+        self.workflowLibrary.workflowFileMonitorTask = Task { @MainActor [weak self] in
             for await _ in await workflowFileStore.changes() {
                 guard !Task.isCancelled, let self, !self.hasBegunApplicationShutdown else { return }
                 await self.reloadWorkflowFiles()
@@ -93,9 +93,9 @@ extension AppModel {
         workflow.declaredInputKind = .text
         workflow.plan = workflow.plan.acceptingTextInput()
         self.voice.isRunning = true
-        interactiveWorkflowTaskGeneration += 1
-        let generation = interactiveWorkflowTaskGeneration
-        pendingInteractiveWorkflowTask = Task { @MainActor [weak self] in
+        self.voice.interactiveWorkflowTaskGeneration += 1
+        let generation = self.voice.interactiveWorkflowTaskGeneration
+        self.voice.pendingInteractiveWorkflowTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.finishInteractiveWorkflowTask(generation: generation) }
             do {

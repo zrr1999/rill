@@ -35,7 +35,7 @@ public struct WorkflowRunFailureSummary: Codable, Sendable, Equatable {
         switch stage {
         case .preparing, .capturingInput, .recognizing, .resolving, .transforming:
             return true
-        case .delivering, .completed, .failed:
+        case .saving, .delivering, .completed, .failed:
             return false
         }
     }

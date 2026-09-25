@@ -145,13 +145,19 @@ let package = Package(
       name: "RillPlatformTests",
       dependencies: ["RillCore", "RillPlatform"]
     ),
+    .target(
+      name: "RillTestSupport",
+      dependencies: ["RillCore", "RillRuntime", "RillUI"],
+      path: "Tests/RillTestSupport"
+    ),
     .testTarget(
       name: "RillUITests",
-      dependencies: ["RillCore", "RillPlatform", "RillRuntime", "RillUI"]
+      dependencies: ["RillCore", "RillPlatform", "RillRuntime", "RillUI", "RillTestSupport"]
     ),
     .testTarget(
       name: "RillAppTests",
       dependencies: [
+        "RillTestSupport",
         "RillSpeechContracts",
         "RillApp",
         "RillCore",
@@ -169,7 +175,7 @@ let package = Package(
 // Dependencies and Package.resolved remain identical to the production graph.
 if ProcessInfo.processInfo.environment["RILL_BUILD_PROFILE"] == "domain-tests" {
   let excluded: Set<String> = [
-    "RillApp", "RillUI", "RillSpeechWorker", "RillMLXRuntime",
+    "RillApp", "RillUI", "RillSpeechWorker", "RillMLXRuntime", "RillTestSupport",
     "RillAppTests", "RillUITests", "RillMLXRuntimeTests", "RillPlatformTests",
   ]
   package.targets.removeAll { excluded.contains($0.name) }

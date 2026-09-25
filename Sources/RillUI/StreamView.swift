@@ -23,7 +23,7 @@ public struct StreamView: View {
                     if !model.voiceSetupReadiness.isComplete {
                         voiceSetupCard(model.voiceSetupReadiness)
                     }
-                    if let pending = model.pendingResolution {
+                    if let pending = model.voice.pendingResolution {
                         CandidatePanelView(
                             candidateCase: pending,
                             language: model.language,
@@ -59,7 +59,7 @@ public struct StreamView: View {
                 .padding(RillSpacing.page)
                 .animation(
                     reduceMotion ? nil : Self.cardSpring,
-                    value: model.pendingResolution != nil
+                    value: model.voice.pendingResolution != nil
                 )
                 .animation(
                     reduceMotion ? nil : Self.cardSpring,
@@ -71,15 +71,16 @@ public struct StreamView: View {
                 )
             }
         }
-        .navigationTitle(UIStrings.text(.sidebarStream, language: model.language))
+        .navigationTitle(L10n.text(.sidebarStream, language: model.language))
     }
 
     private var streamActivityPresentation: StreamActivityPresentation? {
         StreamActivityPresentation.make(
             isRunning: model.voice.isRunning,
-            workflowAudioRunState: model.workflowAudioRunState,
+            workflowAudioRunState: model.voice.workflowAudioRunState,
             isAudioProcessingQueueVisible: model.audioProcessingQueueSnapshot?.isVisible ?? false,
-            language: model.language
+            language: model.language,
+            activeStage: model.voice.activeStage
         )
     }
 
@@ -134,7 +135,7 @@ public struct StreamView: View {
 
             Button(model.permissionSnapshot.microphone == .denied
                 || (model.voiceSetupReadiness.accessibilityRequired && model.permissionSnapshot.accessibility == .denied)
-                ? UIStrings.text(.openSettings, language: model.language)
+                ? L10n.text(.openSettings, language: model.language)
                 : L10n.presentation(.details, language: model.language)) {
                 if model.permissionSnapshot.microphone == .denied {
                     model.openMicrophoneSettings()
@@ -170,27 +171,27 @@ public struct StreamView: View {
 
     private var eventFeed: some View {
         DisclosureGroup(isExpanded: $isEventFeedExpanded) {
-            if model.eventFeed.isEmpty {
-                Text(UIStrings.text(.eventFeedEmpty, language: model.language))
+            if model.history.eventFeed.isEmpty {
+                Text(L10n.text(.eventFeedEmpty, language: model.language))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
                 LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(model.eventFeed) { entry in
+                    ForEach(model.history.eventFeed) { entry in
                         eventFeedRow(entry)
                     }
                 }
             }
         } label: {
             HStack(alignment: .firstTextBaseline) {
-                Text(UIStrings.text(.eventFeed, language: model.language))
+                Text(L10n.text(.eventFeed, language: model.language))
                     .font(.headline)
                 Spacer()
                 Button {
                     model.selectSidebarSection(.diagnostics)
                 } label: {
                     Label(
-                        UIStrings.text(.sidebarDiagnostics, language: model.language),
+                        L10n.text(.sidebarDiagnostics, language: model.language),
                         systemImage: SidebarSection.diagnostics.symbolName
                     )
                 }
@@ -198,7 +199,7 @@ public struct StreamView: View {
                 .controlSize(.small)
                 .accessibilityIdentifier("stream.open-diagnostics")
             }
-            Text("\(model.eventFeed.count)")
+            Text("\(model.history.eventFeed.count)")
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
@@ -223,12 +224,12 @@ extension StreamView {
     private func voiceSetupCard(_ readiness: VoiceSetupReadiness) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Label(
-                UIStrings.text(.voiceSetupTitle, language: model.language),
+                L10n.text(.voiceSetupTitle, language: model.language),
                 systemImage: RillSystemSymbol.checklist.rawValue
             )
             .font(.headline)
 
-            Text(UIStrings.text(.voiceSetupDescription, language: model.language))
+            Text(L10n.text(.voiceSetupDescription, language: model.language))
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -245,7 +246,7 @@ extension StreamView {
         globalInputSetupRow(readiness.globalInput)
 
         permissionSetupRow(
-            title: UIStrings.text(.microphone, language: model.language),
+            title: L10n.text(.microphone, language: model.language),
             state: readiness.microphone,
             isRequired: true,
             readyDetail: .voiceSetupMicrophoneReady,
@@ -255,7 +256,7 @@ extension StreamView {
         )
 
         permissionSetupRow(
-            title: UIStrings.text(.accessibility, language: model.language),
+            title: L10n.text(.accessibility, language: model.language),
             state: readiness.accessibility,
             isRequired: readiness.accessibilityRequired,
             readyDetail: .voiceSetupAccessibilityReady,
@@ -269,7 +270,7 @@ extension StreamView {
 
     @ViewBuilder
     private func globalInputSetupRow(_ capability: GlobalInputCapability) -> some View {
-        let title = UIStrings.text(.globalInput, language: model.language)
+        let title = L10n.text(.globalInput, language: model.language)
         switch capability {
         case .checking:
             setupRow(
@@ -291,7 +292,7 @@ extension StreamView {
                 detail: .voiceSetupGlobalInputPermissionNeeded,
                 symbol: RillSystemSymbol.exclamationmarkCircleFill.rawValue,
                 color: .orange,
-                actionTitle: UIStrings.text(.requestAccess, language: model.language),
+                actionTitle: L10n.text(.requestAccess, language: model.language),
                 actionIdentifier: "stream.global-input.request",
                 action: model.requestGlobalInputPermission
             )
@@ -301,7 +302,7 @@ extension StreamView {
                 detail: .voiceSetupGlobalInputInstallationFailed,
                 symbol: RillSystemSymbol.xmarkCircleFill.rawValue,
                 color: .red,
-                actionTitle: UIStrings.text(.retryGlobalInput, language: model.language),
+                actionTitle: L10n.text(.retryGlobalInput, language: model.language),
                 actionIdentifier: "stream.global-input.retry",
                 action: model.retryGlobalInputInstallation
             )
@@ -313,8 +314,8 @@ extension StreamView {
         title: String,
         state: PermissionState,
         isRequired: Bool,
-        readyDetail: UIStrings.Key,
-        neededDetail: UIStrings.Key,
+        readyDetail: L10n.InterfaceKey,
+        neededDetail: L10n.InterfaceKey,
         requestAction: @escaping () -> Void,
         openSettingsAction: @escaping () -> Void
     ) -> some View {
@@ -328,7 +329,7 @@ extension StreamView {
                 detail: neededDetail,
                 symbol: RillSystemSymbol.exclamationmarkCircleFill.rawValue,
                 color: .orange,
-                actionTitle: UIStrings.text(.requestAccess, language: model.language),
+                actionTitle: L10n.text(.requestAccess, language: model.language),
                 action: requestAction
             )
         } else {
@@ -337,7 +338,7 @@ extension StreamView {
                 detail: neededDetail,
                 symbol: RillSystemSymbol.xmarkCircleFill.rawValue,
                 color: .red,
-                actionTitle: UIStrings.text(.openSettings, language: model.language),
+                actionTitle: L10n.text(.openSettings, language: model.language),
                 action: openSettingsAction
             )
         }
@@ -348,7 +349,7 @@ extension StreamView {
         switch state {
         case .loading:
             setupRow(
-                title: UIStrings.text(.settingsSpeechEngine, language: model.language),
+                title: L10n.text(.settingsSpeechEngine, language: model.language),
                 detail: .voiceSetupLoading,
                 symbol: RillSystemSymbol.hourglass.rawValue,
                 color: .secondary
@@ -356,7 +357,7 @@ extension StreamView {
         case .localPreparing(let progress):
             VStack(alignment: .leading, spacing: 6) {
                 setupRow(
-                    title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                    title: L10n.text(.settingsLocalSpeech, language: model.language),
                     detail: .voiceSetupLocalPreparing,
                     symbol: RillSystemSymbol.arrowDownCircleFill.rawValue,
                     color: .blue
@@ -366,48 +367,48 @@ extension StreamView {
             }
         case .localReady:
             setupRow(
-                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                title: L10n.text(.settingsLocalSpeech, language: model.language),
                 detail: .voiceSetupLocalReady,
                 symbol: RillSystemSymbol.checkmarkCircleFill.rawValue,
                 color: .green
             )
         case .localUnavailable(let availability):
             setupRow(
-                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                title: L10n.text(.settingsLocalSpeech, language: model.language),
                 detail: availability == .architectureUnsupported
                     ? .voiceSetupLocalArchitectureUnsupported
                     : .voiceSetupLocalTrustMaterialUnavailable,
                 symbol: RillSystemSymbol.exclamationmarkTriangleFill.rawValue,
                 color: .red,
-                actionTitle: UIStrings.text(.openSettings, language: model.language),
+                actionTitle: L10n.text(.openSettings, language: model.language),
                 actionIdentifier: "stream.local-speech.open-settings",
                 action: { model.showSettings(.speech) }
             )
         case .localPreviouslyPrepared:
             setupRow(
-                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                title: L10n.text(.settingsLocalSpeech, language: model.language),
                 detail: .voiceSetupLocalPreviouslyPrepared,
                 symbol: RillSystemSymbol.questionmarkCircleFill.rawValue,
                 color: .orange,
-                actionTitle: UIStrings.text(.localSpeechPrepare, language: model.language),
+                actionTitle: L10n.text(.localSpeechPrepare, language: model.language),
                 action: model.prepareLocalSpeechModel
             )
         case .localNeedsPreparation(let downloadIfNeeded):
             setupRow(
-                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                title: L10n.text(.settingsLocalSpeech, language: model.language),
                 detail: downloadIfNeeded ? .voiceSetupLocalWillDownload : .voiceSetupLocalNeedsPreparation,
                 symbol: RillSystemSymbol.arrowDownCircleFill.rawValue,
                 color: .orange,
-                actionTitle: UIStrings.text(.localSpeechPrepare, language: model.language),
+                actionTitle: L10n.text(.localSpeechPrepare, language: model.language),
                 action: model.prepareLocalSpeechModel
             )
         case .localPreparationFailed:
             setupRow(
-                title: UIStrings.text(.settingsLocalSpeech, language: model.language),
+                title: L10n.text(.settingsLocalSpeech, language: model.language),
                 detail: .voiceSetupLocalFailed,
                 symbol: RillSystemSymbol.xmarkCircleFill.rawValue,
                 color: .red,
-                actionTitle: UIStrings.text(.openSettings, language: model.language),
+                actionTitle: L10n.text(.openSettings, language: model.language),
                 actionIdentifier: "stream.local-speech.open-settings",
                 action: { model.showSettings(.speech) }
             )
@@ -419,18 +420,18 @@ extension StreamView {
         switch readiness.privacy {
         case .loading:
             setupRow(
-                title: UIStrings.text(.permissions, language: model.language),
+                title: L10n.text(.permissions, language: model.language),
                 detail: .voiceSetupPrivacyLoading,
                 symbol: RillSystemSymbol.lockCircle.rawValue,
                 color: .secondary
             )
         case .unavailable:
             setupRow(
-                title: UIStrings.text(.permissions, language: model.language),
+                title: L10n.text(.permissions, language: model.language),
                 detail: .voiceSetupPrivacyUnavailable,
                 symbol: RillSystemSymbol.lockTrianglebadgeExclamationmark.rawValue,
                 color: .red,
-                actionTitle: UIStrings.text(.openSettings, language: model.language),
+                actionTitle: L10n.text(.openSettings, language: model.language),
                 actionIdentifier: "stream.privacy.open-settings",
                 action: { model.showSettings(.privacy) }
             )
@@ -441,7 +442,7 @@ extension StreamView {
 
     private func setupRow(
         title: String,
-        detail: UIStrings.Key,
+        detail: L10n.InterfaceKey,
         symbol: String,
         color: Color,
         actionTitle: String? = nil,
@@ -455,7 +456,7 @@ extension StreamView {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.subheadline.weight(.medium))
-                Text(UIStrings.text(detail, language: model.language))
+                Text(L10n.text(detail, language: model.language))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

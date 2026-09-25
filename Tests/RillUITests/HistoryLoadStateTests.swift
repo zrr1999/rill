@@ -109,7 +109,7 @@ final class HistoryLoadStateTests: XCTestCase {
     }
 
     func testHistoryLoadFailureAndRetryCopyIsLocalized() {
-        let keys: [UIStrings.Key] = [
+        let keys: [L10n.InterfaceKey] = [
             .historyLoading,
             .historyLoadFailedTitle,
             .historyLoadFailedDescription,
@@ -120,8 +120,8 @@ final class HistoryLoadStateTests: XCTestCase {
         ]
 
         for key in keys {
-            let english = UIStrings.text(key, language: .english)
-            let simplifiedChinese = UIStrings.text(key, language: .simplifiedChinese)
+            let english = L10n.text(key, language: .english)
+            let simplifiedChinese = L10n.text(key, language: .simplifiedChinese)
             XCTAssertFalse(english.isEmpty)
             XCTAssertFalse(simplifiedChinese.isEmpty)
             XCTAssertNotEqual(english, simplifiedChinese)
