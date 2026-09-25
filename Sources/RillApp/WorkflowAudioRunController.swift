@@ -43,6 +43,7 @@ actor WorkflowAudioRunController {
   private struct FinishingRun: Sendable {
     let operationID: UUID
     let liveAudioSession: AuthorizedLiveAudioSession
+    let stopCueToken: RecordingCueToken
     var task: Task<Void, Error>?
   }
 
@@ -70,6 +71,9 @@ actor WorkflowAudioRunController {
   private let recordingDurationLimitProvider: @Sendable () async -> RecordingDurationLimit
   private let privacyRunGate: PrivacyRunGate?
   private let cleanupOwner: ManagedTemporaryAudioCleanupOwner
+  private let recordingCueAction: @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void
+  private var startCue: (runID: UUID, token: RecordingCueToken)?
+  private var startCueTasks: [UUID: Task<Void, Never>] = [:]
   private var state: State = .idle
   private var preparingRunID: UUID?
   private var preparingWorkflow: WorkflowDefinition?
@@ -103,7 +107,9 @@ actor WorkflowAudioRunController {
       .fiveMinutes
     },
     privacyRunGate: PrivacyRunGate? = nil,
-    cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner()
+    cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
+    recordingCueAction:
+      @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }
   ) {
     self.audioCaptureService = audioCaptureService
     self.capturedAudioProcessingQueue = capturedAudioProcessingQueue
@@ -118,6 +124,7 @@ actor WorkflowAudioRunController {
     self.recordingDurationLimitProvider = recordingDurationLimitProvider
     self.privacyRunGate = privacyRunGate
     self.cleanupOwner = cleanupOwner
+    self.recordingCueAction = recordingCueAction
   }
 
   var isIdle: Bool {
@@ -153,6 +160,7 @@ actor WorkflowAudioRunController {
       }
     }
     let runID = suppliedTriggerEvent?.id ?? UUID()
+    invalidateRecordingCues()
     state = .preparing(runID)
     preparingRunID = runID
     preparingWorkflow = workflow
@@ -275,6 +283,16 @@ actor WorkflowAudioRunController {
         preparingWorkflow = nil
         preparingLiveAudioSession = nil
       }
+      // WakeWordCoordinator already acknowledges activation, including commands
+      // recovered from its prefilled buffer that never enter this controller.
+      if binding != .wakeWord {
+        let token = RecordingCueToken()
+        startCue = (runID, token)
+        let task = Task { await recordingCueAction(.started, token) }
+        startCueTasks[runID] = task
+        await task.value
+        startCueTasks[runID] = nil
+      }
     } catch {
       await issuedLiveAudioSession?.cancel()
       // `cancel()` crosses another actor. A user stop can therefore retire
@@ -355,11 +373,14 @@ actor WorkflowAudioRunController {
     }
 
     state = .stopping(runID)
+    invalidateRecordingCues(runID: runID)
     retireCaptureSignalSubscription(runID: runID)
     let operationID = UUID()
+    let stopCueToken = RecordingCueToken()
     finishingRuns[runID] = FinishingRun(
       operationID: operationID,
       liveAudioSession: liveAudioSession,
+      stopCueToken: stopCueToken,
       task: nil
     )
     let task = Task { [weak self] in
@@ -369,7 +390,8 @@ actor WorkflowAudioRunController {
         operationID: operationID,
         workflow: workflow,
         triggerEvent: triggerEvent,
-        liveAudioSession: liveAudioSession
+        liveAudioSession: liveAudioSession,
+        stopCueToken: stopCueToken
       )
     }
     finishingRuns[runID]?.task = task
@@ -487,6 +509,7 @@ actor WorkflowAudioRunController {
     liveAudioSession: AuthorizedLiveAudioSession,
     message: String
   ) {
+    invalidateRecordingCues(runID: runID)
     _ = liveAudioSession.audioLifetime.cancel()
     let task = Task { [weak self] in
       guard let self else { return }
@@ -577,6 +600,7 @@ actor WorkflowAudioRunController {
   }
 
   func cancelRun(runID requestedRunID: UUID? = nil) async {
+    invalidateRecordingCues(runID: requestedRunID)
     var activeCaptureToCancel:
       (
         runID: UUID,
@@ -683,7 +707,8 @@ actor WorkflowAudioRunController {
     operationID: UUID,
     workflow: WorkflowDefinition,
     triggerEvent: WorkflowTriggerEvent,
-    liveAudioSession: AuthorizedLiveAudioSession
+    liveAudioSession: AuthorizedLiveAudioSession,
+    stopCueToken: RecordingCueToken
   ) async throws {
     var captureBoundaryCrossed = false
     do {
@@ -713,6 +738,14 @@ actor WorkflowAudioRunController {
           deferredCapture,
           liveAudioSession: liveAudioSession
         )
+        return
+      }
+      await recordingCueAction(.stopped, stopCueToken)
+      stopCueToken.invalidate()
+      guard ownsFinishingRun(runID: runID, operationID: operationID),
+        !Task.isCancelled
+      else {
+        await discard(deferredCapture, liveAudioSession: liveAudioSession)
         return
       }
       let authorizationLease = try await liveAudioSession.processingLeaseForEnqueue()
@@ -784,7 +817,19 @@ actor WorkflowAudioRunController {
 
   private func removeFinishingRun(runID: UUID, operationID: UUID) {
     guard ownsFinishingRun(runID: runID, operationID: operationID) else { return }
+    finishingRuns[runID]?.stopCueToken.invalidate()
     finishingRuns[runID] = nil
+  }
+
+  private func invalidateRecordingCues(runID: UUID? = nil) {
+    if let startCue, runID == nil || runID == startCue.runID {
+      startCue.token.invalidate()
+      self.startCue = nil
+    }
+    for (finishingRunID, run) in finishingRuns
+    where runID == nil || runID == finishingRunID {
+      run.stopCueToken.invalidate()
+    }
   }
 
   private func discard(
@@ -815,6 +860,7 @@ actor WorkflowAudioRunController {
     switch lifecycle {
     case .accepting:
       lifecycle = .shuttingDown
+      invalidateRecordingCues()
     case .shuttingDown:
       await withCheckedContinuation { continuation in
         shutdownWaiters.append(continuation)
@@ -830,6 +876,10 @@ actor WorkflowAudioRunController {
       await task.value
     }
     await cancelRun()
+    let cueTasks = Array(startCueTasks.values)
+    for task in cueTasks {
+      await task.value
+    }
     await drainCaptureSignalTasks()
     await audioCaptureService.shutdown()
     await cleanupOwner.drain()
@@ -862,6 +912,7 @@ actor WorkflowAudioRunController {
     }
 
     state = .stopping(runID)
+    invalidateRecordingCues(runID: runID)
     if preparingRunID == runID {
       preparingRunID = nil
       preparingWorkflow = nil

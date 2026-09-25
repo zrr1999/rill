@@ -72,8 +72,10 @@ cross-feature settings/workflow composition while existing views migrate; those
 properties forward to the same feature state and do not store a second copy.
 
 System effects enter through ports or closures. For example,
-`RecordingSessionManager` owns the validity of a `RecordingCueToken`, while App
-supplies the haptic effect. Clipboard capture receives only a Record ingestion
+`RecordingSessionManager` and `WorkflowAudioRunController` own the validity of
+their `RecordingCueToken` values, while App supplies the shared sound and haptic
+effect. Validation and playback scheduling share one synchronous boundary after
+the MainActor hop. Clipboard capture receives only a Record ingestion
 port. `RecordInteractionController` owns delivery serialization and its shutdown
 drain separately from the clipboard polling lifecycle.
 

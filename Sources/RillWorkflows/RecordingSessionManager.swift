@@ -5,7 +5,9 @@ public final class RecordingCueToken: @unchecked Sendable {
   private let lock = NSLock()
   private var isValid = true
 
-  func invalidate() {
+  package init() {}
+
+  package func invalidate() {
     lock.withLock {
       isValid = false
     }

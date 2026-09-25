@@ -31,6 +31,22 @@ struct AppContainer {
 
 @MainActor
 enum AppBootstrap {
+  static func recordingCueAction(
+    playSound: @escaping @MainActor @Sendable (RecordingInteractionCue) -> Void
+  ) -> @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void {
+    { cue, token in
+      await MainActor.run {
+        token.performIfValid {
+          playSound(cue)
+          NSHapticFeedbackManager.defaultPerformer.perform(
+            cue == .started ? .alignment : .generic,
+            performanceTime: .now
+          )
+        }
+      }
+    }
+  }
+
   nonisolated static var ttsModelOptions: [TTSModelOption] {
     SpeechSynthesisModelCatalog.supportedModels.map { descriptor in
       let precision =
@@ -1320,6 +1336,9 @@ private enum AppContainerFactory {
           workflow: workflow
         )
       }
+    let recordingCueAction = AppBootstrap.recordingCueAction(
+      playSound: { platform.recordingCuePlayer.play($0) }
+    )
     let workflowAudioRunController = WorkflowAudioRunController(
       audioCaptureService: providers.workflowAudioCaptureService,
       capturedAudioProcessingQueue: assistantQueue,
@@ -1341,7 +1360,8 @@ private enum AppContainerFactory {
           .capabilities.maximumAudioDurationSeconds
       },
       privacyRunGate: preparedPrivacyRunGate,
-      cleanupOwner: providers.managedTemporaryAudioCleanupOwner
+      cleanupOwner: providers.managedTemporaryAudioCleanupOwner,
+      recordingCueAction: recordingCueAction
     )
     let wakeWordCoordinator = providers.wakeWordTriggerSource.map {
       WakeWordCoordinator(
@@ -1375,7 +1395,8 @@ private enum AppContainerFactory {
       privacyRunGate: preparedPrivacyRunGate,
       recognizerRegistry: registries.recognizerRegistry,
       recognitionOptionsProvider: recognitionOptionsProvider,
-      runPreflight: recognitionRunPreflight
+      runPreflight: recognitionRunPreflight,
+      recordingCueAction: recordingCueAction
     )
     let cancelLiveAudio: @Sendable (UUID) async -> Void = { runID in
       await platform.cursorTextPreviewCoordinator.finish(runID: runID)
@@ -1500,7 +1521,9 @@ private enum AppContainerFactory {
     privacyRunGate: PrivacyRunGate,
     recognizerRegistry: SpeechRecognizerRegistry,
     recognitionOptionsProvider: @escaping RecognitionOptionsProvider,
-    runPreflight: @escaping RecognitionRunPreflight
+    runPreflight: @escaping RecognitionRunPreflight,
+    recordingCueAction:
+      @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void
   ) -> RecordingSessionManager {
     RecordingSessionManager(
       audioCaptureService: providers.workflowAudioCaptureService,
@@ -1543,16 +1566,7 @@ private enum AppContainerFactory {
           .capabilities.maximumAudioDurationSeconds
       },
       cleanupOwner: providers.managedTemporaryAudioCleanupOwner,
-      recordingCueAction: { cue, token in
-        await MainActor.run {
-          token.performIfValid {
-            NSHapticFeedbackManager.defaultPerformer.perform(
-              cue == .started ? .alignment : .generic,
-              performanceTime: .now
-            )
-          }
-        }
-      }
+      recordingCueAction: recordingCueAction
     )
   }
 
