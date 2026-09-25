@@ -33,6 +33,7 @@ public enum VocabularyCorrectionSaveOutcome: Sendable, Equatable {
 
 public enum SettingsSaveCategory: String, CaseIterable, Sendable, Equatable {
   case interface
+  case privacy
   case systemClipboard
   case speech
   case input

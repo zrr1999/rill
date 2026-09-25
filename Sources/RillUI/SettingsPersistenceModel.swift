@@ -132,7 +132,13 @@ public final class SettingsPersistenceModel {
   ) {
     guard !values.isEmpty else { return }
     let entries = values.mapValues(RetryableSettingsStoreWrite.init)
+    let writesPrivacy = entries.values.contains { $0.category == .privacy }
+    if writesPrivacy { isSavingPrivacySettings = true }
     guard let store else {
+      if writesPrivacy {
+        isSavingPrivacySettings = false
+        privacySettingsSaveError = L10n.runText(.privacySaveStorageUnavailable, language: language)
+      }
       failed.merge(entries) { _, latest in latest }
       refreshState()
       onFailure()
@@ -148,10 +154,16 @@ public final class SettingsPersistenceModel {
     } completion: { [weak self] result, currentKeys in
       guard let self else { return }
       retrying.subtract(currentKeys)
+      if currentKeys.contains(where: { entries[$0]?.category == .privacy }) {
+        isSavingPrivacySettings = false
+        switch result {
+        case .success: privacySettingsSaveError = nil
+        case .failure: privacySettingsSaveError = localizedPrivacySettingsSaveFailure()
+        }
+      }
       switch result {
       case .success:
         for key in currentKeys { failed.removeValue(forKey: key) }
-      case .failure(is CancellationError): break
       case .failure:
         for key in currentKeys { failed[key] = entries[key] }
         onFailure()
@@ -182,7 +194,6 @@ public final class SettingsPersistenceModel {
       retrying.remove(key)
       switch result {
       case .success: failed.removeValue(forKey: key)
-      case .failure(is CancellationError): break
       case .failure:
         failed[key] = write
         onFailure()
@@ -222,14 +233,6 @@ public enum OpenAIConfigurationVerificationState: Sendable, Equatable {
 extension SettingsPersistenceModel {
   func persistPrivacyPolicySettings(onFailure: @escaping @MainActor () -> Void) {
     guard !hasBegunApplicationShutdown, !isRestoringSettings else { return }
-    guard let settingsStore = store else {
-      privacySettingsSaveError = L10n.runText(
-        .privacySaveStorageUnavailable,
-        language: language
-      )
-      isSavingPrivacySettings = false
-      return
-    }
     let policy = privacyPolicySettings
     let values: [AppSettingKey: String]
     do {
@@ -240,20 +243,9 @@ extension SettingsPersistenceModel {
       return
     }
 
-    isSavingPrivacySettings = true
-    writes.replace(for: Set(values.keys)) {
-      try await settingsStore.setStringsAtomically(values)
-    } completion: { [weak self] result, _ in
-      guard let self else { return }
-      isSavingPrivacySettings = false
-      switch result {
-      case .success:
-        privacySettingsSaveError = nil
-      case .failure:
-        privacySettingsSaveError = localizedPrivacySettingsSaveFailure()
-        onFailure()
-      }
-    }
+    submitAtomically(values.mapValues { value in
+      SettingsStringWrite(category: .privacy, encode: { value })
+    }, onFailure: onFailure)
   }
 
   private func localizedPrivacySettingsSaveFailure() -> String {

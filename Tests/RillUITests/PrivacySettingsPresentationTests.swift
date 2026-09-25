@@ -270,6 +270,37 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         XCTAssertEqual(successfulSnapshot.storage[.privacyCloudConfirmationRequired], "false")
     }
 
+    func testShutdownRetriesFailedPrivacySnapshotAfterClosingMutationAdmission() async throws {
+        for failsWithCancellation in [false, true] {
+            let store = ControlledPrivacySettingsStore(
+                failingAtomicWriteCount: 1, failsWithCancellation: failsWithCancellation)
+            let source = PrivacyPolicySettingsSource(initialSettings: .defaults)
+            let harness = makeHarness(settingsStore: store, privacySettingsSource: source)
+            await harness.model.waitForInitialVoiceConfiguration()
+            harness.model.setPrivacyCloudConfirmationRequired(false)
+            harness.model.setPrivacyHistoryPreviewMode(.disabled)
+            await harness.model.flushPendingPersistenceWrites()
+            XCTAssertEqual(harness.model.settingsSaveState.unsavedSummary?.categories, [.privacy])
+            XCTAssertNotNil(harness.model.settings.privacySettingsSaveError)
+
+            harness.model.beginApplicationShutdown()
+            harness.model.setPrivacyCloudConfirmationRequired(true)
+            await harness.model.drainPendingSettingsWritesForApplicationShutdown { _ in
+                XCTFail("A recovered store must not enter retry backoff.")
+            }
+
+            let snapshot = await store.snapshot()
+            XCTAssertEqual(snapshot.atomicSnapshots.count, 1)
+            XCTAssertEqual(snapshot.atomicSnapshots[0].count, 5)
+            XCTAssertEqual(snapshot.storage[.privacyCloudConfirmationRequired], "false")
+            XCTAssertEqual(snapshot.storage[.privacyHistoryPreviewMode], PrivacyHistoryPreviewMode.disabled.rawValue)
+            XCTAssertFalse(try source.currentSettings().cloudConfirmationRequired)
+            XCTAssertEqual(harness.model.settingsSaveState, .saved)
+            XCTAssertNil(harness.model.settings.privacySettingsSaveError)
+            XCTAssertFalse(harness.model.settings.isSavingPrivacySettings)
+        }
+    }
+
     func testCorruptPrivacyRulesKeepSafeDefaultsAndExposeLoadFailure() async {
         let settingsStore = UITestSettingsStore(
             storage: [
@@ -406,14 +437,17 @@ private actor ControlledPrivacySettingsStore: SettingsStore {
     private var atomicWriteCount = 0
     private var failingAtomicWriteCount: Int
     private let blocksFirstAtomicWrite: Bool
+    private let failsWithCancellation: Bool
     private var firstWriteWaiters: [CheckedContinuation<Void, Never>] = []
     private var firstWriteRelease: CheckedContinuation<Void, Never>?
 
     init(
         blocksFirstAtomicWrite: Bool = false,
-        failingAtomicWriteCount: Int = 0
+        failingAtomicWriteCount: Int = 0,
+        failsWithCancellation: Bool = false
     ) {
         self.blocksFirstAtomicWrite = blocksFirstAtomicWrite
+        self.failsWithCancellation = failsWithCancellation
         self.failingAtomicWriteCount = failingAtomicWriteCount
     }
 
@@ -446,6 +480,7 @@ private actor ControlledPrivacySettingsStore: SettingsStore {
         }
         if failingAtomicWriteCount > 0 {
             failingAtomicWriteCount -= 1
+            if failsWithCancellation { throw CancellationError() }
             throw ControlledPrivacySettingsStoreError.requestedFailure
         }
         storage.merge(values) { _, newValue in newValue }

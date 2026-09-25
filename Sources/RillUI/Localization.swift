@@ -293,6 +293,8 @@ extension L10n {
     language: AppLanguage
   ) -> String {
     switch (language, category) {
+    case (.english, .privacy): "Privacy"
+    case (.simplifiedChinese, .privacy): "隐私"
     case (.english, .interface): "Interface"
     case (.simplifiedChinese, .interface): "界面"
     case (.english, .systemClipboard): "System Clipboard"
