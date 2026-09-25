@@ -353,13 +353,13 @@ extension AppModel {
       self.history.areHistoryRetentionSettingsAvailable = false
       self.history.historyRetentionSettingsLoadError = L10n.runText(
         .retentionStorageUnavailableDefaults,
-        language: language
+        language: self.settings.language
       )
       refreshHistoryRetentionSettingsErrorPresentation()
       if !privacySettingsSource.hasAvailableSettings {
         let reason = "Persistent settings storage is unavailable."
         privacySettingsSource.markUnavailable(reason: reason)
-        privacySettingsLoadError = L10n.runText(.privacyLoadBlocked, language: language)
+        privacySettingsLoadError = L10n.runText(.privacyLoadBlocked, language: self.settings.language)
       }
       return
     }
@@ -425,7 +425,7 @@ extension AppModel {
         self.history.areHistoryRetentionSettingsAvailable = false
         self.history.historyRetentionSettingsLoadError = L10n.runText(
           .retentionLoadFailedPaused,
-          language: self.language
+          language: self.settings.language
         )
         self.refreshHistoryRetentionSettingsErrorPresentation()
         self.loadHistory()
@@ -441,7 +441,7 @@ extension AppModel {
         )
         self.privacySettingsLoadError = L10n.runText(
           .privacyLoadBlockedRetry,
-          language: self.language
+          language: self.settings.language
         )
         self.append(
           english: L10n.runText(.configurationStorageUnavailable, language: .english),
@@ -477,7 +477,7 @@ extension AppModel {
     rebuildWorkflowLibrary()
     self.settings.isRestoringSettings = false
     synchronizeLocalSpeechSettingsSource()
-    setLocalSpeechRuntimeEnabledAction(preferredSpeechEngine == .local)
+    setLocalSpeechRuntimeEnabledAction(self.settings.preferredSpeechEngine == .local)
     let settingsModifiedDuringLoad = self.settings.settingsKeysModifiedDuringInitialLoad
     self.settings.isLoading = false
     self.settings.settingsKeysModifiedDuringInitialLoad.removeAll()
@@ -493,7 +493,7 @@ extension AppModel {
     }
     var localSpeechMigrationValues = settings.legacyLocalSpeechMigrationValues
     if let trustedLocalSpeechModelMigration,
-      localSpeechModel == trustedLocalSpeechModelMigration
+      self.settings.localSpeechModel == trustedLocalSpeechModelMigration
     {
       localSpeechMigrationValues[.localSpeechModel] = trustedLocalSpeechModelMigration
     }
@@ -530,7 +530,7 @@ extension AppModel {
       self.history.areHistoryRetentionSettingsAvailable = false
       self.history.historyRetentionSettingsLoadError = L10n.runText(
         .retentionStorageUnavailableDefaults,
-        language: language
+        language: self.settings.language
       )
       self.history.historyRetentionSettingsWriteError = nil
       self.history.clipboardHistoryRetentionSettingIsInvalid = false
@@ -656,10 +656,10 @@ extension AppModel {
       messages.append(loadError)
     }
     if self.history.clipboardHistoryRetentionSettingIsInvalid {
-      messages.append(L10n.runText(.clipboardRetentionDamaged, language: language))
+      messages.append(L10n.runText(.clipboardRetentionDamaged, language: self.settings.language))
     }
     if self.history.runHistoryRetentionSettingIsInvalid {
-      messages.append(L10n.runText(.runRetentionDamaged, language: language))
+      messages.append(L10n.runText(.runRetentionDamaged, language: self.settings.language))
     }
     if let writeError = self.history.historyRetentionSettingsWriteError {
       messages.append(writeError)
@@ -809,16 +809,16 @@ extension AppModel {
       issues.count > visibleIssues.count
       ? " (+\(issues.count - visibleIssues.count) more)"
       : ""
-    let heading = L10n.runText(.workflowTOMLIssuesHeading, language: language)
+    let heading = L10n.runText(.workflowTOMLIssuesHeading, language: self.settings.language)
     return "\(heading) \(visibleIssues.joined(separator: "; "))\(suffix)"
   }
 
   func applyStoredInterfaceSettings(_ settings: StoredAppSettingsSnapshot) {
     if shouldApplyStoredSetting(.interfaceLanguage),
       let storedLanguage = settings.language,
-      let language = AppLanguage(rawValue: storedLanguage)
+      let restoredLanguage = AppLanguage(rawValue: storedLanguage)
     {
-      self.applyLanguage(language)
+      self.applyLanguage(restoredLanguage)
     }
 
     if settings.unavailableSettingKeys.contains(.systemClipboardCaptureEnabled) {
@@ -915,7 +915,7 @@ extension AppModel {
       let rawValue = settings.residentSpeechModels,
       let values = try? AppSettingsCodec.loadDownloadedLocalSpeechModels(from: rawValue)
     {
-      applyResidentSpeechModelIDs(Set(values).intersection(enabledSpeechModelIDs))
+      applyResidentSpeechModelIDs(Set(values).intersection(self.settings.enabledSpeechModelIDs))
     }
     if shouldApplyStoredSetting(.speechModelMeasuredPeaks),
       let values = try? AppSettingsCodec.loadMeasuredSpeechModelPeaks(
@@ -963,7 +963,7 @@ extension AppModel {
     else {
       return
     }
-    let storedModel = localSpeechModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    let storedModel = self.settings.localSpeechModel.trimmingCharacters(in: .whitespacesAndNewlines)
     if trustedLocalSpeechModels.contains(where: { $0.id == storedModel }) {
       applyLocalSpeechModel(storedModel)
     } else {
@@ -1098,11 +1098,11 @@ extension AppModel {
         if domain == .localSpeech {
           if localSpeechModelWasModifiedDuringRetry {
             legacyMigrationValues.removeValue(forKey: .localSpeechModel)
-            if self.trustedLocalSpeechModels.contains(where: { $0.id == self.localSpeechModel }) {
-              legacyMigrationValues[.localSpeechModel] = self.localSpeechModel
+            if self.trustedLocalSpeechModels.contains(where: { $0.id == self.settings.localSpeechModel }) {
+              legacyMigrationValues[.localSpeechModel] = self.settings.localSpeechModel
             }
           } else if let trustedLocalSpeechModelMigration,
-            self.localSpeechModel == trustedLocalSpeechModelMigration
+            self.settings.localSpeechModel == trustedLocalSpeechModelMigration
           {
             legacyMigrationValues[.localSpeechModel] = trustedLocalSpeechModelMigration
           }
@@ -1400,7 +1400,7 @@ extension AppModel {
   }
 
   private func unavailableStoredSettingsDomainMessage(_ domain: StoredSettingsDomain) -> String {
-    switch (language, domain) {
+    switch (self.settings.language, domain) {
     case (.english, .workflowLibrary):
       "The saved workflow library could not be loaded. Editing stays disabled to protect the existing data. Repair storage, then retry."
     case (.simplifiedChinese, .workflowLibrary):
@@ -1578,7 +1578,7 @@ extension AppModel {
     applyPrivacyPolicySettings(settings.privacyPolicySettings)
     isLoadingPrivacySettings = false
     if settings.privacySettingsWereInvalid {
-      privacySettingsLoadError = L10n.runText(.privacySettingsDamaged, language: language)
+      privacySettingsLoadError = L10n.runText(.privacySettingsDamaged, language: self.settings.language)
       privacySettingsSource.markUnavailable(reason: "Privacy settings are damaged.")
     } else {
       privacySettingsLoadError = nil
@@ -1639,56 +1639,56 @@ extension AppModel {
 
   func persistPreferredSpeechEnginePreference() {
     persistStringSetting(
-      preferredSpeechEngine.rawValue,
+      self.settings.preferredSpeechEngine.rawValue,
       for: .preferredSpeechEngine
     )
   }
 
   func persistBuiltinPushToTalkOutputModePreference() {
     persistStringSetting(
-      builtinPushToTalkOutputMode.rawValue,
+      self.settings.builtinPushToTalkOutputMode.rawValue,
       for: .builtinPushToTalkOutputMode
     )
   }
 
   func persistLongRecordingModePreference() {
     persistStringSetting(
-      longRecordingModeEnabled ? "true" : "false",
+      self.settings.longRecordingModeEnabled ? "true" : "false",
       for: .longRecordingModeEnabled
     )
   }
 
   func persistRecordingDurationLimitPreference() {
     persistStringSetting(
-      recordingDurationLimit.rawValue,
+      self.settings.recordingDurationLimit.rawValue,
       for: .recordingDurationLimit
     )
   }
 
   func persistLanguagePreference() {
     persistStringSetting(
-      language.rawValue,
+      self.settings.language.rawValue,
       for: .interfaceLanguage
     )
   }
 
   func persistRecordPanelHotkeyPreference() {
     persistStringSetting(
-      recordPanelHotkeyBinding.storageString,
+      self.settings.recordPanelHotkeyBinding.storageString,
       for: .recordPanelHotkey
     )
   }
 
   func persistClipboardCaptureEnabledPreference() {
     persistStringSetting(
-      systemClipboardCaptureEnabled ? "true" : "false",
+      self.settings.systemClipboardCaptureEnabled ? "true" : "false",
       for: .systemClipboardCaptureEnabled
     )
   }
 
   func persistRecordHistoryVisibilityPreference() {
     persistStringSetting(
-      recordHistoryVisibility.rawValue,
+      self.settings.recordHistoryVisibility.rawValue,
       for: .recordHistoryVisibility
     )
   }
@@ -1883,10 +1883,10 @@ extension AppModel {
     LocalSpeechSettings(
       model: selectedTrustedLocalSpeechModelIdentifier,
       modelRepo: "", modelToken: "", modelFolder: "", language: "", downloadIfNeeded: true,
-      prewarm: localSpeechPrewarm,
-      enabledModelIDs: enabledSpeechModelIDs,
-      residentModelIDs: residentSpeechModelIDs,
-      residentBudgetConfirmation: residentSpeechBudgetConfirmation
+      prewarm: self.settings.localSpeechPrewarm,
+      enabledModelIDs: self.settings.enabledSpeechModelIDs,
+      residentModelIDs: self.settings.residentSpeechModelIDs,
+      residentBudgetConfirmation: self.settings.residentSpeechBudgetConfirmation
     )
   }
 
@@ -2129,7 +2129,7 @@ extension AppModel {
     guard let settingsStore else {
       privacySettingsSaveError = L10n.runText(
         .privacySaveStorageUnavailable,
-        language: language
+        language: self.settings.language
       )
       isSavingPrivacySettings = false
       return
@@ -2247,7 +2247,7 @@ extension AppModel {
         self.isLoadingPrivacySettings = false
         self.privacySettingsLoadError = L10n.runText(
           .privacyLoadFailedRepairStorage,
-          language: self.language
+          language: self.settings.language
         )
         self.privacySettingsSource.markUnavailable(
           reason: "Privacy settings could not be loaded."
@@ -2276,7 +2276,7 @@ extension AppModel {
   }
 
   private func localizedPrivacySettingsSaveFailure() -> String {
-    L10n.runText(.privacySaveFailedSessionOnly, language: language)
+    L10n.runText(.privacySaveFailedSessionOnly, language: self.settings.language)
   }
 
   func persistWorkflowEnabledStates() {

@@ -233,16 +233,16 @@ public struct HistoryTimelineView: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(L10n.text(.historyScopeAll, language: model.language))
+                    Text(L10n.text(.historyScopeAll, language: model.settings.language))
                         .font(.headline)
-                    Text(L10n.text(.historyDescription, language: model.language))
+                    Text(L10n.text(.historyDescription, language: model.settings.language))
                 }
                 Spacer(minLength: 12)
                 if case .loaded = model.history.effectiveRunHistoryLoadState {
                     Text(
                         L10n.loadedRunCount(
                             visibleEntries.count,
-                            language: model.language
+                            language: model.settings.language
                         )
                     )
                     .font(.caption)
@@ -268,14 +268,14 @@ public struct HistoryTimelineView: View {
                         Text(
                             L10n.text(
                                 .historyEntryExpiredTitle,
-                                language: model.language
+                                language: model.settings.language
                             )
                         )
                         .font(.headline)
                         Text(
                             L10n.text(
                                 .historyEntryExpiredDescription,
-                                language: model.language
+                                language: model.settings.language
                             )
                         )
                         .font(.callout)
@@ -292,7 +292,7 @@ public struct HistoryTimelineView: View {
             if model.history.runHistoryPaginationFailed {
                 HStack(spacing: 10) {
                     Label(
-                        L10n.text(.historyPaginationFailed, language: model.language),
+                        L10n.text(.historyPaginationFailed, language: model.settings.language),
                         systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
                     )
                     .font(.callout)
@@ -302,9 +302,9 @@ public struct HistoryTimelineView: View {
                         Button(
                             LocalPersistenceStatusPresentation.make(
                                 status: model.localPersistenceStatus,
-                                language: model.language
+                                language: model.settings.language
                             )?.actionTitle
-                                ?? SettingsSection.storage.title(language: model.language)
+                                ?? SettingsSection.storage.title(language: model.settings.language)
                         ) {
                             model.showSettings(.storage)
                         }
@@ -313,7 +313,7 @@ public struct HistoryTimelineView: View {
                         )
                     } else if case .failed = model.history.runHistoryDeepLinkState {
                         Button(
-                            L10n.text(.historyRetryLoad, language: model.language)
+                            L10n.text(.historyRetryLoad, language: model.settings.language)
                         ) {
                             model.history.retryRunHistoryDeepLink()
                         }
@@ -396,7 +396,7 @@ public struct HistoryTimelineView: View {
         .confirmationDialog(
             L10n.string(
                 .historyFailedAudioDeleteConfirmation,
-                language: model.language
+                language: model.settings.language
             ),
             isPresented: Binding(
                 get: { pendingFailedAudioDeletion != nil },
@@ -409,14 +409,14 @@ public struct HistoryTimelineView: View {
             presenting: pendingFailedAudioDeletion
         ) { receipt in
             Button(
-                L10n.string(.historyFailedAudioDelete, language: model.language),
+                L10n.string(.historyFailedAudioDelete, language: model.settings.language),
                 role: .destructive
             ) {
                 pendingFailedAudioDeletion = nil
                 model.deleteFailedAudioRecovery(receipt)
             }
             Button(
-                L10n.historySettingsText(.cancel, language: model.language),
+                L10n.historySettingsText(.cancel, language: model.settings.language),
                 role: .cancel
             ) {
                 pendingFailedAudioDeletion = nil
@@ -425,7 +425,7 @@ public struct HistoryTimelineView: View {
             Text(
                 L10n.string(
                     .historyFailedAudioDeleteConfirmationDetail,
-                    language: model.language
+                    language: model.settings.language
                 )
             )
         }
@@ -435,7 +435,7 @@ public struct HistoryTimelineView: View {
         VStack(spacing: 12) {
             ProgressView()
                 .controlSize(.large)
-            Text(L10n.text(.historyLoading, language: model.language))
+            Text(L10n.text(.historyLoading, language: model.settings.language))
                 .font(.title3)
                 .foregroundStyle(.secondary)
         }
@@ -447,7 +447,7 @@ public struct HistoryTimelineView: View {
     private var loadFailureState: some View {
         let presentation = HistoryLoadFailurePresentation.make(
             persistenceStatus: model.localPersistenceStatus,
-            language: model.language
+            language: model.settings.language
         )
         return VStack(spacing: 12) {
             Image(systemName: RillSystemSymbol.exclamationmarkTriangleFill.rawValue)
@@ -493,7 +493,7 @@ public struct HistoryTimelineView: View {
                 model.history.loadNewerRunHistoryPage()
             } label: {
                 Label(
-                    L10n.text(.historyNewerPage, language: model.language),
+                    L10n.text(.historyNewerPage, language: model.settings.language),
                     systemImage: RillSystemSymbol.chevronLeft.rawValue
                 )
             }
@@ -515,7 +515,7 @@ public struct HistoryTimelineView: View {
                 model.history.loadOlderRunHistoryPage()
             } label: {
                 Label(
-                    L10n.text(.historyOlderPage, language: model.language),
+                    L10n.text(.historyOlderPage, language: model.settings.language),
                     systemImage: RillSystemSymbol.chevronRight.rawValue
                 )
             }
@@ -541,7 +541,7 @@ public struct HistoryTimelineView: View {
                     model.history.usesPagedRunHistory && model.history.canLoadNewerRunHistoryPage
                         ? .historyPageEmpty
                         : emptyKey,
-                    language: model.language
+                    language: model.settings.language
                 )
             )
                 .font(.title3)
@@ -602,14 +602,14 @@ public struct HistoryTimelineView: View {
                     Image(systemName: entry.status.systemSymbol.rawValue).foregroundStyle(statusColor(entry.status))
                     VStack(alignment: .leading, spacing: RillSpacing.compact) {
                         Text(title).font(.headline)
-                        if case .visible(let preview, _) = HistoryPreviewPresentation(text: entry.record?.finalText, mode: model.privacyPolicySettings.historyPreviewMode, language: model.language) {
+                        if case .visible(let preview, _) = HistoryPreviewPresentation(text: entry.record?.finalText, mode: model.privacyPolicySettings.historyPreviewMode, language: model.settings.language) {
                             Text(preview).lineLimit(2).font(.body).foregroundStyle(.secondary)
                         }
                     }
                     Spacer(minLength: RillSpacing.row)
                     VStack(alignment: .trailing, spacing: RillSpacing.compact) {
                         Text(entry.timestamp, style: .relative)
-                        Text(L10n.historyRunStatus(entry.status, language: model.language))
+                        Text(L10n.historyRunStatus(entry.status, language: model.settings.language))
                     }.font(.caption).foregroundStyle(.secondary)
                     Image(systemName: RillSystemSymbol.chevronRight.rawValue)
                         .rotationEffect(.degrees(expandedEntryID == entry.id ? 90 : 0))
@@ -618,7 +618,7 @@ public struct HistoryTimelineView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(historyAccessibilityLabel(entry, title: title))
-            .accessibilityHint(L10n.workspace(.showDetails, language: model.language))
+            .accessibilityHint(L10n.workspace(.showDetails, language: model.settings.language))
             if expandedEntryID == entry.id { historyDetail(entry, title: title) }
             Divider()
         }.padding(.vertical, RillSpacing.row)
@@ -640,7 +640,7 @@ public struct HistoryTimelineView: View {
 
                 if entry.isRecordRelated || entry.receipt?.trigger == .recordDelivery {
                     Label(
-                        L10n.text(.historyStackBadge, language: model.language),
+                        L10n.text(.historyStackBadge, language: model.settings.language),
                         systemImage: RillSystemSymbol.squareStack3dUp.rawValue
                     )
                     .font(.caption)
@@ -667,7 +667,7 @@ public struct HistoryTimelineView: View {
                 hasProtectedPreview: entry.hasProtectedPreview
             )
             let recovery = HistoryRecoveryPresentation(receipt: entry.receipt)
-            if let message = recovery.message(language: model.language) {
+            if let message = recovery.message(language: model.settings.language) {
                 Text(message).font(.callout)
                     .foregroundStyle(recovery.outputState == nil ? Color.secondary : Color.orange)
                     .accessibilityIdentifier("history.recovery-status")
@@ -675,7 +675,7 @@ public struct HistoryTimelineView: View {
             if model.privacyPolicySettings.historyPreviewMode == .full, let record = entry.record {
                 HStack {
                     if let text = record.finalText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        RillCopyButton(title: L10n.recoveryCopyTitle(original: false, language: model.language), language: model.language) {
+                        RillCopyButton(title: L10n.recoveryCopyTitle(original: false, language: model.settings.language), language: model.settings.language) {
                             model.copyTextToClipboard(text)
                         }
                     }
@@ -683,14 +683,14 @@ public struct HistoryTimelineView: View {
                         ?? record.correctionSource?.preMappingText,
                        !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                        original != record.finalText {
-                        RillCopyButton(title: L10n.recoveryCopyTitle(original: true, language: model.language), language: model.language) {
+                        RillCopyButton(title: L10n.recoveryCopyTitle(original: true, language: model.settings.language), language: model.settings.language) {
                             model.copyTextToClipboard(original)
                         }
                     }
                 }.buttonStyle(.borderless)
             }
             HStack(spacing: RillSpacing.row) {
-                Text(L10n.historyRunStatus(entry.status, language: model.language))
+                Text(L10n.historyRunStatus(entry.status, language: model.settings.language))
                     .foregroundStyle(statusColor(entry.status))
                 if let receipt = entry.receipt {
                     Text(WorkflowActionResultCode.allCases.filter { result in
@@ -704,11 +704,11 @@ public struct HistoryTimelineView: View {
 
             let timings = HistoryRunTiming.items(for: entry)
             if !timings.isEmpty {
-                HistoryRunTimingView(items: timings, language: model.language)
+                HistoryRunTimingView(items: timings, language: model.settings.language)
             }
 
             if let references = entry.record?.correctionSource?.references {
-                CorrectionReferenceView(receipt: references, language: model.language)
+                CorrectionReferenceView(receipt: references, language: model.settings.language)
             }
             if let record = entry.record {
                 if VocabularyCorrectionDraft.isEligible(
@@ -719,7 +719,7 @@ public struct HistoryTimelineView: View {
                         correctionRecord = record
                     } label: {
                         Label(
-                            L10n.string(.vocabularyCorrectionAction, language: model.language),
+                            L10n.string(.vocabularyCorrectionAction, language: model.settings.language),
                             systemImage: RillSystemSymbol.textBadgeCheckmark.rawValue
                         )
                     }
@@ -731,7 +731,7 @@ public struct HistoryTimelineView: View {
                         Label(
                             RunFailurePresentation.historyText(
                                 for: failure,
-                                language: model.language
+                                language: model.settings.language
                             ),
                             systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
                         )
@@ -742,7 +742,7 @@ public struct HistoryTimelineView: View {
                             expandedEntryIDs.insert(entry.id)
                         } label: {
                             Label(
-                                L10n.text(.sidebarDiagnostics, language: model.language),
+                                L10n.text(.sidebarDiagnostics, language: model.settings.language),
                                 systemImage: SidebarSection.diagnostics.symbolName
                             )
                         }
@@ -753,8 +753,8 @@ public struct HistoryTimelineView: View {
                         .contentShape(Rectangle())
                         .accessibilityIdentifier("history.diagnostics.\(entry.id.uuidString)")
                         RillCopyButton(
-                            title: L10n.historyTimelineText(.copyFailureDetails, language: model.language),
-                            language: model.language
+                            title: L10n.historyTimelineText(.copyFailureDetails, language: model.settings.language),
+                            language: model.settings.language
                         ) {
                             model.copyHistoryFailure(record)
                         }
@@ -766,7 +766,7 @@ public struct HistoryTimelineView: View {
                         .help(
                             L10n.historyTimelineText(
                                 .copyFailureDetails,
-                                language: model.language
+                                language: model.settings.language
                             )
                         )
                     }
@@ -775,7 +775,7 @@ public struct HistoryTimelineView: View {
 
             if entry.runID != nil || entry.record?.failureMessage != nil || languageModelTrace != nil || !textSteps.isEmpty {
                 DisclosureGroup(
-                    L10n.historyRunDetail(.details, language: model.language),
+                    L10n.historyRunDetail(.details, language: model.settings.language),
                     isExpanded: Binding(
                         get: { expandedEntryIDs.contains(entry.id) },
                         set: { expanded in
@@ -789,7 +789,7 @@ public struct HistoryTimelineView: View {
                             if let runID = entry.runID {
                                 HistoryRunDiagnosticsView(model: model, runID: runID)
                             } else {
-                                Text(L10n.historyRunDetail(.legacyDiagnostics, language: model.language))
+                                Text(L10n.historyRunDetail(.legacyDiagnostics, language: model.settings.language))
                                     .foregroundStyle(.secondary)
                                     .accessibilityIdentifier("history.run-diagnostics.legacy")
                             }
@@ -797,16 +797,16 @@ public struct HistoryTimelineView: View {
                                 runReceiptDetails(receipt)
                             }
                             if !textSteps.isEmpty {
-                                DisclosureGroup(L10n.historyRunDetail(.textResults, language: model.language)) {
+                                DisclosureGroup(L10n.historyRunDetail(.textResults, language: model.settings.language)) {
                                     HistoryTextStepsView(
                                         steps: textSteps,
                                         previewMode: model.privacyPolicySettings.historyPreviewMode,
-                                        language: model.language
+                                        language: model.settings.language
                                     )
                                 }
                             }
                             if let languageModelTrace {
-                                DisclosureGroup(L10n.historyTimelineText(.llmRequest, language: model.language)) {
+                                DisclosureGroup(L10n.historyTimelineText(.llmRequest, language: model.settings.language)) {
                                     languageModelTracePreview(languageModelTrace)
                                 }
                             }
@@ -849,7 +849,7 @@ public struct HistoryTimelineView: View {
                 Label(
                     L10n.string(
                         .historyFailedAudioOutcomeUnknown,
-                        language: model.language
+                        language: model.settings.language
                     ),
                     systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
                 )
@@ -866,7 +866,7 @@ public struct HistoryTimelineView: View {
                             Label(
                                 L10n.string(
                                     .historyFailedAudioRetrying,
-                                    language: model.language
+                                    language: model.settings.language
                                 ),
                                 systemImage: RillSystemSymbol.arrowTriangle2Circlepath.rawValue
                             )
@@ -874,7 +874,7 @@ public struct HistoryTimelineView: View {
                             Label(
                                 L10n.string(
                                     .historyFailedAudioRetry,
-                                    language: model.language
+                                    language: model.settings.language
                                 ),
                                 systemImage: RillSystemSymbol.arrowClockwiseCircle.rawValue
                             )
@@ -892,7 +892,7 @@ public struct HistoryTimelineView: View {
                 Button(
                     L10n.string(
                         .historyFailedAudioDelete,
-                        language: model.language
+                        language: model.settings.language
                     ),
                     role: .destructive
                 ) {
@@ -906,7 +906,7 @@ public struct HistoryTimelineView: View {
                 Text(
                     L10n.string(
                         .historyFailedAudioExpires,
-                        language: model.language
+                        language: model.settings.language
                     )
                 )
                 Text(receipt.expiresAt, style: .relative)
@@ -923,7 +923,7 @@ public struct HistoryTimelineView: View {
                 .accessibilityHidden(true)
             HStack(spacing: 8) {
                 Label(
-                    L10n.historyRunTrigger(receipt.trigger, language: model.language),
+                    L10n.historyRunTrigger(receipt.trigger, language: model.settings.language),
                     systemImage: RillSystemSymbol.boltHorizontalCircle.rawValue
                 )
                 Text("·")
@@ -935,23 +935,23 @@ public struct HistoryTimelineView: View {
 
             ForEach(receipt.stepDetails, id: \.stepIndex) { step in
                 HStack(spacing: 6) {
-                    Text("\(step.stepIndex + 1). " + WorkflowStepPresentation.stepTitle(step.kind, language: model.language))
+                    Text("\(step.stepIndex + 1). " + WorkflowStepPresentation.stepTitle(step.kind, language: model.settings.language))
                     Text("·")
-                    Text(L10n.historyStepResult(step.result, language: model.language))
+                    Text(L10n.historyStepResult(step.result, language: model.settings.language))
                     Text("·")
-                    Text(L10n.historyMeasuredDuration(step.durationMilliseconds, language: model.language))
+                    Text(L10n.historyMeasuredDuration(step.durationMilliseconds, language: model.settings.language))
                 }.font(.caption).foregroundStyle(.secondary)
             }
 
             ForEach(receipt.actionDetails, id: \.actionIndex) { action in
                 HStack(spacing: 6) {
-                    Text(L10n.historyTimelineAction(action.actionIndex + 1, language: model.language))
+                    Text(L10n.historyTimelineAction(action.actionIndex + 1, language: model.settings.language))
                     Text("·")
                         .accessibilityHidden(true)
                     Text(localizedActionResult(action.result))
                     Text("·")
                         .accessibilityHidden(true)
-                    Text(L10n.historyMeasuredDuration(action.durationMilliseconds, language: model.language))
+                    Text(L10n.historyMeasuredDuration(action.durationMilliseconds, language: model.settings.language))
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -961,7 +961,7 @@ public struct HistoryTimelineView: View {
                 Label(
                     L10n.historyTimelineText(
                         .actionDetailsTruncated,
-                        language: model.language
+                        language: model.settings.language
                     ),
                     systemImage: RillSystemSymbol.ellipsisCircle.rawValue
                 )
@@ -973,11 +973,11 @@ public struct HistoryTimelineView: View {
     }
 
     private func localizedTermination(_ termination: WorkflowRunTermination) -> String {
-        L10n.workflowRunTermination(termination, language: model.language)
+        L10n.workflowRunTermination(termination, language: model.settings.language)
     }
 
     private func localizedActionResult(_ result: WorkflowActionResultCode) -> String {
-        L10n.workflowActionResult(result, language: model.language)
+        L10n.workflowActionResult(result, language: model.settings.language)
     }
 
     @ViewBuilder
@@ -996,7 +996,7 @@ public struct HistoryTimelineView: View {
                 }
                 if let outputText = trace.outputText {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(L10n.historyTimelineText(.llmAnswer, language: model.language))
+                        Text(L10n.historyTimelineText(.llmAnswer, language: model.settings.language))
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
                         historyPreview(outputText, hasProtectedPreview: false)
@@ -1023,29 +1023,29 @@ public struct HistoryTimelineView: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(
                 count > 1
-                    ? L10n.historyTimelineLLMRequestStep(index + 1, language: model.language)
-                    : L10n.historyTimelineText(.llmRequest, language: model.language)
+                    ? L10n.historyTimelineLLMRequestStep(index + 1, language: model.settings.language)
+                    : L10n.historyTimelineText(.llmRequest, language: model.settings.language)
             )
             .font(.callout.weight(.semibold))
 
-            LabeledContent(L10n.historyTimelineText(.provider, language: model.language)) {
+            LabeledContent(L10n.historyTimelineText(.provider, language: model.settings.language)) {
                 Text(trace.providerID).textSelection(.enabled)
             }
-            LabeledContent(L10n.historyTimelineText(.model, language: model.language)) {
+            LabeledContent(L10n.historyTimelineText(.model, language: model.settings.language)) {
                 Text(trace.modelID).textSelection(.enabled)
             }
-            Text(HistoryTextStepPresentation.tokenUsage(trace.tokenUsage, language: model.language))
+            Text(HistoryTextStepPresentation.tokenUsage(trace.tokenUsage, language: model.settings.language))
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
 
             languageModelTraceText(
-                L10n.historyTimelineText(.systemPrompt, language: model.language),
+                L10n.historyTimelineText(.systemPrompt, language: model.settings.language),
                 text: trace.systemPrompt
             )
             languageModelTraceText(
-                L10n.historyTimelineText(.workflowPrompt, language: model.language),
+                L10n.historyTimelineText(.workflowPrompt, language: model.settings.language),
                 text: trace.workflowPrompt
             )
             ForEach(Array(trace.messages.enumerated()), id: \.offset) { messageIndex, message in
@@ -1053,16 +1053,16 @@ public struct HistoryTimelineView: View {
                     L10n.historyTimelineSentMessage(
                         role: L10n.historyTimelineMessageRole(
                             message.role,
-                            language: model.language
+                            language: model.settings.language
                         ),
                         number: messageIndex + 1,
-                        language: model.language
+                        language: model.settings.language
                     ),
                     text: message.content
                 )
             }
             languageModelTraceText(
-                L10n.historyTimelineText(.returnedText, language: model.language),
+                L10n.historyTimelineText(.returnedText, language: model.settings.language),
                 text: trace.responseText
             )
         }
@@ -1084,15 +1084,15 @@ public struct HistoryTimelineView: View {
         index: Int
     ) -> String {
         if trace.inputProvenance == .transcriptOnly {
-            return model.language == .simplifiedChinese ? "发送的语音正文（参考另列，原图不保存）" : "Speech text sent (references listed separately; image not retained)"
+            return model.settings.language == .simplifiedChinese ? "发送的语音正文（参考另列，原图不保存）" : "Speech text sent (references listed separately; image not retained)"
         }
         if trace.inputProvenance == .legacyRecognition {
-            return L10n.historyTimelineText(.recognizedInputLegacy, language: model.language)
+            return L10n.historyTimelineText(.recognizedInputLegacy, language: model.settings.language)
         }
         guard trace.inputTexts.count > 1 else {
-            return L10n.historyTimelineText(.sentToLLM, language: model.language)
+            return L10n.historyTimelineText(.sentToLLM, language: model.settings.language)
         }
-        return L10n.historyTimelineSentToLLMStep(index + 1, language: model.language)
+        return L10n.historyTimelineSentToLLMStep(index + 1, language: model.settings.language)
     }
 
     @ViewBuilder
@@ -1105,7 +1105,7 @@ public struct HistoryTimelineView: View {
             Label(
                 L10n.privacyText(
                     PrivacySettingsTextKey.historyPreviewHidden,
-                    language: model.language
+                    language: model.settings.language
                 ),
                 systemImage: RillSystemSymbol.eyeSlash.rawValue
             )
@@ -1115,9 +1115,9 @@ public struct HistoryTimelineView: View {
             HistoryPreviewContent(
                 text: text,
                 mode: model.privacyPolicySettings.historyPreviewMode,
-                language: model.language
+                language: model.settings.language
             ) { text, lineLimit in
-                RillTextPreview(text: text, permitsExpansion: lineLimit == nil, language: model.language)
+                RillTextPreview(text: text, permitsExpansion: lineLimit == nil, language: model.settings.language)
             }
         }
     }
@@ -1127,16 +1127,16 @@ public struct HistoryTimelineView: View {
         workflowsByID: [UUID: WorkflowPresentation]
     ) -> String {
         if let record = entry.record {
-            return L10n.workflowName(record.workflow, language: model.language)
+            return L10n.workflowName(record.workflow, language: model.settings.language)
         }
         if let workflowID = entry.workflowID,
            let workflow = workflowsByID[workflowID] {
-            return L10n.workflowName(workflow, language: model.language)
+            return L10n.workflowName(workflow, language: model.settings.language)
         }
         if let trigger = entry.receipt?.trigger {
-            return L10n.historyRunTrigger(trigger, language: model.language)
+            return L10n.historyRunTrigger(trigger, language: model.settings.language)
         }
-        return L10n.historyTimelineText(.workflowRunFallback, language: model.language)
+        return L10n.historyTimelineText(.workflowRunFallback, language: model.settings.language)
     }
 
     private func statusColor(_ status: HistoryTimelineStatus) -> Color {
@@ -1153,10 +1153,10 @@ public struct HistoryTimelineView: View {
         title: String
     ) -> String {
         L10n.historyRunAccessibilityLabel(
-            status: L10n.historyRunStatus(entry.status, language: model.language),
+            status: L10n.historyRunStatus(entry.status, language: model.settings.language),
             title: title,
             termination: entry.receipt?.termination,
-            language: model.language
+            language: model.settings.language
         )
     }
 

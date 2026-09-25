@@ -46,8 +46,8 @@ final class SpeechEngineSelectionTests: XCTestCase {
     )
     XCTAssertTrue(harness.model.setPreferredLocalSpeechModel(mlx.id))
 
-    XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
-    XCTAssertEqual(harness.model.localSpeechModel, mlx.id)
+    XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
+    XCTAssertEqual(harness.model.settings.localSpeechModel, mlx.id)
   }
 
   func testSelectingUnknownLocalEngineLeavesCurrentSelectionUnchanged() {
@@ -62,8 +62,8 @@ final class SpeechEngineSelectionTests: XCTestCase {
     )
     XCTAssertFalse(harness.model.setPreferredLocalSpeechModel("unknown-model"))
 
-    XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
-    XCTAssertEqual(harness.model.localSpeechModel, compact.id)
+    XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
+    XCTAssertEqual(harness.model.settings.localSpeechModel, compact.id)
   }
 
   private func localModel(

@@ -98,7 +98,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertEqual(harness.model.recordHistoryVisibility, .all)
+        XCTAssertEqual(harness.model.settings.recordHistoryVisibility, .all)
         XCTAssertFalse(source.hasAvailableSettings)
         XCTAssertNotNil(harness.model.privacySettingsLoadError)
         let activity = await store.activitySnapshot()
@@ -171,7 +171,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             .runFailed(runID: nil, workflow: nil, message: sentinel)
         )
         await waitForEventProcessing(harness)
-        let expectedFailure = harness.model.language == .english
+        let expectedFailure = harness.model.settings.language == .english
             ? HistoryFailureSanitizer.genericMessage
             : "工作流失败。请在诊断中查看安全摘要后重试。"
         XCTAssertEqual(

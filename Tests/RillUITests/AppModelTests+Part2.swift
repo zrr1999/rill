@@ -363,7 +363,7 @@ extension AppModelTests {
 
         XCTAssertEqual(
             harness.model.workflowLibrary.workflowEditorError,
-            L10n.workflowText(.workflowNameTakenError, language: harness.model.language)
+            L10n.workflowText(.workflowNameTakenError, language: harness.model.settings.language)
         )
         XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
         XCTAssertEqual(harness.model.workflowLibrary.workflows.map(\.name), ["Alpha", "Beta"])
@@ -660,7 +660,7 @@ extension AppModelTests {
         XCTAssertEqual(snapshot.prepareCount, 1)
         XCTAssertEqual(snapshot.lastSettings?.model, appModelTestTrustedLocalSpeechModels()[1].id)
         XCTAssertEqual(snapshot.reportedProgress, [0.5])
-        XCTAssertEqual(harness.model.localSpeechModel, appModelTestTrustedLocalSpeechModels()[1].id)
+        XCTAssertEqual(harness.model.settings.localSpeechModel, appModelTestTrustedLocalSpeechModels()[1].id)
         XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .ready)
         XCTAssertEqual(harness.model.voice.localSpeechPreparationProgress, 1)
         XCTAssertEqual(harness.model.voice.localSpeechPreparedModelIdentifier, appModelTestTrustedLocalSpeechModels()[1].id)
@@ -689,7 +689,7 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
         XCTAssertEqual(
             harness.model.voice.localSpeechPreparationError,
-            expected.string(for: harness.model.language)
+            expected.string(for: harness.model.settings.language)
         )
         let event = try XCTUnwrap(
             harness.model.history.eventFeed.last {
@@ -721,7 +721,7 @@ extension AppModelTests {
         let expected = L10n.localSpeechPreparationFailure(.integrity)
         XCTAssertEqual(
             harness.model.voice.localSpeechPreparationError,
-            expected.string(for: harness.model.language)
+            expected.string(for: harness.model.settings.language)
         )
         let event = try XCTUnwrap(
             harness.model.history.eventFeed.last {
@@ -1170,7 +1170,7 @@ extension AppModelTests {
         await harness.model.waitForLocalSpeechPreparation()
         let snapshot = await probe.snapshot()
         XCTAssertEqual(snapshot.prepareCount, 0)
-        XCTAssertEqual(harness.model.localSpeechModel, appModelTestTrustedLocalSpeechModels()[0].id)
+        XCTAssertEqual(harness.model.settings.localSpeechModel, appModelTestTrustedLocalSpeechModels()[0].id)
     }
 
     func testRecordPanelRequestedOpensRecordPanel() async {
@@ -1209,7 +1209,7 @@ extension AppModelTests {
         harness.model.setRecordPanelHotkeyShortcut(commandQ)
         await harness.model.flushPendingPersistenceWrites()
 
-        XCTAssertEqual(harness.model.recordPanelHotkeyBinding, .doubleCommand)
+        XCTAssertEqual(harness.model.settings.recordPanelHotkeyBinding, .doubleCommand)
         let storedValue = try await settingsStore.string(forKey: .recordPanelHotkey)
         XCTAssertNil(storedValue)
     }

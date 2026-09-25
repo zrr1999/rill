@@ -13,7 +13,7 @@ extension SettingsView {
       }
 
       VStack(alignment: .leading, spacing: 10) {
-        Text(L10n.settingsText(.settingsVocabularyMovedNotice, language: model.language))
+        Text(L10n.settingsText(.settingsVocabularyMovedNotice, language: model.settings.language))
           .font(.callout)
           .foregroundStyle(.secondary)
 
@@ -38,7 +38,7 @@ extension SettingsView {
           Label(
             L10n.settingsText(
               .settingsManageVocabularyCollections,
-              language: model.language
+              language: model.settings.language
             ),
             systemImage: SidebarSection.workflows.symbolName
           )
@@ -59,7 +59,7 @@ extension SettingsView {
       Label(message, systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue)
         .font(.callout)
         .foregroundStyle(.orange)
-      Button(L10n.historySettingsText(.retry, language: model.language)) {
+      Button(L10n.historySettingsText(.retry, language: model.settings.language)) {
         model.retryUnavailableStoredSettingsDomains()
       }
       .buttonStyle(.bordered)
@@ -86,7 +86,7 @@ extension SettingsView {
         L10n.targetedAccessibilityLabel(
           .vocabularyRule,
           target: vocabularyRuleTitle(rule),
-          language: model.language
+          language: model.settings.language
         ),
         isOn: Binding(
           get: { rule.enabled },
@@ -98,10 +98,10 @@ extension SettingsView {
 
       VStack(alignment: .leading, spacing: 4) {
         HStack(spacing: 6) {
-          Text(L10n.vocabularyRuleKind(rule.kind, language: model.language))
+          Text(L10n.vocabularyRuleKind(rule.kind, language: model.settings.language))
             .font(.caption.weight(.semibold))
           if rule.kind == .mapping {
-            Text(L10n.vocabularyMatchMode(rule.matchMode, language: model.language))
+            Text(L10n.vocabularyMatchMode(rule.matchMode, language: model.settings.language))
               .font(.caption)
               .foregroundStyle(.secondary)
           }
@@ -115,7 +115,7 @@ extension SettingsView {
           .foregroundStyle(.secondary)
 
         if rule.kind == .hotword {
-          Text(L10n.string(.vocabularyHotwordBehavior, language: model.language))
+          Text(L10n.string(.vocabularyHotwordBehavior, language: model.settings.language))
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -133,7 +133,7 @@ extension SettingsView {
         L10n.targetedAccessibilityLabel(
           .vocabularyDeleteRule,
           target: vocabularyRuleTitle(rule),
-          language: model.language
+          language: model.settings.language
         )
       )
       .accessibilityIdentifier("vocabulary.rule.\(rule.id.uuidString).delete")
@@ -151,7 +151,7 @@ extension SettingsView {
     L10n.vocabularyScopeSummary(
       scope,
       groupName: vocabularyGroupName(scope.recordCollectionID),
-      language: model.language
+      language: model.settings.language
     )
   }
 

@@ -9,7 +9,7 @@ public struct SettingsWindowView: View {
         TabView(selection: $model.selectedSettingsPane) {
             ForEach(SettingsPane.allCases) { pane in
                 SettingsView(model: model, pane: pane)
-                    .tabItem { Label(pane.title(language: model.language), systemImage: pane.symbolName) }
+                    .tabItem { Label(pane.title(language: model.settings.language), systemImage: pane.symbolName) }
                     .tag(pane)
             }
         }

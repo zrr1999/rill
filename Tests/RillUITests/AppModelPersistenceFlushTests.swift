@@ -123,7 +123,7 @@ final class AppModelPersistenceFlushTests: XCTestCase {
         await waitForEventProcessing(harness)
         await store.blockWrites()
 
-        let expectedLanguage: AppLanguage = harness.model.language == .english
+        let expectedLanguage: AppLanguage = harness.model.settings.language == .english
             ? .simplifiedChinese
             : .english
         harness.model.applyLanguage(expectedLanguage)

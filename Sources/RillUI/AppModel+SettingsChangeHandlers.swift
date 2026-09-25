@@ -3,21 +3,21 @@ import RillCore
 
 extension AppModel {
   func handleLanguageChange(from oldValue: AppLanguage) {
-    guard oldValue != language else { return }
+    guard oldValue != self.settings.language else { return }
     persistLanguagePreference()
     syncLiveSubtitlePanel()
     refreshUnavailableStoredSettingsDomainErrors()
   }
 
   func handleClipboardCaptureEnabledChange(from oldValue: Bool) {
-    guard oldValue != systemClipboardCaptureEnabled else { return }
+    guard oldValue != self.settings.systemClipboardCaptureEnabled else { return }
     clipboardCapturePreferenceRevision &+= 1
     persistClipboardCaptureEnabledPreference()
     publishClipboardCapturePreferenceToRuntime()
   }
 
   func applyResolvedClipboardCapturePreference(enabled: Bool) {
-    guard systemClipboardCaptureEnabled == enabled else {
+    guard self.settings.systemClipboardCaptureEnabled == enabled else {
       applySystemClipboardCaptureEnabled(enabled)
       return
     }
@@ -27,29 +27,29 @@ extension AppModel {
 
   private func publishClipboardCapturePreferenceToRuntime() {
     setSystemClipboardCaptureEnabledAction(
-      systemClipboardCaptureEnabled,
+      self.settings.systemClipboardCaptureEnabled,
       clipboardCapturePreferenceRevision
     )
   }
 
   func handleRecordPanelHotkeyChange(from oldValue: HotkeyBindingDescriptor) {
-    guard oldValue != recordPanelHotkeyBinding else { return }
+    guard oldValue != self.settings.recordPanelHotkeyBinding else { return }
     persistRecordPanelHotkeyPreference()
-    updateRecordPanelHotkeyAction(recordPanelHotkeyBinding)
+    updateRecordPanelHotkeyAction(self.settings.recordPanelHotkeyBinding)
   }
 
   func handlePreferredSpeechEngineChange(from oldValue: PreferredSpeechEngine) {
-    guard oldValue != preferredSpeechEngine else { return }
+    guard oldValue != self.settings.preferredSpeechEngine else { return }
     invalidateWorkflowExplanation()
     persistPreferredSpeechEnginePreference()
     guard !self.settings.isRestoringSettings else { return }
-    setLocalSpeechRuntimeEnabledAction(preferredSpeechEngine == .local)
+    setLocalSpeechRuntimeEnabledAction(self.settings.preferredSpeechEngine == .local)
     if self.settings.isLoading {
       self.voice.shouldPrepareLocalSpeechModelAfterInitialSettingsLoad =
-        preferredSpeechEngine == .local
+        self.settings.preferredSpeechEngine == .local
       return
     }
-    if preferredSpeechEngine == .local {
+    if self.settings.preferredSpeechEngine == .local {
       prepareLocalSpeechModel()
     } else {
       // A cloud selection owns no local-model readiness state. Retire
@@ -60,73 +60,73 @@ extension AppModel {
   }
 
   func handleTTSModelIdentifierChange(from oldValue: String) {
-    guard oldValue != ttsModelIdentifier else { return }
-    persistStringSetting(ttsModelIdentifier, for: .ttsModel)
-    selectTTSModelAction(ttsModelIdentifier)
+    guard oldValue != self.settings.ttsModelIdentifier else { return }
+    persistStringSetting(self.settings.ttsModelIdentifier, for: .ttsModel)
+    selectTTSModelAction(self.settings.ttsModelIdentifier)
     self.voice.ttsResourceState =
-      self.voice.downloadedTTSModelIdentifiers.contains(ttsModelIdentifier)
+      self.voice.downloadedTTSModelIdentifiers.contains(self.settings.ttsModelIdentifier)
       ? .ready
       : .notInstalled
   }
 
   func handleBuiltinPushToTalkOutputModeChange(from oldValue: BuiltinPushToTalkOutputMode) {
-    guard oldValue != builtinPushToTalkOutputMode else { return }
+    guard oldValue != self.settings.builtinPushToTalkOutputMode else { return }
     invalidateWorkflowExplanation()
     persistBuiltinPushToTalkOutputModePreference()
   }
 
   func handleLongRecordingModeChange(from oldValue: Bool) {
-    guard oldValue != longRecordingModeEnabled else { return }
+    guard oldValue != self.settings.longRecordingModeEnabled else { return }
     persistLongRecordingModePreference()
   }
 
   func handleRecordingDurationLimitChange(from oldValue: RecordingDurationLimit) {
-    guard oldValue != recordingDurationLimit else { return }
+    guard oldValue != self.settings.recordingDurationLimit else { return }
     persistRecordingDurationLimitPreference()
   }
 
   func handleLocalSpeechModelChange(from oldValue: String) {
-    if oldValue != localSpeechModel, !self.settings.isRestoringSettings {
+    if oldValue != self.settings.localSpeechModel, !self.settings.isRestoringSettings {
       self.settings.localSpeechModelMutationGeneration &+= 1
     }
-    guard oldValue != localSpeechModel else { return }
+    guard oldValue != self.settings.localSpeechModel else { return }
     publishCurrentLocalSpeechSettingsToRuntime()
     resetLocalSpeechPreparationStatus()
     synchronizeWakeWordResourceWithLocalSpeechModel()
-    persistStringSetting(localSpeechModel, for: .localSpeechModel)
+    persistStringSetting(self.settings.localSpeechModel, for: .localSpeechModel)
   }
 
   func handleLocalSpeechPrewarmChange(from oldValue: Bool) {
-    guard oldValue != localSpeechPrewarm else { return }
+    guard oldValue != self.settings.localSpeechPrewarm else { return }
     publishCurrentLocalSpeechSettingsToRuntime()
     resetLocalSpeechPreparationStatus()
-    persistStringSetting(localSpeechPrewarm ? "true" : "false", for: .localSpeechPrewarm)
+    persistStringSetting(self.settings.localSpeechPrewarm ? "true" : "false", for: .localSpeechPrewarm)
   }
 
   func handleEnabledSpeechModelIDsChange(from oldValue: Set<String>) {
-    guard oldValue != enabledSpeechModelIDs else { return }
+    guard oldValue != self.settings.enabledSpeechModelIDs else { return }
     markSettingModifiedDuringInitialLoad(.enabledSpeechModels)
-    if !residentSpeechModelIDs.isSubset(of: enabledSpeechModelIDs) {
-      applyResidentSpeechModelIDs(residentSpeechModelIDs.intersection(enabledSpeechModelIDs))
+    if !self.settings.residentSpeechModelIDs.isSubset(of: self.settings.enabledSpeechModelIDs) {
+      applyResidentSpeechModelIDs(self.settings.residentSpeechModelIDs.intersection(self.settings.enabledSpeechModelIDs))
     }
     applyResidentSpeechBudgetConfirmation(nil)
     publishCurrentLocalSpeechSettingsToRuntime()
-    persistSpeechModelIDSet(enabledSpeechModelIDs, for: .enabledSpeechModels)
+    persistSpeechModelIDSet(self.settings.enabledSpeechModelIDs, for: .enabledSpeechModels)
   }
 
   func handleResidentSpeechModelIDsChange(from oldValue: Set<String>) {
-    guard oldValue != residentSpeechModelIDs else { return }
+    guard oldValue != self.settings.residentSpeechModelIDs else { return }
     markSettingModifiedDuringInitialLoad(.residentSpeechModels)
     publishCurrentLocalSpeechSettingsToRuntime()
-    persistSpeechModelIDSet(residentSpeechModelIDs, for: .residentSpeechModels)
+    persistSpeechModelIDSet(self.settings.residentSpeechModelIDs, for: .residentSpeechModels)
     synchronizeResidentSpeechModels(from: oldValue)
   }
 
   func handleResidentSpeechBudgetConfirmationChange(from oldValue: String?) {
-    guard oldValue != residentSpeechBudgetConfirmation else { return }
+    guard oldValue != self.settings.residentSpeechBudgetConfirmation else { return }
     markSettingModifiedDuringInitialLoad(.residentSpeechBudgetConfirmation)
     persistStringSetting(
-      residentSpeechBudgetConfirmation ?? "",
+      self.settings.residentSpeechBudgetConfirmation ?? "",
       for: .residentSpeechBudgetConfirmation
     )
   }
@@ -142,7 +142,7 @@ extension AppModel {
   }
 
   func handleOpenAIAPIKeyChange(from oldValue: String) {
-    guard oldValue != openAIAPIKey else { return }
+    guard oldValue != self.settings.openAIAPIKey else { return }
     self.settings.openAIVerificationTask?.cancel()
     self.settings.openAIVerificationTask = nil
     self.settings.openAIVerificationGeneration &+= 1
@@ -157,7 +157,7 @@ extension AppModel {
       workflowLibraryChangedAction()
     }
     persistSecureCredential(
-      openAIAPIKey,
+      self.settings.openAIAPIKey,
       for: .openAIAPIKey,
       taskKey: .openAIAPIKey
     )
@@ -166,7 +166,7 @@ extension AppModel {
   func handleOpenAIBaseURLChange(from oldValue: String) {
     handleOpenAIConfigurationStringChange(
       from: oldValue,
-      value: openAIBaseURL,
+      value: self.settings.openAIBaseURL,
       key: .openAIBaseURL
     )
   }
@@ -174,7 +174,7 @@ extension AppModel {
   func handleOpenAIModelChange(from oldValue: String) {
     handleOpenAIConfigurationStringChange(
       from: oldValue,
-      value: openAIModel,
+      value: self.settings.openAIModel,
       key: .openAIModel
     )
   }

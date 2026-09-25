@@ -315,7 +315,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         )
         await settingsStore.enqueueReadGate(gate)
         let harness = makeHarness(settingsStore: settingsStore)
-        let initialBaseURL = harness.model.openAIBaseURL
+        let initialBaseURL = harness.model.settings.openAIBaseURL
         await gate.waitUntilEntered()
 
         let completion = SettingsReadShutdownCompletionProbe()
@@ -332,7 +332,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await shutdownTask.value
 
         XCTAssertNotEqual(initialBaseURL, lateBaseURL)
-        XCTAssertEqual(harness.model.openAIBaseURL, initialBaseURL)
+        XCTAssertEqual(harness.model.settings.openAIBaseURL, initialBaseURL)
         XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.state, .stopped)
         XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 0)
     }
@@ -347,7 +347,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             credentialStore: credentialStore
         )
         await waitUntil { !harness.model.settings.isLoading }
-        XCTAssertEqual(harness.model.openAIAPIKey, "initial-key")
+        XCTAssertEqual(harness.model.settings.openAIAPIKey, "initial-key")
 
         try await credentialStore.setCredential("late-key", for: .openAIAPIKey)
         let retiredGate = CancellationIgnoringSettingsReadGate()
@@ -378,7 +378,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await retiredGate.release()
         await shutdownTask.value
 
-        XCTAssertEqual(harness.model.openAIAPIKey, "initial-key")
+        XCTAssertEqual(harness.model.settings.openAIAPIKey, "initial-key")
         XCTAssertFalse(
             harness.model.history.eventFeed.contains {
                 $0.english == "OpenAI credential access is available again."
@@ -394,7 +394,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         )
         let harness = makeHarness(settingsStore: settingsStore)
         await waitUntil { !harness.model.settings.isLoading }
-        let initialLanguage = harness.model.language
+        let initialLanguage = harness.model.settings.language
         let recoveredLanguage: AppLanguage = initialLanguage == .english
             ? .simplifiedChinese
             : .english
@@ -428,7 +428,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await gate.release()
         await shutdownTask.value
 
-        XCTAssertEqual(harness.model.language, initialLanguage)
+        XCTAssertEqual(harness.model.settings.language, initialLanguage)
         XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.state, .stopped)
         XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 0)
     }
@@ -603,7 +603,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
                 $0.kind == .migrationSucceeded && $0.key == .openAIAPIKey
             }
         )
-        XCTAssertEqual(harness.model.openAIAPIKey, "")
+        XCTAssertEqual(harness.model.settings.openAIAPIKey, "")
         XCTAssertEqual(harness.model.settings.openAICredentialAvailability, .inaccessible)
         XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.state, .stopped)
         XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 0)

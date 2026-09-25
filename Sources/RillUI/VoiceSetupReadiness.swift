@@ -80,9 +80,9 @@ extension AppModel {
       microphone: permissionSnapshot.microphone,
       accessibility: permissionSnapshot.accessibility,
       accessibilityRequired:
-        builtinPushToTalkOutputMode == .pasteIntoApp
+        self.settings.builtinPushToTalkOutputMode == .pasteIntoApp
         || hasEnabledCursorLivePreview,
-      preferredSpeechEngine: preferredSpeechEngine,
+      preferredSpeechEngine: self.settings.preferredSpeechEngine,
       provider: voiceSetupProviderReadiness,
       privacy: voiceSetupPrivacyReadiness
     )
@@ -139,7 +139,7 @@ extension AppModel {
       guard !selected.isEmpty else {
         return .localNeedsPreparation(downloadIfNeeded: true)
       }
-      if enabledSpeechModelIDs.contains(selected),
+      if self.settings.enabledSpeechModelIDs.contains(selected),
         self.voice.downloadedLocalSpeechModels.contains(selected)
       {
         return .localReady
@@ -161,7 +161,7 @@ extension AppModel {
   }
 
   private var hasRecordedPreparationForSelectedLocalModel: Bool {
-    let selectedModel = localSpeechModel.trimmingCharacters(in: .whitespacesAndNewlines)
+    let selectedModel = self.settings.localSpeechModel.trimmingCharacters(in: .whitespacesAndNewlines)
     if selectedModel.isEmpty {
       return self.voice.downloadedLocalSpeechModels.contains {
         !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

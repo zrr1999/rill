@@ -46,39 +46,12 @@ public final class AppModel {
   @ObservationIgnored var copyRecordAction:
     @MainActor (RecordReuseSubject) async -> RecordReuseOutcome = { _ in .blocked }
   internal var workflowEditorNavigationRequest: WorkflowEditorNavigationRequest?
-  public private(set) var language: AppLanguage
-
-  public private(set) var systemClipboardCaptureEnabled: Bool
 
   public internal(set) var clipboardCapturePreferenceRevision: UInt64 = 0
-  public private(set) var recordPanelHotkeyBinding: HotkeyBindingDescriptor
-
-  public private(set) var preferredSpeechEngine: PreferredSpeechEngine
-
-  public private(set) var builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode
-
-  public private(set) var longRecordingModeEnabled: Bool
-
-  public private(set) var recordingDurationLimit: RecordingDurationLimit
-
-  public private(set) var localSpeechModel: String
-
-  public private(set) var localSpeechPrewarm: Bool
-
-  public private(set) var enabledSpeechModelIDs: Set<String>
-
-  public private(set) var residentSpeechModelIDs: Set<String>
-
-  public private(set) var residentSpeechBudgetConfirmation: String?
 
   public let workflowLibrary: WorkflowLibraryModel
   public let settings: SettingsPersistenceModel
   public var settingsSaveState: SettingsSaveState { settings.saveState }
-  public private(set) var openAIAPIKey: String
-
-  public private(set) var openAIBaseURL: String
-
-  public private(set) var openAIModel: String
 
   public var contextMemory: ContextMemoryModel?
   public let voice = VoiceRunModel()
@@ -89,7 +62,6 @@ public final class AppModel {
   public let localSpeechPhysicalMemoryGiB: Int
   public let ttsModelOptions: [TTSModelOption]
   public let defaultTTSModelIdentifier: String
-  public private(set) var ttsModelIdentifier: String
 
   public var permissionSnapshot: PermissionSnapshot
   public internal(set) var globalInputCapability: GlobalInputCapability = .checking
@@ -149,7 +121,6 @@ public final class AppModel {
   var audioProcessingQueueSnapshot: AudioProcessingQueueSnapshot?
   @ObservationIgnored var lastLiveSubtitleMeterRefreshAt: ContinuousClock.Instant?
   @ObservationIgnored var pendingLiveSubtitleMeterSnapshot: LiveSubtitleSnapshot?
-  public private(set) var recordHistoryVisibility: RecordHistoryVisibility
 
   public var enabledManualWorkflows: [WorkflowDefinition] {
     enabledWorkflows(for: .manual)
@@ -223,13 +194,13 @@ public final class AppModel {
     }
   }
   public var localizedWindowTitle: String {
-    L10n.text(.appTitle, language: language)
+    L10n.text(.appTitle, language: self.settings.language)
   }
   public var isApplicationShuttingDown: Bool {
     hasBegunApplicationShutdown
   }
   public var localizedMenuBarTitle: String {
-    L10n.text(.menuBarLabel, language: language)
+    L10n.text(.menuBarLabel, language: self.settings.language)
   }
 
   let eventBus: EventBus
@@ -361,9 +332,9 @@ public final class AppModel {
     self.voice.downloadedTTSModelIdentifiers = downloadedTTSModelIdentifiers.intersection(
       Set(ttsModelOptions.map(\.id))
     )
-    selectTTSModelAction(ttsModelIdentifier)
+    selectTTSModelAction(self.settings.ttsModelIdentifier)
     self.voice.ttsResourceState =
-      self.voice.downloadedTTSModelIdentifiers.contains(ttsModelIdentifier)
+      self.voice.downloadedTTSModelIdentifiers.contains(self.settings.ttsModelIdentifier)
       ? .ready
       : .notInstalled
     validateWakeWordConfigurationAction = validateWakeWordConfiguration
@@ -516,28 +487,22 @@ public final class AppModel {
       effectiveLocalSpeechAvailability = declaredLocalSpeechAvailability
     }
     let exposesTrustedCatalog = effectiveLocalSpeechAvailability.isAvailable && catalogIsValid
+    let settings = SettingsPersistenceModel(store: settingsStore, language: language)
+    self.settings = settings
     self.workflowLibrary = WorkflowLibraryModel(workflows: initialWorkflows)
-    self.language = language
     // Capture remains closed until durable settings prove it is enabled.
     // Test and preview compositions that explicitly skip loading retain the
     // historical enabled behavior when they still provide a settings store.
-    self.systemClipboardCaptureEnabled =
+    settings.systemClipboardCaptureEnabled =
       settingsStore != nil && !loadsPersistentSettingsOnInitialization
-    self.recordHistoryVisibility = .remainingOnly
-    self.recordPanelHotkeyBinding = .doubleCommand
-    self.preferredSpeechEngine = .local
-    self.builtinPushToTalkOutputMode = .pasteIntoApp
-    self.longRecordingModeEnabled = false
-    self.recordingDurationLimit = .fiveMinutes
-    self.localSpeechModel = defaultLocalSpeechModelIdentifier ?? LocalSpeechSettings().model
+    settings.localSpeechModel = defaultLocalSpeechModelIdentifier ?? LocalSpeechSettings().model
     let resolvedDefaultTTSModelIdentifier =
       ttsModelOptions.contains(where: { $0.id == defaultTTSModelIdentifier })
       ? defaultTTSModelIdentifier
       : (ttsModelOptions.first(where: \.isDefault)?.id ?? ttsModelOptions.first?.id ?? "")
     self.ttsModelOptions = ttsModelOptions
     self.defaultTTSModelIdentifier = resolvedDefaultTTSModelIdentifier
-    self.ttsModelIdentifier = resolvedDefaultTTSModelIdentifier
-    self.localSpeechPrewarm = LocalSpeechSettings().prewarm
+    settings.ttsModelIdentifier = resolvedDefaultTTSModelIdentifier
     let availableSpeechModelIDs = Set(trustedLocalSpeechModels.map(\.id))
       .union(ttsModelOptions.map(\.id))
     let defaultEnabledSpeechModelIDs = LocalSpeechSettings().enabledModelIDs
@@ -546,13 +511,9 @@ public final class AppModel {
       defaultEnabledSpeechModelIDs.isEmpty
       ? Set([resolvedDefaultTTSModelIdentifier].filter { !$0.isEmpty })
       : defaultEnabledSpeechModelIDs
-    self.enabledSpeechModelIDs = resolvedEnabledSpeechModelIDs
-    self.residentSpeechModelIDs = LocalSpeechSettings().residentModelIDs
+    settings.enabledSpeechModelIDs = resolvedEnabledSpeechModelIDs
+    settings.residentSpeechModelIDs = LocalSpeechSettings().residentModelIDs
       .intersection(resolvedEnabledSpeechModelIDs)
-    self.residentSpeechBudgetConfirmation = nil
-    self.openAIAPIKey = ""
-    self.openAIBaseURL = OpenAISettings().baseURL
-    self.openAIModel = OpenAISettings().model
     self.permissionSnapshot = permissionSnapshot
     self.eventBus = eventBus
     self.sessionCoordinator = sessionCoordinator
@@ -567,8 +528,6 @@ public final class AppModel {
     self.localHistoryMaintenance = localHistoryMaintenance
     self.diagnosticRepository = diagnosticRepository
     self.settingsStore = settingsStore
-    let settings = SettingsPersistenceModel(store: settingsStore)
-    self.settings = settings
     self.vocabulary = VocabularyLibraryModel(settings: settings, source: vocabularyRuleSource)
     self.workflowFileStore = workflowFileStore
     self.credentialStore = credentialStore
@@ -680,107 +639,107 @@ extension ActionResult {
 
 extension AppModel {
   func applyLanguage(_ newValue: AppLanguage) {
-    let oldValue = language
-    language = newValue
+    let oldValue = self.settings.language
+    self.settings.language = newValue
     handleLanguageChange(from: oldValue)
   }
 
   func applySystemClipboardCaptureEnabled(_ newValue: Bool) {
-    let oldValue = systemClipboardCaptureEnabled
-    systemClipboardCaptureEnabled = newValue
+    let oldValue = self.settings.systemClipboardCaptureEnabled
+    self.settings.systemClipboardCaptureEnabled = newValue
     handleClipboardCaptureEnabledChange(from: oldValue)
   }
 
   func applyRecordPanelHotkeyBinding(_ newValue: HotkeyBindingDescriptor) {
-    let oldValue = recordPanelHotkeyBinding
-    recordPanelHotkeyBinding = newValue
+    let oldValue = self.settings.recordPanelHotkeyBinding
+    self.settings.recordPanelHotkeyBinding = newValue
     handleRecordPanelHotkeyChange(from: oldValue)
   }
 
   func applyPreferredSpeechEngine(_ newValue: PreferredSpeechEngine) {
-    let oldValue = preferredSpeechEngine
-    preferredSpeechEngine = newValue
+    let oldValue = self.settings.preferredSpeechEngine
+    self.settings.preferredSpeechEngine = newValue
     handlePreferredSpeechEngineChange(from: oldValue)
   }
 
   func applyBuiltinPushToTalkOutputMode(_ newValue: BuiltinPushToTalkOutputMode) {
-    let oldValue = builtinPushToTalkOutputMode
-    builtinPushToTalkOutputMode = newValue
+    let oldValue = self.settings.builtinPushToTalkOutputMode
+    self.settings.builtinPushToTalkOutputMode = newValue
     handleBuiltinPushToTalkOutputModeChange(from: oldValue)
   }
 
   func applyLongRecordingModeEnabled(_ newValue: Bool) {
-    let oldValue = longRecordingModeEnabled
-    longRecordingModeEnabled = newValue
+    let oldValue = self.settings.longRecordingModeEnabled
+    self.settings.longRecordingModeEnabled = newValue
     handleLongRecordingModeChange(from: oldValue)
   }
 
   func applyRecordingDurationLimit(_ newValue: RecordingDurationLimit) {
-    let oldValue = recordingDurationLimit
-    recordingDurationLimit = newValue
+    let oldValue = self.settings.recordingDurationLimit
+    self.settings.recordingDurationLimit = newValue
     handleRecordingDurationLimitChange(from: oldValue)
   }
 
   func applyLocalSpeechModel(_ newValue: String) {
-    let oldValue = localSpeechModel
-    localSpeechModel = newValue
+    let oldValue = self.settings.localSpeechModel
+    self.settings.localSpeechModel = newValue
     handleLocalSpeechModelChange(from: oldValue)
   }
 
   func applyLocalSpeechPrewarm(_ newValue: Bool) {
-    let oldValue = localSpeechPrewarm
-    localSpeechPrewarm = newValue
+    let oldValue = self.settings.localSpeechPrewarm
+    self.settings.localSpeechPrewarm = newValue
     handleLocalSpeechPrewarmChange(from: oldValue)
   }
 
   func applyEnabledSpeechModelIDs(_ newValue: Set<String>) {
-    let oldValue = enabledSpeechModelIDs
-    enabledSpeechModelIDs = newValue
+    let oldValue = self.settings.enabledSpeechModelIDs
+    self.settings.enabledSpeechModelIDs = newValue
     handleEnabledSpeechModelIDsChange(from: oldValue)
   }
 
   func applyResidentSpeechModelIDs(_ newValue: Set<String>) {
-    let oldValue = residentSpeechModelIDs
-    residentSpeechModelIDs = newValue
+    let oldValue = self.settings.residentSpeechModelIDs
+    self.settings.residentSpeechModelIDs = newValue
     handleResidentSpeechModelIDsChange(from: oldValue)
   }
 
   func applyResidentSpeechBudgetConfirmation(_ newValue: String?) {
-    let oldValue = residentSpeechBudgetConfirmation
-    residentSpeechBudgetConfirmation = newValue
+    let oldValue = self.settings.residentSpeechBudgetConfirmation
+    self.settings.residentSpeechBudgetConfirmation = newValue
     handleResidentSpeechBudgetConfirmationChange(from: oldValue)
   }
 
   func applyOpenAIAPIKey(_ newValue: String) {
-    let oldValue = openAIAPIKey
-    openAIAPIKey = newValue
-    if !self.settings.isLoading, oldValue != openAIAPIKey {
+    let oldValue = self.settings.openAIAPIKey
+    self.settings.openAIAPIKey = newValue
+    if !self.settings.isLoading, oldValue != self.settings.openAIAPIKey {
       contextMemory?.invalidateAuthorization()
     }
     handleOpenAIAPIKeyChange(from: oldValue)
   }
 
   func applyOpenAIBaseURL(_ newValue: String) {
-    let oldValue = openAIBaseURL
-    openAIBaseURL = newValue
-    if !self.settings.isLoading, oldValue != openAIBaseURL {
+    let oldValue = self.settings.openAIBaseURL
+    self.settings.openAIBaseURL = newValue
+    if !self.settings.isLoading, oldValue != self.settings.openAIBaseURL {
       contextMemory?.invalidateAuthorization()
     }
     handleOpenAIBaseURLChange(from: oldValue)
   }
 
   func applyOpenAIModel(_ newValue: String) {
-    let oldValue = openAIModel
-    openAIModel = newValue
-    if !self.settings.isLoading, oldValue != openAIModel {
+    let oldValue = self.settings.openAIModel
+    self.settings.openAIModel = newValue
+    if !self.settings.isLoading, oldValue != self.settings.openAIModel {
       contextMemory?.invalidateAuthorization()
     }
     handleOpenAIModelChange(from: oldValue)
   }
 
   func applyTTSModelIdentifier(_ newValue: String) {
-    let oldValue = ttsModelIdentifier
-    ttsModelIdentifier = newValue
+    let oldValue = self.settings.ttsModelIdentifier
+    self.settings.ttsModelIdentifier = newValue
     handleTTSModelIdentifierChange(from: oldValue)
   }
 
@@ -821,9 +780,9 @@ extension AppModel {
   }
 
   func applyRecordHistoryVisibility(_ newValue: RecordHistoryVisibility) {
-    let oldValue = recordHistoryVisibility
-    recordHistoryVisibility = newValue
-    guard oldValue != recordHistoryVisibility else { return }
+    let oldValue = self.settings.recordHistoryVisibility
+    self.settings.recordHistoryVisibility = newValue
+    guard oldValue != self.settings.recordHistoryVisibility else { return }
     persistRecordHistoryVisibilityPreference()
   }
 

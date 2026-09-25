@@ -7,7 +7,7 @@ extension SettingsView {
     settingsDisclosure(.privacy) {
       if model.isLoadingPrivacySettings {
         Label(
-          L10n.privacyText(.loading, language: model.language),
+          L10n.privacyText(.loading, language: model.settings.language),
           systemImage: RillSystemSymbol.hourglass.rawValue
         )
         .font(.caption)
@@ -20,11 +20,11 @@ extension SettingsView {
             .font(.caption)
             .foregroundStyle(.red)
           HStack {
-            Button(L10n.privacyText(.retryLoad, language: model.language)) {
+            Button(L10n.privacyText(.retryLoad, language: model.settings.language)) {
               model.retryPrivacySettingsLoad()
             }
             Button(
-              L10n.privacyText(.resetSafeDefaults, language: model.language),
+              L10n.privacyText(.resetSafeDefaults, language: model.settings.language),
               role: .destructive
             ) {
               model.resetPrivacySettingsToSafeDefaults()
@@ -40,21 +40,21 @@ extension SettingsView {
           Label(saveError, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
             .font(.caption)
             .foregroundStyle(.red)
-          Button(L10n.privacyText(.retrySave, language: model.language)) {
+          Button(L10n.privacyText(.retrySave, language: model.settings.language)) {
             model.retryPrivacySettingsSave()
           }
           .buttonStyle(.bordered)
         }
       } else if model.isSavingPrivacySettings {
         Label(
-          L10n.privacyText(.saving, language: model.language),
+          L10n.privacyText(.saving, language: model.settings.language),
           systemImage: RillSystemSymbol.arrowTriangle2Circlepath.rawValue
         )
         .font(.caption)
         .foregroundStyle(.secondary)
       }
 
-      Text(L10n.privacyText(PrivacySettingsTextKey.description, language: model.language))
+      Text(L10n.privacyText(PrivacySettingsTextKey.description, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)
 
@@ -64,7 +64,7 @@ extension SettingsView {
           presentedSheet = .privacyNotice(privacyNoticeDocument)
         } label: {
           Label(
-            L10n.privacyText(.technicalNotice, language: model.language),
+            L10n.privacyText(.technicalNotice, language: model.settings.language),
             systemImage: RillSystemSymbol.handRaisedSquare.rawValue
           )
         }
@@ -76,7 +76,7 @@ extension SettingsView {
             privacyNoticeDocument == nil
               ? .technicalNoticeUnavailable
               : .technicalNoticeDescription,
-            language: model.language
+            language: model.settings.language
           )
         )
         .font(.caption)
@@ -84,7 +84,7 @@ extension SettingsView {
       }
 
       Toggle(
-        L10n.privacyText(PrivacySettingsTextKey.cloudConfirmation, language: model.language),
+        L10n.privacyText(PrivacySettingsTextKey.cloudConfirmation, language: model.settings.language),
         isOn: Binding(
           get: { model.privacyPolicySettings.cloudConfirmationRequired },
           set: { model.setPrivacyCloudConfirmationRequired($0) }
@@ -93,7 +93,7 @@ extension SettingsView {
       .disabled(privacySettingsControlsDisabled)
       Text(
         L10n.privacyText(
-          PrivacySettingsTextKey.cloudConfirmationDescription, language: model.language)
+          PrivacySettingsTextKey.cloudConfirmationDescription, language: model.settings.language)
       )
       .font(.caption)
       .foregroundStyle(.secondary)
@@ -102,12 +102,12 @@ extension SettingsView {
         VStack(alignment: .leading, spacing: 8) {
           HStack {
             Text(
-              L10n.privacyText(.cloudAlwaysAllowed, language: model.language)
+              L10n.privacyText(.cloudAlwaysAllowed, language: model.settings.language)
             )
             .font(.callout.weight(.medium))
             Spacer()
             Button(
-              L10n.privacyText(.revokeAllAuthorizations, language: model.language)
+              L10n.privacyText(.revokeAllAuthorizations, language: model.settings.language)
             ) {
               model.revokeAllCloudProcessingAuthorizations()
             }
@@ -124,7 +124,7 @@ extension SettingsView {
                 .lineLimit(1)
               Spacer()
               Button(
-                L10n.privacyText(.revokeAuthorization, language: model.language)
+                L10n.privacyText(.revokeAuthorization, language: model.settings.language)
               ) {
                 model.revokeCloudProcessingAuthorization(authorization.id)
               }
@@ -134,7 +134,7 @@ extension SettingsView {
           }
 
           Text(
-            L10n.privacyText(.cloudAlwaysAllowedDescription, language: model.language)
+            L10n.privacyText(.cloudAlwaysAllowedDescription, language: model.settings.language)
           )
           .font(.caption)
           .foregroundStyle(.secondary)
@@ -149,7 +149,7 @@ extension SettingsView {
 
       Toggle(
         L10n.privacyText(
-          PrivacySettingsTextKey.secureInputConservativeMode, language: model.language),
+          PrivacySettingsTextKey.secureInputConservativeMode, language: model.settings.language),
         isOn: Binding(
           get: { model.privacyPolicySettings.secureInputConservativeMode },
           set: { model.setPrivacySecureInputConservativeMode($0) }
@@ -158,26 +158,26 @@ extension SettingsView {
       .disabled(privacySettingsControlsDisabled)
       Text(
         L10n.privacyText(
-          PrivacySettingsTextKey.secureInputConservativeDescription, language: model.language)
+          PrivacySettingsTextKey.secureInputConservativeDescription, language: model.settings.language)
       )
       .font(.caption)
       .foregroundStyle(.secondary)
 
       Picker(
-        L10n.privacyText(PrivacySettingsTextKey.historyPreviewMode, language: model.language),
+        L10n.privacyText(PrivacySettingsTextKey.historyPreviewMode, language: model.settings.language),
         selection: Binding(
           get: { model.privacyPolicySettings.historyPreviewMode },
           set: { model.setPrivacyHistoryPreviewMode($0) }
         )
       ) {
         ForEach(PrivacyHistoryPreviewMode.allCases, id: \.rawValue) { mode in
-          Text(L10n.privacySettingsHistoryPreviewMode(mode, language: model.language)).tag(mode)
+          Text(L10n.privacySettingsHistoryPreviewMode(mode, language: model.settings.language)).tag(mode)
         }
       }
       .pickerStyle(.menu)
       .disabled(privacySettingsControlsDisabled)
       Text(
-        L10n.privacyText(PrivacySettingsTextKey.historyPreviewDescription, language: model.language)
+        L10n.privacyText(PrivacySettingsTextKey.historyPreviewDescription, language: model.settings.language)
       )
       .font(.caption)
       .foregroundStyle(.secondary)
@@ -186,10 +186,10 @@ extension SettingsView {
 
       VStack(alignment: .leading, spacing: 8) {
         HStack {
-          Text(L10n.privacyText(PrivacySettingsTextKey.sensitiveApps, language: model.language))
+          Text(L10n.privacyText(PrivacySettingsTextKey.sensitiveApps, language: model.settings.language))
             .font(.subheadline.weight(.medium))
           Spacer()
-          Button(L10n.privacyText(.restoreRecommended, language: model.language)) {
+          Button(L10n.privacyText(.restoreRecommended, language: model.settings.language)) {
             restoreRecommendedSensitiveAppRules()
           }
           .buttonStyle(.bordered)
@@ -197,7 +197,7 @@ extension SettingsView {
         }
         Text(
           L10n.privacyText(
-            PrivacySettingsTextKey.sensitiveAppsDescription, language: model.language)
+            PrivacySettingsTextKey.sensitiveAppsDescription, language: model.settings.language)
         )
         .font(.caption)
         .foregroundStyle(.secondary)
@@ -207,7 +207,7 @@ extension SettingsView {
         .disabled(privacySettingsControlsDisabled)
 
       if model.privacyPolicySettings.sensitiveAppRules.isEmpty {
-        Text(L10n.settingsText(.settingsSensitiveAppRulesEmpty, language: model.language))
+        Text(L10n.settingsText(.settingsSensitiveAppRulesEmpty, language: model.settings.language))
           .font(.caption)
           .foregroundStyle(.secondary)
       } else {
@@ -226,14 +226,14 @@ extension SettingsView {
   var sensitiveAppRuleEditor: some View {
     VStack(alignment: .leading, spacing: RillSpacing.row) {
       TextField(
-        L10n.privacyText(.bundleIdentifier, language: model.language),
+        L10n.privacyText(.bundleIdentifier, language: model.settings.language),
         text: $sensitiveAppBundleIdentifier
       )
       .textFieldStyle(.roundedBorder)
       .monospaced()
 
       TextField(
-        L10n.privacyText(.applicationNameOptional, language: model.language),
+        L10n.privacyText(.applicationNameOptional, language: model.settings.language),
         text: $sensitiveAppApplicationName
       )
       .textFieldStyle(.roundedBorder)
@@ -247,14 +247,14 @@ extension SettingsView {
       HStack {
         Spacer()
         if editingSensitiveAppRuleID != nil {
-          Button(L10n.privacyText(.cancelEdit, language: model.language)) {
+          Button(L10n.privacyText(.cancelEdit, language: model.settings.language)) {
             resetSensitiveAppRuleEditor()
           }
         }
         Button(
           L10n.privacyText(
             editingSensitiveAppRuleID == nil ? .addRule : .saveRule,
-            language: model.language
+            language: model.settings.language
           )
         ) {
           saveSensitiveAppRule()
@@ -268,7 +268,7 @@ extension SettingsView {
   func sensitiveAppRuleRow(_ rule: SensitiveAppRule) -> some View {
     VStack(alignment: .leading, spacing: 8) {
       Toggle(
-        L10n.privacyText(PrivacySettingsTextKey.ruleEnabled, language: model.language),
+        L10n.privacyText(PrivacySettingsTextKey.ruleEnabled, language: model.settings.language),
         isOn: Binding(
           get: { sensitiveAppRule(rule.id)?.enabled ?? rule.enabled },
           set: { model.setSensitiveAppRuleEnabled(rule.id, isEnabled: $0) }
@@ -286,18 +286,18 @@ extension SettingsView {
         }
         Spacer()
         if rule.isRecommended {
-          Text(L10n.privacyText(.recommendedRule, language: model.language))
+          Text(L10n.privacyText(.recommendedRule, language: model.settings.language))
             .font(.caption)
             .foregroundStyle(.secondary)
         } else {
-          Button(L10n.privacyText(.editRule, language: model.language)) {
+          Button(L10n.privacyText(.editRule, language: model.settings.language)) {
             beginEditingSensitiveAppRule(rule)
           }
           .buttonStyle(.borderless)
           Button(role: .destructive) {
             destructiveConfirmation = .sensitiveAppRule(rule.id)
           } label: {
-            Text(L10n.privacyText(.deleteRule, language: model.language))
+            Text(L10n.privacyText(.deleteRule, language: model.settings.language))
           }
           .buttonStyle(.borderless)
         }
@@ -305,7 +305,7 @@ extension SettingsView {
 
       VStack(alignment: .leading, spacing: 6) {
         Toggle(
-          L10n.privacyText(PrivacySettingsTextKey.ruleBlocksClipboard, language: model.language),
+          L10n.privacyText(PrivacySettingsTextKey.ruleBlocksClipboard, language: model.settings.language),
           isOn: Binding(
             get: {
               sensitiveAppRule(rule.id)?.blocksClipboardHistory ?? rule.blocksClipboardHistory
@@ -314,21 +314,21 @@ extension SettingsView {
           )
         )
         Toggle(
-          L10n.privacyText(PrivacySettingsTextKey.ruleBlocksWorkflow, language: model.language),
+          L10n.privacyText(PrivacySettingsTextKey.ruleBlocksWorkflow, language: model.settings.language),
           isOn: Binding(
             get: { sensitiveAppRule(rule.id)?.blocksWorkflowCapture ?? rule.blocksWorkflowCapture },
             set: { model.setSensitiveAppRuleBlocksWorkflowCapture(rule.id, blocks: $0) }
           )
         )
         Toggle(
-          L10n.privacyText(PrivacySettingsTextKey.ruleBlocksSelectedText, language: model.language),
+          L10n.privacyText(PrivacySettingsTextKey.ruleBlocksSelectedText, language: model.settings.language),
           isOn: Binding(
             get: { sensitiveAppRule(rule.id)?.blocksSelectedText ?? rule.blocksSelectedText },
             set: { model.setSensitiveAppRuleBlocksSelectedText(rule.id, blocks: $0) }
           )
         )
         Toggle(
-          L10n.privacyText(PrivacySettingsTextKey.ruleBlocksCloud, language: model.language),
+          L10n.privacyText(PrivacySettingsTextKey.ruleBlocksCloud, language: model.settings.language),
           isOn: Binding(
             get: { sensitiveAppRule(rule.id)?.blocksCloudProcessing ?? rule.blocksCloudProcessing },
             set: { model.setSensitiveAppRuleBlocksCloudProcessing(rule.id, blocks: $0) }
@@ -402,7 +402,7 @@ extension SettingsView {
 
   func localizedSensitiveAppRuleError(_ error: Error) -> String {
     guard let validationError = error as? SensitiveAppRuleValidationError else {
-      return L10n.settingsText(.settingsPrivacyRuleUpdateFailed, language: model.language)
+      return L10n.settingsText(.settingsPrivacyRuleUpdateFailed, language: model.settings.language)
     }
     let key: PrivacySettingsTextKey
     switch validationError {
@@ -417,7 +417,7 @@ extension SettingsView {
     case .ruleNotFound:
       key = .ruleNotFound
     }
-    return L10n.privacyText(key, language: model.language)
+    return L10n.privacyText(key, language: model.settings.language)
   }
 
 }

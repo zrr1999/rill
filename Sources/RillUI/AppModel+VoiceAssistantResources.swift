@@ -63,24 +63,24 @@ extension AppModel {
     if case .preparing = self.voice.ttsResourceState {
       return
     }
-    let modelIdentifier = ttsModelIdentifier
+    let modelIdentifier = self.settings.ttsModelIdentifier
     self.voice.ttsResourceState = .preparing(progress: nil)
     Task {
       do {
         try await prepareTTSModelAction(modelIdentifier) { progress in
           Task { @MainActor in
-            guard self.ttsModelIdentifier == modelIdentifier else { return }
+            guard self.settings.ttsModelIdentifier == modelIdentifier else { return }
             self.voice.ttsResourceState = .preparing(progress: progress)
           }
         }
         self.voice.downloadedTTSModelIdentifiers.insert(modelIdentifier)
-        guard ttsModelIdentifier == modelIdentifier else { return }
+        guard self.settings.ttsModelIdentifier == modelIdentifier else { return }
         self.voice.ttsResourceState = .ready
       } catch is CancellationError {
-        guard ttsModelIdentifier == modelIdentifier else { return }
+        guard self.settings.ttsModelIdentifier == modelIdentifier else { return }
         self.voice.ttsResourceState = .notInstalled
       } catch {
-        guard ttsModelIdentifier == modelIdentifier else { return }
+        guard self.settings.ttsModelIdentifier == modelIdentifier else { return }
         self.voice.ttsResourceState = .failed(error.localizedDescription)
       }
     }
@@ -126,7 +126,7 @@ extension AppModel {
       })
     {
       guard !self.settings.isLoading, isWorkflowLibraryAvailable else {
-        return .failed(L10n.runText(.workflowLibraryUnavailable, language: language))
+        return .failed(L10n.runText(.workflowLibraryUnavailable, language: self.settings.language))
       }
       self.workflowLibrary.hasModifiedWorkflowLibrary = true
       var updatedWorkflow = self.workflowLibrary.customWorkflows[index]
@@ -164,7 +164,7 @@ extension AppModel {
       savedWorkflowID = editableWorkflow.id
     } else if let sourceWorkflow {
       guard !self.settings.isLoading, isWorkflowLibraryAvailable else {
-        return .failed(L10n.runText(.workflowLibraryUnavailable, language: language))
+        return .failed(L10n.runText(.workflowLibraryUnavailable, language: self.settings.language))
       }
       var customizedWorkflow = sourceWorkflow
       customizedWorkflow.name = localizedWorkflowName(for: sourceWorkflow)
@@ -208,7 +208,7 @@ extension AppModel {
     } else {
       var draft =
         defaultWorkflowDraft()
-      draft.name = L10n.runText(.wakeDictationDraftName, language: language)
+      draft.name = L10n.runText(.wakeDictationDraftName, language: self.settings.language)
       draft.eventType = .wakeWord
       draft.wakePhrasesText = normalizedPhrases.joined(separator: "\n")
 
@@ -224,7 +224,7 @@ extension AppModel {
       })?.id
     }
     guard let savedWorkflowID else {
-      return .failed(L10n.runText(.wakeWorkflowNotFound, language: language))
+      return .failed(L10n.runText(.wakeWorkflowNotFound, language: self.settings.language))
     }
 
     for workflow in self.workflowLibrary.workflows where
@@ -277,8 +277,8 @@ extension AppModel {
       case .available:
         guard
           !hasUnavailableScalarSettings(in: .openAI),
-          OpenAISettings.isValidBaseURL(openAIBaseURL),
-          OpenAISettings.isValidModelIdentifier(openAIModel)
+          OpenAISettings.isValidBaseURL(self.settings.openAIBaseURL),
+          OpenAISettings.isValidModelIdentifier(self.settings.openAIModel)
         else {
           llm = .configurationInvalid
           break
@@ -338,13 +338,13 @@ extension AppModel {
   private func localizedWakeWordSettingsError(_ error: Error) -> String {
     L10n.runWakeWordSettingsSaveFailed(
       detail: error.localizedDescription,
-      language: language
+      language: self.settings.language
     )
   }
 
   private func localizedWorkflowFileSaveError(_ error: Error) -> String {
     String(
-      format: L10n.runText(.workflowTOMLFileSaveFailedFormat, language: language),
+      format: L10n.runText(.workflowTOMLFileSaveFailedFormat, language: self.settings.language),
       error.localizedDescription
     )
   }

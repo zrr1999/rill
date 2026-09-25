@@ -30,7 +30,7 @@ private actor SettingsWriteGate {
 final class SettingsPersistenceModelTests: XCTestCase {
   func testFailedTransactionRetriesWithoutOverwritingNewerUserEdit() async throws {
     let store = UITestSettingsStore()
-    let model = SettingsPersistenceModel(store: store)
+    let model = SettingsPersistenceModel(store: store, language: .english)
     await store.rejectNextAtomicWrite()
     model.submitAtomically([
       .workflowLibrary: .init(category: .workflows) { "migrated-workflows" },
@@ -55,7 +55,7 @@ final class SettingsPersistenceModelTests: XCTestCase {
 
   func testFailedTransactionRetriesAllKeysInOneWrite() async throws {
     let store = UITestSettingsStore()
-    let model = SettingsPersistenceModel(store: store)
+    let model = SettingsPersistenceModel(store: store, language: .english)
     await store.rejectNextAtomicWrite()
     model.submitAtomically([
       .workflowLibrary: .init(category: .workflows) { "workflows" },
@@ -73,7 +73,7 @@ final class SettingsPersistenceModelTests: XCTestCase {
 
   func testRetryCannotReplaceNewerInFlightWriteWithOldFailedSnapshot() async throws {
     let store = UITestSettingsStore()
-    let model = SettingsPersistenceModel(store: store)
+    let model = SettingsPersistenceModel(store: store, language: .english)
     let gate = SettingsWriteGate()
     model.submit(
       key: .interfaceLanguage, category: .interface, debounce: .zero,

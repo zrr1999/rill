@@ -30,7 +30,7 @@ struct WorkflowDocumentLibraryView: View {
                     VStack(spacing: 0) {
                         HStack {
                             Button { showsCompactList = true } label: {
-                                Label(L10n.workflowDocument(.labelWorkflows, language: model.language), systemImage: RillSystemSymbol.chevronLeft.rawValue)
+                                Label(L10n.workflowDocument(.labelWorkflows, language: model.settings.language), systemImage: RillSystemSymbol.chevronLeft.rawValue)
                             }
                             Spacer()
                         }.padding()
@@ -40,7 +40,7 @@ struct WorkflowDocumentLibraryView: View {
                 }
             }
         }
-        .navigationTitle(L10n.workflowDocument(.labelWorkflows, language: model.language))
+        .navigationTitle(L10n.workflowDocument(.labelWorkflows, language: model.settings.language))
         .toolbar { ToolbarItemGroup { libraryActions } }
         .task(id: model.settings.isLoading) {
             if !model.settings.isLoading { await model.reloadWorkflowFiles() }
@@ -59,11 +59,11 @@ struct WorkflowDocumentLibraryView: View {
             WorkflowExplanationSheet(model: model, workflowID: request.workflowID)
         }
         .confirmationDialog(
-            L10n.workflowDocument(.labelRemoveThisCustomization, language: model.language),
+            L10n.workflowDocument(.labelRemoveThisCustomization, language: model.settings.language),
             isPresented: Binding(get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }),
             titleVisibility: .visible
         ) {
-            Button(L10n.workflowDocument(.labelRemove, language: model.language), role: .destructive) {
+            Button(L10n.workflowDocument(.labelRemove, language: model.settings.language), role: .destructive) {
                 guard let workflow = pendingDeletion else { return }
                 pendingDeletion = nil
                 Task {
@@ -83,14 +83,14 @@ struct WorkflowDocumentLibraryView: View {
                     Image(systemName: RillSystemSymbol.resolvedName(workflow.ui.symbolName)).frame(width: 24)
                     VStack(alignment: .leading, spacing: RillSpacing.compact) {
                         Text(model.localizedWorkflowName(for: workflow)).font(.headline)
-                        Text(L10n.workflowTrigger(workflow.trigger, metadata: workflow.metadata, language: model.language))
+                        Text(L10n.workflowTrigger(workflow.trigger, metadata: workflow.metadata, language: model.settings.language))
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                     if model.isWorkflowEnabled(workflow) {
                         Image(systemName: RillSystemSymbol.checkmarkCircleFill.rawValue)
                             .foregroundStyle(.secondary)
-                            .accessibilityLabel(L10n.workflowDocument(.labelEnabled, language: model.language))
+                            .accessibilityLabel(L10n.workflowDocument(.labelEnabled, language: model.settings.language))
                     }
                 }.padding(.vertical, RillSpacing.row).tag(workflow.id)
             }
@@ -117,7 +117,7 @@ struct WorkflowDocumentLibraryView: View {
                             }
                         }
                         Spacer()
-                        Toggle(L10n.workflowDocument(.labelEnabled, language: model.language), isOn: Binding(
+                        Toggle(L10n.workflowDocument(.labelEnabled, language: model.settings.language), isOn: Binding(
                             get: { model.isWorkflowEnabled(workflow) },
                             set: { model.setWorkflowEnabled($0, for: workflow.id) }
                         )).toggleStyle(.switch).fixedSize()
@@ -126,62 +126,62 @@ struct WorkflowDocumentLibraryView: View {
                     if let readiness = model.workflowEnablementError(for: workflow) {
                         Label(readiness, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue).foregroundStyle(.orange)
                     }
-                    LabeledContent(L10n.workflowExplanationCopy(.trigger, language: model.language)) {
-                        Text(L10n.workflowTrigger(workflow.trigger, metadata: workflow.metadata, language: model.language))
+                    LabeledContent(L10n.workflowExplanationCopy(.trigger, language: model.settings.language)) {
+                        Text(L10n.workflowTrigger(workflow.trigger, metadata: workflow.metadata, language: model.settings.language))
                     }
                     VStack(alignment: .leading, spacing: RillSpacing.row) {
-                        Text(L10n.workflowExplanationCopy(.transforms, language: model.language)).font(.headline)
+                        Text(L10n.workflowExplanationCopy(.transforms, language: model.settings.language)).font(.headline)
                         ForEach(Array(workflow.plan.process.allSteps.enumerated()), id: \.offset) { index, step in
-                            Text("\(index + 1). " + WorkflowStepPresentation.stepTitle(step.kind, language: model.language))
+                            Text("\(index + 1). " + WorkflowStepPresentation.stepTitle(step.kind, language: model.settings.language))
                         }
                     }
                     VStack(alignment: .leading, spacing: RillSpacing.row) {
-                        Text(L10n.workflowExplanationCopy(.outputs, language: model.language)).font(.headline)
+                        Text(L10n.workflowExplanationCopy(.outputs, language: model.settings.language)).font(.headline)
                         ForEach(Array(workflow.plan.output.actions.enumerated()), id: \.offset) { index, action in
-                            Text("\(index + 1). " + L10n.actionName(action.id, language: model.language))
+                            Text("\(index + 1). " + L10n.actionName(action.id, language: model.settings.language))
                         }
                     }
                     HStack {
-                        Button(L10n.workflowDocument(.labelOpenFile, language: model.language)) { open(workflow) }
+                        Button(L10n.workflowDocument(.labelOpenFile, language: model.settings.language)) { open(workflow) }
                             .accessibilityIdentifier("workflow.document.open.\(workflow.id)")
-                        Button(L10n.workflowDocument(workflow.inputKind == .audio ? .labelRun : .labelRunClipboardText, language: model.language)) {
+                        Button(L10n.workflowDocument(workflow.inputKind == .audio ? .labelRun : .labelRunClipboardText, language: model.settings.language)) {
                             if workflow.inputKind == .audio { model.runWorkflow(workflow) }
                             else if let text = NSPasteboard.general.string(forType: .string) { model.runWorkflowText(text, workflow: workflow) }
                         }.disabled(!model.isWorkflowEnabled(workflow) || model.voice.isRunning || model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id))
                         Menu {
-                            Button(L10n.workflowExplanationCopy(.button, language: model.language)) {
+                            Button(L10n.workflowExplanationCopy(.button, language: model.settings.language)) {
                                 model.explainWorkflowBeforeRun(workflow)
                                 explanation = .init(workflowID: workflow.id)
                             }
-                            Button(L10n.workflowDocument(.labelDuplicate, language: model.language)) { open(workflow, duplicate: true) }
-                            Button(L10n.workflowDocument(model.workflowLibrary.builtInWorkflows.contains(where: { $0.id == workflow.id }) ? .labelRestoreDefault : .labelDelete, language: model.language), role: .destructive) { pendingDeletion = workflow }
+                            Button(L10n.workflowDocument(.labelDuplicate, language: model.settings.language)) { open(workflow, duplicate: true) }
+                            Button(L10n.workflowDocument(model.workflowLibrary.builtInWorkflows.contains(where: { $0.id == workflow.id }) ? .labelRestoreDefault : .labelDelete, language: model.settings.language), role: .destructive) { pendingDeletion = workflow }
                         } label: { Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue) }
-                        .help(L10n.workflowDocument(.labelMoreActions, language: model.language))
+                        .help(L10n.workflowDocument(.labelMoreActions, language: model.settings.language))
                     }
-                    Text(L10n.workflowDocument(.labelEditExternally, language: model.language)).font(.caption).foregroundStyle(.secondary)
+                    Text(L10n.workflowDocument(.labelEditExternally, language: model.settings.language)).font(.caption).foregroundStyle(.secondary)
                 }.padding(RillSpacing.page).frame(maxWidth: .infinity, alignment: .topLeading)
             }
         } else {
-            ContentUnavailableView(L10n.workspace(.selectWorkflow, language: model.language), systemImage: RillSystemSymbol.point3ConnectedTrianglepathDotted.rawValue)
+            ContentUnavailableView(L10n.workspace(.selectWorkflow, language: model.settings.language), systemImage: RillSystemSymbol.point3ConnectedTrianglepathDotted.rawValue)
         }
     }
 
     @ViewBuilder private var libraryActions: some View {
         Button {
             Task { if let url = await model.newWorkflowFile() { openFile(url) } }
-        } label: { Label(L10n.workflowDocument(.labelNewWorkflow, language: model.language), systemImage: RillSystemSymbol.plus.rawValue) }
+        } label: { Label(L10n.workflowDocument(.labelNewWorkflow, language: model.settings.language), systemImage: RillSystemSymbol.plus.rawValue) }
             .disabled(model.settings.isLoading || !model.isWorkflowLibraryAvailable)
         Menu {
-            Button(L10n.workflowDocument(.labelImportTOML, language: model.language), action: importFile)
+            Button(L10n.workflowDocument(.labelImportTOML, language: model.settings.language), action: importFile)
             if let directory = model.workflowConfigurationDirectoryURL {
-                Button(L10n.workflowDocument(.labelShowConfigurationFolder, language: model.language)) { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: directory.path) }
+                Button(L10n.workflowDocument(.labelShowConfigurationFolder, language: model.settings.language)) { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: directory.path) }
             }
-            Button(L10n.workflowDocument(.labelReloadFiles, language: model.language)) { Task { await model.reloadWorkflowFiles() } }
+            Button(L10n.workflowDocument(.labelReloadFiles, language: model.settings.language)) { Task { await model.reloadWorkflowFiles() } }
             Divider()
             ForEach(model.workflowLibrary.builtInWorkflows) { workflow in
-                Button(L10n.workflowDocument(.labelNewFrom, language: model.language) + model.localizedWorkflowName(for: workflow)) { open(workflow, duplicate: true) }
+                Button(L10n.workflowDocument(.labelNewFrom, language: model.settings.language) + model.localizedWorkflowName(for: workflow)) { open(workflow, duplicate: true) }
             }
-        } label: { Label(L10n.workflowDocument(.labelMoreActions, language: model.language), systemImage: RillSystemSymbol.ellipsisCircle.rawValue) }
+        } label: { Label(L10n.workflowDocument(.labelMoreActions, language: model.settings.language), systemImage: RillSystemSymbol.ellipsisCircle.rawValue) }
     }
 
     private func open(_ workflow: WorkflowDefinition, duplicate: Bool = false) {

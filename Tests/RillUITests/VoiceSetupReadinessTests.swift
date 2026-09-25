@@ -38,7 +38,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         XCTAssertNil(harness.model.voice.localSpeechPreparedModelIdentifier)
         XCTAssertEqual(
             harness.model.voice.localSpeechPreparationError,
-            L10n.text(.localSpeechTrustMaterialUnavailable, language: harness.model.language)
+            L10n.text(.localSpeechTrustMaterialUnavailable, language: harness.model.settings.language)
         )
     }
 
@@ -52,7 +52,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         XCTAssertEqual(harness.model.localSpeechAvailability, .architectureUnsupported)
         XCTAssertFalse(harness.model.localSpeechTrustMaterialAvailable)
         XCTAssertFalse(harness.model.setPreferredSpeechEngine(.local))
-        XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
+        XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
         XCTAssertEqual(
             L10n.localSpeechAvailabilityDescription(
                 harness.model.localSpeechAvailability,
@@ -78,7 +78,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         harness.model.prepareLocalSpeechModel()
         XCTAssertEqual(
             harness.model.voice.localSpeechPreparationError,
-            L10n.text(.localSpeechArchitectureUnsupported, language: harness.model.language)
+            L10n.text(.localSpeechArchitectureUnsupported, language: harness.model.settings.language)
         )
     }
 
@@ -215,7 +215,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         let expected = L10n.localSpeechPreparationFailure(.generic)
         XCTAssertEqual(
             harness.model.voice.localSpeechPreparationError,
-            expected.string(for: harness.model.language)
+            expected.string(for: harness.model.settings.language)
         )
         XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreparationFailed)
         XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)

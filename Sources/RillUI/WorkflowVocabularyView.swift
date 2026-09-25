@@ -35,7 +35,7 @@ struct VocabularyCollectionCard: View {
                         Text(
                             L10n.workflowVocabularyEntryCount(
                                 collection.entries.count,
-                                language: model.language
+                                language: model.settings.language
                             )
                         )
                         .font(.caption2.monospacedDigit())
@@ -60,7 +60,7 @@ struct VocabularyCollectionCard: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(
-                    "\(L10n.workflowText(.workflowCollectionEntriesToggle, language: model.language)): \(collection.name)"
+                    "\(L10n.workflowText(.workflowCollectionEntriesToggle, language: model.settings.language)): \(collection.name)"
                 )
             }
 
@@ -71,22 +71,22 @@ struct VocabularyCollectionCard: View {
         }
         .rillCard(.regular, cornerRadius: RillRadius.row, padding: 10)
         .alert(
-            L10n.workflowText(.workflowDeleteCollectionTitle, language: model.language),
+            L10n.workflowText(.workflowDeleteCollectionTitle, language: model.settings.language),
             isPresented: $confirmsCollectionDeletion
         ) {
-            Button(L10n.recordText(.cancel, language: model.language), role: .cancel) {}
-            Button(L10n.text(.clipboardDeleteItem, language: model.language), role: .destructive) {
+            Button(L10n.recordText(.cancel, language: model.settings.language), role: .cancel) {}
+            Button(L10n.text(.clipboardDeleteItem, language: model.settings.language), role: .destructive) {
                 model.deleteVocabularyCollection(collection.id)
             }
         } message: {
-            Text(L10n.workflowText(.workflowDeleteCollectionDetail, language: model.language))
+            Text(L10n.workflowText(.workflowDeleteCollectionDetail, language: model.settings.language))
         }
     }
 
     private var expandedContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             if collection.entries.isEmpty {
-                Text(L10n.workflowText(.workflowCollectionEmptyEntries, language: model.language))
+                Text(L10n.workflowText(.workflowCollectionEmptyEntries, language: model.settings.language))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -117,7 +117,7 @@ struct VocabularyCollectionCard: View {
                         L10n.targetedAccessibilityLabel(
                             .vocabularyDeleteRule,
                             target: entryTitle(entry),
-                            language: model.language
+                            language: model.settings.language
                         )
                     )
                     .accessibilityIdentifier(
@@ -127,33 +127,33 @@ struct VocabularyCollectionCard: View {
             }
 
             Picker(
-                L10n.workflowText(.workflowEntryKindLabel, language: model.language),
+                L10n.workflowText(.workflowEntryKindLabel, language: model.settings.language),
                 selection: $entryKind
             ) {
-                Text(L10n.vocabularyRuleKind(.hotword, language: model.language))
+                Text(L10n.vocabularyRuleKind(.hotword, language: model.settings.language))
                     .tag(VocabularyRuleKind.hotword)
-                Text(L10n.workflowText(.workflowReplacementKindOption, language: model.language))
+                Text(L10n.workflowText(.workflowReplacementKindOption, language: model.settings.language))
                     .tag(VocabularyRuleKind.mapping)
             }
             .labelsHidden()
             .pickerStyle(.segmented)
 
             TextField(
-                L10n.workflowText(.workflowPhrasePlaceholder, language: model.language),
+                L10n.workflowText(.workflowPhrasePlaceholder, language: model.settings.language),
                 text: $pattern
             )
             .textFieldStyle(.roundedBorder)
 
             if entryKind == .mapping {
                 TextField(
-                    L10n.workflowText(.workflowReplacementPlaceholder, language: model.language),
+                    L10n.workflowText(.workflowReplacementPlaceholder, language: model.settings.language),
                     text: $replacement
                 )
                 .textFieldStyle(.roundedBorder)
             }
 
             HStack {
-                Button(L10n.workflowText(.workflowAddEntry, language: model.language)) {
+                Button(L10n.workflowText(.workflowAddEntry, language: model.settings.language)) {
                     model.addVocabularyEntry(
                         to: collection.id,
                         kind: entryKind,
@@ -178,7 +178,7 @@ struct VocabularyCollectionCard: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(
-                        "\(L10n.workflowText(.workflowDeleteCollection, language: model.language)): \(collection.name)"
+                        "\(L10n.workflowText(.workflowDeleteCollection, language: model.settings.language)): \(collection.name)"
                     )
                     .accessibilityIdentifier(
                         "vocabulary.collection.\(collection.id.uuidString).delete"

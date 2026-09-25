@@ -48,7 +48,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     await waitUntil { !harness.model.settings.isLoading }
 
-    harness.model.applyLanguage(harness.model.language == .english
+    harness.model.applyLanguage(harness.model.settings.language == .english
       ? .simplifiedChinese
       : .english)
     await harness.model.flushPendingPersistenceWrites()
@@ -77,11 +77,11 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     await waitUntil { !harness.model.settings.isLoading }
 
-    let initialLanguage = harness.model.language
-    let initialClipboardCaptureEnabled = harness.model.systemClipboardCaptureEnabled
-    let initialEngine = harness.model.preferredSpeechEngine
-    let initialOutputMode = harness.model.builtinPushToTalkOutputMode
-    let initialLongRecordingMode = harness.model.longRecordingModeEnabled
+    let initialLanguage = harness.model.settings.language
+    let initialClipboardCaptureEnabled = harness.model.settings.systemClipboardCaptureEnabled
+    let initialEngine = harness.model.settings.preferredSpeechEngine
+    let initialOutputMode = harness.model.settings.builtinPushToTalkOutputMode
+    let initialLongRecordingMode = harness.model.settings.longRecordingModeEnabled
 
     XCTAssertFalse(harness.model.setInterfaceLanguage(.simplifiedChinese))
     XCTAssertFalse(harness.model.setSystemClipboardCaptureEnabled(!initialClipboardCaptureEnabled))
@@ -90,11 +90,11 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertFalse(harness.model.setLongRecordingModeEnabled(true))
     await harness.model.flushPendingPersistenceWrites()
 
-    XCTAssertEqual(harness.model.language, initialLanguage)
-    XCTAssertEqual(harness.model.systemClipboardCaptureEnabled, initialClipboardCaptureEnabled)
-    XCTAssertEqual(harness.model.preferredSpeechEngine, initialEngine)
-    XCTAssertEqual(harness.model.builtinPushToTalkOutputMode, initialOutputMode)
-    XCTAssertEqual(harness.model.longRecordingModeEnabled, initialLongRecordingMode)
+    XCTAssertEqual(harness.model.settings.language, initialLanguage)
+    XCTAssertEqual(harness.model.settings.systemClipboardCaptureEnabled, initialClipboardCaptureEnabled)
+    XCTAssertEqual(harness.model.settings.preferredSpeechEngine, initialEngine)
+    XCTAssertEqual(harness.model.settings.builtinPushToTalkOutputMode, initialOutputMode)
+    XCTAssertEqual(harness.model.settings.longRecordingModeEnabled, initialLongRecordingMode)
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.storage, storedValues)
     XCTAssertTrue(activity.setCounts.isEmpty)
@@ -139,11 +139,11 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertTrue(harness.model.setLongRecordingModeEnabled(true))
     await harness.model.flushPendingPersistenceWrites()
 
-    XCTAssertEqual(harness.model.language, .simplifiedChinese)
-    XCTAssertTrue(harness.model.systemClipboardCaptureEnabled)
-    XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
-    XCTAssertEqual(harness.model.builtinPushToTalkOutputMode, .saveToVoiceGroup)
-    XCTAssertTrue(harness.model.longRecordingModeEnabled)
+    XCTAssertEqual(harness.model.settings.language, .simplifiedChinese)
+    XCTAssertTrue(harness.model.settings.systemClipboardCaptureEnabled)
+    XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
+    XCTAssertEqual(harness.model.settings.builtinPushToTalkOutputMode, .saveToVoiceGroup)
+    XCTAssertTrue(harness.model.settings.longRecordingModeEnabled)
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.storage[.interfaceLanguage], AppLanguage.simplifiedChinese.rawValue)
     XCTAssertEqual(activity.storage[.systemClipboardCaptureEnabled], "true")
@@ -165,11 +165,11 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
       settingsWriteDebounceDuration: .zero
     )
     await waitUntil { !harness.model.settings.isLoading }
-    let initialLanguage = harness.model.language
-    let initialClipboardCaptureEnabled = harness.model.systemClipboardCaptureEnabled
-    let initialEngine = harness.model.preferredSpeechEngine
-    let initialOutputMode = harness.model.builtinPushToTalkOutputMode
-    let initialLongRecordingMode = harness.model.longRecordingModeEnabled
+    let initialLanguage = harness.model.settings.language
+    let initialClipboardCaptureEnabled = harness.model.settings.systemClipboardCaptureEnabled
+    let initialEngine = harness.model.settings.preferredSpeechEngine
+    let initialOutputMode = harness.model.settings.builtinPushToTalkOutputMode
+    let initialLongRecordingMode = harness.model.settings.longRecordingModeEnabled
 
     await harness.model.stopSettingsReadTasksForApplicationShutdown()
 
@@ -194,11 +194,11 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     await harness.model.flushPendingPersistenceWrites()
 
-    XCTAssertEqual(harness.model.language, initialLanguage)
-    XCTAssertEqual(harness.model.systemClipboardCaptureEnabled, initialClipboardCaptureEnabled)
-    XCTAssertEqual(harness.model.preferredSpeechEngine, initialEngine)
-    XCTAssertEqual(harness.model.builtinPushToTalkOutputMode, initialOutputMode)
-    XCTAssertEqual(harness.model.longRecordingModeEnabled, initialLongRecordingMode)
+    XCTAssertEqual(harness.model.settings.language, initialLanguage)
+    XCTAssertEqual(harness.model.settings.systemClipboardCaptureEnabled, initialClipboardCaptureEnabled)
+    XCTAssertEqual(harness.model.settings.preferredSpeechEngine, initialEngine)
+    XCTAssertEqual(harness.model.settings.builtinPushToTalkOutputMode, initialOutputMode)
+    XCTAssertEqual(harness.model.settings.longRecordingModeEnabled, initialLongRecordingMode)
     let activity = await store.activitySnapshot()
     XCTAssertTrue(activity.setCounts.isEmpty)
     XCTAssertTrue(activity.removeCounts.isEmpty)
@@ -244,8 +244,8 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
 
     await waitUntil { !harness.model.settings.isLoading }
 
-    XCTAssertEqual(harness.model.localSpeechModel, "qwen3-asr-1.7b-mlx-8bit")
-    XCTAssertFalse(harness.model.localSpeechPrewarm)
+    XCTAssertEqual(harness.model.settings.localSpeechModel, "qwen3-asr-1.7b-mlx-8bit")
+    XCTAssertFalse(harness.model.settings.localSpeechPrewarm)
     let activity = await store.activitySnapshot()
     XCTAssertTrue(activity.atomicSnapshots.isEmpty)
     XCTAssertNil(activity.setCounts[.legacyWhisperKitModel])
@@ -266,9 +266,9 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await waitUntil { !harness.model.settings.isLoading }
     await harness.model.flushPendingPersistenceWrites()
 
-    XCTAssertEqual(harness.model.localSpeechModel, "qwen3-asr-0.6b-mlx-8bit")
+    XCTAssertEqual(harness.model.settings.localSpeechModel, "qwen3-asr-0.6b-mlx-8bit")
     XCTAssertTrue(harness.model.voice.downloadedLocalSpeechModels.isEmpty)
-    XCTAssertTrue(harness.model.localSpeechPrewarm)
+    XCTAssertTrue(harness.model.settings.localSpeechPrewarm)
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.atomicWriteCount, 0)
     XCTAssertEqual(activity.storage[.localSpeechModel], "qwen3-asr-0.6b-mlx-8bit")
@@ -299,7 +299,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await waitUntil { !harness.model.settings.isLoading }
     await harness.model.flushPendingPersistenceWrites()
 
-    XCTAssertTrue(harness.model.localSpeechPrewarm)
+    XCTAssertTrue(harness.model.settings.localSpeechPrewarm)
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.storage[.localSpeechPrewarm], "true")
     XCTAssertEqual(activity.setCounts[.localSpeechPrewarm], 1)
@@ -334,7 +334,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     await waitUntil { !harness.model.settings.isLoading }
 
     XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .localSpeech))
-    XCTAssertEqual(harness.model.localSpeechModel, "qwen3-asr-1.7b-mlx-8bit")
+    XCTAssertEqual(harness.model.settings.localSpeechModel, "qwen3-asr-1.7b-mlx-8bit")
     let activity = await store.activitySnapshot()
     XCTAssertTrue(activity.atomicSnapshots.isEmpty)
   }
@@ -364,7 +364,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     }
     await harness.model.flushPendingPersistenceWrites()
 
-    XCTAssertEqual(harness.model.localSpeechModel, defaultModel)
+    XCTAssertEqual(harness.model.settings.localSpeechModel, defaultModel)
     XCTAssertEqual(try source.currentSettings().model, defaultModel)
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.storage[.localSpeechModel], defaultModel)
@@ -401,7 +401,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     }
     await harness.model.flushPendingPersistenceWrites()
 
-    XCTAssertEqual(harness.model.localSpeechModel, selectedModel)
+    XCTAssertEqual(harness.model.settings.localSpeechModel, selectedModel)
     XCTAssertEqual(try source.currentSettings().model, selectedModel)
     let activity = await store.activitySnapshot()
     XCTAssertEqual(activity.storage[.localSpeechModel], selectedModel)
@@ -426,9 +426,9 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     await waitUntil { !harness.model.settings.isLoading }
 
-    XCTAssertEqual(harness.model.openAIAPIKey, "stored-openai-key")
-    XCTAssertEqual(harness.model.openAIBaseURL, "https://gateway.example.com/openai/v1")
-    XCTAssertEqual(harness.model.openAIModel, "vendor/custom-model")
+    XCTAssertEqual(harness.model.settings.openAIAPIKey, "stored-openai-key")
+    XCTAssertEqual(harness.model.settings.openAIBaseURL, "https://gateway.example.com/openai/v1")
+    XCTAssertEqual(harness.model.settings.openAIModel, "vendor/custom-model")
     XCTAssertEqual(harness.model.settings.openAICredentialAvailability, .available)
 
     harness.model.applyOpenAIAPIKey("replacement-openai-key")
@@ -559,7 +559,7 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertEqual(harness.model.workflowLibrary.workflowLibraryAvailability, .unavailable)
     XCTAssertEqual(harness.model.voice.downloadedLocalSpeechModelsAvailability, .unavailable)
     XCTAssertEqual(harness.model.vocabulary.availability, .unavailable)
-    XCTAssertEqual(harness.model.openAIAPIKey, "keychain-only-key")
+    XCTAssertEqual(harness.model.settings.openAIAPIKey, "keychain-only-key")
     XCTAssertEqual(harness.model.settings.openAICredentialAvailability, .inaccessible)
 
     // Local speech uses the process-wide session source rather than

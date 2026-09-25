@@ -83,7 +83,7 @@ struct RillApplication: App {
         }
         .defaultSize(width: 960, height: 720)
         .commands {
-            RillGlobalSearchCommands(language: container.model.language)
+            RillGlobalSearchCommands(language: container.model.settings.language)
         }
 
         Settings {
@@ -107,7 +107,7 @@ struct RillApplication: App {
         MenuBarSystemSymbolPolicy.symbol(
             isVoiceRunActive: container.model.voice.isRunning,
             globalInputCapability: container.model.globalInputCapability,
-            systemClipboardCaptureEnabled: container.model.systemClipboardCaptureEnabled,
+            systemClipboardCaptureEnabled: container.model.settings.systemClipboardCaptureEnabled,
             clipboardCaptureState: container.model.systemClipboardCaptureControlSnapshot.state,
             recordCount: container.model.recordCount
         )

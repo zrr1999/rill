@@ -18,7 +18,7 @@ extension SettingsView {
         Label(
           L10n.localSpeechAvailabilityDescription(
             model.localSpeechAvailability,
-            language: model.language
+            language: model.settings.language
           ),
           systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
         )
@@ -27,7 +27,7 @@ extension SettingsView {
         .accessibilityIdentifier("settings.local-speech-unavailable")
       }
 
-      Text(L10n.settingsText(.settingsSpeechModelEnablementDetail, language: model.language))
+      Text(L10n.settingsText(.settingsSpeechModelEnablementDetail, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)
 
@@ -39,14 +39,14 @@ extension SettingsView {
       }
 
       VStack(alignment: .leading, spacing: RillSpacing.row) {
-          Text(L10n.text(.settingsLocalSpeech, language: model.language))
+          Text(L10n.text(.settingsLocalSpeech, language: model.settings.language))
             .font(.subheadline.weight(.medium))
 
           if model.localSpeechTrustMaterialAvailable {
             Text(
               L10n.localSpeechAvailabilityDescription(
                 model.localSpeechAvailability,
-                language: model.language
+                language: model.settings.language
               )
             )
             .font(.caption)
@@ -57,7 +57,7 @@ extension SettingsView {
             if model.speechModelResourceCatalog.isEmpty {
               if !model.trustedLocalSpeechModels.isEmpty {
                 Picker(
-                  L10n.text(.localSpeechModel, language: model.language),
+                  L10n.text(.localSpeechModel, language: model.settings.language),
                   selection: Binding(
                     get: { model.selectedTrustedLocalSpeechModelIdentifier },
                     set: { _ = model.setPreferredLocalSpeechModel($0) }
@@ -65,7 +65,7 @@ extension SettingsView {
                 ) {
                   ForEach(modelsForSelectedLocalSpeechEngine) { descriptor in
                     Text(
-                      model.language == .english
+                      model.settings.language == .english
                         ? descriptor.englishName
                         : descriptor.simplifiedChineseName
                     )
@@ -83,7 +83,7 @@ extension SettingsView {
                   $0.id == model.selectedTrustedLocalSpeechModelIdentifier
                 }) {
                   Text(
-                    model.language == .english
+                    model.settings.language == .english
                       ? descriptor.englishDetail
                       : descriptor.simplifiedChineseDetail
                   )
@@ -100,7 +100,7 @@ extension SettingsView {
                     Button(
                       L10n.settingsText(
                         .settingsUseHardwareRecommendation,
-                        language: model.language
+                        language: model.settings.language
                       )
                     ) {
                       model.selectRecommendedLocalSpeechModel()
@@ -114,7 +114,7 @@ extension SettingsView {
                   Text(
                     L10n.settingsText(
                       .settingsStreamingPreviewModelDetail,
-                      language: model.language
+                      language: model.settings.language
                     )
                   )
                   .font(.caption)
@@ -133,7 +133,7 @@ extension SettingsView {
                   Text(
                     L10n.text(
                       preparationStage.localizedKey,
-                      language: model.language
+                      language: model.settings.language
                     )
                   )
                   .foregroundStyle(.secondary)
@@ -146,7 +146,7 @@ extension SettingsView {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
                   }
-                  Button(L10n.text(.localSpeechCancelPreparation, language: model.language)) {
+                  Button(L10n.text(.localSpeechCancelPreparation, language: model.settings.language)) {
                     model.cancelLocalSpeechModelPreparation()
                   }
                   .buttonStyle(.bordered)
@@ -167,7 +167,7 @@ extension SettingsView {
               VStack(alignment: .leading, spacing: RillSpacing.compact) {
                 HStack(alignment: .firstTextBaseline, spacing: RillSpacing.card) {
                   Label(
-                    L10n.text(.localSpeechPreparationReady, language: model.language),
+                    L10n.text(.localSpeechPreparationReady, language: model.settings.language),
                     systemImage: RillSystemSymbol.checkmarkCircleFill.rawValue
                   )
                   .foregroundStyle(.green)
@@ -175,7 +175,7 @@ extension SettingsView {
                   Spacer()
 
                   Button(
-                    L10n.text(.localSpeechReleaseMemory, language: model.language)
+                    L10n.text(.localSpeechReleaseMemory, language: model.settings.language)
                   ) {
                     model.releaseLocalSpeechModelMemory()
                   }
@@ -184,7 +184,7 @@ extension SettingsView {
                   .help(
                     L10n.text(
                       .localSpeechReleaseMemoryHint,
-                      language: model.language
+                      language: model.settings.language
                     )
                   )
                   .accessibilityIdentifier("settings.local-speech.release-memory")
@@ -210,7 +210,7 @@ extension SettingsView {
                 )
                 .accessibilityIdentifier("settings.local-speech.record-test")
 
-                Text(L10n.text(.localSpeechLocalTestHint, language: model.language))
+                Text(L10n.text(.localSpeechLocalTestHint, language: model.settings.language))
                   .font(.caption)
                   .foregroundStyle(.secondary)
               }
@@ -221,7 +221,7 @@ extension SettingsView {
                 model.trustedLocalSpeechModels.isEmpty
                   ? .localSpeechPreparationHint
                   : .localSpeechTrustedCatalogHint,
-                language: model.language
+                language: model.settings.language
               )
             )
             .font(.caption)
@@ -240,7 +240,7 @@ extension SettingsView {
       )
       .disabled(model.hasUnavailableScalarSettings(in: .localSpeech))
 
-      Text(L10n.text(.settingsSpeechEngineDescription, language: model.language))
+      Text(L10n.text(.settingsSpeechEngineDescription, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)
     }
@@ -248,11 +248,11 @@ extension SettingsView {
 
   var llmModelSelection: Binding<LLMModelSelection> {
     Binding(
-      get: { LLMModelSelection(modelIdentifier: model.openAIModel) },
+      get: { LLMModelSelection(modelIdentifier: model.settings.openAIModel) },
       set: { selection in
         if let modelIdentifier = selection.modelIdentifier {
           model.setOpenAIModel(modelIdentifier)
-        } else if LLMModelSelection(modelIdentifier: model.openAIModel) != .custom {
+        } else if LLMModelSelection(modelIdentifier: model.settings.openAIModel) != .custom {
           model.setOpenAIModel("")
         }
       }
@@ -260,24 +260,24 @@ extension SettingsView {
   }
 
   func llmModelLabel(_ selection: LLMModelSelection) -> String {
-    L10n.llmModelLabel(selection, language: model.language)
+    L10n.llmModelLabel(selection, language: model.settings.language)
   }
 
   var usesThirdPartyOpenAIEndpoint: Bool {
-    guard let host = URLComponents(string: model.openAIBaseURL)?.host?.lowercased() else {
+    guard let host = URLComponents(string: model.settings.openAIBaseURL)?.host?.lowercased() else {
       return false
     }
     return host != "api.openai.com"
   }
 
   var thirdPartyOpenAICompatibilityHint: String {
-    L10n.settingsText(.settingsThirdPartyOpenAIHint, language: model.language)
+    L10n.settingsText(.settingsThirdPartyOpenAIHint, language: model.settings.language)
   }
 
   var openAIVerificationFailureMessage: String {
     L10n.openAIVerificationFailureMessage(
       model.settings.openAIVerificationFailure,
-      language: model.language
+      language: model.settings.language
     )
   }
 
@@ -320,15 +320,15 @@ extension SettingsView {
   var speechModelPoolSettings: some View {
     if !model.speechModelResourceCatalog.isEmpty {
       VStack(alignment: .leading, spacing: 10) {
-        Text(L10n.settingsText(.settingsModelPoolTitle, language: model.language))
+        Text(L10n.settingsText(.settingsModelPoolTitle, language: model.settings.language))
           .font(.caption.weight(.semibold))
-        Text(L10n.settingsText(.settingsModelPoolDescription, language: model.language))
+        Text(L10n.settingsText(.settingsModelPoolDescription, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)
 
         if model.voice.speechModelPoolDegradedByMemoryPressure {
           Label(
-            L10n.settingsText(.settingsModelPoolDegraded, language: model.language),
+            L10n.settingsText(.settingsModelPoolDegraded, language: model.settings.language),
             systemImage: RillSystemSymbol.memorychip.rawValue
           )
           .font(.caption)
@@ -340,7 +340,7 @@ extension SettingsView {
           VStack(alignment: .leading, spacing: 5) {
             Toggle(
               isOn: Binding(
-                get: { model.enabledSpeechModelIDs.contains(descriptor.id) },
+                get: { model.settings.enabledSpeechModelIDs.contains(descriptor.id) },
                 set: { model.setSpeechModelEnabled(descriptor.id, enabled: $0) }
               )
             ) {
@@ -349,9 +349,9 @@ extension SettingsView {
             .disabled(model.settings.isLoading)
 
             Toggle(
-              L10n.settingsText(.settingsKeepResident, language: model.language),
+              L10n.settingsText(.settingsKeepResident, language: model.settings.language),
               isOn: Binding(
-                get: { model.residentSpeechModelIDs.contains(descriptor.id) },
+                get: { model.settings.residentSpeechModelIDs.contains(descriptor.id) },
                 set: { model.setSpeechModelResident(descriptor.id, resident: $0) }
               )
             )
@@ -359,7 +359,7 @@ extension SettingsView {
             .controlSize(.small)
             .disabled(
               model.settings.isLoading
-                || !model.enabledSpeechModelIDs.contains(descriptor.id)
+                || !model.settings.enabledSpeechModelIDs.contains(descriptor.id)
             )
           }
           .padding(.vertical, 2)
@@ -368,7 +368,7 @@ extension SettingsView {
         if let budget = model.pendingResidentSpeechModelBudget {
           VStack(alignment: .leading, spacing: 6) {
             Label(
-              L10n.settingsText(.settingsResidentMemoryWarning, language: model.language),
+              L10n.settingsText(.settingsResidentMemoryWarning, language: model.settings.language),
               systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
             )
             .foregroundStyle(.orange)
@@ -377,15 +377,15 @@ extension SettingsView {
                 estimatedGigabytes: Double(budget.estimatedPeakByteCount) / 1_073_741_824,
                 estimatedFractionPercent: budget.estimatedFraction * 100,
                 modelList: budget.models.map(\.id).joined(separator: ", "),
-                language: model.language
+                language: model.settings.language
               )
             )
             .font(.caption)
             HStack {
-              Button(L10n.settingsText(.settingsEnableAnyway, language: model.language)) {
+              Button(L10n.settingsText(.settingsEnableAnyway, language: model.settings.language)) {
                 model.confirmPendingResidentSpeechModels()
               }
-              Button(L10n.recordText(.cancel, language: model.language), role: .cancel) {
+              Button(L10n.recordText(.cancel, language: model.settings.language), role: .cancel) {
                 model.cancelPendingResidentSpeechModels()
               }
             }
@@ -407,8 +407,8 @@ extension SettingsView {
   ) -> String {
     let capability =
       descriptor.capability == .speechToText
-      ? L10n.settingsText(.settingsSpeechModelCapabilitySTT, language: model.language)
-      : L10n.settingsText(.settingsSpeechModelCapabilityTTS, language: model.language)
+      ? L10n.settingsText(.settingsSpeechModelCapabilitySTT, language: model.settings.language)
+      : L10n.settingsText(.settingsSpeechModelCapabilityTTS, language: model.settings.language)
     let size = ByteCountFormatter.string(
       fromByteCount: Int64(clamping: descriptor.downloadByteCount),
       countStyle: .file

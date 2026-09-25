@@ -12,7 +12,7 @@ extension AppModel {
     }
     guard !hasUnavailableScalarSettings(in: .localSpeech) else {
       self.voice.localSpeechPreparationError = ProviderSettingsPersistenceError.unavailableStoredSettings
-        .message(language: language)
+        .message(language: self.settings.language)
       return
     }
     guard localSpeechTrustMaterialAvailable else {
@@ -21,7 +21,7 @@ extension AppModel {
       self.voice.localSpeechPreparedModelIdentifier = nil
       self.voice.localSpeechPreparationError = L10n.localSpeechAvailabilityDescription(
         localSpeechAvailability,
-        language: language
+        language: self.settings.language
       )
       return
     }
@@ -36,11 +36,11 @@ extension AppModel {
         self.voice.localSpeechPreparedModelIdentifier = nil
         self.voice.localSpeechPreparationError = L10n.text(
           L10n.InterfaceKey.localSpeechTrustMaterialUnavailable,
-          language: language
+          language: self.settings.language
         )
         return
       }
-      if localSpeechModel != selectedModel {
+      if self.settings.localSpeechModel != selectedModel {
         applyLocalSpeechModel(selectedModel)
       }
     }
@@ -184,7 +184,7 @@ extension AppModel {
   func applyLocalSpeechPreparationFailure(_ error: Error) {
     let stage = (error as? LocalSpeechPreparationFailure)?.stage ?? .generic
     let presentation = L10n.localSpeechPreparationFailure(stage)
-    self.voice.localSpeechPreparationError = presentation.string(for: language)
+    self.voice.localSpeechPreparationError = presentation.string(for: self.settings.language)
     append(
       english: presentation.english,
       simplifiedChinese: presentation.simplifiedChinese

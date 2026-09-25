@@ -16,7 +16,7 @@ extension AppModel {
     else { return }
 
     self.voice.measuredSpeechModelPeakByteCounts[modelID] = peakByteCount
-    if residentSpeechModelIDs.contains(modelID) {
+    if self.settings.residentSpeechModelIDs.contains(modelID) {
       applyResidentSpeechBudgetConfirmation(nil)
     }
     let encoder = JSONEncoder()
@@ -32,7 +32,7 @@ extension AppModel {
       return
     }
 
-    let desiredModelIDs = residentSpeechModelIDs.intersection(enabledSpeechModelIDs)
+    let desiredModelIDs = self.settings.residentSpeechModelIDs.intersection(self.settings.enabledSpeechModelIDs)
     let addedModelIDs = desiredModelIDs.subtracting(previousModelIDs)
     let removedModelIDs = previousModelIDs.subtracting(desiredModelIDs)
     guard !addedModelIDs.isEmpty || !removedModelIDs.isEmpty else { return }
@@ -97,7 +97,7 @@ extension AppModel {
 
   public var residentSpeechModelBudget: SpeechModelResourceBudget {
     SpeechModelResourceBudget(
-      residentModelIDs: residentSpeechModelIDs,
+      residentModelIDs: self.settings.residentSpeechModelIDs,
       catalog: speechModelResourceCatalog,
       physicalMemoryByteCount: UInt64(max(localSpeechPhysicalMemoryGiB, 0))
         * 1_073_741_824
@@ -118,20 +118,20 @@ extension AppModel {
   public func setSpeechModelEnabled(_ modelID: String, enabled: Bool) {
     guard speechModelResourceCatalog.contains(where: { $0.id == modelID }) else { return }
     if enabled {
-      let inserted = !enabledSpeechModelIDs.contains(modelID)
-      applyEnabledSpeechModelIDs(enabledSpeechModelIDs.union([modelID]))
+      let inserted = !self.settings.enabledSpeechModelIDs.contains(modelID)
+      applyEnabledSpeechModelIDs(self.settings.enabledSpeechModelIDs.union([modelID]))
       if inserted { prepareEnabledSpeechModel(modelID) }
     } else {
       self.voice.enabledSpeechModelPreparationTasks.removeValue(forKey: modelID)?.cancel()
-      applyEnabledSpeechModelIDs(enabledSpeechModelIDs.subtracting([modelID]))
-      applyResidentSpeechModelIDs(residentSpeechModelIDs.subtracting([modelID]))
+      applyEnabledSpeechModelIDs(self.settings.enabledSpeechModelIDs.subtracting([modelID]))
+      applyResidentSpeechModelIDs(self.settings.residentSpeechModelIDs.subtracting([modelID]))
       self.voice.pendingResidentSpeechModelIDs?.remove(modelID)
     }
   }
 
   public func setSpeechModelResident(_ modelID: String, resident: Bool) {
-    guard enabledSpeechModelIDs.contains(modelID) else { return }
-    var proposed = residentSpeechModelIDs
+    guard self.settings.enabledSpeechModelIDs.contains(modelID) else { return }
+    var proposed = self.settings.residentSpeechModelIDs
     if resident {
       proposed.insert(modelID)
     } else {
@@ -144,7 +144,7 @@ extension AppModel {
         * 1_073_741_824
     )
     if budget.requiresConfirmation,
-      residentSpeechBudgetConfirmation != budget.confirmationFingerprint
+      self.settings.residentSpeechBudgetConfirmation != budget.confirmationFingerprint
     {
       self.voice.pendingResidentSpeechModelIDs = proposed
       return

@@ -24,7 +24,7 @@ extension AppModel {
   ) -> WorkflowDefinition? {
     let recognizerResolution = WorkflowRecognizerResolution.localSpeech
     let outputResolution: WorkflowOutputResolution
-    switch builtinPushToTalkOutputMode {
+    switch self.settings.builtinPushToTalkOutputMode {
     case .pasteIntoApp:
       outputResolution = .builtinPasteIntoApplication
     case .saveToVoiceGroup:

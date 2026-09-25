@@ -159,7 +159,7 @@ extension AppModel {
   }
 
   func syncLiveSubtitlePanel() {
-    updateLiveSubtitlePanelAction(liveSubtitleSnapshot, language)
+    updateLiveSubtitlePanelAction(liveSubtitleSnapshot, self.settings.language)
   }
 
   func queuedBackgroundRunCount(from snapshot: AudioProcessingQueueSnapshot?) -> Int {

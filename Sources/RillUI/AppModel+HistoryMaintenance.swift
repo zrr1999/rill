@@ -45,7 +45,7 @@ extension AppModel {
         guard !hasActiveOrQueuedVoiceRun else {
             self.history.localHistoryMaintenanceBlockedReason = L10n.runText(
                 .clearRunHistoryBlockedActiveRun,
-                language: language
+                language: self.settings.language
             )
             return
         }
@@ -122,7 +122,7 @@ extension AppModel {
             self.history.shouldStartPeriodicHistoryRetentionMaintenance = false
             self.history.localHistoryMaintenanceBlockedReason = L10n.runText(
                 .retentionCleanupPausedLoadFailed,
-                language: language
+                language: self.settings.language
             )
             return
         }
@@ -134,7 +134,7 @@ extension AppModel {
             }
             self.history.localHistoryMaintenanceBlockedReason = L10n.runText(
                 .retentionCleanupServiceUnavailable,
-                language: language
+                language: self.settings.language
             )
             return
         }
@@ -242,7 +242,7 @@ extension AppModel {
         guard let settingsStore else {
             self.history.historyRetentionSettingsWriteError = L10n.runText(
                 .retentionSaveStorageUnavailable,
-                language: language
+                language: self.settings.language
             )
             refreshHistoryRetentionSettingsErrorPresentation()
             return
@@ -281,7 +281,7 @@ extension AppModel {
                 guard !self.hasBegunApplicationShutdown else { return }
                 self.history.historyRetentionSettingsWriteError = L10n.runText(
                     .retentionSaveFailedRepair,
-                    language: self.language
+                    language: self.settings.language
                 )
                 self.refreshHistoryRetentionSettingsErrorPresentation()
                 self.append(
@@ -325,7 +325,7 @@ extension AppModel {
         self.history.isLocalHistoryMaintenanceRunning = false
         self.history.localHistoryMaintenanceBlockedReason = L10n.runText(
             .maintenanceServiceUnavailable,
-            language: language
+            language: self.settings.language
         )
     }
 
@@ -477,7 +477,7 @@ extension AppModel {
     }
 
     private func localizedPendingReason(_ reason: LocalHistoryMaintenancePendingReason) -> String {
-        switch (reason, language) {
+        switch (reason, self.settings.language) {
         case (.logicalDeletionFailed, .english):
             return "Some local history could not be removed. Retry cleanup."
         case (.logicalDeletionFailed, .simplifiedChinese):
@@ -498,7 +498,7 @@ extension AppModel {
     }
 
     private func localizedBlockReason(_ reason: LocalHistoryMaintenanceBlockReason) -> String {
-        switch (reason, language) {
+        switch (reason, self.settings.language) {
         case (.stateReadFailed, .english):
             return "Cleanup state could not be read. History was left unchanged."
         case (.stateReadFailed, .simplifiedChinese):

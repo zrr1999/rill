@@ -22,7 +22,7 @@ extension AppModelTests {
         harness.model.toggleClipboardCaptureEnabled()
         XCTAssertEqual(enablementRequests, [true, false])
         XCTAssertEqual(preferenceRevisions, [0, 1])
-        XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
 
         harness.model.updateSystemClipboardCaptureControlState(
             SystemClipboardCaptureControlSnapshot(revision: 1, state: .paused)
@@ -34,7 +34,7 @@ extension AppModelTests {
         harness.model.toggleClipboardCaptureEnabled()
         XCTAssertEqual(enablementRequests, [true, false, true])
         XCTAssertEqual(preferenceRevisions, [0, 1, 2])
-        XCTAssertTrue(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertTrue(harness.model.settings.systemClipboardCaptureEnabled)
         harness.model.updateSystemClipboardCaptureControlState(
             SystemClipboardCaptureControlSnapshot(revision: 2, state: .ignoringNextExternalChange)
         )

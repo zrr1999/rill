@@ -38,12 +38,12 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       stopSpeechPlayback: { false }
     )
 
-    XCTAssertEqual(harness.model.ttsModelIdentifier, int8.id)
+    XCTAssertEqual(harness.model.settings.ttsModelIdentifier, int8.id)
     XCTAssertEqual(harness.model.voice.ttsResourceState, .notInstalled)
     XCTAssertTrue(harness.model.setPreferredTTSModel(bf16.id))
     XCTAssertEqual(harness.model.voice.ttsResourceState, .ready)
     XCTAssertFalse(harness.model.setPreferredTTSModel("unreviewed"))
-    XCTAssertEqual(harness.model.ttsModelIdentifier, bf16.id)
+    XCTAssertEqual(harness.model.settings.ttsModelIdentifier, bf16.id)
   }
 
   @MainActor
@@ -75,7 +75,7 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     )
 
     await waitUntil { !harness.model.settings.isLoading }
-    XCTAssertEqual(harness.model.ttsModelIdentifier, bf16.id)
+    XCTAssertEqual(harness.model.settings.ttsModelIdentifier, bf16.id)
 
     XCTAssertTrue(harness.model.setPreferredTTSModel(int4.id))
     await harness.model.flushPendingPersistenceWrites()

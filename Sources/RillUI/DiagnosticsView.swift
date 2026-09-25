@@ -12,30 +12,30 @@ public struct DiagnosticsView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text(L10n.text(.diagnosticsDescription, language: model.language))
+                Text(L10n.text(.diagnosticsDescription, language: model.settings.language))
                     .foregroundStyle(.secondary)
                 diagnosticsSection
             }
             .padding(24)
         }
-        .navigationTitle(L10n.text(.diagnosticsTitle, language: model.language))
+        .navigationTitle(L10n.text(.diagnosticsTitle, language: model.settings.language))
     }
 
     private var diagnosticsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Label(
-                        L10n.text(.diagnosticsTimeline, language: model.language),
+                        L10n.text(.diagnosticsTimeline, language: model.settings.language),
                         systemImage: RillSystemSymbol.clockBadgeCheckmark.rawValue
                     )
                     .font(.headline)
                     Spacer()
                     Picker(
-                        L10n.text(.diagnosticsTimeline, language: model.language),
+                        L10n.text(.diagnosticsTimeline, language: model.settings.language),
                         selection: $timelineFilter
                     ) {
                         ForEach(DiagnosticsTimelineFilter.allCases) { filter in
-                            Text(filter.title(language: model.language))
+                            Text(filter.title(language: model.settings.language))
                                 .tag(filter)
                         }
                     }
@@ -43,7 +43,7 @@ public struct DiagnosticsView: View {
                     .pickerStyle(.menu)
                     .fixedSize()
                     .accessibilityIdentifier("diagnostics.timeline.filter")
-                    Button(L10n.text(.refreshDiagnostics, language: model.language)) {
+                    Button(L10n.text(.refreshDiagnostics, language: model.settings.language)) {
                         model.refreshDiagnostics()
                     }
                     .disabled(model.history.diagnosticsLoadState == .loading)
@@ -56,21 +56,21 @@ public struct DiagnosticsView: View {
                     filter: timelineFilter
                 ) {
                 case .loading(let entries):
-                    ProgressView(L10n.text(.diagnosticsLoading, language: model.language))
+                    ProgressView(L10n.text(.diagnosticsLoading, language: model.settings.language))
                         .controlSize(.small)
                         .accessibilityIdentifier("diagnostics.timeline.loading")
                     timelineRows(entries)
                 case .failed(let entries):
                     VStack(alignment: .leading, spacing: 8) {
                         Label(
-                            L10n.text(.diagnosticsLoadFailed, language: model.language),
+                            L10n.text(.diagnosticsLoadFailed, language: model.settings.language),
                             systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
                         )
                         .font(.callout)
                         .foregroundStyle(.red)
                         .accessibilityIdentifier("diagnostics.timeline.error")
 
-                        Button(L10n.text(.diagnosticsRetry, language: model.language)) {
+                        Button(L10n.text(.diagnosticsRetry, language: model.settings.language)) {
                             model.refreshDiagnostics()
                         }
                         .disabled(model.history.diagnosticsLoadState == .loading)
@@ -78,7 +78,7 @@ public struct DiagnosticsView: View {
                     }
                     timelineRows(entries)
                 case .empty:
-                    Text(L10n.text(.diagnosticsEmpty, language: model.language))
+                    Text(L10n.text(.diagnosticsEmpty, language: model.settings.language))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("diagnostics.timeline.empty")

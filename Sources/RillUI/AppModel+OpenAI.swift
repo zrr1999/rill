@@ -6,8 +6,8 @@ extension AppModel {
       && !self.settings.isLoading
       && self.settings.openAICredentialAvailability == .available
       && !hasUnavailableScalarSettings(in: .openAI)
-      && OpenAISettings.isValidBaseURL(openAIBaseURL)
-      && OpenAISettings.isValidModelIdentifier(openAIModel)
+      && OpenAISettings.isValidBaseURL(self.settings.openAIBaseURL)
+      && OpenAISettings.isValidModelIdentifier(self.settings.openAIModel)
       && self.settings.openAIConfigurationVerificationState != .verifying
   }
 
@@ -17,9 +17,9 @@ extension AppModel {
     self.settings.openAIVerificationGeneration &+= 1
     let generation = self.settings.openAIVerificationGeneration
     let settings = OpenAISettings(
-      apiKey: openAIAPIKey,
-      baseURL: openAIBaseURL,
-      model: openAIModel
+      apiKey: self.settings.openAIAPIKey,
+      baseURL: self.settings.openAIBaseURL,
+      model: self.settings.openAIModel
     )
     self.settings.openAIVerificationFailure = nil
     self.settings.openAIConfigurationVerificationState = .verifying

@@ -10,7 +10,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
 
         await waitUntilSettingsLoadFinishes(harness.model)
 
-        XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
         var replayedEnabled: Bool?
         var replayedRevision: UInt64?
@@ -34,7 +34,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
 
         await waitUntilSettingsLoadFinishes(harness.model)
 
-        XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
         var replayedEnabled: Bool?
         var replayedRevision: UInt64?
@@ -60,7 +60,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
             let harness = makeHarness(settingsStore: store)
             await waitUntilSettingsLoadFinishes(harness.model)
 
-            XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+            XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
             XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
             XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
             XCTAssertFalse(harness.model.setSystemClipboardCaptureEnabled(true))
@@ -77,7 +77,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
 
         await waitUntilSettingsLoadFinishes(harness.model)
 
-        XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
         XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
         XCTAssertFalse(harness.model.setSystemClipboardCaptureEnabled(true))
@@ -89,7 +89,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
 
         await waitUntilSettingsLoadFinishes(harness.model)
 
-        XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
         XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
         var replayedEnabled: Bool?
@@ -158,7 +158,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
         await store.resumeBatchRead()
         await waitUntilSettingsLoadFinishes(harness.model)
 
-        XCTAssertTrue(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertTrue(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertEqual(publishedEnabled, [false, true])
         XCTAssertEqual(publishedRevisions, [0, 1])
         let activity = await store.activitySnapshot()
@@ -190,7 +190,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
             !harness.model.isRetryingUnavailableScalarSettings(in: .systemClipboard)
         }
 
-        XCTAssertTrue(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertTrue(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
         XCTAssertEqual(publishedEnabled, [false, true])
         XCTAssertEqual(publishedRevisions, [failedClosedRevision, failedClosedRevision + 1])

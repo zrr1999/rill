@@ -2934,7 +2934,7 @@ final class WorkflowSelectionBridge {
   }
 
   func longRecordingModeEnabled() -> Bool {
-    model?.longRecordingModeEnabled ?? false
+    model?.settings.longRecordingModeEnabled ?? false
   }
 
   func recordCollectionWorkflowRegistrations() -> [RecordCollectionWorkflowRegistration] {

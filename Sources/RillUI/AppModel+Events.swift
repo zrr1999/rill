@@ -439,7 +439,7 @@ extension AppModel {
         case .runFailed(let failedRunID, _, let message):
             let failurePresentation = RunFailurePresentation.localizedText(for: message)
             if failedRunID == self.voice.activeRunID || self.voice.activeRunID == nil {
-                lastFailure = failurePresentation.string(for: language)
+                lastFailure = failurePresentation.string(for: self.settings.language)
             }
             let failedCurrentCapture = failedRunID != nil
                 && currentCaptureLiveSubtitleSnapshot?.runID == failedRunID
@@ -682,7 +682,7 @@ extension AppModel {
             .map {
                 RunFailurePresentation.text(
                     for: $0.failureMessage,
-                    language: language
+                    language: self.settings.language
                 )
             }
         self.voice.pendingResolution = nil

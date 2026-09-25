@@ -286,8 +286,8 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(harness.model.privacyPolicySettings, .defaults)
-        XCTAssertEqual(harness.model.language, .simplifiedChinese)
-        XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
+        XCTAssertEqual(harness.model.settings.language, .simplifiedChinese)
+        XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
         XCTAssertNotNil(harness.model.privacySettingsLoadError)
         XCTAssertNil(harness.model.privacySettingsSaveError)
         XCTAssertThrowsError(try privacySettingsSource.currentSettings()) { error in

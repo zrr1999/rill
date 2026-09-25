@@ -38,12 +38,12 @@ extension AppModel {
             return false
         }
 
-        if preferredSpeechEngine == .local {
+        if self.settings.preferredSpeechEngine == .local {
             selectTrustedLocalSpeechModel(modelIdentifier)
         } else {
             // Set the exact model before enabling the local route so the route
             // transition prepares only the newly selected backend.
-            if localSpeechModel != modelIdentifier {
+            if self.settings.localSpeechModel != modelIdentifier {
                 applyLocalSpeechModel(modelIdentifier)
             }
             applyPreferredSpeechEngine(.local)

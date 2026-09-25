@@ -6,28 +6,28 @@ extension SettingsView {
   var localDataAndRetentionSection: some View {
     settingsDisclosure(.storage) {
       Picker(
-        L10n.historySettingsText(.recordRetention, language: model.language),
+        L10n.historySettingsText(.recordRetention, language: model.settings.language),
         selection: Binding(
           get: { model.recordRetentionPeriod },
           set: { model.setRecordRetentionPeriod($0) }
         )
       ) {
         ForEach(HistoryRetentionPeriod.allCases) { period in
-          Text(L10n.historyRetentionPeriod(period, language: model.language)).tag(period)
+          Text(L10n.historyRetentionPeriod(period, language: model.settings.language)).tag(period)
         }
       }
       .pickerStyle(.menu)
       .disabled(localHistoryControlsDisabled)
 
       Picker(
-        L10n.historySettingsText(.runRetention, language: model.language),
+        L10n.historySettingsText(.runRetention, language: model.settings.language),
         selection: Binding(
           get: { model.runHistoryRetentionPeriod },
           set: { model.setRunHistoryRetentionPeriod($0) }
         )
       ) {
         ForEach(HistoryRetentionPeriod.allCases) { period in
-          Text(L10n.historyRetentionPeriod(period, language: model.language)).tag(period)
+          Text(L10n.historyRetentionPeriod(period, language: model.settings.language)).tag(period)
         }
       }
       .pickerStyle(.menu)
@@ -36,7 +36,7 @@ extension SettingsView {
       Divider()
 
       Toggle(
-        L10n.string(.settingsFailedAudioRecovery, language: model.language),
+        L10n.string(.settingsFailedAudioRecovery, language: model.settings.language),
         isOn: Binding(
           get: { model.voice.failedAudioRecoveryEnabled },
           set: { model.setFailedAudioRecoveryEnabled($0) }
@@ -51,7 +51,7 @@ extension SettingsView {
       Text(
         L10n.string(
           .settingsFailedAudioRecoveryDescription,
-          language: model.language
+          language: model.settings.language
         )
       )
       .font(.caption)
@@ -61,7 +61,7 @@ extension SettingsView {
         Button(
           L10n.string(
             .settingsFailedAudioRecoveryClear,
-            language: model.language
+            language: model.settings.language
           ),
           role: .destructive
         ) {
@@ -77,7 +77,7 @@ extension SettingsView {
           Text(
             L10n.settingsFailedAudioEncryptedCount(
               model.voice.failedAudioRecoveryReceipts.count,
-              language: model.language
+              language: model.settings.language
             )
           )
           .font(.caption)
@@ -94,7 +94,7 @@ extension SettingsView {
       Divider()
 
       Toggle(
-        L10n.string(.settingsBenchmarkRecordingArchive, language: model.language),
+        L10n.string(.settingsBenchmarkRecordingArchive, language: model.settings.language),
         isOn: Binding(
           get: { model.benchmarkRecordingArchiveEnabled },
           set: { model.setBenchmarkRecordingArchiveEnabled($0) }
@@ -108,7 +108,7 @@ extension SettingsView {
       Text(
         L10n.string(
           .settingsBenchmarkRecordingArchiveDescription,
-          language: model.language
+          language: model.settings.language
         )
       )
       .font(.caption)
@@ -117,7 +117,7 @@ extension SettingsView {
       Button(
         L10n.string(
           .settingsBenchmarkRecordingArchiveClear,
-          language: model.language
+          language: model.settings.language
         ),
         role: .destructive
       ) {
@@ -133,18 +133,18 @@ extension SettingsView {
 
       Divider()
 
-      RecordCapacityView(capacity: model.recordWorkspace.snapshot.capacity, language: model.language) {
+      RecordCapacityView(capacity: model.recordWorkspace.snapshot.capacity, language: model.settings.language) {
         model.clearRecordHistory()
       }
       .sheet(isPresented: Binding(get: { model.recordWorkspace.cleanup.plan != nil }, set: { if !$0 { model.recordWorkspace.cleanup.cancel() } })) {
-        RecordCleanupSheet(model: model.recordWorkspace.cleanup, language: model.language)
+        RecordCleanupSheet(model: model.recordWorkspace.cleanup, language: model.settings.language)
       }
       if model.recordWorkspace.cleanup.plan == nil, let message = model.recordWorkspace.cleanup.message {
-        Text(L10n.quickRecord(message, language: model.language))
+        Text(L10n.quickRecord(message, language: model.settings.language))
           .font(.caption).foregroundStyle(.orange)
       }
       if model.recordWorkspace.retentionSuggestionCount > 0 {
-        Button(L10n.quickRecord(.expiredRecords, language: model.language) + " (\(model.recordWorkspace.retentionSuggestionCount))") {
+        Button(L10n.quickRecord(.expiredRecords, language: model.settings.language) + " (\(model.recordWorkspace.retentionSuggestionCount))") {
           Task { await model.recordWorkspace.cleanup.request(olderThan: model.recordRetentionPeriod.cutoffDate(relativeTo: Date()) ?? .distantPast) }
         }
       }
@@ -152,7 +152,7 @@ extension SettingsView {
       VStack(alignment: .leading, spacing: 6) {
         HStack {
           Button(
-            L10n.historySettingsText(.clearRun, language: model.language),
+            L10n.historySettingsText(.clearRun, language: model.settings.language),
             role: .destructive
           ) {
             destructiveConfirmation = .runHistory
@@ -163,14 +163,14 @@ extension SettingsView {
         Text(
           L10n.historySettingsText(
             .preservedRunDetail,
-            language: model.language
+            language: model.settings.language
           )
         )
         .font(.caption)
         .foregroundStyle(.secondary)
 
         if model.hasActiveOrQueuedVoiceRun {
-          Text(L10n.historySettingsText(.runActiveHint, language: model.language))
+          Text(L10n.historySettingsText(.runActiveHint, language: model.settings.language))
             .font(.caption)
             .foregroundStyle(.orange)
         }
@@ -184,7 +184,7 @@ extension SettingsView {
 
       if model.history.isLocalHistoryMaintenanceRunning {
         Label(
-          L10n.historySettingsText(.maintenanceRunning, language: model.language),
+          L10n.historySettingsText(.maintenanceRunning, language: model.settings.language),
           systemImage: RillSystemSymbol.arrowTriangle2Circlepath.rawValue
         )
         .font(.caption)
@@ -210,14 +210,14 @@ extension SettingsView {
           L10n.historyMaintenanceResult(
             removedCount: model.history.lastLocalHistoryRemovedCount,
             preservedActiveRecordCount: model.history.lastPreservedActiveRecordCount,
-            language: model.language
+            language: model.settings.language
           ),
           systemImage: RillSystemSymbol.checkmarkCircle.rawValue
         )
         .font(.caption)
         .foregroundStyle(.secondary)
       }
-      Text(L10n.historySettingsText(.description, language: model.language))
+      Text(L10n.historySettingsText(.description, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)
     }
@@ -229,7 +229,7 @@ extension SettingsView {
   }
 
   var retryLocalHistoryMaintenanceButton: some View {
-    Button(L10n.historySettingsText(.retry, language: model.language)) {
+    Button(L10n.historySettingsText(.retry, language: model.settings.language)) {
       model.retryPendingLocalHistoryMaintenance()
     }
     .buttonStyle(.bordered)

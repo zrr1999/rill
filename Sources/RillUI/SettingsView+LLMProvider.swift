@@ -5,7 +5,7 @@ extension SettingsView {
   var apiProviderSettingsSection: some View {
     settingsDisclosure(.providers) {
       if let settings = model.recordWorkspace.jevSettings {
-        JevAPISettingsView(settings: settings, language: model.language)
+        JevAPISettingsView(settings: settings, language: model.settings.language)
         Divider()
       }
       jevPolishingSettingsSection
@@ -16,29 +16,29 @@ extension SettingsView {
 
   var llmProviderSettingsSection: some View {
     VStack(alignment: .leading, spacing: RillSpacing.card) {
-      Text(L10n.string(.settingsOpenAITitle, language: model.language))
+      Text(L10n.string(.settingsOpenAITitle, language: model.settings.language))
         .font(.subheadline.weight(.medium))
-      Text(L10n.string(.settingsOpenAIDescription, language: model.language))
+      Text(L10n.string(.settingsOpenAIDescription, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)
 
       switch model.settings.openAICredentialAvailability {
       case .loading:
-        ProgressView(L10n.text(.voiceSetupLoading, language: model.language))
+        ProgressView(L10n.text(.voiceSetupLoading, language: model.settings.language))
           .controlSize(.small)
       case .saving:
-        ProgressView(L10n.string(.settingsOpenAISaving, language: model.language))
+        ProgressView(L10n.string(.settingsOpenAISaving, language: model.settings.language))
           .controlSize(.small)
       case .missing:
         Label(
-          L10n.string(.settingsOpenAIMissing, language: model.language),
+          L10n.string(.settingsOpenAIMissing, language: model.settings.language),
           systemImage: RillSystemSymbol.keySlash.rawValue
         )
         .font(.caption)
         .foregroundStyle(.orange)
       case .available:
         Label(
-          L10n.string(.settingsOpenAIAvailable, language: model.language),
+          L10n.string(.settingsOpenAIAvailable, language: model.settings.language),
           systemImage: RillSystemSymbol.checkmarkCircleFill.rawValue
         )
         .font(.caption)
@@ -46,40 +46,40 @@ extension SettingsView {
       case .inaccessible:
         HStack(alignment: .firstTextBaseline, spacing: 10) {
           Label(
-            L10n.string(.settingsOpenAIInaccessible, language: model.language),
+            L10n.string(.settingsOpenAIInaccessible, language: model.settings.language),
             systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
           )
           .font(.caption)
           .foregroundStyle(.red)
           Spacer()
-          Button(L10n.text(.retryCredentialLoad, language: model.language)) {
+          Button(L10n.text(.retryCredentialLoad, language: model.settings.language)) {
             model.retryOpenAICredentialLoad()
           }
         }
       }
 
-      let openAIAPIKeyTitle = L10n.string(.settingsOpenAIAPIKey, language: model.language)
+      let openAIAPIKeyTitle = L10n.string(.settingsOpenAIAPIKey, language: model.settings.language)
       providerInputRow(openAIAPIKeyTitle) {
-        SecureField(openAIAPIKeyTitle, text: Binding(get: { model.openAIAPIKey }, set: { model.setOpenAIAPIKey($0) }))
+        SecureField(openAIAPIKeyTitle, text: Binding(get: { model.settings.openAIAPIKey }, set: { model.setOpenAIAPIKey($0) }))
           .textFieldStyle(.roundedBorder)
           .disabled(model.settings.openAICredentialAvailability == .inaccessible)
           .accessibilityIdentifier("settings.openai.api-key")
       }
 
-      let openAIBaseURLTitle = L10n.string(.settingsOpenAIBaseURL, language: model.language)
+      let openAIBaseURLTitle = L10n.string(.settingsOpenAIBaseURL, language: model.settings.language)
       providerInputRow(openAIBaseURLTitle) {
-        TextField(openAIBaseURLTitle, text: Binding(get: { model.openAIBaseURL }, set: { model.setOpenAIBaseURL($0) }))
+        TextField(openAIBaseURLTitle, text: Binding(get: { model.settings.openAIBaseURL }, set: { model.setOpenAIBaseURL($0) }))
           .textFieldStyle(.roundedBorder)
           .accessibilityIdentifier("settings.openai.base-url")
       }
 
-      Text(L10n.string(.settingsOpenAIEndpointHint, language: model.language))
+      Text(L10n.string(.settingsOpenAIEndpointHint, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)
 
       Text(
         verbatim:
-          model.language == .simplifiedChinese
+          model.settings.language == .simplifiedChinese
           ? "使用 DeepSeek：Base URL 填写 https://api.deepseek.com，模型选择 DeepSeek V4.1 Flash。润色时自动关闭思考。"
           : "For DeepSeek, use https://api.deepseek.com and choose DeepSeek V4.1 Flash. Thinking is disabled for polishing."
       )
@@ -87,7 +87,7 @@ extension SettingsView {
       .foregroundStyle(.secondary)
 
       Picker(
-        L10n.string(.settingsOpenAIModel, language: model.language),
+        L10n.string(.settingsOpenAIModel, language: model.settings.language),
         selection: llmModelSelection
       ) {
         ForEach(LLMModelSelection.allCases) { selection in
@@ -98,7 +98,7 @@ extension SettingsView {
       .disabled(model.hasUnavailableScalarSettings(in: .openAI))
       .accessibilityIdentifier("settings.openai.model")
 
-      Text(L10n.settingsOpenAIModelID(model.openAIModel, language: model.language))
+      Text(L10n.settingsOpenAIModelID(model.settings.openAIModel, language: model.settings.language))
         .font(.caption.monospaced())
         .foregroundStyle(.secondary)
         .textSelection(.enabled)
@@ -106,17 +106,17 @@ extension SettingsView {
       if llmModelSelection.wrappedValue == .custom {
         let openAICustomModelTitle = L10n.string(
           .settingsOpenAICustomModel,
-          language: model.language
+          language: model.settings.language
         )
         providerInputRow(openAICustomModelTitle) {
-          TextField(openAICustomModelTitle, text: Binding(get: { model.openAIModel }, set: { model.setOpenAIModel($0) }))
+          TextField(openAICustomModelTitle, text: Binding(get: { model.settings.openAIModel }, set: { model.setOpenAIModel($0) }))
             .textFieldStyle(.roundedBorder)
             .accessibilityIdentifier("settings.openai.custom-model")
         }
       }
 
       HStack(spacing: 10) {
-        Button(L10n.string(.settingsOpenAIVerify, language: model.language)) {
+        Button(L10n.string(.settingsOpenAIVerify, language: model.settings.language)) {
           model.verifyOpenAIConfiguration()
         }
         .disabled(!model.canVerifyOpenAIConfiguration)
@@ -126,11 +126,11 @@ extension SettingsView {
         case .idle:
           EmptyView()
         case .verifying:
-          ProgressView(L10n.string(.settingsOpenAIVerifying, language: model.language))
+          ProgressView(L10n.string(.settingsOpenAIVerifying, language: model.settings.language))
             .controlSize(.small)
         case .verified:
           Label(
-            L10n.string(.settingsOpenAIVerificationSucceeded, language: model.language),
+            L10n.string(.settingsOpenAIVerificationSucceeded, language: model.settings.language),
             systemImage: RillSystemSymbol.checkmarkSealFill.rawValue
           )
           .font(.caption)
@@ -151,7 +151,7 @@ extension SettingsView {
           .foregroundStyle(.secondary)
       }
 
-      Text(L10n.string(.settingsOpenAITranscriptOnlyHint, language: model.language))
+      Text(L10n.string(.settingsOpenAITranscriptOnlyHint, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)
     }
@@ -160,7 +160,7 @@ extension SettingsView {
 
   private var jevPolishingSettingsSection: some View {
     @Bindable var jev = model.jevPolishing
-    let chinese = model.language == .simplifiedChinese
+    let chinese = model.settings.language == .simplifiedChinese
     return VStack(alignment: .leading, spacing: RillSpacing.row) {
       Text(chinese ? "Jev 润色判断" : "Jev polishing prediction")
         .font(.subheadline.weight(.medium))

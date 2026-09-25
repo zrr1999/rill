@@ -31,7 +31,7 @@ final class LocalSpeechRuntimeLifecycleTests: XCTestCase {
 
     harness.model.releaseLocalSpeechModelMemory()
 
-    XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
+    XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
     XCTAssertEqual(probe.runtimeTransitions, [true])
     XCTAssertEqual(probe.releaseCount, 1)
   }

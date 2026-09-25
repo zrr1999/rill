@@ -13,7 +13,7 @@ public extension AppModel {
     guard let settingsStore else {
       benchmarkRecordingArchiveError = L10n.runText(
         .benchmarkStorageUnavailable,
-        language: language
+        language: self.settings.language
       )
       return
     }
@@ -50,7 +50,7 @@ public extension AppModel {
           self.isUpdatingBenchmarkRecordingArchive = false
           self.benchmarkRecordingArchiveError = L10n.runText(
             .benchmarkRetentionUpdateFailed,
-            language: self.language
+            language: self.settings.language
           )
         }
       }
@@ -75,7 +75,7 @@ public extension AppModel {
       } catch {
         self.benchmarkRecordingArchiveError = L10n.runText(
           .benchmarkClearFailed,
-          language: self.language
+          language: self.settings.language
         )
       }
       self.isUpdatingBenchmarkRecordingArchive = false

@@ -18,7 +18,7 @@ extension AppModel {
             let workflowFileStore else { return nil }
         if !duplicate, let fileURL = self.workflowLibrary.workflowFileURLsByID[workflow.id] { return fileURL }
         guard self.workflowLibrary.usesWorkflowFilesAsSource || self.workflowLibrary.customWorkflows.isEmpty else {
-            self.workflowLibrary.workflowLibraryError = language == .simplifiedChinese
+            self.workflowLibrary.workflowLibraryError = self.settings.language == .simplifiedChinese
                 ? "旧工作流尚未完成 TOML 迁移。请修复工作流目录并重新启动，再创建或打开文件；现有工作流已保留。"
                 : "The legacy workflow library has not migrated to TOML. Repair the workflow directory and restart before creating or opening a file; existing workflows are preserved."
             return nil
@@ -30,7 +30,7 @@ extension AppModel {
         definition.metadata["workflow.origin"] = "user"
         if duplicate {
             definition.id = UUID()
-            definition.name += language == .simplifiedChinese ? " 副本" : " Copy"
+            definition.name += self.settings.language == .simplifiedChinese ? " 副本" : " Copy"
             definition.metadata.removeValue(forKey: WorkflowMetadataKey.builtinKind)
             definition.metadata.removeValue(forKey: WorkflowMetadataKey.exclusiveGroup)
         }
@@ -53,7 +53,7 @@ extension AppModel {
 
     public func newWorkflowFile() async -> URL? {
         let workflow = WorkflowDefinition(
-            name: language == .simplifiedChinese ? "新工作流" : "New workflow",
+            name: self.settings.language == .simplifiedChinese ? "新工作流" : "New workflow",
             trigger: .manual,
             plan: WorkflowPlan(
                 setup: WorkflowSetupPhase(),
@@ -108,7 +108,7 @@ extension AppModel {
                 self.voice.isRunning = false
             } catch {
                 self.voice.isRunning = false
-                self.lastFailure = self.language == .simplifiedChinese
+                self.lastFailure = self.settings.language == .simplifiedChinese
                     ? "工作流未能完成，请检查隐私和服务商设置。"
                     : "The workflow could not finish. Review Privacy and provider settings."
             }

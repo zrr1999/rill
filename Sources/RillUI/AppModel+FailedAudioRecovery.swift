@@ -15,7 +15,7 @@ public extension AppModel {
     ) -> String {
         let detail = localizedRecoveryErrorDetail(reason)
         return String(
-            format: L10n.runText(.failedRecordingNotRetainedFormat, language: language),
+            format: L10n.runText(.failedRecordingNotRetainedFormat, language: self.settings.language),
             detail
         )
     }
@@ -30,7 +30,7 @@ public extension AppModel {
         guard let settingsStore else {
             self.voice.failedAudioRecoveryError = L10n.runText(
                 .recoveryStorageUnavailable,
-                language: language
+                language: self.settings.language
             )
             return
         }
@@ -71,7 +71,7 @@ public extension AppModel {
                                 self.voice.failedAudioRecoveryEnabled = true
                                 self.voice.failedAudioRecoveryError = L10n.runText(
                                     .recoveryEnabledStorageUnavailable,
-                                    language: self.language
+                                    language: self.settings.language
                                 )
                             }
                             return
@@ -88,7 +88,7 @@ public extension AppModel {
                     guard let self else { return }
                     self.voice.isUpdatingFailedAudioRecovery = false
                     self.voice.failedAudioRecoveryError = String(
-                        format: L10n.runText(.recoveryUpdateFailedFormat, language: self.language),
+                        format: L10n.runText(.recoveryUpdateFailedFormat, language: self.settings.language),
                         self.localizedRecoveryErrorDetail(error)
                     )
                 }
@@ -129,7 +129,7 @@ public extension AppModel {
                       self.voice.failedAudioRecoveryLoadGeneration == generation else { return }
                 self.voice.failedAudioRecoveryReceipts = []
                 self.voice.failedAudioRecoveryError = String(
-                    format: L10n.runText(.recoveryLoadFailedFormat, language: self.language),
+                    format: L10n.runText(.recoveryLoadFailedFormat, language: self.settings.language),
                     self.localizedRecoveryErrorDetail(error)
                 )
             }
@@ -160,14 +160,14 @@ public extension AppModel {
         guard receipt.status.canRetry else {
             self.voice.failedAudioRecoveryError = L10n.runText(
                 .recoveryRetryDuplicateWarning,
-                language: language
+                language: self.settings.language
             )
             return
         }
         guard let workflow = self.workflowLibrary.workflows.first(where: { $0.id == receipt.workflowID }) else {
             self.voice.failedAudioRecoveryError = L10n.runText(
                 .recoveryWorkflowUnavailable,
-                language: language
+                language: self.settings.language
             )
             return
         }
@@ -192,7 +192,7 @@ public extension AppModel {
                 case .completedCleanupPending:
                     self.voice.failedAudioRecoveryError = L10n.runText(
                         .recoveryCleanupPending,
-                        language: self.language
+                        language: self.settings.language
                     )
                 }
             } catch is CancellationError {
@@ -201,7 +201,7 @@ public extension AppModel {
                 // any decrypted temporary audio before returning.
             } catch {
                 self.voice.failedAudioRecoveryError = String(
-                    format: L10n.runText(.recoveryRetryFailedFormat, language: self.language),
+                    format: L10n.runText(.recoveryRetryFailedFormat, language: self.settings.language),
                     self.localizedRecoveryErrorDetail(error)
                 )
             }
@@ -248,7 +248,7 @@ public extension AppModel {
                     guard let self else { return }
                     self.voice.isUpdatingFailedAudioRecovery = false
                     self.voice.failedAudioRecoveryError = String(
-                        format: L10n.runText(.recoveryDeleteFailedFormat, language: self.language),
+                        format: L10n.runText(.recoveryDeleteFailedFormat, language: self.settings.language),
                         self.localizedRecoveryErrorDetail(error)
                     )
                 }
@@ -276,7 +276,7 @@ public extension AppModel {
                     guard let self else { return }
                     self.voice.isUpdatingFailedAudioRecovery = false
                     self.voice.failedAudioRecoveryError = String(
-                        format: L10n.runText(.recoveryClearFailedFormat, language: self.language),
+                        format: L10n.runText(.recoveryClearFailedFormat, language: self.settings.language),
                         self.localizedRecoveryErrorDetail(error)
                     )
                 }
@@ -290,7 +290,7 @@ extension AppModel {
         english: String,
         simplifiedChinese: String
     ) -> String {
-        language == .english ? english : simplifiedChinese
+        self.settings.language == .english ? english : simplifiedChinese
     }
 
     func localizedRecoveryErrorDetail(_ error: Error) -> String {
@@ -315,7 +315,7 @@ extension AppModel {
             )
         }
         guard let recoveryError = error as? FailedAudioRecoveryError else {
-            return L10n.runText(.recoveryTemporarilyUnavailable, language: language)
+            return L10n.runText(.recoveryTemporarilyUnavailable, language: self.settings.language)
         }
         let simplifiedChinese: String
         switch recoveryError {

@@ -16,13 +16,13 @@ struct WorkflowExplanationSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
-                Text(L10n.workflowExplanationCopy(.sheetTitle, language: model.language))
+                Text(L10n.workflowExplanationCopy(.sheetTitle, language: model.settings.language))
                     .font(.title2.weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
 
                 Spacer()
 
-                Button(L10n.workflowExplanationCopy(.close, language: model.language)) {
+                Button(L10n.workflowExplanationCopy(.close, language: model.settings.language)) {
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
@@ -30,7 +30,7 @@ struct WorkflowExplanationSheet: View {
             }
 
             Label(
-                L10n.workflowExplanationCopy(.previewNotice, language: model.language),
+                L10n.workflowExplanationCopy(.previewNotice, language: model.settings.language),
                 systemImage: RillSystemSymbol.lockShield.rawValue
             )
             .font(.callout)
@@ -50,7 +50,7 @@ struct WorkflowExplanationSheet: View {
                     refresh()
                 } label: {
                     Label(
-                        L10n.workflowExplanationCopy(.refresh, language: model.language),
+                        L10n.workflowExplanationCopy(.refresh, language: model.settings.language),
                         systemImage: RillSystemSymbol.arrowClockwise.rawValue
                     )
                 }
@@ -77,14 +77,14 @@ struct WorkflowExplanationSheet: View {
             HStack(spacing: 12) {
                 ProgressView()
                     .controlSize(.small)
-                Text(L10n.workflowExplanationCopy(.loading, language: model.language))
+                Text(L10n.workflowExplanationCopy(.loading, language: model.settings.language))
                     .foregroundStyle(.secondary)
             }
             .padding(.vertical, 24)
             .accessibilityElement(children: .combine)
         case .loaded(let receipt) where receipt.workflowID == workflowID:
             explanationSections(
-                WorkflowExplanationPresentation.make(receipt: receipt, language: model.language)
+                WorkflowExplanationPresentation.make(receipt: receipt, language: model.settings.language)
             )
         case .failed(let stateWorkflowID, let reason) where stateWorkflowID == workflowID:
             failureView(reason)
@@ -113,12 +113,12 @@ struct WorkflowExplanationSheet: View {
     private func failureView(_ failure: WorkflowExplanationFailure) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Label(
-                L10n.workflowExplanationFailure(failure, language: model.language),
+                L10n.workflowExplanationFailure(failure, language: model.settings.language),
                 systemImage: RillSystemSymbol.exclamationmarkShield.rawValue
             )
             .foregroundStyle(.orange)
 
-            Button(L10n.workflowExplanationCopy(.retry, language: model.language)) {
+            Button(L10n.workflowExplanationCopy(.retry, language: model.settings.language)) {
                 refresh()
             }
             .disabled(failure == .workflowUnavailable)
@@ -134,35 +134,35 @@ struct WorkflowExplanationSheet: View {
             statusCard(presentation)
 
             explanationSection(
-                title: L10n.workflowExplanationCopy(.trigger, language: model.language),
+                title: L10n.workflowExplanationCopy(.trigger, language: model.settings.language),
                 rows: [WorkflowExplanationPresentationRow(title: presentation.trigger, detail: "")]
             )
             explanationSection(
-                title: L10n.workflowExplanationCopy(.inputs, language: model.language),
+                title: L10n.workflowExplanationCopy(.inputs, language: model.settings.language),
                 rows: presentation.inputs
             )
             explanationSection(
-                title: L10n.workflowExplanationCopy(.transforms, language: model.language),
+                title: L10n.workflowExplanationCopy(.transforms, language: model.settings.language),
                 rows: presentation.transforms
             )
             explanationSection(
-                title: L10n.workflowExplanationCopy(.outputs, language: model.language),
+                title: L10n.workflowExplanationCopy(.outputs, language: model.settings.language),
                 rows: presentation.outputs
             )
             explanationSection(
-                title: L10n.workflowExplanationCopy(.destinations, language: model.language),
+                title: L10n.workflowExplanationCopy(.destinations, language: model.settings.language),
                 rows: presentation.destinations.map {
                     WorkflowExplanationPresentationRow(title: $0, detail: "")
                 }
             )
             explanationSection(
-                title: L10n.workflowExplanationCopy(.privacyConditions, language: model.language),
+                title: L10n.workflowExplanationCopy(.privacyConditions, language: model.settings.language),
                 rows: presentation.privacyReasons.map {
                     WorkflowExplanationPresentationRow(title: $0, detail: "")
                 }
             )
             explanationSection(
-                title: L10n.workflowExplanationCopy(.issues, language: model.language),
+                title: L10n.workflowExplanationCopy(.issues, language: model.settings.language),
                 rows: presentation.issues.map {
                     WorkflowExplanationPresentationRow(title: $0, detail: "")
                 }
@@ -201,7 +201,7 @@ struct WorkflowExplanationSheet: View {
                 .font(.headline)
 
             if rows.isEmpty {
-                Text(L10n.workflowExplanationCopy(.none, language: model.language))
+                Text(L10n.workflowExplanationCopy(.none, language: model.settings.language))
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in

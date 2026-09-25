@@ -10,6 +10,24 @@ struct SettingsStringWrite: Sendable {
 
 @MainActor @Observable
 public final class SettingsPersistenceModel {
+  public internal(set) var language: AppLanguage
+  public internal(set) var systemClipboardCaptureEnabled: Bool = false
+  public internal(set) var recordPanelHotkeyBinding: HotkeyBindingDescriptor = .doubleCommand
+  public internal(set) var preferredSpeechEngine: PreferredSpeechEngine = .local
+  public internal(set) var builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode = .pasteIntoApp
+  public internal(set) var longRecordingModeEnabled: Bool = false
+  public internal(set) var recordingDurationLimit: RecordingDurationLimit = .fiveMinutes
+  public internal(set) var localSpeechModel: String = LocalSpeechSettings().model
+  public internal(set) var localSpeechPrewarm: Bool = LocalSpeechSettings().prewarm
+  public internal(set) var enabledSpeechModelIDs: Set<String> = []
+  public internal(set) var residentSpeechModelIDs: Set<String> = []
+  public internal(set) var residentSpeechBudgetConfirmation: String? = nil
+  public internal(set) var openAIAPIKey: String = ""
+  public internal(set) var openAIBaseURL: String = OpenAISettings().baseURL
+  public internal(set) var openAIModel: String = OpenAISettings().model
+  public internal(set) var ttsModelIdentifier: String = ""
+  public internal(set) var recordHistoryVisibility: RecordHistoryVisibility = .remainingOnly
+
   public internal(set) var unavailableScalarSettingKeys: Set<AppSettingKey> = []
   public internal(set) var retryingUnavailableScalarSettingsDomains: Set<ScalarSettingsDomain> = []
   public internal(set) var openAICredentialAvailability: OpenAICredentialAvailability = .loading
@@ -36,7 +54,10 @@ public final class SettingsPersistenceModel {
   private var retrying: Set<AppSettingKey> = []
   var hasUnsavedWrites: Bool { !failed.isEmpty }
 
-  init(store: (any SettingsStore)?) { self.store = store }
+  init(store: (any SettingsStore)?, language: AppLanguage) {
+    self.store = store
+    self.language = language
+  }
 
   func submit(
     key: AppSettingKey, category: SettingsSaveCategory, debounce: Duration,
