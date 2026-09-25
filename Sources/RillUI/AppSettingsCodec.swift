@@ -434,6 +434,7 @@ enum AppSettingsCodec {
 
   static func settingsSaveCategory(for key: AppSettingKey) -> SettingsSaveCategory? {
     switch key {
+    case .inputMethodLearning: .input
     case .interfaceLanguage:
       .interface
     case .systemClipboardCaptureEnabled,

@@ -9,3 +9,9 @@ IY = "IY"
 Ono = "Ono"
 ono = "ono"
 tipe = "tipe"
+
+[type.rime]
+extend-glob = ["*.schema.yaml"]
+
+[type.rime.extend-words]
+ue = "ue"

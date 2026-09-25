@@ -130,6 +130,9 @@ bash "$SCRIPT_DIR/check_record_domain_boundary.sh"
 info "Running script policy tests..."
 bash "$SCRIPT_DIR/tests/run.sh"
 
+info "Checking independent input method data packaging..."
+uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_data_test.py"
+
 info "Checking any locked source-control dependencies against the reviewed offline advisory baseline..."
 uv run --script "$SCRIPT_DIR/check_dependency_security.py"
 
@@ -188,6 +191,8 @@ codesign --force --sign - \
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/$MLX_RESOURCE_BUNDLE_NAME"
 codesign --force --options runtime --sign - \
   "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker"
+uv run --no-build --locked --script "$SCRIPT_DIR/assemble_input_method.py" \
+  --sign-existing "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
 codesign --force --options runtime --sign - "$PACKAGE_SMOKE_ROOT/Rill.app"
 codesign --verify --deep --strict --verbose=2 "$PACKAGE_SMOKE_ROOT/Rill.app"
 "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillSpeechWorker" </dev/null
@@ -196,6 +201,8 @@ for document in LICENSE README.md PRIVACY.md LOCAL_MODEL_NOTICES.md; do
   cmp -s "$PROJECT_DIR/$document" "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Resources/$document" ||
     error "Packaged project document does not match $document"
 done
+uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_test.py" \
+  "$PACKAGE_SMOKE_ROOT/Rill.app/Contents/Helpers/RillInputMethod.app"
 cleanup
 trap - EXIT INT TERM
 

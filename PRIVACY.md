@@ -136,3 +136,33 @@ Rill 目前没有单一的“清除全部数据”命令。历史、失败录音
 对于已录制语音或主动提供的文本，网络错误、限流、超时、不完整或无效结果等可恢复的改写失败，可以在相同输出与隐私策略下投递改写前的完整文本，并在活动中提示未完成整理。云端部分结果不会被投递。取消、隐私阻止、凭据或配置错误、认证失败及拒绝会停止投递；语音助手不会回退为复述请求。
 
 本文只覆盖当前 Rill 行为。macOS、DeepSeek、OpenAI、Apple 快捷指令、用户选择的文件，以及快捷指令调用的其他软件均有各自的数据实践。
+
+## Optional input method vocabulary suggestions
+
+The Rill input method runs in its own process. Its bundled default scheme works
+without Squirrel; importing an existing profile is optional and happens once.
+Rime stores its schemas, full personal userdb and language resources under
+`~/Library/Application Support/Rill/InputMethod/`, independently of Squirrel.
+Imported files are preserved locally; this version does not request Rime user-data
+synchronization or write Rill vocabulary back to Rime.
+
+Typing suggestions are off by default and the allowed-app list starts empty.
+When enabled for an application, committed text (at most 2 KiB per event) crosses
+a nonblocking local Unix stream connection protected by a mode-0700 directory and
+mode-0600 socket files. Both peers verify the connected process audit token and
+require the expected application identity signed by the same Apple developer team.
+Disconnected or unverified peers receive no learning content; ad-hoc development
+builds keep typing available but do not enable this learning connection. The host
+checks the current authorization revision, client app,
+existing sensitive-app policy, secure-input state, event age and event ID.
+Disconnects drop events; reconnection never replays missed typing.
+
+The host extracts short terms in memory and stores only aggregated suggestions,
+counts, source application identifiers and last-seen time in the existing encrypted
+settings store. It does not retain a sequential typing transcript, add typing to
+Record history, or send unconfirmed suggestions to speech or context memory.
+Pending/ignored suggestions expire after 30 days (checked on start, new commits
+and hourly maintenance). Confirmation adds a hotword to the existing vocabulary
+library. Confirmed provenance is retained for deduplication and undo; it can be
+deleted from input method settings. Revoking learning or an app invalidates queued
+events immediately. Rime's own user dictionary learning continues independently.

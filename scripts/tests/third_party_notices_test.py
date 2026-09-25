@@ -156,6 +156,9 @@ class Fixture:
         speech_worker = build_dir / "RillSpeechWorker"
         speech_worker.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         speech_worker.chmod(0o755)
+        input_method = build_dir / "RillInputMethod"
+        input_method.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        input_method.chmod(0o755)
 
         own_bundle = build_dir / "RillMacOS_RillApp.bundle"
         create_bundle(own_bundle, "dev.zrr.Rill.resources")
@@ -386,6 +389,13 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         shutil.copy2(WRITE_INFO_PLIST, copied_info_plist_writer)
         shutil.copy2(APP_ICON_GENERATOR, copied_icon_generator)
         shutil.copy2(APP_ICON_RENDITION_RENDERER, copied_icon_renderer)
+        # This suite isolates outer bundle resource provenance. The packaged Rime
+        # runtime is exercised separately against real binaries in preflight.
+        (self.fixture.root / "scripts/assemble_input_method.py").write_text(
+            "import pathlib, sys\n"
+            "pathlib.Path(sys.argv[sys.argv.index('--output') + 1]).mkdir(parents=True)\n",
+            encoding="utf-8",
+        )
         copied_app_bundle_resources = self.fixture.root / "Resources" / "AppBundle"
         shutil.copytree(APP_BUNDLE_RESOURCES, copied_app_bundle_resources)
         copied_app_icon_source = (

@@ -19,3 +19,5 @@ echo 'Testing GitHub Release drafts...'
 bash "$TEST_DIR/github_release_test.sh"
 echo 'Testing app icon generation...'
 bash "$TEST_DIR/app_icon_test.sh"
+echo 'Testing input method signing boundaries...'
+uv run --no-build --locked --script "$TEST_DIR/input_method_assembly_test.py"

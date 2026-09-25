@@ -1,8 +1,8 @@
 import Darwin
 import Foundation
 import OSLog
-import SQLite3
 import RillCore
+import SQLite3
 
 private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -263,7 +263,6 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
       : .unsafeOrUninspectable
   }
 
-
   public func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot {
     do {
       return try withDeferredTransaction {
@@ -399,8 +398,10 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     do {
       return try withImmediateTransaction {
         if let stored = try storedRecordGraphMetadata() {
-          let data = try localDataProtector.openBinary(stored.protectedGraph, context: Self.recordGraphProtectionContext)
-          if (try? JSONDecoder().decode(RecordCatalogManifest.self, from: data).schemaVersion) == 2 {
+          let data = try localDataProtector.openBinary(
+            stored.protectedGraph, context: Self.recordGraphProtectionContext)
+          if (try? JSONDecoder().decode(RecordCatalogManifest.self, from: data).schemaVersion) == 2
+          {
             throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
           }
         }
@@ -477,17 +478,20 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
           maximumTotalPlaintextByteCount:
             Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount - snapshot.graph.count
         )
-        guard Set(readbackBlobs.map { StoredRecordPayloadBlobCoordinate($0.reference) })
-                == prepared.expectedCoordinates
+        guard
+          Set(readbackBlobs.map { StoredRecordPayloadBlobCoordinate($0.reference) })
+            == prepared.expectedCoordinates
         else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
         let readbackByBlobID = Dictionary(
           uniqueKeysWithValues: readbackBlobs.map { ($0.reference.blobID, $0) }
         )
-        guard snapshot.newPayloadBlobs.allSatisfy({ blob in
-          readbackByBlobID[blob.reference.blobID] == blob
-        }) else {
+        guard
+          snapshot.newPayloadBlobs.allSatisfy({ blob in
+            readbackByBlobID[blob.reference.blobID] == blob
+          })
+        else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
 
@@ -819,7 +823,6 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     }
   }
 
-
   private func storedClipboardMetadata() throws -> StoredClipboardMetadata? {
     let statement = try prepare(
       "SELECT revision, payload FROM clipboard_metadata WHERE id = 1;"
@@ -1122,7 +1125,8 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     else {
       throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
     }
-    let allReferences = snapshot.newPayloadBlobs.map(\.reference)
+    let allReferences =
+      snapshot.newPayloadBlobs.map(\.reference)
       + snapshot.retainedPayloadBlobReferences
     guard allReferences.count <= Self.maximumClipboardBlobCount else {
       throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
@@ -1233,7 +1237,8 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
   private func storedRecordPayloadBlobCoordinates(
     maximumTotalPlaintextByteCount: Int? = nil
   ) throws -> [StoredRecordPayloadBlobCoordinate] {
-    let maximumTotal = maximumTotalPlaintextByteCount
+    let maximumTotal =
+      maximumTotalPlaintextByteCount
       ?? Self.clipboardStorageLimits.maximumTotalEncodedItemByteCount
     let statement = try prepare(
       """
@@ -1820,7 +1825,8 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
         try SQLiteWriterBarrier.validateTriggers(
           on: handle,
           tableNames: writerBarrierTableNames.filter {
-            $0 != "record_catalog_nodes" && $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
+            $0 != "record_catalog_nodes" && $0 != "record_graph_metadata"
+              && $0 != "record_payload_blobs"
           }
         )
         try migrateToV12(on: handle, localDataProtector: localDataProtector)
@@ -1829,18 +1835,22 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
       }
       if authenticatedSchemaFloor == 12 {
         guard storedVersion <= 12 else {
-          throw SQLitePersistenceError.migrationFailed("Schema version conflicts with its authenticated floor.")
+          throw SQLitePersistenceError.migrationFailed(
+            "Schema version conflicts with its authenticated floor.")
         }
-        let cleanupIsPending = try validateDataProtectionKey(on: handle, localDataProtector: localDataProtector)
+        let cleanupIsPending = try validateDataProtectionKey(
+          on: handle, localDataProtector: localDataProtector)
         try setSchemaVersion(12, on: handle)
         try migrateToV13(on: handle, localDataProtector: localDataProtector)
         return cleanupIsPending
       }
       if authenticatedSchemaFloor == 13 {
         guard storedVersion <= 13 else {
-          throw SQLitePersistenceError.migrationFailed("Schema version conflicts with its authenticated floor.")
+          throw SQLitePersistenceError.migrationFailed(
+            "Schema version conflicts with its authenticated floor.")
         }
-        let cleanupIsPending = try validateDataProtectionKey(on: handle, localDataProtector: localDataProtector)
+        let cleanupIsPending = try validateDataProtectionKey(
+          on: handle, localDataProtector: localDataProtector)
         try SQLiteWriterBarrier.validateTriggers(on: handle, tableNames: writerBarrierTableNames)
         try setSchemaVersion(13, on: handle)
         try migrateToV14(on: handle, localDataProtector: localDataProtector)
@@ -2962,7 +2972,8 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
       try SQLiteWriterBarrier.installTriggers(
         on: handle,
         tableNames: writerBarrierTableNames.filter {
-          $0 != "record_catalog_nodes" && $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
+          $0 != "record_catalog_nodes" && $0 != "record_graph_metadata"
+            && $0 != "record_payload_blobs"
         }
       )
       guard
@@ -3062,7 +3073,8 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     let databaseID = try SQLiteAuthenticatedSchemaFloor.validatedDatabaseID(
       on: handle, localDataProtector: localDataProtector
     )
-    try execute("""
+    try execute(
+      """
       CREATE TABLE record_catalog_nodes (
         key TEXT PRIMARY KEY NOT NULL,
         kind TEXT NOT NULL,
@@ -3074,17 +3086,25 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     try SQLiteWriterBarrier.installTriggers(on: handle, tableNames: writerBarrierTableNames)
     try SQLiteSchemaWriterBarrier.catalog.install(on: handle, tables: writerBarrierTableNames)
     try SQLiteAuthenticatedSchemaFloor.upgrade(
-      on: handle, validatedDatabaseID: databaseID, localDataProtector: localDataProtector, schemaFloor: 13
+      on: handle, validatedDatabaseID: databaseID, localDataProtector: localDataProtector,
+      schemaFloor: 13
     )
     try setSchemaVersion(13, on: handle)
     try migrateToV14(on: handle, localDataProtector: localDataProtector)
   }
 
-  private static let memoryTableNames = ["context_memories", "context_memory_sources", "context_memory_exclusions", "context_memory_control"]
+  private static let memoryTableNames = [
+    "context_memories", "context_memory_sources", "context_memory_exclusions",
+    "context_memory_control",
+  ]
 
-  private static func migrateToV14(on handle: OpaquePointer?, localDataProtector: any LocalDataProtector) throws {
-    let databaseID = try SQLiteAuthenticatedSchemaFloor.validatedDatabaseID(on: handle, localDataProtector: localDataProtector)
-    try execute("""
+  private static func migrateToV14(
+    on handle: OpaquePointer?, localDataProtector: any LocalDataProtector
+  ) throws {
+    let databaseID = try SQLiteAuthenticatedSchemaFloor.validatedDatabaseID(
+      on: handle, localDataProtector: localDataProtector)
+    try execute(
+      """
       CREATE TABLE context_memories (id TEXT PRIMARY KEY NOT NULL, payload TEXT NOT NULL);
       CREATE TABLE context_memory_sources (
         source_id TEXT PRIMARY KEY NOT NULL,
@@ -3159,10 +3179,12 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     on handle: OpaquePointer?,
     localDataProtector: any LocalDataProtector
   ) throws {
-    guard try authenticatedSchemaFloor(
-      on: handle,
-      localDataProtector: localDataProtector
-    ) == SQLiteAuthenticatedSchemaFloor.legacySchemaFloor else {
+    guard
+      try authenticatedSchemaFloor(
+        on: handle,
+        localDataProtector: localDataProtector
+      ) == SQLiteAuthenticatedSchemaFloor.legacySchemaFloor
+    else {
       throw SQLitePersistenceError.migrationFailed(
         "Legacy authenticated schema metadata is unavailable."
       )
@@ -3170,7 +3192,8 @@ public actor SQLitePersistenceStore: DiagnosticRepository,
     try SQLiteWriterBarrier.validateTriggers(
       on: handle,
       tableNames: writerBarrierTableNames.filter {
-        $0 != "record_catalog_nodes" && $0 != "record_graph_metadata" && $0 != "record_payload_blobs"
+        $0 != "record_catalog_nodes" && $0 != "record_graph_metadata"
+          && $0 != "record_payload_blobs"
       }
     )
   }

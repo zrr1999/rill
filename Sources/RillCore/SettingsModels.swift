@@ -1,6 +1,7 @@
 import Foundation
 
 public enum AppSettingKey: String, Codable, Sendable, Equatable {
+  case inputMethodLearning = "input-method.learning"
   case contextFeatureSettings = "context.feature-settings"
   case interfaceLanguage = "ui.language"
   case selectedWorkflowID = "workflow.selected-id"
