@@ -167,12 +167,6 @@ public struct DeferredCapturedAudio: Sendable {
         task.cancel()
     }
 
-    /// Resolves an abandoned capture and removes its payload only when it is a managed temporary file.
-    @discardableResult
-    public func discardManagedTemporaryFile() async throws -> Bool {
-        let capturedAudio = try await value()
-        return try capturedAudio.removeManagedTemporaryFile()
-    }
 }
 
 public protocol AudioCaptureService: Sendable {

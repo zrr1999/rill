@@ -108,6 +108,11 @@ let package = Package(
         "RillMLXRuntime",
       ]
     ),
+    .target(
+      name: "RillDomainTestSupport",
+      dependencies: ["RillCore", "RillRuntime", "RillPlatform"],
+      path: "Tests/RillDomainTestSupport"
+    ),
     .testTarget(name: "RillCoreTests", dependencies: ["RillCore"]),
     .testTarget(
       name: "RillPersistenceTests",
@@ -115,7 +120,7 @@ let package = Package(
     ),
     .testTarget(
       name: "RillRuntimeTests",
-      dependencies: [
+      dependencies: ["RillDomainTestSupport",
         "RillCore",
         "RillPersistence",
         "RillPlatform",
@@ -147,16 +152,16 @@ let package = Package(
     ),
     .target(
       name: "RillTestSupport",
-      dependencies: ["RillCore", "RillRuntime", "RillUI"],
+      dependencies: ["RillDomainTestSupport", "RillCore", "RillRuntime", "RillUI"],
       path: "Tests/RillTestSupport"
     ),
     .testTarget(
       name: "RillUITests",
-      dependencies: ["RillCore", "RillPlatform", "RillRuntime", "RillUI", "RillTestSupport"]
+      dependencies: ["RillDomainTestSupport", "RillCore", "RillPlatform", "RillRuntime", "RillUI", "RillTestSupport"]
     ),
     .testTarget(
       name: "RillAppTests",
-      dependencies: [
+      dependencies: ["RillDomainTestSupport",
         "RillTestSupport",
         "RillSpeechContracts",
         "RillApp",

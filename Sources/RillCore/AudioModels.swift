@@ -154,25 +154,6 @@ public struct CapturedAudio: Codable, Sendable, Equatable {
         )
     }
 
-    /// Removes a file only when its ownership was explicitly transferred to Rill.
-    @discardableResult
-    public func removeManagedTemporaryFile(
-        using fileManager: FileManager = .default
-    ) throws -> Bool {
-        var isDirectory: ObjCBool = false
-        guard
-            fileOwnership == .managedTemporary,
-            let fileURL,
-            Self.isManagedTemporaryFileURL(fileURL, using: fileManager),
-            fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory),
-            !isDirectory.boolValue
-        else {
-            return false
-        }
-
-        try fileManager.removeItem(at: fileURL)
-        return true
-    }
 
     public static func isManagedTemporaryFileURL(
         _ fileURL: URL,

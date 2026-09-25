@@ -126,7 +126,7 @@ public actor RecordingSessionManager {
   private let recordingDurationLimitProvider: @Sendable () async -> RecordingDurationLimit
   private let recognizerDurationProvider: @Sendable (String) -> Double?
   private let pushToTalkGestureStateProvider: @Sendable (PushToTalkGesture) -> Bool
-  private let cleanupOwner: ManagedTemporaryAudioCleanupOwner
+  private let cleanupOwner: any ManagedTemporaryAudioCleaning
   private let recordingCueAction: @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void
 
   private var state: State = .idle
@@ -201,7 +201,7 @@ public actor RecordingSessionManager {
     },
     recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
     pushToTalkGestureStateProvider: (@Sendable (PushToTalkGesture) -> Bool)? = nil,
-    cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
+    cleanupOwner: any ManagedTemporaryAudioCleaning,
     recordingCueAction:
       @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }
   ) {

@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import RillCore
+@testable import RillPlatform
 
 private enum ManagedAudioRemovalProbeError: Error {
     case transient

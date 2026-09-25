@@ -67,15 +67,18 @@ public struct SpeakTextAction: OutputAction {
   public let id = SpeechOutputActionID.speak
   private let synthesizer: any SpeechSynthesizer
   private let playback: any SpeechPlaybackService
+  private let removeTemporaryAsset: @Sendable (SpeechAsset) throws -> Void
   private let playbackStateChanged: @Sendable (Bool) async -> Void
 
   public init(
     synthesizer: any SpeechSynthesizer,
     playback: any SpeechPlaybackService,
+    removeTemporaryAsset: @escaping @Sendable (SpeechAsset) throws -> Void,
     playbackStateChanged: @escaping @Sendable (Bool) async -> Void = { _ in }
   ) {
     self.synthesizer = synthesizer
     self.playback = playback
+    self.removeTemporaryAsset = removeTemporaryAsset
     self.playbackStateChanged = playbackStateChanged
   }
 
@@ -107,15 +110,15 @@ public struct SpeakTextAction: OutputAction {
     do {
       try await playback.play(asset, runID: context.runID)
       await playbackStateChanged(false)
-      _ = try? asset.removeManagedTemporaryFile()
+      try? removeTemporaryAsset(asset)
       return .externalOutput("Speech")
     } catch is CancellationError {
       await playbackStateChanged(false)
-      _ = try? asset.removeManagedTemporaryFile()
+      try? removeTemporaryAsset(asset)
       throw CancellationError()
     } catch {
       await playbackStateChanged(false)
-      _ = try? asset.removeManagedTemporaryFile()
+      try? removeTemporaryAsset(asset)
       return .failed(SpeechSynthesisActionError.playbackFailed.localizedDescription)
     }
   }

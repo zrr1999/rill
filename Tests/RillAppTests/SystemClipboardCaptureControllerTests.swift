@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import AppKit
 import Testing
 import XCTest
@@ -428,7 +429,7 @@ struct ClipboardCaptureLatencyTests {
     changedFocus.processIdentifier = 43
     let executionFocus = targetChanged ? changedFocus : focus
     let probe = ExplicitRecordOutputProbe()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       privacyContextProvider: { ContextSnapshot(focus: executionFocus, clipboard: .init(plainText: "native copy", changeCount: 1)) },
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
@@ -534,7 +535,7 @@ struct ClipboardCaptureLatencyTests {
   )
     -> SystemClipboardCaptureController
   {
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -638,7 +639,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
     )
     let eventBus = EventBus()
     let probe = SelectedRecordDeliveryProbe()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       privacyContextProvider: { context },
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
@@ -714,7 +715,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
         snapshot: SystemClipboardSnapshot(plainText: "existing", changeCount: 1)
       )
     }
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       privacyContextProvider: { context },
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
@@ -763,7 +764,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
     ])
 
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -815,7 +816,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
   func testPausedCaptureDoesNotReadExternalPayload() async throws {
     let store = RecordStore()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),

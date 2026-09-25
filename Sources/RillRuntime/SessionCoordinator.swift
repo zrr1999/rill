@@ -122,10 +122,10 @@ public actor SessionCoordinator {
             ContextSnapshot
         ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
         recognitionTimeoutPolicy: RecognitionTimeoutPolicy = .standard,
-        recognitionAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner =
-            ManagedTemporaryAudioCleanupOwner(),
+        recognitionAudioCleanupOwner: any ManagedTemporaryAudioCleaning,
         defaultRecordDeliveryActionID: String = "system-clipboard.copy",
-        processingClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
+        processingClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
+        recognitionAudioIsolator: @escaping @Sendable (CapturedAudio) throws -> CapturedAudio
     ) {
         self.lane = lane
         self.privacyContextProvider = privacyContextProvider
@@ -160,7 +160,8 @@ public actor SessionCoordinator {
         self.recognitionOptionsProvider = recognitionOptionsProvider
         self.recognitionTimeoutPolicy = recognitionTimeoutPolicy
         self.recognitionTimeoutExecutor = RecognitionTimeoutExecutor(
-            cleanupOwner: recognitionAudioCleanupOwner
+            cleanupOwner: recognitionAudioCleanupOwner,
+            isolateAudio: recognitionAudioIsolator
         )
         self.defaultRecordDeliveryActionID = defaultRecordDeliveryActionID
         self.processingClock = processingClock

@@ -1,11 +1,12 @@
 import Foundation
+import RillCore
 
 /// A process-lifetime ownership boundary for plaintext audio files that Rill must remove.
 ///
 /// Producers transfer a managed temporary URL here before clearing their own reference. Cleanup
 /// then continues independently of caller cancellation, and application shutdown can drain every
 /// accepted file instead of relying on a later startup janitor.
-public actor ManagedTemporaryAudioCleanupOwner {
+public actor ManagedTemporaryAudioCleanupOwner: ManagedTemporaryAudioCleaning {
     public struct Diagnostic: Sendable, Equatable {
         public enum Outcome: String, Sendable, Equatable {
             case retryPending = "retry-pending"
@@ -123,16 +124,6 @@ public actor ManagedTemporaryAudioCleanupOwner {
         )
         workIDByURL[standardizedURL] = workID
         return true
-    }
-
-    /// Transfers a completed payload when the prior owner will no longer use it.
-    @discardableResult
-    public func transfer(_ capturedAudio: CapturedAudio, runID: UUID) -> Bool {
-        guard capturedAudio.fileOwnership == .managedTemporary,
-              let fileURL = capturedAudio.fileURL else {
-            return false
-        }
-        return transfer(fileURL: fileURL, runID: runID)
     }
 
     /// Waits for all currently and subsequently finishing accepted work in the selected scope.

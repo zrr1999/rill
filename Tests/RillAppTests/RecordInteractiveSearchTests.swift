@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import RillTestSupport
 import AppKit
 import XCTest
@@ -116,7 +117,7 @@ final class RecordInteractiveSearchTests: XCTestCase {
     let bus = EventBus()
     let resolver = CandidateResolver(eventBus: bus)
     let actions = OutputActionRegistry(actions: [])
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []), actionRegistry: actions,

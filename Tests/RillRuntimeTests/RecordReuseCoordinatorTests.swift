@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import XCTest
 
 @testable import RillCore
@@ -65,7 +66,7 @@ final class RecordReuseCoordinatorTests: XCTestCase {
     let bus = EventBus()
     let receipts = InMemoryWorkflowRunReceiptRepository()
     let probe = ReuseOutputProbe()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
        privacyContextProvider: { context },
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),

@@ -1,3 +1,5 @@
+import RillPlatform
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -449,7 +451,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     var deliveryIterator = eventBus.lifecycleDeliveryStream.makeAsyncIterator()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -457,13 +459,13 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
     let preflightGate = WorkflowSealGate(context: .empty)
     await preflightGate.arm()
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       eventBus: eventBus,
@@ -517,7 +519,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     var deliveryIterator = eventBus.lifecycleDeliveryStream.makeAsyncIterator()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -525,13 +527,13 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
     let preflightGate = WorkflowSealGate(context: .empty)
     await preflightGate.arm()
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       eventBus: eventBus,
@@ -593,7 +595,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
   {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -601,12 +603,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
     let sealGate = WorkflowSealGate(context: makeWorkflowLiveContext())
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       eventBus: eventBus,
@@ -669,7 +671,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
   func testStopDuringPreparingDoesNotJoinOlderPostBoundaryFinish() async throws {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -677,13 +679,13 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
     let sealGate = WorkflowSealGate(context: makeWorkflowLiveContext())
     let preflightGate = WorkflowSealGate(context: .empty)
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       privacyContextProvider: { await sealGate.read() },
@@ -746,7 +748,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       }
     }
     defer { eventTask.cancel() }
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -754,11 +756,11 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       diagnostics: diagnostics,
@@ -860,7 +862,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let diagnostics = DiagnosticsRecorder(repository: repository)
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -868,11 +870,11 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       diagnostics: diagnostics,
@@ -935,7 +937,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     await audioCaptureService.setShouldRevokeLifetimeBeforeStartReturns(true)
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -943,11 +945,11 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       diagnostics: diagnostics,
@@ -986,7 +988,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
   func testLiveCloudTextRunStopsWhenFocusBecomesSensitive() async throws {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -995,9 +997,9 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       eventBus: eventBus
     )
     let contexts = WorkflowLiveContextStore(makeWorkflowLiveContext())
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
-      capturedAudioProcessingQueue: CapturedAudioProcessingQueue(
+      capturedAudioProcessingQueue: makeTestCapturedAudioProcessingQueue(
         sessionCoordinator: coordinator,
         eventBus: eventBus
       ),
@@ -1054,7 +1056,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
   func testStaleLiveRevocationCannotCancelNewerWorkflowRun() async throws {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1063,9 +1065,9 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       eventBus: eventBus
     )
     let contexts = WorkflowLiveContextStore(makeWorkflowLiveContext())
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
-      capturedAudioProcessingQueue: CapturedAudioProcessingQueue(
+      capturedAudioProcessingQueue: makeTestCapturedAudioProcessingQueue(
         sessionCoordinator: coordinator,
         eventBus: eventBus
       ),
@@ -1113,7 +1115,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
   func testCancelDuringFinishPreventsOldRunFromEnteringQueue() async throws {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1121,12 +1123,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
     let contexts = WorkflowLiveContextStore(makeWorkflowLiveContext())
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       eventBus: eventBus,
@@ -1175,7 +1177,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
   func testCancelAfterQueueTransferDoesNotLetOldFinishClearNewRun() async throws {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1184,7 +1186,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       eventBus: eventBus
     )
     let transferGate = WorkflowQueueTransferGate()
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus,
       rejectedCapturedAudioRemoval: { capturedAudio in
@@ -1199,7 +1201,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
         await transferGate.suspendAfterTransfer()
       }
     )
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       privacyRunGate: makeWorkflowAudioTestPrivacyGate()
@@ -1263,7 +1265,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     )
     let captureService = TransferredWorkflowCaptureService(capturedAudio: capturedAudio)
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1271,12 +1273,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
     let sealGate = WorkflowSealGate(context: makeWorkflowLiveContext())
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: captureService,
       capturedAudioProcessingQueue: queue,
       privacyContextProvider: { await sealGate.read() },
@@ -1341,7 +1343,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
   func testShutdownSealsControllerBeforeSuspendedPreflightResumes() async throws {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1349,13 +1351,13 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
     let preflightGate = WorkflowSealGate(context: .empty)
     await preflightGate.arm()
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       runPreflight: { _ in
@@ -1407,7 +1409,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
   func testMissingPrivacyGateFailsClosedBeforeContextOptionsOrCapture() async {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1416,9 +1418,9 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       eventBus: eventBus
     )
     let optionsProbe = WorkflowRecognitionOptionsProbe()
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
-      capturedAudioProcessingQueue: CapturedAudioProcessingQueue(
+      capturedAudioProcessingQueue: makeTestCapturedAudioProcessingQueue(
         sessionCoordinator: coordinator,
         eventBus: eventBus
       ),
@@ -1461,7 +1463,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let eventBus = EventBus()
     let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
     let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1473,13 +1475,13 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
 
     // Need to wrap the mock queue in a real CapturedAudioProcessingQueue
     // Actually, we can't access the real queue easily, so let's just use it directly
-    let realProcessingQueue = CapturedAudioProcessingQueue(
+    let realProcessingQueue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus,
       diagnostics: diagnostics
     )
 
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: realProcessingQueue,
       diagnostics: diagnostics,
@@ -1555,7 +1557,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
     let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1564,7 +1566,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       eventBus: eventBus,
       diagnostics: diagnostics
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus,
       diagnostics: diagnostics
@@ -1587,7 +1589,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       ),
       clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 1)
     )
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       diagnostics: diagnostics,
@@ -1632,7 +1634,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
   func testManualPreflightFailurePrecedesPrivacyContextOptionsAndCaptureAndReturnsIdle() async {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1647,9 +1649,9 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
         await ordering.confirmCloudRun()
       }
     )
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
-      capturedAudioProcessingQueue: CapturedAudioProcessingQueue(
+      capturedAudioProcessingQueue: makeTestCapturedAudioProcessingQueue(
         sessionCoordinator: coordinator,
         eventBus: eventBus
       ),
@@ -1690,7 +1692,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
   func testLegacyClipboardWorkflowIsRejectedBeforePreflightPrivacyContextOptionsOrCapture() async {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1708,9 +1710,9 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
         await ordering.confirmCloudRun()
       }
     )
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
-      capturedAudioProcessingQueue: CapturedAudioProcessingQueue(
+      capturedAudioProcessingQueue: makeTestCapturedAudioProcessingQueue(
         sessionCoordinator: coordinator,
         eventBus: eventBus
       ),
@@ -1755,7 +1757,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
   func testManualRunSnapshotsRecognitionOptionsBeforeCaptureStarts() async throws {
     let audioCaptureService = ThrowingAudioCaptureService()
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1763,7 +1765,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
@@ -1783,7 +1785,7 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
       hints: RecognitionHints(keyterms: ["Rill"])
     )
     let optionsProbe = WorkflowRecognitionOptionsProbe()
-    let controller = WorkflowAudioRunController(
+    let controller = makeTestWorkflowAudioRunController(
       audioCaptureService: audioCaptureService,
       capturedAudioProcessingQueue: queue,
       privacyContextProvider: { expectedContext },

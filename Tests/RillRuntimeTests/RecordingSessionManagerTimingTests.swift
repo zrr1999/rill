@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -569,7 +570,7 @@ private func makeManager(
     recordingCueAction: (@Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void)? = nil
 ) -> RecordingSessionManager {
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
         recognizerRegistry: SpeechRecognizerRegistry(
             recognizers: [RecordingTimingRecognizer()]
@@ -580,7 +581,7 @@ private func makeManager(
         eventBus: eventBus,
         diagnostics: diagnostics
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
         sessionCoordinator: coordinator,
         eventBus: eventBus,
         diagnostics: diagnostics
@@ -605,7 +606,7 @@ private func makeManager(
         destinationClassifier: { _ in .classified([.localSpeech]) }
     )
 
-    return RecordingSessionManager(
+    return makeTestRecordingSessionManager(
         audioCaptureService: audioCaptureService,
         hotkeyTap: HotkeyEventTap(),
         capturedAudioProcessingQueue: queue,

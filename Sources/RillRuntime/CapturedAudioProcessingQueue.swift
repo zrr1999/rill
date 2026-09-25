@@ -67,42 +67,13 @@ public actor CapturedAudioProcessingQueue {
         failedAudioRecoveryController: FailedAudioRecoveryController? = nil,
         benchmarkRecordingArchiveController: BenchmarkRecordingArchiveController? = nil,
         lane: Lane = .interactive,
-        publishesSnapshots: Bool = true
-    ) {
-        self.init(
-            sessionCoordinator: sessionCoordinator,
-            eventBus: eventBus,
-            diagnostics: diagnostics,
-            failedAudioRecoveryController: failedAudioRecoveryController,
-            benchmarkRecordingArchiveController: benchmarkRecordingArchiveController,
-            lane: lane,
-            publishesSnapshots: publishesSnapshots,
-            rejectedCapturedAudioRemoval: { capturedAudio in
-                _ = try capturedAudio.removeManagedTemporaryFile()
-            },
-            rejectedCleanupInitialRetryDelay: .milliseconds(100),
-            rejectedCleanupMaximumRetryDelay: .seconds(5),
-            rejectedCleanupSleep: { delay in
-                try await Task.sleep(for: delay)
-            },
-            ownershipTransferObserver: { _ in }
-        )
-    }
-
-    init(
-        sessionCoordinator: SessionCoordinator,
-        eventBus: EventBus,
-        diagnostics: DiagnosticsRecorder? = nil,
-        failedAudioRecoveryController: FailedAudioRecoveryController? = nil,
-        benchmarkRecordingArchiveController: BenchmarkRecordingArchiveController? = nil,
-        lane: Lane = .interactive,
         publishesSnapshots: Bool = true,
         rejectedCapturedAudioRemoval: @escaping @Sendable (
             CapturedAudio
         ) async throws -> Void,
-        rejectedCleanupInitialRetryDelay: Duration,
-        rejectedCleanupMaximumRetryDelay: Duration,
-        rejectedCleanupSleep: @escaping @Sendable (Duration) async throws -> Void,
+        rejectedCleanupInitialRetryDelay: Duration = .milliseconds(100),
+        rejectedCleanupMaximumRetryDelay: Duration = .seconds(5),
+        rejectedCleanupSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         ownershipTransferObserver: @escaping @Sendable (UUID) async -> Void = { _ in }
     ) {
         precondition(rejectedCleanupInitialRetryDelay > .zero)

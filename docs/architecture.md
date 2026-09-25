@@ -237,3 +237,12 @@ Their maintenance ports are separate, explicit contracts. Local retention only
 requires those maintenance ports; `DiagnosticsRecorder` requires both when a
 persistent repository is supplied, so deletion cannot silently bypass storage.
 Timestamp-only deletion remains at backend compatibility boundaries.
+
+Temporary audio file removal, timeout isolation and retry cleanup are owned by
+`RillPlatform`. Runtime receives `ManagedTemporaryAudioCleaning` and an explicit
+isolation/removal operation; it never copies or deletes audio through Core value
+types. A timed-out recognizer keeps its isolated file until the actual operation
+returns, then transfers it to the shared cleanup owner. File ownership and path
+validation remain mandatory. Legacy JSON manifest decoding stays in Core; only
+the migration adapter reads the file. Runtime test defaults live in
+`RillDomainTestSupport`, which is excluded from production dependencies.

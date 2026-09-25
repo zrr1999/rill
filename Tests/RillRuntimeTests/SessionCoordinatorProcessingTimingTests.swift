@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import XCTest
 import Testing
@@ -243,7 +244,7 @@ private func makeProcessingHarness(
         ),
         ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
     )
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
         recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ProcessingTestRecognizer(clock: clock, outcome: recognition, candidateSets: candidateSets)]),
         transformerRegistry: TextTransformerRegistry(transformers: [ProcessingTestTransformer(clock: clock, outcome: transformation)]),

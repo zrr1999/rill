@@ -1,3 +1,5 @@
+import RillPlatform
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -129,7 +131,7 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
   }
 
   func testNonCooperativeRecognizerTimesOutAndRemainsQuarantinedUntilItFinishes() async {
-    let executor = RecognitionTimeoutExecutor()
+    let executor = RecognitionTimeoutExecutor(cleanupOwner: ManagedTemporaryAudioCleanupOwner(), isolateAudio: TemporaryAudioFiles.isolate)
     let probe = HangingRecognitionProbe()
     let recognizer = HangingTestRecognizer(id: "timeout.hanging", probe: probe)
     let request = makeRequest(recognizerID: recognizer.id)
@@ -192,7 +194,7 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
   }
 
   func testParentCancellationRemainsCancellationInsteadOfTimeout() async throws {
-    let executor = RecognitionTimeoutExecutor()
+    let executor = RecognitionTimeoutExecutor(cleanupOwner: ManagedTemporaryAudioCleanupOwner(), isolateAudio: TemporaryAudioFiles.isolate)
     let probe = HangingRecognitionProbe()
     let recognizer = HangingTestRecognizer(id: "timeout.cancelled", probe: probe)
     let audio = try makeManagedCapturedAudio()
@@ -393,7 +395,7 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
       actionProbe: actionProbe,
       timeoutSeconds: 0.02
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
@@ -497,7 +499,7 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
     timeoutSeconds: Double,
     diagnostics: DiagnosticsRecorder? = nil
   ) -> SessionCoordinator {
-    SessionCoordinator(
+    makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: recognizers),
       transformerRegistry: TextTransformerRegistry(transformers: []),

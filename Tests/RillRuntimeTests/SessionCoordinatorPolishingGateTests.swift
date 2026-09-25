@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import Testing
 @testable import RillCore
@@ -91,7 +92,7 @@ struct SessionCoordinatorPolishingGateTests {
     let delivery = PolishingDeliveryProbe(store: store)
     let receipts = InMemoryWorkflowRunReceiptRepository()
     let workflow = try #require(BuiltinWorkflowCatalog().manifest().workflows.first { $0.titleKey == .smartCleanup })
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: .init(recognizers: []),
       transformerRegistry: .init(transformers: [WhitespaceNormalizerTransformer(), transformer]),

@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import XCTest
 @testable import RillCore
@@ -188,7 +189,7 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus, repository: repository)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let actionProbe = RegressionActionProbe()
-        let coordinator = SessionCoordinator(
+        let coordinator = makeTestSessionCoordinator(
 
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RegressionRecognizer(text: "second run")]
@@ -238,7 +239,7 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
         let eventBus = EventBus()
         let actionProbe = RegressionActionProbe()
         let resolver = CandidateResolver(eventBus: eventBus)
-        let coordinator = SessionCoordinator(
+        let coordinator = makeTestSessionCoordinator(
 
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RegressionRecognizer(text: "queued text")]
@@ -248,7 +249,7 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
             candidateResolver: resolver,
             eventBus: eventBus
         )
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )

@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import RillCore
 import Testing
@@ -104,7 +105,7 @@ struct StructuredWorkflowTests {
         let probe = StructuredOutputProbe()
         let receipts = InMemoryWorkflowRunReceiptRepository()
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
+        let coordinator = makeTestSessionCoordinator(
 
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: [StructuredTransformer()]),

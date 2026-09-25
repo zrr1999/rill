@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import XCTest
 @testable import RillCore
@@ -159,7 +160,7 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
+        let coordinator = makeTestSessionCoordinator(
 
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -167,10 +168,10 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
             candidateResolver: CandidateResolver(eventBus: eventBus),
             eventBus: eventBus
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: captureService,
             hotkeyTap: HotkeyEventTap(),
-            capturedAudioProcessingQueue: CapturedAudioProcessingQueue(
+            capturedAudioProcessingQueue: makeTestCapturedAudioProcessingQueue(
                 sessionCoordinator: coordinator,
                 eventBus: eventBus
             ),
@@ -225,7 +226,7 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
+        let coordinator = makeTestSessionCoordinator(
 
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -233,11 +234,11 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
             candidateResolver: CandidateResolver(eventBus: eventBus),
             eventBus: eventBus
         )
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: captureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: queue,

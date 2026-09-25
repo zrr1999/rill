@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import XCTest
 @testable import RillCore
 @testable import RillRuntime
@@ -145,7 +146,7 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
         for testCase in cases {
             let probe = WorkflowPolicyProbe()
             let eventBus = EventBus()
-            let coordinator = SessionCoordinator(
+            let coordinator = makeTestSessionCoordinator(
 
                 recognizerRegistry: SpeechRecognizerRegistry(
                     recognizers: [WorkflowPolicyRecognizer(probe: probe)]
@@ -181,7 +182,7 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
         let probe = WorkflowPolicyProbe()
         let optionsProbe = WorkflowPolicyOptionsProbe()
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
+        let coordinator = makeTestSessionCoordinator(
 
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [WorkflowPolicyRecognizer(probe: probe)]

@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import Testing
 @testable import RillCore
@@ -20,7 +21,7 @@ struct RunContextPreparationTests {
         let bus = EventBus()
         let resolver = CandidateResolver(eventBus: bus)
         let transformer = ContextQueueTransformer()
-        let coordinator = SessionCoordinator(
+        let coordinator = makeTestSessionCoordinator(
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ContextQueueRecognizer(result: recognition)]),
             transformerRegistry: TextTransformerRegistry(transformers: [transformer]),
             actionRegistry: OutputActionRegistry(actions: [ContextQueueAction()]), candidateResolver: resolver, eventBus: bus,
@@ -219,14 +220,14 @@ struct RunContextPreparationTests {
         let transformer = ContextQueueTransformer()
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let coordinator = SessionCoordinator(
+        let coordinator = makeTestSessionCoordinator(
 
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ContextQueueRecognizer()]),
             transformerRegistry: TextTransformerRegistry(transformers: [transformer]),
             actionRegistry: OutputActionRegistry(actions: [ContextQueueAction()]),
             candidateResolver: CandidateResolver(eventBus: eventBus), eventBus: eventBus, diagnostics: diagnostics
         )
-        let queue = CapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
+        let queue = makeTestCapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
         let workflow = WorkflowDefinition(name: "Context queue", pipeline: PipelineDeclaration(
             recognizerID: "context.test", postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Cleanup")], outputActions: [OutputActionReference(id: "context.output")]
         ), ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue"))

@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import XCTest
 @testable import RillCore
@@ -688,7 +689,7 @@ final class SessionCoordinatorReceiptTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics
         )
-        return SessionCoordinator(
+        return makeTestSessionCoordinator(
 
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ReceiptRecognizer()]),
             transformerRegistry: TextTransformerRegistry(transformers: []),

@@ -12,7 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEPENDENCIES = {
     "RillCore": set(),
-    "RillTestSupport": {"RillCore", "RillRuntime", "RillUI"},
+    "RillTestSupport": {"RillCore", "RillRuntime", "RillUI", "RillDomainTestSupport"},
+    "RillDomainTestSupport": {"RillCore", "RillRuntime", "RillPlatform"},
     "RillSpeechContracts": {"RillCore"},
     "RillRuntime": {"RillCore"},
     "RillPersistence": {"RillCore"},
@@ -30,6 +31,7 @@ FOUNDATION_IMPORTS = {"Foundation", "CryptoKit", "Dispatch", "Darwin"}
 SYSTEM_IMPORTS = {
     "RillCore": FOUNDATION_IMPORTS,
     "RillTestSupport": FOUNDATION_IMPORTS,
+    "RillDomainTestSupport": FOUNDATION_IMPORTS,
     "RillSpeechContracts": FOUNDATION_IMPORTS,
     "RillRuntime": FOUNDATION_IMPORTS,
     "RillMLXRuntime": FOUNDATION_IMPORTS,

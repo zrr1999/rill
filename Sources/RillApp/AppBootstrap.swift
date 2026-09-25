@@ -1069,6 +1069,7 @@ private enum AppContainerFactory {
         fallback: SystemSpeechSynthesizer()
       ),
       playback: speechPlaybackService,
+      removeTemporaryAsset: { _ = try $0.removeManagedTemporaryFile() },
       playbackStateChanged: { isPlaying in
         await speechPlaybackPresentationBridge.update(isActive: isPlaying)
         guard let wakeWordTriggerSource else { return }
@@ -1226,6 +1227,7 @@ private enum AppContainerFactory {
         },
         recognitionOptionsProvider: recognitionOptionsProvider,
         runPreflight: recognitionRunPreflight,
+        removeManagedRecoveryTemporaryFile: { _ = try $0.removeManagedTemporaryFile() },
         cleanupRecoveryTemporaryFiles: {
           let report = await core.persistence.temporaryFileCleanupService
             .cleanupRecoveryArtifacts()
@@ -1245,7 +1247,8 @@ private enum AppContainerFactory {
       eventBus: core.eventBus,
       diagnostics: core.diagnostics,
       failedAudioRecoveryController: failedAudioRecoveryController,
-      benchmarkRecordingArchiveController: benchmarkRecordingArchiveController
+      benchmarkRecordingArchiveController: benchmarkRecordingArchiveController,
+      rejectedCapturedAudioRemoval: { _ = try $0.removeManagedTemporaryFile() }
     )
     let assistantQueue = CapturedAudioProcessingQueue(
       sessionCoordinator: assistantCoordinator,
@@ -1253,7 +1256,8 @@ private enum AppContainerFactory {
       diagnostics: core.diagnostics,
       benchmarkRecordingArchiveController: benchmarkRecordingArchiveController,
       lane: .assistant,
-      publishesSnapshots: false
+      publishesSnapshots: false,
+      rejectedCapturedAudioRemoval: { _ = try $0.removeManagedTemporaryFile() }
     )
     let manifestResult = WorkflowManifestResource.load(
       recognizerRegistry: registries.recognizerRegistry,
@@ -1417,7 +1421,8 @@ private enum AppContainerFactory {
       },
       recognitionOptionsProvider: recognitionOptionsProvider,
       recognitionAudioCleanupOwner: recognitionAudioCleanupOwner,
-      defaultRecordDeliveryActionID: "focused-application.insert"
+      defaultRecordDeliveryActionID: "focused-application.insert",
+      recognitionAudioIsolator: TemporaryAudioFiles.isolate
     )
   }
 
@@ -2604,7 +2609,7 @@ enum WorkflowManifestResource {
       )
     }
     do {
-      let manifest = try JSONWorkflowManifestLoader(url: manifestURL).loadManifest()
+      let manifest = try LegacyWorkflowManifestFileLoader(url: manifestURL).loadManifest()
       try WorkflowManifestValidator(
         recognizerRegistry: recognizerRegistry,
         transformerRegistry: transformerRegistry,

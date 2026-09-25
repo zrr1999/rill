@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import RillTestSupport
 import AppKit
 import XCTest
@@ -475,7 +476,7 @@ final class RecordPanelControllerTests: XCTestCase {
         let eventBus = EventBus()
         let resolver = CandidateResolver(eventBus: eventBus)
         let actionRegistry = OutputActionRegistry(actions: [])
-        let coordinator = SessionCoordinator(
+        let coordinator = makeTestSessionCoordinator(
 
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),

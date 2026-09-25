@@ -84,9 +84,7 @@ public actor FailedAudioRecoveryController {
         ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
         runPreflight: @escaping RecognitionRunPreflight = { _ in },
         currentDate: @escaping @Sendable () -> Date = { Date() },
-        removeManagedRecoveryTemporaryFile: @escaping @Sendable (CapturedAudio) throws -> Void = {
-            _ = try $0.removeManagedTemporaryFile()
-        },
+        removeManagedRecoveryTemporaryFile: @escaping @Sendable (CapturedAudio) throws -> Void,
         cleanupRecoveryTemporaryFiles: @escaping @Sendable () async -> Bool = { true },
         initialMaintenanceRetryInterval: TimeInterval = 5,
         maximumMaintenanceRetryInterval: TimeInterval = 5 * 60

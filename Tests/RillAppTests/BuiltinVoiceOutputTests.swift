@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import RillCore
 import RillProviders
@@ -23,7 +24,7 @@ struct BuiltinVoiceOutputTests {
         let sinkID = title == .voiceAssistant ? SpeechOutputActionID.speak : "focused-application.insert"
         let bus = EventBus()
         let receipts = InMemoryWorkflowRunReceiptRepository()
-        let coordinator = SessionCoordinator(
+        let coordinator = makeTestSessionCoordinator(
 
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: [VoiceOutputTransformer()]),

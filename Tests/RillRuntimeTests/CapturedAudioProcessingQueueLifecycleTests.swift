@@ -1,3 +1,5 @@
+import RillPlatform
+import RillDomainTestSupport
 import Foundation
 import XCTest
 @testable import RillCore
@@ -837,7 +839,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         XCTAssertEqual(execution.recognition, 0)
         XCTAssertEqual(execution.action, 0)
 
-        _ = try await deferredCapture.discardManagedTemporaryFile()
+        _ = try await deferredCapture.value().removeManagedTemporaryFile()
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     }
 
@@ -1080,7 +1082,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         let executionProbe = providedExecutionProbe ?? AudioLifecycleExecutionProbe()
         let eventBus = EventBus()
         let diagnostics = providedDiagnostics ?? DiagnosticsRecorder(eventBus: eventBus)
-        let coordinator = SessionCoordinator(
+        let coordinator = makeTestSessionCoordinator(
 
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
@@ -1099,7 +1101,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
             diagnostics: diagnostics
         )
         let recoveryController = recoveryStore.map { store in
-            FailedAudioRecoveryController(
+            makeTestFailedAudioRecoveryController(
                 store: store,
                 sessionCoordinator: coordinator,
                 eventBus: eventBus,
@@ -1124,7 +1126,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
             let sleep = rejectedCleanupSleep ?? { delay in
                 try await Task.sleep(for: delay)
             }
-            return CapturedAudioProcessingQueue(
+            return makeTestCapturedAudioProcessingQueue(
                 sessionCoordinator: coordinator,
                 eventBus: eventBus,
                 diagnostics: diagnostics,
@@ -1139,7 +1141,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
                 ownershipTransferObserver: ownershipTransferObserver ?? { _ in }
             )
         }
-        return CapturedAudioProcessingQueue(
+        return makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus,
             diagnostics: diagnostics,

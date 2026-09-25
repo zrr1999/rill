@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import RillTestSupport
 import XCTest
 
@@ -655,7 +656,7 @@ func makeHarness(
       UITestAction(id: ExternalOutputActionID.markdownAppend, log: actionLog),
     ]
   )
-  let coordinator = SessionCoordinator(
+  let coordinator = makeTestSessionCoordinator(
 
     recognizerRegistry: SpeechRecognizerRegistry(
       recognizers: [

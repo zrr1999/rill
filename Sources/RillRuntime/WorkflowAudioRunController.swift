@@ -69,7 +69,7 @@ public actor WorkflowAudioRunController {
   private let recognizerDurationProvider: @Sendable (String) -> Double?
   private let recordingDurationLimitProvider: @Sendable () async -> RecordingDurationLimit
   private let privacyRunGate: PrivacyRunGate?
-  private let cleanupOwner: ManagedTemporaryAudioCleanupOwner
+  private let cleanupOwner: any ManagedTemporaryAudioCleaning
   private var state: State = .idle
   private var finishingRuns: [UUID: FinishingRun] = [:]
   private var captureSignalSubscriptions: [UUID: CaptureSignalSubscription] = [:]
@@ -99,7 +99,7 @@ public actor WorkflowAudioRunController {
       .fiveMinutes
     },
     privacyRunGate: PrivacyRunGate? = nil,
-    cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner()
+    cleanupOwner: any ManagedTemporaryAudioCleaning
   ) {
     self.audioCaptureService = audioCaptureService
     self.capturedAudioProcessingQueue = capturedAudioProcessingQueue

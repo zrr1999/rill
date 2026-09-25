@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -110,7 +111,7 @@ private func makeToggleCapturedAudioProcessingQueue(
   eventBus: EventBus,
   diagnostics: DiagnosticsRecorder? = nil
 ) -> CapturedAudioProcessingQueue {
-  CapturedAudioProcessingQueue(
+  makeTestCapturedAudioProcessingQueue(
     sessionCoordinator: sessionCoordinator,
     eventBus: eventBus,
     diagnostics: diagnostics
@@ -143,7 +144,7 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
       audio: audio,
       cueOrderProbe: cueOrderProbe
     )
-    let coordinator = SessionCoordinator(
+    let coordinator = makeTestSessionCoordinator(
 
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: [
         ToggleRecognizer(probe: requestProbe)
@@ -154,7 +155,7 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
       eventBus: eventBus,
       diagnostics: diagnostics
     )
-    let manager = RecordingSessionManager(
+    let manager = makeTestRecordingSessionManager(
       audioCaptureService: audioCaptureService,
       hotkeyTap: HotkeyEventTap(),
       capturedAudioProcessingQueue: makeToggleCapturedAudioProcessingQueue(
