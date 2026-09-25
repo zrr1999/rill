@@ -22,7 +22,9 @@ import unicodedata
 STAGES = ("raw", "vocabulary", "final")
 METRICS = ("first_preview_ms", "stable_preview_ms", "release_to_final_ms",
            "release_to_saved_ms", "release_to_paste_posted_ms", "worker_request_ms",
-           "worker_inference_ms", "peak_memory_bytes")
+           "worker_inference_ms", "peak_memory_bytes", "model_prepare_ms",
+           "stream_prepare_ms", "preview_retire_ms", "worker_first_hypothesis_ms",
+           "worker_first_confirmed_ms")
 CACHE_STATES = {"cold_process", "cold_model", "first_inference", "warm", "idle_recovery"}
 
 
@@ -93,6 +95,12 @@ def read_run(path, cases):
             raise ValueError(f"Missing run identity: {key}.")
     if header["evidence_kind"] not in {"microphone", "synthetic", "public_fixture"}:
         raise ValueError("Unknown evidence kind.")
+    for key in ("measurement_scope", "memory_scope", "preview_time_origin"):
+        if key in lines[0]:
+            value = lines[0][key]
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"Invalid measurement scope: {key}.")
+            header[key] = value
     rows = {}
     audio_ids = {}
     for row in lines[1:]:
@@ -175,8 +183,8 @@ def compare(cases, baseline, candidate, target="release_to_final_ms", split="val
     after_header, after = candidate
     if set(before) != set(after):
         raise ValueError("Paired runs must contain the same cases, cache states and repetitions.")
-    for field in ("device", "os_version", "evidence_kind"):
-        if before_header[field] != after_header[field]:
+    for field in ("device", "os_version", "evidence_kind", "measurement_scope", "memory_scope", "preview_time_origin"):
+        if before_header.get(field) != after_header.get(field):
             raise ValueError(f"Incomparable run identity: {field}.")
     for key in before:
         if before[key]["audio_sha256"] != after[key]["audio_sha256"]:

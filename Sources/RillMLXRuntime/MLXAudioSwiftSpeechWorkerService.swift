@@ -491,6 +491,11 @@ public actor MLXAudioSwiftSpeechWorkerService:
         if let tokens = output.promptTokenCount { metadata["provider.prompt_tokens"] = String(tokens) }
         if let included = output.includedKeytermCount { metadata["provider.keyterms_used"] = String(included) }
         if let omitted = output.omittedKeytermCount { metadata["provider.keyterms_omitted"] = String(omitted) }
+        var usage = rusage()
+        if getrusage(RUSAGE_SELF, &usage) == 0, usage.ru_maxrss > 0 {
+          // Darwin reports bytes for the lifetime high-water mark of this worker.
+          metadata["provider.worker_peak_rss_bytes"] = String(usage.ru_maxrss)
+        }
         if let detectedLanguage = output.detectedLanguage {
           metadata["provider.detected_language"] = detectedLanguage
         }

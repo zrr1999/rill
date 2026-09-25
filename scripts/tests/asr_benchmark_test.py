@@ -55,6 +55,11 @@ class BenchmarkTests(unittest.TestCase):
         self.assertEqual(report["decision"], "reject")
         self.assertIn("case.case-0.final.critical_or_silence", report["regressions"])
 
+    def test_worker_and_product_memory_scopes_cannot_be_compared(self):
+        different = dict(self.header, memory_scope="worker_process_lifetime_peak_resident_bytes")
+        with self.assertRaises(ValueError):
+            ASR.compare(self.cases, (self.header, self.rows), (different, self.rows))
+
     def test_missing_measurement_is_unknown_not_zero(self):
         changed = copy.deepcopy(self.rows)
         del changed["case-0", "warm", 1]["metrics"]["peak_memory_bytes"]

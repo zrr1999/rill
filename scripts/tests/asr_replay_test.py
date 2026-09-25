@@ -42,6 +42,44 @@ for line in sys.stdin:
                     worker.close()
                 self.assertIsNotNone(worker.process.returncode)
 
+    def test_preview_preserves_partial_tail_and_rejects_early_completion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "tail.wav"
+            with wave.open(str(path), "wb") as audio:
+                audio.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+                audio.writeframes(b"\0\0" * 1601)
+            executable = Path(directory) / "worker"
+            executable.write_text(f'''#!{sys.executable}
+import json, sys, base64
+sequence = total = 0
+for line in sys.stdin:
+ f=json.loads(line); c=f["body"]["command"]["_0"]
+ event=None
+ if "start" in c: event={{"started":{{"modelID":"model"}}}}
+ elif "appendAudio" in c:
+  total+=len(base64.b64decode(c["appendAudio"]["_0"]["pcmFloat32LittleEndian"]))//4
+ elif "finish" in c:
+  event={{"completed":{{"previewText":""}}}} if total==1601 else {{"failure":{{"_0":"invalidAudio"}}}}
+ if event is not None:
+  f.update(kind="event", sequence=sequence, body={{"event":{{"_0":event}}}})
+  sequence+=1; print(json.dumps(f), flush=True)
+''')
+            executable.chmod(0o700)
+            worker = replay.Worker(executable, 2)
+            try:
+                metrics = worker.preview(path, "model", None, "realtime")
+                self.assertIn("preview_retire_ms", metrics)
+                self.assertNotIn("worker_first_hypothesis_ms", metrics)
+            finally:
+                worker.close()
+            executable.write_text(executable.read_text().replace('event={"started":{"modelID":"model"}}', 'event={"completed":{"previewText":""}}'))
+            worker = replay.Worker(executable, 2)
+            try:
+                with self.assertRaisesRegex(replay.WorkerError, "before_all_samples"):
+                    worker.preview(path, "model", None, "realtime")
+            finally:
+                worker.close()
+
     def test_authorization_audio_identity_and_failure_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "test.wav"
