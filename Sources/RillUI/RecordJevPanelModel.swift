@@ -1,7 +1,9 @@
 import Foundation
 import Observation
 import RillCore
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
 
 @MainActor @Observable
 public final class RecordJevPanelModel {
@@ -10,8 +12,10 @@ public final class RecordJevPanelModel {
   }
   public private(set) var state: State = .idle
   public private(set) var review: RecordRankingReview?
+  public private(set) var candidateIDs: [RecordID] = []
+  public private(set) var query = ""
   public private(set) var result: RecordCloudRankingResult?
-  public var isConfigured: Bool { settings.isConfigured && !settings.isSaving }
+  public var isConfigured: Bool { settings.isConfigured }
   public let settings: JevAPISettingsModel
   public var isPresented = false
   private let service: RecordCloudRanking
@@ -30,6 +34,8 @@ public final class RecordJevPanelModel {
   public func prepare(query: String, recordIDs: [RecordID]) {
     guard !closed, !isWorking else { return }
     invalidate()
+    self.query = query
+    candidateIDs = recordIDs
     isPresented = true
     state = .preparing
     run { [self] in
@@ -51,11 +57,21 @@ public final class RecordJevPanelModel {
     }
   }
 
+  func showChangedCandidates(query: String, recordIDs: [RecordID]) {
+    invalidate()
+    self.query = query
+    candidateIDs = recordIDs
+    state = .failed(.changed)
+    isPresented = true
+  }
+
   public func invalidate() {
     generation &+= 1
     for task in tasks.values { task.cancel() }
     review = nil
     result = nil
+    candidateIDs = []
+    query = ""
     state = .idle
     isPresented = false
   }

@@ -4,18 +4,6 @@ Rill separates domain contracts, runtime decisions, external effects, and UI
 state. `Package.swift` defines the module graph; `AppBootstrap` assembles the
 concrete implementations.
 
-Speech recognition and text input are the product capabilities. Workflows are a
-reusable composition layer for those capabilities; they do not own microphone,
-input-method composition, or model resource lifetimes. Future input-method entry
-points should reuse vocabulary, transformation and delivery contracts while
-retaining their own input lifecycle.
-
-Run cards join content-free receipts with optional text history and run-scoped
-diagnostics. Recording length comes from captured audio; selected process steps
-and output actions retain monotonic elapsed milliseconds. A step's TOML
-`record_duration` controls measurement in both receipts and text history. Missing
-measurements remain absent, including older receipts and unexecuted branches.
-
 ## Module dependencies
 
 Arrows point from a consumer to its dependencies.
@@ -23,43 +11,70 @@ Arrows point from a consumer to its dependencies.
 ```mermaid
 flowchart TD
     App[RillApp] --> UI[RillUI]
-    App --> Runtime[RillRuntime]
+    App --> Workflows[RillWorkflows]
+    App --> Clipboard[RillClipboard]
     App --> Persistence[RillPersistence]
     App --> Providers[RillProviders]
-    App --> Platform[RillPlatform]
-    App --> Core[RillCore]
-    UI --> Runtime
-    UI --> Core
-    Runtime --> Core
-    Persistence --> Core
-    Providers --> Contracts[RillSpeechContracts]
-    Providers --> Core
-    Platform --> Core
-    Contracts --> Core
+    Workflows --> Records[RillRecords]
+    Workflows --> Knowledge[RillKnowledge]
+    Workflows --> Speech[RillSpeech]
+    Clipboard --> Records
+    Clipboard --> Platform[RillPlatform]
+    Speech --> Platform
+    Providers --> Speech
+    UI --> Workflows
+    UI --> Knowledge
+    UI --> Records
+    UI --> Speech
+    UI --> Contract[RillInputMethodContracts]
+    UI --> IPC[RillInputMethodIPC]
+    IPC --> Contract
+    IME[RillInputMethod] --> IMK[RillInputMethodKit]
+    IMK --> Contract
+    IMK --> IPC
+    IMK --> Rime[CRime / pinned librime]
     Worker[RillSpeechWorker] --> MLX[RillMLXRuntime]
-    Worker --> Contracts
-    Worker --> Core
-    MLX --> Contracts
-    MLX --> Core
+    Worker --> SpeechContracts[RillSpeechContracts]
+    MLX --> SpeechContracts
+    Speech --> SpeechContracts
+    SpeechContracts --> Core
+    Records --> Core[RillCore]
+    Knowledge --> Core
+    Workflows --> Core
+    Speech --> Core
+    Persistence --> Core
+    Platform --> Core
 ```
 
 | Module | Responsibility |
 | --- | --- |
-| Core | Values, validation, privacy contracts, and ports such as `GlobalInputSource`, `SettingsStore`, and `RecordGraphPersistenceStore`. |
-| Runtime | Session execution, authorization, Record graph commands, and resource lifetimes against Core ports. |
-| Platform | macOS input, clipboard, focus, files, credentials, and other system adapters. |
-| Providers | Recognition clients, text transformation, and external output implementations; no macOS adapter dependency. |
-| SpeechContracts | Worker wire values, streaming contracts, and pinned local model manifests shared by host and worker. |
-| Persistence | SQLite connection, schema migration, encryption, and transactional repositories. |
-| UI | Observable presentation state, feature models, and SwiftUI/AppKit views. |
-| App | Composition, application lifecycle, and window/controller integration. |
-| MLXRuntime / SpeechWorker | Local ASR, TTS, and record-embedding execution in separate supervised helper processes. |
+| Core | Shared values, privacy contracts, and ports. No feature implementation dependencies. |
+| Speech | ASR/TTS and worker client. Microphone capture and voice input hub live in Platform. Speech requests carry a frozen configuration and resolved hints, not a workflow definition. Model catalogs and worker protocols stay in SpeechContracts. |
+| Clipboard | Passive system clipboard observation, collection controls and capture adapter. Ordinary copy/paste remains native. |
+| Records | Record graph, collection/search/retention operations, ingestion and delivery interaction. `RecordStore` remains the sole graph owner. |
+| Knowledge | Vocabulary suggestions and context memory preparation/maintenance. Their authorization and scopes stay separate. |
+| Workflows | Trigger/session orchestration, selected-text input, workflow execution, cancellation and receipts. It connects Record reuse to workflow execution. |
+| InputMethod / InputMethodKit | Independent InputMethodKit process, Rime sessions and nonactivating AppKit candidates. No application, speech, workflow or database dependency. |
+| InputMethodContracts | Versioned messages and installation paths shared by the two processes. |
+| InputMethodIPC | Nonblocking local stream transport, framing and mutual process identity checks using the macOS Security adapter. |
+| Platform / Providers / Persistence | macOS adapters, text/output providers, and the single SQLite connection/transaction owner. |
+| UI / App | Observable feature models and views; composition, lifecycle and navigation. |
+| SpeechContracts / MLXRuntime / SpeechWorker | Lightweight worker contracts and local model execution in a separate process; the worker does not import Speech or host providers. |
 
-Runtime receives system effects through injected ports or closures. For example,
-`RecordingSessionManager` owns the validity of a
-`RecordingCueToken`, while App supplies the haptic effect. The adapter calls
-`performIfValid` at the synchronous effect boundary, after reaching the main
-actor, so cancelling a recording suppresses a cue still waiting to be played.
+`VoiceRunModel`, `WorkflowLibraryModel`, `VocabularyLibraryModel`,
+`RunHistoryModel`, `SettingsPersistenceModel` and `InputMethodFeatureModel` own
+observable feature state. Views read those owners directly; compatibility state
+facades have been removed. `AppModel` still connects application events, settings
+commands and lifecycle effects across features. The composition root supplies
+production dependencies explicitly; test factories belong to test-only targets.
+
+System effects enter through ports or closures. For example,
+`RecordingSessionManager` and `WorkflowAudioRunController` own the validity of
+their `RecordingCueToken` values, while App supplies the shared sound and haptic
+effect. Validation and playback scheduling share one synchronous boundary after
+the MainActor hop. Clipboard capture receives only a Record ingestion
+port. `RecordInteractionController` owns delivery serialization and its shutdown
+drain separately from the clipboard polling lifecycle.
 
 ## State and lifetime ownership
 
@@ -67,8 +82,10 @@ actor, so cancelling a recording suppresses a cue still waiting to be played.
 | --- | --- | --- |
 | Records, memberships, routes, leases, and persistence revision | `RecordStore` | Commands commit before publishing catalog updates or collection events. |
 | SQLite connection and transactions | `SQLitePersistenceStore` | Settings, history, and catalog extensions share one actor and connection. A transaction never suspends between statements. |
-| Active recording and its cleanup | `RecordingSessionManager` | Cancellation invalidates cue tokens and retains pending work until it settles. |
+| Active workflow recording and its cleanup | `RecordingSessionManager` | Cancellation invalidates cue tokens and retains pending work until it settles. |
 | Authorized workflow run | `SessionCoordinator` | Frozen workflow/context and resolved provider plan remain attached to one run. |
+| Live recognition context | `LiveRecognitionContextResolver` | Compiles vocabulary once at capture admission; the processing lease carries the frozen plan, language, model and hints to final recognition. |
+| Optional hotword ranking | `HotwordSelection` in Workflows | Owns independent session consent, the bounded memory cache and background tasks. It validates the shared Jev credential before and after requests; App shutdown drains accepted work. |
 | UI settings reads | `AppModelSettingsReadTaskOwner` | Replaced reads remain owned until drained; shutdown rejects new reads. |
 | UI persistence tasks | `PersistenceWriteCoordinator` | Overlapping single-key and atomic multi-key writes serialize; all accepted tasks remain tracked until completion. |
 | Unsaved settings and retry policy | `SettingsPersistenceModel` | Latest-write completion updates visible state; failures retain the exact value to retry. `AppSettingsCodec` owns stored-value decoding and migration. |
@@ -102,8 +119,8 @@ cancelled and sealed. Accepted writes must finish, including older writes whose
 storage implementation ignores cancellation. `PersistenceWriteCoordinator`
 therefore waits for a replaced write before starting the next value for that
 key, ignores stale completion results, and drains tasks added during a flush.
-Unrelated keys can progress independently. Store errors become feature presentation
-state; the task owner does not know about localization, credentials,
+Unrelated keys can progress independently. Store errors become presentation
+state in AppModel; the task owner does not know about localization, credentials,
 or workflow availability.
 
 SQLite repository extensions divide queries by domain while preserving the
@@ -167,7 +184,7 @@ migration writes as well as user edits.
 `RecordStore` has one graph value type for live state and the committed rollback
 value. Publication still follows a successful commit. SQLite schema/migration
 and diagnostic operations are extensions of the same actor and connection.
-`RecordQuerySession` binds pagination to one catalog revision; workspace and
+`RecordSearchCursor` binds pagination and query identity to one catalog revision; workspace and
 quick-panel consumers retain their own result limits, and reject mixed pages.
 
 ## Workflow representation
@@ -223,7 +240,7 @@ large-catalog evidence separately from normal gates.
 
 Boundary regressions use controllable stores and suspended
 operations to verify ordering, cancellation, and shutdown behavior. Physical
-Fn input, haptics, microphone use, paste, and accessibility still require the
+IME/Fn input, haptics, microphone use, paste, and accessibility still require the
 device checks in the [release QA checklist](release-qa-checklist.md).
 
 System capture, microphone arbitration, PCM file writing, Shortcuts and Markdown

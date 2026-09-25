@@ -1,9 +1,10 @@
+@testable import RillRecords
+@testable import RillWorkflows
 import RillDomainTestSupport
 import Foundation
 import RillCore
 import RillProviders
 import Testing
-@testable import RillRuntime
 
 struct BuiltinVoiceOutputTests {
     @Test(arguments: [WorkflowTitleKey.speechRecognition, .smartCleanup, .voiceAssistant], [false, true])

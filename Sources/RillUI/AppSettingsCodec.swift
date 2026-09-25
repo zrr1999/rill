@@ -1,6 +1,8 @@
 import Foundation
 import RillCore
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
 
 enum AppSettingsCodec {
   static let vocabularyRulesSettingKey = AppSettingKey(rawValue: "vocabulary.rules")!
@@ -401,6 +403,7 @@ enum AppSettingsCodec {
 
   static func settingsSaveCategory(for key: AppSettingKey) -> SettingsSaveCategory? {
     switch key {
+    case .inputMethodLearning: .input
     case .interfaceLanguage:
       .interface
     case .systemClipboardCaptureEnabled,

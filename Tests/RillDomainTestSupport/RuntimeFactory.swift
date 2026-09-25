@@ -1,7 +1,10 @@
 import Foundation
 import RillCore
 import RillPlatform
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
+import RillSpeech
 
 public func makeTestSessionCoordinator(
         lane: WorkflowRunLane = .primary,
@@ -137,7 +140,8 @@ public func makeTestWorkflowAudioRunController(
       .fiveMinutes
     },
     privacyRunGate: PrivacyRunGate? = nil,
-    cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner()
+    cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
+    recordingCueAction: @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }
 ) -> WorkflowAudioRunController {
   WorkflowAudioRunController(
     audioCaptureService: audioCaptureService,
@@ -152,7 +156,8 @@ public func makeTestWorkflowAudioRunController(
     recognizerDurationProvider: recognizerDurationProvider,
     recordingDurationLimitProvider: recordingDurationLimitProvider,
     privacyRunGate: privacyRunGate,
-    cleanupOwner: cleanupOwner
+    cleanupOwner: cleanupOwner,
+    recordingCueAction: recordingCueAction
   )
 }
 

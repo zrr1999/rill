@@ -1,11 +1,12 @@
 @testable import RillSpeechContracts
+@testable import RillSpeech
+@testable import RillWorkflows
 import XCTest
 
 @testable import RillApp
 @testable import RillCore
 @testable import RillPlatform
 @testable import RillProviders
-@testable import RillRuntime
 @testable import RillUI
 
 private actor AppBootstrapLocalSpeechPreparationProbe {

@@ -1,6 +1,7 @@
-import XCTest
+
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+import XCTest
 
 private actor DiagnosticPrivacyRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
     func deleteEvents(olderThan cutoff: Date) async throws -> Int {

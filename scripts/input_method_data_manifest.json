@@ -1,0 +1,14 @@
+{
+  "pinyin": {
+    "version": "0c6861ef7420ee780270ca6d993d18d4101049d0",
+    "filename": "pinyin_simp.dict.yaml",
+    "url": "https://raw.githubusercontent.com/rime/rime-pinyin-simp/0c6861ef7420ee780270ca6d993d18d4101049d0/pinyin_simp.dict.yaml",
+    "sha256": "e341598343a0f0f2035bb1aafc34a7f3bb7887deeecb3f60796262aaa2983e6b"
+  },
+  "opencc": {
+    "version": "1.1.9",
+    "filename": "opencc-1.1.9.whl",
+    "url": "https://files.pythonhosted.org/packages/8c/58/d1f270e9d329d4f4f7c1963f9700aa9c9d6f0c5042c641005da6369b4c8e/OpenCC-1.1.9-cp312-cp312-macosx_10_9_x86_64.whl",
+    "sha256": "48bc3e37942b91a9cf51f525631792f79378e5332bdba9e10c05f6e7fe9036ca"
+  }
+}

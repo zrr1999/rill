@@ -1,9 +1,10 @@
+@testable import RillWorkflows
+import RillRecords
 import RillDomainTestSupport
 import RillTestSupport
 import XCTest
 
 @testable import RillCore
-@testable import RillRuntime
 @testable import RillUI
 
 struct UITestContextProvider: ContextProvider {

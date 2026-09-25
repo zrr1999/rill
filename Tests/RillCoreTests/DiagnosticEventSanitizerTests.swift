@@ -3,6 +3,24 @@ import XCTest
 @testable import RillCore
 
 final class DiagnosticEventSanitizerTests: XCTestCase {
+  func testHotwordDiagnosticsRetainOnlyClosedStatusCountsAndTiming() {
+    for code in ["hotword-ranking.selected", "hotword-ranking.completed"] {
+      let safe = ["hotwordCache": "miss", "hotwordRankingOutcome": "timeout",
+                  "hotwordCandidateCount": "50", "hotwordCount": "16", "durationMillis": "2000"]
+      let event = DiagnosticEvent(subsystem: .session, level: .debug, event: code,
+        message: "private selection", metadata: safe.merging(
+          ["selectedText": "private selection", "terms": "private terms", "apiKey": "secret"]) { $1 })
+      let sanitized = DiagnosticEventSanitizer.sanitize(event)
+      XCTAssertEqual(sanitized.event, code)
+      XCTAssertEqual(sanitized.metadata, safe)
+      XCTAssertEqual(sanitized.message, DiagnosticEventSanitizer.sanitizedMessage)
+      let invalid = DiagnosticEvent(subsystem: .session, level: .debug, event: code,
+        message: "", metadata: ["hotwordCache": "private selection", "hotwordRankingOutcome": "private terms",
+                                "hotwordCandidateCount": "-1", "durationMillis": "secret"])
+      XCTAssertTrue(DiagnosticEventSanitizer.sanitize(invalid).metadata.isEmpty)
+    }
+  }
+
   func testPerformanceCoordinatesSurviveWithoutOpeningFreeTextFields() {
     for code in ["benchmark-recording.preserved", "benchmark-recording.preserve-failed",
                  "audio-processing.capture-timing", "session.process.timing",

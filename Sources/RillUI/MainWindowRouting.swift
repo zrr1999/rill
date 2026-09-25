@@ -136,9 +136,27 @@ extension SettingsSection {
     }
 }
 
+public enum SettingsItem: String, CaseIterable, Hashable, Sendable {
+    case jevCredential, jevPolishing
+    public var section: SettingsSection { .providers }
+    var title: JevText { self == .jevCredential ? .credentialTitle : .polishingTitle }
+    var searchKeywords: String {
+        switch self {
+        case .jevCredential: "jev typesafe api key credential 密钥 凭据 排序"
+        case .jevPolishing: "jev typesafe polishing prediction 润色 判断 智能整理"
+        }
+    }
+}
+
 public struct SettingsNavigationRequest: Identifiable, Equatable, Sendable {
     public let id = UUID()
     public let section: SettingsSection
+    public let item: SettingsItem?
+
+    public init(section: SettingsSection, item: SettingsItem? = nil) {
+        self.section = item?.section ?? section
+        self.item = item
+    }
 }
 
 struct HistoryNavigationRequest: Identifiable, Equatable, Sendable {

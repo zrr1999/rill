@@ -1,6 +1,7 @@
-import XCTest
+
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+import XCTest
 @testable import RillUI
 
 private actor FailThenSucceedDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {

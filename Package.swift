@@ -8,6 +8,7 @@ let package = Package(
   products: [
     .executable(name: "RillApp", targets: ["RillApp"]),
     .executable(name: "RillSpeechWorker", targets: ["RillSpeechWorker"]),
+    .executable(name: "RillInputMethod", targets: ["RillInputMethod"]),
   ],
   dependencies: [
     .package(
@@ -35,10 +36,18 @@ let package = Package(
   ],
   targets: [
     .target(name: "RillCore"),
+    .target(name: "CRime", linkerSettings: [.linkedLibrary("dl")]),
+    .target(name: "RillInputMethodContracts"),
+    .target(name: "RillInputMethodIPC", dependencies: ["RillInputMethodContracts"],
+      linkerSettings: [.linkedFramework("Security")]),
+    .target(name: "RillInputMethodKit", dependencies: ["CRime", "RillInputMethodContracts", "RillInputMethodIPC"],
+      linkerSettings: [.linkedFramework("InputMethodKit"), .linkedFramework("Carbon")]),
+    .executableTarget(name: "RillInputMethod", dependencies: ["RillInputMethodKit", "RillInputMethodContracts"]),
     .target(name: "RillSpeechContracts", dependencies: ["RillCore"]),
     .target(
       name: "RillPlatform",
       dependencies: [
+        "RillInputMethodContracts",
         "RillCore",
         .product(name: "TOML", package: "swift-toml"),
       ],
@@ -49,6 +58,7 @@ let package = Package(
     .target(
       name: "RillProviders",
       dependencies: [
+        "RillSpeech",
         "RillSpeechContracts",
         "RillCore",
         .product(name: "OpenAI", package: "OpenAI"),
@@ -72,7 +82,11 @@ let package = Package(
         .product(name: "HuggingFace", package: "swift-huggingface"),
       ]
     ),
-    .target(name: "RillRuntime", dependencies: ["RillCore"]),
+    .target(name: "RillRecords", dependencies: ["RillCore"]),
+    .target(name: "RillKnowledge", dependencies: ["RillCore"]),
+    .target(name: "RillSpeech", dependencies: ["RillCore", "RillPlatform", "RillSpeechContracts"]),
+    .target(name: "RillClipboard", dependencies: ["RillCore", "RillPlatform", "RillRecords"]),
+    .target(name: "RillWorkflows", dependencies: ["RillSpeechContracts", "RillCore", "RillSpeech", "RillRecords", "RillKnowledge"]),
     .target(
       name: "RillPersistence",
       dependencies: ["RillCore"],
@@ -80,15 +94,16 @@ let package = Package(
         .linkedLibrary("sqlite3")
       ]
     ),
-    .target(name: "RillUI", dependencies: [ "RillCore", "RillRuntime"]),
+    .target(name: "RillUI", dependencies: ["RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"]),
     .executableTarget(
       name: "RillApp",
       dependencies: [
+        "RillClipboard",
         "RillSpeechContracts",
         "RillCore",
         "RillPlatform",
         "RillProviders",
-        "RillRuntime",
+        "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech",
         "RillPersistence",
         "RillUI",
       ],
@@ -108,11 +123,14 @@ let package = Package(
         "RillMLXRuntime",
       ]
     ),
-    .target(
-      name: "RillDomainTestSupport",
-      dependencies: ["RillCore", "RillRuntime", "RillPlatform"],
-      path: "Tests/RillDomainTestSupport"
-    ),
+    .target(name: "RillDomainTestSupport",
+      dependencies: ["RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillPlatform"],
+      path: "Tests/RillDomainTestSupport"),
+    .target(name: "RillTestSupport",
+      dependencies: ["RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillUI", "RillDomainTestSupport"],
+      path: "Tests/RillTestSupport"),
+    .testTarget(name: "RillKnowledgeTests", dependencies: ["RillKnowledge"]),
+    .testTarget(name: "RillInputMethodTests", dependencies: ["RillInputMethodIPC", "RillInputMethodContracts", "RillInputMethodKit"]),
     .testTarget(name: "RillCoreTests", dependencies: ["RillCore"]),
     .testTarget(
       name: "RillPersistenceTests",
@@ -125,17 +143,17 @@ let package = Package(
         "RillPersistence",
         "RillPlatform",
         "RillProviders",
-        "RillRuntime",
+        "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech",
       ]
     ),
     .testTarget(
       name: "RillProvidersTests",
-      dependencies: [
+      dependencies: [.product(name: "OpenAI", package: "OpenAI"),
+        "RillSpeech", "RillWorkflows",
         "RillSpeechContracts",
         "RillCore",
         "RillPlatform",
         "RillProviders",
-        .product(name: "OpenAI", package: "OpenAI"),
       ]
     ),
     .testTarget(
@@ -150,38 +168,31 @@ let package = Package(
       name: "RillPlatformTests",
       dependencies: ["RillCore", "RillPlatform"]
     ),
-    .target(
-      name: "RillTestSupport",
-      dependencies: ["RillDomainTestSupport", "RillCore", "RillRuntime", "RillUI"],
-      path: "Tests/RillTestSupport"
-    ),
     .testTarget(
       name: "RillUITests",
-      dependencies: ["RillDomainTestSupport", "RillCore", "RillPlatform", "RillRuntime", "RillUI", "RillTestSupport"]
+      dependencies: ["RillTestSupport", "RillDomainTestSupport", "RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillPlatform", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillUI"]
     ),
     .testTarget(
       name: "RillAppTests",
-      dependencies: ["RillDomainTestSupport",
-        "RillTestSupport",
+      dependencies: ["RillTestSupport", "RillDomainTestSupport", "RillPersistence", "RillUI",
+        "RillClipboard",
         "RillSpeechContracts",
         "RillApp",
         "RillCore",
         "RillPlatform",
         "RillProviders",
-        "RillRuntime",
-        "RillPersistence",
-        "RillUI",
+        "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech",
       ]
     ),
   ]
 )
 
-// One target declaration serves both full CI and the opt-in domain test build.
-// Dependencies and Package.resolved remain identical to the production graph.
+// Fast tests use this same manifest and lock, never a parallel dependency graph.
 if ProcessInfo.processInfo.environment["RILL_BUILD_PROFILE"] == "domain-tests" {
   let excluded: Set<String> = [
     "RillApp", "RillUI", "RillSpeechWorker", "RillMLXRuntime", "RillTestSupport",
     "RillAppTests", "RillUITests", "RillMLXRuntimeTests", "RillPlatformTests",
+    "RillInputMethod", "RillInputMethodKit", "RillInputMethodTests", "CRime",
   ]
   package.targets.removeAll { excluded.contains($0.name) }
   package.products = []

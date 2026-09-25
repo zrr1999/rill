@@ -435,9 +435,10 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     defer { _ = try? capturedAudio.removeManagedTemporaryFile() }
 
     let publishedSnapshots = await snapshots.values
-    XCTAssertTrue(publishedSnapshots.contains { snapshot in
-      snapshot.phase == .recording && snapshot.hypothesisText.isEmpty
-    })
+    XCTAssertTrue(
+      publishedSnapshots.contains { snapshot in
+        snapshot.phase == .recording && snapshot.hypothesisText.isEmpty
+      })
     XCTAssertGreaterThan(capturedAudio.durationSeconds, 0)
   }
 
@@ -450,7 +451,7 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     )
     let request: AudioCaptureRequest = {
       var value = makeLocalSpeechRequest()
-      value.workflow.plan.setup.speechRoute?.recognizerID = "sherpa-onnx.streaming"
+      value.configuration.recognizerID = "sherpa-onnx.streaming"
       return value
     }()
     let startTask = Task { try await runtime.startCapture(request: request) }
@@ -1375,8 +1376,7 @@ private final class TestLocalSpeechStreamingPreviewSession:
 
 private actor LocalSpeechStreamingPreviewFactoryGate {
   private var resolvedSession: (any LocalSpeechStreamingPreviewSession)?
-  private var continuation:
-    CheckedContinuation<(any LocalSpeechStreamingPreviewSession)?, Never>?
+  private var continuation: CheckedContinuation<(any LocalSpeechStreamingPreviewSession)?, Never>?
   private var isResolved = false
 
   func waitForSession() async -> (any LocalSpeechStreamingPreviewSession)? {

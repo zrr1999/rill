@@ -1,8 +1,7 @@
 # Rill workflow TOML specification
 
-For setup and everyday use, start with the [README workflow guide](../README.md#工作流).
-This document defines the file format and runtime contracts for maintainers and
-advanced workflow authors.
+For setup and everyday use, start with the [workflow guide](workflows.md).
+This reference describes the supported file format and behavior for workflow authors.
 
 User workflows are plain TOML files edited in an external text editor. Rill has
 no built-in workflow editor. The Workflows page manages files, templates and activation.
@@ -132,6 +131,36 @@ contains `app_bundle_id`, `locale` and the migration-compatible `clipboard_group
 UUID (a Record collection). The TOML bindings remain authoritative; global
 vocabulary defaults do not replace bindings in a file-backed workflow.
 
+Live audio freezes its compiled vocabulary, language and local model at capture
+admission. Later vocabulary edits apply to later recordings; final recognition
+does not reload the library. Model enablement and run privacy are still checked
+at their effect boundaries.
+
+The experimental **Jev hotword selection** switch in Voice & Models is separate
+from workflow TOML and from the polishing gate. It defaults off and retains its
+shared Jev key and independent consent only for the app session. Enabling it permits sending up to 50
+applicable hotword candidates, the application and workflow names, and the
+already-authorized text selection to `api.typesafe.ai`. A selection above 1,800
+UTF-8 bytes is omitted entirely. Audio, clipboard, screen and history are not
+included, and this feature does not capture additional context.
+
+Recording never waits for Jev. A cache miss uses the existing rule order for the
+entire run and starts one background request only after capture begins. A later
+matching run can use the result. The memory-only cache holds at most 32 entries
+for five minutes and includes workflow, vocabulary, context, language, model,
+rubric, privacy and authorization identity. Manual priorities remain authoritative;
+within one priority, only candidates with both confidence and probability of
+clear relevance at least 0.9 are promoted. These thresholds are experimental,
+not measured accuracy. The existing Qwen limit of 16 terms and 48 total UTF-8
+bytes still applies.
+
+Requests have a two-second deadline, one concurrency slot and no automatic retry.
+Revocation cancels pending work and clears cached results. Uncertain results,
+unavailable services and restricted contexts preserve local selection. Imported
+audio and failed-audio retries do not start ranking requests. Live captions remain
+unchanged; streaming hotword support requires a separate upstream change.
+See the [hotword evaluation protocol](https://github.com/zrr1999/rill/blob/main/docs/archive/qa/jev-hotwords.md) before making quality claims.
+
 Wake-word triggers use `setup.wake_word.phrases`, with one to four distinct short
 phrases. The existing wake-word provider, permissions and readiness rules apply.
 
@@ -253,11 +282,7 @@ stores its answer before speaking it. The speech templates also save before
 delivery, so a later delivery failure does not discard the saved text. The explicit
 "Save Voice Record Only" output mode omits insertion.
 
-Durable receipt v2
-stores only executed process positions, fixed step kinds, branch/result codes,
-coarse duration buckets and ordered output receipts. It stores no prompts, names,
-paths or sample bodies. History renders each receipt's own step kinds rather than
-mapping an old run onto a newly edited workflow. Receipt v1 remains readable.
+History shows the steps and results from that run. Missing timing measurements remain absent; editing a workflow does not rewrite its earlier runs.
 
 ## Migration and built-ins
 
@@ -274,7 +299,7 @@ user workflow file.
 
 ## LLM Provider and smart cleanup
 
-Settings → Speech → **LLM Provider** is the single OpenAI-compatible Responses
+Settings → Voice & Models → API Providers → **LLM Provider** is the single OpenAI-compatible Responses
 API configuration for cleanup, assistant answers and custom text workflows.
 Set the Base URL, API key and model there. Existing settings and Keychain storage
 remain compatible; workflows do not select a separate provider or credential.

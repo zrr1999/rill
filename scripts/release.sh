@@ -1480,6 +1480,9 @@ codesign --force --options runtime --timestamp \
   "$SPEECH_WORKER_EXECUTABLE"
 
 info "签名外层应用..."
+uv run --no-build --locked --script "$SCRIPT_DIR/assemble_input_method.py" \
+  --sign-existing "$APP_BUNDLE/Contents/Helpers/RillInputMethod.app" \
+  --signing-identity "$RESOLVED_SIGN_IDENTITY"
 codesign --force --options runtime --timestamp \
   --entitlements "$ENTITLEMENTS" \
   --sign "$RESOLVED_SIGN_IDENTITY" \

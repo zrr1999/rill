@@ -6,7 +6,9 @@ public enum RecognitionPriority: String, Sendable, Equatable {
 
 public struct RecognitionRequest: Sendable, Equatable {
     public let runID: UUID
-    public let contextSnapshot: ContextSnapshot
+    public let selectedText: String
+    public let clipboardText: String
+    public let clipboardExcluded: Bool
     public let priority: RecognitionPriority
     public var capturedAudio: CapturedAudio?
     public let options: SpeechRecognitionRequestOptions
@@ -19,7 +21,9 @@ public struct RecognitionRequest: Sendable, Equatable {
         options: SpeechRecognitionRequestOptions = .empty
     ) {
         self.runID = runID
-        self.contextSnapshot = contextSnapshot
+        self.selectedText = contextSnapshot.focus.selectedText
+        self.clipboardText = contextSnapshot.clipboard.plainText
+        self.clipboardExcluded = contextSnapshot.clipboard.excludesWorkflowCapture
         self.priority = priority
         self.capturedAudio = capturedAudio
         self.options = options

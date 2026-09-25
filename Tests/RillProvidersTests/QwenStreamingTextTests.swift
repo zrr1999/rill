@@ -85,3 +85,5 @@ private final class PreviewFrameRecorder: @unchecked Sendable {
   func record(_ frame: SpeechWorkerFrame) { lock.withLock { frames.append(frame) } }
   func snapshot() -> [SpeechWorkerFrame] { lock.withLock { frames } }
 }
+
+@testable import RillSpeech

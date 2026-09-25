@@ -1,6 +1,6 @@
 import AppKit
-import SwiftUI
 import RillUI
+import SwiftUI
 
 @main
 struct RillApplication: App {
@@ -15,26 +15,27 @@ struct RillApplication: App {
     @MainActor
     init() {
         let container = AppBootstrap.makeContainer()
-        let recordPanelController = RecordPanelController()
+        let recordPanelController: RecordPanelController = RecordPanelController()
         let liveSubtitlePanelController = LiveSubtitlePanelController()
 
         container.model.installRecordCopyAction { subject in
-            await container.systemClipboardCaptureController.reuseRecord(subject, copyOnly: true)
+            await container.systemClipboardCaptureController.recordDelivery.reuseRecord(subject, copyOnly: true)
         }
         container.model.installRecordPanelAction { [recordPanelController, model = container.model] in
             recordPanelController.show(
                 model: model,
                 deliverSelection: { subject, target in
-                    await container.systemClipboardCaptureController.reuseRecord(
+                    await container.systemClipboardCaptureController.recordDelivery.reuseRecord(
                         subject,
                         to: target
                     )
                 },
                 copySelection: { subject in
-                    await container.systemClipboardCaptureController.reuseRecord(subject, copyOnly: true)
+                    await container.systemClipboardCaptureController.recordDelivery.reuseRecord(
+                        subject, copyOnly: true)
                 },
                 onDeliveryAbort: {
-                    await container.systemClipboardCaptureController
+                    await container.systemClipboardCaptureController.recordDelivery
                         .reportSelectedRecordDeliveryUnavailable()
                 }
             )
@@ -51,7 +52,8 @@ struct RillApplication: App {
             end: container.endRecordPanelShortcutRecording,
             commit: container.commitRecordPanelShortcutRecording
         )
-        container.model.installLiveSubtitlePanelAction { [liveSubtitlePanelController] snapshot, language in
+        container.model.installLiveSubtitlePanelAction {
+            [liveSubtitlePanelController] snapshot, language in
             let cancellableRunID = snapshot.flatMap { snapshot in
                 LiveSubtitlePresentationPolicy.isAudioCaptureActive(phase: snapshot.phase)
                     ? snapshot.runID

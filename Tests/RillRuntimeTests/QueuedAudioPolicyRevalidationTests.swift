@@ -1,9 +1,12 @@
+@testable import RillSpeech
+@testable import RillKnowledge
+@testable import RillRecords
+@testable import RillWorkflows
+@testable import RillCore
 import RillPlatform
 import RillDomainTestSupport
 import Foundation
 import XCTest
-@testable import RillCore
-@testable import RillRuntime
 
 private actor MutableQueuedPrivacySettings {
     enum State: Sendable {

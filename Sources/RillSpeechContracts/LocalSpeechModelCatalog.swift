@@ -231,7 +231,7 @@ public enum LocalSpeechModelCatalog {
     settings: LocalSpeechSettings, workflow: WorkflowDefinition
   ) -> SpeechRecognitionRequestOptions {
     SpeechRecognitionRequestOptions(
-      modelID: effectiveModelIdentifier(settings: settings, workflow: workflow),
+      modelID: effectiveModelIdentifier(settings: settings, modelOverride: SpeechRequestConfiguration(workflow: workflow).modelOverride),
       language: LocalSpeechRecognitionPolicy.resolvedLanguage(
         requestLanguage: workflow.plan.setup.speechRoute?.language,
         workflowLanguage: workflow.metadata[WorkflowMetadataKey.languageOverride],
@@ -253,14 +253,9 @@ public enum LocalSpeechModelCatalog {
   }
 
   public static func effectiveModelIdentifier(
-    settings: LocalSpeechSettings,
-    workflow: WorkflowDefinition? = nil
+    settings: LocalSpeechSettings, modelOverride: String? = nil
   ) -> String {
-    if let workflow,
-      let override =
-        (workflow.metadata[WorkflowMetadataKey.localSpeechModelOverride]
-        ?? workflow.metadata[WorkflowMetadataKey.legacyWhisperKitModelOverride])?
-        .trimmingCharacters(in: .whitespacesAndNewlines),
+    if let override = modelOverride?.trimmingCharacters(in: .whitespacesAndNewlines),
       !override.isEmpty
     {
       return normalizedLegacyModelID(override)

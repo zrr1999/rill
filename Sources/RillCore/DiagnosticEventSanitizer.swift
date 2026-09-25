@@ -19,6 +19,8 @@ public enum DiagnosticEventSanitizer {
   /// boundary. Unknown-but-well-formed strings deliberately fail closed.
   private static let eventCodeCatalog: Set<String> = [
     invalidEventCode,
+    "hotword-ranking.selected",
+    "hotword-ranking.completed",
     "benchmark-recording.preserved",
     "benchmark-recording.preserve-failed",
     "audio-processing.capture-timing",
@@ -461,6 +463,9 @@ public enum DiagnosticEventSanitizer {
     "hasImage": .boolean,
     "historyCount": .count,
     "hotwordCount": .count,
+    "hotwordCandidateCount": .count,
+    "hotwordCache": .closed(["disabled", "ineligible", "privacy", "hit", "miss", "unavailable"]),
+    "hotwordRankingOutcome": .closed(["ready", "cancelled", "timeout", "unavailable"]),
     "hotwordOmittedCount": .count,
     "hotwordOutcome": .closed(["supported", "unsupported-recognizer"]),
     "hotwordRejectedCount": .count,

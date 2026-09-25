@@ -1,10 +1,9 @@
+@testable import RillWorkflows
 import RillPlatform
 import RillDomainTestSupport
 import Foundation
 import XCTest
-@testable import RillApp
 @testable import RillCore
-@testable import RillRuntime
 
 private actor ManagedFileAudioCaptureService: AudioCaptureService {
     private let fileURL: URL

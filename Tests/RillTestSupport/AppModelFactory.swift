@@ -1,6 +1,9 @@
 import Foundation
 import RillCore
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
+import RillSpeech
 import RillUI
 
 /// Test-only compositions may omit adapters. Production initialization requires
@@ -12,7 +15,6 @@ public func makeAppModelForTesting(
     sessionCoordinator: SessionCoordinator,
     outputActionRegistry: OutputActionRegistry,
     recordWorkspace: RecordWorkspaceModel? = nil,
-    jevPolishingSettingsSource: JevPolishingSettingsSource = JevPolishingSettingsSource(),
     candidateResolver: CandidateResolver,
     historyRepository: (any HistoryRepository)? = nil,
     runHistoryBrowser: (any RunHistoryBrowsing)? = nil,
@@ -155,7 +157,6 @@ public func makeAppModelForTesting(
     sessionCoordinator: sessionCoordinator,
     outputActionRegistry: outputActionRegistry,
     recordWorkspace: recordWorkspace ?? RecordWorkspaceModel(store: RecordStore()),
-    jevPolishingSettingsSource: jevPolishingSettingsSource,
     candidateResolver: candidateResolver,
     historyRepository: historyRepository,
     runHistoryBrowser: runHistoryBrowser,

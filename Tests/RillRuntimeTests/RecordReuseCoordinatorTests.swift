@@ -1,8 +1,9 @@
+@testable import RillRecords
+@testable import RillWorkflows
 import RillDomainTestSupport
 import XCTest
 
 @testable import RillCore
-@testable import RillRuntime
 
 final class RecordReuseCoordinatorTests: XCTestCase {
   func testRepeatedHistoryReuseUsesOutputAndDurableReceiptPathWithoutMemberships() async throws {

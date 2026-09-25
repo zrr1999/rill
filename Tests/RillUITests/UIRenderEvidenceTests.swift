@@ -2,7 +2,9 @@ import AppKit
 import SwiftUI
 import XCTest
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 @testable import RillUI
 
 /// Opt-in rendered evidence with ephemeral services, never the user's settings or clipboard.
@@ -133,7 +135,9 @@ final class UIRenderEvidenceTests: XCTestCase {
         return ids
     }
 
-    private func render<Content: View>(_ content: Content, size: NSSize, dark: Bool, to url: URL) async throws {
+    private func render<Content: View>(
+        _ content: Content, size: NSSize, dark: Bool, focusWindow: Bool = false, to url: URL
+    ) async throws {
         let originalAppearance = NSApplication.shared.appearance
         let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         NSApplication.shared.appearance = appearance
@@ -144,7 +148,7 @@ final class UIRenderEvidenceTests: XCTestCase {
         window.isReleasedWhenClosed = false
         window.contentView = view
         view.frame = NSRect(origin: .zero, size: size)
-        window.orderFront(nil)
+        if focusWindow { window.makeKeyAndOrderFront(nil) } else { window.orderFront(nil) }
         defer { window.orderOut(nil); window.close() }
         for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
         window.layoutIfNeeded()

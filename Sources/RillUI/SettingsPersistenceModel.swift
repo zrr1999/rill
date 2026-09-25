@@ -1,7 +1,9 @@
 import Foundation
 import Observation
 import RillCore
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
 
 struct SettingsStringWrite: Sendable {
   let category: SettingsSaveCategory

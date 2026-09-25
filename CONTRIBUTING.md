@@ -112,7 +112,7 @@ SDK、Metal 及构建参数；增加、删除或修改未提交文件也参与�
 临时快照。手动指定回执目录时，由调用者在装配完成后清理该目录。共享缓存中的
 文件不参与签名；所有签名都在当前装配目录中完成。
 
-实测数据、计数口径和复现步骤见 [构建提速验证](docs/build-performance.md)。
+实测数据、计数口径和复现步骤见 [构建提速验证](docs/archive/validation/build-performance.md)。
 
 ## 本地 App 与发布
 
@@ -135,18 +135,21 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 
 | 文档 | 内容 |
 | --- | --- |
-| [README.md](README.md) | 用户安装、首次使用、工作流配置、隐私设置、排查与升级卸载 |
+| [README.md](README.md)、[用户指南](docs/usage.md) | 产品入口、安装与首次使用；按任务链接到语音、记录、工作流、词汇记忆、隐私和排查 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 开发环境、验证、生成物维护、文档归属与 Git 约定 |
 | [LICENSE](LICENSE) | Rill 原创代码和文档的 AGPL-3.0-only 许可条款 |
 | [SECURITY.md](SECURITY.md) | 支持版本、漏洞报告渠道及披露规则 |
 | [PRIVACY.md](PRIVACY.md) | 随 App 分发的技术隐私与数据流说明 |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md) | 第三方依赖与模型的许可及来源证据 |
 | [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[工作流](docs/workflow-toml.md)、[上下文纠错](docs/contextual-correction.md)、[UI](docs/ui-direction.md) | 开发者维护的模块、状态、执行与界面契约 |
+| [输入法工程](docs/input-method-development.md) | 独立输入法打包、探针、迁移核对与原生验收方法 |
 | [图标设计](docs/icon-design.md) | 应用与菜单栏图标的设计说明、预览及资源维护入口 |
 | [发布步骤](docs/releasing.md)、[验收清单](docs/release-qa-checklist.md) | 维护者发布流程和特定候选包的验收要求 |
 
-用户说明集中在 README；技术契约保留在所属文档，通过链接引用。
-`docs/` 中的研究、计划和历史 QA 记录提供背景，不作为当前产品能力或发布通过的依据。
+公开文档站只收录用户指南、高级工作流参考和隐私/许可说明。技术契约、发布流程与
+开发命令在本表维护入口，不进入站点正文或搜索索引。
+研究、计划、性能实测和历史 QA 已归入 [历史资料](docs/archive/README.md)，保留原始证据和
+适用范围；旧术语、模型选择和未实施方案不能作为当前能力或发布通过的依据。
 
 文档站使用 Zensical；`just docs` 严格构建并检查链接，`just docs-serve` 提供自动刷新的
 本地预览。页面清单、依赖锁定与站点交付边界见 [文档站维护](docs/documentation.md)。
@@ -163,8 +166,15 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 RillCore          领域模型与协议
 RillPlatform      macOS 系统边界
 RillSpeechContracts Worker 协议、流式合同与本地模型清单
-RillProviders     识别客户端、变换与外部输出实现
-RillRuntime       会话协调与运行生命周期
+RillProviders     云服务客户端、变换与外部输出实现
+RillSpeech        语音采集、识别、合成与 worker 调用
+RillClipboard     系统剪贴板观察与采集
+RillRecords       记录、搜索、投递与复用
+RillKnowledge     词汇建议与上下文记忆
+RillWorkflows     工作流编排与运行生命周期
+RillInputMethodContracts 输入法本地通信契约
+RillInputMethodKit Rime 会话、候选窗与上屏
+RillInputMethod   独立输入法进程
 RillPersistence   加密持久化
 RillUI            SwiftUI、功能状态所有者与 AppModel 编排
 RillApp           组合根

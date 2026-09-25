@@ -237,7 +237,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     let reservation = CaptureReservation(request: request)
     activeCapture = .preparing(reservation)
 
-    if let recognizerID = request.workflow.plan.setup.speechRoute?.recognizerID,
+    if let recognizerID = request.configuration.recognizerID,
       Self.localSpeechRecognizerIDs.contains(recognizerID)
     {
       try requireOwnership(of: reservation)
@@ -387,10 +387,10 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
           await liveUpdateHandler(
             LiveSubtitleSnapshot(
               runID: request.runID,
-              workflow: request.workflow.presentation,
+              workflow: request.configuration.presentation,
               phase: .hidden,
               networkUsage: request.liveSubtitleNetworkUsage,
-              livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
+              livePreviewPlacement: request.configuration.previewPlacement
             )
           )
           return capturedAudio
@@ -590,11 +590,11 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     await liveUpdateHandler(
       LiveSubtitleSnapshot(
         runID: request.runID,
-        workflow: request.workflow.presentation,
+        workflow: request.configuration.presentation,
         phase: .failed,
-        providerID: request.workflow.plan.setup.speechRoute?.recognizerID,
+        providerID: request.configuration.recognizerID,
         networkUsage: request.liveSubtitleNetworkUsage,
-        livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
+        livePreviewPlacement: request.configuration.previewPlacement
       )
     )
   }
@@ -603,10 +603,10 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     await liveUpdateHandler(
       LiveSubtitleSnapshot(
         runID: request.runID,
-        workflow: request.workflow.presentation,
+        workflow: request.configuration.presentation,
         phase: .hidden,
         networkUsage: request.liveSubtitleNetworkUsage,
-        livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
+        livePreviewPlacement: request.configuration.previewPlacement
       )
     )
   }
@@ -615,11 +615,11 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     await liveUpdateHandler(
       LiveSubtitleSnapshot(
         runID: request.runID,
-        workflow: request.workflow.presentation,
+        workflow: request.configuration.presentation,
         phase: .recording,
-        providerID: request.workflow.plan.setup.speechRoute?.recognizerID,
+        providerID: request.configuration.recognizerID,
         networkUsage: request.liveSubtitleNetworkUsage,
-        livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement
+        livePreviewPlacement: request.configuration.previewPlacement
       )
     )
   }

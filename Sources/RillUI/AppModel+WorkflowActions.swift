@@ -1,6 +1,9 @@
 import Foundation
 import RillCore
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
+import RillSpeech
 
 private enum WorkflowExecutionSupportIssue: Equatable {
   case legacyClipboardAutomationUnsupported
@@ -1062,9 +1065,10 @@ extension AppModel {
     return true
   }
 
-  public func showSettings(_ section: SettingsSection) {
-    selectedSettingsPane = section.pane
-    settingsNavigationRequest = SettingsNavigationRequest(section: section)
+  public func showSettings(_ section: SettingsSection, item: SettingsItem? = nil) {
+    let request = SettingsNavigationRequest(section: section, item: item)
+    selectedSettingsPane = request.section.pane
+    settingsNavigationRequest = request
     presentSettings()
   }
 

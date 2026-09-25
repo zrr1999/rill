@@ -1,7 +1,8 @@
 import RillDomainTestSupport
 import XCTest
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+import XCTest
 
 private actor WorkflowPolicyProbe {
     private var contextCaptureCount = 0

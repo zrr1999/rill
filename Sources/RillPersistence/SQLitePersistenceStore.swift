@@ -1,8 +1,8 @@
 import Darwin
 import Foundation
 import OSLog
-import SQLite3
 import RillCore
+import SQLite3
 
 let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -263,7 +263,6 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
       : .unsafeOrUninspectable
   }
 
-
   public func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot {
     do {
       return try withDeferredTransaction {
@@ -399,8 +398,10 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
     do {
       return try withImmediateTransaction {
         if let stored = try storedRecordGraphMetadata() {
-          let data = try localDataProtector.openBinary(stored.protectedGraph, context: Self.recordGraphProtectionContext)
-          if (try? JSONDecoder().decode(RecordCatalogManifest.self, from: data).schemaVersion) == 2 {
+          let data = try localDataProtector.openBinary(
+            stored.protectedGraph, context: Self.recordGraphProtectionContext)
+          if (try? JSONDecoder().decode(RecordCatalogManifest.self, from: data).schemaVersion) == 2
+          {
             throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
           }
         }
@@ -477,17 +478,20 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
           maximumTotalPlaintextByteCount:
             Self.clipboardStorageLimits.maximumPersistedStateUTF8ByteCount - snapshot.graph.count
         )
-        guard Set(readbackBlobs.map { StoredRecordPayloadBlobCoordinate($0.reference) })
-                == prepared.expectedCoordinates
+        guard
+          Set(readbackBlobs.map { StoredRecordPayloadBlobCoordinate($0.reference) })
+            == prepared.expectedCoordinates
         else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
         let readbackByBlobID = Dictionary(
           uniqueKeysWithValues: readbackBlobs.map { ($0.reference.blobID, $0) }
         )
-        guard snapshot.newPayloadBlobs.allSatisfy({ blob in
-          readbackByBlobID[blob.reference.blobID] == blob
-        }) else {
+        guard
+          snapshot.newPayloadBlobs.allSatisfy({ blob in
+            readbackByBlobID[blob.reference.blobID] == blob
+          })
+        else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
 
@@ -616,7 +620,6 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
       )
     }
   }
-
 
   private func storedClipboardMetadata() throws -> StoredClipboardMetadata? {
     let statement = try prepare(
@@ -920,7 +923,8 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
     else {
       throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
     }
-    let allReferences = snapshot.newPayloadBlobs.map(\.reference)
+    let allReferences =
+      snapshot.newPayloadBlobs.map(\.reference)
       + snapshot.retainedPayloadBlobReferences
     guard allReferences.count <= Self.maximumClipboardBlobCount else {
       throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
@@ -1031,7 +1035,8 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
   private func storedRecordPayloadBlobCoordinates(
     maximumTotalPlaintextByteCount: Int? = nil
   ) throws -> [StoredRecordPayloadBlobCoordinate] {
-    let maximumTotal = maximumTotalPlaintextByteCount
+    let maximumTotal =
+      maximumTotalPlaintextByteCount
       ?? Self.clipboardStorageLimits.maximumTotalEncodedItemByteCount
     let statement = try prepare(
       """

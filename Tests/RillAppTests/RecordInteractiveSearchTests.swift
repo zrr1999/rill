@@ -6,7 +6,10 @@ import XCTest
 @testable import RillApp
 @testable import RillCore
 @testable import RillProviders
-@testable import RillRuntime
+@testable import RillSpeech
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 @testable import RillUI
 
 /// An isolated native component host. Clipboard capture and external delivery are absent.

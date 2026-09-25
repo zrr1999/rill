@@ -1,8 +1,13 @@
+
+@testable import RillCore
+@testable import RillWorkflows
 import Foundation
 import XCTest
 import RillPersistence
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 
 private final class ReceiptTestClock: @unchecked Sendable {
     private let lock = NSLock()

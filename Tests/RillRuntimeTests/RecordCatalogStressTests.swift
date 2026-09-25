@@ -1,9 +1,10 @@
+@testable import RillWorkflows
+@testable import RillRecords
 import Foundation
 import XCTest
 
 @testable import RillCore
 @testable import RillPersistence
-@testable import RillRuntime
 
 final class RecordCatalogStressTests: XCTestCase {
   func testTenThousandMixedRecordsNearByteCapacity() async throws {

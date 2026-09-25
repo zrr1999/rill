@@ -1184,15 +1184,15 @@ actor LocalSpeechVoiceCaptureRuntime {
     await liveUpdateHandler(
       LiveSubtitleSnapshot(
         runID: request.runID,
-        workflow: request.workflow.presentation,
+        workflow: request.configuration.presentation,
         phase: phase,
         hypothesisText: hypothesisText,
         levelMeter: levelMeter,
         providerID: phase == .hidden
           ? nil
-          : request.workflow.plan.setup.speechRoute?.recognizerID,
+          : request.configuration.recognizerID,
         networkUsage: request.liveSubtitleNetworkUsage,
-        livePreviewPlacement: request.workflow.resolvedLivePreviewPlacement,
+        livePreviewPlacement: request.configuration.previewPlacement,
         recordingStartedAt: phase == .hidden ? nil : recordingStartedAt,
         maximumRecordingDurationSeconds:
           phase == .hidden || recordingDurationLimitRemoved

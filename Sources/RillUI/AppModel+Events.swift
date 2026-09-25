@@ -1,7 +1,10 @@
 import AppKit
 import Foundation
 import RillCore
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
+import RillSpeech
 
 private enum EventFeedPrivacyBodyKind {
     case recognition

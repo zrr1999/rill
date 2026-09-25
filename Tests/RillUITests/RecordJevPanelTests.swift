@@ -2,7 +2,9 @@ import Foundation
 import Testing
 
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 @testable import RillUI
 
 @MainActor
@@ -104,18 +106,15 @@ struct RecordJevPanelTests {
     #expect(firstReview.settings === settings)
     #expect(secondReview.settings === settings)
     settings.setKey("  unit-test-key  ")
-    try await waitUntil { !settings.isSaving }
     #expect(settings.isConfigured)
     #expect(await fixture.provider.calls == 0)
     firstReview.prepare(query: "git", recordIDs: [record.id])
     try await waitUntil { firstReview.state == .review }
     settings.setKey("")
-    try await waitUntil { !settings.isSaving }
     #expect(!firstReview.isConfigured && !secondReview.isConfigured)
     firstReview.confirm()
     #expect(await fixture.provider.calls == 0)
     settings.setKey("replacement-key")
-    try await waitUntil { !settings.isSaving }
     firstReview.confirm()
     try await waitUntil { firstReview.state == .ready }
     #expect(await fixture.provider.keys == ["replacement-key"])
@@ -126,7 +125,7 @@ struct RecordJevPanelTests {
     #expect(!settings.isConfigured)
     #expect(await !fixture.service.isConfigured)
     settings.setKey("after-shutdown-key")
-    #expect(!settings.isConfigured && !settings.isSaving)
+    #expect(!settings.isConfigured)
   }
 
   @Test func failedCredentialUpdateKeepsExistingKeyAndSurfacesErrorInSettings() async throws {
@@ -135,9 +134,7 @@ struct RecordJevPanelTests {
     let settings = JevAPISettingsModel(service: fixture.service)
     let review = RecordJevPanelModel(settings: settings)
     settings.setKey("unit-test-key")
-    try await waitUntil { !settings.isSaving }
     settings.setKey("bad")
-    try await waitUntil { !settings.isSaving }
     #expect(settings.error == .invalidInput)
     #expect(settings.isConfigured)
     review.prepare(query: "git", recordIDs: [record.id])
@@ -145,21 +142,111 @@ struct RecordJevPanelTests {
     review.confirm()
     await fixture.provider.waitUntilEntered()
     settings.setKey("")
-    try await waitUntil { !settings.isSaving }
-    #expect(settings.error == .busy)
-    #expect(settings.isConfigured)
+    #expect(settings.error == nil)
+    #expect(!settings.isConfigured)
     #expect(await fixture.provider.keys == ["unit-test-key"])
     await fixture.provider.release()
-    try await waitUntil { review.state == .ready }
+    try await waitUntil { review.state == .failed(.changed) }
     await review.shutdown()
     await settings.shutdown()
   }
 
-  private func waitUntil(_ condition: () -> Bool) async throws {
+  @Test func settingsReturnRebuildsReviewPreservesSelectionAndNeverSends() async throws {
+    let fixture = JevPanelFixture()
+    let record = try await fixture.insert("git worktree")
+    let workspace = RecordWorkspaceModel(store: fixture.store, cloudRanking: fixture.service)
+    let original = workspace.makeQuickPanelModel()
+    original.start(sourceBundleIdentifier: "example.allowed")
+    original.currentAppOnly = true
+    original.kind = .text
+    original.searchText = "git"
+    try await waitUntil { !original.isSearching && original.results.count == 1 }
+    original.compareWithJev()
+    let review = try #require(original.jev)
+    try await waitUntil { review.state == .review }
+    let originalReviewID = review.review?.id
+    let context = try #require(original.comparisonReturnContext())
+    original.stop()
+    #expect(review.review == nil)
+    workspace.jevSettings?.setKey("unit-test-key")
+    let restored = workspace.makeQuickPanelModel()
+    restored.start(sourceBundleIdentifier: nil)
+    restored.restoreComparison(context)
+    try await waitUntil { restored.jev?.state == .review }
+    #expect(restored.searchText == "git" && restored.currentAppOnly && restored.kind == .text)
+    #expect(restored.selectedID == record.id)
+    #expect(restored.jev?.review?.id != originalReviewID)
+    #expect(restored.jev?.review?.candidates.map(\.id) == [record.id])
+    #expect(await fixture.provider.calls == 0)
+    await original.shutdown()
+    await restored.shutdown()
+    await workspace.shutdown()
+  }
+
+  @Test func deletedCandidateOnSettingsReturnShowsRecoveryWithoutOldPayload() async throws {
+    let fixture = JevPanelFixture()
+    let record = try await fixture.insert("git worktree")
+    let workspace = RecordWorkspaceModel(store: fixture.store, cloudRanking: fixture.service)
+    let panel = workspace.makeQuickPanelModel()
+    panel.searchText = "git"
+    try await waitUntil { !panel.isSearching && panel.results.count == 1 }
+    panel.compareWithJev()
+    try await waitUntil { panel.jev?.state == .review }
+    let context = try #require(panel.comparisonReturnContext())
+    panel.stop()
+    try await fixture.store.deleteRecord(record.id)
+    panel.restoreComparison(context)
+    try await waitUntil { panel.jev?.state == .failed(.changed) }
+    #expect(panel.jev?.review == nil)
+    #expect(await fixture.provider.calls == 0)
+    await panel.shutdown()
+    await workspace.shutdown()
+  }
+
+  @Test func returnPreservesSemanticOrderAndASelectionOutsideComparedCandidates() async throws {
+    let fixture = JevPanelFixture()
+    let first = try await fixture.insert("one")
+    let second = try await fixture.insert("two")
+    let third = try await fixture.insert("three")
+    let panel = RecordQuickPanelModel(store: fixture.store, jevSettings: JevAPISettingsModel(service: fixture.service))
+    let context = RecordComparisonReturn(query: "meaning", resultLimit: 0, candidateIDs: [first.id],
+      semanticIDs: [second.id, first.id, third.id], selectedID: third.id,
+      sourceBundleIdentifier: nil, currentAppOnly: false, kind: nil, pinnedOnly: false)
+    panel.restoreComparison(context)
+    try await waitUntil { panel.jev?.state == .review }
+    #expect(panel.semanticResults.map(\.id) == context.semanticIDs)
+    #expect(panel.selectedID == third.id)
+    #expect(await fixture.provider.calls == 0)
+    await panel.shutdown()
+    await fixture.service.shutdown()
+  }
+
+  @Test func lateInitialCatalogSnapshotDoesNotDismissPreparedComparison() async throws {
+    let fixture = JevPanelFixture()
+    _ = try await fixture.insert("git worktree")
+    let initialSnapshot = try await fixture.store.catalogSnapshot()
+    let panel = RecordQuickPanelModel(store: fixture.store, jevSettings: JevAPISettingsModel(service: fixture.service))
+    panel.searchText = "git"
+    try await waitUntil { !panel.isSearching && panel.results.count == 1 }
+    panel.compareWithJev()
+    try await waitUntil { panel.jev?.state == .review }
+    let reviewID = panel.jev?.review?.id
+    panel.receiveCatalogSnapshot(initialSnapshot)
+    #expect(panel.jev?.state == .review)
+    #expect(panel.jev?.review?.id == reviewID)
+    _ = try await fixture.insert("git stash")
+    panel.receiveCatalogSnapshot(try await fixture.store.catalogSnapshot())
+    #expect(panel.jev?.state == .idle)
+    #expect(panel.isSearching)
+    await panel.shutdown()
+    await fixture.service.shutdown()
+  }
+
+  private func waitUntil(sourceLocation: SourceLocation = #_sourceLocation, _ condition: () -> Bool) async throws {
     let deadline = ContinuousClock.now.advanced(by: .seconds(3))
     while !condition(), ContinuousClock.now < deadline { await Task.yield() }
-    #expect(condition())
-    try #require(condition())
+    #expect(condition(), sourceLocation: sourceLocation)
+    try #require(condition(), sourceLocation: sourceLocation)
   }
 }
 

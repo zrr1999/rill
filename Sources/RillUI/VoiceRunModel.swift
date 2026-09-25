@@ -1,7 +1,10 @@
 import Foundation
 import Observation
 import RillCore
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
+import RillSpeech
 
 @MainActor @Observable
 public final class VoiceRunModel {

@@ -1,11 +1,15 @@
 import Foundation
 import Observation
 import RillCore
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
+import RillSpeech
 
 @MainActor
 @Observable
 public final class AppModel {
+  public var inputMethod: InputMethodFeatureModel?
   static let vocabularyRulesSettingKey = AppSettingsCodec.vocabularyRulesSettingKey
   static let vocabularyLibrarySettingKey = AppSettingsCodec.vocabularyLibrarySettingKey
   static let workflowLibrarySettingKey = AppSettingsCodec.workflowLibrarySettingKey
@@ -37,7 +41,8 @@ public final class AppModel {
   public let localPersistenceStatus: LocalPersistenceStatus
   public internal(set) var selectedSidebarSection: SidebarSection = .records
   public let recordWorkspace: RecordWorkspaceModel
-  public let jevPolishing: JevPolishingSettingsModel
+  public internal(set) var comparisonReturn: RecordComparisonReturn?
+  @ObservationIgnored var resumeComparisonAction: (@MainActor (RecordComparisonReturn) -> Void)?
   public let history: RunHistoryModel
   public internal(set) var settingsNavigationRequest: SettingsNavigationRequest?
   public var selectedSettingsPane: SettingsPane = .general
@@ -388,7 +393,6 @@ public final class AppModel {
     sessionCoordinator: SessionCoordinator,
     outputActionRegistry: OutputActionRegistry,
     recordWorkspace: RecordWorkspaceModel,
-    jevPolishingSettingsSource: JevPolishingSettingsSource,
     candidateResolver: CandidateResolver,
     historyRepository: (any HistoryRepository)?,
     runHistoryBrowser: (any RunHistoryBrowsing)?,
@@ -519,7 +523,6 @@ public final class AppModel {
     self.sessionCoordinator = sessionCoordinator
     self.outputActionRegistry = outputActionRegistry
     self.recordWorkspace = recordWorkspace
-    self.jevPolishing = JevPolishingSettingsModel(source: jevPolishingSettingsSource)
     self.candidateResolver = candidateResolver
     self.historyRepository = historyRepository
     self.runHistoryBrowser = runHistoryBrowser

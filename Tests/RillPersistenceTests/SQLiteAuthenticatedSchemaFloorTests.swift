@@ -1,6 +1,6 @@
 import Foundation
-import SQLite3
 import RillCore
+import SQLite3
 import XCTest
 
 @testable import RillPersistence

@@ -1,4 +1,5 @@
 @testable import RillSpeechContracts
+@testable import RillSpeech
 import Darwin
 import Foundation
 import XCTest
@@ -11,6 +12,49 @@ private let speechWorkerTestRequestID = UUID(
 )!
 
 final class SpeechWorkerSupervisorTests: XCTestCase {
+  func testFrozenHotwordRunKeepsModelAndAutomaticLanguageDespiteNewSettings() async throws {
+    let frozenModel = MLXAudioModelID.qwen3ASR06BInt8.rawValue
+    let changedModel = MLXAudioModelID.qwen3ASR17BInt8.rawValue
+    let requestURL = FileManager.default.temporaryDirectory.appendingPathComponent("hotword-request-\(UUID()).json")
+    let audioURL = try makeManagedAudioFile()
+    defer {
+      try? FileManager.default.removeItem(at: requestURL)
+      try? FileManager.default.removeItem(at: audioURL)
+    }
+    let script = """
+      while IFS= read -r request; do
+        printf '%s' "$request" > "$1"
+        printf '%s' "$2"
+      done
+      """
+    let supervisor = SpeechWorkerSupervisor(configuration: .init(
+      executableURL: URL(fileURLWithPath: "/bin/sh"),
+      arguments: ["-c", script, "rill-hotwords", requestURL.path,
+        makeSuccessResponse(requestID: speechWorkerTestRequestID, generation: 1)]),
+      requestIDGenerator: { speechWorkerTestRequestID })
+    let recognizer = MLXAudioSwiftWorkerRecognizer(supervisor: supervisor, settingsProvider: {
+      LocalSpeechSettings(model: changedModel, language: "English", downloadIfNeeded: false,
+        enabledModelIDs: [frozenModel, changedModel])
+    }, workerTimeout: .seconds(2))
+    let audio = try CapturedAudio(durationSeconds: 1,
+      format: .init(sampleRateHz: 16_000, channelCount: 1, encoding: .float32),
+      fileURL: audioURL, fileOwnership: .managedTemporary)
+    do {
+      _ = try await recognizer.recognize(.init(runID: UUID(),
+        contextSnapshot: .empty, capturedAudio: audio,
+        options: .init(modelID: frozenModel, language: nil, hints: .init(keyterms: ["Spore", "Rill"]))))
+      let request = try SpeechWorkerProtocolCodec.decodeRequestLine(Data(contentsOf: requestURL))
+      let payload = try XCTUnwrap(request.recognitionPayload)
+      XCTAssertEqual(payload.modelID, frozenModel)
+      XCTAssertNil(payload.language)
+      XCTAssertEqual(payload.keyterms, ["Spore", "Rill"])
+      try await recognizer.stopRuntime()
+    } catch {
+      try? await recognizer.stopRuntime()
+      throw error
+    }
+  }
+
   func testEmbeddingPreparationAndInferenceUseSupervisedProcessAndShutdownDrainsIt() async throws {
     let modelID = RecordEmbeddingModelCatalog.modelID
     let prepared = SpeechWorkerResponse(requestID: speechWorkerTestRequestID, generation: 1, payload: .modelPrepared(modelID))

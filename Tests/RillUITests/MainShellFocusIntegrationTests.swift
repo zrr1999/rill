@@ -1,7 +1,7 @@
+@testable import RillWorkflows
 import AppKit
 import SwiftUI
 import RillCore
-import RillRuntime
 import XCTest
 
 @testable import RillUI
@@ -90,6 +90,30 @@ private actor MissingRunHistoryBrowser: RunHistoryBrowsing {
 
 @MainActor
 final class MainShellFocusIntegrationTests: XCTestCase {
+    func testJevDeepLinkFocusesSecureFieldInsideIndependentSettingsWindow() async throws {
+        _ = NSApplication.shared
+        let fixture = JevPanelFixture()
+        let workspace = RecordWorkspaceModel(store: fixture.store, cloudRanking: fixture.service)
+        let model = makeHarness(recordWorkspace: workspace).model
+        model.showSettings(.providers, item: .jevCredential)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: SettingsWindowView(model: model))
+        window.makeKeyAndOrderFront(nil)
+        defer { tearDown(window) }
+        await settle(window)
+        // SwiftUI's secure control owns a field editor, not an exposed NSTextField.
+        // The other credential field is unavailable in this in-memory harness.
+        let editor = try XCTUnwrap(window.firstResponder as? NSTextView)
+        XCTAssertTrue(editor.isFieldEditor)
+        XCTAssertTrue(editor.isEditable)
+        XCTAssertNil(model.settingsNavigationRequest)
+        XCTAssertEqual(model.selectedSidebarSection, .records)
+        XCTAssertTrue(editor.visibleRect.height > 0)
+        await workspace.shutdown()
+    }
+
     func testGlobalSearchExclusivelyOwnsInteractionAndFocusUntilDismissed() {
         XCTAssertFalse(
             MainShellInteractionPolicy.allowsBackgroundInteraction(
@@ -1435,6 +1459,84 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(mainWindow.isVisible)
     }
 
+    func testSettingsNavigationFocusStaysWithinDisclosureHeader() async throws {
+        _ = NSApplication.shared
+        let model = makeHarness().model
+        model.showSettings(.storage)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: SettingsView(model: model, pane: .data))
+        window.makeKeyAndOrderFront(nil)
+        defer { tearDown(window) }
+        await settle(window)
+
+        XCTAssertNil(model.settingsNavigationRequest)
+        let responder = try XCTUnwrap(window.firstResponder as? NSView)
+        XCTAssertGreaterThan(responder.bounds.height, 0)
+        XCTAssertLessThan(responder.bounds.height, 80,
+            "Settings navigation should focus the disclosure header, not its expanded contents.")
+        XCTAssertTrue(window.makeFirstResponder(window))
+        model.showSettings(.storage)
+        await settle(window)
+        XCTAssertNil(model.settingsNavigationRequest)
+        let refocused = try XCTUnwrap(window.firstResponder as? NSView)
+        XCTAssertLessThan(refocused.bounds.height, 80)
+    }
+
+    func testSettingsDisclosureHeaderActivatesAndReleasesKeyboardFocus() async throws {
+        let expansion = SettingsDisclosureTestState()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 240),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: SettingsDisclosureTestView(state: expansion))
+        window.makeKeyAndOrderFront(nil)
+        defer { tearDown(window) }
+        await settle(window)
+        let header = try XCTUnwrap(window.firstResponder as? NSView)
+        XCTAssertTrue(expansion.isExpanded)
+        for expected in [false, true] {
+            try pressKey(" ", keyCode: 49, in: window)
+            await settle(window)
+            XCTAssertEqual(expansion.isExpanded, expected)
+            XCTAssertTrue(window.firstResponder === header)
+        }
+        window.selectNextKeyView(nil)
+        await settle(window)
+        try pressKey("x", keyCode: 7, in: window)
+        await settle(window)
+        XCTAssertEqual(expansion.text, "x", "Keyboard traversal should reach the expanded text field.")
+        expansion.focusRequest += 1
+        await settle(window)
+        let restoredHeader = try XCTUnwrap(window.firstResponder as? NSView)
+        XCTAssertTrue(restoredHeader.isDescendant(of: try XCTUnwrap(window.contentView)))
+        try pressKey(" ", keyCode: 49, in: window)
+        await settle(window)
+        XCTAssertFalse(expansion.isExpanded)
+        expansion.isEnabled = false
+        await settle(window)
+        try pressKey(" ", keyCode: 49, in: window)
+        await settle(window)
+        XCTAssertFalse(expansion.isExpanded, "A disabled settings section should not activate.")
+        expansion.isEnabled = true
+        expansion.focusRequest += 1
+        await settle(window)
+        try pressKey(" ", keyCode: 49, in: window)
+        await settle(window)
+        XCTAssertTrue(expansion.isExpanded)
+    }
+
+    private func pressKey(
+        _ characters: String, keyCode: UInt16, in window: NSWindow
+    ) throws {
+        for type in [NSEvent.EventType.keyDown, .keyUp] {
+            let event = try XCTUnwrap(NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+                characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode))
+            window.sendEvent(event)
+        }
+    }
+
     func testTypedHistoryRouteSupersedesPendingPlainSidebarFocusRequest() async throws {
         _ = NSApplication.shared
         let record = WorkflowResultRecord(
@@ -1748,6 +1850,31 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         return !containerFrame.isEmpty && containerFrame.intersects(responderFrame)
     }
 
+}
+
+@Observable @MainActor
+private final class SettingsDisclosureTestState {
+    var isExpanded = true
+    var isEnabled = true
+    var text = ""
+    var focusRequest = 0
+}
+
+private struct SettingsDisclosureTestView: View {
+    @Bindable var state: SettingsDisclosureTestState
+    @FocusState private var keyboardFocus: SettingsSection?
+    @AccessibilityFocusState private var accessibilityFocus: SettingsSection?
+
+    var body: some View {
+        DisclosureGroup("Section", isExpanded: $state.isExpanded) {
+            TextField("Value", text: $state.text)
+        }
+        .disclosureGroupStyle(SettingsDisclosureStyle(section: .storage, keyboardFocus: $keyboardFocus,
+            accessibilityFocus: $accessibilityFocus))
+        .disabled(!state.isEnabled)
+        .padding()
+        .task(id: state.focusRequest) { keyboardFocus = .storage }
+    }
 }
 
 private final class FocusProbeView: NSView {

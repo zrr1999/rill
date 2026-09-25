@@ -7,19 +7,37 @@ struct HistoryRunDiagnosticsView: View {
     @State private var events: [DiagnosticEvent] = []
     @State private var loadState: DiagnosticsLoadState = .loading
     @State private var refreshID = UUID()
+    @State private var showsAllEvents = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let visibleEvents = events.filter {
+            (showsAllEvents ? DiagnosticsTimelineFilter.all : .issues).includes($0)
+        }
+        return VStack(alignment: .leading, spacing: RillSpacing.compact) {
             HStack {
                 Text(L10n.historyRunDetail(.diagnostics, language: model.settings.language))
-                    .font(.callout.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                 Spacer()
-                Button(L10n.text(.refreshDiagnostics, language: model.settings.language)) {
-                    refreshID = UUID()
+                if !events.isEmpty {
+                    Button(showsAllEvents
+                        ? L10n.historyRunDetail(.showDiagnosticIssues, language: model.settings.language)
+                        : L10n.historyShowAllDiagnostics(events.count, language: model.settings.language)) {
+                        showsAllEvents.toggle()
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityIdentifier("history.run-diagnostics.filter")
                 }
+                Button {
+                    refreshID = UUID()
+                } label: {
+                    Label(L10n.text(.refreshDiagnostics, language: model.settings.language),
+                          systemImage: RillSystemSymbol.arrowClockwise.rawValue)
+                }
+                .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .disabled(loadState == .loading)
             }
+            .font(.caption)
             switch loadState {
             case .loading:
                 ProgressView(L10n.text(.diagnosticsLoading, language: model.settings.language))
@@ -32,12 +50,16 @@ struct HistoryRunDiagnosticsView: View {
                 if events.isEmpty {
                     Text(L10n.historyRunDetail(.noDiagnostics, language: model.settings.language))
                         .foregroundStyle(.secondary)
+                } else if visibleEvents.isEmpty {
+                    Text(L10n.historyRunDetail(.noDiagnosticIssues, language: model.settings.language))
+                        .foregroundStyle(.secondary)
                 }
             }
-            ForEach(DiagnosticTimelineEntry.build(from: events, limit: 20)) { entry in
+            ForEach(DiagnosticTimelineEntry.build(from: visibleEvents, limit: 20)) { entry in
                 DiagnosticEventRow(model: model, entry: entry)
             }
         }
+        .font(.caption)
         .accessibilityIdentifier("history.run-diagnostics")
         .task(id: refreshID) {
             loadState = .loading

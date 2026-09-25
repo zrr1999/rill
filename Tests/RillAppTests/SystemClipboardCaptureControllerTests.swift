@@ -4,10 +4,12 @@ import Testing
 import XCTest
 
 @testable import RillApp
+@testable import RillClipboard
 @testable import RillCore
-@testable import RillPlatform
 @testable import RillPersistence
-@testable import RillRuntime
+@testable import RillPlatform
+@testable import RillRecords
+@testable import RillWorkflows
 
 private struct RecordCaptureTestContextProvider: ContextProvider {
   func captureContext() async -> ContextSnapshot { .empty }
@@ -131,9 +133,11 @@ private final class RecordCaptureTestPasteboard: SystemClipboardAccess {
     ifChangeCountIs expected: Int
   ) async -> SystemClipboardPort.TemporaryRestoreOutcome {
     guard snapshot.changeCount == expected else { return .skippedChangeCount }
-    guard let preservedSnapshot = preservedSnapshots.removeValue(
-      forKey: transaction.temporaryChangeCount
-    ) else {
+    guard
+      let preservedSnapshot = preservedSnapshots.removeValue(
+        forKey: transaction.temporaryChangeCount
+      )
+    else {
       return .writeFailed(retryChangeCount: expected)
     }
     snapshot = preservedSnapshot.withChangeCount(expected + 1)
@@ -146,8 +150,8 @@ private final class RecordCaptureTestPasteboard: SystemClipboardAccess {
   }
 }
 
-private extension SystemClipboardSnapshot {
-  func withChangeCount(_ changeCount: Int) -> SystemClipboardSnapshot {
+extension SystemClipboardSnapshot {
+  fileprivate func withChangeCount(_ changeCount: Int) -> SystemClipboardSnapshot {
     SystemClipboardSnapshot(
       plainText: plainText,
       imagePNGData: imagePNGData,
@@ -276,8 +280,11 @@ struct ClipboardCaptureLatencyTests {
     pasteboard.replaceExternally(with: .init(plainText: "new copy", changeCount: 3))
     await controller.testingPollExternalClipboardIfNeeded(at: start + .seconds(2))
     let records = try await store.snapshot().records
-    if ignoreNext { #expect(records.isEmpty) }
-    else { #expect(records.map(\.record.payload) == [.text("new copy")]) }
+    if ignoreNext {
+      #expect(records.isEmpty)
+    } else {
+      #expect(records.map(\.record.payload) == [.text("new copy")])
+    }
     await controller.stop()
   }
 
@@ -311,7 +318,8 @@ struct ClipboardCaptureLatencyTests {
     let (controller, pasteboard, _) = await makeHarness(store: store)
     pasteboard.replaceExternally(with: .init(plainText: "saved after retry", changeCount: 2))
     await controller.testingPollExternalClipboardIfNeeded()
-    #expect(try await store.snapshot().records.map(\.record.payload) == [.text("saved after retry")])
+    #expect(
+      try await store.snapshot().records.map(\.record.payload) == [.text("saved after retry")])
     #expect(pasteboard.payloadReadCount == 1)
     await controller.stop()
   }
@@ -331,8 +339,17 @@ struct ClipboardCaptureLatencyTests {
     #expect(pasteboard.payloadReadCount == 3)
 
     let drain = Task {
-      if stop { await controller.stop() }
-      else { await controller.setClipboardCapturePaused(true) }
+      if stop { await controller.stop() } else { await controller.setClipboardCapturePaused(true) }
+    }
+    if stop {
+      for _ in 0..<100 {
+        if await controller.testingCaptureControlSnapshot().state == .pausing { break }
+        await Task.yield()
+      }
+      #expect(await controller.testingCaptureControlSnapshot().state == .pausing)
+      let outcome = await controller.recordDelivery.reuseRecord(
+        RecordReuseSubject(recordID: RecordID(), metadataRevision: 1), copyOnly: true)
+      #expect(outcome == .blocked)
     }
     await persistence.releaseWrite()
     await drain.value
@@ -361,7 +378,8 @@ struct ClipboardCaptureLatencyTests {
     #expect(item.setData(Data([1, 2, 3]), forType: customType))
     #expect(pasteboard.writeObjects([item]))
     let baseline = pasteboard.changeCount
-    let controller = makeController(pasteboard: SystemClipboardPort(pasteboard: pasteboard), store: store)
+    let controller = makeController(
+      pasteboard: SystemClipboardPort(pasteboard: pasteboard), store: store)
     await controller.start(initialClipboardCaptureEnabled: true)
     await controller.testingStopExternalClipboardMonitor()
     #expect(pasteboard.changeCount == baseline)
@@ -374,7 +392,8 @@ struct ClipboardCaptureLatencyTests {
     #expect(pasteboard.writeObjects([copiedItem]))
     let copied = pasteboard.changeCount
     await controller.testingPollExternalClipboardIfNeeded()
-    #expect(try await store.snapshot().records.contains { $0.record.payload == .text("native copy") })
+    #expect(
+      try await store.snapshot().records.contains { $0.record.payload == .text("native copy") })
     await controller.setClipboardCapturePaused(true)
     await controller.setClipboardCapturePaused(false)
     await controller.testingStopExternalClipboardMonitor()
@@ -388,8 +407,10 @@ struct ClipboardCaptureLatencyTests {
   @Test
   func panelShortcutWorksWithCaptureDisabledAndStopsAtShutdown() async throws {
     let eventBus = EventBus()
-    let pasteboard = RecordCaptureTestPasteboard(snapshot: .init(plainText: "native copy", changeCount: 1))
-    let controller = makeController(pasteboard: pasteboard, store: RecordStore(), eventBus: eventBus)
+    let pasteboard = RecordCaptureTestPasteboard(
+      snapshot: .init(plainText: "native copy", changeCount: 1))
+    let controller = makeController(
+      pasteboard: pasteboard, store: RecordStore(), eventBus: eventBus)
     await controller.start(initialClipboardCaptureEnabled: false)
     let stream = await eventBus.stream()
     var iterator = stream.makeAsyncIterator()
@@ -407,20 +428,23 @@ struct ClipboardCaptureLatencyTests {
     #expect(await iterator.next() == marker)
   }
 
-  @Test(arguments: [
-    RecordPayload.text("explicit text"),
-    .image(Data([1, 2, 3])),
-    .files([URL(fileURLWithPath: "/tmp/rill-explicit-output")]),
-  ], [false, true])
+  @Test(
+    arguments: [
+      RecordPayload.text("explicit text"),
+      .image(Data([1, 2, 3])),
+      .files([URL(fileURLWithPath: "/tmp/rill-explicit-output")]),
+    ], [false, true])
   func explicitNextOutputRequiresTheOriginalTargetWhileCaptureIsPaused(
     payload: RecordPayload, targetChanged: Bool
   ) async throws {
     let store = RecordStore()
     let queue = try await store.createCollection(name: "Output", preset: .queue)
     let record = try await store.ingest(
-      RecordDraft(payload: payload, provenance: .init(source: .init(kind: .user))), into: [queue.id])
+      RecordDraft(payload: payload, provenance: .init(source: .init(kind: .user))), into: [queue.id]
+    )
     try await store.replaceDeliveryRules([
-      DeliveryRouteRule(matcher: .init(), priority: 0, sourceCollectionIDs: [queue.id], sink: .focusedApplication)
+      DeliveryRouteRule(
+        matcher: .init(), priority: 0, sourceCollectionIDs: [queue.id], sink: .focusedApplication)
     ])
     let eventBus = EventBus()
     let focus = ClipboardFocusProbe().snapshot
@@ -435,17 +459,19 @@ struct ClipboardCaptureLatencyTests {
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: [ExplicitRecordOutputAction(probe: probe)]),
-      candidateResolver: CandidateResolver(eventBus: eventBus), recordStore: store, eventBus: eventBus)
-    let pasteboard = RecordCaptureTestPasteboard(snapshot: .init(plainText: "native copy", changeCount: 1))
+      candidateResolver: CandidateResolver(eventBus: eventBus), recordStore: store,
+      eventBus: eventBus)
+    let pasteboard = RecordCaptureTestPasteboard(
+      snapshot: .init(plainText: "native copy", changeCount: 1))
     let controller = SystemClipboardCaptureController(
       hotkeyTap: HotkeyEventTap(), pasteboard: pasteboard, recordStore: store,
-      sessionCoordinator: coordinator, eventBus: eventBus,
+      delivery: coordinator, eventBus: eventBus,
       privacySettingsProvider: { .defaults }, focusSnapshotProvider: { focus },
       accessibilityChecker: { true })
     await controller.start(initialClipboardCaptureEnabled: false)
     #expect(await probe.payloads.isEmpty)
     #expect(pasteboard.currentSnapshot().changeCount == 1)
-    await controller.deliverNextRecord()
+    await controller.recordDelivery.deliverNextRecord()
     let delivered = try #require(try await store.record(id: record.id))
     if targetChanged {
       #expect(await probe.payloads.isEmpty)
@@ -492,7 +518,8 @@ struct ClipboardCaptureLatencyTests {
             let snapshot = try #require(await iterator.next())
             #expect(snapshot.records.count == index + 1)
             let duration = start.duration(to: .now).components
-            milliseconds.append(Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15)
+            milliseconds.append(
+              Double(duration.seconds) * 1_000 + Double(duration.attoseconds) / 1e15)
           }
           return milliseconds
         }
@@ -505,12 +532,15 @@ struct ClipboardCaptureLatencyTests {
       }
       let sorted = timings.sorted()
       let p95 = sorted[Int(ceil(Double(sorted.count) * 0.95)) - 1]
-      print("Clipboard capture latency: samples=\(timings.count) p50_ms=\(sorted[(sorted.count - 1) / 2]) p95_ms=\(p95) max_ms=\(sorted.last ?? 0)")
+      print(
+        "Clipboard capture latency: samples=\(timings.count) p50_ms=\(sorted[(sorted.count - 1) / 2]) p95_ms=\(p95) max_ms=\(sorted.last ?? 0)"
+      )
       #expect(p95 < 150)
       #expect(sorted.last.map { $0 < 250 } == true)
       let records = try await store.snapshot().records
       for index in 0..<24 {
-        #expect(records.contains { $0.record.payload == .text("Clipboard latency fixture \(index)") })
+        #expect(
+          records.contains { $0.record.payload == .text("Clipboard latency fixture \(index)") })
       }
       await controller.stop()
     } catch {
@@ -519,10 +549,12 @@ struct ClipboardCaptureLatencyTests {
     }
   }
 
-  private func makeHarness(store: RecordStore = RecordStore(), focus: ClipboardFocusProbe? = nil) async
+  private func makeHarness(store: RecordStore = RecordStore(), focus: ClipboardFocusProbe? = nil)
+    async
     -> (SystemClipboardCaptureController, RecordCaptureTestPasteboard, RecordStore)
   {
-    let pasteboard = RecordCaptureTestPasteboard(snapshot: .init(plainText: "initial", changeCount: 1))
+    let pasteboard = RecordCaptureTestPasteboard(
+      snapshot: .init(plainText: "initial", changeCount: 1))
     let controller = makeController(pasteboard: pasteboard, store: store, focus: focus)
     await controller.start(initialClipboardCaptureEnabled: true)
     await controller.testingStopExternalClipboardMonitor()
@@ -545,12 +577,13 @@ struct ClipboardCaptureLatencyTests {
       eventBus: eventBus)
     return SystemClipboardCaptureController(
       hotkeyTap: HotkeyEventTap(), pasteboard: pasteboard,
-      recordStore: store, sessionCoordinator: coordinator, eventBus: eventBus,
+      recordStore: store, delivery: coordinator, eventBus: eventBus,
       privacySettingsProvider: { .defaults },
       focusSnapshotProvider: {
         if let focus { return await focus.snapshot }
-        return .init(applicationName: "Editor", bundleIdentifier: "com.example.Editor",
-              processIdentifier: 42, focusedRole: nil, selectedText: "", secureInput: false)
+        return .init(
+          applicationName: "Editor", bundleIdentifier: "com.example.Editor",
+          processIdentifier: 42, focusedRole: nil, selectedText: "", secureInput: false)
       },
       accessibilityChecker: { false })
   }
@@ -569,7 +602,8 @@ private actor ClipboardRetryPersistence: RecordGraphPersistenceStore {
   private var hasFailed = false
 
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
-  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 {
+  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64
+  {
     if !hasFailed {
       hasFailed = true
       throw RecordStoreError.persistenceUnavailable
@@ -585,7 +619,8 @@ private actor ClipboardBlockingPersistence: RecordGraphPersistenceStore {
   private var observers: [CheckedContinuation<Void, Never>] = []
 
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
-  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 {
+  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64
+  {
     if !writeStarted {
       writeStarted = true
       for observer in observers { observer.resume() }
@@ -645,7 +680,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: [
-        SelectedRecordInsertAction(probe: probe),
+        SelectedRecordInsertAction(probe: probe)
       ]),
       candidateResolver: CandidateResolver(eventBus: eventBus),
       recordStore: store,
@@ -660,14 +695,14 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
       hotkeyTap: HotkeyEventTap(),
       pasteboard: pasteboard,
       recordStore: store,
-      sessionCoordinator: coordinator,
+      delivery: coordinator,
       eventBus: eventBus,
       privacySettingsProvider: { .defaults },
       focusSnapshotProvider: { focus },
       accessibilityChecker: { true }
     )
 
-    await controller.deliverSelectedRecord(subject, to: target)
+    await controller.recordDelivery.deliverSelectedRecord(subject, to: target)
 
     let deliveredValues = await probe.snapshot()
     let storedProjection = try await store.record(id: selected.id)
@@ -721,7 +756,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: [
-        SelectedRecordInsertAction(probe: probe, pasteboard: pasteboard),
+        SelectedRecordInsertAction(probe: probe, pasteboard: pasteboard)
       ]),
       candidateResolver: CandidateResolver(eventBus: eventBus),
       recordStore: store,
@@ -731,7 +766,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
       hotkeyTap: HotkeyEventTap(),
       pasteboard: pasteboard,
       recordStore: store,
-      sessionCoordinator: coordinator,
+      delivery: coordinator,
       eventBus: eventBus,
       privacySettingsProvider: { .defaults },
       focusSnapshotProvider: { focus },
@@ -743,7 +778,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
     XCTAssertEqual(beforeOutput.plainText, "existing")
     XCTAssertEqual(beforeOutput.changeCount, 1)
 
-    await controller.deliverSelectedRecord(subject, to: target)
+    await controller.recordDelivery.deliverSelectedRecord(subject, to: target)
 
     let finalSnapshot = await MainActor.run { pasteboard.currentSnapshot() }
     XCTAssertEqual(finalSnapshot.plainText, "existing")
@@ -787,7 +822,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
       hotkeyTap: HotkeyEventTap(),
       pasteboard: pasteboard,
       recordStore: store,
-      sessionCoordinator: coordinator,
+      delivery: coordinator,
       eventBus: eventBus,
       privacySettingsProvider: { .defaults },
       focusSnapshotProvider: { focus },
@@ -806,10 +841,12 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
     let snapshot = try await store.snapshot()
     XCTAssertEqual(snapshot.records.count, 1)
     XCTAssertEqual(snapshot.records.first?.record.payload, .text("captured once"))
-    XCTAssertEqual(Set(snapshot.records.first?.memberships.map(\.collectionID) ?? []), [
-      RecordCollection.inboxID,
-      secondCollection.id,
-    ])
+    XCTAssertEqual(
+      Set(snapshot.records.first?.memberships.map(\.collectionID) ?? []),
+      [
+        RecordCollection.inboxID,
+        secondCollection.id,
+      ])
     await controller.stop()
   }
 
@@ -834,7 +871,7 @@ final class SystemClipboardCaptureControllerTests: XCTestCase {
       hotkeyTap: HotkeyEventTap(),
       pasteboard: pasteboard,
       recordStore: store,
-      sessionCoordinator: coordinator,
+      delivery: coordinator,
       eventBus: eventBus,
       privacySettingsProvider: { .defaults },
       accessibilityChecker: { false }

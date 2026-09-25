@@ -1,7 +1,10 @@
+@testable import RillSpeech
 import RillDomainTestSupport
 import XCTest
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillRecords
+@testable import RillWorkflows
+import XCTest
 
 private struct MockContextProvider: ContextProvider {
     func captureContext() async -> ContextSnapshot { .empty }

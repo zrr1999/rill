@@ -602,6 +602,8 @@ extension MainShellView {
             model.showWorkflow(workflowID)
         case .history(let entryID):
             model.showHistoryEntry(entryID)
+        case .settingItem(let item):
+            model.showSettings(item.section, item: item)
         case .settings(let section):
             model.showSettings(section)
         }
@@ -639,8 +641,8 @@ extension MainShellView {
     private func updateGlobalHistorySearch(for request: GlobalHistorySearchTaskIdentity) async {
         await search.update(
             request: request,
-            records: { query, limit in
-                try await model.recordWorkspace.searchRecords(query, limit: limit)
+            records: { query, cursor, limit in
+                try await model.recordWorkspace.searchRecords(query, after: cursor, limit: limit)
             },
             history: { query, limit in
                 try await model.history.searchRunHistory(

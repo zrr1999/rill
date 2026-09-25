@@ -3,7 +3,9 @@ import Foundation
 import XCTest
 import Testing
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 
 private final class ProcessingTestClock: @unchecked Sendable {
     private let lock = NSLock()

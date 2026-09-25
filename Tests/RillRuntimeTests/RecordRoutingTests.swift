@@ -1,8 +1,9 @@
+@testable import RillWorkflows
+@testable import RillRecords
 import Foundation
 import XCTest
 
 @testable import RillCore
-@testable import RillRuntime
 
 final class RecordRoutingTests: XCTestCase {
     func testCaptureSourceCreatesOneRecordInStableUnionOfCollections() async throws {

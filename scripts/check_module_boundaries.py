@@ -12,28 +12,44 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEPENDENCIES = {
     "RillCore": set(),
-    "RillTestSupport": {"RillCore", "RillRuntime", "RillUI", "RillDomainTestSupport"},
-    "RillDomainTestSupport": {"RillCore", "RillRuntime", "RillPlatform"},
+    "CRime": set(),
+    "RillInputMethodContracts": set(),
+    "RillInputMethodIPC": {"RillInputMethodContracts"},
+    "RillInputMethodKit": {"CRime", "RillInputMethodContracts", "RillInputMethodIPC"},
+    "RillInputMethod": {"RillInputMethodContracts", "RillInputMethodKit"},
     "RillSpeechContracts": {"RillCore"},
-    "RillRuntime": {"RillCore"},
+    "RillRecords": {"RillCore"},
+    "RillKnowledge": {"RillCore"},
+    "RillSpeech": {"RillCore", "RillPlatform", "RillSpeechContracts"},
+    "RillClipboard": {"RillCore", "RillPlatform", "RillRecords"},
+    "RillWorkflows": {"RillCore", "RillKnowledge", "RillRecords", "RillSpeech", "RillSpeechContracts"},
     "RillPersistence": {"RillCore"},
-    "RillUI": {"RillCore", "RillRuntime"},
-    "RillPlatform": {"RillCore", "TOML"},
-    "RillProviders": {"RillCore", "RillSpeechContracts", "OpenAI"},
-    "RillApp": {"RillCore", "RillSpeechContracts", "RillRuntime", "RillPlatform",
-                "RillProviders", "RillPersistence", "RillUI"},
-    "RillMLXRuntime": {"RillCore", "RillSpeechContracts", "MLXAudioCore", "MLXAudioSTT",
-                       "MLXAudioTTS", "MLXAudioVAD", "MLX", "MLXNN", "MLXEmbedders",
-                       "MLXHuggingFace", "MLXLMCommon", "Tokenizers", "HuggingFace"},
-    "RillSpeechWorker": {"RillCore", "RillSpeechContracts", "RillMLXRuntime"},
+    "RillPlatform": {"RillCore", "RillInputMethodContracts", "TOML"},
+    "RillProviders": {"OpenAI", "RillCore", "RillSpeech", "RillSpeechContracts"},
+    "RillUI": {"RillCore", "RillInputMethodContracts", "RillInputMethodIPC", "RillKnowledge", "RillRecords", "RillSpeech", "RillWorkflows"},
+    "RillApp": {"RillClipboard", "RillCore", "RillKnowledge", "RillPersistence", "RillPlatform", "RillProviders", "RillRecords", "RillSpeech", "RillSpeechContracts", "RillUI", "RillWorkflows"},
+    "RillMLXRuntime": {"HuggingFace", "MLX", "MLXAudioCore", "MLXAudioSTT", "MLXAudioTTS", "MLXAudioVAD", "MLXEmbedders", "MLXHuggingFace", "MLXLMCommon", "MLXNN", "RillCore", "RillSpeechContracts", "Tokenizers"},
+    "RillSpeechWorker": {"RillCore", "RillMLXRuntime", "RillSpeechContracts"},
+    "RillTestSupport": {"RillCore", "RillDomainTestSupport", "RillKnowledge", "RillRecords", "RillSpeech", "RillUI", "RillWorkflows"},
+    "RillDomainTestSupport": {"RillCore", "RillKnowledge", "RillPlatform", "RillRecords", "RillSpeech", "RillWorkflows"},
 }
+
 FOUNDATION_IMPORTS = {"Foundation", "CryptoKit", "Dispatch", "Darwin"}
 SYSTEM_IMPORTS = {
     "RillCore": FOUNDATION_IMPORTS,
     "RillTestSupport": FOUNDATION_IMPORTS,
     "RillDomainTestSupport": FOUNDATION_IMPORTS,
     "RillSpeechContracts": FOUNDATION_IMPORTS,
-    "RillRuntime": FOUNDATION_IMPORTS,
+    "RillRecords": FOUNDATION_IMPORTS,
+    "RillKnowledge": FOUNDATION_IMPORTS | {"NaturalLanguage"},
+    "RillSpeech": FOUNDATION_IMPORTS | {"OSLog"},
+    "RillWorkflows": FOUNDATION_IMPORTS,
+    "RillClipboard": FOUNDATION_IMPORTS | {"AppKit", "ApplicationServices"},
+    "CRime": set(),
+    "RillInputMethodContracts": FOUNDATION_IMPORTS,
+    "RillInputMethodIPC": FOUNDATION_IMPORTS | {"Security"},
+    "RillInputMethodKit": FOUNDATION_IMPORTS | {"AppKit", "InputMethodKit", "Carbon", "Combine", "SwiftUI"},
+    "RillInputMethod": FOUNDATION_IMPORTS | {"AppKit", "InputMethodKit"},
     "RillMLXRuntime": FOUNDATION_IMPORTS,
     "RillSpeechWorker": FOUNDATION_IMPORTS,
     "RillPersistence": FOUNDATION_IMPORTS | {"OSLog", "SQLite3"},
@@ -67,6 +83,8 @@ def main() -> None:
         is_test = target["type"] == "test"
         source_root = ROOT / target.get("path", str(Path("Tests" if is_test else "Sources") / name))
         sources = sorted(str(path) for path in source_root.rglob("*.swift"))
+        if name == "CRime" and list(source_root.rglob("*.c")):
+            continue
         if not sources:
             raise SystemExit(f"{name}: no source files checked")
         imports = {module.split(".")[0] for module in output(

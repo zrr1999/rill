@@ -1,6 +1,6 @@
+import RillWorkflows
 import Foundation
 import RillPlatform
-import RillRuntime
 
 actor CursorTextPreviewLifecycleCoordinator {
   private let eventBus: EventBus

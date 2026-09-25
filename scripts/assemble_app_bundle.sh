@@ -12,6 +12,7 @@ APP_NAME="Rill"
 BUNDLE_ID="dev.zrr.Rill"
 APP_EXECUTABLE_PRODUCT="RillApp"
 SPEECH_WORKER_PRODUCT="RillSpeechWorker"
+INPUT_METHOD_PRODUCT="RillInputMethod"
 MIN_MACOS="14.0"
 OWN_RESOURCE_BUNDLE="RillMacOS_RillApp.bundle"
 MLX_RESOURCE_BUNDLE="mlx-swift_Cmlx.bundle"
@@ -167,12 +168,15 @@ esac
 
 EXECUTABLE_SOURCE="$BUILD_DIR/$APP_EXECUTABLE_PRODUCT"
 SPEECH_WORKER_SOURCE="$BUILD_DIR/$SPEECH_WORKER_PRODUCT"
+INPUT_METHOD_SOURCE="$BUILD_DIR/$INPUT_METHOD_PRODUCT"
+[[ -x "$INPUT_METHOD_SOURCE" ]] || error "Input method executable not found: $INPUT_METHOD_SOURCE"
 [[ -x "$EXECUTABLE_SOURCE" ]] ||
   error "Release executable not found or not executable: $EXECUTABLE_SOURCE"
 [[ -x "$SPEECH_WORKER_SOURCE" ]] ||
   error "Speech worker not found or not executable: $SPEECH_WORKER_SOURCE"
 bash "$SCRIPT_DIR/verify_release_executable.sh" "$EXECUTABLE_SOURCE"
 bash "$SCRIPT_DIR/verify_release_executable.sh" "$SPEECH_WORKER_SOURCE"
+bash "$SCRIPT_DIR/verify_release_executable.sh" "$INPUT_METHOD_SOURCE"
 
 shopt -s nullglob
 RESOURCE_SOURCES=("$BUILD_DIR"/*.bundle)
@@ -213,6 +217,9 @@ ditto "$EXECUTABLE_SOURCE" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 ditto \
   "$SPEECH_WORKER_SOURCE" \
   "$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"
+
+uv run --no-build --locked --script "$SCRIPT_DIR/assemble_input_method.py" --unsigned \
+  --executable "$INPUT_METHOD_SOURCE" --output "$APP_BUNDLE/Contents/Helpers/RillInputMethod.app"
 
 # Verify the exact bytes that will be signed. The build directory can be
 # replaced by a concurrent build after the source checks above; validating the

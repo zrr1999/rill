@@ -170,6 +170,8 @@ public struct SettingsView: View {
   @State var wakeListeningDraftEnabled: Bool
   @State var isApplyingWakeWordSettings = false
   @State var wakeWordSettingsError: String?
+  @FocusState var focusedSettingsItem: SettingsItem?
+  @AccessibilityFocusState var accessibilityFocusedSettingsItem: SettingsItem?
   @FocusState private var focusedSettingsSection: SettingsSection?
   @FocusState var wakePhrasesFieldFocused: Bool
   @AccessibilityFocusState private var accessibilityFocusedSettingsSection: SettingsSection?
@@ -205,6 +207,7 @@ public struct SettingsView: View {
           Section { languageSection }
         case .input:
           Section { builtinPushToTalkSection; recordPanelSection }
+          if let input = model.inputMethod { InputMethodSettingsView(input: input) }
         case .voice:
           Section { speechEngineSection; apiProviderSettingsSection; voiceAssistantResourcesSection }
         case .vocabulary:
@@ -213,10 +216,7 @@ public struct SettingsView: View {
             if let memory = model.contextMemory {
               ContextMemorySettingsView(memory: memory, workflows: model.workflowLibrary.workflows.filter(\.supportsContextualCorrection), language: model.settings.language, isExpanded: settingsDisclosureBinding(for: .contextMemory))
                 .id(SettingsSection.contextMemory)
-                .accessibilityIdentifier("settings.section.contextMemory")
-                .focusable()
-                .focused($focusedSettingsSection, equals: .contextMemory)
-                .accessibilityFocused($accessibilityFocusedSettingsSection, equals: .contextMemory)
+                .disclosureGroupStyle(settingsDisclosureStyle(for: .contextMemory))
             }
           }
         case .privacy:
@@ -450,7 +450,6 @@ extension SettingsView {
         content()
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.top, 8)
     } label: {
       VStack(alignment: .leading, spacing: 3) {
         settingsSectionHeader(section)
@@ -460,11 +459,13 @@ extension SettingsView {
       }
       .padding(.vertical, 2)
     }
-    .focusable()
-    .focused($focusedSettingsSection, equals: section)
-    .accessibilityFocused($accessibilityFocusedSettingsSection, equals: section)
-    .accessibilityIdentifier("settings.section.\(section.rawValue)")
+    .disclosureGroupStyle(settingsDisclosureStyle(for: section))
     .id(section)
+  }
+
+  private func settingsDisclosureStyle(for section: SettingsSection) -> SettingsDisclosureStyle {
+    SettingsDisclosureStyle(section: section, keyboardFocus: $focusedSettingsSection,
+      accessibilityFocus: $accessibilityFocusedSettingsSection)
   }
 
   private func settingsDisclosureBinding(
@@ -520,12 +521,18 @@ extension SettingsView {
     // Navigation scroll, not decorative motion: keep the fixed duration
     // easing so section positioning stays predictable.
     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-      proxy.scrollTo(request.section, anchor: .top)
+      if let item = request.item { proxy.scrollTo(item, anchor: .top) }
+      else { proxy.scrollTo(request.section, anchor: .top) }
     }
     await waitForMainRunLoopDefaultMode()
     guard !Task.isCancelled, model.settingsNavigationRequest?.id == request.id else { return }
-    focusedSettingsSection = request.section
-    accessibilityFocusedSettingsSection = request.section
+    if let item = request.item {
+      focusedSettingsItem = item
+      accessibilityFocusedSettingsItem = item
+    } else {
+      focusedSettingsSection = request.section
+      accessibilityFocusedSettingsSection = request.section
+    }
     model.settingsNavigationRequest = nil
   }
 
@@ -846,6 +853,53 @@ extension SettingsView {
     case .secondary: return .secondary
     case .warning: return .orange
     case .error: return .red
+    }
+  }
+}
+
+// Settings navigation targets the header, never the expanded content container.
+struct SettingsDisclosureStyle: DisclosureGroupStyle {
+  let section: SettingsSection
+  let keyboardFocus: FocusState<SettingsSection?>.Binding
+  let accessibilityFocus: AccessibilityFocusState<SettingsSection?>.Binding
+  @Environment(\.isEnabled) private var isEnabled
+
+  func makeBody(configuration: Configuration) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(spacing: 8) {
+        Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+          .font(.caption.weight(.semibold))
+          .frame(width: 12)
+          .accessibilityHidden(true)
+        configuration.label
+        Spacer(minLength: 0)
+      }
+      .contentShape(Rectangle())
+      .focusable(isEnabled)
+      .focused(keyboardFocus, equals: section)
+      .onTapGesture { if isEnabled { configuration.isExpanded.toggle() } }
+      .onKeyPress(.space) {
+        guard isEnabled else { return .ignored }
+        configuration.isExpanded.toggle()
+        return .handled
+      }
+      .accessibilityRepresentation {
+        DisclosureGroup(isExpanded: configuration.$isExpanded) {
+          EmptyView()
+        } label: {
+          configuration.label
+        }
+        .disclosureGroupStyle(.automatic)
+        .accessibilityFocused(accessibilityFocus, equals: section)
+        .accessibilityIdentifier("settings.section.\(section.rawValue)")
+      }
+
+      if configuration.isExpanded {
+        VStack(alignment: .leading, spacing: 12) {
+          configuration.content.disclosureGroupStyle(.automatic)
+        }
+        .padding(.top, 8)
+      }
     }
   }
 }

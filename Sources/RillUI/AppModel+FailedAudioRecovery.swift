@@ -1,6 +1,9 @@
 import Foundation
 import RillCore
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
+import RillSpeech
 
 public extension AppModel {
     func failedAudioRecoveryReceipt(

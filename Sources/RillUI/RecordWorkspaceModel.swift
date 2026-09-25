@@ -1,7 +1,8 @@
+import RillWorkflows
+import RillRecords
 import Foundation
 import Observation
 import RillCore
-import RillRuntime
 
 /// UI-owned projection of the Record graph. The actor remains the only state
 /// owner; this model only keeps a refreshable snapshot and user navigation.
@@ -41,10 +42,11 @@ public final class RecordWorkspaceModel {
     private var searchMatches: Set<RecordID> = []
     public private(set) var isSearching = false
 
-    public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, cloudRanking: RecordCloudRanking? = nil) {
+    public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, cloudRanking: RecordCloudRanking? = nil,
+                hotwordSelection: HotwordSelection? = nil) {
         self.store = store
         self.semanticSearch = semanticSearch
-        jevSettings = cloudRanking.map { JevAPISettingsModel(service: $0) }
+        jevSettings = cloudRanking.map { JevAPISettingsModel(service: $0, hotwordSelection: hotwordSelection) }
         cleanup = RecordCleanupModel(store: store)
     }
 
@@ -206,13 +208,13 @@ public final class RecordWorkspaceModel {
         isSearching = true
         searchTask = Task { [weak self, store] in
             do {
-                var cursor = RecordQuerySession(query: .init(text: query))
-                var matches: Set<RecordID> = []
-                while let page = try await cursor.next(in: store, limit: 100) {
+                var offset = 0
+                repeat {
+                    let page = try await store.query(.init(text: query), offset: offset, limit: 100)
                     guard !Task.isCancelled, let self, self.searchText.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
-                    matches.formUnion(page.records.map(\.id))
-                }
-                self?.searchMatches = matches
+                    self.searchMatches.formUnion(page.records.map(\.id))
+                    if let next = page.nextOffset { offset = next } else { break }
+                } while true
                 guard !Task.isCancelled else { return }
                 self?.isSearching = false
                 self?.repairSelection()
@@ -240,14 +242,8 @@ public final class RecordWorkspaceModel {
         repairRecordSelection()
     }
 
-    public func searchRecords(_ text: String, offset: Int = 0, limit: Int = 20) async throws -> RecordQueryPage {
-        var records: [RecordSummary] = []
-        var cursor = RecordQuerySession(query: .init(text: text), offset: offset)
-        let limit = max(1, limit)
-        while records.count < limit, let page = try await cursor.next(in: store, limit: limit - records.count) {
-            records.append(contentsOf: page.records)
-        }
-        return RecordQueryPage(revision: cursor.revision ?? 0, records: records, nextOffset: cursor.nextOffset)
+    public func searchRecords(_ text: String, after cursor: RecordSearchCursor? = nil, limit: Int = 20) async throws -> RecordSearchPage {
+        try await RecordSearch.page(in: store, query: .init(text: text), after: cursor, limit: limit)
     }
 
     public func revealRecord(_ id: RecordID) async {
@@ -369,6 +365,7 @@ public final class RecordWorkspaceModel {
         }
         return saved
     }
+
 
     public func replaceText(
         membership: RecordMembership,
