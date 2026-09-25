@@ -167,8 +167,30 @@ typealias SettingsStoreWriteOperation =
   ) async throws -> Void
 
 struct RetryableSettingsStoreWrite: Sendable {
+  enum Content: Sendable {
+    case operation(SettingsStoreWriteOperation)
+    case string(@Sendable () throws -> String)
+  }
+
   let category: SettingsSaveCategory
-  let operation: SettingsStoreWriteOperation
+  let content: Content
+
+  init(category: SettingsSaveCategory, operation: @escaping SettingsStoreWriteOperation) {
+    self.category = category
+    content = .operation(operation)
+  }
+
+  init(_ value: SettingsStringWrite) {
+    category = value.category
+    content = .string(value.encode)
+  }
+
+  func perform(in store: any SettingsStore, for key: AppSettingKey) async throws {
+    switch content {
+    case .operation(let operation): try await operation(store)
+    case .string(let encode): try await store.setString(encode(), forKey: key)
+    }
+  }
 }
 
 enum StoredSettingsLoadWarning: Sendable {
@@ -317,7 +339,7 @@ extension AppModel {
 
   func loadSettings() {
     guard settingsStore != nil || credentialStore != nil else {
-      isLoadingSettings = false
+      self.settings.isLoading = false
       settingsKeysModifiedDuringInitialLoad.removeAll()
       unavailableScalarSettingKeys = Self.scalarSettingsKeys
       applyResolvedClipboardCapturePreference(enabled: false)
@@ -380,12 +402,6 @@ extension AppModel {
           return
         }
         self.applyStoredSettings(settings, workflowFiles: workflowFiles)
-        if workflowFiles?.didMigrateLegacyWorkflows == true {
-          await AppSettingsCodec.retireLegacyWorkflowDefinitions(
-            in: settingsStore,
-            preserving: settings.workflowCustomizations
-          )
-        }
       } catch is CancellationError {
         return
       } catch {
@@ -396,7 +412,7 @@ extension AppModel {
         else {
           return
         }
-        self.isLoadingSettings = false
+        self.settings.isLoading = false
         self.settingsKeysModifiedDuringInitialLoad.removeAll()
         self.unavailableScalarSettingKeys = Self.scalarSettingsKeys
         self.applyResolvedClipboardCapturePreference(enabled: false)
@@ -463,14 +479,17 @@ extension AppModel {
     synchronizeLocalSpeechSettingsSource()
     setLocalSpeechRuntimeEnabledAction(preferredSpeechEngine == .local)
     let settingsModifiedDuringLoad = settingsKeysModifiedDuringInitialLoad
-    isLoadingSettings = false
+    self.settings.isLoading = false
     settingsKeysModifiedDuringInitialLoad.removeAll()
     shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = false
     synchronizeResidentSpeechModels(from: [])
     if settings.workflowLibraryNeedsMigration
       || settings.vocabularyLibraryNeedsMigration
+      || workflowFiles?.didMigrateLegacyWorkflows == true
     {
-      persistWorkflowCompositionMigration()
+      persistWorkflowCompositionMigration(
+        retiringLegacyWorkflows: workflowFiles?.didMigrateLegacyWorkflows == true
+          ? settings.customWorkflows : nil)
     }
     var localSpeechMigrationValues = settings.legacyLocalSpeechMigrationValues
     if let trustedLocalSpeechModelMigration,
@@ -497,7 +516,7 @@ extension AppModel {
   }
 
   func markSettingModifiedDuringInitialLoad(_ key: AppSettingKey) {
-    guard isLoadingSettings, !isRestoringSettings else { return }
+    guard self.settings.isLoading, !isRestoringSettings else { return }
     settingsKeysModifiedDuringInitialLoad.insert(key)
   }
 
@@ -660,7 +679,7 @@ extension AppModel {
       markStoredSettingsDomainUnavailable(.workflowLibrary)
       return
     }
-    guard !hasModifiedWorkflowLibrary else { return }
+    guard !self.workflowLibrary.hasModifiedWorkflowLibrary else { return }
 
     let usesTOMLSource: Bool
     if let workflowFiles {
@@ -670,48 +689,48 @@ extension AppModel {
     }
 
     if usesTOMLSource, let workflowFiles {
-      usesWorkflowFilesAsSource = true
-      customWorkflows = workflowFiles.result.records.map(\.workflow)
-      workflowFileSourcesByID = Dictionary(
+      self.workflowLibrary.usesWorkflowFilesAsSource = true
+      self.workflowLibrary.customWorkflows = workflowFiles.result.records.map(\.workflow)
+      self.workflowLibrary.workflowFileSourcesByID = Dictionary(
         uniqueKeysWithValues: workflowFiles.result.records.compactMap { record in
           record.source.map { (record.workflow.id, $0) }
         })
-      workflowFileIssues = workflowFiles.result.issues
-      invalidWorkflowFileIDs = Set(workflowFileIssues.compactMap(\.workflowID))
-      workflowFileURLsByID = Dictionary(
+      self.workflowLibrary.workflowFileIssues = workflowFiles.result.issues
+      self.workflowLibrary.invalidWorkflowFileIDs = Set(self.workflowLibrary.workflowFileIssues.compactMap(\.workflowID))
+      self.workflowLibrary.workflowFileURLsByID = Dictionary(
         uniqueKeysWithValues: workflowFiles.result.records.map {
           ($0.workflow.id, $0.fileURL)
         }
       )
       if let directory = workflowFileStore?.configurationDirectoryURL {
-        for issue in workflowFileIssues {
-          if let id = issue.workflowID, workflowFileURLsByID[id] == nil {
-            workflowFileURLsByID[id] = directory.appendingPathComponent(issue.filename)
+        for issue in self.workflowLibrary.workflowFileIssues {
+          if let id = issue.workflowID, self.workflowLibrary.workflowFileURLsByID[id] == nil {
+            self.workflowLibrary.workflowFileURLsByID[id] = directory.appendingPathComponent(issue.filename)
           }
         }
       }
-      workflowEnabledStates =
+      self.workflowLibrary.workflowEnabledStates =
         storedDomainUnavailable
         ? [:]
         : settings.workflowEnabledStates
       for record in workflowFiles.result.records {
-        workflowEnabledStates[record.workflow.id] = record.isEnabled
+        self.workflowLibrary.workflowEnabledStates[record.workflow.id] = record.isEnabled
       }
     } else {
-      usesWorkflowFilesAsSource = false
-      customWorkflows = settings.customWorkflows
+      self.workflowLibrary.usesWorkflowFilesAsSource = false
+      self.workflowLibrary.customWorkflows = settings.customWorkflows
       let partialRecords = workflowFiles?.result.records ?? []
-      workflowFileURLsByID = Dictionary(
+      self.workflowLibrary.workflowFileURLsByID = Dictionary(
         uniqueKeysWithValues: partialRecords.map {
           ($0.workflow.id, $0.fileURL)
         })
-      workflowFileSourcesByID = Dictionary(
+      self.workflowLibrary.workflowFileSourcesByID = Dictionary(
         uniqueKeysWithValues: partialRecords.compactMap { record in
           record.source.map { (record.workflow.id, $0) }
         })
-      workflowEnabledStates = settings.workflowEnabledStates
+      self.workflowLibrary.workflowEnabledStates = settings.workflowEnabledStates
     }
-    workflowCustomizations =
+    self.workflowLibrary.workflowCustomizations =
       storedDomainUnavailable
       ? []
       : settings.workflowCustomizations
@@ -719,8 +738,8 @@ extension AppModel {
     if storedDomainUnavailable {
       markStoredSettingsDomainUnavailable(.workflowLibrary)
     } else {
-      workflowLibraryAvailability = .available
-      workflowLibraryError = workflowFileIssueMessage(
+      self.workflowLibrary.workflowLibraryAvailability = .available
+      self.workflowLibrary.workflowLibraryError = workflowFileIssueMessage(
         workflowFiles?.result.issues ?? []
       )
     }
@@ -730,50 +749,50 @@ extension AppModel {
 
   public func reloadWorkflowFiles() async {
     guard let workflowFileStore else { return }
-    workflowFileLoadGeneration += 1
-    let generation = workflowFileLoadGeneration
+    self.workflowLibrary.workflowFileLoadGeneration += 1
+    let generation = self.workflowLibrary.workflowFileLoadGeneration
     let result = await workflowFileStore.load()
-    guard !hasBegunApplicationShutdown, generation == workflowFileLoadGeneration else { return }
+    guard !hasBegunApplicationShutdown, generation == self.workflowLibrary.workflowFileLoadGeneration else { return }
 
     // A failed first-run migration deliberately keeps the legacy definitions active.
     // Do not let a manual reload of an empty directory discard that recovery copy.
-    let shouldAdoptFileSource = usesWorkflowFilesAsSource || customWorkflows.isEmpty
+    let shouldAdoptFileSource = self.workflowLibrary.usesWorkflowFilesAsSource || self.workflowLibrary.customWorkflows.isEmpty
     guard shouldAdoptFileSource else {
-      workflowLibraryError = workflowFileIssueMessage(result.issues)
+      self.workflowLibrary.workflowLibraryError = workflowFileIssueMessage(result.issues)
       return
     }
 
-    usesWorkflowFilesAsSource = true
-    let previousCustomIDs = Set(customWorkflows.map(\.id))
+    self.workflowLibrary.usesWorkflowFilesAsSource = true
+    let previousCustomIDs = Set(self.workflowLibrary.customWorkflows.map(\.id))
     let invalidNames = Set(result.issues.map(\.filename))
-    let retainedInvalid = customWorkflows.filter { workflow in
-      workflowFileURLsByID[workflow.id].map { invalidNames.contains($0.lastPathComponent) } ?? false
+    let retainedInvalid = self.workflowLibrary.customWorkflows.filter { workflow in
+      self.workflowLibrary.workflowFileURLsByID[workflow.id].map { invalidNames.contains($0.lastPathComponent) } ?? false
     }
-    workflowFileIssues = result.issues
-    invalidWorkflowFileIDs = Set(result.issues.compactMap(\.workflowID)).union(
+    self.workflowLibrary.workflowFileIssues = result.issues
+    self.workflowLibrary.invalidWorkflowFileIDs = Set(result.issues.compactMap(\.workflowID)).union(
       retainedInvalid.map(\.id))
     let validIDs = Set(result.records.map { $0.workflow.id })
-    customWorkflows =
+    self.workflowLibrary.customWorkflows =
       result.records.map(\.workflow) + retainedInvalid.filter { !validIDs.contains($0.id) }
-    let invalidURLs = workflowFileURLsByID.filter { invalidWorkflowFileIDs.contains($0.key) }
-    workflowFileSourcesByID = Dictionary(
+    let invalidURLs = self.workflowLibrary.workflowFileURLsByID.filter { self.workflowLibrary.invalidWorkflowFileIDs.contains($0.key) }
+    self.workflowLibrary.workflowFileSourcesByID = Dictionary(
       uniqueKeysWithValues: result.records.compactMap { record in
         record.source.map { (record.workflow.id, $0) }
       })
-    workflowFileURLsByID = Dictionary(
+    self.workflowLibrary.workflowFileURLsByID = Dictionary(
       uniqueKeysWithValues: result.records.map {
         ($0.workflow.id, $0.fileURL)
       }
     )
-    workflowFileURLsByID.merge(invalidURLs) { current, _ in current }
+    self.workflowLibrary.workflowFileURLsByID.merge(invalidURLs) { current, _ in current }
     for workflowID in previousCustomIDs {
-      workflowEnabledStates.removeValue(forKey: workflowID)
+      self.workflowLibrary.workflowEnabledStates.removeValue(forKey: workflowID)
     }
     for record in result.records {
-      workflowEnabledStates[record.workflow.id] = record.isEnabled
+      self.workflowLibrary.workflowEnabledStates[record.workflow.id] = record.isEnabled
     }
     if isWorkflowLibraryAvailable {
-      workflowLibraryError = workflowFileIssueMessage(result.issues)
+      self.workflowLibrary.workflowLibraryError = workflowFileIssueMessage(result.issues)
     } else {
       refreshUnavailableStoredSettingsDomainErrors()
     }
@@ -1127,7 +1146,7 @@ extension AppModel {
   }
 
   public func retryOpenAICredentialLoad() {
-    guard !hasBegunApplicationShutdown, !isLoadingSettings else { return }
+    guard !hasBegunApplicationShutdown, !self.settings.isLoading else { return }
     openAICredentialLoadGeneration &+= 1
     let generation = openAICredentialLoadGeneration
     guard let settingsStore, let credentialStore else {
@@ -1307,24 +1326,24 @@ extension AppModel {
       markStoredSettingsDomainUnavailable(.vocabularyRules)
       return
     }
-    vocabularyRulesAvailability = .available
-    vocabularyRulesError = nil
+    self.vocabulary.availability = .available
+    self.vocabulary.error = nil
     if shouldApplyStoredSetting(Self.vocabularyRulesSettingKey) {
-      isApplyingVocabularyLibrary = true
-      vocabularyCollections = settings.vocabularyCollections
-      vocabularyCollectionBindings = settings.vocabularyBindings
+      self.vocabulary.isApplying = true
+      self.vocabulary.vocabularyCollections = settings.vocabularyCollections
+      self.vocabulary.vocabularyCollectionBindings = settings.vocabularyBindings
       vocabularyRules = AppSettingsCodec.sortedVocabularyRules(settings.vocabularyRules)
-      isApplyingVocabularyLibrary = false
-      vocabularyRuleSource.updateCollections(vocabularyCollections)
+      self.vocabulary.isApplying = false
+      vocabularyRuleSource.updateCollections(self.vocabulary.vocabularyCollections)
       if settings.workflowLibraryNeedsMigration
         || settings.vocabularyLibraryNeedsMigration
       {
-        workflowCustomizations = (customWorkflows + builtInWorkflows)
+        self.workflowLibrary.workflowCustomizations = (self.workflowLibrary.customWorkflows + self.workflowLibrary.builtInWorkflows)
           .filter { $0.plan.setup.speechRoute != nil }
           .map {
             WorkflowCustomization(
               workflowID: $0.id,
-              vocabularyBindings: vocabularyCollectionBindings
+              vocabularyBindings: self.vocabulary.vocabularyCollectionBindings
             )
           }
       }
@@ -1342,7 +1361,7 @@ extension AppModel {
   }
 
   public var isWorkflowLibraryAvailable: Bool {
-    workflowLibraryAvailability == .available
+    self.workflowLibrary.workflowLibraryAvailability == .available
   }
 
   public var areDownloadedLocalSpeechModelsAvailable: Bool {
@@ -1350,17 +1369,17 @@ extension AppModel {
   }
 
   public var areVocabularyRulesAvailable: Bool {
-    vocabularyRulesAvailability == .available
+    self.vocabulary.availability == .available
   }
 
   private func markStoredSettingsDomainUnavailable(_ domain: StoredSettingsDomain) {
     switch domain {
     case .workflowLibrary:
-      workflowLibraryAvailability = .unavailable
+      self.workflowLibrary.workflowLibraryAvailability = .unavailable
     case .downloadedModelMetadata:
       downloadedLocalSpeechModelsAvailability = .unavailable
     case .vocabularyRules:
-      vocabularyRulesAvailability = .unavailable
+      self.vocabulary.availability = .unavailable
       vocabularyRuleSource.markUnavailable(
         reason: "Stored vocabulary settings could not be decoded safely."
       )
@@ -1369,16 +1388,16 @@ extension AppModel {
   }
 
   func refreshUnavailableStoredSettingsDomainErrors() {
-    if workflowLibraryAvailability == .unavailable {
-      workflowLibraryError = unavailableStoredSettingsDomainMessage(.workflowLibrary)
+    if self.workflowLibrary.workflowLibraryAvailability == .unavailable {
+      self.workflowLibrary.workflowLibraryError = unavailableStoredSettingsDomainMessage(.workflowLibrary)
     }
     if downloadedLocalSpeechModelsAvailability == .unavailable {
       downloadedLocalSpeechModelsError = unavailableStoredSettingsDomainMessage(
         .downloadedModelMetadata
       )
     }
-    if vocabularyRulesAvailability == .unavailable {
-      vocabularyRulesError = unavailableStoredSettingsDomainMessage(.vocabularyRules)
+    if self.vocabulary.availability == .unavailable {
+      self.vocabulary.error = unavailableStoredSettingsDomainMessage(.vocabularyRules)
     }
   }
 
@@ -1401,14 +1420,14 @@ extension AppModel {
 
   public func retryUnavailableStoredSettingsDomains() {
     guard !hasBegunApplicationShutdown,
-      !isLoadingSettings,
+      !self.settings.isLoading,
       !isRetryingUnavailableSettingsDomains
     else {
       return
     }
-    let retryWorkflowLibrary = workflowLibraryAvailability == .unavailable
+    let retryWorkflowLibrary = self.workflowLibrary.workflowLibraryAvailability == .unavailable
     let retryDownloadedModelMetadata = downloadedLocalSpeechModelsAvailability == .unavailable
-    let retryVocabularyRules = vocabularyRulesAvailability == .unavailable
+    let retryVocabularyRules = self.vocabulary.availability == .unavailable
     guard retryWorkflowLibrary || retryDownloadedModelMetadata || retryVocabularyRules else {
       return
     }
@@ -1493,34 +1512,34 @@ extension AppModel {
 
     var recoveredAnyDomain = false
     if retryWorkflowLibrary,
-      let workflowEnabledStates = recovered.workflowEnabledStates
+      let recoveredEnabledStates = recovered.workflowEnabledStates
     {
       if let workflowFiles = recovered.workflowFiles {
-        usesWorkflowFilesAsSource = true
-        self.customWorkflows = workflowFiles.records.map(\.workflow)
-        workflowFileSourcesByID = Dictionary(
+        self.workflowLibrary.usesWorkflowFilesAsSource = true
+        self.workflowLibrary.customWorkflows = workflowFiles.records.map(\.workflow)
+        self.workflowLibrary.workflowFileSourcesByID = Dictionary(
           uniqueKeysWithValues: workflowFiles.records.compactMap { record in
             record.source.map { (record.workflow.id, $0) }
           })
-        workflowFileIssues = workflowFiles.issues
-        invalidWorkflowFileIDs = Set(workflowFiles.issues.compactMap(\.workflowID))
-        workflowFileURLsByID = Dictionary(
+        self.workflowLibrary.workflowFileIssues = workflowFiles.issues
+        self.workflowLibrary.invalidWorkflowFileIDs = Set(workflowFiles.issues.compactMap(\.workflowID))
+        self.workflowLibrary.workflowFileURLsByID = Dictionary(
           uniqueKeysWithValues: workflowFiles.records.map {
             ($0.workflow.id, $0.fileURL)
           }
         )
-      } else if let customWorkflows = recovered.customWorkflows {
-        usesWorkflowFilesAsSource = false
-        self.customWorkflows = customWorkflows
+      } else if let recoveredWorkflows = recovered.customWorkflows {
+        self.workflowLibrary.usesWorkflowFilesAsSource = false
+        self.workflowLibrary.customWorkflows = recoveredWorkflows
       } else {
         return
       }
-      self.workflowEnabledStates = workflowEnabledStates
+      self.workflowLibrary.workflowEnabledStates = recoveredEnabledStates
       for record in recovered.workflowFiles?.records ?? [] {
-        self.workflowEnabledStates[record.workflow.id] = record.isEnabled
+        self.workflowLibrary.workflowEnabledStates[record.workflow.id] = record.isEnabled
       }
-      workflowLibraryAvailability = .available
-      workflowLibraryError = workflowFileIssueMessage(
+      self.workflowLibrary.workflowLibraryAvailability = .available
+      self.workflowLibrary.workflowLibraryError = workflowFileIssueMessage(
         recovered.workflowFiles?.issues ?? []
       )
       rebuildWorkflowLibrary()
@@ -1540,8 +1559,8 @@ extension AppModel {
       recoveredAnyDomain = true
     }
     if retryVocabularyRules, let vocabularyRules = recovered.vocabularyRules {
-      vocabularyRulesAvailability = .available
-      vocabularyRulesError = nil
+      self.vocabulary.availability = .available
+      self.vocabulary.error = nil
       self.vocabularyRules = vocabularyRules
       recoveredAnyDomain = true
     }
@@ -1818,7 +1837,7 @@ extension AppModel {
       scalarSettingsRetryGenerations[domain, default: 0] &+= 1
     }
     unavailableSettingsDomainRetryGeneration &+= 1
-    isLoadingSettings = false
+    self.settings.isLoading = false
     isLoadingPrivacySettings = false
     isRetryingUnavailableSettingsDomains = false
     settingsKeysModifiedDuringInitialLoad.removeAll()
@@ -1874,7 +1893,7 @@ extension AppModel {
   }
 
   func publishCurrentLocalSpeechSettingsToRuntime() {
-    guard !isLoadingSettings,
+    guard !self.settings.isLoading,
       !isRestoringSettings,
       !hasUnavailableScalarSettings(in: .localSpeech)
     else {
@@ -2051,7 +2070,7 @@ extension AppModel {
     markSettingModifiedDuringInitialLoad(Self.vocabularyLibrarySettingKey)
     guard !isRestoringSettings, areVocabularyRulesAvailable else { return }
     let document = VocabularyLibraryDocument(
-      collections: vocabularyCollections, defaultBindings: vocabularyCollectionBindings)
+      collections: self.vocabulary.vocabularyCollections, defaultBindings: self.vocabulary.vocabularyCollectionBindings)
     persistRetryableSettingsStoreWrite(
       for: Self.vocabularyLibrarySettingKey,
       category: .vocabulary
@@ -2066,41 +2085,36 @@ extension AppModel {
     }
   }
 
-  func persistWorkflowCompositionMigration() {
-    guard let settingsStore, !hasBegunApplicationShutdown else { return }
+  func persistWorkflowCompositionMigration(retiringLegacyWorkflows: [WorkflowDefinition]? = nil) {
+    guard !hasBegunApplicationShutdown, isWorkflowLibraryAvailable, areVocabularyRulesAvailable else { return }
     let workflowDocument = WorkflowLibraryDocument(
-      customWorkflows: usesWorkflowFilesAsSource ? [] : customWorkflows,
-      customizations: workflowCustomizations
+      customWorkflows: self.workflowLibrary.usesWorkflowFilesAsSource ? [] : self.workflowLibrary.customWorkflows,
+      customizations: self.workflowLibrary.workflowCustomizations
     )
     let vocabularyDocument = VocabularyLibraryDocument(
-      collections: vocabularyCollections, defaultBindings: vocabularyCollectionBindings
+      collections: self.vocabulary.vocabularyCollections, defaultBindings: self.vocabulary.vocabularyCollectionBindings
     )
-    Task { [weak self, settingsStore] in
-      do {
+    var values: [AppSettingKey: SettingsStringWrite] = [
+      Self.workflowLibrarySettingKey: .init(category: .workflows) {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let workflowData = try encoder.encode(workflowDocument)
-        let vocabularyData = try encoder.encode(vocabularyDocument)
-        try await settingsStore.setStringsAtomically([
-          Self.workflowLibrarySettingKey: String(decoding: workflowData, as: UTF8.self),
-          Self.vocabularyLibrarySettingKey: String(
-            decoding: vocabularyData,
-            as: UTF8.self
-          ),
-        ])
-      } catch {
-        await MainActor.run {
-          self?.markStoredSettingsDomainUnavailable(.workflowLibrary)
-          self?.markStoredSettingsDomainUnavailable(.vocabularyRules)
-          self?.append(
-            english: L10n.runText(.workflowMigrationSaveFailed, language: .english),
-            simplifiedChinese: L10n.runText(
-              .workflowMigrationSaveFailed,
-              language: .simplifiedChinese
-            )
-          )
-        }
+        return String(decoding: try encoder.encode(workflowDocument), as: UTF8.self)
+      },
+      Self.vocabularyLibrarySettingKey: .init(category: .vocabulary) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return String(decoding: try encoder.encode(vocabularyDocument), as: UTF8.self)
+      },
+    ]
+    if let retiringLegacyWorkflows {
+      values[.customWorkflows] = .init(category: .workflows) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return String(decoding: try encoder.encode(retiringLegacyWorkflows), as: UTF8.self)
       }
+    }
+    settings.submitAtomically(values) { [weak self] in
+      self?.appendSettingsSaveFailureEvent()
     }
   }
 
@@ -2263,7 +2277,7 @@ extension AppModel {
     markSettingModifiedDuringInitialLoad(.workflowEnabledStates)
     guard !isRestoringSettings, isWorkflowLibraryAvailable else { return }
     let enabledStates =
-      workflowEnabledStates
+      self.workflowLibrary.workflowEnabledStates
       .reduce(into: [String: Bool]()) { partialResult, entry in
         partialResult[entry.key.uuidString] = entry.value
       }
@@ -2311,7 +2325,7 @@ extension AppModel {
 
   func recordDownloadedLocalSpeechModel(_ modelIdentifier: String) {
     guard !hasBegunApplicationShutdown,
-      !isLoadingSettings,
+      !self.settings.isLoading,
       !modelIdentifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
       areDownloadedLocalSpeechModelsAvailable,
       trustedLocalSpeechModels.isEmpty

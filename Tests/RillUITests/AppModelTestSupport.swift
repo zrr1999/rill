@@ -72,6 +72,7 @@ actor UITestSettingsStore: SettingsStore {
   private var settingsSnapshotRequests: [[AppSettingKey]] = []
   private var setCounts: [AppSettingKey: Int] = [:]
   private var atomicSnapshots: [[AppSettingKey: String]] = []
+  private var failNextAtomicWrite = false
   private var removeCounts: [AppSettingKey: Int] = [:]
   private var batchReadEntered = false
   private var batchReadEntryWaiters: [CheckedContinuation<Void, Never>] = []
@@ -169,11 +170,19 @@ actor UITestSettingsStore: SettingsStore {
   }
 
   func setStringsAtomically(_ values: [AppSettingKey: String]) async throws {
+    if failNextAtomicWrite || !failingSetKeys.isDisjoint(with: values.keys) {
+      failNextAtomicWrite = false
+      throw UITestSettingsStoreError.requestedFailure
+    }
     storage.merge(values) { _, newValue in newValue }
     atomicSnapshots.append(values)
     for key in values.keys {
       setCounts[key, default: 0] += 1
     }
+  }
+
+  func rejectNextAtomicWrite() {
+    failNextAtomicWrite = true
   }
 
   func removeValue(forKey key: AppSettingKey) async throws {

@@ -3,6 +3,11 @@ import Observation
 import RillCore
 import RillRuntime
 
+struct SettingsStringWrite: Sendable {
+  let category: SettingsSaveCategory
+  let encode: @Sendable () throws -> String
+}
+
 @MainActor @Observable
 public final class SettingsPersistenceModel {
   public internal(set) var isLoading = true
@@ -26,9 +31,48 @@ public final class SettingsPersistenceModel {
 
   func retry(onFailure: @escaping @MainActor () -> Void) {
     guard !failed.isEmpty else { return }
+    var strings: [AppSettingKey: SettingsStringWrite] = [:]
     for (key, write) in failed.sorted(by: { $0.key.rawValue < $1.key.rawValue })
     where !retrying.contains(key) {
-      schedule(write, key: key, debounce: .zero, onFailure: onFailure)
+      if case .string(let encode) = write.content {
+        strings[key] = SettingsStringWrite(category: write.category, encode: encode)
+      } else {
+        schedule(write, key: key, debounce: .zero, onFailure: onFailure)
+      }
+    }
+    submitAtomically(strings, onFailure: onFailure)
+  }
+
+  func submitAtomically(
+    _ values: [AppSettingKey: SettingsStringWrite], onFailure: @escaping @MainActor () -> Void
+  ) {
+    guard !values.isEmpty else { return }
+    let entries = values.mapValues(RetryableSettingsStoreWrite.init)
+    guard let store else {
+      failed.merge(entries) { _, latest in latest }
+      refreshState()
+      onFailure()
+      return
+    }
+    for (key, entry) in entries where failed[key] != nil {
+      failed[key] = entry
+      retrying.insert(key)
+    }
+    refreshState()
+    writes.replace(for: Set(values.keys)) {
+      try await store.setStringsAtomically(try values.mapValues { try $0.encode() })
+    } completion: { [weak self] result, currentKeys in
+      guard let self else { return }
+      retrying.subtract(currentKeys)
+      switch result {
+      case .success:
+        for key in currentKeys { failed.removeValue(forKey: key) }
+      case .failure(is CancellationError): break
+      case .failure:
+        for key in currentKeys { failed[key] = entries[key] }
+        onFailure()
+      }
+      refreshState()
     }
   }
 
@@ -48,7 +92,7 @@ public final class SettingsPersistenceModel {
       refreshState()
     }
     writes.replace(for: key, debounce: debounce) {
-      try await write.operation(store)
+      try await write.perform(in: store, for: key)
     } completion: { [weak self] result in
       guard let self else { return }
       retrying.remove(key)

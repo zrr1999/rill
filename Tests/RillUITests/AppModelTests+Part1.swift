@@ -49,7 +49,7 @@ extension AppModelTests {
 
         let actionCount = await harness.actionLog.snapshot()
         let coordinatorState = await harness.model.sessionCoordinator.currentState()
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertEqual(
             harness.model.lastFailure,
             harness.model.language == .english
@@ -76,8 +76,8 @@ extension AppModelTests {
         await harness.eventBus.publish(.runFailed(runID: nil, workflow: nil, message: "Stack injection failed"))
         await waitForEventProcessing(harness)
 
-        XCTAssertTrue(harness.model.isRunning)
-        XCTAssertEqual(harness.model.historyRecords.count, 0)
+        XCTAssertTrue(harness.model.voice.isRunning)
+        XCTAssertEqual(harness.model.history.historyRecords.count, 0)
         XCTAssertNil(harness.model.lastFailure)
     }
 
@@ -121,9 +121,9 @@ extension AppModelTests {
         )
         await waitForEventProcessing(harness)
 
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertNil(harness.model.lastFailure)
-        XCTAssertTrue(harness.model.historyRecords.isEmpty)
+        XCTAssertTrue(harness.model.history.historyRecords.isEmpty)
     }
 
     func testRunWorkflowGuardsAgainstDoubleClickBeforeEventsArrive() async {
@@ -215,7 +215,7 @@ extension AppModelTests {
         XCTAssertEqual(startedSnapshot.startCalls.count, 1)
         XCTAssertEqual(startedSnapshot.startCalls.first?.workflowID, workflow.id)
         XCTAssertEqual(startedSnapshot.startCalls.first?.binding, .manual)
-        XCTAssertTrue(harness.model.isRunning)
+        XCTAssertTrue(harness.model.voice.isRunning)
         XCTAssertEqual(
             harness.model.workflowRunButtonTitle(for: workflow),
             UIStrings.text(.workflowStopAndTranscribe, language: harness.model.language)
@@ -228,8 +228,8 @@ extension AppModelTests {
 
         let finishedSnapshot = await probe.snapshot()
         XCTAssertEqual(finishedSnapshot.finishCount, 1)
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertEqual(harness.model.lastCompletedText, "dictated")
+        XCTAssertFalse(harness.model.voice.isRunning)
+        XCTAssertEqual(harness.model.voice.lastCompletedText, "dictated")
     }
 
     func testAudioWorkflowStaysPreparingUntilCaptureStartsAndIgnoresSecondClick() async {
@@ -306,7 +306,7 @@ extension AppModelTests {
         await startGate.fail(message: "Microphone unavailable")
         await waitForEventProcessing(harness)
 
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
         XCTAssertEqual(
             harness.model.lastFailure,
@@ -351,7 +351,7 @@ extension AppModelTests {
         )
         await waitForEventProcessing(harness)
 
-        XCTAssertTrue(harness.model.historyRecords.isEmpty)
+        XCTAssertTrue(harness.model.history.historyRecords.isEmpty)
     }
 
     func testLoadsPersistedLanguageWhileIgnoringLegacyWorkflowSelection() async {
@@ -441,7 +441,7 @@ extension AppModelTests {
             defaultLocalSpeechModelIdentifier: trustedModels[0].id
         )
         await settingsStore.waitUntilBatchReadIsSuspended()
-        XCTAssertTrue(harness.model.isLoadingSettings)
+        XCTAssertTrue(harness.model.settings.isLoading)
 
         XCTAssertTrue(harness.model.setInterfaceLanguage(userLanguage))
         await harness.model.flushPendingPersistenceWrites()
@@ -455,7 +455,7 @@ extension AppModelTests {
         await harness.model.waitForInitialVoiceConfiguration()
 
         activity = await settingsStore.activitySnapshot()
-        XCTAssertFalse(harness.model.isLoadingSettings)
+        XCTAssertFalse(harness.model.settings.isLoading)
         XCTAssertEqual(harness.model.language, userLanguage)
         XCTAssertEqual(harness.model.currentLocalSpeechSettings().language, "")
         XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
@@ -501,7 +501,7 @@ extension AppModelTests {
         await settingsStore.resumeBatchRead()
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertFalse(harness.model.isLoadingSettings)
+        XCTAssertFalse(harness.model.settings.isLoading)
         XCTAssertEqual(
             try source.currentSettings(),
             LocalSpeechSettings(
@@ -604,7 +604,7 @@ extension AppModelTests {
 
         var activity = await settingsStore.activitySnapshot()
         var preparation = await preparationProbe.snapshot()
-        XCTAssertTrue(harness.model.customWorkflows.isEmpty)
+        XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
         XCTAssertTrue(harness.model.vocabularyRules.isEmpty)
         XCTAssertTrue(harness.model.downloadedLocalSpeechModels.isEmpty)
         XCTAssertEqual(correctionOutcome, .notReady)
@@ -619,7 +619,7 @@ extension AppModelTests {
 
         activity = await settingsStore.activitySnapshot()
         preparation = await preparationProbe.snapshot()
-        XCTAssertEqual(harness.model.customWorkflows.map(\.id), [storedWorkflow.id])
+        XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.map(\.id), [storedWorkflow.id])
         XCTAssertEqual(harness.model.vocabularyRules.map(\.id), [storedRule.id])
         XCTAssertEqual(harness.model.downloadedLocalSpeechModels, storedDownloadedModels)
         XCTAssertEqual(preparation.prepareCount, 0)
@@ -1314,8 +1314,8 @@ extension AppModelTests {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertEqual(harness.model.customWorkflows.count, 1)
-        XCTAssertEqual(harness.model.customWorkflows.first?.name, "Custom Follow-up")
-        XCTAssertTrue(harness.model.isCustomWorkflow(try XCTUnwrap(harness.model.customWorkflows.first)))
+        XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.count, 1)
+        XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.first?.name, "Custom Follow-up")
+        XCTAssertTrue(harness.model.isCustomWorkflow(try XCTUnwrap(harness.model.workflowLibrary.customWorkflows.first)))
     }
 }

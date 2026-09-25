@@ -28,6 +28,49 @@ private actor SettingsWriteGate {
 
 @MainActor
 final class SettingsPersistenceModelTests: XCTestCase {
+  func testFailedTransactionRetriesWithoutOverwritingNewerUserEdit() async throws {
+    let store = UITestSettingsStore()
+    let model = SettingsPersistenceModel(store: store)
+    await store.rejectNextAtomicWrite()
+    model.submitAtomically([
+      .workflowLibrary: .init(category: .workflows) { "migrated-workflows" },
+      .vocabularyLibrary: .init(category: .vocabulary) { "migrated-vocabulary" },
+    ], onFailure: {})
+    await model.writes.flush()
+    XCTAssertTrue(model.hasUnsavedWrites)
+    let failed = await store.activitySnapshot()
+    XCTAssertTrue(failed.storage.isEmpty)
+
+    model.submit(
+      key: .workflowLibrary, category: .workflows, debounce: .zero,
+      operation: { try await $0.setString("user-edit", forKey: .workflowLibrary) },
+      onFailure: { XCTFail("The user edit should succeed") })
+    model.retry(onFailure: { XCTFail("The remaining migration should retry") })
+    await model.writes.flush()
+    let saved = await store.activitySnapshot()
+    XCTAssertEqual(saved.storage[.workflowLibrary], "user-edit")
+    XCTAssertEqual(saved.storage[.vocabularyLibrary], "migrated-vocabulary")
+    XCTAssertEqual(model.saveState, .saved)
+  }
+
+  func testFailedTransactionRetriesAllKeysInOneWrite() async throws {
+    let store = UITestSettingsStore()
+    let model = SettingsPersistenceModel(store: store)
+    await store.rejectNextAtomicWrite()
+    model.submitAtomically([
+      .workflowLibrary: .init(category: .workflows) { "workflows" },
+      .vocabularyLibrary: .init(category: .vocabulary) { "vocabulary" },
+    ], onFailure: {})
+    await model.writes.flush()
+    model.retry(onFailure: { XCTFail("Retry should succeed") })
+    await model.writes.flush()
+    let saved = await store.activitySnapshot()
+    XCTAssertEqual(saved.atomicSnapshots, [[
+      .workflowLibrary: "workflows", .vocabularyLibrary: "vocabulary",
+    ]])
+    XCTAssertEqual(model.saveState, .saved)
+  }
+
   func testRetryCannotReplaceNewerInFlightWriteWithOldFailedSnapshot() async throws {
     let store = UITestSettingsStore()
     let model = SettingsPersistenceModel(store: store)

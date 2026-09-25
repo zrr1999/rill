@@ -7,6 +7,7 @@ import RillCore
 final class PersistenceWriteCoordinator {
   private struct PendingWrite {
     let id: UUID
+    let keys: Set<AppSettingKey>
     let task: Task<Void, Never>
   }
 
@@ -19,11 +20,30 @@ final class PersistenceWriteCoordinator {
     operation: @escaping @Sendable () async throws -> Void,
     completion: @escaping @MainActor (Result<Void, Error>) -> Void
   ) {
-    let previousTask = latestWrites[key]?.task
-    previousTask?.cancel()
+    replace(for: [key], debounce: debounce, operation: operation) { result, _ in
+      completion(result)
+    }
+  }
+
+  func replace(
+    for keys: Set<AppSettingKey>,
+    debounce: Duration = .zero,
+    operation: @escaping @Sendable () async throws -> Void,
+    completion: @escaping @MainActor (Result<Void, Error>, Set<AppSettingKey>) -> Void
+  ) {
+    guard !keys.isEmpty else { return }
+    let predecessors = Dictionary(
+      keys.compactMap { latestWrites[$0] }.map { ($0.id, $0) },
+      uniquingKeysWith: { first, _ in first }
+    ).values
+    // A replacement of one key must not cancel the other keys in a transaction.
+    for previous in predecessors where previous.keys.isSubset(of: keys) {
+      previous.task.cancel()
+    }
+    let previousTasks = predecessors.map(\.task)
     let id = UUID()
-    let task = Task { [weak self, previousTask] in
-      await previousTask?.value
+    let task = Task { [weak self, previousTasks] in
+      for previous in previousTasks { await previous.value }
       let result: Result<Void, Error>
       do {
         try await Task.sleep(for: debounce)
@@ -33,11 +53,12 @@ final class PersistenceWriteCoordinator {
       } catch {
         result = .failure(error)
       }
-      guard let self, self.latestWrites[key]?.id == id else { return }
-      self.latestWrites[key] = nil
-      completion(result)
+      guard let self else { return }
+      let currentKeys = keys.filter { self.latestWrites[$0]?.id == id }
+      for key in currentKeys { self.latestWrites[key] = nil }
+      if !currentKeys.isEmpty { completion(result, currentKeys) }
     }
-    latestWrites[key] = PendingWrite(id: id, task: task)
+    for key in keys { latestWrites[key] = PendingWrite(id: id, keys: keys, task: task) }
     track(task)
   }
 
