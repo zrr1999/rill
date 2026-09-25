@@ -115,6 +115,7 @@ public typealias VocabularyRuleSourceError = VocabularyLibrarySourceError
 
 public struct VocabularyRecognitionHintResolution: Sendable, Equatable {
     public var hints: RecognitionHints
+    public var candidates: [HotwordCandidate]
     /// The number of valid, distinct keyterms before the provider-facing cap.
     public var validKeytermCount: Int
     /// The number of valid, distinct keyterms excluded by the cap.
@@ -126,9 +127,11 @@ public struct VocabularyRecognitionHintResolution: Sendable, Equatable {
         hints: RecognitionHints,
         validKeytermCount: Int,
         omittedKeytermCount: Int,
-        rejectedKeytermCount: Int
+        rejectedKeytermCount: Int,
+        candidates: [HotwordCandidate] = []
     ) {
         self.hints = hints
+        self.candidates = candidates
         self.validKeytermCount = validKeytermCount
         self.omittedKeytermCount = omittedKeytermCount
         self.rejectedKeytermCount = rejectedKeytermCount
@@ -153,6 +156,7 @@ public struct VocabularyRecognitionHintResolver: Sendable {
             .sorted(by: Self.isOrderedBefore)
 
         var validKeyterms: [String] = []
+        var candidates: [HotwordCandidate] = []
         var seenKeyterms: Set<String> = []
         var rejectedKeytermCount = 0
 
@@ -165,6 +169,7 @@ public struct VocabularyRecognitionHintResolver: Sendable {
                 continue
             }
             validKeyterms.append(keyterm)
+            candidates.append(.init(id: rule.id, term: keyterm, priority: rule.priority))
         }
 
         let emittedKeyterms = Array(validKeyterms.prefix(maximumKeytermCount))
@@ -172,7 +177,8 @@ public struct VocabularyRecognitionHintResolver: Sendable {
             hints: RecognitionHints(keyterms: emittedKeyterms),
             validKeytermCount: validKeyterms.count,
             omittedKeytermCount: validKeyterms.count - emittedKeyterms.count,
-            rejectedKeytermCount: rejectedKeytermCount
+            rejectedKeytermCount: rejectedKeytermCount,
+            candidates: Array(candidates.prefix(maximumKeytermCount))
         )
     }
 

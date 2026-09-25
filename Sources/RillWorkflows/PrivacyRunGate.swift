@@ -13,6 +13,10 @@ public struct AuthorizedPrivacyContext: Sendable, Equatable {
 }
 
 public struct PrivacyRunGate: Sendable {
+    public var prepareLiveRecognition: @Sendable (
+        UUID, WorkflowDefinition, ContextSnapshot, SpeechRecognitionRequestOptions, AudioCaptureLifetime
+    ) async throws -> PreparedRecognitionContext? = { _, _, _, _, _ in nil }
+
     public var prepareCorrectionContext: @Sendable (
         UUID, WorkflowDefinition, ContextSnapshot, SpeechRecognitionRequestOptions, AudioCaptureLifetime
     ) async throws -> RunContextPreparation? = { _, _, _, _, _ in nil }
@@ -495,10 +499,23 @@ public struct PrivacyRunGate: Sendable {
             contextProvider: contextProvider,
             workflow: workflow
         )
-        let recognitionOptions = await recognitionOptionsProvider(
+        var recognitionOptions = await recognitionOptionsProvider(
             workflow,
             capture.authorizedContext
         )
+        let preparedRecognition: PreparedRecognitionContext?
+        if let audioLifetime {
+            preparedRecognition = try await prepareLiveRecognition(
+                runID, workflow, capture.authorizedContext, recognitionOptions, audioLifetime
+            )
+            if let preparedRecognition { recognitionOptions = preparedRecognition.options }
+        } else {
+            preparedRecognition = nil
+        }
+        var preparationTransferred = false
+        defer {
+            if !preparationTransferred { preparedRecognition?.hotwordPreparation?.cancel() }
+        }
         let finalPolicy = try await evaluatePolicy(
             context: capture.sourcePrivacyContext,
             workflow: workflow
@@ -513,6 +530,7 @@ public struct PrivacyRunGate: Sendable {
         } else {
             contextPreparation = nil
         }
+        preparationTransferred = true
         return AuthorizedAudioProcessingLease(
             payload: .init(
                 runID: runID,
@@ -525,7 +543,8 @@ public struct PrivacyRunGate: Sendable {
                 processingDestinations: finalPolicy.processingDestinations,
                 liveAuthorizationState: liveAuthorizationState,
                 audioLifetime: audioLifetime,
-                contextPreparation: contextPreparation
+                contextPreparation: contextPreparation,
+                preparedRecognition: preparedRecognition
             ),
             claimValidator: { [self] payload, triggerEvent in
                 try await self.claimAudioProcessingPayload(
@@ -781,7 +800,8 @@ public struct PrivacyRunGate: Sendable {
             contextSnapshot: payload.authorizedContext,
             recognitionOptions: payload.recognitionOptions,
             invocation: .capture,
-            contextPreparation: payload.contextPreparation
+            contextPreparation: payload.contextPreparation,
+            preparedRecognition: payload.preparedRecognition
         )
     }
 

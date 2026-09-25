@@ -288,7 +288,8 @@ extension SessionCoordinator {
             capturedAudio: capturedAudio,
             contextSnapshot: authorizedContext.contextSnapshot,
             recognitionOptions: authorizedContext.recognitionOptions,
-            contextPreparation: authorizedContext.contextPreparation
+            contextPreparation: authorizedContext.contextPreparation,
+            preparedRecognition: authorizedContext.preparedRecognition
         )
     }
 
@@ -340,7 +341,8 @@ extension SessionCoordinator {
         capturedAudio: CapturedAudio? = nil,
         contextSnapshot: ContextSnapshot? = nil,
         recognitionOptions: SpeechRecognitionRequestOptions? = nil,
-        contextPreparation: RunContextPreparation? = nil
+        contextPreparation: RunContextPreparation? = nil,
+        preparedRecognition: PreparedRecognitionContext? = nil
     ) async {
         _ = await runReportingOutcome(
             workflow: workflow,
@@ -349,7 +351,8 @@ extension SessionCoordinator {
             capturedAudio: capturedAudio,
             contextSnapshot: contextSnapshot,
             recognitionOptions: recognitionOptions,
-            contextPreparation: contextPreparation
+            contextPreparation: contextPreparation,
+            preparedRecognition: preparedRecognition
         )
     }
 
@@ -364,9 +367,14 @@ extension SessionCoordinator {
         receiptTrigger: WorkflowRunTriggerKind? = nil,
         preRecognizedText: String? = nil,
         waitsForAvailability: Bool = false,
-        contextPreparation: RunContextPreparation? = nil
+        contextPreparation: RunContextPreparation? = nil,
+        preparedRecognition: PreparedRecognitionContext? = nil
     ) async -> WorkflowRunExecutionResult {
         let runID = providedRunID ?? UUID()
+        var completed = false
+        defer {
+            if !completed { preparedRecognition?.hotwordPreparation?.cancel() }
+        }
         let effectiveReceiptTrigger = receiptTrigger ?? runReceiptTrigger(for: triggerEvent)
         let acquiredRunLane = await acquireRunLane(
             runID: runID,
@@ -488,6 +496,7 @@ extension SessionCoordinator {
                 trigger: effectiveReceiptTrigger,
                 contextSnapshot: contextSnapshot,
                 recognitionOptions: recognitionOptions,
+                preparedRecognition: preparedRecognition,
                 compilationInput: preRecognizedText == nil ? nil : .text,
                 receiptIsActive: receiptIsActive
             )
@@ -575,6 +584,7 @@ extension SessionCoordinator {
                 correctionSource: correctionSource,
                 contextHistoryUpdate: contextPreparation?.historyUpdate
             )
+            completed = true
             return .completed(summary)
         } catch {
             contextPreparation?.cancel()
@@ -1463,6 +1473,7 @@ extension SessionCoordinator {
         trigger: WorkflowRunTriggerKind,
         contextSnapshot: ContextSnapshot,
         recognitionOptions providedRecognitionOptions: SpeechRecognitionRequestOptions? = nil,
+        preparedRecognition: PreparedRecognitionContext? = nil,
         compilationInput: WorkflowInputKind? = nil,
         receiptIsActive: Bool
     ) async throws -> RunSession {
@@ -1496,6 +1507,14 @@ extension SessionCoordinator {
             recognitionOptions = providedRecognitionOptions
         } else {
             recognitionOptions = await recognitionOptionsProvider(workflow, contextSnapshot)
+        }
+        if let preparedRecognition, compilationInput == nil {
+            await recordCompiledPlan(preparedRecognition.plan, runID: runID, workflow: workflow.presentation)
+            return RunSession(
+                runID: runID, workflow: workflow, trigger: trigger,
+                contextSnapshot: contextSnapshot, recognitionOptions: preparedRecognition.options,
+                resolvedPlan: preparedRecognition.plan, startedAt: startedAt, receiptIsActive: receiptIsActive
+            )
         }
         let vocabularyContext = VocabularyRuleContext(
             contextSnapshot: contextSnapshot,

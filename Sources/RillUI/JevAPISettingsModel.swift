@@ -1,11 +1,22 @@
 import Observation
 import RillCore
 import RillRecords
+import RillWorkflows
 
 @MainActor @Observable
 public final class JevAPISettingsModel {
   public private(set) var isConfigured: Bool
   private var polishingEnabled: Bool
+  private var hotwordsEnabled = false
+  private let hotwordSelection: HotwordSelection?
+  public var supportsHotwordSelection: Bool { hotwordSelection != nil }
+  public var isHotwordSelectionEnabled: Bool {
+    get { hotwordsEnabled }
+    set {
+      hotwordsEnabled = !closed && newValue && isConfigured && supportsHotwordSelection
+      hotwordSelection?.configure(isEnabled: hotwordsEnabled)
+    }
+  }
   public var isPolishingEnabled: Bool {
     get { polishingEnabled }
     set {
@@ -17,8 +28,9 @@ public final class JevAPISettingsModel {
   let service: RecordCloudRanking
   private var closed = false
 
-  public init(service: RecordCloudRanking) {
+  public init(service: RecordCloudRanking, hotwordSelection: HotwordSelection? = nil) {
     self.service = service
+    self.hotwordSelection = hotwordSelection
     isConfigured = service.settings.isConfigured
     polishingEnabled = service.settings.isPolishingEnabled
   }
@@ -29,6 +41,7 @@ public final class JevAPISettingsModel {
       try service.settings.setKey(value)
       isConfigured = service.settings.isConfigured
       isPolishingEnabled = service.settings.isPolishingEnabled
+      isHotwordSelectionEnabled = hotwordsEnabled
       error = nil
     } catch {
       self.error = (error as? RecordRankingError) ?? .unavailable
@@ -40,6 +53,7 @@ public final class JevAPISettingsModel {
     service.settings.clear()
     isConfigured = false
     isPolishingEnabled = false
+    isHotwordSelectionEnabled = false
     await service.shutdown()
   }
 }

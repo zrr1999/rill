@@ -131,6 +131,36 @@ contains `app_bundle_id`, `locale` and the migration-compatible `clipboard_group
 UUID (a Record collection). The TOML bindings remain authoritative; global
 vocabulary defaults do not replace bindings in a file-backed workflow.
 
+Live audio freezes its compiled vocabulary, language and local model at capture
+admission. Later vocabulary edits apply to later recordings; final recognition
+does not reload the library. Model enablement and run privacy are still checked
+at their effect boundaries.
+
+The experimental **Jev hotword selection** switch in Voice & Models is separate
+from workflow TOML and from the polishing gate. It defaults off and retains its
+shared Jev key and independent consent only for the app session. Enabling it permits sending up to 50
+applicable hotword candidates, the application and workflow names, and the
+already-authorized text selection to `api.typesafe.ai`. A selection above 1,800
+UTF-8 bytes is omitted entirely. Audio, clipboard, screen and history are not
+included, and this feature does not capture additional context.
+
+Recording never waits for Jev. A cache miss uses the existing rule order for the
+entire run and starts one background request only after capture begins. A later
+matching run can use the result. The memory-only cache holds at most 32 entries
+for five minutes and includes workflow, vocabulary, context, language, model,
+rubric, privacy and authorization identity. Manual priorities remain authoritative;
+within one priority, only candidates with both confidence and probability of
+clear relevance at least 0.9 are promoted. These thresholds are experimental,
+not measured accuracy. The existing Qwen limit of 16 terms and 48 total UTF-8
+bytes still applies.
+
+Requests have a two-second deadline, one concurrency slot and no automatic retry.
+Revocation cancels pending work and clears cached results. Uncertain results,
+unavailable services and restricted contexts preserve local selection. Imported
+audio and failed-audio retries do not start ranking requests. Live captions remain
+unchanged; streaming hotword support requires a separate upstream change.
+See the [hotword evaluation protocol](https://github.com/zrr1999/rill/blob/main/docs/archive/qa/jev-hotwords.md) before making quality claims.
+
 Wake-word triggers use `setup.wake_word.phrases`, with one to four distinct short
 phrases. The existing wake-word provider, permissions and readiness rules apply.
 

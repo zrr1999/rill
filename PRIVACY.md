@@ -1,6 +1,6 @@
 # Rill Technical Privacy and Data Flow Notice
 
-Last updated: 2026-09-24
+Last updated: 2026-09-25
 
 This notice describes the data behavior of the current Rill build. It is a technical product disclosure, not a substitute for any formal legal privacy policy that may be required for a future distribution channel.
 
@@ -16,7 +16,7 @@ Optional **Search by meaning** downloads a fixed, verified Qwen3 embedding model
 
 Optional **Compare with Jev** is a separate, per-request cloud action. After preview and explicit confirmation, Rill sends the displayed query and up to 10 text excerpts or file names (each at most 1,800 UTF-8 bytes) to TypeSafe at `https://api.typesafe.ai/v1/systemone`, using `jev-1.13.0`. Requests contain a fixed relevance rubric; record IDs, source apps, tags, images and referenced-file contents are not included as metadata or attachments. Text itself may contain sensitive information, so review every excerpt before sending. The API key is held in memory for this App session only, can be cleared in Settings → Voice & Models → API Providers, and is never written to settings, Keychain or diagnostics. Opening the sheet, saving a key and ordinary search do not contact TypeSafe. No automatic retry occurs. Scores and token usage remain transient. Source privacy rules, capture exclusions, Secure Input and catalog revision are checked before submission and before displaying a response; unknown sources fail closed. Closing or changing the query cancels the operation, but already-sent data cannot be recalled and may incur usage. TypeSafe's own terms and retention controls govern server-side data; Rill cannot inspect or delete those records. Candidate comparison uses its own explicit send action every time and does not reuse remembered workflow cloud authorizations.
 
-Candidate comparison and the optional **Jev polishing check** share one session-only API key. The polishing check is off by default and requires its own switch; saving a key does not enable it. When enabled for a supported cleanup step, it sends the transcript and rewrite instruction to the same TypeSafe endpoint to decide whether the LLM rewrite can be skipped. Screen and memory context are not sent to Jev; runs using those references bypass this check. Uncertain or failed checks keep the original LLM path. Clearing the key disables the switch and invalidates both uses; replacing it invalidates old requests. Already-sent requests cannot be recalled. The key and polishing choice are never persisted.
+Candidate comparison, hotword selection and the optional **Jev polishing check** share one session-only API key. The polishing check is off by default and requires its own switch; saving a key does not enable it. When enabled for a supported cleanup step, it sends the transcript and rewrite instruction to the same TypeSafe endpoint to decide whether the LLM rewrite can be skipped. Screen and memory context are not sent to Jev; runs using those references bypass this check. Uncertain or failed checks keep the original LLM path. Clearing the key disables both automatic switches and invalidates all three uses; replacing it invalidates old requests. Already-sent requests cannot be recalled. The key and polishing choice are never persisted.
 
 Going from a comparison to Settings keeps only the query, filters, selected ID and candidate IDs in memory. Returning reloads and validates current records and prepares a new preview without sending. Closing Settings or cancelling the return discards this intent.
 
@@ -25,6 +25,8 @@ Image previews decode stored image bytes in memory, including the larger-image s
 Rill does not operate an analytics or advertising endpoint in this build. Sanitized runtime diagnostics are stored locally and are not uploaded by Rill itself.
 
 ## Network destinations
+
+- **Optional intelligent hotword selection:** disabled by default, with a separate consent switch and the shared Jev API key held only for the current App session. Enabling it allows background requests to TypeSafe at `https://api.typesafe.ai/v1/systemone`, using `jev-1.13.0`: at most 50 existing, enabled, scope-matching hotwords bound to the workflow, the application and workflow names, and already-authorized selected text. Selection exceeding 1,800 UTF-8 bytes is omitted entirely. This feature collects no additional selection and sends no audio, clipboard, screen or history. Recording starts without waiting for the network. A cache miss keeps the current rule-based hotwords and prepares rankings after microphone capture starts for subsequent matching recordings; only final recognition uses them. The memory-only cache holds at most 32 entries for five minutes. Requests have a two-second budget and no automatic retries. Source application, privacy policy and session authorization are checked before sending and after receiving; disabling selection cancels requests and clears cached rankings. Imported audio and failed-audio retries do not trigger this upload. Diagnostics contain only closed status codes, counts and timing. Already-sent data cannot be recalled; TypeSafe governs service-side processing and retention.
 
 - **Local MLX speech and synthesis:** Rill downloads catalog-pinned Qwen ASR, Qwen TTS, and Silero VAD model files from Hugging Face and its download storage when preparing an enabled model. The ASR catalog offers Qwen3-ASR 0.6B 8bit and 1.7B 8bit. Repository revisions, retained file sizes, and SHA-256 digests are checked before publishing a private local model directory. Model downloads send no microphone audio or recognized text. Recognition, wake-phrase matching, and local speech synthesis run on this Mac after preparation; system speech may be used as the documented synthesis fallback.
 - **Smart Cleanup with DeepSeek:** uses the shared LLM Provider endpoint, model and Keychain credential. When configured for DeepSeek V4.1 Flash (`deepseek-flash`), rewrite requests disable thinking, have a 5-second budget and reject incomplete output. Audio remains in the local recognition path. Cloud authorization is scoped to the configured model, endpoint and credential.
@@ -71,7 +73,7 @@ This notice covers Rill's current behavior only. macOS, DeepSeek, OpenAI, Apple 
 
 # Rill 技术隐私与数据流说明
 
-更新日期：2026-09-21
+更新日期：2026-09-25
 
 本文说明当前 Rill 构建的数据行为，是面向产品的技术披露；它不替代未来分发渠道可能要求的正式法律隐私政策。
 
@@ -87,13 +89,15 @@ Rill 在用户发起语音采集时处理麦克风音频。唤醒词监听默认
 
 ## 网络目的地
 
+- **可选智能挑选热词：**默认关闭，使用独立授权开关，共用仅在本次 App 会话内存中保留的 Jev Key。启用后允许向 TypeSafe 的 `https://api.typesafe.ai/v1/systemone`（`jev-1.13.0`）发送后台请求，内容限于工作流绑定、已启用且作用域匹配的最多 50 个已有热词、应用名称、工作流名称及已授权选区。选区超过 1,800 UTF-8 字节时整段省略。不额外采集选区，不发送音频、剪贴板、屏幕或历史记录。录音不等待网络；缓存未命中时本次保留规则挑词，麦克风开始采集后才准备排序，供后续相同上下文的最终识别使用。缓存仅在内存中保留，最多 32 项、有效期 5 分钟。请求限时 2 秒，不自动重试；发送前和接收后复核来源应用、隐私策略及会话授权。关闭开关会取消请求并清空缓存。导入音频和失败重试不触发这类上传。诊断只包含限定状态、计数和耗时。已发送的数据无法撤回，服务端处理与保留由 TypeSafe 决定。
+
 - **MLX 本地语音识别与合成：**准备已启用的模型时，Rill 从 Hugging Face 及其下载存储获取目录中固定版本的 Qwen ASR、Qwen TTS 和 Silero VAD 文件。ASR 目录提供 Qwen3-ASR 0.6B 8bit 和 1.7B 8bit。程序在发布私有本地模型目录前核对仓库 revision、保留文件大小及 SHA-256。模型下载不发送麦克风音频或识别文本。准备完成后，识别、唤醒词匹配和本地语音合成在本机运行；合成路径可按产品说明回退到系统语音。
 - **用 Jev 比较候选：**这是独立的逐次确认云端操作。预览并点击发送后，Rill 将显示的查询及最多 10 条文字片段或文件名（每项最多 1,800 UTF-8 字节），连同固定相关性评分规则，发送到 TypeSafe 的 `https://api.typesafe.ai/v1/systemone`，使用 `jev-1.13.0`。不附带记录 ID、来源应用、标签、图片或引用文件正文；文字本身仍可能包含敏感信息，请检查预览。Key 只在本次 App 会话内存中暂存，可在“设置 → 语音与模型 → API 服务”清除，不写入设置、Keychain 或诊断。打开面板、暂存 Key 和普通搜索均不调用该服务；不自动重试，评分和用量只临时展示。发送前和展示响应前检查来源隐私规则、捕获排除、Secure Input 和目录版本，未知来源会阻止请求。关闭或改变查询会取消操作，但已发送的数据无法撤回，仍可能计费；服务端保留策略由 TypeSafe 决定，Rill 无法检查或删除。每次候选比较都需要主动发送，不复用工作流的持久云端授权。
 
 - **使用 DeepSeek 的智能整理：**复用统一 LLM Provider 的地址、模型和 Keychain 凭据。配置 DeepSeek V4.1 Flash（`deepseek-flash`）后，润色请求关闭思考，预算为 5 秒，不接受截断结果。音频继续在本地识别，云端授权绑定所配置的模型、地址和凭据。
 - **可选屏幕上下文与长期记忆：**两者默认关闭，需为当前服务与工作流单独授权。屏幕上下文在录音前采集输入所在显示器，排除 Rill 和已启用的敏感应用，将内存中的 JPEG 与可选摘要发给具备图片能力的服务。截图预算 250 毫秒，两个独立摘要各限 10 秒；转写始终是唯一内容主体。原图、base64、完整图文请求和临时记忆摘要不保存；屏幕摘要可加密保存在历史中。空闲整理会将已授权语音历史、明确纠正、屏幕观察，以及工作流、应用 bundle ID 和语言等范围信息分批发送给已配置 LLM，每次最多 10 条来源、12 KB，每天最多 8 次后台请求。来源类型分别标记；长期记忆独立于历史清理留存，永久删除记忆后其来源不再参与学习。服务或隐私配置变化会撤销当前上下文任务；未确认图片能力的自定义地址不会收到图片。
 
-- **Jev 润色判断：**与候选比较共用本次会话中的 Key，默认关闭，需单独开启开关；暂存 Key 不会启用。支持的整理步骤会把转写与润色要求发送到同一 TypeSafe 地址，判断是否可跳过 LLM 改写。屏幕和记忆参考不发送给 Jev，使用这些参考的运行直接进入原有整理。不确定或判断失败时沿用原有 LLM 路径。清除 Key 会关闭开关并撤销两种用途的旧授权；替换 Key 会使旧请求失效。已发送请求无法收回。Key 与判断开关均不持久化。
+- **Jev 润色判断：**与候选比较、热词挑选共用本次会话中的 Key，默认关闭，需单独开启开关；暂存 Key 不会启用。支持的整理步骤会把转写与润色要求发送到同一 TypeSafe 地址，判断是否可跳过 LLM 改写。屏幕和记忆参考不发送给 Jev，使用这些参考的运行直接进入原有整理。不确定或判断失败时沿用原有 LLM 路径。清除 Key 会关闭两个自动开关并撤销三种用途的旧授权；替换 Key 会使旧请求失效。已发送请求无法收回。Key 与判断开关均不持久化。
 
 - **LLM Provider（OpenAI-compatible Responses API）：**已启用的语音或文本工作流都可以通过大模型改写或回答步骤发送文本。提供的 API Key 可读取、在需要时获得云端文本处理授权且当前隐私策略允许运行后，Rill 会把 API Key、当前步骤的输入正文和步骤指令发送到已配置的 Responses API 地址。输入可以是语音转写、通过“运行剪贴板文本”主动提交的剪贴板正文、使用工作流重放的记录正文，或前序处理步骤的结果；这些输入沿用相同的工作流云端授权与隐私检查。未开启上述可选上下文功能时，请求不会额外附带麦克风音频、选中文本、其他剪贴板内容、App 名或 bundle ID。请求采用非流式并设置 `store: false`；该请求参数不等于地址运营方不保留任何安全、滥用监测、计费或运行记录。数据到达服务后适用地址运营方的服务条款和数据控制，Rill 无法检查或删除 provider 侧记录。
 - **Apple 快捷指令：**工作流可把最终文本交给用户选择的快捷指令。快捷指令的动作及其访问的服务由用户控制，Rill 无法检查其后续行为。
