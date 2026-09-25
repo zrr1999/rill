@@ -278,6 +278,35 @@ final class WorkflowRunReceiptRecorderTests: XCTestCase {
         XCTAssertEqual(receipt.actionDetails.last?.actionIndex, 31)
     }
 
+    func testEmptyInputDiscardRetiresIdentityAndCannotEraseOutputReceipts() async throws {
+        let repository = InMemoryWorkflowRunReceiptRepository()
+        let recorder = WorkflowRunReceiptRecorder(repository: repository)
+        let emptyRunID = UUID()
+        try await recorder.begin(runID: emptyRunID, workflowID: nil, trigger: .hotkey)
+        try await recorder.beginStep(runID: emptyRunID, stepIndex: 0, kind: .recognizeSpeech)
+        try await recorder.discardEmptyInput(runID: emptyRunID)
+        do {
+            try await recorder.begin(runID: emptyRunID, workflowID: nil, trigger: .hotkey)
+            XCTFail("Discarded input must remain terminal")
+        } catch {
+            XCTAssertEqual(error as? WorkflowRunReceiptRecorderError, .terminalAlreadyFinalized(runID: emptyRunID))
+        }
+        let outputRunID = UUID()
+        try await recorder.begin(runID: outputRunID, workflowID: nil, trigger: .hotkey)
+        try await recorder.beginAction(runID: outputRunID, actionIndex: 0)
+        try await recorder.finishAction(runID: outputRunID, actionIndex: 0, result: WorkflowActionResultCode.injected)
+        do {
+            try await recorder.discardEmptyInput(runID: outputRunID)
+            XCTFail("Committed effects must retain their receipt")
+        } catch {
+            XCTAssertEqual(error as? WorkflowRunReceiptRecorderError, .cannotDiscardProcessedRun(runID: outputRunID))
+        }
+        _ = try await recorder.finish(runID: outputRunID, termination: .completed)
+        let receipts = try await repository.receipts(matching: .all)
+        XCTAssertEqual(receipts.map(\.runID), [outputRunID])
+        XCTAssertEqual(receipts.first?.actionDetails.map(\.result), [.injected])
+    }
+
     func testRecorderRejectsOutOfOrderActionsAndASecondTerminal() async throws {
         let repository = InMemoryWorkflowRunReceiptRepository()
         let recorder = WorkflowRunReceiptRecorder(repository: repository)

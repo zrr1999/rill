@@ -232,7 +232,7 @@ struct RunContextPreparationTests {
         let workflow = WorkflowDefinition(name: "Context queue", pipeline: PipelineDeclaration(
             recognizerID: "context.test", postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Cleanup")], outputActions: [OutputActionReference(id: "context.output")]
         ), ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue"))
-        let audio = try CapturedAudio(durationSeconds: 0.2,
+        let audio = try CapturedAudio(durationSeconds: 1,
             format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16), inlineData: Data([0, 0]))
         let transfer = await queue.enqueue(authorizationLease: makeAudioProcessingTestLease(
             runID: UUID(), workflow: workflow, contextPreparation: preparation

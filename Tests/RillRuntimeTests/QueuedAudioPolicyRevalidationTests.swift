@@ -245,7 +245,7 @@ private struct QueuedPolicyFixture {
 }
 
 final class QueuedAudioPolicyRevalidationTests: XCTestCase {
-    func testNoSpeechFailureDoesNotRetainQueuedAudioForRecovery() async throws {
+    func testEmptySpeechInputDoesNotRetainQueuedAudioForRecovery() async throws {
         let runID = UUID()
         let workflow = queuedWorkflow(
             name: "Queued no speech",
@@ -256,7 +256,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
         try Data([0, 1, 2]).write(to: fileURL)
         defer { try? FileManager.default.removeItem(at: fileURL) }
         let capturedAudio = try CapturedAudio(
-            durationSeconds: 0.2,
+            durationSeconds: 1,
             format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
             fileURL: fileURL,
             fileOwnership: .managedTemporary
@@ -342,7 +342,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
         try Data([0, 1, 2]).write(to: fileURL)
         defer { try? FileManager.default.removeItem(at: fileURL) }
         let capturedAudio = try CapturedAudio(
-            durationSeconds: 0.1,
+            durationSeconds: 1,
             format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
             fileURL: fileURL,
             fileOwnership: .managedTemporary
@@ -613,7 +613,7 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
         }
     }
     let audio = try CapturedAudio(
-        durationSeconds: 0.1,
+        durationSeconds: 1,
         format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
         inlineData: Data([0, 1])
     )

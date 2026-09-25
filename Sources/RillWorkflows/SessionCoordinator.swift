@@ -420,6 +420,16 @@ extension SessionCoordinator {
         }
         defer { releaseRunLane(runID: runID) }
 
+        // Use the recorded payload duration, never time spent preparing the microphone.
+        if workflow.inputKind == .audio, preRecognizedText == nil,
+           effectiveReceiptTrigger != .failedAudioRecovery,
+           let capturedAudio, capturedAudio.durationSeconds.isFinite,
+           capturedAudio.durationSeconds >= 0, capturedAudio.durationSeconds < 0.3 {
+            contextPreparation?.cancel()
+            await eventBus.publish(.runDiscarded(runID: runID))
+            return .noInput
+        }
+
         let receiptRegistration = await beginRunReceipt(
             runID: runID,
             workflowID: workflow.id,
@@ -589,6 +599,19 @@ extension SessionCoordinator {
         } catch {
             contextPreparation?.cancel()
             let failedWorkflow = workflow.presentation
+            if failureStage == .recognizing,
+               isEmptyVoiceInput(error, workflow: workflow, trigger: effectiveReceiptTrigger) {
+                do {
+                    if receiptIsActive {
+                        try await runReceiptRecorder?.discardEmptyInput(runID: runID)
+                    }
+                    await eventBus.publish(.runDiscarded(runID: runID))
+                    state = .idle
+                    return .noInput
+                } catch {
+                    await recordRunReceiptCoordinationFailure(runID: runID, reason: "discard-failed")
+                }
+            }
             if let cancellation = workflowRunCancellationSummary(
                 for: error,
                 runID: runID,
@@ -628,6 +651,16 @@ extension SessionCoordinator {
             state = .idle
             return .failed(failure)
         }
+    }
+
+    private func isEmptyVoiceInput(
+        _ error: any Error, workflow: WorkflowDefinition, trigger: WorkflowRunTriggerKind
+    ) -> Bool {
+        guard workflow.inputKind == .audio, trigger != .failedAudioRecovery,
+              let sessionError = error as? SessionError, case .noSpeech = sessionError else {
+            return false
+        }
+        return true
     }
 
     private func workflowRunFailureCode(for error: Error) -> WorkflowRunFailureCode {
@@ -1622,6 +1655,9 @@ extension SessionCoordinator {
             }
             return (recognition, startedAt.flatMap(textExecutor.processingDurationMilliseconds))
         } catch {
+            if isEmptyVoiceInput(error, workflow: session.workflow, trigger: session.trigger) {
+                throw error
+            }
             let durationMilliseconds = startedAt.flatMap(textExecutor.processingDurationMilliseconds)
             let result: WorkflowStepResultCode = error is CancellationError ? .cancelled : .failed
             try? await textExecutor.finishProcessReceipt(session, result: result, durationMilliseconds: durationMilliseconds)

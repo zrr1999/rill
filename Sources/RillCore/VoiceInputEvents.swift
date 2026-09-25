@@ -42,6 +42,7 @@ public enum RillEvent: Sendable, Equatable {
     case runReceiptRepositoryChanged(WorkflowRunReceiptRepositoryChange)
     case runHistoryUpdated(WorkflowRunHistoryUpdate)
     case runCompleted(WorkflowRunSummary)
+    case runDiscarded(runID: UUID)
     case runCancelled(WorkflowRunCancelledSummary)
     case runFailed(runID: UUID?, workflow: WorkflowPresentation?, message: String)
     case diagnostic(DiagnosticEvent)

@@ -585,6 +585,36 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         )
     }
 
+    func testShortInputCleansAudioWithoutRecognitionRecoveryOrBenchmarkArchive() async throws {
+        for ownership: CapturedAudioFileOwnership in [.managedTemporary, .callerManaged] {
+            let probe = AudioLifecycleExecutionProbe()
+            let recovery = AudioRecoveryStoreProbe()
+            let archive = BenchmarkArchiveStoreProbe()
+            let queue = await makeQueue(
+                recognitionShouldFail: false, recoveryStore: recovery, recoveryEnabled: true,
+                benchmarkArchiveStore: archive, benchmarkArchiveEnabled: true, executionProbe: probe
+            )
+            let fileURL = try makeAudioFile()
+            defer { try? FileManager.default.removeItem(at: fileURL) }
+            var audio = try makeCapturedAudio(fileURL: fileURL, ownership: ownership)
+            audio.durationSeconds = 0.1
+            await queue.enqueue(
+                authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: makeWorkflow()),
+                triggerEvent: nil, deferredCapture: .resolved(audio)
+            )
+            await waitUntilDrained(queue)
+            await queue.shutdown()
+            let execution = await probe.snapshot()
+            let preserved = await recovery.preserveCallCount
+            let archived = await archive.entries
+            XCTAssertEqual(execution.recognition, 0)
+            XCTAssertEqual(execution.action, 0)
+            XCTAssertEqual(preserved, 0)
+            XCTAssertTrue(archived.isEmpty)
+            XCTAssertEqual(FileManager.default.fileExists(atPath: fileURL.path), ownership == .callerManaged)
+        }
+    }
+
     func testQueueRemovesManagedTemporaryFileAfterProcessingOutcome() async throws {
         for recognitionShouldFail in [false, true] {
             let fileURL = try makeAudioFile()

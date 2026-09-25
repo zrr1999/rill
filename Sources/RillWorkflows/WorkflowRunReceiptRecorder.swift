@@ -13,6 +13,7 @@ public enum WorkflowRunReceiptRecorderError: Error, Sendable, Equatable {
     case unexpectedActionIndex(expected: Int, actual: Int)
     case actionIndexMismatch(expected: Int, actual: Int)
     case terminalWhileActionInProgress(runID: UUID)
+    case cannotDiscardProcessedRun(runID: UUID)
     case conflictingPreparedTerminal(runID: UUID)
     case persistenceFailed(runID: UUID)
     case writeObsoletedByClearBarrier(runID: UUID)
@@ -144,6 +145,22 @@ public actor WorkflowRunReceiptRecorder {
             run.recordingDurationMilliseconds = UInt64((seconds * 1_000).rounded(.down))
         }
         pendingRuns[runID] = run
+    }
+
+    /// Retires an input attempt before any text processing or output takes place.
+    /// The run ID remains terminal, but nothing is written or published to history.
+    func discardEmptyInput(runID: UUID) throws {
+        let run = try mutablePendingRun(runID: runID)
+        guard run.preparedTerminal == nil, !run.terminalWriteIsInProgress,
+              run.finalText == nil, run.activeAction == nil, run.nextActionIndex == 0,
+              run.actionDetails.isEmpty,
+              run.activeStep == nil || run.activeStep?.kind == .recognizeSpeech,
+              run.stepDetails.allSatisfy({ $0.kind == .recognizeSpeech }),
+              run.textSteps.isEmpty else {
+            throw WorkflowRunReceiptRecorderError.cannotDiscardProcessedRun(runID: runID)
+        }
+        pendingRuns.removeValue(forKey: runID)
+        rememberFinalizedRunID(runID)
     }
 
     public func recordTextStep(runID: UUID, step: WorkflowTextStep) {
