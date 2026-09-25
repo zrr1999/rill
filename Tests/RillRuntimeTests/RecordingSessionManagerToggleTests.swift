@@ -1,4 +1,5 @@
 @testable import RillWorkflows
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -65,7 +66,8 @@ private struct ToggleAction: OutputAction {
   let id = "toggle.action"
   let probe: ToggleActionProbe
 
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      let text = try record.requireText(for: id)
     await probe.record(text)
     return .copiedToClipboard
   }
@@ -109,7 +111,7 @@ private func makeToggleCapturedAudioProcessingQueue(
   eventBus: EventBus,
   diagnostics: DiagnosticsRecorder? = nil
 ) -> CapturedAudioProcessingQueue {
-  CapturedAudioProcessingQueue(
+  makeTestCapturedAudioProcessingQueue(
     sessionCoordinator: sessionCoordinator,
     eventBus: eventBus,
     diagnostics: diagnostics
@@ -142,8 +144,8 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
       audio: audio,
       cueOrderProbe: cueOrderProbe
     )
-    let coordinator = SessionCoordinator(
-      contextProvider: ToggleTestContextProvider(),
+    let coordinator = makeTestSessionCoordinator(
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: [
         ToggleRecognizer(probe: requestProbe)
       ]),
@@ -153,7 +155,7 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
       eventBus: eventBus,
       diagnostics: diagnostics
     )
-    let manager = RecordingSessionManager(
+    let manager = makeTestRecordingSessionManager(
       audioCaptureService: audioCaptureService,
       hotkeyTap: HotkeyEventTap(),
       capturedAudioProcessingQueue: makeToggleCapturedAudioProcessingQueue(
@@ -229,8 +231,7 @@ final class RecordingSessionManagerToggleTests: XCTestCase {
     XCTAssertEqual(finalState, .idle)
     XCTAssertEqual(finalFinishCallCount, 1)
     XCTAssertEqual(recognitionRequest?.capturedAudio, audio)
-    XCTAssertEqual(recognitionRequest?.triggerEvent?.sourceID, "long-recording")
-    XCTAssertEqual(recognitionRequest?.triggerEvent?.metadata["controlMode"], "toggle")
+    XCTAssertEqual(recognitionRequest?.priority, .interactive)
     XCTAssertEqual(actionValues, ["recorded"])
     XCTAssertEqual(
       cueOrder,

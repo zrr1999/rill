@@ -128,22 +128,6 @@ public struct SpeechAsset: Codable, Sendable, Equatable {
             && standardizedURL.pathExtension.lowercased() == "wav"
     }
 
-    @discardableResult
-    public func removeManagedTemporaryFile(
-        using fileManager: FileManager = .default
-    ) throws -> Bool {
-        var isDirectory: ObjCBool = false
-        guard
-            ownership == .managedTemporary,
-            Self.isManagedTemporaryFileURL(fileURL, using: fileManager),
-            fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory),
-            !isDirectory.boolValue
-        else {
-            return false
-        }
-        try fileManager.removeItem(at: fileURL)
-        return true
-    }
 }
 
 public enum SpeechOutputActionID {

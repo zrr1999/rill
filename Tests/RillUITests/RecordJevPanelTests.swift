@@ -15,7 +15,7 @@ struct RecordJevPanelTests {
     let second = try await fixture.insert("git revert HEAD")
     let workspace = RecordWorkspaceModel(store: fixture.store, cloudRanking: fixture.service)
     let panel = workspace.makeQuickPanelModel()
-    panel.searchText = "git"
+    panel.setSearchText("git")
     try await waitUntil { !panel.isSearching && panel.results.count == 2 }
     let ids = panel.results.map(\.id)
     let selected = panel.selectedID
@@ -52,8 +52,8 @@ struct RecordJevPanelTests {
     let panel = RecordQuickPanelModel(store: fixture.store, jevSettings: JevAPISettingsModel(service: fixture.service))
     panel.start(sourceBundleIdentifier: "example.allowed")
     try await waitUntil { panel.results.count == 2 && !panel.isSearching }
-    panel.currentAppOnly = true
-    panel.searchText = "git"
+    panel.setCurrentAppOnly(true)
+    panel.setSearchText("git")
     try await waitUntil { panel.results.count == 1 && !panel.isSearching }
     panel.compareWithJev()
     let model = try #require(panel.jev)
@@ -63,7 +63,7 @@ struct RecordJevPanelTests {
     try await waitUntil { model.isConfigured }
     model.confirm()
     await fixture.provider.waitUntilEntered()
-    panel.searchText = "reset"
+    panel.setSearchText("reset")
     #expect(!model.isPresented)
     #expect(model.review == nil)
     let shutdown = Task { await panel.shutdown() }
@@ -157,9 +157,9 @@ struct RecordJevPanelTests {
     let workspace = RecordWorkspaceModel(store: fixture.store, cloudRanking: fixture.service)
     let original = workspace.makeQuickPanelModel()
     original.start(sourceBundleIdentifier: "example.allowed")
-    original.currentAppOnly = true
-    original.kind = .text
-    original.searchText = "git"
+    original.setCurrentAppOnly(true)
+    original.setKind(.text)
+    original.setSearchText("git")
     try await waitUntil { !original.isSearching && original.results.count == 1 }
     original.compareWithJev()
     let review = try #require(original.jev)
@@ -188,7 +188,7 @@ struct RecordJevPanelTests {
     let record = try await fixture.insert("git worktree")
     let workspace = RecordWorkspaceModel(store: fixture.store, cloudRanking: fixture.service)
     let panel = workspace.makeQuickPanelModel()
-    panel.searchText = "git"
+    panel.setSearchText("git")
     try await waitUntil { !panel.isSearching && panel.results.count == 1 }
     panel.compareWithJev()
     try await waitUntil { panel.jev?.state == .review }
@@ -226,7 +226,7 @@ struct RecordJevPanelTests {
     _ = try await fixture.insert("git worktree")
     let initialSnapshot = try await fixture.store.catalogSnapshot()
     let panel = RecordQuickPanelModel(store: fixture.store, jevSettings: JevAPISettingsModel(service: fixture.service))
-    panel.searchText = "git"
+    panel.setSearchText("git")
     try await waitUntil { !panel.isSearching && panel.results.count == 1 }
     panel.compareWithJev()
     try await waitUntil { panel.jev?.state == .review }

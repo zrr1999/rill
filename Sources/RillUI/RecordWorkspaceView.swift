@@ -297,7 +297,7 @@ public struct RecordWorkspaceView: View {
             Text(L10n.recordText(.collectionPresetQueue, language: language)).tag(Optional(RecordCollectionPreset.queue))
             Text(L10n.recordText(.collectionPresetList, language: language)).tag(Optional(RecordCollectionPreset.list))
             if collection.matchingPreset == nil {
-                Text(UIStrings.text(.workflowCustom, language: language)).tag(Optional<RecordCollectionPreset>.none)
+                Text(L10n.text(.workflowCustom, language: language)).tag(Optional<RecordCollectionPreset>.none)
             }
         }
         .pickerStyle(.segmented)
@@ -344,14 +344,14 @@ public struct RecordWorkspaceView: View {
     private var recordList: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Picker(L10n.workspace(.allTypes, language: language), selection: $workspace.payloadKindFilter) {
+                Picker(L10n.workspace(.allTypes, language: language), selection: Binding(get: { workspace.payloadKindFilter }, set: { workspace.setPayloadKindFilter($0) })) {
                     Text(L10n.workspace(.allTypes, language: language)).tag(Optional<RecordPayloadKind>.none)
                     Text(L10n.quickRecord(.text, language: language)).tag(Optional(RecordPayloadKind.text))
                     Text(L10n.recordText(.imagePayload, language: language)).tag(Optional(RecordPayloadKind.image))
                     Text(L10n.quickRecord(.files, language: language)).tag(Optional(RecordPayloadKind.files))
                 }.labelsHidden()
                 Spacer(minLength: 0)
-                Toggle(isOn: $workspace.showsPinnedOnly) {
+                Toggle(isOn: Binding(get: { workspace.showsPinnedOnly }, set: { workspace.setShowsPinnedOnly($0) })) {
                     Image(systemName: RillSystemSymbol.pinFill.rawValue)
                 }
                 .toggleStyle(.button)
@@ -362,7 +362,7 @@ public struct RecordWorkspaceView: View {
                         .toggleStyle(.button)
                         .disabled(sourceAppContext?.bundleIdentifier == nil)
                 } else {
-                    Picker(L10n.workspace(.source, language: language), selection: $workspace.sourceAppFilterBundleIdentifier) {
+                    Picker(L10n.workspace(.source, language: language), selection: Binding(get: { workspace.sourceAppFilterBundleIdentifier }, set: { workspace.setSourceAppFilter($0) })) {
                         Text(L10n.workspace(.allSources, language: language)).tag(Optional<String>.none)
                         ForEach(recordSources, id: \.id) { source in
                             Text(source.name).tag(Optional(source.id))
@@ -389,10 +389,7 @@ public struct RecordWorkspaceView: View {
                 )
                 if hasRecordFilters {
                     Button(L10n.presentation(.clearFilters, language: language)) {
-                        workspace.searchText = ""
-                        workspace.showsPinnedOnly = false
-                        workspace.sourceAppFilterBundleIdentifier = nil
-                        workspace.payloadKindFilter = nil
+                        workspace.clearFilters()
                     }
                     .buttonStyle(.borderless)
                     .padding(.bottom, RillSpacing.panel)
@@ -475,66 +472,44 @@ public struct RecordWorkspaceView: View {
     @ViewBuilder
     private var recordInspector: some View {
         if let record = selectedRecord {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        Text(sourceName(record.record.provenance)).font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        if let copySelection {
-                            Button {
-                                guard !isCopying else { return }
-                                isCopying = true
-                                Task {
-                                    let outcome = await copySelection(RecordReuseSubject(recordID: record.id, metadataRevision: record.metadata.revision))
-                                    isCopying = false
-                                    guard selectedRecord?.id == record.id else { return }
-                                    copyFeedback = outcome.feedback
-                                }
-                            } label: {
-                                Label(L10n.workspace(.copy, language: language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
-                            }
-                            .disabled(isCopying)
-                            .accessibilityIdentifier("records.copy")
-                        }
-                    }
-                    if let copyFeedback {
-                        Text(L10n.quickRecord(copyFeedback, language: language))
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                    payloadPreview(record.record)
-                        .focusable().focused($detailFocused)
-                        .accessibilityFocused($detailAccessibilityFocused)
-                        .accessibilityIdentifier("records.detail")
-                    if let deliverSelection,
-                       let subject = workspace.selectedListDeliverySubject {
+            VStack(spacing: 0) {
+                HStack {
+                    Text(sourceName(record.record.provenance)).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    if let copySelection {
                         Button {
-                            deliverSelection(subject)
+                            guard !isCopying else { return }
+                            isCopying = true
+                            Task {
+                                let outcome = await copySelection(RecordReuseSubject(recordID: record.id, metadataRevision: record.metadata.revision))
+                                isCopying = false
+                                guard selectedRecord?.id == record.id else { return }
+                                copyFeedback = outcome.feedback
+                            }
                         } label: {
+                            Label(L10n.workspace(.copy, language: language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
+                        }
+                        .disabled(isCopying)
+                        .accessibilityIdentifier("records.copy")
+                    }
+                    if let deliverSelection, let subject = workspace.selectedListDeliverySubject {
+                        Button { deliverSelection(subject) } label: {
                             Label(
                                 RecordDeliveryTitle.make(applicationName: sourceAppContext?.applicationName, language: language),
-                                systemImage: RillSystemSymbol.textInsert.rawValue
-                            )
+                                systemImage: RillSystemSymbol.textInsert.rawValue)
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(workspace.isMutating)
                     }
-                    HStack {
+                    Menu {
                         Button {
-                            Task {
-                                await workspace.updateMetadata(
-                                    for: record,
-                                    isPinned: !record.metadata.isPinned
-                                )
-                            }
+                            Task { await workspace.updateMetadata(for: record, isPinned: !record.metadata.isPinned) }
                         } label: {
                             Label(
                                 record.metadata.isPinned
-                                    ? UIStrings.text(.clipboardUnpinItem, language: language)
-                                    : UIStrings.text(.clipboardPinItem, language: language),
-                                systemImage: record.metadata.isPinned
-                                    ? RillSystemSymbol.pinSlash.rawValue
-                                    : RillSystemSymbol.pin.rawValue
-                            )
+                                    ? L10n.text(.clipboardUnpinItem, language: language)
+                                    : L10n.text(.clipboardPinItem, language: language),
+                                systemImage: record.metadata.isPinned ? RillSystemSymbol.pinSlash.rawValue : RillSystemSymbol.pin.rawValue)
                         }
                         Button {
                             collectionIDsToAdd = []
@@ -542,21 +517,16 @@ public struct RecordWorkspaceView: View {
                         } label: {
                             Label(L10n.recordText(.addToCollections, language: language), systemImage: RillSystemSymbol.rectangleStackBadgePlus.rawValue)
                         }
-                    }
-                    membershipInspector(record)
-                    DisclosureGroup(L10n.presentation(.metadata, language: language)) {
-                        metadataInspector(record)
-                    }
-                    if case .text(let textValue) = record.record.payload,
-                       let membership = preferredMembership(for: record) {
-                        Button(L10n.presentation(.editText, language: language)) {
-                            replacementRecordID = record.id
-                            replacementText = textValue
-                            replacesInAllCollections = false
+                        if case .text(let textValue) = record.record.payload,
+                           let membership = preferredMembership(for: record) {
+                            Button(L10n.presentation(.editText, language: language)) {
+                                replacementRecordID = record.id
+                                replacementText = textValue
+                                replacesInAllCollections = false
+                            }
+                            .disabled(membership.state != .active || workspace.isMutating)
                         }
-                        .disabled(membership.state != .active || workspace.isMutating)
-                    }
-                    Menu {
+                        Divider()
                         Button(role: .destructive) {
                             Task { await workspace.deleteRecord(record.id) }
                         } label: {
@@ -567,22 +537,38 @@ public struct RecordWorkspaceView: View {
                     }
                     .menuStyle(.borderlessButton)
                     .fixedSize()
-
+                    .disabled(workspace.isMutating)
                 }
                 .padding(16)
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if let copyFeedback {
+                            Text(L10n.quickRecord(copyFeedback, language: language)).font(.callout).foregroundStyle(.secondary)
+                        }
+                        payloadPreview(record.record)
+                            .focusable().focused($detailFocused)
+                            .accessibilityFocused($detailAccessibilityFocused)
+                            .accessibilityIdentifier("records.detail")
+                        membershipInspector(record)
+                        DisclosureGroup(L10n.presentation(.metadata, language: language)) {
+                            metadataInspector(record)
+                        }
+                    }
+                    .padding(16)
+                }
             }
         } else {
             ContentUnavailableView(
                 L10n.recordText(.selectRecordPrompt, language: language),
-                systemImage: RillSystemSymbol.docTextMagnifyingglass.rawValue
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                systemImage: RillSystemSymbol.docTextMagnifyingglass.rawValue)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     private func membershipInspector(_ record: RecordProjection) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(UIStrings.text(.recordCollections, language: language)).font(.headline)
+            Text(L10n.text(.recordCollections, language: language)).font(.headline)
             if record.memberships.isEmpty {
                 Text(L10n.recordText(.noMembershipHint, language: language))
                 .font(.caption)
@@ -641,7 +627,7 @@ public struct RecordWorkspaceView: View {
             HStack {
                 Spacer()
                 Button(L10n.recordText(.cancel, language: language)) { isCreatingCollection = false }
-                Button(UIStrings.text(.clipboardCreate, language: language)) {
+                Button(L10n.text(.clipboardCreate, language: language)) {
                     let name = newCollectionName
                     let preset = newCollectionPreset
                     isCreatingCollection = false
@@ -840,7 +826,7 @@ public struct RecordWorkspaceView: View {
         Binding(
             get: { workspace.sourceAppFilterBundleIdentifier != nil },
             set: { isOn in
-                workspace.sourceAppFilterBundleIdentifier = isOn ? sourceAppContext?.bundleIdentifier : nil
+                workspace.setSourceAppFilter(isOn ? sourceAppContext?.bundleIdentifier : nil)
             }
         )
     }

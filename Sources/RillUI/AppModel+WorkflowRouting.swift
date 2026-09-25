@@ -1,7 +1,10 @@
-import RillWorkflows
 import AppKit
 import Foundation
 import RillCore
+import RillWorkflows
+import RillRecords
+import RillKnowledge
+import RillSpeech
 
 extension AppModel {
   func synchronizeWorkflowEnabledStates() { workflowLibrary.synchronizeWorkflowEnabledStates() }
@@ -24,7 +27,7 @@ extension AppModel {
   ) -> WorkflowDefinition? {
     let recognizerResolution = WorkflowRecognizerResolution.localSpeech
     let outputResolution: WorkflowOutputResolution
-    switch builtinPushToTalkOutputMode {
+    switch self.settings.builtinPushToTalkOutputMode {
     case .pasteIntoApp:
       outputResolution = .builtinPasteIntoApplication
     case .saveToVoiceGroup:

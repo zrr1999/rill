@@ -1,6 +1,8 @@
-
-@testable import RillCore
+@testable import RillKnowledge
+@testable import RillRecords
 @testable import RillWorkflows
+@testable import RillCore
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -24,7 +26,8 @@ private struct RegressionProbeAction: OutputAction {
     let id = "regression.action"
     let probe: RegressionActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         await probe.record(text)
         return .skipped("captured")
     }
@@ -39,7 +42,22 @@ private struct RegressionRecognizer: SpeechRecognizer {
     }
 }
 
-private actor StageBlockingDiagnosticRepository: DiagnosticRepository {
+private actor StageBlockingDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
+    func deleteEvents(olderThan cutoff: Date) async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
+    func deleteAllEvents() async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
+    func deleteEvents(obsoletedBy transition: RunHistoryClearTransition, preservingLegacyRowsAfter legacyUpperBound: Date?) async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
     func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
     func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
         guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
@@ -173,8 +191,8 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus, repository: repository)
         let resolver = CandidateResolver(eventBus: eventBus, diagnostics: diagnostics)
         let actionProbe = RegressionActionProbe()
-        let coordinator = SessionCoordinator(
-            contextProvider: RegressionContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RegressionRecognizer(text: "second run")]
             ),
@@ -223,8 +241,8 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
         let eventBus = EventBus()
         let actionProbe = RegressionActionProbe()
         let resolver = CandidateResolver(eventBus: eventBus)
-        let coordinator = SessionCoordinator(
-            contextProvider: RegressionContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RegressionRecognizer(text: "queued text")]
             ),
@@ -233,7 +251,7 @@ final class RuntimeCoordinationRegressionTests: XCTestCase {
             candidateResolver: resolver,
             eventBus: eventBus
         )
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )

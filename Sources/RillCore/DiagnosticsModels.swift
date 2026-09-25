@@ -58,7 +58,8 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
     public var runID: UUID?
     public var subsystem: SubsystemTag
     public var level: DiagnosticLevel
-    public var event: String
+    public var name: DiagnosticEventName
+    public var event: String { name.rawValue }
     public var message: String
     public var metadata: [String: String]
 
@@ -67,7 +68,7 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         runID: UUID? = nil,
         subsystem: SubsystemTag,
         level: DiagnosticLevel,
-        event: String,
+        event: DiagnosticEventName,
         message: String,
         metadata: [String: String] = [:]
     ) {
@@ -75,10 +76,25 @@ public struct DiagnosticEvent: Codable, Sendable, Equatable {
         self.runID = runID
         self.subsystem = subsystem
         self.level = level
-        self.event = event
+        self.name = event
         self.message = message
         self.metadata = metadata
     }
+
+    enum CodingKeys: String, CodingKey {
+        case timestamp, runID, subsystem, level, message, metadata
+        case name = "event"
+    }
+
+    /// Used only at persisted/external-data boundaries; producers use the typed initializer.
+    public init(timestamp: Date = Date(), runID: UUID? = nil, subsystem: SubsystemTag,
+                level: DiagnosticLevel, untrustedEvent: String, message: String,
+                metadata: [String: String] = [:]) {
+        self.init(timestamp: timestamp, runID: runID, subsystem: subsystem, level: level,
+                  event: DiagnosticEventName(rawValue: untrustedEvent) ?? .diagnosticEventInvalid,
+                  message: message, metadata: metadata)
+    }
+
 }
 
 public struct DiagnosticQuery: Sendable, Equatable {

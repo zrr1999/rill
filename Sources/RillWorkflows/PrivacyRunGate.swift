@@ -353,7 +353,7 @@ public struct PrivacyRunGate: Sendable {
         recognitionOptionsProvider: @Sendable (
             WorkflowDefinition,
             ContextSnapshot
-        ) async -> SpeechRecognitionRequestOptions,
+        ) async throws -> SpeechRecognitionRequestOptions,
         workflow: WorkflowDefinition
     ) async throws -> AuthorizedWorkflowRunContext {
         let authorization = try await captureAuthorizedContext(
@@ -364,7 +364,7 @@ public struct PrivacyRunGate: Sendable {
         return AuthorizedWorkflowRunContext(
             workflow: workflow,
             contextSnapshot: authorization.context,
-            recognitionOptions: await recognitionOptionsProvider(
+            recognitionOptions: try await recognitionOptionsProvider(
                 workflow,
                 authorization.context
             ),
@@ -416,7 +416,7 @@ public struct PrivacyRunGate: Sendable {
         recognitionOptionsProvider: @Sendable (
             WorkflowDefinition,
             ContextSnapshot
-        ) async -> SpeechRecognitionRequestOptions,
+        ) async throws -> SpeechRecognitionRequestOptions,
         workflow: WorkflowDefinition
     ) async throws -> AuthorizedAudioProcessingLease {
         try await issueAudioProcessingLease(
@@ -440,7 +440,7 @@ public struct PrivacyRunGate: Sendable {
         recognitionOptionsProvider: @Sendable (
             WorkflowDefinition,
             ContextSnapshot
-        ) async -> SpeechRecognitionRequestOptions,
+        ) async throws -> SpeechRecognitionRequestOptions,
         workflow: WorkflowDefinition,
         monitorInterval: Duration = .milliseconds(50),
         revocationHandler: @escaping @Sendable (
@@ -486,7 +486,7 @@ public struct PrivacyRunGate: Sendable {
         recognitionOptionsProvider: @Sendable (
             WorkflowDefinition,
             ContextSnapshot
-        ) async -> SpeechRecognitionRequestOptions,
+        ) async throws -> SpeechRecognitionRequestOptions,
         workflow: WorkflowDefinition,
         liveAuthorizationState: LiveAudioSessionAuthorizationState?,
         audioLifetime: AudioCaptureLifetime?
@@ -499,7 +499,7 @@ public struct PrivacyRunGate: Sendable {
             contextProvider: contextProvider,
             workflow: workflow
         )
-        var recognitionOptions = await recognitionOptionsProvider(
+        var recognitionOptions = try await recognitionOptionsProvider(
             workflow,
             capture.authorizedContext
         )

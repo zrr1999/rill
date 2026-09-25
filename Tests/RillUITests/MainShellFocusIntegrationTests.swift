@@ -1549,12 +1549,12 @@ final class MainShellFocusIntegrationTests: XCTestCase {
             historyRepository: InMemoryHistoryRepository(records: [record])
         )
         for _ in 0..<100 {
-            if harness.model.historyRecords.contains(where: { $0.id == record.id }) {
+            if harness.model.history.historyRecords.contains(where: { $0.id == record.id }) {
                 break
             }
             try? await Task.sleep(for: .milliseconds(5))
         }
-        XCTAssertTrue(harness.model.historyRecords.contains(where: { $0.id == record.id }))
+        XCTAssertTrue(harness.model.history.historyRecords.contains(where: { $0.id == record.id }))
 
         let initialFocusWait = expectation(description: "Initial sidebar focus waits for its turn")
         let plainRecordsFocusWait = expectation(
@@ -1596,7 +1596,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
 
         XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
-        XCTAssertEqual(harness.model.historyNavigationRequest?.entryID, record.id)
+        XCTAssertEqual(harness.model.history.historyNavigationRequest?.entryID, record.id)
         XCTAssertTrue(
             window.firstResponder === detailFocusProbe,
             "A typed history destination must cancel the pending sidebar focus request."
@@ -1622,7 +1622,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(nil))
 
         for _ in 0..<100 {
-            if case .expired(let expiredEntryID) = harness.model.runHistoryDeepLinkState,
+            if case .expired(let expiredEntryID) = harness.model.history.runHistoryDeepLinkState,
                 expiredEntryID == missingEntryID
             {
                 break
@@ -1631,7 +1631,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         }
         await settle(window)
 
-        guard case .expired(let expiredEntryID) = harness.model.runHistoryDeepLinkState,
+        guard case .expired(let expiredEntryID) = harness.model.history.runHistoryDeepLinkState,
             expiredEntryID == missingEntryID
         else {
             return XCTFail("The missing typed history destination did not resolve as expired.")

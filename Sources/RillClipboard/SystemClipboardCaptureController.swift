@@ -370,7 +370,7 @@ public actor SystemClipboardCaptureController {
     await publishCaptureControlState()
     guard isCurrentControlState(.paused, revision: pausedRevision) else { return }
     await recordCaptureControlEvent(
-      event: "clipboard.capture.paused",
+      event: .clipboardCapturePaused,
       message: "Paused external clipboard capture after in-flight clipboard operations settled."
     )
     if desiredClipboardCaptureEnabled {
@@ -419,7 +419,7 @@ public actor SystemClipboardCaptureController {
     await recordInitialClipboardPrivacyIfNeeded(evaluation)
     guard isCurrentControlState(.active, revision: activeRevision) else { return }
     await recordCaptureControlEvent(
-      event: "clipboard.capture.resumed",
+      event: .clipboardCaptureResumed,
       message: "Resumed external clipboard capture from the current pasteboard baseline."
     )
     if !desiredClipboardCaptureEnabled {
@@ -453,7 +453,7 @@ public actor SystemClipboardCaptureController {
       return
     }
     await recordCaptureControlEvent(
-      event: "clipboard.capture.ignore-next-armed",
+      event: .clipboardCaptureIgnoreNextArmed,
       message: "Armed one-time external clipboard capture suppression."
     )
   }
@@ -526,7 +526,7 @@ extension SystemClipboardCaptureController {
       await recordCaptureDecision(
         evaluation.decision,
         context: evaluation.context,
-        event: "clipboard.capture.skipped",
+        event: .clipboardCaptureSkipped,
         message: "Skipped clipboard capture because of the active privacy policy."
       )
       return
@@ -579,7 +579,7 @@ extension SystemClipboardCaptureController {
       _ = transitionCaptureControl(to: .active)
       await publishCaptureControlState()
       await recordCaptureControlEvent(
-        event: "clipboard.capture.ignore-next-consumed",
+        event: .clipboardCaptureIgnoreNextConsumed,
         message: "Ignored one external clipboard change without reading its payload."
       )
       return
@@ -627,7 +627,7 @@ extension SystemClipboardCaptureController {
         await recordCaptureDecision(
           evaluationBeforePayloadRead.decision,
           context: evaluationBeforePayloadRead.context,
-          event: "clipboard.capture.skipped",
+          event: .clipboardCaptureSkipped,
           message:
             "Skipped clipboard capture because the privacy boundary changed before payload read."
         )
@@ -677,7 +677,7 @@ extension SystemClipboardCaptureController {
         await recordCaptureDecision(
           evaluationAfterPayloadRead.decision,
           context: evaluationAfterPayloadRead.context,
-          event: "clipboard.capture.skipped",
+          event: .clipboardCaptureSkipped,
           message: "Discarded clipboard payload because the privacy boundary changed during read."
         )
       } else if !focusAfterPayloadRead.hasSamePrivacyIdentity(as: focusSample)
@@ -735,7 +735,7 @@ extension SystemClipboardCaptureController {
             await recordCaptureDecision(
               capture.privacy.decision,
               context: capture.privacy.context,
-              event: "clipboard.capture.workflow-skipped",
+              event: .clipboardCaptureWorkflowSkipped,
               message: "Saved clipboard history without emitting a workflow event."
             )
           }
@@ -750,7 +750,7 @@ extension SystemClipboardCaptureController {
             DiagnosticEvent(
               subsystem: .systemClipboard,
               level: .warning,
-              event: "clipboard.state.persist-failed",
+              event: .clipboardStatePersistFailed,
               message: "Could not save the external clipboard to record history."
             )
           )
@@ -804,7 +804,7 @@ extension SystemClipboardCaptureController {
     await recordCaptureDecision(
       evaluation.decision,
       context: evaluation.context,
-      event: "clipboard.capture.initial-skipped",
+      event: .clipboardCaptureInitialSkipped,
       message: "Kept the initial clipboard outside Rill because of the active privacy policy."
     )
   }
@@ -878,7 +878,7 @@ extension SystemClipboardCaptureController {
     }
   }
 
-  fileprivate func recordCaptureControlEvent(event: String, message: String) async {
+  fileprivate func recordCaptureControlEvent(event: DiagnosticEventName, message: String) async {
     guard let diagnostics else { return }
     await diagnostics.record(
       DiagnosticEvent(
@@ -900,7 +900,7 @@ extension SystemClipboardCaptureController {
       DiagnosticEvent(
         subsystem: .systemClipboard,
         level: .debug,
-        event: "clipboard.capture.changed-before-read",
+        event: .clipboardCaptureChangedBeforeRead,
         message:
           "Skipped clipboard capture because the pasteboard changed during privacy evaluation.",
         metadata: ["bundleID": context.focus.bundleIdentifier ?? ""]
@@ -914,7 +914,7 @@ extension SystemClipboardCaptureController {
       DiagnosticEvent(
         subsystem: .systemClipboard,
         level: .info,
-        event: "clipboard.capture.focus-transition-skipped",
+        event: .clipboardCaptureFocusTransitionSkipped,
         message:
           "Skipped clipboard capture because application focus changed before the copy source could be verified.",
         metadata: [
@@ -957,7 +957,7 @@ extension SystemClipboardCaptureController {
   fileprivate func recordCaptureDecision(
     _ decision: PrivacyPolicyDecision,
     context: ContextSnapshot,
-    event: String,
+    event: DiagnosticEventName,
     message: String
   ) async {
     guard let diagnostics else { return }
@@ -968,7 +968,7 @@ extension SystemClipboardCaptureController {
       DiagnosticEvent(
         subsystem: .systemClipboard,
         level: isPolicyUnavailable ? .warning : .info,
-        event: isPolicyUnavailable ? "clipboard.capture.policy-unavailable" : event,
+        event: isPolicyUnavailable ? .clipboardCapturePolicyUnavailable : event,
         message: isPolicyUnavailable
           ? "Clipboard privacy settings could not be loaded; capture was blocked."
           : message,

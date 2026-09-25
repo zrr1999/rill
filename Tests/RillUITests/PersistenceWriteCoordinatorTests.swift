@@ -1,4 +1,5 @@
 import Foundation
+import RillCore
 import Testing
 @testable import RillUI
 
@@ -34,6 +35,27 @@ private actor PersistenceWriteProbe {
 
 @MainActor
 struct PersistenceWriteCoordinatorTests {
+  @Test func partialReplacementWaitsForAtomicWriteWithoutCancellingOtherKeys() async {
+    let writes = PersistenceWriteCoordinator()
+    let store = PersistenceWriteProbe()
+    var completedKeys: Set<AppSettingKey> = []
+    writes.replace(for: [.workflowLibrary, .vocabularyLibrary]) {
+      try await store.write("transaction", pause: true)
+      try Task.checkCancellation()
+    } completion: { result, keys in
+      if case .failure = result { Issue.record("A partial replacement cancelled the transaction.") }
+      completedKeys = keys
+    }
+    await store.waitUntilEntered()
+    writes.replace(for: .workflowLibrary, debounce: .zero) {
+      try await store.write("new-workflow")
+    } completion: { _ in }
+    await store.release()
+    await writes.flush()
+    #expect(await store.values == ["transaction", "new-workflow"])
+    #expect(completedKeys == [.vocabularyLibrary])
+  }
+
   @Test func replacementWaitsForRetiredWriteAndIgnoresItsFailure() async {
     let writes = PersistenceWriteCoordinator()
     let store = PersistenceWriteProbe()

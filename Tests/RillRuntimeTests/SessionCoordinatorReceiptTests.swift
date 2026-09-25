@@ -1,7 +1,8 @@
-
-@testable import RillCore
+@testable import RillKnowledge
 @testable import RillRecords
 @testable import RillWorkflows
+@testable import RillCore
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -34,7 +35,8 @@ private struct ReceiptResultAction: OutputAction {
     let result: ActionResult
     let probe: ReceiptActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.record(id)
         return result
     }
@@ -48,7 +50,8 @@ private struct ReceiptThrowingAction: OutputAction {
     let id: String
     let probe: ReceiptActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.record(id)
         throw ReceiptActionError()
     }
@@ -58,7 +61,8 @@ private struct ReceiptCancellingAction: OutputAction {
     let id: String
     let probe: ReceiptActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.record(id)
         throw CancellationError()
     }
@@ -88,7 +92,8 @@ private struct ReceiptBlockingAction: OutputAction {
     let gate: ReceiptBlockingGate
     let probe: ReceiptActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.record(id)
         await gate.wait()
         return .injected
@@ -686,8 +691,8 @@ final class SessionCoordinatorReceiptTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics
         )
-        return SessionCoordinator(
-            contextProvider: ReceiptContextProvider(),
+        return makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ReceiptRecognizer()]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: actions),

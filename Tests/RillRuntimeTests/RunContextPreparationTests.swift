@@ -1,7 +1,8 @@
-
-@testable import RillCore
 @testable import RillKnowledge
+@testable import RillRecords
 @testable import RillWorkflows
+@testable import RillCore
+import RillDomainTestSupport
 import Foundation
 import Testing
 
@@ -22,7 +23,7 @@ struct RunContextPreparationTests {
         let bus = EventBus()
         let resolver = CandidateResolver(eventBus: bus)
         let transformer = ContextQueueTransformer()
-        let coordinator = SessionCoordinator(contextProvider: ContextQueueContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ContextQueueRecognizer(result: recognition)]),
             transformerRegistry: TextTransformerRegistry(transformers: [transformer]),
             actionRegistry: OutputActionRegistry(actions: [ContextQueueAction()]), candidateResolver: resolver, eventBus: bus,
@@ -221,14 +222,14 @@ struct RunContextPreparationTests {
         let transformer = ContextQueueTransformer()
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let coordinator = SessionCoordinator(
-            contextProvider: ContextQueueContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ContextQueueRecognizer()]),
             transformerRegistry: TextTransformerRegistry(transformers: [transformer]),
             actionRegistry: OutputActionRegistry(actions: [ContextQueueAction()]),
             candidateResolver: CandidateResolver(eventBus: eventBus), eventBus: eventBus, diagnostics: diagnostics
         )
-        let queue = CapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
+        let queue = makeTestCapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
         let workflow = WorkflowDefinition(name: "Context queue", pipeline: PipelineDeclaration(
             recognizerID: "context.test", postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Cleanup")], outputActions: [OutputActionReference(id: "context.output")]
         ), ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue"))
@@ -367,5 +368,8 @@ private actor ContextQueueTransformer: TextTransformer {
 
 private struct ContextQueueAction: OutputAction {
     let id = "context.output"
-    func execute(text: String, context: ActionContext) async throws -> ActionResult { .copiedToClipboard }
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
+        return .copiedToClipboard
+    }
 }

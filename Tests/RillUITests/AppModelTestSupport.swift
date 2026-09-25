@@ -1,4 +1,7 @@
 @testable import RillWorkflows
+import RillRecords
+import RillDomainTestSupport
+import RillTestSupport
 import XCTest
 
 @testable import RillCore
@@ -40,7 +43,8 @@ struct UITestAction: OutputAction {
     self.log = log
   }
 
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      _ = try record.requireText(for: id)
     await log.increment()
     return .copiedToClipboard
   }
@@ -72,6 +76,7 @@ actor UITestSettingsStore: SettingsStore {
   private var settingsSnapshotRequests: [[AppSettingKey]] = []
   private var setCounts: [AppSettingKey: Int] = [:]
   private var atomicSnapshots: [[AppSettingKey: String]] = []
+  private var failNextAtomicWrite = false
   private var removeCounts: [AppSettingKey: Int] = [:]
   private var batchReadEntered = false
   private var batchReadEntryWaiters: [CheckedContinuation<Void, Never>] = []
@@ -169,11 +174,19 @@ actor UITestSettingsStore: SettingsStore {
   }
 
   func setStringsAtomically(_ values: [AppSettingKey: String]) async throws {
+    if failNextAtomicWrite || !failingSetKeys.isDisjoint(with: values.keys) {
+      failNextAtomicWrite = false
+      throw UITestSettingsStoreError.requestedFailure
+    }
     storage.merge(values) { _, newValue in newValue }
     atomicSnapshots.append(values)
     for key in values.keys {
       setCounts[key, default: 0] += 1
     }
+  }
+
+  func rejectNextAtomicWrite() {
+    failNextAtomicWrite = true
   }
 
   func removeValue(forKey key: AppSettingKey) async throws {
@@ -556,6 +569,7 @@ func makeHarness(
   localSpeechSettingsSource: LocalSpeechSettingsSource = LocalSpeechSettingsSource(),
   settingsWriteDebounceDuration: Duration = .milliseconds(300),
   historyRetentionMaintenanceInterval: Duration? = nil,
+  historyMaintenanceSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
   liveSubtitlePreparingHideDelay: Duration = .seconds(15),
   localSpeechTrustMaterialAvailable: Bool = true,
   localSpeechAvailability: LocalSpeechAvailability? = nil,
@@ -607,6 +621,8 @@ func makeHarness(
   clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void = {},
   refreshBenchmarkRecordingArchiveAction:
     @escaping @Sendable (Bool) async throws -> Void = { _ in },
+  benchmarkArchiveReader: (any BenchmarkRecordingArchiveReading)? = nil,
+  benchmarkCorpusExporter: (any BenchmarkCorpusExporting)? = nil,
   authorizeWorkflowRunAction:
     @escaping @Sendable (
       WorkflowDefinition
@@ -621,10 +637,12 @@ func makeHarness(
     @escaping @Sendable (
       WorkflowResolvedExecutionPlan
     ) async throws -> WorkflowExplanationReceipt = { plan in
-      AppModel.unavailableWorkflowExplanation(for: plan)
+      WorkflowLibraryModel.unavailableWorkflowExplanation(for: plan)
     },
   writeClipboardTextAction: @escaping @MainActor (String) -> Void = { _ in },
-  showRecordPanelAction: @escaping @Sendable () async -> Void = {}
+  showRecordPanelAction: @escaping @Sendable () async -> Void = {},
+  voiceResourceServices: VoiceResourceServices = makeVoiceResourceServicesForTesting(),
+  recordInteractionServices: RecordInteractionServices = makeRecordInteractionServicesForTesting()
 ) -> AppModelTestHarness {
   let eventBus = EventBus()
   let actionLog = ProbeActionLog()
@@ -644,8 +662,8 @@ func makeHarness(
       UITestAction(id: ExternalOutputActionID.markdownAppend, log: actionLog),
     ]
   )
-  let coordinator = SessionCoordinator(
-    contextProvider: UITestContextProvider(),
+  let coordinator = makeTestSessionCoordinator(
+
     recognizerRegistry: SpeechRecognizerRegistry(
       recognizers: [
         UITestRecognizer(
@@ -670,7 +688,7 @@ func makeHarness(
     settingsStore != nil
     || credentialStore != nil
     || !usesEphemeralSettingsStoreWhenNil
-  let model = AppModel(
+  let model = makeAppModelForTesting(
     workflows: resolvedWorkflows,
     eventBus: eventBus,
     sessionCoordinator: coordinator,
@@ -692,6 +710,7 @@ func makeHarness(
     loadsPersistentSettingsOnInitialization: loadsPersistentSettingsOnInitialization,
     settingsWriteDebounceDuration: settingsWriteDebounceDuration,
     historyRetentionMaintenanceInterval: historyRetentionMaintenanceInterval,
+    historyMaintenanceSleep: historyMaintenanceSleep,
     liveSubtitlePreparingHideDelay: liveSubtitlePreparingHideDelay,
     localSpeechTrustMaterialAvailable: localSpeechTrustMaterialAvailable,
     localSpeechAvailability: localSpeechAvailability,
@@ -716,6 +735,8 @@ func makeHarness(
     loadFailedAudioRecoveryReceiptsAction: loadFailedAudioRecoveryReceiptsAction,
     clearBenchmarkRecordingArchiveAction: clearBenchmarkRecordingArchiveAction,
     refreshBenchmarkRecordingArchiveAction: refreshBenchmarkRecordingArchiveAction,
+    benchmarkArchiveReader: benchmarkArchiveReader,
+    benchmarkCorpusExporter: benchmarkCorpusExporter,
     authorizeWorkflowRunAction: authorizeWorkflowRunAction,
     explainResolvedWorkflowAction: explainResolvedWorkflowAction,
     writeClipboardTextAction: writeClipboardTextAction,
@@ -725,7 +746,9 @@ func makeHarness(
     requestAccessibilityAction: {},
     requestMicrophoneAction: {},
     openAccessibilitySettingsAction: {},
-    openMicrophoneSettingsAction: {}, requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {}
+    openMicrophoneSettingsAction: {}, requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {},
+    voiceResourceServices: voiceResourceServices,
+    recordInteractionServices: recordInteractionServices
   )
   model.installRecordPanelAction {
     Task {

@@ -235,7 +235,8 @@ public actor WorkflowRunReceiptRecorder {
     public func finishAction(
         runID: UUID,
         actionIndex: Int,
-        result: WorkflowActionResultCode
+        result: WorkflowActionResultCode,
+        failureDisposition: OutputFailureDisposition? = nil
     ) throws {
         var run = try mutablePendingRun(runID: runID)
         guard run.preparedTerminal == nil else {
@@ -263,7 +264,8 @@ public actor WorkflowRunReceiptRecorder {
                 to: finishedAt
             ),
             durationMilliseconds: finishedAt >= activeAction.startedAtNanoseconds
-                ? (finishedAt - activeAction.startedAtNanoseconds) / 1_000_000 : nil
+                ? (finishedAt - activeAction.startedAtNanoseconds) / 1_000_000 : nil,
+            failureDisposition: failureDisposition
         )
         if run.actionDetails.count < WorkflowRunReceipt.maximumActionDetails {
             run.actionDetails.append(detail)
@@ -505,7 +507,7 @@ public actor WorkflowRunReceiptRecorder {
                 runID: runID,
                 subsystem: .session,
                 level: .error,
-                event: "run-receipt.persistence.failed",
+                event: .runReceiptPersistenceFailed,
                 message: "A terminal run receipt could not be persisted."
             )
         )

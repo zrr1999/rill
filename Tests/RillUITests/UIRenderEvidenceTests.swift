@@ -54,13 +54,13 @@ final class UIRenderEvidenceTests: XCTestCase {
                 try await render(RecordWorkspaceView(workspace: workspace, language: language, copySelection: { _ in .storageUnavailable }),
                     size: NSSize(width: 620, height: 660), dark: dark,
                     to: output.appendingPathComponent("records-compact-\(variant).png"))
-                workspace.payloadKindFilter = .image
-                workspace.showsPinnedOnly = true
+                workspace.setPayloadKindFilter(.image)
+                workspace.setShowsPinnedOnly(true)
                 try await render(RecordWorkspaceView(workspace: workspace, language: language),
                     size: NSSize(width: 720, height: 560), dark: dark,
                     to: output.appendingPathComponent("records-no-results-\(variant).png"))
-                workspace.payloadKindFilter = nil
-                workspace.showsPinnedOnly = false
+                workspace.setPayloadKindFilter(nil)
+                workspace.setShowsPinnedOnly(false)
                 try await render(GlobalSearchResultsView(query: .constant("unavailable"), results: [], selectedResultID: nil,
                     historySearchState: .failed, recordSearchState: .failed, historyFailureActionTitle: "Retry", language: language,
                     focusRequest: 0, onMoveSelection: { _ in }, onSubmit: {}, onCancel: {},
@@ -92,20 +92,19 @@ final class UIRenderEvidenceTests: XCTestCase {
         await workspace.shutdown()
     }
 
-    func testRenderFocusedSettingsDisclosure() async throws {
+    func testRenderTextCorrection() async throws {
         guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
             throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
         }
-        let output = URL(fileURLWithPath: directory, isDirectory: true)
-        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         let model = makeHarness().model
         for language in AppLanguage.allCases {
             model.setInterfaceLanguage(language)
             for dark in [false, true] {
-                model.showSettings(.storage)
-                try await render(SettingsView(model: model, pane: .data), size: NSSize(width: 760, height: 640),
-                    dark: dark, focusWindow: true,
-                    to: output.appendingPathComponent("settings-focus-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+                let sheet = VocabularyCorrectionSheet(model: model,
+                    source: RecognitionCorrectionSource(preMappingText: "请保留原始文本，不要重复发送。", context: VocabularyRuleContext()),
+                    workflowRunID: UUID())
+                try await render(sheet, size: NSSize(width: 620, height: 600), dark: dark,
+                    to: URL(fileURLWithPath: directory).appendingPathComponent("correction-\(language.rawValue)-\(dark ? "dark" : "light").png"))
             }
         }
     }

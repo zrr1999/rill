@@ -3,7 +3,7 @@ import RillCore
 
 extension AppModel {
   public func updateSpeechModelPoolMemoryPressureDegradation(_ isDegraded: Bool) {
-    speechModelPoolDegradedByMemoryPressure = isDegraded
+    self.voice.speechModelPoolDegradedByMemoryPressure = isDegraded
   }
 
   public func recordMeasuredSpeechModelPeak(
@@ -12,64 +12,64 @@ extension AppModel {
   ) {
     guard peakByteCount > 0,
       speechModelResourceCatalog.contains(where: { $0.id == modelID }),
-      peakByteCount > (measuredSpeechModelPeakByteCounts[modelID] ?? 0)
+      peakByteCount > (self.voice.measuredSpeechModelPeakByteCounts[modelID] ?? 0)
     else { return }
 
-    measuredSpeechModelPeakByteCounts[modelID] = peakByteCount
-    if residentSpeechModelIDs.contains(modelID) {
-      residentSpeechBudgetConfirmation = nil
+    self.voice.measuredSpeechModelPeakByteCounts[modelID] = peakByteCount
+    if self.settings.residentSpeechModelIDs.contains(modelID) {
+      applyResidentSpeechBudgetConfirmation(nil)
     }
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
-    guard let data = try? encoder.encode(measuredSpeechModelPeakByteCounts),
+    guard let data = try? encoder.encode(self.voice.measuredSpeechModelPeakByteCounts),
       let value = String(data: data, encoding: .utf8)
     else { return }
     persistStringSetting(value, for: .speechModelMeasuredPeaks)
   }
 
   func synchronizeResidentSpeechModels(from previousModelIDs: Set<String>) {
-    guard !isLoadingSettings, !isRestoringSettings, !hasBegunApplicationShutdown else {
+    guard !self.settings.isLoading, !self.settings.isRestoringSettings, !hasBegunApplicationShutdown else {
       return
     }
 
-    let desiredModelIDs = residentSpeechModelIDs.intersection(enabledSpeechModelIDs)
+    let desiredModelIDs = self.settings.residentSpeechModelIDs.intersection(self.settings.enabledSpeechModelIDs)
     let addedModelIDs = desiredModelIDs.subtracting(previousModelIDs)
     let removedModelIDs = previousModelIDs.subtracting(desiredModelIDs)
     guard !addedModelIDs.isEmpty || !removedModelIDs.isEmpty else { return }
 
-    let previousTask = residentSpeechModelSynchronizationTask
+    let previousTask = self.voice.residentSpeechModelSynchronizationTask
     let taskID = UUID()
     let task = Task { [weak self, synchronizeResidentSpeechModelsAction] in
       await previousTask?.value
       guard !Task.isCancelled else { return }
       await synchronizeResidentSpeechModelsAction(addedModelIDs, removedModelIDs)
       _ = await MainActor.run {
-        self?.residentSpeechModelSynchronizationTasks.removeValue(forKey: taskID)
+        self?.voice.residentSpeechModelSynchronizationTasks.removeValue(forKey: taskID)
       }
     }
-    residentSpeechModelSynchronizationTasks[taskID] = task
-    residentSpeechModelSynchronizationTask = task
+    self.voice.residentSpeechModelSynchronizationTasks[taskID] = task
+    self.voice.residentSpeechModelSynchronizationTask = task
   }
 
   func cancelResidentSpeechModelSynchronizationForApplicationShutdown() {
-    for task in residentSpeechModelSynchronizationTasks.values {
+    for task in self.voice.residentSpeechModelSynchronizationTasks.values {
       task.cancel()
     }
-    residentSpeechModelSynchronizationTasks.removeAll()
-    residentSpeechModelSynchronizationTask = nil
-    for task in enabledSpeechModelPreparationTasks.values {
+    self.voice.residentSpeechModelSynchronizationTasks.removeAll()
+    self.voice.residentSpeechModelSynchronizationTask = nil
+    for task in self.voice.enabledSpeechModelPreparationTasks.values {
       task.cancel()
     }
-    enabledSpeechModelPreparationTasks.removeAll()
+    self.voice.enabledSpeechModelPreparationTasks.removeAll()
   }
 
   private func prepareEnabledSpeechModel(_ modelID: String) {
-    enabledSpeechModelPreparationTasks.removeValue(forKey: modelID)?.cancel()
-    enabledSpeechModelPreparationTasks[modelID] = Task {
+    self.voice.enabledSpeechModelPreparationTasks.removeValue(forKey: modelID)?.cancel()
+    self.voice.enabledSpeechModelPreparationTasks[modelID] = Task {
       [weak self, prepareEnabledSpeechModelAction] in
       await prepareEnabledSpeechModelAction(modelID)
       _ = await MainActor.run {
-        self?.enabledSpeechModelPreparationTasks.removeValue(forKey: modelID)
+        self?.voice.enabledSpeechModelPreparationTasks.removeValue(forKey: modelID)
       }
     }
   }
@@ -81,7 +81,7 @@ extension AppModel {
         capability: .speechToText,
         downloadByteCount: $0.approximateDownloadByteCount,
         conservativeRuntimePeakByteCount: $0.conservativeRuntimePeakByteCount,
-        measuredPeakByteCount: measuredSpeechModelPeakByteCounts[$0.id]
+        measuredPeakByteCount: self.voice.measuredSpeechModelPeakByteCounts[$0.id]
       )
     }
     let textToSpeech = ttsModelOptions.map {
@@ -89,7 +89,7 @@ extension AppModel {
         id: $0.id,
         capability: .textToSpeech,
         downloadByteCount: $0.approximateDownloadByteCount,
-        measuredPeakByteCount: measuredSpeechModelPeakByteCounts[$0.id]
+        measuredPeakByteCount: self.voice.measuredSpeechModelPeakByteCounts[$0.id]
       )
     }
     return speechToText + textToSpeech
@@ -97,7 +97,7 @@ extension AppModel {
 
   public var residentSpeechModelBudget: SpeechModelResourceBudget {
     SpeechModelResourceBudget(
-      residentModelIDs: residentSpeechModelIDs,
+      residentModelIDs: self.settings.residentSpeechModelIDs,
       catalog: speechModelResourceCatalog,
       physicalMemoryByteCount: UInt64(max(localSpeechPhysicalMemoryGiB, 0))
         * 1_073_741_824
@@ -105,7 +105,7 @@ extension AppModel {
   }
 
   public var pendingResidentSpeechModelBudget: SpeechModelResourceBudget? {
-    pendingResidentSpeechModelIDs.map {
+    self.voice.pendingResidentSpeechModelIDs.map {
       SpeechModelResourceBudget(
         residentModelIDs: $0,
         catalog: speechModelResourceCatalog,
@@ -118,19 +118,20 @@ extension AppModel {
   public func setSpeechModelEnabled(_ modelID: String, enabled: Bool) {
     guard speechModelResourceCatalog.contains(where: { $0.id == modelID }) else { return }
     if enabled {
-      let inserted = enabledSpeechModelIDs.insert(modelID).inserted
+      let inserted = !self.settings.enabledSpeechModelIDs.contains(modelID)
+      applyEnabledSpeechModelIDs(self.settings.enabledSpeechModelIDs.union([modelID]))
       if inserted { prepareEnabledSpeechModel(modelID) }
     } else {
-      enabledSpeechModelPreparationTasks.removeValue(forKey: modelID)?.cancel()
-      enabledSpeechModelIDs.remove(modelID)
-      residentSpeechModelIDs.remove(modelID)
-      pendingResidentSpeechModelIDs?.remove(modelID)
+      self.voice.enabledSpeechModelPreparationTasks.removeValue(forKey: modelID)?.cancel()
+      applyEnabledSpeechModelIDs(self.settings.enabledSpeechModelIDs.subtracting([modelID]))
+      applyResidentSpeechModelIDs(self.settings.residentSpeechModelIDs.subtracting([modelID]))
+      self.voice.pendingResidentSpeechModelIDs?.remove(modelID)
     }
   }
 
   public func setSpeechModelResident(_ modelID: String, resident: Bool) {
-    guard enabledSpeechModelIDs.contains(modelID) else { return }
-    var proposed = residentSpeechModelIDs
+    guard self.settings.enabledSpeechModelIDs.contains(modelID) else { return }
+    var proposed = self.settings.residentSpeechModelIDs
     if resident {
       proposed.insert(modelID)
     } else {
@@ -143,29 +144,29 @@ extension AppModel {
         * 1_073_741_824
     )
     if budget.requiresConfirmation,
-      residentSpeechBudgetConfirmation != budget.confirmationFingerprint
+      self.settings.residentSpeechBudgetConfirmation != budget.confirmationFingerprint
     {
-      pendingResidentSpeechModelIDs = proposed
+      self.voice.pendingResidentSpeechModelIDs = proposed
       return
     }
-    pendingResidentSpeechModelIDs = nil
-    residentSpeechModelIDs = proposed
+    self.voice.pendingResidentSpeechModelIDs = nil
+    applyResidentSpeechModelIDs(proposed)
   }
 
   public func confirmPendingResidentSpeechModels() {
-    guard let proposed = pendingResidentSpeechModelIDs else { return }
+    guard let proposed = self.voice.pendingResidentSpeechModelIDs else { return }
     let budget = SpeechModelResourceBudget(
       residentModelIDs: proposed,
       catalog: speechModelResourceCatalog,
       physicalMemoryByteCount: UInt64(max(localSpeechPhysicalMemoryGiB, 0))
         * 1_073_741_824
     )
-    residentSpeechBudgetConfirmation = budget.confirmationFingerprint
-    residentSpeechModelIDs = proposed
-    pendingResidentSpeechModelIDs = nil
+    applyResidentSpeechBudgetConfirmation(budget.confirmationFingerprint)
+    applyResidentSpeechModelIDs(proposed)
+    self.voice.pendingResidentSpeechModelIDs = nil
   }
 
   public func cancelPendingResidentSpeechModels() {
-    pendingResidentSpeechModelIDs = nil
+    self.voice.pendingResidentSpeechModelIDs = nil
   }
 }

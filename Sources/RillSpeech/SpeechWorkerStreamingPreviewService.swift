@@ -20,28 +20,20 @@ public actor SpeechWorkerStreamingPreviewService {
     self.measuredPeakObserver = measuredPeakObserver
   }
 
-  func makeSession(
+  public func makeSession(
     for request: AudioCaptureRequest
   ) async -> (any LocalSpeechStreamingPreviewSession)? {
     do {
       let settings = try await settingsProvider()
       let configuration = request.configuration
-      let modelID = LocalSpeechModelCatalog.effectiveModelIdentifier(
-        settings: settings,
-        modelOverride: configuration.modelOverride
-      )
-      guard MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelID),
+      guard let modelID = request.options.modelID,
+        MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelID),
         settings.enabledModelIDs.contains(modelID)
-      else {
-        return nil
-      }
-      let language =
-        configuration.languageOverride
-        ?? settings.language
-      let profile =
-        SpeechWorkerStreamingProfile(
-          rawValue: configuration.streamingProfile ?? ""
-        ) ?? Self.defaultProfile(for: request)
+      else { return nil }
+      let language = request.options.language
+      let profile = SpeechWorkerStreamingProfile(
+        rawValue: configuration.streamingProfile ?? ""
+      ) ?? Self.defaultProfile(for: request)
       let livePreview = configuration.livePreviewEnabled
       guard livePreview || request.endpointControl != nil else { return nil }
       let workerSession = try await supervisor.startStreaming(
@@ -58,6 +50,7 @@ public actor SpeechWorkerStreamingPreviewService {
       return SpeechWorkerStreamingPreviewSession(
         workerSession: workerSession,
         modelID: modelID,
+        keytermStatus: request.options.hints.keyterms.isEmpty ? .notRequested : .unsupported,
         measuredPeakObserver: measuredPeakObserver
       )
     } catch {
@@ -91,6 +84,7 @@ public actor SpeechWorkerStreamingPreviewService {
       return SpeechWorkerStreamingPreviewSession(
         workerSession: workerSession,
         modelID: modelID,
+        keytermStatus: .notRequested,
         measuredPeakObserver: measuredPeakObserver
       )
     } catch {
@@ -111,9 +105,10 @@ public actor SpeechWorkerStreamingPreviewService {
     return .realtime
   }
 
+
 }
 
-private final class SpeechWorkerStreamingPreviewSession:
+final class SpeechWorkerStreamingPreviewSession:
   LocalSpeechStreamingPreviewSession,
   @unchecked Sendable
 {
@@ -129,6 +124,7 @@ private final class SpeechWorkerStreamingPreviewSession:
 
   private let workerSession: SpeechWorkerStreamingSession
   private let modelID: String
+  let keytermStatus: RecognitionHintApplicationStatus
   private let measuredPeakObserver: @Sendable (String, UInt64) async -> Void
   private let lock = NSLock()
   private var state = State()
@@ -137,10 +133,12 @@ private final class SpeechWorkerStreamingPreviewSession:
   init(
     workerSession: SpeechWorkerStreamingSession,
     modelID: String,
+    keytermStatus: RecognitionHintApplicationStatus,
     measuredPeakObserver: @escaping @Sendable (String, UInt64) async -> Void
   ) {
     self.workerSession = workerSession
     self.modelID = modelID
+    self.keytermStatus = keytermStatus
     self.measuredPeakObserver = measuredPeakObserver
     eventTask = Task { [weak self] in
       do {
@@ -154,6 +152,9 @@ private final class SpeechWorkerStreamingPreviewSession:
   }
 
   var providesVoiceActivity: Bool { true }
+  var hasConfirmedText: Bool {
+    !QwenStreamingText.sanitize(lock.withLock { state.confirmed }).isEmpty
+  }
 
   deinit {
     eventTask?.cancel()
@@ -213,10 +214,15 @@ private final class SpeechWorkerStreamingPreviewSession:
     return currentText()
   }
 
-  func drainVoiceActivity() -> [SpeechWorkerVADActivity] {
+  func drainVoiceActivity() -> [SpeechVoiceActivity] {
     lock.withLock {
       defer { state.pendingVoiceActivity.removeAll(keepingCapacity: true) }
-      return state.pendingVoiceActivity
+      return state.pendingVoiceActivity.map {
+        SpeechVoiceActivity(
+          isSpeech: $0.isSpeech,
+          durationSeconds: Double(MLXSileroVADConstants.chunkSampleCount) / 16_000
+        )
+      }
     }
   }
 
@@ -262,11 +268,12 @@ private final class SpeechWorkerStreamingPreviewSession:
   }
 
   private func currentText() -> String {
-    lock.withLock {
+    let rawText = lock.withLock {
       if !state.completed.isEmpty { return state.completed }
       if state.confirmed.isEmpty { return state.provisional }
       if state.provisional.isEmpty { return state.confirmed }
       return state.confirmed + " " + state.provisional
     }
+    return QwenStreamingText.sanitize(rawText)
   }
 }

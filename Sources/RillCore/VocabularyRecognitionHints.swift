@@ -26,6 +26,7 @@ public final class VocabularyLibrarySource: @unchecked Sendable {
     }
 
     private let lock = NSLock()
+    private var revision = UUID()
     private var state: State
     private var legacyRulesSnapshot: [VocabularyRule]?
 
@@ -74,6 +75,17 @@ public final class VocabularyLibrarySource: @unchecked Sendable {
         }
     }
 
+    public func snapshot() throws -> RecognitionVocabularySnapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        switch state {
+        case .loading: throw VocabularyLibrarySourceError.notReady
+        case .unavailable(let reason): throw VocabularyLibrarySourceError.unavailable(reason)
+        case .available(let collections):
+            return RecognitionVocabularySnapshot(revision: revision, collections: collections)
+        }
+    }
+
     public var hasAvailableRules: Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -86,6 +98,7 @@ public final class VocabularyLibrarySource: @unchecked Sendable {
 
     public func update(_ rules: [VocabularyRule]) {
         lock.lock()
+        revision = UUID()
         legacyRulesSnapshot = rules
         state = .available([
             .personal(entries: rules.map(VocabularyEntry.init(rule:))),
@@ -95,6 +108,7 @@ public final class VocabularyLibrarySource: @unchecked Sendable {
 
     public func updateCollections(_ collections: [VocabularyCollection]) {
         lock.lock()
+        revision = UUID()
         legacyRulesSnapshot = collections.flatMap { collection in
             collection.entries.map { $0.legacyRule() }
         }

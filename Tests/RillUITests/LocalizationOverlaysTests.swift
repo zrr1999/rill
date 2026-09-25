@@ -59,7 +59,7 @@ final class LocalizationOverlaysTests: XCTestCase {
     )
     XCTAssertEqual(
       GlobalSearchText.historyRetry(language: .simplifiedChinese),
-      UIStrings.text(.retryGlobalInput, language: .simplifiedChinese)
+      L10n.text(.retryGlobalInput, language: .simplifiedChinese)
     )
     XCTAssertEqual(
       GlobalSearchText.genericRun(language: .english),
@@ -79,11 +79,11 @@ final class LocalizationOverlaysTests: XCTestCase {
     }
     XCTAssertEqual(
       GlobalSearchResultCategory.workflows.title(language: .english),
-      UIStrings.text(.sidebarWorkflows, language: .english)
+      L10n.text(.sidebarWorkflows, language: .english)
     )
     XCTAssertEqual(
       GlobalSearchResultCategory.settings.title(language: .simplifiedChinese),
-      UIStrings.text(.settingsTitle, language: .simplifiedChinese)
+      L10n.text(.settingsTitle, language: .simplifiedChinese)
     )
   }
 }

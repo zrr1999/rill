@@ -14,7 +14,7 @@ enum WorkflowExternalOutputValidationMessage {
     case markdownPathInvalid
 }
 
-extension UIStrings {
+extension L10n {
     static func externalOutputField(_ field: WorkflowExternalOutputField, language: AppLanguage) -> String {
         switch (language, field) {
         case (.english, .webhookURL): return "Webhook URL"

@@ -1,3 +1,4 @@
+@testable import RillRecords
 
 @testable import RillCore
 @testable import RillWorkflows

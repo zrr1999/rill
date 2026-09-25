@@ -1,4 +1,5 @@
 import XCTest
+import RillTestSupport
 @testable import RillCore
 @testable import RillUI
 
@@ -6,21 +7,24 @@ import XCTest
 final class AppModelClipboardCapturePreferenceTests: XCTestCase {
     func testMissingPreferenceKeepsCaptureDisabledWithoutRewritingStore() async {
         let store = UITestSettingsStore()
-        let harness = makeHarness(settingsStore: store)
+        var replayedEnabled: Bool?
+        var replayedRevision: UInt64?
+        let harness = makeHarness(
+            settingsStore: store,
+            recordInteractionServices: makeRecordInteractionServicesForTesting(
+                setCaptureEnabled: { enabled, revision in
+                    replayedEnabled = enabled
+                    replayedRevision = revision
+                },
+                ignoreNextExternalChange: {}
+            )
+        )
 
         await waitUntilSettingsLoadFinishes(harness.model)
 
-        XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
-        var replayedEnabled: Bool?
-        var replayedRevision: UInt64?
-        harness.model.installSystemClipboardCaptureControlActions(
-            setEnabled: { enabled, revision in
-                replayedEnabled = enabled
-                replayedRevision = revision
-            },
-            ignoreNextExternalChange: {}
-        )
+
         XCTAssertEqual(replayedEnabled, false)
         XCTAssertEqual(replayedRevision, harness.model.clipboardCapturePreferenceRevision)
         let activity = await store.activitySnapshot()
@@ -30,21 +34,24 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
 
     func testStoredFalsePublishesResolvedRevisionEvenWhenInitialValueIsAlreadyFalse() async {
         let store = UITestSettingsStore(storage: [.systemClipboardCaptureEnabled: "false"])
-        let harness = makeHarness(settingsStore: store)
+        var replayedEnabled: Bool?
+        var replayedRevision: UInt64?
+        let harness = makeHarness(
+            settingsStore: store,
+            recordInteractionServices: makeRecordInteractionServicesForTesting(
+                setCaptureEnabled: { enabled, revision in
+                    replayedEnabled = enabled
+                    replayedRevision = revision
+                },
+                ignoreNextExternalChange: {}
+            )
+        )
 
         await waitUntilSettingsLoadFinishes(harness.model)
 
-        XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
-        var replayedEnabled: Bool?
-        var replayedRevision: UInt64?
-        harness.model.installSystemClipboardCaptureControlActions(
-            setEnabled: { enabled, revision in
-                replayedEnabled = enabled
-                replayedRevision = revision
-            },
-            ignoreNextExternalChange: {}
-        )
+
         XCTAssertEqual(replayedEnabled, false)
         XCTAssertEqual(replayedRevision, harness.model.clipboardCapturePreferenceRevision)
     }
@@ -60,9 +67,9 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
             let harness = makeHarness(settingsStore: store)
             await waitUntilSettingsLoadFinishes(harness.model)
 
-            XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+            XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
             XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
-            XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
+            XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
             XCTAssertFalse(harness.model.setSystemClipboardCaptureEnabled(true))
             let activity = await store.activitySnapshot()
             XCTAssertNil(activity.setCounts[.systemClipboardCaptureEnabled])
@@ -77,57 +84,60 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
 
         await waitUntilSettingsLoadFinishes(harness.model)
 
-        XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
-        XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
+        XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
         XCTAssertFalse(harness.model.setSystemClipboardCaptureEnabled(true))
     }
 
     func testSettingsBatchFailurePublishesResolvedClosedRevision() async {
         let store = UITestSettingsStore(failBatchReads: true)
-        let harness = makeHarness(settingsStore: store)
+        var replayedEnabled: Bool?
+        var replayedRevision: UInt64?
+        let harness = makeHarness(
+            settingsStore: store,
+            recordInteractionServices: makeRecordInteractionServicesForTesting(
+                setCaptureEnabled: { enabled, revision in
+                    replayedEnabled = enabled
+                    replayedRevision = revision
+                },
+                ignoreNextExternalChange: {}
+            )
+        )
 
         await waitUntilSettingsLoadFinishes(harness.model)
 
-        XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertGreaterThan(harness.model.clipboardCapturePreferenceRevision, 0)
-        XCTAssertTrue(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
-        var replayedEnabled: Bool?
-        var replayedRevision: UInt64?
-        harness.model.installSystemClipboardCaptureControlActions(
-            setEnabled: { enabled, revision in
-                replayedEnabled = enabled
-                replayedRevision = revision
-            },
-            ignoreNextExternalChange: {}
-        )
+        XCTAssertTrue(harness.model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
+
         XCTAssertEqual(replayedEnabled, false)
         XCTAssertEqual(replayedRevision, harness.model.clipboardCapturePreferenceRevision)
     }
 
     func testUserChangePersistsAndPublishesMonotonicPreferenceRevision() async {
         let store = UITestSettingsStore()
+        var publishedEnabled: [Bool] = []
+        var publishedRevisions: [UInt64] = []
         let harness = makeHarness(
             settingsStore: store,
-            settingsWriteDebounceDuration: .zero
+            settingsWriteDebounceDuration: .zero,
+            recordInteractionServices: makeRecordInteractionServicesForTesting(
+                setCaptureEnabled: { enabled, revision in
+                    publishedEnabled.append(enabled)
+                    publishedRevisions.append(revision)
+                },
+                ignoreNextExternalChange: {}
+            )
         )
         await waitUntilSettingsLoadFinishes(harness.model)
         let resolvedRevision = harness.model.clipboardCapturePreferenceRevision
-        var publishedEnabled: [Bool] = []
-        var publishedRevisions: [UInt64] = []
-        harness.model.installSystemClipboardCaptureControlActions(
-            setEnabled: { enabled, revision in
-                publishedEnabled.append(enabled)
-                publishedRevisions.append(revision)
-            },
-            ignoreNextExternalChange: {}
-        )
 
         XCTAssertTrue(harness.model.setSystemClipboardCaptureEnabled(true))
         await harness.model.flushPendingPersistenceWrites()
 
-        XCTAssertEqual(publishedEnabled, [false, true])
-        XCTAssertEqual(publishedRevisions, [resolvedRevision, resolvedRevision + 1])
+        XCTAssertEqual(publishedEnabled, [false, false, true])
+        XCTAssertEqual(publishedRevisions, [0, resolvedRevision, resolvedRevision + 1])
         let activity = await store.activitySnapshot()
         XCTAssertEqual(activity.storage[.systemClipboardCaptureEnabled], "true")
         XCTAssertEqual(activity.setCounts[.systemClipboardCaptureEnabled], 1)
@@ -138,27 +148,27 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
             storage: [.systemClipboardCaptureEnabled: "false"],
             suspendBatchReads: true
         )
-        let harness = makeHarness(
-            settingsStore: store,
-            settingsWriteDebounceDuration: .zero
-        )
-        await store.waitUntilBatchReadIsSuspended()
         var publishedEnabled: [Bool] = []
         var publishedRevisions: [UInt64] = []
-        harness.model.installSystemClipboardCaptureControlActions(
-            setEnabled: { enabled, revision in
-                publishedEnabled.append(enabled)
-                publishedRevisions.append(revision)
-            },
-            ignoreNextExternalChange: {}
+        let harness = makeHarness(
+            settingsStore: store,
+            settingsWriteDebounceDuration: .zero,
+            recordInteractionServices: makeRecordInteractionServicesForTesting(
+                setCaptureEnabled: { enabled, revision in
+                    publishedEnabled.append(enabled)
+                    publishedRevisions.append(revision)
+                },
+                ignoreNextExternalChange: {}
+            )
         )
+        await store.waitUntilBatchReadIsSuspended()
 
         XCTAssertTrue(harness.model.setSystemClipboardCaptureEnabled(true))
         await harness.model.flushPendingPersistenceWrites()
         await store.resumeBatchRead()
         await waitUntilSettingsLoadFinishes(harness.model)
 
-        XCTAssertTrue(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertTrue(harness.model.settings.systemClipboardCaptureEnabled)
         XCTAssertEqual(publishedEnabled, [false, true])
         XCTAssertEqual(publishedRevisions, [0, 1])
         let activity = await store.activitySnapshot()
@@ -171,29 +181,31 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
             storage: [.systemClipboardCaptureEnabled: "true"],
             unavailableKeys: [.systemClipboardCaptureEnabled]
         )
-        let harness = makeHarness(settingsStore: store)
-        await waitUntilSettingsLoadFinishes(harness.model)
-        let failedClosedRevision = harness.model.clipboardCapturePreferenceRevision
         var publishedEnabled: [Bool] = []
         var publishedRevisions: [UInt64] = []
-        harness.model.installSystemClipboardCaptureControlActions(
-            setEnabled: { enabled, revision in
-                publishedEnabled.append(enabled)
-                publishedRevisions.append(revision)
-            },
-            ignoreNextExternalChange: {}
+        let harness = makeHarness(
+            settingsStore: store,
+            recordInteractionServices: makeRecordInteractionServicesForTesting(
+                setCaptureEnabled: { enabled, revision in
+                    publishedEnabled.append(enabled)
+                    publishedRevisions.append(revision)
+                },
+                ignoreNextExternalChange: {}
+            )
         )
+        await waitUntilSettingsLoadFinishes(harness.model)
+        let failedClosedRevision = harness.model.clipboardCapturePreferenceRevision
 
         await store.setUnavailableKeys([])
         harness.model.retryUnavailableScalarSettings(in: .systemClipboard)
         await waitUntil {
-            !harness.model.isRetryingUnavailableScalarSettings(in: .systemClipboard)
+            !harness.model.settings.isRetryingUnavailableScalarSettings(in: .systemClipboard)
         }
 
-        XCTAssertTrue(harness.model.systemClipboardCaptureEnabled)
-        XCTAssertFalse(harness.model.hasUnavailableScalarSettings(in: .systemClipboard))
-        XCTAssertEqual(publishedEnabled, [false, true])
-        XCTAssertEqual(publishedRevisions, [failedClosedRevision, failedClosedRevision + 1])
+        XCTAssertTrue(harness.model.settings.systemClipboardCaptureEnabled)
+        XCTAssertFalse(harness.model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
+        XCTAssertEqual(publishedEnabled, [false, false, true])
+        XCTAssertEqual(publishedRevisions, [0, failedClosedRevision, failedClosedRevision + 1])
         let activity = await store.activitySnapshot()
         XCTAssertNil(activity.setCounts[.systemClipboardCaptureEnabled])
     }
@@ -221,7 +233,7 @@ final class AppModelClipboardCapturePreferenceTests: XCTestCase {
     }
 
     private func waitUntilSettingsLoadFinishes(_ model: AppModel) async {
-        await waitUntil { !model.isLoadingSettings }
+        await waitUntil { !model.settings.isLoading }
     }
 
     private func waitUntil(_ predicate: @escaping @MainActor () -> Bool) async {

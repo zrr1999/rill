@@ -374,7 +374,7 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
     XCTAssertEqual(routedRunIDs, [runID])
   }
 
-  func testSameRunExpandsForOverlayTextAndCompactsAfterCapture() throws {
+  func testSameRunKeepsExpandedLayoutThroughFinalization() throws {
     _ = NSApplication.shared
     let controller = LiveSubtitlePanelController(
       visibleFrameResolver: { self.visibleFrame },
@@ -409,12 +409,12 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
     )
 
     let state = try XCTUnwrap(controller.windowState)
-    XCTAssertNotEqual(state.contentSize, initialSize)
+    XCTAssertEqual(state.contentSize, initialSize)
     XCTAssertEqual(
       state.contentSize,
       NSSize(
-        width: LiveSubtitleOverlayMetrics.compactSurfaceWidth,
-        height: LiveSubtitleOverlayMetrics.compactSurfaceHeight
+        width: LiveSubtitleOverlayMetrics.expandedSurfaceWidth,
+        height: LiveSubtitleOverlayMetrics.expandedSurfaceHeight
       )
     )
     XCTAssertEqual(state.contentSize, state.windowFrame.size)

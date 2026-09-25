@@ -38,10 +38,12 @@ public actor RoutedLocalSpeechRecognizer: SpeechRecognizer {
 
   public func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
     let settings = try await settingsProvider()
-    let modelIdentifier = request.options.modelIdentifier ?? LocalSpeechModelCatalog.effectiveModelIdentifier(
-      settings: settings,
-      modelOverride: request.configuration.modelOverride
-    )
+    guard let modelIdentifier = request.options.modelID else {
+      throw LocalSpeechSettingsSourceError.notReady
+    }
+    guard settings.enabledModelIDs.contains(modelIdentifier) else {
+      throw LocalSpeechModelSelectionError.modelNotEnabled(modelIdentifier)
+    }
     let backend = try LocalSpeechModelCatalog.backend(for: modelIdentifier)
     try await activate(backend)
     return try await recognizer(for: backend).recognize(request)

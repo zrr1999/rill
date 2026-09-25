@@ -15,13 +15,13 @@ struct HistoryRunDiagnosticsView: View {
         }
         return VStack(alignment: .leading, spacing: RillSpacing.compact) {
             HStack {
-                Text(L10n.historyRunDetail(.diagnostics, language: model.language))
+                Text(L10n.historyRunDetail(.diagnostics, language: model.settings.language))
                     .font(.caption.weight(.semibold))
                 Spacer()
                 if !events.isEmpty {
                     Button(showsAllEvents
-                        ? L10n.historyRunDetail(.showDiagnosticIssues, language: model.language)
-                        : L10n.historyShowAllDiagnostics(events.count, language: model.language)) {
+                        ? L10n.historyRunDetail(.showDiagnosticIssues, language: model.settings.language)
+                        : L10n.historyShowAllDiagnostics(events.count, language: model.settings.language)) {
                         showsAllEvents.toggle()
                     }
                     .buttonStyle(.borderless)
@@ -30,7 +30,7 @@ struct HistoryRunDiagnosticsView: View {
                 Button {
                     refreshID = UUID()
                 } label: {
-                    Label(UIStrings.text(.refreshDiagnostics, language: model.language),
+                    Label(L10n.text(.refreshDiagnostics, language: model.settings.language),
                           systemImage: RillSystemSymbol.arrowClockwise.rawValue)
                 }
                 .labelStyle(.iconOnly)
@@ -40,18 +40,18 @@ struct HistoryRunDiagnosticsView: View {
             .font(.caption)
             switch loadState {
             case .loading:
-                ProgressView(UIStrings.text(.diagnosticsLoading, language: model.language))
+                ProgressView(L10n.text(.diagnosticsLoading, language: model.settings.language))
                     .controlSize(.small)
             case .failed:
-                Label(UIStrings.text(.diagnosticsLoadFailed, language: model.language),
+                Label(L10n.text(.diagnosticsLoadFailed, language: model.settings.language),
                       systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
                     .foregroundStyle(.red)
             case .loaded:
                 if events.isEmpty {
-                    Text(L10n.historyRunDetail(.noDiagnostics, language: model.language))
+                    Text(L10n.historyRunDetail(.noDiagnostics, language: model.settings.language))
                         .foregroundStyle(.secondary)
                 } else if visibleEvents.isEmpty {
-                    Text(L10n.historyRunDetail(.noDiagnosticIssues, language: model.language))
+                    Text(L10n.historyRunDetail(.noDiagnosticIssues, language: model.settings.language))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -73,7 +73,7 @@ struct HistoryRunDiagnosticsView: View {
                 loadState = .failed
             }
         }
-        .onChange(of: model.diagnosticsLoadGeneration) { _, _ in
+        .onChange(of: model.history.diagnosticsLoadGeneration) { _, _ in
             events = []
             refreshID = UUID()
         }

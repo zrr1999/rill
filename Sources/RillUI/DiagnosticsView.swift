@@ -12,30 +12,30 @@ public struct DiagnosticsView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text(UIStrings.text(.diagnosticsDescription, language: model.language))
+                Text(L10n.text(.diagnosticsDescription, language: model.settings.language))
                     .foregroundStyle(.secondary)
                 diagnosticsSection
             }
             .padding(24)
         }
-        .navigationTitle(UIStrings.text(.diagnosticsTitle, language: model.language))
+        .navigationTitle(L10n.text(.diagnosticsTitle, language: model.settings.language))
     }
 
     private var diagnosticsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Label(
-                        UIStrings.text(.diagnosticsTimeline, language: model.language),
+                        L10n.text(.diagnosticsTimeline, language: model.settings.language),
                         systemImage: RillSystemSymbol.clockBadgeCheckmark.rawValue
                     )
                     .font(.headline)
                     Spacer()
                     Picker(
-                        UIStrings.text(.diagnosticsTimeline, language: model.language),
+                        L10n.text(.diagnosticsTimeline, language: model.settings.language),
                         selection: $timelineFilter
                     ) {
                         ForEach(DiagnosticsTimelineFilter.allCases) { filter in
-                            Text(filter.title(language: model.language))
+                            Text(filter.title(language: model.settings.language))
                                 .tag(filter)
                         }
                     }
@@ -43,42 +43,42 @@ public struct DiagnosticsView: View {
                     .pickerStyle(.menu)
                     .fixedSize()
                     .accessibilityIdentifier("diagnostics.timeline.filter")
-                    Button(UIStrings.text(.refreshDiagnostics, language: model.language)) {
+                    Button(L10n.text(.refreshDiagnostics, language: model.settings.language)) {
                         model.refreshDiagnostics()
                     }
-                    .disabled(model.diagnosticsLoadState == .loading)
+                    .disabled(model.history.diagnosticsLoadState == .loading)
                     .accessibilityIdentifier("diagnostics.timeline.refresh")
                 }
 
                 switch Self.timelineContent(
-                    loadState: model.diagnosticsLoadState,
-                    events: model.diagnosticEvents,
+                    loadState: model.history.diagnosticsLoadState,
+                    events: model.history.diagnosticEvents,
                     filter: timelineFilter
                 ) {
                 case .loading(let entries):
-                    ProgressView(UIStrings.text(.diagnosticsLoading, language: model.language))
+                    ProgressView(L10n.text(.diagnosticsLoading, language: model.settings.language))
                         .controlSize(.small)
                         .accessibilityIdentifier("diagnostics.timeline.loading")
                     timelineRows(entries)
                 case .failed(let entries):
                     VStack(alignment: .leading, spacing: 8) {
                         Label(
-                            UIStrings.text(.diagnosticsLoadFailed, language: model.language),
+                            L10n.text(.diagnosticsLoadFailed, language: model.settings.language),
                             systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
                         )
                         .font(.callout)
                         .foregroundStyle(.red)
                         .accessibilityIdentifier("diagnostics.timeline.error")
 
-                        Button(UIStrings.text(.diagnosticsRetry, language: model.language)) {
+                        Button(L10n.text(.diagnosticsRetry, language: model.settings.language)) {
                             model.refreshDiagnostics()
                         }
-                        .disabled(model.diagnosticsLoadState == .loading)
+                        .disabled(model.history.diagnosticsLoadState == .loading)
                         .accessibilityIdentifier("diagnostics.timeline.retry")
                     }
                     timelineRows(entries)
                 case .empty:
-                    Text(UIStrings.text(.diagnosticsEmpty, language: model.language))
+                    Text(L10n.text(.diagnosticsEmpty, language: model.settings.language))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("diagnostics.timeline.empty")

@@ -309,7 +309,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         )
 
         if let panel {
-            panel.title = L10n.quickRecord(.title, language: model.language)
+            panel.title = L10n.quickRecord(.title, language: model.settings.language)
             (panel as? FloatingRecordPanel)?.onDigitPressed = digitSelection
             panel.contentViewController = hostingController
             restorePanelSizeIfNeeded(panel)
@@ -327,7 +327,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        panel.title = L10n.quickRecord(.title, language: model.language)
+        panel.title = L10n.quickRecord(.title, language: model.settings.language)
         panel.delegate = self
         panel.onEscapePressed = { [weak self] in self?.handleEscape() }
         panel.onDigitPressed = digitSelection
@@ -799,7 +799,7 @@ private struct FloatingRecordView: View {
 
     var body: some View {
         RecordQuickPanelView(
-            model: session, language: model.language, capturePaused: !model.systemClipboardCaptureEnabled,
+            model: session, language: model.settings.language, capturePaused: !model.settings.systemClipboardCaptureEnabled,
             onPaste: deliverSelection, onCopy: copySelection,
             onShowRecord: { id in
                 Task { await model.showRecord(id) }

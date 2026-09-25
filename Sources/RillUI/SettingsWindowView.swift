@@ -9,10 +9,10 @@ public struct SettingsWindowView: View {
       VStack(spacing: 0) {
         if model.comparisonReturn != nil {
             HStack {
-                Button(L10n.jev(.returnToComparison, language: model.language)) { model.resumeComparison() }
+                Button(L10n.jev(.returnToComparison, language: model.settings.language)) { model.resumeComparison() }
                     .accessibilityIdentifier("settings.jev.return")
                 Spacer()
-                Button(L10n.jev(.cancelReturn, language: model.language)) { model.discardComparisonReturn() }
+                Button(L10n.jev(.cancelReturn, language: model.settings.language)) { model.discardComparisonReturn() }
             }
             .padding()
             Divider()
@@ -20,7 +20,7 @@ public struct SettingsWindowView: View {
         TabView(selection: $model.selectedSettingsPane) {
             ForEach(SettingsPane.allCases) { pane in
                 SettingsView(model: model, pane: pane)
-                    .tabItem { Label(pane.title(language: model.language), systemImage: pane.symbolName) }
+                    .tabItem { Label(pane.title(language: model.settings.language), systemImage: pane.symbolName) }
                     .tag(pane)
             }
         }

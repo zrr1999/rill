@@ -6,17 +6,22 @@ public struct VocabularyCorrectionSheet: View {
         case conflict
         case invalid
         case notReady
+        case persistence
     }
 
     @Environment(\.dismiss) private var dismiss
     @Bindable private var model: AppModel
     private let historyRecordID: UUID?
+    private let workflowRunID: UUID?
+    @State private var correctionOperationID = UUID()
+    @State private var isSavingText = false
     @State private var draft: VocabularyCorrectionDraft
     @State private var saveIssue: SaveIssue?
     @State private var targetCollectionID: UUID?
 
-    public init(model: AppModel, source: RecognitionCorrectionSource, historyRecordID: UUID? = nil) {
+    public init(model: AppModel, source: RecognitionCorrectionSource, historyRecordID: UUID? = nil, workflowRunID: UUID? = nil) {
         self.historyRecordID = historyRecordID
+        self.workflowRunID = workflowRunID
         self.model = model
         _draft = State(initialValue: VocabularyCorrectionDraft(source: source))
         _targetCollectionID = State(initialValue: VocabularyCollection.personalID)
@@ -42,7 +47,8 @@ public struct VocabularyCorrectionSheet: View {
                 .padding(16)
         }
         .frame(minWidth: 520, idealWidth: 620, minHeight: 420, idealHeight: 600)
-        .onChange(of: model.privacyPolicySettings.historyPreviewMode) { _, mode in
+        .interactiveDismissDisabled(isSavingText)
+        .onChange(of: model.settings.privacyPolicySettings.historyPreviewMode) { _, mode in
             if mode == .disabled {
                 dismiss()
             }
@@ -51,9 +57,9 @@ public struct VocabularyCorrectionSheet: View {
 
     private var introduction: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.string(.vocabularyCorrectionTitle, language: model.language))
+            Text(L10n.string(.vocabularyCorrectionTitle, language: model.settings.language))
                 .font(.title2.bold())
-            Text(L10n.string(.vocabularyCorrectionDescription, language: model.language))
+            Text(L10n.string(.vocabularyCorrectionDescription, language: model.settings.language))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -62,7 +68,7 @@ public struct VocabularyCorrectionSheet: View {
     private var recognitionEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.string(.vocabularyCorrectionOriginalText, language: model.language))
+                Text(L10n.string(.vocabularyCorrectionOriginalText, language: model.settings.language))
                     .font(.headline)
                 Text(draft.originalText)
                     .textSelection(.enabled)
@@ -70,9 +76,10 @@ public struct VocabularyCorrectionSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.string(.vocabularyCorrectionCorrectedText, language: model.language))
+                Text(L10n.string(.vocabularyCorrectionCorrectedText, language: model.settings.language))
                     .font(.headline)
                 TextEditor(text: correctedTextBinding)
+                    .disabled(isSavingText)
                     .font(.body)
                     .frame(minHeight: 110)
                     .padding(6)
@@ -82,7 +89,7 @@ public struct VocabularyCorrectionSheet: View {
                             .stroke(.separator, lineWidth: 1)
                     }
                     .accessibilityLabel(
-                        L10n.string(.vocabularyCorrectionCorrectedText, language: model.language)
+                        L10n.string(.vocabularyCorrectionCorrectedText, language: model.settings.language)
                     )
             }
         }
@@ -91,21 +98,21 @@ public struct VocabularyCorrectionSheet: View {
     @ViewBuilder
     private var suggestionSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.string(.vocabularyCorrectionSuggestions, language: model.language))
+            Text(L10n.string(.vocabularyCorrectionSuggestions, language: model.settings.language))
                 .font(.headline)
 
             switch draft.status {
             case .unchanged:
                 guidance(
-                    L10n.string(.vocabularyCorrectionNoChange, language: model.language),
+                    L10n.string(.vocabularyCorrectionNoChange, language: model.settings.language),
                     symbol: RillSystemSymbol.pencil.rawValue
                 )
             case .invalid:
                 guidance(
-                    L10n.string(.vocabularyCorrectionUnsupported, language: model.language),
+                    L10n.string(.vocabularyCorrectionUnsupported, language: model.settings.language),
                     symbol: RillSystemSymbol.exclamationmarkTriangle.rawValue
                 )
-                Button(L10n.string(.vocabularyCorrectionOpenSettings, language: model.language)) {
+                Button(L10n.string(.vocabularyCorrectionOpenSettings, language: model.settings.language)) {
                     openVocabularySettings()
                 }
             case .optionsAvailable:
@@ -152,9 +159,9 @@ public struct VocabularyCorrectionSheet: View {
 
     private var scopeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.string(.vocabularyCorrectionScopeTitle, language: model.language))
+            Text(L10n.string(.vocabularyCorrectionScopeTitle, language: model.settings.language))
                 .font(.headline)
-            Text(L10n.string(.vocabularyCorrectionScopeDescription, language: model.language))
+            Text(L10n.string(.vocabularyCorrectionScopeDescription, language: model.settings.language))
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -174,11 +181,11 @@ public struct VocabularyCorrectionSheet: View {
                 }
 
                 Picker(
-                    L10n.overlayText(.correctionSaveToCollection, language: model.language),
+                    L10n.overlayText(.correctionSaveToCollection, language: model.settings.language),
                     selection: $targetCollectionID
                 ) {
                     Text(
-                        L10n.overlayText(.correctionCreateScopedCollection, language: model.language)
+                        L10n.overlayText(.correctionCreateScopedCollection, language: model.settings.language)
                     )
                     .tag(nil as UUID?)
                     ForEach(compatibleCollections(for: option.scope.knownConstraints)) {
@@ -199,28 +206,32 @@ public struct VocabularyCorrectionSheet: View {
         case .conflict:
             VStack(alignment: .leading, spacing: 8) {
                 Label(
-                    L10n.string(.vocabularyCorrectionConflict, language: model.language),
+                    L10n.string(.vocabularyCorrectionConflict, language: model.settings.language),
                     systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
                 )
                 .foregroundStyle(.orange)
-                Button(L10n.string(.vocabularyCorrectionOpenSettings, language: model.language)) {
+                Button(L10n.string(.vocabularyCorrectionOpenSettings, language: model.settings.language)) {
                     openVocabularySettings()
                 }
             }
         case .invalid:
             VStack(alignment: .leading, spacing: 8) {
                 Label(
-                    L10n.string(.vocabularyCorrectionUnsupported, language: model.language),
+                    L10n.string(.vocabularyCorrectionUnsupported, language: model.settings.language),
                     systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
                 )
                 .foregroundStyle(.secondary)
-                Button(L10n.string(.vocabularyCorrectionOpenSettings, language: model.language)) {
+                Button(L10n.string(.vocabularyCorrectionOpenSettings, language: model.settings.language)) {
                     openVocabularySettings()
                 }
             }
+        case .persistence:
+            Label(L10n.string(.vocabularyCorrectionSaveFailed, language: model.settings.language),
+                  systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
+                .foregroundStyle(.red)
         case .notReady:
             Label(
-                L10n.overlayText(.correctionSettingsLoading, language: model.language),
+                L10n.overlayText(.correctionSettingsLoading, language: model.settings.language),
                 systemImage: RillSystemSymbol.clock.rawValue
             )
             .foregroundStyle(.secondary)
@@ -231,19 +242,31 @@ public struct VocabularyCorrectionSheet: View {
 
     private var actionBar: some View {
         HStack {
-            Button(L10n.string(.vocabularyCorrectionCancel, language: model.language)) {
+            Button(L10n.string(.vocabularyCorrectionCancel, language: model.settings.language)) {
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)
+            .disabled(isSavingText)
 
             Spacer()
 
-            Button(L10n.string(.vocabularyCorrectionSave, language: model.language)) {
+            Button(L10n.string(.vocabularyCorrectionSave, language: model.settings.language)) {
                 saveRule()
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
-            .disabled(draft.proposedRule == nil || model.isLoadingSettings)
+            .disabled(draft.proposedRule == nil || model.settings.isLoading || isSavingText)
+            .accessibilityIdentifier("vocabulary.correction.remember")
+
+            if workflowRunID != nil {
+                Button(L10n.string(.vocabularyCorrectionSaveText, language: model.settings.language)) {
+                    saveText()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(isSavingText || model.recordWorkspace.isMutating
+                    || draft.correctedText == draft.originalText
+                    || draft.correctedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("vocabulary.correction.save-text")
+            }
         }
     }
 
@@ -252,6 +275,7 @@ public struct VocabularyCorrectionSheet: View {
             get: { draft.correctedText },
             set: { text in
                 draft.updateCorrectedText(text)
+                correctionOperationID = UUID()
                 saveIssue = nil
             }
         )
@@ -270,9 +294,9 @@ public struct VocabularyCorrectionSheet: View {
     private func optionTitle(_ option: VocabularyCorrectionDraft.Option) -> String {
         switch option.kind {
         case .mapping:
-            return L10n.string(.vocabularyCorrectionMappingOption, language: model.language)
+            return L10n.string(.vocabularyCorrectionMappingOption, language: model.settings.language)
         case .hotword:
-            return L10n.string(.vocabularyCorrectionHotwordOption, language: model.language)
+            return L10n.string(.vocabularyCorrectionHotwordOption, language: model.settings.language)
         }
     }
 
@@ -289,7 +313,7 @@ public struct VocabularyCorrectionSheet: View {
         L10n.vocabularyScopeSummary(
             scope,
             groupName: groupName(scope.recordCollectionID),
-            language: model.language
+            language: model.settings.language
         )
     }
 
@@ -304,18 +328,18 @@ public struct VocabularyCorrectionSheet: View {
         for scope: VocabularyRuleScope?
     ) -> [VocabularyCollection] {
         guard let scope else { return [] }
-        let compatibleIDs = Set(model.vocabularyCollectionIDs(compatibleWith: scope))
-        return model.vocabularyCollections.filter { compatibleIDs.contains($0.id) }
+        let compatibleIDs = Set(model.vocabulary.vocabularyCollectionIDs(compatibleWith: scope))
+        return model.vocabulary.vocabularyCollections.filter { compatibleIDs.contains($0.id) }
     }
 
     private func unknownScopeLabel(_ field: VocabularyCorrectionScopeField) -> String {
         switch field {
         case .bundleIdentifier:
-            return L10n.string(.vocabularyCorrectionUnknownApp, language: model.language)
+            return L10n.string(.vocabularyCorrectionUnknownApp, language: model.settings.language)
         case .recordCollectionID:
-            return L10n.string(.vocabularyCorrectionUnknownGroup, language: model.language)
+            return L10n.string(.vocabularyCorrectionUnknownGroup, language: model.settings.language)
         case .locale:
-            return L10n.string(.vocabularyCorrectionUnknownLanguage, language: model.language)
+            return L10n.string(.vocabularyCorrectionUnknownLanguage, language: model.settings.language)
         }
     }
 
@@ -326,16 +350,35 @@ public struct VocabularyCorrectionSheet: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
+    private func saveText() {
+        guard let workflowRunID, !isSavingText, !model.isApplicationShuttingDown,
+              model.settings.privacyPolicySettings.historyPreviewMode != .disabled else { return }
+        isSavingText = true
+        let text = draft.correctedText
+        let operationID = correctionOperationID
+        Task { @MainActor in
+            let saved = await model.recordWorkspace.saveTextCorrection(
+                workflowRunID: workflowRunID, text: text, operationID: operationID)
+            isSavingText = false
+            if saved {
+                model.selectSidebarSection(.records)
+                dismiss()
+            } else {
+                saveIssue = .persistence
+            }
+        }
+    }
+
     private func saveRule() {
         guard let rule = draft.proposedRule else {
             saveIssue = .invalid
             return
         }
 
-        let compatibleIDs = Set(model.vocabularyCollectionIDs(compatibleWith: rule.scope))
+        let compatibleIDs = Set(model.vocabulary.vocabularyCollectionIDs(compatibleWith: rule.scope))
         let selectedCollectionID =
             targetCollectionID.flatMap { compatibleIDs.contains($0) ? $0 : nil }
-        switch model.saveVocabularyCorrectionRule(rule, to: selectedCollectionID) {
+        switch model.vocabulary.saveVocabularyCorrectionRule(rule, to: selectedCollectionID) {
         case .created:
             recordMemoryCorrection(rule)
             model.append(

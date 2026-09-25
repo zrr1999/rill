@@ -44,7 +44,7 @@ private struct ReceiptRepositoryProbeError: Error {
     let privateDescription: String
 }
 
-private actor FailOnceWorkflowRunReceiptRepository: WorkflowRunReceiptRepository {
+private actor FailOnceWorkflowRunReceiptRepository: WorkflowRunReceiptRepository, WorkflowRunReceiptMaintaining {
     private var shouldFail = true
     private var stored: [UUID: WorkflowRunReceipt] = [:]
     private let privateErrorCanary: String
@@ -521,7 +521,7 @@ final class WorkflowRunReceiptRecorderTests: XCTestCase {
                 DiagnosticEvent(
                     subsystem: .session,
                     level: .debug,
-                    event: "diagnostic.boundary",
+                    event: .diagnosticBoundary,
                     message: "Receipt retry boundary."
                 )
             )

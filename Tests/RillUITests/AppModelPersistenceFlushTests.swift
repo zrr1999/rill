@@ -124,12 +124,12 @@ final class AppModelPersistenceFlushTests: XCTestCase {
         await waitForEventProcessing(harness)
         await store.blockWrites()
 
-        let expectedLanguage: AppLanguage = harness.model.language == .english
+        let expectedLanguage: AppLanguage = harness.model.settings.language == .english
             ? .simplifiedChinese
             : .english
-        harness.model.language = expectedLanguage
-        harness.model.openAIBaseURL = "https://latest.example.test"
-        harness.model.openAIAPIKey = "latest-key"
+        harness.model.applyLanguage(expectedLanguage)
+        harness.model.applyOpenAIBaseURL("https://latest.example.test")
+        harness.model.applyOpenAIAPIKey("latest-key")
         harness.model.setPrivacyCloudConfirmationRequired(false)
 
         let completion = PersistenceFlushCompletionProbe()
@@ -168,8 +168,8 @@ final class AppModelPersistenceFlushTests: XCTestCase {
         await harness.model.flushPendingPersistenceWrites()
         let stored = try await repository.records(matching: .all)
         XCTAssertTrue(stored.isEmpty)
-        XCTAssertEqual(harness.model.lastCompletedText, "terminal result")
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertEqual(harness.model.voice.lastCompletedText, "terminal result")
+        XCTAssertFalse(harness.model.voice.isRunning)
     }
 
     func testImmediateSessionOnlyHistoryBeforeListenerStartsSurvivesShutdown() async throws {
@@ -178,7 +178,7 @@ final class AppModelPersistenceFlushTests: XCTestCase {
             finalText: "recoverable text", outcome: .failed, trigger: .hotkey)
         await harness.eventBus.publish(.runHistoryUpdated(.sessionOnly(record)))
         await harness.model.drainAndStopEventListenerForApplicationShutdown()
-        XCTAssertEqual(harness.model.historyRecords.first?.id, record.id)
-        XCTAssertEqual(harness.model.historyRecords.first?.finalText, "recoverable text")
+        XCTAssertEqual(harness.model.history.historyRecords.first?.id, record.id)
+        XCTAssertEqual(harness.model.history.historyRecords.first?.finalText, "recoverable text")
     }
 }

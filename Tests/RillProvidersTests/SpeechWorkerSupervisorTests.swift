@@ -40,10 +40,9 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
       format: .init(sampleRateHz: 16_000, channelCount: 1, encoding: .float32),
       fileURL: audioURL, fileOwnership: .managedTemporary)
     do {
-      _ = try await recognizer.recognize(.init(runID: UUID(), workflow: makeWorkflow(),
+      _ = try await recognizer.recognize(.init(runID: UUID(),
         contextSnapshot: .empty, capturedAudio: audio,
-        options: .init(language: nil, hints: .init(keyterms: ["Spore", "Rill"]),
-          modelIdentifier: frozenModel)))
+        options: .init(modelID: frozenModel, language: nil, hints: .init(keyterms: ["Spore", "Rill"]))))
       let request = try SpeechWorkerProtocolCodec.decodeRequestLine(Data(contentsOf: requestURL))
       let payload = try XCTUnwrap(request.recognitionPayload)
       XCTAssertEqual(payload.modelID, frozenModel)
@@ -348,10 +347,10 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     let result = try await recognizer.recognize(
       RecognitionRequest(
         runID: UUID(),
-        workflow: makeWorkflow(),
         contextSnapshot: .empty,
         capturedAudio: audio,
         options: SpeechRecognitionRequestOptions(
+          modelID: MLXAudioModelID.qwen3ASR06BInt8.rawValue,
           language: "zh-CN",
           hints: RecognitionHints(keyterms: ["Rill"])
         )
@@ -398,7 +397,9 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
       for workflow in workflows {
         let result = try await recognizer.recognize(
           RecognitionRequest(
-            runID: UUID(), workflow: workflow, contextSnapshot: .empty, capturedAudio: audio
+            runID: UUID(), contextSnapshot: .empty, capturedAudio: audio,
+            options: LocalSpeechModelCatalog.recognitionOptions(
+              settings: LocalSpeechSettings(model: selectedModel, enabledModelIDs: [selectedModel]), workflow: workflow)
           )
         )
         XCTAssertEqual(result.bestText, "worker result")
@@ -416,7 +417,9 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     do {
       _ = try await recognizer.recognize(
         RecognitionRequest(
-          runID: failedRunID, workflow: workflow, contextSnapshot: .empty, capturedAudio: audio
+          runID: failedRunID, contextSnapshot: .empty, capturedAudio: audio,
+          options: LocalSpeechModelCatalog.recognitionOptions(
+            settings: LocalSpeechSettings(model: selectedModel, enabledModelIDs: [selectedModel]), workflow: workflow)
         )
       )
       XCTFail("An explicit disabled model must fail before starting the worker.")
@@ -495,9 +498,9 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     let result = try await recognizer.recognize(
       RecognitionRequest(
         runID: UUID(),
-        workflow: makeWorkflow(),
         contextSnapshot: .empty,
-        capturedAudio: audio
+        capturedAudio: audio,
+        options: .init(modelID: MLXAudioModelID.qwen3ASR06BInt8.rawValue)
       )
     )
 

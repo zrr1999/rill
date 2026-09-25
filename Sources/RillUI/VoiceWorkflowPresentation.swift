@@ -147,10 +147,10 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
         let languageTitle = languageOverride?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? languageOverride ?? ""
             : L10n.string(.workflowLanguageAuto, language: language)
-        let triggerTitle = UIStrings.workflowTrigger(trigger, language: language)
+        let triggerTitle = L10n.workflowTrigger(trigger, language: language)
         let output = outputActionIDs.isEmpty
             ? L10n.string(.voiceModeOutputNone, language: language)
-            : outputActionIDs.map { UIStrings.actionName($0, language: language) }.joined(separator: " + ")
+            : outputActionIDs.map { L10n.actionName($0, language: language) }.joined(separator: " + ")
         let privacyLabel = L10n.privacyText(PrivacySettingsTextKey.routeDetailLabel, language: language)
         let privacy = privacyRouteShortValue(language: language)
 
@@ -171,9 +171,9 @@ struct VoiceWorkflowPresentation: Equatable, Sendable {
 
     private func speechRouteTitle(language: AppLanguage) -> String {
         if let route = WorkflowEditorDraft.RecognizerChoice(recognizerID: recognizerID) {
-            return UIStrings.editorRecognizer(route, language: language)
+            return L10n.editorRecognizer(route, language: language)
         }
-        return UIStrings.recognizerName(recognizerID, language: language)
+        return L10n.recognizerName(recognizerID, language: language)
     }
 
     /// Card-list privacy value: a bare value that reads cleanly after the

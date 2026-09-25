@@ -34,7 +34,8 @@ public struct LiveRecognitionContextResolver: Sendable {
 
   public func prepare(runID: UUID, workflow: WorkflowDefinition, context: ContextSnapshot,
     options: SpeechRecognitionRequestOptions, lifetime: AudioCaptureLifetime) async throws -> PreparedRecognitionContext {
-    let vocabulary = workflow.plan.setup.vocabularyBindings.isEmpty ? [] : try collections()
+    let vocabulary = try options.vocabulary?.collections
+      ?? (workflow.plan.setup.vocabularyBindings.isEmpty ? [] : collections())
     let scope = VocabularyRuleContext(contextSnapshot: context,
       recordCollectionID: workflow.legacyTargetRecordCollectionID,
       locale: options.language ?? workflow.plan.setup.speechRoute?.language
@@ -43,14 +44,14 @@ public struct LiveRecognitionContextResolver: Sendable {
     let candidates = plan.recognitionCandidates
     var frozenOptions = options
     var preparation: HotwordRankingPreparation?
-    if plan.recognizerAcceptsHotwords, options.modelIdentifier != nil {
+    if plan.recognizerAcceptsHotwords, options.modelID != nil {
       let selected = (try? await selection.select(runID: runID, workflow: workflow, collections: vocabulary,
         context: context, options: options, candidates: candidates, lifetime: lifetime))
         ?? HotwordSelection.Selection(terms: plan.recognitionHints.keyterms, status: .unavailable, preparation: nil)
       plan.recognitionHints = RecognitionHints(keyterms: sanitize(selected.terms))
       preparation = selected.preparation
       await report(DiagnosticEvent(runID: runID, subsystem: .session, level: .debug,
-        event: "hotword-ranking.selected", message: "Recognition hotwords frozen.",
+        event: .hotwordRankingSelected, message: "Recognition hotwords frozen.",
         metadata: ["hotwordCache": selected.status.rawValue, "hotwordCandidateCount": String(candidates.count),
           "hotwordCount": String(plan.recognitionHints.keyterms.count)]))
     }

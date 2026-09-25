@@ -3,16 +3,16 @@ import RillCore
 
 extension AppModel {
   func synchronizeWakeWordResourceWithLocalSpeechModel() {
-    if case .preparing = wakeWordResourceState {
+    if case .preparing = self.voice.wakeWordResourceState {
       return
     }
     let selectedModel = selectedTrustedLocalSpeechModelIdentifier
     let updatedState: VoiceAssistantResourceState =
-      !selectedModel.isEmpty && downloadedLocalSpeechModels.contains(selectedModel)
+      !selectedModel.isEmpty && self.voice.downloadedLocalSpeechModels.contains(selectedModel)
       ? .ready
       : .notInstalled
-    guard updatedState != wakeWordResourceState else { return }
-    wakeWordResourceState = updatedState
+    guard updatedState != self.voice.wakeWordResourceState else { return }
+    self.voice.wakeWordResourceState = updatedState
     workflowLibraryChangedAction()
   }
 
@@ -32,62 +32,11 @@ extension AppModel {
   }
 
   public func prepareWakeWordModel() {
-    if case .preparing = wakeWordResourceState {
-      return
-    }
-    wakeWordResourceState = .preparing(progress: nil)
-    Task {
-      do {
-        let preparedModel = try await prepareWakeWordModelAction { progress in
-          Task { @MainActor in
-            self.wakeWordResourceState = .preparing(progress: progress)
-          }
-        }
-        recordDownloadedLocalSpeechModel(preparedModel)
-        wakeWordResourceState = .ready
-        workflowLibraryChangedAction()
-      } catch is CancellationError {
-        wakeWordResourceState = .notInstalled
-        workflowLibraryChangedAction()
-      } catch let reason as VoiceAssistantResourceUnavailableReason {
-        wakeWordResourceState = .unavailable(reason)
-        workflowLibraryChangedAction()
-      } catch {
-        wakeWordResourceState = .failed(error.localizedDescription)
-        workflowLibraryChangedAction()
-      }
-    }
-  }
-
-  public func prepareTTSModel() {
-    if case .preparing = ttsResourceState {
-      return
-    }
-    let modelIdentifier = ttsModelIdentifier
-    ttsResourceState = .preparing(progress: nil)
-    Task {
-      do {
-        try await prepareTTSModelAction(modelIdentifier) { progress in
-          Task { @MainActor in
-            guard self.ttsModelIdentifier == modelIdentifier else { return }
-            self.ttsResourceState = .preparing(progress: progress)
-          }
-        }
-        downloadedTTSModelIdentifiers.insert(modelIdentifier)
-        guard ttsModelIdentifier == modelIdentifier else { return }
-        ttsResourceState = .ready
-      } catch is CancellationError {
-        guard ttsModelIdentifier == modelIdentifier else { return }
-        ttsResourceState = .notInstalled
-      } catch {
-        guard ttsModelIdentifier == modelIdentifier else { return }
-        ttsResourceState = .failed(error.localizedDescription)
-      }
-    }
+    voice.prepareWakeWordModel { [weak self] model in self?.recordDownloadedLocalSpeechModel(model) }
   }
 
   public func disableWakeWordListening() {
-    for workflow in workflows where
+    for workflow in self.workflowLibrary.workflows where
       workflow.trigger == .wakeWord && isWorkflowEnabled(workflow)
     {
       setWorkflowEnabled(false, for: workflow.id)
@@ -102,7 +51,7 @@ extension AppModel {
     let normalizedPhrases: [String]
     do {
       normalizedPhrases = try configuration.validatedPhrases()
-      try await validateWakeWordConfigurationAction(
+      try await voice.validateWakeWordConfiguration(
         WakeWordConfiguration(phrases: normalizedPhrases)
       )
     } catch {
@@ -117,19 +66,19 @@ extension AppModel {
       return .failed(activationError)
     }
     let editableWorkflow = sourceWorkflow.flatMap { workflow in
-      customWorkflows.first(where: { $0.id == workflow.id })
+      self.workflowLibrary.customWorkflows.first(where: { $0.id == workflow.id })
     }
     let savedWorkflowID: UUID?
     if let editableWorkflow,
-      let index = customWorkflows.firstIndex(where: {
+      let index = self.workflowLibrary.customWorkflows.firstIndex(where: {
         $0.id == editableWorkflow.id
       })
     {
-      guard !isLoadingSettings, isWorkflowLibraryAvailable else {
-        return .failed(L10n.runText(.workflowLibraryUnavailable, language: language))
+      guard !self.settings.isLoading, isWorkflowLibraryAvailable else {
+        return .failed(L10n.runText(.workflowLibraryUnavailable, language: self.settings.language))
       }
-      hasModifiedWorkflowLibrary = true
-      var updatedWorkflow = customWorkflows[index]
+      self.workflowLibrary.hasModifiedWorkflowLibrary = true
+      var updatedWorkflow = self.workflowLibrary.customWorkflows[index]
       updatedWorkflow.plan.setup.wakeWord = WakeWordConfiguration(
         phrases: normalizedPhrases
       )
@@ -137,17 +86,17 @@ extension AppModel {
         do {
           let fileURL = try await workflowFileStore.save(
             workflow: updatedWorkflow,
-            isEnabled: workflowEnabledStates[updatedWorkflow.id] ?? true,
-            replacing: workflowFileURLsByID[updatedWorkflow.id]
+            isEnabled: self.workflowLibrary.workflowEnabledStates[updatedWorkflow.id] ?? true,
+            replacing: self.workflowLibrary.workflowFileURLsByID[updatedWorkflow.id]
           )
-          workflowFileURLsByID[updatedWorkflow.id] = fileURL
+          self.workflowLibrary.workflowFileURLsByID[updatedWorkflow.id] = fileURL
         } catch {
           return .failed(localizedWorkflowFileSaveError(error))
         }
       }
-      customWorkflows[index] = updatedWorkflow
-      workflowEditorError = nil
-      workflowLibraryError = nil
+      self.workflowLibrary.customWorkflows[index] = updatedWorkflow
+      self.workflowLibrary.workflowEditorError = nil
+      self.workflowLibrary.workflowLibraryError = nil
       rebuildWorkflowLibrary()
       persistWorkflowEnabledStates()
       persistCustomWorkflows()
@@ -163,8 +112,8 @@ extension AppModel {
       )
       savedWorkflowID = editableWorkflow.id
     } else if let sourceWorkflow {
-      guard !isLoadingSettings, isWorkflowLibraryAvailable else {
-        return .failed(L10n.runText(.workflowLibraryUnavailable, language: language))
+      guard !self.settings.isLoading, isWorkflowLibraryAvailable else {
+        return .failed(L10n.runText(.workflowLibraryUnavailable, language: self.settings.language))
       }
       var customizedWorkflow = sourceWorkflow
       customizedWorkflow.name = localizedWorkflowName(for: sourceWorkflow)
@@ -179,19 +128,19 @@ extension AppModel {
         do {
           let fileURL = try await workflowFileStore.save(
             workflow: customizedWorkflow,
-            isEnabled: workflowEnabledStates[customizedWorkflow.id] ?? false,
+            isEnabled: self.workflowLibrary.workflowEnabledStates[customizedWorkflow.id] ?? false,
             replacing: nil
           )
-          workflowFileURLsByID[customizedWorkflow.id] = fileURL
+          self.workflowLibrary.workflowFileURLsByID[customizedWorkflow.id] = fileURL
         } catch {
           return .failed(localizedWorkflowFileSaveError(error))
         }
       }
 
-      hasModifiedWorkflowLibrary = true
-      customWorkflows.insert(customizedWorkflow, at: 0)
-      workflowEditorError = nil
-      workflowLibraryError = nil
+      self.workflowLibrary.hasModifiedWorkflowLibrary = true
+      self.workflowLibrary.customWorkflows.insert(customizedWorkflow, at: 0)
+      self.workflowLibrary.workflowEditorError = nil
+      self.workflowLibrary.workflowLibraryError = nil
       rebuildWorkflowLibrary()
       persistCustomWorkflows()
       append(
@@ -208,26 +157,26 @@ extension AppModel {
     } else {
       var draft =
         defaultWorkflowDraft()
-      draft.name = L10n.runText(.wakeDictationDraftName, language: language)
+      draft.name = L10n.runText(.wakeDictationDraftName, language: self.settings.language)
       draft.eventType = .wakeWord
       draft.wakePhrasesText = normalizedPhrases.joined(separator: "\n")
 
-      let previousCustomWorkflowIDs = Set(customWorkflows.map(\.id))
-      workflowEditorError = nil
+      let previousCustomWorkflowIDs = Set(self.workflowLibrary.customWorkflows.map(\.id))
+      self.workflowLibrary.workflowEditorError = nil
       await saveWorkflowDraft(draft)
-      if let workflowEditorError {
-        return .failed(workflowEditorError)
+      if let editorError = self.workflowLibrary.workflowEditorError {
+        return .failed(editorError)
       }
-      savedWorkflowID = customWorkflows.first(where: {
+      savedWorkflowID = self.workflowLibrary.customWorkflows.first(where: {
         $0.trigger == .wakeWord
           && !previousCustomWorkflowIDs.contains($0.id)
       })?.id
     }
     guard let savedWorkflowID else {
-      return .failed(L10n.runText(.wakeWorkflowNotFound, language: language))
+      return .failed(L10n.runText(.wakeWorkflowNotFound, language: self.settings.language))
     }
 
-    for workflow in workflows where
+    for workflow in self.workflowLibrary.workflows where
       workflow.trigger == .wakeWord
         && workflow.id != savedWorkflowID
         && isWorkflowEnabled(workflow)
@@ -235,23 +184,18 @@ extension AppModel {
       setWorkflowEnabled(false, for: workflow.id)
     }
     setWorkflowEnabled(enableListening, for: savedWorkflowID)
-    if let workflowLibraryError {
-      return .failed(workflowLibraryError)
+    if let libraryError = self.workflowLibrary.workflowLibraryError {
+      return .failed(libraryError)
     }
     return .saved
   }
 
-  @discardableResult
-  public func stopSpeechPlaybackIfActive() -> Bool {
-    stopSpeechPlaybackAction()
-  }
-
   private var wakeWordSettingsWorkflow: WorkflowDefinition? {
-    workflows.first(where: {
+    self.workflowLibrary.workflows.first(where: {
       $0.trigger == .wakeWord && isWorkflowEnabled($0)
     })
-      ?? customWorkflows.first(where: { $0.trigger == .wakeWord })
-      ?? workflows.first(where: { $0.trigger == .wakeWord })
+      ?? self.workflowLibrary.customWorkflows.first(where: { $0.trigger == .wakeWord })
+      ?? self.workflowLibrary.workflows.first(where: { $0.trigger == .wakeWord })
   }
 
   private func voiceAssistantReadiness(
@@ -264,10 +208,10 @@ extension AppModel {
     let llm: VoiceAssistantLLMReadiness
     if !requiresLLM {
       llm = .notRequired
-    } else if isLoadingSettings {
+    } else if self.settings.isLoading {
       llm = .loading
     } else {
-      switch openAICredentialAvailability {
+      switch self.settings.openAICredentialAvailability {
       case .loading, .saving:
         llm = .loading
       case .missing:
@@ -276,14 +220,14 @@ extension AppModel {
         llm = .credentialInaccessible
       case .available:
         guard
-          !hasUnavailableScalarSettings(in: .openAI),
-          OpenAISettings.isValidBaseURL(openAIBaseURL),
-          OpenAISettings.isValidModelIdentifier(openAIModel)
+          !settings.hasUnavailableScalarSettings(in: .openAI),
+          OpenAISettings.isValidBaseURL(self.settings.openAIBaseURL),
+          OpenAISettings.isValidModelIdentifier(self.settings.openAIModel)
         else {
           llm = .configurationInvalid
           break
         }
-        switch openAIConfigurationVerificationState {
+        switch self.settings.openAIConfigurationVerificationState {
         case .idle:
           llm = .configured
         case .verifying:
@@ -291,7 +235,7 @@ extension AppModel {
         case .verified:
           llm = .verified
         case .failed:
-          llm = .verificationFailed(openAIVerificationFailure)
+          llm = .verificationFailed(self.settings.openAIVerificationFailure)
         }
       }
     }
@@ -299,13 +243,13 @@ extension AppModel {
     let privacy: VoiceAssistantPrivacyReadiness
     if !requiresLLM {
       privacy = .notRequired
-    } else if isLoadingPrivacySettings {
+    } else if self.settings.isLoadingPrivacySettings {
       privacy = .loading
-    } else if privacySettingsLoadError != nil {
+    } else if self.settings.privacySettingsLoadError != nil {
       privacy = .unavailable
     } else {
       privacy = .ready(
-        cloudConfirmationRequired: privacyPolicySettings.cloudConfirmationRequired
+        cloudConfirmationRequired: self.settings.privacyPolicySettings.cloudConfirmationRequired
       )
     }
 
@@ -316,7 +260,7 @@ extension AppModel {
     if !usesSpeechOutput {
       speechOutput = .notRequired
     } else {
-      switch ttsResourceState {
+      switch self.voice.ttsResourceState {
       case .ready:
         speechOutput = .localVoice
       case .preparing:
@@ -328,7 +272,7 @@ extension AppModel {
 
     return VoiceAssistantReadiness(
       microphone: permissionSnapshot.microphone,
-      localSpeech: wakeWordResourceState,
+      localSpeech: self.voice.wakeWordResourceState,
       llm: llm,
       privacy: privacy,
       speechOutput: speechOutput
@@ -338,13 +282,13 @@ extension AppModel {
   private func localizedWakeWordSettingsError(_ error: Error) -> String {
     L10n.runWakeWordSettingsSaveFailed(
       detail: error.localizedDescription,
-      language: language
+      language: self.settings.language
     )
   }
 
   private func localizedWorkflowFileSaveError(_ error: Error) -> String {
     String(
-      format: L10n.runText(.workflowTOMLFileSaveFailedFormat, language: language),
+      format: L10n.runText(.workflowTOMLFileSaveFailedFormat, language: self.settings.language),
       error.localizedDescription
     )
   }

@@ -31,7 +31,7 @@ struct InputMethodLearningTests {
     ])
     let source = VocabularyRuleSource(initialRules: [])
     let harness = makeHarness(settingsStore: settings, vocabularyRuleSource: source)
-    for _ in 0..<100 where harness.model.isLoadingSettings {
+    for _ in 0..<100 where harness.model.settings.isLoading {
       try await Task.sleep(for: .milliseconds(10))
     }
     harness.model.installInputMethodFeature(

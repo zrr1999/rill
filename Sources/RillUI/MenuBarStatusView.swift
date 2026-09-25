@@ -99,6 +99,7 @@ public enum MenuBarVoiceSetupStatus: Sendable, Equatable {
 public struct MenuBarOperationPanelState: Sendable, Equatable {
   public let language: AppLanguage
   public let isRunning: Bool
+  public let activeStage: WorkflowRunStage?
   public let lastCompletedText: String?
   public let lastFailure: String?
   public let recordCount: Int
@@ -115,6 +116,7 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
   public init(
     language: AppLanguage,
     isRunning: Bool,
+    activeStage: WorkflowRunStage? = nil,
     lastCompletedText: String? = nil,
     lastFailure: String? = nil,
     recordCount: Int,
@@ -130,6 +132,7 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
   ) {
     self.language = language
     self.isRunning = isRunning
+    self.activeStage = activeStage
     self.lastCompletedText = lastCompletedText
     self.lastFailure = lastFailure
     self.recordCount = recordCount
@@ -158,7 +161,8 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     }
 
     if isRunning {
-      return L10n.string(.menuStatusRunning, language: language)
+      return activeStage.map { L10n.runStageTitle($0, language: language) }
+        ?? L10n.string(.menuStatusRunning, language: language)
     }
 
     switch voiceSetupStatus {
@@ -351,14 +355,14 @@ public struct MenuBarStatusView: View {
           openMainWindow()
         } label: {
           Label(
-            L10n.string(.menuOpenMainWindow, language: model.language),
+            L10n.string(.menuOpenMainWindow, language: model.settings.language),
             systemImage: RillSystemSymbol.macwindow.rawValue
           )
         }
         .keyboardShortcut("o", modifiers: [.command, .shift])
 
         SettingsLink {
-          Label(UIStrings.text(.settingsTitle, language: model.language), systemImage: RillSystemSymbol.gearshape.rawValue)
+          Label(L10n.text(.settingsTitle, language: model.settings.language), systemImage: RillSystemSymbol.gearshape.rawValue)
         }
 
 
@@ -367,7 +371,7 @@ public struct MenuBarStatusView: View {
           openMainWindow()
         } label: {
           Label(
-            UIStrings.text(.historyScopeAll, language: model.language),
+            L10n.text(.historyScopeAll, language: model.settings.language),
             systemImage: RillSystemSymbol.clockArrowCirclepath.rawValue)
         }
 
@@ -376,7 +380,7 @@ public struct MenuBarStatusView: View {
           openMainWindow()
         } label: {
           Label(
-            L10n.workspace(.allRecords, language: model.language),
+            L10n.workspace(.allRecords, language: model.settings.language),
             systemImage: RillSystemSymbol.squareStack3dUp.rawValue
           )
         }
@@ -387,7 +391,7 @@ public struct MenuBarStatusView: View {
           copyLastCompletedText()
         } label: {
           Label(
-            L10n.string(.menuCopyLastResult, language: model.language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
+            L10n.string(.menuCopyLastResult, language: model.settings.language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
         }
         .keyboardShortcut("v", modifiers: [.command, .shift])
         .disabled(!panelState.canCopyLastResult)
@@ -411,7 +415,7 @@ public struct MenuBarStatusView: View {
           model.ignoreNextExternalClipboardChange()
         } label: {
           Label(
-            L10n.string(.menuIgnoreNextExternalCopy, language: model.language),
+            L10n.string(.menuIgnoreNextExternalCopy, language: model.settings.language),
             systemImage: RillSystemSymbol.eyeSlash.rawValue
           )
         }
@@ -423,34 +427,34 @@ public struct MenuBarStatusView: View {
         Menu {
           languageMenu
         } label: {
-          Label(L10n.string(.menuInterfaceLanguage, language: model.language), systemImage: RillSystemSymbol.globe.rawValue)
+          Label(L10n.string(.menuInterfaceLanguage, language: model.settings.language), systemImage: RillSystemSymbol.globe.rawValue)
         }
 
         Menu {
           textStyleMenu
         } label: {
           Label(
-            L10n.string(.menuTextStyles, language: model.language), systemImage: RillSystemSymbol.wandAndStars.rawValue)
+            L10n.string(.menuTextStyles, language: model.settings.language), systemImage: RillSystemSymbol.wandAndStars.rawValue)
         }
 
         Menu {
           textOutputMenu
         } label: {
-          Label(L10n.string(.menuTextOutput, language: model.language), systemImage: RillSystemSymbol.textformat.rawValue)
+          Label(L10n.string(.menuTextOutput, language: model.settings.language), systemImage: RillSystemSymbol.textformat.rawValue)
         }
 
         Menu {
           longRecordingMenu
         } label: {
           Label(
-            L10n.string(.menuLongRecording, language: model.language), systemImage: RillSystemSymbol.recordCircle.rawValue)
+            L10n.string(.menuLongRecording, language: model.settings.language), systemImage: RillSystemSymbol.recordCircle.rawValue)
         }
 
         Menu {
           workflowMenu
         } label: {
           Label(
-            L10n.string(.menuWorkflows, language: model.language),
+            L10n.string(.menuWorkflows, language: model.settings.language),
             systemImage: RillSystemSymbol.squareStack3dUp.rawValue
           )
         }
@@ -461,14 +465,14 @@ public struct MenuBarStatusView: View {
           model.selectSidebarSection(.settings)
           openMainWindow()
         } label: {
-          Label(UIStrings.text(.settingsTitle, language: model.language), systemImage: RillSystemSymbol.gearshape.rawValue)
+          Label(L10n.text(.settingsTitle, language: model.settings.language), systemImage: RillSystemSymbol.gearshape.rawValue)
         }
         .keyboardShortcut(",", modifiers: .command)
 
         Button {
           openAbout()
         } label: {
-          Label(L10n.string(.menuAbout, language: model.language), systemImage: RillSystemSymbol.infoCircle.rawValue)
+          Label(L10n.string(.menuAbout, language: model.settings.language), systemImage: RillSystemSymbol.infoCircle.rawValue)
         }
 
         Divider()
@@ -476,7 +480,7 @@ public struct MenuBarStatusView: View {
         Button(role: .destructive) {
           quitApplication()
         } label: {
-          Label(L10n.string(.menuQuit, language: model.language), systemImage: RillSystemSymbol.xmarkSquare.rawValue)
+          Label(L10n.string(.menuQuit, language: model.settings.language), systemImage: RillSystemSymbol.xmarkSquare.rawValue)
         }
         .keyboardShortcut("q", modifiers: .command)
       }
@@ -487,16 +491,16 @@ public struct MenuBarStatusView: View {
   private var statusHeader: some View {
     if model.isApplicationShuttingDown {
       Label(
-        L10n.string(.applicationShutdownTitle, language: model.language),
+        L10n.string(.applicationShutdownTitle, language: model.settings.language),
         systemImage: RillSystemSymbol.hourglassCircle.rawValue
       )
       .accessibilityIdentifier("menu.status.shutdown")
 
       MenuBarFixedWidthText(
-        text: L10n.string(.applicationShutdownDetail, language: model.language)
+        text: L10n.string(.applicationShutdownDetail, language: model.settings.language)
       )
       .accessibilityIdentifier("menu.status.shutdown-detail")
-    } else if panelState.voiceSetupStatus == .ready || model.isRunning || model.lastFailure != nil {
+    } else if panelState.voiceSetupStatus == .ready || model.voice.isRunning || model.lastFailure != nil {
       Label(panelState.statusTitle, systemImage: panelState.statusSystemImage)
         .accessibilityIdentifier("menu.status.summary")
     } else {
@@ -550,17 +554,18 @@ public struct MenuBarStatusView: View {
 
   private var panelState: MenuBarOperationPanelState {
     MenuBarOperationPanelState(
-      language: model.language,
-      isRunning: model.isRunning,
-      lastCompletedText: model.lastCompletedText,
+      language: model.settings.language,
+      isRunning: model.voice.isRunning,
+      activeStage: model.voice.activeStage,
+      lastCompletedText: model.voice.lastCompletedText,
       lastFailure: model.lastFailure,
       recordCount: model.recordCount,
       canDeliverNextRecord: model.canDeliverNextRecord,
-      preferredSpeechEngine: model.preferredSpeechEngine,
-      outputMode: model.builtinPushToTalkOutputMode,
-      longRecordingModeEnabled: model.longRecordingModeEnabled,
-      systemClipboardCaptureEnabled: model.systemClipboardCaptureEnabled,
-      clipboardSettingsAvailable: model.canMutateScalarSettings(in: .systemClipboard),
+      preferredSpeechEngine: model.settings.preferredSpeechEngine,
+      outputMode: model.settings.builtinPushToTalkOutputMode,
+      longRecordingModeEnabled: model.settings.longRecordingModeEnabled,
+      systemClipboardCaptureEnabled: model.settings.systemClipboardCaptureEnabled,
+      clipboardSettingsAvailable: model.settings.canMutateScalarSettings(in: .systemClipboard),
       clipboardCaptureState: model.systemClipboardCaptureControlSnapshot.state,
       voiceSetupStatus: MenuBarVoiceSetupStatus(readiness: model.voiceSetupReadiness),
       localPersistenceStatus: model.localPersistenceStatus
@@ -585,9 +590,9 @@ public struct MenuBarStatusView: View {
   private func scalarSettingsUnavailableNotice(
     _ domain: ScalarSettingsDomain
   ) -> some View {
-    if model.hasUnavailableScalarSettings(in: domain) {
+    if model.settings.hasUnavailableScalarSettings(in: domain) {
       MenuBarFixedWidthLabel(
-        title: domain.unavailableWarning(language: model.language),
+        title: domain.unavailableWarning(language: model.settings.language),
         systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
       )
       .accessibilityIdentifier("menu.settings-unavailable.\(domain.rawValue)")
@@ -606,16 +611,16 @@ extension MenuBarStatusView {
       Button {
         model.setInterfaceLanguage(language)
       } label: {
-        selectionLabel(language.displayName, isSelected: model.language == language)
+        selectionLabel(language.displayName, isSelected: model.settings.language == language)
       }
-      .disabled(!model.canMutateScalarSettings(in: .interface))
+      .disabled(!model.settings.canMutateScalarSettings(in: .interface))
     }
   }
 
   @ViewBuilder
   var textStyleMenu: some View {
     if model.enabledTextStyleWorkflows.isEmpty {
-      Text(L10n.string(.menuNoTextStyleWorkflows, language: model.language))
+      Text(L10n.string(.menuNoTextStyleWorkflows, language: model.settings.language))
     } else {
       ForEach(model.enabledTextStyleWorkflows) { workflow in
         Button {
@@ -625,7 +630,7 @@ extension MenuBarStatusView {
           MenuBarFixedWidthLabel(
             title: presentation.menuTitle(
               workflowName: model.workflowMenuButtonTitle(for: workflow),
-              language: model.language
+              language: model.settings.language
             ),
             systemImage: presentation.textStyle.systemImage
           )
@@ -641,7 +646,7 @@ extension MenuBarStatusView {
       openMainWindow()
     } label: {
       Label(
-        UIStrings.text(.openWorkflowEditor, language: model.language),
+        L10n.text(.openWorkflowEditor, language: model.settings.language),
         systemImage: RillSystemSymbol.squareAndPencil.rawValue)
     }
   }
@@ -654,28 +659,28 @@ extension MenuBarStatusView {
       model.setBuiltinPushToTalkOutputMode(.pasteIntoApp)
     } label: {
       selectionLabel(
-        L10n.string(.menuPasteIntoApp, language: model.language),
-        isSelected: model.builtinPushToTalkOutputMode == .pasteIntoApp
+        L10n.string(.menuPasteIntoApp, language: model.settings.language),
+        isSelected: model.settings.builtinPushToTalkOutputMode == .pasteIntoApp
       )
     }
-    .disabled(!model.canMutateScalarSettings(in: .input))
+    .disabled(!model.settings.canMutateScalarSettings(in: .input))
 
     Button {
       model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
     } label: {
       selectionLabel(
-        L10n.string(.menuSaveToVoiceGroup, language: model.language),
-        isSelected: model.builtinPushToTalkOutputMode == .saveToVoiceGroup
+        L10n.string(.menuSaveToVoiceGroup, language: model.settings.language),
+        isSelected: model.settings.builtinPushToTalkOutputMode == .saveToVoiceGroup
       )
     }
-    .disabled(!model.canMutateScalarSettings(in: .input))
+    .disabled(!model.settings.canMutateScalarSettings(in: .input))
 
     Divider()
 
     Button {
       copyLastCompletedText()
     } label: {
-      Label(L10n.string(.menuCopyLastResult, language: model.language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
+      Label(L10n.string(.menuCopyLastResult, language: model.settings.language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
     }
     .disabled(!panelState.canCopyLastResult)
 
@@ -683,7 +688,7 @@ extension MenuBarStatusView {
       model.deliverNextRecord()
     } label: {
       Label(
-        L10n.string(.menuDeliverNextRecord, language: model.language), systemImage: RillSystemSymbol.arrowDownDoc.rawValue)
+        L10n.string(.menuDeliverNextRecord, language: model.settings.language), systemImage: RillSystemSymbol.arrowDownDoc.rawValue)
     }
     .disabled(!panelState.canDeliverNextRecord)
   }
@@ -693,23 +698,23 @@ extension MenuBarStatusView {
     scalarSettingsUnavailableNotice(.input)
 
     Button {
-      model.setLongRecordingModeEnabled(!model.longRecordingModeEnabled)
+      model.setLongRecordingModeEnabled(!model.settings.longRecordingModeEnabled)
     } label: {
       selectionLabel(
-        L10n.string(.menuLongRecordingToggle, language: model.language),
-        isSelected: model.longRecordingModeEnabled
+        L10n.string(.menuLongRecordingToggle, language: model.settings.language),
+        isSelected: model.settings.longRecordingModeEnabled
       )
     }
-    .disabled(!model.canMutateScalarSettings(in: .input))
+    .disabled(!model.settings.canMutateScalarSettings(in: .input))
 
     MenuBarFixedWidthText(
-      text: L10n.string(.settingsLongRecordingModeDescription, language: model.language)
+      text: L10n.string(.settingsLongRecordingModeDescription, language: model.settings.language)
     )
 
     Divider()
 
     if model.enabledLongRecordingWorkflows.isEmpty {
-      Text(L10n.string(.menuNoLongRecordingWorkflows, language: model.language))
+      Text(L10n.string(.menuNoLongRecordingWorkflows, language: model.settings.language))
     } else {
       ForEach(model.enabledLongRecordingWorkflows) { workflow in
         Button {
@@ -728,7 +733,7 @@ extension MenuBarStatusView {
   @ViewBuilder
   var workflowMenu: some View {
     if model.enabledManualWorkflows.isEmpty {
-      Text(L10n.string(.menuNoManualWorkflows, language: model.language))
+      Text(L10n.string(.menuNoManualWorkflows, language: model.settings.language))
     } else {
       ForEach(model.enabledManualWorkflows) { workflow in
         Button {
@@ -750,7 +755,7 @@ extension MenuBarStatusView {
       openMainWindow()
     } label: {
       Label(
-        UIStrings.text(.openWorkflowEditor, language: model.language),
+        L10n.text(.openWorkflowEditor, language: model.settings.language),
         systemImage: RillSystemSymbol.squareAndPencil.rawValue)
     }
   }

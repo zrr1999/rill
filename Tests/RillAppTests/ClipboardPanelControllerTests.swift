@@ -1,7 +1,8 @@
-
 @testable import RillApp
 @testable import RillRecords
 @testable import RillWorkflows
+import RillDomainTestSupport
+import RillTestSupport
 import AppKit
 import XCTest
 @testable import RillCore
@@ -484,15 +485,15 @@ final class RecordPanelControllerTests: XCTestCase {
         let eventBus = EventBus()
         let resolver = CandidateResolver(eventBus: eventBus)
         let actionRegistry = OutputActionRegistry(actions: [])
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordPanelDigitTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: actionRegistry,
             candidateResolver: resolver,
             eventBus: eventBus
         )
-        return AppModel(
+        return makeAppModelForTesting(
             workflows: [],
             eventBus: eventBus,
             sessionCoordinator: coordinator,

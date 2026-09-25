@@ -81,3 +81,49 @@ public protocol BenchmarkRecordingArchiveStore: Sendable {
   func delete(runID: UUID) async throws
   func deleteAll() async throws
 }
+
+/// Explicit evaluation reads are separate from the live capture write port.
+public struct BenchmarkRecording: Sendable {
+  public let receipt: BenchmarkRecordingReceipt
+  public let audioBytes: Data
+
+  public init(receipt: BenchmarkRecordingReceipt, audioBytes: Data) {
+    self.receipt = receipt
+    self.audioBytes = audioBytes
+  }
+}
+
+public protocol BenchmarkRecordingArchiveReading: Sendable {
+  func recordingIDs() async throws -> [UUID]
+  func receipt(runID: UUID) async throws -> BenchmarkRecordingReceipt
+  func recording(runID: UUID) async throws -> BenchmarkRecording
+}
+
+public enum BenchmarkEvidenceKind: String, Codable, Sendable, CaseIterable {
+  case microphone, synthetic
+  case publicFixture = "public_fixture"
+}
+
+public enum BenchmarkCorpusSplit: String, Codable, Sendable, CaseIterable {
+  case development, validation
+}
+
+public struct BenchmarkCorpusSelection: Sendable, Equatable {
+  public let runIDs: [UUID]
+  public let evidenceKind: BenchmarkEvidenceKind
+  public let split: BenchmarkCorpusSplit
+
+  public init(runIDs: [UUID], evidenceKind: BenchmarkEvidenceKind, split: BenchmarkCorpusSplit) {
+    self.runIDs = runIDs
+    self.evidenceKind = evidenceKind
+    self.split = split
+  }
+}
+
+public protocol BenchmarkCorpusExporting: Sendable {
+  func export(_ selection: BenchmarkCorpusSelection, to directory: URL) async throws -> URL
+}
+
+public enum BenchmarkCorpusExportError: Error, Sendable, Equatable {
+  case cleanupPending(URL)
+}

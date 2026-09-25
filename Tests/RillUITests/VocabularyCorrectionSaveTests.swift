@@ -9,13 +9,13 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
         let harness = makeHarness(settingsStore: store, settingsWriteDebounceDuration: .zero)
         await harness.model.waitForInitialVoiceConfiguration()
         let rule = VocabularyRule(pattern: "rill", replacement: "Rill")
-        XCTAssertEqual(harness.model.saveVocabularyCorrectionRule(rule), .created(ruleID: rule.id))
+        XCTAssertEqual(harness.model.vocabulary.saveVocabularyCorrectionRule(rule), .created(ruleID: rule.id))
         await harness.model.flushPendingPersistenceWrites()
         let before = await store.activitySnapshot()
-        XCTAssertEqual(harness.model.saveVocabularyCorrectionRule(rule), .reused(ruleID: rule.id))
-        XCTAssertEqual(harness.model.saveVocabularyCorrectionRule(
+        XCTAssertEqual(harness.model.vocabulary.saveVocabularyCorrectionRule(rule), .reused(ruleID: rule.id))
+        XCTAssertEqual(harness.model.vocabulary.saveVocabularyCorrectionRule(
             VocabularyRule(pattern: "rill", replacement: "Different")), .conflict(existingRuleID: rule.id))
-        XCTAssertEqual(harness.model.saveVocabularyCorrectionRule(
+        XCTAssertEqual(harness.model.vocabulary.saveVocabularyCorrectionRule(
             VocabularyRule(pattern: " ", replacement: "Invalid")), .invalid)
         await harness.model.flushPendingPersistenceWrites()
         let after = await store.activitySnapshot()
@@ -28,22 +28,22 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
         await harness.model.waitForInitialVoiceConfiguration()
         let scope = VocabularyRuleScope(bundleIdentifier: "com.example.Editor")
         let rule = VocabularyRule(pattern: "vox type", replacement: "Rill", scope: scope)
-        XCTAssertEqual(harness.model.saveVocabularyCorrectionRule(rule), .created(ruleID: rule.id))
-        let collectionID = try XCTUnwrap(harness.model.vocabularyCollectionIDs(compatibleWith: scope).first)
+        XCTAssertEqual(harness.model.vocabulary.saveVocabularyCorrectionRule(rule), .created(ruleID: rule.id))
+        let collectionID = try XCTUnwrap(harness.model.vocabulary.vocabularyCollectionIDs(compatibleWith: scope).first)
         let secondScope = VocabularyRuleScope(locale: "zh-CN")
-        harness.model.vocabularyCollectionBindings.append(.init(collectionID: collectionID,
+        harness.model.vocabulary.vocabularyCollectionBindings.append(.init(collectionID: collectionID,
             condition: .init(locale: secondScope.locale)))
-        harness.model.setVocabularyRuleEnabled(rule.id, isEnabled: false)
+        harness.model.vocabulary.setVocabularyRuleEnabled(rule.id, isEnabled: false)
         await harness.model.flushPendingPersistenceWrites()
 
         let reloaded = makeHarness(settingsStore: store, settingsWriteDebounceDuration: .zero)
         await reloaded.model.waitForInitialVoiceConfiguration()
-        XCTAssertEqual(reloaded.model.vocabularyRules.first(where: { $0.id == rule.id })?.scope, scope)
+        XCTAssertEqual(reloaded.model.vocabulary.vocabularyRules.first(where: { $0.id == rule.id })?.scope, scope)
         var otherScopeRule = rule
         otherScopeRule.scope = secondScope
-        XCTAssertEqual(reloaded.model.saveVocabularyCorrectionRule(otherScopeRule), .reused(ruleID: rule.id))
-        XCTAssertEqual(reloaded.model.saveVocabularyCorrectionRule(rule), .reused(ruleID: rule.id))
-        XCTAssertEqual(reloaded.model.vocabularyCollections.flatMap(\.entries).count, 1)
+        XCTAssertEqual(reloaded.model.vocabulary.saveVocabularyCorrectionRule(otherScopeRule), .reused(ruleID: rule.id))
+        XCTAssertEqual(reloaded.model.vocabulary.saveVocabularyCorrectionRule(rule), .reused(ruleID: rule.id))
+        XCTAssertEqual(reloaded.model.vocabulary.vocabularyCollections.flatMap(\.entries).count, 1)
     }
 
     func testExactDuplicateIsReusedAndReenabledInsteadOfAppended() throws {
@@ -59,9 +59,9 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
             replacement: "Rill",
             scope: scope
         )
-        harness.model.vocabularyRules = [rule]
+        harness.model.vocabulary.restoreLegacyRules([rule])
 
-        let outcome = harness.model.saveVocabularyCorrectionRule(
+        let outcome = harness.model.vocabulary.saveVocabularyCorrectionRule(
             VocabularyRule(
                 pattern: " vox type ",
                 replacement: " Rill ",
@@ -70,8 +70,8 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
         )
 
         XCTAssertEqual(outcome, .reused(ruleID: rule.id))
-        XCTAssertEqual(harness.model.vocabularyRules.count, 1)
-        XCTAssertTrue(try XCTUnwrap(harness.model.vocabularyRules.first).enabled)
+        XCTAssertEqual(harness.model.vocabulary.vocabularyRules.count, 1)
+        XCTAssertTrue(try XCTUnwrap(harness.model.vocabulary.vocabularyRules.first).enabled)
     }
 
     func testConflictingReplacementIsBlocked() {
@@ -82,9 +82,9 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
             replacement: "Project Alpha",
             scope: scope
         )
-        harness.model.vocabularyRules = [existing]
+        harness.model.vocabulary.restoreLegacyRules([existing])
 
-        let outcome = harness.model.saveVocabularyCorrectionRule(
+        let outcome = harness.model.vocabulary.saveVocabularyCorrectionRule(
             VocabularyRule(
                 pattern: "project name",
                 replacement: "Project Beta",
@@ -93,7 +93,7 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
         )
 
         XCTAssertEqual(outcome, .conflict(existingRuleID: existing.id))
-        XCTAssertEqual(harness.model.vocabularyRules, [existing])
+        XCTAssertEqual(harness.model.vocabulary.vocabularyRules, [existing])
     }
 
     func testDifferentScopeCreatesANewRule() {
@@ -103,17 +103,17 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
             replacement: "Release Train",
             scope: VocabularyRuleScope(bundleIdentifier: "com.example.One")
         )
-        harness.model.vocabularyRules = [existing]
+        harness.model.vocabulary.restoreLegacyRules([existing])
         let proposed = VocabularyRule(
             pattern: "release train",
             replacement: "Release Train",
             scope: VocabularyRuleScope(bundleIdentifier: "com.example.Two")
         )
 
-        let outcome = harness.model.saveVocabularyCorrectionRule(proposed)
+        let outcome = harness.model.vocabulary.saveVocabularyCorrectionRule(proposed)
 
         XCTAssertEqual(outcome, .created(ruleID: proposed.id))
-        XCTAssertEqual(harness.model.vocabularyRules.count, 2)
+        XCTAssertEqual(harness.model.vocabulary.vocabularyRules.count, 2)
     }
 
     func testHotwordNormalizationPreventsSemanticallyDuplicateRules() {
@@ -125,9 +125,9 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
             matchMode: .exactPhrase,
             caseSensitive: false
         )
-        harness.model.vocabularyRules = [existing]
+        harness.model.vocabulary.restoreLegacyRules([existing])
 
-        let outcome = harness.model.saveVocabularyCorrectionRule(
+        let outcome = harness.model.vocabulary.saveVocabularyCorrectionRule(
             VocabularyRule(
                 kind: .hotword,
                 pattern: "Rill",
@@ -138,6 +138,6 @@ final class VocabularyCorrectionSaveTests: XCTestCase {
         )
 
         XCTAssertEqual(outcome, .reused(ruleID: existing.id))
-        XCTAssertEqual(harness.model.vocabularyRules.count, 1)
+        XCTAssertEqual(harness.model.vocabulary.vocabularyRules.count, 1)
     }
 }

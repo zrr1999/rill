@@ -21,12 +21,12 @@ final class WebhookReleaseGateTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "network.slash", accentColorName: "orange")
         )
         let harness = makeHarness(workflow: workflow)
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
 
         XCTAssertFalse(harness.model.canTriggerWorkflow(workflow))
         harness.model.runWorkflow(workflow)
 
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         XCTAssertEqual(
             harness.model.lastFailure,
             "This workflow cannot run because no production output action is registered for \(ExternalOutputActionID.webhookPost)."
@@ -79,7 +79,7 @@ final class WebhookReleaseGateTests: XCTestCase {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        let loadedAction = try XCTUnwrap(harness.model.customWorkflows.first?.pipeline.outputActions.first)
+        let loadedAction = try XCTUnwrap(harness.model.workflowLibrary.customWorkflows.first?.pipeline.outputActions.first)
         XCTAssertEqual(loadedAction.id, ExternalOutputActionID.webhookPost)
         XCTAssertEqual(
             loadedAction.configuration[ExternalOutputActionConfigurationKey.webhookHeadersJSON],

@@ -158,9 +158,9 @@ final class ContextMemoryController {
     private func eligibleForMaintenance() async -> Bool {
         guard !isShuttingDown, settings.memoryEnabled, authorization?.isValid == true,
               IdleMemoryScheduler.idleSeconds >= 5 * 60, let model,
-              !model.isLoadingSettings, !model.isLoadingPrivacySettings,
-              !model.hasActiveOrQueuedVoiceRun, !model.isLocalHistoryMaintenanceRunning,
-              !model.isSpeechPlaybackActive else { return false }
+              !model.settings.isLoading, !model.settings.isLoadingPrivacySettings,
+              !model.hasActiveOrQueuedVoiceRun, !model.history.isLocalHistoryMaintenanceRunning,
+              !model.voice.isSpeechPlaybackActive else { return false }
         return await runtimeIsIdle()
     }
 

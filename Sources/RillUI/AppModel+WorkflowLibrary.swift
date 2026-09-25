@@ -1,10 +1,14 @@
 import Foundation
 import RillCore
+import RillWorkflows
+import RillRecords
+import RillKnowledge
+import RillSpeech
 
 extension AppModel {
   func rebuildWorkflowLibrary() {
-    invalidateWorkflowExplanation()
-    workflowLibrary.rebuild(defaultVocabularyBindings: vocabularyCollectionBindings)
+    workflowLibrary.cancelWorkflowExplanation()
+    workflowLibrary.rebuild(defaultVocabularyBindings: self.vocabulary.vocabularyCollectionBindings)
     workflowLibraryChangedAction()
   }
 
@@ -14,10 +18,10 @@ extension AppModel {
 
   func persistWorkflowLibrary() {
     markSettingModifiedDuringInitialLoad(Self.workflowLibrarySettingKey)
-    guard !isRestoringSettings, isWorkflowLibraryAvailable else { return }
+    guard !self.settings.isRestoringSettings, isWorkflowLibraryAvailable else { return }
     let document = WorkflowLibraryDocument(
-      customWorkflows: usesWorkflowFilesAsSource ? [] : customWorkflows,
-      customizations: workflowCustomizations
+      customWorkflows: self.workflowLibrary.usesWorkflowFilesAsSource ? [] : self.workflowLibrary.customWorkflows,
+      customizations: self.workflowLibrary.workflowCustomizations
     )
     persistRetryableSettingsStoreWrite(
       for: Self.workflowLibrarySettingKey,

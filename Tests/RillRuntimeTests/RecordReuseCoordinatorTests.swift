@@ -1,5 +1,6 @@
 @testable import RillRecords
 @testable import RillWorkflows
+import RillDomainTestSupport
 import XCTest
 
 @testable import RillCore
@@ -66,8 +67,8 @@ final class RecordReuseCoordinatorTests: XCTestCase {
     let bus = EventBus()
     let receipts = InMemoryWorkflowRunReceiptRepository()
     let probe = ReuseOutputProbe()
-    let coordinator = SessionCoordinator(
-      contextProvider: ReuseContextProvider(context: context), privacyContextProvider: { context },
+    let coordinator = makeTestSessionCoordinator(
+       privacyContextProvider: { context },
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: [
@@ -102,7 +103,8 @@ private struct ReuseOutputAction: OutputAction {
   let id = RecordActionID.focusedApplicationInsert
   let probe: ReuseOutputProbe
   let failAfterOutput: Bool
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      let text = try record.requireText(for: id)
     await probe.record(text)
     if failAfterOutput { throw CommittedOutputFailure.clipboardRestorationFailedAfterInjection }
     return .injected

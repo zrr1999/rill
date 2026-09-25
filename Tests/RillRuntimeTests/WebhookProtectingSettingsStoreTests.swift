@@ -1,3 +1,4 @@
+@testable import RillSpeech
 
 @testable import RillCore
 @testable import RillWorkflows

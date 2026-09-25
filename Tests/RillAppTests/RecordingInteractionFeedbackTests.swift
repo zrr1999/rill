@@ -1,3 +1,4 @@
+import RillDomainTestSupport
 import Foundation
 import Testing
 
@@ -123,16 +124,15 @@ private struct CueFixture {
     let capture = CueCapture(failure: failure)
     self.capture = capture
     let eventBus = EventBus()
-    let coordinator = SessionCoordinator(
-      contextProvider: CueContextProvider(),
+    let coordinator = makeTestSessionCoordinator(
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: []),
       candidateResolver: CandidateResolver(eventBus: eventBus),
       eventBus: eventBus
     )
-    queue = CapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
-    controller = WorkflowAudioRunController(
+    queue = makeTestCapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
+    controller = makeTestWorkflowAudioRunController(
       audioCaptureService: capture,
       capturedAudioProcessingQueue: queue,
       privacyRunGate: PrivacyRunGate(

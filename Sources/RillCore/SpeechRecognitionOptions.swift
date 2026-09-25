@@ -10,23 +10,42 @@ public struct RecognitionHints: Sendable, Equatable {
   public static let empty = RecognitionHints()
 }
 
+public struct RecognitionVocabularySnapshot: Sendable, Equatable {
+  public let revision: UUID
+  public let collections: [VocabularyCollection]
+
+  public init(revision: UUID, collections: [VocabularyCollection]) {
+    self.revision = revision
+    self.collections = collections
+  }
+}
+
 public struct SpeechRecognitionRequestOptions: Sendable, Equatable {
+  public var modelID: String?
+  public var vocabulary: RecognitionVocabularySnapshot?
   public var language: String?
   public var hints: RecognitionHints
-  /// A live run freezes its local model and language at admission.
-  public var modelIdentifier: String?
 
   public init(
+    modelID: String? = nil,
+    vocabulary: RecognitionVocabularySnapshot? = nil,
     language: String? = nil,
-    hints: RecognitionHints = .empty,
-    modelIdentifier: String? = nil
+    hints: RecognitionHints = .empty
   ) {
+    self.modelID = modelID
+    self.vocabulary = vocabulary
     self.language = language
     self.hints = hints
-    self.modelIdentifier = modelIdentifier
   }
 
   public static let empty = SpeechRecognitionRequestOptions()
+}
+
+public enum RecognitionHintApplicationStatus: String, Sendable {
+  case notRequested
+  case unsupported
+  case applied
+  case unavailable
 }
 
 public enum RecognitionHintKind: String, Codable, Sendable, Hashable {
@@ -35,13 +54,16 @@ public enum RecognitionHintKind: String, Codable, Sendable, Hashable {
 
 public struct SpeechRecognizerCapabilities: Sendable, Equatable {
   public var supportedHintKinds: Set<RecognitionHintKind>
+  public var streamingSupportedHintKinds: Set<RecognitionHintKind>
   public var maximumAudioDurationSeconds: Double?
 
   public init(
     supportedHintKinds: Set<RecognitionHintKind> = [],
+    streamingSupportedHintKinds: Set<RecognitionHintKind> = [],
     maximumAudioDurationSeconds: Double? = nil
   ) {
     self.supportedHintKinds = supportedHintKinds
+    self.streamingSupportedHintKinds = streamingSupportedHintKinds
     self.maximumAudioDurationSeconds = maximumAudioDurationSeconds
   }
 

@@ -6,6 +6,50 @@ import XCTest
 @testable import RillWorkflows
 
 final class RecordStoreTests: XCTestCase {
+    func testTextCorrectionPreservesOriginalAndCannotTriggerCollectionDelivery() async throws {
+        let store = RecordStore()
+        let runID = UUID()
+        let original = try await store.ingest(RecordDraft(payload: .text("original"), provenance:
+            RecordProvenance(source: .init(kind: .voiceInput), workflowRunID: runID)),
+            into: [RecordCollection.inboxID])
+        let operationID = UUID()
+        let correction = try await store.saveTextCorrection(
+            workflowRunID: runID, text: "corrected", operationID: operationID)
+        XCTAssertEqual(correction.record.provenance.derivedFrom, original.id)
+        XCTAssertNil(correction.record.provenance.supersedes)
+        XCTAssertEqual(correction.record.payload.textValue, "corrected")
+        XCTAssertTrue(correction.memberships.isEmpty)
+        let unchanged = try await store.record(id: original.id)
+        XCTAssertEqual(unchanged, original)
+        let retry = try await store.saveTextCorrection(
+            workflowRunID: runID, text: "corrected", operationID: operationID)
+        XCTAssertEqual(retry.id, correction.id)
+        let all = try await store.snapshot()
+        XCTAssertEqual(all.records.count, 2)
+    }
+
+    func testTextCorrectionFailureRollsBackAndMissingOriginalIsNotRecreated() async throws {
+        let persistence = FailingRecordGraphPersistence()
+        let store = RecordStore(persistence: persistence)
+        let runID = UUID()
+        let original = try await store.ingest(RecordDraft(payload: .text("original"), provenance:
+            RecordProvenance(source: .init(kind: .voiceInput), workflowRunID: runID)), into: [])
+        let before = try await store.snapshot()
+        await persistence.rejectWrites()
+        do {
+            _ = try await store.saveTextCorrection(workflowRunID: runID, text: "edit", operationID: UUID())
+            XCTFail("Correction must require a successful commit")
+        } catch let error as RecordStoreError { XCTAssertEqual(error, .persistenceUnavailable) }
+        let failed = try await store.snapshot()
+        XCTAssertEqual(failed, before)
+        await persistence.allowWrites()
+        try await store.deleteRecord(original.id)
+        do {
+            _ = try await store.saveTextCorrection(workflowRunID: runID, text: "edit", operationID: UUID())
+            XCTFail("A deleted source must not be restored by a stale editor")
+        } catch let error as RecordStoreError { XCTAssertEqual(error, .recordUnavailable) }
+    }
+
     func testOneCaptureCreatesOneRecordWithMultipleMemberships() async throws {
         let store = RecordStore()
         let second = try await store.createCollection(named: "Second", preset: .queue)

@@ -1,45 +1,30 @@
 import Foundation
 
+public enum RecognitionPriority: String, Sendable, Equatable {
+    case interactive, foregroundFinal, wakeCandidate
+}
+
 public struct RecognitionRequest: Sendable, Equatable {
-    public var runID: UUID
-    public var configuration: SpeechRequestConfiguration
-    public var selectedText: String
-    public var clipboardText: String
-    public var clipboardExcluded: Bool
-    public var triggerEvent: WorkflowTriggerEvent?
+    public let runID: UUID
+    public let selectedText: String
+    public let clipboardText: String
+    public let clipboardExcluded: Bool
+    public let priority: RecognitionPriority
     public var capturedAudio: CapturedAudio?
-    public var options: SpeechRecognitionRequestOptions
+    public let options: SpeechRecognitionRequestOptions
 
     public init(
         runID: UUID,
-        configuration: SpeechRequestConfiguration,
-        capturedAudio: CapturedAudio?,
-        options: SpeechRecognitionRequestOptions = .empty
-    ) {
-        self.runID = runID
-        self.configuration = configuration
-        self.capturedAudio = capturedAudio
-        self.options = options
-        selectedText = ""
-        clipboardText = ""
-        clipboardExcluded = true
-        triggerEvent = nil
-    }
-
-    public init(
-        runID: UUID,
-        workflow: WorkflowDefinition,
         contextSnapshot: ContextSnapshot,
-        triggerEvent: WorkflowTriggerEvent? = nil,
+        priority: RecognitionPriority = .foregroundFinal,
         capturedAudio: CapturedAudio? = nil,
         options: SpeechRecognitionRequestOptions = .empty
     ) {
         self.runID = runID
-        self.configuration = SpeechRequestConfiguration(workflow: workflow)
         self.selectedText = contextSnapshot.focus.selectedText
         self.clipboardText = contextSnapshot.clipboard.plainText
         self.clipboardExcluded = contextSnapshot.clipboard.excludesWorkflowCapture
-        self.triggerEvent = triggerEvent
+        self.priority = priority
         self.capturedAudio = capturedAudio
         self.options = options
     }
@@ -157,8 +142,8 @@ public protocol SpeechRecognizer: Sendable {
 /// context is read or audio capture begins.
 public typealias RecognitionRunPreflight = @Sendable (WorkflowDefinition) async throws -> Void
 
-extension SpeechRecognizer {
-    public var capabilities: SpeechRecognizerCapabilities { .none }
+public extension SpeechRecognizer {
+    var capabilities: SpeechRecognizerCapabilities { .none }
 }
 
 public struct DeferredCapturedAudio: Sendable {
@@ -186,12 +171,6 @@ public struct DeferredCapturedAudio: Sendable {
         task.cancel()
     }
 
-    /// Resolves an abandoned capture and removes its payload only when it is a managed temporary file.
-    @discardableResult
-    public func discardManagedTemporaryFile() async throws -> Bool {
-        let capturedAudio = try await value()
-        return try capturedAudio.removeManagedTemporaryFile()
-    }
 }
 
 public protocol AudioCaptureService: Sendable {
@@ -222,23 +201,23 @@ public protocol AudioCaptureService: Sendable {
     func shutdown() async
 }
 
-extension AudioCaptureService {
-    public func finishCaptureDeferred() async throws -> DeferredCapturedAudio {
+public extension AudioCaptureService {
+    func finishCaptureDeferred() async throws -> DeferredCapturedAudio {
         let capturedAudio = try await finishCapture()
         return .resolved(capturedAudio)
     }
 
     /// Compatibility behavior for services that can only host one capture.
     /// Run-aware services should override this method to reject stale cancellation.
-    public func cancelCapture(runID: UUID) async {
+    func cancelCapture(runID: UUID) async {
         await cancelCapture()
     }
 
-    public func removeMaximumDurationLimit(runID _: UUID) async -> Bool {
+    func removeMaximumDurationLimit(runID _: UUID) async -> Bool {
         false
     }
 
-    public func shutdown() async {
+    func shutdown() async {
         await cancelCapture()
     }
 }
@@ -259,8 +238,8 @@ public protocol SpeechSynthesizer: Sendable {
     func releaseResources() async
 }
 
-extension SpeechSynthesizer {
-    public func releaseResources() async {}
+public extension SpeechSynthesizer {
+    func releaseResources() async {}
 }
 
 public protocol SpeechPlaybackService: Sendable {
@@ -272,8 +251,7 @@ public protocol SpeechPlaybackService: Sendable {
 public protocol TextTransformer: Sendable {
     var id: String { get }
     var supportedKinds: [PostProcessStepKind] { get }
-    func transform(text: String, step: PostProcessStep, context: TransformContext) async throws
-        -> String
+    func transform(text: String, step: PostProcessStep, context: TransformContext) async throws -> String
 }
 
 /// A transformer that can return the exact, credential-free request trace
@@ -295,52 +273,6 @@ public protocol SpeechTextFallbackEligibleError: Error {
     var allowsSpeechTextFallback: Bool { get }
 }
 
-public protocol OutputAction: Sendable {
-    var id: String { get }
-    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult
-    func execute(text: String, context: ActionContext) async throws -> ActionResult
-}
-
-public enum OutputActionPayloadError: Error, LocalizedError, Sendable, Equatable {
-    case unsupportedPayload(actionID: String, payloadKind: RecordPayloadKind)
-
-    public var errorDescription: String? {
-        switch self {
-        case .unsupportedPayload(let actionID, let payloadKind):
-            "Action \(actionID) does not support \(payloadKind.rawValue) records."
-        }
-    }
-}
-
-extension OutputAction {
-    /// Compatibility for text-only actions. The orchestration boundary always
-    /// sends a RecordDraft and rejects unsupported payloads explicitly.
-    public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-        guard case .text(let text) = record.payload else {
-            throw OutputActionPayloadError.unsupportedPayload(
-                actionID: id,
-                payloadKind: record.payload.kind
-            )
-        }
-        return try await execute(text: text, context: context)
-    }
-
-    public func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        let draft = RecordDraft(
-            payload: .text(text),
-            provenance: RecordProvenance(
-                source: RecordSourceIdentity(kind: .workflow),
-                sourceApplicationName: context.contextSnapshot.focus.applicationName,
-                sourceBundleIdentifier: context.contextSnapshot.focus.bundleIdentifier,
-                workflowID: context.workflow.id,
-                workflowRunID: context.runID,
-                workflow: context.workflow.presentation
-            )
-        )
-        return try await execute(record: draft, context: context)
-    }
-}
-
 public protocol WorkflowCatalog: Sendable {
     func manifest() -> WorkflowManifest
 }
@@ -355,13 +287,6 @@ public protocol RunHistoryGenerationSource: Sendable {
     func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration
 }
 
-public extension RunHistoryGenerationSource {
-    /// Repositories without generation support must fail closed.
-    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration {
-        throw RunHistoryGenerationError.unsupported
-    }
-}
-
 public protocol HistoryRepository: RunHistoryGenerationSource {
     func save(_ record: WorkflowResultRecord) async throws
     func save(
@@ -369,11 +294,11 @@ public protocol HistoryRepository: RunHistoryGenerationSource {
         generation: RunHistoryWriteGeneration
     ) async throws
     func records(matching query: HistoryQuery) async throws -> [WorkflowResultRecord]
+}
+
+public protocol HistoryMaintaining: RunHistoryGenerationSource {
     /// Deletes records strictly older than `cutoff` and returns the number removed.
     func deleteRecords(olderThan cutoff: Date) async throws -> Int
-    /// Compatibility bridge for a timestamp-bounded clear. New clear intents
-    /// use `deleteRecords(obsoletedBy:preservingLegacyRowsAfter:)`.
-    func deleteRecords(through upperBound: Date) async throws -> Int
     /// Replays one logical clear transition. Rows from older generations are
     /// deleted; a legacy timestamp preserves post-intent schema-4 rows once.
     func deleteRecords(
@@ -393,30 +318,6 @@ public enum HistoryRepositoryError: Error, Sendable, Equatable {
     case conflictingHistoryRecord(recordID: UUID)
 }
 
-public enum HistoryRepositoryMaintenanceError: Error, Sendable, Equatable {
-    case boundedDeletionUnsupported
-}
-
-extension HistoryRepository {
-    public func save(
-        _ record: WorkflowResultRecord,
-        generation: RunHistoryWriteGeneration
-    ) async throws {
-        throw RunHistoryGenerationError.unsupported
-    }
-
-    public func deleteRecords(through upperBound: Date) async throws -> Int {
-        throw HistoryRepositoryMaintenanceError.boundedDeletionUnsupported
-    }
-
-    public func deleteRecords(
-        obsoletedBy transition: RunHistoryClearTransition,
-        preservingLegacyRowsAfter legacyUpperBound: Date?
-    ) async throws -> Int {
-        throw RunHistoryGenerationError.unsupported
-    }
-}
-
 public enum WorkflowRunReceiptRepositoryError: Error, Sendable, Equatable {
     case conflictingTerminalReceipt(runID: UUID)
     /// The immutable terminal's write intent belongs to an already-cleared generation.
@@ -433,11 +334,11 @@ public protocol WorkflowRunReceiptRepository: RunHistoryGenerationSource {
         generation: RunHistoryWriteGeneration
     ) async throws
     func receipts(matching query: WorkflowRunReceiptQuery) async throws -> [WorkflowRunReceipt]
+}
+
+public protocol WorkflowRunReceiptMaintaining: RunHistoryGenerationSource {
     /// Deletes receipts strictly older than `cutoff` and returns the number removed.
     func deleteReceipts(olderThan cutoff: Date) async throws -> Int
-    /// Compatibility bridge for a timestamp-bounded clear. New clear intents
-    /// use `deleteReceipts(obsoletedBy:preservingLegacyRowsAfter:)`.
-    func deleteReceipts(through upperBound: Date) async throws -> Int
     func deleteReceipts(
         obsoletedBy transition: RunHistoryClearTransition,
         preservingLegacyRowsAfter legacyUpperBound: Date?
@@ -446,32 +347,9 @@ public protocol WorkflowRunReceiptRepository: RunHistoryGenerationSource {
     func deleteAllReceipts() async throws -> Int
 }
 
-extension WorkflowRunReceiptRepository {
-    public func insertTerminal(
-        _ receipt: WorkflowRunReceipt,
-        generation: RunHistoryWriteGeneration
-    ) async throws {
-        throw RunHistoryGenerationError.unsupported
-    }
-
-    public func deleteReceipts(through upperBound: Date) async throws -> Int {
-        throw HistoryRepositoryMaintenanceError.boundedDeletionUnsupported
-    }
-
-    public func deleteReceipts(
-        obsoletedBy transition: RunHistoryClearTransition,
-        preservingLegacyRowsAfter legacyUpperBound: Date?
-    ) async throws -> Int {
-        throw RunHistoryGenerationError.unsupported
-    }
-}
-
 public protocol DiagnosticHistoryMaintaining: RunHistoryGenerationSource {
     /// Deletes events strictly older than `cutoff` and returns the number removed.
     func deleteEvents(olderThan cutoff: Date) async throws -> Int
-    /// Compatibility bridge for a timestamp-bounded clear. New clear intents
-    /// use `deleteEvents(obsoletedBy:preservingLegacyRowsAfter:)`.
-    func deleteEvents(through upperBound: Date) async throws -> Int
     func deleteEvents(
         obsoletedBy transition: RunHistoryClearTransition,
         preservingLegacyRowsAfter legacyUpperBound: Date?
@@ -480,7 +358,7 @@ public protocol DiagnosticHistoryMaintaining: RunHistoryGenerationSource {
     func deleteAllEvents() async throws -> Int
 }
 
-public protocol DiagnosticRepository: DiagnosticHistoryMaintaining {
+public protocol DiagnosticRepository: RunHistoryGenerationSource {
     func save(_ event: DiagnosticEvent) async throws
     func save(
         _ event: DiagnosticEvent,
@@ -492,42 +370,6 @@ public protocol DiagnosticRepository: DiagnosticHistoryMaintaining {
 public enum DiagnosticRepositoryError: Error, Sendable, Equatable {
     /// The event's write intent belongs to an already-cleared generation.
     case writeObsoletedByClearBarrier
-}
-
-/// A fail-closed compatibility error for diagnostic backends that have not yet
-/// implemented local-retention deletion.
-public enum DiagnosticRepositoryMaintenanceError: Error, Sendable, Equatable {
-    case deletionUnsupported
-}
-
-extension DiagnosticHistoryMaintaining {
-    public func deleteEvents(olderThan cutoff: Date) async throws -> Int {
-        throw DiagnosticRepositoryMaintenanceError.deletionUnsupported
-    }
-
-    public func deleteEvents(through upperBound: Date) async throws -> Int {
-        throw DiagnosticRepositoryMaintenanceError.deletionUnsupported
-    }
-
-    public func deleteEvents(
-        obsoletedBy transition: RunHistoryClearTransition,
-        preservingLegacyRowsAfter legacyUpperBound: Date?
-    ) async throws -> Int {
-        throw RunHistoryGenerationError.unsupported
-    }
-
-    public func deleteAllEvents() async throws -> Int {
-        throw DiagnosticRepositoryMaintenanceError.deletionUnsupported
-    }
-}
-
-extension DiagnosticRepository {
-    public func save(
-        _ event: DiagnosticEvent,
-        generation: RunHistoryWriteGeneration
-    ) async throws {
-        throw RunHistoryGenerationError.unsupported
-    }
 }
 
 /// A settings read that separates intact values from rows whose protected
@@ -560,8 +402,8 @@ public protocol SettingsStore: Sendable {
     func removeValue(forKey key: AppSettingKey) async throws
 }
 
-extension SettingsStore {
-    public func strings(forKeys keys: [AppSettingKey]) async throws -> [AppSettingKey: String] {
+public extension SettingsStore {
+    func strings(forKeys keys: [AppSettingKey]) async throws -> [AppSettingKey: String] {
         var values: [AppSettingKey: String] = [:]
 
         for key in keys {
@@ -573,9 +415,7 @@ extension SettingsStore {
         return values
     }
 
-    public func settingsSnapshot(forKeys keys: [AppSettingKey]) async throws
-        -> SettingsStoreReadSnapshot
-    {
+    func settingsSnapshot(forKeys keys: [AppSettingKey]) async throws -> SettingsStoreReadSnapshot {
         SettingsStoreReadSnapshot(values: try await strings(forKeys: keys))
     }
 }

@@ -1,3 +1,6 @@
+@testable import RillSpeech
+@testable import RillRecords
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -288,7 +291,8 @@ private struct RecordingAction: OutputAction {
     let id = "recording.action"
     let probe: RecordingActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         await probe.record(text)
         return .copiedToClipboard
     }
@@ -566,7 +570,7 @@ private func makeCapturedAudioProcessingQueue(
     eventBus: EventBus,
     diagnostics: DiagnosticsRecorder? = nil
 ) -> CapturedAudioProcessingQueue {
-    CapturedAudioProcessingQueue(
+    makeTestCapturedAudioProcessingQueue(
         sessionCoordinator: sessionCoordinator,
         eventBus: eventBus,
         diagnostics: diagnostics
@@ -580,7 +584,7 @@ private func collectRecordingEvents(
     var events: [RillEvent] = []
     for await event in stream {
         if case .diagnostic(let diagnostic) = event,
-            diagnostic.event == marker
+            diagnostic.name == .diagnosticBoundary && diagnostic.message == marker
         {
             break
         }
@@ -598,8 +602,8 @@ private func publishRecordingEventMarker(
             DiagnosticEvent(
                 subsystem: .platform,
                 level: .debug,
-                event: marker,
-                message: "Recording test event marker."
+                event: .diagnosticBoundary,
+                message: marker
             )
         )
     )
@@ -718,8 +722,8 @@ private func makeRecordingFocusTargetFixture(
         inlineData: Data([1])
     )
     let audioCaptureService = MockAudioCaptureService(audio: audio)
-    let coordinator = SessionCoordinator(
-        contextProvider: RecordingTestContextProvider(),
+    let coordinator = makeTestSessionCoordinator(
+
         recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
         transformerRegistry: TextTransformerRegistry(transformers: []),
         actionRegistry: OutputActionRegistry(actions: []),
@@ -731,7 +735,7 @@ private func makeRecordingFocusTargetFixture(
         eventBus: eventBus
     )
     let focusProbe = RecordingFocusIdentityProbe(initialFocus)
-    let manager = RecordingSessionManager(
+    let manager = makeTestRecordingSessionManager(
         audioCaptureService: audioCaptureService,
         hotkeyTap: HotkeyEventTap(),
         capturedAudioProcessingQueue: queue,
@@ -776,8 +780,8 @@ private func makeStreamHotkeyFinishingFixture(
         inlineData: Data([1])
     )
     let audioCaptureService = BlockingFinishAudioCaptureService(audio: audio)
-    let coordinator = SessionCoordinator(
-        contextProvider: RecordingTestContextProvider(),
+    let coordinator = makeTestSessionCoordinator(
+
         recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
         transformerRegistry: TextTransformerRegistry(transformers: []),
         actionRegistry: OutputActionRegistry(actions: []),
@@ -790,7 +794,7 @@ private func makeStreamHotkeyFinishingFixture(
         diagnostics: diagnostics
     )
     let hotkeyTap = HotkeyEventTap()
-    let manager = RecordingSessionManager(
+    let manager = makeTestRecordingSessionManager(
         audioCaptureService: audioCaptureService,
         hotkeyTap: hotkeyTap,
         capturedAudioProcessingQueue: queue,
@@ -837,8 +841,8 @@ private func makeStreamHotkeyPreparationFixture(
         cancellationGate: cancellationGate
     )
     let workflowProvider = RecordingWorkflowProviderGate(workflow: workflow)
-    let coordinator = SessionCoordinator(
-        contextProvider: RecordingTestContextProvider(),
+    let coordinator = makeTestSessionCoordinator(
+
         recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
         transformerRegistry: TextTransformerRegistry(transformers: []),
         actionRegistry: OutputActionRegistry(actions: []),
@@ -851,7 +855,7 @@ private func makeStreamHotkeyPreparationFixture(
         diagnostics: diagnostics
     )
     let hotkeyTap = HotkeyEventTap()
-    let manager = RecordingSessionManager(
+    let manager = makeTestRecordingSessionManager(
         audioCaptureService: audioCaptureService,
         hotkeyTap: hotkeyTap,
         capturedAudioProcessingQueue: queue,
@@ -896,8 +900,8 @@ final class RecordingSessionManagerTests: XCTestCase {
                 inlineData: Data([1])
             )
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -908,7 +912,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: queue,
@@ -961,8 +965,8 @@ final class RecordingSessionManagerTests: XCTestCase {
 
     func testApplicationShutdownRejectsLateAndNewRecordingStarts() async throws {
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -994,7 +998,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "blue")
         )
         let workflowProvider = RecordingWorkflowProviderGate(workflow: workflow)
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: queue,
@@ -1470,8 +1474,8 @@ final class RecordingSessionManagerTests: XCTestCase {
             inlineData: Data([1])
         )
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -1482,7 +1486,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: queue,
@@ -1753,8 +1757,8 @@ final class RecordingSessionManagerTests: XCTestCase {
             pipeline: PipelineDeclaration(recognizerID: "recording.recognizer", outputActions: []),
             ui: WorkflowUIConfig(symbolName: "mic", accentColorName: "red")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -1765,7 +1769,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: queue,
@@ -1922,8 +1926,8 @@ final class RecordingSessionManagerTests: XCTestCase {
             fileURL: URL(fileURLWithPath: "/dev/null")
         )
         let captureService = MockAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -1931,7 +1935,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             eventBus: eventBus
         )
         let transferGate = RecordingQueueTransferGate()
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus,
             rejectedCapturedAudioRemoval: { capturedAudio in
@@ -1946,7 +1950,7 @@ final class RecordingSessionManagerTests: XCTestCase {
                 await transferGate.suspendAfterTransfer()
             }
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: captureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: queue,
@@ -2037,8 +2041,8 @@ final class RecordingSessionManagerTests: XCTestCase {
             fileURL: URL(fileURLWithPath: "/tmp/unused-legacy-workflow.caf")
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -2055,7 +2059,7 @@ final class RecordingSessionManagerTests: XCTestCase {
                 await ordering.confirmCloudRun()
             }
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -2118,8 +2122,8 @@ final class RecordingSessionManagerTests: XCTestCase {
             fileURL: URL(fileURLWithPath: "/tmp/unused-preflight-failure.caf")
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -2133,7 +2137,7 @@ final class RecordingSessionManagerTests: XCTestCase {
                 await ordering.confirmCloudRun()
             }
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -2335,8 +2339,8 @@ final class RecordingSessionManagerTests: XCTestCase {
             fileURL: URL(fileURLWithPath: "/tmp/unused-privacy-block.caf")
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -2356,7 +2360,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             cloudConfirmationProvider: { _, _, _ in true }
         )
         let optionsProbe = RecordingOptionsProbe()
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -2428,8 +2432,8 @@ final class RecordingSessionManagerTests: XCTestCase {
             fileURL: URL(fileURLWithPath: "/tmp/rill-queued-recording.caf")
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [BlockingRecordingRecognizer(probe: requestProbe, gate: gate)]
             ),
@@ -2439,7 +2443,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -2511,11 +2515,9 @@ final class RecordingSessionManagerTests: XCTestCase {
             language: "zh-CN",
             hints: RecognitionHints(keyterms: ["Rill", "multi word"])
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
-            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [
-                RecordingRecognizer(probe: requestProbe)
-            ]),
+        let coordinator = makeTestSessionCoordinator(
+
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: requestProbe)]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: actionProbe)]),
             candidateResolver: resolver,
@@ -2523,7 +2525,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             diagnostics: diagnostics,
             vocabularyCollectionProvider: { vocabularyMigration.collections }
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -2571,10 +2573,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         XCTAssertEqual(captureRequest?.liveSubtitleNetworkUsage, .unknown)
         XCTAssertEqual(recognitionRequest?.capturedAudio, audio)
         XCTAssertEqual(recognitionRequest?.options, expectedOptions)
-        XCTAssertEqual(recognitionRequest?.triggerEvent?.binding, .hotkey)
-        XCTAssertEqual(
-            recognitionRequest?.triggerEvent?.metadata["gesture"],
-            HotkeyEventTap.PushToTalkGesture.fnHold.rawValue)
+        XCTAssertEqual(recognitionRequest?.priority, .interactive)
         XCTAssertEqual(actionValues, ["recorded"])
         XCTAssertEqual(currentState, RecordingSessionManager.State.idle)
         XCTAssertTrue(
@@ -2603,15 +2602,15 @@ final class RecordingSessionManagerTests: XCTestCase {
             fileURL: URL(fileURLWithPath: "/tmp/rill-manual.caf")
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
             eventBus: eventBus
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -2657,15 +2656,15 @@ final class RecordingSessionManagerTests: XCTestCase {
             fileURL: URL(fileURLWithPath: "/tmp/rill-hotkey-conflict.caf")
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
             eventBus: eventBus
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -2724,11 +2723,9 @@ final class RecordingSessionManagerTests: XCTestCase {
             fileURL: URL(fileURLWithPath: "/tmp/rill-legacy-recording.caf")
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
-            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [
-                RecordingRecognizer(probe: requestProbe)
-            ]),
+        let coordinator = makeTestSessionCoordinator(
+
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: requestProbe)]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [
                 RecordingAction(probe: RecordingActionProbe())
@@ -2738,7 +2735,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -2771,13 +2768,9 @@ final class RecordingSessionManagerTests: XCTestCase {
 
         let captureRequest = await audioCaptureService.snapshot()
         let recognitionRequest = await requestProbe.snapshot()
+        XCTAssertEqual(recognitionRequest?.priority, .interactive)
 
-        XCTAssertEqual(
-            captureRequest?.triggerEvent?.metadata["gesture"],
-            HotkeyEventTap.PushToTalkGesture.controlOptionShiftSpace.rawValue)
-        XCTAssertEqual(
-            recognitionRequest?.triggerEvent?.metadata["gesture"],
-            HotkeyEventTap.PushToTalkGesture.controlOptionShiftSpace.rawValue)
+        XCTAssertEqual(captureRequest?.triggerEvent?.metadata["gesture"], HotkeyEventTap.PushToTalkGesture.controlOptionShiftSpace.rawValue)
     }
 
     func testPushToTalkReleaseDuringPreparationFinishesAfterStartupCompletes() async throws {
@@ -2801,18 +2794,16 @@ final class RecordingSessionManagerTests: XCTestCase {
             fileURL: URL(fileURLWithPath: "/tmp/rill-preparing-recording.caf")
         )
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
-            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [
-                RecordingRecognizer(probe: requestProbe)
-            ]),
+        let coordinator = makeTestSessionCoordinator(
+
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: requestProbe)]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [RecordingAction(probe: actionProbe)]),
             candidateResolver: resolver,
             eventBus: eventBus,
             diagnostics: diagnostics
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -2885,11 +2876,9 @@ final class RecordingSessionManagerTests: XCTestCase {
             fileURL: URL(fileURLWithPath: "/tmp/rill-hotkey-preparing-recording.caf")
         )
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
-            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [
-                RecordingRecognizer(probe: RecordingRequestProbe())
-            ]),
+        let coordinator = makeTestSessionCoordinator(
+
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: RecordingRequestProbe())]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [
                 RecordingAction(probe: RecordingActionProbe())
@@ -2899,7 +2888,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -2965,11 +2954,9 @@ final class RecordingSessionManagerTests: XCTestCase {
             fileURL: URL(fileURLWithPath: "/tmp/rill-deferred-release-recording.caf")
         )
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
-            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [
-                RecordingRecognizer(probe: RecordingRequestProbe())
-            ]),
+        let coordinator = makeTestSessionCoordinator(
+
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: RecordingRequestProbe())]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [
                 RecordingAction(probe: RecordingActionProbe())
@@ -2979,7 +2966,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -3038,8 +3025,8 @@ final class RecordingSessionManagerTests: XCTestCase {
             inlineData: Data([1])
         )
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -3052,7 +3039,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let hotkeyTap = HotkeyEventTap()
         let gestureState = GestureStateBox(isActive: true)
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: hotkeyTap,
             capturedAudioProcessingQueue: queue,
@@ -3127,11 +3114,9 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = ControlledAudioCaptureService(audio: audio)
         let gestureState = GestureStateBox(isActive: true)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
-            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [
-                RecordingRecognizer(probe: RecordingRequestProbe())
-            ]),
+        let coordinator = makeTestSessionCoordinator(
+
+            recognizerRegistry: SpeechRecognizerRegistry(recognizers: [RecordingRecognizer(probe: RecordingRequestProbe())]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [
                 RecordingAction(probe: RecordingActionProbe())
@@ -3141,7 +3126,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(
@@ -3194,8 +3179,8 @@ final class RecordingSessionManagerTests: XCTestCase {
     private func makeLiveRevocationFixture() throws -> LiveRevocationFixture {
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -3222,7 +3207,7 @@ final class RecordingSessionManagerTests: XCTestCase {
         )
         let audioCaptureService = MockAudioCaptureService(audio: audio)
         let contexts = RecordingLiveContextStore(makeRecordingLiveContext())
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: audioCaptureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: makeCapturedAudioProcessingQueue(

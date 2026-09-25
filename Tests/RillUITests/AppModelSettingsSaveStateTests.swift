@@ -120,8 +120,8 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
     await harness.model.waitForInitialVoiceConfiguration()
     await harness.model.flushPendingPersistenceWrites()
 
-    XCTAssertFalse(harness.model.isLoadingSettings)
-    XCTAssertEqual(harness.model.localSpeechModel, defaultModel)
+    XCTAssertFalse(harness.model.settings.isLoading)
+    XCTAssertEqual(harness.model.settings.localSpeechModel, defaultModel)
     XCTAssertEqual(try source.currentSettings().model, defaultModel)
     XCTAssertEqual(
       harness.model.settingsSaveState,
@@ -171,7 +171,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
     await harness.model.waitForInitialVoiceConfiguration()
     XCTAssertEqual(try source.currentSettings().model, "trusted-multilingual")
 
-    harness.model.localSpeechModel = "trusted-cantonese"
+    harness.model.applyLocalSpeechModel("trusted-cantonese")
 
     // Global hotkey capture reads this source directly, so it must observe
     // the UI selection before the debounced durable write starts.
@@ -194,10 +194,10 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
     await harness.model.waitForInitialVoiceConfiguration()
 
     let updatedLanguage: AppLanguage =
-      harness.model.language == .english
+      harness.model.settings.language == .english
       ? .simplifiedChinese
       : .english
-    harness.model.language = updatedLanguage
+    harness.model.applyLanguage(updatedLanguage)
     await harness.model.flushPendingPersistenceWrites()
 
     XCTAssertEqual(
@@ -210,13 +210,13 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
       )
     )
     XCTAssertTrue(
-      harness.model.eventFeed.contains {
+      harness.model.history.eventFeed.contains {
         $0.english == "Some settings could not be saved. Retry from Settings."
           && $0.simplifiedChinese == "部分设置无法保存，请在设置页面重试。"
       }
     )
     XCTAssertFalse(
-      harness.model.eventFeed.contains {
+      harness.model.history.eventFeed.contains {
         $0.english.contains("DO_NOT_LEAK_SETTINGS_STORE_DETAIL")
           || $0.simplifiedChinese.contains("DO_NOT_LEAK_SETTINGS_STORE_DETAIL")
           || $0.english.contains(AppSettingKey.interfaceLanguage.rawValue)
@@ -262,7 +262,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
     )
     await harness.model.waitForInitialVoiceConfiguration()
 
-    harness.model.addVocabularyRule(
+    harness.model.vocabulary.addVocabularyRule(
       kind: .mapping,
       pattern: "product term",
       replacement: "Product Term",
@@ -313,10 +313,10 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
     )
     await harness.model.waitForInitialVoiceConfiguration()
     let updatedLanguage: AppLanguage =
-      harness.model.language == .english
+      harness.model.settings.language == .english
       ? .simplifiedChinese
       : .english
-    harness.model.language = updatedLanguage
+    harness.model.applyLanguage(updatedLanguage)
 
     await harness.model.drainPendingSettingsWritesForApplicationShutdown { _ in
       XCTFail("An immediately successful retry must not enter backoff.")
@@ -337,10 +337,10 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
     )
     await harness.model.waitForInitialVoiceConfiguration()
     let updatedLanguage: AppLanguage =
-      harness.model.language == .english
+      harness.model.settings.language == .english
       ? .simplifiedChinese
       : .english
-    harness.model.language = updatedLanguage
+    harness.model.applyLanguage(updatedLanguage)
 
     await harness.model.drainPendingSettingsWritesForApplicationShutdown { delay in
       await delays.record(delay)
@@ -375,10 +375,9 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
       settingsWriteDebounceDuration: .zero
     )
     await harness.model.waitForInitialVoiceConfiguration()
-    harness.model.language =
-      harness.model.language == .english
+    harness.model.applyLanguage(harness.model.settings.language == .english
       ? .simplifiedChinese
-      : .english
+      : .english)
 
     let drainTask = Task {
       await harness.model.drainPendingSettingsWritesForApplicationShutdown { delay in
@@ -410,15 +409,15 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
     )
 
     XCTAssertEqual(
-      UIStrings.settingsSaveFailureDescription(summary, language: .english),
+      L10n.settingsSaveFailureDescription(summary, language: .english),
       "2 changes in Speech, Workflows are active only for this session. Retry before quitting Rill."
     )
     XCTAssertEqual(
-      UIStrings.settingsSaveFailureDescription(summary, language: .simplifiedChinese),
+      L10n.settingsSaveFailureDescription(summary, language: .simplifiedChinese),
       "语音、工作流中的 2 项更改仅在本次会话中有效。请在退出 Rill 前重试。"
     )
     XCTAssertEqual(
-      UIStrings.text(.settingsSaveRetry, language: .simplifiedChinese),
+      L10n.text(.settingsSaveRetry, language: .simplifiedChinese),
       "重试保存"
     )
   }

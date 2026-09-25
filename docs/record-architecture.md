@@ -12,7 +12,9 @@ routing, delivery state, or workflow history.
 metadata, activity, membership, collection, route, lease, and persistence CAS
 coordinates around them. `RecordIngestionCoordinator` owns source → privacy →
 route → atomic ingest. `RecordDeliveryCoordinator` owns target route → exact
-membership lease → sink → content-free receipt.
+membership lease → sink → content-free receipt. Sink identities are checked once at construction; duplicate
+identities return `RegistrationError.duplicateSink` before any lease or output.
+The sink registry is immutable for the coordinator lifetime.
 
 ## Invariants
 
@@ -198,3 +200,13 @@ clear barriers retain their transactional guarantees. UI persistence task
 ownership is separate from AppModel's settings presentation and retry policy.
 
 See [Architecture](architecture.md) for the dependency graph and state owners.
+
+
+### Explicit recognition corrections
+
+`RecordStore.saveTextCorrection` resolves the original immutable text by workflow
+run ID and creates a new user-derived Record. It preserves the source and its
+memberships. The correction has no collection membership, so saving it cannot
+trigger routing or repeat delivery. An operation ID makes retries idempotent;
+a deleted original is not resurrected. The workspace owns and drains the accepted
+write. Remembering vocabulary is a separate, scope-visible command.

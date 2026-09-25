@@ -1,6 +1,9 @@
-
-@testable import RillCore
+@testable import RillKnowledge
+@testable import RillRecords
 @testable import RillWorkflows
+@testable import RillCore
+import RillPlatform
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -114,7 +117,8 @@ private struct RecoveryProbeAction: OutputAction {
     let id = "recovery-controller.action"
     let probe: RecoveryOutputProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.record()
         return .copiedToClipboard
     }
@@ -755,8 +759,8 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
         let store = RecoveryControllerStoreProbe(receipt: receipt)
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecoveryExecutionBoundaryContextProvider(probe: probe),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RecoveryExecutionBoundaryRecognizer(probe: probe)]
             ),
@@ -772,13 +776,13 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             settingsProvider: { await probe.readPrivacySettings() },
             cloudConfirmationProvider: { _, _, _ in await probe.confirmCloudRun() }
         )
-        let controller = FailedAudioRecoveryController(
+        let controller = makeTestFailedAudioRecoveryController(
             store: store,
             sessionCoordinator: coordinator,
             eventBus: eventBus,
             diagnostics: diagnostics,
             privacyRunGate: privacyGate,
-            contextProvider: { await probe.readContext() },
+
             privacyContextProvider: { await probe.readContext() },
             authorizedContextProvider: { _ in await probe.readContext() },
             recognitionOptionsProvider: { _, _ in await probe.resolveOptions() },
@@ -879,8 +883,8 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: RecoveryControllerContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RecoveryControllerRecognizer(shouldFail: false)]
             ),
@@ -901,13 +905,13 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             cloudConfirmationProvider: { _, _, _ in true },
             destinationClassifier: { _ in .classified([.localSpeech]) }
         )
-        let controller = FailedAudioRecoveryController(
+        let controller = makeTestFailedAudioRecoveryController(
             store: recoveryStore,
             sessionCoordinator: coordinator,
             eventBus: eventBus,
             diagnostics: diagnostics,
             privacyRunGate: privacyGate,
-            contextProvider: { makeRecoveryPrivacyContext() },
+
             privacyContextProvider: { makeRecoveryPrivacyContext() },
             authorizedContextProvider: { decision in
                 makeRecoveryPrivacyContext().applying(decision)
@@ -1171,8 +1175,8 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
         )
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecoveryExecutionBoundaryContextProvider(probe: executionProbe),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [RecoveryExecutionBoundaryRecognizer(probe: executionProbe)]
             ),
@@ -1193,7 +1197,7 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             destinationClassifier: { _ in .classified([.cloudSpeech]) }
         )
         let privacyContext = makeRecoveryPrivacyContext()
-        let controller = FailedAudioRecoveryController(
+        let controller = makeTestFailedAudioRecoveryController(
             store: store,
             sessionCoordinator: coordinator,
             eventBus: eventBus,
@@ -1662,8 +1666,8 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
         maximumMaintenanceRetryInterval: TimeInterval = 5 * 60
     ) -> FailedAudioRecoveryController {
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let coordinator = SessionCoordinator(
-            contextProvider: RecoveryControllerContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     RecoveryControllerRecognizer(
@@ -1680,13 +1684,13 @@ final class FailedAudioRecoveryControllerTests: XCTestCase {
             eventBus: eventBus,
             diagnostics: diagnostics
         )
-        return FailedAudioRecoveryController(
+        return makeTestFailedAudioRecoveryController(
             store: store,
             sessionCoordinator: coordinator,
             eventBus: eventBus,
             diagnostics: diagnostics,
             privacyRunGate: privacyRunGate,
-            contextProvider: { makeRecoveryPrivacyContext() },
+
             privacyContextProvider: { makeRecoveryPrivacyContext() },
             authorizedContextProvider: { decision in
                 makeRecoveryPrivacyContext().applying(decision)

@@ -92,19 +92,19 @@ final class LocalizationWorkflowsTests: XCTestCase {
 
   func testWorkflowViewsReuseExistingSharedKeys() {
     XCTAssertEqual(
-      UIStrings.text(.workflowSourceCollection, language: .english),
+      L10n.text(.workflowSourceCollection, language: .english),
       "Source Collection"
     )
     XCTAssertEqual(
-      UIStrings.text(.workflowSourceCollection, language: .simplifiedChinese),
+      L10n.text(.workflowSourceCollection, language: .simplifiedChinese),
       "来源记录集"
     )
-    XCTAssertEqual(UIStrings.text(.workflowGroupAction, language: .english), "Group Action")
-    XCTAssertEqual(UIStrings.text(.workflowGroupAction, language: .simplifiedChinese), "组动作")
+    XCTAssertEqual(L10n.text(.workflowGroupAction, language: .english), "Group Action")
+    XCTAssertEqual(L10n.text(.workflowGroupAction, language: .simplifiedChinese), "组动作")
     XCTAssertEqual(L10n.vocabularyRuleKind(.hotword, language: .english), "Hotword")
     XCTAssertEqual(L10n.vocabularyRuleKind(.hotword, language: .simplifiedChinese), "热词")
     XCTAssertEqual(L10n.recordText(.cancel, language: .simplifiedChinese), "取消")
-    XCTAssertEqual(UIStrings.text(.clipboardDeleteItem, language: .english), "Delete")
-    XCTAssertEqual(UIStrings.text(.clipboardDeleteItem, language: .simplifiedChinese), "删除")
+    XCTAssertEqual(L10n.text(.clipboardDeleteItem, language: .english), "Delete")
+    XCTAssertEqual(L10n.text(.clipboardDeleteItem, language: .simplifiedChinese), "删除")
   }
 }

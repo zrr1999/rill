@@ -154,6 +154,9 @@ public struct WorkflowPlanCompiler: Sendable {
         input inputOverride: WorkflowInputKind? = nil,
         allowEmptyOutput: Bool = false
     ) throws -> WorkflowInputKind {
+        try recognizerRegistry.validate()
+        try transformerRegistry.validate()
+        try actionRegistry.validate()
         let input = inputOverride ?? workflow.inputKind
         let plan = inputOverride == .text && workflow.inputKind == .audio
             ? workflow.plan.acceptingTextInput() : workflow.plan

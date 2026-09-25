@@ -315,7 +315,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         )
         await settingsStore.enqueueReadGate(gate)
         let harness = makeHarness(settingsStore: settingsStore)
-        let initialBaseURL = harness.model.openAIBaseURL
+        let initialBaseURL = harness.model.settings.openAIBaseURL
         await gate.waitUntilEntered()
 
         let completion = SettingsReadShutdownCompletionProbe()
@@ -326,15 +326,15 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await gate.waitUntilCancellationObserved()
         let completionCountWhileBlocked = await completion.count()
         XCTAssertEqual(completionCountWhileBlocked, 0)
-        XCTAssertFalse(harness.model.isLoadingSettings)
+        XCTAssertFalse(harness.model.settings.isLoading)
 
         await gate.release()
         await shutdownTask.value
 
         XCTAssertNotEqual(initialBaseURL, lateBaseURL)
-        XCTAssertEqual(harness.model.openAIBaseURL, initialBaseURL)
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.state, .stopped)
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 0)
+        XCTAssertEqual(harness.model.settings.openAIBaseURL, initialBaseURL)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.state, .stopped)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 0)
     }
 
     func testShutdownDrainsRetiredAndActiveOpenAIRetriesWithoutPublishing() async throws {
@@ -346,8 +346,8 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             settingsStore: settingsStore,
             credentialStore: credentialStore
         )
-        await waitUntil { !harness.model.isLoadingSettings }
-        XCTAssertEqual(harness.model.openAIAPIKey, "initial-key")
+        await waitUntil { !harness.model.settings.isLoading }
+        XCTAssertEqual(harness.model.settings.openAIAPIKey, "initial-key")
 
         try await credentialStore.setCredential("late-key", for: .openAIAPIKey)
         let retiredGate = CancellationIgnoringSettingsReadGate()
@@ -360,7 +360,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         harness.model.retryOpenAICredentialLoad()
         await retiredGate.waitUntilCancellationObserved()
         await activeGate.waitUntilEntered()
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 2)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 2)
 
         let completion = SettingsReadShutdownCompletionProbe()
         let shutdownTask = Task { @MainActor in
@@ -368,7 +368,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             await completion.markCompleted()
         }
         await activeGate.waitUntilCancellationObserved()
-        XCTAssertEqual(harness.model.openAICredentialAvailability, .inaccessible)
+        XCTAssertEqual(harness.model.settings.openAICredentialAvailability, .inaccessible)
 
         await activeGate.release()
         for _ in 0..<10 { await Task.yield() }
@@ -378,14 +378,14 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await retiredGate.release()
         await shutdownTask.value
 
-        XCTAssertEqual(harness.model.openAIAPIKey, "initial-key")
+        XCTAssertEqual(harness.model.settings.openAIAPIKey, "initial-key")
         XCTAssertFalse(
-            harness.model.eventFeed.contains {
+            harness.model.history.eventFeed.contains {
                 $0.english == "OpenAI credential access is available again."
             }
         )
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.state, .stopped)
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 0)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.state, .stopped)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 0)
     }
 
     func testShutdownWaitsForScalarRetryAndRejectsLateRecoveredValue() async throws {
@@ -393,8 +393,8 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             unavailableKeys: [.interfaceLanguage]
         )
         let harness = makeHarness(settingsStore: settingsStore)
-        await waitUntil { !harness.model.isLoadingSettings }
-        let initialLanguage = harness.model.language
+        await waitUntil { !harness.model.settings.isLoading }
+        let initialLanguage = harness.model.settings.language
         let recoveredLanguage: AppLanguage = initialLanguage == .english
             ? .simplifiedChinese
             : .english
@@ -410,7 +410,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         harness.model.retryUnavailableScalarSettings(in: .interface)
         await gate.waitUntilEntered()
         XCTAssertTrue(
-            harness.model.retryingUnavailableScalarSettingsDomains.contains(.interface)
+            harness.model.settings.retryingUnavailableScalarSettingsDomains.contains(.interface)
         )
 
         let completion = SettingsReadShutdownCompletionProbe()
@@ -422,15 +422,15 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         let completionCountWhileBlocked = await completion.count()
         XCTAssertEqual(completionCountWhileBlocked, 0)
         XCTAssertFalse(
-            harness.model.retryingUnavailableScalarSettingsDomains.contains(.interface)
+            harness.model.settings.retryingUnavailableScalarSettingsDomains.contains(.interface)
         )
 
         await gate.release()
         await shutdownTask.value
 
-        XCTAssertEqual(harness.model.language, initialLanguage)
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.state, .stopped)
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 0)
+        XCTAssertEqual(harness.model.settings.language, initialLanguage)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.state, .stopped)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 0)
     }
 
     func testShutdownWaitsForStoredDomainRetryAndRejectsLateRecovery() async {
@@ -438,8 +438,8 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             unavailableKeys: [.customWorkflows]
         )
         let harness = makeHarness(settingsStore: settingsStore)
-        await waitUntil { !harness.model.isLoadingSettings }
-        XCTAssertEqual(harness.model.workflowLibraryAvailability, .unavailable)
+        await waitUntil { !harness.model.settings.isLoading }
+        XCTAssertEqual(harness.model.workflowLibrary.workflowLibraryAvailability, .unavailable)
 
         await settingsStore.setUnavailableKeys([])
         let gate = CancellationIgnoringSettingsReadGate()
@@ -447,8 +447,8 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
 
         harness.model.retryUnavailableStoredSettingsDomains()
         await gate.waitUntilEntered()
-        XCTAssertTrue(harness.model.isRetryingUnavailableSettingsDomains)
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 1)
+        XCTAssertTrue(harness.model.settings.isRetryingUnavailableSettingsDomains)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 1)
 
         let completion = SettingsReadShutdownCompletionProbe()
         let shutdownTask = Task { @MainActor in
@@ -458,19 +458,19 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await gate.waitUntilCancellationObserved()
         let completionCountWhileBlocked = await completion.count()
         XCTAssertEqual(completionCountWhileBlocked, 0)
-        XCTAssertFalse(harness.model.isRetryingUnavailableSettingsDomains)
+        XCTAssertFalse(harness.model.settings.isRetryingUnavailableSettingsDomains)
 
         await gate.release()
         await shutdownTask.value
 
-        XCTAssertEqual(harness.model.workflowLibraryAvailability, .unavailable)
+        XCTAssertEqual(harness.model.workflowLibrary.workflowLibraryAvailability, .unavailable)
         XCTAssertFalse(
-            harness.model.eventFeed.contains {
+            harness.model.history.eventFeed.contains {
                 $0.english == "Protected settings were loaded again without overwriting stored data."
             }
         )
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.state, .stopped)
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 0)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.state, .stopped)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 0)
     }
 
     func testShutdownWaitsForPrivacyRetryAndKeepsRuntimeGateClosed() async throws {
@@ -489,8 +489,8 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             settingsStore: settingsStore,
             privacySettingsSource: privacySettingsSource
         )
-        await waitUntil { !harness.model.isLoadingSettings }
-        XCTAssertNotNil(harness.model.privacySettingsLoadError)
+        await waitUntil { !harness.model.settings.isLoading }
+        XCTAssertNotNil(harness.model.settings.privacySettingsLoadError)
         XCTAssertThrowsError(try privacySettingsSource.currentSettings())
 
         await settingsStore.setUnavailableKeys([])
@@ -499,8 +499,8 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
 
         harness.model.retryPrivacySettingsLoad()
         await gate.waitUntilEntered()
-        XCTAssertTrue(harness.model.isLoadingPrivacySettings)
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 1)
+        XCTAssertTrue(harness.model.settings.isLoadingPrivacySettings)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 1)
 
         let completion = SettingsReadShutdownCompletionProbe()
         let shutdownTask = Task { @MainActor in
@@ -510,12 +510,12 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         await gate.waitUntilCancellationObserved()
         let completionCountWhileBlocked = await completion.count()
         XCTAssertEqual(completionCountWhileBlocked, 0)
-        XCTAssertFalse(harness.model.isLoadingPrivacySettings)
+        XCTAssertFalse(harness.model.settings.isLoadingPrivacySettings)
 
         await gate.release()
         await shutdownTask.value
 
-        XCTAssertNotNil(harness.model.privacySettingsLoadError)
+        XCTAssertNotNil(harness.model.settings.privacySettingsLoadError)
         XCTAssertThrowsError(try privacySettingsSource.currentSettings())
         let protectedSnapshot = try await settingsStore.settingsSnapshot(
             forKeys: Array(protectedKeys)
@@ -524,8 +524,8 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             Set(protectedSnapshot.values.keys),
             protectedKeys
         )
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.state, .stopped)
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 0)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.state, .stopped)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 0)
     }
 
     func testShutdownRejectsNewPrivacyMutationsAndWrites() async {
@@ -535,8 +535,8 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
             settingsStore: settingsStore,
             privacySettingsSource: privacySettingsSource
         )
-        await waitUntil { !harness.model.isLoadingSettings }
-        let initialPolicy = harness.model.privacyPolicySettings
+        await waitUntil { !harness.model.settings.isLoading }
+        let initialPolicy = harness.model.settings.privacyPolicySettings
 
         await harness.model.stopSettingsReadTasksForApplicationShutdown()
         harness.model.setPrivacyCloudConfirmationRequired(
@@ -549,7 +549,7 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
         harness.model.retryPrivacySettingsSave()
         await harness.model.flushPendingPersistenceWrites()
 
-        XCTAssertEqual(harness.model.privacyPolicySettings, initialPolicy)
+        XCTAssertEqual(harness.model.settings.privacyPolicySettings, initialPolicy)
         XCTAssertEqual(try? privacySettingsSource.currentSettings(), initialPolicy)
         let storedValues = await settingsStore.storedValue(
             for: .privacyCloudConfirmationRequired
@@ -603,10 +603,10 @@ final class AppModelSettingsReadShutdownTests: XCTestCase {
                 $0.kind == .migrationSucceeded && $0.key == .openAIAPIKey
             }
         )
-        XCTAssertEqual(harness.model.openAIAPIKey, "")
-        XCTAssertEqual(harness.model.openAICredentialAvailability, .inaccessible)
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.state, .stopped)
-        XCTAssertEqual(harness.model.settingsReadTaskOwner.trackedTaskCount, 0)
+        XCTAssertEqual(harness.model.settings.openAIAPIKey, "")
+        XCTAssertEqual(harness.model.settings.openAICredentialAvailability, .inaccessible)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.state, .stopped)
+        XCTAssertEqual(harness.model.settings.settingsReadTaskOwner.trackedTaskCount, 0)
     }
 
     private func waitUntil(

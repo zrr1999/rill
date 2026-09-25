@@ -1,5 +1,6 @@
 // swift-tools-version: 6.2
 import PackageDescription
+import Foundation
 
 let package = Package(
   name: "RillMacOS",
@@ -73,6 +74,7 @@ let package = Package(
         .product(name: "MLXAudioTTS", package: "mlx-audio-swift"),
         .product(name: "MLXAudioVAD", package: "mlx-audio-swift"),
         .product(name: "MLX", package: "mlx-swift"),
+        .product(name: "MLXNN", package: "mlx-swift"),
         .product(name: "MLXEmbedders", package: "mlx-swift-lm"),
         .product(name: "MLXHuggingFace", package: "mlx-swift-lm"),
         .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
@@ -121,6 +123,12 @@ let package = Package(
         "RillMLXRuntime",
       ]
     ),
+    .target(name: "RillDomainTestSupport",
+      dependencies: ["RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillPlatform"],
+      path: "Tests/RillDomainTestSupport"),
+    .target(name: "RillTestSupport",
+      dependencies: ["RillCore", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillUI", "RillDomainTestSupport"],
+      path: "Tests/RillTestSupport"),
     .testTarget(name: "RillKnowledgeTests", dependencies: ["RillKnowledge"]),
     .testTarget(name: "RillInputMethodTests", dependencies: ["RillInputMethodIPC", "RillInputMethodContracts", "RillInputMethodKit"]),
     .testTarget(name: "RillCoreTests", dependencies: ["RillCore"]),
@@ -130,7 +138,7 @@ let package = Package(
     ),
     .testTarget(
       name: "RillRuntimeTests",
-      dependencies: [
+      dependencies: ["RillDomainTestSupport",
         "RillCore",
         "RillPersistence",
         "RillPlatform",
@@ -140,7 +148,7 @@ let package = Package(
     ),
     .testTarget(
       name: "RillProvidersTests",
-      dependencies: [
+      dependencies: [.product(name: "OpenAI", package: "OpenAI"),
         "RillSpeech", "RillWorkflows",
         "RillSpeechContracts",
         "RillCore",
@@ -162,11 +170,11 @@ let package = Package(
     ),
     .testTarget(
       name: "RillUITests",
-      dependencies: ["RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillPlatform", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillUI"]
+      dependencies: ["RillTestSupport", "RillDomainTestSupport", "RillInputMethodContracts", "RillInputMethodIPC", "RillCore", "RillPlatform", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech", "RillUI"]
     ),
     .testTarget(
       name: "RillAppTests",
-      dependencies: [
+      dependencies: ["RillTestSupport", "RillDomainTestSupport", "RillPersistence", "RillUI",
         "RillClipboard",
         "RillSpeechContracts",
         "RillApp",
@@ -178,3 +186,14 @@ let package = Package(
     ),
   ]
 )
+
+// Fast tests use this same manifest and lock, never a parallel dependency graph.
+if ProcessInfo.processInfo.environment["RILL_BUILD_PROFILE"] == "domain-tests" {
+  let excluded: Set<String> = [
+    "RillApp", "RillUI", "RillSpeechWorker", "RillMLXRuntime", "RillTestSupport",
+    "RillAppTests", "RillUITests", "RillMLXRuntimeTests", "RillPlatformTests",
+    "RillInputMethod", "RillInputMethodKit", "RillInputMethodTests", "CRime",
+  ]
+  package.targets.removeAll { excluded.contains($0.name) }
+  package.products = []
+}

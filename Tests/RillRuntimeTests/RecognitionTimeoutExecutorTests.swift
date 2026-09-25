@@ -1,4 +1,6 @@
 @testable import RillWorkflows
+import RillPlatform
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -91,7 +93,8 @@ private struct TimeoutProbeAction: OutputAction {
   let id = "probe.action"
   let probe: TimeoutActionProbe
 
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      _ = try record.requireText(for: id)
     await probe.record(context.workflow.name)
     return .copiedToClipboard
   }
@@ -128,7 +131,7 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
   }
 
   func testNonCooperativeRecognizerTimesOutAndRemainsQuarantinedUntilItFinishes() async {
-    let executor = RecognitionTimeoutExecutor()
+    let executor = RecognitionTimeoutExecutor(cleanupOwner: ManagedTemporaryAudioCleanupOwner(), isolateAudio: TemporaryAudioFiles.isolate)
     let probe = HangingRecognitionProbe()
     let recognizer = HangingTestRecognizer(id: "timeout.hanging", probe: probe)
     let request = makeRequest(recognizerID: recognizer.id)
@@ -191,7 +194,7 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
   }
 
   func testParentCancellationRemainsCancellationInsteadOfTimeout() async throws {
-    let executor = RecognitionTimeoutExecutor()
+    let executor = RecognitionTimeoutExecutor(cleanupOwner: ManagedTemporaryAudioCleanupOwner(), isolateAudio: TemporaryAudioFiles.isolate)
     let probe = HangingRecognitionProbe()
     let recognizer = HangingTestRecognizer(id: "timeout.cancelled", probe: probe)
     let audio = try makeManagedCapturedAudio()
@@ -392,7 +395,7 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
       actionProbe: actionProbe,
       timeoutSeconds: 0.02
     )
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
       sessionCoordinator: coordinator,
       eventBus: eventBus
     )
@@ -464,17 +467,11 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
   }
 
   private func makeRequest(
-    recognizerID: String,
+    recognizerID _: String,
     capturedAudio: CapturedAudio? = nil
   ) -> RecognitionRequest {
-    let workflow = makeWorkflow(
-      name: "Timeout Executor Workflow",
-      recognizerID: recognizerID,
-      outputActions: []
-    )
     return RecognitionRequest(
       runID: UUID(),
-      workflow: workflow,
       contextSnapshot: .empty,
       capturedAudio: capturedAudio
     )
@@ -502,8 +499,8 @@ final class RecognitionTimeoutExecutorTests: XCTestCase {
     timeoutSeconds: Double,
     diagnostics: DiagnosticsRecorder? = nil
   ) -> SessionCoordinator {
-    SessionCoordinator(
-      contextProvider: TimeoutTestContextProvider(),
+    makeTestSessionCoordinator(
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: recognizers),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(

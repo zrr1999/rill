@@ -1,4 +1,6 @@
-
+@testable import RillSpeech
+import RillDomainTestSupport
+import XCTest
 @testable import RillCore
 @testable import RillRecords
 @testable import RillWorkflows
@@ -163,7 +165,8 @@ private struct ContextProbeAction: OutputAction {
     let id = "focus.probe"
     let probe: ActionContextProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.record(context.contextSnapshot)
         return .skipped("captured")
     }
@@ -186,7 +189,8 @@ private struct FailingContextProbeAction: OutputAction {
     let id = "failing.context.probe"
     let probe: ActionContextProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.record(context.contextSnapshot)
         throw TestRecognizerError(message: "injection failed")
     }
@@ -196,7 +200,8 @@ private struct ProbeAction: OutputAction {
     let id = "probe.action"
     let probe: ActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         await probe.record(text)
         return .skipped("captured")
     }
@@ -206,7 +211,8 @@ private struct InjectingProbeAction: OutputAction {
     let id = "selected.record.action"
     let probe: ActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         await probe.record(text)
         return .injected
     }
@@ -216,7 +222,8 @@ private struct CommittedOutputProbeAction: OutputAction {
     let id = "selected.record.action"
     let probe: ActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         await probe.record(text)
         throw CommittedOutputFailure.clipboardRestorationFailedAfterInjection
     }
@@ -227,7 +234,8 @@ private struct ResultAction: OutputAction {
     let result: ActionResult
     let probe: ActionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.record(id)
         return result
     }
@@ -383,7 +391,22 @@ private enum BlockingDiagnosticTarget: Sendable {
     case failureEvent
 }
 
-private actor BlockingDiagnosticRepository: DiagnosticRepository {
+private actor BlockingDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
+    func deleteEvents(olderThan cutoff: Date) async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
+    func deleteAllEvents() async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
+    func deleteEvents(obsoletedBy transition: RunHistoryClearTransition, preservingLegacyRowsAfter legacyUpperBound: Date?) async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
     func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
     func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
         guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
@@ -468,7 +491,8 @@ private struct BlockingQueueAction: OutputAction {
     let probe: QueueActionProbe
     let gate: BlockingGate
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         await probe.record(context.workflow.name)
         await gate.wait()
         return .skipped(text)
@@ -478,7 +502,7 @@ private struct BlockingQueueAction: OutputAction {
 final class SessionCoordinatorTests: XCTestCase {
     func testCancelledRunStillDeliversTerminalUnderBackpressure() async {
         let bus = EventBus(maxBufferedEvents: 1)
-        let coordinator = SessionCoordinator(contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
             recognizerRegistry: .init(recognizers: [MockRecognizer(result: .init(rawText: "text", bestText: "text"))]),
             transformerRegistry: .init(transformers: []), actionRegistry: .init(actions: [ProbeAction(probe: ActionProbe())]),
             candidateResolver: CandidateResolver(eventBus: bus), eventBus: bus)
@@ -519,8 +543,8 @@ final class SessionCoordinatorTests: XCTestCase {
             language: "zh-CN",
             hints: RecognitionHints(keyterms: ["Rill", "multi word"])
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     OptionsProbeRecognizer(
@@ -566,8 +590,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
         workflow.plan.setup.vocabularyBindings = vocabularyMigration.bindings
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     OptionsProbeRecognizer(
@@ -621,8 +645,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "testtube.2", accentColorName: "green")
         )
 
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [MockRecognizer(result: RecognitionResult(rawText: "hello", bestText: "hello"))]
             ),
@@ -682,8 +706,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "sparkles", accentColorName: "purple")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     MockRecognizer(
@@ -757,8 +781,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "orange")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     MockRecognizer(
@@ -852,8 +876,8 @@ final class SessionCoordinatorTests: XCTestCase {
         workflow.plan.setup.wakeWord = WakeWordConfiguration(
             phrases: ["Hey Rill"]
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     OptionsProbeRecognizer(
@@ -901,8 +925,8 @@ final class SessionCoordinatorTests: XCTestCase {
         let resolver = CandidateResolver(eventBus: eventBus)
         let probe = ActionProbe()
 
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: probe)]),
@@ -968,8 +992,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 7)
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             privacyContextProvider: { identityContext },
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1035,8 +1059,8 @@ final class SessionCoordinatorTests: XCTestCase {
             clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
         )
         let probe = ActionProbe()
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             privacyContextProvider: { context },
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1106,8 +1130,8 @@ final class SessionCoordinatorTests: XCTestCase {
             clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
         )
         let probe = ActionProbe()
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             privacyContextProvider: { context },
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1201,8 +1225,8 @@ final class SessionCoordinatorTests: XCTestCase {
             clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
         )
         let probe = ActionProbe()
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             privacyContextProvider: { context },
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1304,8 +1328,8 @@ final class SessionCoordinatorTests: XCTestCase {
             clipboard: SystemClipboardSnapshot(plainText: "", changeCount: 0)
         )
         let probe = ActionProbe()
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             privacyContextProvider: { changedContext },
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
@@ -1349,8 +1373,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "testtube.2", accentColorName: "green")
         )
 
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [MockRecognizer(result: RecognitionResult(rawText: "hello", bestText: "hello"))]
             ),
@@ -1413,8 +1437,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "testtube.2", accentColorName: "green")
         )
 
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [MockRecognizer(result: RecognitionResult(rawText: "hello", bestText: "hello"))]
             ),
@@ -1473,8 +1497,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "red")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [FailingRecognizer(message: "Recognizer unavailable")]
             ),
@@ -1576,8 +1600,8 @@ final class SessionCoordinatorTests: XCTestCase {
         ]
         let vocabularyMigration = VocabularyLegacyMigrator.migrate(rules)
         workflow.plan.setup.vocabularyBindings = vocabularyMigration.bindings
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     MockRecognizer(
@@ -1675,8 +1699,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             clipboard: SystemClipboardSnapshot(plainText: "unrelated clipboard text", changeCount: 7)
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [MockRecognizer(result: recognition)]
             ),
@@ -1747,8 +1771,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "text.badge.xmark", accentColorName: "orange")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [MockRecognizer(result: RecognitionResult(rawText: "original", bestText: "original"))]
             ),
@@ -1781,8 +1805,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "exclamationmark.triangle", accentColorName: "orange")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [MockRecognizer(result: RecognitionResult(rawText: "raw", bestText: "raw"))]
             ),
@@ -1817,8 +1841,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     MockRecognizer(
@@ -1880,8 +1904,8 @@ final class SessionCoordinatorTests: XCTestCase {
                 WorkflowMetadataKey.speechMode: SpeechWorkflowMode.voiceAssistant.rawValue,
             ]
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     MockRecognizer(
@@ -1943,8 +1967,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "network.slash", accentColorName: "orange")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [FailingRecognizer(message: "Recognizer must not run")]
             ),
@@ -1981,8 +2005,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "red")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [FailingRecognizer(message: "private provider detail")]
             ),
@@ -2032,8 +2056,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "xmark.octagon", accentColorName: "red")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [MockRecognizer(result: RecognitionResult(rawText: "input", bestText: "input"))]
             ),
@@ -2094,8 +2118,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "checkmark", accentColorName: "orange")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     MockRecognizer(
@@ -2169,8 +2193,8 @@ final class SessionCoordinatorTests: XCTestCase {
         let eventBus = EventBus()
         let recordStore = RecordStore()
         let actionProbe = ActionProbe()
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [
@@ -2212,8 +2236,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "red")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [FailingRecognizer(message: "recognizer must not run")]
             ),
@@ -2254,8 +2278,8 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "lock.shield", accentColorName: "red")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     OptionsProbeRecognizer(
@@ -2307,8 +2331,8 @@ extension SessionCoordinatorTests {
         let eventBus = EventBus()
         let recordStore = RecordStore(persistence: persistence)
 
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
@@ -2356,11 +2380,14 @@ extension SessionCoordinatorTests {
         XCTAssertEqual(finalState, .idle)
     }
 
-    func testCapturedAudioQueueUsesCaptureTimeLanguageAndPlanOwnedHints() async throws {
+    func testCapturedAudioQueueFreezesModelLanguageAndVocabulary() async throws {
         let eventBus = EventBus()
         let requestProbe = RecognitionRequestProbe()
         let actionProbe = ActionProbe()
-        let workflow = WorkflowDefinition(
+        let migration = VocabularyLegacyMigrator.migrate([
+            VocabularyRule(kind: .hotword, pattern: "capture-time-term", replacement: ""),
+        ])
+        var workflow = WorkflowDefinition(
             name: "Queued Hints",
             pipeline: PipelineDeclaration(
                 recognizerID: "options.probe",
@@ -2368,13 +2395,18 @@ extension SessionCoordinatorTests {
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
+        workflow.plan.setup.vocabularyBindings = migration.bindings
         let capturedOptions = SpeechRecognitionRequestOptions(
+            modelID: "frozen-model",
+            vocabulary: .init(revision: UUID(), collections: migration.collections),
             language: "zh-CN",
             hints: RecognitionHints(keyterms: ["capture-time-term"])
         )
-        let expectedRuntimeOptions = SpeechRecognitionRequestOptions(language: "zh-CN")
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let expectedRuntimeOptions = SpeechRecognitionRequestOptions(
+            modelID: "frozen-model", language: "zh-CN",
+            hints: .init(keyterms: ["capture-time-term"]))
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     OptionsProbeRecognizer(
@@ -2387,14 +2419,19 @@ extension SessionCoordinatorTests {
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: actionProbe)]),
             candidateResolver: CandidateResolver(eventBus: eventBus),
             eventBus: eventBus,
+            vocabularyCollectionProvider: {
+                XCTFail("A captured run must not reread the edited vocabulary library")
+                return []
+            },
             recognitionOptionsProvider: { _, _ in
-                SpeechRecognitionRequestOptions(
+                XCTFail("A captured run must not reread recognition settings")
+                return SpeechRecognitionRequestOptions(
                     language: "stale",
                     hints: RecognitionHints(keyterms: ["stale-term"])
                 )
             }
         )
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )
@@ -2434,8 +2471,8 @@ extension SessionCoordinatorTests {
         let recognizer = MockRecognizer(
             result: RecognitionResult(rawText: "recognized", bestText: "recognized")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [recognizer]),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(
@@ -2480,7 +2517,7 @@ extension SessionCoordinatorTests {
         let startedFirstRuns = await firstRunProbe.snapshot()
         XCTAssertEqual(startedFirstRuns, ["First Output"])
 
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )
@@ -2551,8 +2588,8 @@ extension SessionCoordinatorTests {
             into: [RecordCollection.inboxID]
         )
 
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [MockRecognizer(result: RecognitionResult(rawText: "hello", bestText: "hello"))]
             ),
@@ -2610,8 +2647,8 @@ extension SessionCoordinatorTests {
             ),
             ui: WorkflowUIConfig(symbolName: "testtube.2", accentColorName: "green")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: [ProbeAction(probe: actionProbe)]),
@@ -2676,8 +2713,8 @@ extension SessionCoordinatorTests {
             ),
             ui: WorkflowUIConfig(symbolName: "testtube.2", accentColorName: "blue")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [MockRecognizer(result: RecognitionResult(rawText: "queue text", bestText: "queue text"))]
             ),
@@ -2688,7 +2725,7 @@ extension SessionCoordinatorTests {
             candidateResolver: resolver,
             eventBus: eventBus
         )
-        let queue = CapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
+        let queue = makeTestCapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
         let firstRunID = UUID()
         let secondRunID = UUID()
 

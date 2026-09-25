@@ -1,4 +1,5 @@
 import Foundation
+import RillDomainTestSupport
 import os
 import Testing
 @testable import RillCore
@@ -6,11 +7,16 @@ import Testing
 
 @MainActor
 struct HotwordSelectionTests {
-  @Test func liveAdmissionFreezesVocabularyAndStartsCloudOnlyAfterCapture() async throws {
+  @Test(arguments: [false, true])
+  func liveAdmissionFreezesVocabularyThroughProcessingQueue(cached: Bool) async throws {
     let fixture = HotwordFixture()
+    if cached { try await fixture.populate() }
+    let expectedTerms = cached ? ["Spore", "Rill"] : ["Rill", "Spore"]
     let context = fixture.context
     let workflow = fixture.workflow
-    let options = fixture.options
+    let options = SpeechRecognitionRequestOptions(modelID: fixture.options.modelID,
+      vocabulary: .init(revision: UUID(), collections: fixture.collections),
+      language: fixture.options.language)
     let vocabulary = VocabularyRuleSource()
     vocabulary.updateCollections(fixture.collections)
     let recognizer = HotwordRecognitionProbe()
@@ -26,38 +32,78 @@ struct HotwordSelectionTests {
       try await resolver.prepare(runID: runID, workflow: workflow, context: context,
         options: options, lifetime: lifetime)
     }
+    vocabulary.markUnavailable(reason: "library changed after snapshot")
     let runID = UUID()
     let live = try await gate.issueLiveAudioSession(runID: runID,
       privacyContextProvider: { context }, contextProvider: { _ in context },
       recognitionOptionsProvider: { _, _ in options }, workflow: workflow,
       revocationHandler: { _, _ in })
-    #expect(live.audioCaptureOptions.hints.keyterms == ["Rill", "Spore"])
-    #expect(await fixture.provider.requests.isEmpty)
+    #expect(live.audioCaptureOptions.hints.keyterms == expectedTerms)
+    #expect(await fixture.provider.requests.count == (cached ? 1 : 0))
     vocabulary.markUnavailable(reason: "library changed after admission")
     let capture = HotwordCaptureProbe(ranking: fixture.provider)
     try await live.startCapture(.init(runID: runID, workflow: workflow,
       options: live.audioCaptureOptions, audioLifetime: live.audioLifetime), using: capture)
-    await fixture.provider.waitForRequest()
-    #expect(await capture.startedBeforeCloud)
-    await fixture.provider.finish()
+    if !cached {
+      await fixture.provider.waitForRequest()
+      #expect(await capture.startedBeforeCloud)
+      await fixture.provider.finish()
+    }
     let audio = try await capture.finishCapture()
     try await live.sealCapture()
     let lease = try await live.processingLeaseForEnqueue()
-    #expect(lease.acceptQueueOwnership())
-    let claim = try await lease.claim(triggerEvent: nil)
-    let finalized = try await claim.finalize()
     let bus = EventBus()
-    let coordinator = SessionCoordinator(contextProvider: HotwordContextProbe(),
-      privacyContextProvider: { context }, recognizerRegistry: recognizers,
+    let coordinator = makeTestSessionCoordinator(privacyContextProvider: { context }, recognizerRegistry: recognizers,
       transformerRegistry: .init(transformers: []), actionRegistry: actions,
       candidateResolver: CandidateResolver(eventBus: bus), eventBus: bus,
       vocabularyCollectionProvider: { try vocabulary.currentCollections() })
-    await coordinator.run(runID: runID, capturedAudio: audio, authorizedContext: finalized.authorizedContext)
+    let queue = makeTestCapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: bus)
+    let stream = await bus.stream()
+    let drained = Task {
+      var started = false
+      for await event in stream {
+        if case .audioProcessingQueueUpdated(let state) = event {
+          if state.pendingCount > 0 { started = true }
+          if started && state.pendingCount == 0 { return }
+        }
+      }
+    }
+    let transfer = await queue.enqueue(authorizationLease: lease, triggerEvent: nil,
+      deferredCapture: .resolved(audio))
+    #expect(transfer == .accepted)
+    await drained.value
+    await queue.shutdown()
     let received = try #require(await recognizer.options.first)
-    #expect(received.hints.keyterms == ["Rill", "Spore"])
-    #expect(received.modelIdentifier == "model-a")
+    #expect(received.hints.keyterms == expectedTerms)
+    #expect(received.vocabulary == nil)
+    #expect(received.modelID == "model-a")
     #expect(received.language == "Chinese")
     await fixture.selection.shutdown()
+  }
+
+  @Test func failedRecognitionCancelsItsStartedHotwordPreparation() async throws {
+    let fixture = HotwordFixture()
+    let recognizers = SpeechRecognizerRegistry(recognizers: [FailingHotwordRecognizer()])
+    let actions = OutputActionRegistry(actions: [HotwordOutputProbe()])
+    let compiler = WorkflowPlanCompiler(recognizerRegistry: recognizers,
+      transformerRegistry: .init(transformers: []), actionRegistry: actions)
+    let plan = try compiler.compile(workflow: fixture.workflow, collections: fixture.collections,
+      context: VocabularyRuleContext(contextSnapshot: fixture.context))
+    let gate = HotwordCancellationBarrier()
+    let preparation = HotwordRankingPreparation { await gate.runUntilCancelled() }
+    preparation.recordingStarted()
+    await gate.waitUntilStarted()
+    let bus = EventBus()
+    let coordinator = makeTestSessionCoordinator(recognizerRegistry: recognizers,
+      transformerRegistry: .init(transformers: []), actionRegistry: actions,
+      candidateResolver: CandidateResolver(eventBus: bus), eventBus: bus)
+    let result = await coordinator.runReportingOutcome(workflow: fixture.workflow,
+      contextSnapshot: fixture.context, preparedRecognition: .init(options: fixture.options,
+        plan: plan, hotwordPreparation: preparation))
+    guard case .failed = result else { Issue.record("Expected failed recognition"); preparation.cancel(); return }
+    await preparation.wait()
+    #expect(await gate.observedCancellation)
+    #expect(preparation.isFinished)
   }
 
   @Test func importedAudioDoesNotPrepareOrUploadHotwords() async throws {
@@ -114,8 +160,8 @@ struct HotwordSelectionTests {
     var collections = fixture.collections
     collections[0].entries[0].priority += 1
     #expect(try fixture.select(collections: collections).status == .miss)
-    #expect(try fixture.select(options: .init(language: "English", modelIdentifier: "model-a")).status == .miss)
-    #expect(try fixture.select(options: .init(language: "Chinese", modelIdentifier: "model-b")).status == .miss)
+    #expect(try fixture.select(options: .init(modelID: "model-a", language: "English")).status == .miss)
+    #expect(try fixture.select(options: .init(modelID: "model-b", language: "Chinese")).status == .miss)
     fixture.clock.withLock { $0 += 301 }
     #expect(try fixture.select().status == .miss)
     await fixture.selection.shutdown()
@@ -299,7 +345,7 @@ private final class HotwordFixture {
   let collections: [VocabularyCollection]
   let candidates: [HotwordCandidate]
   let selection: HotwordSelection
-  let options = SpeechRecognitionRequestOptions(language: "Chinese", modelIdentifier: "model-a")
+  let options = SpeechRecognitionRequestOptions(modelID: "model-a", language: "Chinese")
 
   init(timeout: Duration = .seconds(2)) {
     context = hotwordContext()
@@ -400,7 +446,7 @@ private actor HotwordRecognitionProbe: SpeechRecognizer {
 
 private struct HotwordOutputProbe: OutputAction {
   let id = "system-clipboard.copy"
-  func execute(text _: String, context _: ActionContext) async throws -> ActionResult { .copiedToClipboard }
+  func execute(record _: RecordDraft, context _: ActionContext) async throws -> ActionResult { .copiedToClipboard }
 }
 
 private struct HotwordContextProbe: ContextProvider {
@@ -417,4 +463,35 @@ private actor HotwordCaptureProbe: AudioCaptureService {
       inlineData: Data([0, 0]))
   }
   func cancelCapture() async {}
+}
+
+private struct FailingHotwordRecognizer: SpeechRecognizer {
+  enum Failure: Error { case unavailable }
+  let id = "local-speech"
+  let capabilities = SpeechRecognizerCapabilities(supportedHintKinds: [.keyterm])
+  func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
+    throw Failure.unavailable
+  }
+}
+
+private actor HotwordCancellationBarrier {
+  private var started = false
+  private var suspended: CheckedContinuation<Void, Never>?
+  private var observers: [CheckedContinuation<Void, Never>] = []
+  private(set) var observedCancellation = false
+  func runUntilCancelled() async {
+    await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        started = true
+        observers.forEach { $0.resume() }; observers = []
+        if Task.isCancelled { continuation.resume() } else { suspended = continuation }
+      }
+      observedCancellation = Task.isCancelled
+    } onCancel: { Task { await self.release() } }
+  }
+  func waitUntilStarted() async {
+    if started { return }
+    await withCheckedContinuation { observers.append($0) }
+  }
+  private func release() { suspended?.resume(); suspended = nil }
 }

@@ -1,0 +1,2056 @@
+{
+  "schema_version": 1,
+  "kind": "collection_plan_not_recordings",
+  "cases": [
+    {
+      "id": "chinese-01",
+      "split": "development",
+      "tags": [
+        "zh",
+        "daily"
+      ],
+      "recording_instructions": "安静近场，完整自然句。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "chinese-02",
+      "split": "development",
+      "tags": [
+        "zh",
+        "daily"
+      ],
+      "recording_instructions": "安静近场，完整自然句。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "chinese-03",
+      "split": "development",
+      "tags": [
+        "zh",
+        "daily"
+      ],
+      "recording_instructions": "安静近场，完整自然句。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "chinese-04",
+      "split": "development",
+      "tags": [
+        "zh",
+        "daily"
+      ],
+      "recording_instructions": "安静近场，完整自然句。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "chinese-05",
+      "split": "development",
+      "tags": [
+        "zh",
+        "daily"
+      ],
+      "recording_instructions": "安静近场，完整自然句。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "chinese-06",
+      "split": "development",
+      "tags": [
+        "zh",
+        "daily"
+      ],
+      "recording_instructions": "安静近场，完整自然句。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "chinese-07",
+      "split": "validation",
+      "tags": [
+        "zh",
+        "daily"
+      ],
+      "recording_instructions": "安静近场，完整自然句。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "chinese-08",
+      "split": "validation",
+      "tags": [
+        "zh",
+        "daily"
+      ],
+      "recording_instructions": "安静近场，完整自然句。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "chinese-09",
+      "split": "validation",
+      "tags": [
+        "zh",
+        "daily"
+      ],
+      "recording_instructions": "安静近场，完整自然句。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "chinese-10",
+      "split": "validation",
+      "tags": [
+        "zh",
+        "daily"
+      ],
+      "recording_instructions": "安静近场，完整自然句。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "english-01",
+      "split": "development",
+      "tags": [
+        "en",
+        "daily"
+      ],
+      "recording_instructions": "英文自然句，包含时态和标点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "english-02",
+      "split": "development",
+      "tags": [
+        "en",
+        "daily"
+      ],
+      "recording_instructions": "英文自然句，包含时态和标点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "english-03",
+      "split": "development",
+      "tags": [
+        "en",
+        "daily"
+      ],
+      "recording_instructions": "英文自然句，包含时态和标点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "english-04",
+      "split": "development",
+      "tags": [
+        "en",
+        "daily"
+      ],
+      "recording_instructions": "英文自然句，包含时态和标点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "english-05",
+      "split": "development",
+      "tags": [
+        "en",
+        "daily"
+      ],
+      "recording_instructions": "英文自然句，包含时态和标点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "english-06",
+      "split": "development",
+      "tags": [
+        "en",
+        "daily"
+      ],
+      "recording_instructions": "英文自然句，包含时态和标点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "english-07",
+      "split": "validation",
+      "tags": [
+        "en",
+        "daily"
+      ],
+      "recording_instructions": "英文自然句，包含时态和标点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "english-08",
+      "split": "validation",
+      "tags": [
+        "en",
+        "daily"
+      ],
+      "recording_instructions": "英文自然句，包含时态和标点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "english-09",
+      "split": "validation",
+      "tags": [
+        "en",
+        "daily"
+      ],
+      "recording_instructions": "英文自然句，包含时态和标点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "english-10",
+      "split": "validation",
+      "tags": [
+        "en",
+        "daily"
+      ],
+      "recording_instructions": "英文自然句，包含时态和标点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "mixed-01",
+      "split": "development",
+      "tags": [
+        "zh-en",
+        "technical"
+      ],
+      "recording_instructions": "中英混合，包含项目名、技术词和缩写。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "mixed-02",
+      "split": "development",
+      "tags": [
+        "zh-en",
+        "technical"
+      ],
+      "recording_instructions": "中英混合，包含项目名、技术词和缩写。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "mixed-03",
+      "split": "development",
+      "tags": [
+        "zh-en",
+        "technical"
+      ],
+      "recording_instructions": "中英混合，包含项目名、技术词和缩写。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "mixed-04",
+      "split": "development",
+      "tags": [
+        "zh-en",
+        "technical"
+      ],
+      "recording_instructions": "中英混合，包含项目名、技术词和缩写。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "mixed-05",
+      "split": "development",
+      "tags": [
+        "zh-en",
+        "technical"
+      ],
+      "recording_instructions": "中英混合，包含项目名、技术词和缩写。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "mixed-06",
+      "split": "development",
+      "tags": [
+        "zh-en",
+        "technical"
+      ],
+      "recording_instructions": "中英混合，包含项目名、技术词和缩写。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "mixed-07",
+      "split": "validation",
+      "tags": [
+        "zh-en",
+        "technical"
+      ],
+      "recording_instructions": "中英混合，包含项目名、技术词和缩写。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "mixed-08",
+      "split": "validation",
+      "tags": [
+        "zh-en",
+        "technical"
+      ],
+      "recording_instructions": "中英混合，包含项目名、技术词和缩写。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "mixed-09",
+      "split": "validation",
+      "tags": [
+        "zh-en",
+        "technical"
+      ],
+      "recording_instructions": "中英混合，包含项目名、技术词和缩写。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "mixed-10",
+      "split": "validation",
+      "tags": [
+        "zh-en",
+        "technical"
+      ],
+      "recording_instructions": "中英混合，包含项目名、技术词和缩写。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "numbers-01",
+      "split": "development",
+      "tags": [
+        "numbers",
+        "critical"
+      ],
+      "recording_instructions": "日期、金额、小数、百分比及相近数字。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "numbers-02",
+      "split": "development",
+      "tags": [
+        "numbers",
+        "critical"
+      ],
+      "recording_instructions": "日期、金额、小数、百分比及相近数字。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "numbers-03",
+      "split": "development",
+      "tags": [
+        "numbers",
+        "critical"
+      ],
+      "recording_instructions": "日期、金额、小数、百分比及相近数字。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "numbers-04",
+      "split": "development",
+      "tags": [
+        "numbers",
+        "critical"
+      ],
+      "recording_instructions": "日期、金额、小数、百分比及相近数字。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "numbers-05",
+      "split": "development",
+      "tags": [
+        "numbers",
+        "critical"
+      ],
+      "recording_instructions": "日期、金额、小数、百分比及相近数字。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "numbers-06",
+      "split": "development",
+      "tags": [
+        "numbers",
+        "critical"
+      ],
+      "recording_instructions": "日期、金额、小数、百分比及相近数字。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "numbers-07",
+      "split": "validation",
+      "tags": [
+        "numbers",
+        "critical"
+      ],
+      "recording_instructions": "日期、金额、小数、百分比及相近数字。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "numbers-08",
+      "split": "validation",
+      "tags": [
+        "numbers",
+        "critical"
+      ],
+      "recording_instructions": "日期、金额、小数、百分比及相近数字。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "numbers-09",
+      "split": "validation",
+      "tags": [
+        "numbers",
+        "critical"
+      ],
+      "recording_instructions": "日期、金额、小数、百分比及相近数字。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "numbers-10",
+      "split": "validation",
+      "tags": [
+        "numbers",
+        "critical"
+      ],
+      "recording_instructions": "日期、金额、小数、百分比及相近数字。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "identifiers-01",
+      "split": "development",
+      "tags": [
+        "identifier",
+        "critical"
+      ],
+      "recording_instructions": "邮箱、路径、版本号和文件名。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "identifiers-02",
+      "split": "development",
+      "tags": [
+        "identifier",
+        "critical"
+      ],
+      "recording_instructions": "邮箱、路径、版本号和文件名。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "identifiers-03",
+      "split": "development",
+      "tags": [
+        "identifier",
+        "critical"
+      ],
+      "recording_instructions": "邮箱、路径、版本号和文件名。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "identifiers-04",
+      "split": "development",
+      "tags": [
+        "identifier",
+        "critical"
+      ],
+      "recording_instructions": "邮箱、路径、版本号和文件名。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "identifiers-05",
+      "split": "development",
+      "tags": [
+        "identifier",
+        "critical"
+      ],
+      "recording_instructions": "邮箱、路径、版本号和文件名。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "identifiers-06",
+      "split": "development",
+      "tags": [
+        "identifier",
+        "critical"
+      ],
+      "recording_instructions": "邮箱、路径、版本号和文件名。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "identifiers-07",
+      "split": "validation",
+      "tags": [
+        "identifier",
+        "critical"
+      ],
+      "recording_instructions": "邮箱、路径、版本号和文件名。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "identifiers-08",
+      "split": "validation",
+      "tags": [
+        "identifier",
+        "critical"
+      ],
+      "recording_instructions": "邮箱、路径、版本号和文件名。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "identifiers-09",
+      "split": "validation",
+      "tags": [
+        "identifier",
+        "critical"
+      ],
+      "recording_instructions": "邮箱、路径、版本号和文件名。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "identifiers-10",
+      "split": "validation",
+      "tags": [
+        "identifier",
+        "critical"
+      ],
+      "recording_instructions": "邮箱、路径、版本号和文件名。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negation-01",
+      "split": "development",
+      "tags": [
+        "negation",
+        "critical"
+      ],
+      "recording_instructions": "不要、不能、尚未等否定表达及相反指令。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negation-02",
+      "split": "development",
+      "tags": [
+        "negation",
+        "critical"
+      ],
+      "recording_instructions": "不要、不能、尚未等否定表达及相反指令。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negation-03",
+      "split": "development",
+      "tags": [
+        "negation",
+        "critical"
+      ],
+      "recording_instructions": "不要、不能、尚未等否定表达及相反指令。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negation-04",
+      "split": "development",
+      "tags": [
+        "negation",
+        "critical"
+      ],
+      "recording_instructions": "不要、不能、尚未等否定表达及相反指令。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negation-05",
+      "split": "development",
+      "tags": [
+        "negation",
+        "critical"
+      ],
+      "recording_instructions": "不要、不能、尚未等否定表达及相反指令。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negation-06",
+      "split": "development",
+      "tags": [
+        "negation",
+        "critical"
+      ],
+      "recording_instructions": "不要、不能、尚未等否定表达及相反指令。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negation-07",
+      "split": "validation",
+      "tags": [
+        "negation",
+        "critical"
+      ],
+      "recording_instructions": "不要、不能、尚未等否定表达及相反指令。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negation-08",
+      "split": "validation",
+      "tags": [
+        "negation",
+        "critical"
+      ],
+      "recording_instructions": "不要、不能、尚未等否定表达及相反指令。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negation-09",
+      "split": "validation",
+      "tags": [
+        "negation",
+        "critical"
+      ],
+      "recording_instructions": "不要、不能、尚未等否定表达及相反指令。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negation-10",
+      "split": "validation",
+      "tags": [
+        "negation",
+        "critical"
+      ],
+      "recording_instructions": "不要、不能、尚未等否定表达及相反指令。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "long-01",
+      "split": "development",
+      "tags": [
+        "long",
+        "cross-window"
+      ],
+      "recording_instructions": "连续长句跨窗口，保留停顿和自我修正。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "long-02",
+      "split": "development",
+      "tags": [
+        "long",
+        "cross-window"
+      ],
+      "recording_instructions": "连续长句跨窗口，保留停顿和自我修正。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "long-03",
+      "split": "development",
+      "tags": [
+        "long",
+        "cross-window"
+      ],
+      "recording_instructions": "连续长句跨窗口，保留停顿和自我修正。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "long-04",
+      "split": "development",
+      "tags": [
+        "long",
+        "cross-window"
+      ],
+      "recording_instructions": "连续长句跨窗口，保留停顿和自我修正。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "long-05",
+      "split": "development",
+      "tags": [
+        "long",
+        "cross-window"
+      ],
+      "recording_instructions": "连续长句跨窗口，保留停顿和自我修正。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "long-06",
+      "split": "development",
+      "tags": [
+        "long",
+        "cross-window"
+      ],
+      "recording_instructions": "连续长句跨窗口，保留停顿和自我修正。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "long-07",
+      "split": "validation",
+      "tags": [
+        "long",
+        "cross-window"
+      ],
+      "recording_instructions": "连续长句跨窗口，保留停顿和自我修正。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "long-08",
+      "split": "validation",
+      "tags": [
+        "long",
+        "cross-window"
+      ],
+      "recording_instructions": "连续长句跨窗口，保留停顿和自我修正。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "long-09",
+      "split": "validation",
+      "tags": [
+        "long",
+        "cross-window"
+      ],
+      "recording_instructions": "连续长句跨窗口，保留停顿和自我修正。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "long-10",
+      "split": "validation",
+      "tags": [
+        "long",
+        "cross-window"
+      ],
+      "recording_instructions": "连续长句跨窗口，保留停顿和自我修正。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "release-01",
+      "split": "development",
+      "tags": [
+        "short",
+        "tail"
+      ],
+      "recording_instructions": "短句、误触、突然松键及尾音。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "release-02",
+      "split": "development",
+      "tags": [
+        "short",
+        "tail"
+      ],
+      "recording_instructions": "短句、误触、突然松键及尾音。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "release-03",
+      "split": "development",
+      "tags": [
+        "short",
+        "tail"
+      ],
+      "recording_instructions": "短句、误触、突然松键及尾音。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "release-04",
+      "split": "development",
+      "tags": [
+        "short",
+        "tail"
+      ],
+      "recording_instructions": "短句、误触、突然松键及尾音。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "release-05",
+      "split": "development",
+      "tags": [
+        "short",
+        "tail"
+      ],
+      "recording_instructions": "短句、误触、突然松键及尾音。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "release-06",
+      "split": "development",
+      "tags": [
+        "short",
+        "tail"
+      ],
+      "recording_instructions": "短句、误触、突然松键及尾音。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "release-07",
+      "split": "validation",
+      "tags": [
+        "short",
+        "tail"
+      ],
+      "recording_instructions": "短句、误触、突然松键及尾音。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "release-08",
+      "split": "validation",
+      "tags": [
+        "short",
+        "tail"
+      ],
+      "recording_instructions": "短句、误触、突然松键及尾音。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "release-09",
+      "split": "validation",
+      "tags": [
+        "short",
+        "tail"
+      ],
+      "recording_instructions": "短句、误触、突然松键及尾音。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "release-10",
+      "split": "validation",
+      "tags": [
+        "short",
+        "tail"
+      ],
+      "recording_instructions": "短句、误触、突然松键及尾音。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "quiet-01",
+      "split": "development",
+      "tags": [
+        "quiet-voice",
+        "far-field"
+      ],
+      "recording_instructions": "轻声与远场，保留输入距离记录。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "quiet-02",
+      "split": "development",
+      "tags": [
+        "quiet-voice",
+        "far-field"
+      ],
+      "recording_instructions": "轻声与远场，保留输入距离记录。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "quiet-03",
+      "split": "development",
+      "tags": [
+        "quiet-voice",
+        "far-field"
+      ],
+      "recording_instructions": "轻声与远场，保留输入距离记录。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "quiet-04",
+      "split": "development",
+      "tags": [
+        "quiet-voice",
+        "far-field"
+      ],
+      "recording_instructions": "轻声与远场，保留输入距离记录。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "quiet-05",
+      "split": "development",
+      "tags": [
+        "quiet-voice",
+        "far-field"
+      ],
+      "recording_instructions": "轻声与远场，保留输入距离记录。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "quiet-06",
+      "split": "development",
+      "tags": [
+        "quiet-voice",
+        "far-field"
+      ],
+      "recording_instructions": "轻声与远场，保留输入距离记录。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "quiet-07",
+      "split": "validation",
+      "tags": [
+        "quiet-voice",
+        "far-field"
+      ],
+      "recording_instructions": "轻声与远场，保留输入距离记录。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "quiet-08",
+      "split": "validation",
+      "tags": [
+        "quiet-voice",
+        "far-field"
+      ],
+      "recording_instructions": "轻声与远场，保留输入距离记录。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "quiet-09",
+      "split": "validation",
+      "tags": [
+        "quiet-voice",
+        "far-field"
+      ],
+      "recording_instructions": "轻声与远场，保留输入距离记录。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "quiet-10",
+      "split": "validation",
+      "tags": [
+        "quiet-voice",
+        "far-field"
+      ],
+      "recording_instructions": "轻声与远场，保留输入距离记录。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "noise-01",
+      "split": "development",
+      "tags": [
+        "keyboard",
+        "fan",
+        "echo"
+      ],
+      "recording_instructions": "键盘、风扇和扬声器回声，分别标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "noise-02",
+      "split": "development",
+      "tags": [
+        "keyboard",
+        "fan",
+        "echo"
+      ],
+      "recording_instructions": "键盘、风扇和扬声器回声，分别标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "noise-03",
+      "split": "development",
+      "tags": [
+        "keyboard",
+        "fan",
+        "echo"
+      ],
+      "recording_instructions": "键盘、风扇和扬声器回声，分别标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "noise-04",
+      "split": "development",
+      "tags": [
+        "keyboard",
+        "fan",
+        "echo"
+      ],
+      "recording_instructions": "键盘、风扇和扬声器回声，分别标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "noise-05",
+      "split": "development",
+      "tags": [
+        "keyboard",
+        "fan",
+        "echo"
+      ],
+      "recording_instructions": "键盘、风扇和扬声器回声，分别标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "noise-06",
+      "split": "development",
+      "tags": [
+        "keyboard",
+        "fan",
+        "echo"
+      ],
+      "recording_instructions": "键盘、风扇和扬声器回声，分别标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "noise-07",
+      "split": "validation",
+      "tags": [
+        "keyboard",
+        "fan",
+        "echo"
+      ],
+      "recording_instructions": "键盘、风扇和扬声器回声，分别标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "noise-08",
+      "split": "validation",
+      "tags": [
+        "keyboard",
+        "fan",
+        "echo"
+      ],
+      "recording_instructions": "键盘、风扇和扬声器回声，分别标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "noise-09",
+      "split": "validation",
+      "tags": [
+        "keyboard",
+        "fan",
+        "echo"
+      ],
+      "recording_instructions": "键盘、风扇和扬声器回声，分别标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "noise-10",
+      "split": "validation",
+      "tags": [
+        "keyboard",
+        "fan",
+        "echo"
+      ],
+      "recording_instructions": "键盘、风扇和扬声器回声，分别标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "device-01",
+      "split": "development",
+      "tags": [
+        "bluetooth",
+        "device-switch"
+      ],
+      "recording_instructions": "蓝牙录音及输入设备切换，记录设备与切换点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "device-02",
+      "split": "development",
+      "tags": [
+        "bluetooth",
+        "device-switch"
+      ],
+      "recording_instructions": "蓝牙录音及输入设备切换，记录设备与切换点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "device-03",
+      "split": "development",
+      "tags": [
+        "bluetooth",
+        "device-switch"
+      ],
+      "recording_instructions": "蓝牙录音及输入设备切换，记录设备与切换点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "device-04",
+      "split": "development",
+      "tags": [
+        "bluetooth",
+        "device-switch"
+      ],
+      "recording_instructions": "蓝牙录音及输入设备切换，记录设备与切换点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "device-05",
+      "split": "development",
+      "tags": [
+        "bluetooth",
+        "device-switch"
+      ],
+      "recording_instructions": "蓝牙录音及输入设备切换，记录设备与切换点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "device-06",
+      "split": "development",
+      "tags": [
+        "bluetooth",
+        "device-switch"
+      ],
+      "recording_instructions": "蓝牙录音及输入设备切换，记录设备与切换点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "device-07",
+      "split": "validation",
+      "tags": [
+        "bluetooth",
+        "device-switch"
+      ],
+      "recording_instructions": "蓝牙录音及输入设备切换，记录设备与切换点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "device-08",
+      "split": "validation",
+      "tags": [
+        "bluetooth",
+        "device-switch"
+      ],
+      "recording_instructions": "蓝牙录音及输入设备切换，记录设备与切换点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "device-09",
+      "split": "validation",
+      "tags": [
+        "bluetooth",
+        "device-switch"
+      ],
+      "recording_instructions": "蓝牙录音及输入设备切换，记录设备与切换点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "device-10",
+      "split": "validation",
+      "tags": [
+        "bluetooth",
+        "device-switch"
+      ],
+      "recording_instructions": "蓝牙录音及输入设备切换，记录设备与切换点。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negative-hotword-01",
+      "split": "development",
+      "tags": [
+        "silence",
+        "hotword-negative"
+      ],
+      "recording_instructions": "静音、未说出的热词及相近普通词，参考文本按实际发声标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negative-hotword-02",
+      "split": "development",
+      "tags": [
+        "silence",
+        "hotword-negative"
+      ],
+      "recording_instructions": "静音、未说出的热词及相近普通词，参考文本按实际发声标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negative-hotword-03",
+      "split": "development",
+      "tags": [
+        "silence",
+        "hotword-negative"
+      ],
+      "recording_instructions": "静音、未说出的热词及相近普通词，参考文本按实际发声标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negative-hotword-04",
+      "split": "development",
+      "tags": [
+        "silence",
+        "hotword-negative"
+      ],
+      "recording_instructions": "静音、未说出的热词及相近普通词，参考文本按实际发声标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negative-hotword-05",
+      "split": "development",
+      "tags": [
+        "silence",
+        "hotword-negative"
+      ],
+      "recording_instructions": "静音、未说出的热词及相近普通词，参考文本按实际发声标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negative-hotword-06",
+      "split": "development",
+      "tags": [
+        "silence",
+        "hotword-negative"
+      ],
+      "recording_instructions": "静音、未说出的热词及相近普通词，参考文本按实际发声标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negative-hotword-07",
+      "split": "validation",
+      "tags": [
+        "silence",
+        "hotword-negative"
+      ],
+      "recording_instructions": "静音、未说出的热词及相近普通词，参考文本按实际发声标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negative-hotword-08",
+      "split": "validation",
+      "tags": [
+        "silence",
+        "hotword-negative"
+      ],
+      "recording_instructions": "静音、未说出的热词及相近普通词，参考文本按实际发声标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negative-hotword-09",
+      "split": "validation",
+      "tags": [
+        "silence",
+        "hotword-negative"
+      ],
+      "recording_instructions": "静音、未说出的热词及相近普通词，参考文本按实际发声标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    },
+    {
+      "id": "negative-hotword-10",
+      "split": "validation",
+      "tags": [
+        "silence",
+        "hotword-negative"
+      ],
+      "recording_instructions": "静音、未说出的热词及相近普通词，参考文本按实际发声标注。",
+      "status": "awaiting_authorized_audio",
+      "references": {
+        "raw": null,
+        "vocabulary": null,
+        "final": null
+      },
+      "required_terms": [],
+      "forbidden_terms": []
+    }
+  ]
+}

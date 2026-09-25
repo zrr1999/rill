@@ -1,6 +1,10 @@
 import Foundation
 import Observation
 import RillCore
+import RillWorkflows
+import RillRecords
+import RillKnowledge
+import RillSpeech
 
 enum RunHistoryPageLocator: Equatable, Sendable {
   case request(RunHistoryPageRequest)
@@ -20,14 +24,42 @@ enum RunHistorySearchError: Error, Equatable {
 
 @MainActor @Observable
 public final class RunHistoryModel {
+  public var eventFeed: [EventFeedEntry] = []
+  public internal(set) var diagnosticEvents: [DiagnosticEvent] = []
+  public internal(set) var diagnosticsLoadState: DiagnosticsLoadState = .loading
+  public internal(set) var isUpdatingHistoryRetentionSettings = false
+  public internal(set) var isLocalHistoryMaintenanceRunning = false
+  public internal(set) var historyRetentionSettingsError: String?
+  public internal(set) var areHistoryRetentionSettingsAvailable = true
+  public internal(set) var localHistoryMaintenancePendingReason: String?
+  public internal(set) var localHistoryMaintenanceBlockedReason: String?
+  public internal(set) var lastLocalHistoryRemovedCount = 0
+  public internal(set) var lastPreservedActiveRecordCount = 0
+  var historyLoadGeneration = 0
+  var runReceiptLoadGeneration = 0
+  var historyProjectionLoadTasks: [UUID: Task<Void, Never>] = [:]
+  var historyRetentionRerunRequested = false
+  var historyRetentionSettingsLoadError: String?
+  var historyRetentionSettingsWriteError: String?
+  var clipboardHistoryRetentionSettingIsInvalid = false
+  var runHistoryRetentionSettingIsInvalid = false
+  var shouldStartPeriodicHistoryRetentionMaintenance = false
+  var localHistoryMaintenanceTasks: [UUID: Task<Void, Never>] = [:]
+  var periodicHistoryRetentionMaintenanceTask: Task<Void, Never>?
+  var diagnosticsLoadGeneration = 0
+
   static let runHistoryPageSize = 50
   private let runHistoryBrowser: (any RunHistoryBrowsing)?
   private let library: WorkflowLibraryModel
   var previewMode: PrivacyHistoryPreviewMode = .restricted
-  var runHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
+  public private(set) var runHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
   var hasBegunApplicationShutdown = false
-  var runHistoryScope: RunHistoryScope = .recentRuns {
-    didSet { if oldValue != runHistoryScope { resetRunHistoryBrowsing() } }
+  private(set) var runHistoryScope: RunHistoryScope = .recentRuns
+
+  func setRunHistoryScope(_ scope: RunHistoryScope) {
+    guard runHistoryScope != scope else { return }
+    runHistoryScope = scope
+    resetRunHistoryBrowsing()
   }
   var historyLoadState: HistoryLoadState = .loaded
   var historyRecords: [WorkflowResultRecord] = []
@@ -43,10 +75,38 @@ public final class RunHistoryModel {
   var runHistoryCurrentPageLocator: RunHistoryPageLocator?
   var runHistoryNewerPageLocators: [RunHistoryPageLocator] = []
   var historyNavigationRequest: HistoryNavigationRequest?
-  init(browser: (any RunHistoryBrowsing)?, workflows: WorkflowLibraryModel) {
+  private let maintenanceSleep: @Sendable (Duration) async throws -> Void
+
+  init(browser: (any RunHistoryBrowsing)?, workflows: WorkflowLibraryModel,
+    maintenanceSleep: @escaping @Sendable (Duration) async throws -> Void) {
+    self.maintenanceSleep = maintenanceSleep
     runHistoryBrowser = browser
     library = workflows
   }
+  func append(_ entry: EventFeedEntry) {
+    eventFeed.append(entry)
+    if eventFeed.count > 200 { eventFeed.removeFirst(eventFeed.count - 200) }
+  }
+
+  func startPeriodicMaintenance(interval: Duration, perform: @escaping @MainActor () -> Void) {
+    guard !hasBegunApplicationShutdown, periodicHistoryRetentionMaintenanceTask == nil,
+      interval > .zero else { return }
+    periodicHistoryRetentionMaintenanceTask = Task { [weak self, maintenanceSleep] in
+      while !Task.isCancelled {
+        do { try await maintenanceSleep(interval) } catch { return }
+        guard !Task.isCancelled, self?.hasBegunApplicationShutdown == false else { return }
+        perform()
+      }
+    }
+  }
+
+  func stopPeriodicMaintenance() async {
+    let task = periodicHistoryRetentionMaintenanceTask
+    periodicHistoryRetentionMaintenanceTask = nil
+    task?.cancel()
+    await task?.value
+  }
+
   var recentVoiceHistoryRecords: [WorkflowResultRecord] {
     historyRecords.filter(isVoiceHistoryRecord)
   }
@@ -555,5 +615,72 @@ extension RunHistoryPageLocator {
       entryID: firstEntryID,
       session: page.session
     )
+  }
+}
+
+
+public enum RecordHistoryVisibility: String, CaseIterable, Identifiable, Sendable, Equatable {
+  case remainingOnly = "remaining-only"
+  case all = "all"
+
+  public var id: String { rawValue }
+}
+
+
+actor DiagnosticEventRelay {
+  let flushInterval: Duration
+  let deliver: @Sendable ([DiagnosticEvent]) async -> Void
+
+  var bufferedEvents: [DiagnosticEvent] = []
+  var flushTask: Task<Void, Never>?
+
+  init(
+    flushInterval: Duration = .milliseconds(40),
+    deliver: @escaping @Sendable ([DiagnosticEvent]) async -> Void
+  ) {
+    self.flushInterval = flushInterval
+    self.deliver = deliver
+  }
+
+  func enqueue(_ event: DiagnosticEvent) {
+    bufferedEvents.append(event)
+    guard flushTask == nil else { return }
+    let flushInterval = self.flushInterval
+    flushTask = Task { [weak self] in
+      try? await Task.sleep(for: flushInterval)
+      guard !Task.isCancelled else { return }
+      await self?.flush()
+    }
+  }
+
+  func cancel() {
+    flushTask?.cancel()
+    flushTask = nil
+    bufferedEvents = []
+  }
+
+  func drain() async {
+    flushTask?.cancel()
+    flushTask = nil
+    let batch = bufferedEvents
+    bufferedEvents = []
+    guard !batch.isEmpty else { return }
+    await deliver(batch)
+  }
+
+  private func flush() async {
+    flushTask = nil
+    let batch = bufferedEvents
+    bufferedEvents = []
+    guard !batch.isEmpty else { return }
+    await deliver(batch)
+  }
+}
+
+extension RunHistoryModel {
+  func applyRunHistoryRetentionPeriod(_ period: HistoryRetentionPeriod) {
+    guard runHistoryRetentionPeriod != period else { return }
+    runHistoryRetentionPeriod = period
+    resetRunHistoryBrowsing()
   }
 }

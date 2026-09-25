@@ -25,6 +25,7 @@ public struct WorkflowRunReceiptRepositoryChange: Sendable, Equatable {
 
 public enum RillEvent: Sendable, Equatable {
     case runStarted(RunSnapshot)
+    case runStageChanged(run: WorkflowRunIdentity, stage: WorkflowRunStage)
     case contextCaptured(run: WorkflowRunIdentity, snapshot: ContextSnapshot)
     case recognitionCompleted(run: WorkflowRunIdentity, result: RecognitionResult)
     case liveSubtitleUpdated(LiveSubtitleSnapshot)

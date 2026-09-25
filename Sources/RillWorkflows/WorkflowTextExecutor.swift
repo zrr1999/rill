@@ -25,7 +25,7 @@ struct WorkflowTextExecutor: Sendable {
   let lane: WorkflowRunLane
   let processingClock: @Sendable () -> UInt64
   var textPolishingGate: (any TextPolishingGate)? = nil
-  private var runDiagnostics: WorkflowRunDiagnostics { .init(diagnostics: diagnostics) }
+  private var runDiagnostics: WorkflowRunReporter { .init(diagnostics: diagnostics, eventBus: eventBus, lane: lane) }
 
   func transformText(
     from recognition: RecognitionResult,
@@ -266,7 +266,7 @@ struct WorkflowTextExecutor: Sendable {
     if let durationMilliseconds, let diagnostics {
       await diagnostics.record(DiagnosticEvent(
         runID: session.runID, subsystem: .session, level: .debug,
-        event: "session.process.timing", message: "Measured workflow processing step.",
+        event: .sessionProcessTiming, message: "Measured workflow processing step.",
         metadata: ["stepKind": kind.rawValue, "resultCode": result.rawValue,
                    "durationMillis": String(durationMilliseconds)]
       ))
@@ -303,7 +303,7 @@ struct WorkflowTextExecutor: Sendable {
         runID: runID,
         subsystem: .session,
         level: .warning,
-        event: "session.transform.fallback",
+        event: .sessionTransformFallback,
         message: "A recoverable speech-text transform failed; recognized text was retained.",
         metadata: [
           "workflow": workflow.fallbackName,
@@ -327,7 +327,7 @@ struct WorkflowTextExecutor: Sendable {
         runID: session.runID,
         subsystem: .session,
         level: result.issues.isEmpty ? .debug : .warning,
-        event: "session.vocabulary.applied",
+        event: .sessionVocabularyApplied,
         message: "Applied vocabulary mappings to recognized text.",
         metadata: [
           "workflow": session.presentation.fallbackName,

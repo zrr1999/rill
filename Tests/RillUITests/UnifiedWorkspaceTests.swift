@@ -1,3 +1,4 @@
+import RillTestSupport
 import XCTest
 @testable import RillCore
 @testable import RillWorkflows
@@ -99,10 +100,10 @@ final class UnifiedWorkspaceTests: XCTestCase {
         let workspace = RecordWorkspaceModel(store: store)
         await workspace.refresh()
         workspace.selectCollection(RecordCollection.inboxID)
-        workspace.showsPinnedOnly = true
-        workspace.sourceAppFilterBundleIdentifier = "com.example.unrelated"
-        workspace.payloadKindFilter = .image
-        workspace.searchText = "unrelated"
+        workspace.setShowsPinnedOnly(true)
+        workspace.setSourceAppFilter("com.example.unrelated")
+        workspace.setPayloadKindFilter(.image)
+        workspace.setSearchText("unrelated")
         await workspace.revealRecord(target.id)
         XCTAssertEqual(workspace.selectedVisibleRecord?.id, target.id)
         XCTAssertNil(workspace.selectedCollectionID)
@@ -241,10 +242,11 @@ final class UnifiedWorkspaceTests: XCTestCase {
     }
 
     func testWorkspaceCopyIsExplicitAndReportsActualOutcome() async throws {
-        let model = makeHarness().model
         let subject = RecordReuseSubject(recordID: RecordID(), metadataRevision: 0)
         var received: RecordReuseSubject?
-        model.installRecordCopyAction { value in received = value; return .storageUnavailable }
+        let model = makeHarness(recordInteractionServices: makeRecordInteractionServicesForTesting(
+            copy: { value in received = value; return .storageUnavailable }
+        )).model
         XCTAssertNil(received)
         let outcome = await model.copyRecord(subject)
         XCTAssertEqual(received, subject)

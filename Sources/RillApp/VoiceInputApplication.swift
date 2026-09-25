@@ -18,9 +18,6 @@ struct RillApplication: App {
         let recordPanelController: RecordPanelController = RecordPanelController()
         let liveSubtitlePanelController = LiveSubtitlePanelController()
 
-        container.model.installRecordCopyAction { subject in
-            await container.systemClipboardCaptureController.recordDelivery.reuseRecord(subject, copyOnly: true)
-        }
         container.model.installRecordPanelAction { [recordPanelController, model = container.model] in
             recordPanelController.show(
                 model: model,
@@ -40,19 +37,7 @@ struct RillApplication: App {
                 }
             )
         }
-        container.model.installSystemClipboardCaptureControlActions(
-            setEnabled: container.setSystemClipboardCaptureEnabled,
-            ignoreNextExternalChange: container.ignoreNextExternalClipboardChange
-        )
-        container.model.installRecordPanelHotkeyAction { binding in
-            container.updateRecordPanelHotkey(binding)
-        }
-        container.model.installRecordPanelShortcutRecordingActions(
-            begin: container.beginRecordPanelShortcutRecording,
-            end: container.endRecordPanelShortcutRecording,
-            commit: container.commitRecordPanelShortcutRecording
-        )
-        container.model.installLiveSubtitlePanelAction {
+        container.model.voice.installLiveSubtitlePanelAction {
             [liveSubtitlePanelController] snapshot, language in
             let cancellableRunID = snapshot.flatMap { snapshot in
                 LiveSubtitlePresentationPolicy.isAudioCaptureActive(phase: snapshot.phase)
@@ -71,7 +56,7 @@ struct RillApplication: App {
         self.liveSubtitlePanelController = liveSubtitlePanelController
         let shutdown = container.shutdown
         applicationDelegate.installEscapeAction {
-            container.model.stopSpeechPlaybackIfActive()
+            container.model.voice.stopSpeechPlaybackIfActive()
         }
         applicationDelegate.installCleanupOperation {
             await recordPanelController.shutdown()
@@ -85,7 +70,7 @@ struct RillApplication: App {
         }
         .defaultSize(width: 960, height: 720)
         .commands {
-            RillGlobalSearchCommands(language: container.model.language)
+            RillGlobalSearchCommands(language: container.model.settings.language)
         }
 
         Settings {
@@ -107,9 +92,9 @@ struct RillApplication: App {
 
     private var menuBarSystemSymbol: RillSystemSymbol {
         MenuBarSystemSymbolPolicy.symbol(
-            isVoiceRunActive: container.model.isRunning,
+            isVoiceRunActive: container.model.voice.isRunning,
             globalInputCapability: container.model.globalInputCapability,
-            systemClipboardCaptureEnabled: container.model.systemClipboardCaptureEnabled,
+            systemClipboardCaptureEnabled: container.model.settings.systemClipboardCaptureEnabled,
             clipboardCaptureState: container.model.systemClipboardCaptureControlSnapshot.state,
             recordCount: container.model.recordCount
         )

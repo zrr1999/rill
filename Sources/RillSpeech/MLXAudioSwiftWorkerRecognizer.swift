@@ -74,7 +74,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
       throw CancellationError()
     } catch {
       await recordRecognitionDiagnostic(
-        event: "provider.local-speech.recognition.failed",
+        event: .providerLocalSpeechRecognitionFailed,
         level: .error,
         outcome: "failed",
         failureCode: Self.diagnosticFailureCode(error),
@@ -84,9 +84,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
     }
   }
 
-  private func recognizeCapturedAudio(_ request: RecognitionRequest) async throws
-    -> RecognitionResult
-  {
+  private func recognizeCapturedAudio(_ request: RecognitionRequest) async throws -> RecognitionResult {
     try Task.checkCancellation()
     guard let capturedAudio = request.capturedAudio,
       capturedAudio.fileOwnership == .managedTemporary,
@@ -100,10 +98,9 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
     }
 
     let settings = try await settingsProvider()
-    let modelIdentifier = request.options.modelIdentifier ?? LocalSpeechModelCatalog.effectiveModelIdentifier(
-      settings: settings,
-      modelOverride: request.configuration.modelOverride
-    )
+    guard let modelIdentifier = request.options.modelID else {
+      throw LocalSpeechSettingsSourceError.notReady
+    }
     guard let modelID = MLXAudioModelID(rawValue: modelIdentifier),
       MLXAudioModelCatalog.distributableModelIdentifiers.contains(modelIdentifier)
     else {
@@ -112,18 +109,12 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
     guard settings.enabledModelIDs.contains(modelIdentifier) else {
       throw LocalSpeechModelSelectionError.modelNotEnabled(modelIdentifier)
     }
-    let language = request.options.modelIdentifier != nil ? request.options.language : LocalSpeechRecognitionPolicy.resolvedLanguage(
-      requestLanguage: request.options.language,
-      workflowLanguage: request.configuration.languageOverride,
-      configurationLanguage: settings.language
-    )
+    let keyterms = LocalSpeechRecognitionPolicy.sanitizedQwenHotwords(request.options.hints.keyterms)
     let payload = SpeechWorkerRecognitionPayload(
       runID: request.runID,
       modelID: modelID.rawValue,
-      language: language,
-      keyterms: LocalSpeechRecognitionPolicy.sanitizedQwenHotwords(
-        request.options.hints.keyterms
-      ),
+      language: request.options.language,
+      keyterms: keyterms,
       threadCount: 1,
       audioFilePath: audioFileURL.standardizedFileURL.path,
       audioDurationSeconds: capturedAudio.durationSeconds,
@@ -146,10 +137,14 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
       payload,
       priority: Self.taskPriority(for: request)
     )
+    var metadata = result.metadata
+    let workerOmitted = Int(metadata["provider.keyterms_omitted"] ?? "0") ?? 0
+    metadata["provider.keyterms_omitted"] = String(
+      request.options.hints.keyterms.count - keyterms.count + workerOmitted)
     return RecognitionResult(
       rawText: result.rawText,
       bestText: result.bestText,
-      metadata: result.metadata,
+      metadata: metadata,
       processingDurationMillis: result.processingDurationMillis
     )
   }
@@ -179,7 +174,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
         throw initialError
       }
       await recordRecognitionDiagnostic(
-        event: "provider.local-speech.recognition.retry",
+        event: .providerLocalSpeechRecognitionRetry,
         level: .warning,
         outcome: "pending",
         failureCode: Self.diagnosticFailureCode(initialError),
@@ -194,7 +189,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
           priority: priority
         )
         await recordRecognitionDiagnostic(
-          event: "provider.local-speech.recognition.retry",
+          event: .providerLocalSpeechRecognitionRetry,
           level: .info,
           outcome: "completed",
           failureCode: Self.diagnosticFailureCode(initialError),
@@ -205,7 +200,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
         throw CancellationError()
       } catch {
         await recordRecognitionDiagnostic(
-          event: "provider.local-speech.recognition.retry",
+          event: .providerLocalSpeechRecognitionRetry,
           level: .error,
           outcome: "failed",
           failureCode: Self.diagnosticFailureCode(error),
@@ -217,7 +212,7 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
   }
 
   private func recordRecognitionDiagnostic(
-    event: String,
+    event: DiagnosticEventName,
     level: DiagnosticLevel,
     outcome: String,
     failureCode: String,
@@ -268,13 +263,11 @@ public struct MLXAudioSwiftWorkerRecognizer: LocalSpeechBackendRecognizer {
   private static func taskPriority(
     for request: RecognitionRequest
   ) -> SpeechWorkerTaskPriority {
-    if request.configuration.isWakeCandidate {
-      return .wakeCandidate
+    switch request.priority {
+    case .interactive: .interactive
+    case .foregroundFinal: .foregroundFinal
+    case .wakeCandidate: .wakeCandidate
     }
-    if request.triggerEvent?.binding == .hotkey {
-      return .interactive
-    }
-    return .foregroundFinal
   }
 }
 

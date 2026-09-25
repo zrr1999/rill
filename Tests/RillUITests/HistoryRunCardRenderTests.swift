@@ -91,7 +91,7 @@ final class HistoryRunCardRenderTests: XCTestCase {
         let successID = UUID(), failureID = UUID(), legacyID = UUID()
         let timestamp = Date()
         let workflow = WorkflowPresentation(fallbackName: language == .english ? "Smart Cleanup" : "智能整理")
-        model.historyRecords = [
+        model.history.historyRecords = [
             WorkflowResultRecord(
                 runID: successID, workflow: workflow,
                 finalText: language == .english ? "What can we improve?" : "有哪些改进点？",
@@ -109,7 +109,7 @@ final class HistoryRunCardRenderTests: XCTestCase {
                 timestamp: timestamp.addingTimeInterval(-3_600), outcome: .failed, trigger: .hotkey
             )
         ]
-        model.workflowRunReceiptsByRunID = [
+        model.history.workflowRunReceiptsByRunID = [
             successID: try WorkflowRunReceipt(
                 runID: successID, workflowID: nil, trigger: .hotkey, timestamp: timestamp,
                 duration: .s1To4, termination: .completed,
@@ -136,14 +136,14 @@ final class HistoryRunCardRenderTests: XCTestCase {
         ]
         let debugEvent = DiagnosticEvent(
             runID: successID, subsystem: .session, level: .debug,
-            event: "audio-processing.temporary-file-removed", message: "Diagnostic event recorded.",
+            event: .audioProcessingTemporaryFileRemoved, message: "Diagnostic event recorded.",
             metadata: ["lane": "interactive"]
         )
-        model.diagnosticEvents = [
+        model.history.diagnosticEvents = [
             debugEvent,
             DiagnosticEvent(
                 runID: failureID, subsystem: .session, level: .error,
-                event: "session.failure", message: "Diagnostic event recorded.",
+                event: .sessionFailure, message: "Diagnostic event recorded.",
                 metadata: ["stage": "transforming", "failureCode": "processing"]
             )
         ]

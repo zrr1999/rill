@@ -21,12 +21,7 @@ struct AppContainer {
   let shutdown: @Sendable () async -> Void
   let setLiveAudioEscapeCancellationRunID: @Sendable (UUID?) -> Void
   let removeLiveAudioDurationLimit: @Sendable (UUID) async -> Bool
-  let setSystemClipboardCaptureEnabled: @Sendable (Bool, UInt64) -> Void
-  let ignoreNextExternalClipboardChange: @Sendable () -> Void
-  let updateRecordPanelHotkey: @Sendable (HotkeyBindingDescriptor) -> Void
-  let beginRecordPanelShortcutRecording: @Sendable () -> UUID
-  let endRecordPanelShortcutRecording: @Sendable (UUID) -> Void
-  let commitRecordPanelShortcutRecording: @Sendable (UUID, UInt16) -> Void
+
 }
 
 @MainActor
@@ -61,17 +56,6 @@ enum AppBootstrap {
         approximateDownloadByteCount: descriptor.approximateDownloadByteCount,
         isDefault: descriptor.id == SpeechSynthesisModelCatalog.defaultModel.id
       )
-    }
-  }
-
-  nonisolated static func displayedTTSPreparationProgress(
-    _ update: SpeechWorkerProgress
-  ) -> Double {
-    switch update.phase {
-    case .downloading:
-      return update.fractionCompleted * 0.95
-    case .loading:
-      return 0.95 + (update.fractionCompleted * 0.05)
     }
   }
 
@@ -325,8 +309,8 @@ enum AppBootstrap {
 
   nonisolated static func makeLocalHistoryMaintenance(
     recordHistory: any RecordHistoryMaintaining,
-    historyRepository: any HistoryRepository,
-    runReceiptRepository: any WorkflowRunReceiptRepository,
+    historyRepository: any HistoryMaintaining,
+    runReceiptRepository: any WorkflowRunReceiptMaintaining,
     diagnosticRepository: any DiagnosticHistoryMaintaining,
     settingsStore: (any SettingsStore)?,
     residuePurger: (any StorageResiduePurging)?,
@@ -391,10 +375,15 @@ enum AppBootstrap {
     if let blockReason = event.blockReason {
       metadata["blockReason"] = blockReason.rawValue
     }
+    let name: DiagnosticEventName = switch event.outcome {
+    case .completed: .historyMaintenanceCompleted
+    case .pending: .historyMaintenancePending
+    case .blocked: .historyMaintenanceBlocked
+    }
     return DiagnosticEvent(
       subsystem: .platform,
       level: level,
-      event: "history.maintenance.\(event.outcome.rawValue)",
+      event: name,
       message: message,
       metadata: metadata
     )
@@ -430,8 +419,8 @@ enum AppBootstrap {
       subsystem: .platform,
       level: hasFailures ? .warning : .info,
       event: hasFailures
-        ? "temporary-files.cleanup.pending"
-        : "temporary-files.cleanup.completed",
+        ? .temporaryFilesCleanupPending
+        : .temporaryFilesCleanupCompleted,
       message: hasFailures
         ? "Temporary artifact cleanup requires a retry."
         : "Temporary artifact cleanup completed.",
@@ -446,8 +435,8 @@ enum AppBootstrap {
 
 private struct PersistenceBackends {
   let localPersistenceStatus: LocalPersistenceStatus
-  let diagnosticRepository: any DiagnosticRepository
-  let historyRepository: any HistoryRepository
+  let diagnosticRepository: any DiagnosticRepository & DiagnosticHistoryMaintaining
+  let historyRepository: any HistoryRepository & HistoryMaintaining
   /// The single snapshot/keyset boundary used by History and global search.
   /// It is unavailable when durable SQLite persistence failed to initialize;
   /// callers must surface that state instead of rebuilding a lossy projection
@@ -455,21 +444,21 @@ private struct PersistenceBackends {
   let runHistoryBrowser: (any RunHistoryBrowsing)?
   /// `nil` means terminal receipts cannot be durably stored. The app must
   /// not substitute an ephemeral repository and publish it as durable truth.
-  let runReceiptRepository: (any WorkflowRunReceiptRepository)?
+  let runReceiptRepository: (any WorkflowRunReceiptRepository & WorkflowRunReceiptMaintaining)?
   let settingsStore: (any SettingsStore)?
   let recordGraphPersistenceStore: (any RecordGraphPersistenceStore)?
   let residuePurger: (any StorageResiduePurging)?
   let temporaryFileCleanupService: RillTemporaryFileCleanupService
   let failedAudioRecoveryStore: (any FailedAudioRecoveryStore)?
-  let benchmarkRecordingArchiveStore: (any BenchmarkRecordingArchiveStore)?
+  let benchmarkRecordingArchiveStore: (any BenchmarkRecordingArchiveStore & BenchmarkRecordingArchiveReading)?
   let startupDiagnostic: DiagnosticEvent?
 }
 
 private struct UnavailableWorkflowRunReceiptRepository: WorkflowRunReceiptRepository {
   func insertTerminal(_ receipt: WorkflowRunReceipt) async throws { throw RunHistoryGenerationError.unsupported }
   func receipts(matching query: WorkflowRunReceiptQuery) async throws -> [WorkflowRunReceipt] { throw RunHistoryGenerationError.unsupported }
-  func deleteReceipts(olderThan cutoff: Date) async throws -> Int { throw RunHistoryGenerationError.unsupported }
-  func deleteAllReceipts() async throws -> Int { throw RunHistoryGenerationError.unsupported }
+  func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { throw RunHistoryGenerationError.unsupported }
+  func insertTerminal(_ receipt: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws { throw RunHistoryGenerationError.unsupported }
 }
 
 private struct UnavailableRunHistoryBrowser: RunHistoryBrowsing {
@@ -697,7 +686,7 @@ private enum AppContainerFactory {
     @Sendable (
       WorkflowDefinition,
       ContextSnapshot
-    ) async -> SpeechRecognitionRequestOptions
+    ) async throws -> SpeechRecognitionRequestOptions
 
   private static let keychainServiceIdentifier = "dev.zrr.Rill.credentials"
   private static let webhookKeychainServiceIdentifier = "dev.zrr.Rill.webhook-configuration"
@@ -893,7 +882,7 @@ private enum AppContainerFactory {
             runID: diagnostic.runID,
             subsystem: .platform,
             level: diagnostic.resultCode == "blocked" ? .warning : .debug,
-            event: "accessibility.cursor-preview",
+            event: .accessibilityCursorPreview,
             message: "Updated the run-scoped cursor preview transaction.",
             metadata: metadata
           )
@@ -973,7 +962,7 @@ private enum AppContainerFactory {
       level: localSpeechTrustMaterialIsAvailable ? .info : .warning,
       event:
         localSpeechTrustMaterialIsAvailable
-        ? "provider.local-speech.available" : "provider.local-speech.unavailable",
+        ? .providerLocalSpeechAvailable : .providerLocalSpeechUnavailable,
       message:
         localSpeechTrustMaterialIsAvailable
         ? "Release-pinned MLX speech worker, Silero VAD, and model catalog are available."
@@ -1039,7 +1028,9 @@ private enum AppContainerFactory {
     )
     let workflowAudioCaptureService = RealtimeAudioCaptureService(
       legacyCaptureService: AVAudioCaptureService(cleanupOwner: managedTemporaryAudioCleanupOwner),
-      streamingPreviewService: streamingPreviewService,
+      streamingPreviewSessionFactory: { request in
+        await streamingPreviewService.makeSession(for: request)
+      },
       liveUpdateHandler: { snapshot in
         let projected = await platform.cursorTextPreviewCoordinator.project(snapshot)
         await core.eventBus.publish(.liveSubtitleUpdated(projected))
@@ -1083,6 +1074,10 @@ private enum AppContainerFactory {
       wakeWordTriggerSource = WakeWordTriggerSource(
         hub: sharedVoiceInputHub,
         recognizer: localSpeechRecognizer,
+        recognitionOptionsProvider: { workflow in
+          LocalSpeechModelCatalog.recognitionOptions(
+            settings: try localSpeechSettingsSource.currentSettings(), workflow: workflow)
+        },
         vadSessionFactory: {
           await streamingPreviewService.makeVADSession()
         }
@@ -1096,6 +1091,7 @@ private enum AppContainerFactory {
         fallback: SystemSpeechSynthesizer()
       ),
       playback: speechPlaybackService,
+      removeTemporaryAsset: { _ = try $0.removeManagedTemporaryFile() },
       playbackStateChanged: { isPlaying in
         await speechPlaybackPresentationBridge.update(isActive: isPlaying)
         guard let wakeWordTriggerSource else { return }
@@ -1205,37 +1201,28 @@ private enum AppContainerFactory {
       sanitize: LocalSpeechRecognitionPolicy.sanitizedQwenHotwords,
       report: { event in await core.diagnostics.record(event) })
     privacyRunGate.prepareLiveRecognition = { runID, workflow, context, options, lifetime in
-      var frozen = options
-      if ["local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming", "auto"]
-        .contains(workflow.plan.setup.speechRoute?.recognizerID ?? "") {
-        let settings = try providers.localSpeechSettingsSource.currentSettings()
-        let model = LocalSpeechModelCatalog.effectiveModelIdentifier(settings: settings,
-          modelOverride: SpeechRequestConfiguration(workflow: workflow).modelOverride)
-        if MLXAudioModelCatalog.distributableModelIdentifiers.contains(model) {
-          frozen.modelIdentifier = model
-          frozen.language = LocalSpeechRecognitionPolicy.resolvedLanguage(
-            requestLanguage: options.language,
-            workflowLanguage: workflow.plan.setup.speechRoute?.language
-              ?? workflow.metadata[WorkflowMetadataKey.languageOverride],
-            configurationLanguage: settings.language)
-        }
-      }
       return try await liveRecognition.prepare(runID: runID, workflow: workflow,
-        context: context, options: frozen, lifetime: lifetime)
+        context: context, options: options, lifetime: lifetime)
     }
     let preparedPrivacyRunGate = privacyRunGate
-    let recognitionOptionsProvider: RecognitionOptionsProvider = { workflow, _ in
-      let language: String?
-      switch workflow.plan.setup.speechRoute?.recognizerID {
-      case "local-speech", "sherpa-onnx.local", "sherpa-onnx.streaming", "auto":
-        // Local workers resolve workflow overrides and otherwise detect the language.
-        language = nil
-      default:
-        language = AppSettingsLoader.trimmedNonEmpty(
-          workflow.metadata[WorkflowMetadataKey.languageOverride]
-        )
+    let recognitionOptionsProvider: RecognitionOptionsProvider = { workflow, context in
+      let vocabulary = workflow.plan.setup.vocabularyBindings.isEmpty
+        ? nil : try core.vocabularyRuleSource.snapshot()
+      var options = SpeechRecognitionRequestOptions(language: workflow.plan.setup.speechRoute?.language)
+      if workflow.plan.setup.speechRoute != nil {
+        options = LocalSpeechModelCatalog.recognitionOptions(
+          settings: try providers.localSpeechSettingsSource.currentSettings(), workflow: workflow)
       }
-      return SpeechRecognitionRequestOptions(language: language)
+      options.vocabulary = vocabulary
+      let resolved = VocabularyCollectionResolver.resolve(
+        bindings: workflow.plan.setup.vocabularyBindings,
+        collections: vocabulary?.collections ?? [],
+        context: VocabularyRuleContext(
+          contextSnapshot: context,
+          recordCollectionID: workflow.legacyTargetRecordCollectionID,
+          locale: options.language))
+      options.hints = VocabularyRecognitionHintResolver().resolve(rules: resolved.hotwordRules).hints
+      return options
     }
     let recognitionRunPreflight = AppBootstrap.makeRecognitionRunPreflight(
       trustedLocalModelIdentifiers: Set(providers.trustedLocalSpeechModels.map(\.id)),
@@ -1269,9 +1256,6 @@ private enum AppContainerFactory {
         eventBus: core.eventBus,
         diagnostics: core.diagnostics,
         privacyRunGate: preparedPrivacyRunGate,
-        contextProvider: {
-          await platform.contextProvider.captureContext()
-        },
         privacyContextProvider: {
           await platform.contextProvider.capturePrivacyContext()
         },
@@ -1280,6 +1264,7 @@ private enum AppContainerFactory {
         },
         recognitionOptionsProvider: recognitionOptionsProvider,
         runPreflight: recognitionRunPreflight,
+        removeManagedRecoveryTemporaryFile: { _ = try $0.removeManagedTemporaryFile() },
         cleanupRecoveryTemporaryFiles: {
           let report = await core.persistence.temporaryFileCleanupService
             .cleanupRecoveryArtifacts()
@@ -1299,7 +1284,8 @@ private enum AppContainerFactory {
       eventBus: core.eventBus,
       diagnostics: core.diagnostics,
       failedAudioRecoveryController: failedAudioRecoveryController,
-      benchmarkRecordingArchiveController: benchmarkRecordingArchiveController
+      benchmarkRecordingArchiveController: benchmarkRecordingArchiveController,
+      rejectedCapturedAudioRemoval: { _ = try $0.removeManagedTemporaryFile() }
     )
     let assistantQueue = CapturedAudioProcessingQueue(
       sessionCoordinator: assistantCoordinator,
@@ -1307,7 +1293,8 @@ private enum AppContainerFactory {
       diagnostics: core.diagnostics,
       benchmarkRecordingArchiveController: benchmarkRecordingArchiveController,
       lane: .assistant,
-      publishesSnapshots: false
+      publishesSnapshots: false,
+      rejectedCapturedAudioRemoval: { _ = try $0.removeManagedTemporaryFile() }
     )
     let manifestResult = WorkflowManifestResource.load(
       recognizerRegistry: registries.recognizerRegistry,
@@ -1344,9 +1331,6 @@ private enum AppContainerFactory {
       capturedAudioProcessingQueue: assistantQueue,
       diagnostics: core.diagnostics,
       eventBus: core.eventBus,
-      contextProvider: {
-        await platform.contextProvider.captureContext()
-      },
       privacyContextProvider: {
         await platform.contextProvider.capturePrivacyContext()
       },
@@ -1458,7 +1442,7 @@ private enum AppContainerFactory {
     recognitionAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner
   ) -> SessionCoordinator {
     SessionCoordinator(
-      contextProvider: platform.contextProvider,
+
       lane: lane,
       privacyContextProvider: {
         await platform.contextProvider.capturePrivacyContext()
@@ -1481,7 +1465,8 @@ private enum AppContainerFactory {
       },
       recognitionOptionsProvider: recognitionOptionsProvider,
       recognitionAudioCleanupOwner: recognitionAudioCleanupOwner,
-      defaultRecordDeliveryActionID: "focused-application.insert"
+      defaultRecordDeliveryActionID: "focused-application.insert",
+      recognitionAudioIsolator: TemporaryAudioFiles.isolate
     )
   }
 
@@ -1712,7 +1697,7 @@ private enum AppContainerFactory {
                 DiagnosticEvent(
                   subsystem: .platform,
                   level: .error,
-                  event: "audio-recovery.storage-unavailable",
+                  event: .audioRecoveryStorageUnavailable,
                   message:
                     "Failed recording recovery is enabled, but protected storage is unavailable.",
                   metadata: ["runtime": "disabled"]
@@ -1731,7 +1716,7 @@ private enum AppContainerFactory {
                   DiagnosticEvent(
                     subsystem: .platform,
                     level: .warning,
-                    event: "audio-recovery.opt-out-cleanup-failed",
+                    event: .audioRecoveryOptOutCleanupFailed,
                     message: "Disabled failed recording recovery artifacts could not be removed.",
                     metadata: ["reason": "storage-unavailable"]
                   )
@@ -1748,7 +1733,7 @@ private enum AppContainerFactory {
               DiagnosticEvent(
                 subsystem: .platform,
                 level: .warning,
-                event: "audio-recovery.startup-failed",
+                event: .audioRecoveryStartupFailed,
                 message: "Failed recording recovery maintenance could not complete.",
                 metadata: ["reason": "storage-unavailable"]
               )
@@ -1775,7 +1760,7 @@ private enum AppContainerFactory {
                 DiagnosticEvent(
                   subsystem: .platform,
                   level: .error,
-                  event: "benchmark-recording.storage-unavailable",
+                  event: .benchmarkRecordingStorageUnavailable,
                   message:
                     "Benchmark recording retention is enabled, but protected storage is unavailable.",
                   metadata: ["runtime": "disabled"]
@@ -1931,34 +1916,6 @@ private enum AppContainerFactory {
           .removeMaximumDurationLimit(runID: runID)
         let results = await (recordingRemoval, workflowRemoval)
         return results.0 || results.1
-      },
-      setSystemClipboardCaptureEnabled: { isEnabled, preferenceRevision in
-        Task {
-          await runtime.systemClipboardCaptureController.setSystemClipboardCaptureEnabled(
-            isEnabled,
-            preferenceRevision: preferenceRevision
-          )
-        }
-      },
-      ignoreNextExternalClipboardChange: {
-        Task {
-          await runtime.systemClipboardCaptureController.ignoreNextExternalClipboardChange()
-        }
-      },
-      updateRecordPanelHotkey: { binding in
-        platform.hotkeyTap.setRecordPanelHotkeyBinding(binding)
-      },
-      beginRecordPanelShortcutRecording: {
-        platform.hotkeyTap.beginRecordPanelShortcutRecording()
-      },
-      endRecordPanelShortcutRecording: { suspensionID in
-        platform.hotkeyTap.endRecordPanelShortcutRecording(suspensionID)
-      },
-      commitRecordPanelShortcutRecording: { suspensionID, keyCode in
-        platform.hotkeyTap.commitRecordPanelShortcutRecording(
-          suspensionID,
-          keyCode: keyCode
-        )
       }
     )
   }
@@ -1966,6 +1923,87 @@ private enum AppContainerFactory {
 
 @MainActor
 private enum AppModelFactory {
+  private static func makeRecordInteractionServices(
+    platform: PlatformServices, runtime: RuntimeServices
+  ) -> RecordInteractionServices {
+    RecordInteractionServices(
+      copy: { subject in
+        await runtime.systemClipboardCaptureController.recordDelivery.reuseRecord(subject, copyOnly: true)
+      },
+      setCaptureEnabled: { isEnabled, preferenceRevision in
+        Task {
+          await runtime.systemClipboardCaptureController.setSystemClipboardCaptureEnabled(
+            isEnabled,
+            preferenceRevision: preferenceRevision
+          )
+        }
+      },
+      ignoreNextExternalChange: {
+        Task {
+          await runtime.systemClipboardCaptureController.ignoreNextExternalClipboardChange()
+        }
+      },
+      updateHotkey: { binding in
+        platform.hotkeyTap.setRecordPanelHotkeyBinding(binding)
+      },
+      beginShortcutRecording: {
+        platform.hotkeyTap.beginRecordPanelShortcutRecording()
+      },
+      endShortcutRecording: { suspensionID in
+        platform.hotkeyTap.endRecordPanelShortcutRecording(suspensionID)
+      },
+      commitShortcutRecording: { suspensionID, keyCode in
+        platform.hotkeyTap.commitRecordPanelShortcutRecording(
+          suspensionID,
+          keyCode: keyCode
+        )
+      }
+    )
+  }
+
+  private static func makeVoiceResourceServices(providers: ProviderServices) -> VoiceResourceServices {
+    VoiceResourceServices(
+      prepareWakeWordModel: { progressCallback in
+        guard providers.wakeWordTriggerSource != nil else {
+          throw WakeWordTriggerSourceError.modelNotInstalled
+        }
+        let settings = try providers.localSpeechSettingsSource.currentSettings()
+        let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
+          settings: settings
+        )
+        let backend = try LocalSpeechModelCatalog.backend(for: modelIdentifier)
+        try await providers.localSpeechRecognizer.prepareForUse(of: backend)
+        let prepared = try await providers.mlxAudioSwiftRecognizer.prepareModel(
+          modelIdentifier: modelIdentifier,
+          downloadIfNeeded: true,
+          progress: { update in
+            progressCallback(update.fractionCompleted)
+          }
+        )
+        progressCallback(1)
+        return prepared
+      },
+      selectTTSModel: { modelIdentifier in
+        _ = providers.ttsModelSelectionSource.selectModel(modelIdentifier)
+      },
+      downloadedTTSModelIdentifiers:
+        SpeechSynthesisModelInventory.installedModelIdentifiers(),
+      validateWakeWordConfiguration: { configuration in
+        guard let source = providers.wakeWordTriggerSource else {
+          throw WakeWordTriggerSourceError.modelNotInstalled
+        }
+        try await source.validate(configuration: configuration)
+      },
+      stopSpeechPlayback: {
+        guard providers.speechPlaybackService.isPlaying else { return false }
+        Task { @MainActor in
+          await providers.speechPlaybackService.shutdown()
+        }
+        return true
+      }
+    )
+  }
+
   static func makeModel(
     core: CoreServices,
     platform: PlatformServices,
@@ -1973,8 +2011,8 @@ private enum AppModelFactory {
     registries: Registries,
     runtime: RuntimeServices
   ) -> AppModel {
-    var model: AppModel?
-    model = AppModel(
+    weak var model: AppModel?
+    let resolvedModel = AppModel(
       workflows: runtime.workflows,
       eventBus: core.eventBus,
       sessionCoordinator: runtime.coordinator,
@@ -2000,11 +2038,17 @@ private enum AppModelFactory {
       vocabularyRuleSource: core.vocabularyRuleSource,
       privacySettingsSource: core.privacySettingsSource,
       localSpeechSettingsSource: providers.localSpeechSettingsSource,
+      loadsPersistentSettingsOnInitialization: true,
+      settingsWriteDebounceDuration: .milliseconds(300),
+      historyRetentionMaintenanceInterval: .seconds(86_400),
+      historyMaintenanceSleep: { try await Task.sleep(for: $0) },
+      liveSubtitlePreparingHideDelay: .seconds(15),
       localSpeechAvailability: providers.localSpeechAvailability,
       trustedLocalSpeechModels: providers.trustedLocalSpeechModels,
       defaultLocalSpeechModelIdentifier: providers.defaultLocalSpeechModelIdentifier,
       ttsModelOptions: AppBootstrap.ttsModelOptions,
       defaultTTSModelIdentifier: SpeechSynthesisModelCatalog.defaultModel.id.rawValue,
+      localSpeechPhysicalMemoryGiB: Int(ProcessInfo.processInfo.physicalMemory / 1_073_741_824),
       prepareLocalSpeechAction: { settings, progressCallback in
         do {
           let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
@@ -2062,7 +2106,7 @@ private enum AppModelFactory {
               DiagnosticEvent(
                 subsystem: .providers,
                 level: .warning,
-                event: "provider.speech-model.resident-load-failed",
+                event: .providerSpeechModelResidentLoadFailed,
                 message: "A resident speech model could not be loaded.",
                 metadata: ["modelID": modelID]
               )
@@ -2112,7 +2156,7 @@ private enum AppModelFactory {
             DiagnosticEvent(
               subsystem: .providers,
               level: .warning,
-              event: "provider.speech-model.download-failed",
+              event: .providerSpeechModelDownloadFailed,
               message: "An enabled speech model could not be downloaded.",
               metadata: ["modelID": modelID]
             )
@@ -2141,7 +2185,7 @@ private enum AppModelFactory {
             DiagnosticEvent(
               subsystem: .providers,
               level: .error,
-              event: "provider.local-speech.worker-shutdown-failed",
+              event: .providerLocalSpeechWorkerShutdownFailed,
               message: "A local speech worker could not be confirmed stopped.",
               metadata: ["workerIsolation": "subprocess"]
             )
@@ -2205,6 +2249,8 @@ private enum AppModelFactory {
         }
         await controller.refresh(isEnabled: isEnabled)
       },
+      benchmarkArchiveReader: core.persistence.benchmarkRecordingArchiveStore,
+      benchmarkCorpusExporter: core.persistence.benchmarkRecordingArchiveStore.map { BenchmarkCorpusExporter(archive: $0) },
       authorizeWorkflowRunAction: runtime.authorizeWorkflowRunAction,
       explainResolvedWorkflowAction: AppBootstrap.makeWorkflowExplanationAction(
         service: WorkflowExplainService(
@@ -2224,6 +2270,7 @@ private enum AppModelFactory {
         Task { await runtime.systemClipboardCaptureController.recordDelivery.deliverNextRecord() }
       },
       permissionSnapshot: platform.permissionGate.snapshot,
+      language: .preferred,
       refreshPermissionsAction: {
         platform.permissionGate.refresh()
         model?.updatePermissionSnapshot(platform.permissionGate.snapshot)
@@ -2255,60 +2302,11 @@ private enum AppModelFactory {
       },
       workflowLibraryChangedAction: {
         Task { await runtime.wakeWordCoordinator?.reconcile() }
-      }
+      },
+      voiceResourceServices: makeVoiceResourceServices(providers: providers),
+      recordInteractionServices: makeRecordInteractionServices(platform: platform, runtime: runtime)
     )
-    guard let resolvedModel = model else {
-      preconditionFailure("AppModel was not initialized")
-    }
-    resolvedModel.installVoiceAssistantResourceActions(
-      prepareWakeWordModel: { progressCallback in
-        guard providers.wakeWordTriggerSource != nil else {
-          throw WakeWordTriggerSourceError.modelNotInstalled
-        }
-        let settings = try providers.localSpeechSettingsSource.currentSettings()
-        let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
-          settings: settings
-        )
-        let backend = try LocalSpeechModelCatalog.backend(for: modelIdentifier)
-        try await providers.localSpeechRecognizer.prepareForUse(of: backend)
-        let prepared = try await providers.mlxAudioSwiftRecognizer.prepareModel(
-          modelIdentifier: modelIdentifier,
-          downloadIfNeeded: true,
-          progress: { update in
-            progressCallback(update.fractionCompleted)
-          }
-        )
-        progressCallback(1)
-        return prepared
-      },
-      prepareTTSModel: { modelIdentifier, progressCallback in
-        try await providers.qwen3TTSSynthesizer.prepare(
-          modelIdentifier: modelIdentifier,
-          downloadIfNeeded: true,
-          progress: { update in
-            progressCallback(AppBootstrap.displayedTTSPreparationProgress(update))
-          }
-        )
-      },
-      selectTTSModel: { modelIdentifier in
-        _ = providers.ttsModelSelectionSource.selectModel(modelIdentifier)
-      },
-      downloadedTTSModelIdentifiers:
-        SpeechSynthesisModelInventory.installedModelIdentifiers(),
-      validateWakeWordConfiguration: { configuration in
-        guard let source = providers.wakeWordTriggerSource else {
-          throw WakeWordTriggerSourceError.modelNotInstalled
-        }
-        try await source.validate(configuration: configuration)
-      },
-      stopSpeechPlayback: {
-        guard providers.speechPlaybackService.isPlaying else { return false }
-        Task { @MainActor in
-          await providers.speechPlaybackService.shutdown()
-        }
-        return true
-      }
-    )
+    model = resolvedModel
     if let wakeWordTriggerSource = providers.wakeWordTriggerSource {
       Task { @MainActor [weak resolvedModel] in
         for await status in wakeWordTriggerSource.statusStream() {
@@ -2478,7 +2476,7 @@ private enum AppPersistence {
         startupDiagnostic: DiagnosticEvent(
           subsystem: .session,
           level: startupDiagnosticLevel,
-          event: "persistence.sqlite.ready",
+          event: .persistenceSqliteReady,
           message: startupDiagnosticMessage,
           metadata: ["keychainKeyState": keychainKeyState]
         )
@@ -2487,7 +2485,7 @@ private enum AppPersistence {
       return makeSessionOnlyBackends(
         reason: .keychainTemporarilyUnavailable,
         temporaryFileCleanupService: temporaryFileCleanupService,
-        diagnosticEvent: "persistence.keychain.temporarily-unavailable",
+        diagnosticEvent: .persistenceKeychainTemporarilyUnavailable,
         diagnosticMessage:
           "The local data protection key is temporarily unavailable. "
           + "Using in-memory storage until the next launch."
@@ -2496,7 +2494,7 @@ private enum AppPersistence {
       return makeSessionOnlyBackends(
         reason: .persistentStorageUnavailable,
         temporaryFileCleanupService: temporaryFileCleanupService,
-        diagnosticEvent: "persistence.sqlite.fallback",
+        diagnosticEvent: .persistenceSqliteFallback,
         diagnosticMessage:
           "SQLite persistence could not be initialized. Falling back to in-memory storage."
       )
@@ -2506,7 +2504,7 @@ private enum AppPersistence {
   private static func makeSessionOnlyBackends(
     reason: LocalPersistenceStatus.SessionOnlyReason,
     temporaryFileCleanupService: RillTemporaryFileCleanupService,
-    diagnosticEvent: String,
+    diagnosticEvent: DiagnosticEventName,
     diagnosticMessage: String
   ) -> PersistenceBackends {
     PersistenceBackends(
@@ -2649,7 +2647,7 @@ enum WorkflowManifestResource {
       return LoadResult(
         manifest: fallback,
         diagnostic: manifestDiagnostic(
-          event: "workflow-manifest.bundle.missing",
+          event: .workflowManifestBundleMissing,
           metadata: [
             "reason": "resource-unavailable",
             "source": "packaged-resource",
@@ -2658,7 +2656,7 @@ enum WorkflowManifestResource {
       )
     }
     do {
-      let manifest = try JSONWorkflowManifestLoader(url: manifestURL).loadManifest()
+      let manifest = try LegacyWorkflowManifestFileLoader(url: manifestURL).loadManifest()
       try WorkflowManifestValidator(
         recognizerRegistry: recognizerRegistry,
         transformerRegistry: transformerRegistry,
@@ -2667,7 +2665,7 @@ enum WorkflowManifestResource {
       return LoadResult(
         manifest: manifest,
         diagnostic: manifestDiagnostic(
-          event: "workflow-manifest.loaded",
+          event: .workflowManifestLoaded,
           level: .info,
           metadata: ["source": "packaged-resource"]
         )
@@ -2676,7 +2674,7 @@ enum WorkflowManifestResource {
       return LoadResult(
         manifest: fallback,
         diagnostic: manifestDiagnostic(
-          event: "workflow-manifest.fallback",
+          event: .workflowManifestFallback,
           metadata: [
             "reason": "load-or-validation-failed",
             "source": "packaged-resource",
@@ -2739,7 +2737,7 @@ enum WorkflowManifestResource {
   }
 
   private static func manifestDiagnostic(
-    event: String,
+    event: DiagnosticEventName,
     level: DiagnosticLevel = .warning,
     metadata: [String: String] = [:]
   ) -> DiagnosticEvent {
@@ -2752,11 +2750,11 @@ enum WorkflowManifestResource {
     )
   }
 
-  private static func manifestDiagnosticMessage(for event: String) -> String {
+  private static func manifestDiagnosticMessage(for event: DiagnosticEventName) -> String {
     switch event {
-    case "workflow-manifest.loaded":
+    case .workflowManifestLoaded:
       return "Loaded workflow manifest from the app bundle."
-    case "workflow-manifest.fallback":
+    case .workflowManifestFallback:
       return "Failed to load the workflow manifest. Falling back to the built-in catalog."
     default:
       return "Workflow manifest resource was not found. Falling back to the built-in catalog."
@@ -2771,7 +2769,7 @@ extension WebhookConfigurationMigrationEvent {
       return DiagnosticEvent(
         subsystem: .platform,
         level: .info,
-        event: "security.webhook-configuration.protected",
+        event: .securityWebhookConfigurationProtected,
         message: "Legacy Webhook configuration protection is ready.",
         metadata: ["protectedActionCount": String(protectedActionCount)]
       )
@@ -2779,7 +2777,7 @@ extension WebhookConfigurationMigrationEvent {
       return DiagnosticEvent(
         subsystem: .platform,
         level: .warning,
-        event: "security.webhook-configuration.purge-pending",
+        event: .securityWebhookConfigurationPurgePending,
         message:
           "Webhook values are protected, but physical SQLite cleanup is still pending and workflow library writes remain locked.",
         metadata: ["protectedActionCount": String(protectedActionCount)]
@@ -2788,7 +2786,7 @@ extension WebhookConfigurationMigrationEvent {
       return DiagnosticEvent(
         subsystem: .platform,
         level: .error,
-        event: "security.webhook-configuration.blocked",
+        event: .securityWebhookConfigurationBlocked,
         message:
           "Legacy Webhook configuration could not be protected, so custom workflows were quarantined.",
         metadata: ["reason": reason.diagnosticDescription]
@@ -2826,30 +2824,38 @@ extension WebhookConfigurationMigrationBlockReason {
 
 extension SecureCredentialStoreEvent {
   fileprivate var diagnosticEvent: DiagnosticEvent {
+    let name: DiagnosticEventName
     let level: DiagnosticLevel
     let message: String
     switch kind {
     case .migrationSucceeded:
+      name = .credentialsMigrationSucceeded
       level = .info
       message = "A legacy credential was migrated to macOS Keychain."
     case .legacyCleanupFailed:
+      name = .credentialsLegacyCleanupFailed
       level = .warning
       message =
         "A credential is available in Keychain, but its legacy settings value could not be removed."
     case .migrationFailed:
+      name = .credentialsMigrationFailed
       level = .error
       message =
         "A legacy credential could not be migrated to macOS Keychain; the legacy value was preserved."
     case .secureReadFailed:
+      name = .credentialsSecureReadFailed
       level = .error
       message = "macOS Keychain could not read a credential. Plaintext fallback was not used."
     case .secureWriteFailed:
+      name = .credentialsSecureWriteFailed
       level = .error
       message = "macOS Keychain could not save a credential."
     case .secureRemovalFailed:
+      name = .credentialsSecureRemovalFailed
       level = .error
       message = "macOS Keychain could not remove a credential."
     case .legacyReadFailed:
+      name = .credentialsLegacyReadFailed
       level = .error
       message = "Legacy credential storage could not be checked."
     }
@@ -2861,7 +2867,7 @@ extension SecureCredentialStoreEvent {
     return DiagnosticEvent(
       subsystem: .platform,
       level: level,
-      event: "credentials.\(kind.rawValue)",
+      event: name,
       message: message,
       metadata: metadata
     )
@@ -2985,12 +2991,12 @@ final class WorkflowSelectionBridge {
   }
 
   func longRecordingModeEnabled() -> Bool {
-    model?.longRecordingModeEnabled ?? false
+    model?.settings.longRecordingModeEnabled ?? false
   }
 
   func recordCollectionWorkflowRegistrations() -> [RecordCollectionWorkflowRegistration] {
     guard let model else { return [] }
-    return model.workflows.compactMap { workflow in
+    return model.workflowLibrary.workflows.compactMap { workflow in
       AppBootstrap.makeRecordCollectionWorkflowRegistration(
         for: workflow,
         isEnabled: model.isWorkflowEnabled(workflow)

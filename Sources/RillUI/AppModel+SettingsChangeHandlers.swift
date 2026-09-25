@@ -3,22 +3,22 @@ import RillCore
 
 extension AppModel {
   func handleLanguageChange(from oldValue: AppLanguage) {
-    guard oldValue != language else { return }
+    guard oldValue != self.settings.language else { return }
     persistLanguagePreference()
-    syncLiveSubtitlePanel()
+    voice.syncLiveSubtitlePanel()
     refreshUnavailableStoredSettingsDomainErrors()
   }
 
   func handleClipboardCaptureEnabledChange(from oldValue: Bool) {
-    guard oldValue != systemClipboardCaptureEnabled else { return }
+    guard oldValue != self.settings.systemClipboardCaptureEnabled else { return }
     clipboardCapturePreferenceRevision &+= 1
     persistClipboardCaptureEnabledPreference()
     publishClipboardCapturePreferenceToRuntime()
   }
 
   func applyResolvedClipboardCapturePreference(enabled: Bool) {
-    guard systemClipboardCaptureEnabled == enabled else {
-      systemClipboardCaptureEnabled = enabled
+    guard self.settings.systemClipboardCaptureEnabled == enabled else {
+      applySystemClipboardCaptureEnabled(enabled)
       return
     }
     clipboardCapturePreferenceRevision &+= 1
@@ -26,120 +26,103 @@ extension AppModel {
   }
 
   private func publishClipboardCapturePreferenceToRuntime() {
-    setSystemClipboardCaptureEnabledAction(
-      systemClipboardCaptureEnabled,
+    recordInteractions.setCaptureEnabled(
+      self.settings.systemClipboardCaptureEnabled,
       clipboardCapturePreferenceRevision
     )
   }
 
   func handleRecordPanelHotkeyChange(from oldValue: HotkeyBindingDescriptor) {
-    guard oldValue != recordPanelHotkeyBinding else { return }
+    guard oldValue != self.settings.recordPanelHotkeyBinding else { return }
     persistRecordPanelHotkeyPreference()
-    updateRecordPanelHotkeyAction(recordPanelHotkeyBinding)
+    recordInteractions.updateHotkey(self.settings.recordPanelHotkeyBinding)
   }
 
   func handlePreferredSpeechEngineChange(from oldValue: PreferredSpeechEngine) {
-    guard oldValue != preferredSpeechEngine else { return }
-    invalidateWorkflowExplanation()
+    guard oldValue != self.settings.preferredSpeechEngine else { return }
+    workflowLibrary.cancelWorkflowExplanation()
     persistPreferredSpeechEnginePreference()
-    guard !isRestoringSettings else { return }
-    setLocalSpeechRuntimeEnabledAction(preferredSpeechEngine == .local)
-    if isLoadingSettings {
-      shouldPrepareLocalSpeechModelAfterInitialSettingsLoad = preferredSpeechEngine == .local
+    guard !self.settings.isRestoringSettings else { return }
+    setLocalSpeechRuntimeEnabledAction(self.settings.preferredSpeechEngine == .local)
+    if self.settings.isLoading {
+      self.voice.shouldPrepareLocalSpeechModelAfterInitialSettingsLoad =
+        self.settings.preferredSpeechEngine == .local
       return
     }
-    if preferredSpeechEngine == .local {
+    if self.settings.preferredSpeechEngine == .local {
       prepareLocalSpeechModel()
     } else {
       // A cloud selection owns no local-model readiness state. Retire
       // any in-flight local load so an old completion cannot publish
       // ready after the route has changed.
-      resetLocalSpeechPreparationStatus()
+      voice.resetLocalSpeechPreparationStatus()
     }
   }
 
   func handleTTSModelIdentifierChange(from oldValue: String) {
-    guard oldValue != ttsModelIdentifier else { return }
-    persistStringSetting(ttsModelIdentifier, for: .ttsModel)
-    selectTTSModelAction(ttsModelIdentifier)
-    ttsResourceState =
-      downloadedTTSModelIdentifiers.contains(ttsModelIdentifier)
-      ? .ready
-      : .notInstalled
+    guard oldValue != self.settings.ttsModelIdentifier else { return }
+    persistStringSetting(self.settings.ttsModelIdentifier, for: .ttsModel)
+    voice.synchronizeTTSSelection()
   }
 
   func handleBuiltinPushToTalkOutputModeChange(from oldValue: BuiltinPushToTalkOutputMode) {
-    guard oldValue != builtinPushToTalkOutputMode else { return }
-    invalidateWorkflowExplanation()
+    guard oldValue != self.settings.builtinPushToTalkOutputMode else { return }
+    workflowLibrary.cancelWorkflowExplanation()
     persistBuiltinPushToTalkOutputModePreference()
   }
 
   func handleLongRecordingModeChange(from oldValue: Bool) {
-    guard oldValue != longRecordingModeEnabled else { return }
+    guard oldValue != self.settings.longRecordingModeEnabled else { return }
     persistLongRecordingModePreference()
   }
 
   func handleRecordingDurationLimitChange(from oldValue: RecordingDurationLimit) {
-    guard oldValue != recordingDurationLimit else { return }
+    guard oldValue != self.settings.recordingDurationLimit else { return }
     persistRecordingDurationLimitPreference()
   }
 
-
-
-
-
   func handleLocalSpeechModelChange(from oldValue: String) {
-    if oldValue != localSpeechModel, !isRestoringSettings {
-      localSpeechModelMutationGeneration &+= 1
+    if oldValue != self.settings.localSpeechModel, !self.settings.isRestoringSettings {
+      self.settings.localSpeechModelMutationGeneration &+= 1
     }
-    guard oldValue != localSpeechModel else { return }
+    guard oldValue != self.settings.localSpeechModel else { return }
     publishCurrentLocalSpeechSettingsToRuntime()
-    resetLocalSpeechPreparationStatus()
+    voice.resetLocalSpeechPreparationStatus()
     synchronizeWakeWordResourceWithLocalSpeechModel()
-    persistStringSetting(localSpeechModel, for: .localSpeechModel)
+    persistStringSetting(self.settings.localSpeechModel, for: .localSpeechModel)
   }
 
-
-
-
-
-
-
-
-
-
-
   func handleLocalSpeechPrewarmChange(from oldValue: Bool) {
-    guard oldValue != localSpeechPrewarm else { return }
+    guard oldValue != self.settings.localSpeechPrewarm else { return }
     publishCurrentLocalSpeechSettingsToRuntime()
-    resetLocalSpeechPreparationStatus()
-    persistStringSetting(localSpeechPrewarm ? "true" : "false", for: .localSpeechPrewarm)
+    voice.resetLocalSpeechPreparationStatus()
+    persistStringSetting(self.settings.localSpeechPrewarm ? "true" : "false", for: .localSpeechPrewarm)
   }
 
   func handleEnabledSpeechModelIDsChange(from oldValue: Set<String>) {
-    guard oldValue != enabledSpeechModelIDs else { return }
+    guard oldValue != self.settings.enabledSpeechModelIDs else { return }
     markSettingModifiedDuringInitialLoad(.enabledSpeechModels)
-    if !residentSpeechModelIDs.isSubset(of: enabledSpeechModelIDs) {
-      residentSpeechModelIDs.formIntersection(enabledSpeechModelIDs)
+    if !self.settings.residentSpeechModelIDs.isSubset(of: self.settings.enabledSpeechModelIDs) {
+      applyResidentSpeechModelIDs(self.settings.residentSpeechModelIDs.intersection(self.settings.enabledSpeechModelIDs))
     }
-    residentSpeechBudgetConfirmation = nil
+    applyResidentSpeechBudgetConfirmation(nil)
     publishCurrentLocalSpeechSettingsToRuntime()
-    persistSpeechModelIDSet(enabledSpeechModelIDs, for: .enabledSpeechModels)
+    persistSpeechModelIDSet(self.settings.enabledSpeechModelIDs, for: .enabledSpeechModels)
   }
 
   func handleResidentSpeechModelIDsChange(from oldValue: Set<String>) {
-    guard oldValue != residentSpeechModelIDs else { return }
+    guard oldValue != self.settings.residentSpeechModelIDs else { return }
     markSettingModifiedDuringInitialLoad(.residentSpeechModels)
     publishCurrentLocalSpeechSettingsToRuntime()
-    persistSpeechModelIDSet(residentSpeechModelIDs, for: .residentSpeechModels)
+    persistSpeechModelIDSet(self.settings.residentSpeechModelIDs, for: .residentSpeechModels)
     synchronizeResidentSpeechModels(from: oldValue)
   }
 
   func handleResidentSpeechBudgetConfirmationChange(from oldValue: String?) {
-    guard oldValue != residentSpeechBudgetConfirmation else { return }
+    guard oldValue != self.settings.residentSpeechBudgetConfirmation else { return }
     markSettingModifiedDuringInitialLoad(.residentSpeechBudgetConfirmation)
     persistStringSetting(
-      residentSpeechBudgetConfirmation ?? "",
+      self.settings.residentSpeechBudgetConfirmation ?? "",
       for: .residentSpeechBudgetConfirmation
     )
   }
@@ -155,22 +138,18 @@ extension AppModel {
   }
 
   func handleOpenAIAPIKeyChange(from oldValue: String) {
-    guard oldValue != openAIAPIKey else { return }
-    openAIVerificationTask?.cancel()
-    openAIVerificationTask = nil
-    openAIVerificationGeneration &+= 1
-    openAIVerificationFailure = nil
-    openAIConfigurationVerificationState = .idle
-    let previousAvailability = openAICredentialAvailability
-    if !isRestoringSettings {
-      openAICredentialLoadGeneration &+= 1
-      openAICredentialAvailability = credentialStore == nil ? .inaccessible : .saving
+    guard oldValue != self.settings.openAIAPIKey else { return }
+    self.settings.invalidateOpenAIVerification()
+    let previousAvailability = self.settings.openAICredentialAvailability
+    if !self.settings.isRestoringSettings {
+      self.settings.openAICredentialLoadGeneration &+= 1
+      self.settings.openAICredentialAvailability = credentialStore == nil ? .inaccessible : .saving
     }
-    if previousAvailability != openAICredentialAvailability {
+    if previousAvailability != self.settings.openAICredentialAvailability {
       workflowLibraryChangedAction()
     }
     persistSecureCredential(
-      openAIAPIKey,
+      self.settings.openAIAPIKey,
       for: .openAIAPIKey,
       taskKey: .openAIAPIKey
     )
@@ -179,7 +158,7 @@ extension AppModel {
   func handleOpenAIBaseURLChange(from oldValue: String) {
     handleOpenAIConfigurationStringChange(
       from: oldValue,
-      value: openAIBaseURL,
+      value: self.settings.openAIBaseURL,
       key: .openAIBaseURL
     )
   }
@@ -187,7 +166,7 @@ extension AppModel {
   func handleOpenAIModelChange(from oldValue: String) {
     handleOpenAIConfigurationStringChange(
       from: oldValue,
-      value: openAIModel,
+      value: self.settings.openAIModel,
       key: .openAIModel
     )
   }
@@ -198,29 +177,25 @@ extension AppModel {
     key: AppSettingKey
   ) {
     guard oldValue != value else { return }
-    let verificationWasFailed = openAIConfigurationVerificationState == .failed
+    let verificationWasFailed = self.settings.openAIConfigurationVerificationState == .failed
     let validityChanged: Bool
     switch key {
     case .openAIBaseURL:
-      validityChanged = OpenAISettings.isValidBaseURL(oldValue)
+      validityChanged =
+        OpenAISettings.isValidBaseURL(oldValue)
         != OpenAISettings.isValidBaseURL(value)
     case .openAIModel:
-      validityChanged = OpenAISettings.isValidModelIdentifier(oldValue)
+      validityChanged =
+        OpenAISettings.isValidModelIdentifier(oldValue)
         != OpenAISettings.isValidModelIdentifier(value)
     default:
       validityChanged = false
     }
-    openAIVerificationTask?.cancel()
-    openAIVerificationTask = nil
-    openAIVerificationGeneration &+= 1
-    openAIVerificationFailure = nil
-    openAIConfigurationVerificationState = .idle
+    self.settings.invalidateOpenAIVerification()
     if validityChanged || verificationWasFailed {
       workflowLibraryChangedAction()
     }
     persistStringSetting(value, for: key)
   }
-
-
 
 }

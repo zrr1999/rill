@@ -13,11 +13,11 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         hideManualCapture(harness.model, runID: runID)
 
         XCTAssertEqual(
-            harness.model.workflowAudioRunState,
+            harness.model.voice.workflowAudioRunState,
             .transcribing(workflowID: workflowID)
         )
-        XCTAssertNil(harness.model.currentCaptureLiveSubtitleSnapshot)
-        XCTAssertEqual(harness.model.workflowAudioCaptureRunID, runID)
+        XCTAssertNil(harness.model.voice.currentCaptureLiveSubtitleSnapshot)
+        XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
     }
 
     func testMatchingLiveAuthorizationFailureClearsManualRecordingState() {
@@ -33,9 +33,9 @@ final class AppModelLiveAudioStopTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.workflowAudioCaptureRunID)
+        XCTAssertFalse(harness.model.voice.isRunning)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
     }
 
     func testCaptureStartFailureClearsIdentityBoundDuringPreparation() async {
@@ -57,14 +57,14 @@ final class AppModelLiveAudioStopTests: XCTestCase {
                 LiveSubtitleSnapshot(runID: runID, phase: .preparing)
             )
         )
-        XCTAssertEqual(harness.model.workflowAudioCaptureRunID, runID)
+        XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
 
         await startGate.fail(message: "Microphone unavailable")
         await harness.model.waitForWorkflowAudioActions()
 
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.workflowAudioCaptureRunID)
+        XCTAssertFalse(harness.model.voice.isRunning)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
     }
 
     func testCaptureFinishFailureClearsBoundIdentity() async {
@@ -85,9 +85,9 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         harness.model.runWorkflow(workflow)
         await harness.model.waitForWorkflowAudioActions()
 
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.workflowAudioCaptureRunID)
+        XCTAssertFalse(harness.model.voice.isRunning)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
     }
 
     func testInteractiveShutdownClearsBoundCaptureIdentity() async {
@@ -97,9 +97,9 @@ final class AppModelLiveAudioStopTests: XCTestCase {
 
         await harness.model.stopInteractiveWorkflowRunsForApplicationShutdown()
 
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.workflowAudioCaptureRunID)
+        XCTAssertFalse(harness.model.voice.isRunning)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
     }
 
     func testMatchingFailureAfterHiddenCaptureClearsManualRunState() {
@@ -116,9 +116,9 @@ final class AppModelLiveAudioStopTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.workflowAudioCaptureRunID)
+        XCTAssertFalse(harness.model.voice.isRunning)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
     }
 
     func testUnrelatedAndUnidentifiedFailuresDoNotClearHiddenManualCapture() {
@@ -135,12 +135,12 @@ final class AppModelLiveAudioStopTests: XCTestCase {
             .runFailed(runID: nil, workflow: nil, message: "Unidentified failure.")
         )
 
-        XCTAssertTrue(harness.model.isRunning)
+        XCTAssertTrue(harness.model.voice.isRunning)
         XCTAssertEqual(
-            harness.model.workflowAudioRunState,
+            harness.model.voice.workflowAudioRunState,
             .transcribing(workflowID: workflowID)
         )
-        XCTAssertEqual(harness.model.workflowAudioCaptureRunID, runID)
+        XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
     }
 
     func testMatchingCancellationAfterHiddenCaptureClearsManualRunState() {
@@ -159,9 +159,9 @@ final class AppModelLiveAudioStopTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.workflowAudioCaptureRunID)
+        XCTAssertFalse(harness.model.voice.isRunning)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
     }
 
     func testMatchingCompletionAfterHiddenCaptureClearsManualRunState() {
@@ -186,9 +186,9 @@ final class AppModelLiveAudioStopTests: XCTestCase {
             )
         )
 
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.workflowAudioCaptureRunID)
+        XCTAssertFalse(harness.model.voice.isRunning)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
     }
 
     func testExplicitStopClearsOnlyMatchingVisibleCapture() {
@@ -198,16 +198,16 @@ final class AppModelLiveAudioStopTests: XCTestCase {
 
         harness.model.markLiveAudioRunStoppedByUser(runID: UUID())
 
-        XCTAssertTrue(harness.model.isRunning)
-        XCTAssertEqual(harness.model.liveSubtitleSnapshot?.runID, runID)
-        XCTAssertEqual(harness.model.workflowAudioCaptureRunID, runID)
+        XCTAssertTrue(harness.model.voice.isRunning)
+        XCTAssertEqual(harness.model.voice.liveSubtitleSnapshot?.runID, runID)
+        XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
 
         harness.model.markLiveAudioRunStoppedByUser(runID: runID)
 
-        XCTAssertFalse(harness.model.isRunning)
-        XCTAssertNil(harness.model.liveSubtitleSnapshot)
-        XCTAssertEqual(harness.model.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.workflowAudioCaptureRunID)
+        XCTAssertFalse(harness.model.voice.isRunning)
+        XCTAssertNil(harness.model.voice.liveSubtitleSnapshot)
+        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
     }
 
     private func beginManualCapture(
@@ -216,8 +216,8 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         workflowID: UUID = UUID(),
         providerID: String = "whisperkit.stream"
     ) {
-        model.isRunning = true
-        model.workflowAudioRunState = .recording(workflowID: workflowID)
+        model.voice.isRunning = true
+        model.voice.workflowAudioRunState = .recording(workflowID: workflowID)
         model.handle(
             .liveSubtitleUpdated(
                 LiveSubtitleSnapshot(

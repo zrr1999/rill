@@ -201,7 +201,7 @@ extension AppModelTests {
         var activity = await settingsStore.activitySnapshot()
         let refreshValuesBeforeLoad = await probe.refreshValues
         XCTAssertNil(activity.setCounts[.failedAudioRecoveryEnabled])
-        XCTAssertFalse(harness.model.failedAudioRecoveryEnabled)
+        XCTAssertFalse(harness.model.voice.failedAudioRecoveryEnabled)
         XCTAssertTrue(refreshValuesBeforeLoad.isEmpty)
 
         await settingsStore.resumeBatchRead()
@@ -209,7 +209,7 @@ extension AppModelTests {
 
         activity = await settingsStore.activitySnapshot()
         let refreshValuesAfterLoad = await probe.refreshValues
-        XCTAssertTrue(harness.model.failedAudioRecoveryEnabled)
+        XCTAssertTrue(harness.model.voice.failedAudioRecoveryEnabled)
         XCTAssertNil(activity.setCounts[.failedAudioRecoveryEnabled])
         XCTAssertTrue(refreshValuesAfterLoad.isEmpty)
     }
@@ -225,11 +225,11 @@ extension AppModelTests {
         )
         await waitForFailedAudioRecovery(harness)
 
-        XCTAssertFalse(harness.model.failedAudioRecoveryEnabled)
+        XCTAssertFalse(harness.model.voice.failedAudioRecoveryEnabled)
 
         harness.model.setFailedAudioRecoveryEnabled(true)
         await waitForFailedAudioRecovery(harness)
-        XCTAssertTrue(harness.model.failedAudioRecoveryEnabled)
+        XCTAssertTrue(harness.model.voice.failedAudioRecoveryEnabled)
         let enabledValue = try await settingsStore.string(
             forKey: .failedAudioRecoveryEnabled
         )
@@ -237,7 +237,7 @@ extension AppModelTests {
 
         harness.model.setFailedAudioRecoveryEnabled(false)
         await waitForFailedAudioRecovery(harness)
-        XCTAssertFalse(harness.model.failedAudioRecoveryEnabled)
+        XCTAssertFalse(harness.model.voice.failedAudioRecoveryEnabled)
         let disabledValue = try await settingsStore.string(
             forKey: .failedAudioRecoveryEnabled
         )
@@ -262,8 +262,8 @@ extension AppModelTests {
         harness.model.setFailedAudioRecoveryEnabled(true)
         await waitForFailedAudioRecovery(harness)
 
-        XCTAssertFalse(harness.model.failedAudioRecoveryEnabled)
-        XCTAssertNotNil(harness.model.failedAudioRecoveryError)
+        XCTAssertFalse(harness.model.voice.failedAudioRecoveryEnabled)
+        XCTAssertNotNil(harness.model.voice.failedAudioRecoveryError)
         let refreshValues = await probe.refreshValues
         XCTAssertTrue(refreshValues.isEmpty)
     }
@@ -278,18 +278,18 @@ extension AppModelTests {
         )
         await harness.model.waitForInitialVoiceConfiguration()
         await harness.model.waitForFailedAudioRecoveryLoad()
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
 
         harness.model.setFailedAudioRecoveryEnabled(true)
         await harness.model.flushPendingPersistenceWrites()
 
-        XCTAssertTrue(harness.model.failedAudioRecoveryEnabled)
+        XCTAssertTrue(harness.model.voice.failedAudioRecoveryEnabled)
         let persistedValue = try? await settingsStore.string(
             forKey: .failedAudioRecoveryEnabled
         )
         XCTAssertEqual(persistedValue, "true")
         XCTAssertTrue(
-            harness.model.failedAudioRecoveryError?.contains("No new failed audio") ?? false
+            harness.model.voice.failedAudioRecoveryError?.contains("No new failed audio") ?? false
         )
     }
 
@@ -307,8 +307,8 @@ extension AppModelTests {
         await harness.model.waitForInitialVoiceConfiguration()
         await harness.model.waitForFailedAudioRecoveryLoad()
 
-        XCTAssertTrue(harness.model.failedAudioRecoveryEnabled)
-        XCTAssertEqual(harness.model.failedAudioRecoveryReceipts, [receipt])
+        XCTAssertTrue(harness.model.voice.failedAudioRecoveryEnabled)
+        XCTAssertEqual(harness.model.voice.failedAudioRecoveryReceipts, [receipt])
     }
 
     func testRecoveryReceiptEventDrivesRetryDeleteAndClearActions() async {
@@ -336,7 +336,7 @@ extension AppModelTests {
         await harness.eventBus.publish(.failedAudioRecoveryUpdated([receipt]))
         await waitForFailedAudioRecovery(harness)
 
-        XCTAssertEqual(harness.model.failedAudioRecoveryReceipts, [receipt])
+        XCTAssertEqual(harness.model.voice.failedAudioRecoveryReceipts, [receipt])
         XCTAssertEqual(
             harness.model.failedAudioRecoveryReceipt(for: receipt.originalRunID),
             receipt
@@ -378,7 +378,7 @@ extension AppModelTests {
         harness.model.retryFailedAudioRecovery(receipt)
         await waitForFailedAudioRecovery(harness)
 
-        XCTAssertNotNil(harness.model.failedAudioRecoveryError)
+        XCTAssertNotNil(harness.model.voice.failedAudioRecoveryError)
         let retries = await probe.retries
         XCTAssertTrue(retries.isEmpty)
     }
@@ -407,7 +407,7 @@ extension AppModelTests {
         harness.model.retryFailedAudioRecovery(receipt)
         await waitForFailedAudioRecovery(harness)
 
-        XCTAssertNotNil(harness.model.failedAudioRecoveryError)
+        XCTAssertNotNil(harness.model.voice.failedAudioRecoveryError)
         let retries = await probe.retries
         XCTAssertTrue(retries.isEmpty)
     }
@@ -423,7 +423,7 @@ extension AppModelTests {
             retryFailedAudioRecoveryAction: { _, _ in .completedCleanupPending }
         )
         await waitForFailedAudioRecovery(harness)
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         await harness.eventBus.publish(.failedAudioRecoveryUpdated([receipt]))
         await waitForFailedAudioRecovery(harness)
 
@@ -431,17 +431,17 @@ extension AppModelTests {
         await waitForFailedAudioRecovery(harness)
 
         XCTAssertFalse(
-            harness.model.failedAudioRecoveryReceipts.contains { $0.id == receipt.id }
+            harness.model.voice.failedAudioRecoveryReceipts.contains { $0.id == receipt.id }
         )
         XCTAssertTrue(
-            harness.model.failedAudioRecoveryError?.contains("unencrypted temporary recording")
+            harness.model.voice.failedAudioRecoveryError?.contains("unencrypted temporary recording")
                 ?? false
         )
         XCTAssertTrue(
-            harness.model.failedAudioRecoveryError?.contains("will keep retrying") ?? false
+            harness.model.voice.failedAudioRecoveryError?.contains("will keep retrying") ?? false
         )
         XCTAssertTrue(
-            harness.model.failedAudioRecoveryError?.contains("will not repeat") ?? false
+            harness.model.voice.failedAudioRecoveryError?.contains("will not repeat") ?? false
         )
     }
 
@@ -476,7 +476,7 @@ extension AppModelTests {
 
         let completedWhileRuntimeWasBlocked = await completion.isCompleted()
         XCTAssertFalse(completedWhileRuntimeWasBlocked)
-        XCTAssertTrue(harness.model.retryingFailedAudioRecoveryIDs.contains(receipt.id))
+        XCTAssertTrue(harness.model.voice.retryingFailedAudioRecoveryIDs.contains(receipt.id))
 
         harness.model.retryFailedAudioRecovery(secondReceipt)
         let retryCountDuringShutdown = await retry.count()
@@ -485,13 +485,13 @@ extension AppModelTests {
         await retry.release()
         await shutdownTask.value
 
-        XCTAssertFalse(harness.model.retryingFailedAudioRecoveryIDs.contains(receipt.id))
-        XCTAssertTrue(harness.model.failedAudioRecoveryRetryTasks.isEmpty)
+        XCTAssertFalse(harness.model.voice.retryingFailedAudioRecoveryIDs.contains(receipt.id))
+        XCTAssertTrue(harness.model.voice.failedAudioRecoveryRetryTasks.isEmpty)
         XCTAssertTrue(
-            harness.model.failedAudioRecoveryReceipts.contains { $0.id == receipt.id },
+            harness.model.voice.failedAudioRecoveryReceipts.contains { $0.id == receipt.id },
             "A cancellation-ignoring provider must not publish a late completed UI state."
         )
-        XCTAssertNil(harness.model.failedAudioRecoveryError)
+        XCTAssertNil(harness.model.voice.failedAudioRecoveryError)
         let didComplete = await completion.isCompleted()
         XCTAssertTrue(didComplete)
     }
@@ -522,9 +522,9 @@ extension AppModelTests {
 
         let retries = await probe.retries
         XCTAssertTrue(retries.isEmpty)
-        XCTAssertTrue(harness.model.failedAudioRecoveryRetryTasks.isEmpty)
+        XCTAssertTrue(harness.model.voice.failedAudioRecoveryRetryTasks.isEmpty)
         XCTAssertTrue(
-            harness.model.failedAudioRecoveryReceipts.contains { $0.id == receipt.id }
+            harness.model.voice.failedAudioRecoveryReceipts.contains { $0.id == receipt.id }
         )
     }
 
@@ -556,8 +556,8 @@ extension AppModelTests {
         await load.release(with: [receipt])
         await shutdownTask.value
 
-        XCTAssertTrue(harness.model.failedAudioRecoveryReceipts.isEmpty)
-        XCTAssertNil(harness.model.failedAudioRecoveryLoadTask)
+        XCTAssertTrue(harness.model.voice.failedAudioRecoveryReceipts.isEmpty)
+        XCTAssertNil(harness.model.voice.failedAudioRecoveryLoadTask)
         let completedAfterLoadSettled = await completion.isCompleted()
         XCTAssertTrue(completedAfterLoadSettled)
     }
@@ -575,7 +575,7 @@ extension AppModelTests {
             }
         )
         await waitForFailedAudioRecovery(harness)
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
         await harness.eventBus.publish(.failedAudioRecoveryUpdated([receipt]))
         await waitForFailedAudioRecovery(harness)
 
@@ -583,7 +583,7 @@ extension AppModelTests {
         await waitForFailedAudioRecovery(harness)
 
         XCTAssertTrue(
-            harness.model.failedAudioRecoveryError?.contains("未加密的恢复临时录音可能仍待清理")
+            harness.model.voice.failedAudioRecoveryError?.contains("未加密的恢复临时录音可能仍待清理")
                 ?? false
         )
     }
@@ -591,7 +591,7 @@ extension AppModelTests {
     func testRecoveryUnavailableEventUsesLocalizedContentFreeReason() async {
         let harness = makeHarness()
         await waitForFailedAudioRecovery(harness)
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
 
         await harness.eventBus.publish(
             .failedAudioRecoveryUnavailable(
@@ -602,11 +602,11 @@ extension AppModelTests {
         await waitForFailedAudioRecovery(harness)
 
         XCTAssertEqual(
-            harness.model.failedAudioRecoveryError,
+            harness.model.voice.failedAudioRecoveryError,
             "无法保留失败录音。失败录音超过恢复大小上限。"
         )
         XCTAssertFalse(
-            harness.model.failedAudioRecoveryError?.contains("exceeds") ?? true
+            harness.model.voice.failedAudioRecoveryError?.contains("exceeds") ?? true
         )
     }
 
@@ -629,10 +629,10 @@ extension AppModelTests {
         await waitForFailedAudioRecovery(harness)
 
         XCTAssertEqual(
-            harness.model.failedAudioRecoveryUnavailableReasonsByRunID[failedRunID],
+            harness.model.voice.failedAudioRecoveryUnavailableReasonsByRunID[failedRunID],
             .storageUnavailable
         )
-        XCTAssertNotNil(harness.model.failedAudioRecoveryError)
+        XCTAssertNotNil(harness.model.voice.failedAudioRecoveryError)
 
         var matchingReceipt = otherReceipt
         matchingReceipt.id = UUID()
@@ -641,7 +641,7 @@ extension AppModelTests {
         await waitForFailedAudioRecovery(harness)
 
         XCTAssertNil(
-            harness.model.failedAudioRecoveryUnavailableReasonsByRunID[failedRunID]
+            harness.model.voice.failedAudioRecoveryUnavailableReasonsByRunID[failedRunID]
         )
     }
 
