@@ -51,6 +51,14 @@ Search weights are stored under `~/Library/Application Support/Rill/Models/recor
 
 Downloaded ASR models remain under `~/Library/Application Support/Rill/Models/mlx-audio-swift`; synthesis models and Hugging Face download caches use their own Rill-managed model/cache directories. The ASR catalog currently requires approximately 1.01 GB for the 0.6B model or 2.46 GB for the 1.7B model, plus temporary download/cache space. Old sherpa-onnx directories can remain after an upgrade but are not the current recognition runtime. Removing the App does not automatically remove downloaded models or caches. Model weights do not contain the user's recordings or transcripts.
 
+### Optional input method vocabulary suggestions
+
+The Rill input method runs in its own process. Its bundled default scheme works without Squirrel; importing an existing profile is optional and happens once. Rime stores its schemas, full personal userdb and language resources under `~/Library/Application Support/Rill/InputMethod/`, independently of Squirrel. Imported files are preserved locally; this version does not request Rime user-data synchronization or write Rill vocabulary back to Rime.
+
+Typing suggestions are off by default and the allowed-app list starts empty. When enabled for an application, committed text (at most 2 KiB per event) crosses a nonblocking local Unix stream connection protected by a mode-0700 directory and mode-0600 socket files. Both peers verify the connected process audit token and require the expected application identity signed by the same Apple developer team. Disconnected or unverified peers receive no learning content; ad-hoc development builds keep typing available but do not enable this learning connection. The host checks the current authorization revision, client app, existing sensitive-app policy, secure-input state, event age and event ID. Disconnects drop events; reconnection never replays missed typing.
+
+The host extracts short terms in memory and stores only aggregated suggestions, counts, source application identifiers and last-seen time in the existing encrypted settings store. It does not retain a sequential typing transcript, add typing to Record history, or send unconfirmed suggestions to speech or context memory. Pending/ignored suggestions expire after 30 days (checked on start, new commits and hourly maintenance). Confirmation adds a hotword to the existing vocabulary library. Confirmed provenance is retained for deduplication and undo; it can be deleted from input method settings. Revoking learning or an app invalidates queued events immediately. Rime's own user dictionary learning continues independently.
+
 ## Your controls
 
 When cloud confirmation is enabled, the default action is **Allow and Remember**. Rill saves that authorization across restarts and skips later prompts for the same workflow and provider configuration. **Allow Once** applies only to the current run. You can revoke saved authorizations in Settings > Privacy; changing the workflow or provider configuration requires confirmation again.
@@ -85,31 +93,29 @@ Rill 在用户发起语音采集时处理麦克风音频。唤醒词监听默认
 
 快捷面板在本机对已保存记录执行关键词、拼音和近似文字匹配。规范化正文与拼音数据只在有容量上限的内存缓存中保留；这条快速检索路径不新增持久化搜索索引、不下载搜索模型，也不向外部服务发送查询或记录。
 
+“按含义补充”是可选功能，只有点击下载按钮后才获取固定版本、经校验的本地搜索模型（约 1.2 GB）。下载服务会收到普通网络连接元数据，但查询、记录正文、文件名、来源和标签均在本机的独立辅助进程中处理，不上传。向量只保存在限额为 128 MiB 逻辑内容的内存缓存中；标签变化、记录删除会使缓存失效，退出时清空，不新增持久化索引。模型在空闲 30 秒后释放。长记录仅搜索部分内容，不读取图片或文件引用指向的正文。权重存放于 `~/Library/Application Support/Rill/Models/record-search`，卸载 App 不会自动移除；下次主动下载会清理中断下载的临时文件。
+
+**用 Jev 比较候选：**这是独立的逐次确认云端操作。预览并点击发送后，Rill 将显示的查询及最多 10 条文字片段或文件名（每项最多 1,800 UTF-8 字节），连同固定相关性评分规则，发送到 TypeSafe 的 `https://api.typesafe.ai/v1/systemone`，使用 `jev-1.13.0`。不附带记录 ID、来源应用、标签、图片或引用文件正文；文字本身仍可能包含敏感信息，请检查预览。Key 只在本次 App 会话内存中暂存，可在“设置 → 语音与模型 → API 服务”清除，不写入设置、Keychain 或诊断。打开面板、暂存 Key 和普通搜索均不调用该服务；不自动重试，评分和用量只临时展示。发送前和展示响应前检查来源隐私规则、捕获排除、Secure Input 和目录版本，未知来源会阻止请求。关闭或改变查询会取消操作，但已发送的数据无法撤回，仍可能计费；服务端保留策略由 TypeSafe 决定，Rill 无法检查或删除。每次候选比较都需要主动发送，不复用工作流的持久云端授权。
+
+**Jev 润色判断：**与候选比较、热词挑选共用本次会话中的 Key，默认关闭，需单独开启开关；暂存 Key 不会启用。支持的整理步骤会把转写与润色要求发送到同一 TypeSafe 地址，判断是否可跳过 LLM 改写。屏幕和记忆参考不发送给 Jev，使用这些参考的运行直接进入原有整理。不确定或判断失败时沿用原有 LLM 路径。清除 Key 会关闭两个自动开关并撤销三种用途的旧授权；替换 Key 会使旧请求失效。已发送请求无法收回。Key 与判断开关均不持久化。
+
+候选比较前往设置时，只在内存保留查询、筛选、选择和候选 ID。返回会重新读取和校验记录，生成新预览而不发送；关闭设置或取消返回会丢弃该意图。
+
+图片预览和大图在内存中解码已保存的图片，Rill 不为预览导出明文图片文件。可见文件预览读取引用路径当前的元数据，并通过 macOS Quick Look 生成缩略图；主动打开完整预览后，Quick Look 会读取该文件。Rill 不复制或上传文件正文，也不持久化缩略图；macOS Quick Look 和文件提供商可能使用各自缓存或获取由提供商管理的文件。关闭预览会取消缩略图请求并释放 Rill 的预览资源。
+
 当前构建没有 Rill 自营的分析或广告上报端点。经过净化的运行诊断仅保存在本机，Rill 不会主动上传这些诊断。
 
 ## 网络目的地
 
 - **可选智能挑选热词：**默认关闭，使用独立授权开关，共用仅在本次 App 会话内存中保留的 Jev Key。启用后允许向 TypeSafe 的 `https://api.typesafe.ai/v1/systemone`（`jev-1.13.0`）发送后台请求，内容限于工作流绑定、已启用且作用域匹配的最多 50 个已有热词、应用名称、工作流名称及已授权选区。选区超过 1,800 UTF-8 字节时整段省略。不额外采集选区，不发送音频、剪贴板、屏幕或历史记录。录音不等待网络；缓存未命中时本次保留规则挑词，麦克风开始采集后才准备排序，供后续相同上下文的最终识别使用。缓存仅在内存中保留，最多 32 项、有效期 5 分钟。请求限时 2 秒，不自动重试；发送前和接收后复核来源应用、隐私策略及会话授权。关闭开关会取消请求并清空缓存。导入音频和失败重试不触发这类上传。诊断只包含限定状态、计数和耗时。已发送的数据无法撤回，服务端处理与保留由 TypeSafe 决定。
-
 - **MLX 本地语音识别与合成：**准备已启用的模型时，Rill 从 Hugging Face 及其下载存储获取目录中固定版本的 Qwen ASR、Qwen TTS 和 Silero VAD 文件。ASR 目录提供 Qwen3-ASR 0.6B 8bit 和 1.7B 8bit。程序在发布私有本地模型目录前核对仓库 revision、保留文件大小及 SHA-256。模型下载不发送麦克风音频或识别文本。准备完成后，识别、唤醒词匹配和本地语音合成在本机运行；合成路径可按产品说明回退到系统语音。
-- **用 Jev 比较候选：**这是独立的逐次确认云端操作。预览并点击发送后，Rill 将显示的查询及最多 10 条文字片段或文件名（每项最多 1,800 UTF-8 字节），连同固定相关性评分规则，发送到 TypeSafe 的 `https://api.typesafe.ai/v1/systemone`，使用 `jev-1.13.0`。不附带记录 ID、来源应用、标签、图片或引用文件正文；文字本身仍可能包含敏感信息，请检查预览。Key 只在本次 App 会话内存中暂存，可在“设置 → 语音与模型 → API 服务”清除，不写入设置、Keychain 或诊断。打开面板、暂存 Key 和普通搜索均不调用该服务；不自动重试，评分和用量只临时展示。发送前和展示响应前检查来源隐私规则、捕获排除、Secure Input 和目录版本，未知来源会阻止请求。关闭或改变查询会取消操作，但已发送的数据无法撤回，仍可能计费；服务端保留策略由 TypeSafe 决定，Rill 无法检查或删除。每次候选比较都需要主动发送，不复用工作流的持久云端授权。
-
 - **使用 DeepSeek 的智能整理：**复用统一 LLM Provider 的地址、模型和 Keychain 凭据。配置 DeepSeek V4.1 Flash（`deepseek-flash`）后，润色请求关闭思考，预算为 5 秒，不接受截断结果。音频继续在本地识别，云端授权绑定所配置的模型、地址和凭据。
 - **可选屏幕上下文与长期记忆：**两者默认关闭，需为当前服务与工作流单独授权。屏幕上下文在录音前采集输入所在显示器，排除 Rill 和已启用的敏感应用，将内存中的 JPEG 与可选摘要发给具备图片能力的服务。截图预算 250 毫秒，两个独立摘要各限 10 秒；转写始终是唯一内容主体。原图、base64、完整图文请求和临时记忆摘要不保存；屏幕摘要可加密保存在历史中。空闲整理会将已授权语音历史、明确纠正、屏幕观察，以及工作流、应用 bundle ID 和语言等范围信息分批发送给已配置 LLM，每次最多 10 条来源、12 KB，每天最多 8 次后台请求。来源类型分别标记；长期记忆独立于历史清理留存，永久删除记忆后其来源不再参与学习。服务或隐私配置变化会撤销当前上下文任务；未确认图片能力的自定义地址不会收到图片。
-
-- **Jev 润色判断：**与候选比较、热词挑选共用本次会话中的 Key，默认关闭，需单独开启开关；暂存 Key 不会启用。支持的整理步骤会把转写与润色要求发送到同一 TypeSafe 地址，判断是否可跳过 LLM 改写。屏幕和记忆参考不发送给 Jev，使用这些参考的运行直接进入原有整理。不确定或判断失败时沿用原有 LLM 路径。清除 Key 会关闭两个自动开关并撤销三种用途的旧授权；替换 Key 会使旧请求失效。已发送请求无法收回。Key 与判断开关均不持久化。
-
 - **LLM Provider（OpenAI-compatible Responses API）：**已启用的语音或文本工作流都可以通过大模型改写或回答步骤发送文本。提供的 API Key 可读取、在需要时获得云端文本处理授权且当前隐私策略允许运行后，Rill 会把 API Key、当前步骤的输入正文和步骤指令发送到已配置的 Responses API 地址。输入可以是语音转写、通过“运行剪贴板文本”主动提交的剪贴板正文、使用工作流重放的记录正文，或前序处理步骤的结果；这些输入沿用相同的工作流云端授权与隐私检查。未开启上述可选上下文功能时，请求不会额外附带麦克风音频、选中文本、其他剪贴板内容、App 名或 bundle ID。请求采用非流式并设置 `store: false`；该请求参数不等于地址运营方不保留任何安全、滥用监测、计费或运行记录。数据到达服务后适用地址运营方的服务条款和数据控制，Rill 无法检查或删除 provider 侧记录。
 - **Apple 快捷指令：**工作流可把最终文本交给用户选择的快捷指令。快捷指令的动作及其访问的服务由用户控制，Rill 无法检查其后续行为。
 - **Markdown 文件输出：**工作流可把最终文本追加到用户选择的本地 Markdown 路径；Rill 不会上传该文件。追加使用同目录原子事务，并拒绝链接路径、多重硬链接、非 UTF-8 内容和超过 64 MiB 的文件。
 
-候选比较前往设置时，只在内存保留查询、筛选、选择和候选 ID。返回会重新读取和校验记录，生成新预览而不发送；关闭设置或取消返回会丢弃该意图。
-
 数据到达第三方服务或用户自动化后，适用其自身的留存、账户与隐私条款。Rill 的本地历史控制无法删除这些目的地持有的数据。
-
-图片预览和大图在内存中解码已保存的图片，Rill 不为预览导出明文图片文件。可见文件预览读取引用路径当前的元数据，并通过 macOS Quick Look 生成缩略图；主动打开完整预览后，Quick Look 会读取该文件。Rill 不复制或上传文件正文，也不持久化缩略图；macOS Quick Look 和文件提供商可能使用各自缓存或获取由提供商管理的文件。关闭预览会取消缩略图请求并释放 Rill 的预览资源。
-
-“按含义补充”是可选功能，只有点击下载按钮后才获取固定版本、经校验的本地搜索模型（约 1.2 GB）。下载服务会收到普通网络连接元数据，但查询、记录正文、文件名、来源和标签均在本机的独立辅助进程中处理，不上传。向量只保存在限额为 128 MiB 逻辑内容的内存缓存中；标签变化、记录删除会使缓存失效，退出时清空，不新增持久化索引。模型在空闲 30 秒后释放。长记录仅搜索部分内容，不读取图片或文件引用指向的正文。权重存放于 `~/Library/Application Support/Rill/Models/record-search`，卸载 App 不会自动移除；下次主动下载会清理中断下载的临时文件。
 
 ## 本地存储与留存
 
@@ -122,6 +128,14 @@ Rill 在用户的 Application Support 区域保存设置、剪贴板状态、运
 失败录音恢复默认关闭。明确开启后，符合条件的投递前失败录音可加密保留最多 24 小时，最多 3 条、单条 16 MiB、总计 32 MiB；用户可逐条删除或清空全部恢复录音。
 
 ASR 模型保存在 `~/Library/Application Support/Rill/Models/mlx-audio-swift`；语音合成模型和 Hugging Face 下载缓存使用各自的 Rill 模型／缓存目录。当前 ASR 目录中的 0.6B 模型约需 1.01 GB，1.7B 模型约需 2.46 GB，下载时还需要临时文件和缓存空间。升级后旧 sherpa-onnx 目录可能仍然存在，但当前识别不使用它。移除 App 不会自动删除模型和缓存；模型权重不包含用户录音或转写正文。
+
+### 可选的输入法词汇建议
+
+Rill 输入法运行在独立进程中。随包的默认方案不依赖 Squirrel；导入已有配置是可选的，且只进行一次。Rime 把方案、完整的个人 userdb 和语言资源保存在 `~/Library/Application Support/Rill/InputMethod/`，与 Squirrel 相互独立。导入的文件只保留在本机；此版本不请求 Rime 用户数据同步，也不把 Rill 词汇写回 Rime。
+
+打字建议默认关闭，允许的 App 列表开始时为空。为某个 App 开启后，上屏文本（每次事件最多 2 KiB）通过非阻塞的本地 Unix 流连接传递。该连接由权限为 0700 的目录和 0600 的套接字文件保护。两端都核对接通进程的 audit token，并要求对端是由同一 Apple 开发者团队签名的预期应用身份。断开或未通过核验的对端不会收到学习内容；ad-hoc 开发构建仍可输入，但不会启用这条学习连接。宿主检查当前授权版本、客户端 App、既有敏感 App 策略、Secure Input 状态、事件时间和事件 ID。断开时丢弃事件；重新连接不会重放错过的输入。
+
+宿主在内存中提取短词，只把汇总后的建议、次数、来源应用标识和最近出现时间写入现有的加密设置存储。它不保留按时间顺序的打字记录，不把输入写入 Record 历史，也不把未确认的建议发给语音或上下文记忆。待处理或已忽略的建议在 30 天后过期（启动时、新的上屏时和每小时维护时检查）。确认后会把热词加入现有词库。已确认的来源信息保留用于去重和撤销，可在输入法设置中删除。撤销学习或某个 App 会立即使队列中的事件失效。Rime 自己的用户词典学习继续独立进行。
 
 ## 用户控制
 
@@ -140,33 +154,3 @@ Rill 目前没有单一的“清除全部数据”命令。历史、失败录音
 对于已录制语音或主动提供的文本，网络错误、限流、超时、不完整或无效结果等可恢复的改写失败，可以在相同输出与隐私策略下投递改写前的完整文本，并在活动中提示未完成整理。云端部分结果不会被投递。取消、隐私阻止、凭据或配置错误、认证失败及拒绝会停止投递；语音助手不会回退为复述请求。
 
 本文只覆盖当前 Rill 行为。macOS、DeepSeek、OpenAI、Apple 快捷指令、用户选择的文件，以及快捷指令调用的其他软件均有各自的数据实践。
-
-## Optional input method vocabulary suggestions
-
-The Rill input method runs in its own process. Its bundled default scheme works
-without Squirrel; importing an existing profile is optional and happens once.
-Rime stores its schemas, full personal userdb and language resources under
-`~/Library/Application Support/Rill/InputMethod/`, independently of Squirrel.
-Imported files are preserved locally; this version does not request Rime user-data
-synchronization or write Rill vocabulary back to Rime.
-
-Typing suggestions are off by default and the allowed-app list starts empty.
-When enabled for an application, committed text (at most 2 KiB per event) crosses
-a nonblocking local Unix stream connection protected by a mode-0700 directory and
-mode-0600 socket files. Both peers verify the connected process audit token and
-require the expected application identity signed by the same Apple developer team.
-Disconnected or unverified peers receive no learning content; ad-hoc development
-builds keep typing available but do not enable this learning connection. The host
-checks the current authorization revision, client app,
-existing sensitive-app policy, secure-input state, event age and event ID.
-Disconnects drop events; reconnection never replays missed typing.
-
-The host extracts short terms in memory and stores only aggregated suggestions,
-counts, source application identifiers and last-seen time in the existing encrypted
-settings store. It does not retain a sequential typing transcript, add typing to
-Record history, or send unconfirmed suggestions to speech or context memory.
-Pending/ignored suggestions expire after 30 days (checked on start, new commits
-and hourly maintenance). Confirmation adds a hotword to the existing vocabulary
-library. Confirmed provenance is retained for deduplication and undo; it can be
-deleted from input method settings. Revoking learning or an app invalidates queued
-events immediately. Rime's own user dictionary learning continues independently.

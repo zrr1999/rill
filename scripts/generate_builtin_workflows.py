@@ -612,14 +612,6 @@ def swift_workflow_symbol(value: str) -> str:
     return f"WorkflowUISymbol.{member}.rawValue"
 
 
-def swift_number(value: int | float) -> str:
-    if type(value) not in (int, float):
-        raise SourceError(
-            f"expected a number while rendering Swift, got {type(value).__name__}"
-        )
-    return str(value)
-
-
 def check_outputs(outputs: Mapping[Path, str]) -> int:
     stale = False
     for path, expected in outputs.items():

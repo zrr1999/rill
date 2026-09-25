@@ -128,72 +128,39 @@ AMBIGUOUS_DEVELOPER_IDS='  1) BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB "Develope
   2) CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC "Developer ID Application: Other Company (TEAMDIST02)"
      2 valid identities found'
 
-run_case() {
+# expect_validate NAME STATUS FRAGMENT -- ENV=VALUE... -- [release args...]
+expect_validate() {
   local name="$1"
   local expected_status="$2"
   local expected_fragment="$3"
-  local identities="$4"
-  local requested_identity="$5"
-  local requested_profile="$6"
-  shift 6
-
+  shift 3
   local output=""
   local status=0
-  local command=(
-    env -u SIGN_IDENTITY -u NOTARY_PROFILE -u NOTARY_KEYCHAIN -u RELEASE_OUTPUT_DIR
+  local -a command=(
+    env
+    -u SIGN_IDENTITY -u NOTARY_PROFILE -u NOTARY_KEYCHAIN -u RELEASE_OUTPUT_DIR
+    -u RILL_RELEASE_SOURCE_CAPABILITY
     "PATH=$FAKE_BIN:$PATH"
-    "FAKE_IDENTITIES=$identities"
   )
-  if [[ "$requested_identity" != "<unset>" ]]; then
-    command+=("SIGN_IDENTITY=$requested_identity")
-  fi
-  if [[ "$requested_profile" != "<unset>" ]]; then
-    command+=("NOTARY_PROFILE=$requested_profile")
-  fi
+
+  [[ "${1-}" == "--" ]] || {
+    echo "FAIL: $name (missing environment separator)" >&2
+    exit 1
+  }
+  shift
+  while [[ $# -gt 0 && "$1" != "--" ]]; do
+    command+=("$1")
+    shift
+  done
+  [[ "${1-}" == "--" ]] || {
+    echo "FAIL: $name (missing argument separator)" >&2
+    exit 1
+  }
+  shift
   command+=(bash "$RELEASE_SCRIPT" "$@" --validate-config)
 
   set +e
   output="$("${command[@]}" 2>&1)"
-  status=$?
-  set -e
-
-  if [[ "$status" -ne "$expected_status" ]]; then
-    echo "FAIL: $name (expected status $expected_status, got $status)" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-  if [[ "$output" != *"$expected_fragment"* ]]; then
-    echo "FAIL: $name (missing: $expected_fragment)" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-  if [[ "$output" == *"运行发布预检"* ]]; then
-    echo "FAIL: $name (--validate-config unexpectedly started a build)" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-
-  PASSED=$((PASSED + 1))
-  echo "PASS: $name"
-}
-
-run_notary_keychain_case() {
-  local name="$1"
-  local keychain="$2"
-  local expected_status="$3"
-  local expected_fragment="$4"
-  local output=""
-  local status=0
-
-  set +e
-  output="$(env \
-    -u SIGN_IDENTITY \
-    -u NOTARY_PROFILE \
-    -u RELEASE_OUTPUT_DIR \
-    "PATH=$FAKE_BIN:$PATH" \
-    "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" \
-    "NOTARY_KEYCHAIN=$keychain" \
-    bash "$RELEASE_SCRIPT" --notarize --validate-config 2>&1)"
   status=$?
   set -e
 
@@ -202,34 +169,6 @@ run_notary_keychain_case() {
     printf '%s\n' "$output" >&2
     exit 1
   fi
-
-  PASSED=$((PASSED + 1))
-  echo "PASS: $name"
-}
-
-run_invalid_output_dir_case() {
-  local name="$1"
-  local output_dir="$2"
-  local expected_fragment="$3"
-  local output=""
-  local status=0
-
-  set +e
-  output="$(env \
-    -u SIGN_IDENTITY \
-    -u NOTARY_PROFILE \
-    "PATH=$FAKE_BIN:$PATH" \
-    "FAKE_IDENTITIES=$APPLE_IDENTITIES" \
-    "RELEASE_OUTPUT_DIR=$output_dir" \
-    bash "$RELEASE_SCRIPT" --validate-config 2>&1)"
-  status=$?
-  set -e
-
-  if [[ "$status" -eq 0 || "$output" != *"$expected_fragment"* ]]; then
-    echo "FAIL: $name" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
   if [[ "$output" == *"运行发布预检"* ]]; then
     echo "FAIL: $name (--validate-config unexpectedly started a build)" >&2
     printf '%s\n' "$output" >&2
@@ -240,72 +179,106 @@ run_invalid_output_dir_case() {
   echo "PASS: $name"
 }
 
-run_reserved_internal_environment_case() {
+worker_signature_details() {
+  printf '%s\n' \
+    "Identifier=$1" \
+    "Authority=Developer ID Application: Example Company (TEAMDIST01)" \
+    "TeamIdentifier=$2" \
+    "Timestamp=Jul 19, 2026 at 12:00:00" \
+    "CodeDirectory v=20500 size=100 flags=0x10000(runtime) hashes=1+2 location=embedded"
+}
+
+expect_worker_signature() {
+  local app_bundle="$1"
+  local release_temp="$2"
+  local name="$3"
+  local fragment="$4"
+  local identifier="$5"
+  local team="$6"
+  local entitlements="${7-}"
+  local details=""
   local output=""
   local status=0
 
+  details="$(worker_signature_details "$identifier" "$team")"
   set +e
-  output="$(env \
-    -u SIGN_IDENTITY \
-    -u NOTARY_PROFILE \
-    -u RELEASE_OUTPUT_DIR \
-    -u RILL_RELEASE_SOURCE_CAPABILITY \
-    "PATH=$FAKE_BIN:$PATH" \
-    "FAKE_IDENTITIES=$APPLE_IDENTITIES" \
-    "RILL_RELEASE_SOURCE_SNAPSHOT=1" \
-    "RILL_RELEASE_SOURCE_COMMIT=0123456789abcdef0123456789abcdef01234567" \
-    bash "$RELEASE_SCRIPT" --validate-config 2>&1)"
+  output="$(
+    exec 2>&1
+    set --
+    # shellcheck source=/dev/null
+    source "$RELEASE_SCRIPT"
+    APP_BUNDLE="$app_bundle"
+    RELEASE_TEMP_DIR="$release_temp"
+    RESOLVED_SIGN_IDENTITY_NAME="Developer ID Application: Example Company (TEAMDIST01)"
+    DO_NOTARIZE=false
+    codesign() {
+      case "$1 $2" in
+      "--verify --strict") return 0 ;;
+      "-d --verbose=4") printf '%s\n' "$details" ;;
+      "-d --entitlements")
+        [[ -z "$entitlements" ]] || printf '%s\n' "$entitlements"
+        ;;
+      *) return 64 ;;
+      esac
+    }
+    info() { :; }
+    verify_signed_speech_worker
+  )"
   status=$?
   set -e
-
-  if [[ "$status" -eq 0 || "$output" != *"保留的内部变量"* ]]; then
-    echo "FAIL: caller-provided legacy snapshot environment is rejected" >&2
+  if [[ -z "$fragment" ]]; then
+    [[ "$status" -eq 0 ]] || {
+      echo "FAIL: speech worker signature rejected $name" >&2
+      printf '%s\n' "$output" >&2
+      exit 1
+    }
+    return 0
+  fi
+  if [[ "$status" -eq 0 || "$output" != *"$fragment"* ]]; then
+    echo "FAIL: speech worker signature accepts $name" >&2
     printf '%s\n' "$output" >&2
     exit 1
   fi
-
-  PASSED=$((PASSED + 1))
-  echo "PASS: caller-provided legacy snapshot environment is rejected"
 }
 
-run_notarized_source_case() {
+reject_executable() {
   local name="$1"
-  local expected_fragment="$2"
-  local git_status="$3"
-  local git_tags="$4"
-  local dependency_manifest_tracked="$5"
-  local git_index="${6-H scripts/third_party_notices_manifest.json}"
+  local fragment="$2"
+  shift 2
   local output=""
   local status=0
 
   set +e
-  output="$(env \
-    -u SIGN_IDENTITY \
-    -u NOTARY_PROFILE \
-    -u RELEASE_OUTPUT_DIR \
-    "PATH=$FAKE_BIN:$PATH" \
-    "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" \
-    "FAKE_GIT_STATUS=$git_status" \
-    "FAKE_GIT_TAGS=$git_tags" \
-    "FAKE_DEPENDENCY_MANIFEST_TRACKED=$dependency_manifest_tracked" \
-    "FAKE_GIT_INDEX=$git_index" \
-    bash "$RELEASE_SCRIPT" --notarize --validate-config 2>&1)"
+  output="$(
+    env \
+      "PATH=$fake_bin:$PATH" \
+      "FAKE_LIPO_LOG=$lipo_invocation_log" \
+      "FAKE_VTOOL_LOG=$vtool_invocation_log" \
+      "$@" \
+      bash "$EXECUTABLE_VERIFIER" "$executable" 2>&1
+  )"
   status=$?
   set -e
-
-  if [[ "$status" -eq 0 || "$output" != *"$expected_fragment"* ]]; then
+  if [[ "$status" -eq 0 || "$output" != *"$fragment"* ]]; then
     echo "FAIL: $name" >&2
     printf '%s\n' "$output" >&2
     exit 1
   fi
-  if [[ "$output" == *"运行发布预检"* ]]; then
-    echo "FAIL: $name (--validate-config unexpectedly started a build)" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
+}
 
-  PASSED=$((PASSED + 1))
-  echo "PASS: $name"
+use_recorded_swap() {
+  ditto() { cp -R "$1" "$2"; }
+  fake_atomic_swap() {
+    local left="$1"
+    local right="$2"
+    local temporary="$applications_dir/.test-swap.$$"
+
+    printf '%s|%s\n' "$left" "$right" >>"$swap_log"
+    mv "$left" "$temporary"
+    mv "$right" "$left"
+    mv "$temporary" "$right"
+  }
+  build_atomic_swap_helper() { ATOMIC_SWAP_HELPER="fake_atomic_swap"; }
 }
 
 run_locked_dependency_policy_case() {
@@ -738,25 +711,10 @@ run_install_post_swap_rollback_case() {
     # shellcheck source=/dev/null
     source "$RELEASE_SCRIPT"
     RELEASE_TEMP_DIR=""
-    ditto() {
-      cp -R "$1" "$2"
-    }
     verify_install_candidate() {
       [[ "$1" != "$target_app" ]]
     }
-    fake_atomic_swap() {
-      local left="$1"
-      local right="$2"
-      local temporary="$applications_dir/.test-swap.$$"
-
-      printf '%s|%s\n' "$left" "$right" >>"$swap_log"
-      mv "$left" "$temporary"
-      mv "$right" "$left"
-      mv "$temporary" "$right"
-    }
-    build_atomic_swap_helper() {
-      ATOMIC_SWAP_HELPER="fake_atomic_swap"
-    }
+    use_recorded_swap
     trap cleanup_release_temporary_files EXIT
     install_verified_app "$source_app" "$target_app"
   )"
@@ -798,25 +756,10 @@ run_install_success_case() {
     # shellcheck source=/dev/null
     source "$RELEASE_SCRIPT"
     RELEASE_TEMP_DIR=""
-    ditto() {
-      cp -R "$1" "$2"
-    }
     verify_install_candidate() {
       return 0
     }
-    fake_atomic_swap() {
-      local left="$1"
-      local right="$2"
-      local temporary="$applications_dir/.test-swap.$$"
-
-      printf '%s|%s\n' "$left" "$right" >>"$swap_log"
-      mv "$left" "$temporary"
-      mv "$right" "$left"
-      mv "$temporary" "$right"
-    }
-    build_atomic_swap_helper() {
-      ATOMIC_SWAP_HELPER="fake_atomic_swap"
-    }
+    use_recorded_swap
     install_verified_app "$source_app" "$target_app"
     [[ -z "$INSTALL_STAGING_ROOT" ]]
   )
@@ -875,19 +818,7 @@ run_install_interruption_recovery_case() {
         fi
         return 0
       }
-      fake_atomic_swap() {
-        local left="$1"
-        local right="$2"
-        local temporary="$applications_dir/.test-swap.$$"
-
-        printf '%s|%s\n' "$left" "$right" >>"$swap_log"
-        mv "$left" "$temporary"
-        mv "$right" "$left"
-        mv "$temporary" "$right"
-      }
-      build_atomic_swap_helper() {
-        ATOMIC_SWAP_HELPER="fake_atomic_swap"
-      }
+      use_recorded_swap
       trap cleanup_release_temporary_files EXIT
       trap 'handle_release_interrupt INT' INT
       trap 'handle_release_interrupt TERM' TERM
@@ -1343,69 +1274,22 @@ EOF
     exit 1
   fi
 
-  set +e
-  output="$(
-    PATH="$fake_bin:$PATH" \
-      FAKE_LIPO_LOG="$lipo_invocation_log" \
-      FAKE_VTOOL_LOG="$vtool_invocation_log" \
-      FAKE_LIPO_ARCHS="x86_64 arm64" \
-      bash "$EXECUTABLE_VERIFIER" "$executable" 2>&1
-  )"
-  status=$?
-  set -e
-  if [[ "$status" -eq 0 || "$output" != *"must contain only arm64"* ]]; then
-    echo "FAIL: arm64 executable verifier accepts a universal executable" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-
-  set +e
-  output="$(
-    PATH="$fake_bin:$PATH" \
-      FAKE_LIPO_LOG="$lipo_invocation_log" \
-      FAKE_VTOOL_LOG="$vtool_invocation_log" \
-      FAKE_VTOOL_ARM64_MINOS=14.1 \
-      bash "$EXECUTABLE_VERIFIER" "$executable" 2>&1
-  )"
-  status=$?
-  set -e
-  if [[ "$status" -eq 0 || "$output" != *"arm64 slice must require macOS 14.0 exactly"* ]]; then
-    echo "FAIL: executable verifier accepts a newer arm64 deployment target" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-
-  set +e
-  output="$(
-    PATH="$fake_bin:$PATH" \
-      FAKE_LIPO_LOG="$lipo_invocation_log" \
-      FAKE_VTOOL_LOG="$vtool_invocation_log" \
-      FAKE_VTOOL_ARM64_PLATFORM=IOS \
-      bash "$EXECUTABLE_VERIFIER" "$executable" 2>&1
-  )"
-  status=$?
-  set -e
-  if [[ "$status" -eq 0 || "$output" != *"arm64 slice must target the macOS platform"* ]]; then
-    echo "FAIL: executable verifier accepts a non-macOS platform" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-
-  set +e
-  output="$(
-    PATH="$fake_bin:$PATH" \
-      FAKE_LIPO_LOG="$lipo_invocation_log" \
-      FAKE_VTOOL_LOG="$vtool_invocation_log" \
-      FAKE_VTOOL_ARM64_COMMAND=LC_VERSION_MIN_MACOSX \
-      bash "$EXECUTABLE_VERIFIER" "$executable" 2>&1
-  )"
-  status=$?
-  set -e
-  if [[ "$status" -eq 0 || "$output" != *"exactly one LC_BUILD_VERSION"* ]]; then
-    echo "FAIL: executable verifier accepts a missing LC_BUILD_VERSION" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
+  reject_executable \
+    "arm64 executable verifier accepts a universal executable" \
+    "must contain only arm64" \
+    "FAKE_LIPO_ARCHS=x86_64 arm64"
+  reject_executable \
+    "executable verifier accepts a newer arm64 deployment target" \
+    "arm64 slice must require macOS 14.0 exactly" \
+    FAKE_VTOOL_ARM64_MINOS=14.1
+  reject_executable \
+    "executable verifier accepts a non-macOS platform" \
+    "arm64 slice must target the macOS platform" \
+    FAKE_VTOOL_ARM64_PLATFORM=IOS
+  reject_executable \
+    "executable verifier accepts a missing LC_BUILD_VERSION" \
+    "exactly one LC_BUILD_VERSION" \
+    FAKE_VTOOL_ARM64_COMMAND=LC_VERSION_MIN_MACOSX
 
   if ! grep -Fq 'verify_release_executable.sh" "$BUILD_DIR/RillApp"' "$PREFLIGHT_SCRIPT" ||
     ! grep -Fq '"$BUILD_DIR/RillSpeechWorker"' "$PREFLIGHT_SCRIPT" ||
@@ -1724,163 +1608,33 @@ run_speech_worker_bundle_signing_policy_case() {
   local helper_identifier_line=""
   local outer_entitlements_line=""
   local verification_line=""
-  local output=""
-  local status=0
+  local microphone_entitlements=""
 
   mkdir -p "$(dirname "$speech_worker")" "$fixture/temp"
   printf '%s\n' worker >"$speech_worker"
   chmod +x "$speech_worker"
-
-  (
-    set --
-    # shellcheck source=/dev/null
-    source "$RELEASE_SCRIPT"
-    APP_BUNDLE="$app_bundle"
-    RELEASE_TEMP_DIR="$fixture/temp"
-    RESOLVED_SIGN_IDENTITY_NAME="Developer ID Application: Example Company (TEAMDIST01)"
-    DO_NOTARIZE=false
-    codesign() {
-      case "$1 $2" in
-      "--verify --strict") return 0 ;;
-      "-d --verbose=4")
-        cat <<'DETAILS'
-Identifier=dev.zrr.Rill.SpeechWorker
-Authority=Developer ID Application: Example Company (TEAMDIST01)
-TeamIdentifier=TEAMDIST01
-Timestamp=Jul 19, 2026 at 12:00:00
-CodeDirectory v=20500 size=100 flags=0x10000(runtime) hashes=1+2 location=embedded
-DETAILS
-        ;;
-      "-d --entitlements") return 0 ;;
-      *) return 64 ;;
-      esac
-    }
-    info() { :; }
-    verify_signed_speech_worker
-  )
-
-  set +e
-  (
-    exec 2>&1
-    set --
-    # shellcheck source=/dev/null
-    source "$RELEASE_SCRIPT"
-    APP_BUNDLE="$app_bundle"
-    RELEASE_TEMP_DIR="$fixture/temp"
-    RESOLVED_SIGN_IDENTITY_NAME="Developer ID Application: Example Company (TEAMDIST01)"
-    DO_NOTARIZE=false
-    codesign() {
-      case "$1 $2" in
-      "--verify --strict") return 0 ;;
-      "-d --verbose=4")
-        cat <<'DETAILS'
-Identifier=dev.zrr.Rill.SpeechWorker
-Authority=Developer ID Application: Example Company (TEAMDIST01)
-TeamIdentifier=TEAMDIST01
-Timestamp=Jul 19, 2026 at 12:00:00
-CodeDirectory v=20500 size=100 flags=0x10000(runtime) hashes=1+2 location=embedded
-DETAILS
-        ;;
-      "-d --entitlements")
-        cat <<'PLIST'
+  microphone_entitlements="$(
+    cat <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>com.apple.security.device.audio-input</key><true/>
 </dict></plist>
 PLIST
-        ;;
-      *) return 64 ;;
-      esac
-    }
-    info() { :; }
-    verify_signed_speech_worker
-  ) >"$fixture/microphone-entitlement.out" 2>&1
-  status=$?
-  set -e
-  output="$(<"$fixture/microphone-entitlement.out")"
-  if [[ "$status" -eq 0 ||
-    "$output" != *"com.apple.security.device.audio-input"* ]]; then
-    echo "FAIL: speech worker signature accepts the app's microphone entitlement" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
+  )"
 
-  set +e
-  (
-    exec 2>&1
-    set --
-    # shellcheck source=/dev/null
-    source "$RELEASE_SCRIPT"
-    APP_BUNDLE="$app_bundle"
-    RELEASE_TEMP_DIR="$fixture/temp"
-    RESOLVED_SIGN_IDENTITY_NAME="Developer ID Application: Example Company (TEAMDIST01)"
-    DO_NOTARIZE=false
-    codesign() {
-      case "$1 $2" in
-      "--verify --strict") return 0 ;;
-      "-d --verbose=4")
-        cat <<'DETAILS'
-Identifier=wrong.identifier
-Authority=Developer ID Application: Example Company (TEAMDIST01)
-TeamIdentifier=not set
-Timestamp=Jul 19, 2026 at 12:00:00
-CodeDirectory v=20500 size=100 flags=0x10000(runtime) hashes=1+2 location=embedded
-DETAILS
-        ;;
-      *) return 64 ;;
-      esac
-    }
-    info() { :; }
-    verify_signed_speech_worker
-  ) >"$fixture/identity.out" 2>&1
-  status=$?
-  set -e
-  output="$(<"$fixture/identity.out")"
-  if [[ "$status" -eq 0 ||
-    "$output" != *"签名标识不匹配"* ]]; then
-    echo "FAIL: speech worker signature accepts a mismatched identifier or Team" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
-
-  set +e
-  (
-    exec 2>&1
-    set --
-    # shellcheck source=/dev/null
-    source "$RELEASE_SCRIPT"
-    APP_BUNDLE="$app_bundle"
-    RELEASE_TEMP_DIR="$fixture/temp"
-    RESOLVED_SIGN_IDENTITY_NAME="Developer ID Application: Example Company (TEAMDIST01)"
-    DO_NOTARIZE=false
-    codesign() {
-      case "$1 $2" in
-      "--verify --strict") return 0 ;;
-      "-d --verbose=4")
-        cat <<'DETAILS'
-Identifier=dev.zrr.Rill.SpeechWorker
-Authority=Developer ID Application: Example Company (TEAMDIST01)
-TeamIdentifier=not set
-Timestamp=Jul 19, 2026 at 12:00:00
-CodeDirectory v=20500 size=100 flags=0x10000(runtime) hashes=1+2 location=embedded
-DETAILS
-        ;;
-      *) return 64 ;;
-      esac
-    }
-    info() { :; }
-    verify_signed_speech_worker
-  ) >"$fixture/team.out" 2>&1
-  status=$?
-  set -e
-  output="$(<"$fixture/team.out")"
-  if [[ "$status" -eq 0 ||
-    "$output" != *"TeamIdentifier"* ]]; then
-    echo "FAIL: speech worker signature accepts a missing TeamIdentifier" >&2
-    printf '%s\n' "$output" >&2
-    exit 1
-  fi
+  expect_worker_signature "$app_bundle" "$fixture/temp" \
+    "a valid hardened-runtime identity" "" \
+    dev.zrr.Rill.SpeechWorker TEAMDIST01
+  expect_worker_signature "$app_bundle" "$fixture/temp" \
+    "the app microphone entitlement" "com.apple.security.device.audio-input" \
+    dev.zrr.Rill.SpeechWorker TEAMDIST01 "$microphone_entitlements"
+  expect_worker_signature "$app_bundle" "$fixture/temp" \
+    "a mismatched identifier" "签名标识不匹配" \
+    wrong.identifier "not set"
+  expect_worker_signature "$app_bundle" "$fixture/temp" \
+    "a missing TeamIdentifier" "TeamIdentifier" \
+    dev.zrr.Rill.SpeechWorker "not set"
 
   if ! grep -Fq '"$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"' \
     "$ASSEMBLER_SCRIPT" ||
@@ -2149,182 +1903,200 @@ run_notarization_result_cases() {
   done
 }
 
-run_case \
+expect_validate \
   "notarization never falls back to Apple Development" \
   1 \
   "公证发布需要可用的 Developer ID Application" \
-  "$APPLE_IDENTITIES" \
-  "<unset>" \
-  "<unset>" \
-  --notarize
+  -- "FAKE_IDENTITIES=$APPLE_IDENTITIES" \
+  -- --notarize
 
-run_case \
+expect_validate \
   "notarization rejects an explicitly selected development identity" \
   1 \
   "公证发布只能使用 Developer ID Application" \
-  "$BOTH_IDENTITIES" \
-  "Apple Development" \
-  "<unset>" \
-  --notarize
+  -- "FAKE_IDENTITIES=$BOTH_IDENTITIES" "SIGN_IDENTITY=Apple Development" \
+  -- --notarize
 
-run_case \
+expect_validate \
   "notarization accepts one Developer ID Application identity" \
   0 \
   "发布配置验证通过（未执行构建、签名或公证）" \
-  "$DEVELOPER_ID_IDENTITIES" \
-  "<unset>" \
-  "<unset>" \
-  --notarize
+  -- "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" \
+  -- --notarize
 
-run_notarized_source_case \
+expect_validate \
   "notarization rejects an untracked dependency manifest" \
+  1 \
   "第三方依赖清单已纳入版本控制" \
-  "" \
-  "v1.2.3" \
-  "false"
+  -- "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" \
+  "FAKE_DEPENDENCY_MANIFEST_TRACKED=false" "FAKE_GIT_TAGS=v1.2.3" \
+  -- --notarize
 
-run_notarized_source_case \
+expect_validate \
   "notarization rejects a dirty worktree" \
+  1 \
   "公证发布要求干净的 Git 工作树" \
-  " M README.md" \
-  "v1.2.3" \
-  "true"
+  -- "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" \
+  "FAKE_GIT_STATUS= M README.md" "FAKE_GIT_TAGS=v1.2.3" \
+  -- --notarize
 
-run_notarized_source_case \
+expect_validate \
   "notarization rejects hidden index flags" \
+  1 \
   "拒绝 assume-unchanged、skip-worktree 或 sparse checkout" \
-  "" \
-  "v1.2.3" \
-  "true" \
-  "h scripts/third_party_notices_manifest.json"
+  -- "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" "FAKE_GIT_TAGS=v1.2.3" \
+  "FAKE_GIT_INDEX=h scripts/third_party_notices_manifest.json" \
+  -- --notarize
 
-run_notarized_source_case \
+expect_validate \
   "notarization rejects an untagged HEAD" \
+  1 \
   "HEAD 精确标记一个 vMAJOR.MINOR.PATCH 标签" \
-  "" \
-  "" \
-  "true"
+  -- "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" "FAKE_GIT_TAGS=" \
+  -- --notarize
 
-run_notarized_source_case \
+expect_validate \
   "notarization rejects a non-semantic version tag" \
+  1 \
   "HEAD 精确标记一个 vMAJOR.MINOR.PATCH 标签" \
-  "" \
-  "v1.2" \
-  "true"
+  -- "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" "FAKE_GIT_TAGS=v1.2" \
+  -- --notarize
 
-run_notarized_source_case \
+expect_validate \
   "notarization rejects multiple semantic version tags" \
+  1 \
   "HEAD 存在多个版本标签" \
-  "" \
-  $'v1.2.3\nv1.2.4' \
-  "true"
+  -- "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" \
+  "FAKE_GIT_TAGS=$(printf '%s\n' v1.2.3 v1.2.4)" \
+  -- --notarize
 
-run_case \
+expect_validate \
   "a Developer ID Application SHA-1 resolves to its certificate type" \
   0 \
   "签名身份: Developer ID Application: Example Company" \
-  "$BOTH_IDENTITIES" \
-  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
-  "<unset>" \
-  --notarize
+  -- "FAKE_IDENTITIES=$BOTH_IDENTITIES" \
+  "SIGN_IDENTITY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
+  -- --notarize
 
-run_case \
+expect_validate \
   "local default may fall back to Apple Development" \
   0 \
   "仅适用于本地构建，不支持公证" \
-  "$APPLE_IDENTITIES" \
-  "<unset>" \
-  "<unset>"
+  -- "FAKE_IDENTITIES=$APPLE_IDENTITIES" \
+  --
 
-run_case \
+expect_validate \
   "an explicitly requested missing identity never falls back" \
   1 \
   "未找到指定的签名身份" \
-  "$APPLE_IDENTITIES" \
-  "Developer ID Application: Missing Company (MISSING001)" \
-  "<unset>"
+  -- "FAKE_IDENTITIES=$APPLE_IDENTITIES" \
+  "SIGN_IDENTITY=Developer ID Application: Missing Company (MISSING001)" \
+  --
 
-run_case \
+expect_validate \
   "a generic request must not choose between multiple distribution identities" \
   1 \
   "匹配到多个证书" \
-  "$AMBIGUOUS_DEVELOPER_IDS" \
-  "<unset>" \
-  "<unset>" \
-  --notarize
+  -- "FAKE_IDENTITIES=$AMBIGUOUS_DEVELOPER_IDS" \
+  -- --notarize
 
-run_case \
+expect_validate \
   "an explicitly empty identity fails closed" \
   1 \
   "SIGN_IDENTITY 不能为空" \
-  "$BOTH_IDENTITIES" \
-  "" \
-  "<unset>"
+  -- "FAKE_IDENTITIES=$BOTH_IDENTITIES" "SIGN_IDENTITY=" \
+  --
 
-run_case \
+expect_validate \
   "notarization rejects an explicitly empty keychain profile" \
   1 \
   "--notarize 需要非空的 NOTARY_PROFILE" \
-  "$DEVELOPER_ID_IDENTITIES" \
-  "<unset>" \
-  "" \
-  --notarize
+  -- "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" "NOTARY_PROFILE=" \
+  -- --notarize
 
-run_notary_keychain_case \
+expect_validate \
   "notarization rejects a relative keychain path" \
-  "release.keychain-db" \
   1 \
-  "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径"
+  "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径" \
+  -- "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" "NOTARY_KEYCHAIN=release.keychain-db" \
+  -- --notarize
 
-run_notary_keychain_case \
+expect_validate \
   "notarization rejects a missing keychain" \
-  "$TEST_ROOT/missing.keychain-db" \
   1 \
-  "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径"
+  "NOTARY_KEYCHAIN 必须指向现有的绝对 Keychain 文件路径" \
+  -- "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" \
+  "NOTARY_KEYCHAIN=$TEST_ROOT/missing.keychain-db" \
+  -- --notarize
 
 touch "$TEST_ROOT/release.keychain-db"
-run_notary_keychain_case \
+expect_validate \
   "notarization accepts an existing absolute keychain path" \
-  "$TEST_ROOT/release.keychain-db" \
   0 \
-  "签名身份: Developer ID Application: Example Company"
+  "签名身份: Developer ID Application: Example Company" \
+  -- "FAKE_IDENTITIES=$DEVELOPER_ID_IDENTITIES" \
+  "NOTARY_KEYCHAIN=$TEST_ROOT/release.keychain-db" \
+  -- --notarize
 
-run_invalid_output_dir_case \
+expect_validate \
   "an explicitly empty release output directory fails closed" \
-  "" \
-  "RELEASE_OUTPUT_DIR 不能为空"
+  1 \
+  "RELEASE_OUTPUT_DIR 不能为空" \
+  -- "FAKE_IDENTITIES=$APPLE_IDENTITIES" "RELEASE_OUTPUT_DIR=" \
+  --
 
-run_invalid_output_dir_case \
+expect_validate \
   "a release output directory cannot contain a newline" \
-  $'invalid\npath' \
-  "RELEASE_OUTPUT_DIR 不能包含换行符"
+  1 \
+  "RELEASE_OUTPUT_DIR 不能包含换行符" \
+  -- "FAKE_IDENTITIES=$APPLE_IDENTITIES" \
+  "RELEASE_OUTPUT_DIR=$(printf '%s\n' invalid path)" \
+  --
 
-run_invalid_output_dir_case \
+expect_validate \
   "the repository root cannot be a release output directory" \
-  "$PROJECT_DIR" \
-  "发布输出拒绝仓库根目录"
+  1 \
+  "发布输出拒绝仓库根目录" \
+  -- "FAKE_IDENTITIES=$APPLE_IDENTITIES" "RELEASE_OUTPUT_DIR=$PROJECT_DIR" \
+  --
 
-run_invalid_output_dir_case \
+expect_validate \
   "a repository-local release output must stay under .artifacts" \
-  "$PROJECT_DIR/release-output" \
-  "仓库内发布输出必须位于 .artifacts/ 下"
+  1 \
+  "仓库内发布输出必须位于 .artifacts/ 下" \
+  -- "FAKE_IDENTITIES=$APPLE_IDENTITIES" "RELEASE_OUTPUT_DIR=$PROJECT_DIR/release-output" \
+  --
 
-run_invalid_output_dir_case \
+expect_validate \
   "release output traversal segments fail before directory creation" \
-  "$PROJECT_DIR/.artifacts/../release-output" \
-  "RELEASE_OUTPUT_DIR 不能包含 . 或 .. 路径段"
+  1 \
+  "RELEASE_OUTPUT_DIR 不能包含 . 或 .. 路径段" \
+  -- "FAKE_IDENTITIES=$APPLE_IDENTITIES" \
+  "RELEASE_OUTPUT_DIR=$PROJECT_DIR/.artifacts/../release-output" \
+  --
 
-run_invalid_output_dir_case \
+expect_validate \
   "the release output cannot overlap the installed application" \
-  "/Applications" \
-  "RELEASE_OUTPUT_DIR 不能与安装目标 /Applications/Rill.app 重合"
+  1 \
+  "RELEASE_OUTPUT_DIR 不能与安装目标 /Applications/Rill.app 重合" \
+  -- "FAKE_IDENTITIES=$APPLE_IDENTITIES" "RELEASE_OUTPUT_DIR=/Applications" \
+  --
 
-run_invalid_output_dir_case \
+expect_validate \
   "the release output cannot be nested inside the installed application" \
-  "/Applications/Rill.app/Contents/ReleaseOutput" \
-  "RELEASE_OUTPUT_DIR 不能与安装目标 /Applications/Rill.app 重合"
+  1 \
+  "RELEASE_OUTPUT_DIR 不能与安装目标 /Applications/Rill.app 重合" \
+  -- "FAKE_IDENTITIES=$APPLE_IDENTITIES" \
+  "RELEASE_OUTPUT_DIR=/Applications/Rill.app/Contents/ReleaseOutput" \
+  --
 
-run_reserved_internal_environment_case
+expect_validate \
+  "caller-provided legacy snapshot environment is rejected" \
+  1 \
+  "保留的内部变量" \
+  -- "FAKE_IDENTITIES=$APPLE_IDENTITIES" "RILL_RELEASE_SOURCE_SNAPSHOT=1" \
+  "RILL_RELEASE_SOURCE_COMMIT=0123456789abcdef0123456789abcdef01234567" \
+  --
 run_literal_plist_key_case
 run_speech_worker_bundle_signing_policy_case
 run_distribution_dmg_policy_case

@@ -25,15 +25,14 @@ if rg -n \
   fail "Clipboard-prefixed domain declarations must be SystemClipboard-prefixed or migration-only"
 fi
 
-if find Sources -type f \
-  \( -name 'DeliveryStack*.swift' -o -name 'Clipboard*.swift' -o -name 'StackPasteController.swift' \) \
-  ! -name 'LegacyClipboardMigration.swift' \
-  -print \
-  | grep -q .; then
+legacy_sources="$(
   find Sources -type f \
     \( -name 'DeliveryStack*.swift' -o -name 'Clipboard*.swift' -o -name 'StackPasteController.swift' \) \
     ! -name 'LegacyClipboardMigration.swift' \
-    -print >&2
+    -print
+)"
+if [[ -n "$legacy_sources" ]]; then
+  printf '%s\n' "$legacy_sources" >&2
   fail "Legacy Stack/Clipboard source files remain outside the migration boundary"
 fi
 
