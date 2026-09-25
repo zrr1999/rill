@@ -509,7 +509,7 @@ final class RunHistoryBrowsingUITests: XCTestCase {
         let loadedAll = await waitUntil { harness.model.history.runHistoryPage == allPage }
         XCTAssertTrue(loadedAll)
 
-        harness.model.history.runHistoryScope = .recentResults
+        harness.model.history.setRunHistoryScope(.recentResults)
         let loadedResults = await waitUntil { harness.model.history.runHistoryPage == resultsPage }
         XCTAssertTrue(loadedResults)
         harness.model.history.noteNewRunAvailableForHistoryBrowsing()

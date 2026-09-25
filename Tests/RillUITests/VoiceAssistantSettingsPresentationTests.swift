@@ -1,3 +1,4 @@
+import RillTestSupport
 import XCTest
 
 @testable import RillCore
@@ -26,16 +27,14 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
     )
     let harness = makeHarness(
       ttsModelOptions: [int4, int8, bf16],
-      defaultTTSModelIdentifier: int8.id
-    )
-
-    harness.model.installVoiceAssistantResourceActions(
-      prepareWakeWordModel: { _ in "qwen3-asr-test" },
-      prepareTTSModel: { _, _ in },
-      selectTTSModel: { _ in },
-      downloadedTTSModelIdentifiers: [bf16.id],
-      validateWakeWordConfiguration: { _ in },
-      stopSpeechPlayback: { false }
+      defaultTTSModelIdentifier: int8.id,
+      voiceResourceServices: makeVoiceResourceServicesForTesting(
+        prepareWakeWordModel: { _ in "qwen3-asr-test" },
+        selectTTSModel: { _ in },
+        downloadedTTSModelIdentifiers: [bf16.id],
+        validateWakeWordConfiguration: { _ in },
+        stopSpeechPlayback: { false }
+      )
     )
 
     XCTAssertEqual(harness.model.settings.ttsModelIdentifier, int8.id)
@@ -126,14 +125,14 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       permissionSnapshot: PermissionSnapshot(
         accessibility: .granted,
         microphone: .granted
-      )
-    )
+      ),
+      voiceResourceServices: makeVoiceResourceServicesForTesting(validateWakeWordConfiguration: {
+        configuration in
+        guard configuration.phrases == ["Hey Rill", "你好 Rill"] else {
+          throw WakeWordSettingsTestError.unexpectedConfiguration
+        }
+      }))
     harness.model.updateWakeWordResourceState(.ready)
-    harness.model.installWakeWordConfigurationValidationAction { configuration in
-      guard configuration.phrases == ["Hey Rill", "你好 Rill"] else {
-        throw WakeWordSettingsTestError.unexpectedConfiguration
-      }
-    }
 
     XCTAssertEqual(
       harness.model.wakeWordSettingsSnapshot,
@@ -172,10 +171,12 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       permissionSnapshot: PermissionSnapshot(
         accessibility: .granted,
         microphone: .granted
-      )
-    )
+      ),
+      voiceResourceServices: makeVoiceResourceServicesForTesting(validateWakeWordConfiguration: {
+        _ in
+      }))
     harness.model.updateWakeWordResourceState(.ready)
-    harness.model.installWakeWordConfigurationValidationAction { _ in }
+
     await harness.model.saveWorkflowDraft(
       WorkflowEditorDraft(
         name: "Assistant",
@@ -258,9 +259,11 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
       permissionSnapshot: PermissionSnapshot(
         accessibility: .granted,
         microphone: .granted
-      )
-    )
-    harness.model.installWakeWordConfigurationValidationAction { _ in }
+      ),
+      voiceResourceServices: makeVoiceResourceServicesForTesting(validateWakeWordConfiguration: {
+        _ in
+      }))
+
     await waitUntil {
       !harness.model.settings.isLoading
         && harness.model.settings.openAICredentialAvailability == .available
@@ -405,8 +408,10 @@ final class VoiceAssistantSettingsPresentationTests: XCTestCase {
 
   @MainActor
   func testWakeWordSettingsRejectInvalidPhraseWithoutCreatingWorkflow() async {
-    let harness = makeHarness()
-    harness.model.installWakeWordConfigurationValidationAction { _ in }
+    let harness = makeHarness(
+      voiceResourceServices: makeVoiceResourceServicesForTesting(validateWakeWordConfiguration: {
+        _ in
+      }))
 
     let result = await harness.model.updateWakeWordSettings(
       phrases: [],

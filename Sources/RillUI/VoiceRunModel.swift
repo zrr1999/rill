@@ -1,13 +1,46 @@
 import Foundation
 import Observation
 import RillCore
-import RillWorkflows
-import RillRecords
 import RillKnowledge
+import RillRecords
 import RillSpeech
+import RillWorkflows
 
 @MainActor @Observable
 public final class VoiceRunModel {
+  let settings: SettingsPersistenceModel
+  let resources: VoiceResourceServices
+  let resourceAvailabilityChanged: @MainActor () -> Void
+  let wakeWordPreparationTaskOwner = LocalSpeechPreparationTaskOwner()
+
+  let prepareLocalSpeech:
+    @Sendable (LocalSpeechSettings, @escaping @Sendable (Progress) -> Void) async throws -> String
+  let releaseLocalSpeech: @Sendable () -> Void
+  let stopLocalSpeech: @Sendable () async -> Void
+  let appendEvent: @MainActor (EventFeedEntry) -> Void
+
+  init(
+    settings: SettingsPersistenceModel, resources: VoiceResourceServices,
+    supportedTTSModelIDs: Set<String>, resourceAvailabilityChanged: @escaping @MainActor () -> Void,
+    prepareLocalSpeech:
+      @escaping @Sendable (LocalSpeechSettings, @escaping @Sendable (Progress) -> Void) async throws
+      -> String,
+    releaseLocalSpeech: @escaping @Sendable () -> Void,
+    stopLocalSpeech: @escaping @Sendable () async -> Void,
+    appendEvent: @escaping @MainActor (EventFeedEntry) -> Void
+  ) {
+    self.settings = settings
+    self.resources = resources
+    self.resourceAvailabilityChanged = resourceAvailabilityChanged
+    self.prepareLocalSpeech = prepareLocalSpeech
+    self.releaseLocalSpeech = releaseLocalSpeech
+    self.stopLocalSpeech = stopLocalSpeech
+    self.appendEvent = appendEvent
+    downloadedTTSModelIdentifiers = resources.downloadedTTSModelIdentifiers.intersection(
+      supportedTTSModelIDs)
+    synchronizeTTSSelection()
+  }
+
   public internal(set) var measuredSpeechModelPeakByteCounts: [String: UInt64] = [:]
   public internal(set) var pendingResidentSpeechModelIDs: Set<String>?
   public internal(set) var speechModelPoolDegradedByMemoryPressure = false
@@ -38,7 +71,6 @@ public final class VoiceRunModel {
   var pendingInteractiveWorkflowTask: Task<Void, Never>?
   var interactiveWorkflowTaskGeneration = 0
   var workflowAudioActionTasks: [UUID: Task<Void, Never>] = [:]
-  var localSpeechPreparationGeneration = 0
   let localSpeechPreparationTaskOwner = LocalSpeechPreparationTaskOwner()
   var residentSpeechModelSynchronizationTask: Task<Void, Never>?
   var residentSpeechModelSynchronizationTasks: [UUID: Task<Void, Never>] = [:]

@@ -71,7 +71,7 @@ struct RillApplication: App {
         self.liveSubtitlePanelController = liveSubtitlePanelController
         let shutdown = container.shutdown
         applicationDelegate.installEscapeAction {
-            container.model.stopSpeechPlaybackIfActive()
+            container.model.voice.stopSpeechPlaybackIfActive()
         }
         applicationDelegate.installCleanupOperation {
             await recordPanelController.shutdown()

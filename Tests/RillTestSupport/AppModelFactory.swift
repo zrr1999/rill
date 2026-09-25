@@ -152,7 +152,8 @@ public func makeAppModelForTesting(
     openMicrophoneSettingsAction: @escaping () -> Void,
     requestGlobalInputAction: @escaping () -> Void,
     retryGlobalInputAction: @escaping () -> Void,
-    workflowLibraryChangedAction: @escaping @MainActor () -> Void
+    workflowLibraryChangedAction: @escaping @MainActor () -> Void,
+    voiceResourceServices: VoiceResourceServices = makeVoiceResourceServicesForTesting()
 ) -> AppModel {
   AppModel(
     workflows: initialWorkflows,
@@ -215,6 +216,25 @@ public func makeAppModelForTesting(
     openMicrophoneSettingsAction: openMicrophoneSettingsAction,
     requestGlobalInputAction: requestGlobalInputAction,
     retryGlobalInputAction: retryGlobalInputAction,
-    workflowLibraryChangedAction: workflowLibraryChangedAction
+    workflowLibraryChangedAction: workflowLibraryChangedAction,
+    voiceResourceServices: voiceResourceServices
   )
 }
+
+public func makeVoiceResourceServicesForTesting(
+  prepareWakeWordModel: @escaping @Sendable (@escaping @Sendable (Double) -> Void) async throws -> String = { _ in
+    throw VoiceResourceTestError.unavailable
+  },
+  selectTTSModel: @escaping @Sendable (String) -> Void = { _ in },
+  downloadedTTSModelIdentifiers: Set<String> = [],
+  validateWakeWordConfiguration: @escaping @Sendable (WakeWordConfiguration) async throws -> Void = { _ in
+    throw VoiceResourceTestError.unavailable
+  },
+  stopSpeechPlayback: @escaping @MainActor @Sendable () -> Bool = { false }
+) -> VoiceResourceServices {
+  .init(prepareWakeWordModel: prepareWakeWordModel, selectTTSModel: selectTTSModel,
+    downloadedTTSModelIdentifiers: downloadedTTSModelIdentifiers,
+    validateWakeWordConfiguration: validateWakeWordConfiguration, stopSpeechPlayback: stopSpeechPlayback)
+}
+
+public enum VoiceResourceTestError: Error { case unavailable }

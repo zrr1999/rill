@@ -262,7 +262,7 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
     )
     await harness.model.waitForInitialVoiceConfiguration()
 
-    harness.model.addVocabularyRule(
+    harness.model.vocabulary.addVocabularyRule(
       kind: .mapping,
       pattern: "product term",
       replacement: "Product Term",

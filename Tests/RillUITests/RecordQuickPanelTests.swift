@@ -14,7 +14,7 @@ final class RecordQuickPanelTests: XCTestCase {
     }
     let panel = RecordQuickPanelModel(store: store)
     defer { panel.stop() }
-    panel.searchText = "jtb"
+    panel.setSearchText("jtb")
     await settle(panel)
     XCTAssertEqual(panel.results.map(\.id), [exact.id])
     XCTAssertEqual(panel.selectedID, exact.id)
@@ -29,17 +29,17 @@ final class RecordQuickPanelTests: XCTestCase {
     }
     let panel = RecordQuickPanelModel(store: store)
     defer { panel.stop() }
-    panel.searchText = "jtb worktere"
+    panel.setSearchText("jtb worktere")
     await settle(panel)
     XCTAssertEqual(panel.results.map(\.id), Array(ids.reversed().prefix(50)))
     let selected = panel.results[10].id
-    panel.selectedID = selected
+    panel.select(selected)
     panel.loadMore()
     await settle(panel)
     XCTAssertEqual(panel.results.map(\.id), Array(ids.reversed()))
     XCTAssertEqual(panel.selectedID, selected)
-    panel.searchText = "jtb missing"
-    panel.searchText = "worktree 59"
+    panel.setSearchText("jtb missing")
+    panel.setSearchText("worktree 59")
     await settle(panel)
     XCTAssertEqual(panel.results.map(\.id), [ids[59]])
     XCTAssertEqual(panel.selectedID, ids[59])
@@ -53,17 +53,17 @@ final class RecordQuickPanelTests: XCTestCase {
     let main = RecordWorkspaceModel(store: store)
     await main.refresh()
     main.selectedRecordID = second.id
-    main.searchText = "another"
+    main.setSearchText("another")
     let panel = main.makeQuickPanelModel()
     panel.start(sourceBundleIdentifier: "com.example.first")
     defer { panel.stop() }
     await settle(panel)
     XCTAssertEqual(panel.results.map(\.id), [second.id, first.id])
-    panel.currentAppOnly = true
+    panel.setCurrentAppOnly(true)
     await settle(panel)
     XCTAssertEqual(panel.results.map(\.id), [first.id])
-    panel.searchText = "不存在"
-    panel.searchText = "中文 我"
+    panel.setSearchText("不存在")
+    panel.setSearchText("中文 我")
     await settle(panel)
     XCTAssertEqual(panel.selectedID, first.id)
     XCTAssertEqual(main.selectedRecordID, second.id)
@@ -133,12 +133,6 @@ final class RecordQuickPanelTests: XCTestCase {
       provenance: .init(source: .init(kind: .systemClipboard), sourceBundleIdentifier: app))
   }
   private func settle(_ model: RecordQuickPanelModel) async {
-    // Startup has an observation hop before it schedules its first query.
-    try? await Task.sleep(for: .milliseconds(20))
-    for _ in 0..<100 {
-      if !model.isSearching { return }
-      try? await Task.sleep(for: .milliseconds(10))
-    }
-    XCTFail("The quick panel did not finish its bounded query")
+    await model.waitForSearch()
   }
 }

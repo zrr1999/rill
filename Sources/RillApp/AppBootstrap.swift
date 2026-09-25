@@ -64,17 +64,6 @@ enum AppBootstrap {
     }
   }
 
-  nonisolated static func displayedTTSPreparationProgress(
-    _ update: SpeechWorkerProgress
-  ) -> Double {
-    switch update.phase {
-    case .downloading:
-      return update.fractionCompleted * 0.95
-    case .loading:
-      return 0.95 + (update.fractionCompleted * 0.05)
-    }
-  }
-
   nonisolated static var distributableLocalSpeechModels: [LocalSpeechModelDescriptor] {
     var models: [LocalSpeechModelDescriptor] = []
     #if arch(arm64)
@@ -1967,6 +1956,49 @@ private enum AppContainerFactory {
 
 @MainActor
 private enum AppModelFactory {
+  private static func makeVoiceResourceServices(providers: ProviderServices) -> VoiceResourceServices {
+    VoiceResourceServices(
+      prepareWakeWordModel: { progressCallback in
+        guard providers.wakeWordTriggerSource != nil else {
+          throw WakeWordTriggerSourceError.modelNotInstalled
+        }
+        let settings = try providers.localSpeechSettingsSource.currentSettings()
+        let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
+          settings: settings
+        )
+        let backend = try LocalSpeechModelCatalog.backend(for: modelIdentifier)
+        try await providers.localSpeechRecognizer.prepareForUse(of: backend)
+        let prepared = try await providers.mlxAudioSwiftRecognizer.prepareModel(
+          modelIdentifier: modelIdentifier,
+          downloadIfNeeded: true,
+          progress: { update in
+            progressCallback(update.fractionCompleted)
+          }
+        )
+        progressCallback(1)
+        return prepared
+      },
+      selectTTSModel: { modelIdentifier in
+        _ = providers.ttsModelSelectionSource.selectModel(modelIdentifier)
+      },
+      downloadedTTSModelIdentifiers:
+        SpeechSynthesisModelInventory.installedModelIdentifiers(),
+      validateWakeWordConfiguration: { configuration in
+        guard let source = providers.wakeWordTriggerSource else {
+          throw WakeWordTriggerSourceError.modelNotInstalled
+        }
+        try await source.validate(configuration: configuration)
+      },
+      stopSpeechPlayback: {
+        guard providers.speechPlaybackService.isPlaying else { return false }
+        Task { @MainActor in
+          await providers.speechPlaybackService.shutdown()
+        }
+        return true
+      }
+    )
+  }
+
   static func makeModel(
     core: CoreServices,
     platform: PlatformServices,
@@ -2265,60 +2297,12 @@ private enum AppModelFactory {
       },
       workflowLibraryChangedAction: {
         Task { await runtime.wakeWordCoordinator?.reconcile() }
-      }
+      },
+      voiceResourceServices: makeVoiceResourceServices(providers: providers)
     )
     guard let resolvedModel = model else {
       preconditionFailure("AppModel was not initialized")
     }
-    resolvedModel.installVoiceAssistantResourceActions(
-      prepareWakeWordModel: { progressCallback in
-        guard providers.wakeWordTriggerSource != nil else {
-          throw WakeWordTriggerSourceError.modelNotInstalled
-        }
-        let settings = try providers.localSpeechSettingsSource.currentSettings()
-        let modelIdentifier = LocalSpeechModelCatalog.effectiveModelIdentifier(
-          settings: settings
-        )
-        let backend = try LocalSpeechModelCatalog.backend(for: modelIdentifier)
-        try await providers.localSpeechRecognizer.prepareForUse(of: backend)
-        let prepared = try await providers.mlxAudioSwiftRecognizer.prepareModel(
-          modelIdentifier: modelIdentifier,
-          downloadIfNeeded: true,
-          progress: { update in
-            progressCallback(update.fractionCompleted)
-          }
-        )
-        progressCallback(1)
-        return prepared
-      },
-      prepareTTSModel: { modelIdentifier, progressCallback in
-        try await providers.qwen3TTSSynthesizer.prepare(
-          modelIdentifier: modelIdentifier,
-          downloadIfNeeded: true,
-          progress: { update in
-            progressCallback(AppBootstrap.displayedTTSPreparationProgress(update))
-          }
-        )
-      },
-      selectTTSModel: { modelIdentifier in
-        _ = providers.ttsModelSelectionSource.selectModel(modelIdentifier)
-      },
-      downloadedTTSModelIdentifiers:
-        SpeechSynthesisModelInventory.installedModelIdentifiers(),
-      validateWakeWordConfiguration: { configuration in
-        guard let source = providers.wakeWordTriggerSource else {
-          throw WakeWordTriggerSourceError.modelNotInstalled
-        }
-        try await source.validate(configuration: configuration)
-      },
-      stopSpeechPlayback: {
-        guard providers.speechPlaybackService.isPlaying else { return false }
-        Task { @MainActor in
-          await providers.speechPlaybackService.shutdown()
-        }
-        return true
-      }
-    )
     if let wakeWordTriggerSource = providers.wakeWordTriggerSource {
       Task { @MainActor [weak resolvedModel] in
         for await status in wakeWordTriggerSource.statusStream() {

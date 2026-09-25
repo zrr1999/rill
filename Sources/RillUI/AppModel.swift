@@ -59,7 +59,7 @@ public final class AppModel {
   public var settingsSaveState: SettingsSaveState { settings.saveState }
 
   public var contextMemory: ContextMemoryModel?
-  public let voice = VoiceRunModel()
+  public let voice: VoiceRunModel
   public let localSpeechAvailability: LocalSpeechAvailability
   public let localSpeechTrustMaterialAvailable: Bool
   public let trustedLocalSpeechModels: [LocalSpeechModelDescriptor]
@@ -93,16 +93,6 @@ public final class AppModel {
   }
   public var lastFailure: String?
   public let vocabulary: VocabularyLibraryModel
-  public internal(set) var vocabularyRules: [VocabularyRule] {
-    get { vocabulary.vocabularyRules }
-    set {
-      let changed = newValue != vocabulary.vocabularyRules
-      vocabulary.setLegacyRules(newValue)
-      guard !self.vocabulary.isApplying else { return }
-      rebuildWorkflowLibrary()
-      if changed { persistVocabularyLibrary() }
-    }
-  }
   public private(set) var privacyPolicySettings: PrivacyPolicySettings = .defaults
 
   public internal(set) var isLoadingPrivacySettings = false
@@ -227,17 +217,10 @@ public final class AppModel {
   var waitForLiveSubtitleMeterRefresh: @Sendable (Duration) async throws -> Void = { duration in
     try await Task.sleep(for: duration)
   }
-  let prepareLocalSpeechAction:
-    @Sendable (
-      LocalSpeechSettings,
-      @escaping @Sendable (Progress) -> Void
-    ) async throws -> String
   let synchronizeResidentSpeechModelsAction:
     @Sendable (_ added: Set<String>, _ removed: Set<String>) async -> Void
   let prepareEnabledSpeechModelAction: @Sendable (_ modelID: String) async -> Void
   let setLocalSpeechRuntimeEnabledAction: @Sendable (Bool) -> Void
-  let releaseLocalSpeechRuntimeAction: @Sendable () -> Void
-  let stopLocalSpeechRuntimeAction: @Sendable () async -> Void
   let startWorkflowAudioRunAction:
     @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void
   let finishWorkflowAudioRunAction: @Sendable () async throws -> Void
@@ -271,77 +254,9 @@ public final class AppModel {
   var setSystemClipboardCaptureEnabledAction: (Bool, UInt64) -> Void = { _, _ in }
   var ignoreNextExternalClipboardChangeAction: () -> Void = {}
   let workflowLibraryChangedAction: @MainActor () -> Void
-  var prepareWakeWordModelAction:
-    @Sendable (@escaping @Sendable (Double) -> Void) async throws -> String = { _ in
-      throw NSError(
-        domain: "Rill.WakeWord",
-        code: 1,
-        userInfo: [
-          NSLocalizedDescriptionKey:
-            "Local speech preparation for wake-word listening is unavailable."
-        ]
-      )
-    }
-  var prepareTTSModelAction:
-    @Sendable (String, @escaping @Sendable (Double) -> Void) async throws -> Void = { _, _ in
-      throw NSError(
-        domain: "Rill.TTS",
-        code: 1,
-        userInfo: [NSLocalizedDescriptionKey: "TTS model preparation is unavailable."]
-      )
-    }
-  var selectTTSModelAction: @Sendable (String) -> Void = { _ in }
-  var validateWakeWordConfigurationAction: @Sendable (WakeWordConfiguration) async throws -> Void =
-    { _ in
-      throw NSError(
-        domain: "Rill.WakeWord",
-        code: 2,
-        userInfo: [
-          NSLocalizedDescriptionKey:
-            "Prepare the selected local speech model before saving a wake-word workflow."
-        ]
-      )
-    }
-  var stopSpeechPlaybackAction: @MainActor () -> Bool = { false }
   var updateRecordPanelHotkeyAction: (HotkeyBindingDescriptor) -> Void = { _ in }
   var updateLiveSubtitlePanelAction: @MainActor (LiveSubtitleSnapshot?, AppLanguage) -> Void = {
     _, _ in
-  }
-
-  public func installVoiceAssistantResourceActions(
-    prepareWakeWordModel:
-      @escaping @Sendable (@escaping @Sendable (Double) -> Void) async throws -> String,
-    prepareTTSModel:
-      @escaping @Sendable (
-        String,
-        @escaping @Sendable (Double) -> Void
-      ) async throws -> Void,
-    selectTTSModel: @escaping @Sendable (String) -> Void,
-    downloadedTTSModelIdentifiers: Set<String>,
-    validateWakeWordConfiguration:
-      @escaping @Sendable (WakeWordConfiguration) async throws -> Void,
-    stopSpeechPlayback: @escaping @MainActor () -> Bool
-  ) {
-    prepareWakeWordModelAction = prepareWakeWordModel
-    prepareTTSModelAction = prepareTTSModel
-    selectTTSModelAction = selectTTSModel
-    self.voice.downloadedTTSModelIdentifiers = downloadedTTSModelIdentifiers.intersection(
-      Set(ttsModelOptions.map(\.id))
-    )
-    selectTTSModelAction(self.settings.ttsModelIdentifier)
-    self.voice.ttsResourceState =
-      self.voice.downloadedTTSModelIdentifiers.contains(self.settings.ttsModelIdentifier)
-      ? .ready
-      : .notInstalled
-    validateWakeWordConfigurationAction = validateWakeWordConfiguration
-    stopSpeechPlaybackAction = stopSpeechPlayback
-    synchronizeWakeWordResourceWithLocalSpeechModel()
-  }
-
-  public func installWakeWordConfigurationValidationAction(
-    _ action: @escaping @Sendable (WakeWordConfiguration) async throws -> Void
-  ) {
-    validateWakeWordConfigurationAction = action
   }
 
   public func updateWakeWordRuntimeState(_ state: WakeWordRuntimePresentationState) {
@@ -458,7 +373,8 @@ public final class AppModel {
     openMicrophoneSettingsAction: @escaping () -> Void,
     requestGlobalInputAction: @escaping () -> Void,
     retryGlobalInputAction: @escaping () -> Void,
-    workflowLibraryChangedAction: @escaping @MainActor () -> Void
+    workflowLibraryChangedAction: @escaping @MainActor () -> Void,
+    voiceResourceServices: VoiceResourceServices
   ) {
     self.requestGlobalInputAction = requestGlobalInputAction
     self.retryGlobalInputAction = retryGlobalInputAction
@@ -524,11 +440,27 @@ public final class AppModel {
     self.historyRepository = historyRepository
     self.runHistoryBrowser = runHistoryBrowser
     self.history = RunHistoryModel(browser: runHistoryBrowser, workflows: self.workflowLibrary, maintenanceSleep: historyMaintenanceSleep)
+    self.voice = VoiceRunModel(settings: settings, resources: voiceResourceServices,
+      supportedTTSModelIDs: Set(ttsModelOptions.map(\.id)),
+      resourceAvailabilityChanged: workflowLibraryChangedAction,
+      prepareLocalSpeech: prepareLocalSpeechAction,
+      releaseLocalSpeech: releaseLocalSpeechRuntimeAction,
+      stopLocalSpeech: stopLocalSpeechRuntimeAction,
+      appendEvent: { [history] in history.append($0) })
     self.runReceiptRepository = runReceiptRepository
     self.localHistoryMaintenance = localHistoryMaintenance
     self.diagnosticRepository = diagnosticRepository
     self.settingsStore = settingsStore
-    self.vocabulary = VocabularyLibraryModel(settings: settings, source: vocabularyRuleSource)
+    self.vocabulary = VocabularyLibraryModel(settings: settings, source: vocabularyRuleSource,
+      didChange: { [workflowLibrary] bindings in
+        workflowLibrary.cancelWorkflowExplanation()
+        workflowLibrary.rebuild(defaultVocabularyBindings: bindings)
+        workflowLibraryChangedAction()
+      }, saveFailed: { [history] in
+        history.append(EventFeedEntry(
+          english: L10n.runText(.settingsSaveFailedRetry, language: .english),
+          simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)))
+      })
     self.workflowFileStore = workflowFileStore
     self.credentialStore = credentialStore
     self.localPersistenceStatus = localPersistenceStatus
@@ -547,12 +479,9 @@ public final class AppModel {
       ? defaultLocalSpeechModelIdentifier
       : nil
     self.localSpeechPhysicalMemoryGiB = max(1, localSpeechPhysicalMemoryGiB)
-    self.prepareLocalSpeechAction = prepareLocalSpeechAction
     self.synchronizeResidentSpeechModelsAction = synchronizeResidentSpeechModelsAction
     self.prepareEnabledSpeechModelAction = prepareEnabledSpeechModelAction
     self.setLocalSpeechRuntimeEnabledAction = setLocalSpeechRuntimeEnabledAction
-    self.releaseLocalSpeechRuntimeAction = releaseLocalSpeechRuntimeAction
-    self.stopLocalSpeechRuntimeAction = stopLocalSpeechRuntimeAction
     self.startWorkflowAudioRunAction = startWorkflowAudioRunAction
     self.finishWorkflowAudioRunAction = finishWorkflowAudioRunAction
     self.retryFailedAudioRecoveryAction = retryFailedAudioRecoveryAction
@@ -792,6 +721,7 @@ extension AppModel {
     history.hasBegunApplicationShutdown = true
     benchmarkArchive.beginShutdown()
     settings.beginShutdown()
+    voice.stopResourcePreparationForApplicationShutdown()
     workflowLibrary.cancelWorkflowExplanation()
     cancelPendingLiveSubtitleMeterRefresh()
   }

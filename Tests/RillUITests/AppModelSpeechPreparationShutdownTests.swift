@@ -128,7 +128,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
     await harness.model.waitForInitialVoiceConfiguration()
 
     harness.model.prepareLocalSpeechModel()
-    harness.model.cancelLocalSpeechModelPreparation()
+    harness.model.voice.cancelLocalSpeechModelPreparation()
     for _ in 0..<20 {
       await Task.yield()
     }
@@ -160,7 +160,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
       harness.model.voice.localSpeechPreparationProgress == 0.5
     }
 
-    harness.model.cancelLocalSpeechModelPreparation()
+    harness.model.voice.cancelLocalSpeechModelPreparation()
     XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
     XCTAssertEqual(harness.model.voice.localSpeechPreparationProgress, 0)
     XCTAssertNil(harness.model.voice.localSpeechPreparedModelIdentifier)
@@ -254,7 +254,7 @@ final class AppModelLocalSpeechPreparationShutdownTests: XCTestCase {
 
     harness.model.prepareLocalSpeechModel()
     await retiredProvider.waitUntilStarted()
-    harness.model.cancelLocalSpeechModelPreparation()
+    harness.model.voice.cancelLocalSpeechModelPreparation()
     harness.model.prepareLocalSpeechModel()
     await activeProvider.waitUntilStarted()
 

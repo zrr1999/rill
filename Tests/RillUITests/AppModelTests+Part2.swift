@@ -1,3 +1,4 @@
+import RillTestSupport
 
 @testable import RillCore
 @testable import RillWorkflows
@@ -655,7 +656,7 @@ extension AppModelTests {
 
         await harness.model.waitForInitialVoiceConfiguration()
         harness.model.selectTrustedLocalSpeechModel(appModelTestTrustedLocalSpeechModels()[1].id)
-        await harness.model.waitForLocalSpeechPreparation()
+        await harness.model.voice.waitForLocalSpeechPreparation()
 
         let snapshot = await probe.snapshot()
         XCTAssertEqual(snapshot.prepareCount, 1)
@@ -684,7 +685,7 @@ extension AppModelTests {
 
         await harness.model.waitForInitialVoiceConfiguration()
         harness.model.prepareLocalSpeechModel()
-        await harness.model.waitForLocalSpeechPreparation()
+        await harness.model.voice.waitForLocalSpeechPreparation()
 
         let expected = L10n.localSpeechPreparationFailure(.generic)
         XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
@@ -717,7 +718,7 @@ extension AppModelTests {
 
         await harness.model.waitForInitialVoiceConfiguration()
         harness.model.prepareLocalSpeechModel()
-        await harness.model.waitForLocalSpeechPreparation()
+        await harness.model.voice.waitForLocalSpeechPreparation()
 
         let expected = L10n.localSpeechPreparationFailure(.integrity)
         XCTAssertEqual(
@@ -1091,12 +1092,12 @@ extension AppModelTests {
         XCTAssertTrue(unavailableHarness.model.workflowLibrary.customWorkflows.isEmpty)
         XCTAssertNotNil(unavailableHarness.model.workflowLibrary.workflowEditorError)
 
-        let readyHarness = makeHarness()
-        readyHarness.model.installWakeWordConfigurationValidationAction { configuration in
+        let readyHarness = makeHarness(voiceResourceServices: makeVoiceResourceServicesForTesting(validateWakeWordConfiguration: { configuration in
             guard configuration.phrases == ["Hey Rill"] else {
                 throw WakeWordSaveValidationError.unexpectedConfiguration
             }
-        }
+        }))
+
 
         await readyHarness.model.saveWorkflowDraft(draft)
 
@@ -1168,7 +1169,7 @@ extension AppModelTests {
         })
         await harness.model.waitForInitialVoiceConfiguration()
         harness.model.selectTrustedLocalSpeechModel("untrusted-custom-model")
-        await harness.model.waitForLocalSpeechPreparation()
+        await harness.model.voice.waitForLocalSpeechPreparation()
         let snapshot = await probe.snapshot()
         XCTAssertEqual(snapshot.prepareCount, 0)
         XCTAssertEqual(harness.model.settings.localSpeechModel, appModelTestTrustedLocalSpeechModels()[0].id)

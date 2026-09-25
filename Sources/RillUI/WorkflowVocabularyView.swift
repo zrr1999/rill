@@ -22,7 +22,7 @@ struct VocabularyCollectionCard: View {
                     isOn: Binding(
                         get: { collection.enabled },
                         set: {
-                            model.setVocabularyCollectionEnabled(
+                            model.vocabulary.setVocabularyCollectionEnabled(
                                 collection.id,
                                 isEnabled: $0
                             )
@@ -105,7 +105,7 @@ struct VocabularyCollectionCard: View {
                         .lineLimit(2)
                     Spacer()
                     Button(role: .destructive) {
-                        model.deleteVocabularyEntry(
+                        model.vocabulary.deleteVocabularyEntry(
                             entry.id,
                             from: collection.id
                         )
@@ -154,7 +154,7 @@ struct VocabularyCollectionCard: View {
 
             HStack {
                 Button(L10n.workflowText(.workflowAddEntry, language: model.settings.language)) {
-                    model.addVocabularyEntry(
+                    model.vocabulary.addVocabularyEntry(
                         to: collection.id,
                         kind: entryKind,
                         pattern: pattern,

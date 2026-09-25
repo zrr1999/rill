@@ -14,7 +14,7 @@ extension AppModel {
       settings: settingsStore, privacy: privacy,
       confirmRule: { [weak self] phrase, id in
         guard let self else { throw CocoaError(.userCancelled) }
-        let outcome = self.saveVocabularyCorrectionRule(
+        let outcome = self.vocabulary.saveVocabularyCorrectionRule(
           VocabularyRule(id: id, kind: .hotword, pattern: phrase, replacement: ""))
         let ruleID: UUID
         let ownsRule: Bool
@@ -39,7 +39,7 @@ extension AppModel {
       },
       revokeRule: { [weak self] id in
         guard let self else { throw CocoaError(.userCancelled) }
-        self.deleteVocabularyRule(id)
+        self.vocabulary.deleteVocabularyRule(id)
         await self.persistenceWrites.flush()
         guard let encoded = try await settingsStore.string(forKey: .vocabularyLibrary),
           let document = try? JSONDecoder().decode(

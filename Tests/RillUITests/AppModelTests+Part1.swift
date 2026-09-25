@@ -604,7 +604,7 @@ extension AppModelTests {
         await harness.model.saveWorkflowDraft(
             WorkflowEditorDraft(name: "Early Workflow", recognizer: .localSpeech)
         )
-        harness.model.addVocabularyRule(
+        harness.model.vocabulary.addVocabularyRule(
             kind: .hotword,
             pattern: "Early Rule",
             replacement: "",
@@ -612,7 +612,7 @@ extension AppModelTests {
             caseSensitive: false,
             scope: .init()
         )
-        let correctionOutcome = harness.model.saveVocabularyCorrectionRule(
+        let correctionOutcome = harness.model.vocabulary.saveVocabularyCorrectionRule(
             VocabularyRule(pattern: "early correction", replacement: "Early Correction")
         )
         harness.model.prepareLocalSpeechModel()
@@ -621,7 +621,7 @@ extension AppModelTests {
         var activity = await settingsStore.activitySnapshot()
         var preparation = await preparationProbe.snapshot()
         XCTAssertTrue(harness.model.workflowLibrary.customWorkflows.isEmpty)
-        XCTAssertTrue(harness.model.vocabularyRules.isEmpty)
+        XCTAssertTrue(harness.model.vocabulary.vocabularyRules.isEmpty)
         XCTAssertTrue(harness.model.voice.downloadedLocalSpeechModels.isEmpty)
         XCTAssertEqual(correctionOutcome, .notReady)
         XCTAssertEqual(preparation.prepareCount, 0)
@@ -636,7 +636,7 @@ extension AppModelTests {
         activity = await settingsStore.activitySnapshot()
         preparation = await preparationProbe.snapshot()
         XCTAssertEqual(harness.model.workflowLibrary.customWorkflows.map(\.id), [storedWorkflow.id])
-        XCTAssertEqual(harness.model.vocabularyRules.map(\.id), [storedRule.id])
+        XCTAssertEqual(harness.model.vocabulary.vocabularyRules.map(\.id), [storedRule.id])
         XCTAssertEqual(harness.model.voice.downloadedLocalSpeechModels, storedDownloadedModels)
         XCTAssertEqual(preparation.prepareCount, 0)
         XCTAssertNil(activity.setCounts[.customWorkflows])
@@ -672,7 +672,7 @@ extension AppModelTests {
 
         await settingsStore.resumeBatchRead()
         await harness.model.waitForInitialVoiceConfiguration()
-        await harness.model.waitForLocalSpeechPreparation()
+        await harness.model.voice.waitForLocalSpeechPreparation()
         await harness.model.flushPendingPersistenceWrites()
 
         preparation = await preparationProbe.snapshot()
@@ -938,7 +938,7 @@ extension AppModelTests {
         await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(try source.currentRules(), [loadedRule])
-        harness.model.addVocabularyRule(
+        harness.model.vocabulary.addVocabularyRule(
             kind: .hotword,
             pattern: "Project Aurora",
             replacement: "",

@@ -54,8 +54,12 @@ public final class RunHistoryModel {
   var previewMode: PrivacyHistoryPreviewMode = .restricted
   var runHistoryRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
   var hasBegunApplicationShutdown = false
-  var runHistoryScope: RunHistoryScope = .recentRuns {
-    didSet { if oldValue != runHistoryScope { resetRunHistoryBrowsing() } }
+  private(set) var runHistoryScope: RunHistoryScope = .recentRuns
+
+  func setRunHistoryScope(_ scope: RunHistoryScope) {
+    guard runHistoryScope != scope else { return }
+    runHistoryScope = scope
+    resetRunHistoryBrowsing()
   }
   var historyLoadState: HistoryLoadState = .loaded
   var historyRecords: [WorkflowResultRecord] = []
@@ -79,6 +83,11 @@ public final class RunHistoryModel {
     runHistoryBrowser = browser
     library = workflows
   }
+  func append(_ entry: EventFeedEntry) {
+    eventFeed.append(entry)
+    if eventFeed.count > 200 { eventFeed.removeFirst(eventFeed.count - 200) }
+  }
+
   func startPeriodicMaintenance(interval: Duration, perform: @escaping @MainActor () -> Void) {
     guard !hasBegunApplicationShutdown, periodicHistoryRetentionMaintenanceTask == nil,
       interval > .zero else { return }

@@ -152,7 +152,7 @@ Execution still checks live authorization and model enablement; changing the
 selected model during capture never silently redirects the admitted request.
 `RecognitionRequest` contains run identity, priority, context needed for selection
 capture, audio and recognition options. Providers no longer receive a workflow
-or re-resolve its route. Vocabulary collections remain within Runtime; the
+or re-resolve its route. Vocabulary collections remain within RillWorkflows; the
 provider receives only the resolved hints.
 
 Offline and streaming hint capabilities are distinct. Current Qwen streaming
@@ -163,7 +163,7 @@ before capture stops reaches both WAV storage and an active preview session;
 diagnostics count delivered preview samples and drained tail samples. Preview
 observations are host timestamps, not proof of screen presentation.
 
-`WorkflowAudioRunController` belongs to Runtime. Its preparing, starting,
+`WorkflowAudioRunController` belongs to RillWorkflows. Its preparing, starting,
 recording and stopping states keep the corresponding run resources together;
 finishing work retains its existing independent cleanup ownership. `AppModel`
 callers access existing feature owners directly rather than through duplicate
@@ -273,3 +273,17 @@ Platform 的 `BenchmarkCorpusExporter` 负责认证读取、私有暂存和原�
 历史维护周期任务归 `RunHistoryModel`，时钟显式注入；测试控制 tick 和完成条件。
 设置可用性、LLM 验证及其代际取消归 `SettingsPersistenceModel`，工作流解释的任务、
 失效和回执校验归 `WorkflowLibraryModel`；视图直接发出功能命令，不再经过 AppModel 转发。
+
+语音资源准备与查询命令进一步收敛：`VoiceRunModel` 拥有唤醒词和本地 ASR
+准备任务、取消与进度发布；模型切换和退出使旧任务失去发布资格。生产组合根完整
+注入唤醒词、TTS 选择、验证与播放服务，删除没有产品调用方的独立 TTS 下载入口。
+本地 ASR 准备只保留一个任务身份，取消后的工作仍由既有任务所有者保留；终止退出
+遵守原有非阻塞策略，不把取消或句柄释放当成底层推理已退出。
+
+词库模型直接接受编辑命令，更新运行时词库并通过统一设置协调器写入。旧规则只在
+加载/恢复时迁移，展示投影由当前集合计算；不再保存平行规则数组或 revision 转发层。
+词库加载中、不可用或退出后拒绝所有编辑命令。删除词库涉及工作流绑定，仍由应用入口协调。
+
+工作区、全局搜索与快捷面板使用同一 `RecordSearch` 游标规则。工作区保留每页 100 条、
+快捷面板保留每页 50 条的策略；工作区只在整轮查询完成后发布匹配集合。查询、筛选和
+预览选择通过显式命令驱动，批量重置只启动一次查询，不使用 `didSet` 副作用链。

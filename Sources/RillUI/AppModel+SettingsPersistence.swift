@@ -1303,12 +1303,7 @@ extension AppModel {
     self.vocabulary.availability = .available
     self.vocabulary.error = nil
     if shouldApplyStoredSetting(Self.vocabularyRulesSettingKey) {
-      self.vocabulary.isApplying = true
-      self.vocabulary.vocabularyCollections = settings.vocabularyCollections
-      self.vocabulary.vocabularyCollectionBindings = settings.vocabularyBindings
-      vocabularyRules = AppSettingsCodec.sortedVocabularyRules(settings.vocabularyRules)
-      self.vocabulary.isApplying = false
-      vocabularyRuleSource.updateCollections(self.vocabulary.vocabularyCollections)
+      vocabulary.restore(collections: settings.vocabularyCollections, bindings: settings.vocabularyBindings)
       if settings.workflowLibraryNeedsMigration
         || settings.vocabularyLibraryNeedsMigration
       {
@@ -1535,7 +1530,7 @@ extension AppModel {
     if retryVocabularyRules, let vocabularyRules = recovered.vocabularyRules {
       self.vocabulary.availability = .available
       self.vocabulary.error = nil
-      self.vocabularyRules = vocabularyRules
+      vocabulary.restoreLegacyRules(vocabularyRules)
       recoveredAnyDomain = true
     }
 
@@ -2041,29 +2036,6 @@ extension AppModel {
     }
     if let privacySettingsLoadError {
       throw PrivacyPolicySettingsSourceError.unavailable(privacySettingsLoadError)
-    }
-  }
-
-  func persistVocabularyRules() {
-    persistVocabularyLibrary()
-  }
-
-  func persistVocabularyLibrary() {
-    markSettingModifiedDuringInitialLoad(Self.vocabularyLibrarySettingKey)
-    guard !self.settings.isRestoringSettings, areVocabularyRulesAvailable else { return }
-    let document = VocabularyLibraryDocument(
-      collections: self.vocabulary.vocabularyCollections, defaultBindings: self.vocabulary.vocabularyCollectionBindings)
-    persistRetryableSettingsStoreWrite(
-      for: Self.vocabularyLibrarySettingKey,
-      category: .vocabulary
-    ) { settingsStore in
-      let encoder = JSONEncoder()
-      encoder.outputFormatting = [.sortedKeys]
-      let data = try encoder.encode(document)
-      try await settingsStore.setString(
-        String(decoding: data, as: UTF8.self),
-        forKey: Self.vocabularyLibrarySettingKey
-      )
     }
   }
 

@@ -1,13 +1,65 @@
 import Foundation
 import RillCore
+import RillTestSupport
 import Testing
 
 @testable import RillUI
 
 @MainActor
 struct VoiceRunModelTests {
+  @Test func shutdownBeforeScheduledSpeechPreparationDoesNotStartProvider() async {
+    let probe = SpeechPreparationProbe()
+    let app = makeHarness(prepareLocalSpeechAction: { settings, _ in
+      await probe.recordPreparation(settings: settings)
+      return settings.model
+    }).model
+    await app.waitForInitialVoiceConfiguration()
+    app.prepareLocalSpeechModel()
+    app.beginApplicationShutdown()
+    await app.voice.waitForLocalSpeechPreparation()
+    #expect(await probe.snapshot().prepareCount == 0)
+    #expect(app.voice.localSpeechPreparationTaskOwner.trackedTaskCount == 0)
+  }
+
+  @Test func changingSpeechModelRejectsLateWakePreparation() async {
+    let gate = WorkflowAudioStartGate()
+    let oldModel = "qwen3-asr-0.6b-mlx-8bit"
+    let harness = makeHarness(
+      voiceResourceServices: makeVoiceResourceServicesForTesting(
+        prepareWakeWordModel: { progress in
+          try await gate.suspendStart()
+          progress(1)
+          return oldModel
+        }
+      ))
+    let app = harness.model
+    await app.waitForInitialVoiceConfiguration()
+    app.prepareWakeWordModel()
+    await gate.waitUntilStarted()
+    #expect(app.voice.wakeWordResourceState.isPreparing)
+
+    app.applyLocalSpeechModel("qwen3-asr-1.7b-mlx-8bit")
+    #expect(app.voice.wakeWordResourceState == .notInstalled)
+    await gate.succeed()
+    await app.voice.waitForResourcePreparations()
+
+    #expect(app.voice.wakeWordResourceState == .notInstalled)
+    #expect(!app.voice.downloadedLocalSpeechModels.contains(oldModel))
+  }
+
+  @Test func shutdownClosesWakePreparationAdmission() async {
+    var didPrepare = false
+    let app = makeHarness().model
+    await app.waitForInitialVoiceConfiguration()
+    app.beginApplicationShutdown()
+    app.voice.prepareWakeWordModel { _ in didPrepare = true }
+    #expect(app.voice.wakeWordPreparationTaskOwner.trackedTaskCount == 0)
+    #expect(!app.voice.wakeWordResourceState.isPreparing)
+    #expect(!didPrepare)
+  }
+
   @Test func interleavedAndLateEventsCannotOverwriteThePrimaryRun() {
-    let model = VoiceRunModel()
+    let model = makeHarness().model.voice
     let primary = RunSnapshot(
       runID: UUID(), workflowID: UUID(), workflow: .init(fallbackName: "Primary"), trigger: .hotkey)
     let assistant = RunSnapshot(
@@ -30,8 +82,9 @@ struct VoiceRunModelTests {
     #expect(!model.isRunning)
   }
   @Test func stageEventsRemainRunAndLaneScopedAndRecordingTakesPrecedence() {
-    let model = VoiceRunModel()
-    let run = RunSnapshot(runID: UUID(), workflowID: UUID(),
+    let model = makeHarness().model.voice
+    let run = RunSnapshot(
+      runID: UUID(), workflowID: UUID(),
       workflow: .init(fallbackName: "Speech"), trigger: .hotkey)
     model.begin(run)
     model.updateStage(.saving, from: .init(runID: run.runID))

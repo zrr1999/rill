@@ -68,7 +68,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
                 && vocabularyHarness.model.vocabulary.availability == .unavailable
         }
         XCTAssertTrue(vocabularyDomainFailedClosed)
-        XCTAssertTrue(vocabularyHarness.model.vocabularyRules.isEmpty)
+        XCTAssertTrue(vocabularyHarness.model.vocabulary.vocabularyRules.isEmpty)
 
         for (store, key, expectedPayload) in [
             (workflowStore, AppSettingKey.customWorkflows, duplicateWorkflowPayload),
@@ -190,7 +190,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
         XCTAssertNotNil(harness.model.vocabulary.error)
         XCTAssertThrowsError(try source.currentRules())
 
-        harness.model.addVocabularyRule(
+        harness.model.vocabulary.addVocabularyRule(
             kind: .mapping,
             pattern: "unsafe",
             replacement: "write",
@@ -200,7 +200,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
         )
         await waitForEventProcessing(harness)
 
-        XCTAssertTrue(harness.model.vocabularyRules.isEmpty)
+        XCTAssertTrue(harness.model.vocabulary.vocabularyRules.isEmpty)
         var activity = await settingsStore.activitySnapshot()
         XCTAssertEqual(activity.storage[AppModel.vocabularyRulesSettingKey], corruptPayload)
         XCTAssertNil(activity.setCounts[AppModel.vocabularyRulesSettingKey])
@@ -223,7 +223,7 @@ final class AppModelSettingsDomainRecoveryTests: XCTestCase {
 
         let didRecoverVocabularyDomain = await waitUntil {
             harness.model.vocabulary.availability == .available
-                && harness.model.vocabularyRules.map(\.id) == [recoveredRule.id]
+                && harness.model.vocabulary.vocabularyRules.map(\.id) == [recoveredRule.id]
         }
         XCTAssertTrue(didRecoverVocabularyDomain)
         XCTAssertNil(harness.model.vocabulary.error)

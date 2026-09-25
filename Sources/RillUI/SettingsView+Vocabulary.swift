@@ -90,7 +90,7 @@ extension SettingsView {
         ),
         isOn: Binding(
           get: { rule.enabled },
-          set: { model.setVocabularyRuleEnabled(rule.id, isEnabled: $0) }
+          set: { model.vocabulary.setVocabularyRuleEnabled(rule.id, isEnabled: $0) }
         )
       )
       .labelsHidden()
@@ -124,7 +124,7 @@ extension SettingsView {
       Spacer()
 
       Button(role: .destructive) {
-        model.deleteVocabularyRule(rule.id)
+        model.vocabulary.deleteVocabularyRule(rule.id)
       } label: {
         Image(systemName: RillSystemSymbol.trash.rawValue)
       }
@@ -161,7 +161,7 @@ extension SettingsView {
   }
 
   func addVocabularyRule() {
-    model.addVocabularyRule(
+    model.vocabulary.addVocabularyRule(
       kind: vocabularyKind,
       pattern: vocabularyPattern,
       replacement: vocabularyKind == .mapping ? vocabularyReplacement : "",

@@ -640,7 +640,8 @@ func makeHarness(
       WorkflowLibraryModel.unavailableWorkflowExplanation(for: plan)
     },
   writeClipboardTextAction: @escaping @MainActor (String) -> Void = { _ in },
-  showRecordPanelAction: @escaping @Sendable () async -> Void = {}
+  showRecordPanelAction: @escaping @Sendable () async -> Void = {},
+  voiceResourceServices: VoiceResourceServices = makeVoiceResourceServicesForTesting()
 ) -> AppModelTestHarness {
   let eventBus = EventBus()
   let actionLog = ProbeActionLog()
@@ -744,7 +745,8 @@ func makeHarness(
     requestAccessibilityAction: {},
     requestMicrophoneAction: {},
     openAccessibilitySettingsAction: {},
-    openMicrophoneSettingsAction: {}, requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {}
+    openMicrophoneSettingsAction: {}, requestGlobalInputAction: {}, retryGlobalInputAction: {}, workflowLibraryChangedAction: {},
+    voiceResourceServices: voiceResourceServices
   )
   model.installRecordPanelAction {
     Task {

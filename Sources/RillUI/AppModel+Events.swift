@@ -503,10 +503,7 @@ extension AppModel {
     }
 
     private func append(_ entry: EventFeedEntry) {
-        self.history.eventFeed.append(entry)
-        if self.history.eventFeed.count > 200 {
-            self.history.eventFeed.removeFirst(self.history.eventFeed.count - 200)
-        }
+        history.append(entry)
     }
 
     func scheduleLiveSubtitleHide(after delay: Duration = .seconds(1)) {

@@ -29,7 +29,7 @@ final class LocalSpeechRuntimeLifecycleTests: XCTestCase {
     // task; synchronizeEventListener alone does not drain it.
     await harness.model.waitForInitialVoiceConfiguration()
 
-    harness.model.releaseLocalSpeechModelMemory()
+    harness.model.voice.releaseLocalSpeechModelMemory()
 
     XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
     XCTAssertEqual(probe.runtimeTransitions, [true])

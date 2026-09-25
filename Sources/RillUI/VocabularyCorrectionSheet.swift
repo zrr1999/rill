@@ -328,7 +328,7 @@ public struct VocabularyCorrectionSheet: View {
         for scope: VocabularyRuleScope?
     ) -> [VocabularyCollection] {
         guard let scope else { return [] }
-        let compatibleIDs = Set(model.vocabularyCollectionIDs(compatibleWith: scope))
+        let compatibleIDs = Set(model.vocabulary.vocabularyCollectionIDs(compatibleWith: scope))
         return model.vocabulary.vocabularyCollections.filter { compatibleIDs.contains($0.id) }
     }
 
@@ -375,10 +375,10 @@ public struct VocabularyCorrectionSheet: View {
             return
         }
 
-        let compatibleIDs = Set(model.vocabularyCollectionIDs(compatibleWith: rule.scope))
+        let compatibleIDs = Set(model.vocabulary.vocabularyCollectionIDs(compatibleWith: rule.scope))
         let selectedCollectionID =
             targetCollectionID.flatMap { compatibleIDs.contains($0) ? $0 : nil }
-        switch model.saveVocabularyCorrectionRule(rule, to: selectedCollectionID) {
+        switch model.vocabulary.saveVocabularyCorrectionRule(rule, to: selectedCollectionID) {
         case .created:
             recordMemoryCorrection(rule)
             model.append(

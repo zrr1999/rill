@@ -1031,7 +1031,7 @@ extension AppModel {
       recordWorkspace.selectCollection(nil)
     }
     if section == .stream {
-      self.history.runHistoryScope = .recentRuns
+      self.history.setRunHistoryScope(.recentRuns)
     }
   }
 
@@ -1090,7 +1090,7 @@ extension AppModel {
   public func showHistoryEntry(_ entryID: UUID) {
     recordWorkspace.cancelNavigation()
     selectedSidebarSection = .stream
-    self.history.runHistoryScope = .recentRuns
+    self.history.setRunHistoryScope(.recentRuns)
     self.history.runHistoryDeepLinkState = .idle
     self.history.historyNavigationRequest = HistoryNavigationRequest(
       entryID: entryID,
@@ -1210,7 +1210,7 @@ extension AppModel {
     }
     if sanitizedDraft.eventType == .wakeWord {
       do {
-        try await validateWakeWordConfigurationAction(
+        try await voice.validateWakeWordConfiguration(
           WakeWordConfiguration(phrases: sanitizedDraft.wakePhrases)
         )
       } catch {

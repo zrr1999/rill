@@ -32,58 +32,7 @@ extension AppModel {
   }
 
   public func prepareWakeWordModel() {
-    if case .preparing = self.voice.wakeWordResourceState {
-      return
-    }
-    self.voice.wakeWordResourceState = .preparing(progress: nil)
-    Task {
-      do {
-        let preparedModel = try await prepareWakeWordModelAction { progress in
-          Task { @MainActor in
-            self.voice.wakeWordResourceState = .preparing(progress: progress)
-          }
-        }
-        recordDownloadedLocalSpeechModel(preparedModel)
-        self.voice.wakeWordResourceState = .ready
-        workflowLibraryChangedAction()
-      } catch is CancellationError {
-        self.voice.wakeWordResourceState = .notInstalled
-        workflowLibraryChangedAction()
-      } catch let reason as VoiceAssistantResourceUnavailableReason {
-        self.voice.wakeWordResourceState = .unavailable(reason)
-        workflowLibraryChangedAction()
-      } catch {
-        self.voice.wakeWordResourceState = .failed(error.localizedDescription)
-        workflowLibraryChangedAction()
-      }
-    }
-  }
-
-  public func prepareTTSModel() {
-    if case .preparing = self.voice.ttsResourceState {
-      return
-    }
-    let modelIdentifier = self.settings.ttsModelIdentifier
-    self.voice.ttsResourceState = .preparing(progress: nil)
-    Task {
-      do {
-        try await prepareTTSModelAction(modelIdentifier) { progress in
-          Task { @MainActor in
-            guard self.settings.ttsModelIdentifier == modelIdentifier else { return }
-            self.voice.ttsResourceState = .preparing(progress: progress)
-          }
-        }
-        self.voice.downloadedTTSModelIdentifiers.insert(modelIdentifier)
-        guard self.settings.ttsModelIdentifier == modelIdentifier else { return }
-        self.voice.ttsResourceState = .ready
-      } catch is CancellationError {
-        guard self.settings.ttsModelIdentifier == modelIdentifier else { return }
-        self.voice.ttsResourceState = .notInstalled
-      } catch {
-        guard self.settings.ttsModelIdentifier == modelIdentifier else { return }
-        self.voice.ttsResourceState = .failed(error.localizedDescription)
-      }
-    }
+    voice.prepareWakeWordModel { [weak self] model in self?.recordDownloadedLocalSpeechModel(model) }
   }
 
   public func disableWakeWordListening() {
@@ -102,7 +51,7 @@ extension AppModel {
     let normalizedPhrases: [String]
     do {
       normalizedPhrases = try configuration.validatedPhrases()
-      try await validateWakeWordConfigurationAction(
+      try await voice.validateWakeWordConfiguration(
         WakeWordConfiguration(phrases: normalizedPhrases)
       )
     } catch {
@@ -239,11 +188,6 @@ extension AppModel {
       return .failed(libraryError)
     }
     return .saved
-  }
-
-  @discardableResult
-  public func stopSpeechPlaybackIfActive() -> Bool {
-    stopSpeechPlaybackAction()
   }
 
   private var wakeWordSettingsWorkflow: WorkflowDefinition? {

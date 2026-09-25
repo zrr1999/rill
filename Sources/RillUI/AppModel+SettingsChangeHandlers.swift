@@ -55,18 +55,14 @@ extension AppModel {
       // A cloud selection owns no local-model readiness state. Retire
       // any in-flight local load so an old completion cannot publish
       // ready after the route has changed.
-      resetLocalSpeechPreparationStatus()
+      voice.resetLocalSpeechPreparationStatus()
     }
   }
 
   func handleTTSModelIdentifierChange(from oldValue: String) {
     guard oldValue != self.settings.ttsModelIdentifier else { return }
     persistStringSetting(self.settings.ttsModelIdentifier, for: .ttsModel)
-    selectTTSModelAction(self.settings.ttsModelIdentifier)
-    self.voice.ttsResourceState =
-      self.voice.downloadedTTSModelIdentifiers.contains(self.settings.ttsModelIdentifier)
-      ? .ready
-      : .notInstalled
+    voice.synchronizeTTSSelection()
   }
 
   func handleBuiltinPushToTalkOutputModeChange(from oldValue: BuiltinPushToTalkOutputMode) {
@@ -91,7 +87,7 @@ extension AppModel {
     }
     guard oldValue != self.settings.localSpeechModel else { return }
     publishCurrentLocalSpeechSettingsToRuntime()
-    resetLocalSpeechPreparationStatus()
+    voice.resetLocalSpeechPreparationStatus()
     synchronizeWakeWordResourceWithLocalSpeechModel()
     persistStringSetting(self.settings.localSpeechModel, for: .localSpeechModel)
   }
@@ -99,7 +95,7 @@ extension AppModel {
   func handleLocalSpeechPrewarmChange(from oldValue: Bool) {
     guard oldValue != self.settings.localSpeechPrewarm else { return }
     publishCurrentLocalSpeechSettingsToRuntime()
-    resetLocalSpeechPreparationStatus()
+    voice.resetLocalSpeechPreparationStatus()
     persistStringSetting(self.settings.localSpeechPrewarm ? "true" : "false", for: .localSpeechPrewarm)
   }
 

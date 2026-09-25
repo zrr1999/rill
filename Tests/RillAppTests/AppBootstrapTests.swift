@@ -437,37 +437,6 @@ private actor AppBootstrapRichPasteProbe {
 }
 
 final class AppBootstrapTests: XCTestCase {
-  func testTTSPreparationProgressDoesNotResetWhenLoadingStarts() {
-    XCTAssertEqual(
-      AppBootstrap.displayedTTSPreparationProgress(
-        .init(phase: .downloading, completedUnitCount: 1, totalUnitCount: 2)
-      ),
-      0.475,
-      accuracy: 0.000_001
-    )
-    XCTAssertEqual(
-      AppBootstrap.displayedTTSPreparationProgress(
-        .init(phase: .downloading, completedUnitCount: 2, totalUnitCount: 2)
-      ),
-      0.95,
-      accuracy: 0.000_001
-    )
-    XCTAssertEqual(
-      AppBootstrap.displayedTTSPreparationProgress(
-        .init(phase: .loading, completedUnitCount: 0, totalUnitCount: 1)
-      ),
-      0.95,
-      accuracy: 0.000_001
-    )
-    XCTAssertEqual(
-      AppBootstrap.displayedTTSPreparationProgress(
-        .init(phase: .loading, completedUnitCount: 1, totalUnitCount: 1)
-      ),
-      1,
-      accuracy: 0.000_001
-    )
-  }
-
   func testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation() async throws {
     let selectionCanary = "PRIVATE-SELECTION-CANARY"
     let clipboardCanary = "PRIVATE-CLIPBOARD-CANARY"

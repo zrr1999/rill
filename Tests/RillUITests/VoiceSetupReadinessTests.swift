@@ -209,7 +209,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
 
         await harness.model.waitForInitialVoiceConfiguration()
         harness.model.prepareLocalSpeechModel()
-        await harness.model.waitForLocalSpeechPreparation()
+        await harness.model.voice.waitForLocalSpeechPreparation()
 
         XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
         let expected = L10n.localSpeechPreparationFailure(.generic)

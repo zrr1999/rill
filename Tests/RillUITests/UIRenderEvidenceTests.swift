@@ -54,13 +54,13 @@ final class UIRenderEvidenceTests: XCTestCase {
                 try await render(RecordWorkspaceView(workspace: workspace, language: language, copySelection: { _ in .storageUnavailable }),
                     size: NSSize(width: 620, height: 660), dark: dark,
                     to: output.appendingPathComponent("records-compact-\(variant).png"))
-                workspace.payloadKindFilter = .image
-                workspace.showsPinnedOnly = true
+                workspace.setPayloadKindFilter(.image)
+                workspace.setShowsPinnedOnly(true)
                 try await render(RecordWorkspaceView(workspace: workspace, language: language),
                     size: NSSize(width: 720, height: 560), dark: dark,
                     to: output.appendingPathComponent("records-no-results-\(variant).png"))
-                workspace.payloadKindFilter = nil
-                workspace.showsPinnedOnly = false
+                workspace.setPayloadKindFilter(nil)
+                workspace.setShowsPinnedOnly(false)
                 try await render(GlobalSearchResultsView(query: .constant("unavailable"), results: [], selectedResultID: nil,
                     historySearchState: .failed, recordSearchState: .failed, historyFailureActionTitle: "Retry", language: language,
                     focusRequest: 0, onMoveSelection: { _ in }, onSubmit: {}, onCancel: {},

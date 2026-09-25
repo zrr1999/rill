@@ -310,7 +310,7 @@ final class TrustedLocalSpeechCatalogTests: XCTestCase {
     harness.model.applyPreferredSpeechEngine(.local)
     harness.model.applyLocalSpeechPrewarm(true)
 
-    await harness.model.waitForLocalSpeechPreparation()
+    await harness.model.voice.waitForLocalSpeechPreparation()
 
     let snapshot = await probe.snapshot()
     XCTAssertEqual(snapshot.prepareCount, 0)

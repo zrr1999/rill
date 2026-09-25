@@ -147,7 +147,7 @@ extension SettingsView {
                     .foregroundStyle(.secondary)
                   }
                   Button(L10n.text(.localSpeechCancelPreparation, language: model.settings.language)) {
-                    model.cancelLocalSpeechModelPreparation()
+                    model.voice.cancelLocalSpeechModelPreparation()
                   }
                   .buttonStyle(.bordered)
                   .controlSize(.small)
@@ -177,7 +177,7 @@ extension SettingsView {
                   Button(
                     L10n.text(.localSpeechReleaseMemory, language: model.settings.language)
                   ) {
-                    model.releaseLocalSpeechModelMemory()
+                    model.voice.releaseLocalSpeechModelMemory()
                   }
                   .buttonStyle(.bordered)
                   .controlSize(.small)
