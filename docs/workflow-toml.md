@@ -285,6 +285,24 @@ replacement, `llm-rewrite` sends only the current text and instruction to the
 configured LLM Provider. Use the supplied `speech_to_text_polish.toml` template
 for a custom workflow; no `text.provider` option is needed.
 
+Cleanup treats questions, commands and short phrases with missing context as
+transcript text. For example, “总结一下这些内容。” must remain that sentence;
+cleanup must not answer it or ask for the material to summarize. The same rule
+applies to contextual correction. `llm-answer` and voice-assistant workflows
+still answer requests. User-authored TOML prompts are not overwritten by updates.
+
+The provider request contract and cleanup examples are covered by offline checks.
+An opt-in model evaluation sends only fixed synthetic samples in
+`Tests/Fixtures/TextRewrite/cases.json`, in both ordinary and contextual correction
+modes. Run it with `RILL_REWRITE_LIVE_EVALUATION=1`, `OPENAI_API_KEY`,
+`OPENAI_BASE_URL` and `OPENAI_MODEL` set, using
+`scripts/swift_locked.sh test --filter TextRewriteEvaluationTests`.
+Results are saved locally in `.artifacts/text-rewrite/live-evaluation.json`.
+Offline request checks do not establish model compliance; live results apply
+only to the tested provider, model and corpus.
+Comparisons ignore punctuation and whitespace but retain words, case and numbers.
+The emphasis sample retains a repetition whose intent is ambiguous without audio.
+
 DeepSeek rewrite requests use `reasoning.effort = "none"`, temperature 0.1 and a
 4096-token output limit. The rewrite has a 5-second budget; cancellation drains
 the request before any fallback is delivered. Inputs above 12,000 UTF-8 bytes skip
