@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import RillProviders
+@testable import RillCore
 
 final class WakePhraseMatcherTests: XCTestCase {
   func testMatchesEnglishPhraseAndReturnsCommand() {

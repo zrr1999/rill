@@ -1,4 +1,4 @@
-import RillSpeechContracts
+import RillCore
 @preconcurrency import AVFoundation
 import Foundation
 

@@ -225,3 +225,15 @@ Boundary regressions use controllable stores and suspended
 operations to verify ordering, cancellation, and shutdown behavior. Physical
 Fn input, haptics, microphone use, paste, and accessibility still require the
 device checks in the [release QA checklist](release-qa-checklist.md).
+
+System capture, microphone arbitration, PCM file writing, Shortcuts and Markdown
+file output live in `RillPlatform`. Providers own model/network adapters and pass
+streaming sessions through the Core preview contract. VAD observations carry
+speech state and duration; platform code never imports worker frames or MLX
+chunk constants. The composition root injects the preview session factory.
+
+History, receipt and diagnostic repositories require generation-aware writes.
+Their maintenance ports are separate, explicit contracts. Local retention only
+requires those maintenance ports; `DiagnosticsRecorder` requires both when a
+persistent repository is supplied, so deletion cannot silently bypass storage.
+Timestamp-only deletion remains at backend compatibility boundaries.

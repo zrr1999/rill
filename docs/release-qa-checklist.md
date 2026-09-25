@@ -341,8 +341,9 @@ Complete the pass in both App languages.
       TTS model work never queues on the ASR worker supervisor.
 - [ ] During a long streaming hypothesis, the live-subtitle panel keeps its
       standard fixed frame; text preserves the latest two lines without width
-      or height growth. Preparing/processing compact states use their own fixed
-      frame and neither layout steals key focus from the foreground App.
+      or height growth. Once expanded, the current run keeps that frame through
+      processing even when the hypothesis becomes empty. A new run resets the
+      compact layout; neither layout steals key focus from the foreground App.
 - [ ] Record wake-listening idle CPU and memory, cold model preparation time,
       warm startup time, and detection latency on every supported Mac tier.
       Repeat the chain with built-in microphone/speaker and headphones, on the

@@ -1,7 +1,7 @@
 import XCTest
 
 @testable import RillCore
-@testable import RillProviders
+@testable import RillPlatform
 
 private actor LegacyAudioCaptureProbe: AudioCaptureService {
   private(set) var startRequest: AudioCaptureRequest?
@@ -362,64 +362,18 @@ private actor BlockingLocalSpeechRemovalGate {
 }
 
 final class RealtimeAudioCaptureServiceTests: XCTestCase {
-  func testBundledVoiceActivityDetectorValidationUsesProviderSurface() throws {
-    XCTAssertNoThrow(
-      try RealtimeAudioCaptureService.validateBundledVoiceActivityDetector()
-    )
-  }
-
-  func testLocalSpeechAudioFrontendPrewarmDoesNotTouchAudioWithoutAuthorization() async throws {
-    let audio = try makeProbeAudio(named: "local-speech-prewarm-unauthorized")
+  func testConstructionDoesNotInitializeTheMicrophone() async throws {
+    let audio = try makeProbeAudio(named: "local-speech-construction")
     let source = TestLocalSpeechAudioCaptureSource()
     let service = RealtimeAudioCaptureService(
       legacyCaptureService: LegacyAudioCaptureProbe(audio: audio),
       liveUpdateHandler: { _ in },
-      localSpeechCaptureSource: source,
-      isMicrophoneAuthorizedForLocalSpeechPrewarm: { false }
+      localSpeechCaptureSource: source
     )
-
-    await service.prepareLocalSpeechAudioFrontendIfAuthorized()
-
     XCTAssertEqual(source.prepareCount, 0)
     XCTAssertEqual(source.startCount, 0)
-    XCTAssertEqual(source.stopCount, 0)
     await service.shutdown()
     XCTAssertEqual(source.shutdownCount, 1)
-  }
-
-  func testAuthorizedLocalSpeechModelPrewarmNeverInitializesTheMicrophoneFrontend()
-    async throws
-  {
-    let audio = try makeProbeAudio(named: "local-speech-prewarm-authorized")
-    let source = TestLocalSpeechAudioCaptureSource()
-    let snapshotProbe = LiveSnapshotProbe()
-    let service = RealtimeAudioCaptureService(
-      legacyCaptureService: LegacyAudioCaptureProbe(audio: audio),
-      liveUpdateHandler: { snapshot in await snapshotProbe.record(snapshot) },
-      localSpeechCaptureSource: source,
-      isMicrophoneAuthorizedForLocalSpeechPrewarm: { true }
-    )
-    source.setPreparationError(
-      AppleVoiceProcessingAudioError.automaticGainControlDidNotActivate
-    )
-
-    await service.prepareLocalSpeechAudioFrontendIfAuthorized()
-
-    XCTAssertEqual(source.prepareCount, 0)
-    XCTAssertEqual(source.startCount, 0)
-    XCTAssertEqual(source.stopCount, 0)
-    let snapshotsAfterFailure = await snapshotProbe.all()
-    XCTAssertTrue(snapshotsAfterFailure.isEmpty)
-
-    source.setPreparationError(nil)
-    await service.prepareLocalSpeechAudioFrontendIfAuthorized()
-    XCTAssertEqual(source.prepareCount, 0)
-    XCTAssertEqual(source.startCount, 0)
-
-    await service.shutdown()
-    XCTAssertEqual(source.shutdownCount, 1)
-    await service.prepareLocalSpeechAudioFrontendIfAuthorized()
-    XCTAssertEqual(source.prepareCount, 0)
   }
 
   func testSequentialLocalCapturesReuseOneStoppedVoiceProcessingSource() async throws {
@@ -450,10 +404,6 @@ final class RealtimeAudioCaptureServiceTests: XCTestCase {
         cumulativeRMS: [0.001]
       )
       try await startTask.value
-      if startCount == 1 {
-        await service.prepareLocalSpeechAudioFrontendIfAuthorized()
-        XCTAssertEqual(source.prepareCount, 0)
-      }
       await service.cancelCapture(runID: runID)
 
       XCTAssertEqual(lifetime.state, .revoked(.captureCancelled))

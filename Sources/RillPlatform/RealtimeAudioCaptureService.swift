@@ -1,4 +1,3 @@
-import RillSpeechContracts
 import AVFoundation
 import Foundation
 import RillCore
@@ -102,7 +101,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
 
   public init(
     legacyCaptureService: any AudioCaptureService,
-    streamingPreviewService: SpeechWorkerStreamingPreviewService? = nil,
+    streamingPreviewSessionFactory: @escaping @Sendable (AudioCaptureRequest) async -> (any LocalSpeechStreamingPreviewSession)? = { _ in nil },
     liveUpdateHandler: @escaping @Sendable (LiveSubtitleSnapshot) async -> Void = { _ in },
     cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
     localSpeechStartupTimeout: Duration = .seconds(3),
@@ -139,7 +138,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     self.wakeWordSpeechStartedHandler = wakeWordSpeechStartedHandler
     self.localSpeechCaptureRuntimeFactory = Self.makeLocalSpeechCaptureRuntimeFactory(
       captureSource: localSpeechCaptureSource,
-      streamingPreviewService: streamingPreviewService,
+      streamingPreviewSessionFactory: streamingPreviewSessionFactory,
       liveUpdateHandler: liveUpdateHandler,
       cleanupOwner: cleanupOwner,
       startupTimeout: localSpeechStartupTimeout,
@@ -169,9 +168,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
   init(
     legacyCaptureService: any AudioCaptureService,
     liveUpdateHandler: @escaping @Sendable (LiveSubtitleSnapshot) async -> Void,
-    localSpeechCaptureSource: any LocalSpeechAudioCaptureSource,
-    isMicrophoneAuthorizedForLocalSpeechPrewarm:
-      @escaping @Sendable () -> Bool = { true }
+    localSpeechCaptureSource: any LocalSpeechAudioCaptureSource
   ) {
     let cleanupOwner = ManagedTemporaryAudioCleanupOwner()
     self.legacyCaptureService = legacyCaptureService
@@ -180,10 +177,9 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     self.sharedVoiceInputHub = nil
     self.localSpeechCaptureSource = localSpeechCaptureSource
     self.wakeWordSpeechStartedHandler = {}
-    _ = isMicrophoneAuthorizedForLocalSpeechPrewarm
     self.localSpeechCaptureRuntimeFactory = Self.makeLocalSpeechCaptureRuntimeFactory(
       captureSource: localSpeechCaptureSource,
-      streamingPreviewService: nil,
+      streamingPreviewSessionFactory: { _ in nil },
       liveUpdateHandler: liveUpdateHandler,
       cleanupOwner: cleanupOwner,
       startupTimeout: .seconds(3),
@@ -194,7 +190,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
 
   private static func makeLocalSpeechCaptureRuntimeFactory(
     captureSource: any LocalSpeechAudioCaptureSource,
-    streamingPreviewService: SpeechWorkerStreamingPreviewService?,
+    streamingPreviewSessionFactory: @escaping @Sendable (AudioCaptureRequest) async -> (any LocalSpeechStreamingPreviewSession)?,
     liveUpdateHandler: @escaping @Sendable (LiveSubtitleSnapshot) async -> Void,
     cleanupOwner: ManagedTemporaryAudioCleanupOwner,
     startupTimeout: Duration,
@@ -204,9 +200,7 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
     { unexpectedTerminationHandler in
       LocalSpeechVoiceCaptureRuntime(
         sourceFactory: { captureSource },
-        streamingPreviewSessionFactory: { request in
-          await streamingPreviewService?.makeSession(for: request)
-        },
+        streamingPreviewSessionFactory: streamingPreviewSessionFactory,
         liveUpdateHandler: liveUpdateHandler,
         cleanupOwner: cleanupOwner,
         startupTimeout: startupTimeout,
@@ -215,17 +209,6 @@ public actor RealtimeAudioCaptureService: AudioCaptureService {
         wakeWordSpeechStartedHandler: wakeWordSpeechStartedHandler
       )
     }
-  }
-
-  public nonisolated static func validateBundledVoiceActivityDetector() throws {
-    guard MLXSileroVADConstants.chunkSampleCount == 512 else {
-      throw CaptureError.voiceActivityDetectionUnavailable
-    }
-  }
-
-  /// Kept as a source-compatible no-op. Model residency is worker-only and
-  /// must never allocate or initialize a microphone frontend.
-  public func prepareLocalSpeechAudioFrontendIfAuthorized() {
   }
 
   private func makeLocalSpeechCaptureRuntime(

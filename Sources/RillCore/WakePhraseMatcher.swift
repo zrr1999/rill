@@ -1,20 +1,20 @@
 import Foundation
 
-struct WakePhraseMatch: Sendable, Equatable {
-  let phrase: String
-  let command: String?
+package struct WakePhraseMatch: Sendable, Equatable {
+  package let phrase: String
+  package let command: String?
 }
 
 /// Matches a configured wake phrase only at the beginning of a local ASR
 /// transcript. Matching ignores punctuation, symbols, whitespace, case, width,
 /// and diacritics, but deliberately does not use fuzzy or phonetic guessing.
-enum WakePhraseMatcher {
+package enum WakePhraseMatcher {
   private struct ComparableText {
     var scalars: [Unicode.Scalar]
     var sourceEnds: [String.Index]
   }
 
-  static func match(
+  package static func match(
     transcript: String,
     phrases: [String]
   ) -> WakePhraseMatch? {

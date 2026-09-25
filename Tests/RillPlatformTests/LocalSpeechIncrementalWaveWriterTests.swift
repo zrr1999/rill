@@ -2,7 +2,7 @@
 import Foundation
 import XCTest
 
-@testable import RillProviders
+@testable import RillPlatform
 
 final class LocalSpeechIncrementalWaveWriterTests: XCTestCase {
   func testProductCaptureCeilingIncludesBoundedStartupTolerance() {

@@ -306,8 +306,8 @@ enum AppBootstrap {
 
   nonisolated static func makeLocalHistoryMaintenance(
     recordHistory: any RecordHistoryMaintaining,
-    historyRepository: any HistoryRepository,
-    runReceiptRepository: any WorkflowRunReceiptRepository,
+    historyRepository: any HistoryMaintaining,
+    runReceiptRepository: any WorkflowRunReceiptMaintaining,
     diagnosticRepository: any DiagnosticHistoryMaintaining,
     settingsStore: (any SettingsStore)?,
     residuePurger: (any StorageResiduePurging)?,
@@ -427,8 +427,8 @@ enum AppBootstrap {
 
 private struct PersistenceBackends {
   let localPersistenceStatus: LocalPersistenceStatus
-  let diagnosticRepository: any DiagnosticRepository
-  let historyRepository: any HistoryRepository
+  let diagnosticRepository: any DiagnosticRepository & DiagnosticHistoryMaintaining
+  let historyRepository: any HistoryRepository & HistoryMaintaining
   /// The single snapshot/keyset boundary used by History and global search.
   /// It is unavailable when durable SQLite persistence failed to initialize;
   /// callers must surface that state instead of rebuilding a lossy projection
@@ -436,7 +436,7 @@ private struct PersistenceBackends {
   let runHistoryBrowser: (any RunHistoryBrowsing)?
   /// `nil` means terminal receipts cannot be durably stored. The app must
   /// not substitute an ephemeral repository and publish it as durable truth.
-  let runReceiptRepository: (any WorkflowRunReceiptRepository)?
+  let runReceiptRepository: (any WorkflowRunReceiptRepository & WorkflowRunReceiptMaintaining)?
   let settingsStore: (any SettingsStore)?
   let recordGraphPersistenceStore: (any RecordGraphPersistenceStore)?
   let residuePurger: (any StorageResiduePurging)?
@@ -449,8 +449,8 @@ private struct PersistenceBackends {
 private struct UnavailableWorkflowRunReceiptRepository: WorkflowRunReceiptRepository {
   func insertTerminal(_ receipt: WorkflowRunReceipt) async throws { throw RunHistoryGenerationError.unsupported }
   func receipts(matching query: WorkflowRunReceiptQuery) async throws -> [WorkflowRunReceipt] { throw RunHistoryGenerationError.unsupported }
-  func deleteReceipts(olderThan cutoff: Date) async throws -> Int { throw RunHistoryGenerationError.unsupported }
-  func deleteAllReceipts() async throws -> Int { throw RunHistoryGenerationError.unsupported }
+  func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { throw RunHistoryGenerationError.unsupported }
+  func insertTerminal(_ receipt: WorkflowRunReceipt, generation: RunHistoryWriteGeneration) async throws { throw RunHistoryGenerationError.unsupported }
 }
 
 private struct UnavailableRunHistoryBrowser: RunHistoryBrowsing {
@@ -1006,7 +1006,9 @@ private enum AppContainerFactory {
     )
     let workflowAudioCaptureService = RealtimeAudioCaptureService(
       legacyCaptureService: AVAudioCaptureService(cleanupOwner: managedTemporaryAudioCleanupOwner),
-      streamingPreviewService: streamingPreviewService,
+      streamingPreviewSessionFactory: { request in
+        await streamingPreviewService.makeSession(for: request)
+      },
       liveUpdateHandler: { snapshot in
         let projected = await platform.cursorTextPreviewCoordinator.project(snapshot)
         await core.eventBus.publish(.liveSubtitleUpdated(projected))

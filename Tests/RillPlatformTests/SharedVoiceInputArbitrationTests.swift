@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import RillProviders
+@testable import RillPlatform
 
 final class SharedVoiceInputArbitrationTests: XCTestCase {
   func testInteractiveRecognitionPreemptsAmbientWakeWordFrames() {

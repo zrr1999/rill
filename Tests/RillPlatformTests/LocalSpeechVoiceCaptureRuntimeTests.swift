@@ -3,7 +3,7 @@ import Foundation
 import XCTest
 
 @testable import RillCore
-@testable import RillProviders
+@testable import RillPlatform
 
 final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
   func testPermissionDenialFailsBeforeStartingAudioSource() async {

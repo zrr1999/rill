@@ -4,7 +4,7 @@ import Foundation
 import RillCore
 import XCTest
 
-@testable import RillProviders
+@testable import RillPlatform
 
 final class AppleVoiceProcessingAudioProcessorTests: XCTestCase {
   func testVoiceProcessingIOFormatPreservesTheExactNativeFormat() throws {

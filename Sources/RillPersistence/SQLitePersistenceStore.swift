@@ -79,7 +79,7 @@ enum SQLiteBinding {
   case null
 }
 
-public actor SQLitePersistenceStore: DiagnosticRepository,
+public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMaintaining,
   ExportMetadataRepository,
   RecordGraphPersistenceStore
 {

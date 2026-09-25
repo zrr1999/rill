@@ -90,6 +90,23 @@ final class UIRenderEvidenceTests: XCTestCase {
         await workspace.shutdown()
     }
 
+    func testRenderTextCorrection() async throws {
+        guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+            throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+        }
+        let model = makeHarness().model
+        for language in AppLanguage.allCases {
+            model.setInterfaceLanguage(language)
+            for dark in [false, true] {
+                let sheet = VocabularyCorrectionSheet(model: model,
+                    source: RecognitionCorrectionSource(preMappingText: "请保留原始文本，不要重复发送。", context: VocabularyRuleContext()),
+                    workflowRunID: UUID())
+                try await render(sheet, size: NSSize(width: 620, height: 600), dark: dark,
+                    to: URL(fileURLWithPath: directory).appendingPathComponent("correction-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+            }
+        }
+    }
+
     private func seedRecords(_ store: RecordStore) async throws -> [(String, RecordID)] {
         let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 480, pixelsHigh: 280,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))

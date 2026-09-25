@@ -685,7 +685,7 @@ final class LocalHistoryMaintenanceTests: XCTestCase {
     private func makeMaintenance(
         clipboard: HistoryMaintenanceClipboardStore,
         runHistory: HistoryMaintenanceRunRepository,
-        runReceipts: any WorkflowRunReceiptRepository = InMemoryWorkflowRunReceiptRepository(),
+        runReceipts: any WorkflowRunReceiptMaintaining = InMemoryWorkflowRunReceiptRepository(),
         diagnostics: HistoryMaintenanceDiagnosticRepository = HistoryMaintenanceDiagnosticRepository(),
         settings: HistoryMaintenanceSettingsStore,
         purger: HistoryMaintenancePurger
@@ -781,7 +781,7 @@ private actor HistoryMaintenanceClipboardStore: RecordHistoryMaintaining {
     }
 }
 
-private actor HistoryMaintenanceRunRepository: HistoryRepository {
+private actor HistoryMaintenanceRunRepository: HistoryRepository, HistoryMaintaining {
     func save(_ value: WorkflowResultRecord, generation: RunHistoryWriteGeneration) async throws {
         guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
         try await (self as any HistoryRepository).save(value)
@@ -858,7 +858,7 @@ private actor HistoryMaintenanceRunRepository: HistoryRepository {
     }
 }
 
-private actor BlockingBoundedHistoryRepository: HistoryRepository {
+private actor BlockingBoundedHistoryRepository: HistoryRepository, HistoryMaintaining {
     func save(_ value: WorkflowResultRecord, generation: RunHistoryWriteGeneration) async throws {
         guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
         try await save(value)
@@ -934,7 +934,7 @@ private actor BlockingBoundedHistoryRepository: HistoryRepository {
     }
 }
 
-private actor HistoryMaintenanceDiagnosticRepository: DiagnosticRepository {
+private actor HistoryMaintenanceDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
     func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
         guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
         try await (self as any DiagnosticRepository).save(value)

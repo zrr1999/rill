@@ -1,4 +1,3 @@
-import RillSpeechContracts
 import Foundation
 import RillCore
 
@@ -230,16 +229,10 @@ public actor WakeWordTriggerSource: TriggerSource {
       let observations = vadSession.drainVoiceActivity()
       let speechDuration = observations
         .filter(\.isSpeech)
-        .reduce(0) { duration, _ in
-          duration + Double(MLXSileroVADConstants.chunkSampleCount)
-            / Double(SharedVoiceInputFrame.sampleRate)
-        }
+        .reduce(0) { $0 + $1.durationSeconds }
       let silenceDuration = observations
         .filter { !$0.isSpeech }
-        .reduce(0) { duration, _ in
-          duration + Double(MLXSileroVADConstants.chunkSampleCount)
-            / Double(SharedVoiceInputFrame.sampleRate)
-        }
+        .reduce(0) { $0 + $1.durationSeconds }
 
       if candidate == nil, speechDuration > 0 {
         try beginCandidate(with: wakeWordSamples)

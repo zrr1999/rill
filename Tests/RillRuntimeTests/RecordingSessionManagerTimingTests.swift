@@ -18,7 +18,7 @@ private struct RecordingTimingRecognizer: SpeechRecognizer {
     }
 }
 
-private actor BlockingRecordingDiagnosticRepository: DiagnosticRepository {
+private actor BlockingRecordingDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
     private let blockedEvent: String
     private var events: [DiagnosticEvent] = []
     private var hasEnteredBlockedSave = false

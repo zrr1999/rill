@@ -115,8 +115,8 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
     }
 
     private let recordHistory: any RecordHistoryMaintaining
-    private let runHistory: any HistoryRepository
-    private let runReceipts: any WorkflowRunReceiptRepository
+    private let runHistory: any HistoryMaintaining
+    private let runReceipts: any WorkflowRunReceiptMaintaining
     private let diagnosticHistory: any DiagnosticHistoryMaintaining
     private let settingsStore: any SettingsStore
     private let physicalPurger: any StorageResiduePurging
@@ -128,8 +128,8 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
 
     public init(
         recordHistory: any RecordHistoryMaintaining,
-        runHistory: any HistoryRepository,
-        runReceipts: any WorkflowRunReceiptRepository = InMemoryWorkflowRunReceiptRepository(),
+        runHistory: any HistoryMaintaining,
+        runReceipts: any WorkflowRunReceiptMaintaining = InMemoryWorkflowRunReceiptRepository(),
         diagnosticHistory: any DiagnosticHistoryMaintaining,
         settingsStore: any SettingsStore,
         physicalPurger: any StorageResiduePurging,
@@ -385,7 +385,7 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
             return try await recordHistory.pruneHistory(olderThan: cutoff)
         case .clearAll:
             guard let clearThrough else {
-                throw HistoryRepositoryMaintenanceError.boundedDeletionUnsupported
+                throw MaintenanceExecutionError.missingClearBoundary
             }
             return try await recordHistory.clearHistory(through: clearThrough)
         }
@@ -401,7 +401,7 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
             return try await runHistory.deleteRecords(olderThan: cutoff)
         case .clearAll:
             guard let transition else {
-                throw HistoryRepositoryMaintenanceError.boundedDeletionUnsupported
+                throw MaintenanceExecutionError.missingClearBoundary
             }
             return try await runHistory.deleteRecords(
                 obsoletedBy: transition,
@@ -420,7 +420,7 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
             return try await diagnosticHistory.deleteEvents(olderThan: cutoff)
         case .clearAll:
             guard let transition else {
-                throw DiagnosticRepositoryMaintenanceError.deletionUnsupported
+                throw MaintenanceExecutionError.missingClearBoundary
             }
             return try await diagnosticHistory.deleteEvents(
                 obsoletedBy: transition,
@@ -439,7 +439,7 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
             return try await runReceipts.deleteReceipts(olderThan: cutoff)
         case .clearAll:
             guard let transition else {
-                throw HistoryRepositoryMaintenanceError.boundedDeletionUnsupported
+                throw MaintenanceExecutionError.missingClearBoundary
             }
             return try await runReceipts.deleteReceipts(
                 obsoletedBy: transition,
@@ -623,4 +623,8 @@ public actor LocalHistoryMaintenance: LocalHistoryMaintaining {
         }
         await eventReporter(event)
     }
+}
+
+private enum MaintenanceExecutionError: Error {
+    case missingClearBoundary
 }

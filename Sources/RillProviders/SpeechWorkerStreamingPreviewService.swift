@@ -20,7 +20,7 @@ public actor SpeechWorkerStreamingPreviewService {
     self.measuredPeakObserver = measuredPeakObserver
   }
 
-  func makeSession(
+  public func makeSession(
     for request: AudioCaptureRequest
   ) async -> (any LocalSpeechStreamingPreviewSession)? {
     do {
@@ -214,10 +214,15 @@ private final class SpeechWorkerStreamingPreviewSession:
     return currentText()
   }
 
-  func drainVoiceActivity() -> [SpeechWorkerVADActivity] {
+  func drainVoiceActivity() -> [SpeechVoiceActivity] {
     lock.withLock {
       defer { state.pendingVoiceActivity.removeAll(keepingCapacity: true) }
-      return state.pendingVoiceActivity
+      return state.pendingVoiceActivity.map {
+        SpeechVoiceActivity(
+          isSpeech: $0.isSpeech,
+          durationSeconds: Double(MLXSileroVADConstants.chunkSampleCount) / 16_000
+        )
+      }
     }
   }
 

@@ -4,7 +4,7 @@ import RillPlatform
 import RillProviders
 import RillRuntime
 
-/// Connects the provider-owned local wake phrase gate to either the existing
+/// Connects the platform-owned local wake phrase gate to either the existing
 /// captured-audio controller or the same workflow's pre-recognized text entry.
 /// It owns no speech model, audio engine, or HA/Spark behavior.
 actor WakeWordCoordinator {

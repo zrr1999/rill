@@ -2,7 +2,22 @@ import XCTest
 @testable import RillCore
 @testable import RillRuntime
 
-private actor DiagnosticPrivacyRepository: DiagnosticRepository {
+private actor DiagnosticPrivacyRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
+    func deleteEvents(olderThan cutoff: Date) async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
+    func deleteAllEvents() async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
+    func deleteEvents(obsoletedBy transition: RunHistoryClearTransition, preservingLegacyRowsAfter legacyUpperBound: Date?) async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
     func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
     func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
         guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
@@ -30,7 +45,22 @@ private struct SensitiveRepositoryError: Error, LocalizedError {
     }
 }
 
-private actor FailingDiagnosticPrivacyRepository: DiagnosticRepository {
+private actor FailingDiagnosticPrivacyRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
+    func deleteEvents(olderThan cutoff: Date) async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
+    func deleteAllEvents() async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
+    func deleteEvents(obsoletedBy transition: RunHistoryClearTransition, preservingLegacyRowsAfter legacyUpperBound: Date?) async throws -> Int {
+        XCTFail("This recording test must not perform history maintenance.")
+        throw RunHistoryGenerationError.unsupported
+    }
+
     func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
     func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
         guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
@@ -46,7 +76,7 @@ private actor FailingDiagnosticPrivacyRepository: DiagnosticRepository {
     }
 }
 
-private actor BlockingClearDiagnosticRepository: DiagnosticRepository {
+private actor BlockingClearDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
     private var generation: RunHistoryWriteGeneration = .initial
     private var lastClearIntentID: UUID?
     private var stored: [DiagnosticEvent] = []

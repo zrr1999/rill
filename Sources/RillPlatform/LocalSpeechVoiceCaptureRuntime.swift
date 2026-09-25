@@ -1,4 +1,3 @@
-import RillSpeechContracts
 @preconcurrency import AVFoundation
 import Foundation
 import RillCore
@@ -886,7 +885,7 @@ actor LocalSpeechVoiceCaptureRuntime {
       activities = previewSession.drainVoiceActivity().map {
         LocalSpeechVoiceActivityObservation(
           isSpeech: $0.isSpeech,
-          durationSeconds: Double(MLXSileroVADConstants.chunkSampleCount) / 16_000,
+          durationSeconds: $0.durationSeconds,
           normalizedRMS: normalizedRMS
         )
       }

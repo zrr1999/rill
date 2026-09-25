@@ -258,7 +258,7 @@ private actor AppBootstrapClipboardHistory: RecordHistoryMaintaining {
   }
 }
 
-private actor AppBootstrapHistoryRepository: HistoryRepository {
+private actor AppBootstrapHistoryRepository: HistoryRepository, HistoryMaintaining {
     func save(_ value: WorkflowResultRecord, generation: RunHistoryWriteGeneration) async throws {
         guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
         try await (self as any HistoryRepository).save(value)
@@ -313,7 +313,7 @@ private actor AppBootstrapHistoryRepository: HistoryRepository {
   }
 }
 
-private actor AppBootstrapDiagnosticRepository: DiagnosticRepository {
+private actor AppBootstrapDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
     func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
         guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
         try await (self as any DiagnosticRepository).save(value)
