@@ -7,38 +7,35 @@ struct DiagnosticEventRow: View {
 
     var body: some View {
         let event = entry.event
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(UIStrings.diagnosticLevel(event.level, language: model.language))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(diagnosticColor(event.level))
-                Spacer()
-                if event.level == .warning || event.level == .error {
-                    RillCopyButton(title: UIStrings.text(.copy, language: model.language), language: model.language) {
-                        model.copyDiagnosticEvent(event)
-                    }
-                    .buttonStyle(.borderless)
-                    .font(.caption)
-                    .accessibilityLabel(entry.copyAccessibilityLabel(language: model.language))
-                }
-                Text(event.timestamp.formatted(date: .omitted, time: .standard))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-
-            Text(DiagnosticEventPresentation.title(for: event, language: model.language))
-                .font(.subheadline.weight(.medium))
-
-            DisclosureGroup(L10n.presentation(.metadata, language: model.language)) {
+        return HStack(alignment: .top, spacing: RillSpacing.row) {
+            DisclosureGroup {
                 Text(DiagnosticEventPresentation.detail(for: event))
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: RillSpacing.row) {
+                    Text(UIStrings.diagnosticLevel(event.level, language: model.language))
+                        .foregroundStyle(diagnosticColor(event.level))
+                    Text(DiagnosticEventPresentation.title(for: event, language: model.language))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: RillSpacing.row)
+                    Text(event.timestamp.formatted(date: .omitted, time: .standard))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
             }
-            .font(.caption)
-            Divider()
+            if event.level == .warning || event.level == .error {
+                RillCopyButton(title: UIStrings.text(.copy, language: model.language), language: model.language) {
+                    model.copyDiagnosticEvent(event)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(entry.copyAccessibilityLabel(language: model.language))
+            }
         }
-        .padding(.vertical, RillSpacing.row)
+        .font(.caption)
+        .padding(.vertical, RillSpacing.compact)
     }
 
     private func diagnosticColor(_ level: DiagnosticLevel) -> Color {

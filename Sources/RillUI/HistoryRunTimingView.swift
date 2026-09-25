@@ -52,25 +52,31 @@ struct HistoryRunTimingView: View {
     let language: AppLanguage
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), alignment: .leading)], alignment: .leading, spacing: 8) {
-            ForEach(items) { item in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title(language: language))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(L10n.historyMeasuredDuration(item.milliseconds, language: language))
-                        .font(.callout)
-                        .monospacedDigit()
-                    if let result = item.result, result != .completed {
-                        Text(L10n.historyStepResult(result, language: language))
-                            .font(.caption)
-                            .foregroundStyle(result == .failed ? .red : .secondary)
-                    }
-                }
-                .accessibilityElement(children: .combine)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                timingItems
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: RillSpacing.compact) {
+                timingItems
             }
         }
-        .padding(.vertical, 4)
+        .font(.caption)
         .accessibilityIdentifier("history.run-timing")
+    }
+
+    private var timingItems: some View {
+        ForEach(items) { item in
+            HStack(spacing: RillSpacing.compact) {
+                Text(item.title(language: language)).foregroundStyle(.secondary)
+                Text(L10n.historyMeasuredDuration(item.milliseconds, language: language))
+                    .monospacedDigit()
+                if let result = item.result, result != .completed {
+                    Text(L10n.historyStepResult(result, language: language))
+                        .foregroundStyle(result == .failed ? .red : .secondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 }
