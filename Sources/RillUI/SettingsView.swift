@@ -216,10 +216,7 @@ public struct SettingsView: View {
             if let memory = model.contextMemory {
               ContextMemorySettingsView(memory: memory, workflows: model.workflows.filter(\.supportsContextualCorrection), language: model.language, isExpanded: settingsDisclosureBinding(for: .contextMemory))
                 .id(SettingsSection.contextMemory)
-                .accessibilityIdentifier("settings.section.contextMemory")
-                .focusable()
-                .focused($focusedSettingsSection, equals: .contextMemory)
-                .accessibilityFocused($accessibilityFocusedSettingsSection, equals: .contextMemory)
+                .disclosureGroupStyle(settingsDisclosureStyle(for: .contextMemory))
             }
           }
         case .privacy:
@@ -453,7 +450,6 @@ extension SettingsView {
         content()
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.top, 8)
     } label: {
       VStack(alignment: .leading, spacing: 3) {
         settingsSectionHeader(section)
@@ -463,11 +459,13 @@ extension SettingsView {
       }
       .padding(.vertical, 2)
     }
-    .focusable()
-    .focused($focusedSettingsSection, equals: section)
-    .accessibilityFocused($accessibilityFocusedSettingsSection, equals: section)
-    .accessibilityIdentifier("settings.section.\(section.rawValue)")
+    .disclosureGroupStyle(settingsDisclosureStyle(for: section))
     .id(section)
+  }
+
+  private func settingsDisclosureStyle(for section: SettingsSection) -> SettingsDisclosureStyle {
+    SettingsDisclosureStyle(section: section, keyboardFocus: $focusedSettingsSection,
+      accessibilityFocus: $accessibilityFocusedSettingsSection)
   }
 
   private func settingsDisclosureBinding(
@@ -855,6 +853,53 @@ extension SettingsView {
     case .secondary: return .secondary
     case .warning: return .orange
     case .error: return .red
+    }
+  }
+}
+
+// Settings navigation targets the header, never the expanded content container.
+struct SettingsDisclosureStyle: DisclosureGroupStyle {
+  let section: SettingsSection
+  let keyboardFocus: FocusState<SettingsSection?>.Binding
+  let accessibilityFocus: AccessibilityFocusState<SettingsSection?>.Binding
+  @Environment(\.isEnabled) private var isEnabled
+
+  func makeBody(configuration: Configuration) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      HStack(spacing: 8) {
+        Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+          .font(.caption.weight(.semibold))
+          .frame(width: 12)
+          .accessibilityHidden(true)
+        configuration.label
+        Spacer(minLength: 0)
+      }
+      .contentShape(Rectangle())
+      .focusable(isEnabled)
+      .focused(keyboardFocus, equals: section)
+      .onTapGesture { if isEnabled { configuration.isExpanded.toggle() } }
+      .onKeyPress(.space) {
+        guard isEnabled else { return .ignored }
+        configuration.isExpanded.toggle()
+        return .handled
+      }
+      .accessibilityRepresentation {
+        DisclosureGroup(isExpanded: configuration.$isExpanded) {
+          EmptyView()
+        } label: {
+          configuration.label
+        }
+        .disclosureGroupStyle(.automatic)
+        .accessibilityFocused(accessibilityFocus, equals: section)
+        .accessibilityIdentifier("settings.section.\(section.rawValue)")
+      }
+
+      if configuration.isExpanded {
+        VStack(alignment: .leading, spacing: 12) {
+          configuration.content.disclosureGroupStyle(.automatic)
+        }
+        .padding(.top, 8)
+      }
     }
   }
 }
