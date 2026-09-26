@@ -16,6 +16,7 @@ public final class RunContextPreparation: @unchecked Sendable {
     private var image: CorrectionReferenceImage?
     private var screenSummary: ScreenReferenceSummary?
     private var memorySummary: CorrectionMemorySummary?
+    private var vocabularyReference: CorrectionVocabularyReference?
     private var receipt: CorrectionReferenceReceipt
     private var hasFrozen = false
     private var cancelled = false
@@ -25,26 +26,31 @@ public final class RunContextPreparation: @unchecked Sendable {
     private var memoryTask: Task<Void, Never>?
 
     private init(image: CorrectionReferenceImage?, receipt: CorrectionReferenceReceipt,
+                 vocabularyReference: CorrectionVocabularyReference? = nil,
                  authorization: ContextReferenceAuthorization, audioLifetime: AudioCaptureLifetime,
                  operations: BoundedOperation = BoundedOperation(maxConcurrentOperations: 3),
                  saveLateSummary: @escaping @Sendable (ScreenReferenceSummary, ContextReferenceAuthorization) async -> Void) {
         self.operations = operations
         self.image = image
         self.receipt = receipt
+        self.vocabularyReference = vocabularyReference
+        self.receipt.vocabulary = vocabularyReference?.receipt
         self.authorization = ContextReferenceAuthorization(parent: authorization)
         self.audioLifetime = audioLifetime
         self.saveLateSummary = saveLateSummary
     }
 
     public static func skipped(authorization: ContextReferenceAuthorization, audioLifetime: AudioCaptureLifetime,
-                               screenEnabled: Bool, memoryEnabled: Bool, status: CorrectionReferenceStatus) -> RunContextPreparation {
+                               screenEnabled: Bool, memoryEnabled: Bool, status: CorrectionReferenceStatus,
+                               vocabularyReference: CorrectionVocabularyReference? = nil) -> RunContextPreparation {
         RunContextPreparation(image: nil, receipt: .init(image: screenEnabled ? status : .disabled,
             imageSummary: screenEnabled ? status : .disabled, memorySummary: memoryEnabled ? status : .disabled),
-            authorization: authorization, audioLifetime: audioLifetime, saveLateSummary: { _, _ in })
+            vocabularyReference: vocabularyReference, authorization: authorization, audioLifetime: audioLifetime, saveLateSummary: { _, _ in })
     }
 
     public static func prepare(
         focus: FocusSnapshot, screenEnabled: Bool, memoryEnabled: Bool, canSendImages: Bool = true,
+        vocabularyReference: CorrectionVocabularyReference? = nil,
         excludedApplications: Set<String>, capture: any ScreenContextCapturing,
         summarizer: any CorrectionContextSummarizing,
         memories: @escaping @Sendable () async throws -> [LongTermMemory],
@@ -73,7 +79,7 @@ public final class RunContextPreparation: @unchecked Sendable {
         guard authorization.isValid, audioLifetime.isActive else { throw CancellationError() }
         receipt.memorySummary = memoryEnabled ? .pending : .disabled
         let preparation = RunContextPreparation(
-            image: image, receipt: receipt, authorization: authorization,
+            image: image, receipt: receipt, vocabularyReference: vocabularyReference, authorization: authorization,
             audioLifetime: audioLifetime, operations: operations, saveLateSummary: saveLateSummary
         )
         let capturedImage = image
@@ -149,7 +155,8 @@ public final class RunContextPreparation: @unchecked Sendable {
             let value = Frozen(
                 request: ContextualCorrectionRequest(
                     transcript: transcript, referenceImage: image, imageSummary: screenSummary,
-                    memorySummary: memorySummary, authorization: authorization
+                    memorySummary: memorySummary, authorization: authorization,
+                    vocabularyReference: vocabularyReference?.terms.isEmpty == false ? vocabularyReference : nil
                 ),
                 receipt: receipt
             )
@@ -157,6 +164,7 @@ public final class RunContextPreparation: @unchecked Sendable {
             hasFrozen = true
             image = nil
             memorySummary = nil
+            vocabularyReference = nil
             return value
         }
     }
@@ -173,6 +181,7 @@ public final class RunContextPreparation: @unchecked Sendable {
             image = nil
             screenSummary = nil
             memorySummary = nil
+            vocabularyReference = nil
             hasFrozen = true
         }
     }

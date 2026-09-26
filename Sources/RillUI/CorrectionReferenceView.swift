@@ -14,6 +14,13 @@ struct CorrectionReferenceView: View {
             LabeledContent(text("Pre-recording image", "录音前参考图"), value: status(receipt.image))
             LabeledContent(text("Image summary", "图片摘要"), value: status(receipt.imageSummary))
             LabeledContent(text("Memory summary", "记忆摘要"), value: status(receipt.memorySummary))
+            if let vocabulary = receipt.vocabulary {
+                LabeledContent(text("Vocabulary", "词库"), value: status(vocabulary.status))
+                Text(text("Applicable: ", "适用：") + "\(vocabulary.eligibleCount) · "
+                    + text("Included: ", "装入：") + "\(vocabulary.includedCount) · "
+                    + text("Omitted by budget: ", "预算省略：") + "\(vocabulary.omittedCount) · "
+                    + "\(vocabulary.encodedByteCount) bytes")
+            }
             Text(text("Sent references are evidence offered to the model, not verified corrections. Images and temporary memory summaries are not saved.",
                       "已发送参考表示向模型提供了依据，不代表已确认纠正成功。原图和临时记忆摘要不保存。"))
                 .foregroundStyle(.secondary)

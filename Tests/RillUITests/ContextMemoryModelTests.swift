@@ -1,10 +1,72 @@
+import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import RillCore
 @testable import RillUI
 
 @MainActor
 struct ContextMemoryModelTests {
+    @Test func vocabularyOnlyConsentPersistsWithoutRequestingScreenPermission() async throws {
+        let store = UITestSettingsStore(storage: [:])
+        var screenRequests = 0
+        let model = ContextMemoryModel(repository: ContextUIRepository(), settingsStore: store,
+            activate: { $0.vocabularyCorrectionEnabled && $0.providerFingerprint == "fixture" }, revoke: {}, fingerprint: { "fixture" },
+            screenPermission: { request in if request { screenRequests += 1 }; return false }, maintain: {})
+        model.load()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while model.isLoading && ContinuousClock.now < deadline { await Task.yield() }
+        #expect(!model.settings.vocabularyCorrectionEnabled)
+        model.apply(screen: false, memory: false, workflowIDs: [UUID()], vocabulary: true)
+        while model.isSaving && ContinuousClock.now < deadline { await Task.yield() }
+        #expect(model.isAuthorized)
+        #expect(screenRequests == 0)
+        #expect(!model.settings.screenContextEnabled && !model.settings.memoryEnabled)
+        await model.shutdown()
+        let encoded = try #require(try await store.string(forKey: .contextFeatureSettings))
+        #expect(try JSONDecoder().decode(ContextFeatureSettings.self, from: Data(encoded.utf8)).vocabularyCorrectionEnabled)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] != nil))
+    func renderVocabularyConsentSettings() async throws {
+        let output = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"]))
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let model = ContextMemoryModel(repository: ContextUIRepository(), settingsStore: UITestSettingsStore(storage: [:]),
+            activate: { _ in false }, revoke: {}, fingerprint: { "fixture" }, screenPermission: { _ in false }, maintain: {})
+        model.load()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while model.isLoading && ContinuousClock.now < deadline { await Task.yield() }
+        let app = makeHarness().model
+        await app.waitForInitialVoiceConfiguration()
+        app.contextMemory = model
+        for language in AppLanguage.allCases {
+            app.setInterfaceLanguage(language)
+            for dark in [false, true] {
+                let size = NSSize(width: 560, height: 650)
+                let view = NSHostingView(rootView: SettingsView(model: app, pane: .vocabulary)
+                    .frame(width: size.width, height: size.height)
+                    .environment(\.colorScheme, dark ? .dark : .light).background(Color(nsColor: .windowBackgroundColor)))
+                let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+                window.contentView = view
+                view.frame = NSRect(origin: .zero, size: size)
+                window.orderFront(nil)
+                for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
+                window.layoutIfNeeded()
+                view.layoutSubtreeIfNeeded()
+                let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+                window.appearance?.performAsCurrentDrawingAppearance { view.cacheDisplay(in: view.bounds, to: bitmap) }
+                try #require(bitmap.representation(using: .png, properties: [:]))
+                    .write(to: output.appendingPathComponent("vocabulary-settings-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+                window.close()
+            }
+        }
+        await app.stopSettingsReadTasksForApplicationShutdown()
+        await app.flushPendingPersistenceWrites()
+        await model.shutdown()
+    }
+
     @Test func failedSaveRetainsAnActionableResult() async {
         let repository = ContextUIRepository(failsWrites: true)
         let model = ContextMemoryModel(repository: repository, settingsStore: UITestSettingsStore(storage: [:]),

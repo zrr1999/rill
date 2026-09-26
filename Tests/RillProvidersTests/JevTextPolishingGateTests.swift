@@ -7,6 +7,17 @@ import Testing
 
 @Suite(.serialized)
 struct JevTextPolishingGateTests {
+  @Test func vocabularyReferencesBypassPredictionButEmptyVocabularyDoesNot() async throws {
+    let fixture = fixture()
+    var referenced = context()
+    referenced.correctionRequest = .init(transcript: "text", vocabularyReference: try .init(terms: ["Rill"]))
+    #expect(try await !fixture.gate.shouldSkip(text: "text", step: step, context: referenced))
+    #expect(PolishingURLProtocol.state.withLock { $0.requests.isEmpty })
+    referenced.correctionRequest?.vocabularyReference = try .init(terms: [])
+    #expect(try await fixture.gate.shouldSkip(text: "text", step: step, context: referenced))
+    await fixture.gate.shutdown()
+  }
+
   @Test func cleanTextSkipsAndOnlyTranscriptAndInstructionsAreSent() async throws {
     let fixture = fixture()
     #expect(try await fixture.gate.shouldSkip(text: "请明天 10:30 开会。", step: step, context: context()))
