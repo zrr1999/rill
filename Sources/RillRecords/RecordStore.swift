@@ -342,7 +342,8 @@ public actor RecordStore {
                 return try await reuseRecord(
                     match,
                     destinations: destinations,
-                    backfilledDigests: lookup.digests
+                    backfilledDigests: lookup.digests,
+                    countsAsCopy: draft.provenance.source.kind == .systemClipboard
                 )
             }
             try prepareNewRecordAdmission(draft, destinations: destinations)
@@ -369,7 +370,10 @@ public actor RecordStore {
             isPinned: draft.isPinned
         )
         markCatalogChange(.activity, id: record.id)
-        graphState.activityByRecordID[record.id] = RecordActivity(recordID: record.id)
+        graphState.activityByRecordID[record.id] = RecordActivity(
+            recordID: record.id,
+            copyCount: draft.provenance.source.kind == .systemClipboard ? 1 : 0
+        )
         graphState.membershipIDsByRecordID[record.id] = []
         for collectionID in destinations {
             _ = try addMembershipWithoutPersistence(recordID: record.id, collectionID: collectionID)
@@ -1003,7 +1007,7 @@ public actor RecordStore {
             guard receipt == nil, settlingLeaseIDs.insert(leaseID).inserted else { throw RecordStoreError.invalidDeliveryReceipt }
             defer { settlingLeaseIDs.remove(leaseID) }
             guard var activity = graphState.activityByRecordID[reuse.record.id] else { throw RecordStoreError.recordUnavailable }
-            activity.recordDelivery(at: deliveredAt)
+            recordSuccessfulOutput(&activity, sink: reuse.sink, at: deliveredAt)
             markCatalogChange(.activity, id: reuse.record.id)
             graphState.activityByRecordID[reuse.record.id] = activity
             noteMutation()
@@ -1036,7 +1040,7 @@ public actor RecordStore {
             graphState.membershipsByID[membership.id] = membership
         }
         let completedAt = receipt?.deliveredAt ?? deliveredAt
-        activity.recordDelivery(at: completedAt)
+        recordSuccessfulOutput(&activity, sink: lease.sink, at: completedAt)
         markCatalogChange(.activity, id: membership.recordID)
         graphState.activityByRecordID[membership.recordID] = activity
         noteMutation()
@@ -1320,15 +1324,17 @@ public actor RecordStore {
     private func reuseRecord(
         _ recordID: RecordID,
         destinations: [RecordCollectionID],
-        backfilledDigests: [RecordID: Data]
+        backfilledDigests: [RecordID: Data],
+        countsAsCopy: Bool
     ) async throws -> RecordProjection {
         let plan = try reusePlan(recordID: recordID, destinations: destinations)
-        guard !plan.creates.isEmpty || !plan.reactivations.isEmpty || !backfilledDigests.isEmpty else {
+        guard !plan.creates.isEmpty || !plan.reactivations.isEmpty || !backfilledDigests.isEmpty || countsAsCopy else {
             guard let projection = try await projection(for: recordID) else {
                 throw RecordStoreError.invalidGraph
             }
             return projection
         }
+        if countsAsCopy { try recordCopy(recordID) }
         storeContentDigests(backfilledDigests)
         for membership in plan.reactivations {
             _ = reactivateMembershipAtFront(membership)
@@ -1346,6 +1352,27 @@ public actor RecordStore {
             created.map { collectionEvent(.recordCreated, membership: $0, record: record) }
         )
         return projection
+    }
+
+    private func recordCopy(_ recordID: RecordID) throws {
+        guard var activity = graphState.activityByRecordID[recordID] else {
+            throw RecordStoreError.invalidGraph
+        }
+        activity.recordCopy()
+        markCatalogChange(.activity, id: recordID)
+        graphState.activityByRecordID[recordID] = activity
+    }
+
+    private func recordSuccessfulOutput(
+        _ activity: inout RecordActivity,
+        sink: RecordSinkIdentity,
+        at date: Date
+    ) {
+        if sink == .systemClipboard {
+            activity.recordCopy()
+        } else {
+            activity.recordDelivery(at: date)
+        }
     }
 
     private func reusePlan(

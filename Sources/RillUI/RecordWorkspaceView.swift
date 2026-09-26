@@ -605,6 +605,9 @@ public struct RecordWorkspaceView: View {
             LabeledContent(L10n.recordText(.metadataSource, language: language)) {
                 Text(sourceName(record.record.provenance))
             }
+            LabeledContent(L10n.recordText(.metadataCopies, language: language)) {
+                Text("\(record.activity.copyCount)")
+            }
             LabeledContent(L10n.recordText(.metadataUses, language: language)) {
                 Text("\(record.activity.useCount)")
             }

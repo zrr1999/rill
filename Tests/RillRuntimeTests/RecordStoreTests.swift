@@ -101,6 +101,62 @@ final class RecordStoreTests: XCTestCase {
         XCTAssertEqual(distinct.records.count, 2)
     }
 
+    func testClipboardCopiesStaySeparateFromUses() async throws {
+        let store = RecordStore()
+        let first = try await store.ingest(draft("same"), into: [])
+        XCTAssertEqual(first.activity.copyCount, 1)
+        XCTAssertEqual(first.activity.useCount, 0)
+
+        let again = try await store.ingest(draft("same"), into: [])
+        XCTAssertEqual(again.id, first.id)
+        XCTAssertEqual(again.activity.copyCount, 2)
+        XCTAssertEqual(again.activity.useCount, 0)
+
+        let voiced = try await store.ingest(
+            RecordDraft(
+                payload: .text("same"),
+                provenance: RecordProvenance(source: RecordSourceIdentity(kind: .voiceInput))
+            ),
+            into: []
+        )
+        XCTAssertEqual(voiced.id, first.id)
+        XCTAssertEqual(voiced.activity.copyCount, 2)
+
+        let copied = try await store.beginReuse(
+            RecordReuseSubject(recordID: first.id, metadataRevision: voiced.metadata.revision),
+            sink: .systemClipboard
+        )
+        _ = try await store.completeDelivery(leaseID: copied.id)
+        let copiedRecord = try await store.record(id: first.id)
+        let afterCopy = try XCTUnwrap(copiedRecord)
+        XCTAssertEqual(afterCopy.activity.copyCount, 3)
+        XCTAssertEqual(afterCopy.activity.useCount, 0)
+
+        let pasted = try await store.beginReuse(
+            RecordReuseSubject(recordID: first.id, metadataRevision: afterCopy.metadata.revision),
+            sink: .focusedApplication
+        )
+        _ = try await store.completeDelivery(leaseID: pasted.id)
+        let usedRecord = try await store.record(id: first.id)
+        let afterUse = try XCTUnwrap(usedRecord)
+        XCTAssertEqual(afterUse.activity.copyCount, 3)
+        XCTAssertEqual(afterUse.activity.useCount, 1)
+        XCTAssertNotNil(afterUse.activity.lastDeliveredAt)
+    }
+
+    func testActivityWithoutCopyCountDecodesAsZero() throws {
+        let activity = RecordActivity(recordID: RecordID(), useCount: 4, copyCount: 2)
+        let encoded = try JSONEncoder().encode(activity)
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        var stripped = object
+        stripped.removeValue(forKey: "copyCount")
+        let data = try JSONSerialization.data(withJSONObject: stripped)
+        let decoded = try JSONDecoder().decode(RecordActivity.self, from: data)
+        XCTAssertEqual(decoded.useCount, 4)
+        XCTAssertEqual(decoded.copyCount, 0)
+        XCTAssertEqual(decoded.recordID, activity.recordID)
+    }
+
     func testHistoryOnlyDuplicateDoesNotCreateAnotherRecord() async throws {
         let store = RecordStore()
         let first = try await store.ingest(draft("orphan"), into: [])

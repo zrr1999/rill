@@ -136,6 +136,7 @@ extension L10n {
         .insertInPreviousApp: .init(english: "Insert in Previous App", simplifiedChinese: "输入到上一应用"),
         .membershipActive: .init(english: "Active", simplifiedChinese: "有效"),
         .membershipConsumed: .init(english: "Consumed", simplifiedChinese: "已消费"),
+        .metadataCopies: .init(english: "Copies", simplifiedChinese: "复制次数"),
         .metadataSource: .init(english: "Source", simplifiedChinese: "来源"),
         .metadataTags: .init(english: "Tags", simplifiedChinese: "标签"),
         .metadataTitle: .init(english: "Metadata", simplifiedChinese: "元数据"),
@@ -280,6 +281,7 @@ enum RecordTextKey: String, CaseIterable, Sendable {
     case insertInPreviousApp
     case membershipActive
     case membershipConsumed
+    case metadataCopies
     case metadataSource
     case metadataTags
     case metadataTitle

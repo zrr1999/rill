@@ -33,7 +33,10 @@ The sink registry is immutable for the coordinator lifetime.
   Missing destination memberships are added. A consumed membership in a requested
   destination becomes active and receives a new ordinal at the front of that
   collection. Edit and Replace still create a derived Record and are not folded
-  into an existing payload. Delivery routing uses highest priority, then stable
+  into an existing payload. A system-clipboard capture counts as a copy, including
+  the first one. Successful delivery to any other sink counts as a use. Copying
+  the Record back to the system clipboard counts as another copy and does not
+  increment the use count. Delivery routing uses highest priority, then stable
   rule ID, and retains the rule's ordered collection list.
 - A successful delivery consumes only the leased origin membership. A failed
   delivery releases the lease and records only a closed failure code.
