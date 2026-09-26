@@ -23,7 +23,8 @@ only used to detect a running legacy component before repair.
 Registration must verify that TIS enumerates the selectable mode even when
 `TISRegisterInputSource` returns `noErr`. Repair atomically replaces the component
 while leaving the existing profile untouched. Explicitly adding the source enables
-the parent and then the mode; it never selects the source. Settings project the
+the parent and then the mode; it never selects the source. A mode's default-enabled
+flag alone does not mean that its parent is enabled or that it appears in the system UI. Settings project the
 current filesystem/TIS state instead of remembering the last installation message.
 
 ## Reproducible checks

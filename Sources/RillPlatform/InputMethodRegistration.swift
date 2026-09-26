@@ -22,15 +22,28 @@ enum InputMethodRegistrationError: LocalizedError {
 @MainActor
 enum InputMethodRegistration {
   static func state() -> InputMethodInstallationState {
+    let sources = sources()
     guard
-      let mode = sources().first(where: {
+      let parent = sources.first(where: {
+        property($0, kTISPropertyInputSourceID) as? String == InputMethodPaths.bundleIdentifier
+      }),
+      let mode = sources.first(where: {
         property($0, kTISPropertyInputSourceID) as? String == InputMethodPaths.inputSourceIdentifier
           && property($0, kTISPropertyInputSourceIsSelectCapable) as? Bool == true
       })
     else { return .needsRepair }
-    if property(mode, kTISPropertyInputSourceIsSelected) as? Bool == true { return .selected }
-    if property(mode, kTISPropertyInputSourceIsEnabled) as? Bool == true { return .enabled }
-    return .registered
+    return state(
+      parentEnabled: property(parent, kTISPropertyInputSourceIsEnabled) as? Bool == true,
+      modeEnabled: property(mode, kTISPropertyInputSourceIsEnabled) as? Bool == true,
+      modeSelected: property(mode, kTISPropertyInputSourceIsSelected) as? Bool == true)
+  }
+
+  static func state(
+    parentEnabled: Bool, modeEnabled: Bool, modeSelected: Bool
+  ) -> InputMethodInstallationState {
+    // A default-enabled mode is not available until its parent method is enabled.
+    guard parentEnabled, modeEnabled else { return .registered }
+    return modeSelected ? .selected : .enabled
   }
 
   static func register(

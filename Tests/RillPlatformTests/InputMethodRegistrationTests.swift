@@ -7,6 +7,21 @@ import Testing
 
 @MainActor
 struct InputMethodRegistrationTests {
+  @Test func defaultEnabledModeStillNeedsItsParentEnabled() {
+    #expect(
+      InputMethodRegistration.state(
+        parentEnabled: false, modeEnabled: true, modeSelected: false) == .registered)
+    #expect(
+      InputMethodRegistration.state(
+        parentEnabled: true, modeEnabled: false, modeSelected: false) == .registered)
+    #expect(
+      InputMethodRegistration.state(
+        parentEnabled: true, modeEnabled: true, modeSelected: false) == .enabled)
+    #expect(
+      InputMethodRegistration.state(
+        parentEnabled: true, modeEnabled: true, modeSelected: true) == .selected)
+  }
+
   @Test func successfulRegistrationWithNoSelectableSourceIsAnError() {
     #expect(throws: InputMethodRegistrationError.self) {
       try InputMethodRegistration.register(

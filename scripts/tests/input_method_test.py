@@ -24,6 +24,9 @@ def run(bundle: Path) -> None:
     mode = info["ComponentInputModeDict"]["tsInputModeListKey"][identifier + ".Hans"]
     assert mode["TISInputSourceID"] == identifier + ".Hans"
     assert mode["tsInputModeIsVisibleKey"] is True
+    for language in ("en", "zh-Hans", "zh-Hant"):
+        names = plistlib.loads((contents / "Resources" / f"{language}.lproj/InfoPlist.strings").read_bytes())
+        assert names[identifier + ".Hans"] == "Rill"
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(bundle)], check=True)
     with tempfile.TemporaryDirectory(prefix="rill-ime-test-") as temporary:
         root = Path(temporary)
