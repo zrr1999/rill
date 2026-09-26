@@ -8,8 +8,11 @@ public struct RecordHeader: Codable, Sendable, Equatable, Identifiable {
   public let preview: String
   public let provenance: RecordProvenance
   public let createdAt: Date
+  /// SHA-256 of the canonical payload bytes. Absent on catalogs stored before
+  /// content identity was recorded; the store fills it before the next dedup.
+  public let contentDigest: Data?
 
-  public init(record: Record, byteCount: Int) {
+  public init(record: Record, byteCount: Int, contentDigest: Data? = nil) {
     id = record.id
     kind = record.payload.kind
     self.byteCount = byteCount
@@ -25,6 +28,37 @@ public struct RecordHeader: Codable, Sendable, Equatable, Identifiable {
     }
     provenance = record.provenance
     createdAt = record.createdAt
+    self.contentDigest = contentDigest
+  }
+
+  public func withContentDigest(_ contentDigest: Data) -> RecordHeader {
+    RecordHeader(
+      id: id,
+      kind: kind,
+      byteCount: byteCount,
+      preview: preview,
+      provenance: provenance,
+      createdAt: createdAt,
+      contentDigest: contentDigest
+    )
+  }
+
+  private init(
+    id: RecordID,
+    kind: RecordPayloadKind,
+    byteCount: Int,
+    preview: String,
+    provenance: RecordProvenance,
+    createdAt: Date,
+    contentDigest: Data?
+  ) {
+    self.id = id
+    self.kind = kind
+    self.byteCount = byteCount
+    self.preview = preview
+    self.provenance = provenance
+    self.createdAt = createdAt
+    self.contentDigest = contentDigest
   }
 
   public func materialize(_ payload: RecordPayload) -> Record {

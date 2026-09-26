@@ -236,6 +236,7 @@ public enum RecordDeliveryFailureCode: String, Codable, Sendable, Equatable {
 public struct RecordActivity: Codable, Sendable, Equatable {
     public var recordID: RecordID
     public var useCount: Int
+    public var copyCount: Int
     public var lastDeliveredAt: Date?
     public var latestFailure: RecordDeliveryFailureCode?
     public var revision: UInt64
@@ -243,14 +244,17 @@ public struct RecordActivity: Codable, Sendable, Equatable {
     public init(
         recordID: RecordID,
         useCount: Int = 0,
+        copyCount: Int = 0,
         lastDeliveredAt: Date? = nil,
         latestFailure: RecordDeliveryFailureCode? = nil,
         revision: UInt64 = 1
     ) {
         precondition(useCount >= 0, "Record use counts cannot be negative.")
+        precondition(copyCount >= 0, "Record copy counts cannot be negative.")
         precondition(revision > 0, "Record activity revisions start at one.")
         self.recordID = recordID
         self.useCount = useCount
+        self.copyCount = copyCount
         self.lastDeliveredAt = lastDeliveredAt
         self.latestFailure = latestFailure
         self.revision = revision
@@ -261,6 +265,49 @@ public struct RecordActivity: Codable, Sendable, Equatable {
         lastDeliveredAt = date
         latestFailure = nil
         revision = revision == .max ? 1 : revision + 1
+    }
+
+    public mutating func recordCopy() {
+        copyCount += 1
+        revision = revision == .max ? 1 : revision + 1
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case recordID
+        case useCount
+        case copyCount
+        case lastDeliveredAt
+        case latestFailure
+        case revision
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let recordID = try container.decode(RecordID.self, forKey: .recordID)
+        let useCount = try container.decode(Int.self, forKey: .useCount)
+        let copyCount = try container.decodeIfPresent(Int.self, forKey: .copyCount) ?? 0
+        let revision = try container.decode(UInt64.self, forKey: .revision)
+        guard useCount >= 0, copyCount >= 0, revision > 0 else {
+            throw DecodingError.dataCorrupted(
+                .init(codingPath: container.codingPath, debugDescription: "Record activity counts are invalid.")
+            )
+        }
+        self.recordID = recordID
+        self.useCount = useCount
+        self.copyCount = copyCount
+        self.lastDeliveredAt = try container.decodeIfPresent(Date.self, forKey: .lastDeliveredAt)
+        self.latestFailure = try container.decodeIfPresent(RecordDeliveryFailureCode.self, forKey: .latestFailure)
+        self.revision = revision
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(recordID, forKey: .recordID)
+        try container.encode(useCount, forKey: .useCount)
+        try container.encode(copyCount, forKey: .copyCount)
+        try container.encodeIfPresent(lastDeliveredAt, forKey: .lastDeliveredAt)
+        try container.encodeIfPresent(latestFailure, forKey: .latestFailure)
+        try container.encode(revision, forKey: .revision)
     }
 
     public mutating func recordFailure(_ failure: RecordDeliveryFailureCode) {

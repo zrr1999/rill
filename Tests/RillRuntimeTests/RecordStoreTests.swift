@@ -69,6 +69,229 @@ final class RecordStoreTests: XCTestCase {
         XCTAssertEqual(snapshot.records.count, 1)
     }
 
+    func testIdenticalPayloadReusesEarliestRecord() async throws {
+        let store = RecordStore()
+        let first = try await store.ingest(draft("same"), into: [RecordCollection.inboxID])
+        let otherProvenance = RecordDraft(
+            payload: .text("same"),
+            provenance: RecordProvenance(
+                source: RecordSourceIdentity(kind: .voiceInput),
+                sourceBundleIdentifier: "com.example.other"
+            )
+        )
+        let again = try await store.ingest(otherProvenance, into: [RecordCollection.inboxID])
+        XCTAssertEqual(again.id, first.id)
+        XCTAssertEqual(again.record.provenance, first.record.provenance)
+        XCTAssertEqual(again.record.createdAt, first.record.createdAt)
+        XCTAssertEqual(again.memberships.map(\.ordinal), first.memberships.map(\.ordinal))
+        XCTAssertEqual(again.memberships.map(\.revision), first.memberships.map(\.revision))
+
+        let other = try await store.createCollection(named: "Other", preset: .list)
+        let added = try await store.ingest(draft("same"), into: [other.id])
+        XCTAssertEqual(added.id, first.id)
+        XCTAssertEqual(
+            Set(added.memberships.map(\.collectionID)),
+            [RecordCollection.inboxID, other.id]
+        )
+        let snapshot = try await store.snapshot()
+        XCTAssertEqual(snapshot.records.map(\.id), [first.id])
+
+        _ = try await store.ingest(draft("same "), into: [])
+        let distinct = try await store.snapshot()
+        XCTAssertEqual(distinct.records.count, 2)
+    }
+
+    func testClipboardCopiesStaySeparateFromUses() async throws {
+        let store = RecordStore()
+        let first = try await store.ingest(draft("same"), into: [])
+        XCTAssertEqual(first.activity.copyCount, 1)
+        XCTAssertEqual(first.activity.useCount, 0)
+
+        let again = try await store.ingest(draft("same"), into: [])
+        XCTAssertEqual(again.id, first.id)
+        XCTAssertEqual(again.activity.copyCount, 2)
+        XCTAssertEqual(again.activity.useCount, 0)
+
+        let voiced = try await store.ingest(
+            RecordDraft(
+                payload: .text("same"),
+                provenance: RecordProvenance(source: RecordSourceIdentity(kind: .voiceInput))
+            ),
+            into: []
+        )
+        XCTAssertEqual(voiced.id, first.id)
+        XCTAssertEqual(voiced.activity.copyCount, 2)
+
+        let copied = try await store.beginReuse(
+            RecordReuseSubject(recordID: first.id, metadataRevision: voiced.metadata.revision),
+            sink: .systemClipboard
+        )
+        _ = try await store.completeDelivery(leaseID: copied.id)
+        let copiedRecord = try await store.record(id: first.id)
+        let afterCopy = try XCTUnwrap(copiedRecord)
+        XCTAssertEqual(afterCopy.activity.copyCount, 3)
+        XCTAssertEqual(afterCopy.activity.useCount, 0)
+
+        let pasted = try await store.beginReuse(
+            RecordReuseSubject(recordID: first.id, metadataRevision: afterCopy.metadata.revision),
+            sink: .focusedApplication
+        )
+        _ = try await store.completeDelivery(leaseID: pasted.id)
+        let usedRecord = try await store.record(id: first.id)
+        let afterUse = try XCTUnwrap(usedRecord)
+        XCTAssertEqual(afterUse.activity.copyCount, 3)
+        XCTAssertEqual(afterUse.activity.useCount, 1)
+        XCTAssertNotNil(afterUse.activity.lastDeliveredAt)
+    }
+
+    func testActivityWithoutCopyCountDecodesAsZero() throws {
+        let activity = RecordActivity(recordID: RecordID(), useCount: 4, copyCount: 2)
+        let encoded = try JSONEncoder().encode(activity)
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        var stripped = object
+        stripped.removeValue(forKey: "copyCount")
+        let data = try JSONSerialization.data(withJSONObject: stripped)
+        let decoded = try JSONDecoder().decode(RecordActivity.self, from: data)
+        XCTAssertEqual(decoded.useCount, 4)
+        XCTAssertEqual(decoded.copyCount, 0)
+        XCTAssertEqual(decoded.recordID, activity.recordID)
+    }
+
+    func testHistoryOnlyDuplicateDoesNotCreateAnotherRecord() async throws {
+        let store = RecordStore()
+        let first = try await store.ingest(draft("orphan"), into: [])
+        let again = try await store.ingest(draft("orphan"), into: [])
+        XCTAssertEqual(again.id, first.id)
+        XCTAssertTrue(again.memberships.isEmpty)
+        let snapshot = try await store.snapshot()
+        XCTAssertEqual(snapshot.records.map(\.id), [first.id])
+    }
+
+    func testImageAndFilePayloadsDeduplicateByExactContent() async throws {
+        let store = RecordStore()
+        let image = Data([0x89, 0x50, 0x4E, 0x47, 0x0D])
+        let firstImage = try await store.ingest(
+            RecordDraft(payload: .image(image), provenance: clipboardProvenance),
+            into: [RecordCollection.inboxID]
+        )
+        let sameImage = try await store.ingest(
+            RecordDraft(payload: .image(image), provenance: clipboardProvenance),
+            into: [RecordCollection.inboxID]
+        )
+        let otherImage = try await store.ingest(
+            RecordDraft(payload: .image(image + [0x01]), provenance: clipboardProvenance),
+            into: []
+        )
+        XCTAssertEqual(sameImage.id, firstImage.id)
+        XCTAssertNotEqual(otherImage.id, firstImage.id)
+
+        let file = URL(fileURLWithPath: "/tmp/report.txt")
+        let firstFiles = try await store.ingest(
+            RecordDraft(payload: .files([file]), provenance: clipboardProvenance),
+            into: []
+        )
+        let sameFiles = try await store.ingest(
+            RecordDraft(payload: .files([file]), provenance: clipboardProvenance),
+            into: []
+        )
+        let reordered = try await store.ingest(
+            RecordDraft(
+                payload: .files([file, URL(fileURLWithPath: "/tmp/notes.txt")]),
+                provenance: clipboardProvenance
+            ),
+            into: []
+        )
+        XCTAssertEqual(sameFiles.id, firstFiles.id)
+        XCTAssertNotEqual(reordered.id, firstFiles.id)
+    }
+
+    func testConsumedMembershipReturnsToFrontOfCollection() async throws {
+        let events = RecordCollectionEventProbe()
+        let store = RecordStore(collectionEventSink: events)
+        let first = try await store.ingest(draft("first"), into: [RecordCollection.inboxID])
+        let lease = try await store.beginDelivery(
+            sourceCollectionIDs: [RecordCollection.inboxID],
+            sink: .focusedApplication
+        )
+        _ = try await store.completeDelivery(leaseID: lease.id)
+        let second = try await store.ingest(draft("second"), into: [RecordCollection.inboxID])
+        let eventsBeforeReuse = await events.events()
+        let again = try await store.ingest(draft("first"), into: [RecordCollection.inboxID])
+
+        XCTAssertEqual(again.id, first.id)
+        let revived = try XCTUnwrap(again.memberships.first)
+        let secondRecord = try await store.record(id: second.id)
+        let secondMembership = try XCTUnwrap(secondRecord?.memberships.first)
+        XCTAssertEqual(revived.state, .active)
+        XCTAssertGreaterThan(revived.ordinal, secondMembership.ordinal)
+        let eventsAfterReuse = await events.events()
+        XCTAssertEqual(eventsAfterReuse.count, eventsBeforeReuse.count)
+    }
+
+    func testDerivedCaptureStaysDistinctFromMatchingPayload() async throws {
+        let store = RecordStore()
+        let first = try await store.ingest(draft("same"), into: [])
+        var provenance = first.record.provenance
+        provenance.derivedFrom = first.id
+        let derived = try await store.ingest(
+            RecordDraft(
+                payload: .text("same"),
+                provenance: provenance,
+                createdAt: first.record.createdAt.addingTimeInterval(1)
+            ),
+            into: []
+        )
+        XCTAssertNotEqual(derived.id, first.id)
+        let again = try await store.ingest(draft("same"), into: [])
+        XCTAssertEqual(again.id, first.id)
+        let snapshot = try await store.snapshot()
+        XCTAssertEqual(Set(snapshot.records.map(\.id)), [first.id, derived.id])
+    }
+
+    func testDuplicateIngestRollsBackWhenCommitFails() async throws {
+        let persistence = FailingRecordGraphPersistence()
+        let store = RecordStore(persistence: persistence)
+        let first = try await store.ingest(draft("again"), into: [RecordCollection.inboxID])
+        let lease = try await store.beginDelivery(
+            sourceCollectionIDs: [RecordCollection.inboxID],
+            sink: .focusedApplication
+        )
+        _ = try await store.completeDelivery(leaseID: lease.id)
+        let before = try await store.snapshot()
+        await persistence.rejectWrites()
+        do {
+            _ = try await store.ingest(draft("again"), into: [RecordCollection.inboxID])
+            XCTFail("Reactivation must commit before it becomes visible")
+        } catch let error as RecordStoreError {
+            XCTAssertEqual(error, .persistenceUnavailable)
+        }
+        let failed = try await store.snapshot()
+        XCTAssertEqual(failed, before)
+        await persistence.allowWrites()
+        let restored = try await store.ingest(draft("again"), into: [RecordCollection.inboxID])
+        XCTAssertEqual(restored.id, first.id)
+        XCTAssertEqual(restored.memberships.first?.state, .active)
+    }
+
+    func testMissingContentDigestIsFilledBeforeReuse() async throws {
+        let record = Record(
+            payload: .text("same"),
+            provenance: clipboardProvenance,
+            createdAt: Date(timeIntervalSince1970: 10)
+        )
+        let persistence = try MissingDigestCatalog(record: record, payload: Data("same".utf8))
+        let store = RecordStore(persistence: persistence)
+        let again = try await store.ingest(draft("same"), into: [])
+        XCTAssertEqual(again.id, record.id)
+        XCTAssertTrue(again.memberships.isEmpty)
+        let snapshot = try await store.snapshot()
+        XCTAssertEqual(snapshot.records.map(\.id), [record.id])
+        let committedHeader = await persistence.committedRecordHeader()
+        let header = try XCTUnwrap(committedHeader)
+        XCTAssertEqual(header.id, record.id)
+        XCTAssertEqual(header.contentDigest?.count, 32)
+    }
+
     func testRecordWithZeroMembershipRemainsInAllRecords() async throws {
         let store = RecordStore()
         let projection = try await store.ingest(draft("orphan"), into: [])
@@ -525,6 +748,10 @@ final class RecordStoreTests: XCTestCase {
             )
         )
     }
+
+    private var clipboardProvenance: RecordProvenance {
+        RecordProvenance(source: RecordSourceIdentity(kind: .systemClipboard))
+    }
 }
 
 private actor FailingRecordGraphPersistence: RecordGraphPersistenceStore {
@@ -597,6 +824,82 @@ private actor ReentrantRecordGraphPersistenceProbe: RecordGraphPersistenceStore 
 
 private enum FailingRecordGraphPersistenceError: Error {
     case rejected
+}
+
+private actor MissingDigestCatalog: RecordCatalogPersistenceStore {
+    private let catalog: RecordCatalogRead
+    private let payload: Data
+    private var revision: Int64 = 1
+    private var committedHeader: RecordHeader?
+
+    init(record: Record, payload: Data) throws {
+        let header = RecordHeader(record: record, byteCount: payload.count)
+        let encoder = JSONEncoder()
+        var nodes: [RecordCatalogNode] = []
+        func append<T: Encodable>(
+            _ kind: RecordCatalogNode.Kind,
+            _ id: String,
+            _ value: T
+        ) throws {
+            nodes.append(RecordCatalogNode(kind: kind, id: id, value: try encoder.encode(value)))
+        }
+        for collection in [RecordCollection.inbox, RecordCollection.voiceInput] {
+            try append(.collection, collection.id.description, collection)
+        }
+        try append(.record, record.id.description, header)
+        try append(.metadata, record.id.description, RecordMetadata(recordID: record.id))
+        try append(.activity, record.id.description, RecordActivity(recordID: record.id))
+        catalog = RecordCatalogRead(
+            revision: revision,
+            manifest: RecordCatalogManifest(
+                nextMembershipOrdinal: 1,
+                recordOrder: [record.id],
+                collectionOrder: [RecordCollection.inboxID, RecordCollection.voiceInputID]
+            ),
+            nodes: nodes,
+            references: [
+                RecordGraphPersistenceBlobReference(
+                    blobID: UUID(),
+                    recordID: record.id,
+                    kind: .text,
+                    byteCount: payload.count
+                )
+            ]
+        )
+        self.payload = payload
+    }
+
+    func committedRecordHeader() -> RecordHeader? { committedHeader }
+
+    func loadRecordCatalog() async throws -> RecordCatalogRead? { catalog }
+
+    func loadRecordPayload(
+        _ reference: RecordGraphPersistenceBlobReference
+    ) async throws -> Data {
+        payload
+    }
+
+    func commitRecordCatalog(_ mutation: RecordCatalogMutation) async throws -> Int64 {
+        let decoder = JSONDecoder()
+        if let node = mutation.upserts.first(where: { $0.kind == .record }),
+           let header = try? decoder.decode(RecordHeader.self, from: node.value) {
+            committedHeader = header
+        }
+        revision += 1
+        return revision
+    }
+
+    func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
+
+    func replaceRecordGraph(
+        with snapshot: RecordGraphPersistenceWriteSnapshot
+    ) async throws -> Int64 {
+        throw RecordStoreError.persistenceUnavailable
+    }
+
+    func removeRecordGraph() async throws -> RecordGraphRemovalResult {
+        throw RecordStoreError.persistenceUnavailable
+    }
 }
 
 private actor RecordCollectionEventProbe: RecordCollectionEventSink {
