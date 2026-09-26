@@ -235,6 +235,21 @@ final class RecordCatalogTests: XCTestCase {
     XCTAssertTrue(noResults.records.isEmpty)
   }
 
+  func testCatalogReloadReusesIdenticalPayload() async throws {
+    let fixture = try fixture()
+    let store = RecordStore(persistence: fixture.persistence)
+    let first = try await store.ingest(draft("same body"), into: [RecordCollection.inboxID])
+    let blobs = try rawBlobs(at: fixture.url)
+    let reloaded = RecordStore(persistence: fixture.persistence)
+    let again = try await reloaded.ingest(draft("same body"), into: [RecordCollection.inboxID])
+    XCTAssertEqual(again.id, first.id)
+    XCTAssertEqual(try rawBlobs(at: fixture.url), blobs)
+    let other = try await reloaded.ingest(draft("other body"), into: [])
+    XCTAssertNotEqual(other.id, first.id)
+    let records = try await reloaded.catalogSnapshot().records
+    XCTAssertEqual(Set(records.map(\.id)), [first.id, other.id])
+  }
+
   func testCatalogRoundTripAndMetadataUpdateDoNotReadOrRewriteBodies() async throws {
     let fixture = try fixture()
     let store = RecordStore(persistence: fixture.persistence)

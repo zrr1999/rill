@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import RillCore
 
@@ -121,6 +122,8 @@ public actor RecordStore {
         var captureRules: [CaptureRouteRule] = []
         var deliveryRules: [DeliveryRouteRule] = []
         var nextMembershipOrdinal: UInt64 = 1
+        var recordIDsByContentDigest: [Data: [RecordID]] = [:]
+        var recordIDsMissingContentDigest: Set<RecordID> = []
         var revision: UInt64 = 0
         var repositoryRevision: Int64?
         var durableBlobReferencesByRecordID: [RecordID: RecordGraphPersistenceBlobReference] = [:]
@@ -331,19 +334,21 @@ public actor RecordStore {
         guard destinations.allSatisfy({ graphState.collectionsByID[$0] != nil }) else {
             throw RecordStoreError.collectionUnavailable
         }
-        guard graphState.membershipsByID.count + destinations.count <= RecordGraphLimits.maximumMemberships else {
-            throw RecordStoreError.membershipLimitReached
-        }
-        try validateRecordAdmission(
-            payload: draft.payload,
-            tags: draft.tags,
-            activeRecordDelta: destinations.isEmpty ? 0 : 1,
-            historyOnlyRecordDelta: destinations.isEmpty ? 1 : 0
-        )
-        for collectionID in destinations {
-            guard activeMembershipCount(in: collectionID)
-                    < storageLimits.maximumActiveMembershipCountPerCollection
-            else { throw RecordStoreError.recordLimitReached }
+        let encoded = try encodedPayload(draft.payload)
+        let digest = contentDigest(of: encoded)
+        if !isDerivedCapture(draft.provenance) {
+            let lookup = try await lookupExistingRecord(matching: draft.payload, digest: digest)
+            if let match = lookup.match {
+                return try await reuseRecord(
+                    match,
+                    destinations: destinations,
+                    backfilledDigests: lookup.digests
+                )
+            }
+            try prepareNewRecordAdmission(draft, destinations: destinations)
+            storeContentDigests(lookup.digests)
+        } else {
+            try prepareNewRecordAdmission(draft, destinations: destinations)
         }
 
         let record = Record(
@@ -352,7 +357,9 @@ public actor RecordStore {
             createdAt: draft.createdAt
         )
         markCatalogChange(.record, id: record.id)
-        graphState.recordsByID[record.id] = RecordHeader(record: record, byteCount: try encodedPayload(record.payload).count)
+        let header = RecordHeader(record: record, byteCount: encoded.count, contentDigest: digest)
+        graphState.recordsByID[record.id] = header
+        rememberContentIdentity(header)
         cachePayload(record.payload, for: record.id)
         graphState.recordOrder.insert(record.id, at: 0)
         markCatalogChange(.metadata, id: record.id)
@@ -450,6 +457,7 @@ public actor RecordStore {
         let removedRecord = graphState.recordsByID[recordID]
         for membershipID in membershipIDs { removeMembershipWithoutPersistence(membershipID) }
         markCatalogChange(.record, id: recordID)
+        forgetContentIdentity(recordID)
         graphState.recordsByID.removeValue(forKey: recordID)
         graphState.recordOrder.removeAll { $0 == recordID }
         markCatalogChange(.metadata, id: recordID)
@@ -546,7 +554,14 @@ public actor RecordStore {
         provenance.supersedes = sourceRecord.id
         let replacement = Record(payload: payload, provenance: provenance, createdAt: createdAt)
         markCatalogChange(.record, id: replacement.id)
-        graphState.recordsByID[replacement.id] = RecordHeader(record: replacement, byteCount: try encodedPayload(replacement.payload).count)
+        let replacementPayload = try encodedPayload(replacement.payload)
+        let replacementHeader = RecordHeader(
+            record: replacement,
+            byteCount: replacementPayload.count,
+            contentDigest: contentDigest(of: replacementPayload)
+        )
+        graphState.recordsByID[replacement.id] = replacementHeader
+        rememberContentIdentity(replacementHeader)
         cachePayload(replacement.payload, for: replacement.id)
         graphState.recordOrder.insert(replacement.id, at: 0)
         markCatalogChange(.metadata, id: replacement.id)
@@ -1233,6 +1248,203 @@ public actor RecordStore {
         stableUnique(tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
     }
 
+    private static let contentDigestByteCount = 32
+
+    private struct ContentLookup {
+        var match: RecordID?
+        var digests: [RecordID: Data]
+    }
+
+    private struct RecordReusePlan {
+        var creates: [RecordCollectionID]
+        var reactivations: [RecordMembership]
+    }
+
+    private func contentDigest(of payload: Data) -> Data {
+        Data(SHA256.hash(data: payload))
+    }
+
+    private func isDerivedCapture(_ provenance: RecordProvenance) -> Bool {
+        provenance.derivedFrom != nil || provenance.supersedes != nil
+    }
+
+    private func prepareNewRecordAdmission(
+        _ draft: RecordDraft,
+        destinations: [RecordCollectionID]
+    ) throws {
+        guard graphState.membershipsByID.count + destinations.count <= RecordGraphLimits.maximumMemberships else {
+            throw RecordStoreError.membershipLimitReached
+        }
+        try validateRecordAdmission(
+            payload: draft.payload,
+            tags: draft.tags,
+            activeRecordDelta: destinations.isEmpty ? 0 : 1,
+            historyOnlyRecordDelta: destinations.isEmpty ? 1 : 0
+        )
+        for collectionID in destinations {
+            guard activeMembershipCount(in: collectionID)
+                    < storageLimits.maximumActiveMembershipCountPerCollection
+            else { throw RecordStoreError.recordLimitReached }
+        }
+    }
+
+    /// Hash selects candidates. Payload equality is the identity decision, so a
+    /// digest collision cannot merge different content.
+    private func lookupExistingRecord(
+        matching payload: RecordPayload,
+        digest: Data
+    ) async throws -> ContentLookup {
+        var digests: [RecordID: Data] = [:]
+        var candidateIDs = graphState.recordIDsByContentDigest[digest] ?? []
+        for id in graphState.recordIDsMissingContentDigest {
+            guard let record = try await materializedRecord(id) else { continue }
+            let computed = contentDigest(of: try encodedPayload(record.payload))
+            digests[id] = computed
+            if computed == digest { candidateIDs.append(id) }
+        }
+        var matches: [RecordHeader] = []
+        for id in candidateIDs {
+            guard let header = graphState.recordsByID[id],
+                  let record = try await materializedRecord(id),
+                  record.payload == payload
+            else { continue }
+            matches.append(header)
+        }
+        let match = matches.min { lhs, rhs in
+            if lhs.createdAt != rhs.createdAt { return lhs.createdAt < rhs.createdAt }
+            return lhs.id.rawValue.uuidString < rhs.id.rawValue.uuidString
+        }?.id
+        return ContentLookup(match: match, digests: digests)
+    }
+
+    private func reuseRecord(
+        _ recordID: RecordID,
+        destinations: [RecordCollectionID],
+        backfilledDigests: [RecordID: Data]
+    ) async throws -> RecordProjection {
+        let plan = try reusePlan(recordID: recordID, destinations: destinations)
+        guard !plan.creates.isEmpty || !plan.reactivations.isEmpty || !backfilledDigests.isEmpty else {
+            guard let projection = try await projection(for: recordID) else {
+                throw RecordStoreError.invalidGraph
+            }
+            return projection
+        }
+        storeContentDigests(backfilledDigests)
+        for membership in plan.reactivations {
+            _ = reactivateMembershipAtFront(membership)
+        }
+        var created: [RecordMembership] = []
+        for collectionID in plan.creates {
+            created.append(try addMembershipWithoutPersistence(recordID: recordID, collectionID: collectionID))
+        }
+        noteMutation()
+        try await persistCurrentGraph()
+        guard let projection = try await projection(for: recordID),
+              let record = graphState.recordsByID[recordID]
+        else { throw RecordStoreError.invalidGraph }
+        await publishCollectionEvents(
+            created.map { collectionEvent(.recordCreated, membership: $0, record: record) }
+        )
+        return projection
+    }
+
+    private func reusePlan(
+        recordID: RecordID,
+        destinations: [RecordCollectionID]
+    ) throws -> RecordReusePlan {
+        var creates: [RecordCollectionID] = []
+        var reactivations: [RecordMembership] = []
+        for collectionID in destinations {
+            if let existing = graphState.membershipIDsByRecordID[recordID, default: []]
+                .compactMap({ graphState.membershipsByID[$0] })
+                .first(where: { $0.collectionID == collectionID }) {
+                if existing.state == .consumed {
+                    guard !leasedMembershipIDs.contains(existing.id) else {
+                        throw RecordStoreError.membershipAlreadyInUse
+                    }
+                    reactivations.append(existing)
+                }
+            } else {
+                creates.append(collectionID)
+            }
+        }
+        guard graphState.membershipIDsByRecordID[recordID, default: []].count + creates.count
+                <= RecordGraphLimits.maximumMembershipsPerRecord,
+              graphState.membershipsByID.count + creates.count <= RecordGraphLimits.maximumMemberships
+        else { throw RecordStoreError.membershipLimitReached }
+        for collectionID in creates + reactivations.map(\.collectionID) {
+            guard activeMembershipCount(in: collectionID)
+                    < storageLimits.maximumActiveMembershipCountPerCollection
+            else { throw RecordStoreError.recordLimitReached }
+        }
+        if (!creates.isEmpty || !reactivations.isEmpty),
+           !hasActiveMembership(recordID: recordID),
+           activeRecordCount() >= storageLimits.maximumActiveRecordCount {
+            throw RecordStoreError.recordLimitReached
+        }
+        return RecordReusePlan(creates: creates, reactivations: reactivations)
+    }
+
+    private func reactivateMembershipAtFront(_ membership: RecordMembership) -> RecordMembership {
+        let revived = RecordMembership(
+            id: membership.id,
+            recordID: membership.recordID,
+            collectionID: membership.collectionID,
+            ordinal: graphState.nextMembershipOrdinal,
+            state: .active,
+            revision: membership.revision == .max ? 1 : membership.revision + 1
+        )
+        graphState.nextMembershipOrdinal = graphState.nextMembershipOrdinal == .max
+            ? 1 : graphState.nextMembershipOrdinal + 1
+        markCatalogChange(.membership, id: revived.id)
+        graphState.membershipsByID[revived.id] = revived
+        sortCollectionMemberships(revived.collectionID)
+        return revived
+    }
+
+    private func storeContentDigests(_ digests: [RecordID: Data]) {
+        for (id, digest) in digests {
+            guard let header = graphState.recordsByID[id], header.contentDigest == nil else { continue }
+            forgetContentIdentity(id)
+            let updated = header.withContentDigest(digest)
+            graphState.recordsByID[id] = updated
+            rememberContentIdentity(updated)
+            markCatalogChange(.record, id: id)
+        }
+    }
+
+    private func rememberContentIdentity(_ header: RecordHeader) {
+        guard let digest = header.contentDigest else {
+            graphState.recordIDsMissingContentDigest.insert(header.id)
+            return
+        }
+        graphState.recordIDsMissingContentDigest.remove(header.id)
+        var ids = graphState.recordIDsByContentDigest[digest] ?? []
+        if !ids.contains(header.id) { ids.append(header.id) }
+        graphState.recordIDsByContentDigest[digest] = ids
+    }
+
+    private func forgetContentIdentity(_ recordID: RecordID) {
+        graphState.recordIDsMissingContentDigest.remove(recordID)
+        guard let digest = graphState.recordsByID[recordID]?.contentDigest,
+              var ids = graphState.recordIDsByContentDigest[digest]
+        else { return }
+        ids.removeAll { $0 == recordID }
+        if ids.isEmpty {
+            graphState.recordIDsByContentDigest.removeValue(forKey: digest)
+        } else {
+            graphState.recordIDsByContentDigest[digest] = ids
+        }
+    }
+
+    private func rebuildContentIdentityIndex() {
+        graphState.recordIDsByContentDigest.removeAll(keepingCapacity: true)
+        graphState.recordIDsMissingContentDigest.removeAll(keepingCapacity: true)
+        for header in graphState.recordsByID.values {
+            rememberContentIdentity(header)
+        }
+    }
+
     private func activeMembershipCount(in collectionID: RecordCollectionID) -> Int {
         graphState.membershipIDsByCollectionID[collectionID, default: []].reduce(into: 0) { count, membershipID in
             if graphState.membershipsByID[membershipID]?.state == .active { count += 1 }
@@ -1383,7 +1595,14 @@ extension RecordStore {
     }
 
     private func install(_ legacy: LegacyClipboardMigration.MigratedGraph) throws {
-        let headers = try legacy.records.map { RecordHeader(record: $0, byteCount: try encodedPayload($0.payload).count) }
+        let headers = try legacy.records.map { record in
+            let payload = try encodedPayload(record.payload)
+            return RecordHeader(
+                record: record,
+                byteCount: payload.count,
+                contentDigest: contentDigest(of: payload)
+            )
+        }
         try install(InstalledGraph(records: headers, metadata: legacy.metadata, activity: legacy.activity,
                                    collections: legacy.collections, memberships: legacy.memberships,
                                    captureRules: legacy.captureRules, deliveryRules: legacy.deliveryRules,
@@ -1444,6 +1663,9 @@ extension RecordStore {
         var payloadByteCount = 0
         for record in graph.records {
             payloadByteCount += record.byteCount
+            if let digest = record.contentDigest, digest.count != Self.contentDigestByteCount {
+                throw RecordStoreError.invalidGraph
+            }
             guard payloadByteCount <= storageLimits.maximumTotalPayloadByteCount else {
                 throw RecordStoreError.invalidGraph
             }
@@ -1473,6 +1695,7 @@ extension RecordStore {
         let maximumOrdinal = graph.memberships.map(\.ordinal).max() ?? 0
         graphState.nextMembershipOrdinal = max(graph.nextMembershipOrdinal, maximumOrdinal + 1)
         graphState.revision = 1
+        rebuildContentIdentityIndex()
     }
 
     private func persistCurrentGraph() async throws {
@@ -2002,6 +2225,7 @@ extension RecordStore {
         for id in removed {
             for membershipID in graphState.membershipIDsByRecordID[id, default: []] { removeMembershipWithoutPersistence(membershipID) }
             markCatalogChange(.record, id: id)
+            forgetContentIdentity(id)
             graphState.recordsByID.removeValue(forKey: id)
             markCatalogChange(.metadata, id: id)
             graphState.metadataByRecordID.removeValue(forKey: id)
