@@ -1,0 +1,16 @@
+{
+  "ignore": [
+    "Tests/**",
+    "scripts/tests/**",
+    "Benchmarks/**",
+    "docs/**",
+    ".github/**",
+    ".git/**",
+    "Resources/InputMethodLicenses/**",
+    "THIRD_PARTY_NOTICES.md",
+    "Sources/CRime/include/rime_api.h",
+    "Sources/CRime/include/rime_api_deprecated.h",
+    "Sources/RillProviders/BuiltinWorkflowCatalog.swift",
+    "Sources/RillApp/Resources/BuiltinWorkflowManifest.json"
+  ]
+}

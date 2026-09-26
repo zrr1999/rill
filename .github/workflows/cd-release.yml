@@ -81,7 +81,7 @@ jobs:
       - name: Install pinned Gitleaks
         run: |
           tool_dir="$RUNNER_TEMP/gitleaks-bin"
-          bash scripts/install_gitleaks.sh --destination "$tool_dir"
+          bash scripts/preflight.sh install-gitleaks --destination "$tool_dir"
           echo "$tool_dir" >> "$GITHUB_PATH"
 
       - name: Generate draft release notes
@@ -142,7 +142,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
           SIGN_IDENTITY: Developer ID Application
           NOTARY_PROFILE: Rill
-        run: bash scripts/github_release.sh "$RELEASE_TAG" "$RELEASE_NOTES"
+        run: bash scripts/release.sh github "$RELEASE_TAG" "$RELEASE_NOTES"
 
       - name: Remove temporary signing keychain
         if: always()

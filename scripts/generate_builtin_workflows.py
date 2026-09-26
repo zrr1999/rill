@@ -113,11 +113,37 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Verify generated artifacts without writing any files.",
     )
+    parser.add_argument(
+        "--validate",
+        metavar="PATH",
+        help="Validate one built-in workflow manifest JSON file and exit.",
+    )
     return parser.parse_args()
+
+
+def validate_manifest(path: Path) -> int:
+    try:
+        with path.open(encoding="utf-8") as source:
+            manifest = json.load(source)
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        print(f"cannot read built-in workflow manifest: {error}", file=sys.stderr)
+        return 2
+    if not isinstance(manifest, dict):
+        print("Built-in workflow manifest must be a JSON object", file=sys.stderr)
+        return 2
+    if not isinstance(manifest.get("workflows"), list):
+        print(
+            "Built-in workflow manifest must contain a workflows array",
+            file=sys.stderr,
+        )
+        return 2
+    return 0
 
 
 def main() -> int:
     args = parse_args()
+    if args.validate is not None:
+        return validate_manifest(Path(args.validate))
     try:
         manifest = load_manifest()
         outputs = {
@@ -610,14 +636,6 @@ def swift_workflow_symbol(value: str) -> str:
     except KeyError as error:
         raise SourceError(f"unsupported Rill-owned workflow symbol: {value}") from error
     return f"WorkflowUISymbol.{member}.rawValue"
-
-
-def swift_number(value: int | float) -> str:
-    if type(value) not in (int, float):
-        raise SourceError(
-            f"expected a number while rendering Swift, got {type(value).__name__}"
-        )
-    return str(value)
 
 
 def check_outputs(outputs: Mapping[Path, str]) -> int:

@@ -21,15 +21,15 @@ docs-serve port="8000":
 
 # Build one Debug product; application changes do not compile MLX.
 build product="RillApp":
-    scripts/swift_locked.sh build --product {{quote(product)}}
+    scripts/preflight.sh swift build --product {{quote(product)}}
 
 # Run the locked Swift test suite.
 test:
-    bash scripts/test.sh
+    scripts/preflight.sh test
 
 # Test build, release, security, and asset scripts without building the app.
 test-scripts:
-    bash scripts/tests/run.sh
+    scripts/preflight.sh test-scripts
 
 # Build and validate the production performance workloads.
 bench:
@@ -49,14 +49,14 @@ ci-clean:
 
 # Build and validate the arm64 release products.
 build-release:
-    scripts/swift_locked.sh release
+    scripts/preflight.sh swift release
 
 # Inspect or clear inactive shared worker artifacts.
 cache-status:
-    scripts/swift_locked.sh cache status
+    scripts/preflight.sh swift cache status
 
 cache-clean:
-    scripts/swift_locked.sh cache clean
+    scripts/preflight.sh swift cache clean
 
 # Assemble a local release artifact.
 release:
@@ -64,12 +64,12 @@ release:
 
 # Build, notarize, and upload a new GitHub Release draft.
 release-github tag notes:
-    bash scripts/github_release.sh {{quote(tag)}} {{quote(notes)}}
+    bash scripts/release.sh github {{quote(tag)}} {{quote(notes)}}
 
 # Export native UI render evidence for review.
 test-render:
-    RILL_UI_SNAPSHOT_DIR="$PWD/.artifacts/ui-renders" scripts/swift_locked.sh test --filter 'Render|UIRenderEvidence'
+    RILL_UI_SNAPSHOT_DIR="$PWD/.artifacts/ui-renders" scripts/preflight.sh swift test --filter 'Render|UIRenderEvidence'
 
 # Exercise the large catalog fixture separately from the fast suite.
 test-stress:
-    RILL_RECORD_STRESS=1 scripts/swift_locked.sh test --filter RecordCatalogStressTests
+    RILL_RECORD_STRESS=1 scripts/preflight.sh swift test --filter RecordCatalogStressTests

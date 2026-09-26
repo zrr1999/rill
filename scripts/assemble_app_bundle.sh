@@ -23,7 +23,6 @@ LOCAL_MODEL_NOTICES_NAME="LOCAL_MODEL_NOTICES.md"
 PRIVACY_NOTICE_NAME="PRIVACY.md"
 APP_BUNDLE_RESOURCES_ROOT="$PROJECT_DIR/Resources/AppBundle"
 APP_ICON_SOURCE="$PROJECT_DIR/Resources/AppIcon/AppIcon-1024-routed-voice-cursor.png"
-APP_ICON_GENERATOR="$SCRIPT_DIR/generate_app_icon.sh"
 APP_ICON_NAME="Rill.icns"
 INFO_PLIST_LOCALIZATIONS=("en" "zh-Hans")
 INFO_PLIST_LOCALIZATION_KEYS=(
@@ -37,6 +36,217 @@ error() {
   echo "✗ $*" >&2
   exit 1
 }
+
+verify_release_executable() {
+  local executable="${1-}"
+  local MIN_MACOS="14.0"
+  local REQUIRED_ARCHITECTURE="arm64"
+  local architectures=""
+
+  [[ -n "$executable" ]] || error "usage: $0 verify-executable /path/to/executable"
+  command -v lipo >/dev/null 2>&1 || error "Required command not found: lipo"
+  command -v xcrun >/dev/null 2>&1 || error "Required command not found: xcrun"
+  [[ -f "$executable" && -x "$executable" && ! -L "$executable" ]] \
+    || error "Release executable must be an executable regular non-symlink file: $executable"
+  if ! architectures="$(lipo "$executable" -archs 2>&1)"; then
+    error "Cannot inspect release executable architecture: $executable"
+  fi
+  [[ "$architectures" == "$REQUIRED_ARCHITECTURE" ]] \
+    || error "Release executable must contain only arm64: $executable"
+
+  verify_build_version() {
+    local architecture="$1"
+    local build_output=""
+    local summary=""
+    local build_command_count=""
+    local platform_count=""
+    local macos_platform_count=""
+    local minos_count=""
+    local expected_minos_count=""
+
+    if ! build_output="$(
+      xcrun vtool -arch "$architecture" -show-build "$executable" 2>&1
+    )"; then
+      error "Cannot inspect LC_BUILD_VERSION for $architecture: $executable"
+    fi
+    summary="$(
+      printf '%s\n' "$build_output" | awk -v expected_minos="$MIN_MACOS" '
+        $1 == "cmd" && $2 == "LC_BUILD_VERSION" { build_command_count += 1 }
+        $1 == "platform" {
+          platform_count += 1
+          if ($2 == "MACOS") { macos_platform_count += 1 }
+        }
+        $1 == "minos" {
+          minos_count += 1
+          if ($2 == expected_minos) { expected_minos_count += 1 }
+        }
+        END {
+          printf "%d|%d|%d|%d|%d", build_command_count, platform_count,
+            macos_platform_count, minos_count, expected_minos_count
+        }
+      '
+    )"
+    IFS='|' read -r \
+      build_command_count \
+      platform_count \
+      macos_platform_count \
+      minos_count \
+      expected_minos_count <<<"$summary"
+    [[ "$build_command_count" == "1" ]] \
+      || error "Release executable $architecture slice must contain exactly one LC_BUILD_VERSION: $executable"
+    [[ "$platform_count" == "1" && "$macos_platform_count" == "1" ]] \
+      || error "Release executable $architecture slice must target the macOS platform: $executable"
+    [[ "$minos_count" == "1" && "$expected_minos_count" == "1" ]] \
+      || error "Release executable $architecture slice must require macOS $MIN_MACOS exactly: $executable"
+  }
+
+  verify_build_version "$REQUIRED_ARCHITECTURE"
+}
+
+write_info_plist() {
+  uv run --quiet --no-project --python '>=3.11' python - "$@" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+if len(sys.argv) != 9:
+    print(
+        "usage: assemble_app_bundle.sh write-info-plist PATH VERSION BUILD_NUMBER "
+        "BUILD_KIND SOURCE_REVISION SOURCE_DIRTY VERSION_LABEL MICROPHONE_DESCRIPTION",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+(
+    path,
+    version,
+    build_number,
+    build_kind,
+    source_revision,
+    source_dirty,
+    version_label,
+    microphone_usage_description,
+) = sys.argv[1:]
+payload = {
+    "CFBundleDevelopmentRegion": "en",
+    "CFBundleExecutable": "Rill",
+    "CFBundleGetInfoString": version_label,
+    "CFBundleIconFile": "Rill.icns",
+    "CFBundleIdentifier": "dev.zrr.Rill",
+    "CFBundleName": "Rill",
+    "CFBundleDisplayName": "Rill",
+    "CFBundlePackageType": "APPL",
+    "CFBundleShortVersionString": version,
+    "CFBundleVersion": build_number,
+    "CFBundleInfoDictionaryVersion": "6.0",
+    "LSMinimumSystemVersion": "14.0",
+    "LSUIElement": True,
+    "NSMicrophoneUsageDescription": microphone_usage_description,
+    "NSPrincipalClass": "NSApplication",
+    "RillBuildKind": build_kind,
+    "RillSourceDirty": source_dirty == "true",
+    "RillSourceRevision": source_revision,
+    "RillVersionLabel": version_label,
+}
+try:
+    with Path(path).open("wb") as output:
+        plistlib.dump(payload, output, fmt=plistlib.FMT_XML, sort_keys=True)
+except (OSError, ValueError) as error:
+    print(f"cannot write Info.plist: {error}", file=sys.stderr)
+    raise SystemExit(2)
+PY
+}
+
+generate_app_icon() {
+  local source_png="${1-}"
+  local output_icns="${2-}"
+  local rendition_renderer="$SCRIPT_DIR/render_app_icon_renditions.swift"
+  local expected_source_sha256="c6c6bd3647ca2cc2ae860c27832d2f8150c5832320ed7b4b7b95eae902fe2642"
+  local max_source_bytes=$((500 * 1024))
+  local temporary_directory=""
+  local iconset=""
+  local reviewed_source=""
+  local source_sha256=""
+  local source_bytes=""
+  local pixel_width=""
+  local pixel_height=""
+
+  [[ -n "$source_png" && -n "$output_icns" ]] || error "usage: $0 app-icon SOURCE_PNG OUTPUT_ICNS"
+  command -v sips >/dev/null 2>&1 || error "sips is required"
+  command -v iconutil >/dev/null 2>&1 || error "iconutil is required"
+  command -v shasum >/dev/null 2>&1 || error "shasum is required"
+  command -v swift >/dev/null 2>&1 || error "Swift is required"
+  [[ -f "$source_png" ]] || error "app icon source is missing: $source_png"
+  [[ -f "$rendition_renderer" ]] || error "app icon rendition renderer is missing: $rendition_renderer"
+  temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/rill-app-icon.XXXXXX")"
+  iconset="$temporary_directory/Rill.iconset"
+  reviewed_source="$temporary_directory/AppIcon-1024-reviewed.png"
+  mkdir -p "$iconset" "$(dirname "$output_icns")"
+  cp "$source_png" "$reviewed_source"
+  source_sha256="$(shasum -a 256 "$reviewed_source" | awk '{ print $1 }')"
+  [[ "$source_sha256" == "$expected_source_sha256" ]] \
+    || error "app icon source SHA-256 does not match the reviewed asset"
+  source_bytes="$(wc -c <"$reviewed_source" | tr -d '[:space:]')"
+  [[ "$source_bytes" -le "$max_source_bytes" ]] \
+    || error "app icon source exceeds the 500 KiB repository limit"
+  pixel_width="$(sips -g pixelWidth "$reviewed_source" | awk '/pixelWidth:/ { print $2 }')"
+  pixel_height="$(sips -g pixelHeight "$reviewed_source" | awk '/pixelHeight:/ { print $2 }')"
+  [[ "$pixel_width" == "1024" && "$pixel_height" == "1024" ]] \
+    || error "app icon source must be exactly 1024 x 1024 pixels"
+  swift "$rendition_renderer" render "$reviewed_source" "$iconset"
+  swift "$rendition_renderer" verify "$iconset"
+  rm -f "$output_icns"
+  iconutil -c icns "$iconset" -o "$output_icns"
+  rm -rf "$temporary_directory"
+  [[ -s "$output_icns" ]] || error "iconutil did not create a non-empty ICNS file"
+}
+
+render_brand_assets() {
+  local source_dir="$PROJECT_DIR/Resources/AppIcon"
+  local output_dir="$PROJECT_DIR/Sources/RillApp/Resources"
+  local temporary_directory=""
+
+  command -v rsvg-convert >/dev/null 2>&1 || error "rsvg-convert is required (brew install librsvg)"
+  temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/rill-brand-assets.XXXXXX")"
+  rsvg-convert "$source_dir/Rill.svg" \
+    --output "$source_dir/AppIcon-1024-routed-voice-cursor.png"
+  export SOURCE_DATE_EPOCH=0
+  rsvg-convert --format pdf --dpi-x 72 --dpi-y 72 \
+    "$source_dir/RillMenuBar.svg" \
+    --output "$output_dir/RillMenuBarTemplate.pdf"
+  echo '#records-indicator { opacity: 1; }' >"$temporary_directory/records.css"
+  rsvg-convert --format pdf --dpi-x 72 --dpi-y 72 \
+    --stylesheet "$temporary_directory/records.css" \
+    "$source_dir/RillMenuBar.svg" \
+    --output "$output_dir/RillMenuBarRecordsTemplate.pdf"
+  shasum -a 256 "$source_dir/Rill.svg" \
+    "$source_dir/AppIcon-1024-routed-voice-cursor.png" \
+    "$source_dir/RillMenuBar.svg" \
+    "$output_dir/RillMenuBarTemplate.pdf" \
+    "$output_dir/RillMenuBarRecordsTemplate.pdf"
+  rm -rf "$temporary_directory"
+}
+
+case "${1-}" in
+verify-executable)
+  shift
+  verify_release_executable "$@"
+  exit
+  ;;
+write-info-plist)
+  shift
+  write_info_plist "$@"
+  exit
+  ;;
+app-icon)
+  shift
+  generate_app_icon "$@"
+  exit
+  ;;
+render-brand)
+  render_brand_assets
+  exit
+  ;;
+esac
 
 usage() {
   cat <<EOF
@@ -92,8 +302,8 @@ done
 
 if [[ -n "$BUILD_RESULT" ]]; then
   [[ -z "$BUILD_DIR" ]] || error "--build-dir and --build-result are mutually exclusive"
-  BUILD_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field productsDirectory)"
-  CHECKOUTS_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field checkoutsDirectory)"
+  BUILD_DIR="$("$SCRIPT_DIR/preflight.sh" swift receipt "$BUILD_RESULT" --field productsDirectory)"
+  CHECKOUTS_DIR="$("$SCRIPT_DIR/preflight.sh" swift receipt "$BUILD_RESULT" --field checkoutsDirectory)"
 fi
 [[ -n "$BUILD_DIR" ]] || error "--build-dir or --build-result is required"
 [[ -n "$APP_BUNDLE" ]] || error "--app-bundle is required"
@@ -139,7 +349,7 @@ uv run --script "$THIRD_PARTY_NOTICES_GENERATOR" --check --checkouts-dir "$CHECK
 [[ -f "$PRIVACY_NOTICE_SOURCE" ]] ||
   error "Technical privacy notice not found: $PRIVACY_NOTICE_SOURCE"
 [[ -f "$APP_ICON_SOURCE" ]] || error "App icon source not found: $APP_ICON_SOURCE"
-[[ -x "$APP_ICON_GENERATOR" ]] || error "App icon generator not found: $APP_ICON_GENERATOR"
+[[ -f "$SCRIPT_DIR/render_app_icon_renditions.swift" ]] || error "App icon rendition renderer not found"
 
 for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
   localized_info_source="$APP_BUNDLE_RESOURCES_ROOT/$localization.lproj/InfoPlist.strings"
@@ -174,9 +384,9 @@ INPUT_METHOD_SOURCE="$BUILD_DIR/$INPUT_METHOD_PRODUCT"
   error "Release executable not found or not executable: $EXECUTABLE_SOURCE"
 [[ -x "$SPEECH_WORKER_SOURCE" ]] ||
   error "Speech worker not found or not executable: $SPEECH_WORKER_SOURCE"
-bash "$SCRIPT_DIR/verify_release_executable.sh" "$EXECUTABLE_SOURCE"
-bash "$SCRIPT_DIR/verify_release_executable.sh" "$SPEECH_WORKER_SOURCE"
-bash "$SCRIPT_DIR/verify_release_executable.sh" "$INPUT_METHOD_SOURCE"
+verify_release_executable "$EXECUTABLE_SOURCE"
+verify_release_executable "$SPEECH_WORKER_SOURCE"
+verify_release_executable "$INPUT_METHOD_SOURCE"
 
 shopt -s nullglob
 RESOURCE_SOURCES=("$BUILD_DIR"/*.bundle)
@@ -224,9 +434,9 @@ uv run --no-build --locked --script "$SCRIPT_DIR/assemble_input_method.py" --uns
 # Verify the exact bytes that will be signed. The build directory can be
 # replaced by a concurrent build after the source checks above; validating the
 # packaged destinations closes that copy-time race.
-bash "$SCRIPT_DIR/verify_release_executable.sh" \
+verify_release_executable \
   "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
-bash "$SCRIPT_DIR/verify_release_executable.sh" \
+verify_release_executable \
   "$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"
 
 for source_bundle in "${RESOURCE_SOURCES[@]}"; do
@@ -261,7 +471,7 @@ ditto "$PRIVACY_NOTICE_SOURCE" "$PRIVACY_NOTICE_DESTINATION"
 cmp -s "$PRIVACY_NOTICE_SOURCE" "$PRIVACY_NOTICE_DESTINATION" ||
   error "Packaged technical privacy notice differs from the repository source"
 APP_ICON_DESTINATION="$APP_BUNDLE/Contents/Resources/$APP_ICON_NAME"
-"$APP_ICON_GENERATOR" "$APP_ICON_SOURCE" "$APP_ICON_DESTINATION"
+generate_app_icon "$APP_ICON_SOURCE" "$APP_ICON_DESTINATION"
 
 for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
   localized_info_source="$APP_BUNDLE_RESOURCES_ROOT/$localization.lproj/InfoPlist.strings"
@@ -271,7 +481,7 @@ for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
 done
 
 INFO_PLIST="$APP_BUNDLE/Contents/Info.plist"
-uv run --script "$SCRIPT_DIR/write_info_plist.py" \
+write_info_plist \
   "$INFO_PLIST" \
   "$VERSION" \
   "$BUILD_NUMBER" \
@@ -346,7 +556,7 @@ for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
     error "Packaged localized Info.plist strings differ from source: $localization"
 done
 
-uv run --script "$SCRIPT_DIR/validate_builtin_workflow_manifest.py" \
+uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --validate \
   "$MANIFEST_DESTINATION"
 
 info "Assembled unsigned $APP_BUNDLE (${#RESOURCE_SOURCES[@]} resource bundles; $dependency_bundle_count dependencies)"
