@@ -6,6 +6,21 @@ import Testing
 @testable import RillPersistence
 
 struct ContextMemoryPersistenceTests {
+    @Test func vocabularyReceiptsRoundTripWithoutBecomingMemoryEvidence() async throws {
+        let fixture = try MemoryStoreFixture()
+        defer { fixture.remove() }
+        let reference = try CorrectionVocabularyReference(terms: ["ReferenceOnlyPrivateTerm"])
+        let record = fixture.record(text: "Actual transcript", vocabulary: reference.receipt)
+        try await fixture.store.save(record)
+        let reopened = try SQLitePersistenceStore(databaseURL: fixture.url, localDataProtector: fixture.protector)
+        let saved = try #require(try await reopened.records(matching: .all).first)
+        #expect(saved.correctionSource?.references?.vocabulary == reference.receipt)
+        try await fixture.store.setContextAuthorization(fixture.authorization.id)
+        let batch = try #require(try await fixture.batch())
+        #expect(!String(decoding: try JSONEncoder().encode(saved), as: UTF8.self).contains("ReferenceOnlyPrivateTerm"))
+        #expect(!String(decoding: try MemoryConsolidationInput(batch: batch).encoded(), as: UTF8.self).contains("ReferenceOnlyPrivateTerm"))
+    }
+
     @Test(arguments: [false, true]) @MainActor
     func busyDatabaseDoesNotHoldAuthorizationLockAndRevocationRollsBack(screenSummary: Bool) async throws {
         let fixture = try MemoryStoreFixture()
@@ -321,12 +336,13 @@ private struct MemoryStoreFixture {
         store = try SQLitePersistenceStore(databaseURL: url, localDataProtector: protector)
     }
     func remove() { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-    func record(runID: UUID = UUID(), text: String = "Rill project", workflowID: UUID? = nil) -> WorkflowResultRecord {
+    func record(runID: UUID = UUID(), text: String = "Rill project", workflowID: UUID? = nil,
+                vocabulary: VocabularyReferenceReceipt? = nil) -> WorkflowResultRecord {
         WorkflowResultRecord(runID: runID, workflowID: workflowID ?? self.workflowID,
                              workflow: WorkflowPresentation(fallbackName: "Cleanup"), finalText: text,
                              timestamp: Date(timeIntervalSince1970: 1_700_000_000), outcome: .completed,
                              correctionSource: .init(preMappingText: text, context: .init(bundleIdentifier: "test.editor"),
-                                                     references: .init(image: .sent, imageSummary: .pending)),
+                                                     references: .init(image: .sent, imageSummary: .pending, vocabulary: vocabulary)),
                              trigger: .hotkey)
     }
     func batch() async throws -> MemoryConsolidationBatch? {

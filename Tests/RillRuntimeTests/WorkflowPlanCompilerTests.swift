@@ -3,6 +3,7 @@
 @testable import RillWorkflows
 import Foundation
 import XCTest
+import Testing
 
 private struct CompilerRecognizer: SpeechRecognizer {
     let id: String
@@ -251,5 +252,26 @@ final class WorkflowPlanCompilerTests: XCTestCase {
                 ),
             ]
         )
+    }
+}
+
+struct VocabularyCorrectionCompilationTests {
+    @Test(arguments: [true, false])
+    func fullScopedVocabularySurvivesASRCapabilityAndBudget(acceptsHotwords: Bool) throws {
+        let collection = VocabularyCollection(name: "Project", entries: (0..<70).map {
+            VocabularyEntry(content: .hotword(phrase: "Project\($0)"), priority: 100 - $0)
+        })
+        var workflow = WorkflowDefinition(name: "Voice", pipeline: .init(recognizerID: "recognizer",
+            outputActions: [.init(id: "compiler.action")]), ui: .init(symbolName: "waveform", accentColorName: "blue"))
+        workflow.plan.setup.vocabularyBindings = [.init(collectionID: collection.id, uses: [.recognitionHints])]
+        let compiler = WorkflowPlanCompiler(recognizerRegistry: .init(recognizers: [CompilerRecognizer(id: "recognizer", acceptsHotwords: acceptsHotwords)]),
+            transformerRegistry: .init(transformers: []), actionRegistry: .init(actions: [CompilerAction()]))
+        let plan = try compiler.compile(workflow: workflow, collections: [collection], context: .init())
+        #expect(plan.vocabularyCandidates.count == 70)
+        #expect(plan.vocabularyCandidates.last?.term == "Project69")
+        #expect(plan.recognitionCandidates.count == (acceptsHotwords ? 50 : 0))
+        workflow.plan.setup.vocabularyBindings = []
+        #expect(plan.vocabularyCandidates.count == 70)
+        #expect(try compiler.compile(workflow: workflow, collections: [collection], context: .init()).vocabularyCandidates.isEmpty)
     }
 }

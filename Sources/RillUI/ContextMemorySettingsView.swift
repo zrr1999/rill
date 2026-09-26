@@ -8,6 +8,7 @@ struct ContextMemorySettingsView: View {
     @Binding var isExpanded: Bool
     @State private var pendingScreen = false
     @State private var pendingMemory = false
+    @State private var pendingVocabulary = false
     @State private var showConsent = false
     @State private var showMemories = false
 
@@ -20,22 +21,29 @@ struct ContextMemorySettingsView: View {
             Text(text("Speech remains the only content source. References help correct recognition errors.",
                       "语音识别正文是唯一内容主体；参考仅用于纠正识别错误。"))
                 .font(.caption).foregroundStyle(.secondary)
+            Toggle(text("Use vocabulary for Smart Cleanup", "润色使用词库"), isOn: Binding(
+                get: { memory.settings.vocabularyCorrectionEnabled },
+                set: { propose(screen: memory.settings.screenContextEnabled, memoryEnabled: memory.settings.memoryEnabled, vocabulary: $0) }
+            )).accessibilityIdentifier("settings.context.vocabulary")
+            Text(text("Applicable hotwords are shared with the current LLM for new Smart Cleanup recordings, including words that do not fit the ASR budget.",
+                      "新录音的 Smart Cleanup 会向当前 LLM 提供适用热词，包括 ASR 预算装不下的词。"))
+                .font(.caption).foregroundStyle(.secondary)
             Toggle(text("Screen context", "屏幕上下文"), isOn: Binding(
                 get: { memory.settings.screenContextEnabled },
-                set: { propose(screen: $0, memoryEnabled: memory.settings.memoryEnabled) }
+                set: { propose(screen: $0, memoryEnabled: memory.settings.memoryEnabled, vocabulary: memory.settings.vocabularyCorrectionEnabled) }
             )).accessibilityIdentifier("settings.context.screen")
             Toggle(text("Long-term memory & idle organization", "长期记忆与空闲整理"), isOn: Binding(
                 get: { memory.settings.memoryEnabled },
-                set: { propose(screen: memory.settings.screenContextEnabled, memoryEnabled: $0) }
+                set: { propose(screen: memory.settings.screenContextEnabled, memoryEnabled: $0, vocabulary: memory.settings.vocabularyCorrectionEnabled) }
             )).accessibilityIdentifier("settings.context.memory")
             if memory.settings.screenContextEnabled && !memory.hasScreenPermission {
                 Text(text("Screen Recording permission is unavailable; recordings continue without a screenshot.",
                           "屏幕录制权限不可用，录音会跳过截图。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
-            if !memory.isAuthorized && (memory.settings.screenContextEnabled || memory.settings.memoryEnabled) {
+            if !memory.isAuthorized && (memory.settings.screenContextEnabled || memory.settings.memoryEnabled || memory.settings.vocabularyCorrectionEnabled) {
                 Button(text("Authorize current provider", "授权当前服务")) {
-                    propose(screen: memory.settings.screenContextEnabled, memoryEnabled: memory.settings.memoryEnabled)
+                    propose(screen: memory.settings.screenContextEnabled, memoryEnabled: memory.settings.memoryEnabled, vocabulary: memory.settings.vocabularyCorrectionEnabled)
                 }
             }
             HStack {
@@ -52,26 +60,49 @@ struct ContextMemorySettingsView: View {
         .disabled(memory.isLoading || memory.isSaving)
         .confirmationDialog(text("Authorize context processing", "授权上下文处理"), isPresented: $showConsent) {
             Button(text("Enable for these voice workflows", "为这些语音工作流开启")) {
-                memory.apply(screen: pendingScreen, memory: pendingMemory, workflowIDs: Set(workflows.map(\.id)))
+                memory.apply(screen: pendingScreen, memory: pendingMemory, workflowIDs: Set(consentWorkflows.map(\.id)), vocabulary: pendingVocabulary)
             }
             Button(text("Cancel", "取消"), role: .cancel) {}
         } message: {
-            Text(text(
-                "The current LLM provider receives a pre-recording image and optional summaries. Screen summaries are encrypted locally. Voice history and explicit corrections may be organized while idle. Memories survive history cleanup; deleting a memory excludes its original sources from relearning. Provider changes require authorization again. Workflows: ",
-                "当前 LLM 服务将收到录音前图片与可选摘要。屏幕摘要在本地加密保存；空闲时可整理语音历史和明确纠正。记忆独立于历史留存，删除记忆会排除其原始来源，防止再次生成。服务变更需重新授权。工作流："
-            ) + workflows.map(\.name).joined(separator: "、"))
+            Text(consentMessage)
         }
         .sheet(isPresented: $showMemories) { MemoryManagementView(model: memory, language: language) }
         .task { await memory.refresh() }
     }
 
-    private func propose(screen: Bool, memoryEnabled: Bool) {
-        if (!screen || screen == memory.settings.screenContextEnabled)
-            && (!memoryEnabled || memoryEnabled == memory.settings.memoryEnabled) && memory.isAuthorized {
-            memory.apply(screen: screen, memory: memoryEnabled, workflowIDs: memory.settings.authorizedWorkflowIDs)
+    private var consentWorkflows: [WorkflowDefinition] {
+        pendingScreen || pendingMemory ? workflows : workflows.filter(\.supportsVocabularyCorrection)
+    }
+
+    private var consentMessage: String {
+        var parts: [String] = []
+        if pendingVocabulary {
+            parts.append(text("Smart Cleanup sends its applicable hotwords to the current LLM as correction references. No screen or history access is needed. Reference terms are not copied into history.",
+                              "Smart Cleanup 将适用热词发送给当前 LLM 作为纠错参考，无需访问屏幕或历史，也不会将参考词表复制到历史中。"))
+        }
+        if pendingScreen {
+            parts.append(text("The current LLM receives the pre-recording image and its optional summary. Screen summaries are encrypted locally.",
+                              "当前 LLM 将收到录音前图片及可选摘要，屏幕摘要在本地加密保存。"))
+        }
+        if pendingMemory {
+            parts.append(text("The current LLM receives authorized voice history, explicit corrections and saved screen observations for idle organization, plus relevant terms and confirmed corrections during recordings. Memories survive history cleanup; deletion excludes their sources from relearning.",
+                              "当前 LLM 将收到已授权的语音历史、明确纠正和已存屏幕观察，用于空闲整理；录音时还会接收相关术语和已确认纠正。记忆独立于历史留存，删除记忆会排除其来源，防止再次生成。"))
+        }
+        parts.append(text("Provider changes require authorization again. Workflows: ", "服务变更需重新授权。工作流：")
+            + consentWorkflows.map(\.name).joined(separator: "、"))
+        return parts.joined(separator: "\n\n")
+    }
+
+    private func propose(screen: Bool, memoryEnabled: Bool, vocabulary: Bool) {
+        let isReducingScope = (!screen || memory.settings.screenContextEnabled)
+            && (!memoryEnabled || memory.settings.memoryEnabled)
+            && (!vocabulary || memory.settings.vocabularyCorrectionEnabled)
+        if (!screen && !memoryEnabled && !vocabulary) || (isReducingScope && memory.isAuthorized) {
+            memory.apply(screen: screen, memory: memoryEnabled, workflowIDs: memory.settings.authorizedWorkflowIDs, vocabulary: vocabulary)
         } else {
             pendingScreen = screen
             pendingMemory = memoryEnabled
+            pendingVocabulary = vocabulary
             showConsent = true
         }
     }
