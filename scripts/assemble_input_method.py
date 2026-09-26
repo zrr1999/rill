@@ -35,12 +35,13 @@ def assemble(executable: Path, output: Path) -> None:
         target = contents / "Helpers" / name
         shutil.copy2(runtime / "bin" / name, target)
         subprocess.run(["install_name_tool", "-add_rpath", "@loader_path/../Frameworks", str(target)], check=True)
-    identifier = "dev.zrr.Rill.InputMethod"
+    identifier = "dev.zrr.inputmethod.Rill"
     input_source_id = identifier + ".Hans"
     info = {
         "CFBundleIdentifier": identifier, "CFBundleName": "Rill", "CFBundleDisplayName": "Rill",
+        "CFBundleDevelopmentRegion": "en",
         "CFBundleExecutable": "RillInputMethod", "CFBundlePackageType": "APPL",
-        "CFBundleVersion": "1", "CFBundleShortVersionString": "0.1.0", "LSMinimumSystemVersion": "14.0",
+        "CFBundleVersion": "2", "CFBundleShortVersionString": "0.1.0", "LSMinimumSystemVersion": "14.0",
         "LSUIElement": True, "NSPrincipalClass": "NSApplication",
         "InputMethodConnectionName": "RillInputMethodConnection",
         "InputMethodServerControllerClass": "RillInputController",
@@ -55,6 +56,13 @@ def assemble(executable: Path, output: Path) -> None:
         },
     }
     (contents / "Info.plist").write_bytes(plistlib.dumps(info))
+    for language in ("en", "zh-Hans", "zh-Hant"):
+        localized = contents / "Resources" / f"{language}.lproj"
+        localized.mkdir(parents=True, exist_ok=True)
+        (localized / "InfoPlist.strings").write_bytes(plistlib.dumps({
+            "CFBundleName": "Rill", "CFBundleDisplayName": "Rill",
+            identifier: "Rill", input_source_id: "Rill",
+        }))
     notices = Path(__file__).resolve().parent.parent / "docs/input-method-dependencies.md"
     shutil.copy2(notices, contents / "Resources/THIRD_PARTY_NOTICES.md")
     shutil.copytree(notices.parent.parent / "Resources/InputMethodLicenses",

@@ -1,8 +1,11 @@
 import AppKit
+import Carbon
+import RillCore
 import SwiftUI
 
 struct InputMethodSettingsView: View {
   @Bindable var input: InputMethodFeatureModel
+  var language: AppLanguage
 
   private func applicationName(_ identifier: String) -> String {
     NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier)?.deletingPathExtension()
@@ -11,27 +14,42 @@ struct InputMethodSettingsView: View {
 
   var body: some View {
     Section("输入法") {
-      Text("自带轻量全拼词库，独立保存配置与个人词库。安装后，在系统输入法设置中添加 Rill。")
+      Text(L10n.inputMethod(.description, language: language))
         .font(.caption).foregroundStyle(.secondary)
-      Button(input.isInstalling ? "正在安装…" : "安装 Rill 输入法") {
+      Text(L10n.inputMethodState(input.installationState, language: language))
+        .accessibilityIdentifier("input-method-installation-state")
+      Button(
+        L10n.inputMethod(
+          input.isInstalling
+            ? .installing : (input.installationState == .notInstalled ? .install : .repair),
+          language: language)
+      ) {
         Task { await input.installInputMethod() }
       }.disabled(input.isInstalling)
-      Button("从鼠须管导入并安装…") {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
-          "Library/Rime")
-        panel.message = "先切换到 ABC 并退出鼠须管，再选择 Rime 配置目录。原目录会保留。"
-        if panel.runModal() == .OK, let url = panel.url {
-          Task { await input.installInputMethod(importing: url) }
-        }
-      }.disabled(input.isInstalling)
-      Text("首次安装时可选择一次性导入已有方案和完整个人词库。导入后使用独立副本，原目录保留。")
-        .font(.caption).foregroundStyle(.secondary)
+      if input.installationState == .notInstalled {
+        Button(L10n.inputMethod(.importProfile, language: language)) {
+          let panel = NSOpenPanel()
+          panel.canChooseDirectories = true
+          panel.canChooseFiles = false
+          panel.allowsMultipleSelection = false
+          panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(
+              "Library/Rime")
+          panel.message = L10n.inputMethod(.importPanel, language: language)
+          if panel.runModal() == .OK, let url = panel.url {
+            Task { await input.installInputMethod(importing: url) }
+          }
+        }.disabled(input.isInstalling)
+        Text(L10n.inputMethod(.importNotice, language: language))
+          .font(.caption).foregroundStyle(.secondary)
+      }
+      if input.installationState == .registered || input.installationState == .registrationPending {
+        Text(L10n.inputMethod(.activationHelp, language: language))
+          .font(.caption).foregroundStyle(.secondary)
+      }
       if let status = input.status { Text(status).font(.caption) }
-      Button("打开系统输入法设置") {
+      if let error = input.error { Text(error).foregroundStyle(.red).font(.caption) }
+      Button(L10n.inputMethod(.openSettings, language: language)) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension")
         {
           NSWorkspace.shared.open(url)
@@ -88,7 +106,19 @@ struct InputMethodSettingsView: View {
         }
       }
       Button("清空未确认建议") { Task { await input.clearPending() } }.disabled(!input.isReady)
-      if let error = input.error { Text(error).foregroundStyle(.red).font(.caption) }
     }
+    .onAppear { input.refreshInstallationState() }
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification))
+    { _ in
+      input.refreshInstallationState()
+    }
+    .onReceive(
+      DistributedNotificationCenter.default().publisher(
+        for: Notification.Name(kTISNotifyEnabledKeyboardInputSourcesChanged as String))
+    ) { _ in input.refreshInstallationState() }
+    .onReceive(
+      DistributedNotificationCenter.default().publisher(
+        for: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String))
+    ) { _ in input.refreshInstallationState() }
   }
 }

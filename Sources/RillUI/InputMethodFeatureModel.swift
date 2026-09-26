@@ -13,6 +13,7 @@ public final class InputMethodFeatureModel {
   public private(set) var state = TypingVocabularyState()
   public private(set) var isReady = false
   public private(set) var isInstalling = false
+  public private(set) var installationState: InputMethodInstallationState = .notInstalled
   public private(set) var status: String?
   public private(set) var error: String?
   private let settings: any SettingsStore
@@ -22,6 +23,7 @@ public final class InputMethodFeatureModel {
   private let ownedRuleIDs: () async throws -> Set<UUID>
   private let secureInputEnabled: () -> Bool
   private let install: (URL?) async throws -> String
+  private let inspectInstallation: () -> InputMethodInstallationState
   private let writes = PersistenceWriteCoordinator()
   private var loadTask: Task<Void, Never>?
   private var maintenance: Timer?
@@ -43,6 +45,7 @@ public final class InputMethodFeatureModel {
     confirmRule: @escaping (String, UUID) async throws -> (UUID, Bool),
     revokeRule: @escaping (UUID) async throws -> Void,
     install: @escaping (URL?) async throws -> String,
+    inspectInstallation: @escaping () -> InputMethodInstallationState = { .notInstalled },
     ownedRuleIDs: @escaping () async throws -> Set<UUID> = { [] },
     secureInputEnabled: @escaping () -> Bool = { IsSecureEventInputEnabled() },
     bridgeDirectory: String = LocalInputMethodChannel.directory
@@ -53,6 +56,8 @@ public final class InputMethodFeatureModel {
     self.confirmRule = confirmRule
     self.revokeRule = revokeRule
     self.install = install
+    self.inspectInstallation = inspectInstallation
+    self.installationState = inspectInstallation()
     self.ownedRuleIDs = ownedRuleIDs
     self.secureInputEnabled = secureInputEnabled
   }
@@ -187,9 +192,17 @@ public final class InputMethodFeatureModel {
     error = nil
     defer {
       isInstalling = false
+      refreshInstallationState()
       resumeMutationWaiters()
     }
     do { status = try await install(directory) } catch { self.error = error.localizedDescription }
+  }
+
+  public func refreshInstallationState() {
+    guard !isInstalling, !stopped else { return }
+    let current = inspectInstallation()
+    if current != installationState { status = nil }
+    installationState = current
   }
 
   private func invalidatePolicy() {

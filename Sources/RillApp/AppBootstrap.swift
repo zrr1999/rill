@@ -761,7 +761,8 @@ private enum AppContainerFactory {
       privacy: { try core.privacySettingsSource.currentSettings() },
       install: { source in
         try await inputMethodInstaller.install(from: source)
-      })
+      },
+      inspectInstallation: { inputMethodInstaller.installationState() })
     runtime.workflowSelectionBridge.model = model
     runtime.systemClipboardCaptureControlBridge.model = model
     runtime.globalInputCapabilityBridge.attach(model)
