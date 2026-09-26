@@ -60,12 +60,6 @@ public struct RimeProfileInstaller: Sendable {
     return "Rill 输入法组件已安装，现有配置与词库已保留。请添加到系统输入源后切换使用。"
   }
 
-  @MainActor
-  public func enable() throws -> String {
-    try InputMethodRegistration.enable()
-    return "已添加到系统输入源。请在菜单栏输入菜单中选择 Rill。"
-  }
-
   @concurrent
   func prepareInstallation(
     importing source: URL?, to destination: URL, application: URL,

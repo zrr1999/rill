@@ -13,6 +13,9 @@ struct InputMethodInstallationTests {
       confirmRule: { _, id in (id, true) }, revokeRule: { _ in }, install: { _ in "" },
       inspectInstallation: { actual })
     #expect(model.installationState == .needsRepair)
+    actual = .registrationPending
+    model.refreshInstallationState()
+    #expect(model.installationState == .registrationPending)
     actual = .enabled
     model.refreshInstallationState()
     #expect(model.installationState == .enabled)
@@ -22,7 +25,7 @@ struct InputMethodInstallationTests {
     await model.shutdown()
   }
 
-  @Test func failedRegistrationShowsRepairThenSuccessfulRetryCanBeEnabled() async {
+  @Test func failedInstallationCanBeRepairedThenReflectsSystemActivation() async {
     var actual = InputMethodInstallationState.notInstalled
     var attempt = 0
     let model = InputMethodFeatureModel(
@@ -33,11 +36,7 @@ struct InputMethodInstallationTests {
         actual = attempt == 1 ? .needsRepair : .registered
         if attempt == 1 { throw CocoaError(.fileWriteUnknown) }
         return "Installed"
-      }, inspectInstallation: { actual },
-      enableInputSource: {
-        actual = .enabled
-        return "Enabled"
-      })
+      }, inspectInstallation: { actual })
     await model.installInputMethod()
     #expect(model.installationState == .needsRepair)
     #expect(model.error != nil)
@@ -46,7 +45,8 @@ struct InputMethodInstallationTests {
     await model.installInputMethod()
     #expect(model.installationState == .registered)
     #expect(model.error == nil)
-    model.enableInputMethod()
+    actual = .enabled
+    model.refreshInstallationState()
     #expect(model.installationState == .enabled)
     #expect(model.error == nil)
     await model.shutdown()

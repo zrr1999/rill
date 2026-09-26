@@ -43,9 +43,9 @@ struct InputMethodSettingsView: View {
         Text(L10n.inputMethod(.importNotice, language: language))
           .font(.caption).foregroundStyle(.secondary)
       }
-      if input.installationState == .registered {
-        Button(L10n.inputMethod(.addSource, language: language)) { input.enableInputMethod() }
-          .disabled(input.isInstalling)
+      if input.installationState == .registered || input.installationState == .registrationPending {
+        Text(L10n.inputMethod(.activationHelp, language: language))
+          .font(.caption).foregroundStyle(.secondary)
       }
       if let status = input.status { Text(status).font(.caption) }
       if let error = input.error { Text(error).foregroundStyle(.red).font(.caption) }

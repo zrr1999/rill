@@ -26,7 +26,7 @@ struct InputMethodRegistrationTests {
     #expect(throws: InputMethodRegistrationError.self) {
       try InputMethodRegistration.register(
         URL(fileURLWithPath: "/test/RillInputMethod.app"),
-        registerSource: { _ in noErr }, queryState: { .needsRepair })
+        registerSource: { _ in noErr }, queryState: { .registrationPending })
     }
   }
 

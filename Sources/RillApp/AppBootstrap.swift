@@ -762,8 +762,7 @@ private enum AppContainerFactory {
       install: { source in
         try await inputMethodInstaller.install(from: source)
       },
-      inspectInstallation: { inputMethodInstaller.installationState() },
-      enableInputSource: { try inputMethodInstaller.enable() })
+      inspectInstallation: { inputMethodInstaller.installationState() })
     runtime.workflowSelectionBridge.model = model
     runtime.systemClipboardCaptureControlBridge.model = model
     runtime.globalInputCapabilityBridge.attach(model)

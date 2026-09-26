@@ -3,7 +3,7 @@ import RillInputMethodContracts
 
 enum InputMethodText {
   case description, install, repair, installing, importProfile, importNotice, importPanel
-  case addSource, openSettings
+  case activationHelp, openSettings
 }
 
 extension L10n {
@@ -28,8 +28,10 @@ extension L10n {
       "仅导入词库需要切换到 ABC 并退出鼠须管，以免复制正在写入的数据库。选择 Rime 配置目录，原目录会保留。"
     case (.importPanel, .english):
       "For dictionary import, switch to ABC and quit Squirrel to avoid copying an active database. Select the Rime profile folder; the original will be preserved."
-    case (.addSource, .simplifiedChinese): "添加到系统输入源"
-    case (.addSource, .english): "Add to System Input Sources"
+    case (.activationHelp, .simplifiedChinese):
+      "在系统设置 → 键盘 → 文字输入 → 编辑中，点 + 搜索并添加 Rill。如果搜不到，请注销并重新登录后再添加，无需重复安装。"
+    case (.activationHelp, .english):
+      "In System Settings → Keyboard → Text Input → Edit, click + and add Rill. If Rill is missing, log out and back in, then add it. No reinstallation is needed."
     case (.openSettings, .simplifiedChinese): "打开系统输入法设置"
     case (.openSettings, .english): "Open System Input Source Settings"
     }
@@ -44,6 +46,8 @@ extension L10n {
     case (.needsRepair, .simplifiedChinese): "安装未完成，请修复安装。现有词库会保留。"
     case (.needsRepair, .english):
       "Installation is incomplete. Repair it to continue; your vocabulary will be preserved."
+    case (.registrationPending, .simplifiedChinese): "组件已安装，等待系统识别；请注销并重新登录。"
+    case (.registrationPending, .english): "Component installed; log out and back in for macOS to recognize it."
     case (.registered, .simplifiedChinese): "已安装，待添加到系统输入源"
     case (.registered, .english): "Installed; add Rill to system input sources"
     case (.enabled, .simplifiedChinese): "已添加到系统输入源，可在菜单栏选择 Rill"

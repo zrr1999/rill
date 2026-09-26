@@ -24,7 +24,6 @@ public final class InputMethodFeatureModel {
   private let secureInputEnabled: () -> Bool
   private let install: (URL?) async throws -> String
   private let inspectInstallation: () -> InputMethodInstallationState
-  private let enableInputSource: () throws -> String
   private let writes = PersistenceWriteCoordinator()
   private var loadTask: Task<Void, Never>?
   private var maintenance: Timer?
@@ -47,7 +46,6 @@ public final class InputMethodFeatureModel {
     revokeRule: @escaping (UUID) async throws -> Void,
     install: @escaping (URL?) async throws -> String,
     inspectInstallation: @escaping () -> InputMethodInstallationState = { .notInstalled },
-    enableInputSource: @escaping () throws -> String = { throw CocoaError(.featureUnsupported) },
     ownedRuleIDs: @escaping () async throws -> Set<UUID> = { [] },
     secureInputEnabled: @escaping () -> Bool = { IsSecureEventInputEnabled() },
     bridgeDirectory: String = LocalInputMethodChannel.directory
@@ -59,7 +57,6 @@ public final class InputMethodFeatureModel {
     self.revokeRule = revokeRule
     self.install = install
     self.inspectInstallation = inspectInstallation
-    self.enableInputSource = enableInputSource
     self.installationState = inspectInstallation()
     self.ownedRuleIDs = ownedRuleIDs
     self.secureInputEnabled = secureInputEnabled
@@ -206,14 +203,6 @@ public final class InputMethodFeatureModel {
     let current = inspectInstallation()
     if current != installationState { status = nil }
     installationState = current
-  }
-
-  public func enableInputMethod() {
-    guard !isInstalling, !stopped else { return }
-    status = nil
-    error = nil
-    defer { refreshInstallationState() }
-    do { status = try enableInputSource() } catch { self.error = error.localizedDescription }
   }
 
   private func invalidatePolicy() {
