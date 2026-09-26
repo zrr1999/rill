@@ -30,11 +30,6 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 RELEASE_SCRIPT="$PROJECT_DIR/scripts/release.sh"
 ASSEMBLER_SCRIPT="$PROJECT_DIR/scripts/assemble_app_bundle.sh"
 PREFLIGHT_SCRIPT="$PROJECT_DIR/scripts/preflight.sh"
-SHELL_SYNTAX_SCRIPT="$PROJECT_DIR/scripts/check_shell_syntax.sh"
-RELEASE_ARTIFACT_HYGIENE_SCRIPT="$PROJECT_DIR/scripts/check_release_artifact_hygiene.sh"
-EXECUTABLE_VERIFIER="$PROJECT_DIR/scripts/verify_release_executable.sh"
-LOCKED_SWIFT_SCRIPT="$PROJECT_DIR/scripts/swift_locked.sh"
-TEST_SUITE_SCRIPT="$PROJECT_DIR/scripts/test.sh"
 PACKAGE_MANIFEST="$PROJECT_DIR/Package.swift"
 TEST_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rill-release-config-tests.XXXXXX")"
 FAKE_BIN="$TEST_ROOT/bin"
@@ -212,14 +207,15 @@ expect_worker_signature() {
     RESOLVED_SIGN_IDENTITY_NAME="Developer ID Application: Example Company (TEAMDIST01)"
     DO_NOTARIZE=false
     codesign() {
-      case "$1 $2" in
-      "--verify --strict") return 0 ;;
-      "-d --verbose=4") printf '%s\n' "$details" ;;
-      "-d --entitlements")
+      if [[ "$1 $2" == "--verify --strict" ]]; then
+        return 0
+      elif [[ "$1 $2" == "-d --verbose=4" ]]; then
+        printf '%s\n' "$details"
+      elif [[ "$1 $2" == "-d --entitlements" ]]; then
         [[ -z "$entitlements" ]] || printf '%s\n' "$entitlements"
-        ;;
-      *) return 64 ;;
-      esac
+      else
+        return 64
+      fi
     }
     info() { :; }
     verify_signed_speech_worker
@@ -255,7 +251,7 @@ reject_executable() {
       "FAKE_LIPO_LOG=$lipo_invocation_log" \
       "FAKE_VTOOL_LOG=$vtool_invocation_log" \
       "$@" \
-      bash "$EXECUTABLE_VERIFIER" "$executable" 2>&1
+      bash "$PROJECT_DIR/scripts/assemble_app_bundle.sh" verify-executable "$executable" 2>&1
   )"
   status=$?
   set -e
@@ -283,7 +279,7 @@ use_recorded_swap() {
 
 run_locked_dependency_policy_case() {
   if grep -Eq '(^|[[:space:]])swift[[:space:]]+(build|test|package clean)([[:space:]]|$)' \
-    "$PREFLIGHT_SCRIPT" "$RELEASE_SCRIPT" "$TEST_SUITE_SCRIPT"; then
+    "$PREFLIGHT_SCRIPT" "$RELEASE_SCRIPT"; then
     echo "FAIL: release scripts bypass the locked build driver" >&2
     exit 1
   fi
@@ -358,7 +354,7 @@ run_native_mlx_dependency_policy_case() {
     exit 1
   fi
   if grep -Eqi 'RillSherpaRuntime|require-sherpa|SherpaOnnx' \
-    "$PREFLIGHT_SCRIPT" "$ASSEMBLER_SCRIPT" "$EXECUTABLE_VERIFIER"; then
+    "$PREFLIGHT_SCRIPT" "$ASSEMBLER_SCRIPT"; then
     echo "FAIL: release scripts retain the retired Sherpa runtime gate" >&2
     exit 1
   fi
@@ -372,8 +368,6 @@ run_shell_syntax_policy_case() {
   local status=0
 
   mkdir -p "$fixture/scripts"
-  cp "$SHELL_SYNTAX_SCRIPT" "$fixture/scripts/check_shell_syntax.sh"
-  chmod +x "$fixture/scripts/check_shell_syntax.sh"
   cat >"$fixture/scripts/valid.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -384,7 +378,7 @@ if then
 SH
 
   set +e
-  output="$(bash "$fixture/scripts/check_shell_syntax.sh" 2>&1)"
+  output="$(bash "$PREFLIGHT_SCRIPT" syntax "$fixture" 2>&1)"
   status=$?
   set -e
   if [[ "$status" -eq 0 || "$output" != *"invalid.sh"* ]]; then
@@ -393,8 +387,8 @@ SH
     exit 1
   fi
   rm "$fixture/scripts/invalid.sh"
-  bash "$fixture/scripts/check_shell_syntax.sh"
-  if ! grep -Fq 'bash "$SCRIPT_DIR/check_shell_syntax.sh"' "$PREFLIGHT_SCRIPT"; then
+  bash "$PREFLIGHT_SCRIPT" syntax "$fixture"
+  if ! grep -Fq 'check_shell_syntax "$PROJECT_DIR"' "$PREFLIGHT_SCRIPT"; then
     echo "FAIL: preflight does not invoke the fail-closed shell syntax gate" >&2
     exit 1
   fi
@@ -411,7 +405,7 @@ run_release_artifact_hygiene_policy_case() {
 
   mkdir -p "$fixture/.artifacts/release/Rill.app"
   touch "$fixture/.artifacts/release/Rill.dmg"
-  bash "$RELEASE_ARTIFACT_HYGIENE_SCRIPT" "$fixture" >/dev/null
+  bash "$PREFLIGHT_SCRIPT" hygiene "$fixture" >/dev/null
 
   rm -rf "$fixture/.artifacts"
   for artifact in Rill.app Rill.dmg Rill.dmg.sha256; do
@@ -421,7 +415,7 @@ run_release_artifact_hygiene_policy_case() {
       touch "$fixture/$artifact"
     fi
     set +e
-    output="$(bash "$RELEASE_ARTIFACT_HYGIENE_SCRIPT" "$fixture" 2>&1)"
+    output="$(bash "$PREFLIGHT_SCRIPT" hygiene "$fixture" 2>&1)"
     status=$?
     set -e
     if [[ "$status" -eq 0 ||
@@ -450,7 +444,7 @@ run_release_artifact_hygiene_policy_case() {
     "$RELEASE_SCRIPT" ||
     ! grep -Fq 'validate_release_output_location "$RELEASE_OUTPUT_DIR"' \
       "$RELEASE_SCRIPT" ||
-    ! grep -Fq 'bash "$SCRIPT_DIR/check_release_artifact_hygiene.sh"' \
+    ! grep -Fq 'check_release_artifact_hygiene "$PROJECT_DIR"' \
       "$PREFLIGHT_SCRIPT"; then
     echo "FAIL: release output isolation is not enforced by release and preflight" >&2
     exit 1
@@ -1244,7 +1238,7 @@ SH
   PATH="$fake_bin:$PATH" \
     FAKE_LIPO_LOG="$lipo_invocation_log" \
     FAKE_VTOOL_LOG="$vtool_invocation_log" \
-    bash "$EXECUTABLE_VERIFIER" "$executable"
+    bash "$ASSEMBLER_SCRIPT" verify-executable "$executable"
   expected_lipo_log="$(printf '%s\n' "$executable" -archs)"
   if [[ "$(<"$lipo_invocation_log")" != "$expected_lipo_log" ]]; then
     echo "FAIL: arm64 executable verifier did not inspect the exact architecture set" >&2
@@ -1264,7 +1258,7 @@ EOF
   local executable_symlink="$fixture/RillSpeechWorker-link"
   ln -s "$executable" "$executable_symlink"
   set +e
-  output="$(bash "$EXECUTABLE_VERIFIER" "$executable_symlink" 2>&1)"
+  output="$(bash "$ASSEMBLER_SCRIPT" verify-executable "$executable_symlink" 2>&1)"
   status=$?
   set -e
   if [[ "$status" -eq 0 ||
@@ -1291,9 +1285,9 @@ EOF
     "exactly one LC_BUILD_VERSION" \
     FAKE_VTOOL_ARM64_COMMAND=LC_VERSION_MIN_MACOSX
 
-  if ! grep -Fq 'verify_release_executable.sh" "$BUILD_DIR/RillApp"' "$PREFLIGHT_SCRIPT" ||
+  if ! grep -Fq 'verify-executable "$BUILD_DIR/RillApp"' "$PREFLIGHT_SCRIPT" ||
     ! grep -Fq '"$BUILD_DIR/RillSpeechWorker"' "$PREFLIGHT_SCRIPT" ||
-    ! grep -Fq 'verify_release_executable.sh" "$EXECUTABLE_SOURCE"' "$ASSEMBLER_SCRIPT" ||
+    ! grep -Fq 'verify_release_executable "$EXECUTABLE_SOURCE"' "$ASSEMBLER_SCRIPT" ||
     ! grep -Fq '"$SPEECH_WORKER_SOURCE"' "$ASSEMBLER_SCRIPT" ||
     ! grep -Fq '"$APP_BUNDLE/Contents/MacOS/$APP_NAME"' "$ASSEMBLER_SCRIPT" ||
     ! grep -Fq '"$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_PRODUCT"' \

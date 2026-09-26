@@ -98,10 +98,242 @@ if [[ "${BASH_SOURCE[0]-}" != "$0" ]]; then
   return 0
 fi
 
+locked_swift() {
+  uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" "$@"
+}
+
+check_shell_syntax() {
+  local root="$1"
+  local found=false
+  local script=""
+
+  [[ -d "$root/scripts" ]] || error "No scripts directory: $root/scripts"
+  while IFS= read -r -d '' script; do
+    found=true
+    bash -n "$script"
+  done < <(find "$root/scripts" -type f -name '*.sh' -print0)
+  "$found" || error "No shell scripts found under $root/scripts"
+}
+
+check_release_artifact_hygiene() {
+  local root="$1"
+  local name=""
+  local path=""
+  local found=()
+
+  [[ -d "$root" ]] || error "Release artifact hygiene root is not a directory: $root"
+  root="$(cd "$root" && pwd -P)"
+  for name in Rill.app Rill.dmg Rill.dmg.sha256; do
+    path="$root/$name"
+    if [[ -e "$path" || -L "$path" ]]; then
+      found+=("$name")
+    fi
+  done
+  if [[ "${#found[@]}" -gt 0 ]]; then
+    echo "✗ Repository-root release artifacts are forbidden: ${found[*]}" >&2
+    echo "  Preserve local artifacts under .artifacts/ or use a directory outside the repository." >&2
+    exit 1
+  fi
+  echo "Release artifact hygiene check passed."
+}
+
+check_record_domain_boundary() {
+  local legacy_domain_pattern='(^|[^A-Za-z0-9_])(DeliveryStack|ClipboardHistoryItem|ClipboardGroup|ClipboardPasteMode|ClipboardItemDryRun)([^A-Za-z0-9_]|$)'
+  local declaration_pattern='^[[:space:]]*(public |internal |private |fileprivate )?(final )?(struct|class|enum|protocol|actor|typealias) Clipboard[A-Z]'
+  local resource_pattern='id[[:space:]]*=[[:space:]]*"(stack\.push|clipboard\.copy)"|strategy[[:space:]]*=[[:space:]]*"(stack-first|clipboard-only)"'
+  local legacy_sources=""
+
+  if git grep -n -E -e "$legacy_domain_pattern" -- Sources ':!**/LegacyClipboardMigration.swift'; then
+    error "Legacy Stack/Clipboard domain types escaped LegacyClipboardMigration"
+  fi
+  if git grep -n -E -e "$declaration_pattern" -- '*.swift' ':!**/LegacyClipboardMigration.swift'; then
+    error "Clipboard-prefixed domain declarations must be SystemClipboard-prefixed or migration-only"
+  fi
+  legacy_sources="$(
+    find Sources -type f \
+      \( -name 'DeliveryStack*.swift' -o -name 'Clipboard*.swift' -o -name 'StackPasteController.swift' \) \
+      ! -name 'LegacyClipboardMigration.swift' \
+      -print
+  )"
+  if [[ -n "$legacy_sources" ]]; then
+    printf '%s\n' "$legacy_sources" >&2
+    error "Legacy Stack/Clipboard source files remain outside the migration boundary"
+  fi
+  if git grep -n -E -e "$resource_pattern" -- Sources/RillApp/Resources; then
+    error "Built-in workflow resources must emit canonical Record action IDs and strategies"
+  fi
+  echo "Record domain boundary check passed"
+}
+
+run_swift_tests() {
+  local native_tests='RillPlatformTests|RillUITests|RillAppTests'
+  echo 'Running domain tests in parallel...'
+  locked_swift test --parallel --num-workers 4 --skip "$native_tests"
+  echo 'Running native platform, UI, and app tests serially...'
+  locked_swift test --skip-build --filter "$native_tests"
+}
+
+run_script_tests() {
+  local test_dir="$SCRIPT_DIR/tests"
+  echo 'Testing dependency security policy...'
+  uv run --script "$test_dir/dependency_security_test.py"
+  echo 'Testing paired ASR comparisons...'
+  uv run --script "$test_dir/asr_benchmark_test.py"
+  uv run --script "$test_dir/asr_replay_test.py"
+  uv run --script "$test_dir/product_path_benchmark_test.py"
+  echo 'Testing diagnostic export...'
+  uv run --script "$test_dir/diagnostic_export_test.py"
+  echo 'Testing secret scanning...'
+  bash "$test_dir/secret_scan_test.sh"
+  echo 'Testing build ownership and receipts...'
+  uv run --no-build --locked --script "$test_dir/build_driver_test.py"
+  echo 'Testing worker artifact caching...'
+  uv run --no-build --locked --script "$test_dir/worker_cache_test.py"
+  echo 'Testing release configuration...'
+  bash "$test_dir/release_config_test.sh"
+  echo 'Testing GitHub Release drafts...'
+  bash "$test_dir/github_release_test.sh"
+  echo 'Testing app icon generation...'
+  bash "$test_dir/app_icon_test.sh"
+  echo 'Testing input method signing boundaries...'
+  uv run --no-build --locked --script "$test_dir/input_method_assembly_test.py"
+}
+
+install_gitleaks() {
+  local destination=""
+  local version="8.30.1"
+  local asset_name=""
+  local expected_sha256=""
+  local temp_root=""
+  local archive_path=""
+  local extract_dir=""
+  local installed_version=""
+
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+    --destination)
+      [[ "$#" -ge 2 ]] || error "Missing value for --destination"
+      destination="$2"
+      shift 2
+      ;;
+    --help | -h)
+      echo "Usage: $0 install-gitleaks --destination DIR"
+      exit 0
+      ;;
+    *) error "Unknown argument: $1" ;;
+    esac
+  done
+  [[ -n "$destination" ]] || error "--destination is required"
+  case "$(uname -s)/$(uname -m)" in
+  Darwin/arm64)
+    asset_name="gitleaks_${version}_darwin_arm64.tar.gz"
+    expected_sha256="b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5"
+    ;;
+  Darwin/x86_64)
+    asset_name="gitleaks_${version}_darwin_x64.tar.gz"
+    expected_sha256="dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709"
+    ;;
+  Linux/x86_64)
+    asset_name="gitleaks_${version}_linux_x64.tar.gz"
+    expected_sha256="551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+    ;;
+  *) error "Unsupported platform: $(uname -s)/$(uname -m)" ;;
+  esac
+  for command_name in curl install mktemp shasum tar; do
+    command -v "$command_name" >/dev/null 2>&1 || error "Required command not found: $command_name"
+  done
+  temp_root="$(mktemp -d "${TMPDIR:-/tmp}/rill-gitleaks-install.XXXXXX")"
+  trap 'rm -rf "$temp_root"' EXIT
+  archive_path="$temp_root/$asset_name"
+  extract_dir="$temp_root/extracted"
+  mkdir -p "$extract_dir" "$destination"
+  curl --fail --location --proto '=https' --retry 3 --show-error --silent --tlsv1.2 \
+    --output "$archive_path" \
+    "https://github.com/gitleaks/gitleaks/releases/download/v${version}/${asset_name}"
+  printf '%s  %s\n' "$expected_sha256" "$archive_path" | shasum -a 256 -c -
+  tar -xzf "$archive_path" -C "$extract_dir"
+  [[ -f "$extract_dir/gitleaks" ]] || error "Verified archive does not contain gitleaks"
+  install -m 0755 "$extract_dir/gitleaks" "$destination/gitleaks"
+  installed_version="$("$destination/gitleaks" version | tail -n 1 | awk '{print $NF}' | sed 's/^v//')"
+  [[ "$installed_version" == "$version" ]] || error "Installed Gitleaks version mismatch: ${installed_version:-unknown}"
+  echo "Installed Gitleaks $version at $destination/gitleaks"
+}
+
+check_commit_messages() {
+  local base=""
+  local head="HEAD"
+  local range=""
+  local revisions=""
+  local revision=""
+  local message_file=""
+
+  if (( $# > 2 )); then
+    echo "usage: $0 commit-messages [BASE [HEAD]]" >&2
+    exit 2
+  fi
+  head="${2:-HEAD}"
+  base="${1:-}"
+  head="$(git rev-parse --verify "${head}^{commit}")"
+  range="$head"
+  if [[ -n "$base" && "$base" != "0000000000000000000000000000000000000000" ]]; then
+    base="$(git rev-parse --verify "${base}^{commit}")"
+    range="$base..$head"
+  fi
+  revisions="$(git rev-list --reverse "$range")"
+  [[ -n "$revisions" ]] || return 0
+  message_file="$(mktemp)"
+  trap 'rm -f "$message_file"' EXIT
+  while IFS= read -r revision; do
+    git show --no-patch --format=%B "$revision" >"$message_file"
+    echo "Checking commit $revision"
+    uvx --no-build --from zendev==0.4.0 \
+      --with zendev-commit==0.4.0 --with zendev-review==0.4.0 \
+      zendev message check --profile zendev "$message_file"
+  done <<<"$revisions"
+}
+
+case "${1-}" in
+test)
+  run_swift_tests
+  exit
+  ;;
+test-scripts)
+  run_script_tests
+  exit
+  ;;
+swift)
+  shift
+  exec uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" "$@"
+  ;;
+install-gitleaks)
+  shift
+  install_gitleaks "$@"
+  exit
+  ;;
+commit-messages)
+  shift
+  check_commit_messages "$@"
+  exit
+  ;;
+syntax)
+  shift
+  check_shell_syntax "${1:-$PROJECT_DIR}"
+  exit
+  ;;
+hygiene)
+  shift
+  check_release_artifact_hygiene "${1:-$PROJECT_DIR}"
+  exit
+  ;;
+esac
+
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
   --clean) CLEAN_BUILD=true; WORKER_CACHE="off" ;;
-  --help | -h) echo "Usage: $0 [--clean]"; exit 0 ;;
+  --help | -h)
+    echo "Usage: $0 [--clean] | test | test-scripts | swift ... | install-gitleaks --destination DIR | commit-messages [BASE [HEAD]] | syntax [ROOT] | hygiene [ROOT]"
+    exit 0
+    ;;
   *) error "Unknown argument: $1" ;;
   esac
   shift
@@ -116,19 +348,19 @@ verify_toolchain_versions
 cd "$PROJECT_DIR"
 
 info "Checking shell syntax..."
-bash "$SCRIPT_DIR/check_shell_syntax.sh"
+check_shell_syntax "$PROJECT_DIR"
 
 info "Checking repository release artifact hygiene..."
-bash "$SCRIPT_DIR/check_release_artifact_hygiene.sh"
+check_release_artifact_hygiene "$PROJECT_DIR"
 
 info "Checking Swift module dependencies..."
 uv run --no-build --locked --script "$SCRIPT_DIR/check_module_boundaries.py"
 
 info "Checking Record domain boundary..."
-bash "$SCRIPT_DIR/check_record_domain_boundary.sh"
+check_record_domain_boundary
 
 info "Running script policy tests..."
-bash "$SCRIPT_DIR/tests/run.sh"
+run_script_tests
 
 info "Checking independent input method data packaging..."
 uv run --no-build --locked --script "$SCRIPT_DIR/tests/input_method_data_test.py"
@@ -140,8 +372,8 @@ info "Scanning Git history and the current source snapshot for secrets..."
 bash "$SCRIPT_DIR/check_secrets.sh"
 
 if $CLEAN_BUILD; then
-  "$SCRIPT_DIR/swift_locked.sh" clean
-  "$SCRIPT_DIR/swift_locked.sh" clean --configuration release
+  locked_swift clean
+  locked_swift clean --configuration release
 fi
 
 info "Checking generated built-in workflow artifacts..."
@@ -157,16 +389,16 @@ cleanup() {
 trap cleanup EXIT INT TERM
 BUILD_RESULT="$PACKAGE_SMOKE_ROOT/build-result.json"
 info "Building the release configuration..."
-"$SCRIPT_DIR/swift_locked.sh" release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
-BUILD_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field productsDirectory)"
-RAW_BUILD_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field buildDirectory)"
+locked_swift release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
+BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field productsDirectory)"
+RAW_BUILD_DIR="$(locked_swift receipt "$BUILD_RESULT" --field buildDirectory)"
 
 info "Checking arm64 release executable architectures..."
-bash "$SCRIPT_DIR/verify_release_executable.sh" "$BUILD_DIR/RillApp"
-bash "$SCRIPT_DIR/verify_release_executable.sh" "$BUILD_DIR/RillSpeechWorker"
+bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillApp"
+bash "$SCRIPT_DIR/assemble_app_bundle.sh" verify-executable "$BUILD_DIR/RillSpeechWorker"
 
 info "Checking locked third-party license and notice provenance..."
-RILL_TEST_CHECKOUTS_DIR="$("$SCRIPT_DIR/swift_locked.sh" receipt "$BUILD_RESULT" --field checkoutsDirectory)" \
+RILL_TEST_CHECKOUTS_DIR="$(locked_swift receipt "$BUILD_RESULT" --field checkoutsDirectory)" \
   uv run --script "$SCRIPT_DIR/tests/third_party_notices_test.py"
 
 info "Checking relocatable SwiftPM resource accessors..."
@@ -207,7 +439,7 @@ cleanup
 trap - EXIT INT TERM
 
 info "Running the test suite..."
-bash "$SCRIPT_DIR/test.sh"
+run_swift_tests
 
 info "Checking the working diff for whitespace errors..."
 git diff --check

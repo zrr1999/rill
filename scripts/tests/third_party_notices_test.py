@@ -21,10 +21,7 @@ import unittest
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 GENERATOR = PROJECT_DIR / "scripts" / "generate_third_party_notices.py"
 ASSEMBLER = PROJECT_DIR / "scripts" / "assemble_app_bundle.sh"
-EXECUTABLE_VERIFIER = PROJECT_DIR / "scripts" / "verify_release_executable.sh"
-VALIDATE_MANIFEST = PROJECT_DIR / "scripts" / "validate_builtin_workflow_manifest.py"
-WRITE_INFO_PLIST = PROJECT_DIR / "scripts" / "write_info_plist.py"
-APP_ICON_GENERATOR = PROJECT_DIR / "scripts" / "generate_app_icon.sh"
+WORKFLOW_GENERATOR = PROJECT_DIR / "scripts" / "generate_builtin_workflows.py"
 APP_ICON_RENDITION_RENDERER = (
     PROJECT_DIR / "scripts" / "render_app_icon_renditions.swift"
 )
@@ -179,10 +176,7 @@ class Fixture:
         for source in (
             GENERATOR,
             ASSEMBLER,
-            EXECUTABLE_VERIFIER,
-            VALIDATE_MANIFEST,
-            WRITE_INFO_PLIST,
-            APP_ICON_GENERATOR,
+            WORKFLOW_GENERATOR,
             APP_ICON_RENDITION_RENDERER,
         ):
             shutil.copy2(source, scripts / source.name)

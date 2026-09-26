@@ -21,7 +21,7 @@ checks the signed bundle with both a synthetic profile and the bundled default:
 deployment, plugin loading, six candidates, full-pinyin commits and copied userdb
 reopening. All resources come from the app. It does not modify real input sources
 or the user's profile. `RILL_IME_VALIDATION_BUNDLE=/path/to/RillInputMethod.app
-scripts/swift_locked.sh test --filter RimeProfileInstallerTests` also exercises
+scripts/preflight.sh swift test --filter RimeProfileInstallerTests` also exercises
 the production installer with the default data in temporary directories.
 
 The packaged executable also supports

@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import build_driver as build
-import worker_artifact_cache as worker
+import build_driver as worker
 
 
 class WorkerCacheTests(unittest.TestCase):

@@ -103,8 +103,8 @@ content-match judgments, fallback counts and latency to
 
 ```sh
 # Supply DEEPSEEK_API_KEY securely in this process environment.
-RILL_CONTEXT_LIVE_EVALUATION=1 scripts/swift_locked.sh test --filter ContextualCorrectionEvaluationTests
-RILL_CONTEXT_MAC_PROBE=1 scripts/swift_locked.sh test --filter ScreenContextCaptureTests
+RILL_CONTEXT_LIVE_EVALUATION=1 scripts/preflight.sh swift test --filter ContextualCorrectionEvaluationTests
+RILL_CONTEXT_MAC_PROBE=1 scripts/preflight.sh swift test --filter ScreenContextCaptureTests
 ```
 
 The fixed expected-content match ignores whitespace, punctuation and letter case.

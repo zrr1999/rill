@@ -157,7 +157,7 @@ fi
 if wrong_version_message="$(verify_gitleaks_binary "$WRONG_GITLEAKS" 2>&1)"; then
   fail "wrong Gitleaks version was accepted while checking its recovery hint"
 fi
-[[ "$wrong_version_message" == *"scripts/install_gitleaks.sh --destination DIR"* ]] \
+[[ "$wrong_version_message" == *"scripts/preflight.sh install-gitleaks --destination DIR"* ]] \
   || fail "wrong-version failure does not provide an installation command"
 
 FAILURE_MARKER="$TEMP_ROOT/failing-snapshot-path"
@@ -192,13 +192,13 @@ FAILED_SNAPSHOT="$(cat "$FAILURE_MARKER")"
   || fail "failed current-source scan left its sensitive snapshot behind"
 
 grep -Fq 'b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5' \
-  "$PROJECT_DIR/scripts/install_gitleaks.sh" \
+  "$PROJECT_DIR/scripts/preflight.sh" \
   || fail "Darwin arm64 release hash is not pinned"
 grep -Fq 'dfe101a4db2255fc85120ac7f3d25e4342c3c20cf749f2c20a18081af1952709' \
-  "$PROJECT_DIR/scripts/install_gitleaks.sh" \
+  "$PROJECT_DIR/scripts/preflight.sh" \
   || fail "Darwin x64 release hash is not pinned"
 grep -Fq '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb' \
-  "$PROJECT_DIR/scripts/install_gitleaks.sh" \
+  "$PROJECT_DIR/scripts/preflight.sh" \
   || fail "Linux x64 release hash is not pinned"
 grep -Fq 'bash "$SCRIPT_DIR/check_secrets.sh"' "$PROJECT_DIR/scripts/preflight.sh" \
   || fail "preflight does not invoke secret scanning"

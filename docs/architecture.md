@@ -228,13 +228,13 @@ See [Record architecture](record-architecture.md) for graph invariants and
 ## Verification
 
 Run `just ci` for the repository hooks, release build and packaging checks, and
-complete test suite. `scripts/test.sh` runs domain tests with four workers and
+complete test suite. `scripts/preflight.sh test` runs domain tests with four workers and
 native platform, UI, and application tests serially. CI executes the same suite
 through `preflight.sh`. Build modes and cache boundaries are defined in the
 [contribution guide](https://github.com/zrr1999/rill/blob/main/CONTRIBUTING.md).
 `check_module_boundaries.py` checks SwiftPM dependencies and compiler-reported
 imports for every production and test target, including direct dependency
-declarations. `scripts/swift_locked.sh test-domain` selects a reduced graph from
+declarations. `scripts/preflight.sh swift test-domain` selects a reduced graph from
 the same manifest into a separate cache; it cannot replace the full CI gate. Optional `just test-render` and `just test-stress` capture rendering and
 large-catalog evidence separately from normal gates.
 
