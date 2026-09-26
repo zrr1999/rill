@@ -10,6 +10,46 @@ import XCTest
 /// Opt-in rendered evidence with ephemeral services, never the user's settings or clipboard.
 @MainActor
 final class UIRenderEvidenceTests: XCTestCase {
+    func testRenderLiveSubtitleControls() async throws {
+        guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+            throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+        }
+        let output = URL(fileURLWithPath: directory, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        for language in AppLanguage.allCases {
+            for dark in [false, true] {
+                let snapshots = [8.0, 360_000, 52, 58].map { elapsed in
+                    LiveSubtitleSnapshot(
+                        runID: UUID(), phase: .recording,
+                        hypothesisText: language == .english ? "Recording preview" : "正在录音的字幕预览",
+                        levelMeter: [0.2, 0.4, 0.8, 0.3, 0.6, 0.5], networkUsage: .online,
+                        recordingStartedAt: Date().addingTimeInterval(-elapsed),
+                        maximumRecordingDurationSeconds: elapsed < 60 ? 60 : nil,
+                        recordingDurationIsUnlimited: elapsed >= 60,
+                        canRemoveRecordingDurationLimit: true
+                    )
+                }
+                let content = VStack(spacing: 16) {
+                    ForEach(snapshots, id: \.runID) { snapshot in
+                        HStack(spacing: 16) {
+                            LiveSubtitleOverlay(snapshot: snapshot, language: language,
+                                expandedLayout: false, includesShadow: false)
+                            LiveSubtitleOverlay(snapshot: snapshot, language: language,
+                                expandedLayout: true, includesShadow: false)
+                        }
+                    }
+                }.padding(16)
+                let size = NSSize(
+                    width: LiveSubtitleOverlayMetrics.compactSurfaceWidth
+                        + LiveSubtitleOverlayMetrics.expandedSurfaceWidth + 48,
+                    height: LiveSubtitleOverlayMetrics.expandedSurfaceHeight * 4 + 80
+                )
+                try await render(content, size: size, dark: dark,
+                    to: output.appendingPathComponent("subtitle-controls-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+            }
+        }
+    }
+
     func testRenderManagementSurfaces() async throws {
         guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
             throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
