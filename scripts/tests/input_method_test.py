@@ -18,7 +18,12 @@ def run(bundle: Path) -> None:
     bundle = bundle.resolve()
     contents = bundle / "Contents"
     info = plistlib.loads((contents / "Info.plist").read_bytes())
-    assert info["CFBundleIdentifier"] == "dev.zrr.Rill.InputMethod"
+    identifier = info["CFBundleIdentifier"]
+    assert identifier == "dev.zrr.inputmethod.Rill"
+    assert ".inputmethod." in identifier
+    mode = info["ComponentInputModeDict"]["tsInputModeListKey"][identifier + ".Hans"]
+    assert mode["TISInputSourceID"] == identifier + ".Hans"
+    assert mode["tsInputModeIsVisibleKey"] is True
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(bundle)], check=True)
     with tempfile.TemporaryDirectory(prefix="rill-ime-test-") as temporary:
         root = Path(temporary)

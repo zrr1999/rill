@@ -56,6 +56,12 @@ public enum InputMethodPaths {
     FileManager.default.homeDirectoryForCurrentUser
       .appendingPathComponent("Library/Application Support/Rill/InputMethod", isDirectory: true)
   }
-  public static let bundleIdentifier = "dev.zrr.Rill.InputMethod"
+  public static let bundleIdentifier = "dev.zrr.inputmethod.Rill"
+  public static var application: URL {
+    FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent("Library/Input Methods/RillInputMethod.app", isDirectory: true)
+  }
+  public static let legacyBundleIdentifier = "dev.zrr.Rill.InputMethod"
+  public static let inputSourceIdentifier = bundleIdentifier + ".Hans"
   public static let connectionName = "RillInputMethodConnection"
 }

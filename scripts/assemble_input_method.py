@@ -35,7 +35,7 @@ def assemble(executable: Path, output: Path) -> None:
         target = contents / "Helpers" / name
         shutil.copy2(runtime / "bin" / name, target)
         subprocess.run(["install_name_tool", "-add_rpath", "@loader_path/../Frameworks", str(target)], check=True)
-    identifier = "dev.zrr.Rill.InputMethod"
+    identifier = "dev.zrr.inputmethod.Rill"
     input_source_id = identifier + ".Hans"
     info = {
         "CFBundleIdentifier": identifier, "CFBundleName": "Rill", "CFBundleDisplayName": "Rill",

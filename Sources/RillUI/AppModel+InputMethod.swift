@@ -7,6 +7,8 @@ extension AppModel {
   public func installInputMethodFeature(
     privacy: @escaping () throws -> PrivacyPolicySettings,
     install: @escaping (URL?) async throws -> String,
+    inspectInstallation: @escaping () -> InputMethodInstallationState = { .notInstalled },
+    enableInputSource: @escaping () throws -> String = { throw CocoaError(.featureUnsupported) },
     bridgeDirectory: String = LocalInputMethodChannel.directory
   ) {
     guard let settingsStore else { return }
@@ -46,7 +48,7 @@ extension AppModel {
             VocabularyLibraryDocument.self, from: Data(encoded.utf8)),
           !document.collections.contains(where: { $0.entries.contains(where: { $0.id == id }) })
         else { throw CocoaError(.fileWriteUnknown) }
-      }, install: install,
+      }, install: install, inspectInstallation: inspectInstallation, enableInputSource: enableInputSource,
       ownedRuleIDs: {
         guard let encoded = try await settingsStore.string(forKey: .vocabularyLibrary) else {
           return []

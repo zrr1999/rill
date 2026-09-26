@@ -5,19 +5,20 @@ import Darwin
 import Foundation
 import RillInputMethodContracts
 
-public enum RimeProfileImportError: LocalizedError {
+public enum RimeProfileImportError: LocalizedError, Equatable {
   case sourceRunning, inputMethodRunning, alreadyImported, incompleteSource, sourceChanged,
     unsafeLink,
-    deploymentFailed, helperMissing
+    deploymentFailed, helperMissing, installationBusy
   public var errorDescription: String? {
     switch self {
-    case .sourceRunning: "请先切换到 ABC，并退出鼠须管和 Rill 输入法，再导入。"
-    case .inputMethodRunning: "请先切换到 ABC 并退出 Rill 输入法，再安装。"
-    case .alreadyImported: "Rill 输入法已有配置，已保留现有词库，不会覆盖。"
+    case .sourceRunning: "导入完整个人词库前，请切换到 ABC 并退出鼠须管，避免复制正在写入的词库。普通安装和修复无需退出鼠须管。"
+    case .inputMethodRunning: "更新组件前，请切换到其他输入源，并在活动监视器中退出 RillInputMethod。无需退出鼠须管。"
+    case .alreadyImported: "Rill 输入法已有配置，不能再次导入。请使用修复安装，现有词库会保留。"
     case .incompleteSource: "所选目录缺少万象方案或个人词库。"
     case .sourceChanged: "导入期间源配置发生变化，未安装。请退出鼠须管后重试。"
     case .unsafeLink: "源配置包含符号链接，请先将链接内容复制为独立文件后导入。"
     case .deploymentFailed: "Rime 部署或词库校验失败，原配置未修改。"
+    case .installationBusy: "另一项输入法安装正在进行，请稍后重试。"
     case .helperMissing: "当前 Rill 构建未包含输入法组件，请使用完整 app 构建。"
     }
   }
@@ -25,20 +26,44 @@ public enum RimeProfileImportError: LocalizedError {
 
 public struct RimeProfileInstaller: Sendable {
   public let helperBundle: URL
-  public init(helperBundle: URL) {
+  public let dataDirectory: URL
+  public let application: URL
+
+  public init(
+    helperBundle: URL, dataDirectory: URL = InputMethodPaths.dataDirectory,
+    application: URL = InputMethodPaths.application
+  ) {
     self.helperBundle = helperBundle
+    self.dataDirectory = dataDirectory
+    self.application = application
+  }
+
+  @MainActor
+  public func installationState() -> InputMethodInstallationState {
+    let files = FileManager.default
+    let hasProfile = files.fileExists(atPath: dataDirectory.path)
+    let hasApplication = files.fileExists(atPath: application.path)
+    guard hasProfile || hasApplication else { return .notInstalled }
+    guard hasProfile, hasApplication,
+      let data = try? Data(contentsOf: application.appendingPathComponent("Contents/Info.plist")),
+      let info = try? PropertyListSerialization.propertyList(from: data, format: nil)
+        as? [String: Any],
+      info["CFBundleIdentifier"] as? String == InputMethodPaths.bundleIdentifier
+    else { return .needsRepair }
+    return InputMethodRegistration.state()
   }
 
   @MainActor
   public func install(from source: URL? = nil) async throws -> String {
-    let destination = InputMethodPaths.dataDirectory
-    let application = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
-      "Library/Input Methods/RillInputMethod.app")
-    try await prepareInstallation(importing: source, to: destination, application: application)
-    let result = TISRegisterInputSource(application as CFURL)
-    return result == noErr
-      ? "Rill 输入法已安装。请在系统输入法设置中添加 Rill。配置与词库保存在 Rill 独立目录。"
-      : "组件已安装。请注销并重新登录，再在系统输入法设置中添加 Rill。"
+    try await prepareInstallation(importing: source, to: dataDirectory, application: application)
+    try InputMethodRegistration.register(application)
+    return "Rill 输入法组件已安装，现有配置与词库已保留。请添加到系统输入源后切换使用。"
+  }
+
+  @MainActor
+  public func enable() throws -> String {
+    try InputMethodRegistration.enable()
+    return "已添加到系统输入源。请在菜单栏输入菜单中选择 Rill。"
   }
 
   @concurrent
@@ -49,10 +74,9 @@ public struct RimeProfileInstaller: Sendable {
         .isEmpty
     },
     inputMethodIsStopped: @MainActor @Sendable () -> Bool = {
-      NSRunningApplication.runningApplications(
-        withBundleIdentifier: InputMethodPaths.bundleIdentifier
-      )
-      .isEmpty
+      [InputMethodPaths.bundleIdentifier, InputMethodPaths.legacyBundleIdentifier].allSatisfy {
+        NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty
+      }
     }
   ) async throws {
     let files = FileManager.default
@@ -60,7 +84,27 @@ public struct RimeProfileInstaller: Sendable {
       guard await inputMethodIsStopped() else { throw RimeProfileImportError.inputMethodRunning }
       if source != nil, !(await sourceIsStopped()) { throw RimeProfileImportError.sourceRunning }
     }
+    let parent = destination.deletingLastPathComponent()
+    try files.createDirectory(at: parent, withIntermediateDirectories: true)
+    let importLock = open(
+      parent.appendingPathComponent("input-method-import.lock").path,
+      O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0o600)
+    guard importLock >= 0 else { throw RimeProfileImportError.deploymentFailed }
+    defer { close(importLock) }
+    guard flock(importLock, LOCK_EX | LOCK_NB) == 0 else {
+      throw RimeProfileImportError.installationBusy
+    }
+    // An existing installation takes precedence over migration preconditions.
+    if source != nil,
+      files.fileExists(atPath: destination.path) || files.fileExists(atPath: application.path)
+    {
+      throw RimeProfileImportError.alreadyImported
+    }
     try await checkWriters()
+    if source == nil, files.fileExists(atPath: destination.path) {
+      try await replaceApplication(at: application, inputMethodIsStopped: inputMethodIsStopped)
+      return
+    }
     let shared = helperBundle.appendingPathComponent("Contents/Resources/SharedData")
     let profile = source ?? helperBundle.appendingPathComponent("Contents/Resources/DefaultProfile")
     guard
@@ -71,10 +115,6 @@ public struct RimeProfileInstaller: Sendable {
     else {
       throw RimeProfileImportError.helperMissing
     }
-    guard !files.fileExists(atPath: destination.path), !files.fileExists(atPath: application.path)
-    else {
-      throw RimeProfileImportError.alreadyImported
-    }
     let schemaID = source == nil ? "rill_pinyin" : "wanxiang"
     let dictionaryID = source == nil ? "pinyin_simp" : "wanxiang"
     guard files.fileExists(atPath: profile.appendingPathComponent("\(schemaID).schema.yaml").path),
@@ -83,24 +123,11 @@ public struct RimeProfileInstaller: Sendable {
     else {
       throw RimeProfileImportError.incompleteSource
     }
-    let parent = destination.deletingLastPathComponent()
-    try files.createDirectory(at: parent, withIntermediateDirectories: true)
-    let importLock = open(
-      parent.appendingPathComponent("input-method-import.lock").path,
-      O_CREAT | O_RDWR | O_NOFOLLOW | O_CLOEXEC, 0o600)
-    guard importLock >= 0 else { throw RimeProfileImportError.deploymentFailed }
-    defer { close(importLock) }
-    guard flock(importLock, LOCK_EX | LOCK_NB) == 0 else {
-      throw RimeProfileImportError.sourceRunning
-    }
     let staging = parent.appendingPathComponent("InputMethod-import-\(UUID().uuidString)")
-    let stagedApplication = parent.appendingPathComponent(
-      "InputMethod-app-\(UUID().uuidString).app")
     try files.createDirectory(
       at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     defer {
       try? files.removeItem(at: staging)
-      try? files.removeItem(at: stagedApplication)
     }
     let excluded: Set<String> = [
       ".git", ".DS_Store", "build", "sync", "installation.yaml", "sync_rime.sh", "engine.lock",
@@ -147,8 +174,10 @@ public struct RimeProfileInstaller: Sendable {
     try deploy.run()
     deploy.waitUntilExit()
     guard deploy.terminationStatus == 0,
-      files.fileExists(atPath: staging.appendingPathComponent("build/\(schemaID).schema.yaml").path),
-      files.fileExists(atPath: staging.appendingPathComponent("build/\(dictionaryID).table.bin").path),
+      files.fileExists(
+        atPath: staging.appendingPathComponent("build/\(schemaID).schema.yaml").path),
+      files.fileExists(
+        atPath: staging.appendingPathComponent("build/\(dictionaryID).table.bin").path),
       before == (try Self.fingerprints(profile, excluding: excluded)),
       before.filter({ $0.key.contains(".userdb/") })
         == (try Self.fingerprints(staging, excluding: excluded)).filter({
@@ -158,14 +187,36 @@ public struct RimeProfileInstaller: Sendable {
     try await checkWriters()
     try JSONEncoder().encode(expected).write(
       to: staging.appendingPathComponent("import-fingerprints.json"), options: .atomic)
-    try files.copyItem(at: helperBundle, to: stagedApplication)
-    try files.createDirectory(
-      at: application.deletingLastPathComponent(), withIntermediateDirectories: true)
     try files.moveItem(at: staging, to: destination)
-    do { try files.moveItem(at: stagedApplication, to: application) } catch {
+    do {
+      try await replaceApplication(at: application, inputMethodIsStopped: inputMethodIsStopped)
+    } catch {
       // Return the newly imported profile to staging so a failed install is retryable.
       try files.moveItem(at: destination, to: staging)
       throw error
+    }
+  }
+
+  private func replaceApplication(
+    at application: URL, inputMethodIsStopped: @MainActor @Sendable () -> Bool
+  ) async throws {
+    let files = FileManager.default
+    guard
+      files.fileExists(
+        atPath: helperBundle.appendingPathComponent("Contents/Helpers/rime_deployer").path)
+    else { throw RimeProfileImportError.helperMissing }
+    let parent = application.deletingLastPathComponent()
+    try files.createDirectory(at: parent, withIntermediateDirectories: true)
+    let staged = parent.appendingPathComponent(".RillInputMethod-\(UUID().uuidString).app")
+    defer { try? files.removeItem(at: staged) }
+    try files.copyItem(at: helperBundle, to: staged)
+    guard await inputMethodIsStopped() else { throw RimeProfileImportError.inputMethodRunning }
+    if files.fileExists(atPath: application.path) {
+      guard
+        renameatx_np(AT_FDCWD, staged.path, AT_FDCWD, application.path, UInt32(RENAME_SWAP)) == 0
+      else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    } else {
+      try files.moveItem(at: staged, to: application)
     }
   }
 

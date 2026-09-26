@@ -25,11 +25,11 @@ struct RimeProfileInstallerTests {
       try String(
         contentsOf: fixture.destination.appendingPathComponent("opencc/s2t.json"),
         encoding: .utf8) == "shared")
-    await #expect(throws: RimeProfileImportError.self) {
-      try await installer.prepareInstallation(
-        importing: nil, to: fixture.destination, application: fixture.application,
-        inputMethodIsStopped: { true })
-    }
+    let installed = try RimeProfileInstaller.fingerprints(fixture.destination)
+    try await installer.prepareInstallation(
+      importing: nil, to: fixture.destination, application: fixture.application,
+      sourceIsStopped: { false }, inputMethodIsStopped: { true })
+    #expect(try RimeProfileInstaller.fingerprints(fixture.destination) == installed)
   }
 
   @Test func freshInstallationRefusesAnActiveRillInputMethod() async throws {
@@ -138,6 +138,73 @@ struct RimeProfileInstallerTests {
     #expect(!FileManager.default.fileExists(atPath: fixture.application.path))
   }
 
+  @Test func repairReplacesOnlyTheComponentWhileSquirrelIsRunning() async throws {
+    let fixture = try Fixture()
+    defer { fixture.remove() }
+    let files = FileManager.default
+    try files.createDirectory(at: fixture.destination, withIntermediateDirectories: true)
+    try fixture.databaseBytes.write(
+      to: fixture.destination.appendingPathComponent("personal.userdb"))
+    try files.createDirectory(at: fixture.application, withIntermediateDirectories: true)
+    try Data("old component".utf8).write(to: fixture.application.appendingPathComponent("old"))
+    // Repair must not require or redeploy the bundled default profile.
+    try files.removeItem(at: fixture.bundled)
+    let before = try RimeProfileInstaller.fingerprints(fixture.destination)
+    let installer = RimeProfileInstaller(helperBundle: fixture.helper)
+    try await installer.prepareInstallation(
+      importing: nil, to: fixture.destination, application: fixture.application,
+      sourceIsStopped: {
+        Issue.record("Repair consulted Squirrel")
+        return false
+      },
+      inputMethodIsStopped: { true })
+    #expect(try RimeProfileInstaller.fingerprints(fixture.destination) == before)
+    #expect(!files.fileExists(atPath: fixture.application.appendingPathComponent("old").path))
+    #expect(
+      files.fileExists(
+        atPath: fixture.application.appendingPathComponent("Contents/Helpers/rime_deployer").path))
+  }
+
+  @Test func existingInstallationRejectsImportBeforeAskingToQuitSquirrel() async throws {
+    let fixture = try Fixture()
+    defer { fixture.remove() }
+    try FileManager.default.createDirectory(
+      at: fixture.destination, withIntermediateDirectories: true)
+    let installer = RimeProfileInstaller(helperBundle: fixture.helper)
+    await #expect(throws: RimeProfileImportError.alreadyImported) {
+      try await installer.prepareInstallation(
+        importing: fixture.source, to: fixture.destination, application: fixture.application,
+        sourceIsStopped: {
+          Issue.record("Already-installed import consulted Squirrel")
+          return false
+        },
+        inputMethodIsStopped: { false })
+    }
+  }
+
+  @Test @MainActor func writerStartingDuringComponentCopyLeavesExistingInstallationIntact()
+    async throws
+  {
+    let fixture = try Fixture()
+    defer { fixture.remove() }
+    let files = FileManager.default
+    try files.createDirectory(at: fixture.destination, withIntermediateDirectories: true)
+    try files.createDirectory(at: fixture.application, withIntermediateDirectories: true)
+    try fixture.databaseBytes.write(to: fixture.application.appendingPathComponent("old"))
+    let before = try RimeProfileInstaller.fingerprints(fixture.application)
+    var checks = 0
+    let installer = RimeProfileInstaller(helperBundle: fixture.helper)
+    await #expect(throws: RimeProfileImportError.inputMethodRunning) {
+      try await installer.prepareInstallation(
+        importing: nil, to: fixture.destination, application: fixture.application,
+        inputMethodIsStopped: {
+          checks += 1
+          return checks == 1
+        })
+    }
+    #expect(try RimeProfileInstaller.fingerprints(fixture.application) == before)
+  }
+
   private struct Fixture {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     var source: URL { root.appendingPathComponent("source") }
@@ -180,7 +247,7 @@ struct RimeProfileInstallerTests {
         fi
 
         """
-          .utf8
+        .utf8
       ).write(to: deployer)
       try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: deployer.path)
     }
