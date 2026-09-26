@@ -65,6 +65,48 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     await controller.shutdown()
   }
 
+  func testFocusLossDuringPresentationEventuallyDismissesPanel() async throws {
+    let otherWindow = NSPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+      styleMask: [.titled, .nonactivatingPanel], backing: .buffered, defer: false)
+    defer { otherWindow.orderOut(nil) }
+    let controller = makeController(reduceMotion: true)
+    controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
+    otherWindow.makeKeyAndOrderFront(nil)
+    XCTAssertTrue(otherWindow.isKeyWindow)
+    XCTAssertTrue(controller.isVisible)
+
+    let deadline = ContinuousClock.now.advanced(by: .seconds(1))
+    while controller.isVisible, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    XCTAssertFalse(controller.isVisible, "A panel that lost keyboard focus must not remain over the typing target")
+    await controller.shutdown()
+  }
+
+  func testRegainingFocusCancelsPendingDismissal() async throws {
+    let otherWindow = NSPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+      styleMask: [.titled, .nonactivatingPanel], backing: .buffered, defer: false)
+    defer { otherWindow.orderOut(nil) }
+    let controller = makeController(reduceMotion: true)
+    let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
+    controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
+    let panel = try XCTUnwrap(NSApp.windows.first {
+      $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+    })
+    otherWindow.makeKeyAndOrderFront(nil)
+    XCTAssertTrue(otherWindow.isKeyWindow)
+    panel.makeKey()
+    XCTAssertTrue(panel.isKeyWindow)
+
+    // Cross the presentation suppression and focus-loss debounce deadlines.
+    try await Task.sleep(for: .milliseconds(300))
+    XCTAssertTrue(controller.isVisible)
+    XCTAssertTrue(panel.isKeyWindow)
+    await controller.shutdown()
+  }
+
   func testReduceMotionPresentsAndDismissesPanelWithoutFade() async {
     let controller = makeController(reduceMotion: true)
 
