@@ -115,17 +115,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--validate",
-        metavar="PATH",
-        help="Validate one built-in workflow manifest JSON file and exit.",
+        action="store_true",
+        help="Validate built-in workflow manifest JSON from stdin and exit.",
     )
     return parser.parse_args()
 
 
-def validate_manifest(path: Path) -> int:
+def validate_manifest(payload: str) -> int:
     try:
-        with path.open(encoding="utf-8") as source:
-            manifest = json.load(source)
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        manifest = json.loads(payload)
+    except json.JSONDecodeError as error:
         print(f"cannot read built-in workflow manifest: {error}", file=sys.stderr)
         return 2
     if not isinstance(manifest, dict):
@@ -142,8 +141,8 @@ def validate_manifest(path: Path) -> int:
 
 def main() -> int:
     args = parse_args()
-    if args.validate is not None:
-        return validate_manifest(Path(args.validate))
+    if args.validate:
+        return validate_manifest(sys.stdin.read())
     try:
         manifest = load_manifest()
         outputs = {

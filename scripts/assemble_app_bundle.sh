@@ -557,6 +557,6 @@ for localization in "${INFO_PLIST_LOCALIZATIONS[@]}"; do
 done
 
 uv run --script "$SCRIPT_DIR/generate_builtin_workflows.py" --validate \
-  "$MANIFEST_DESTINATION"
+  <"$MANIFEST_DESTINATION"
 
 info "Assembled unsigned $APP_BUNDLE (${#RESOURCE_SOURCES[@]} resource bundles; $dependency_bundle_count dependencies)"
