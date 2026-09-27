@@ -25,17 +25,14 @@ jobs:
   preview-simulation:
     name: Record preview CPU simulation
     runs-on: ubuntu-24.04
-    container:
-      image: swift:6.2.4-noble@sha256:9bea530093ffff8cf6c259991715ee843fe4d0f932e612f7f4b79cca6e00db87
     timeout-minutes: 20
     steps:
-      - name: Install benchmark download tools
-        run: |
-          apt-get update
-          apt-get install --yes --no-install-recommends curl ca-certificates
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a # v2.4.0
+        with:
+          swift-version: "6.2.4"
       - name: Build and validate preview workloads
         run: bash scripts/build_benchmarks.sh --codspeed --preview-only
       - name: Measure CPU simulation with CodSpeed

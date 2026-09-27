@@ -74,8 +74,10 @@ These optimized measurements replace the opt-in debug-only buffer benchmark;
 older debug observations remain historical evidence, not comparable CodSpeed baselines.
 
 The advisory GitHub workflow runs on `main`, on relevant pull requests, and on
-manual dispatch. Preview simulation runs on Ubuntu 24.04 in an official Swift
-6.2.4 container pinned by digest; buffer walltime runs on `macos-26`. Both jobs
+manual dispatch. Preview simulation runs directly on Ubuntu 24.04 with Swift
+6.2.4 and a commit-pinned setup action; buffer walltime runs on `macos-26`. The
+native runner lets CodSpeed disable address randomization with `setarch`, which
+is blocked by Docker's default container policy. Both jobs
 stay in the same workflow, with each benchmark reported by exactly one job.
 It pins CodSpeed and other actions to commits, uses tokenless uploads for this
 public repository, and requests only `contents: read`.
