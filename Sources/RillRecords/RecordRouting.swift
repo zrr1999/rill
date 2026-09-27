@@ -32,8 +32,12 @@ public actor RecordIngestionCoordinator: RecordIngestionSink {
 
     @discardableResult
     public func ingest(_ envelope: RecordCaptureEnvelope) async throws -> RecordProjection {
+        if let intent = envelope.draftInput {
+            return try await store.ingestBufferDictation(envelope.draft,
+                recognitionText: envelope.recognitionText ?? "", for: intent)
+        }
         let destinations = try await router.captureDestinations(for: envelope)
-        return try await store.ingest(envelope.draft, into: destinations)
+        return try await store.ingest(envelope.draft, into: destinations, fulfilling: envelope.bufferEntryID, recognitionText: envelope.recognitionText)
     }
 
     @discardableResult

@@ -37,6 +37,7 @@ public struct ResolvedWorkflowPlan: Sendable, Equatable {
     public let recognizerID: String?
     public internal(set) var recognitionHints: RecognitionHints
     public let recognitionCandidates: [HotwordCandidate]
+    public let vocabularyCandidates: [HotwordCandidate]
     public let replacementRules: [VocabularyRule]
     public let activeVocabularyCollectionCount: Int
     public let validHotwordCount: Int
@@ -56,7 +57,8 @@ public struct ResolvedWorkflowPlan: Sendable, Equatable {
         omittedHotwordCount: Int,
         rejectedHotwordCount: Int,
         recognizerAcceptsHotwords: Bool,
-        recognitionCandidates: [HotwordCandidate] = []
+        recognitionCandidates: [HotwordCandidate] = [],
+        vocabularyCandidates: [HotwordCandidate] = []
     ) {
         self.outputConfigurations = outputConfigurations
         self.steps = steps
@@ -64,6 +66,7 @@ public struct ResolvedWorkflowPlan: Sendable, Equatable {
         self.recognizerID = recognizerID
         self.recognitionHints = recognitionHints
         self.recognitionCandidates = recognitionCandidates
+        self.vocabularyCandidates = vocabularyCandidates
         self.replacementRules = replacementRules
         self.activeVocabularyCollectionCount = activeVocabularyCollectionCount
         self.validHotwordCount = validHotwordCount
@@ -146,7 +149,8 @@ public struct WorkflowPlanCompiler: Sendable {
             omittedHotwordCount: hints.omittedKeytermCount,
             rejectedHotwordCount: hints.rejectedKeytermCount,
             recognizerAcceptsHotwords: acceptsHotwords,
-            recognitionCandidates: acceptsHotwords ? hints.candidates : []
+            recognitionCandidates: acceptsHotwords ? hints.candidates : [],
+            vocabularyCandidates: hints.allCandidates
         )
     }
     func validate(

@@ -32,6 +32,12 @@ extension AppModel {
     )
   }
 
+  func handleBufferOutputHotkeyChange(from oldValue: HotkeyBindingDescriptor) {
+    guard oldValue != settings.bufferOutputHotkeyBinding else { return }
+    persistStringSetting(settings.bufferOutputHotkeyBinding.storageString, for: .bufferOutputHotkey)
+    recordInteractions.updateBufferHotkey(settings.bufferOutputHotkeyBinding)
+  }
+
   func handleRecordPanelHotkeyChange(from oldValue: HotkeyBindingDescriptor) {
     guard oldValue != self.settings.recordPanelHotkeyBinding else { return }
     persistRecordPanelHotkeyPreference()

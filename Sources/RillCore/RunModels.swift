@@ -19,6 +19,7 @@ public struct WorkflowTriggerEvent: Identifiable, Codable, Sendable, Equatable {
     public var sourceID: String
     public var metadata: [String: String]
     public var triggeredAt: Date
+    public var bufferDraftInput: BufferDraftInputIntent?
 
     public init(
         id: UUID = UUID(),
@@ -26,7 +27,8 @@ public struct WorkflowTriggerEvent: Identifiable, Codable, Sendable, Equatable {
         workflowID: UUID? = nil,
         sourceID: String,
         metadata: [String: String] = [:],
-        triggeredAt: Date = Date()
+        triggeredAt: Date = Date(),
+        bufferDraftInput: BufferDraftInputIntent? = nil
     ) {
         self.id = id
         self.binding = binding
@@ -34,6 +36,7 @@ public struct WorkflowTriggerEvent: Identifiable, Codable, Sendable, Equatable {
         self.sourceID = sourceID
         self.metadata = metadata
         self.triggeredAt = triggeredAt
+        self.bufferDraftInput = bufferDraftInput
     }
 }
 

@@ -74,6 +74,9 @@ public actor SessionCoordinator {
     private let actionRegistry: OutputActionRegistry
     private let workflowPlanCompiler: WorkflowPlanCompiler
     private let candidateResolver: CandidateResolver
+    private var speechBufferCleanupTasks: [UUID: Task<Void, Never>] = [:]
+    private var bufferCleanupIsShuttingDown = false
+    private var speechBufferInputs: [UUID: BufferInputReservation] = [:]
     private let recordStore: RecordStore
     private let recordDeliveryCoordinator: RecordDeliveryCoordinator
     private let recordDeliverySettlementTaskOwner: RecordDeliverySettlementTaskOwner
@@ -174,6 +177,11 @@ public actor SessionCoordinator {
     }
 
     public func shutdownRecordDeliverySettlements() async {
+        bufferCleanupIsShuttingDown = true
+        let cleanupTasks = Array(speechBufferCleanupTasks.values)
+        for task in cleanupTasks { task.cancel() }
+        for task in cleanupTasks { await task.value }
+        speechBufferCleanupTasks.removeAll()
         await recordDeliverySettlementTaskOwner.shutdown()
     }
 
@@ -491,7 +499,7 @@ public extension SessionCoordinator {
 
         var failureStage = WorkflowRunStage.preparing
         do {
-            let session = try await startRunSession(
+            var session = try await startRunSession(
                 for: workflow,
                 runID: runID,
                 trigger: effectiveReceiptTrigger,
@@ -501,6 +509,13 @@ public extension SessionCoordinator {
                 compilationInput: preRecognizedText == nil ? nil : .text,
                 receiptIsActive: receiptIsActive
             )
+            session.bufferDraftInput = triggerEvent?.bufferDraftInput
+            if session.bufferDraftInput != nil {
+                guard workflow.plan.output.actions.count == 1,
+                      workflow.plan.output.actions.first?.id == RecordActionID.store else {
+                    throw SessionError.missingAction(RecordActionID.store)
+                }
+            }
             failureStage = .recognizing
             let recognition: RecognitionResult
             let recognitionDurationMilliseconds: UInt64?
@@ -1616,7 +1631,10 @@ private extension SessionCoordinator {
         in session: RunSession
     ) async throws -> DeliveryExecutionSummary {
         state = .delivering(session.runID)
-        return try await outputExecutor.deliver(finalText: finalText, recognition: recognition, in: session)
+        return try await outputExecutor.deliver(
+            finalText: finalText, recognition: recognition, in: session,
+            bufferEntryID: speechBufferInputs[session.runID]?.id
+        )
     }
 
     @discardableResult
@@ -1665,6 +1683,40 @@ private extension SessionCoordinator.State {
             return nil
         case .running(let runID), .resolving(let runID), .delivering(let runID):
             return runID
+        }
+    }
+}
+
+
+extension SessionCoordinator {
+    func observeCollectedSpeech(runID: UUID, workflow: WorkflowDefinition) async throws -> BufferInputReservation? {
+        guard workflow.metadata[WorkflowMetadataKey.collectSpeech] == "true" else { return nil }
+        if let reservation = speechBufferInputs[runID] { return reservation }
+        let reservation = try await recordStore.observeBufferInput(in: RecordBuffer.speechID)
+        speechBufferInputs[runID] = reservation
+        return reservation
+    }
+
+    func finishCollectedSpeech(runID: UUID) async {
+        guard let reservation = speechBufferInputs[runID] else { return }
+        _ = try? await reservation.committed.value
+        let id = reservation.id
+        do {
+            try await recordStore.cancelBufferInput(id)
+            speechBufferInputs.removeValue(forKey: runID)
+        } catch {
+            guard !bufferCleanupIsShuttingDown, speechBufferCleanupTasks[runID] == nil else { return }
+            speechBufferCleanupTasks[runID] = Task {
+                while !Task.isCancelled {
+                    do {
+                        try await Task.sleep(for: .milliseconds(250))
+                        try await recordStore.cancelBufferInput(id)
+                        speechBufferInputs.removeValue(forKey: runID)
+                        break
+                    } catch { if Task.isCancelled { break } }
+                }
+                speechBufferCleanupTasks.removeValue(forKey: runID)
+            }
         }
     }
 }

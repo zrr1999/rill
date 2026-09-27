@@ -53,7 +53,7 @@ public struct RecordWorkspaceView: View {
 
     @State private var isCreatingCollection = false
     @State private var newCollectionName = ""
-    @State private var newCollectionPreset: RecordCollectionPreset = .stack
+    @State private var newCollectionPreset: RecordCollectionPreset = .list
     @State private var collectionIDsToAdd: Set<RecordCollectionID> = []
     @State private var membershipRecordID: RecordID?
     @State private var replacementRecordID: RecordID?
@@ -85,6 +85,8 @@ public struct RecordWorkspaceView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
+            RecordBufferToolbar(workspace: workspace, language: language)
+            Divider()
             recordsWorkspace
             .frame(
                 maxWidth: .infinity,
@@ -604,6 +606,9 @@ public struct RecordWorkspaceView: View {
             Text(L10n.recordText(.metadataTitle, language: language)).font(.headline)
             LabeledContent(L10n.recordText(.metadataSource, language: language)) {
                 Text(sourceName(record.record.provenance))
+            }
+            LabeledContent(L10n.recordText(.metadataCopies, language: language)) {
+                Text("\(record.activity.copyCount)")
             }
             LabeledContent(L10n.recordText(.metadataUses, language: language)) {
                 Text("\(record.activity.useCount)")

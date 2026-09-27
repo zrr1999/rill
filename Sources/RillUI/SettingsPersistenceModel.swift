@@ -22,6 +22,7 @@ public final class SettingsPersistenceModel {
   public internal(set) var language: AppLanguage
   public internal(set) var systemClipboardCaptureEnabled: Bool = false
   public internal(set) var recordPanelHotkeyBinding: HotkeyBindingDescriptor = .doubleCommand
+  public internal(set) var bufferOutputHotkeyBinding: HotkeyBindingDescriptor = .keyboardShortcut(.outputNext)
   public internal(set) var preferredSpeechEngine: PreferredSpeechEngine = .local
   public internal(set) var builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode = .pasteIntoApp
   public internal(set) var longRecordingModeEnabled: Bool = false

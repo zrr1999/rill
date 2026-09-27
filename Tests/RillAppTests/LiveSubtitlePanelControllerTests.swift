@@ -134,7 +134,7 @@ final class LiveSubtitlePanelControllerTests: XCTestCase {
   func testPreferredSurfaceSizesAreStableForEachLayoutMode() {
     XCTAssertEqual(LiveSubtitleOverlayMetrics.expandedSurfaceWidth, 360)
     XCTAssertEqual(LiveSubtitleOverlayMetrics.expandedSurfaceHeight, 96)
-    XCTAssertEqual(LiveSubtitleOverlayMetrics.compactSurfaceWidth, 184)
+    XCTAssertEqual(LiveSubtitleOverlayMetrics.compactSurfaceWidth, 248)
     XCTAssertEqual(LiveSubtitleOverlayMetrics.compactSurfaceHeight, 48)
     let expanded = LiveSubtitleSnapshot(
       runID: UUID(),

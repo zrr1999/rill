@@ -198,7 +198,7 @@ public final class AppModel {
   let prepareEnabledSpeechModelAction: @Sendable (_ modelID: String) async -> Void
   let setLocalSpeechRuntimeEnabledAction: @Sendable (Bool) -> Void
   let startWorkflowAudioRunAction:
-    @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void
+    @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void
   let finishWorkflowAudioRunAction: @Sendable () async throws -> Void
   let retryFailedAudioRecoveryAction:
     @Sendable (
@@ -295,7 +295,7 @@ public final class AppModel {
     releaseLocalSpeechRuntimeAction: @escaping @Sendable () -> Void,
     stopLocalSpeechRuntimeAction: @escaping @Sendable () async -> Void,
     startWorkflowAudioRunAction:
-      @escaping @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void,
+      @escaping @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void,
     finishWorkflowAudioRunAction: @escaping @Sendable () async throws -> Void,
     verifyOpenAIConfigurationAction:
       @escaping @Sendable (OpenAISettings) async throws -> Void,
@@ -463,6 +463,7 @@ public final class AppModel {
     self.openMicrophoneSettingsAction = openMicrophoneSettingsAction
     recordInteractions.setCaptureEnabled(settings.systemClipboardCaptureEnabled, clipboardCapturePreferenceRevision)
     recordInteractions.updateHotkey(settings.recordPanelHotkeyBinding)
+    recordInteractions.updateBufferHotkey(settings.bufferOutputHotkeyBinding)
     synchronizeWorkflowEnabledStates()
     if loadsPersistentSettingsOnInitialization {
       loadSettings()
@@ -539,6 +540,12 @@ extension AppModel {
     let oldValue = self.settings.systemClipboardCaptureEnabled
     self.settings.systemClipboardCaptureEnabled = newValue
     handleClipboardCaptureEnabledChange(from: oldValue)
+  }
+
+  func applyBufferOutputHotkeyBinding(_ newValue: HotkeyBindingDescriptor) {
+    let oldValue = settings.bufferOutputHotkeyBinding
+    settings.bufferOutputHotkeyBinding = newValue
+    handleBufferOutputHotkeyChange(from: oldValue)
   }
 
   func applyRecordPanelHotkeyBinding(_ newValue: HotkeyBindingDescriptor) {

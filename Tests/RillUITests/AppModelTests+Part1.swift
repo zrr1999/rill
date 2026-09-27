@@ -191,7 +191,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(
             workflow: workflow,
-            startWorkflowAudioRunAction: { workflow, binding in
+            startWorkflowAudioRunAction: { workflow, binding, _ in
                 await probe.recordStart(workflowID: workflow.id, binding: binding)
             },
             finishWorkflowAudioRunAction: {
@@ -262,7 +262,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(
             workflow: workflow,
-            startWorkflowAudioRunAction: { _, _ in
+            startWorkflowAudioRunAction: { _, _, _ in
                 try await startGate.suspendStart()
             },
             finishWorkflowAudioRunAction: {
@@ -310,7 +310,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(
             workflow: workflow,
-            startWorkflowAudioRunAction: { _, _ in
+            startWorkflowAudioRunAction: { _, _, _ in
                 try await startGate.suspendStart()
             }
         )

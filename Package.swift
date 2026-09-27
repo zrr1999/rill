@@ -166,7 +166,7 @@ let package = Package(
     ),
     .testTarget(
       name: "RillPlatformTests",
-      dependencies: ["RillCore", "RillPlatform"]
+      dependencies: ["RillCore", "RillInputMethodContracts", "RillPlatform"]
     ),
     .testTarget(
       name: "RillUITests",

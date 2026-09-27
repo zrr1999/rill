@@ -1,4 +1,5 @@
 import XCTest
+import Testing
 
 @testable import RillCore
 @testable import RillProviders
@@ -96,4 +97,21 @@ private func makeContext() -> ActionContext {
         startedAt: Date(timeIntervalSince1970: 1),
         finishedAt: Date(timeIntervalSince1970: 2)
     )
+}
+
+struct BufferDraftActionTests {
+    @Test func recordActionCarriesRawRecognitionAndFrozenDraftIntent() async throws {
+        let ingestion = RecordIngestionSpy()
+        var context = makeContext()
+        let intent = BufferDraftInputIntent(entryID: .init(bufferID: RecordBuffer.speechID, sequence: 1),
+            draftID: UUID(), revision: 3, selection: .init(location: 2, length: 1), editingSessionID: UUID())
+        context.bufferDraftInput = intent
+        let capture = RecordDraft(payload: .text("polished"), provenance: .init(source: .init(kind: .workflow)))
+        _ = try await RecordStoreAction(ingestion: ingestion).execute(record: capture, context: context)
+        let envelope = try #require(await ingestion.captured().first)
+        #expect(envelope.draftInput == intent)
+        #expect(envelope.bufferEntryID == nil)
+        #expect(envelope.recognitionText == "source")
+        #expect(envelope.draft.payload.textValue == "polished")
+    }
 }

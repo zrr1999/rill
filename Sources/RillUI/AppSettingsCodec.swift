@@ -20,6 +20,7 @@ enum AppSettingsCodec {
     .recordHistoryVisibility,
     .legacyClipboardHistoryVisibility,
     .recordPanelHotkey,
+    .bufferOutputHotkey,
     .legacyClipboardPanelHotkey,
     .preferredSpeechEngine,
     .localSpeechModel,
@@ -353,6 +354,7 @@ enum AppSettingsCodec {
         ?? storedSettings[.legacyClipboardCaptureEnabled],
       recordHistoryVisibility: storedSettings[.recordHistoryVisibility]
         ?? storedSettings[.legacyClipboardHistoryVisibility],
+      bufferOutputHotkey: storedSettings[.bufferOutputHotkey],
       recordPanelHotkey: storedSettings[.recordPanelHotkey]
         ?? storedSettings[.legacyClipboardPanelHotkey],
       preferredSpeechEngine: storedSettings[.preferredSpeechEngine],
@@ -409,6 +411,7 @@ enum AppSettingsCodec {
     case .systemClipboardCaptureEnabled,
       .recordHistoryVisibility,
       .recordPanelHotkey,
+      .bufferOutputHotkey,
       .recordMergeSimilar:
       .systemClipboard
     case .preferredSpeechEngine,
@@ -765,6 +768,12 @@ enum AppSettingsCodec {
     }
     if let value = values[.systemClipboardCaptureEnabled], storedBooleanIfValid(value) == nil {
       invalidKeys.insert(.systemClipboardCaptureEnabled)
+    }
+    if let value = values[.bufferOutputHotkey],
+      (HotkeyBindingDescriptor(storageString: value).storageString != value
+        || value == HotkeyBindingDescriptor.doubleCommand.storageString)
+    {
+      invalidKeys.insert(.bufferOutputHotkey)
     }
     if let value = values[.recordPanelHotkey],
       HotkeyBindingDescriptor(storageString: value).storageString != value

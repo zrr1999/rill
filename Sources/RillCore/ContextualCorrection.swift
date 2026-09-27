@@ -1,6 +1,15 @@
 import Foundation
 
 public extension WorkflowDefinition {
+    var supportsVocabularyCorrection: Bool {
+        id.uuidString == "D3E19A88-F9FB-4AB3-8444-CDBF7E215A88"
+            && metadata[WorkflowMetadataKey.catalog] == BuiltinWorkflowRoutingValue.catalog
+            && metadata[WorkflowMetadataKey.builtinKind] == "push-to-talk.polish"
+            && supportsContextualCorrection
+            && plan.process.allSteps.first { $0.kind == .llmRewrite }?.prompt?
+                .trimmingCharacters(in: .whitespacesAndNewlines) == LLMTextProcessing.cleanupPrompt
+    }
+
     var supportsContextualCorrection: Bool {
         speechMode != .voiceAssistant
             && !plan.process.allSteps.contains { $0.kind == .snippetReplacement }
@@ -72,6 +81,12 @@ public struct ContextualCorrectionRequest: Sendable, Equatable {
     public var referenceImage: CorrectionReferenceImage?
     public var imageSummary: ScreenReferenceSummary?
     public var memorySummary: CorrectionMemorySummary?
+    public var vocabularyReference: CorrectionVocabularyReference?
+
+    public var hasCorrectionReferences: Bool {
+        referenceImage != nil || imageSummary != nil || memorySummary != nil
+            || vocabularyReference?.terms.isEmpty == false
+    }
     public var authorization: ContextReferenceAuthorization?
 
     public init(
@@ -79,13 +94,15 @@ public struct ContextualCorrectionRequest: Sendable, Equatable {
         referenceImage: CorrectionReferenceImage? = nil,
         imageSummary: ScreenReferenceSummary? = nil,
         memorySummary: CorrectionMemorySummary? = nil,
-        authorization: ContextReferenceAuthorization? = nil
+        authorization: ContextReferenceAuthorization? = nil,
+        vocabularyReference: CorrectionVocabularyReference? = nil
     ) {
         self.transcript = transcript
         self.referenceImage = referenceImage
         self.imageSummary = imageSummary
         self.memorySummary = memorySummary
         self.authorization = authorization
+        self.vocabularyReference = vocabularyReference
     }
 }
 
@@ -142,19 +159,22 @@ public struct CorrectionReferenceReceipt: Codable, Sendable, Equatable {
     public var memorySummary: CorrectionReferenceStatus
     public var screenSummary: ScreenReferenceSummary?
     public var memoryIDs: [UUID]
+    public var vocabulary: VocabularyReferenceReceipt?
 
     public init(
         image: CorrectionReferenceStatus = .disabled,
         imageSummary: CorrectionReferenceStatus = .disabled,
         memorySummary: CorrectionReferenceStatus = .disabled,
         screenSummary: ScreenReferenceSummary? = nil,
-        memoryIDs: [UUID] = []
+        memoryIDs: [UUID] = [],
+        vocabulary: VocabularyReferenceReceipt? = nil
     ) {
         self.image = image
         self.imageSummary = imageSummary
         self.memorySummary = memorySummary
         self.screenSummary = screenSummary
         self.memoryIDs = memoryIDs
+        self.vocabulary = vocabulary
     }
 }
 
@@ -178,10 +198,24 @@ public struct ContextMemoryScope: Codable, Sendable, Equatable, Hashable {
 public struct ContextFeatureSettings: Codable, Sendable, Equatable {
     public var screenContextEnabled = false
     public var memoryEnabled = false
+    public var vocabularyCorrectionEnabled = false
     public var authorizedWorkflowIDs: Set<UUID> = []
     public var providerFingerprint: String?
 
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case screenContextEnabled, memoryEnabled, vocabularyCorrectionEnabled, authorizedWorkflowIDs, providerFingerprint
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        screenContextEnabled = try values.decode(Bool.self, forKey: .screenContextEnabled)
+        memoryEnabled = try values.decode(Bool.self, forKey: .memoryEnabled)
+        vocabularyCorrectionEnabled = try values.decodeIfPresent(Bool.self, forKey: .vocabularyCorrectionEnabled) ?? false
+        authorizedWorkflowIDs = try values.decode(Set<UUID>.self, forKey: .authorizedWorkflowIDs)
+        providerFingerprint = try values.decodeIfPresent(String.self, forKey: .providerFingerprint)
+    }
 }
 
 public protocol ScreenContextCapturing: Sendable {

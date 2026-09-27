@@ -183,7 +183,7 @@ public struct SettingsView: View {
           Section { languageSection }
         case .input:
           Section { builtinPushToTalkSection; recordPanelSection }
-          if let input = model.inputMethod { InputMethodSettingsView(input: input) }
+          if let input = model.inputMethod { InputMethodSettingsView(input: input, language: model.settings.language) }
         case .voice:
           Section { speechEngineSection; apiProviderSettingsSection; voiceAssistantResourcesSection }
         case .vocabulary:
@@ -331,6 +331,25 @@ extension SettingsView {
 
       Divider()
 
+      Text(model.settings.language == .simplifiedChinese ? "输出下一项" : "Output Next").font(.headline)
+      HotkeyRecorderView(
+        binding: model.settings.bufferOutputHotkeyBinding,
+        language: model.settings.language,
+        beginRecordPanelShortcutRecording: { model.beginRecordPanelShortcutRecording() },
+        endRecordPanelShortcutRecording: { model.endRecordPanelShortcutRecording($0) },
+        commitRecordPanelShortcutRecording: { model.commitRecordPanelShortcutRecording($0, keyCode: $1) },
+        onRecord: { model.setBufferOutputHotkeyShortcut($0) },
+        onReset: { model.setBufferOutputHotkeyShortcut(.outputNext) },
+        commandLabel: model.settings.language == .simplifiedChinese ? "输出下一项快捷键" : "Output Next shortcut",
+        identifier: "settings.output-next-hotkey"
+      )
+      .disabled(model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
+      if model.settings.bufferOutputHotkeyBinding == model.settings.recordPanelHotkeyBinding {
+        Text(model.settings.language == .simplifiedChinese ? "快捷键冲突：请修改其中一个绑定。" : "Shortcut conflict: change one binding.")
+          .foregroundStyle(.red)
+      }
+      Divider()
+      Text(model.settings.language == .simplifiedChinese ? "剪贴板面板" : "Clipboard panel").font(.headline)
       HotkeyRecorderView(
         binding: model.settings.recordPanelHotkeyBinding,
         language: model.settings.language,

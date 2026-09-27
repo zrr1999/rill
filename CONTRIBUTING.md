@@ -141,7 +141,7 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 | [SECURITY.md](SECURITY.md) | 支持版本、漏洞报告渠道及披露规则 |
 | [PRIVACY.md](PRIVACY.md) | 随 App 分发的技术隐私与数据流说明 |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md) | 第三方依赖与模型的许可及来源证据 |
-| [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[工作流](docs/workflow-toml.md)、[上下文纠错](docs/contextual-correction.md)、[UI](docs/ui-direction.md) | 开发者维护的模块、状态、执行与界面契约 |
+| [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[连续输出](docs/continuous-output.md)、[工作流](docs/workflow-toml.md)、[上下文纠错](docs/contextual-correction.md)、[UI](docs/ui-direction.md) | 开发者维护的模块、状态、执行与界面契约 |
 | [输入法工程](docs/input-method-development.md) | 独立输入法打包、探针、迁移核对与原生验收方法 |
 | [图标设计](docs/icon-design.md) | 应用与菜单栏图标的设计说明、预览及资源维护入口 |
 | [发布步骤](docs/releasing.md)、[验收清单](docs/release-qa-checklist.md) | 维护者发布流程和特定候选包的验收要求 |
@@ -221,7 +221,7 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 | [policy-pr.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/policy-pr.yml) | Policy - PR | 只读校验 PR 标题和正文 |
 | [automation-pr-title.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题后，重跑对应的 PR 检查 |
 | [ci-tests.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-tests.yml) | CI - Tests | Linux 文档构建，以及按修改范围运行的 macOS 测试、依赖和发布预检 |
-| [ci-benchmarks.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-benchmarks.yml) | CI - Benchmarks | CodSpeed 文本预览性能测量 |
+| [ci-benchmarks.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-benchmarks.yml) | CI - Benchmarks | CodSpeed Linux 文本预览 CPU simulation 与 macOS 加密 Stack/Queue 离线校验 |
 | [cd-release.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/cd-release.yml) | CD - Release | 手动验证版本标签，经受保护环境审核后签名、公证并上传 Release 草稿 |
 
 job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接报告检查结果，

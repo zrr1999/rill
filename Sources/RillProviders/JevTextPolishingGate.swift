@@ -37,8 +37,7 @@ public struct JevTextPolishingGate: TextPolishingGate {
       prompt.utf8.count <= 4_000
     else { return false }
     // Jev cannot evaluate references it has not seen; leave contextual correction to the LLM.
-    if let correction = context.correctionRequest,
-      correction.referenceImage != nil || correction.imageSummary != nil || correction.memorySummary != nil {
+    if context.correctionRequest?.hasCorrectionReferences == true {
       return false
     }
     let request = JevScoreClient.Request(state: ["transcript": text], questions: [

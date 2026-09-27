@@ -761,7 +761,8 @@ private enum AppContainerFactory {
       privacy: { try core.privacySettingsSource.currentSettings() },
       install: { source in
         try await inputMethodInstaller.install(from: source)
-      })
+      },
+      inspectInstallation: { inputMethodInstaller.installationState() })
     runtime.workflowSelectionBridge.model = model
     runtime.systemClipboardCaptureControlBridge.model = model
     runtime.globalInputCapabilityBridge.attach(model)
@@ -861,6 +862,7 @@ private enum AppContainerFactory {
       }
     )
     let cursorTextPreviewCoordinator = CursorTextPreviewCoordinator(
+      injectionEngine: injectionEngine,
       diagnosticReporter: { diagnostic in
         let textLengthBucket =
           switch diagnostic.textLength {
@@ -1190,8 +1192,8 @@ private enum AppContainerFactory {
       providers: providers,
       authorizationBridge: cloudProcessingAuthorizationBridge
     )
-    privacyRunGate.prepareCorrectionContext = { runID, workflow, context, options, lifetime in
-      try await contextMemoryController?.prepare(runID: runID, workflow: workflow, context: context, recognitionOptions: options, audioLifetime: lifetime)
+    privacyRunGate.prepareCorrectionContext = { runID, workflow, context, options, vocabulary, lifetime in
+      try await contextMemoryController?.prepare(runID: runID, workflow: workflow, context: context, recognitionOptions: options, audioLifetime: lifetime, vocabularyCandidates: vocabulary)
     }
     let liveRecognition = LiveRecognitionContextResolver(
       compiler: WorkflowPlanCompiler(recognizerRegistry: registries.recognizerRegistry,
@@ -1946,6 +1948,9 @@ private enum AppModelFactory {
       updateHotkey: { binding in
         platform.hotkeyTap.setRecordPanelHotkeyBinding(binding)
       },
+      updateBufferHotkey: { binding in
+        platform.hotkeyTap.setBufferOutputHotkeyBinding(binding)
+      },
       beginShortcutRecording: {
         platform.hotkeyTap.beginRecordPanelShortcutRecording()
       },
@@ -2193,8 +2198,10 @@ private enum AppModelFactory {
         }
         try? await providers.streamingPreviewService.releaseLoadedModels()
       },
-      startWorkflowAudioRunAction: { workflow, binding in
-        try await runtime.workflowAudioRunController.startRun(workflow: workflow, binding: binding)
+      startWorkflowAudioRunAction: { workflow, binding, intent in
+        let trigger = WorkflowTriggerEvent(binding: binding, workflowID: workflow.id,
+            sourceID: "rill-interactive-recording", bufferDraftInput: intent)
+        try await runtime.workflowAudioRunController.startRun(workflow: workflow, binding: binding, triggerEvent: trigger)
       },
       finishWorkflowAudioRunAction: {
         try await runtime.workflowAudioRunController.finishRun()
@@ -2267,7 +2274,7 @@ private enum AppModelFactory {
         _ = platform.pasteboard.writePlainText(text)
       },
       deliverNextRecordAction: {
-        Task { await runtime.systemClipboardCaptureController.recordDelivery.deliverNextRecord() }
+        model?.recordWorkspace.buffers.outputAction(nil)
       },
       permissionSnapshot: platform.permissionGate.snapshot,
       language: .preferred,
@@ -2307,6 +2314,21 @@ private enum AppModelFactory {
       recordInteractionServices: makeRecordInteractionServices(platform: platform, runtime: runtime)
     )
     model = resolvedModel
+    let bufferOutput = BufferOutputController(
+      store: core.recordStore, model: resolvedModel, injectionEngine: platform.injectionEngine)
+    let bufferDraftPanel = BufferDraftPanelController(model: resolvedModel, output: bufferOutput,
+      editingActivity: { platform.hotkeyTap.setDraftEditorActive($0) })
+    resolvedModel.recordWorkspace.buffers.openEditorAction = { bufferDraftPanel.show() }
+    resolvedModel.recordWorkspace.buffers.editor.dictationAction = { [weak resolvedModel] input in
+      resolvedModel?.dictateToBuffer(input)
+    }
+    resolvedModel.recordWorkspace.buffers.outputAction = { bufferOutput.output($0) }
+    resolvedModel.recordWorkspace.buffers.showMessageAction = { bufferOutput.showMessage($0) }
+    resolvedModel.recordWorkspace.buffers.confirmAction = { bufferOutput.confirm() }
+    resolvedModel.recordWorkspace.buffers.retryAction = { bufferOutput.retry() }
+    resolvedModel.recordWorkspace.buffers.cancelAction = { bufferOutput.cancel() }
+    resolvedModel.recordWorkspace.buffers.shutdownAction = { bufferDraftPanel.shutdown(); await bufferOutput.shutdown() }
+    resolvedModel.recordWorkspace.buffers.start()
     if let wakeWordTriggerSource = providers.wakeWordTriggerSource {
       Task { @MainActor [weak resolvedModel] in
         for await status in wakeWordTriggerSource.statusStream() {

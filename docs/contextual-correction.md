@@ -1,7 +1,7 @@
 # Transcript-first contextual correction
 
-Screen context and long-term memory are separate, opt-in controls in Settings.
-They apply to authorized voice workflows whose only LLM step is one rewrite and
+Screen context, long-term memory and vocabulary correction are separate, opt-in
+controls in Settings. Screen and memory references apply to authorized voice workflows whose only LLM step is one rewrite and
 which have no snippet-expansion step. Voice-assistant workflows and historical
 audio replay do not capture a screen. Changing the
 provider, credentials or privacy configuration revokes the grant. Enabling the
@@ -14,6 +14,44 @@ fact for the user's words. The provider receives this fixed contract independent
 of user-controlled reference data. Ambiguous evidence must preserve the transcript.
 A numeric mismatch additionally falls back to the complete transcript locally.
 This guard does not prove semantic correctness; model behavior needs live evaluation.
+
+## Vocabulary references
+
+Vocabulary correction applies only to new recordings using the canonical builtin
+Smart Cleanup with its default cleanup instruction. Custom workflows, altered
+rewrite prompts, text input and historical audio do not acquire this reference.
+It uses its own default-off consent switch and the existing provider-bound grant;
+no screen permission or memory access is required. Sensitive source applications,
+Secure Input, cloud privacy restrictions and revoked grants prevent its use.
+
+`VocabularyRecognitionHintResolver` retains all enabled, applicable, deduplicated
+hotwords after workflow binding and scope filtering. `ResolvedWorkflowPlan` keeps
+this complete list separately from the existing 50-candidate ASR projection,
+even when the recognizer does not support hotwords. `PrivacyRunGate` passes the
+admission snapshot to `ContextMemoryController`; no second vocabulary read occurs.
+ASR provider limits, Jev ranking and local mapping rules remain unchanged.
+
+`CorrectionVocabularyReference` packs whole terms in existing priority order into
+at most 12,000 UTF-8 bytes, including the encoded glossary object's JSON overhead
+and escaping. Oversized terms are skipped and packing continues. This is an LLM
+reference budget, not a claim about the ASR model's context capacity. Vocabulary
+edits during recording apply to the next run. No extra model call is introduced.
+
+`RunContextPreparation` owns the ready glossary alongside the optional tasks.
+A failed or timed-out screen/memory preparation preserves it. Freezing transfers
+it into `ContextualCorrectionRequest.vocabularyReference`; the shared
+`hasCorrectionReferences` predicate bypasses the Jev polishing gate only when
+usable references exist. Empty references preserve the normal cleanup path.
+The provider serializes terms under `reference_data.vocabulary`, never as
+instructions or mandatory replacements. The main request retains its 5-second
+budget, one-call behavior and conservative transcript fallback.
+
+History stores only eligible/included/omitted counts, encoded size and reference
+status. Complete reference lists are absent from traces, receipts and memory
+consolidation inputs; a term actually spoken can still occur in normal history.
+Older settings decode with vocabulary correction disabled, and older receipts
+have no vocabulary section. No persistence schema or source-version change is
+needed for these optional fields.
 
 ## Request ownership and timing
 
@@ -37,7 +75,7 @@ This guard does not prove semantic correctness; model behavior needs live evalua
   privacy failures stop delivery. A late result never changes delivered text.
 - Successful screen summaries can update the same still-current encrypted history
   source within the auxiliary lifetime. Source revisions advance; evidence counts
-  do not. Images, base64 and temporary memory summaries are never persisted.
+  do not. Images, base64, temporary memory summaries and glossary reference lists are never persisted.
 
 History lists reference readiness/sending states. Sending a reference is not a
 claim that a correction is verified. Failed requests have an unconfirmed-delivery
@@ -112,6 +150,47 @@ It is a regression signal, not a human semantic judgment. Review mismatches for
 improvements, unnecessary changes, invented facts and lost negation/conditions;
 report latency and fallback rate alongside accuracy. The dataset is intentionally
 small and cannot establish production accuracy.
+
+The vocabulary-only corpus in `Tests/Fixtures/VocabularyCorrection/cases.json`
+contains 40 fixed synthetic cases covering names beyond the ASR candidate cap,
+identifiers, irrelevant terms, renamed projects, negation, numbers and reference
+injection. Its opt-in evaluation holds the correction prompt, transcript and
+5-second deadline constant while varying only reference data. It repeats each
+case three times and reverses group order on the second repetition. This isolates
+reference value; the text group is not a measurement of Jev or the old workflow
+prompt. Empty transcription makes no request.
+
+```sh
+# Supply DEEPSEEK_API_KEY securely in this process environment.
+RILL_VOCABULARY_LIVE_EVALUATION=1 scripts/swift_locked.sh test --filter VocabularyCorrectionEvaluationTests
+```
+
+The report at `.artifacts/vocabulary-correction/live-evaluation.json` contains
+per-call output, exact matches, fallback flags, reported token usage, reference
+counts and P50/P95 request latency. Missing token usage stays null. Exact matches
+ignore only surrounding whitespace, preserving identifier case and punctuation;
+manual review must distinguish harmless formatting from semantic overcorrection.
+These request measurements do not measure microphone-to-insertion latency or ASR
+accuracy. The normal run history continues to record ASR and LLM time separately.
+
+The third group uses **actual ASR terms only when known**. The synthetic corpus
+has no actual ASR witness, so its report explicitly lists skipped comparisons.
+An explicitly supplied `RILL_VOCABULARY_EVALUATION_CASES` JSON path may add
+`asrEvidence: {terms, usedCount, omittedCount, provenance}` per sample. The terms
+must come from the final provider/worker input, with matching usage counters and
+zero further omissions; a pre-tokenizer candidate list is insufficient. Running
+that opt-in test uploads the selected corpus. Never infer this evidence from the
+first 16/50 candidates or substitute a mock result for live evaluation.
+
+For vocabulary acceptance, start with screen permission denied and screen/memory
+features off. Enable only vocabulary correction, record a clearly spoken project
+name beyond the ASR budget in builtin Smart Cleanup, and inspect reference counts
+plus separate ASR/LLM durations in that run's history. Edit the vocabulary during
+recording and verify only the next recording sees it. Disable the switch or revoke
+the provider during a request and verify no stale result is delivered. Repeat a
+custom workflow, text replay and failed-audio retry to confirm no glossary upload.
+These checks require the candidate App, microphone and actual target text field;
+the opt-in settings render does not establish their result.
 
 Physical acceptance needs an unlocked Mac with Accessibility and Screen Recording
 permissions: record short and long utterances in a real text field, move the input

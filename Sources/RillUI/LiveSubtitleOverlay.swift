@@ -12,10 +12,11 @@ extension Notification.Name {
 }
 
 public enum LiveSubtitleOverlayMetrics {
-  public static let minimumSurfaceWidth: CGFloat = 184
+  public static let minimumSurfaceWidth: CGFloat = compactSurfaceWidth
   public static let maximumSurfaceWidth: CGFloat = 360
   public static let minimumSurfaceHeight: CGFloat = 48
-  public static let compactSurfaceWidth: CGFloat = 184
+  // Reserve room for the countdown action as well as the timer and Esc hint.
+  public static let compactSurfaceWidth: CGFloat = 248
   public static let compactSurfaceHeight: CGFloat = 48
   public static let expandedSurfaceWidth: CGFloat = 360
   public static let expandedSurfaceHeight: CGFloat = 96
@@ -276,6 +277,7 @@ public struct LiveSubtitleOverlay: View {
           Text(recordingTimerTitle(state))
             .font(.caption.monospacedDigit().weight(.semibold))
             .foregroundStyle(timerColor(state))
+            .fixedSize(horizontal: true, vertical: false)
             .frame(minWidth: 48, alignment: .trailing)
             .help(recordingTimerAccessibilityLabel(state))
             .accessibilityLabel(Text(recordingTimerAccessibilityLabel(state)))
@@ -349,6 +351,7 @@ public struct LiveSubtitleOverlay: View {
     Text("esc")
       .font(.caption2.monospaced().weight(.medium))
       .foregroundStyle(secondaryTextColor)
+      .fixedSize(horizontal: true, vertical: false)
       .padding(.horizontal, 6)
       .frame(height: 20)
       .background(

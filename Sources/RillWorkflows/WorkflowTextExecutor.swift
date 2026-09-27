@@ -11,6 +11,7 @@ struct WorkflowRunSession: Sendable {
   let resolvedPlan: ResolvedWorkflowPlan
   let startedAt: Date
   let receiptIsActive: Bool
+  var bufferDraftInput: BufferDraftInputIntent? = nil
 
   var presentation: WorkflowPresentation {
     workflow.presentation
@@ -129,6 +130,7 @@ struct WorkflowTextExecutor: Sendable {
           var correctionRequest = step.kind == .llmRewrite ? correctionContext?.request : nil
           // References stay frozen; explicit candidate choices and local vocabulary still update the transcript.
           correctionRequest?.transcript = finalText
+          if correctionRequest?.hasCorrectionReferences == false { correctionRequest = nil }
           let context = TransformContext(
             runID: session.runID,
             workflow: session.workflow,
@@ -166,6 +168,7 @@ struct WorkflowTextExecutor: Sendable {
               if request.referenceImage != nil { references?.image = .sent }
               if request.imageSummary != nil { references?.imageSummary = .sent }
               if request.memorySummary != nil { references?.memorySummary = .sent }
+              if request.vocabularyReference?.terms.isEmpty == false { references?.vocabulary?.status = .sent }
             }
             languageModelTraces.append(result.trace)
             tokenUsage = result.trace.tokenUsage
@@ -189,6 +192,7 @@ struct WorkflowTextExecutor: Sendable {
             if request.referenceImage != nil { references?.image = .deliveryUnconfirmed }
             if request.imageSummary != nil { references?.imageSummary = .deliveryUnconfirmed }
             if request.memorySummary != nil { references?.memorySummary = .deliveryUnconfirmed }
+            if request.vocabularyReference?.terms.isEmpty == false { references?.vocabulary?.status = .deliveryUnconfirmed }
           }
           await recordSpeechTextTransformFallback(
             runID: session.runID,

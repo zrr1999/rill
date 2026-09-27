@@ -65,7 +65,7 @@ public func makeAppModelForTesting(
     releaseLocalSpeechRuntimeAction: @escaping @Sendable () -> Void = {},
     stopLocalSpeechRuntimeAction: @escaping @Sendable () async -> Void = {},
     startWorkflowAudioRunAction:
-      @escaping @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void = { _, _ in
+      @escaping @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void = { _, _, _ in
         throw NSError(
           domain: "Rill.AppModel",
           code: 3,
@@ -248,12 +248,14 @@ public func makeRecordInteractionServicesForTesting(
   setCaptureEnabled: @escaping (Bool, UInt64) -> Void = { _, _ in },
   ignoreNextExternalChange: @escaping () -> Void = {},
   updateHotkey: @escaping (HotkeyBindingDescriptor) -> Void = { _ in },
+  updateBufferHotkey: @escaping (HotkeyBindingDescriptor) -> Void = { _ in },
   beginShortcutRecording: @escaping () -> UUID = { UUID() },
   endShortcutRecording: @escaping (UUID) -> Void = { _ in },
   commitShortcutRecording: @escaping (UUID, UInt16) -> Void = { _, _ in }
 ) -> RecordInteractionServices {
   .init(copy: copy, setCaptureEnabled: setCaptureEnabled,
     ignoreNextExternalChange: ignoreNextExternalChange, updateHotkey: updateHotkey,
+    updateBufferHotkey: updateBufferHotkey,
     beginShortcutRecording: beginShortcutRecording, endShortcutRecording: endShortcutRecording,
     commitShortcutRecording: commitShortcutRecording)
 }

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The catalog never retains a payload. Opening a record is a separate read.
+/// Record headers retain a preview. Opening an immutable payload is a separate read.
 public struct RecordHeader: Codable, Sendable, Equatable, Identifiable {
   public let id: RecordID
   public let kind: RecordPayloadKind
@@ -8,8 +8,11 @@ public struct RecordHeader: Codable, Sendable, Equatable, Identifiable {
   public let preview: String
   public let provenance: RecordProvenance
   public let createdAt: Date
+  /// SHA-256 of the canonical payload bytes. Absent on catalogs stored before
+  /// content identity was recorded; the store fills it before the next dedup.
+  public let contentDigest: Data?
 
-  public init(record: Record, byteCount: Int) {
+  public init(record: Record, byteCount: Int, contentDigest: Data? = nil) {
     id = record.id
     kind = record.payload.kind
     self.byteCount = byteCount
@@ -25,6 +28,37 @@ public struct RecordHeader: Codable, Sendable, Equatable, Identifiable {
     }
     provenance = record.provenance
     createdAt = record.createdAt
+    self.contentDigest = contentDigest
+  }
+
+  public func withContentDigest(_ contentDigest: Data) -> RecordHeader {
+    RecordHeader(
+      id: id,
+      kind: kind,
+      byteCount: byteCount,
+      preview: preview,
+      provenance: provenance,
+      createdAt: createdAt,
+      contentDigest: contentDigest
+    )
+  }
+
+  private init(
+    id: RecordID,
+    kind: RecordPayloadKind,
+    byteCount: Int,
+    preview: String,
+    provenance: RecordProvenance,
+    createdAt: Date,
+    contentDigest: Data?
+  ) {
+    self.id = id
+    self.kind = kind
+    self.byteCount = byteCount
+    self.preview = preview
+    self.provenance = provenance
+    self.createdAt = createdAt
+    self.contentDigest = contentDigest
   }
 
   public func materialize(_ payload: RecordPayload) -> Record {
@@ -187,8 +221,11 @@ public struct RecordCleanupPlan: Identifiable, Sendable, Equatable {
 }
 
 public struct RecordCatalogNode: Codable, Sendable, Equatable {
+  public static let maximumValueByteCount = 2 * 1_024 * 1_024
+
   public enum Kind: String, Codable, Sendable, CaseIterable {
     case record, metadata, activity, membership, collection, captureRule, deliveryRule
+    case buffer, bufferEntry, bufferClock
   }
   public let kind: Kind
   public let id: String
@@ -212,7 +249,7 @@ public struct RecordCatalogManifest: Codable, Sendable, Equatable {
   public init(
     nextMembershipOrdinal: UInt64, recordOrder: [RecordID], collectionOrder: [RecordCollectionID]
   ) {
-    schemaVersion = 2
+    schemaVersion = 4
     self.nextMembershipOrdinal = nextMembershipOrdinal
     self.recordOrder = recordOrder
     self.collectionOrder = collectionOrder
@@ -238,6 +275,7 @@ public struct RecordCatalogRead: Sendable {
 
 public struct RecordCatalogMutation: Sendable {
   public let expectedRevision: Int64?
+  public let preservesManifest: Bool
   public let manifest: RecordCatalogManifest
   public let upserts: [RecordCatalogNode]
   public let removedKeys: [String]
@@ -247,8 +285,9 @@ public struct RecordCatalogMutation: Sendable {
   public init(
     expectedRevision: Int64?, manifest: RecordCatalogManifest, upserts: [RecordCatalogNode],
     removedKeys: [String], newPayloadBlobs: [RecordGraphPersistenceBlob],
-    removedPayloadBlobIDs: [UUID]
+    removedPayloadBlobIDs: [UUID], preservesManifest: Bool = false
   ) {
+    self.preservesManifest = preservesManifest
     self.expectedRevision = expectedRevision
     self.manifest = manifest
     self.upserts = upserts

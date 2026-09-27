@@ -18,8 +18,8 @@ public struct PrivacyRunGate: Sendable {
     ) async throws -> PreparedRecognitionContext? = { _, _, _, _, _ in nil }
 
     public var prepareCorrectionContext: @Sendable (
-        UUID, WorkflowDefinition, ContextSnapshot, SpeechRecognitionRequestOptions, AudioCaptureLifetime
-    ) async throws -> RunContextPreparation? = { _, _, _, _, _ in nil }
+        UUID, WorkflowDefinition, ContextSnapshot, SpeechRecognitionRequestOptions, [HotwordCandidate], AudioCaptureLifetime
+    ) async throws -> RunContextPreparation? = { _, _, _, _, _, _ in nil }
 
     public enum GateError: Error, LocalizedError, Equatable {
         case settingsUnavailable
@@ -525,7 +525,7 @@ public struct PrivacyRunGate: Sendable {
         }
         let contextPreparation: RunContextPreparation?
         if let audioLifetime {
-            contextPreparation = try await prepareCorrectionContext(runID, workflow, capture.authorizedContext, recognitionOptions, audioLifetime)
+            contextPreparation = try await prepareCorrectionContext(runID, workflow, capture.authorizedContext, recognitionOptions, preparedRecognition?.plan.vocabularyCandidates ?? [], audioLifetime)
             try Task.checkCancellation()
         } else {
             contextPreparation = nil
