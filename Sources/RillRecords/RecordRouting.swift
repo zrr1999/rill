@@ -33,7 +33,7 @@ public actor RecordIngestionCoordinator: RecordIngestionSink {
     @discardableResult
     public func ingest(_ envelope: RecordCaptureEnvelope) async throws -> RecordProjection {
         let destinations = try await router.captureDestinations(for: envelope)
-        return try await store.ingest(envelope.draft, into: destinations)
+        return try await store.ingest(envelope.draft, into: destinations, fulfilling: envelope.bufferEntryID)
     }
 
     @discardableResult

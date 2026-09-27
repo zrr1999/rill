@@ -400,7 +400,8 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
         if let stored = try storedRecordGraphMetadata() {
           let data = try localDataProtector.openBinary(
             stored.protectedGraph, context: Self.recordGraphProtectionContext)
-          if (try? JSONDecoder().decode(RecordCatalogManifest.self, from: data).schemaVersion) == 2
+          if [2, 3].contains(
+            (try? JSONDecoder().decode(RecordCatalogManifest.self, from: data).schemaVersion) ?? 0)
           {
             throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
           }

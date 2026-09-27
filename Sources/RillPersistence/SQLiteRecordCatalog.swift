@@ -12,7 +12,7 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
     let data = try localDataProtector.openBinary(
       stored.protectedGraph, context: Self.recordGraphProtectionContext)
     guard let manifest = try? JSONDecoder().decode(RecordCatalogManifest.self, from: data),
-      manifest.schemaVersion == 2
+      (2...3).contains(manifest.schemaVersion)
     else {
       return nil
     }
@@ -28,7 +28,7 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
       guard status == SQLITE_ROW else {
         throw SQLitePersistenceError.clipboardPersistenceUnavailable
       }
-      guard nodes.count < RecordGraphLimits.maximumMemberships + 40_000,
+      guard nodes.count < RecordGraphLimits.maximumMemberships * 2 + 40_000,
         let key = textColumn(in: statement, index: 0),
         let rawKind = textColumn(in: statement, index: 1),
         let kind = RecordCatalogNode.Kind(rawValue: rawKind),
@@ -79,7 +79,13 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
   }
 
   public func commitRecordCatalog(_ mutation: RecordCatalogMutation) async throws -> Int64 {
-    try validateCatalogManifest(mutation.manifest)
+    if !mutation.preservesManifest { try validateCatalogManifest(mutation.manifest) }
+    if mutation.preservesManifest {
+      guard mutation.newPayloadBlobs.isEmpty, mutation.removedPayloadBlobIDs.isEmpty,
+        mutation.upserts.allSatisfy({ [.buffer, .bufferEntry, .bufferClock].contains($0.kind) }),
+        mutation.removedKeys.allSatisfy({ $0.hasPrefix("bufferEntry/") })
+      else { throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot }
+    }
     guard Set(mutation.upserts.map(\.key)).count == mutation.upserts.count,
       Set(mutation.removedKeys).isDisjoint(with: mutation.upserts.map(\.key))
     else {
@@ -91,19 +97,46 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
         throw SQLitePersistenceError.clipboardPersistenceRevisionConflict
       }
       let wasCatalog: Bool
-      if let stored = try storedRecordGraphMetadata() {
+      if mutation.preservesManifest {
+        wasCatalog = true
+      } else if let stored = try storedRecordGraphMetadata() {
         let data = try localDataProtector.openBinary(
           stored.protectedGraph, context: Self.recordGraphProtectionContext)
         wasCatalog =
-          (try? JSONDecoder().decode(RecordCatalogManifest.self, from: data).schemaVersion) == 2
+          [2, 3].contains(
+            (try? JSONDecoder().decode(RecordCatalogManifest.self, from: data).schemaVersion) ?? 0)
       } else {
         wasCatalog = false
       }
       let nextRevision = (storedRevision ?? 0) + 1
-      let manifestData = try JSONEncoder().encode(mutation.manifest)
-      let sealedManifest = try localDataProtector.sealBinary(
-        manifestData, context: Self.recordGraphProtectionContext)
-      try upsertRecordGraphMetadata(protectedGraph: sealedManifest, revision: nextRevision)
+      let manifestData: Data?
+      if mutation.preservesManifest {
+        guard storedRevision != nil else {
+          throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
+        }
+        // Authenticate the small clock node instead of decrypting and decoding the entire manifest.
+        let clock = try prepare(
+          "SELECT payload FROM record_catalog_nodes WHERE key = 'bufferClock/input-sequence';")
+        defer { sqlite3_finalize(clock) }
+        guard sqlite3_step(clock) == SQLITE_ROW,
+          let sealed = try dataColumn(in: clock, index: 0, maximumByteCount: 256),
+          try JSONDecoder().decode(
+            UInt64.self,
+            from: localDataProtector.openBinary(
+              sealed, context: Self.catalogNodeContext("bufferClock/input-sequence"))) > 0
+        else { throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot }
+        let update = try prepare("UPDATE record_graph_metadata SET revision = ? WHERE id = 1;")
+        defer { sqlite3_finalize(update) }
+        try bind([.int(nextRevision)], to: update)
+        try step(update, expecting: SQLITE_DONE)
+        manifestData = nil
+      } else {
+        let data = try JSONEncoder().encode(mutation.manifest)
+        manifestData = data
+        let sealed = try localDataProtector.sealBinary(
+          data, context: Self.recordGraphProtectionContext)
+        try upsertRecordGraphMetadata(protectedGraph: sealed, revision: nextRevision)
+      }
       for key in mutation.removedKeys {
         let statement = try prepare("DELETE FROM record_catalog_nodes WHERE key = ?;")
         defer { sqlite3_finalize(statement) }
@@ -152,27 +185,32 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
       }
-      guard let persistedManifest = try storedRecordGraphMetadata(),
-        persistedManifest.revision == nextRevision,
-        try localDataProtector.openBinary(
-          persistedManifest.protectedGraph, context: Self.recordGraphProtectionContext)
-          == manifestData
-      else {
-        throw SQLitePersistenceError.clipboardPersistenceUnavailable
-      }
-      let references = try catalogPayloadReferences()
-      guard Set(references.map(\.recordID)) == Set(mutation.manifest.recordOrder) else {
-        throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
-      }
-      if !wasCatalog {
-        // A format transition verifies every retained payload before the old graph is retired.
-        for reference in references { _ = try readRecordPayload(reference) }
-        guard let readback = try readRecordCatalog(), readback.manifest == mutation.manifest else {
+      if let manifestData {
+        guard let persistedManifest = try storedRecordGraphMetadata(),
+          persistedManifest.revision == nextRevision,
+          try localDataProtector.openBinary(
+            persistedManifest.protectedGraph, context: Self.recordGraphProtectionContext)
+            == manifestData
+        else {
           throw SQLitePersistenceError.clipboardPersistenceUnavailable
         }
-        try execute("DELETE FROM clipboard_image_blobs;")
-        try execute("DELETE FROM clipboard_metadata WHERE id = 1;")
-        try deleteLegacyClipboardRow()
+      }
+      if !mutation.preservesManifest {
+        let references = try catalogPayloadReferences()
+        guard Set(references.map(\.recordID)) == Set(mutation.manifest.recordOrder) else {
+          throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
+        }
+        if !wasCatalog {
+          // A format transition verifies every retained payload before the old graph is retired.
+          for reference in references { _ = try readRecordPayload(reference) }
+          guard let readback = try readRecordCatalog(), readback.manifest == mutation.manifest
+          else {
+            throw SQLitePersistenceError.clipboardPersistenceUnavailable
+          }
+          try execute("DELETE FROM clipboard_image_blobs;")
+          try execute("DELETE FROM clipboard_metadata WHERE id = 1;")
+          try deleteLegacyClipboardRow()
+        }
       }
       return nextRevision
     }
@@ -218,7 +256,7 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
   }
 
   private func validateCatalogManifest(_ manifest: RecordCatalogManifest) throws {
-    guard manifest.schemaVersion == 2, manifest.nextMembershipOrdinal > 0,
+    guard (2...3).contains(manifest.schemaVersion), manifest.nextMembershipOrdinal > 0,
       manifest.recordOrder.count <= RecordStorageLimits.productDefault.maximumRecordCount,
       Set(manifest.recordOrder).count == manifest.recordOrder.count,
       manifest.collectionOrder.count <= RecordStorageLimits.productDefault.maximumCollectionCount,

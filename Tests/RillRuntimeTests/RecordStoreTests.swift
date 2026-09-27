@@ -849,6 +849,10 @@ private actor MissingDigestCatalog: RecordCatalogPersistenceStore {
         try append(.record, record.id.description, header)
         try append(.metadata, record.id.description, RecordMetadata(recordID: record.id))
         try append(.activity, record.id.description, RecordActivity(recordID: record.id))
+        for buffer in RecordBuffer.defaults {
+            try append(.buffer, buffer.id.description, buffer)
+        }
+        try append(.bufferClock, "input-sequence", UInt64(1))
         catalog = RecordCatalogRead(
             revision: revision,
             manifest: RecordCatalogManifest(

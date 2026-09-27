@@ -223,6 +223,7 @@ public struct RecordCleanupPlan: Identifiable, Sendable, Equatable {
 public struct RecordCatalogNode: Codable, Sendable, Equatable {
   public enum Kind: String, Codable, Sendable, CaseIterable {
     case record, metadata, activity, membership, collection, captureRule, deliveryRule
+    case buffer, bufferEntry, bufferClock
   }
   public let kind: Kind
   public let id: String
@@ -246,7 +247,7 @@ public struct RecordCatalogManifest: Codable, Sendable, Equatable {
   public init(
     nextMembershipOrdinal: UInt64, recordOrder: [RecordID], collectionOrder: [RecordCollectionID]
   ) {
-    schemaVersion = 2
+    schemaVersion = 3
     self.nextMembershipOrdinal = nextMembershipOrdinal
     self.recordOrder = recordOrder
     self.collectionOrder = collectionOrder
@@ -272,6 +273,7 @@ public struct RecordCatalogRead: Sendable {
 
 public struct RecordCatalogMutation: Sendable {
   public let expectedRevision: Int64?
+  public let preservesManifest: Bool
   public let manifest: RecordCatalogManifest
   public let upserts: [RecordCatalogNode]
   public let removedKeys: [String]
@@ -281,8 +283,9 @@ public struct RecordCatalogMutation: Sendable {
   public init(
     expectedRevision: Int64?, manifest: RecordCatalogManifest, upserts: [RecordCatalogNode],
     removedKeys: [String], newPayloadBlobs: [RecordGraphPersistenceBlob],
-    removedPayloadBlobIDs: [UUID]
+    removedPayloadBlobIDs: [UUID], preservesManifest: Bool = false
   ) {
+    self.preservesManifest = preservesManifest
     self.expectedRevision = expectedRevision
     self.manifest = manifest
     self.upserts = upserts
