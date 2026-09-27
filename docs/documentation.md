@@ -1,9 +1,10 @@
 # 文档站维护
 
 文档站使用 [Zensical](https://zensical.org/)，直接取用仓库中的 Markdown。
-用户指南以根目录 `README.md` 为准；开发、隐私和发布文档的归属见
-[贡献指南](../CONTRIBUTING.md#文档归属)。现有文件路径也是仓库技能和 App
-离线文档的契约，不应为调整站点导航而迁移正文。
+README 是产品入口，`docs/usage.md` 是安装指南，其余用户页面按任务组织。
+开发契约与发布流程从 [贡献指南](../CONTRIBUTING.md#文档归属)进入，只保留在仓库。
+当前技能依赖的架构、Record、工作流、UI 和发布验收路径保持稳定；历史材料统一归档到
+`docs/archive/`，不作为当前事实源。README、隐私与许可文件仍按原路径随 App 分发。
 
 ## 构建与预览
 
@@ -38,7 +39,10 @@ just docs
 
 增加页面时，先在仓库维护正文，再加入 `nav`。页面引用的新图片和下载资源加入
 `docs_assets`。代码和工作流配置的链接指向 GitHub 源码，不把源码当站点页面复制。
-研究、计划和历史 QA 记录默认不收录；它们不能证明当前功能已实现或发布验收已通过。
+页面白名单只包含当前用户操作、参考和隐私/许可。开发契约、发布流程、UI 设计方案、
+研究和历史 QA 不复制到 staging，因而也不进入站点正文或搜索索引。
+公共页面链接仓内开发资料时使用完整 GitHub URL，不把未收录文件加入资源列表来绕过边界。
+删除导航项后必须确认旧 staging 和站点输出已清除，检查搜索产物没有残留。
 
 界面采用中文导航、系统字体和随系统切换的深浅主题。搜索由浏览器本地执行；
 Zensical 当前的搜索对话框仍使用英文，文档内容可用中文搜索。没有配置分析服务。
@@ -46,7 +50,7 @@ Zensical 当前的搜索对话框仍使用英文，文档内容可用中文搜�
 ## 验证与交付
 
 提交前运行 `just docs` 和仓库要求的 `just ci`。更新主题或 Zensical 时还应在
-本地预览检查窄窗口、键盘搜索、深浅主题、架构 Mermaid 图，以及 TOML 与 Schema 下载。
+本地预览检查窄窗口、键盘搜索、深浅主题、用户指南的任务链接，以及 TOML 与 Schema 下载。
 搜索至少覆盖「语音识别」「剪贴板」「润色」和 `record_duration`。
 
 CI 通过 `Documentation and change scope` 在 Linux 构建文档、验证 Cloudflare
@@ -119,6 +123,6 @@ npx --yes --ignore-scripts wrangler@4.136.3 deploy           # 部署到正式�
 
 首次部署会按 `routes` 创建自定义域名；若目标已有 DNS 记录，先核对记录用途，
 不要覆盖其他服务。部署后确认 Cloudflare 中的源码分支与 commit，检查 HTTPS 首页、
-`/docs/architecture/`、搜索、`/docs/examples/conditional-workflow.toml`、
+`/docs/usage/`、`/docs/records/`、搜索、`/docs/examples/conditional-workflow.toml`、
 `/docs/schemas/workflow-v2.schema.json` 和不存在路径的 404。
 PR 预览还应确认正式站点的部署版本未改变。

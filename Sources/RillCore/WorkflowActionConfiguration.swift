@@ -26,7 +26,7 @@ public enum WorkflowActionConfiguration: Sendable, Equatable {
       self = .none
     case ExternalOutputActionID.webhookPost:
       let raw = text(ExternalOutputActionConfigurationKey.webhookURL)
-      guard !raw.isEmpty else { throw WorkflowActionConfigurationError("Webhook URL is required.") }
+      guard !raw.isEmpty else { throw WorkflowActionConfigurationError("Webhook URL is required.", isMissing: true) }
       guard let url = URL(string: raw), SecureTransportPolicy.allowsSensitiveHTTPURL(url) else {
         throw WorkflowActionConfigurationError(
           "Webhook URL must use HTTPS; HTTP is allowed only for localhost.")
@@ -38,13 +38,13 @@ public enum WorkflowActionConfiguration: Sendable, Equatable {
     case ExternalOutputActionID.shortcutsRun:
       let name = text(ExternalOutputActionConfigurationKey.shortcutName)
       guard !name.isEmpty else {
-        throw WorkflowActionConfigurationError("Shortcut name is required.")
+        throw WorkflowActionConfigurationError("Shortcut name is required.", isMissing: true)
       }
       self = .shortcut(name: name)
     case ExternalOutputActionID.markdownAppend:
       let path = text(ExternalOutputActionConfigurationKey.markdownAppendPath)
       guard !path.isEmpty else {
-        throw WorkflowActionConfigurationError("Markdown append path is required.")
+        throw WorkflowActionConfigurationError("Markdown append path is required.", isMissing: true)
       }
       guard path.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7F }) else {
         throw WorkflowActionConfigurationError("Markdown append path is invalid.")
@@ -81,6 +81,45 @@ public enum WorkflowActionConfiguration: Sendable, Equatable {
 
 public struct WorkflowActionConfigurationError: Error, LocalizedError, Sendable {
   private let message: String
-  init(_ message: String) { self.message = message }
+  let isMissing: Bool
+  init(_ message: String, isMissing: Bool = false) {
+    self.message = message
+    self.isMissing = isMissing
+  }
   public var errorDescription: String? { message }
+}
+
+public enum WorkflowOutputConfigurationRequirement: Sendable {
+  case none, webhook, shortcut, markdownFile
+
+  public enum Stage: Sendable {
+    case declaration, resolved
+  }
+
+  public func state(
+    of configuration: [String: String], stage: Stage
+  ) -> WorkflowExplanationConfigurationState {
+    let actionID: String
+    switch self {
+    case .none: return .notRequired
+    case .webhook:
+      if stage == .declaration,
+        let reference = configuration[ExternalOutputActionConfigurationKey.webhookSecureReference]?
+          .trimmingCharacters(in: .whitespacesAndNewlines), !reference.isEmpty
+      {
+        return WebhookConfigurationReference(rawValue: reference) == nil ? .invalid : .configured
+      }
+      actionID = ExternalOutputActionID.webhookPost
+    case .shortcut: actionID = ExternalOutputActionID.shortcutsRun
+    case .markdownFile: actionID = ExternalOutputActionID.markdownAppend
+    }
+    do {
+      _ = try WorkflowActionConfiguration(.init(id: actionID, configuration: configuration))
+      return .configured
+    } catch let error as WorkflowActionConfigurationError where error.isMissing {
+      return .missing
+    } catch {
+      return .invalid
+    }
+  }
 }

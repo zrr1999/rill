@@ -1,7 +1,7 @@
+import RillRecords
 import Foundation
 import Observation
 import RillCore
-import RillRuntime
 
 @MainActor @Observable
 public final class RecordCleanupModel {
@@ -79,13 +79,11 @@ public enum RecordSemanticPanelState: Equatable {
 public final class RecordQuickPanelModel {
   public var pasteTargetName: String?
 
-  public var searchText = "" { didSet { if oldValue != searchText { scheduleSearch() } } }
-  public var pinnedOnly = false { didSet { if oldValue != pinnedOnly { scheduleSearch() } } }
-  public var currentAppOnly = false {
-    didSet { if oldValue != currentAppOnly { scheduleSearch() } }
-  }
-  public var kind: RecordPayloadKind? { didSet { if oldValue != kind { scheduleSearch() } } }
-  public var selectedID: RecordID? { didSet { if selectedID != oldValue { loadPreview() } } }
+  public private(set) var searchText = ""
+  public private(set) var pinnedOnly = false
+  public private(set) var currentAppOnly = false
+  public private(set) var kind: RecordPayloadKind?
+  public private(set) var selectedID: RecordID?
   public private(set) var results: [RecordSummary] = []
   public private(set) var capacity = RecordCapacity(count: 0, byteCount: 0)
   public private(set) var isSearching = false
@@ -111,8 +109,9 @@ public final class RecordQuickPanelModel {
   private var pinTask: Task<RecordMetadata, Error>?
   private var isClosed = false
   private var searchGeneration: UInt64 = 0
-  private var resultMatching: RecordQueryMatching = .literal
-  private var resultsRevision: UInt64?
+  private var pendingComparison: RecordComparisonReturn?
+  private var searchRevision: UInt64?
+  private var searchCursor: RecordSearchCursor?
 
   public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, jevSettings: JevAPISettingsModel? = nil) {
     self.store = store
@@ -127,6 +126,44 @@ public final class RecordQuickPanelModel {
     for task in semanticTasks.values { task.cancel() }
   }
 
+  public func setSearchText(_ value: String) {
+    guard !isClosed, searchText != value else { return }
+    searchText = value
+    scheduleSearch()
+  }
+
+  public func setPinnedOnly(_ value: Bool) {
+    guard !isClosed, pinnedOnly != value else { return }
+    pinnedOnly = value
+    scheduleSearch()
+  }
+
+  public func setCurrentAppOnly(_ value: Bool) {
+    guard !isClosed, currentAppOnly != value else { return }
+    currentAppOnly = value
+    scheduleSearch()
+  }
+
+  public func setKind(_ value: RecordPayloadKind?) {
+    guard !isClosed, kind != value else { return }
+    kind = value
+    scheduleSearch()
+  }
+
+  public func select(_ id: RecordID?) {
+    guard !isClosed, selectedID != id else { return }
+    selectedID = id
+    loadPreview()
+  }
+
+  func waitForSearch() async {
+    repeat {
+      let generation = searchGeneration
+      await searchTask?.value
+      if generation == searchGeneration { return }
+    } while true
+  }
+
   public func start(sourceBundleIdentifier: String?) {
     stop()
     self.sourceBundleIdentifier = sourceBundleIdentifier
@@ -136,27 +173,35 @@ public final class RecordQuickPanelModel {
     kind = nil
     selectedID = nil
     results = []
+    searchRevision = nil
     preview = nil
     message = nil
     resume()
   }
 
   public func resume() {
-    isSearching = true
+    scheduleSearch()
     observationTask?.cancel()
     observationTask = Task { [weak self, store] in
       do {
         let stream = try await store.catalogStream()
         for await snapshot in stream {
           guard !Task.isCancelled, let self else { return }
-          self.capacity = snapshot.capacity
-          self.scheduleSearch()
+          self.receiveCatalogSnapshot(snapshot)
         }
       } catch { self?.message = .failed }
     }
   }
 
+  func receiveCatalogSnapshot(_ snapshot: RecordCatalogSnapshot) {
+    guard !isClosed else { return }
+    capacity = snapshot.capacity
+    // The initial stream snapshot may arrive after a query has already published.
+    if searchRevision.map({ snapshot.revision > $0 }) ?? true { scheduleSearch() }
+  }
+
   public func stop() {
+    pendingComparison = nil
     cancelSemanticSearch()
     observationTask?.cancel()
     observationTask = nil
@@ -201,7 +246,7 @@ public final class RecordQuickPanelModel {
     semanticState = .idle
     semanticProgress = nil
     semanticLimitedRecordCount = 0
-    if !results.contains(where: { $0.id == selectedID }) { selectedID = results.first?.id }
+    if !results.contains(where: { $0.id == selectedID }) { select(results.first?.id) }
   }
 
   public func searchByMeaning(downloadIfNeeded: Bool = false) {
@@ -229,7 +274,7 @@ public final class RecordQuickPanelModel {
         self.semanticLimitedRecordCount = result.limitedRecordCount
         self.semanticState = .ready
         self.semanticProgress = nil
-        if self.selectedID == nil { self.selectedID = self.selectableResults.first?.id }
+        if self.selectedID == nil { self.select(self.selectableResults.first?.id) }
       } catch {
         guard !Task.isCancelled, let self, self.semanticRequestID == requestID else { return }
         switch error {
@@ -251,12 +296,12 @@ public final class RecordQuickPanelModel {
   public func moveSelection(_ offset: Int) {
     let results = selectableResults
     guard !results.isEmpty else {
-      selectedID = nil
+      select(nil)
       return
     }
     let index =
       selectedID.flatMap { id in results.firstIndex { $0.id == id } } ?? (offset > 0 ? -1 : 0)
-    selectedID = results[min(max(index + offset, 0), results.count - 1)].id
+    select(results[min(max(index + offset, 0), results.count - 1)].id)
   }
 
   public func togglePreview() {
@@ -341,13 +386,37 @@ public final class RecordQuickPanelModel {
     jev?.prepare(query: searchText, recordIDs: Array(ids.prefix(10)))
   }
 
+  public func comparisonReturnContext() -> RecordComparisonReturn? {
+    guard let jev, !jev.candidateIDs.isEmpty, !jev.isWorking else { return nil }
+    return RecordComparisonReturn(query: jev.query, resultLimit: results.count, candidateIDs: jev.candidateIDs,
+      semanticIDs: semanticResults.map(\.id), selectedID: selectedID,
+      sourceBundleIdentifier: sourceBundleIdentifier, currentAppOnly: currentAppOnly,
+      kind: kind, pinnedOnly: pinnedOnly)
+  }
+
+  public func restoreComparison(_ context: RecordComparisonReturn) {
+    sourceBundleIdentifier = context.sourceBundleIdentifier
+    currentAppOnly = context.currentAppOnly
+    kind = context.kind
+    pinnedOnly = context.pinnedOnly
+    searchText = context.query
+    selectedID = context.selectedID
+    pendingComparison = context
+    scheduleSearch()
+  }
+
   public func selectJevCandidate(_ id: RecordID) {
     guard !isClosed, selectableResults.contains(where: { $0.id == id }) else { return }
-    selectedID = id
+    select(id)
   }
 
   private func scheduleSearch(offset: Int = 0) {
     guard !isClosed else { return }
+    if let context = pendingComparison,
+      context.query != searchText || context.kind != kind || context.pinnedOnly != pinnedOnly
+        || context.currentAppOnly != currentAppOnly {
+      pendingComparison = nil
+    }
     if offset == 0 {
       cancelSemanticSearch()
       previewTask?.cancel()
@@ -357,41 +426,43 @@ public final class RecordQuickPanelModel {
     searchTask?.cancel()
     searchGeneration &+= 1
     let generation = searchGeneration
-    var query = RecordQuery(
+    let query = RecordQuery(
       text: searchText, sourceBundleIdentifier: currentAppOnly ? sourceBundleIdentifier : nil,
-      kind: kind, pinnedOnly: pinnedOnly, matching: offset == 0 ? .literal : resultMatching)
-    let previousRevision = offset == 0 ? nil : resultsRevision
+      kind: kind, pinnedOnly: pinnedOnly)
+    let cursor = offset == 0 ? nil : searchCursor
+    let pageLimit = max(50, pendingComparison?.resultLimit ?? 50)
     isSearching = true
     searchTask = Task { [weak self, store] in
       do {
-        var scanOffset = offset
-        var matches: [RecordSummary] = []
-        var scanRevision = previousRevision
-        repeat {
-          let page = try await store.query(query, offset: scanOffset, limit: 50 - matches.count)
-          guard !Task.isCancelled, let self, self.searchGeneration == generation else { return }
-          if let scanRevision, scanRevision != page.revision { throw RecordStoreError.membershipChanged }
-          scanRevision = page.revision
-          matches += page.records
-          if offset == 0 { self.results = matches }
-          self.nextOffset = page.nextOffset
-          self.resultMatching = query.matching
-          self.resultsRevision = page.revision
-          if self.selectedID == nil { self.selectedID = self.results.first?.id }
-          if page.nextOffset == nil, matches.isEmpty, offset == 0, query.matching == .literal,
-            !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-          {
-            query.matching = .approximate
-            scanOffset = 0
-            continue
-          }
-          guard let next = page.nextOffset, matches.count < 50 else { break }
-          scanOffset = next
-        } while true
+        let page = try await RecordSearch.page(in: store, query: query, after: cursor, limit: pageLimit)
         guard !Task.isCancelled, let self, self.searchGeneration == generation else { return }
-        if offset != 0 { self.results += matches }
+        if offset == 0 { self.results = page.records } else { self.results += page.records }
+        self.nextOffset = page.nextOffset
+        self.searchCursor = page.cursor
+        self.searchRevision = page.revision
         if !self.selectableResults.contains(where: { $0.id == self.selectedID }) {
           self.selectedID = self.selectableResults.first?.id
+        }
+        if let context = self.pendingComparison {
+          let snapshot = try await store.catalogSnapshot()
+          guard !Task.isCancelled, self.searchGeneration == generation else { return }
+          self.pendingComparison = nil
+          let available = snapshot.records.filter { record in
+            (context.candidateIDs.contains(record.id) || context.semanticIDs.contains(record.id))
+              && (!context.currentAppOnly || record.header.provenance.sourceBundleIdentifier == context.sourceBundleIdentifier)
+              && (context.kind == nil || record.header.kind == context.kind)
+              && (!context.pinnedOnly || record.metadata.isPinned)
+          }
+          let byID = Dictionary(uniqueKeysWithValues: available.map { ($0.id, $0) })
+          let candidates = context.candidateIDs.compactMap { byID[$0] }
+          self.semanticResults = context.semanticIDs.compactMap { byID[$0] }
+          self.semanticState = self.semanticResults.isEmpty ? .idle : .ready
+          if self.selectableResults.contains(where: { $0.id == context.selectedID }) { self.selectedID = context.selectedID }
+          if candidates.count == context.candidateIDs.count {
+            self.jev?.prepare(query: context.query, recordIDs: context.candidateIDs)
+          } else {
+            self.jev?.showChangedCandidates(query: context.query, recordIDs: candidates.map(\.id))
+          }
         }
         self.isSearching = false
         self.loadPreview()

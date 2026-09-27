@@ -1,9 +1,11 @@
+@testable import RillWorkflows
+import RillDomainTestSupport
+import RillTestSupport
 import AppKit
 import XCTest
 
 @testable import RillApp
 @testable import RillCore
-@testable import RillRuntime
 @testable import RillUI
 
 private struct RecordPanelReduceMotionTestContextProvider: ContextProvider {
@@ -16,15 +18,15 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     let eventBus = EventBus()
     let resolver = CandidateResolver(eventBus: eventBus)
     let actionRegistry = OutputActionRegistry(actions: [])
-    let coordinator = SessionCoordinator(
-      contextProvider: RecordPanelReduceMotionTestContextProvider(),
+    let coordinator = makeTestSessionCoordinator(
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: actionRegistry,
       candidateResolver: resolver,
       eventBus: eventBus
     )
-    return AppModel(
+    return makeAppModelForTesting(
       workflows: [],
       eventBus: eventBus,
       sessionCoordinator: coordinator,
@@ -52,7 +54,18 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     )
   }
 
-  func testReduceMotionPresentsAndDismissesPanelWithoutFade() {
+  func testSettingsHidesPanelEvenWithoutAReturnCandidate() async {
+    let controller = makeController(reduceMotion: true)
+    let model = makeModel()
+    controller.show(model: model, deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
+    XCTAssertTrue(controller.isVisible)
+    controller.prepareForSettings(model: model) { _ in XCTFail("No candidate should resume") }
+    XCTAssertFalse(controller.isVisible)
+    XCTAssertNil(model.comparisonReturn)
+    await controller.shutdown()
+  }
+
+  func testReduceMotionPresentsAndDismissesPanelWithoutFade() async {
     let controller = makeController(reduceMotion: true)
 
     controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
@@ -60,6 +73,7 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
 
     controller.dismiss()
     XCTAssertFalse(controller.isVisible)
+    await controller.shutdown()
   }
 
   func testAnimatedDismissKeepsPanelVisibleUntilFadeCompletes() async throws {
@@ -77,6 +91,7 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
       try await Task.sleep(for: .milliseconds(20))
     }
     XCTAssertFalse(controller.isVisible)
+    await controller.shutdown()
   }
   func testDismissDuringEntranceDoesNotWaitForANoopAnimation() async throws {
     let controller = makeController(reduceMotion: false)
@@ -89,6 +104,7 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
       try await Task.sleep(for: .milliseconds(20))
     }
     XCTAssertFalse(controller.isVisible)
+    await controller.shutdown()
   }
 
 }

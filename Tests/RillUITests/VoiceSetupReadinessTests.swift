@@ -14,14 +14,14 @@ final class VoiceSetupReadinessTests: XCTestCase {
                 return settings.model
             }
         )
-        harness.model.isLoadingSettings = false
+        harness.model.settings.isLoading = false
         // Production defaults to cloud when trusted local model material is
         // unavailable. Select local explicitly so this test exercises the
         // fail-closed local readiness path rather than the cloud fallback.
-        harness.model.preferredSpeechEngine = .local
-        harness.model.downloadedLocalSpeechModels = ["qwen3-asr-0.6b-mlx-8bit"]
-        harness.model.localSpeechPreparationState = .ready
-        harness.model.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
+        harness.model.applyPreferredSpeechEngine(.local)
+        harness.model.voice.downloadedLocalSpeechModels = ["qwen3-asr-0.6b-mlx-8bit"]
+        harness.model.voice.localSpeechPreparationState = .ready
+        harness.model.voice.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
 
         XCTAssertEqual(
             harness.model.voiceSetupReadiness.provider,
@@ -34,11 +34,11 @@ final class VoiceSetupReadinessTests: XCTestCase {
 
         let prepareSnapshot = await prepareProbe.snapshot()
         XCTAssertEqual(prepareSnapshot.prepareCount, 0)
-        XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
-        XCTAssertNil(harness.model.localSpeechPreparedModelIdentifier)
+        XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
+        XCTAssertNil(harness.model.voice.localSpeechPreparedModelIdentifier)
         XCTAssertEqual(
-            harness.model.localSpeechPreparationError,
-            UIStrings.text(.localSpeechTrustMaterialUnavailable, language: harness.model.language)
+            harness.model.voice.localSpeechPreparationError,
+            L10n.text(.localSpeechTrustMaterialUnavailable, language: harness.model.settings.language)
         )
     }
 
@@ -47,21 +47,21 @@ final class VoiceSetupReadinessTests: XCTestCase {
             localSpeechAvailability: .architectureUnsupported,
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
         )
-        harness.model.isLoadingSettings = false
+        harness.model.settings.isLoading = false
 
         XCTAssertEqual(harness.model.localSpeechAvailability, .architectureUnsupported)
         XCTAssertFalse(harness.model.localSpeechTrustMaterialAvailable)
         XCTAssertFalse(harness.model.setPreferredSpeechEngine(.local))
-        XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
+        XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
         XCTAssertEqual(
-            UIStrings.localSpeechAvailabilityDescription(
+            L10n.localSpeechAvailabilityDescription(
                 harness.model.localSpeechAvailability,
                 language: .english
             ),
             "This build does not include a compatible MLX speech worker. Use a supported Rill build."
         )
         XCTAssertEqual(
-            UIStrings.localSpeechAvailabilityDescription(
+            L10n.localSpeechAvailabilityDescription(
                 harness.model.localSpeechAvailability,
                 language: .simplifiedChinese
             ),
@@ -70,15 +70,15 @@ final class VoiceSetupReadinessTests: XCTestCase {
 
         // A historical local preference remains fail-closed and reports the
         // runtime compatibility boundary instead of claiming trust material is missing.
-        harness.model.preferredSpeechEngine = .local
+        harness.model.applyPreferredSpeechEngine(.local)
         XCTAssertEqual(
             harness.model.voiceSetupReadiness.provider,
             .localUnavailable(.architectureUnsupported)
         )
         harness.model.prepareLocalSpeechModel()
         XCTAssertEqual(
-            harness.model.localSpeechPreparationError,
-            UIStrings.text(.localSpeechArchitectureUnsupported, language: harness.model.language)
+            harness.model.voice.localSpeechPreparationError,
+            L10n.text(.localSpeechArchitectureUnsupported, language: harness.model.settings.language)
         )
     }
 
@@ -86,9 +86,9 @@ final class VoiceSetupReadinessTests: XCTestCase {
         let harness = makeHarness(
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
         )
-        harness.model.preferredSpeechEngine = .local
-        harness.model.localSpeechPreparationState = .ready
-        harness.model.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
+        harness.model.applyPreferredSpeechEngine(.local)
+        harness.model.voice.localSpeechPreparationState = .ready
+        harness.model.voice.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
 
         XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localReady)
         XCTAssertTrue(harness.model.voiceSetupReadiness.isComplete)
@@ -99,10 +99,10 @@ final class VoiceSetupReadinessTests: XCTestCase {
             permissionSnapshot: PermissionSnapshot(accessibility: .denied, microphone: .granted),
             globalInputCapability: .permissionRequired
         )
-        harness.model.preferredSpeechEngine = .local
-        harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
-        harness.model.localSpeechPreparationState = .ready
-        harness.model.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
+        harness.model.applyPreferredSpeechEngine(.local)
+        harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
+        harness.model.voice.localSpeechPreparationState = .ready
+        harness.model.voice.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
 
         XCTAssertFalse(harness.model.voiceSetupReadiness.accessibilityRequired)
         XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
@@ -116,10 +116,10 @@ final class VoiceSetupReadinessTests: XCTestCase {
             permissionSnapshot: PermissionSnapshot(accessibility: .denied, microphone: .granted),
             globalInputCapability: .available
         )
-        harness.model.preferredSpeechEngine = .local
-        harness.model.builtinPushToTalkOutputMode = .pasteIntoApp
-        harness.model.localSpeechPreparationState = .ready
-        harness.model.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
+        harness.model.applyPreferredSpeechEngine(.local)
+        harness.model.applyBuiltinPushToTalkOutputMode(.pasteIntoApp)
+        harness.model.voice.localSpeechPreparationState = .ready
+        harness.model.voice.localSpeechPreparedModelIdentifier = "qwen3-asr-0.6b-mlx-8bit"
 
         XCTAssertTrue(harness.model.voiceSetupReadiness.accessibilityRequired)
         XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
@@ -135,8 +135,8 @@ final class VoiceSetupReadinessTests: XCTestCase {
             permissionSnapshot: PermissionSnapshot(accessibility: .denied, microphone: .granted),
             globalInputCapability: .available
         )
-        harness.model.builtinPushToTalkOutputMode = .saveToVoiceGroup
-        harness.model.workflows.append(
+        harness.model.applyBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
+        harness.model.workflowLibrary.workflows.append(
             WorkflowDefinition(
                 name: "Cursor preview",
                 trigger: .manual,
@@ -171,8 +171,8 @@ final class VoiceSetupReadinessTests: XCTestCase {
                 throw expectedError
             }
         )
-        harness.model.preferredSpeechEngine = .local
-        harness.model.downloadedLocalSpeechModels = ["qwen3-asr-0.6b-mlx-8bit"]
+        harness.model.applyPreferredSpeechEngine(.local)
+        harness.model.voice.downloadedLocalSpeechModels = ["qwen3-asr-0.6b-mlx-8bit"]
 
         harness.model.useDownloadedLocalSpeechModel("qwen3-asr-0.6b-mlx-8bit")
         await waitForEventProcessing(harness)
@@ -180,7 +180,7 @@ final class VoiceSetupReadinessTests: XCTestCase {
         let snapshot = await probe.snapshot()
         XCTAssertEqual(snapshot.prepareCount, 1)
         XCTAssertEqual(snapshot.lastSettings?.model, "qwen3-asr-0.6b-mlx-8bit")
-        XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
+        XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
         XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreparationFailed)
         XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
     }
@@ -209,22 +209,22 @@ final class VoiceSetupReadinessTests: XCTestCase {
 
         await harness.model.waitForInitialVoiceConfiguration()
         harness.model.prepareLocalSpeechModel()
-        await harness.model.waitForLocalSpeechPreparation()
+        await harness.model.voice.waitForLocalSpeechPreparation()
 
-        XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
+        XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
         let expected = L10n.localSpeechPreparationFailure(.generic)
         XCTAssertEqual(
-            harness.model.localSpeechPreparationError,
-            expected.string(for: harness.model.language)
+            harness.model.voice.localSpeechPreparationError,
+            expected.string(for: harness.model.settings.language)
         )
         XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreparationFailed)
         XCTAssertFalse(harness.model.voiceSetupReadiness.isComplete)
-        let event = harness.model.eventFeed.last {
+        let event = harness.model.history.eventFeed.last {
             $0.english == expected.english && $0.simplifiedChinese == expected.simplifiedChinese
         }
         XCTAssertNotNil(event)
-        let exposedText = ([harness.model.localSpeechPreparationError ?? ""]
-            + harness.model.eventFeed.flatMap { [$0.english, $0.simplifiedChinese] })
+        let exposedText = ([harness.model.voice.localSpeechPreparationError ?? ""]
+            + harness.model.history.eventFeed.flatMap { [$0.english, $0.simplifiedChinese] })
             .joined(separator: " ")
         XCTAssertFalse(exposedText.contains("/Users/private/background-model"))
         XCTAssertFalse(exposedText.contains("background-secret"))
@@ -241,12 +241,12 @@ final class VoiceSetupReadinessTests: XCTestCase {
             defaultLocalSpeechModelIdentifier: descriptor.id,
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
         )
-        harness.model.preferredSpeechEngine = .local
-        harness.model.localSpeechModel = descriptor.id
-        harness.model.enabledSpeechModelIDs = [descriptor.id]
-        harness.model.downloadedLocalSpeechModels = [descriptor.id]
+        harness.model.applyPreferredSpeechEngine(.local)
+        harness.model.applyLocalSpeechModel(descriptor.id)
+        harness.model.applyEnabledSpeechModelIDs([descriptor.id])
+        harness.model.voice.downloadedLocalSpeechModels = [descriptor.id]
 
-        XCTAssertEqual(harness.model.localSpeechPreparationState, .idle)
+        XCTAssertEqual(harness.model.voice.localSpeechPreparationState, .idle)
         XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localReady)
         XCTAssertTrue(harness.model.voiceSetupReadiness.isComplete)
     }
@@ -262,9 +262,9 @@ final class VoiceSetupReadinessTests: XCTestCase {
             defaultLocalSpeechModelIdentifier: descriptor.id,
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
         )
-        harness.model.preferredSpeechEngine = .local
-        harness.model.localSpeechModel = descriptor.id
-        harness.model.enabledSpeechModelIDs = [descriptor.id]
+        harness.model.applyPreferredSpeechEngine(.local)
+        harness.model.applyLocalSpeechModel(descriptor.id)
+        harness.model.applyEnabledSpeechModelIDs([descriptor.id])
 
         XCTAssertEqual(
             harness.model.voiceSetupReadiness.provider,
@@ -283,10 +283,10 @@ final class VoiceSetupReadinessTests: XCTestCase {
             defaultLocalSpeechModelIdentifier: descriptor.id,
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
         )
-        harness.model.preferredSpeechEngine = .local
-        harness.model.localSpeechModel = descriptor.id
-        harness.model.enabledSpeechModelIDs = []
-        harness.model.downloadedLocalSpeechModels = [descriptor.id]
+        harness.model.applyPreferredSpeechEngine(.local)
+        harness.model.applyLocalSpeechModel(descriptor.id)
+        harness.model.applyEnabledSpeechModelIDs([])
+        harness.model.voice.downloadedLocalSpeechModels = [descriptor.id]
 
         XCTAssertEqual(
             harness.model.voiceSetupReadiness.provider,
@@ -305,16 +305,16 @@ final class VoiceSetupReadinessTests: XCTestCase {
             defaultLocalSpeechModelIdentifier: descriptor.id,
             permissionSnapshot: PermissionSnapshot(accessibility: .granted, microphone: .granted)
         )
-        harness.model.preferredSpeechEngine = .local
-        harness.model.localSpeechModel = descriptor.id
-        harness.model.enabledSpeechModelIDs = [descriptor.id]
-        harness.model.downloadedLocalSpeechModels = [descriptor.id]
+        harness.model.applyPreferredSpeechEngine(.local)
+        harness.model.applyLocalSpeechModel(descriptor.id)
+        harness.model.applyEnabledSpeechModelIDs([descriptor.id])
+        harness.model.voice.downloadedLocalSpeechModels = [descriptor.id]
 
-        harness.model.localSpeechPreparationState = .preparing
+        harness.model.voice.localSpeechPreparationState = .preparing
         XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreparing(progress: 0))
 
-        harness.model.localSpeechPreparationState = .idle
-        harness.model.localSpeechPreparationError = "failed"
+        harness.model.voice.localSpeechPreparationState = .idle
+        harness.model.voice.localSpeechPreparationError = "failed"
         XCTAssertEqual(harness.model.voiceSetupReadiness.provider, .localPreparationFailed)
     }
 

@@ -294,6 +294,7 @@ class BuildContext:
                 self.root, require_metal=self.configuration == "release"
             ),
             "configuration": self.configuration,
+            "profile": os.environ.get("RILL_BUILD_PROFILE", "full"),
             "settings": build_settings(self.arguments),
             "manifest": sha256(self.root / "Package.swift"),
             "resolved": sha256(self.root / "Package.resolved")
@@ -576,6 +577,17 @@ def main(arguments: list[str] | None = None) -> None:
             "usage: swift_locked.sh <build|test|clean|release|receipt> [arguments...]"
         )
     subcommand, *arguments = arguments
+    if os.environ.get("RILL_BUILD_PROFILE"):
+        raise BuildError("Select test-domain through the build driver; full builds cannot inherit a reduced graph")
+    if subcommand == "test-domain":
+        if option(arguments, ("--scratch-path", "--build-path"), None) is not None:
+            raise BuildError("Domain tests own their isolated build directory")
+        os.environ["RILL_BUILD_PROFILE"] = "domain-tests"
+        domain_configuration = option(arguments, ("--configuration", "-c"), "debug")
+        if domain_configuration not in ("debug", "release"):
+            raise BuildError(f"Unsupported domain test configuration: {domain_configuration}")
+        arguments += ["--scratch-path", f".artifacts/build/domain-tests/{domain_configuration}"]
+        subcommand = "test"
     if subcommand == "release":
         release(arguments)
         return

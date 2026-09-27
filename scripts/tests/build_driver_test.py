@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import multiprocessing
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -26,6 +27,16 @@ def try_lock(path, connection):
 
 
 class BuildDriverTests(unittest.TestCase):
+    def test_full_build_rejects_inherited_domain_profile(self):
+        with patch.dict(os.environ, {"RILL_BUILD_PROFILE": "domain-tests"}):
+            with self.assertRaises(build.BuildError):
+                build.main(["build"])
+
+    def test_domain_build_refuses_shared_scratch_override(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(build.BuildError):
+                build.main(["test-domain", "--scratch-path", ".build"])
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

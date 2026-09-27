@@ -1,11 +1,12 @@
 @testable import RillSpeechContracts
+@testable import RillSpeech
+@testable import RillWorkflows
 import XCTest
 
 @testable import RillApp
 @testable import RillCore
 @testable import RillPlatform
 @testable import RillProviders
-@testable import RillRuntime
 @testable import RillUI
 
 private actor AppBootstrapLocalSpeechPreparationProbe {
@@ -101,8 +102,9 @@ private struct AppBootstrapExplanationTransformer: TextTransformer {
 private struct AppBootstrapExplanationAction: OutputAction {
   let id = "focused-application.insert"
 
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
-    .injected
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      _ = try record.requireText(for: id)
+    return .injected
   }
 }
 
@@ -257,7 +259,7 @@ private actor AppBootstrapClipboardHistory: RecordHistoryMaintaining {
   }
 }
 
-private actor AppBootstrapHistoryRepository: HistoryRepository {
+private actor AppBootstrapHistoryRepository: HistoryRepository, HistoryMaintaining {
     func save(_ value: WorkflowResultRecord, generation: RunHistoryWriteGeneration) async throws {
         guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
         try await (self as any HistoryRepository).save(value)
@@ -312,7 +314,7 @@ private actor AppBootstrapHistoryRepository: HistoryRepository {
   }
 }
 
-private actor AppBootstrapDiagnosticRepository: DiagnosticRepository {
+private actor AppBootstrapDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
     func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
         guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
         try await (self as any DiagnosticRepository).save(value)
@@ -435,37 +437,6 @@ private actor AppBootstrapRichPasteProbe {
 }
 
 final class AppBootstrapTests: XCTestCase {
-  func testTTSPreparationProgressDoesNotResetWhenLoadingStarts() {
-    XCTAssertEqual(
-      AppBootstrap.displayedTTSPreparationProgress(
-        .init(phase: .downloading, completedUnitCount: 1, totalUnitCount: 2)
-      ),
-      0.475,
-      accuracy: 0.000_001
-    )
-    XCTAssertEqual(
-      AppBootstrap.displayedTTSPreparationProgress(
-        .init(phase: .downloading, completedUnitCount: 2, totalUnitCount: 2)
-      ),
-      0.95,
-      accuracy: 0.000_001
-    )
-    XCTAssertEqual(
-      AppBootstrap.displayedTTSPreparationProgress(
-        .init(phase: .loading, completedUnitCount: 0, totalUnitCount: 1)
-      ),
-      0.95,
-      accuracy: 0.000_001
-    )
-    XCTAssertEqual(
-      AppBootstrap.displayedTTSPreparationProgress(
-        .init(phase: .loading, completedUnitCount: 1, totalUnitCount: 1)
-      ),
-      1,
-      accuracy: 0.000_001
-    )
-  }
-
   func testWorkflowExplanationActionUsesPrivacyOnlyEvaluationWithoutConfirmation() async throws {
     let selectionCanary = "PRIVATE-SELECTION-CANARY"
     let clipboardCanary = "PRIVATE-CLIPBOARD-CANARY"

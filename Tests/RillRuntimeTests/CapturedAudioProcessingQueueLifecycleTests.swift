@@ -1,7 +1,11 @@
+@testable import RillKnowledge
+@testable import RillRecords
+@testable import RillWorkflows
+@testable import RillCore
+import RillPlatform
+import RillDomainTestSupport
 import Foundation
 import XCTest
-@testable import RillCore
-@testable import RillRuntime
 
 private actor AudioLifecycleExecutionProbe {
     private var contextCount = 0
@@ -243,7 +247,8 @@ private struct AudioLifecycleAction: OutputAction {
     let id = "audio-lifecycle.action"
     let probe: AudioLifecycleExecutionProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.recordAction()
         return .copiedToClipboard
     }
@@ -836,7 +841,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         XCTAssertEqual(execution.recognition, 0)
         XCTAssertEqual(execution.action, 0)
 
-        _ = try await deferredCapture.discardManagedTemporaryFile()
+        _ = try await deferredCapture.value().removeManagedTemporaryFile()
         XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     }
 
@@ -1079,8 +1084,8 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         let executionProbe = providedExecutionProbe ?? AudioLifecycleExecutionProbe()
         let eventBus = EventBus()
         let diagnostics = providedDiagnostics ?? DiagnosticsRecorder(eventBus: eventBus)
-        let coordinator = SessionCoordinator(
-            contextProvider: AudioLifecycleContextProvider(probe: executionProbe),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     AudioLifecycleRecognizer(
@@ -1098,7 +1103,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
             diagnostics: diagnostics
         )
         let recoveryController = recoveryStore.map { store in
-            FailedAudioRecoveryController(
+            makeTestFailedAudioRecoveryController(
                 store: store,
                 sessionCoordinator: coordinator,
                 eventBus: eventBus,
@@ -1123,7 +1128,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
             let sleep = rejectedCleanupSleep ?? { delay in
                 try await Task.sleep(for: delay)
             }
-            return CapturedAudioProcessingQueue(
+            return makeTestCapturedAudioProcessingQueue(
                 sessionCoordinator: coordinator,
                 eventBus: eventBus,
                 diagnostics: diagnostics,
@@ -1138,7 +1143,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
                 ownershipTransferObserver: ownershipTransferObserver ?? { _ in }
             )
         }
-        return CapturedAudioProcessingQueue(
+        return makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus,
             diagnostics: diagnostics,

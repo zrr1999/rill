@@ -1,7 +1,8 @@
+
+@testable import RillCore
+@testable import RillWorkflows
 import Foundation
 import XCTest
-@testable import RillCore
-@testable import RillRuntime
 
 final class InMemoryRepositoryTests: XCTestCase {
     func testHistoryRepositorySanitizesFailureMessagesAtItsBoundary() async throws {
@@ -128,7 +129,7 @@ final class InMemoryRepositoryTests: XCTestCase {
                     runID: runID,
                     subsystem: .session,
                     level: .debug,
-                    event: "session.debug",
+                    event: .sessionDebug,
                     message: "debug"
                 ),
                 DiagnosticEvent(
@@ -136,7 +137,7 @@ final class InMemoryRepositoryTests: XCTestCase {
                     runID: runID,
                     subsystem: .session,
                     level: .error,
-                    event: "session.error",
+                    event: .sessionError,
                     message: "error"
                 ),
                 DiagnosticEvent(
@@ -144,7 +145,7 @@ final class InMemoryRepositoryTests: XCTestCase {
                     runID: UUID(),
                     subsystem: .providers,
                     level: .warning,
-                    event: "providers.warning",
+                    event: .providersWarning,
                     message: "warning"
                 ),
             ]
@@ -229,7 +230,7 @@ final class InMemoryRepositoryTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: timestamp),
             subsystem: .session,
             level: .info,
-            event: "diagnostic.\(name)",
+            untrustedEvent: "diagnostic.\(name)",
             message: name
         )
     }

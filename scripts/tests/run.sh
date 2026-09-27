@@ -5,6 +5,10 @@ TEST_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 
 echo 'Testing dependency security policy...'
 uv run --script "$TEST_DIR/dependency_security_test.py"
+echo 'Testing paired ASR comparisons...'
+uv run --script "$TEST_DIR/asr_benchmark_test.py"
+uv run --script "$TEST_DIR/asr_replay_test.py"
+uv run --script "$TEST_DIR/product_path_benchmark_test.py"
 echo 'Testing diagnostic export...'
 uv run --script "$TEST_DIR/diagnostic_export_test.py"
 echo 'Testing secret scanning...'
@@ -19,3 +23,5 @@ echo 'Testing GitHub Release drafts...'
 bash "$TEST_DIR/github_release_test.sh"
 echo 'Testing app icon generation...'
 bash "$TEST_DIR/app_icon_test.sh"
+echo 'Testing input method signing boundaries...'
+uv run --no-build --locked --script "$TEST_DIR/input_method_assembly_test.py"

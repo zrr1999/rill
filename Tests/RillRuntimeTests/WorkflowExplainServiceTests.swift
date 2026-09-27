@@ -1,7 +1,8 @@
+
+@testable import RillCore
+@testable import RillWorkflows
 import Foundation
 import XCTest
-@testable import RillCore
-@testable import RillRuntime
 
 private actor WorkflowExplainProbe {
     private var recognitionCount = 0
@@ -46,7 +47,8 @@ private struct WorkflowExplainAction: OutputAction {
     let id: String
     let probe: WorkflowExplainProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.recordAction()
         return .copiedToClipboard
     }

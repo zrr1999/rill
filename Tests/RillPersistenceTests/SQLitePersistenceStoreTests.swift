@@ -359,7 +359,9 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     XCTAssertEqual(repeatedClearCount, 0)
   }
 
-  func testLogicalRunHistoryGenerationSurvivesReopenRejectsOldIntentAndAcceptsClockRollback() async throws {
+  func testLogicalRunHistoryGenerationSurvivesReopenRejectsOldIntentAndAcceptsClockRollback()
+    async throws
+  {
     let directoryURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
@@ -2338,7 +2340,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       timestamp: Date(timeIntervalSince1970: 15),
       subsystem: .records,
       level: .info,
-      event: "persistence.must-remain",
+      event: .persistenceMustRemain,
       message: "History cleanup must not remove diagnostics."
     )
     try await store.save(diagnostic)
@@ -2467,7 +2469,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       runID: runID,
       subsystem: .providers,
       level: .warning,
-      event: "providers.warning",
+      event: .providersWarning,
       message: "provider warning",
       metadata: ["source": "tests"]
     )
@@ -2504,14 +2506,18 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let limited = try await store.events(matching: DiagnosticQuery(limit: 2))
     let allValid = try await store.events(matching: DiagnosticQuery())
 
-    XCTAssertEqual(limited.map(\.event), [
-      DiagnosticEventSanitizer.sanitize(validBoundary).event,
-      DiagnosticEventSanitizer.sanitize(validOlder).event,
-    ])
-    XCTAssertEqual(allValid, [
-      DiagnosticEventSanitizer.sanitize(validBoundary),
-      DiagnosticEventSanitizer.sanitize(validOlder),
-    ])
+    XCTAssertEqual(
+      limited.map(\.event),
+      [
+        DiagnosticEventSanitizer.sanitize(validBoundary).event,
+        DiagnosticEventSanitizer.sanitize(validOlder).event,
+      ])
+    XCTAssertEqual(
+      allValid,
+      [
+        DiagnosticEventSanitizer.sanitize(validBoundary),
+        DiagnosticEventSanitizer.sanitize(validOlder),
+      ])
   }
 
   func testDiagnosticPersistenceSanitizesUnsafeEventCodesBeforeWritingSQLiteFiles() async throws {
@@ -2536,7 +2542,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         DiagnosticEvent(
           subsystem: .session,
           level: .warning,
-          event: eventCode,
+          untrustedEvent: eventCode,
           message: "unsafe diagnostic event"
         )
       )
@@ -2587,7 +2593,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       DiagnosticEvent(
         subsystem: .providers,
         level: .warning,
-        event: unknownEventCode,
+        untrustedEvent: unknownEventCode,
         message: "unsafe",
         metadata: [
           "actionID": alphanumericCanary,
@@ -2832,7 +2838,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       timestamp: Date(timeIntervalSince1970: 200),
       subsystem: .records,
       level: .warning,
-      event: "persistence.sentinel-control",
+      event: .persistenceSentinelControl,
       message: "Diagnostic control remains after history cleanup."
     )
 
@@ -2884,7 +2890,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       timestamp: Date(timeIntervalSince1970: 200),
       subsystem: .session,
       level: .warning,
-      event: persistedEventSentinel,
+      untrustedEvent: persistedEventSentinel,
       message: diagnosticSentinel
     )
 
@@ -2969,7 +2975,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
   {
     let store = try makeStore()
     let timestamp = Date(timeIntervalSince1970: 1_000)
-    let expectedIDs = (1 ... 121).map(deterministicUUID)
+    let expectedIDs = (1...121).map(deterministicUUID)
     for runID in expectedIDs.reversed() {
       try await store.insertTerminal(
         try browsingReceipt(runID: runID, trigger: .hotkey, timestamp: timestamp)
@@ -3005,13 +3011,14 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
 
     let second = try await store.page(.next(cursor: firstCursor, limit: 50))
-    XCTAssertEqual(second.entries.map(\.id), Array(expectedIDs[50 ..< 100]))
+    XCTAssertEqual(second.entries.map(\.id), Array(expectedIDs[50..<100]))
     let secondCursor = try XCTUnwrap(second.nextCursor)
     let third = try await store.page(.next(cursor: secondCursor, limit: 50))
-    XCTAssertEqual(third.entries.map(\.id), Array(expectedIDs[100 ..< 121]))
+    XCTAssertEqual(third.entries.map(\.id), Array(expectedIDs[100..<121]))
     XCTAssertNil(third.nextCursor)
 
-    let snapshotIDs = first.entries.map(\.id) + second.entries.map(\.id)
+    let snapshotIDs =
+      first.entries.map(\.id) + second.entries.map(\.id)
       + third.entries.map(\.id)
     XCTAssertEqual(snapshotIDs.count, 121)
     XCTAssertEqual(Set(snapshotIDs).count, 121)
@@ -3159,8 +3166,9 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         languageModelInputTexts: ["private LLM input"],
         processingSteps: [
           WorkflowTextStep(kind: .recognizeSpeech, outputText: body),
-          WorkflowTextStep(kind: .llmRewrite, outputText: body,
-                           tokenUsage: .init(inputTokens: 120, outputTokens: 24, totalTokens: 144))
+          WorkflowTextStep(
+            kind: .llmRewrite, outputText: body,
+            tokenUsage: .init(inputTokens: 120, outputTokens: 24, totalTokens: 144)),
         ]
       ),
       trigger: .manual
@@ -3197,9 +3205,11 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       )
     )
     XCTAssertEqual(restricted.correctionSource, record.correctionSource?.restrictedStepPreview)
-    XCTAssertEqual(restricted.correctionSource?.processingSteps?.first?.outputText, restricted.finalText)
-    XCTAssertEqual(restricted.correctionSource?.processingSteps?.last?.tokenUsage,
-                   .init(inputTokens: 120, outputTokens: 24, totalTokens: 144))
+    XCTAssertEqual(
+      restricted.correctionSource?.processingSteps?.first?.outputText, restricted.finalText)
+    XCTAssertEqual(
+      restricted.correctionSource?.processingSteps?.last?.tokenUsage,
+      .init(inputTokens: 120, outputTokens: 24, totalTokens: 144))
     XCTAssertNil(restricted.correctionSource?.languageModelInputTexts)
     XCTAssertTrue(protector.openedContexts().contains { $0.field == "final_text" })
 
@@ -3226,7 +3236,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     )
     try await store.insertTerminal(valid)
     var corruptReceipts: [WorkflowRunReceipt] = []
-    for offset in 0 ..< 70 {
+    for offset in 0..<70 {
       let receipt = try browsingReceipt(
         runID: deterministicUUID(500 + offset),
         trigger: .hotkey,
@@ -3511,12 +3521,13 @@ final class SQLitePersistenceStoreTests: XCTestCase {
 
   private func historyWriteOrdinal(recordID: UUID, at databaseURL: URL) throws -> Int64 {
     var database: OpaquePointer?
-    guard sqlite3_open_v2(
-      databaseURL.path,
-      &database,
-      SQLITE_OPEN_READONLY,
-      nil
-    ) == SQLITE_OK,
+    guard
+      sqlite3_open_v2(
+        databaseURL.path,
+        &database,
+        SQLITE_OPEN_READONLY,
+        nil
+      ) == SQLITE_OK,
       let database
     else {
       throw SQLitePersistenceError.openingDatabase(
@@ -3525,13 +3536,14 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     }
     defer { sqlite3_close(database) }
     var statement: OpaquePointer?
-    guard sqlite3_prepare_v2(
-      database,
-      "SELECT write_ordinal FROM history_records WHERE id = ?;",
-      -1,
-      &statement,
-      nil
-    ) == SQLITE_OK,
+    guard
+      sqlite3_prepare_v2(
+        database,
+        "SELECT write_ordinal FROM history_records WHERE id = ?;",
+        -1,
+        &statement,
+        nil
+      ) == SQLITE_OK,
       let statement
     else {
       throw SQLitePersistenceError.preparingStatement(
@@ -3596,7 +3608,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       timestamp: Date(timeIntervalSince1970: timestamp),
       subsystem: .session,
       level: .info,
-      event: "diagnostic.\(name)",
+      untrustedEvent: "diagnostic.\(name)",
       message: name
     )
   }

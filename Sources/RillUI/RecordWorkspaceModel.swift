@@ -1,27 +1,26 @@
+import RillWorkflows
+import RillRecords
 import Foundation
 import Observation
 import RillCore
-import RillRuntime
 
 /// UI-owned projection of the Record graph. The actor remains the only state
 /// owner; this model only keeps a refreshable snapshot and user navigation.
 @MainActor
 @Observable
 public final class RecordWorkspaceModel {
-    public private(set) var snapshot = RecordCatalogSnapshot.empty {
-        didSet { rebuildCollectionIndex() }
-    }
+    public private(set) var snapshot = RecordCatalogSnapshot.empty
     private var recordsByCollection: [RecordCollectionID: [RecordSummary]] = [:]
     public var selectedCollectionID: RecordCollectionID?
     public var selectedRecordID: RecordID?
-    public var searchText = "" { didSet { if searchText != oldValue { scheduleSearch() } } }
-    public var payloadKindFilter: RecordPayloadKind? { didSet { repairRecordSelection() } }
+    public private(set) var searchText = ""
+    public private(set) var payloadKindFilter: RecordPayloadKind?
     public private(set) var revealedRecordID: RecordID?
     public private(set) var unavailableRecordID: RecordID?
     public private(set) var navigationGeneration = 0
-    public var showsPinnedOnly = false { didSet { repairRecordSelection() } }
+    public private(set) var showsPinnedOnly = false
     /// Session-only source filter shared by list and detail selection.
-    public var sourceAppFilterBundleIdentifier: String? { didSet { repairRecordSelection() } }
+    public private(set) var sourceAppFilterBundleIdentifier: String?
     public private(set) var isLoading = false
     public private(set) var isMutating = false
     public private(set) var errorMessage: String?
@@ -36,19 +35,64 @@ public final class RecordWorkspaceModel {
     public let jevSettings: JevAPISettingsModel?
     private var observationTask: Task<Void, Never>?
     private var searchTask: Task<Void, Never>?
+    private var searchGeneration = 0
     private var mutationTask: Task<Void, Never>?
     private var isClosed = false
     private var searchMatches: Set<RecordID> = []
     public private(set) var isSearching = false
 
-    public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, cloudRanking: RecordCloudRanking? = nil) {
+    public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, cloudRanking: RecordCloudRanking? = nil,
+                hotwordSelection: HotwordSelection? = nil) {
         self.store = store
         self.semanticSearch = semanticSearch
-        jevSettings = cloudRanking.map { JevAPISettingsModel(service: $0) }
+        jevSettings = cloudRanking.map { JevAPISettingsModel(service: $0, hotwordSelection: hotwordSelection) }
         cleanup = RecordCleanupModel(store: store)
     }
 
     isolated deinit { observationTask?.cancel(); searchTask?.cancel() }
+
+    public func setSearchText(_ value: String) {
+        guard !isClosed, searchText != value else { return }
+        searchText = value
+        scheduleSearch()
+        repairRecordSelection()
+    }
+
+    public func setPayloadKindFilter(_ value: RecordPayloadKind?) {
+        guard !isClosed, payloadKindFilter != value else { return }
+        payloadKindFilter = value
+        repairRecordSelection()
+    }
+
+    public func setShowsPinnedOnly(_ value: Bool) {
+        guard !isClosed, showsPinnedOnly != value else { return }
+        showsPinnedOnly = value
+        repairRecordSelection()
+    }
+
+    public func setSourceAppFilter(_ value: String?) {
+        guard !isClosed, sourceAppFilterBundleIdentifier != value else { return }
+        sourceAppFilterBundleIdentifier = value
+        repairRecordSelection()
+    }
+
+    public func clearFilters() {
+        guard !isClosed else { return }
+        searchText = ""
+        showsPinnedOnly = false
+        sourceAppFilterBundleIdentifier = nil
+        payloadKindFilter = nil
+        scheduleSearch()
+        repairRecordSelection()
+    }
+
+    func waitForSearch() async {
+        repeat {
+            let generation = searchGeneration
+            await searchTask?.value
+            if generation == searchGeneration { return }
+        } while true
+    }
 
     public func sealMutations() {
         isClosed = true
@@ -172,9 +216,7 @@ public final class RecordWorkspaceModel {
         isLoading = true
         defer { isLoading = false }
         do {
-            snapshot = try await store.catalogSnapshot()
-            scheduleSearch()
-            repairSelection()
+            applySnapshot(try await store.catalogSnapshot())
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -188,9 +230,7 @@ public final class RecordWorkspaceModel {
                 let stream = try await store.catalogStream()
                 for await snapshot in stream {
                     guard !Task.isCancelled else { return }
-                    self?.snapshot = snapshot
-                    self?.scheduleSearch()
-                    self?.repairSelection()
+                    self?.applySnapshot(snapshot)
                 }
             } catch {
                 self?.errorMessage = error.localizedDescription
@@ -198,24 +238,38 @@ public final class RecordWorkspaceModel {
         }
     }
 
+    private func applySnapshot(_ snapshot: RecordCatalogSnapshot) {
+        guard snapshot.revision >= self.snapshot.revision else { return }
+        self.snapshot = snapshot
+        rebuildCollectionIndex()
+        if !isClosed { scheduleSearch() }
+        repairSelection()
+    }
+
     private func scheduleSearch() {
+        guard !isClosed else { return }
         searchTask?.cancel()
+        searchTask = nil
+        searchGeneration &+= 1
+        let generation = searchGeneration
         searchMatches = []
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { isSearching = false; return }
         isSearching = true
         searchTask = Task { [weak self, store] in
             do {
-                var offset = 0
+                var cursor: RecordSearchCursor?
+                var matches: Set<RecordID> = []
                 repeat {
-                    let page = try await store.query(.init(text: query), offset: offset, limit: 100)
-                    guard !Task.isCancelled, let self, self.searchText.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
-                    self.searchMatches.formUnion(page.records.map(\.id))
-                    if let next = page.nextOffset { offset = next } else { break }
-                } while true
-                guard !Task.isCancelled else { return }
-                self?.isSearching = false
-                self?.repairSelection()
+                    let page = try await RecordSearch.page(in: store, query: .init(text: query), after: cursor, limit: 100)
+                    try Task.checkCancellation()
+                    matches.formUnion(page.records.map(\.id))
+                    cursor = page.cursor
+                } while cursor != nil
+                guard let self, !Task.isCancelled, searchGeneration == generation else { return }
+                searchMatches = matches
+                isSearching = false
+                repairSelection()
             } catch is CancellationError {
             } catch RecordStoreError.membershipChanged {
                 guard !Task.isCancelled else { return }
@@ -240,19 +294,8 @@ public final class RecordWorkspaceModel {
         repairRecordSelection()
     }
 
-    public func searchRecords(_ text: String, offset: Int = 0, limit: Int = 20) async throws -> RecordQueryPage {
-        var records: [RecordSummary] = []
-        var nextOffset: Int? = offset
-        var revision: UInt64?
-        repeat {
-            try Task.checkCancellation()
-            let page = try await store.query(.init(text: text), offset: nextOffset ?? 0, limit: limit - records.count)
-            if let revision, revision != page.revision { throw RecordStoreError.membershipChanged }
-            revision = page.revision
-            records.append(contentsOf: page.records)
-            nextOffset = page.nextOffset
-        } while nextOffset != nil && records.count < limit
-        return RecordQueryPage(revision: revision ?? 0, records: records, nextOffset: nextOffset)
+    public func searchRecords(_ text: String, after cursor: RecordSearchCursor? = nil, limit: Int = 20) async throws -> RecordSearchPage {
+        try await RecordSearch.page(in: store, query: .init(text: text), after: cursor, limit: limit)
     }
 
     public func revealRecord(_ id: RecordID) async {
@@ -261,10 +304,7 @@ public final class RecordWorkspaceModel {
         revealedRecordID = id
         unavailableRecordID = nil
         selectedCollectionID = nil
-        searchText = ""
-        showsPinnedOnly = false
-        sourceAppFilterBundleIdentifier = nil
-        payloadKindFilter = nil
+        clearFilters()
         await refresh()
         guard generation == navigationGeneration, !Task.isCancelled else { return }
         if snapshot.records.contains(where: { $0.id == id }) {
@@ -361,6 +401,21 @@ public final class RecordWorkspaceModel {
         RecordQuickPanelModel(store: store, semanticSearch: semanticSearch, jevSettings: jevSettings)
     }
 
+    public func saveTextCorrection(
+        workflowRunID: UUID, text: String, operationID: UUID
+    ) async -> Bool {
+        var saved = false
+        await mutate {
+            let correction = try await self.store.saveTextCorrection(
+                workflowRunID: workflowRunID, text: text, operationID: operationID)
+            self.selectedCollectionID = nil
+            self.selectedRecordID = correction.id
+            saved = true
+        }
+        return saved
+    }
+
+
     public func replaceText(
         membership: RecordMembership,
         text: String,
@@ -428,9 +483,7 @@ public final class RecordWorkspaceModel {
         let task = Task {
             do {
                 try await operation()
-                snapshot = try await store.catalogSnapshot()
-                if !isClosed { scheduleSearch() }
-                repairSelection()
+                applySnapshot(try await store.catalogSnapshot())
                 errorMessage = nil
             } catch {
                 errorMessage = error.localizedDescription

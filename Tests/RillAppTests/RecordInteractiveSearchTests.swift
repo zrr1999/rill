@@ -1,10 +1,15 @@
+import RillDomainTestSupport
+import RillTestSupport
 import AppKit
 import XCTest
 
 @testable import RillApp
 @testable import RillCore
 @testable import RillProviders
-@testable import RillRuntime
+@testable import RillSpeech
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 @testable import RillUI
 
 /// An isolated native component host. Clipboard capture and external delivery are absent.
@@ -115,12 +120,12 @@ final class RecordInteractiveSearchTests: XCTestCase {
     let bus = EventBus()
     let resolver = CandidateResolver(eventBus: bus)
     let actions = OutputActionRegistry(actions: [])
-    let coordinator = SessionCoordinator(
-      contextProvider: PublicSearchContext(),
+    let coordinator = makeTestSessionCoordinator(
+
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []), actionRegistry: actions,
       candidateResolver: resolver, eventBus: bus)
-    return AppModel(
+    return makeAppModelForTesting(
       workflows: [], eventBus: bus, sessionCoordinator: coordinator, outputActionRegistry: actions,
       recordWorkspace: workspace, candidateResolver: resolver,
       loadsPersistentSettingsOnInitialization: false, writeClipboardTextAction: { _ in },

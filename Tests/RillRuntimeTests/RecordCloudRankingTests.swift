@@ -2,7 +2,9 @@ import Foundation
 import Testing
 
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 
 struct RecordCloudRankingTests {
   @Test func reviewIsBoundedAndDoesNotCallProviderUntilConfirmed() async throws {
@@ -69,7 +71,8 @@ struct RecordCloudRankingTests {
     let task = Task { try await service.confirm(review) }
     await provider.waitUntilEntered()
     task.cancel()
-    await #expect(throws: RecordRankingError.busy) { try await service.setKey("") }
+    try await service.setKey("")
+    #expect(await !service.isConfigured)
     let shutdown = Task { await service.shutdown() }
     await provider.release()
     await #expect(throws: CancellationError.self) { try await task.value }

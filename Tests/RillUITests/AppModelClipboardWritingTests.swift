@@ -27,7 +27,7 @@ extension AppModelTests {
             DiagnosticEvent(
                 subsystem: .session,
                 level: .error,
-                event: "session.action",
+                event: .sessionAction,
                 message: alphanumericCanary,
                 metadata: [
                     "actionID": alphanumericCanary,

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillRecords
 
 struct RecordBufferTests {
   private func draft(_ text: String) -> RecordDraft {
@@ -89,6 +89,68 @@ struct RecordBufferTests {
     let output = try await store.beginBufferOutput(manualEntryID: first)
     try await store.finishBufferOutput(output.entry.id)
     #expect(try await store.entries(in: set.id).count == 1)
+  }
+
+  @Test(arguments: [RecordSourceKind.systemClipboard, .voiceInput])
+  func repeatedCaptureFulfillsEachReservationUsingOneRecord(source: RecordSourceKind) async throws {
+    let persistence = BufferCatalogFake()
+    let store = RecordStore(persistence: persistence)
+    let content = RecordDraft(payload: .text("same"), provenance: .init(source: .init(kind: source)))
+    let first = try await store.reserveBufferInput(in: RecordBuffer.speechID)
+    let firstRecord = try await store.ingest(content, into: [], fulfilling: first)
+    let second = try await store.reserveBufferInput(in: RecordBuffer.speechID)
+    let secondRecord = try await store.ingest(content, into: [], fulfilling: second)
+    #expect(firstRecord.id == secondRecord.id)
+    #expect(try await store.catalogSnapshot().records.count == 1)
+    let entries = try await store.entries(in: RecordBuffer.speechID)
+    #expect(entries.map(\.id) == [first, second])
+    #expect(entries.allSatisfy { $0.state == .ready && $0.recordID == firstRecord.id })
+    let restored = RecordStore(persistence: persistence)
+    #expect(try await restored.entries(in: RecordBuffer.speechID) == entries)
+    #expect(try await drain(restored) == "samesame")
+  }
+
+  @Test func reusedRecordReservationRollsBackOnRejectedCommit() async throws {
+    let persistence = BufferCatalogFake()
+    let store = RecordStore(persistence: persistence)
+    let original = try await store.ingest(draft("same"), into: [])
+    let reservation = try await store.reserveBufferInput(in: RecordBuffer.clipboardID)
+    let before = try await store.catalogSnapshot()
+    await persistence.rejectNext()
+    await #expect(throws: RecordStoreError.persistenceUnavailable) {
+      _ = try await store.ingest(draft("same"), into: [], fulfilling: reservation)
+    }
+    #expect(try await store.catalogSnapshot() == before)
+    #expect(try await store.bufferSnapshot().next?.state == .preparing)
+    let retried = try await store.ingest(draft("same"), into: [], fulfilling: reservation)
+    #expect(retried.id == original.id)
+    let restored = RecordStore(persistence: persistence)
+    #expect(try await restored.catalogSnapshot().records.count == 1)
+    #expect(try await drain(restored) == "same")
+  }
+
+  @Test func cancelledReservationIsNotRestoredAfterPayloadLookup() async throws {
+    let persistence = BufferCatalogFake()
+    let original = RecordStore(persistence: persistence)
+    _ = try await original.ingest(draft("same"), into: [])
+    let store = RecordStore(persistence: persistence)
+    let reservation = try await store.reserveBufferInput(in: RecordBuffer.speechID)
+    let started = AsyncStream<Void>.makeStream()
+    let release = AsyncStream<Void>.makeStream()
+    defer { release.continuation.finish() }
+    await persistence.beforeNextPayloadRead {
+      started.continuation.finish()
+      for await _ in release.stream {}
+    }
+    let capture = Task { try await store.ingest(draft("same"), into: [], fulfilling: reservation) }
+    for await _ in started.stream {}
+    try await store.cancelBufferInput(reservation)
+    release.continuation.finish()
+    await #expect(throws: BufferOutputError.unavailable) { _ = try await capture.value }
+    #expect(try await store.entries(in: RecordBuffer.speechID).isEmpty)
+    let restored = RecordStore(persistence: persistence)
+    #expect(try await restored.bufferSnapshot().remainingCount == 0)
+    #expect(try await restored.catalogSnapshot().records.count == 1)
   }
 
   @Test func restartDoesNotReplayUncertainDelivery() async throws {
@@ -192,6 +254,12 @@ struct RecordBufferTests {
 }
 
 actor BufferCatalogFake: RecordCatalogPersistenceStore {
+  private var payloadReadAction: (@Sendable () async -> Void)?
+
+  func beforeNextPayloadRead(_ action: @escaping @Sendable () async -> Void) {
+    payloadReadAction = action
+  }
+
   var manifest: RecordCatalogManifest?
   var nodes: [String: RecordCatalogNode] = [:]
   var blobs: [RecordID: RecordGraphPersistenceBlob] = [:]
@@ -231,7 +299,11 @@ actor BufferCatalogFake: RecordCatalogPersistenceStore {
     return revision!
   }
   func loadRecordPayload(_ reference: RecordGraphPersistenceBlobReference) async throws -> Data {
-    try #require(blobs[reference.recordID]?.payload)
+    if let action = payloadReadAction {
+      payloadReadAction = nil
+      await action()
+    }
+    return try #require(blobs[reference.recordID]?.payload)
   }
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
   func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64

@@ -1,6 +1,7 @@
 import Foundation
 
 public enum AppSettingKey: String, Codable, Sendable, Equatable {
+  case inputMethodLearning = "input-method.learning"
   case contextFeatureSettings = "context.feature-settings"
   case interfaceLanguage = "ui.language"
   case selectedWorkflowID = "workflow.selected-id"
@@ -379,94 +380,94 @@ public struct SpeechModelResourceBudget: Sendable, Equatable {
 }
 
 public enum OpenAIModelOption: String, Codable, CaseIterable, Identifiable, Sendable, Equatable {
-    case luna = "gpt-5.6-luna"
-    case terra = "gpt-5.6-terra"
-    case sol = "gpt-5.6-sol"
+  case luna = "gpt-5.6-luna"
+  case terra = "gpt-5.6-terra"
+  case sol = "gpt-5.6-sol"
 
-    public var id: String { rawValue }
+  public var id: String { rawValue }
 }
 
 public enum OpenAIVerificationFailure: String, Sendable, Equatable {
-    case credentialUnavailable
-    case configurationInvalid
-    case authenticationFailed
-    case rateLimited
-    case timedOut
-    case networkFailed
-    case refused
-    case incomplete
-    case invalidResponse
-    case unknown
+  case credentialUnavailable
+  case configurationInvalid
+  case authenticationFailed
+  case rateLimited
+  case timedOut
+  case networkFailed
+  case refused
+  case incomplete
+  case invalidResponse
+  case unknown
 }
 
 public protocol OpenAIVerificationFailureProviding: Error {
-    var openAIVerificationFailure: OpenAIVerificationFailure { get }
+  var openAIVerificationFailure: OpenAIVerificationFailure { get }
 }
 
 public struct OpenAISettings: Codable, Sendable, Equatable {
-    public static let defaultBaseURL = "https://api.openai.com/v1"
-    public static let defaultModel = OpenAIModelOption.luna.rawValue
-    public static let maximumBaseURLLength = 2_048
-    public static let maximumModelIdentifierLength = 256
+  public static let defaultBaseURL = "https://api.openai.com/v1"
+  public static let defaultModel = OpenAIModelOption.luna.rawValue
+  public static let maximumBaseURLLength = 2_048
+  public static let maximumModelIdentifierLength = 256
 
-    public var apiKey: String
-    public var baseURL: String
-    public var model: String
+  public var apiKey: String
+  public var baseURL: String
+  public var model: String
 
-    public init(
-        apiKey: String = "",
-        baseURL: String = Self.defaultBaseURL,
-        model: String = Self.defaultModel
-    ) {
-        self.apiKey = apiKey
-        self.baseURL = baseURL
-        self.model = model
+  public init(
+    apiKey: String = "",
+    baseURL: String = Self.defaultBaseURL,
+    model: String = Self.defaultModel
+  ) {
+    self.apiKey = apiKey
+    self.baseURL = baseURL
+    self.model = model
+  }
+
+  public static func isValidBaseURL(_ value: String) -> Bool {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard
+      !trimmed.isEmpty,
+      trimmed.unicodeScalars.count <= maximumBaseURLLength,
+      let components = URLComponents(string: trimmed),
+      components.user == nil,
+      components.password == nil,
+      components.query == nil,
+      components.fragment == nil,
+      let scheme = components.scheme?.lowercased(),
+      let host = components.host?.lowercased(),
+      !host.isEmpty
+    else {
+      return false
     }
-
-    public static func isValidBaseURL(_ value: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard
-            !trimmed.isEmpty,
-            trimmed.unicodeScalars.count <= maximumBaseURLLength,
-            let components = URLComponents(string: trimmed),
-            components.user == nil,
-            components.password == nil,
-            components.query == nil,
-            components.fragment == nil,
-            let scheme = components.scheme?.lowercased(),
-            let host = components.host?.lowercased(),
-            !host.isEmpty
-        else {
-            return false
-        }
-        if scheme == "https" {
-            return true
-        }
-        return scheme == "http" && isLoopbackHost(host)
+    if scheme == "https" {
+      return true
     }
+    return scheme == "http" && isLoopbackHost(host)
+  }
 
-    public static func isValidModelIdentifier(_ value: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard
-            !trimmed.isEmpty,
-            trimmed.unicodeScalars.count <= maximumModelIdentifierLength
-        else {
-            return false
-        }
-        return !trimmed.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+  public static func isValidModelIdentifier(_ value: String) -> Bool {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard
+      !trimmed.isEmpty,
+      trimmed.unicodeScalars.count <= maximumModelIdentifierLength
+    else {
+      return false
     }
+    return !trimmed.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+  }
 
-    private static func isLoopbackHost(_ host: String) -> Bool {
-        if host == "localhost" || host == "::1" {
-            return true
-        }
-        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
-        guard parts.count == 4, parts.first == "127" else { return false }
-        return parts.allSatisfy { part in
-            guard let octet = Int(part) else { return false }
-            return (0...255).contains(octet)
-        }
+  private static func isLoopbackHost(_ host: String) -> Bool {
+    if host == "localhost" || host == "::1" {
+      return true
     }
+    let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+    guard parts.count == 4, parts.first == "127" else { return false }
+    return parts.allSatisfy { part in
+      guard let octet = Int(part) else { return false }
+      return (0...255).contains(octet)
+    }
+  }
 }
 
 public enum ExportKind: String, Codable, Sendable, Equatable {

@@ -1,8 +1,11 @@
+@testable import RillKnowledge
+@testable import RillRecords
+@testable import RillWorkflows
+@testable import RillCore
+import RillDomainTestSupport
 import Foundation
 import XCTest
-@testable import RillCore
 @testable import RillPlatform
-@testable import RillRuntime
 
 private actor DeferredFinishAudioCaptureService: AudioCaptureService {
     private let capturedAudio: CapturedAudio
@@ -159,18 +162,18 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingCleanupContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
             eventBus: eventBus
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: captureService,
             hotkeyTap: HotkeyEventTap(),
-            capturedAudioProcessingQueue: CapturedAudioProcessingQueue(
+            capturedAudioProcessingQueue: makeTestCapturedAudioProcessingQueue(
                 sessionCoordinator: coordinator,
                 eventBus: eventBus
             ),
@@ -225,19 +228,19 @@ final class RecordingSessionManagerAudioCleanupTests: XCTestCase {
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordingCleanupContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
             eventBus: eventBus
         )
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )
-        let manager = RecordingSessionManager(
+        let manager = makeTestRecordingSessionManager(
             audioCaptureService: captureService,
             hotkeyTap: HotkeyEventTap(),
             capturedAudioProcessingQueue: queue,

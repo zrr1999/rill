@@ -51,6 +51,14 @@ extension L10n {
     }
 
     private static let runTextTable: [RunStatusTextKey: LocalizedText] = [
+        .benchmarkReadFailed: .init(
+            english: "The encrypted archive could not be read or authenticated.",
+            simplifiedChinese: "无法读取或验证加密归档。"
+        ),
+        .benchmarkExportFailed: .init(
+            english: "Export failed. Incomplete files were removed. Check the destination and archive before retrying.",
+            simplifiedChinese: "导出失败，未完成的文件已清理。请检查目标目录与归档后重试。"
+        ),
         .benchmarkClearFailed: .init(
             english: "Encrypted benchmark recordings could not be cleared.",
             simplifiedChinese: "无法清除加密的 Benchmark 录音。"
@@ -62,6 +70,10 @@ extension L10n {
         .benchmarkStorageUnavailable: .init(
             english: "Encrypted benchmark recording storage is unavailable because persistent settings storage is unavailable.",
             simplifiedChinese: "持久化设置存储不可用，因此无法使用加密的 Benchmark 录音归档。"
+        ),
+        .benchmarkEnabledStorageUnavailable: .init(
+            english: "Recording retention is saved as enabled, but encrypted storage is unavailable. No new benchmark audio will be retained in this session. Turn retention off to retry saving the preference.",
+            simplifiedChinese: "录音保留设置已保存为开启，但加密存储不可用，本次会话不会新增评测录音。请关闭保留开关以重试保存设置。"
         ),
         .benchmarkRetentionUpdateFailed: .init(
             english: "Benchmark recording retention could not be updated.",
@@ -392,9 +404,12 @@ extension L10n {
 }
 
 enum RunStatusTextKey: String, CaseIterable, Sendable {
+    case benchmarkReadFailed
+    case benchmarkExportFailed
     case benchmarkClearFailed
     case benchmarkSettingInvalid
     case benchmarkStorageUnavailable
+    case benchmarkEnabledStorageUnavailable
     case benchmarkRetentionUpdateFailed
     case builtInWakeWorkflowUpdatedFormat
     case builtInWorkflowOverrideRemoveFailedFormat

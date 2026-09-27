@@ -80,30 +80,4 @@ final class HistoryRetentionModelsTests: XCTestCase {
         )
     }
 
-    func testLegacyDiagnosticRepositoryFailsClosedForRetentionDeletion() async {
-        let repository = LegacyDiagnosticRepository()
-
-        do {
-            _ = try await repository.deleteAllEvents()
-            XCTFail("A legacy diagnostic repository must not silently claim deletion support.")
-        } catch let error as DiagnosticRepositoryMaintenanceError {
-            XCTAssertEqual(error, .deletionUnsupported)
-        } catch {
-            XCTFail("Unexpected compatibility error: \(error)")
-        }
-    }
-}
-
-private actor LegacyDiagnosticRepository: DiagnosticRepository {
-    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration { .initial }
-    func save(_ value: DiagnosticEvent, generation: RunHistoryWriteGeneration) async throws {
-        guard generation == .initial else { throw RunHistoryGenerationError.unsupported }
-        try await (self as any DiagnosticRepository).save(value)
-    }
-
-    func save(_ event: DiagnosticEvent) async throws {}
-
-    func events(matching query: DiagnosticQuery) async throws -> [DiagnosticEvent] {
-        []
-    }
 }

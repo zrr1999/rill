@@ -73,8 +73,9 @@ final class BuiltinActionReplacementTests: XCTestCase {
 private struct TextOnlyProbeAction: OutputAction {
     let id = "text-only"
 
-    func execute(text: String, context _: ActionContext) async throws -> ActionResult {
-        .externalOutput(text)
+    func execute(record: RecordDraft, context _: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
+        return .externalOutput(text)
     }
 }
 

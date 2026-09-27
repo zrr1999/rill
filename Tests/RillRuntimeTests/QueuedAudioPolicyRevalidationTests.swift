@@ -1,7 +1,12 @@
+@testable import RillSpeech
+@testable import RillKnowledge
+@testable import RillRecords
+@testable import RillWorkflows
+@testable import RillCore
+import RillPlatform
+import RillDomainTestSupport
 import Foundation
 import XCTest
-@testable import RillCore
-@testable import RillRuntime
 
 private actor MutableQueuedPrivacySettings {
     enum State: Sendable {
@@ -176,8 +181,9 @@ private struct QueuedWhitespaceRecognizer: SpeechRecognizer {
 private struct QueuedNoopAction: OutputAction {
     let id = "record.store"
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        .skipped("queue-policy-test")
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
+        return .skipped("queue-policy-test")
     }
 }
 
@@ -261,8 +267,8 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
             fileOwnership: .managedTemporary
         )
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
-            contextProvider: QueuedPolicyContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [QueuedWhitespaceRecognizer(id: "whitespace.recognizer")]
             ),
@@ -274,13 +280,13 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
             eventBus: eventBus
         )
         let recoveryStore = QueuedRecoveryStoreProbe()
-        let recoveryController = FailedAudioRecoveryController(
+        let recoveryController = makeTestFailedAudioRecoveryController(
             store: recoveryStore,
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )
         try await recoveryController.refresh(isEnabled: true)
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus,
             failedAudioRecoveryController: recoveryController
@@ -350,8 +356,8 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
 
         let eventBus = EventBus()
         let recognition = QueuedRecognitionBarrier(blockedRunID: UUID())
-        let coordinator = SessionCoordinator(
-            contextProvider: QueuedPolicyContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     QueuedPolicyRecognizer(id: "sherpa-onnx.local", barrier: recognition),
@@ -365,7 +371,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
             eventBus: eventBus
         )
         let recoveryStore = QueuedRecoveryStoreProbe()
-        let recoveryController = FailedAudioRecoveryController(
+        let recoveryController = makeTestFailedAudioRecoveryController(
             store: recoveryStore,
             sessionCoordinator: coordinator,
             eventBus: eventBus,
@@ -373,7 +379,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
         )
         try await recoveryController.refresh(isEnabled: true)
         let removal = QueuedTransientRemovalProbe()
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus,
             failedAudioRecoveryController: recoveryController,
@@ -568,8 +574,8 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
 
     let eventBus = EventBus()
     let recognition = QueuedRecognitionBarrier(blockedRunID: firstRunID)
-    let coordinator = SessionCoordinator(
-        contextProvider: QueuedPolicyContextProvider(),
+    let coordinator = makeTestSessionCoordinator(
+
         recognizerRegistry: SpeechRecognizerRegistry(
             recognizers: [
                 QueuedPolicyRecognizer(id: "sherpa-onnx.local", barrier: recognition),
@@ -594,7 +600,7 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
         }
     )
     let cleanup = QueuedCleanupProbe()
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
         sessionCoordinator: coordinator,
         eventBus: eventBus,
         rejectedCapturedAudioRemoval: { capturedAudio in

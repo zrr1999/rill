@@ -1,6 +1,8 @@
-import XCTest
+@testable import RillRecords
+
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+import XCTest
 
 final class CandidateResolverTests: XCTestCase {
     func testAcceptingSelectionsResolvesThePendingCase() async {

@@ -1,6 +1,8 @@
+import RillDomainTestSupport
 import XCTest
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+import XCTest
 
 private actor WorkflowPolicyProbe {
     private var contextCaptureCount = 0
@@ -48,7 +50,8 @@ private struct WorkflowPolicyAction: OutputAction {
     let id = "policy.action"
     let probe: WorkflowPolicyProbe
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
         await probe.recordAction()
         return .copiedToClipboard
     }
@@ -144,8 +147,8 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
         for testCase in cases {
             let probe = WorkflowPolicyProbe()
             let eventBus = EventBus()
-            let coordinator = SessionCoordinator(
-                contextProvider: WorkflowPolicyContextProvider(probe: probe),
+            let coordinator = makeTestSessionCoordinator(
+
                 recognizerRegistry: SpeechRecognizerRegistry(
                     recognizers: [WorkflowPolicyRecognizer(probe: probe)]
                 ),
@@ -180,8 +183,8 @@ final class WorkflowExecutionPolicyTests: XCTestCase {
         let probe = WorkflowPolicyProbe()
         let optionsProbe = WorkflowPolicyOptionsProbe()
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
-            contextProvider: WorkflowPolicyContextProvider(probe: probe),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [WorkflowPolicyRecognizer(probe: probe)]
             ),

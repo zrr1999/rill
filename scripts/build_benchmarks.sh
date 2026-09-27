@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 cd "$SCRIPT_DIR/.."
 mkdir -p .artifacts/benchmarks
 
-compiler=(xcrun swiftc -swift-version 6 -O -g -parse-as-library -target arm64-apple-macosx14.0)
+compiler=(xcrun swiftc -swift-version 6 -package-name RillMacOS -O -g -parse-as-library -target arm64-apple-macosx14.0)
 benchmark_compiler=("${compiler[@]}")
 use_codspeed=false
 preview_only=false
@@ -48,13 +48,13 @@ fi
 
 modules="$PWD/.artifacts/benchmarks/modules"
 mkdir -p "$modules"
-for module in RillCore RillRuntime RillPersistence; do
+for module in RillCore RillRecords RillPersistence; do
   "${compiler[@]}" -emit-library -static -emit-module -module-name "$module" \
     -emit-module-path "$modules/$module.swiftmodule" -I "$modules" \
     Sources/"$module"/*.swift -o "$modules/lib$module.a"
 done
 "${benchmark_compiler[@]}" -I "$modules" -L "$modules" \
-  -lRillRuntime -lRillPersistence -lRillCore -lsqlite3 \
+  -lRillRecords -lRillPersistence -lRillCore -lsqlite3 \
   Benchmarks/RecordBufferBenchmarks.swift Benchmarks/CodSpeedResults.swift Benchmarks/CodSpeedRecorder.swift \
   -o .artifacts/benchmarks/record-buffer
 

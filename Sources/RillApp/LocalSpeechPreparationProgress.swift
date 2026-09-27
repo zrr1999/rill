@@ -1,4 +1,5 @@
 import RillSpeechContracts
+import RillSpeech
 import Foundation
 import RillProviders
 

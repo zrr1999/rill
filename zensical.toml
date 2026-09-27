@@ -9,28 +9,23 @@ docs_dir = ".artifacts/docs/source"
 site_dir = ".artifacts/docs/site"
 strict = true
 nav = [
-  { "使用指南" = "README.md" },
-  { "开发" = [
-    { "贡献指南" = "CONTRIBUTING.md" },
-    { "架构与状态归属" = "docs/architecture.md" },
-    { "Record 存储与交付" = "docs/record-architecture.md" },
+  { "Rill" = "README.md" },
+  { "开始使用" = "docs/usage.md" },
+  { "语音输入" = "docs/voice.md" },
+  { "输入法" = "docs/input-method.md" },
+  { "记录与搜索" = "docs/records.md" },
+  { "工作流" = "docs/workflows.md" },
+  { "词汇与记忆" = "docs/vocabulary-memory.md" },
+  { "隐私与数据" = "docs/privacy-data.md" },
+  { "排查问题" = "docs/troubleshooting.md" },
+  { "参考" = [
+    { "快捷键与设置" = "docs/reference.md" },
     { "工作流 TOML" = "docs/workflow-toml.md" },
-    { "上下文纠错" = "docs/contextual-correction.md" },
-    { "界面方向" = "docs/ui-direction.md" },
-    { "图标设计" = "docs/icon-design.md" },
-    { "构建性能" = "docs/build-performance.md" },
-  ] },
-  { "维护" = [
-    { "发布步骤" = "docs/releasing.md" },
-    { "发布说明模板" = "docs/release-notes-template.md" },
-    { "发布验收" = "docs/release-qa-checklist.md" },
-    { "文档站" = "docs/documentation.md" },
-  ] },
-  { "隐私与许可" = [
-    { "隐私与数据流" = "PRIVACY.md" },
+    { "完整隐私说明" = "PRIVACY.md" },
     { "安全报告" = "SECURITY.md" },
     { "第三方依赖" = "THIRD_PARTY_NOTICES.md" },
     { "本地模型" = "LOCAL_MODEL_NOTICES.md" },
+    { "输入法依赖" = "docs/input-method-dependencies.md" },
   ] },
 ]
 
@@ -38,7 +33,6 @@ nav = [
 # Sources outside the navigation that must also be available in the site.
 docs_assets = [
   "LICENSE",
-  "docs/assets/rill-icon-family.png",
   "docs/examples/conditional-workflow.toml",
   "docs/schemas/workflow-v2.schema.json",
 ]
