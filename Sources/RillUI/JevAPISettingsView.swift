@@ -5,7 +5,8 @@ struct JevAPISettingsView: View {
   @Bindable var settings: JevAPISettingsModel
   let language: AppLanguage
   @State private var apiKey = ""
-  @FocusState private var isEditingKey: Bool
+  let focusedItem: FocusState<SettingsItem?>.Binding
+  let accessibilityFocusedItem: AccessibilityFocusState<SettingsItem?>.Binding
 
   var body: some View {
     VStack(alignment: .leading, spacing: RillSpacing.row) {
@@ -18,25 +19,25 @@ struct JevAPISettingsView: View {
           .textFieldStyle(.roundedBorder)
           .labelsHidden()
           .accessibilityLabel("TypeSafe API Key")
-          .focused($isEditingKey)
+          .focused(focusedItem, equals: .jevCredential)
+          .accessibilityFocused(accessibilityFocusedItem, equals: .jevCredential)
           .accessibilityIdentifier("settings.jev.api-key")
       }
       HStack {
         Button(text(.saveKey)) {
-          isEditingKey = false
+          focusedItem.wrappedValue = nil
           settings.setKey(apiKey)
           apiKey = ""
         }
         .disabled(apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         .accessibilityIdentifier("settings.jev.save-key")
         Button(text(.clearKey)) {
-          isEditingKey = false
+          focusedItem.wrappedValue = nil
           settings.setKey("")
           apiKey = ""
         }
         .disabled(!settings.isConfigured)
         .accessibilityIdentifier("settings.jev.clear-key")
-        if settings.isSaving { ProgressView().controlSize(.small) }
       }
       Text(text(settings.isConfigured ? .keyReady : .keyNotice))
         .font(.caption).foregroundStyle(.secondary)
@@ -46,7 +47,6 @@ struct JevAPISettingsView: View {
           .accessibilityIdentifier("settings.jev.error")
       }
     }
-    .disabled(settings.isSaving)
     .onDisappear { apiKey = "" }
   }
 

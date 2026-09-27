@@ -26,7 +26,7 @@ codspeed run --mode walltime -- bash -c '.artifacts/benchmarks/record-text && .a
 ```
 
 The build script compiles production code with optimization. Buffer benchmarks
-link the Core, Runtime and Persistence modules, without a shipping executable
+link the Core, Records and Persistence modules, without a shipping executable
 or the MLX dependency graph. The two `Record*Benchmarks.swift` files own the
 workload inventories; `CodSpeedRecorder.swift` owns the shared instrumentation
 lifecycle. With `--codspeed`, the

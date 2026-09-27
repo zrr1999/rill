@@ -1,8 +1,10 @@
+@testable import RillRecords
+@testable import RillWorkflows
+import RillDomainTestSupport
 import Foundation
 import RillCore
 import RillProviders
 import Testing
-@testable import RillRuntime
 
 struct BuiltinVoiceOutputTests {
     @Test(arguments: [WorkflowTitleKey.speechRecognition, .smartCleanup, .voiceAssistant], [false, true])
@@ -23,8 +25,8 @@ struct BuiltinVoiceOutputTests {
         let sinkID = title == .voiceAssistant ? SpeechOutputActionID.speak : "focused-application.insert"
         let bus = EventBus()
         let receipts = InMemoryWorkflowRunReceiptRepository()
-        let coordinator = SessionCoordinator(
-            contextProvider: VoiceOutputContext(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: [VoiceOutputTransformer()]),
             actionRegistry: OutputActionRegistry(actions: [
@@ -89,7 +91,8 @@ private struct VoiceDeliveryAction: OutputAction {
     let probe: VoiceDeliveryProbe
     let fails: Bool
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        let text = try record.requireText(for: id)
         await probe.record(text: text, savedRecordCount: try await store.snapshot().records.count)
         return fails ? .failed("Delivery unavailable") : .externalOutput("Delivered")
     }

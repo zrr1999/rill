@@ -1,7 +1,7 @@
 import AppKit
 import RillCore
 import RillPlatform
-import RillRuntime
+import RillRecords
 import RillUI
 import SwiftUI
 
@@ -204,7 +204,7 @@ final class BufferOutputController: NSObject {
     show(
       content: NSHostingView(
         rootView: RecordBufferStatusView(
-          model: model.recordWorkspace.buffers, language: model.language)))
+          model: model.recordWorkspace.buffers, language: model.settings.language)))
   }
 
   private func showDrag(_ output: BufferOutput) {
@@ -217,7 +217,7 @@ final class BufferOutputController: NSObject {
       stack.addArrangedSubview(
         NSHostingView(
           rootView: RecordBufferSummaryView(
-            model: model.recordWorkspace.buffers, language: model.language)))
+            model: model.recordWorkspace.buffers, language: model.settings.language)))
     }
     switch output.record.payload {
     case .image(let data):
@@ -294,7 +294,7 @@ final class BufferOutputController: NSObject {
 
   private func notify(_ chinese: String, _ english: String) {
     guard let model else { return }
-    model.recordWorkspace.buffers.message = model.language == .simplifiedChinese ? chinese : english
+    model.recordWorkspace.buffers.message = model.settings.language == .simplifiedChinese ? chinese : english
     showConfirmation()
   }
 
@@ -308,7 +308,7 @@ final class BufferOutputController: NSObject {
       panel?.isFloatingPanel = true
       panel?.becomesKeyOnlyIfNeeded = true
       panel?.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-      panel?.title = model?.language == .simplifiedChinese ? "Rill · 输出下一项" : "Rill · Output Next"
+      panel?.title = model?.settings.language == .simplifiedChinese ? "Rill · 输出下一项" : "Rill · Output Next"
       panel?.center()
     }
     panel?.contentView = content

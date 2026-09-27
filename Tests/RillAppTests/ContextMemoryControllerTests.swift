@@ -1,10 +1,14 @@
+import RillDomainTestSupport
+import RillTestSupport
 import Foundation
 import Testing
 @testable import RillApp
 import RillCore
 import RillPersistence
 import RillProviders
-import RillRuntime
+import RillWorkflows
+import RillRecords
+import RillKnowledge
 import RillUI
 
 @MainActor
@@ -59,11 +63,11 @@ struct ContextMemoryControllerTests {
         let bus = EventBus()
         let resolver = CandidateResolver(eventBus: bus)
         let actions = OutputActionRegistry(actions: [])
-        let coordinator = SessionCoordinator(contextProvider: EmptyContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []), actionRegistry: actions,
             candidateResolver: resolver, eventBus: bus)
-        return AppModel(workflows: [], eventBus: bus, sessionCoordinator: coordinator,
+        return makeAppModelForTesting(workflows: [], eventBus: bus, sessionCoordinator: coordinator,
             outputActionRegistry: actions, candidateResolver: resolver, loadsPersistentSettingsOnInitialization: false,
             writeClipboardTextAction: { _ in }, deliverNextRecordAction: {},
             permissionSnapshot: .init(accessibility: .granted, microphone: .granted),

@@ -4,27 +4,35 @@ import Testing
 
 @MainActor
 struct JevPolishingSettingsTests {
-  @Test func consentIsExplicitAndRevokedSynchronouslyWhenKeyOrToggleChanges() throws {
-    let source = JevPolishingSettingsSource()
-    let model = JevPolishingSettingsModel(source: source)
-    model.apiKey = " unit-test-key "
-    #expect(model.hasValidKey)
+  @Test func oneCredentialHasIndependentPolishingConsentAndSynchronousRevocation() throws {
+    let fixture = JevPanelFixture()
+    let model = JevAPISettingsModel(service: fixture.service)
+    let source = fixture.service.settings
+    model.setKey(" unit-test-key ")
+    #expect(model.isConfigured)
+    #expect(!model.isPolishingEnabled)
     #expect(source.currentAuthorization() == nil)
-    model.isEnabled = true
-    let original = try #require(source.currentAuthorization())
-    #expect(original.apiKey == "unit-test-key")
-    model.apiKey = "replacement-test-key"
-    #expect(!source.isCurrent(original))
-    let replacement = try #require(source.currentAuthorization())
-    model.isEnabled = false
+    let ranking = try #require(source.rankingAuthorization())
+    model.isPolishingEnabled = true
+    let polishing = try #require(source.currentAuthorization())
+    #expect(polishing.apiKey == ranking.apiKey)
+    model.setKey("bad")
+    #expect(model.error == .invalidInput)
+    #expect(source.isCurrent(ranking) && source.isCurrent(polishing))
+    model.setKey("replacement-test-key")
+    #expect(!source.isCurrent(ranking) && !source.isCurrent(polishing))
+    #expect(model.isPolishingEnabled)
+    let replacement = try #require(source.rankingAuthorization())
+    model.isPolishingEnabled = false
+    #expect(source.isCurrent(replacement))
+    #expect(source.currentAuthorization() == nil)
+    model.isPolishingEnabled = true
+    model.setKey("")
+    #expect(!model.isConfigured && !model.isPolishingEnabled)
     #expect(!source.isCurrent(replacement))
-    #expect(source.currentAuthorization() == nil)
-    model.isEnabled = true
-    model.apiKey = ""
-    #expect(!model.hasValidKey)
-    #expect(source.currentAuthorization() == nil)
-    let freshSession = JevPolishingSettingsModel()
-    #expect(!freshSession.isEnabled)
-    #expect(freshSession.apiKey.isEmpty)
+    model.setKey("another-valid-key")
+    #expect(!model.isPolishingEnabled)
+    let fresh = JevSessionSettingsSource()
+    #expect(!fresh.isConfigured && !fresh.isPolishingEnabled)
   }
 }

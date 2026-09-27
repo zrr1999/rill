@@ -341,8 +341,9 @@ Complete the pass in both App languages.
       TTS model work never queues on the ASR worker supervisor.
 - [ ] During a long streaming hypothesis, the live-subtitle panel keeps its
       standard fixed frame; text preserves the latest two lines without width
-      or height growth. Preparing/processing compact states use their own fixed
-      frame and neither layout steals key focus from the foreground App.
+      or height growth. Once expanded, the current run keeps that frame through
+      processing even when the hypothesis becomes empty. A new run resets the
+      compact layout; neither layout steals key focus from the foreground App.
 - [ ] Record wake-listening idle CPU and memory, cold model preparation time,
       warm startup time, and detection latency on every supported Mac tier.
       Repeat the chain with built-in microphone/speaker and headphones, on the
@@ -352,7 +353,12 @@ Complete the pass in both App languages.
       preset voices. Stopping from UI and Esc cancels playback, cleans the
       managed WAV, and restores wake listening without replaying the text.
 - [ ] With macOS output unmuted and at an audible level, Fn capture and wake-word
-      activation use the same start cue. A voice-assistant run speaks its LLM
+      activation use the same start cue. Hold-to-talk, toggle, manual, and menu-bar
+      capture play one start cue after readiness and one stop cue after input
+      closes. Cancellation, failed starts, and rapid replacement never replay
+      stale cues; wake activation never duplicates its start cue. Verify with
+      speakers and headphones that the start cue does not obscure the first
+      syllable or appear in the transcript. A voice-assistant run speaks its LLM
       answer once; History shows the recognized input for older records and the
       exact ordered text sent to each LLM step for new records, without exposing
       those bodies when history preview is restricted or disabled.

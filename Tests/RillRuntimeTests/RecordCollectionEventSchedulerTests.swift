@@ -1,8 +1,8 @@
+@testable import RillWorkflows
 import Foundation
 import XCTest
 
 @testable import RillCore
-@testable import RillRuntime
 
 final class RecordCollectionEventSchedulerTests: XCTestCase {
     func testSubmissionDeduplicatesExactEventIdentityAndStopsAfterDrain() async {

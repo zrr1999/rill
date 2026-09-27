@@ -1,5 +1,6 @@
 import Foundation
 import RillCore
+import RillSpeech
 
 public struct AutomaticSpeechSynthesizer: SpeechSynthesizer {
   public let id = "speech.automatic"
@@ -43,43 +44,27 @@ public struct AutomaticSpeechSynthesizer: SpeechSynthesizer {
   }
 }
 
-public enum SpeechSynthesisActionError: Error, LocalizedError, Sendable {
-  case invalidRequest
-  case preferredProviderUnavailable
-  case synthesisFailed
-  case playbackFailed
-
-  public var errorDescription: String? {
-    switch self {
-    case .invalidRequest:
-      return "The speech output action contains an invalid request."
-    case .preferredProviderUnavailable:
-      return "Qwen3-TTS is not available in this build."
-    case .synthesisFailed:
-      return "Speech synthesis could not complete."
-    case .playbackFailed:
-      return "Speech playback could not complete."
-    }
-  }
-}
-
 public struct SpeakTextAction: OutputAction {
   public let id = SpeechOutputActionID.speak
   private let synthesizer: any SpeechSynthesizer
   private let playback: any SpeechPlaybackService
+  private let removeTemporaryAsset: @Sendable (SpeechAsset) throws -> Void
   private let playbackStateChanged: @Sendable (Bool) async -> Void
 
   public init(
     synthesizer: any SpeechSynthesizer,
     playback: any SpeechPlaybackService,
+    removeTemporaryAsset: @escaping @Sendable (SpeechAsset) throws -> Void,
     playbackStateChanged: @escaping @Sendable (Bool) async -> Void = { _ in }
   ) {
     self.synthesizer = synthesizer
     self.playback = playback
+    self.removeTemporaryAsset = removeTemporaryAsset
     self.playbackStateChanged = playbackStateChanged
   }
 
-  public func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  public func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+      let text = try record.requireText(for: id)
     let configuration: SpeechActionConfiguration
     do {
       guard case .speech(let resolved) = try context.configuration(for: id) else {
@@ -106,15 +91,15 @@ public struct SpeakTextAction: OutputAction {
     do {
       try await playback.play(asset, runID: context.runID)
       await playbackStateChanged(false)
-      _ = try? asset.removeManagedTemporaryFile()
+      try? removeTemporaryAsset(asset)
       return .externalOutput("Speech")
     } catch is CancellationError {
       await playbackStateChanged(false)
-      _ = try? asset.removeManagedTemporaryFile()
+      try? removeTemporaryAsset(asset)
       throw CancellationError()
     } catch {
       await playbackStateChanged(false)
-      _ = try? asset.removeManagedTemporaryFile()
+      try? removeTemporaryAsset(asset)
       return .failed(SpeechSynthesisActionError.playbackFailed.localizedDescription)
     }
   }

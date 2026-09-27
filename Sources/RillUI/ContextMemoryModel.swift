@@ -2,6 +2,16 @@ import Foundation
 import Observation
 import RillCore
 
+public enum ContextMemoryFailure: Sendable, Equatable {
+  case settingsLoad, revocation, authorization, storage, mutation, correction, unavailable
+}
+
+public enum ContextMemoryMutationResult: Sendable, Equatable {
+  case saved
+  case failed(ContextMemoryFailure)
+  case stopped
+}
+
 @MainActor @Observable
 public final class ContextMemoryModel {
     public private(set) var settings = ContextFeatureSettings()

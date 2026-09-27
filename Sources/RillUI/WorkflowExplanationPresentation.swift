@@ -23,19 +23,19 @@ struct WorkflowExplanationPresentation: Sendable, Equatable {
     ) -> WorkflowExplanationPresentation {
         WorkflowExplanationPresentation(
             status: receipt.status,
-            statusTitle: UIStrings.workflowExplanationStatusTitle(
+            statusTitle: L10n.workflowExplanationStatusTitle(
                 receipt.status,
                 language: language
             ),
-            statusDetail: UIStrings.workflowExplanationStatusDetail(
+            statusDetail: L10n.workflowExplanationStatusDetail(
                 receipt.status,
                 language: language
             ),
-            trigger: UIStrings.workflowExplanationTrigger(receipt.trigger, language: language),
+            trigger: L10n.workflowExplanationTrigger(receipt.trigger, language: language),
             inputs: receipt.inputs.map { input in
                 WorkflowExplanationPresentationRow(
-                    title: UIStrings.workflowExplanationInput(input.category, language: language),
-                    detail: UIStrings.workflowExplanationInputDetail(
+                    title: L10n.workflowExplanationInput(input.category, language: language),
+                    detail: L10n.workflowExplanationInputDetail(
                         input,
                         privacyRedacted: isPrivacyRedacted(
                             input.category,
@@ -47,25 +47,25 @@ struct WorkflowExplanationPresentation: Sendable, Equatable {
             },
             transforms: receipt.transforms.map { transform in
                 WorkflowExplanationPresentationRow(
-                    title: UIStrings.workflowExplanationTransform(transform.kind, language: language),
-                    detail: UIStrings.workflowExplanationTransformDetail(transform, language: language)
+                    title: L10n.workflowExplanationTransform(transform.kind, language: language),
+                    detail: L10n.workflowExplanationTransformDetail(transform, language: language)
                 )
             },
             outputs: receipt.outputs.map { output in
                 WorkflowExplanationPresentationRow(
-                    title: UIStrings.workflowExplanationOutput(output.effect, language: language),
-                    detail: UIStrings.workflowExplanationOutputDetail(output, language: language)
+                    title: L10n.workflowExplanationOutput(output.effect, language: language),
+                    detail: L10n.workflowExplanationOutputDetail(output, language: language)
                 )
             },
             destinations: receipt.processingDestinations.map {
-                UIStrings.workflowExplanationDestination($0, language: language)
+                L10n.workflowExplanationDestination($0, language: language)
             },
-            privacyReasons: UIStrings.workflowExplanationPrivacyReasons(
+            privacyReasons: L10n.workflowExplanationPrivacyReasons(
                 receipt.privacyReasons,
                 language: language
             ),
             issues: receipt.issues.map {
-                UIStrings.workflowExplanationIssue($0, language: language)
+                L10n.workflowExplanationIssue($0, language: language)
             }
         )
     }

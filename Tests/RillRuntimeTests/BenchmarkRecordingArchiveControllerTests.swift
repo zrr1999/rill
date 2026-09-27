@@ -1,8 +1,8 @@
+@testable import RillWorkflows
 import Foundation
 import XCTest
 
 @testable import RillCore
-@testable import RillRuntime
 
 private actor BenchmarkArchiveStoreProbe: BenchmarkRecordingArchiveStore {
   private(set) var preservedRunIDs: [UUID] = []

@@ -6,6 +6,7 @@ enum StreamActivityPhase: Sendable, Equatable {
     case recording
     case transcribing
     case running
+    case resolving, transforming, saving, delivering
 }
 
 /// Pure presentation policy for the Stream page in-progress status card.
@@ -26,27 +27,37 @@ struct StreamActivityPresentation: Sendable, Equatable {
         isRunning: Bool,
         workflowAudioRunState: WorkflowAudioRunState,
         isAudioProcessingQueueVisible: Bool,
-        language: AppLanguage
+        language: AppLanguage,
+        activeStage: WorkflowRunStage? = nil
     ) -> StreamActivityPresentation? {
+        switch workflowAudioRunState {
+        case .idle, .transcribing:
+            if isRunning || isAudioProcessingQueueVisible,
+               let activeStage, let phase = processingPhase(activeStage) {
+                return .init(phase: phase, title: L10n.runStageTitle(activeStage, language: language),
+                    detail: L10n.string(.menuStatusRunningDetail, language: language), symbol: .hourglass)
+            }
+        case .preparing, .recording: break
+        }
         switch workflowAudioRunState {
         case .preparing:
             return StreamActivityPresentation(
                 phase: .preparing,
-                title: UIStrings.text(.workflowPreparingAudio, language: language),
+                title: L10n.text(.workflowPreparingAudio, language: language),
                 detail: L10n.string(.menuStatusRunningDetail, language: language),
                 symbol: .hourglass
             )
         case .recording:
             return StreamActivityPresentation(
                 phase: .recording,
-                title: UIStrings.text(.streamActivityRecording, language: language),
+                title: L10n.text(.streamActivityRecording, language: language),
                 detail: L10n.string(.menuStatusRunningDetail, language: language),
                 symbol: .micFill
             )
         case .transcribing:
             return StreamActivityPresentation(
                 phase: .transcribing,
-                title: UIStrings.text(.workflowTranscribing, language: language),
+                title: L10n.text(.workflowTranscribing, language: language),
                 detail: L10n.string(.menuStatusRunningDetail, language: language),
                 symbol: .waveform
             )
@@ -69,7 +80,7 @@ struct StreamActivityPresentation: Sendable, Equatable {
         if isAudioProcessingQueueVisible {
             return StreamActivityPresentation(
                 phase: .transcribing,
-                title: UIStrings.text(.workflowTranscribing, language: language),
+                title: L10n.text(.workflowTranscribing, language: language),
                 detail: L10n.string(.menuStatusRunningDetail, language: language),
                 symbol: .waveform
             )
@@ -77,4 +88,15 @@ struct StreamActivityPresentation: Sendable, Equatable {
 
         return nil
     }
+    private static func processingPhase(_ stage: WorkflowRunStage) -> StreamActivityPhase? {
+        switch stage {
+        case .recognizing: .transcribing
+        case .resolving: .resolving
+        case .transforming: .transforming
+        case .saving: .saving
+        case .delivering: .delivering
+        case .preparing, .capturingInput, .completed, .failed: nil
+        }
+    }
+
 }

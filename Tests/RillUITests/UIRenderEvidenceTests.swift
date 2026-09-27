@@ -2,12 +2,54 @@ import AppKit
 import SwiftUI
 import XCTest
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 @testable import RillUI
 
 /// Opt-in rendered evidence with ephemeral services, never the user's settings or clipboard.
 @MainActor
 final class UIRenderEvidenceTests: XCTestCase {
+    func testRenderLiveSubtitleControls() async throws {
+        guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+            throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+        }
+        let output = URL(fileURLWithPath: directory, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        for language in AppLanguage.allCases {
+            for dark in [false, true] {
+                let snapshots = [8.0, 360_000, 52, 58].map { elapsed in
+                    LiveSubtitleSnapshot(
+                        runID: UUID(), phase: .recording,
+                        hypothesisText: language == .english ? "Recording preview" : "正在录音的字幕预览",
+                        levelMeter: [0.2, 0.4, 0.8, 0.3, 0.6, 0.5], networkUsage: .online,
+                        recordingStartedAt: Date().addingTimeInterval(-elapsed),
+                        maximumRecordingDurationSeconds: elapsed < 60 ? 60 : nil,
+                        recordingDurationIsUnlimited: elapsed >= 60,
+                        canRemoveRecordingDurationLimit: true
+                    )
+                }
+                let content = VStack(spacing: 16) {
+                    ForEach(snapshots, id: \.runID) { snapshot in
+                        HStack(spacing: 16) {
+                            LiveSubtitleOverlay(snapshot: snapshot, language: language,
+                                expandedLayout: false, includesShadow: false)
+                            LiveSubtitleOverlay(snapshot: snapshot, language: language,
+                                expandedLayout: true, includesShadow: false)
+                        }
+                    }
+                }.padding(16)
+                let size = NSSize(
+                    width: LiveSubtitleOverlayMetrics.compactSurfaceWidth
+                        + LiveSubtitleOverlayMetrics.expandedSurfaceWidth + 48,
+                    height: LiveSubtitleOverlayMetrics.expandedSurfaceHeight * 4 + 80
+                )
+                try await render(content, size: size, dark: dark,
+                    to: output.appendingPathComponent("subtitle-controls-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+            }
+        }
+    }
+
     func testRenderManagementSurfaces() async throws {
         guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
             throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
@@ -52,13 +94,13 @@ final class UIRenderEvidenceTests: XCTestCase {
                 try await render(RecordWorkspaceView(workspace: workspace, language: language, copySelection: { _ in .storageUnavailable }),
                     size: NSSize(width: 620, height: 660), dark: dark,
                     to: output.appendingPathComponent("records-compact-\(variant).png"))
-                workspace.payloadKindFilter = .image
-                workspace.showsPinnedOnly = true
+                workspace.setPayloadKindFilter(.image)
+                workspace.setShowsPinnedOnly(true)
                 try await render(RecordWorkspaceView(workspace: workspace, language: language),
                     size: NSSize(width: 720, height: 560), dark: dark,
                     to: output.appendingPathComponent("records-no-results-\(variant).png"))
-                workspace.payloadKindFilter = nil
-                workspace.showsPinnedOnly = false
+                workspace.setPayloadKindFilter(nil)
+                workspace.setShowsPinnedOnly(false)
                 try await render(GlobalSearchResultsView(query: .constant("unavailable"), results: [], selectedResultID: nil,
                     historySearchState: .failed, recordSearchState: .failed, historyFailureActionTitle: "Retry", language: language,
                     focusRequest: 0, onMoveSelection: { _ in }, onSubmit: {}, onCancel: {},
@@ -90,6 +132,23 @@ final class UIRenderEvidenceTests: XCTestCase {
         await workspace.shutdown()
     }
 
+    func testRenderTextCorrection() async throws {
+        guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+            throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+        }
+        let model = makeHarness().model
+        for language in AppLanguage.allCases {
+            model.setInterfaceLanguage(language)
+            for dark in [false, true] {
+                let sheet = VocabularyCorrectionSheet(model: model,
+                    source: RecognitionCorrectionSource(preMappingText: "请保留原始文本，不要重复发送。", context: VocabularyRuleContext()),
+                    workflowRunID: UUID())
+                try await render(sheet, size: NSSize(width: 620, height: 600), dark: dark,
+                    to: URL(fileURLWithPath: directory).appendingPathComponent("correction-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+            }
+        }
+    }
+
     private func seedRecords(_ store: RecordStore) async throws -> [(String, RecordID)] {
         let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 480, pixelsHigh: 280,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
@@ -116,7 +175,9 @@ final class UIRenderEvidenceTests: XCTestCase {
         return ids
     }
 
-    private func render<Content: View>(_ content: Content, size: NSSize, dark: Bool, to url: URL) async throws {
+    private func render<Content: View>(
+        _ content: Content, size: NSSize, dark: Bool, focusWindow: Bool = false, to url: URL
+    ) async throws {
         let originalAppearance = NSApplication.shared.appearance
         let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         NSApplication.shared.appearance = appearance
@@ -127,7 +188,7 @@ final class UIRenderEvidenceTests: XCTestCase {
         window.isReleasedWhenClosed = false
         window.contentView = view
         view.frame = NSRect(origin: .zero, size: size)
-        window.orderFront(nil)
+        if focusWindow { window.makeKeyAndOrderFront(nil) } else { window.orderFront(nil) }
         defer { window.orderOut(nil); window.close() }
         for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
         window.layoutIfNeeded()

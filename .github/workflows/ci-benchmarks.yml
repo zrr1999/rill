@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - Sources/RillCore/**
-      - Sources/RillRuntime/**
+      - Sources/RillRecords/**
       - Sources/RillPersistence/**
       - Benchmarks/**
       - scripts/build_benchmarks.sh

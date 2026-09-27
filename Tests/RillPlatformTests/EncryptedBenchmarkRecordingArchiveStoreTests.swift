@@ -32,6 +32,11 @@ final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
     XCTAssertEqual(receipt.plaintextByteCount, audioBytes.count)
     XCTAssertEqual(receipt.outcome, .completed)
     XCTAssertEqual(receipt.trigger, .hotkey)
+    let identifiers = try await store.recordingIDs()
+    XCTAssertEqual(identifiers, [runID])
+    let reopened = try await store.recording(runID: runID)
+    XCTAssertEqual(reopened.receipt, receipt)
+    XCTAssertEqual(reopened.audioBytes, audioBytes)
 
     let archiveFiles = try ownedFiles(in: fixture.archiveDirectory)
     XCTAssertEqual(archiveFiles.count, 2)
@@ -58,6 +63,29 @@ final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
       ),
       .boundAndValid
     )
+  }
+
+  func testReplayReadRejectsTamperedAudioAndSymlinks() async throws {
+    let fixture = try makeFixture()
+    defer { fixture.cleanup() }
+    let store = try makeStore(directoryURL: fixture.archiveDirectory, keyByte: 0x33)
+    let audio = try makeAudio(bytes: Data([1, 2, 3]))
+    defer { _ = try? audio.removeManagedTemporaryFile() }
+    let runID = UUID()
+    _ = try await store.preserve(audio: audio, runID: runID, workflowID: UUID(),
+      trigger: .hotkey, outcome: .completed, metadata: [:], now: Date())
+    let stored = fixture.archiveDirectory.appendingPathComponent(runID.uuidString + ".rillaudio")
+    try Data("tampered".utf8).write(to: stored)
+    do {
+      _ = try await store.recording(runID: runID)
+      XCTFail("Authenticated audio must be required")
+    } catch { XCTAssertEqual(error as? BenchmarkRecordingArchiveError, .invalidEntry) }
+    try FileManager.default.removeItem(at: stored)
+    try FileManager.default.createSymbolicLink(at: stored, withDestinationURL: try XCTUnwrap(audio.fileURL))
+    do {
+      _ = try await store.recording(runID: runID)
+      XCTFail("Replay reads must not follow symbolic links")
+    } catch { XCTAssertEqual(error as? BenchmarkRecordingArchiveError, .invalidEntry) }
   }
 
   func testWrongKeyCannotOpenExistingArchiveBinding() throws {

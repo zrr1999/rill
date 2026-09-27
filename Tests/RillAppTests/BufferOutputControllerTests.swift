@@ -1,10 +1,13 @@
 import AppKit
 import Testing
+import RillDomainTestSupport
+import RillTestSupport
+import RillWorkflows
 
 @testable import RillApp
 @testable import RillCore
 @testable import RillPlatform
-@testable import RillRuntime
+@testable import RillRecords
 @testable import RillUI
 
 @MainActor struct BufferOutputControllerTests {
@@ -13,7 +16,7 @@ import Testing
     let store = RecordStore()
     _ = try await enqueue(.text("first"), store: store)
     let model = makeModel(store)
-    model.language = .english
+    model.applyLanguage(.english)
     let element = BufferVerifiableTarget()
     let target = RecordBufferTextOutput.Target(
       element: element, isCurrent: { true }, post: { _ in
@@ -61,7 +64,7 @@ import Testing
     let store = RecordStore()
     let id = try await enqueue(.image(Data([1])), store: store)
     let model = makeModel(store)
-    model.language = .english
+    model.applyLanguage(.english)
     let controller = BufferOutputController(
       store: store, model: model, injectionEngine: makeInjectionEngine(),
       textOutput: .init(capture: { nil }, modifiersHeld: { false }, isSecure: { false }),
@@ -212,11 +215,10 @@ import Testing
       ForbiddenBufferClipboardAction(id: "system-clipboard.copy"),
       ForbiddenBufferClipboardAction(id: "focused-application.insert"),
     ])
-    let coordinator = SessionCoordinator(
-      contextProvider: BufferOutputTestContextProvider(),
+    let coordinator = makeTestSessionCoordinator(
       recognizerRegistry: .init(recognizers: []), transformerRegistry: .init(transformers: []),
       actionRegistry: actions, candidateResolver: resolver, recordStore: store, eventBus: bus)
-    return AppModel(
+    return makeAppModelForTesting(
       workflows: [], eventBus: bus, sessionCoordinator: coordinator,
       outputActionRegistry: actions, recordWorkspace: .init(store: store),
       candidateResolver: resolver,
@@ -234,14 +236,10 @@ import Testing
 
 private struct ForbiddenBufferClipboardAction: OutputAction {
   let id: String
-  func execute(text: String, context: ActionContext) async throws -> ActionResult {
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
     Issue.record("Special output must never invoke a clipboard-writing transport")
     throw CancellationError()
   }
-}
-
-private struct BufferOutputTestContextProvider: ContextProvider {
-  func captureContext() async -> ContextSnapshot { .empty }
 }
 
 private struct BufferUnverifiableTarget: CursorTextPreviewTarget {

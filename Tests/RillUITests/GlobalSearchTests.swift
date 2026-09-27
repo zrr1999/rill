@@ -159,9 +159,13 @@ final class GlobalSearchIndexTests: XCTestCase {
 
         let speechSettings = GlobalSearchIndex.filter(results, query: "openai key")
         XCTAssertEqual(speechSettings.map(\.destination), [.settings(.providers)])
-        for query in ["Jev", "TypeSafe", "DeepSeek", "API 密钥"] {
-            XCTAssertEqual(GlobalSearchIndex.filter(results, query: query).map(\.destination), [.settings(.providers)])
+        XCTAssertEqual(GlobalSearchIndex.filter(results, query: "DeepSeek").map(\.destination), [.settings(.providers)])
+        for query in ["Jev", "TypeSafe"] {
+            XCTAssertEqual(GlobalSearchIndex.filter(results, query: query).map(\.destination),
+                [.settings(.providers), .settingItem(.jevCredential), .settingItem(.jevPolishing)])
         }
+        XCTAssertEqual(GlobalSearchIndex.filter(results, query: "API 密钥").map(\.destination),
+            [.settings(.providers), .settingItem(.jevCredential)])
         XCTAssertTrue(
             GlobalSearchIndex.filter(results, query: "sensevoice").isEmpty,
             "Preview-only model names must not leak into the public search index."
@@ -310,8 +314,8 @@ extension AppModelTests {
         let historyEntryID = UUID()
         harness.model.showHistoryEntry(historyEntryID)
         XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
-        XCTAssertEqual(harness.model.runHistoryScope, .recentRuns)
-        XCTAssertEqual(harness.model.historyNavigationRequest?.entryID, historyEntryID)
+        XCTAssertEqual(harness.model.history.runHistoryScope, .recentRuns)
+        XCTAssertEqual(harness.model.history.historyNavigationRequest?.entryID, historyEntryID)
 
         harness.model.openWorkflowEditor(workflowID: workflow.id)
         let firstWorkflowRequest = try XCTUnwrap(harness.model.workflowEditorNavigationRequest)
@@ -345,15 +349,15 @@ extension AppModelTests {
         XCTAssertNotNil(harness.model.settingsNavigationRequest)
 
         harness.model.showHistoryEntry(UUID())
-        XCTAssertNotNil(harness.model.historyNavigationRequest)
+        XCTAssertNotNil(harness.model.history.historyNavigationRequest)
         harness.model.showSettings(.privacy)
-        XCTAssertNotNil(harness.model.historyNavigationRequest)
+        XCTAssertNotNil(harness.model.history.historyNavigationRequest)
         XCTAssertEqual(harness.model.settingsNavigationRequest?.section, .privacy)
 
         harness.model.showHistoryEntry(UUID())
         XCTAssertNotNil(harness.model.settingsNavigationRequest)
-        XCTAssertNotNil(harness.model.historyNavigationRequest)
+        XCTAssertNotNil(harness.model.history.historyNavigationRequest)
         harness.model.selectSidebarSection(.records)
-        XCTAssertNil(harness.model.historyNavigationRequest)
+        XCTAssertNil(harness.model.history.historyNavigationRequest)
     }
 }

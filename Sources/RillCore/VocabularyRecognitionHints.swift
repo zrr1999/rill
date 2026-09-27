@@ -26,6 +26,7 @@ public final class VocabularyLibrarySource: @unchecked Sendable {
     }
 
     private let lock = NSLock()
+    private var revision = UUID()
     private var state: State
     private var legacyRulesSnapshot: [VocabularyRule]?
 
@@ -74,6 +75,17 @@ public final class VocabularyLibrarySource: @unchecked Sendable {
         }
     }
 
+    public func snapshot() throws -> RecognitionVocabularySnapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        switch state {
+        case .loading: throw VocabularyLibrarySourceError.notReady
+        case .unavailable(let reason): throw VocabularyLibrarySourceError.unavailable(reason)
+        case .available(let collections):
+            return RecognitionVocabularySnapshot(revision: revision, collections: collections)
+        }
+    }
+
     public var hasAvailableRules: Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -86,6 +98,7 @@ public final class VocabularyLibrarySource: @unchecked Sendable {
 
     public func update(_ rules: [VocabularyRule]) {
         lock.lock()
+        revision = UUID()
         legacyRulesSnapshot = rules
         state = .available([
             .personal(entries: rules.map(VocabularyEntry.init(rule:))),
@@ -95,6 +108,7 @@ public final class VocabularyLibrarySource: @unchecked Sendable {
 
     public func updateCollections(_ collections: [VocabularyCollection]) {
         lock.lock()
+        revision = UUID()
         legacyRulesSnapshot = collections.flatMap { collection in
             collection.entries.map { $0.legacyRule() }
         }
@@ -115,6 +129,7 @@ public typealias VocabularyRuleSourceError = VocabularyLibrarySourceError
 
 public struct VocabularyRecognitionHintResolution: Sendable, Equatable {
     public var hints: RecognitionHints
+    public var candidates: [HotwordCandidate]
     /// The number of valid, distinct keyterms before the provider-facing cap.
     public var validKeytermCount: Int
     /// The number of valid, distinct keyterms excluded by the cap.
@@ -126,9 +141,11 @@ public struct VocabularyRecognitionHintResolution: Sendable, Equatable {
         hints: RecognitionHints,
         validKeytermCount: Int,
         omittedKeytermCount: Int,
-        rejectedKeytermCount: Int
+        rejectedKeytermCount: Int,
+        candidates: [HotwordCandidate] = []
     ) {
         self.hints = hints
+        self.candidates = candidates
         self.validKeytermCount = validKeytermCount
         self.omittedKeytermCount = omittedKeytermCount
         self.rejectedKeytermCount = rejectedKeytermCount
@@ -153,6 +170,7 @@ public struct VocabularyRecognitionHintResolver: Sendable {
             .sorted(by: Self.isOrderedBefore)
 
         var validKeyterms: [String] = []
+        var candidates: [HotwordCandidate] = []
         var seenKeyterms: Set<String> = []
         var rejectedKeytermCount = 0
 
@@ -165,6 +183,7 @@ public struct VocabularyRecognitionHintResolver: Sendable {
                 continue
             }
             validKeyterms.append(keyterm)
+            candidates.append(.init(id: rule.id, term: keyterm, priority: rule.priority))
         }
 
         let emittedKeyterms = Array(validKeyterms.prefix(maximumKeytermCount))
@@ -172,7 +191,8 @@ public struct VocabularyRecognitionHintResolver: Sendable {
             hints: RecognitionHints(keyterms: emittedKeyterms),
             validKeytermCount: validKeyterms.count,
             omittedKeytermCount: validKeyterms.count - emittedKeyterms.count,
-            rejectedKeytermCount: rejectedKeytermCount
+            rejectedKeytermCount: rejectedKeytermCount,
+            candidates: Array(candidates.prefix(maximumKeytermCount))
         )
     }
 

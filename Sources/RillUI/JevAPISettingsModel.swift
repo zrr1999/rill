@@ -1,46 +1,59 @@
-import Foundation
 import Observation
 import RillCore
-import RillRuntime
+import RillRecords
+import RillWorkflows
 
-/// Shares the session credential status between Settings and candidate reviews.
 @MainActor @Observable
 public final class JevAPISettingsModel {
-  public private(set) var isConfigured = false
-  public private(set) var isSaving = false
+  public private(set) var isConfigured: Bool
+  private var polishingEnabled: Bool
+  private var hotwordsEnabled = false
+  private let hotwordSelection: HotwordSelection?
+  public var supportsHotwordSelection: Bool { hotwordSelection != nil }
+  public var isHotwordSelectionEnabled: Bool {
+    get { hotwordsEnabled }
+    set {
+      hotwordsEnabled = !closed && newValue && isConfigured && supportsHotwordSelection
+      hotwordSelection?.configure(isEnabled: hotwordsEnabled)
+    }
+  }
+  public var isPolishingEnabled: Bool {
+    get { polishingEnabled }
+    set {
+      service.settings.setPolishingEnabled(newValue)
+      polishingEnabled = service.settings.isPolishingEnabled
+    }
+  }
   public private(set) var error: RecordRankingError?
   let service: RecordCloudRanking
-  private var saveTask: Task<Void, Never>?
   private var closed = false
 
-  public init(service: RecordCloudRanking) { self.service = service }
-  isolated deinit { saveTask?.cancel() }
+  public init(service: RecordCloudRanking, hotwordSelection: HotwordSelection? = nil) {
+    self.service = service
+    self.hotwordSelection = hotwordSelection
+    isConfigured = service.settings.isConfigured
+    polishingEnabled = service.settings.isPolishingEnabled
+  }
 
   public func setKey(_ value: String) {
-    guard !closed, !isSaving else { return }
-    let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    isSaving = true
-    error = nil
-    saveTask = Task { [weak self, service] in
-      defer { self?.isSaving = false }
-      do {
-        try Task.checkCancellation()
-        try await service.setKey(key)
-        let configured = await service.isConfigured
-        guard !Task.isCancelled, let self, !self.closed else { return }
-        self.isConfigured = configured
-      } catch {
-        guard !Task.isCancelled, let self, !self.closed else { return }
-        self.error = (error as? RecordRankingError) ?? .unavailable
-      }
+    guard !closed else { return }
+    do {
+      try service.settings.setKey(value)
+      isConfigured = service.settings.isConfigured
+      isPolishingEnabled = service.settings.isPolishingEnabled
+      isHotwordSelectionEnabled = hotwordsEnabled
+      error = nil
+    } catch {
+      self.error = (error as? RecordRankingError) ?? .unavailable
     }
   }
 
   public func shutdown() async {
     closed = true
-    saveTask?.cancel()
-    await saveTask?.value
-    await service.shutdown()
+    service.settings.clear()
     isConfigured = false
+    isPolishingEnabled = false
+    isHotwordSelectionEnabled = false
+    await service.shutdown()
   }
 }

@@ -46,11 +46,14 @@ final class SQLiteRecordGraphPersistenceTests: XCTestCase {
       .current(
         revision: 1,
         graph: graph,
-        payloadBlobs: blobs.sorted { $0.reference.blobID.uuidString < $1.reference.blobID.uuidString }
+        payloadBlobs: blobs.sorted {
+          $0.reference.blobID.uuidString < $1.reference.blobID.uuidString
+        }
       )
     )
     let rawGraph = try XCTUnwrap(
-      try blobQuery("SELECT payload FROM record_graph_metadata WHERE id = 1;", at: fixture.databaseURL)
+      try blobQuery(
+        "SELECT payload FROM record_graph_metadata WHERE id = 1;", at: fixture.databaseURL)
     )
     XCTAssertNotEqual(rawGraph, graph)
     XCTAssertNil(rawGraph.range(of: graph))
@@ -168,8 +171,10 @@ final class SQLiteRecordGraphPersistenceTests: XCTestCase {
       )
     )
 
-    XCTAssertEqual(try integerQuery("SELECT COUNT(*) FROM clipboard_metadata;", at: fixture.databaseURL), 0)
-    XCTAssertEqual(try integerQuery("SELECT COUNT(*) FROM clipboard_image_blobs;", at: fixture.databaseURL), 0)
+    XCTAssertEqual(
+      try integerQuery("SELECT COUNT(*) FROM clipboard_metadata;", at: fixture.databaseURL), 0)
+    XCTAssertEqual(
+      try integerQuery("SELECT COUNT(*) FROM clipboard_image_blobs;", at: fixture.databaseURL), 0)
     let current = try await fixture.store.loadRecordGraph()
     XCTAssertEqual(
       current,
@@ -239,7 +244,9 @@ final class SQLiteRecordGraphPersistenceTests: XCTestCase {
     else { throw RecordGraphTestError.openFailed }
     defer { sqlite3_close(database) }
     var statement: OpaquePointer?
-    guard sqlite3_prepare_v2(database, "PRAGMA table_info(\(table));", -1, &statement, nil) == SQLITE_OK,
+    guard
+      sqlite3_prepare_v2(database, "PRAGMA table_info(\(table));", -1, &statement, nil)
+        == SQLITE_OK,
       let statement
     else { throw RecordGraphTestError.queryFailed }
     defer { sqlite3_finalize(statement) }

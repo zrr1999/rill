@@ -15,20 +15,10 @@ public enum WorkflowManifestLoadError: Error, LocalizedError, Equatable {
 }
 
 public struct JSONWorkflowManifestLoader: WorkflowManifestLoader {
-    private let dataProvider: @Sendable () throws -> Data
+    private let data: Data
 
     public init(data: Data) {
-        self.dataProvider = { data }
-    }
-
-    public init(url: URL) {
-        self.dataProvider = {
-            do {
-                return try Data(contentsOf: url)
-            } catch {
-                throw WorkflowManifestLoadError.unreadable(url)
-            }
-        }
+        self.data = data
     }
 
     public func loadManifest() throws -> WorkflowManifest {
@@ -36,7 +26,7 @@ public struct JSONWorkflowManifestLoader: WorkflowManifestLoader {
         let manifest: WorkflowManifest
 
         do {
-            manifest = try decoder.decode(WorkflowManifest.self, from: try dataProvider())
+            manifest = try decoder.decode(WorkflowManifest.self, from: data)
         } catch let error as WorkflowManifestLoadError {
             throw error
         } catch {

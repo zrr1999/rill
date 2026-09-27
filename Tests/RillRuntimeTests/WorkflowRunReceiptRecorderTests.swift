@@ -1,8 +1,13 @@
+
+@testable import RillCore
+@testable import RillWorkflows
 import Foundation
 import XCTest
 import RillPersistence
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+@testable import RillRecords
+@testable import RillKnowledge
 
 private final class ReceiptTestClock: @unchecked Sendable {
     private let lock = NSLock()
@@ -39,7 +44,7 @@ private struct ReceiptRepositoryProbeError: Error {
     let privateDescription: String
 }
 
-private actor FailOnceWorkflowRunReceiptRepository: WorkflowRunReceiptRepository {
+private actor FailOnceWorkflowRunReceiptRepository: WorkflowRunReceiptRepository, WorkflowRunReceiptMaintaining {
     private var shouldFail = true
     private var stored: [UUID: WorkflowRunReceipt] = [:]
     private let privateErrorCanary: String
@@ -516,7 +521,7 @@ final class WorkflowRunReceiptRecorderTests: XCTestCase {
                 DiagnosticEvent(
                     subsystem: .session,
                     level: .debug,
-                    event: "diagnostic.boundary",
+                    event: .diagnosticBoundary,
                     message: "Receipt retry boundary."
                 )
             )

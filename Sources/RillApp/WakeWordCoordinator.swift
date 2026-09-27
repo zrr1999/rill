@@ -1,10 +1,11 @@
+import RillSpeech
+import RillWorkflows
 import Foundation
 import RillCore
 import RillPlatform
 import RillProviders
-import RillRuntime
 
-/// Connects the provider-owned local wake phrase gate to either the existing
+/// Connects the platform-owned local wake phrase gate to either the existing
 /// captured-audio controller or the same workflow's pre-recognized text entry.
 /// It owns no speech model, audio engine, or HA/Spark behavior.
 actor WakeWordCoordinator {
@@ -104,7 +105,7 @@ actor WakeWordCoordinator {
         DiagnosticEvent(
           subsystem: .providers,
           level: .warning,
-          event: "wake-word.start-failed",
+          event: .wakeWordStartFailed,
           message: "Local wake-word listening could not start.",
           metadata: ["reason": "request-failed"]
         )
@@ -146,7 +147,7 @@ actor WakeWordCoordinator {
         runID: event.id,
         subsystem: .providers,
         level: .info,
-        event: "wake-word.detected",
+        event: .wakeWordDetected,
         message: "A configured local wake phrase was detected."
       )
     )
@@ -171,7 +172,7 @@ actor WakeWordCoordinator {
           runID: event.id,
           subsystem: .session,
           level: .warning,
-          event: "wake-word.run-rejected",
+          event: .wakeWordRunRejected,
           message: "A wake-word workflow could not start.",
           metadata: ["reason": "request-failed"]
         )

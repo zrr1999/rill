@@ -622,7 +622,7 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
         await diagnosticReporter(
             diagnosticEvent(
                 runID: context.runID,
-                event: "provider.openai.rewrite.started",
+                event: .providerOpenaiRewriteStarted,
                 level: .info,
                 outcome: "pending",
                 duration: .zero,
@@ -642,7 +642,7 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
             await diagnosticReporter(
                 diagnosticEvent(
                     runID: context.runID,
-                    event: "provider.openai.rewrite.completed",
+                    event: .providerOpenaiRewriteCompleted,
                     level: .info,
                     outcome: "completed",
                     duration: startedAt.duration(to: .now),
@@ -671,7 +671,7 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
             await diagnosticReporter(
                 diagnosticEvent(
                     runID: context.runID,
-                    event: "provider.openai.rewrite.failed",
+                    event: .providerOpenaiRewriteFailed,
                     level: .error,
                     outcome: mapped.diagnosticOutcome,
                     duration: startedAt.duration(to: .now),
@@ -742,7 +742,7 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
 
     private func diagnosticEvent(
         runID: UUID?,
-        event: String,
+        event: DiagnosticEventName,
         level: DiagnosticLevel,
         outcome: String,
         duration: Duration,
@@ -835,7 +835,7 @@ public enum OpenAIConfigurationVerifier {
             _ = try OpenAITextRewriteTransformer.acceptedOutput(from: response)
             await diagnosticReporter(
                 verificationDiagnostic(
-                    event: "provider.openai.verification.completed",
+                    event: .providerOpenaiVerificationCompleted,
                     level: .info,
                     outcome: "completed",
                     duration: startedAt.duration(to: .now),
@@ -849,7 +849,7 @@ public enum OpenAIConfigurationVerifier {
             let httpStatusCode = (error as? OpenAIResponsesRequestError)?.httpStatusCode
             await diagnosticReporter(
                 verificationDiagnostic(
-                    event: "provider.openai.verification.failed",
+                    event: .providerOpenaiVerificationFailed,
                     level: .error,
                     outcome: mapped.diagnosticOutcome,
                     duration: startedAt.duration(to: .now),
@@ -861,7 +861,7 @@ public enum OpenAIConfigurationVerifier {
     }
 
     private static func verificationDiagnostic(
-        event: String,
+        event: DiagnosticEventName,
         level: DiagnosticLevel,
         outcome: String,
         duration: Duration,

@@ -1,6 +1,8 @@
-import Foundation
+
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillKnowledge
+@testable import RillWorkflows
+import Foundation
 
 func makeAudioProcessingTestLease(
     runID: UUID,

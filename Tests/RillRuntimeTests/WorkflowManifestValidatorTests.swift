@@ -1,6 +1,7 @@
-import XCTest
+
 @testable import RillCore
-@testable import RillRuntime
+@testable import RillWorkflows
+import XCTest
 
 private struct ValidatorRecognizer: SpeechRecognizer {
     let id = "validator.recognizer"
@@ -13,8 +14,9 @@ private struct ValidatorRecognizer: SpeechRecognizer {
 private struct ValidatorAction: OutputAction {
     let id = "validator.action"
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        .copiedToClipboard
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
+        return .copiedToClipboard
     }
 }
 

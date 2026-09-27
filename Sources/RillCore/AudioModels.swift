@@ -38,7 +38,7 @@ public enum RecognitionTemporaryAudioNamespace {
 
 public struct AudioCaptureRequest: Sendable, Equatable {
     public var runID: UUID
-    public var workflow: WorkflowDefinition
+    public var configuration: SpeechRequestConfiguration
     public var triggerEvent: WorkflowTriggerEvent?
     public var preferredFormat: AudioFormat?
     public var maxDurationSeconds: Double?
@@ -73,7 +73,7 @@ public struct AudioCaptureRequest: Sendable, Equatable {
         liveSubtitleNetworkUsage: LiveSubtitleNetworkUsage? = nil
     ) {
         self.runID = runID
-        self.workflow = workflow
+        self.configuration = SpeechRequestConfiguration(workflow: workflow)
         self.triggerEvent = triggerEvent
         self.preferredFormat = preferredFormat
         self.maxDurationSeconds = maxDurationSeconds
@@ -96,7 +96,8 @@ public struct CapturedAudio: Codable, Sendable, Equatable {
             case .missingPayload:
                 return "Captured audio must include either a file URL or inline audio data."
             case .invalidManagedTemporaryFileURL:
-                return "Managed temporary audio must use a Rill-owned file in the system temporary directory."
+                return
+                    "Managed temporary audio must use a Rill-owned file in the system temporary directory."
             }
         }
     }
@@ -138,10 +139,11 @@ public struct CapturedAudio: Codable, Sendable, Equatable {
         let format = try container.decode(AudioFormat.self, forKey: .format)
         let fileURL = try container.decodeIfPresent(URL.self, forKey: .fileURL)
         let inlineData = try container.decodeIfPresent(Data.self, forKey: .inlineData)
-        let fileOwnership = try container.decodeIfPresent(
-            CapturedAudioFileOwnership.self,
-            forKey: .fileOwnership
-        ) ?? .callerManaged
+        let fileOwnership =
+            try container.decodeIfPresent(
+                CapturedAudioFileOwnership.self,
+                forKey: .fileOwnership
+            ) ?? .callerManaged
         let metadata = try container.decode([String: String].self, forKey: .metadata)
 
         try self.init(
@@ -154,25 +156,6 @@ public struct CapturedAudio: Codable, Sendable, Equatable {
         )
     }
 
-    /// Removes a file only when its ownership was explicitly transferred to Rill.
-    @discardableResult
-    public func removeManagedTemporaryFile(
-        using fileManager: FileManager = .default
-    ) throws -> Bool {
-        var isDirectory: ObjCBool = false
-        guard
-            fileOwnership == .managedTemporary,
-            let fileURL,
-            Self.isManagedTemporaryFileURL(fileURL, using: fileManager),
-            fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDirectory),
-            !isDirectory.boolValue
-        else {
-            return false
-        }
-
-        try fileManager.removeItem(at: fileURL)
-        return true
-    }
 
     public static func isManagedTemporaryFileURL(
         _ fileURL: URL,

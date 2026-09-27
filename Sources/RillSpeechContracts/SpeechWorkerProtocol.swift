@@ -184,55 +184,23 @@ public struct SpeechWorkerRequest: Sendable, Equatable {
   }
 
   public var recognitionPayload: SpeechWorkerRecognitionPayload? {
-    get {
-      guard case .recognizeOffline(let value) = payload else { return nil }
-      return value
-    }
-    set {
-      guard let newValue, case .recognizeOffline = payload else { return }
-      payload = .recognizeOffline(newValue)
-    }
+    guard case .recognizeOffline(let value) = payload else { return nil }
+    return value
   }
 
   public var modelPreparationPayload: SpeechWorkerModelPreparationPayload? {
-    get {
-      switch payload {
-      case .prepareModel(let value), .releaseModel(let value),
-        .prepareTTSModel(let value), .releaseTTSModel(let value),
-        .prepareEmbeddingModel(let value):
-        value
-      case .recognizeOffline, .synthesizeSpeech, .embedText:
-        nil
-      }
-    }
-    set {
-      guard let newValue else { return }
-      switch payload {
-      case .prepareModel:
-        payload = .prepareModel(newValue)
-      case .releaseModel:
-        payload = .releaseModel(newValue)
-      case .prepareTTSModel:
-        payload = .prepareTTSModel(newValue)
-      case .releaseTTSModel:
-        payload = .releaseTTSModel(newValue)
-      case .prepareEmbeddingModel:
-        payload = .prepareEmbeddingModel(newValue)
-      case .recognizeOffline, .synthesizeSpeech, .embedText:
-        break
-      }
+    switch payload {
+    case .prepareModel(let value), .releaseModel(let value),
+      .prepareTTSModel(let value), .releaseTTSModel(let value), .prepareEmbeddingModel(let value):
+      value
+    case .recognizeOffline, .synthesizeSpeech, .embedText:
+      nil
     }
   }
 
   public var synthesisPayload: SpeechWorkerSynthesisPayload? {
-    get {
-      guard case .synthesizeSpeech(let value) = payload else { return nil }
-      return value
-    }
-    set {
-      guard let newValue, case .synthesizeSpeech = payload else { return }
-      payload = .synthesizeSpeech(newValue)
-    }
+    guard case .synthesizeSpeech(let value) = payload else { return nil }
+    return value
   }
 
   public var embeddingPayload: SpeechWorkerEmbeddingPayload? {

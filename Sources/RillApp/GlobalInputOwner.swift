@@ -1,7 +1,7 @@
+import RillWorkflows
 import Foundation
 import RillCore
 import RillPlatform
-import RillRuntime
 
 /// Owns the process-wide lifecycle of the single shared global-input producer.
 ///
@@ -126,7 +126,7 @@ actor GlobalInputOwner {
       DiagnosticEvent(
         subsystem: .platform,
         level: installed ? .info : .warning,
-        event: installed ? "global-input.installed" : "global-input.unavailable",
+        event: installed ? .globalInputInstalled : .globalInputUnavailable,
         message: installed
           ? "The shared global input tap is available."
           : "The shared global input tap is unavailable.",

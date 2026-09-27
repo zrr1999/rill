@@ -40,6 +40,9 @@ after L yields `LDHICBA`; input ending at C yields `CLBA`.
 
 ## One output attempt
 
+Successful settlement updates the Record use count and consumes or resets the
+entry in one transaction. Retrying a failed settlement does not count another use.
+
 Before touching the target, the store persists a `delivering` marker for the
 exact entry. New inputs affect subsequent choices, not the current attempt.
 Repeated shortcuts cannot acquire another entry while that marker is active.

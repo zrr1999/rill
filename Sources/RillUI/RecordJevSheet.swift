@@ -5,7 +5,8 @@ struct RecordJevSheet: View {
   @Bindable var model: RecordJevPanelModel
   let language: AppLanguage
   let onSelect: (RecordID) -> Void
-  let onConfigure: () -> Void
+  let onConfigure: (SettingsNavigationRequest) -> Void
+  let onRetry: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: RillSpacing.row) {
@@ -16,8 +17,7 @@ struct RecordJevSheet: View {
           .font(.caption).foregroundStyle(.secondary)
         Spacer()
         Button(text(.openSettings)) {
-          model.invalidate()
-          onConfigure()
+          onConfigure(.init(section: .providers, item: .jevCredential))
         }
         .disabled(model.isWorking)
         .accessibilityIdentifier("records.jev-settings")
@@ -57,6 +57,13 @@ struct RecordJevSheet: View {
       if case .failed(let error) = model.state {
         Text(L10n.jevError(error, language: language)).foregroundStyle(.orange)
           .accessibilityIdentifier("records.jev-error")
+        if error == .privacyBlocked {
+          Button(text(.privacySettings)) { onConfigure(.init(section: .privacy)) }
+        } else if error == .missingKey || error == .unauthorized {
+          Button(text(.openSettings)) { onConfigure(.init(section: .providers, item: .jevCredential)) }
+        }
+        Button(text(.retryPreview), action: onRetry)
+          .accessibilityIdentifier("records.jev-retry")
       }
       HStack {
         if model.isWorking { ProgressView().controlSize(.small); Text(text(.working)).font(.caption) }

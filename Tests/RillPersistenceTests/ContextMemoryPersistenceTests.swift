@@ -1,6 +1,7 @@
 import Foundation
 import SQLite3
 import Testing
+
 @testable import RillCore
 @testable import RillPersistence
 
@@ -133,23 +134,32 @@ struct ContextMemoryPersistenceTests {
     @Test func backfillIsBoundedEncryptedAndDoesNotLearnItsOwnMemorySummary() async throws {
         let fixture = try MemoryStoreFixture()
         defer { fixture.remove() }
-        for index in 0..<13 { try await fixture.store.save(fixture.record(text: "Project\(index)")) }
+        for index in 0..<13 {
+            try await fixture.store.save(fixture.record(text: "Project\(index)"))
+        }
         try await fixture.store.setContextAuthorization(fixture.authorization.id)
         let batch = try #require(try await fixture.batch())
         #expect(batch.sources.count == 10)
         #expect(try MemoryConsolidationInput(batch: batch).encoded().count <= 12_000)
         let memory = fixture.memory(batch)
-        try await fixture.store.commitMemoryBatch(batch, result: MemoryConsolidationResult(memories: [memory]))
+        try await fixture.store.commitMemoryBatch(
+            batch, result: MemoryConsolidationResult(memories: [memory]))
         let next = try #require(try await fixture.batch())
         #expect(next.sources.count == 3)
-        #expect(Set(next.sources.map(\.version.sourceID)).isDisjoint(with: Set(batch.sources.map(\.version.sourceID))))
+        #expect(
+            Set(next.sources.map(\.version.sourceID)).isDisjoint(
+                with: Set(batch.sources.map(\.version.sourceID))))
         let serialized = try JSONEncoder().encode(batch.sources)
         #expect(!String(decoding: serialized, as: UTF8.self).contains("memorySummary"))
         var database: OpaquePointer?
-        #expect(sqlite3_open_v2(fixture.url.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK)
+        #expect(
+            sqlite3_open_v2(fixture.url.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK)
         defer { sqlite3_close(database) }
         var statement: OpaquePointer?
-        #expect(sqlite3_prepare_v2(database, "SELECT payload FROM context_memories;", -1, &statement, nil) == SQLITE_OK)
+        #expect(
+            sqlite3_prepare_v2(
+                database, "SELECT payload FROM context_memories;", -1, &statement, nil)
+                == SQLITE_OK)
         defer { sqlite3_finalize(statement) }
         #expect(sqlite3_step(statement) == SQLITE_ROW)
         let stored = String(cString: try #require(sqlite3_column_text(statement, 0)))
@@ -169,9 +179,11 @@ struct ContextMemoryPersistenceTests {
         #expect(batch.sources.count == 1)
         let generation = try await fixture.store.captureRunHistoryWriteGeneration()
         let screen = ScreenReferenceSummary(terms: ["VisibleName"], observations: ["Budget: 2000"])
-        try await fixture.store.appendScreenSummary(screen, runID: runID, generation: generation, authorization: fixture.authorization)
+        try await fixture.store.appendScreenSummary(
+            screen, runID: runID, generation: generation, authorization: fixture.authorization)
         await #expect(throws: ContextCorrectionError.self) {
-            try await fixture.store.commitMemoryBatch(batch, result: MemoryConsolidationResult(memories: [fixture.memory(batch)]))
+            try await fixture.store.commitMemoryBatch(
+                batch, result: MemoryConsolidationResult(memories: [fixture.memory(batch)]))
         }
         let revised = try #require(try await fixture.batch())
         #expect(revised.sources.count == 1)
@@ -190,38 +202,46 @@ struct ContextMemoryPersistenceTests {
         try await fixture.store.setContextAuthorization(fixture.authorization.id)
         let batch = try #require(try await fixture.batch())
         let memory = fixture.memory(batch)
-        try await fixture.store.commitMemoryBatch(batch, result: MemoryConsolidationResult(memories: [memory]))
+        try await fixture.store.commitMemoryBatch(
+            batch, result: MemoryConsolidationResult(memories: [memory]))
         try await fixture.store.save(fixture.record(text: "New source"))
         let pending = try #require(try await fixture.batch())
         _ = try await fixture.store.deleteAllRecords()
         await #expect(throws: ContextCorrectionError.self) {
-            try await fixture.store.commitMemoryBatch(pending, result: MemoryConsolidationResult(memories: [fixture.memory(pending)]))
+            try await fixture.store.commitMemoryBatch(
+                pending, result: MemoryConsolidationResult(memories: [fixture.memory(pending)]))
         }
         let retained = try await fixture.store.memories()
         #expect(retained.count == 1)
         #expect(retained[0].sourceHistoryDeleted)
-        #expect(try await fixture.store.relevantMemories(scope: retained[0].scope, now: Date()).count == 1)
+        #expect(
+            try await fixture.store.relevantMemories(scope: retained[0].scope, now: Date()).count
+                == 1)
     }
 
     @Test func permanentDeletionExcludesSameSourceEvenAfterSourceRevisionAndRestart() async throws {
         let fixture = try MemoryStoreFixture()
         defer { fixture.remove() }
-        let record = fixture.record()
+        let record = fixture.record(runID: UUID())
         try await fixture.store.save(record)
         try await fixture.store.setContextAuthorization(fixture.authorization.id)
         let batch = try #require(try await fixture.batch())
         let memory = fixture.memory(batch)
-        try await fixture.store.commitMemoryBatch(batch, result: MemoryConsolidationResult(memories: [memory]))
+        try await fixture.store.commitMemoryBatch(
+            batch, result: MemoryConsolidationResult(memories: [memory]))
         try await fixture.store.deleteMemory(id: memory.id, expectedRevision: 1)
         let revised = WorkflowResultRecord(id: record.id, runID: record.runID, workflowID: record.workflowID,
                                           workflow: record.workflow, finalText: "Revised Rill",
                                           timestamp: record.timestamp, outcome: record.outcome,
                                           correctionSource: record.correctionSource, trigger: record.trigger)
         try await fixture.store.save(revised)
-        let reopened = try SQLitePersistenceStore(databaseURL: fixture.url, localDataProtector: fixture.protector)
+        let reopened = try SQLitePersistenceStore(
+            databaseURL: fixture.url, localDataProtector: fixture.protector)
         #expect(try await reopened.memories().isEmpty)
-        #expect(try await reopened.prepareMemoryBatch(authorizationID: fixture.authorization.id,
-                                                       allowedWorkflowIDs: [fixture.workflowID], now: Date()) == nil)
+        #expect(
+            try await reopened.prepareMemoryBatch(
+                authorizationID: fixture.authorization.id,
+                allowedWorkflowIDs: [fixture.workflowID], now: Date()) == nil)
     }
 
     @Test func userLockAndAuthorizationChangesInvalidatePendingBackgroundMerge() async throws {
@@ -232,19 +252,23 @@ struct ContextMemoryPersistenceTests {
         try await fixture.store.setContextAuthorization(fixture.authorization.id)
         let initial = try #require(try await fixture.batch())
         var memory = fixture.memory(initial)
-        try await fixture.store.commitMemoryBatch(initial, result: MemoryConsolidationResult(memories: [memory]))
-        try await fixture.store.recordUserCorrection(.init(original: "Real", corrected: "Rill"), recordID: record.id)
+        try await fixture.store.commitMemoryBatch(
+            initial, result: MemoryConsolidationResult(memories: [memory]))
+        try await fixture.store.recordUserCorrection(
+            .init(original: "Real", corrected: "Rill"), recordID: record.id)
         let pending = try #require(try await fixture.batch())
         memory.locked = true
         memory.confirmed = true
         try await fixture.store.saveMemory(memory, expectedRevision: memory.revision)
         await #expect(throws: ContextCorrectionError.self) {
-            try await fixture.store.commitMemoryBatch(pending, result: .init(memories: [fixture.memory(pending)]))
+            try await fixture.store.commitMemoryBatch(
+                pending, result: .init(memories: [fixture.memory(pending)]))
         }
         let second = try #require(try await fixture.batch())
         try await fixture.store.setContextAuthorization(nil)
         await #expect(throws: ContextCorrectionError.self) {
-            try await fixture.store.commitMemoryBatch(second, result: .init(memories: [fixture.memory(second)]))
+            try await fixture.store.commitMemoryBatch(
+                second, result: .init(memories: [fixture.memory(second)]))
         }
         #expect(try await fixture.store.memories().first?.locked == true)
     }
@@ -258,7 +282,8 @@ struct ContextMemoryPersistenceTests {
         try await fixture.store.save(fixture.record())
         for _ in 0..<8 { #expect(try await fixture.batch() != nil) }
         await #expect(throws: ContextCorrectionError.self) { _ = try await fixture.batch() }
-        let reopened = try SQLitePersistenceStore(databaseURL: fixture.url, localDataProtector: fixture.protector)
+        let reopened = try SQLitePersistenceStore(
+            databaseURL: fixture.url, localDataProtector: fixture.protector)
         #expect(try await reopened.memoryMaintenanceStatus(now: Date()).requestsToday == 8)
     }
 
@@ -268,7 +293,8 @@ struct ContextMemoryPersistenceTests {
         try await fixture.store.setContextAuthorization(fixture.authorization.id)
         try await fixture.store.save(fixture.record(text: String(repeating: "Long", count: 4_000)))
         #expect(try await fixture.batch() == nil)
-        #expect(try await fixture.store.memoryMaintenanceStatus(now: Date()).skippedSourceCount == 1)
+        #expect(
+            try await fixture.store.memoryMaintenanceStatus(now: Date()).skippedSourceCount == 1)
         try await fixture.store.save(fixture.record())
         let batch = try #require(try await fixture.batch())
         var memory = fixture.memory(batch)
@@ -288,8 +314,10 @@ private struct MemoryStoreFixture {
     let workflowID = UUID()
     let authorization = ContextReferenceAuthorization(providerFingerprint: "fixture")
     init() throws {
-        url = FileManager.default.temporaryDirectory.appendingPathComponent("rill-memory-tests-\(UUID())/rill.sqlite")
-        protector = try AESGCMDataProtector(key: Data(repeating: 0x31, count: AESGCMDataProtector.keyByteCount))
+        url = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "rill-memory-tests-\(UUID())/rill.sqlite")
+        protector = try AESGCMDataProtector(
+            key: Data(repeating: 0x31, count: AESGCMDataProtector.keyByteCount))
         store = try SQLitePersistenceStore(databaseURL: url, localDataProtector: protector)
     }
     func remove() { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
@@ -302,7 +330,8 @@ private struct MemoryStoreFixture {
                              trigger: .hotkey)
     }
     func batch() async throws -> MemoryConsolidationBatch? {
-        try await store.prepareMemoryBatch(authorizationID: authorization.id, allowedWorkflowIDs: [workflowID], now: Date())
+        try await store.prepareMemoryBatch(
+            authorizationID: authorization.id, allowedWorkflowIDs: [workflowID], now: Date())
     }
     func memory(_ batch: MemoryConsolidationBatch) -> LongTermMemory {
         LongTermMemory(scope: batch.sources[0].scope, summary: "Source-backed Rill project", terms: [batch.sources[0].transcript],
