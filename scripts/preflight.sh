@@ -243,7 +243,7 @@ install_gitleaks() {
     command -v "$command_name" >/dev/null 2>&1 || error "Required command not found: $command_name"
   done
   temp_root="$(mktemp -d "${TMPDIR:-/tmp}/rill-gitleaks-install.XXXXXX")"
-  trap 'rm -rf "$temp_root"' EXIT
+  trap '[[ -n ${temp_root:-} ]] && rm -rf "$temp_root"' EXIT
   archive_path="$temp_root/$asset_name"
   extract_dir="$temp_root/extracted"
   mkdir -p "$extract_dir" "$destination"
@@ -257,6 +257,8 @@ install_gitleaks() {
   installed_version="$("$destination/gitleaks" version | tail -n 1 | awk '{print $NF}' | sed 's/^v//')"
   [[ "$installed_version" == "$version" ]] || error "Installed Gitleaks version mismatch: ${installed_version:-unknown}"
   echo "Installed Gitleaks $version at $destination/gitleaks"
+  rm -rf "$temp_root"
+  trap - EXIT
 }
 
 check_commit_messages() {
@@ -282,7 +284,7 @@ check_commit_messages() {
   revisions="$(git rev-list --reverse "$range")"
   [[ -n "$revisions" ]] || return 0
   message_file="$(mktemp)"
-  trap 'rm -f "$message_file"' EXIT
+  trap '[[ -n ${message_file:-} ]] && rm -f "$message_file"' EXIT
   while IFS= read -r revision; do
     git show --no-patch --format=%B "$revision" >"$message_file"
     echo "Checking commit $revision"
@@ -290,6 +292,8 @@ check_commit_messages() {
       --with zendev-commit==0.4.0 --with zendev-review==0.4.0 \
       zendev message check --profile zendev "$message_file"
   done <<<"$revisions"
+  rm -f "$message_file"
+  trap - EXIT
 }
 
 case "${1-}" in
