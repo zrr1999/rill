@@ -43,7 +43,7 @@ final class AppModelLiveAudioStopTests: XCTestCase {
         let workflow = makeCapturedAudioWorkflow()
         let harness = makeHarness(
             workflow: workflow,
-            startWorkflowAudioRunAction: { _, _ in
+            startWorkflowAudioRunAction: { _, _, _ in
                 try await startGate.suspendStart()
             }
         )

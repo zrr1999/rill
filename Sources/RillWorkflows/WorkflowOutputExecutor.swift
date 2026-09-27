@@ -22,6 +22,7 @@ struct WorkflowOutputExecutor: Sendable {
             recognitionResult: recognition,
             finalText: finalText,
             bufferEntryID: bufferEntryID,
+            bufferDraftInput: session.bufferDraftInput,
             startedAt: session.startedAt,
             finishedAt: Date()
         )

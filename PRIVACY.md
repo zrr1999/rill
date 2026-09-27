@@ -1,6 +1,6 @@
 # Rill Technical Privacy and Data Flow Notice
 
-Last updated: 2026-09-25
+Last updated: 2026-09-27
 
 This notice describes the data behavior of the current Rill build. It is a technical product disclosure, not a substitute for any formal legal privacy policy that may be required for a future distribution channel.
 
@@ -39,6 +39,15 @@ Rill does not operate an analytics or advertising endpoint in this build. Saniti
 Third-party services and user-created automations apply their own retention, account, and privacy terms after data reaches them. Rill's local history controls cannot delete data held by those destinations.
 
 ## Local storage and retention
+
+Editable pending drafts store their initial text, available raw recognition text,
+current edits and unapplied speech suggestions in the existing encrypted Record
+catalog. Closing the panel retains drafts; removing a pending item deletes its
+draft, while immutable Records and workflow history follow their own deletion and
+retention rules. Drafts do not expire automatically. Difference comparison runs
+locally, adds no cloud request and does not automatically learn vocabulary.
+Dictation uses the enabled voice workflow and its existing cloud authorization;
+the editor does not add the surrounding draft text to those requests.
 
 Rill stores settings, clipboard state, run history, run receipts, and sanitized diagnostics in the user's Application Support area. Sensitive stored payloads are protected with AES-256-GCM using a root key held in macOS Keychain. The shared LLM Provider credential is stored in Keychain rather than ordinary settings rows. Diagnostics record only allowlisted provider, stage, result category, duration, and coarse status-code metadata; they do not record the API key, request text, response text, prompt, or OpenAI error body.
 
@@ -114,6 +123,11 @@ Rill 在用户发起语音采集时处理麦克风音频。唤醒词监听默认
 “按含义补充”是可选功能，只有点击下载按钮后才获取固定版本、经校验的本地搜索模型（约 1.2 GB）。下载服务会收到普通网络连接元数据，但查询、记录正文、文件名、来源和标签均在本机的独立辅助进程中处理，不上传。向量只保存在限额为 128 MiB 逻辑内容的内存缓存中；标签变化、记录删除会使缓存失效，退出时清空，不新增持久化索引。模型在空闲 30 秒后释放。长记录仅搜索部分内容，不读取图片或文件引用指向的正文。权重存放于 `~/Library/Application Support/Rill/Models/record-search`，卸载 App 不会自动移除；下次主动下载会清理中断下载的临时文件。
 
 ## 本地存储与留存
+
+待发草稿的初始文字、可用的识别原文、当前修改和未应用语音建议保存在现有加密 Record
+目录中。关闭面板会保留草稿；移除待发项会删除对应草稿，原始记录与工作流历史沿用各自的
+删除、留存规则。草稿不自动过期。差异比较只在本机运行，不新增云端请求，也不自动学习词汇。
+听写沿用已启用语音工作流及其现有云端授权；编辑器不会把草稿上下文额外附加到请求中。
 
 Rill 在用户的 Application Support 区域保存设置、剪贴板状态、运行历史、运行收据和净化后的诊断。敏感持久化正文使用 macOS Keychain 中的根密钥和 AES-256-GCM 保护；统一 LLM Provider 的 API Key 保存在 Keychain，而不是普通设置行中。诊断只记录白名单内的 provider、阶段、结果分类、耗时和粗粒度状态码信息，不记录 API Key、请求正文、响应正文、prompt 或服务端错误正文。
 

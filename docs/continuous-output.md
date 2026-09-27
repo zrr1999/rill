@@ -38,6 +38,54 @@ removes its buffer references in the same transaction, unless that Record is
 currently being delivered or awaiting confirmation. Examples: `A B L C H I` yields `LHICBA`; copying D
 after L yields `LDHICBA`; input ending at C yields `CLBA`.
 
+## Editable drafts
+
+The Drafts panel exposes these same entries; it is not another queue or history.
+`RecordStore` owns each `BufferTextDraft`, its immutable baseline and optional raw
+recognition text, revision, committed revision and pending speech suggestions.
+The UI owns one native `NSTextView` editing session, selection and unsaved text.
+Local edits coalesce into serial revision-checked encrypted saves. Failed saves
+retain the editor text; closed panels retain drafts and shutdown drains writes.
+The visible list refreshes for entry changes, not for each keystroke in the selected
+editor. New arrivals never select an item or move its caret.
+
+New Item explicitly allocates one slot, even before the first Record exists.
+Typing, IME composition, selection and undo only edit that slot. On Send, an
+edited draft becomes a derived Record and replaces the exact entry in one graph
+transaction. The original Record and memberships remain intact; no capture route
+is fired. The entry's global sequence and container policy remain unchanged.
+Global output refuses an actively edited or uncommitted draft.
+
+Record New Item uses the enabled built-in voice workflow with store-only output
+and overlay preview without changing the default output setting. Dictate Here
+freezes entry ID, draft ID, revision, UTF-16 selection and editing-session ID at
+recording admission. It never reserves another slot. Final recognition and its
+bound suggestion persist together; repeated completion of a run cannot duplicate
+the insertion. Only a visible, focused, unchanged editor with no marked text can
+apply it automatically at the captured range. Otherwise it remains an explicit
+insert/dismiss proposal. Deleted targets cannot be resurrected or retargeted.
+Partial recognition stays in preview. Diff display compares exact text changes;
+it does not classify every edit as an ASR error or teach vocabulary automatically.
+
+Return is native newline in the editor and Send in the focused list. Command-Return
+sends only outside IME composition. Escape belongs to the input method first,
+then leaves editing focus, then closes the panel. Native undo owns applied final
+speech edits. The global hotkey tap passes editor keystrokes through while still
+settling any already-held Fn gesture.
+
+Before opening the nonactivating panel, `BufferDraftPanelController` captures the
+external PID/control, selected range and readable selected text. Sending never
+recaptures a different target. The output boundary revalidates identity, selection
+and secure input; drift retains the item for explicit target handoff. Opening from
+Rill itself can prepare the selected item for the next output shortcut.
+
+Each draft text field retains the normal 1 MiB payload limit. Draft text bytes
+(baseline, raw recognition, current text and suggestions) share a separate 16 MiB
+budget, capped further by any smaller Record payload budget. Each draft permits eight
+unapplied suggestions and 1,024 received run IDs. Limits reject new writes without
+eviction. The existing 2 MiB serialized catalog-node limit also bounds each entry,
+including JSON escaping and speech metadata.
+
 ## One output attempt
 
 Successful settlement updates the Record use count and consumes or resets the
@@ -80,18 +128,20 @@ entries survive.
 
 ## Persistence and migration
 
-Catalog v3 adds encrypted `buffer`, `bufferEntry`, and `bufferClock` nodes to the
+Catalog v3 introduced encrypted `buffer`, `bufferEntry`, and `bufferClock` nodes to the
 existing SQLite catalog, using the same connection, CAS revision, transaction,
 and authenticated readback. Buffer-only mutations update changed nodes and the
 revision without decoding, reserializing, or rewriting the catalog manifest or
-payloads. Record creation plus reservation fulfillment is one transaction.
+payloads. Catalog v4 adds drafts inside buffer-entry nodes. The first mutation of
+a v3 catalog upgrades its manifest in the same transaction; subsequent buffer-only
+writes preserve it. Record creation plus reservation fulfillment is one transaction.
 
 Catalog v2 and legacy graphs migrate active Stack/Queue memberships into named
 legacy buffers. Consumed members are excluded. Every legacy buffer is disabled
 by default; fresh default buffers start empty. Raycast List history is not
 backfilled. Users can enable a legacy buffer or add an existing Record manually.
 Migration failure rolls back the transaction and fails initialization closed.
-The migration is forward-only; older binaries must not write a v3 catalog.
+The migration is forward-only; older binaries must not write a v4 catalog.
 
 ## Evidence and acceptance
 

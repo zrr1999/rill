@@ -4,14 +4,20 @@ public struct RecordCaptureEnvelope: Sendable, Equatable {
     public var draft: RecordDraft
     public var requestedCollectionIDs: [RecordCollectionID]
     public var bufferEntryID: BufferEntryID?
+    public var recognitionText: String?
+    public var draftInput: BufferDraftInputIntent?
 
     public init(
         draft: RecordDraft,
         requestedCollectionIDs: [RecordCollectionID] = [],
-        bufferEntryID: BufferEntryID? = nil
+        bufferEntryID: BufferEntryID? = nil,
+        recognitionText: String? = nil,
+        draftInput: BufferDraftInputIntent? = nil
     ) {
         precondition(requestedCollectionIDs.count <= RecordGraphLimits.maximumRouteCollections)
         self.bufferEntryID = bufferEntryID
+        self.recognitionText = recognitionText
+        self.draftInput = draftInput
         self.draft = draft
         self.requestedCollectionIDs = requestedCollectionIDs
     }

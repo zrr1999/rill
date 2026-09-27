@@ -1,6 +1,6 @@
 import Foundation
 
-/// The catalog never retains a payload. Opening a record is a separate read.
+/// Record headers retain a preview. Opening an immutable payload is a separate read.
 public struct RecordHeader: Codable, Sendable, Equatable, Identifiable {
   public let id: RecordID
   public let kind: RecordPayloadKind
@@ -221,6 +221,8 @@ public struct RecordCleanupPlan: Identifiable, Sendable, Equatable {
 }
 
 public struct RecordCatalogNode: Codable, Sendable, Equatable {
+  public static let maximumValueByteCount = 2 * 1_024 * 1_024
+
   public enum Kind: String, Codable, Sendable, CaseIterable {
     case record, metadata, activity, membership, collection, captureRule, deliveryRule
     case buffer, bufferEntry, bufferClock
@@ -247,7 +249,7 @@ public struct RecordCatalogManifest: Codable, Sendable, Equatable {
   public init(
     nextMembershipOrdinal: UInt64, recordOrder: [RecordID], collectionOrder: [RecordCollectionID]
   ) {
-    schemaVersion = 3
+    schemaVersion = 4
     self.nextMembershipOrdinal = nextMembershipOrdinal
     self.recordOrder = recordOrder
     self.collectionOrder = collectionOrder

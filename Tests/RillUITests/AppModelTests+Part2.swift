@@ -225,7 +225,7 @@ extension AppModelTests {
         let workflow = makeBuiltinPushToTalkWorkflow()
         let harness = makeHarness(
             workflows: [workflow],
-            startWorkflowAudioRunAction: { workflow, binding in
+            startWorkflowAudioRunAction: { workflow, binding, _ in
                 await probe.record(workflow: workflow, binding: binding)
             }
         )
@@ -263,7 +263,7 @@ extension AppModelTests {
         )
         let harness = makeHarness(
             workflows: [workflow],
-            startWorkflowAudioRunAction: { workflow, binding in
+            startWorkflowAudioRunAction: { workflow, binding, _ in
                 await probe.record(workflow: workflow, binding: binding)
             }
         )

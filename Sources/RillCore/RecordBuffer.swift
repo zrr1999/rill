@@ -54,10 +54,12 @@ public struct BufferEntry: Codable, Sendable, Equatable, Identifiable {
   public let id: BufferEntryID
   public var recordID: RecordID?
   public var state: State
-  public init(id: BufferEntryID, recordID: RecordID? = nil, state: State = .preparing) {
+  public var draft: BufferTextDraft?
+  public init(id: BufferEntryID, recordID: RecordID? = nil, state: State = .preparing, draft: BufferTextDraft? = nil) {
     self.id = id
     self.recordID = recordID
     self.state = state
+    self.draft = draft
   }
 }
 
@@ -72,6 +74,8 @@ public struct RecordBufferSummary: Sendable, Equatable, Identifiable {
 }
 
 public struct RecordBufferSnapshot: Sendable, Equatable {
+  public let revision: UInt64
+  public let listingRevision: UInt64
   public let buffers: [RecordBufferSummary]
   public let next: BufferEntry?
   public let nextHeader: RecordHeader?
@@ -81,9 +85,11 @@ public struct RecordBufferSnapshot: Sendable, Equatable {
   }
   public init(
     buffers: [RecordBufferSummary], next: BufferEntry?, nextHeader: RecordHeader?,
-    active: BufferEntry?
+    active: BufferEntry?, revision: UInt64 = 0, listingRevision: UInt64 = 0
   ) {
     self.buffers = buffers
+    self.revision = revision
+    self.listingRevision = listingRevision
     self.next = next
     self.nextHeader = nextHeader
     self.active = active
@@ -100,7 +106,7 @@ public struct BufferOutput: Sendable {
 }
 
 public enum BufferOutputError: Error, Sendable, Equatable {
-  case empty, processing, busy, unavailable, sequenceExhausted
+  case empty, processing, busy, unavailable, sequenceExhausted, editing
 }
 
 /// This port deliberately has no system clipboard dependency.

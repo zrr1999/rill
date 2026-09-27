@@ -499,7 +499,7 @@ public extension SessionCoordinator {
 
         var failureStage = WorkflowRunStage.preparing
         do {
-            let session = try await startRunSession(
+            var session = try await startRunSession(
                 for: workflow,
                 runID: runID,
                 trigger: effectiveReceiptTrigger,
@@ -509,6 +509,13 @@ public extension SessionCoordinator {
                 compilationInput: preRecognizedText == nil ? nil : .text,
                 receiptIsActive: receiptIsActive
             )
+            session.bufferDraftInput = triggerEvent?.bufferDraftInput
+            if session.bufferDraftInput != nil {
+                guard workflow.plan.output.actions.count == 1,
+                      workflow.plan.output.actions.first?.id == RecordActionID.store else {
+                    throw SessionError.missingAction(RecordActionID.store)
+                }
+            }
             failureStage = .recognizing
             let recognition: RecognitionResult
             let recognitionDurationMilliseconds: UInt64?

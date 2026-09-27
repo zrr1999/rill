@@ -604,7 +604,7 @@ func makeHarness(
   releaseLocalSpeechRuntimeAction: @escaping @Sendable () -> Void = {},
   stopLocalSpeechRuntimeAction: @escaping @Sendable () async -> Void = {},
   startWorkflowAudioRunAction:
-    @escaping @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void = { _, _ in },
+    @escaping @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void = { _, _, _ in },
   finishWorkflowAudioRunAction: @escaping @Sendable () async throws -> Void = {},
   verifyOpenAIConfigurationAction:
     @escaping @Sendable (OpenAISettings) async throws -> Void = { _ in },

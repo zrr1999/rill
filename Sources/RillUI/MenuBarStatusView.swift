@@ -533,6 +533,10 @@ public struct MenuBarStatusView: View {
         .accessibilityIdentifier("menu.status.persistence-detail")
     }
 
+    Button(model.settings.language == .simplifiedChinese ? "打开待发区" : "Open drafts",
+      action: model.recordWorkspace.buffers.openEditorAction)
+      .accessibilityIdentifier("menu.open-drafts")
+
     Label(panelState.outputModeTitle, systemImage: RillSystemSymbol.textformat.rawValue)
       .accessibilityIdentifier("menu.status.output-mode")
 

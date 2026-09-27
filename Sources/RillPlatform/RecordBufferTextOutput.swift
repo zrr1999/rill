@@ -10,14 +10,20 @@ public final class RecordBufferTextOutput {
     let element: any CursorTextPreviewTarget
     let isCurrent: @MainActor @Sendable () -> Bool
     let post: @MainActor @Sendable ([UInt16]) -> Bool
+    public let applicationName: String?
+    let selectionIsUnchanged: @MainActor @Sendable () -> Bool
 
     public init(
       element: any CursorTextPreviewTarget, isCurrent: @escaping @MainActor @Sendable () -> Bool,
-      post: @escaping @MainActor @Sendable ([UInt16]) -> Bool
+      post: @escaping @MainActor @Sendable ([UInt16]) -> Bool,
+      applicationName: String? = nil,
+      selectionIsUnchanged: @escaping @MainActor @Sendable () -> Bool = { true }
     ) {
       self.element = element
       self.isCurrent = isCurrent
       self.post = post
+      self.applicationName = applicationName
+      self.selectionIsUnchanged = selectionIsUnchanged
     }
   }
 
@@ -52,7 +58,7 @@ public final class RecordBufferTextOutput {
             down.postToPid(pid)
             up.postToPid(pid)
             return true
-          })
+          }, applicationName: app.localizedName)
       }
     self.modifiersHeld =
       modifiersHeld ?? {
@@ -66,8 +72,20 @@ public final class RecordBufferTextOutput {
 
   public func captureTarget() -> Target? { isSecure() ? nil : capture() }
 
+  /// An editing panel may outlive the target's selection. Freeze both its
+  /// identity and the readable selection; never recapture at send time.
+  public func captureDraftTarget() -> Target? {
+    guard let target = captureTarget(), let range = target.element.selectedRange(),
+      let selectedText = target.element.selectedText(in: range) else { return nil }
+    return Target(element: target.element, isCurrent: target.isCurrent, post: target.post,
+                  applicationName: target.applicationName, selectionIsUnchanged: {
+      target.element.selectedRange() == range
+        && target.element.selectedText(in: range) == selectedText
+    })
+  }
+
   public func insert(_ text: String, into target: Target) async -> BufferTextResult {
-    guard !text.isEmpty, !isSecure(), target.isCurrent() else { return .rejected }
+    guard !text.isEmpty, !isSecure(), target.isCurrent(), target.selectionIsUnchanged() else { return .rejected }
     // Never type while the triggering command/shift chord is physically held.
     let deadline = ContinuousClock.now + .seconds(2)
     while modifiersHeld() {
@@ -75,7 +93,7 @@ public final class RecordBufferTextOutput {
       else { return .rejected }
       do { try await Task.sleep(for: .milliseconds(10)) } catch { return .rejected }
     }
-    guard !Task.isCancelled, !isSecure(), target.isCurrent() else { return .rejected }
+    guard !Task.isCancelled, !isSecure(), target.isCurrent(), target.selectionIsUnchanged() else { return .rejected }
     let range = target.element.selectedRange()
     if target.element.supportsSelectedTextReplacement(), let range {
       guard range.location >= 0, range.location != NSNotFound, range.length >= 0,

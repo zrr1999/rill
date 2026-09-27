@@ -69,6 +69,7 @@ public struct RecordBufferStatusView: View {
       }
       if let message = model.message { Text(message).font(.caption) }
       HStack {
+        Button(text("打开待发区", "Open drafts"), action: model.openEditorAction)
         if model.snapshot?.active == nil {
           Text(text("聚焦目标后按输出快捷键", "Focus the target and press the output shortcut"))
             .font(.caption).foregroundStyle(.secondary)
@@ -94,6 +95,7 @@ struct RecordBufferToolbar: View {
 
   var body: some View {
     HStack {
+      Button(text("待发区", "Drafts"), action: workspace.buffers.openEditorAction)
       Label(text("下一项", "Next"), systemImage: "text.insert")
       Text(
         workspace.buffers.snapshot?.nextHeader?.preview
