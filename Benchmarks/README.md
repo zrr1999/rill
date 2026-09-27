@@ -1,28 +1,28 @@
 # Performance benchmarks
 
-The CodSpeed suite measures production Record code with synthetic, offline data.
-No user clipboard, recordings, files, Keychain keys, or network services are read
-by the workloads.
+The suite runs production Record code with synthetic, offline data. It does not
+read user clipboard contents, recordings, files, Keychain keys or network services.
 
-| Workload | Measured batch | CodSpeed instrument |
+| Workload | Batch | CI role |
 | --- | --- | --- |
 | Plain text / Markdown | 10,000 `RecordTextFormatting.previewText` calls | Linux CPU simulation |
 | Long Unicode | 1,000 grapheme-safe long-text previews | Linux CPU simulation |
-| Stack / Queue enqueue | Insert 10,000 pending entries through `RecordStore` into AES-GCM SQLite | macOS walltime |
-| Stack / Queue select | Select the next item 10,000 times with 10,000 entries pending | macOS walltime |
-| Stack / Queue output | Begin and commit 10,000 output entries, draining the container | macOS walltime |
+| Stack / Queue enqueue | Insert 10,000 pending entries through `RecordStore` into AES-GCM SQLite | macOS correctness validation |
+| Stack / Queue select | Select the next item 10,000 times with 10,000 entries pending | macOS correctness validation |
+| Stack / Queue output | Begin and commit 10,000 entries, draining the container | macOS correctness validation |
 
-Every workload checks its results. The buffer workloads verify Stack/Queue
-ordering, exact entry identity, and restoration of both the full and drained
-catalog. Output measures state transitions and persistence; it sends nothing to
-other applications.
+Every workload checks its results. Buffer validation checks ordering, exact entry
+identity, and restoration of the full and drained catalog. It sends no text to
+other applications. GitHub-hosted macOS timing varies with runner load, so that
+job runs without CodSpeed and makes no performance comparison. Its latency and
+memory logs are diagnostics, not evidence of a regression or improvement.
+
+## Run locally
 
 Build and validate every workload on macOS:
 
 ```sh
-bash scripts/build_benchmarks.sh
-bash scripts/build_benchmarks.sh --codspeed
-codspeed run --mode walltime -- .artifacts/benchmarks/record-buffer
+just bench
 ```
 
 Build and measure the portable preview workloads on Linux:
@@ -32,72 +32,46 @@ bash scripts/build_benchmarks.sh --codspeed --preview-only
 codspeed run --mode simulation -- .artifacts/benchmarks/record-text
 ```
 
-The build script compiles production code with optimization. Buffer benchmarks
-link the Core, Records and Persistence modules, without a shipping executable
-or the MLX dependency graph. The two `Record*Benchmarks.swift` files own the
-workload inventories; `CodSpeedRecorder.swift` owns the shared instrumentation
-lifecycle. Linux builds require `--preview-only`: encrypted storage still depends
-on macOS APIs. The macOS-only `renderedMarkdown` attributed-text API is excluded
-on Linux; the benchmark calls the same production `previewText` implementation
-and validates the same outputs on both platforms. With `--codspeed`, the
-script downloads the official `instrument-hooks` C library at commit
-`4c76dbb5b99fc4927289281c7b7ca71cc46e6836`, verifies its archive SHA-256, and
-compiles it only into the benchmark binary. The downloaded archive includes its
+The build script compiles production code with optimization, without the app's
+MLX dependency graph. Linux builds require `--preview-only`: encrypted storage
+still depends on macOS APIs. The macOS-only `renderedMarkdown` attributed-text
+API is excluded on Linux; both platforms run the same production `previewText`
+implementation and validate the same expected outputs.
+
+`--codspeed` downloads the official `instrument-hooks` C library at commit
+`4c76dbb5b99fc4927289281c7b7ca71cc46e6836`, verifies the archive SHA-256, and links
+it only into the benchmark binary. The archive includes its
 [MIT and Apache-2.0 licenses](https://github.com/CodSpeedHQ/instrument-hooks/tree/4c76dbb5b99fc4927289281c7b7ca71cc46e6836).
-`just bench` validates all workloads without this download or any CodSpeed login.
-Regular `just ci` retains the fast preview validation with `--preview-only` and
-tests buffer behavior through the Runtime tests. The dedicated benchmark workflow
-builds and measures both suites when the affected production modules, benchmarks
-or their build workflow change; unrelated PRs do not rebuild the benchmark modules.
+The custom harness follows CodSpeed's supported C interface. Preview hooks
+surround one batch after one warmup; URI construction, aggregate validation and
+logging stay outside the window. Each preview checks its result inside the
+workload. No walltime samples or walltime result JSON are emitted by this suite.
 
-Preview hooks surround one batch after one warmup. URI construction, aggregate
-validation and logging stay outside the measurement window; each preview still
-checks its expected result inside the workload. Simulation collects CPU costs
-through the hooks and does not emit walltime samples or walltime result JSON.
+`just bench` needs neither the download nor a CodSpeed login. `just ci` includes
+fast preview validation and tests buffer behavior through the Runtime tests.
 
-Buffer benchmarks run
-five independent, fresh-database rounds; each round warms one write/output cycle
-before measuring the three batches. Catalog seeding, initialization, warmup and
-restart verification are outside the timed batches. Result validation and sample
-bookkeeping are included in each measured batch. These are batch costs, not
-per-item latency measurements. The custom harness follows CodSpeed's supported C
-interface for both instruments. For buffer measurements, `CodSpeedResults.swift`
-writes the same walltime result schema as the official
-[Rust integration](https://github.com/CodSpeedHQ/codspeed-rust/blob/main/crates/codspeed/src/walltime_results.rs).
-Reported times describe one complete batch; `iter_per_round` is therefore one.
+## CI and interpretation
 
-Buffer run logs also report per-operation P50/P95/P99 for enqueue, select,
-output preparation and consumption commit, plus RSS and checkpointed database
-growth after enqueue. RSS is a process observation that includes measurement
-bookkeeping and allocator reuse; a zero delta does not mean entries use no memory.
-These optimized measurements replace the opt-in debug-only buffer benchmark;
-older debug observations remain historical evidence, not comparable CodSpeed baselines.
-
-The advisory GitHub workflow runs on `main`, on relevant pull requests, and on
-manual dispatch. Preview simulation runs directly on Ubuntu 24.04 with Swift
-6.2.4 and a commit-pinned setup action; buffer walltime runs on `macos-26`. The
-native runner lets CodSpeed disable address randomization with `setarch`, which
-is blocked by Docker's default container policy. Both jobs
-stay in the same workflow, with each benchmark reported by exactly one job.
-It pins CodSpeed and other actions to commits, uses tokenless uploads for this
-public repository, and requests only `contents: read`.
+The workflow runs on `main`, relevant PRs and manual dispatch. Preview simulation
+runs directly on Ubuntu 24.04 with Swift 6.2.1 and a commit-pinned setup action.
+The native runner supports the simulator's `setarch` call. Actions are pinned to
+commits; this public repository uses tokenless uploads and `contents: read`.
 
 [CPU simulation](https://codspeed.io/docs/instruments/cpu) reduces sensitivity to
-host load, but excludes system-call time. It is a regression signal for the Linux
-Swift/Foundation text implementation, not Apple Silicon latency. SQLite disk I/O
-therefore retains real walltime measurement on macOS, which can vary with host
-load. Preview simulation needs a new successful `main` baseline; the former
-macOS walltime batches are not comparable with the new instrument or platform.
-These measurements do not prove
-native copy/paste latency or application compatibility. The encrypted SQLite
-measurements use a fixed synthetic key and local temporary files; they do not
-measure Keychain authorization or real application input. Those require the
-separate macOS and Record acceptance checks.
+host load, but excludes system-call time. It measures the CPU cost of Linux
+Swift/Foundation text processing, not Apple Silicon latency. The new instrument
+needs a successful `main` baseline; old macOS walltime results are not comparable.
 
-To extend coverage, add deterministic workloads that call the production owner,
-verify the amount of work and resulting state, and register them in the Swift
-harness. Keep setup outside the measured operation when reporting
-operation latency; explicitly identify it when reporting an end-to-end batch.
+Actual SQLite I/O latency needs a separate experiment on a fixed, otherwise idle
+Mac or a suitable dedicated runner. The experiment must fix data, toolchain and
+cache conditions, compare both revisions on the same machine in interleaved
+order, and establish the noise floor before drawing a conclusion. Shared-runner
+walltime and CPU simulation cannot establish that latency. No new I/O measurement
+tool is introduced here.
+
+The buffer fixture uses a fixed synthetic key and temporary files. It does not
+measure Keychain authorization, physical copy/paste or application compatibility;
+those require the separate macOS and Record acceptance checks.
 
 References: [Spark's benchmark layout](https://github.com/zendev-lab/spark/tree/main/benchmarks)
 and [CodSpeed's custom harness guide](https://github.com/CodSpeedHQ/instrument-hooks/blob/main/CUSTOM_HARNESS.md).

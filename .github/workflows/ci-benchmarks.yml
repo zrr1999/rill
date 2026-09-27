@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
       - uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a # v2.4.0
         with:
-          swift-version: "6.2.4"
+          swift-version: "6.2.1"
       - name: Build and validate preview workloads
         run: bash scripts/build_benchmarks.sh --codspeed --preview-only
       - name: Measure CPU simulation with CodSpeed
@@ -42,7 +42,7 @@ jobs:
           run: .artifacts/benchmarks/record-text
 
   benchmarks:
-    name: Record benchmarks
+    name: Record workload validation
     runs-on: macos-26
     timeout-minutes: 20
     steps:
@@ -50,9 +50,4 @@ jobs:
         with:
           persist-credentials: false
       - name: Build and validate benchmark workloads
-        run: bash scripts/build_benchmarks.sh --codspeed
-      - name: Measure with CodSpeed
-        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
-        with:
-          mode: walltime
-          run: .artifacts/benchmarks/record-buffer
+        run: bash scripts/build_benchmarks.sh
