@@ -12,7 +12,8 @@ struct WorkflowOutputExecutor: Sendable {
     func deliver(
         finalText: String,
         recognition: RecognitionResult,
-        in session: WorkflowRunSession
+        in session: WorkflowRunSession,
+        bufferEntryID: BufferEntryID? = nil
     ) async throws -> DeliveryExecutionSummary {
         var actionContext = ActionContext(
             runID: session.runID,
@@ -20,6 +21,7 @@ struct WorkflowOutputExecutor: Sendable {
             contextSnapshot: session.contextSnapshot,
             recognitionResult: recognition,
             finalText: finalText,
+            bufferEntryID: bufferEntryID,
             startedAt: session.startedAt,
             finishedAt: Date()
         )

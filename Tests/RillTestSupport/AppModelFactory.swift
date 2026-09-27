@@ -248,12 +248,14 @@ public func makeRecordInteractionServicesForTesting(
   setCaptureEnabled: @escaping (Bool, UInt64) -> Void = { _, _ in },
   ignoreNextExternalChange: @escaping () -> Void = {},
   updateHotkey: @escaping (HotkeyBindingDescriptor) -> Void = { _ in },
+  updateBufferHotkey: @escaping (HotkeyBindingDescriptor) -> Void = { _ in },
   beginShortcutRecording: @escaping () -> UUID = { UUID() },
   endShortcutRecording: @escaping (UUID) -> Void = { _ in },
   commitShortcutRecording: @escaping (UUID, UInt16) -> Void = { _, _ in }
 ) -> RecordInteractionServices {
   .init(copy: copy, setCaptureEnabled: setCaptureEnabled,
     ignoreNextExternalChange: ignoreNextExternalChange, updateHotkey: updateHotkey,
+    updateBufferHotkey: updateBufferHotkey,
     beginShortcutRecording: beginShortcutRecording, endShortcutRecording: endShortcutRecording,
     commitShortcutRecording: commitShortcutRecording)
 }

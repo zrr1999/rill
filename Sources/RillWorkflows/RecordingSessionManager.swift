@@ -371,7 +371,7 @@ public actor RecordingSessionManager {
       await handleGlobalInputUnavailable(
         waitsForCancellationCompletion: waitsForFinishingCompletion
       )
-    case .recordPanelRequested,
+    case .recordPanelRequested, .recordBufferOutputRequested,
       .liveAudioCancellationRequested, .customHotkey(_):
       break
     }
@@ -461,7 +461,7 @@ public actor RecordingSessionManager {
     case .globalInputUnavailable:
       await handleGlobalInputUnavailable(waitsForCancellationCompletion: false)
 
-    case .recordPanelRequested,
+    case .recordPanelRequested, .recordBufferOutputRequested,
       .liveAudioCancellationRequested, .customHotkey:
       break
     }

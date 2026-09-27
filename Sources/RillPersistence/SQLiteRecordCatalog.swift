@@ -82,7 +82,7 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
     if !mutation.preservesManifest { try validateCatalogManifest(mutation.manifest) }
     if mutation.preservesManifest {
       guard mutation.newPayloadBlobs.isEmpty, mutation.removedPayloadBlobIDs.isEmpty,
-        mutation.upserts.allSatisfy({ [.buffer, .bufferEntry, .bufferClock].contains($0.kind) }),
+        mutation.upserts.allSatisfy({ [.buffer, .bufferEntry, .bufferClock, .activity].contains($0.kind) }),
         mutation.removedKeys.allSatisfy({ $0.hasPrefix("bufferEntry/") })
       else { throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot }
     }
@@ -144,6 +144,15 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
         try step(statement, expecting: SQLITE_DONE)
       }
       for node in mutation.upserts {
+        if mutation.preservesManifest, node.kind == .activity {
+          let existing = try prepare(
+            "SELECT 1 FROM record_catalog_nodes WHERE key = ? AND kind = ? AND identifier = ?;")
+          defer { sqlite3_finalize(existing) }
+          try bind([.text(node.key), .text(node.kind.rawValue), .text(node.id)], to: existing)
+          guard sqlite3_step(existing) == SQLITE_ROW else {
+            throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
+          }
+        }
         guard node.id.utf8.count <= 128, node.value.count <= 2 * 1_024 * 1_024 else {
           throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
         }

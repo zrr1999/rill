@@ -7,6 +7,7 @@ public struct RecordInteractionServices {
   let setCaptureEnabled: (Bool, UInt64) -> Void
   let ignoreNextExternalChange: () -> Void
   let updateHotkey: (HotkeyBindingDescriptor) -> Void
+  let updateBufferHotkey: (HotkeyBindingDescriptor) -> Void
   let beginShortcutRecording: () -> UUID
   let endShortcutRecording: (UUID) -> Void
   let commitShortcutRecording: (UUID, UInt16) -> Void
@@ -16,6 +17,7 @@ public struct RecordInteractionServices {
     setCaptureEnabled: @escaping (Bool, UInt64) -> Void,
     ignoreNextExternalChange: @escaping () -> Void,
     updateHotkey: @escaping (HotkeyBindingDescriptor) -> Void,
+    updateBufferHotkey: @escaping (HotkeyBindingDescriptor) -> Void,
     beginShortcutRecording: @escaping () -> UUID,
     endShortcutRecording: @escaping (UUID) -> Void,
     commitShortcutRecording: @escaping (UUID, UInt16) -> Void
@@ -24,6 +26,7 @@ public struct RecordInteractionServices {
     self.setCaptureEnabled = setCaptureEnabled
     self.ignoreNextExternalChange = ignoreNextExternalChange
     self.updateHotkey = updateHotkey
+    self.updateBufferHotkey = updateBufferHotkey
     self.beginShortcutRecording = beginShortcutRecording
     self.endShortcutRecording = endShortcutRecording
     self.commitShortcutRecording = commitShortcutRecording

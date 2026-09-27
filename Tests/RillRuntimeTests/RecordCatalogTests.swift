@@ -8,6 +8,39 @@ import XCTest
 @testable import RillRecords
 
 final class RecordCatalogTests: XCTestCase {
+  func testBufferSettlementPersistsUsageAndRejectsOrphanActivityAtomically() async throws {
+    let fixture = try fixture()
+    let store = RecordStore(persistence: fixture.persistence)
+    let record = try await store.ingest(draft("pending"), into: [])
+    let entryID = try await store.enqueueRecord(record.id, in: RecordBuffer.clipboardID)
+    let loaded = try await fixture.persistence.loadRecordCatalog()
+    let before = try XCTUnwrap(loaded)
+    let orphan = RecordActivity(recordID: RecordID(), useCount: 1)
+    do {
+      _ = try await fixture.persistence.commitRecordCatalog(.init(
+        expectedRevision: before.revision, manifest: before.manifest,
+        upserts: [.init(kind: .activity, id: orphan.recordID.description,
+          value: try JSONEncoder().encode(orphan))],
+        removedKeys: ["bufferEntry/\(entryID)"], newPayloadBlobs: [],
+        removedPayloadBlobIDs: [], preservesManifest: true))
+      XCTFail("A manifest-preserving settlement must not create an orphan activity")
+    } catch let error as SQLitePersistenceError {
+      XCTAssertEqual(error, .clipboardPersistenceInvalidWriteSnapshot)
+    }
+    let after = try await fixture.persistence.loadRecordCatalog()
+    XCTAssertEqual(after?.revision, before.revision)
+    XCTAssertEqual(after?.nodes.map(\.key), before.nodes.map(\.key))
+
+    _ = try await store.beginBufferOutput()
+    try await store.finishBufferOutput(entryID)
+    let restored = RecordStore(persistence: fixture.persistence)
+    let snapshot = try await restored.catalogSnapshot()
+    XCTAssertEqual(snapshot.records.first?.activity.useCount, 1)
+    XCTAssertEqual(snapshot.records.first?.activity.copyCount, record.activity.copyCount)
+    let remaining = try await restored.entries(in: RecordBuffer.clipboardID)
+    XCTAssertTrue(remaining.isEmpty)
+  }
+
   func testSearchCursorRejectsCatalogChangesBetweenPages() async throws {
     let store = RecordStore()
     _ = try await store.ingest(draft("first"), into: [])

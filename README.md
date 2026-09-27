@@ -28,7 +28,7 @@ Rill 是本地优先的 macOS 语音输入与记录应用。按住 Fn 说话，�
 | 要完成的任务 | 指南 |
 | --- | --- |
 | 听写、智能整理、语音助手 | [语音输入](docs/voice.md) |
-| 找回内容、预览、复制与粘贴 | [记录与搜索](docs/records.md) |
+| 找回内容、预览、复制与连续输出 | [记录与搜索](docs/records.md) |
 | 调整触发方式、步骤与输出 | [工作流](docs/workflows.md) |
 | 修正专有词，管理上下文和记忆 | [词汇与记忆](docs/vocabulary-memory.md) |
 | 查快捷键、设置位置、TOML 字段 | [参考](docs/reference.md) |

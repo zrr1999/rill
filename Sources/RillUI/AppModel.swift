@@ -463,6 +463,7 @@ public final class AppModel {
     self.openMicrophoneSettingsAction = openMicrophoneSettingsAction
     recordInteractions.setCaptureEnabled(settings.systemClipboardCaptureEnabled, clipboardCapturePreferenceRevision)
     recordInteractions.updateHotkey(settings.recordPanelHotkeyBinding)
+    recordInteractions.updateBufferHotkey(settings.bufferOutputHotkeyBinding)
     synchronizeWorkflowEnabledStates()
     if loadsPersistentSettingsOnInitialization {
       loadSettings()
@@ -539,6 +540,12 @@ extension AppModel {
     let oldValue = self.settings.systemClipboardCaptureEnabled
     self.settings.systemClipboardCaptureEnabled = newValue
     handleClipboardCaptureEnabledChange(from: oldValue)
+  }
+
+  func applyBufferOutputHotkeyBinding(_ newValue: HotkeyBindingDescriptor) {
+    let oldValue = settings.bufferOutputHotkeyBinding
+    settings.bufferOutputHotkeyBinding = newValue
+    handleBufferOutputHotkeyChange(from: oldValue)
   }
 
   func applyRecordPanelHotkeyBinding(_ newValue: HotkeyBindingDescriptor) {

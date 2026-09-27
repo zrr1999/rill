@@ -194,6 +194,47 @@ struct RecordBufferTests {
       })
   }
 
+  @Test(arguments: [RecordBuffer.Policy.stack, .queue, .set])
+  func successfulOutputCountsUsageOnlyAfterAtomicSettlement(policy: RecordBuffer.Policy) async throws {
+    let persistence = BufferCatalogFake()
+    let store = RecordStore(persistence: persistence)
+    let buffer = RecordBuffer(name: "Usage", policy: policy)
+    try await store.updateBuffer(buffer)
+    let record = try await store.ingest(draft("used"), into: [])
+    let entryID = try await store.enqueueRecord(record.id, in: buffer.id)
+    _ = try await store.beginBufferOutput(manualEntryID: entryID)
+    try await store.markBufferOutputUnconfirmed(entryID)
+    #expect(try await store.catalogSnapshot().records.first?.activity.useCount == 0)
+
+    await persistence.rejectNext()
+    await #expect(throws: RecordStoreError.persistenceUnavailable) {
+      try await store.finishBufferOutput(entryID)
+    }
+    #expect(try await store.catalogSnapshot().records.first?.activity.useCount == 0)
+    #expect(try await store.bufferSnapshot().active?.state == .delivered)
+    try await store.finishBufferOutput(entryID)
+    #expect(try await store.catalogSnapshot().records.first?.activity.useCount == 1)
+    #expect(try await store.catalogSnapshot().records.first?.activity.copyCount == record.activity.copyCount)
+    await #expect(throws: BufferOutputError.unavailable) {
+      try await store.finishBufferOutput(entryID)
+    }
+
+    await persistence.rejectNext()
+    await #expect(throws: RecordStoreError.persistenceUnavailable) {
+      _ = try await store.ingest(draft("rejected"), into: [])
+    }
+    #expect(try await store.catalogSnapshot().records.first?.activity.useCount == 1)
+    let restored = RecordStore(persistence: persistence)
+    #expect(try await restored.catalogSnapshot().records.first?.activity.useCount == 1)
+    let remaining = try await restored.entries(in: buffer.id)
+    #expect(remaining.count == (policy == .set ? 1 : 0))
+    if policy == .set {
+      _ = try await restored.beginBufferOutput(manualEntryID: entryID)
+      try await restored.finishBufferOutput(entryID)
+      #expect(try await restored.catalogSnapshot().records.first?.activity.useCount == 2)
+    }
+  }
+
   @Test func migrationRetainsOnlyUnconsumedLegacyEntriesAndIsAtomic() async throws {
     let persistence = BufferCatalogFake()
     let original = RecordStore(persistence: persistence)

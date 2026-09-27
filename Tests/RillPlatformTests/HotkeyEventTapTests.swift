@@ -1323,9 +1323,10 @@ struct NativeClipboardShortcutTests {
         [.maskCommand, .maskAlternate],
         [.maskCommand, .maskAlternate, .maskShift],
     ])
-    func forwardsOriginalCutCopyAndPasteEvents(keyCode: CGKeyCode, flags: CGEventFlags) throws {
+    func forwardsUnassignedCutCopyAndPasteEvents(keyCode: CGKeyCode, flags: CGEventFlags) throws {
         let tap = HotkeyEventTap()
         tap.setRecordPanelShortcutEnabled(true)
+        tap.setBufferOutputHotkeyBinding(.keyboardShortcut(.init(keyCode: 11, modifiers: [.command, .shift])))
         for type in [CGEventType.keyDown, .keyUp] {
             let event = try #require(CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: type == .keyDown))
             event.flags = flags
@@ -1334,5 +1335,39 @@ struct NativeClipboardShortcutTests {
             #expect(event.flags == flags)
             #expect(event.getIntegerValueField(.keyboardEventKeycode) == Int64(keyCode))
         }
+    }
+}
+
+@MainActor struct BufferHotkeyTests {
+    @Test func nativeKeysPassThroughAndRepeatedOutputChordEmitsOnce() async throws {
+        let tap = HotkeyEventTap()
+        tap.setRecordPanelShortcutEnabled(true)
+        tap.setRecordPanelHotkeyBinding(.keyboardShortcut(.init(keyCode: 11, modifiers: [.command, .shift])))
+        var events = tap.stream().makeAsyncIterator()
+        func key(_ code: UInt16, down: Bool = true, shift: Bool = false) throws -> Unmanaged<CGEvent>? {
+            let event = try #require(CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down))
+            event.flags = shift ? [.maskCommand, .maskShift] : [.maskCommand]
+            return tap.testingHandle(type: down ? .keyDown : .keyUp, event: event)
+        }
+        for code: UInt16 in [8, 7, 9] { #expect(try key(code) != nil) }
+        #expect(try key(9, shift: true) == nil)
+        #expect(try key(9, shift: true) == nil)
+        #expect(try key(9, down: false) == nil)
+        #expect(try key(11, shift: true) == nil)
+        #expect(await events.next() == .recordBufferOutputRequested)
+        #expect(await events.next() == .recordPanelRequested)
+    }
+
+    @Test func recorderSuspensionAndCustomBindingConflictsDoNotDoubleDispatch() throws {
+        let tap = HotkeyEventTap()
+        let event = try #require(CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true))
+        event.flags = [.maskCommand, .maskShift]
+        let suspension = tap.beginRecordPanelShortcutRecording()
+        #expect(tap.testingHandle(type: .keyDown, event: event) != nil)
+        tap.endRecordPanelShortcutRecording(suspension)
+        tap.setRecordPanelHotkeyBinding(.keyboardShortcut(.outputNext))
+        // A saved conflict leaves ownership with the panel; the settings surface flags it.
+        tap.setRecordPanelShortcutEnabled(false)
+        #expect(tap.testingHandle(type: .keyDown, event: event) != nil)
     }
 }

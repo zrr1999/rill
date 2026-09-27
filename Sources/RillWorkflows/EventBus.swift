@@ -202,7 +202,7 @@ extension RillEvent {
   fileprivate var retainsDeliveryAfterCancellation: Bool {
     switch self {
     case .runCompleted, .runCancelled, .runFailed, .runReceiptRepositoryChanged, .runHistoryUpdated,
-      .audioProcessingQueueUpdated, .failedAudioRecoveryUpdated:
+      .audioProcessingQueueUpdated, .failedAudioRecoveryUpdated, .recordBufferInputFailed:
       true
     case .liveSubtitleUpdated(let snapshot): !snapshot.isVisible
     default: false

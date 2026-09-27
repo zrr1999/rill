@@ -993,7 +993,7 @@ public actor RecordStore {
         snapshot: SystemClipboardSnapshot,
         sourceApplication: FocusedApplicationIdentity,
         allowsWorkflowCapture: Bool,
-        bufferEntryID: BufferEntryID?
+        bufferEntryID: BufferEntryID? = nil
     ) async throws -> RecordProjection {
         let payload: RecordPayload
         if let image = snapshot.imagePNGData {
@@ -2474,20 +2474,29 @@ extension RecordStore {
     /// Retrying this command only commits state; it never calls an output transport.
     public func finishBufferOutput(_ id: BufferEntryID) async throws {
         try await ensureInitialized()
-        guard activeBufferOutput == id, var entry = bufferEntries[id], entry.recordID != nil else { throw BufferOutputError.unavailable }
+        guard activeBufferOutput == id, var entry = bufferEntries[id],
+              let recordID = entry.recordID, var activity = graphState.activityByRecordID[recordID]
+        else { throw BufferOutputError.unavailable }
         entry.state = .delivered
         applyBufferEntry(entry)
         publishBuffers()
+        activity.recordDelivery()
+        let activityNode = RecordCatalogNode(
+            kind: .activity, id: recordID.description, value: try encoder.encode(activity)
+        )
         if buffersByID[id.bufferID]?.policy == .set {
             entry.state = .ready
-            try await commitBufferChanges(nodes: [try bufferNode(entry)])
+            try await commitBufferChanges(nodes: [activityNode, try bufferNode(entry)])
             applyBufferEntry(entry)
         } else {
-            try await commitBufferChanges(removed: [id])
+            try await commitBufferChanges(nodes: [activityNode], removed: [id])
             removeBufferEntry(id)
         }
+        graphState.activityByRecordID[recordID] = activity
+        committedGraphState?.activityByRecordID[recordID] = activity
         activeBufferOutput = nil
         requestedBufferEntryID = nil
+        if !snapshotContinuations.isEmpty { publishSnapshotToObservers() }
         publishBuffers()
     }
 
@@ -2688,15 +2697,4 @@ private extension RecordStore {
     }
 }
 
-extension RecordStore: SystemClipboardRecordCapturing {
-    public func captureSystemClipboard(
-        snapshot: SystemClipboardSnapshot,
-        sourceApplication: FocusedApplicationIdentity,
-        allowsWorkflowCapture: Bool
-    ) async throws -> RecordProjection {
-        try await captureSystemClipboard(
-            snapshot: snapshot, sourceApplication: sourceApplication,
-            allowsWorkflowCapture: allowsWorkflowCapture, bufferEntryID: nil
-        )
-    }
-}
+extension RecordStore: SystemClipboardRecordCapturing {}

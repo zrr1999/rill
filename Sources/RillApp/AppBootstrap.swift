@@ -862,6 +862,7 @@ private enum AppContainerFactory {
       }
     )
     let cursorTextPreviewCoordinator = CursorTextPreviewCoordinator(
+      injectionEngine: injectionEngine,
       diagnosticReporter: { diagnostic in
         let textLengthBucket =
           switch diagnostic.textLength {
@@ -1947,6 +1948,9 @@ private enum AppModelFactory {
       updateHotkey: { binding in
         platform.hotkeyTap.setRecordPanelHotkeyBinding(binding)
       },
+      updateBufferHotkey: { binding in
+        platform.hotkeyTap.setBufferOutputHotkeyBinding(binding)
+      },
       beginShortcutRecording: {
         platform.hotkeyTap.beginRecordPanelShortcutRecording()
       },
@@ -2268,7 +2272,7 @@ private enum AppModelFactory {
         _ = platform.pasteboard.writePlainText(text)
       },
       deliverNextRecordAction: {
-        Task { await runtime.systemClipboardCaptureController.recordDelivery.deliverNextRecord() }
+        model?.recordWorkspace.buffers.outputAction(nil)
       },
       permissionSnapshot: platform.permissionGate.snapshot,
       language: .preferred,
@@ -2308,6 +2312,15 @@ private enum AppModelFactory {
       recordInteractionServices: makeRecordInteractionServices(platform: platform, runtime: runtime)
     )
     model = resolvedModel
+    let bufferOutput = BufferOutputController(
+      store: core.recordStore, model: resolvedModel, injectionEngine: platform.injectionEngine)
+    resolvedModel.recordWorkspace.buffers.outputAction = { bufferOutput.output($0) }
+    resolvedModel.recordWorkspace.buffers.showMessageAction = { bufferOutput.showMessage($0) }
+    resolvedModel.recordWorkspace.buffers.confirmAction = { bufferOutput.confirm() }
+    resolvedModel.recordWorkspace.buffers.retryAction = { bufferOutput.retry() }
+    resolvedModel.recordWorkspace.buffers.cancelAction = { bufferOutput.cancel() }
+    resolvedModel.recordWorkspace.buffers.shutdownAction = { await bufferOutput.shutdown() }
+    resolvedModel.recordWorkspace.buffers.start()
     if let wakeWordTriggerSource = providers.wakeWordTriggerSource {
       Task { @MainActor [weak resolvedModel] in
         for await status in wakeWordTriggerSource.statusStream() {

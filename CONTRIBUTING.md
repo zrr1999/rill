@@ -141,7 +141,7 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 | [SECURITY.md](SECURITY.md) | 支持版本、漏洞报告渠道及披露规则 |
 | [PRIVACY.md](PRIVACY.md) | 随 App 分发的技术隐私与数据流说明 |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md) | 第三方依赖与模型的许可及来源证据 |
-| [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[工作流](docs/workflow-toml.md)、[上下文纠错](docs/contextual-correction.md)、[UI](docs/ui-direction.md) | 开发者维护的模块、状态、执行与界面契约 |
+| [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[连续输出](docs/continuous-output.md)、[工作流](docs/workflow-toml.md)、[上下文纠错](docs/contextual-correction.md)、[UI](docs/ui-direction.md) | 开发者维护的模块、状态、执行与界面契约 |
 | [输入法工程](docs/input-method-development.md) | 独立输入法打包、探针、迁移核对与原生验收方法 |
 | [图标设计](docs/icon-design.md) | 应用与菜单栏图标的设计说明、预览及资源维护入口 |
 | [发布步骤](docs/releasing.md)、[验收清单](docs/release-qa-checklist.md) | 维护者发布流程和特定候选包的验收要求 |

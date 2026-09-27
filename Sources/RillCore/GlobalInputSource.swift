@@ -7,6 +7,7 @@ public enum PushToTalkGesture: String, Sendable, Equatable {
 
 public enum GlobalInputEvent: Sendable, Equatable {
   case recordPanelRequested
+  case recordBufferOutputRequested
   case pushToTalkPressed(PushToTalkGesture)
   case pushToTalkReleased(PushToTalkGesture)
   case liveAudioCancellationRequested(UUID)
