@@ -130,6 +130,7 @@ public typealias VocabularyRuleSourceError = VocabularyLibrarySourceError
 public struct VocabularyRecognitionHintResolution: Sendable, Equatable {
     public var hints: RecognitionHints
     public var candidates: [HotwordCandidate]
+    public var allCandidates: [HotwordCandidate]
     /// The number of valid, distinct keyterms before the provider-facing cap.
     public var validKeytermCount: Int
     /// The number of valid, distinct keyterms excluded by the cap.
@@ -142,10 +143,12 @@ public struct VocabularyRecognitionHintResolution: Sendable, Equatable {
         validKeytermCount: Int,
         omittedKeytermCount: Int,
         rejectedKeytermCount: Int,
-        candidates: [HotwordCandidate] = []
+        candidates: [HotwordCandidate] = [],
+        allCandidates: [HotwordCandidate] = []
     ) {
         self.hints = hints
         self.candidates = candidates
+        self.allCandidates = allCandidates
         self.validKeytermCount = validKeytermCount
         self.omittedKeytermCount = omittedKeytermCount
         self.rejectedKeytermCount = rejectedKeytermCount
@@ -192,7 +195,8 @@ public struct VocabularyRecognitionHintResolver: Sendable {
             validKeytermCount: validKeyterms.count,
             omittedKeytermCount: validKeyterms.count - emittedKeyterms.count,
             rejectedKeytermCount: rejectedKeytermCount,
-            candidates: Array(candidates.prefix(maximumKeytermCount))
+            candidates: Array(candidates.prefix(maximumKeytermCount)),
+            allCandidates: candidates
         )
     }
 

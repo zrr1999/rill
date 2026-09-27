@@ -66,7 +66,7 @@ final class ContextMemoryController {
         revoke()
         self.settings = settings
         let revision = mutationRevision
-        guard !isShuttingDown, settings.screenContextEnabled || settings.memoryEnabled,
+        guard !isShuttingDown, settings.screenContextEnabled || settings.memoryEnabled || settings.vocabularyCorrectionEnabled,
               settings.providerFingerprint == ContextProviderIdentity.fingerprint(try await providerSettings()),
               revision == mutationRevision else {
             if revision == mutationRevision { try await repository.setContextAuthorization(nil) }
@@ -89,22 +89,42 @@ final class ContextMemoryController {
     }
 
     func prepare(runID: UUID, workflow: WorkflowDefinition, context: ContextSnapshot,
-                 recognitionOptions: SpeechRecognitionRequestOptions, audioLifetime: AudioCaptureLifetime) async throws -> RunContextPreparation? {
+                 recognitionOptions: SpeechRecognitionRequestOptions, audioLifetime: AudioCaptureLifetime,
+                 vocabularyCandidates: [HotwordCandidate] = []) async throws -> RunContextPreparation? {
         await maintenance.interrupt()
+        try Task.checkCancellation()
+        guard audioLifetime.isActive else { throw CancellationError() }
         guard let token = authorization, token.isValid,
               settings.authorizedWorkflowIDs.contains(workflow.id),
               workflow.supportsContextualCorrection else { return nil }
+        let vocabulary: CorrectionVocabularyReference?
+        if settings.vocabularyCorrectionEnabled && workflow.supportsVocabularyCorrection,
+           !context.focus.secureInput, let privacy = try? privacySettings.currentSettings() {
+            let decision = PrivacyPolicy.evaluate(context: context, processingDestinations: [.cloudText], settings: privacy)
+            guard decision.allowsWorkflowCapture, !decision.blocksCloudProcessing,
+                  !privacy.sensitiveAppRules.contains(where: { $0.matches(focus: context.focus) }) else { return nil }
+            vocabulary = try CorrectionVocabularyReference(terms: vocabularyCandidates.map(\.term))
+        } else { vocabulary = nil }
+        if !settings.screenContextEnabled && !settings.memoryEnabled {
+            guard let vocabulary else { return nil }
+            let preparation = RunContextPreparation.skipped(authorization: token, audioLifetime: audioLifetime,
+                screenEnabled: false, memoryEnabled: false, status: .disabled, vocabularyReference: vocabulary)
+            preparations = preparations.filter { !$0.value.isFinished }
+            preparations[runID] = preparation
+            return preparation
+        }
         let preparation: RunContextPreparation?
         do {
             preparation = try await preparationOperations.run(timeout: .milliseconds(250)) { [weak self] in
                 try await self?.prepareWithinBudget(runID: runID, workflow: workflow, context: context,
-                                                   recognitionOptions: recognitionOptions, audioLifetime: audioLifetime)
+                                                   recognitionOptions: recognitionOptions, audioLifetime: audioLifetime, vocabularyReference: vocabulary)
             }
         } catch is CancellationError { throw CancellationError() }
         catch {
             preparation = RunContextPreparation.skipped(
                 authorization: token, audioLifetime: audioLifetime, screenEnabled: settings.screenContextEnabled,
-                memoryEnabled: settings.memoryEnabled, status: error is OperationDeadlineError ? .timedOut : .unavailable)
+                memoryEnabled: settings.memoryEnabled, status: error is OperationDeadlineError ? .timedOut : .unavailable,
+                vocabularyReference: vocabulary)
         }
         guard token.isValid, audioLifetime.isActive else { preparation?.cancel(); throw CancellationError() }
         preparations = preparations.filter { !$0.value.isFinished }
@@ -114,7 +134,8 @@ final class ContextMemoryController {
 
     private func prepareWithinBudget(runID: UUID, workflow: WorkflowDefinition, context: ContextSnapshot,
                                     recognitionOptions: SpeechRecognitionRequestOptions,
-                                    audioLifetime: AudioCaptureLifetime) async throws -> RunContextPreparation? {
+                                    audioLifetime: AudioCaptureLifetime,
+                                    vocabularyReference: CorrectionVocabularyReference?) async throws -> RunContextPreparation? {
         guard let token = authorization, token.isValid,
               settings.authorizedWorkflowIDs.contains(workflow.id),
               workflow.supportsContextualCorrection, !context.focus.secureInput,
@@ -135,6 +156,7 @@ final class ContextMemoryController {
             focus: context.focus,
             screenEnabled: settings.screenContextEnabled,
             memoryEnabled: settings.memoryEnabled, canSendImages: ContextProviderIdentity.supportsImages(provider),
+            vocabularyReference: vocabularyReference,
             excludedApplications: excluded, capture: capture, summarizer: summarizer,
             memories: { [repository] in try await repository.relevantMemories(scope: scope, now: Date()) },
             authorization: token, audioLifetime: audioLifetime, operations: preparationOperations,

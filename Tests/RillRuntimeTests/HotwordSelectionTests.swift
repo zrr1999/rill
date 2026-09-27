@@ -32,6 +32,11 @@ struct HotwordSelectionTests {
       try await resolver.prepare(runID: runID, workflow: workflow, context: context,
         options: options, lifetime: lifetime)
     }
+    let correctionTerms = OSAllocatedUnfairLock(initialState: [String]())
+    gate.prepareCorrectionContext = { _, _, _, _, candidates, _ in
+      correctionTerms.withLock { $0 = candidates.map(\.term) }
+      return nil
+    }
     vocabulary.markUnavailable(reason: "library changed after snapshot")
     let runID = UUID()
     let live = try await gate.issueLiveAudioSession(runID: runID,
@@ -39,6 +44,7 @@ struct HotwordSelectionTests {
       recognitionOptionsProvider: { _, _ in options }, workflow: workflow,
       revocationHandler: { _, _ in })
     #expect(live.audioCaptureOptions.hints.keyterms == expectedTerms)
+    #expect(correctionTerms.withLock { $0 } == ["Rill", "Spore"])
     #expect(await fixture.provider.requests.count == (cached ? 1 : 0))
     vocabulary.markUnavailable(reason: "library changed after admission")
     let capture = HotwordCaptureProbe(ranking: fixture.provider)
@@ -112,6 +118,10 @@ struct HotwordSelectionTests {
       cloudConfirmationProvider: { _, _, _ in false })
     gate.prepareLiveRecognition = { _, _, _, _, _ in
       called.withLock { $0 = true }
+      return nil
+    }
+    gate.prepareCorrectionContext = { _, _, _, _, _, _ in
+      Issue.record("Historical audio must not prepare vocabulary correction")
       return nil
     }
     let context = hotwordContext()

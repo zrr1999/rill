@@ -1191,8 +1191,8 @@ private enum AppContainerFactory {
       providers: providers,
       authorizationBridge: cloudProcessingAuthorizationBridge
     )
-    privacyRunGate.prepareCorrectionContext = { runID, workflow, context, options, lifetime in
-      try await contextMemoryController?.prepare(runID: runID, workflow: workflow, context: context, recognitionOptions: options, audioLifetime: lifetime)
+    privacyRunGate.prepareCorrectionContext = { runID, workflow, context, options, vocabulary, lifetime in
+      try await contextMemoryController?.prepare(runID: runID, workflow: workflow, context: context, recognitionOptions: options, audioLifetime: lifetime, vocabularyCandidates: vocabulary)
     }
     let liveRecognition = LiveRecognitionContextResolver(
       compiler: WorkflowPlanCompiler(recognizerRegistry: registries.recognizerRegistry,

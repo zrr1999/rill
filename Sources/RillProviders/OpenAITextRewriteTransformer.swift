@@ -632,7 +632,7 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
 
         do {
             let response = try await createResponse(
-                request: request, apiKey: apiKey, bounded: usesDeepSeekRewrite || correction != nil
+                request: request, apiKey: apiKey, bounded: usesDeepSeekRewrite || correction != nil, authorization: correction?.authorization
             )
             try Task.checkCancellation()
             try ContextProviderIdentity.validate(correction?.authorization, settings: settings)
@@ -687,12 +687,13 @@ public struct OpenAITextRewriteTransformer: TracedTextTransformer {
     public func shutdown() async { await requestOperations.shutdown() }
 
     private func createResponse(
-        request: OpenAIResponsesRequest, apiKey: String, bounded: Bool
+        request: OpenAIResponsesRequest, apiKey: String, bounded: Bool, authorization: ContextReferenceAuthorization?
     ) async throws -> OpenAIResponsesResult {
         let client = clientFactory()
         do {
             return try await requestOperations.run(timeout: bounded ? deepSeekTimeout : .seconds(request.timeoutInterval)) {
-                try await client.createResponse(request: request, apiKey: apiKey)
+                guard authorization?.isValid != false else { throw CancellationError() }
+                return try await client.createResponse(request: request, apiKey: apiKey)
             }
         } catch is OperationDeadlineError {
             throw OpenAITextRewriteError.timedOut

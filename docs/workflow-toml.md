@@ -136,6 +136,13 @@ admission. Later vocabulary edits apply to later recordings; final recognition
 does not reload the library. Model enablement and run privacy are still checked
 at their effect boundaries.
 
+The separate **Use vocabulary for Smart Cleanup** setting is off by default.
+After provider consent, new recordings in the builtin cleanup workflow can share
+all applicable bound hotwords with the LLM, using an independent 12,000-byte JSON
+budget. This projection is frozen at admission and is not limited to ASR's final
+hints. It does not change mapping rules or enable reference uploads for custom
+workflows, text input or imported audio. See [vocabulary and memory](vocabulary-memory.md).
+
 The experimental **Jev hotword selection** switch in Voice & Models is separate
 from workflow TOML and from the polishing gate. It defaults off and retains its
 shared Jev key and independent consent only for the app session. Enabling it permits sending up to 50
@@ -220,7 +227,7 @@ Custom cleanup workflows opt in through the existing options dictionary:
 The switch defaults off, and neither the key nor the switch is persisted.
 Enabling it authorizes sending the current transcript and that step's rewrite
 instructions to `api.typesafe.ai`. Audio, clipboard/selection context, screen
-images and memory references are excluded. Runs using correction references
+images, memory and polishing-vocabulary references are excluded. Runs using correction references
 continue directly to the configured LLM; answer steps and voice assistants never
 use this gate. Current and source-app privacy rules are checked before and after
 prediction; cancellation or a privacy restriction stops the run.
