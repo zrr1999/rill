@@ -37,7 +37,9 @@ link the Core, Records and Persistence modules, without a shipping executable
 or the MLX dependency graph. The two `Record*Benchmarks.swift` files own the
 workload inventories; `CodSpeedRecorder.swift` owns the shared instrumentation
 lifecycle. Linux builds require `--preview-only`: encrypted storage still depends
-on macOS APIs. With `--codspeed`, the
+on macOS APIs. The macOS-only `renderedMarkdown` attributed-text API is excluded
+on Linux; the benchmark calls the same production `previewText` implementation
+and validates the same outputs on both platforms. With `--codspeed`, the
 script downloads the official `instrument-hooks` C library at commit
 `4c76dbb5b99fc4927289281c7b7ca71cc46e6836`, verifies its archive SHA-256, and
 compiles it only into the benchmark binary. The downloaded archive includes its

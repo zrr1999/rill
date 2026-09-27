@@ -83,6 +83,7 @@ public enum RecordTextFormatting {
         return score >= 2
     }
 
+    #if os(macOS)
     public static func renderedMarkdown(_ text: String) -> AttributedString? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard isLikelyMarkdown(trimmed) else { return nil }
@@ -93,6 +94,7 @@ public enum RecordTextFormatting {
         )
         return try? AttributedString(markdown: trimmed, options: options)
     }
+    #endif
 
     public static func summaryText(_ text: String) -> String {
         guard isLikelyMarkdown(text) else {
