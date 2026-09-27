@@ -5,8 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 cd "$SCRIPT_DIR/.."
 mkdir -p .artifacts/benchmarks
 
-compiler=(xcrun swiftc -swift-version 6 -package-name RillMacOS -O -g -parse-as-library -target arm64-apple-macosx14.0)
-benchmark_compiler=("${compiler[@]}")
 use_codspeed=false
 preview_only=false
 for argument in "$@"; do
@@ -16,6 +14,24 @@ for argument in "$@"; do
     *) echo "Usage: $0 [--codspeed] [--preview-only]" >&2; exit 1 ;;
   esac
 done
+
+case "$(uname -s)" in
+  Darwin)
+    compiler=(xcrun swiftc -target arm64-apple-macosx14.0)
+    c_compiler=(xcrun clang -target arm64-apple-macosx14.0)
+    ;;
+  Linux)
+    if ! $preview_only; then
+      echo "Linux supports --preview-only; encrypted buffer benchmarks require macOS." >&2
+      exit 1
+    fi
+    compiler=(swiftc)
+    c_compiler=(clang)
+    ;;
+  *) echo "Unsupported benchmark platform: $(uname -s)" >&2; exit 1 ;;
+esac
+compiler+=(-swift-version 6 -package-name RillMacOS -O -g -parse-as-library)
+benchmark_compiler=("${compiler[@]}")
 
 if $use_codspeed; then
     revision=4c76dbb5b99fc4927289281c7b7ca71cc46e6836
@@ -29,7 +45,7 @@ if $use_codspeed; then
     fi
     echo "d7c1c8f6496cb7d1a379f35a5f4e2fbb5dbe00f5e030e7ecda26ee088d20d11b  $archive" | shasum -a 256 --check
     tar -xzf "$archive" -C "$hooks" --strip-components=1
-    xcrun clang -O2 -target arm64-apple-macosx14.0 -I "$hooks/includes" -c "$hooks/dist/core.c" \
+    "${c_compiler[@]}" -O2 -I "$hooks/includes" -c "$hooks/dist/core.c" \
       -o .artifacts/benchmarks/instrument-hooks.o
     benchmark_compiler+=(-D CODSPEED -import-objc-header "$hooks/includes/core.h" \
       .artifacts/benchmarks/instrument-hooks.o)
