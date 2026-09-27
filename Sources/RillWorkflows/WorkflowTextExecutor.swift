@@ -11,6 +11,7 @@ struct WorkflowRunSession: Sendable {
   let resolvedPlan: ResolvedWorkflowPlan
   let startedAt: Date
   let receiptIsActive: Bool
+  var bufferDraftInput: BufferDraftInputIntent? = nil
 
   var presentation: WorkflowPresentation {
     workflow.presentation

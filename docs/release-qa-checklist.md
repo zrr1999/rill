@@ -472,3 +472,24 @@ is established per app and content type; see [continuous output](continuous-outp
       only that external copy may change the general pasteboard.
 - [ ] Restart with ready and unconfirmed entries; ready entries persist and unconfirmed ones cannot resend automatically.
 - [ ] Legacy buffers are disabled after migration, default buffers are empty, and Raycast history is not backfilled.
+
+### Editable pending drafts
+
+- [ ] Open Drafts from both the menu bar and Record toolbar in Chinese/English,
+      light/dark appearance and a narrow window; inspect selection contrast and VoiceOver labels.
+- [ ] With the physical Chinese IME, compose, choose candidates, replace a selection,
+      undo and enter multiline text. Return must not send during composition;
+      Command-Return sends only after composition. Escape unwinds composition, editor, then panel.
+- [ ] Copy externally and complete another recognition while editing. List arrivals
+      must not switch drafts, move the caret, consume the IME key or write the general pasteboard.
+- [ ] Try Record New Item and Dictate Here, including edits, selection changes,
+      switching drafts and closing during recognition. Late results remain bound
+      proposals; applying a final result is one native undo step.
+- [ ] Close during creation/saving, reopen and restart with an empty first draft,
+      edited speech and unapplied suggestions. On save failure, local text remains
+      available to retry or explicitly save as a new draft.
+- [ ] Open from an external editor, then change its selection, close its window or
+      switch applications. Send must retain the item instead of choosing a new target.
+      Opening from Rill must support preparing the item and explicit shortcut handoff.
+- [ ] Verify Fn release when the panel opens during capture, editor key pass-through,
+      uncertain-output confirmation and shutdown while a draft write is blocked.

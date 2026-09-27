@@ -6,6 +6,24 @@ import Testing
 @testable import RillPlatform
 
 @MainActor struct RecordBufferTextOutputTests {
+  @Test(arguments: ["unchanged", "selection", "content", "focus"])
+  func draftTargetRejectsDriftButCanVerifyItsOwnInsertion(change: String) async throws {
+    let element = BufferTextTarget()
+    element.update { $0.supportsReplacement = true }
+    let target = RecordBufferTextOutput.Target(element: element, isCurrent: { element.isFocused() },
+      post: { _ in Issue.record("A frozen AX target must not fall through"); return false })
+    let output = RecordBufferTextOutput(capture: { target }, modifiersHeld: { false }, isSecure: { false })
+    let frozen = try #require(output.captureDraftTarget())
+    element.update {
+      if change == "selection" { $0.selection = NSRange(location: 0, length: 0) }
+      if change == "content" { $0.text = "replaced" }
+      if change == "focus" { $0.focused = false }
+    }
+    let before = element.value
+    #expect(await output.insert("confirmed draft", into: frozen) == (change == "unchanged" ? .verified : .rejected))
+    #expect(element.value == (change == "unchanged" ? "confirmed draft" : before))
+  }
+
   @Test func unicodeChunksPreserveScalarsAndLineBreaks() {
     let text = String(repeating: "中文🙂👨‍👩‍👧‍👦\né", count: 100)
     let chunks = RecordBufferTextOutput.utf16Chunks(text)

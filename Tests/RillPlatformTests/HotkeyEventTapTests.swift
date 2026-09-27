@@ -1339,6 +1339,20 @@ struct NativeClipboardShortcutTests {
 }
 
 @MainActor struct BufferHotkeyTests {
+    @Test func editingOwnsIMEKeysAndOutputShortcutUntilThePanelResignsKey() throws {
+        let tap = HotkeyEventTap()
+        tap.setDraftEditorActive(true)
+        for code: UInt16 in [9, 36, 53, 63] {
+            let event = try #require(CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true))
+            event.flags = code == 63 ? [.maskSecondaryFn] : [.maskCommand, .maskShift]
+            #expect(tap.testingHandle(type: code == 63 ? .flagsChanged : .keyDown, event: event) != nil)
+        }
+        tap.setDraftEditorActive(false)
+        let event = try #require(CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true))
+        event.flags = [.maskCommand, .maskShift]
+        #expect(tap.testingHandle(type: .keyDown, event: event) == nil)
+    }
+
     @Test func nativeKeysPassThroughAndRepeatedOutputChordEmitsOnce() async throws {
         let tap = HotkeyEventTap()
         tap.setRecordPanelShortcutEnabled(true)

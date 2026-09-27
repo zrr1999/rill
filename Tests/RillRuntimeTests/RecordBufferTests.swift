@@ -296,6 +296,9 @@ struct RecordBufferTests {
 
 actor BufferCatalogFake: RecordCatalogPersistenceStore {
   private var payloadReadAction: (@Sendable () async -> Void)?
+  private var commitAction: (@Sendable () async -> Void)?
+
+  func beforeNextCommit(_ action: @escaping @Sendable () async -> Void) { commitAction = action }
 
   func beforeNextPayloadRead(_ action: @escaping @Sendable () async -> Void) {
     payloadReadAction = action
@@ -309,12 +312,15 @@ actor BufferCatalogFake: RecordCatalogPersistenceStore {
   var rejects = false
   func rejectNext() { rejects = true }
   func makeLegacy() throws {
+    try setCatalogVersion(2)
+    nodes = nodes.filter { ![.buffer, .bufferEntry, .bufferClock].contains($0.value.kind) }
+  }
+  func setCatalogVersion(_ version: Int) throws {
     var object = try #require(
       JSONSerialization.jsonObject(with: JSONEncoder().encode(manifest)) as? [String: Any])
-    object["schemaVersion"] = 2
+    object["schemaVersion"] = version
     manifest = try JSONDecoder().decode(
       RecordCatalogManifest.self, from: JSONSerialization.data(withJSONObject: object))
-    nodes = nodes.filter { ![.buffer, .bufferEntry, .bufferClock].contains($0.value.kind) }
   }
   func loadRecordCatalog() async throws -> RecordCatalogRead? {
     guard let manifest, let revision else { return nil }
@@ -323,6 +329,10 @@ actor BufferCatalogFake: RecordCatalogPersistenceStore {
       references: blobs.values.map(\.reference))
   }
   func commitRecordCatalog(_ mutation: RecordCatalogMutation) async throws -> Int64 {
+    if let action = commitAction {
+      commitAction = nil
+      await action()
+    }
     if rejects {
       rejects = false
       throw RecordStoreError.persistenceUnavailable

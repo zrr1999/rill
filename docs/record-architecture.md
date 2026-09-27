@@ -1,6 +1,6 @@
 # Record architecture
 
-Status: accepted, Record catalog v3 / SQLite schema 14.
+Status: accepted, Record catalog v4 / SQLite schema 14.
 
 ## Decision
 
@@ -19,6 +19,9 @@ The sink registry is immutable for the coordinator lifetime.
 ## Invariants
 
 - A Record payload never changes. Edit and Replace create a derived Record.
+- An editable pending draft belongs to a buffer entry, not the Record. Sending
+  commits a derived Record and replaces that exact entry without changing its
+  sequence, memberships or capture routes. See [draft contracts](continuous-output.md#editable-drafts).
 - A membership belongs to exactly one Record and one collection and carries an
   ordinal, active/consumed state, and revision. Reactivating a consumed
   membership keeps its identity and assigns a new ordinal.
@@ -96,11 +99,14 @@ non-derived ingest and committed with that graph write. A failed commit rolls
 the digest fill back with the rest of the graph.
 
 The pre-Record clipboard graph is decoded only by `LegacyClipboardMigration`.
-Record graph v1 and catalog v2 remain readable and migrate forward to catalog v3.
+Record graph v1 and catalogs v2/v3 remain readable and migrate forward to catalog v4.
 Legacy pending memberships become disabled buffers; new default buffers start
 empty. Encrypted buffer deltas share the graph transaction and revision owner. Catalog mutations, payload writes, and legacy-row removal share one
 transaction with revision checks and authenticated readback. A failed commit
 rolls back the database transaction and the RecordStore's committed graph state.
+Catalog v4 adds mutable draft bodies to encrypted buffer entries. A v3 catalog's
+first mutation upgrades the manifest atomically; older binaries reject v4 instead
+of silently discarding edits and sending the original Record.
 
 The migration is forward-only. There is no dual runtime or downgrade contract.
 Old workflow TOML names remain accepted at the file-loader boundary and are

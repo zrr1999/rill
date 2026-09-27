@@ -397,11 +397,19 @@ extension AppModel {
     copyTextToClipboard(payload)
   }
 
+  public func dictateToBuffer(_ input: BufferSpeechInput) {
+    guard let workflow = workflowLibrary.workflows.first(where: {
+      $0.usesBuiltinPushToTalkOutputRouting(initiatedBy: .hotkey) && isWorkflowEnabled($0)
+    }) else { recordWorkspace.buffers.editor.reportRecordingFailure(); return }
+    runWorkflow(workflow, initiatedBy: .manual, bufferInput: input)
+    if lastFailure != nil { recordWorkspace.buffers.editor.reportRecordingFailure() }
+  }
+
   public func runWorkflow(_ workflow: WorkflowDefinition) {
     runWorkflow(workflow, initiatedBy: .manual)
   }
 
-  public func runWorkflow(_ workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding) {
+  public func runWorkflow(_ workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding, bufferInput: BufferSpeechInput? = nil) {
     guard !hasBegunApplicationShutdown, !self.settings.isLoading else { return }
     if isRecordingWorkflowAudioRun(for: workflow) {
       finishCapturedAudioWorkflowRun(for: workflow)
@@ -443,7 +451,7 @@ extension AppModel {
     }
 
     guard
-      let workflowForExecution = resolvedWorkflowForExecution(
+      var workflowForExecution = resolvedWorkflowForExecution(
         workflow,
         trigger: binding
       )
@@ -455,8 +463,15 @@ extension AppModel {
       )
       return
     }
+    if let bufferInput {
+      guard workflow.usesBuiltinPushToTalkOutputRouting(initiatedBy: .hotkey) else { return }
+      workflowForExecution.plan.output.actions = [OutputActionReference(id: RecordActionID.store)]
+      workflowForExecution.plan.output.deliveryPolicy = .init(strategy: .collectionFirst)
+      workflowForExecution.metadata[WorkflowMetadataKey.livePreviewPlacement] = LivePreviewPlacement.overlay.rawValue
+      workflowForExecution.metadata[WorkflowMetadataKey.collectSpeech] = bufferInput.draftIntent == nil ? "true" : nil
+    }
     if requiresCapturedAudioForInteractiveRun(workflowForExecution) {
-      startCapturedAudioWorkflowRun(for: workflowForExecution, initiatedBy: binding)
+      startCapturedAudioWorkflowRun(for: workflowForExecution, initiatedBy: binding, draftInput: bufferInput?.draftIntent)
       return
     }
 
@@ -804,7 +819,7 @@ extension AppModel {
   }
 
   func startCapturedAudioWorkflowRun(
-    for workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding
+    for workflow: WorkflowDefinition, initiatedBy binding: TriggerBinding, draftInput: BufferDraftInputIntent? = nil
   ) {
     self.voice.isRunning = true
     lastFailure = nil
@@ -816,7 +831,7 @@ extension AppModel {
       defer { self.finishWorkflowAudioActionTask(id: taskID) }
       do {
         try await self.persistProviderSettingsForRun(workflow)
-        try await startWorkflowAudioRunAction(workflow, binding)
+        try await startWorkflowAudioRunAction(workflow, binding, draftInput)
         await MainActor.run {
           guard self.isPreparingWorkflowAudioRun(for: workflow) else { return }
           self.voice.workflowAudioRunState = .recording(workflowID: workflow.id)
@@ -843,6 +858,9 @@ extension AppModel {
           self.voice.workflowAudioCaptureRunID = nil
           let failure = WorkflowOperationFailureStage.audioCaptureStart.presentation
           self.lastFailure = failure.string(for: self.settings.language)
+          if draftInput != nil || workflow.metadata[WorkflowMetadataKey.collectSpeech] == "true" {
+            self.recordWorkspace.buffers.editor.reportRecordingFailure()
+          }
           self.append(
             english: failure.english,
             simplifiedChinese: failure.simplifiedChinese

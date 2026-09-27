@@ -9,6 +9,8 @@ public final class RecordBufferModel {
   public var message: String?
   public var isSending = false
   public var outputAction: (BufferEntryID?) -> Void = { _ in }
+  public var openEditorAction: () -> Void = {}
+  public let editor: RecordBufferDraftModel
   public var confirmAction: () -> Void = {}
   public var retryAction: () -> Void = {}
   public var cancelAction: () -> Void = {}
@@ -19,7 +21,10 @@ public final class RecordBufferModel {
   private var mutation: Task<Void, Never>?
   private var isClosed = false
 
-  public init(store: RecordStore) { self.store = store }
+  public init(store: RecordStore) {
+    self.store = store
+    editor = RecordBufferDraftModel(store: store)
+  }
   isolated deinit { observation?.cancel() }
 
   public func start() {
@@ -58,6 +63,7 @@ public final class RecordBufferModel {
     isClosed = true
     observation?.cancel()
     await shutdownAction()
+    await editor.shutdown()
     await mutation?.value
   }
 

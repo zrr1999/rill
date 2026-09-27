@@ -41,8 +41,15 @@ final class BufferOutputController: NSObject {
   }
 
   func output(_ manualEntry: BufferEntryID? = nil) {
+    beginOutput(manualEntry, target: textOutput.captureTarget())
+  }
+
+  func output(_ manualEntry: BufferEntryID, capturedTarget: RecordBufferTextOutput.Target?) {
+    beginOutput(manualEntry, target: capturedTarget)
+  }
+
+  private func beginOutput(_ manualEntry: BufferEntryID?, target: RecordBufferTextOutput.Target?) {
     guard !isClosed, task == nil, dragSettlementTask == nil, let model else { return }
-    let target = textOutput.captureTarget()
     model.recordWorkspace.buffers.isSending = true
     task = Task {
       defer {
@@ -90,6 +97,8 @@ final class BufferOutputController: NSObject {
         notify("没有待输出内容", "Nothing pending")
       } catch BufferOutputError.processing {
         notify("下一项仍在处理中", "The next item is still processing")
+      } catch BufferOutputError.editing {
+        notify("此项仍有草稿，请在待发区确认发送。", "This item has a draft. Send it from the draft editor.")
       } catch {
         notify("操作未完成，内容已保留。", "The operation could not finish. The item is retained.")
       }

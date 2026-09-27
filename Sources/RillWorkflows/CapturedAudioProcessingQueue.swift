@@ -134,6 +134,7 @@ public actor CapturedAudioProcessingQueue {
         let previousObservation = lastBufferObservation
         let bufferReservation = Task {
             _ = try? await previousObservation?.value
+            guard triggerEvent?.bufferDraftInput == nil else { return nil as BufferInputReservation? }
             return try await sessionCoordinator.observeCollectedSpeech(runID: runID, workflow: workflow)
         }
         lastBufferObservation = bufferReservation

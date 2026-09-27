@@ -52,6 +52,7 @@ public final class HotkeyEventTap: GlobalInputSource, @unchecked Sendable {
     private var eventTapThread: Thread?
     private var retainedSelfPointer: UnsafeMutableRawPointer?
     private var recordPanelShortcutEnabled = false
+    private var draftEditorActive = false
     private var recordPanelShortcutRecordingSuspensions: Set<UUID> = []
     private var recordPanelShortcutRecordingCommitKeyCodes: [UUID: CGKeyCode] = [:]
     private var recordPanelHotkeyBinding: HotkeyBindingDescriptor = .doubleCommand
@@ -208,6 +209,15 @@ public final class HotkeyEventTap: GlobalInputSource, @unchecked Sendable {
             }
             recordPanelShortcutRecognizer.reset()
             doubleCommandTapRecognizer.reset()
+        }
+    }
+
+    public func setDraftEditorActive(_ active: Bool) {
+        withLock {
+            draftEditorActive = active
+            recordPanelShortcutRecognizer.reset()
+            doubleCommandTapRecognizer.reset()
+            bufferOutputRecognizer.reset()
         }
     }
 
@@ -481,6 +491,9 @@ extension HotkeyEventTap {
             return Unmanaged.passUnretained(event)
         }
 
+        if withLock({ draftEditorActive && pushToTalkRecognizer.activeGesture == nil }) {
+            return Unmanaged.passUnretained(event)
+        }
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
         if handleRecordPanelShortcutRecordingCommitKey(
             type: type,
@@ -525,7 +538,7 @@ extension HotkeyEventTap {
         }
 
         let bufferHandling = withLock {
-            guard recordPanelShortcutRecordingSuspensions.isEmpty,
+            guard !draftEditorActive, recordPanelShortcutRecordingSuspensions.isEmpty,
                   bufferOutputBinding != recordPanelHotkeyBinding else {
                 bufferOutputRecognizer.reset()
                 return RecordPanelShortcutRecognizerOutput.passThrough
@@ -593,7 +606,7 @@ extension HotkeyEventTap {
         flags: CGEventFlags
     ) -> PushToTalkGestureRecognizerOutput {
         withLock {
-            if !recordPanelShortcutRecordingSuspensions.isEmpty,
+            if draftEditorActive || !recordPanelShortcutRecordingSuspensions.isEmpty,
                pushToTalkRecognizer.activeGesture == nil {
                 // The app-local recorder must receive ordinary key events so
                 // it can reject reserved voice chords with its normal feedback.
@@ -759,6 +772,6 @@ extension HotkeyEventTap {
     }
 
     private var isRecordPanelShortcutRouteEnabled: Bool {
-        recordPanelShortcutEnabled && recordPanelShortcutRecordingSuspensions.isEmpty
+        recordPanelShortcutEnabled && !draftEditorActive && recordPanelShortcutRecordingSuspensions.isEmpty
     }
 }

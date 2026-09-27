@@ -165,10 +165,14 @@ public actor RecordStore {
     private var nextInputSequence: UInt64 = 1
     private var nextAllocatedInputSequence: UInt64 = 1
     private var inputReservationTask: Task<Void, Error>?
+    private var bufferDraftByteCount = 0
+    private var bufferListingRevision: UInt64 = 0
+    private var editingBufferSession: (entryID: BufferEntryID, sessionID: UUID)?
     private var activeBufferOutput: BufferEntryID?
     private var requestedBufferEntryID: BufferEntryID?
     private var bufferContinuations: [UUID: AsyncStream<RecordBufferSnapshot>.Continuation] = [:]
     private var buffersArePersisted = false
+    private var bufferManifestNeedsUpgrade = false
 
     private var graphState = GraphState()
     private var reuseLeases: [UUID: RecordReuseLease] = [:]
@@ -337,7 +341,8 @@ public actor RecordStore {
     public func ingest(
         _ draft: RecordDraft,
         into destinationCollectionIDs: [RecordCollectionID],
-        fulfilling bufferEntryID: BufferEntryID? = nil
+        fulfilling bufferEntryID: BufferEntryID? = nil,
+        recognitionText: String? = nil
     ) async throws -> RecordProjection {
         try await ensureInitialized()
         if let bufferEntryID {
@@ -351,19 +356,26 @@ public actor RecordStore {
             throw RecordStoreError.collectionUnavailable
         }
         let encoded = try encodedPayload(draft.payload)
+        let textDraft = bufferEntryID == nil ? nil : recognitionText.flatMap { raw in
+            draft.payload.textValue.map { BufferTextDraft(text: $0, recognitionText: raw) }
+        }
+        if let textDraft { try validateBufferDraft(textDraft) }
         let digest = contentDigest(of: encoded)
         if !isDerivedCapture(draft.provenance) {
             let lookup = try await lookupExistingRecord(matching: draft.payload, digest: digest)
+            try await ensureInitialized()
             if let bufferEntryID {
                 guard bufferEntries[bufferEntryID]?.state == .preparing else { throw BufferOutputError.unavailable }
             }
+            if let textDraft { try validateBufferDraft(textDraft) }
             if let match = lookup.match {
                 return try await reuseRecord(
                     match,
                     destinations: destinations,
                     backfilledDigests: lookup.digests,
                     countsAsCopy: draft.provenance.source.kind == .systemClipboard,
-                    fulfilling: bufferEntryID
+                    fulfilling: bufferEntryID,
+                    textDraft: textDraft
                 )
             }
             try prepareNewRecordAdmission(draft, destinations: destinations)
@@ -372,34 +384,12 @@ public actor RecordStore {
             try prepareNewRecordAdmission(draft, destinations: destinations)
         }
 
-        let record = Record(
-            payload: draft.payload,
-            provenance: draft.provenance,
-            createdAt: draft.createdAt
-        )
-        markCatalogChange(.record, id: record.id)
-        let header = RecordHeader(record: record, byteCount: encoded.count, contentDigest: digest)
-        graphState.recordsByID[record.id] = header
-        rememberContentIdentity(header)
-        cachePayload(record.payload, for: record.id)
-        graphState.recordOrder.insert(record.id, at: 0)
-        markCatalogChange(.metadata, id: record.id)
-        graphState.metadataByRecordID[record.id] = RecordMetadata(
-            recordID: record.id,
-            tags: normalizedTags(draft.tags),
-            isPinned: draft.isPinned
-        )
-        markCatalogChange(.activity, id: record.id)
-        graphState.activityByRecordID[record.id] = RecordActivity(
-            recordID: record.id,
-            copyCount: draft.provenance.source.kind == .systemClipboard ? 1 : 0
-        )
-        graphState.membershipIDsByRecordID[record.id] = []
-        for collectionID in destinations {
-            _ = try addMembershipWithoutPersistence(recordID: record.id, collectionID: collectionID)
-        }
+        let record = try insertRecordWithoutPersistence(draft, encoded: encoded, digest: digest, destinations: destinations)
         noteMutation()
-        let entry = bufferEntryID.map { BufferEntry(id: $0, recordID: record.id, state: .ready) }
+        let entry = bufferEntryID.map {
+            BufferEntry(id: $0, recordID: record.id, state: .ready,
+                draft: textDraft)
+        }
         try await persistCurrentGraph(fulfilling: entry)
         guard let projection = try await projection(for: record.id) else {
             throw RecordStoreError.invalidGraph
@@ -1297,6 +1287,38 @@ public actor RecordStore {
         provenance.derivedFrom != nil || provenance.supersedes != nil
     }
 
+    private func insertRecordWithoutPersistence(
+        _ draft: RecordDraft, encoded: Data, digest: Data, destinations: [RecordCollectionID]
+    ) throws -> Record {
+        let record = Record(
+            payload: draft.payload,
+            provenance: draft.provenance,
+            createdAt: draft.createdAt
+        )
+        markCatalogChange(.record, id: record.id)
+        let header = RecordHeader(record: record, byteCount: encoded.count, contentDigest: digest)
+        graphState.recordsByID[record.id] = header
+        rememberContentIdentity(header)
+        cachePayload(record.payload, for: record.id)
+        graphState.recordOrder.insert(record.id, at: 0)
+        markCatalogChange(.metadata, id: record.id)
+        graphState.metadataByRecordID[record.id] = RecordMetadata(
+            recordID: record.id,
+            tags: normalizedTags(draft.tags),
+            isPinned: draft.isPinned
+        )
+        markCatalogChange(.activity, id: record.id)
+        graphState.activityByRecordID[record.id] = RecordActivity(
+            recordID: record.id,
+            copyCount: draft.provenance.source.kind == .systemClipboard ? 1 : 0
+        )
+        graphState.membershipIDsByRecordID[record.id] = []
+        for collectionID in destinations {
+            _ = try addMembershipWithoutPersistence(recordID: record.id, collectionID: collectionID)
+        }
+        return record
+    }
+
     private func prepareNewRecordAdmission(
         _ draft: RecordDraft,
         destinations: [RecordCollectionID]
@@ -1351,7 +1373,8 @@ public actor RecordStore {
         destinations: [RecordCollectionID],
         backfilledDigests: [RecordID: Data],
         countsAsCopy: Bool,
-        fulfilling bufferEntryID: BufferEntryID?
+        fulfilling bufferEntryID: BufferEntryID?,
+        textDraft: BufferTextDraft?
     ) async throws -> RecordProjection {
         let plan = try reusePlan(recordID: recordID, destinations: destinations)
         guard !plan.creates.isEmpty || !plan.reactivations.isEmpty || !backfilledDigests.isEmpty
@@ -1371,7 +1394,7 @@ public actor RecordStore {
             created.append(try addMembershipWithoutPersistence(recordID: recordID, collectionID: collectionID))
         }
         noteMutation()
-        let entry = bufferEntryID.map { BufferEntry(id: $0, recordID: recordID, state: .ready) }
+        let entry = bufferEntryID.map { BufferEntry(id: $0, recordID: recordID, state: .ready, draft: textDraft) }
         try await persistCurrentGraph(fulfilling: entry)
         guard let projection = try await projection(for: recordID),
               let record = graphState.recordsByID[recordID]
@@ -1781,6 +1804,7 @@ extension RecordStore {
                 graphState.durableBlobReferencesByRecordID = prepared.references
                 hasCatalogPersistence = true
                 buffersArePersisted = true
+                bufferManifestNeedsUpgrade = false
             } else {
                 let prepared = try preparePersistenceWrite()
                 graphState.repositoryRevision = try await persistence.replaceRecordGraph(with: prepared.snapshot)
@@ -2028,7 +2052,7 @@ private extension RecordStore {
             }
         }
         let headers = try values(.record, RecordHeader.self, id: { $0.id.description })
-        guard (2...3).contains(catalog.manifest.schemaVersion), catalog.revision > 0,
+        guard (2...4).contains(catalog.manifest.schemaVersion), catalog.revision > 0,
               Set(catalog.nodes.map(\.key)).count == catalog.nodes.count,
               catalog.references.count == headers.count,
               Set(catalog.references.map(\.recordID)).count == headers.count,
@@ -2456,6 +2480,7 @@ extension RecordStore {
         guard var entry = manualEntryID.flatMap({ bufferEntries[$0] }) ?? nextBufferEntry() else { throw BufferOutputError.empty }
         guard entry.state != .preparing else { throw BufferOutputError.processing }
         guard entry.state == .ready, let recordID = entry.recordID else { throw BufferOutputError.busy }
+        guard editingBufferSession?.entryID != entry.id, entry.draft?.needsCommit != true else { throw BufferOutputError.editing }
         activeBufferOutput = entry.id
         do {
             guard let record = try await materializedRecord(recordID) else { throw BufferOutputError.unavailable }
@@ -2559,7 +2584,8 @@ private extension RecordStore {
         return .init(
             buffers: buffersByID.values.sorted { $0.id.description < $1.id.description }.map {
                 .init(buffer: $0, count: bufferIndexes[$0.id]?.count ?? 0)
-            }, next: next, nextHeader: next?.recordID.flatMap { graphState.recordsByID[$0] }, active: active)
+            }, next: next, nextHeader: next?.recordID.flatMap { graphState.recordsByID[$0] }, active: active,
+            revision: graphState.revision, listingRevision: bufferListingRevision)
     }
 
     func publishBuffers() {
@@ -2572,9 +2598,22 @@ private extension RecordStore {
 
     func applyBufferEntry(_ entry: BufferEntry) {
         let old = bufferEntries.updateValue(entry, forKey: entry.id)
+        if old == nil || old?.recordID != entry.recordID || old?.state != entry.state
+            || old?.draft?.needsCommit != entry.draft?.needsCommit
+            || old?.draft?.suggestions.count != entry.draft?.suggestions.count
+            || (editingBufferSession?.entryID != entry.id && old?.draft?.text != entry.draft?.text) {
+            bufferListingRevision += 1
+        }
+        bufferDraftByteCount += (entry.draft?.byteCount ?? 0) - (old?.draft?.byteCount ?? 0)
         if old == nil { bufferIndexes[entry.id.bufferID, default: BufferIndex()].append(entry.id.sequence) }
         if old?.recordID != entry.recordID {
-            if let oldID = old?.recordID { bufferedRecordCounts[oldID, default: 0] -= 1 }
+            if let oldID = old?.recordID {
+                bufferedRecordCounts[oldID, default: 0] -= 1
+                if bufferedRecordCounts[oldID] == 0 { bufferedRecordCounts.removeValue(forKey: oldID) }
+                if bufferIndexes[entry.id.bufferID]?.records[oldID] == entry.id.sequence {
+                    bufferIndexes[entry.id.bufferID]?.records.removeValue(forKey: oldID)
+                }
+            }
             if let recordID = entry.recordID {
                 bufferedRecordCounts[recordID, default: 0] += 1
                 if buffersByID[entry.id.bufferID]?.policy == .set {
@@ -2586,7 +2625,10 @@ private extension RecordStore {
 
     func removeBufferEntry(_ id: BufferEntryID) {
         guard let entry = bufferEntries.removeValue(forKey: id) else { return }
+        bufferListingRevision += 1
+        bufferDraftByteCount -= entry.draft?.byteCount ?? 0
         if requestedBufferEntryID == id { requestedBufferEntryID = nil }
+        if editingBufferSession?.entryID == id { editingBufferSession = nil }
         bufferIndexes[id.bufferID]?.remove(id.sequence)
         if let recordID = entry.recordID {
             bufferedRecordCounts[recordID, default: 0] -= 1
@@ -2596,7 +2638,9 @@ private extension RecordStore {
     }
 
     func bufferNode(_ entry: BufferEntry) throws -> RecordCatalogNode {
-        .init(kind: .bufferEntry, id: entry.id.description, value: try encoder.encode(entry))
+        let data = try encoder.encode(entry)
+        guard data.count <= RecordCatalogNode.maximumValueByteCount else { throw RecordStoreError.payloadLimitReached }
+        return .init(kind: .bufferEntry, id: entry.id.description, value: data)
     }
 
     func bufferClockNode(_ sequence: UInt64) throws -> RecordCatalogNode {
@@ -2624,9 +2668,10 @@ private extension RecordStore {
                 graphState.repositoryRevision = try await catalog.commitRecordCatalog(.init(
                     expectedRevision: graphState.repositoryRevision, manifest: manifest, upserts: upserts,
                     removedKeys: removed.map { "bufferEntry/\($0)" }, newPayloadBlobs: [], removedPayloadBlobIDs: [],
-                    preservesManifest: buffersArePersisted))
+                    preservesManifest: buffersArePersisted && !bufferManifestNeedsUpgrade))
             } catch { throw RecordStoreError.persistenceUnavailable }
             buffersArePersisted = true
+            bufferManifestNeedsUpgrade = false
         }
         graphState.revision += 1
         committedGraphState?.revision = graphState.revision
@@ -2634,6 +2679,7 @@ private extension RecordStore {
     }
 
     func installBuffers(from catalog: RecordCatalogRead) async throws {
+        bufferManifestNeedsUpgrade = catalog.manifest.schemaVersion < 4
         if catalog.manifest.schemaVersion == 2 {
             migrateLegacyBuffers()
             try await commitBufferChanges()
@@ -2656,8 +2702,11 @@ private extension RecordStore {
             let entry = try decoder.decode(BufferEntry.self, from: node.value)
             guard node.id == entry.id.description, buffersByID[entry.id.bufferID] != nil,
                   entry.id.sequence > 0, entry.id.sequence < nextInputSequence,
-                  (entry.recordID == nil) == (entry.state == .preparing),
-                  entry.recordID.map({ graphState.recordsByID[$0] != nil }) ?? (entry.state == .preparing) else { throw RecordStoreError.invalidGraph }
+                  entry.recordID.map({ graphState.recordsByID[$0] != nil })
+                    ?? (entry.state == .preparing || (entry.state == .ready && entry.draft?.committedRevision == nil)),
+                  entry.state != .preparing || (entry.recordID == nil && entry.draft == nil)
+            else { throw RecordStoreError.invalidGraph }
+            if let draft = entry.draft { try validateBufferDraft(draft) }
             return entry
         }.sorted { $0.id.sequence < $1.id.sequence }
         guard entries.count <= RecordGraphLimits.maximumMemberships, Set(entries.map { $0.id.sequence }).count == entries.count else { throw RecordStoreError.invalidGraph }
@@ -2676,6 +2725,7 @@ private extension RecordStore {
             if buffersByID[entry.id.bufferID]?.policy == .set, let recordID = entry.recordID,
                bufferIndexes[entry.id.bufferID]?.records[recordID] != nil { throw RecordStoreError.invalidGraph }
             applyBufferEntry(entry)
+            guard bufferDraftByteCount <= maximumBufferDraftBytes else { throw RecordStoreError.invalidGraph }
         }
         buffersArePersisted = true
         if !removed.isEmpty || !changed.isEmpty { try await commitBufferChanges(nodes: changed, removed: removed) }
@@ -2698,3 +2748,220 @@ private extension RecordStore {
 }
 
 extension RecordStore: SystemClipboardRecordCapturing {}
+
+
+extension RecordStore {
+    public func bufferItems() async throws -> [BufferItemSummary] {
+        try await ensureInitialized()
+        return bufferEntries.values.sorted { $0.id.sequence < $1.id.sequence }.map {
+            BufferItemSummary(entry: $0, header: $0.recordID.flatMap { graphState.recordsByID[$0] })
+        }
+    }
+
+    public func bufferDraft(for id: BufferEntryID) async throws -> BufferTextDraft? {
+        try await ensureInitialized()
+        return bufferEntries[id]?.draft
+    }
+
+    @discardableResult
+    public func createBufferDraft(text: String = "", in bufferID: RecordBufferID = RecordBuffer.speechID) async throws -> BufferEntryID {
+        try await awaitObservedBufferInputs()
+        // An empty user draft can precede the first Record. Its catalog must
+        // already contain the default collections before a restart can read it.
+        if persistence != nil, !hasCatalogPersistence { try await persistCurrentGraph() }
+        guard buffersByID[bufferID] != nil else { throw BufferOutputError.unavailable }
+        guard bufferEntries.count < RecordGraphLimits.maximumMemberships else { throw RecordStoreError.membershipLimitReached }
+        let sequence = max(nextInputSequence, nextAllocatedInputSequence)
+        guard sequence < UInt64.max else { throw BufferOutputError.sequenceExhausted }
+        let draft = BufferTextDraft(text: text, isCommitted: false)
+        try validateBufferDraft(draft)
+        let entry = BufferEntry(id: .init(bufferID: bufferID, sequence: sequence), state: .ready, draft: draft)
+        nextAllocatedInputSequence = sequence + 1
+        try await commitBufferChanges(nodes: [try bufferNode(entry), try bufferClockNode(sequence + 1)])
+        nextInputSequence = sequence + 1
+        nextAllocatedInputSequence = max(nextAllocatedInputSequence, nextInputSequence)
+        applyBufferEntry(entry)
+        publishBuffers()
+        return entry.id
+    }
+
+    public func openBufferDraft(_ id: BufferEntryID, editingSessionID: UUID) async throws -> BufferTextDraft {
+        try await ensureInitialized()
+        guard var entry = bufferEntries[id], entry.state == .ready, activeBufferOutput != id else {
+            throw BufferOutputError.busy
+        }
+        if entry.draft == nil {
+            guard let recordID = entry.recordID, let record = try await materializedRecord(recordID),
+                  let text = record.payload.textValue else { throw BufferDraftError.notText }
+            try await ensureInitialized()
+            guard bufferEntries[id] == entry, activeBufferOutput != id else { throw BufferDraftError.changed }
+            entry.draft = BufferTextDraft(text: text)
+            try validateBufferDraft(entry.draft!)
+            try await commitBufferChanges(nodes: [try bufferNode(entry)])
+            applyBufferEntry(entry)
+            publishBuffers()
+        }
+        editingBufferSession = (id, editingSessionID)
+        return entry.draft!
+    }
+
+    public func closeBufferEditingSession(_ id: UUID) {
+        if editingBufferSession?.sessionID == id { editingBufferSession = nil }
+    }
+
+    public func saveBufferDraft(
+        _ id: BufferEntryID, draftID: UUID, expectedRevision: UInt64, text: String
+    ) async throws -> BufferTextDraft {
+        try await ensureInitialized()
+        var entry = try editableBufferEntry(id, draftID: draftID, revision: expectedRevision)
+        var draft = entry.draft!
+        guard draft.text != text else { return draft }
+        guard draft.revision < UInt64.max else { throw BufferDraftError.changed }
+        draft.text = text
+        draft.revision += 1
+        try validateBufferDraft(draft, replacing: entry.draft)
+        entry.draft = draft
+        try await commitBufferChanges(nodes: [try bufferNode(entry)])
+        applyBufferEntry(entry)
+        publishBuffers()
+        return draft
+    }
+
+    /// Derivation and replacement of this exact slot share one graph transaction.
+    public func commitBufferDraft(
+        _ id: BufferEntryID, draftID: UUID, expectedRevision: UInt64
+    ) async throws {
+        try await ensureInitialized()
+        var entry = try editableBufferEntry(id, draftID: draftID, revision: expectedRevision)
+        var draft = entry.draft!
+        guard !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw BufferDraftError.empty }
+        guard draft.needsCommit else { return }
+        let original: Record?
+        if let recordID = entry.recordID { original = try await materializedRecord(recordID) } else { original = nil }
+        try await ensureInitialized()
+        entry = try editableBufferEntry(id, draftID: draftID, revision: expectedRevision)
+        guard entry.draft!.needsCommit else { return }
+        guard entry.recordID == original?.id else { throw BufferDraftError.changed }
+        draft = entry.draft!
+        draft.committedRevision = draft.revision
+        entry.draft = draft
+        if original?.payload.textValue == draft.text {
+            try await commitBufferChanges(nodes: [try bufferNode(entry)])
+            applyBufferEntry(entry)
+            publishBuffers()
+            return
+        }
+        var provenance = original?.provenance ?? RecordProvenance(source: .init(kind: .user))
+        provenance.source = .init(kind: .user, identifier: "buffer-draft/\(draft.id)/\(draft.revision)")
+        provenance.derivedFrom = original?.id
+        provenance.supersedes = nil
+        provenance.alternatives = []
+        let capture = RecordDraft(payload: .text(draft.text), provenance: provenance)
+        try prepareNewRecordAdmission(capture, destinations: [])
+        let encoded = try encodedPayload(capture.payload)
+        let record = try insertRecordWithoutPersistence(capture, encoded: encoded,
+                                                        digest: contentDigest(of: encoded), destinations: [])
+        entry.recordID = record.id
+        noteMutation()
+        try await persistCurrentGraph(fulfilling: entry)
+    }
+
+    public func discardBufferEntry(_ id: BufferEntryID) async throws {
+        try await ensureInitialized()
+        guard let entry = bufferEntries[id], entry.state == .ready, activeBufferOutput != id else {
+            throw BufferOutputError.busy
+        }
+        try await commitBufferChanges(removed: [id])
+        removeBufferEntry(id)
+        publishBuffers()
+    }
+
+    public func resolveBufferSuggestion(
+        _ suggestionID: UUID, in id: BufferEntryID, draftID: UUID,
+        expectedRevision: UInt64, insertingAt selection: BufferTextRange?
+    ) async throws -> BufferTextDraft {
+        try await ensureInitialized()
+        var entry = try editableBufferEntry(id, draftID: draftID, revision: expectedRevision)
+        var draft = entry.draft!
+        guard let suggestion = draft.suggestions.first(where: { $0.id == suggestionID }) else { throw BufferDraftError.changed }
+        if let selection {
+            guard draft.revision < UInt64.max,
+                  let text = selection.replacing(in: draft.text, with: suggestion.text) else { throw BufferDraftError.changed }
+            draft.text = text
+            draft.revision += 1
+        }
+        draft.suggestions.removeAll { $0.id == suggestionID }
+        try validateBufferDraft(draft, replacing: entry.draft)
+        entry.draft = draft
+        try await commitBufferChanges(nodes: [try bufferNode(entry)])
+        applyBufferEntry(entry)
+        publishBuffers()
+        return draft
+    }
+
+    /// ASR history and its bound draft update commit together, without capture routing.
+    public func ingestBufferDictation(
+        _ capture: RecordDraft, recognitionText: String, for intent: BufferDraftInputIntent
+    ) async throws -> RecordProjection {
+        try await ensureInitialized()
+        guard let runID = capture.provenance.workflowRunID, let text = capture.payload.textValue,
+              !text.isEmpty else { throw BufferDraftError.empty }
+        if bufferEntries[intent.entryID]?.draft?.receivedInputIDs.contains(runID) == true {
+            guard let header = graphState.recordsByID.values.first(where: { $0.provenance.workflowRunID == runID }),
+                  let projection = try await projection(for: header.id) else { throw BufferDraftError.changed }
+            return projection
+        }
+        let suggestion = BufferDraftSuggestion(id: runID, text: text, recognitionText: recognitionText)
+        let entry = try bufferEntryReceiving(suggestion, for: intent)
+        try prepareNewRecordAdmission(capture, destinations: [])
+        let encoded = try encodedPayload(capture.payload)
+        let record = try insertRecordWithoutPersistence(capture, encoded: encoded,
+            digest: contentDigest(of: encoded), destinations: [])
+        noteMutation()
+        try await persistCurrentGraph(fulfilling: entry)
+        guard let projection = try await projection(for: record.id) else { throw RecordStoreError.invalidGraph }
+        return projection
+    }
+
+    private func bufferEntryReceiving(
+        _ suggestion: BufferDraftSuggestion, for intent: BufferDraftInputIntent
+    ) throws -> BufferEntry {
+        guard var entry = bufferEntries[intent.entryID], var draft = entry.draft,
+              draft.id == intent.draftID, entry.state == .ready, activeBufferOutput != entry.id
+        else { throw BufferDraftError.changed }
+        guard !draft.receivedInputIDs.contains(suggestion.id) else { return entry }
+        guard draft.receivedInputIDs.count < 1024, draft.suggestions.count < 8 else { throw BufferDraftError.suggestionLimit }
+        var boundSuggestion = suggestion
+        boundSuggestion.intent = intent
+        draft.suggestions.append(boundSuggestion)
+        draft.receivedInputIDs.append(suggestion.id)
+        try validateBufferDraft(draft, replacing: entry.draft)
+        entry.draft = draft
+        return entry
+    }
+
+    private func editableBufferEntry(_ id: BufferEntryID, draftID: UUID, revision: UInt64) throws -> BufferEntry {
+        guard let entry = bufferEntries[id], entry.state == .ready, activeBufferOutput != id,
+              let draft = entry.draft, draft.id == draftID, draft.revision == revision
+        else { throw BufferDraftError.changed }
+        return entry
+    }
+
+    private func validateBufferDraft(_ draft: BufferTextDraft, replacing previous: BufferTextDraft? = nil) throws {
+        guard draft.committedRevision.map({ $0 <= draft.revision }) ?? true,
+              draft.suggestions.count <= 8, draft.receivedInputIDs.count <= 1024,
+              Set(draft.receivedInputIDs).count == draft.receivedInputIDs.count,
+              Set(draft.suggestions.map(\.id)).count == draft.suggestions.count else { throw RecordStoreError.invalidGraph }
+        for text in [draft.originalText, draft.text, draft.recognitionText ?? ""]
+            + draft.suggestions.flatMap({ [$0.text, $0.recognitionText] }) {
+            _ = try validatedPayloadByteCount(.text(text))
+        }
+        guard bufferDraftByteCount - (previous?.byteCount ?? 0) + draft.byteCount <= maximumBufferDraftBytes else {
+            throw RecordStoreError.totalPayloadLimitReached
+        }
+    }
+
+    private var maximumBufferDraftBytes: Int {
+        min(BufferTextDraft.maximumTotalTextByteCount, storageLimits.maximumTotalPayloadByteCount)
+    }
+}

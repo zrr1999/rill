@@ -10,6 +10,52 @@ import XCTest
 /// Opt-in rendered evidence with ephemeral services, never the user's settings or clipboard.
 @MainActor
 final class UIRenderEvidenceTests: XCTestCase {
+    func testRenderEditableDrafts() async throws {
+        guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+            throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+        }
+        let output = URL(fileURLWithPath: directory, isDirectory: true)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let store = RecordStore()
+        let speech = try await store.reserveBufferInput(in: RecordBuffer.speechID)
+        _ = try await store.ingest(.init(payload: .text("明天去北京开会，记得带上新的设计稿。"),
+            provenance: .init(source: .init(kind: .voiceInput))), into: [], fulfilling: speech,
+            recognitionText: "明天去背景开会，记得带上新的设计稿。")
+        let copied = try await store.ingest(.init(payload: .text("https://example.com/project/notes"),
+            provenance: .init(source: .init(kind: .systemClipboard))), into: [])
+        _ = try await store.enqueueRecord(copied.id, in: RecordBuffer.clipboardID)
+        let workspace = RecordWorkspaceModel(store: store)
+        let model = makeHarness(recordWorkspace: workspace).model
+        let editor = workspace.buffers.editor
+        editor.open()
+        await editor.refresh()
+        editor.select(speech)
+        await editor.waitForPendingWrites()
+        editor.targetName = "TextEdit"
+        for language in AppLanguage.allCases {
+            for dark in [false, true] {
+                for width in [580.0, 820.0] {
+                    editor.showsChanges = width > 580
+                    try await render(RecordBufferDraftView(model: editor, voice: model.voice, language: language),
+                        size: NSSize(width: width, height: 520), dark: dark,
+                        to: output.appendingPathComponent("drafts-\(language.rawValue)-\(dark ? "dark" : "light")-\(Int(width)).png"))
+                }
+            }
+        }
+        let session = try XCTUnwrap(editor.session)
+        _ = try await store.ingestBufferDictation(.init(payload: .text("会议改到周五上午十点。"),
+            provenance: .init(source: .init(kind: .voiceInput), workflowRunID: UUID())),
+            recognitionText: "会议改到周五上午十点", for: .init(entryID: speech,
+                draftID: session.saved.id, revision: session.saved.revision,
+                selection: .init(location: 0), editingSessionID: UUID()))
+        await editor.refresh()
+        editor.showsChanges = false
+        try await render(RecordBufferDraftView(model: editor, voice: model.voice, language: .simplifiedChinese),
+            size: NSSize(width: 580, height: 520), dark: false,
+            to: output.appendingPathComponent("drafts-suggestion-compact.png"))
+        await editor.shutdown()
+    }
+
     func testRenderLiveSubtitleControls() async throws {
         guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
             throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")

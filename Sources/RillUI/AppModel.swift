@@ -198,7 +198,7 @@ public final class AppModel {
   let prepareEnabledSpeechModelAction: @Sendable (_ modelID: String) async -> Void
   let setLocalSpeechRuntimeEnabledAction: @Sendable (Bool) -> Void
   let startWorkflowAudioRunAction:
-    @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void
+    @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void
   let finishWorkflowAudioRunAction: @Sendable () async throws -> Void
   let retryFailedAudioRecoveryAction:
     @Sendable (
@@ -295,7 +295,7 @@ public final class AppModel {
     releaseLocalSpeechRuntimeAction: @escaping @Sendable () -> Void,
     stopLocalSpeechRuntimeAction: @escaping @Sendable () async -> Void,
     startWorkflowAudioRunAction:
-      @escaping @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void,
+      @escaping @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void,
     finishWorkflowAudioRunAction: @escaping @Sendable () async throws -> Void,
     verifyOpenAIConfigurationAction:
       @escaping @Sendable (OpenAISettings) async throws -> Void,

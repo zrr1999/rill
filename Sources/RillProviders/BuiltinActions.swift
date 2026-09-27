@@ -14,7 +14,9 @@ public struct RecordStoreAction: OutputAction {
             RecordCaptureEnvelope(
                 draft: record,
                 requestedCollectionIDs: context.workflow.targetRecordCollectionIDs,
-                bufferEntryID: context.bufferEntryID
+                bufferEntryID: context.bufferEntryID,
+                recognitionText: context.bufferEntryID == nil && context.bufferDraftInput == nil ? nil : context.recognitionResult.rawText,
+                draftInput: context.bufferDraftInput
             )
         )
         return .storedRecord

@@ -65,7 +65,7 @@ public func makeAppModelForTesting(
     releaseLocalSpeechRuntimeAction: @escaping @Sendable () -> Void = {},
     stopLocalSpeechRuntimeAction: @escaping @Sendable () async -> Void = {},
     startWorkflowAudioRunAction:
-      @escaping @Sendable (WorkflowDefinition, TriggerBinding) async throws -> Void = { _, _ in
+      @escaping @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void = { _, _, _ in
         throw NSError(
           domain: "Rill.AppModel",
           code: 3,

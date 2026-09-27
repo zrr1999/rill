@@ -12,7 +12,7 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
     let data = try localDataProtector.openBinary(
       stored.protectedGraph, context: Self.recordGraphProtectionContext)
     guard let manifest = try? JSONDecoder().decode(RecordCatalogManifest.self, from: data),
-      (2...3).contains(manifest.schemaVersion)
+      (2...4).contains(manifest.schemaVersion)
     else {
       return nil
     }
@@ -103,7 +103,7 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
         let data = try localDataProtector.openBinary(
           stored.protectedGraph, context: Self.recordGraphProtectionContext)
         wasCatalog =
-          [2, 3].contains(
+          (2...4).contains(
             (try? JSONDecoder().decode(RecordCatalogManifest.self, from: data).schemaVersion) ?? 0)
       } else {
         wasCatalog = false
@@ -153,7 +153,7 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
             throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
           }
         }
-        guard node.id.utf8.count <= 128, node.value.count <= 2 * 1_024 * 1_024 else {
+        guard node.id.utf8.count <= 128, node.value.count <= RecordCatalogNode.maximumValueByteCount else {
           throw SQLitePersistenceError.clipboardPersistenceInvalidWriteSnapshot
         }
         let sealed = try localDataProtector.sealBinary(
@@ -265,7 +265,7 @@ extension SQLitePersistenceStore: RecordCatalogPersistenceStore {
   }
 
   private func validateCatalogManifest(_ manifest: RecordCatalogManifest) throws {
-    guard (2...3).contains(manifest.schemaVersion), manifest.nextMembershipOrdinal > 0,
+    guard (2...4).contains(manifest.schemaVersion), manifest.nextMembershipOrdinal > 0,
       manifest.recordOrder.count <= RecordStorageLimits.productDefault.maximumRecordCount,
       Set(manifest.recordOrder).count == manifest.recordOrder.count,
       manifest.collectionOrder.count <= RecordStorageLimits.productDefault.maximumCollectionCount,

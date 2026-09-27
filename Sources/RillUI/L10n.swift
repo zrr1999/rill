@@ -299,8 +299,8 @@ public enum L10n {
       simplifiedChinese: "开启剪贴板捕获"
     ),
     .menuSaveToVoiceGroup: .init(
-      english: "Save Voice Record Only",
-      simplifiedChinese: "仅保存语音记录"
+      english: "Collect in Drafts",
+      simplifiedChinese: "先收进待发区"
     ),
     .menuSpeechEngine: .init(
       english: "Recognition Engine",
@@ -1595,9 +1595,9 @@ extension L10n {
     case (.simplifiedChinese, .pasteIntoApp):
       return "输入并记录"
     case (.english, .saveToVoiceGroup):
-      return "Save Voice Record Only"
+      return "Collect in Drafts"
     case (.simplifiedChinese, .saveToVoiceGroup):
-      return "仅保存语音记录"
+      return "先收进待发区"
     }
   }
 }
