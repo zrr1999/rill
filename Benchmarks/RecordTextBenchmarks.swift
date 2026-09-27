@@ -2,31 +2,18 @@ import Foundation
 
 @main
 struct RecordTextBenchmarks {
-    static func main() throws {
+    static func main() {
         let recorder = CodSpeedRecorder()
 
         for workload in workloads {
-            var samples: [Double] = []
-            if recorder.isInstrumented {
-                _ = workload.__codspeed_root_frame__run()
-            }
-            let rounds = recorder.isInstrumented ? 20 : 1
-            recorder.begin()
-
-            for _ in 0..<rounds {
-                let start = ContinuousClock.now
-                let outputBytes = workload.__codspeed_root_frame__run()
-                let elapsed = start.duration(to: .now).components
-                samples.append(Double(elapsed.seconds) * 1e9 + Double(elapsed.attoseconds) / 1e9)
-                precondition(outputBytes == workload.expected.utf8.count * workload.iterations)
-            }
-
+            _ = workload.__codspeed_root_frame__run()
             let uri = "Benchmarks/RecordTextBenchmarks.swift::\(workload.name)[\(workload.iterations)]"
+            recorder.begin()
+            let outputBytes = workload.__codspeed_root_frame__run()
             recorder.end(uri: uri)
-            recorder.record(name: workload.name, uri: uri, samples: samples)
-            print("Validated \(workload.name): \(rounds) batches of \(workload.iterations) previews")
+            precondition(outputBytes == workload.expected.utf8.count * workload.iterations)
+            print("Validated \(workload.name): \(workload.iterations) previews")
         }
-        try recorder.write()
     }
 
     private static var workloads: [PreviewWorkload] {

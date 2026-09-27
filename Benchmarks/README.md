@@ -4,32 +4,40 @@ The CodSpeed suite measures production Record code with synthetic, offline data.
 No user clipboard, recordings, files, Keychain keys, or network services are read
 by the workloads.
 
-| Workload | Measured batch |
-| --- | --- |
-| Plain text / Markdown | 10,000 `RecordTextFormatting.previewText` calls |
-| Long Unicode | 1,000 grapheme-safe long-text previews |
-| Stack / Queue enqueue | Insert 10,000 pending entries through `RecordStore` into AES-GCM SQLite |
-| Stack / Queue select | Select the next item 10,000 times with 10,000 entries pending |
-| Stack / Queue output | Begin and commit 10,000 output entries, draining the container |
+| Workload | Measured batch | CodSpeed instrument |
+| --- | --- | --- |
+| Plain text / Markdown | 10,000 `RecordTextFormatting.previewText` calls | Linux CPU simulation |
+| Long Unicode | 1,000 grapheme-safe long-text previews | Linux CPU simulation |
+| Stack / Queue enqueue | Insert 10,000 pending entries through `RecordStore` into AES-GCM SQLite | macOS walltime |
+| Stack / Queue select | Select the next item 10,000 times with 10,000 entries pending | macOS walltime |
+| Stack / Queue output | Begin and commit 10,000 output entries, draining the container | macOS walltime |
 
 Every workload checks its results. The buffer workloads verify Stack/Queue
 ordering, exact entry identity, and restoration of both the full and drained
 catalog. Output measures state transitions and persistence; it sends nothing to
 other applications.
 
-Build and validate every workload locally:
+Build and validate every workload on macOS:
 
 ```sh
 bash scripts/build_benchmarks.sh
 bash scripts/build_benchmarks.sh --codspeed
-codspeed run --mode walltime -- bash -c '.artifacts/benchmarks/record-text && .artifacts/benchmarks/record-buffer'
+codspeed run --mode walltime -- .artifacts/benchmarks/record-buffer
+```
+
+Build and measure the portable preview workloads on Linux:
+
+```sh
+bash scripts/build_benchmarks.sh --codspeed --preview-only
+codspeed run --mode simulation -- .artifacts/benchmarks/record-text
 ```
 
 The build script compiles production code with optimization. Buffer benchmarks
 link the Core, Records and Persistence modules, without a shipping executable
 or the MLX dependency graph. The two `Record*Benchmarks.swift` files own the
 workload inventories; `CodSpeedRecorder.swift` owns the shared instrumentation
-lifecycle. With `--codspeed`, the
+lifecycle. Linux builds require `--preview-only`: encrypted storage still depends
+on macOS APIs. With `--codspeed`, the
 script downloads the official `instrument-hooks` C library at commit
 `4c76dbb5b99fc4927289281c7b7ca71cc46e6836`, verifies its archive SHA-256, and
 compiles it only into the benchmark binary. The downloaded archive includes its
@@ -40,15 +48,19 @@ tests buffer behavior through the Runtime tests. The dedicated benchmark workflo
 builds and measures both suites when the affected production modules, benchmarks
 or their build workflow change; unrelated PRs do not rebuild the benchmark modules.
 
-Preview hooks surround 20 timed batches after one warmup. Buffer benchmarks run
+Preview hooks surround one batch after one warmup. URI construction, aggregate
+validation and logging stay outside the measurement window; each preview still
+checks its expected result inside the workload. Simulation collects CPU costs
+through the hooks and does not emit walltime samples or walltime result JSON.
+
+Buffer benchmarks run
 five independent, fresh-database rounds; each round warms one write/output cycle
 before measuring the three batches. Catalog seeding, initialization, warmup and
 restart verification are outside the timed batches. Result validation and sample
 bookkeeping are included in each measured batch. These are batch costs, not
-per-item latency measurements. The custom harness
-follows CodSpeed's supported C interface because exec-harness 1.3.0 does not
-provide an Apple Silicon macOS binary.
-`CodSpeedResults.swift` writes the same walltime result schema as the official
+per-item latency measurements. The custom harness follows CodSpeed's supported C
+interface for both instruments. For buffer measurements, `CodSpeedResults.swift`
+writes the same walltime result schema as the official
 [Rust integration](https://github.com/CodSpeedHQ/codspeed-rust/blob/main/crates/codspeed/src/walltime_results.rs).
 Reported times describe one complete batch; `iter_per_round` is therefore one.
 
@@ -60,10 +72,19 @@ These optimized measurements replace the opt-in debug-only buffer benchmark;
 older debug observations remain historical evidence, not comparable CodSpeed baselines.
 
 The advisory GitHub workflow runs on `main`, on relevant pull requests, and on
-manual dispatch. It pins CodSpeed and other actions to commits, uses tokenless
-uploads for this public repository, and requests only `contents: read`.
-GitHub-hosted macOS walltime can vary with host load. A successful `main` run is
-needed before PR comparisons become meaningful; these measurements do not prove
+manual dispatch. Preview simulation runs on Ubuntu 24.04 in an official Swift
+6.2.4 container pinned by digest; buffer walltime runs on `macos-26`. Both jobs
+stay in the same workflow, with each benchmark reported by exactly one job.
+It pins CodSpeed and other actions to commits, uses tokenless uploads for this
+public repository, and requests only `contents: read`.
+
+[CPU simulation](https://codspeed.io/docs/instruments/cpu) reduces sensitivity to
+host load, but excludes system-call time. It is a regression signal for the Linux
+Swift/Foundation text implementation, not Apple Silicon latency. SQLite disk I/O
+therefore retains real walltime measurement on macOS, which can vary with host
+load. Preview simulation needs a new successful `main` baseline; the former
+macOS walltime batches are not comparable with the new instrument or platform.
+These measurements do not prove
 native copy/paste latency or application compatibility. The encrypted SQLite
 measurements use a fixed synthetic key and local temporary files; they do not
 measure Keychain authorization or real application input. Those require the
