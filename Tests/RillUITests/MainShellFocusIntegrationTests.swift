@@ -208,10 +208,9 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let streamRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(streamRow, 0)
+        XCTAssertGreaterThanOrEqual(sidebar.selectedRow, 0)
         let recordCollectionRow = try XCTUnwrap(
-            nextSelectableRow(after: streamRow, in: sidebar)
+            firstCollectionRow(in: sidebar)
         )
         let searchToolbarItem = try XCTUnwrap(
             window.toolbar?.items.first { item in
@@ -295,40 +294,31 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         )
     }
 
-    func testAllRecordsThroughCollectionsToActivityPreservesSidebarFocus() async throws {
+    func testPrimaryRoutesThenCollectionsPreserveSidebarKeyboardFocus() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
         let window = makeWindow(model: harness.model)
         defer { tearDown(window) }
-
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         let detailFocusAnchor = try XCTUnwrap(detailFocusAnchor(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
         let downArrow = try XCTUnwrap(downArrowEvent(for: window))
-
-        sidebar.keyDown(with: downArrow)
-        await settle(window)
         XCTAssertEqual(harness.model.selectedSidebarSection, .records)
+        for destination in [SidebarSection.stream, .workflows, .records] {
+            sidebar.keyDown(with: downArrow)
+            await settle(window)
+            XCTAssertEqual(harness.model.selectedSidebarSection, destination)
+            XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
+            XCTAssertFalse(window.firstResponder === detailFocusAnchor)
+        }
         let firstCollectionID = harness.model.recordWorkspace.selectedCollectionID
         XCTAssertNotNil(firstCollectionID)
-        XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
-        XCTAssertFalse(window.firstResponder === detailFocusAnchor)
-
         sidebar.keyDown(with: downArrow)
         await settle(window)
         XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertNotEqual(harness.model.recordWorkspace.selectedCollectionID, firstCollectionID)
         XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
-
-        sidebar.keyDown(with: downArrow)
-        await settle(window)
-        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
-        XCTAssertTrue(
-            isResponder(window.firstResponder, inside: sidebar),
-            "Each detail replacement must preserve continued keyboard navigation in the sidebar."
-        )
-        XCTAssertFalse(window.firstResponder === detailFocusAnchor)
     }
 
     func testStreamToClipboardSelectionReplacementPreservesSidebarFirstResponder() async throws {
@@ -340,10 +330,9 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let streamRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(streamRow, 0)
+        XCTAssertGreaterThanOrEqual(sidebar.selectedRow, 0)
         let recordCollectionRow = try XCTUnwrap(
-            nextSelectableRow(after: streamRow, in: sidebar)
+            firstCollectionRow(in: sidebar)
         )
 
         sidebar.selectRowIndexes(
@@ -387,9 +376,8 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let streamRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(streamRow, 0)
-        let clipboardRow = try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))
+        XCTAssertGreaterThanOrEqual(sidebar.selectedRow, 0)
+        let clipboardRow = try XCTUnwrap(firstCollectionRow(in: sidebar))
         let didRunTrackingSelection = runMainEventTrackingTurn {
             XCTAssertEqual(RunLoop.current.currentMode, .eventTracking)
             sidebar.selectRowIndexes(
@@ -439,10 +427,9 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let streamRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(streamRow, 0)
+        XCTAssertGreaterThanOrEqual(sidebar.selectedRow, 0)
         let recordCollectionRow = try XCTUnwrap(
-            nextSelectableRow(after: streamRow, in: sidebar)
+            firstCollectionRow(in: sidebar)
         )
 
         let detailFocusProbe = FocusProbeView(frame: .zero)
@@ -514,10 +501,9 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let streamRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(streamRow, 0)
+        XCTAssertGreaterThanOrEqual(sidebar.selectedRow, 0)
         let recordCollectionRow = try XCTUnwrap(
-            nextSelectableRow(after: streamRow, in: sidebar)
+            firstCollectionRow(in: sidebar)
         )
 
         XCTAssertTrue(
@@ -572,10 +558,9 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let streamRow = sidebar.selectedRow
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(firstCollectionRow(in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [clipboardFocusWait], timeout: 1)
@@ -632,11 +617,10 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let streamRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(streamRow, 0)
+        XCTAssertGreaterThanOrEqual(sidebar.selectedRow, 0)
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(firstCollectionRow(in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [clipboardFocusWait], timeout: 1)
@@ -695,8 +679,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await focusTurnGate.release(through: 1)
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
-        let streamRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(streamRow, 0)
+        XCTAssertGreaterThanOrEqual(sidebar.selectedRow, 0)
 
         let persistentDetailFocusProbe = FocusProbeView(frame: .zero)
         window.contentView?.addSubview(persistentDetailFocusProbe)
@@ -704,7 +687,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(persistentDetailFocusProbe))
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(firstCollectionRow(in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [firstRouteRepair], timeout: 1)
@@ -765,8 +748,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await focusTurnGate.release(through: 1)
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
-        let streamRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(streamRow, 0)
+        XCTAssertGreaterThanOrEqual(sidebar.selectedRow, 0)
 
         let persistentDetailFocusProbe = FocusProbeView(frame: .zero)
         window.contentView?.addSubview(persistentDetailFocusProbe)
@@ -774,7 +756,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(window.makeFirstResponder(persistentDetailFocusProbe))
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(firstCollectionRow(in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [firstRouteRepair], timeout: 1)
@@ -827,11 +809,10 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await focusTurnGate.release(through: 1)
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
-        let streamRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(streamRow, 0)
+        XCTAssertGreaterThanOrEqual(sidebar.selectedRow, 0)
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(firstCollectionRow(in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [firstRouteRepair], timeout: 1)
@@ -1321,11 +1302,10 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         await settle(window)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(window.makeFirstResponder(sidebar))
-        let streamRow = sidebar.selectedRow
-        XCTAssertGreaterThanOrEqual(streamRow, 0)
+        XCTAssertGreaterThanOrEqual(sidebar.selectedRow, 0)
 
         sidebar.selectRowIndexes(
-            IndexSet(integer: try XCTUnwrap(nextSelectableRow(after: streamRow, in: sidebar))),
+            IndexSet(integer: try XCTUnwrap(firstCollectionRow(in: sidebar))),
             byExtendingSelection: false
         )
         await fulfillment(of: [clipboardListWait], timeout: 1)
@@ -1644,6 +1624,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
     }
 
     private func makeWindow(model: AppModel) -> NSWindow {
+        model.voiceSetupPresentation = .dismissed
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
             styleMask: [.titled, .closable, .resizable],
@@ -1660,6 +1641,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         model: AppModel,
         sidebarFocusTurnWaiter: @escaping @MainActor @Sendable () async -> Void
     ) -> NSWindow {
+        model.voiceSetupPresentation = .dismissed
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
             styleMask: [.titled, .closable, .resizable],
@@ -1697,11 +1679,10 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         }
     }
 
-    private func nextSelectableRow(after row: Int, in table: NSTableView) -> Int? {
-        // SwiftUI materializes the following Section header as the next
-        // AppKit table row. The first collection is the row after that header.
-        let candidate = row + 2
-        return candidate < table.numberOfRows ? candidate : nil
+    private func firstCollectionRow(in table: NSTableView) -> Int? {
+        // AppKit includes both the untitled primary-section header and Collections header.
+        let row = MainShellView.leadingSections.count + 2
+        return row < table.numberOfRows ? row : nil
     }
 
     private func detailFocusAnchor(in window: NSWindow) -> NSView? {

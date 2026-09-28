@@ -505,7 +505,7 @@ public struct MenuBarStatusView: View {
         .accessibilityIdentifier("menu.status.summary")
     } else {
       Button {
-        model.selectSidebarSection(.stream)
+        model.voiceSetupPresentation = .presented
         openMainWindow()
       } label: {
         Label(panelState.statusTitle, systemImage: panelState.statusSystemImage)

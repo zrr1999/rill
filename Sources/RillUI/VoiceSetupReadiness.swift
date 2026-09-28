@@ -170,3 +170,19 @@ extension AppModel {
     return self.voice.downloadedLocalSpeechModels.contains(selectedModel)
   }
 }
+
+/// Session-only presentation; readiness remains the source of truth.
+public enum VoiceSetupPresentation { case waiting, presented, dismissed, complete }
+
+extension AppModel {
+  public func considerInitialVoiceSetup() {
+    let readiness = voiceSetupReadiness
+    if readiness.isComplete {
+      voiceSetupPresentation = .complete
+    } else if voiceSetupPresentation == .waiting,
+              readiness.globalInput != .checking,
+              readiness.provider != .loading, readiness.privacy != .loading {
+      voiceSetupPresentation = .presented
+    }
+  }
+}

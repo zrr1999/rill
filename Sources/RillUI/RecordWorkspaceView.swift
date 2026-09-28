@@ -218,19 +218,23 @@ public struct RecordWorkspaceView: View {
                     .frame(
                         minWidth: 300,
                         idealWidth: 360,
-                        maxWidth: min(440, availableWidth - 360),
+                        maxWidth: max(300, min(440, availableWidth - 363)),
                         maxHeight: .infinity,
                         alignment: .topLeading
                     )
                 recordInspector
                     .frame(
                         minWidth: 340,
+                        idealWidth: 360,
                         maxWidth: .infinity,
                         maxHeight: .infinity,
                         alignment: .topLeading
                     )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Keep the nested AppKit split inside the detail column's safe area.
+            .padding(.horizontal, 1)
+            .clipped()
         case .list:
             recordList
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -477,6 +481,7 @@ public struct RecordWorkspaceView: View {
             VStack(spacing: 0) {
                 HStack {
                     Text(sourceName(record.record.provenance)).font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(1)
                     Spacer()
                     if let copySelection {
                         Button {
@@ -536,8 +541,10 @@ public struct RecordWorkspaceView: View {
                         }
                     } label: {
                         Label(L10n.presentation(.moreActions, language: language), systemImage: RillSystemSymbol.ellipsisCircle.rawValue)
+                            .labelStyle(.iconOnly)
                     }
                     .menuStyle(.borderlessButton)
+                    .help(L10n.presentation(.moreActions, language: language))
                     .fixedSize()
                     .disabled(workspace.isMutating)
                 }
@@ -552,8 +559,8 @@ public struct RecordWorkspaceView: View {
                             .focusable().focused($detailFocused)
                             .accessibilityFocused($detailAccessibilityFocused)
                             .accessibilityIdentifier("records.detail")
-                        membershipInspector(record)
                         DisclosureGroup(L10n.presentation(.metadata, language: language)) {
+                            membershipInspector(record)
                             metadataInspector(record)
                         }
                     }

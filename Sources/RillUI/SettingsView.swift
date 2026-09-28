@@ -185,7 +185,9 @@ public struct SettingsView: View {
           Section { builtinPushToTalkSection; recordPanelSection }
           if let input = model.inputMethod { InputMethodSettingsView(input: input, language: model.settings.language) }
         case .voice:
-          Section { speechEngineSection; apiProviderSettingsSection; voiceAssistantResourcesSection }
+          Section { speechEngineSection }
+          Section { apiProviderSettingsSection }
+          Section { voiceAssistantResourcesSection }
         case .vocabulary:
           Section {
             vocabularySection
@@ -196,9 +198,11 @@ public struct SettingsView: View {
             }
           }
         case .privacy:
-          Section { permissionsSection; privacySection }
+          Section { permissionsSection }
+          Section { privacySection }
         case .data:
-          Section { localDataAndRetentionSection; diagnosticsEntryRow }
+          Section { localDataAndRetentionSection }
+          Section { diagnosticsEntryRow }
         }
       }
       .formStyle(.grouped)
@@ -207,7 +211,6 @@ public struct SettingsView: View {
         await positionSettingsSection(request, proxy: proxy)
       }
     }
-    .navigationTitle(pane.title(language: model.settings.language))
     .sheet(isPresented: $showsDiagnostics) {
       VStack(spacing: 0) {
         HStack {

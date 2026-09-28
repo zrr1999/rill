@@ -4,6 +4,25 @@ import XCTest
 
 @MainActor
 final class VoiceSetupReadinessTests: XCTestCase {
+    func testInitialSetupWaitsForLoadingAndDoesNotReopenAfterSkipping() {
+        let model = makeHarness().model
+        model.settings.isLoading = true
+        model.considerInitialVoiceSetup()
+        XCTAssertEqual(model.voiceSetupPresentation, .waiting)
+        model.settings.isLoading = false
+        model.settings.isLoadingPrivacySettings = false
+        model.globalInputCapability = .permissionRequired
+        model.considerInitialVoiceSetup()
+        XCTAssertEqual(model.voiceSetupPresentation, .presented)
+        model.voiceSetupPresentation = .dismissed
+        model.globalInputCapability = .available
+        model.considerInitialVoiceSetup()
+        XCTAssertEqual(model.voiceSetupPresentation, .dismissed)
+        model.voiceSetupPresentation = .presented
+        model.considerInitialVoiceSetup()
+        XCTAssertEqual(model.voiceSetupPresentation, .presented)
+    }
+
     func testMissingProductionTrustMaterialOverridesHistoryAndCurrentReadyState() async {
         let prepareProbe = SpeechPreparationProbe()
         let harness = makeHarness(
