@@ -33,10 +33,11 @@ final class UIRenderEvidenceTests: XCTestCase {
         await editor.waitForPendingWrites()
         editor.targetName = "TextEdit"
         for language in AppLanguage.allCases {
+            model.applyLanguage(language)
             for dark in [false, true] {
                 for width in [580.0, 820.0] {
                     editor.showsChanges = width > 580
-                    try await render(RecordBufferDraftView(model: editor, voice: model.voice, language: language),
+                    try await render(RecordBufferDraftView(model: model),
                         size: NSSize(width: width, height: 520), dark: dark,
                         to: output.appendingPathComponent("drafts-\(language.rawValue)-\(dark ? "dark" : "light")-\(Int(width)).png"))
                 }
@@ -50,7 +51,8 @@ final class UIRenderEvidenceTests: XCTestCase {
                 selection: .init(location: 0), editingSessionID: UUID()))
         await editor.refresh()
         editor.showsChanges = false
-        try await render(RecordBufferDraftView(model: editor, voice: model.voice, language: .simplifiedChinese),
+        model.applyLanguage(.simplifiedChinese)
+        try await render(RecordBufferDraftView(model: model),
             size: NSSize(width: 580, height: 520), dark: false,
             to: output.appendingPathComponent("drafts-suggestion-compact.png"))
         await editor.shutdown()

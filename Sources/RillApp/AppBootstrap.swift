@@ -2329,6 +2329,7 @@ private enum AppModelFactory {
     resolvedModel.recordWorkspace.buffers.cancelAction = { bufferOutput.cancel() }
     resolvedModel.recordWorkspace.buffers.shutdownAction = { bufferDraftPanel.shutdown(); await bufferOutput.shutdown() }
     resolvedModel.recordWorkspace.buffers.start()
+    bufferDraftPanel.start()
     if let wakeWordTriggerSource = providers.wakeWordTriggerSource {
       Task { @MainActor [weak resolvedModel] in
         for await status in wakeWordTriggerSource.statusStream() {

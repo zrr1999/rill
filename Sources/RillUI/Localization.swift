@@ -1057,9 +1057,9 @@ private let interfaceTextTable: [L10n.InterfaceKey: LocalizedText] = [
   ),
   .settingsClipboardCaptureEnabledDescription: .init(
     english:
-      "When enabled, external clipboard changes are added to Rill history and the global panel "
-      + "shortcut is active.",
-    simplifiedChinese: "开启后，外部剪贴板变化会自动加入 Rill 历史，全局面板快捷键也会生效。"
+      "When enabled, permitted external copies enter history and Drafts. The Drafts window opens "
+      + "without taking focus and stays available after restart.",
+    simplifiedChinese: "开启后，允许捕获的外部复制内容会加入历史和待发区。待发区自动显示，不抢焦点，重启后也会恢复。"
   ),
   .clipboardCaptureDisabledTitle: .init(
     english: "Automatic clipboard capture is off",
@@ -1157,9 +1157,9 @@ private let interfaceTextTable: [L10n.InterfaceKey: LocalizedText] = [
   ),
   .settingsBuiltinPushToTalkDescription: .init(
     english:
-      "Choose whether the built-in Fn hold workflows type directly into the current app or save "
-      + "into the reserved Speech Recognition clipboard group.",
-    simplifiedChinese: "选择内置 Fn 按住工作流是直接输入到当前应用，还是保存到保留的语音识别剪贴板组。"
+      "Choose whether Fn dictation types into the current app or collects results in Drafts. "
+      + "Collecting opens the resident Drafts window without taking focus, including after restart.",
+    simplifiedChinese: "选择 Fn 听写直接输入当前应用，或先进入待发区。选择收集后，待发区自动常驻显示，不抢焦点，重启后也会恢复。"
   ),
   .settingsLocalSpeech: .init(
     english: "Local Speech",
