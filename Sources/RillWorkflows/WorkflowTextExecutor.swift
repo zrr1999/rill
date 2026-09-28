@@ -11,6 +11,7 @@ struct WorkflowRunSession: Sendable {
   let resolvedPlan: ResolvedWorkflowPlan
   let startedAt: Date
   let receiptIsActive: Bool
+  var bufferDraftInput: BufferDraftInputIntent? = nil
 
   var presentation: WorkflowPresentation {
     workflow.presentation
@@ -25,7 +26,7 @@ struct WorkflowTextExecutor: Sendable {
   let lane: WorkflowRunLane
   let processingClock: @Sendable () -> UInt64
   var textPolishingGate: (any TextPolishingGate)? = nil
-  private var runDiagnostics: WorkflowRunDiagnostics { .init(diagnostics: diagnostics) }
+  private var runDiagnostics: WorkflowRunReporter { .init(diagnostics: diagnostics, eventBus: eventBus, lane: lane) }
 
   func transformText(
     from recognition: RecognitionResult,
@@ -129,6 +130,7 @@ struct WorkflowTextExecutor: Sendable {
           var correctionRequest = step.kind == .llmRewrite ? correctionContext?.request : nil
           // References stay frozen; explicit candidate choices and local vocabulary still update the transcript.
           correctionRequest?.transcript = finalText
+          if correctionRequest?.hasCorrectionReferences == false { correctionRequest = nil }
           let context = TransformContext(
             runID: session.runID,
             workflow: session.workflow,
@@ -166,6 +168,7 @@ struct WorkflowTextExecutor: Sendable {
               if request.referenceImage != nil { references?.image = .sent }
               if request.imageSummary != nil { references?.imageSummary = .sent }
               if request.memorySummary != nil { references?.memorySummary = .sent }
+              if request.vocabularyReference?.terms.isEmpty == false { references?.vocabulary?.status = .sent }
             }
             languageModelTraces.append(result.trace)
             tokenUsage = result.trace.tokenUsage
@@ -189,6 +192,7 @@ struct WorkflowTextExecutor: Sendable {
             if request.referenceImage != nil { references?.image = .deliveryUnconfirmed }
             if request.imageSummary != nil { references?.imageSummary = .deliveryUnconfirmed }
             if request.memorySummary != nil { references?.memorySummary = .deliveryUnconfirmed }
+            if request.vocabularyReference?.terms.isEmpty == false { references?.vocabulary?.status = .deliveryUnconfirmed }
           }
           await recordSpeechTextTransformFallback(
             runID: session.runID,
@@ -266,7 +270,7 @@ struct WorkflowTextExecutor: Sendable {
     if let durationMilliseconds, let diagnostics {
       await diagnostics.record(DiagnosticEvent(
         runID: session.runID, subsystem: .session, level: .debug,
-        event: "session.process.timing", message: "Measured workflow processing step.",
+        event: .sessionProcessTiming, message: "Measured workflow processing step.",
         metadata: ["stepKind": kind.rawValue, "resultCode": result.rawValue,
                    "durationMillis": String(durationMilliseconds)]
       ))
@@ -303,7 +307,7 @@ struct WorkflowTextExecutor: Sendable {
         runID: runID,
         subsystem: .session,
         level: .warning,
-        event: "session.transform.fallback",
+        event: .sessionTransformFallback,
         message: "A recoverable speech-text transform failed; recognized text was retained.",
         metadata: [
           "workflow": workflow.fallbackName,
@@ -327,7 +331,7 @@ struct WorkflowTextExecutor: Sendable {
         runID: session.runID,
         subsystem: .session,
         level: result.issues.isEmpty ? .debug : .warning,
-        event: "session.vocabulary.applied",
+        event: .sessionVocabularyApplied,
         message: "Applied vocabulary mappings to recognized text.",
         metadata: [
           "workflow": session.presentation.fallbackName,

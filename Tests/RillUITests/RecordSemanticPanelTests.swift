@@ -14,7 +14,7 @@ final class RecordSemanticPanelTests: XCTestCase {
     let embedder = PanelEmbeddingFixture(held: entered)
     let search = RecordSemanticSearch(store: store, embedder: embedder)
     let panel = RecordQuickPanelModel(store: store, semanticSearch: search)
-    panel.searchText = "keyword"
+    panel.setSearchText("keyword")
     await settle { !panel.isSearching }
     XCTAssertEqual(panel.selectedID, first)
     panel.searchByMeaning()
@@ -27,7 +27,7 @@ final class RecordSemanticPanelTests: XCTestCase {
     panel.moveSelection(1)
     XCTAssertEqual(panel.selectedID, second)
     XCTAssertEqual(panel.subject(at: 1)?.recordID, second)
-    panel.searchText = "unrelated"
+    panel.setSearchText("unrelated")
     XCTAssertTrue(panel.semanticResults.isEmpty)
     await panel.shutdown()
     await search.shutdown()
@@ -38,7 +38,7 @@ final class RecordSemanticPanelTests: XCTestCase {
     let embedder = PanelEmbeddingFixture(missing: true)
     let search = RecordSemanticSearch(store: store, embedder: embedder)
     let panel = RecordQuickPanelModel(store: store, semanticSearch: search)
-    panel.searchText = "intent"
+    panel.setSearchText("intent")
     await settle { !panel.isSearching }
     panel.searchByMeaning()
     await settle { panel.semanticState == .needsModel }
@@ -58,11 +58,11 @@ final class RecordSemanticPanelTests: XCTestCase {
     let embedder = PanelEmbeddingFixture(held: entered)
     let search = RecordSemanticSearch(store: store, embedder: embedder)
     let panel = RecordQuickPanelModel(store: store, semanticSearch: search)
-    panel.searchText = "intent"
+    panel.setSearchText("intent")
     await settle { !panel.isSearching }
     panel.searchByMeaning()
     await fulfillment(of: [entered], timeout: 2)
-    panel.searchText = "unrelated"
+    panel.setSearchText("unrelated")
     var didShutDown = false
     let started = expectation(description: "shutdown started")
     let shutdown = Task {

@@ -6,7 +6,7 @@ import XCTest
 
 @MainActor
 final class PrivacySettingsPresentationTests: XCTestCase {
-    func testLoadsAndPersistsPrivacySettings() async throws {
+    func testLoadsAndCoalescesPendingPrivacyEditsIntoOneCompleteSnapshot() async throws {
         let ruleID = try XCTUnwrap(UUID(uuidString: "A2F0C099-8E52-4ACD-9B0D-111111111111"))
         let rule = SensitiveAppRule(
             id: ruleID,
@@ -36,24 +36,24 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(
-            Array(harness.model.privacyPolicySettings.sensitiveAppRules.prefix(SensitiveAppRule.recommendedDefaults.count)),
+            Array(harness.model.settings.privacyPolicySettings.sensitiveAppRules.prefix(SensitiveAppRule.recommendedDefaults.count)),
             SensitiveAppRule.recommendedDefaults
         )
         XCTAssertEqual(
-            harness.model.privacyPolicySettings.sensitiveAppRules.first(where: { $0.id == ruleID }),
+            harness.model.settings.privacyPolicySettings.sensitiveAppRules.first(where: { $0.id == ruleID }),
             rule
         )
-        XCTAssertFalse(harness.model.privacyPolicySettings.cloudConfirmationRequired)
-        XCTAssertEqual(harness.model.privacyPolicySettings.historyPreviewMode, .disabled)
-        XCTAssertFalse(harness.model.privacyPolicySettings.secureInputConservativeMode)
-        XCTAssertEqual(try privacySettingsSource.currentSettings(), harness.model.privacyPolicySettings)
+        XCTAssertFalse(harness.model.settings.privacyPolicySettings.cloudConfirmationRequired)
+        XCTAssertEqual(harness.model.settings.privacyPolicySettings.historyPreviewMode, .disabled)
+        XCTAssertFalse(harness.model.settings.privacyPolicySettings.secureInputConservativeMode)
+        XCTAssertEqual(try privacySettingsSource.currentSettings(), harness.model.settings.privacyPolicySettings)
 
         harness.model.setSensitiveAppRuleEnabled(ruleID, isEnabled: true)
         harness.model.setSensitiveAppRuleBlocksClipboardHistory(ruleID, blocks: true)
         harness.model.setPrivacyCloudConfirmationRequired(true)
         harness.model.setPrivacyHistoryPreviewMode(.restricted)
         harness.model.setPrivacySecureInputConservativeMode(true)
-        await harness.model.waitForPendingPrivacySettingsWrite()
+        await harness.model.settings.writes.flush()
 
         let snapshot = await settingsStore.activitySnapshot()
         let storedRules = try JSONDecoder().decode(
@@ -66,7 +66,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         XCTAssertEqual(snapshot.storage[.privacyCloudConfirmationRequired], "true")
         XCTAssertEqual(snapshot.storage[.privacyHistoryPreviewMode], PrivacyHistoryPreviewMode.restricted.rawValue)
         XCTAssertEqual(snapshot.storage[.privacySecureInputConservativeMode], "true")
-        XCTAssertEqual(snapshot.atomicWriteCount, 5)
+        XCTAssertEqual(snapshot.atomicWriteCount, 1)
     }
 
     func testCustomSensitiveAppRuleCRUDValidationAndRecommendedRestore() async throws {
@@ -83,7 +83,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
             applicationName: nil
         )
         let custom = try XCTUnwrap(
-            harness.model.privacyPolicySettings.sensitiveAppRules.first {
+            harness.model.settings.privacyPolicySettings.sensitiveAppRules.first {
                 $0.normalizedBundleIdentifier == "com.example.vault"
             }
         )
@@ -145,7 +145,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         )
         harness.model.setSensitiveAppRuleEnabled(custom.id, isEnabled: false)
         let edited = try XCTUnwrap(
-            harness.model.privacyPolicySettings.sensitiveAppRules.first(where: { $0.id == custom.id })
+            harness.model.settings.privacyPolicySettings.sensitiveAppRules.first(where: { $0.id == custom.id })
         )
         XCTAssertEqual(edited.bundleIdentifier, "com.example.PrivateVault")
         XCTAssertEqual(edited.applicationName, "Private Vault")
@@ -158,14 +158,14 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         harness.model.setSensitiveAppRuleEnabled(recommendedID, isEnabled: false)
         try harness.model.restoreRecommendedSensitiveAppRules()
         XCTAssertEqual(
-            harness.model.privacyPolicySettings.sensitiveAppRules.first(where: { $0.id == recommendedID }),
+            harness.model.settings.privacyPolicySettings.sensitiveAppRules.first(where: { $0.id == recommendedID }),
             SensitiveAppRule.recommendedDefaults.first
         )
 
         try harness.model.deleteSensitiveAppRule(custom.id)
-        XCTAssertFalse(harness.model.privacyPolicySettings.sensitiveAppRules.contains { $0.id == custom.id })
-        await harness.model.waitForPendingPrivacySettingsWrite()
-        XCTAssertNil(harness.model.privacySettingsSaveError)
+        XCTAssertFalse(harness.model.settings.privacyPolicySettings.sensitiveAppRules.contains { $0.id == custom.id })
+        await harness.model.settings.writes.flush()
+        XCTAssertNil(harness.model.settings.privacySettingsSaveError)
     }
 
     func testPrivacyWritesAreStrictlySerializedAndCommitWholeSnapshots() async throws {
@@ -185,7 +185,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         let callCountBeforeRelease = await settingsStore.atomicWriteCallCount()
         XCTAssertEqual(callCountBeforeRelease, 1)
         await settingsStore.releaseFirstAtomicWrite()
-        await harness.model.waitForPendingPrivacySettingsWrite()
+        await harness.model.settings.writes.flush()
 
         let snapshot = await settingsStore.snapshot()
         XCTAssertEqual(snapshot.atomicSnapshots.count, 2)
@@ -218,11 +218,11 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         await harness.model.waitForInitialVoiceConfiguration()
 
         XCTAssertEqual(
-            harness.model.privacyPolicySettings.cloudProcessingAuthorizations,
+            harness.model.settings.privacyPolicySettings.cloudProcessingAuthorizations,
             [authorization]
         )
         harness.model.revokeCloudProcessingAuthorization(authorization.id)
-        await harness.model.waitForPendingPrivacySettingsWrite()
+        await harness.model.settings.writes.flush()
 
         let afterRevoke = await settingsStore.activitySnapshot()
         let storedAfterRevoke = try JSONDecoder().decode(
@@ -236,7 +236,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         XCTAssertTrue(storedAfterRevoke.isEmpty)
 
         XCTAssertTrue(harness.model.grantCloudProcessingAuthorization(authorization))
-        await harness.model.waitForPendingPrivacySettingsWrite()
+        await harness.model.settings.writes.flush()
         XCTAssertEqual(
             try privacySettingsSource.currentSettings().cloudProcessingAuthorizations,
             [authorization]
@@ -253,21 +253,52 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         await harness.model.waitForInitialVoiceConfiguration()
 
         harness.model.setPrivacyCloudConfirmationRequired(false)
-        await harness.model.waitForPendingPrivacySettingsWrite()
+        await harness.model.settings.writes.flush()
 
-        XCTAssertNotNil(harness.model.privacySettingsSaveError)
-        XCTAssertFalse(harness.model.isSavingPrivacySettings)
+        XCTAssertNotNil(harness.model.settings.privacySettingsSaveError)
+        XCTAssertFalse(harness.model.settings.isSavingPrivacySettings)
         XCTAssertFalse(try privacySettingsSource.currentSettings().cloudConfirmationRequired)
         let failedSnapshot = await settingsStore.snapshot()
         XCTAssertNil(failedSnapshot.storage[.privacyCloudConfirmationRequired])
 
         harness.model.retryPrivacySettingsSave()
-        await harness.model.waitForPendingPrivacySettingsWrite()
+        await harness.model.settings.writes.flush()
 
-        XCTAssertNil(harness.model.privacySettingsSaveError)
-        XCTAssertFalse(harness.model.isSavingPrivacySettings)
+        XCTAssertNil(harness.model.settings.privacySettingsSaveError)
+        XCTAssertFalse(harness.model.settings.isSavingPrivacySettings)
         let successfulSnapshot = await settingsStore.snapshot()
         XCTAssertEqual(successfulSnapshot.storage[.privacyCloudConfirmationRequired], "false")
+    }
+
+    func testShutdownRetriesFailedPrivacySnapshotAfterClosingMutationAdmission() async throws {
+        for failsWithCancellation in [false, true] {
+            let store = ControlledPrivacySettingsStore(
+                failingAtomicWriteCount: 1, failsWithCancellation: failsWithCancellation)
+            let source = PrivacyPolicySettingsSource(initialSettings: .defaults)
+            let harness = makeHarness(settingsStore: store, privacySettingsSource: source)
+            await harness.model.waitForInitialVoiceConfiguration()
+            harness.model.setPrivacyCloudConfirmationRequired(false)
+            harness.model.setPrivacyHistoryPreviewMode(.disabled)
+            await harness.model.flushPendingPersistenceWrites()
+            XCTAssertEqual(harness.model.settingsSaveState.unsavedSummary?.categories, [.privacy])
+            XCTAssertNotNil(harness.model.settings.privacySettingsSaveError)
+
+            harness.model.beginApplicationShutdown()
+            harness.model.setPrivacyCloudConfirmationRequired(true)
+            await harness.model.drainPendingSettingsWritesForApplicationShutdown { _ in
+                XCTFail("A recovered store must not enter retry backoff.")
+            }
+
+            let snapshot = await store.snapshot()
+            XCTAssertEqual(snapshot.atomicSnapshots.count, 1)
+            XCTAssertEqual(snapshot.atomicSnapshots[0].count, 5)
+            XCTAssertEqual(snapshot.storage[.privacyCloudConfirmationRequired], "false")
+            XCTAssertEqual(snapshot.storage[.privacyHistoryPreviewMode], PrivacyHistoryPreviewMode.disabled.rawValue)
+            XCTAssertFalse(try source.currentSettings().cloudConfirmationRequired)
+            XCTAssertEqual(harness.model.settingsSaveState, .saved)
+            XCTAssertNil(harness.model.settings.privacySettingsSaveError)
+            XCTAssertFalse(harness.model.settings.isSavingPrivacySettings)
+        }
     }
 
     func testCorruptPrivacyRulesKeepSafeDefaultsAndExposeLoadFailure() async {
@@ -286,11 +317,11 @@ final class PrivacySettingsPresentationTests: XCTestCase {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertEqual(harness.model.privacyPolicySettings, .defaults)
-        XCTAssertEqual(harness.model.language, .simplifiedChinese)
-        XCTAssertEqual(harness.model.preferredSpeechEngine, .local)
-        XCTAssertNotNil(harness.model.privacySettingsLoadError)
-        XCTAssertNil(harness.model.privacySettingsSaveError)
+        XCTAssertEqual(harness.model.settings.privacyPolicySettings, .defaults)
+        XCTAssertEqual(harness.model.settings.language, .simplifiedChinese)
+        XCTAssertEqual(harness.model.settings.preferredSpeechEngine, .local)
+        XCTAssertNotNil(harness.model.settings.privacySettingsLoadError)
+        XCTAssertNil(harness.model.settings.privacySettingsSaveError)
         XCTAssertThrowsError(try privacySettingsSource.currentSettings()) { error in
             guard let sourceError = error as? PrivacyPolicySettingsSourceError,
                   case .unavailable = sourceError else {
@@ -301,8 +332,8 @@ final class PrivacySettingsPresentationTests: XCTestCase {
         XCTAssertEqual(activity.atomicWriteCount, 0)
 
         harness.model.resetPrivacySettingsToSafeDefaults()
-        await harness.model.waitForPendingPrivacySettingsWrite()
-        XCTAssertNil(harness.model.privacySettingsLoadError)
+        await harness.model.settings.writes.flush()
+        XCTAssertNil(harness.model.settings.privacySettingsLoadError)
         let recoveredSettings = try? privacySettingsSource.currentSettings()
         XCTAssertEqual(recoveredSettings, PrivacyPolicySettings.defaults)
     }
@@ -318,10 +349,10 @@ final class PrivacySettingsPresentationTests: XCTestCase {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertNil(harness.model.privacySettingsLoadError)
+        XCTAssertNil(harness.model.settings.privacySettingsLoadError)
         XCTAssertEqual(try privacySettingsSource.currentSettings(), .defaults)
         XCTAssertTrue(
-            harness.model.eventFeed.contains {
+            harness.model.history.eventFeed.contains {
                 $0.english == "The LLM Provider credential could not be read from secure storage."
             }
         )
@@ -337,7 +368,7 @@ final class PrivacySettingsPresentationTests: XCTestCase {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertNotNil(harness.model.privacySettingsLoadError)
+        XCTAssertNotNil(harness.model.settings.privacySettingsLoadError)
         XCTAssertThrowsError(try privacySettingsSource.currentSettings()) { error in
             guard let sourceError = error as? PrivacyPolicySettingsSourceError,
                   case .unavailable = sourceError else {
@@ -406,14 +437,17 @@ private actor ControlledPrivacySettingsStore: SettingsStore {
     private var atomicWriteCount = 0
     private var failingAtomicWriteCount: Int
     private let blocksFirstAtomicWrite: Bool
+    private let failsWithCancellation: Bool
     private var firstWriteWaiters: [CheckedContinuation<Void, Never>] = []
     private var firstWriteRelease: CheckedContinuation<Void, Never>?
 
     init(
         blocksFirstAtomicWrite: Bool = false,
-        failingAtomicWriteCount: Int = 0
+        failingAtomicWriteCount: Int = 0,
+        failsWithCancellation: Bool = false
     ) {
         self.blocksFirstAtomicWrite = blocksFirstAtomicWrite
+        self.failsWithCancellation = failsWithCancellation
         self.failingAtomicWriteCount = failingAtomicWriteCount
     }
 
@@ -446,6 +480,7 @@ private actor ControlledPrivacySettingsStore: SettingsStore {
         }
         if failingAtomicWriteCount > 0 {
             failingAtomicWriteCount -= 1
+            if failsWithCancellation { throw CancellationError() }
             throw ControlledPrivacySettingsStoreError.requestedFailure
         }
         storage.merge(values) { _, newValue in newValue }

@@ -1,7 +1,7 @@
 import Foundation
 import RillCore
 
-public actor InMemoryWorkflowRunReceiptRepository: WorkflowRunReceiptRepository {
+public actor InMemoryWorkflowRunReceiptRepository: WorkflowRunReceiptRepository, WorkflowRunReceiptMaintaining {
     private struct StoredReceipt: Sendable {
         var receipt: WorkflowRunReceipt
         var generation: RunHistoryWriteGeneration

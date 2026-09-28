@@ -26,7 +26,7 @@ final class DiagnosticsViewTests: XCTestCase {
                 timestamp: baseTimestamp.addingTimeInterval(TimeInterval(offset)),
                 subsystem: .ui,
                 level: .info,
-                event: "diagnostic.\(offset)",
+                event: .sessionStage,
                 message: "Event \(offset)"
             )
         }
@@ -34,7 +34,7 @@ final class DiagnosticsViewTests: XCTestCase {
         let visibleEvents = DiagnosticsView.timelineEvents(from: events)
 
         XCTAssertEqual(visibleEvents.count, 20)
-        XCTAssertEqual(visibleEvents.map(\.event), (5..<25).reversed().map { "diagnostic.\($0)" })
+        XCTAssertEqual(visibleEvents.map(\.timestamp), (5..<25).reversed().map { baseTimestamp.addingTimeInterval(TimeInterval($0)) })
     }
 
     func testActivityFilterHidesDebugWhileIssuesAndAllRemainAvailable() {
@@ -43,41 +43,41 @@ final class DiagnosticsViewTests: XCTestCase {
             timestamp: timestamp,
             subsystem: .session,
             level: .debug,
-            event: "debug.detail",
+            event: .recordingPrepareBegin,
             message: "Diagnostic event recorded."
         )
         let info = DiagnosticEvent(
             timestamp: timestamp.addingTimeInterval(1),
             subsystem: .session,
             level: .info,
-            event: "recording.started",
+            event: .recordingStarted,
             message: "Diagnostic event recorded."
         )
         let warning = DiagnosticEvent(
             timestamp: timestamp.addingTimeInterval(2),
             subsystem: .providers,
             level: .warning,
-            event: "provider.warning",
+            event: .providerSpeechModelDownloadFailed,
             message: "Provider warning"
         )
 
         XCTAssertEqual(
             DiagnosticsView.timelineEvents(from: [warning, info, debug]).map(\.event),
-            ["provider.warning", "recording.started"]
+            ["provider.speech-model.download-failed", "recording.started"]
         )
         XCTAssertEqual(
             DiagnosticsView.timelineEvents(
                 from: [warning, info, debug],
                 filter: .issues
             ).map(\.event),
-            ["provider.warning"]
+            ["provider.speech-model.download-failed"]
         )
         XCTAssertEqual(
             DiagnosticsView.timelineEvents(
                 from: [warning, info, debug],
                 filter: .all
             ).map(\.event),
-            ["provider.warning", "recording.started", "debug.detail"]
+            ["provider.speech-model.download-failed", "recording.started", "recording.prepare.begin"]
         )
     }
 
@@ -86,7 +86,7 @@ final class DiagnosticsViewTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 1_000),
             subsystem: .session,
             level: .info,
-            event: "session.stage",
+            event: .sessionStage,
             message: "Diagnostic event recorded.",
             metadata: ["stage": "recognizing", "model": "local-model"]
         )
@@ -126,7 +126,7 @@ final class DiagnosticsViewTests: XCTestCase {
                 timestamp: baseTimestamp.addingTimeInterval(TimeInterval(offset)),
                 subsystem: .ui,
                 level: .warning,
-                event: "diagnostic.\(offset)",
+                event: .sessionStage,
                 message: "Event \(offset)",
                 metadata: ["attempt": "\(offset)"]
             )
@@ -139,7 +139,7 @@ final class DiagnosticsViewTests: XCTestCase {
             timestamp: baseTimestamp.addingTimeInterval(3),
             subsystem: .providers,
             level: .error,
-            event: "diagnostic.inserted",
+            untrustedEvent: "diagnostic.inserted",
             message: "Inserted event"
         )
         let entriesAfterInsertion = DiagnosticsView.timelineEntries(
@@ -159,7 +159,7 @@ final class DiagnosticsViewTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 1_000),
             subsystem: .ui,
             level: .warning,
-            event: "diagnostic.duplicate",
+            untrustedEvent: "diagnostic.duplicate",
             message: "Duplicate event"
         )
 
@@ -179,7 +179,7 @@ final class DiagnosticsViewTests: XCTestCase {
                 runID: runID,
                 subsystem: .ui,
                 level: .warning,
-                event: "diagnostic.first",
+                untrustedEvent: "diagnostic.first",
                 message: messageCanary,
                 metadata: ["secret": metadataCanary]
             ),
@@ -188,7 +188,7 @@ final class DiagnosticsViewTests: XCTestCase {
                 runID: runID,
                 subsystem: .ui,
                 level: .error,
-                event: "diagnostic.second",
+                untrustedEvent: "diagnostic.second",
                 message: messageCanary,
                 metadata: ["secret": metadataCanary]
             ),

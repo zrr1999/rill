@@ -136,6 +136,13 @@ admission. Later vocabulary edits apply to later recordings; final recognition
 does not reload the library. Model enablement and run privacy are still checked
 at their effect boundaries.
 
+The separate **Use vocabulary for Smart Cleanup** setting is off by default.
+After provider consent, new recordings in the builtin cleanup workflow can share
+all applicable bound hotwords with the LLM, using an independent 12,000-byte JSON
+budget. This projection is frozen at admission and is not limited to ASR's final
+hints. It does not change mapping rules or enable reference uploads for custom
+workflows, text input or imported audio. See [vocabulary and memory](vocabulary-memory.md).
+
 The experimental **Jev hotword selection** switch in Voice & Models is separate
 from workflow TOML and from the polishing gate. It defaults off and retains its
 shared Jev key and independent consent only for the app session. Enabling it permits sending up to 50
@@ -220,7 +227,7 @@ Custom cleanup workflows opt in through the existing options dictionary:
 The switch defaults off, and neither the key nor the switch is persisted.
 Enabling it authorizes sending the current transcript and that step's rewrite
 instructions to `api.typesafe.ai`. Audio, clipboard/selection context, screen
-images and memory references are excluded. Runs using correction references
+images, memory and polishing-vocabulary references are excluded. Runs using correction references
 continue directly to the configured LLM; answer steps and voice assistants never
 use this gate. Current and source-app privacy rules are checked before and after
 prediction; cancellation or a privacy restriction stops the run.
@@ -320,6 +327,24 @@ built-in Fn mode. Recognition stays local. After recognition and vocabulary
 replacement, `llm-rewrite` sends only the current text and instruction to the
 configured LLM Provider. Use the supplied `speech_to_text_polish.toml` template
 for a custom workflow; no `text.provider` option is needed.
+
+Cleanup treats questions, commands and short phrases with missing context as
+transcript text. For example, “总结一下这些内容。” must remain that sentence;
+cleanup must not answer it or ask for the material to summarize. The same rule
+applies to contextual correction. `llm-answer` and voice-assistant workflows
+still answer requests. User-authored TOML prompts are not overwritten by updates.
+
+The provider request contract and cleanup examples are covered by offline checks.
+An opt-in model evaluation sends only fixed synthetic samples in
+`Tests/Fixtures/TextRewrite/cases.json`, in both ordinary and contextual correction
+modes. Run it with `RILL_REWRITE_LIVE_EVALUATION=1`, `OPENAI_API_KEY`,
+`OPENAI_BASE_URL` and `OPENAI_MODEL` set, using
+`scripts/swift_locked.sh test --filter TextRewriteEvaluationTests`.
+Results are saved locally in `.artifacts/text-rewrite/live-evaluation.json`.
+Offline request checks do not establish model compliance; live results apply
+only to the tested provider, model and corpus.
+Comparisons ignore punctuation and whitespace but retain words, case and numbers.
+The emphasis sample retains a repetition whose intent is ambiguous without audio.
 
 DeepSeek rewrite requests use `reasoning.effort = "none"`, temperature 0.1 and a
 4096-token output limit. The rewrite has a 5-second budget; cancellation drains

@@ -18,8 +18,8 @@ public struct PrivacyRunGate: Sendable {
     ) async throws -> PreparedRecognitionContext? = { _, _, _, _, _ in nil }
 
     public var prepareCorrectionContext: @Sendable (
-        UUID, WorkflowDefinition, ContextSnapshot, SpeechRecognitionRequestOptions, AudioCaptureLifetime
-    ) async throws -> RunContextPreparation? = { _, _, _, _, _ in nil }
+        UUID, WorkflowDefinition, ContextSnapshot, SpeechRecognitionRequestOptions, [HotwordCandidate], AudioCaptureLifetime
+    ) async throws -> RunContextPreparation? = { _, _, _, _, _, _ in nil }
 
     public enum GateError: Error, LocalizedError, Equatable {
         case settingsUnavailable
@@ -353,7 +353,7 @@ public struct PrivacyRunGate: Sendable {
         recognitionOptionsProvider: @Sendable (
             WorkflowDefinition,
             ContextSnapshot
-        ) async -> SpeechRecognitionRequestOptions,
+        ) async throws -> SpeechRecognitionRequestOptions,
         workflow: WorkflowDefinition
     ) async throws -> AuthorizedWorkflowRunContext {
         let authorization = try await captureAuthorizedContext(
@@ -364,7 +364,7 @@ public struct PrivacyRunGate: Sendable {
         return AuthorizedWorkflowRunContext(
             workflow: workflow,
             contextSnapshot: authorization.context,
-            recognitionOptions: await recognitionOptionsProvider(
+            recognitionOptions: try await recognitionOptionsProvider(
                 workflow,
                 authorization.context
             ),
@@ -416,7 +416,7 @@ public struct PrivacyRunGate: Sendable {
         recognitionOptionsProvider: @Sendable (
             WorkflowDefinition,
             ContextSnapshot
-        ) async -> SpeechRecognitionRequestOptions,
+        ) async throws -> SpeechRecognitionRequestOptions,
         workflow: WorkflowDefinition
     ) async throws -> AuthorizedAudioProcessingLease {
         try await issueAudioProcessingLease(
@@ -440,7 +440,7 @@ public struct PrivacyRunGate: Sendable {
         recognitionOptionsProvider: @Sendable (
             WorkflowDefinition,
             ContextSnapshot
-        ) async -> SpeechRecognitionRequestOptions,
+        ) async throws -> SpeechRecognitionRequestOptions,
         workflow: WorkflowDefinition,
         monitorInterval: Duration = .milliseconds(50),
         revocationHandler: @escaping @Sendable (
@@ -486,7 +486,7 @@ public struct PrivacyRunGate: Sendable {
         recognitionOptionsProvider: @Sendable (
             WorkflowDefinition,
             ContextSnapshot
-        ) async -> SpeechRecognitionRequestOptions,
+        ) async throws -> SpeechRecognitionRequestOptions,
         workflow: WorkflowDefinition,
         liveAuthorizationState: LiveAudioSessionAuthorizationState?,
         audioLifetime: AudioCaptureLifetime?
@@ -499,7 +499,7 @@ public struct PrivacyRunGate: Sendable {
             contextProvider: contextProvider,
             workflow: workflow
         )
-        var recognitionOptions = await recognitionOptionsProvider(
+        var recognitionOptions = try await recognitionOptionsProvider(
             workflow,
             capture.authorizedContext
         )
@@ -525,7 +525,7 @@ public struct PrivacyRunGate: Sendable {
         }
         let contextPreparation: RunContextPreparation?
         if let audioLifetime {
-            contextPreparation = try await prepareCorrectionContext(runID, workflow, capture.authorizedContext, recognitionOptions, audioLifetime)
+            contextPreparation = try await prepareCorrectionContext(runID, workflow, capture.authorizedContext, recognitionOptions, preparedRecognition?.plan.vocabularyCandidates ?? [], audioLifetime)
             try Task.checkCancellation()
         } else {
             contextPreparation = nil

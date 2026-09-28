@@ -51,6 +51,7 @@ public actor SystemClipboardCaptureController {
     var sourceApplication: FocusedApplicationIdentity
     var privacy: InitialClipboardPrivacyEvaluation
     var byteCount: Int
+    var bufferReservation: BufferInputReservation?
   }
 
   private static let privacyCheckInterval = Duration.milliseconds(750)
@@ -90,6 +91,9 @@ public actor SystemClipboardCaptureController {
   private var lastObservedFocusIdentitySample: FocusPrivacyIdentitySample?
   private var lastPrivacyDiagnosticChangeCount: Int?
   private var nextClipboardPrivacyCheck: ContinuousClock.Instant?
+  private var bufferCancellationTask: Task<Void, Never>?
+  private var bufferCancellationRetries: [BufferEntryID: Task<Void, Never>] = [:]
+  private var observedBufferInput: (changeCount: Int, reservation: BufferInputReservation)?
   private var clipboardReadRetry:
     (
       changeCount: Int, focus: FocusPrivacyIdentitySample, attempts: Int,
@@ -210,6 +214,11 @@ public actor SystemClipboardCaptureController {
     await recordDelivery.shutdown()
     await waitForInFlightCaptureOperations()
     await clipboardPersistenceTask?.value
+    await bufferCancellationTask?.value
+    let cancellationRetries = Array(bufferCancellationRetries.values)
+    for task in cancellationRetries { task.cancel() }
+    for task in cancellationRetries { await task.value }
+    bufferCancellationRetries.removeAll()
     _ = transitionCaptureControl(to: .paused)
     finishStop()
   }
@@ -364,13 +373,14 @@ public actor SystemClipboardCaptureController {
     await waitForInFlightCaptureOperations()
     guard isCurrentControlState(.pausing, revision: transitionRevision) else { return }
     await clipboardPersistenceTask?.value
+    await bufferCancellationTask?.value
     guard isCurrentControlState(.pausing, revision: transitionRevision) else { return }
 
     let pausedRevision = transitionCaptureControl(to: .paused)
     await publishCaptureControlState()
     guard isCurrentControlState(.paused, revision: pausedRevision) else { return }
     await recordCaptureControlEvent(
-      event: "clipboard.capture.paused",
+      event: .clipboardCapturePaused,
       message: "Paused external clipboard capture after in-flight clipboard operations settled."
     )
     if desiredClipboardCaptureEnabled {
@@ -419,7 +429,7 @@ public actor SystemClipboardCaptureController {
     await recordInitialClipboardPrivacyIfNeeded(evaluation)
     guard isCurrentControlState(.active, revision: activeRevision) else { return }
     await recordCaptureControlEvent(
-      event: "clipboard.capture.resumed",
+      event: .clipboardCaptureResumed,
       message: "Resumed external clipboard capture from the current pasteboard baseline."
     )
     if !desiredClipboardCaptureEnabled {
@@ -453,7 +463,7 @@ public actor SystemClipboardCaptureController {
       return
     }
     await recordCaptureControlEvent(
-      event: "clipboard.capture.ignore-next-armed",
+      event: .clipboardCaptureIgnoreNextArmed,
       message: "Armed one-time external clipboard capture suppression."
     )
   }
@@ -511,22 +521,27 @@ extension SystemClipboardCaptureController {
       return
     }
 
+    if let observedBufferInput, observedBufferInput.changeCount != descriptor.changeCount {
+      abandonObservedBufferInput()
+    }
     let crossedPrivacyIdentity =
       lastObservedFocusIdentitySample.map {
         !focusSample.hasSamePrivacyIdentity(as: $0)
       } ?? false
     if let retry = clipboardReadRetry, !retry.focus.hasSamePrivacyIdentity(as: focusSample) {
       clipboardReadRetry = nil
+      abandonObservedBufferInput()
     }
 
     guard evaluation.allowsClipboardCapture else {
       lastObservedPasteboardChangeCount = descriptor.changeCount
       lastObservedFocusIdentitySample = focusSample
       clipboardReadRetry = nil
+      abandonObservedBufferInput()
       await recordCaptureDecision(
         evaluation.decision,
         context: evaluation.context,
-        event: "clipboard.capture.skipped",
+        event: .clipboardCaptureSkipped,
         message: "Skipped clipboard capture because of the active privacy policy."
       )
       return
@@ -557,8 +572,20 @@ extension SystemClipboardCaptureController {
       lastObservedFocusIdentitySample = focusSample
       clipboardReadRetry?.nextAttempt = nil
       if !crossedPrivacyIdentity {
+        if captureControlSnapshot.state == .active {
+          let operation = beginCaptureOperation(controlRevision: observedControlRevision)
+          defer { finishCaptureOperation(operation.id) }
+          let isOwned = await pasteboard.ownsClipboardChangeCount(descriptor.changeCount)
+          guard isCaptureOperationCurrent(operation) else { return }
+          if !isOwned { _ = try? await bufferReservation(for: descriptor.changeCount) }
+          guard isCaptureOperationCurrent(operation) else {
+            abandonObservedBufferInput()
+            return
+          }
+        }
         retryClipboardReadIfNeeded(changeCount: descriptor.changeCount, focus: focusSample, at: now)
       }
+      if clipboardReadRetry?.nextAttempt == nil { abandonObservedBufferInput() }
       return
     }
     let isOwnedChangeCount = await pasteboard.ownsClipboardChangeCount(descriptor.changeCount)
@@ -579,7 +606,7 @@ extension SystemClipboardCaptureController {
       _ = transitionCaptureControl(to: .active)
       await publishCaptureControlState()
       await recordCaptureControlEvent(
-        event: "clipboard.capture.ignore-next-consumed",
+        event: .clipboardCaptureIgnoreNextConsumed,
         message: "Ignored one external clipboard change without reading its payload."
       )
       return
@@ -594,14 +621,23 @@ extension SystemClipboardCaptureController {
       return
     }
 
-    let routeContext = RecordRouteContext(
-      applicationName: focusSample.focus.applicationName,
-      bundleIdentifier: focusSample.focus.bundleIdentifier
-    )
     let captureRevision = captureControlSnapshot.revision
     let captureOperation = beginCaptureOperation(controlRevision: captureRevision)
     defer { finishCaptureOperation(captureOperation.id) }
 
+    let bufferReservation = try? await self.bufferReservation(for: descriptor.changeCount)
+    var acceptedBufferInput = false
+    defer {
+      if !acceptedBufferInput,
+        clipboardReadRetry?.changeCount != descriptor.changeCount || clipboardReadRetry?.nextAttempt == nil {
+        abandonObservedBufferInput()
+      }
+    }
+    guard isCaptureOperationCurrent(captureOperation) else { return }
+    let routeContext = RecordRouteContext(
+      applicationName: focusSample.focus.applicationName,
+      bundleIdentifier: focusSample.focus.bundleIdentifier
+    )
     let descriptorBeforePayloadRead = await pasteboard.currentClipboardDescriptor()
     guard isCaptureOperationCurrent(captureOperation) else { return }
     let focusBeforePayloadRead = await focusIdentitySampleProvider()
@@ -627,7 +663,7 @@ extension SystemClipboardCaptureController {
         await recordCaptureDecision(
           evaluationBeforePayloadRead.decision,
           context: evaluationBeforePayloadRead.context,
-          event: "clipboard.capture.skipped",
+          event: .clipboardCaptureSkipped,
           message:
             "Skipped clipboard capture because the privacy boundary changed before payload read."
         )
@@ -677,7 +713,7 @@ extension SystemClipboardCaptureController {
         await recordCaptureDecision(
           evaluationAfterPayloadRead.decision,
           context: evaluationAfterPayloadRead.context,
-          event: "clipboard.capture.skipped",
+          event: .clipboardCaptureSkipped,
           message: "Discarded clipboard payload because the privacy boundary changed during read."
         )
       } else if !focusAfterPayloadRead.hasSamePrivacyIdentity(as: focusSample)
@@ -702,22 +738,23 @@ extension SystemClipboardCaptureController {
       + snapshot.fileURLs.reduce(0) { $0 + $1.absoluteString.utf8.count }
     // Accepted snapshots survive a newer copy; disk latency must not delay polling.
     // Backpressure bounds both the number of captures and retained rich payloads.
-    if pendingClipboardCaptures.count >= 8
-      || pendingClipboardByteCount + byteCount > 64 * 1_024 * 1_024
-    {
-      await clipboardPersistenceTask?.value
-    }
     pendingClipboardCaptures.append(
       PendingClipboardCapture(
         snapshot: snapshot,
         sourceApplication: focusedApplicationIdentity(routeContext),
         privacy: evaluation,
-        byteCount: byteCount
+        byteCount: byteCount,
+        bufferReservation: bufferReservation
       )
     )
+    acceptedBufferInput = true
+    observedBufferInput = nil
     pendingClipboardByteCount += byteCount
     if clipboardPersistenceTask == nil {
       clipboardPersistenceTask = Task { await self.persistPendingClipboardCaptures() }
+    }
+    if pendingClipboardCaptures.count > 8 || pendingClipboardByteCount > 64 * 1_024 * 1_024 {
+      await clipboardPersistenceTask?.value
     }
   }
 
@@ -726,16 +763,26 @@ extension SystemClipboardCaptureController {
       var attempts = 0
       while true {
         do {
-          _ = try await recordStore.captureSystemClipboard(
+          var bufferEntryID: BufferEntryID?
+          if let reservation = capture.bufferReservation {
+            if case .success = await reservation.committed.result {
+              bufferEntryID = reservation.id
+            }
+          }
+          let record = try await recordStore.captureSystemClipboard(
             snapshot: capture.snapshot,
             sourceApplication: capture.sourceApplication,
-            allowsWorkflowCapture: capture.privacy.decision.allowsWorkflowCapture
+            allowsWorkflowCapture: capture.privacy.decision.allowsWorkflowCapture,
+            bufferEntryID: bufferEntryID
           )
+          if bufferEntryID == nil {
+            await eventBus.publish(.recordBufferInputFailed(recordID: record.id))
+          }
           if !capture.privacy.decision.allowsWorkflowCapture {
             await recordCaptureDecision(
               capture.privacy.decision,
               context: capture.privacy.context,
-              event: "clipboard.capture.workflow-skipped",
+              event: .clipboardCaptureWorkflowSkipped,
               message: "Saved clipboard history without emitting a workflow event."
             )
           }
@@ -750,17 +797,56 @@ extension SystemClipboardCaptureController {
             DiagnosticEvent(
               subsystem: .systemClipboard,
               level: .warning,
-              event: "clipboard.state.persist-failed",
+              event: .clipboardStatePersistFailed,
               message: "Could not save the external clipboard to record history."
             )
           )
           break
         }
       }
+      if let reservation = capture.bufferReservation {
+        await cancelBufferInputWithRetry(reservation.id)
+      }
       pendingClipboardCaptures.removeFirst()
       pendingClipboardByteCount -= capture.byteCount
     }
     clipboardPersistenceTask = nil
+  }
+
+  private func bufferReservation(for changeCount: Int) async throws -> BufferInputReservation {
+    if let observedBufferInput, observedBufferInput.changeCount == changeCount { return observedBufferInput.reservation }
+    abandonObservedBufferInput()
+    let reservation = try await recordStore.observeBufferInput(in: RecordBuffer.clipboardID)
+    observedBufferInput = (changeCount, reservation)
+    return reservation
+  }
+
+  private func abandonObservedBufferInput() {
+    guard let reservation = observedBufferInput?.reservation else { return }
+    observedBufferInput = nil
+    let previous = bufferCancellationTask
+    bufferCancellationTask = Task {
+      await previous?.value
+      _ = try? await reservation.committed.value
+      await cancelBufferInputWithRetry(reservation.id)
+    }
+  }
+
+  private func cancelBufferInputWithRetry(_ id: BufferEntryID) async {
+    do { try await recordStore.cancelBufferInput(id) }
+    catch {
+      guard !stopped, bufferCancellationRetries[id] == nil else { return }
+      bufferCancellationRetries[id] = Task {
+        while !Task.isCancelled {
+          do {
+            try await Task.sleep(for: .milliseconds(250))
+            try await recordStore.cancelBufferInput(id)
+            break
+          } catch { if Task.isCancelled { break } }
+        }
+        bufferCancellationRetries.removeValue(forKey: id)
+      }
+    }
   }
 
   private func isClipboardReadRetryDue(changeCount: Int, at now: ContinuousClock.Instant) -> Bool {
@@ -804,7 +890,7 @@ extension SystemClipboardCaptureController {
     await recordCaptureDecision(
       evaluation.decision,
       context: evaluation.context,
-      event: "clipboard.capture.initial-skipped",
+      event: .clipboardCaptureInitialSkipped,
       message: "Kept the initial clipboard outside Rill because of the active privacy policy."
     )
   }
@@ -820,6 +906,7 @@ extension SystemClipboardCaptureController {
     captureControlSnapshot.revision &+= 1
     captureControlSnapshot.state = state
     clipboardReadRetry = nil
+    abandonObservedBufferInput()
     return captureControlSnapshot.revision
   }
 
@@ -878,7 +965,7 @@ extension SystemClipboardCaptureController {
     }
   }
 
-  fileprivate func recordCaptureControlEvent(event: String, message: String) async {
+  fileprivate func recordCaptureControlEvent(event: DiagnosticEventName, message: String) async {
     guard let diagnostics else { return }
     await diagnostics.record(
       DiagnosticEvent(
@@ -900,7 +987,7 @@ extension SystemClipboardCaptureController {
       DiagnosticEvent(
         subsystem: .systemClipboard,
         level: .debug,
-        event: "clipboard.capture.changed-before-read",
+        event: .clipboardCaptureChangedBeforeRead,
         message:
           "Skipped clipboard capture because the pasteboard changed during privacy evaluation.",
         metadata: ["bundleID": context.focus.bundleIdentifier ?? ""]
@@ -914,7 +1001,7 @@ extension SystemClipboardCaptureController {
       DiagnosticEvent(
         subsystem: .systemClipboard,
         level: .info,
-        event: "clipboard.capture.focus-transition-skipped",
+        event: .clipboardCaptureFocusTransitionSkipped,
         message:
           "Skipped clipboard capture because application focus changed before the copy source could be verified.",
         metadata: [
@@ -957,7 +1044,7 @@ extension SystemClipboardCaptureController {
   fileprivate func recordCaptureDecision(
     _ decision: PrivacyPolicyDecision,
     context: ContextSnapshot,
-    event: String,
+    event: DiagnosticEventName,
     message: String
   ) async {
     guard let diagnostics else { return }
@@ -968,7 +1055,7 @@ extension SystemClipboardCaptureController {
       DiagnosticEvent(
         subsystem: .systemClipboard,
         level: isPolicyUnavailable ? .warning : .info,
-        event: isPolicyUnavailable ? "clipboard.capture.policy-unavailable" : event,
+        event: isPolicyUnavailable ? .clipboardCapturePolicyUnavailable : event,
         message: isPolicyUnavailable
           ? "Clipboard privacy settings could not be loaded; capture was blocked."
           : message,
@@ -985,6 +1072,9 @@ extension SystemClipboardCaptureController {
 
   fileprivate func handleHotkey(_ event: HotkeyEventTap.Event) async {
     switch event {
+    case .recordBufferOutputRequested:
+      guard !stopped else { return }
+      await eventBus.publish(.recordBufferOutputRequested)
     case .recordPanelRequested:
       guard !stopped else { return }
       await eventBus.publish(.recordPanelRequested)
@@ -1017,6 +1107,8 @@ extension SystemClipboardCaptureController {
   func testingHandleHotkey(_ event: HotkeyEventTap.Event) async {
     await handleHotkey(event)
   }
+
+  func testingPendingClipboardCaptureCount() -> Int { pendingClipboardCaptures.count }
 
   func testingCaptureControlSnapshot() -> SystemClipboardCaptureControlSnapshot {
     captureControlSnapshot

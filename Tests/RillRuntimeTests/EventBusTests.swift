@@ -77,7 +77,7 @@ final class EventBusTests: XCTestCase {
       let event = RillEvent.diagnostic(
         DiagnosticEvent(
           subsystem: .systemClipboard, level: .debug,
-          event: "diagnostic", message: "event \(index)"))
+          untrustedEvent: "diagnostic", message: "event \(index)"))
       await bus.publish(event)
       if index >= 8 { expected.append(.event(event)) }
     }
@@ -96,7 +96,7 @@ final class EventBusTests: XCTestCase {
     let first = RillEvent.diagnostic(
       .init(
         subsystem: .systemClipboard, level: .debug,
-        event: "first", message: "first"))
+        untrustedEvent: "first", message: "first"))
     let terminal = RillEvent.runFailed(runID: UUID(), workflow: nil, message: "terminal")
     await bus.publish(first)
     let publication = Task { await bus.publish(terminal) }
@@ -110,7 +110,7 @@ final class EventBusTests: XCTestCase {
       .diagnostic(
         .init(
           subsystem: .systemClipboard, level: .debug,
-          event: "later", message: "later")))
+          untrustedEvent: "later", message: "later")))
 
     let delivered = expectation(description: "The consumer drains the head and pending terminal")
     let consumer = Task {
@@ -253,7 +253,7 @@ final class EventBusTests: XCTestCase {
       DiagnosticEvent(
         subsystem: .systemClipboard,
         level: .debug,
-        event: "clipboard.snapshot",
+        event: .clipboardSnapshot,
         message: "Clipboard store updated."
       )
     )

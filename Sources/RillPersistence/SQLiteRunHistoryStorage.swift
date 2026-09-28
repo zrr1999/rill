@@ -2,7 +2,7 @@ import Foundation
 import RillCore
 import SQLite3
 
-extension SQLitePersistenceStore: HistoryRepository, WorkflowRunTerminalRepository,
+extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, WorkflowRunReceiptMaintaining, WorkflowRunTerminalRepository,
   RunHistoryBrowsing
 {
   public func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration {

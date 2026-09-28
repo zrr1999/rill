@@ -11,29 +11,19 @@ public extension AppModel {
         retryGlobalInputAction()
     }
 
-    func installRecordPanelShortcutRecordingActions(
-        begin: @escaping () -> UUID,
-        end: @escaping (UUID) -> Void,
-        commit: @escaping (UUID, UInt16) -> Void
-    ) {
-        beginRecordPanelShortcutRecordingAction = begin
-        endRecordPanelShortcutRecordingAction = end
-        commitRecordPanelShortcutRecordingAction = commit
-    }
-
     func beginRecordPanelShortcutRecording() -> UUID {
-        beginRecordPanelShortcutRecordingAction()
+        recordInteractions.beginShortcutRecording()
     }
 
     func endRecordPanelShortcutRecording(_ suspensionID: UUID) {
-        endRecordPanelShortcutRecordingAction(suspensionID)
+        recordInteractions.endShortcutRecording(suspensionID)
     }
 
     func commitRecordPanelShortcutRecording(
         _ suspensionID: UUID,
         keyCode: UInt16
     ) {
-        commitRecordPanelShortcutRecordingAction(suspensionID, keyCode)
+        recordInteractions.commitShortcutRecording(suspensionID, keyCode)
     }
 
     func updateGlobalInputCapability(_ capability: GlobalInputCapability) {

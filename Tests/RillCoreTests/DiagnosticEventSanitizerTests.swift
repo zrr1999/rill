@@ -7,14 +7,14 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     for code in ["hotword-ranking.selected", "hotword-ranking.completed"] {
       let safe = ["hotwordCache": "miss", "hotwordRankingOutcome": "timeout",
                   "hotwordCandidateCount": "50", "hotwordCount": "16", "durationMillis": "2000"]
-      let event = DiagnosticEvent(subsystem: .session, level: .debug, event: code,
+      let event = DiagnosticEvent(subsystem: .session, level: .debug, untrustedEvent: code,
         message: "private selection", metadata: safe.merging(
           ["selectedText": "private selection", "terms": "private terms", "apiKey": "secret"]) { $1 })
       let sanitized = DiagnosticEventSanitizer.sanitize(event)
       XCTAssertEqual(sanitized.event, code)
       XCTAssertEqual(sanitized.metadata, safe)
       XCTAssertEqual(sanitized.message, DiagnosticEventSanitizer.sanitizedMessage)
-      let invalid = DiagnosticEvent(subsystem: .session, level: .debug, event: code,
+      let invalid = DiagnosticEvent(subsystem: .session, level: .debug, untrustedEvent: code,
         message: "", metadata: ["hotwordCache": "private selection", "hotwordRankingOutcome": "private terms",
                                 "hotwordCandidateCount": "-1", "durationMillis": "secret"])
       XCTAssertTrue(DiagnosticEventSanitizer.sanitize(invalid).metadata.isEmpty)
@@ -27,7 +27,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
                  "clipboard.inject.paste.posted"] {
       let runID = UUID()
       let event = DiagnosticEvent(runID: runID, subsystem: .session, level: .debug,
-        event: code, message: "private transcript",
+        untrustedEvent: code, message: "private transcript",
         metadata: ["durationMillis": "43", "captureStopMillis": "27",
                    "captureDrainMillis": "private", "capturePreviewRetireMillis": "-1",
                    "stepKind": "recognizeSpeech", "resultCode": "completed",
@@ -47,7 +47,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
         DiagnosticEvent(
           subsystem: .session,
           level: .debug,
-          event: "audio-processing.enqueued",
+          event: .audioProcessingEnqueued,
           message: "Queued audio.",
           metadata: ["lane": lane]
         )
@@ -60,7 +60,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       DiagnosticEvent(
         subsystem: .session,
         level: .debug,
-        event: "audio-processing.enqueued",
+        event: .audioProcessingEnqueued,
         message: "Queued audio.",
         metadata: ["lane": "background-canary"]
       )
@@ -77,7 +77,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       let event = DiagnosticEvent(
         subsystem: .providers,
         level: .info,
-        event: eventCode,
+        untrustedEvent: eventCode,
         message: "private wake phrase must not persist",
         metadata: ["reason": "request-failed"]
       )
@@ -94,7 +94,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .platform,
       level: .info,
-      event: "global-input.installed",
+      event: .globalInputInstalled,
       message: "runtime state",
       metadata: [
         "pushToTalk": "active",
@@ -119,7 +119,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       let event = DiagnosticEvent(
         subsystem: .session,
         level: .info,
-        event: "workflow.audio-recording.terminal-signal",
+        event: .workflowAudioRecordingTerminalSignal,
         message: "safe",
         metadata: ["reason": reason]
       )
@@ -133,7 +133,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let unknownReason = DiagnosticEvent(
       subsystem: .session,
       level: .info,
-      event: "workflow.audio-recording.terminal-signal",
+      event: .workflowAudioRecordingTerminalSignal,
       message: "safe",
       metadata: ["reason": "private-reason-canary"]
     )
@@ -150,7 +150,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .session,
       level: .info,
-      event: "workflow.audio-recording.terminal-signal",
+      event: .workflowAudioRecordingTerminalSignal,
       message: "must be replaced",
       metadata: [
         "reason": "speechEnded",
@@ -180,7 +180,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let invalidIntegers = DiagnosticEvent(
       subsystem: .session,
       level: .info,
-      event: "workflow.audio-recording.terminal-signal",
+      event: .workflowAudioRecordingTerminalSignal,
       message: "unsafe",
       metadata: [
         "acousticObservedSegmentCount": "-1",
@@ -201,7 +201,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       runID: runID,
       subsystem: .providers,
       level: .error,
-      event: "provider.request.failed",
+      event: .providerRequestFailed,
       message: "recognized-body-canary",
       metadata: [
         "Authorization": "Bearer authorization-canary",
@@ -242,7 +242,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .providers,
       level: .error,
-      event: "provider.request.failed",
+      event: .providerRequestFailed,
       message: "unsafe",
       metadata: [
         "actionID": "Bearer action-secret",
@@ -262,7 +262,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .providers,
       level: .error,
-      event: "session.action",
+      event: .sessionAction,
       message: "unsafe",
       metadata: [
         "actionID": alphanumericCanary,
@@ -284,7 +284,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let builtinEvent = DiagnosticEvent(
       subsystem: .session,
       level: .info,
-      event: "session.action",
+      event: .sessionAction,
       message: "safe",
       metadata: [
         "actionID": "focused-application.insert",
@@ -306,7 +306,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .systemClipboard,
       level: .warning,
-      event: "clipboard.capture.skipped",
+      event: .clipboardCaptureSkipped,
       message: "unsafe",
       metadata: [
         "decisions": "skipClipboardCapture,CANARYSECRET123",
@@ -324,7 +324,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .platform,
       level: .warning,
-      event: "temporary-files.cleanup.pending",
+      event: .temporaryFilesCleanupPending,
       message: "safe",
       metadata: [
         "temporaryFileFailureArtifactKinds": "recognition-work,recovery-audio"
@@ -342,7 +342,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       let currentEvent = DiagnosticEvent(
         subsystem: .providers,
         level: .info,
-        event: "provider.recognition.completed",
+        untrustedEvent: "provider.recognition.completed",
         message: "safe",
         metadata: [
           "provider": "sherpa-onnx.local",
@@ -367,7 +367,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
         let historicalEvent = DiagnosticEvent(
           subsystem: .providers,
           level: .info,
-          event: "provider.recognition.completed",
+          untrustedEvent: "provider.recognition.completed",
           message: "safe",
           metadata: [
             "provider": "whisperkit.stream",
@@ -385,9 +385,9 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
   }
 
   func testSanitizeRetainsSherpaStartupStateAndRejectsRetiredWhisperEvents() {
-    let startupStates: [(event: String, level: DiagnosticLevel, metadata: [String: String])] = [
+    let startupStates: [(event: DiagnosticEventName, level: DiagnosticLevel, metadata: [String: String])] = [
       (
-        event: "provider.sherpa-onnx.available",
+        event: .providerSherpaOnnxAvailable,
         level: .info,
         metadata: [
           "recognizerID": "sherpa-onnx.local",
@@ -397,7 +397,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
         ]
       ),
       (
-        event: "provider.sherpa-onnx.unavailable",
+        event: .providerSherpaOnnxUnavailable,
         level: .warning,
         metadata: [
           "recognizerID": "sherpa-onnx.local",
@@ -419,7 +419,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       )
 
       let sanitized = DiagnosticEventSanitizer.sanitize(event)
-      XCTAssertEqual(sanitized.event, state.event)
+      XCTAssertEqual(sanitized.name, state.event)
       XCTAssertEqual(sanitized.metadata, state.metadata)
     }
 
@@ -441,7 +441,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .systemClipboard,
       level: .warning,
-      event: "clipboard.inject.focus.changed",
+      event: .clipboardInjectFocusChanged,
       message: "unsafe",
       metadata: [
         "bundleID": "com.example.private-app",
@@ -473,7 +473,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .session,
       level: .info,
-      event: "session.stage",
+      event: .sessionStage,
       message: "unsafe",
       metadata: [
         "audio.durationSeconds": "1.25",
@@ -509,7 +509,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       let event = DiagnosticEvent(
         subsystem: .session,
         level: .warning,
-        event: eventCode,
+        untrustedEvent: eventCode,
         message: "unsafe"
       )
 
@@ -551,7 +551,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .session,
       level: .error,
-      event: "diagnostics.repository.save.failed",
+      event: .diagnosticsRepositorySaveFailed,
       message: "safe",
       metadata: ["event": "session.canarysecret123"]
     )
@@ -562,7 +562,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .session,
       level: .info,
-      event: "session.cancelled",
+      event: .sessionCancelled,
       message: "safe",
       metadata: [
         "outcome": "cancelled",
@@ -581,7 +581,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .session,
       level: .error,
-      event: "session.recognition.timeout",
+      event: .sessionRecognitionTimeout,
       message: "private provider response canary",
       metadata: [
         "recognizerID": "sherpa-onnx.local",
@@ -606,7 +606,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       let event = DiagnosticEvent(
         subsystem: .session,
         level: .info,
-        event: "persistence.sqlite.ready",
+        event: .persistenceSqliteReady,
         message: "safe",
         metadata: ["keychainKeyState": state]
       )
@@ -620,7 +620,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let unknown = DiagnosticEvent(
       subsystem: .session,
       level: .info,
-      event: "persistence.sqlite.ready",
+      event: .persistenceSqliteReady,
       message: "unsafe",
       metadata: ["keychainKeyState": "PRIVATE-CONTENT-CANARY"]
     )
@@ -633,7 +633,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       runID: runID,
       subsystem: .systemClipboard,
       level: .info,
-      event: "clipboard.trigger.loop-prevented",
+      event: .clipboardTriggerLoopPrevented,
       message: "private clipboard body canary",
       metadata: [
         "eventKind": "recordEdited",
@@ -668,7 +668,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .systemClipboard,
       level: .warning,
-      event: "clipboard.trigger.skipped",
+      event: .clipboardTriggerSkipped,
       message: "unsafe",
       metadata: [
         "eventKind": "itemRenamed",
@@ -685,7 +685,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       let event = DiagnosticEvent(
         subsystem: .systemClipboard,
         level: .info,
-        event: "clipboard.trigger.skipped",
+        event: .clipboardTriggerSkipped,
         message: "safe",
         metadata: ["reason": reason.rawValue]
       )
@@ -702,7 +702,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .providers,
       level: .error,
-      event: "provider.openai.rewrite.failed",
+      event: .providerOpenaiRewriteFailed,
       message: "secret-key transcript-canary provider-body-canary",
       metadata: [
         "provider": "openai.responses",
@@ -752,7 +752,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       let event = DiagnosticEvent(
         subsystem: .providers,
         level: .info,
-        event: eventCode,
+        untrustedEvent: eventCode,
         message: "provider lifecycle detail"
       )
 
@@ -764,7 +764,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
     let event = DiagnosticEvent(
       subsystem: .platform,
       level: .warning,
-      event: "accessibility.cursor-preview",
+      event: .accessibilityCursorPreview,
       message: "private target detail",
       metadata: [
         "resultCode": "blocked",
@@ -792,7 +792,7 @@ final class DiagnosticEventSanitizerTests: XCTestCase {
       let event = DiagnosticEvent(
         subsystem: .providers,
         level: .warning,
-        event: "provider.sherpa-onnx.recognition.retry",
+        event: .providerSherpaOnnxRecognitionRetry,
         message: "private worker detail",
         metadata: [
           "provider": "sherpa-onnx.local",

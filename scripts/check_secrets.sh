@@ -16,7 +16,7 @@ resolve_gitleaks_binary() {
   local candidate=""
   candidate="$(command -v gitleaks 2>/dev/null || true)"
   if [[ -z "$candidate" ]]; then
-    error "Gitleaks $GITLEAKS_REQUIRED_VERSION is required. Install it with: bash scripts/install_gitleaks.sh --destination DIR"
+    error "Gitleaks $GITLEAKS_REQUIRED_VERSION is required. Install it with: scripts/preflight.sh install-gitleaks --destination DIR"
     return
   fi
   printf '%s\n' "$candidate"
@@ -33,7 +33,7 @@ verify_gitleaks_binary() {
   fi
   version="$(printf '%s\n' "$output" | tail -n 1 | awk '{print $NF}' | sed 's/^v//')"
   if [[ "$version" != "$GITLEAKS_REQUIRED_VERSION" ]]; then
-    error "Gitleaks $GITLEAKS_REQUIRED_VERSION is required (found ${version:-unknown} at $binary). Install it with: bash scripts/install_gitleaks.sh --destination DIR"
+    error "Gitleaks $GITLEAKS_REQUIRED_VERSION is required (found ${version:-unknown} at $binary). Install it with: scripts/preflight.sh install-gitleaks --destination DIR"
     return
   fi
 }

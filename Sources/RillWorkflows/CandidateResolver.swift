@@ -80,24 +80,24 @@ public actor CandidateResolver {
         timeoutTask.cancel()
         await timeoutTask.value
         let selections: [UUID: UUID]?
-        let diagnosticEvent: String
+        let diagnosticEvent: DiagnosticEventName
         let diagnosticMessage: String
         switch decision {
         case .accept(let acceptedSelections):
             selections = acceptedSelections
-            diagnosticEvent = "candidate.accepted"
+            diagnosticEvent = .candidateAccepted
             diagnosticMessage = "Candidate resolver accepted user selections"
         case .dismissed:
             selections = nil
-            diagnosticEvent = "candidate.dismissed"
+            diagnosticEvent = .candidateDismissed
             diagnosticMessage = "Candidate resolver was dismissed and used defaults"
         case .timedOut:
             selections = nil
-            diagnosticEvent = "candidate.timeout"
+            diagnosticEvent = .candidateTimeout
             diagnosticMessage = "Candidate resolver timed out and used defaults"
         case .cancelled:
             selections = nil
-            diagnosticEvent = "candidate.cancelled"
+            diagnosticEvent = .candidateCancelled
             diagnosticMessage = "Candidate resolver was cancelled and used defaults"
         }
         let appliedSelections = selections ?? candidateCase.defaultSelections()

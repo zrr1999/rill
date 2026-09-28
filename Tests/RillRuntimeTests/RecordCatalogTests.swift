@@ -1,3 +1,4 @@
+@testable import RillWorkflows
 import Foundation
 import SQLite3
 import XCTest
@@ -7,6 +8,124 @@ import XCTest
 @testable import RillRecords
 
 final class RecordCatalogTests: XCTestCase {
+  func testBufferSettlementPersistsUsageAndRejectsOrphanActivityAtomically() async throws {
+    let fixture = try fixture()
+    let store = RecordStore(persistence: fixture.persistence)
+    let record = try await store.ingest(draft("pending"), into: [])
+    let entryID = try await store.enqueueRecord(record.id, in: RecordBuffer.clipboardID)
+    let loaded = try await fixture.persistence.loadRecordCatalog()
+    let before = try XCTUnwrap(loaded)
+    let orphan = RecordActivity(recordID: RecordID(), useCount: 1)
+    do {
+      _ = try await fixture.persistence.commitRecordCatalog(.init(
+        expectedRevision: before.revision, manifest: before.manifest,
+        upserts: [.init(kind: .activity, id: orphan.recordID.description,
+          value: try JSONEncoder().encode(orphan))],
+        removedKeys: ["bufferEntry/\(entryID)"], newPayloadBlobs: [],
+        removedPayloadBlobIDs: [], preservesManifest: true))
+      XCTFail("A manifest-preserving settlement must not create an orphan activity")
+    } catch let error as SQLitePersistenceError {
+      XCTAssertEqual(error, .clipboardPersistenceInvalidWriteSnapshot)
+    }
+    let after = try await fixture.persistence.loadRecordCatalog()
+    XCTAssertEqual(after?.revision, before.revision)
+    XCTAssertEqual(after?.nodes.map(\.key), before.nodes.map(\.key))
+
+    _ = try await store.beginBufferOutput()
+    try await store.finishBufferOutput(entryID)
+    let restored = RecordStore(persistence: fixture.persistence)
+    let snapshot = try await restored.catalogSnapshot()
+    XCTAssertEqual(snapshot.records.first?.activity.useCount, 1)
+    XCTAssertEqual(snapshot.records.first?.activity.copyCount, record.activity.copyCount)
+    let remaining = try await restored.entries(in: RecordBuffer.clipboardID)
+    XCTAssertTrue(remaining.isEmpty)
+  }
+
+  func testSearchCursorRejectsCatalogChangesBetweenPages() async throws {
+    let store = RecordStore()
+    _ = try await store.ingest(draft("first"), into: [])
+    _ = try await store.ingest(draft("second"), into: [])
+    let first = try await RecordSearch.page(in: store, query: .init(), limit: 1)
+    XCTAssertEqual(first.records.count, 1)
+    _ = try await store.ingest(draft("arrived between pages"), into: [])
+    do {
+      _ = try await RecordSearch.page(in: store, query: .init(), after: first.cursor, limit: 1)
+      XCTFail("Pages from different revisions must never be merged")
+    } catch let error as RecordStoreError { XCTAssertEqual(error, .membershipChanged) }
+  }
+
+  func testSearchCursorExhaustsWithoutRepeatingRecords() async throws {
+    let store = RecordStore()
+    let a = try await store.ingest(draft("first"), into: [])
+    let b = try await store.ingest(draft("second"), into: [])
+    var cursor: RecordSearchCursor?
+    var identifiers: [RecordID] = []
+    repeat {
+      let page = try await RecordSearch.page(in: store, query: .init(), after: cursor, limit: 1)
+      identifiers.append(contentsOf: page.records.map(\.id))
+      cursor = page.cursor
+    } while cursor != nil
+    XCTAssertEqual(Set(identifiers), [a.id, b.id])
+    XCTAssertEqual(identifiers.count, 2)
+  }
+
+  func testRouteEditsAndRemovalSurviveCatalogReload() async throws {
+    let fixture = try fixture()
+    let store = RecordStore(persistence: fixture.persistence)
+    _ = try await store.catalogSnapshot()
+    var capture = CaptureRouteRule(matcher: .init(), destinationCollectionIDs: [RecordCollection.inboxID])
+    var delivery = DeliveryRouteRule(matcher: .init(), priority: 1, sourceCollectionIDs: [RecordCollection.inboxID], sink: .systemClipboard)
+    try await store.replaceCaptureRules([capture])
+    try await store.replaceDeliveryRules([delivery])
+    var reloaded = try await RecordStore(persistence: fixture.persistence).catalogSnapshot()
+    XCTAssertEqual(reloaded.captureRules, [capture])
+    XCTAssertEqual(reloaded.deliveryRules, [delivery])
+    capture.destinationCollectionIDs = [RecordCollection.voiceInputID]
+    delivery.priority = 99
+    try await store.replaceCaptureRules([capture])
+    try await store.replaceDeliveryRules([delivery])
+    reloaded = try await RecordStore(persistence: fixture.persistence).catalogSnapshot()
+    XCTAssertEqual(reloaded.captureRules, [capture])
+    XCTAssertEqual(reloaded.deliveryRules, [delivery])
+    try await store.replaceCaptureRules([])
+    try await store.replaceDeliveryRules([])
+    reloaded = try await RecordStore(persistence: fixture.persistence).catalogSnapshot()
+    XCTAssertTrue(reloaded.captureRules.isEmpty)
+    XCTAssertTrue(reloaded.deliveryRules.isEmpty)
+  }
+
+  func testCollectionDeletionRouteResolutionsSurviveCatalogReload() async throws {
+    for replace in [true, false] {
+      let fixture = try fixture()
+      let store = RecordStore(persistence: fixture.persistence)
+      let collection = try await store.createCollection(name: "Referenced")
+      let capture = CaptureRouteRule(matcher: .init(), destinationCollectionIDs: [collection.id])
+      let delivery = DeliveryRouteRule(matcher: .init(), priority: 1, sourceCollectionIDs: [collection.id],
+        sink: .recordCollection, sinkCollectionID: collection.id)
+      try await store.replaceCaptureRules([capture])
+      try await store.replaceDeliveryRules([delivery])
+      try await store.deleteCollection(collection.id, resolvingReferences:
+        replace ? .replace(with: RecordCollection.inboxID) : .disableAffectedRoutes)
+      let expected = try await store.catalogSnapshot()
+      let actual = try await RecordStore(persistence: fixture.persistence).catalogSnapshot()
+      XCTAssertEqual(actual.captureRules, expected.captureRules)
+      XCTAssertEqual(actual.deliveryRules, expected.deliveryRules)
+      XCTAssertFalse(actual.collections.contains { $0.id == collection.id })
+      XCTAssertFalse(actual.captureRules.contains { $0.destinationCollectionIDs.contains(collection.id) })
+      XCTAssertFalse(actual.deliveryRules.contains { $0.sourceCollectionIDs.contains(collection.id) || $0.sinkCollectionID == collection.id })
+      if !replace {
+        XCTAssertFalse(try XCTUnwrap(actual.captureRules.first).isEnabled)
+        XCTAssertFalse(try XCTUnwrap(actual.deliveryRules.first).isEnabled)
+        var unresolved = try XCTUnwrap(actual.deliveryRules.first)
+        unresolved.isEnabled = true
+        do {
+          try await store.replaceDeliveryRules([unresolved])
+          XCTFail("A disabled unresolved route cannot be enabled without a target")
+        } catch let error as RecordStoreError { XCTAssertEqual(error, .invalidGraph) }
+      }
+    }
+  }
+
   func testCapacityWarnsAtEitherHalfThresholdAndClearsBelowBoth() {
     XCTAssertFalse(RecordCapacity(count: 4_999, byteCount: 256 * 1_024 * 1_024 - 1).isWarning)
     XCTAssertTrue(RecordCapacity(count: 5_000, byteCount: 0).isWarning)
@@ -149,6 +268,21 @@ final class RecordCatalogTests: XCTestCase {
     XCTAssertTrue(noResults.records.isEmpty)
   }
 
+  func testCatalogReloadReusesIdenticalPayload() async throws {
+    let fixture = try fixture()
+    let store = RecordStore(persistence: fixture.persistence)
+    let first = try await store.ingest(draft("same body"), into: [RecordCollection.inboxID])
+    let blobs = try rawBlobs(at: fixture.url)
+    let reloaded = RecordStore(persistence: fixture.persistence)
+    let again = try await reloaded.ingest(draft("same body"), into: [RecordCollection.inboxID])
+    XCTAssertEqual(again.id, first.id)
+    XCTAssertEqual(try rawBlobs(at: fixture.url), blobs)
+    let other = try await reloaded.ingest(draft("other body"), into: [])
+    XCTAssertNotEqual(other.id, first.id)
+    let records = try await reloaded.catalogSnapshot().records
+    XCTAssertEqual(Set(records.map(\.id)), [first.id, other.id])
+  }
+
   func testCatalogRoundTripAndMetadataUpdateDoNotReadOrRewriteBodies() async throws {
     let fixture = try fixture()
     let store = RecordStore(persistence: fixture.persistence)
@@ -208,7 +342,7 @@ final class RecordCatalogTests: XCTestCase {
     XCTAssertEqual(before.deliveryRules, after.deliveryRules)
     XCTAssertEqual(try rawBlobs(at: fixture.url), ciphertext)
     let catalog = try await fixture.persistence.loadRecordCatalog()
-    XCTAssertEqual(catalog?.manifest.schemaVersion, 2)
+    XCTAssertEqual(catalog?.manifest.schemaVersion, 4)
     do {
       _ = try await oldStore.ingest(draft("obsolete writer"), into: [])
       XCTFail("Old graph API must reject a catalog")

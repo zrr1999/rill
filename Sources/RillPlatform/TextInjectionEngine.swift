@@ -147,7 +147,7 @@ public actor TextInjectionEngine {
                     .clipboardRestorationFailedAfterInjection
                     .message
             case .temporaryClipboardTransactionInProgress:
-                return "Another temporary clipboard injection is still in progress."
+                return "Another text output is still in progress."
             case .targetFocusCannotBeVerified:
                 return "The target application identity cannot be verified for text injection."
             case .targetFocusActivationFailed:
@@ -202,11 +202,15 @@ public actor TextInjectionEngine {
         var runID: UUID?
     }
 
-    private var isTemporaryClipboardTransactionActive = false
+    public struct OutputLease: Sendable, Equatable {
+        fileprivate let id = UUID()
+    }
+
+    private var outputLease: OutputLease?
     private var pendingClipboardRecovery: PendingClipboardRecovery?
     private var applicationShutdownStarted = false
     private var clipboardRecoveryDrainActive = false
-    private var temporaryTransactionWaiters: [CheckedContinuation<Void, Never>] = []
+    private var outputTransactionWaiters: [CheckedContinuation<Void, Never>] = []
     private var clipboardRecoveryDrainWaiters: [CheckedContinuation<Void, Never>] = []
 
     static func utf16Chunks(for text: String, maxLength: Int = maximumKeyboardEventLength) -> [[UInt16]] {
@@ -238,10 +242,10 @@ public actor TextInjectionEngine {
             throw InjectionError.accessibilityPermissionRequired
         }
 
+        let lease = try beginOutputTransaction()
+        defer { endOutputTransaction(lease) }
         switch method {
         case .clipboardPaste:
-            try beginTemporaryClipboardTransaction()
-            defer { endTemporaryClipboardTransaction() }
             try await recoverPendingClipboardIfNeeded()
             let preparedTarget = try await prepareTargetFocus(targetFocus)
             let descriptor = await pasteboard.currentDescriptor()
@@ -254,7 +258,7 @@ public actor TextInjectionEngine {
                 return
             }
             await recordDiagnostic(
-                event: "clipboard.inject.text.prepare",
+                event: .clipboardInjectTextPrepare,
                 message: "Preparing clipboard-based text injection.",
                 metadata: [
                     "textLength": String(text.count)
@@ -291,6 +295,17 @@ public actor TextInjectionEngine {
         }
     }
 
+    public func insertBufferText(
+        _ text: String,
+        into target: RecordBufferTextOutput.Target,
+        using output: RecordBufferTextOutput
+    ) async -> BufferTextResult {
+        guard accessibilityChecker(), pendingClipboardRecovery == nil else { return .rejected }
+        guard let lease = try? beginOutputTransaction() else { return .rejected }
+        defer { endOutputTransaction(lease) }
+        return await output.insert(text, into: target)
+    }
+
     public func injectClipboardSnapshot(
         _ snapshot: SystemClipboardSnapshot,
         targetFocus: FocusSnapshot? = nil,
@@ -309,8 +324,8 @@ public actor TextInjectionEngine {
         guard accessibilityChecker() else {
             throw InjectionError.accessibilityPermissionRequired
         }
-        try beginTemporaryClipboardTransaction()
-        defer { endTemporaryClipboardTransaction() }
+        let lease = try beginOutputTransaction()
+        defer { endOutputTransaction(lease) }
         try await recoverPendingClipboardIfNeeded()
         let descriptor = await pasteboard.currentDescriptor()
         guard descriptor.protections.isEmpty else {
@@ -323,7 +338,7 @@ public actor TextInjectionEngine {
         }
 
         await recordDiagnostic(
-            event: "clipboard.inject.snapshot.prepare",
+            event: .clipboardInjectSnapshotPrepare,
             message: "Preparing clipboard snapshot injection.",
             metadata: [
                 "plainTextLength": String(snapshot.plainText.count),
@@ -355,8 +370,8 @@ public actor TextInjectionEngine {
 
     @discardableResult
     public func pasteCurrentClipboard(targetFocus: FocusSnapshot? = nil) async throws -> Bool {
-        try beginTemporaryClipboardTransaction()
-        defer { endTemporaryClipboardTransaction() }
+        let lease = try beginOutputTransaction()
+        defer { endOutputTransaction(lease) }
         try await recoverPendingClipboardIfNeeded()
         return try await postPasteCommand(targetFocus: targetFocus)
     }
@@ -375,7 +390,7 @@ public actor TextInjectionEngine {
             return
         }
         clipboardRecoveryDrainActive = true
-        await waitForTemporaryClipboardTransaction()
+        await waitForOutputTransaction()
 
         var retryDelay = Duration.milliseconds(25)
         while let pendingClipboardRecovery {
@@ -405,7 +420,7 @@ public actor TextInjectionEngine {
     private func postPasteCommand(targetFocus: FocusSnapshot? = nil) async throws -> Bool {
         guard accessibilityChecker() else {
             await recordDiagnostic(
-                event: "clipboard.inject.paste.blocked",
+                event: .clipboardInjectPasteBlocked,
                 message: "Clipboard paste injection was blocked because accessibility permission is missing.",
                 level: .error
             )
@@ -421,7 +436,7 @@ public actor TextInjectionEngine {
             throw InjectionError.accessibilityPermissionRequired
         }
         await recordDiagnostic(
-            event: "clipboard.inject.paste.begin",
+            event: .clipboardInjectPasteBegin,
             message: "Posting Command-V to the current frontmost app.",
             metadata: [
                 "eventTap": PasteCommandSender.eventTapName,
@@ -434,7 +449,7 @@ public actor TextInjectionEngine {
         try await simulatePaste()
         let settleStart = ContinuousClock.now
         await recordDiagnostic(
-            event: "clipboard.inject.paste.posted",
+            event: .clipboardInjectPastePosted,
             message: "Paste command posted; target consumption is not observed.",
             metadata: ["pasteDispatchMillis": DiagnosticTiming.milliseconds(since: dispatchStart)]
         )
@@ -442,7 +457,7 @@ public actor TextInjectionEngine {
         // adding another delay before the full post-paste wait.
         try? await Task.sleep(until: settleStart.advanced(by: Self.postPasteSettleDelay), clock: .continuous)
         await recordDiagnostic(
-            event: "clipboard.inject.paste.end",
+            event: .clipboardInjectPasteEnd,
             message: "Finished waiting after the paste command.",
             metadata: ["pasteSettleMillis": DiagnosticTiming.milliseconds(since: settleStart)]
         )
@@ -455,28 +470,40 @@ public actor TextInjectionEngine {
         }
     }
 
-    private func beginTemporaryClipboardTransaction() throws {
+    public func reserveCursorPreview() -> OutputLease? {
+        guard accessibilityChecker(), pendingClipboardRecovery == nil else { return nil }
+        return try? beginOutputTransaction()
+    }
+
+    public func releaseCursorPreview(_ lease: OutputLease) {
+        endOutputTransaction(lease)
+    }
+
+    private func beginOutputTransaction() throws -> OutputLease {
         guard !applicationShutdownStarted,
-              !isTemporaryClipboardTransactionActive
+              outputLease == nil
         else {
             throw InjectionError.temporaryClipboardTransactionInProgress
         }
-        isTemporaryClipboardTransactionActive = true
+        let lease = OutputLease()
+        outputLease = lease
+        return lease
     }
 
-    private func endTemporaryClipboardTransaction() {
-        isTemporaryClipboardTransactionActive = false
-        let waiters = temporaryTransactionWaiters
-        temporaryTransactionWaiters.removeAll()
+    private func endOutputTransaction(_ lease: OutputLease) {
+        guard outputLease == lease else { return }
+        outputLease = nil
+        let waiters = outputTransactionWaiters
+        outputTransactionWaiters.removeAll()
         for waiter in waiters {
             waiter.resume()
         }
     }
 
-    private func waitForTemporaryClipboardTransaction() async {
-        guard isTemporaryClipboardTransactionActive else { return }
+    private func waitForOutputTransaction() async {
+        guard outputLease != nil else { return }
         await withCheckedContinuation { continuation in
-            temporaryTransactionWaiters.append(continuation)
+            outputTransactionWaiters.append(continuation)
         }
     }
 
@@ -614,7 +641,7 @@ public actor TextInjectionEngine {
             metadata["restoreAttempt"] = "retry"
         }
         await recordDiagnostic(
-            event: "clipboard.inject.restore",
+            event: .clipboardInjectRestore,
             message: message,
             level: level,
             metadata: metadata
@@ -644,7 +671,7 @@ public actor TextInjectionEngine {
         target: FocusIdentity?
     ) async throws {
         await recordDiagnostic(
-            event: "clipboard.inject.keyboard-fallback",
+            event: .clipboardInjectKeyboardFallback,
             message: "Used keyboard injection to preserve a protected clipboard.",
             metadata: [
                 "protections": protections.map(\.rawValue).joined(separator: ",")
@@ -676,7 +703,7 @@ public actor TextInjectionEngine {
         let target = FocusIdentity(targetFocus)
         guard target.isVerifiable else {
             await recordFocusFailure(
-                event: "clipboard.inject.focus.unverifiable",
+                event: .clipboardInjectFocusUnverifiable,
                 activationAttempted: false,
                 activationSucceeded: false
             )
@@ -691,8 +718,8 @@ public actor TextInjectionEngine {
         let activated = await focusController.activate(target)
         await recordDiagnostic(
             event: activated
-                ? "clipboard.inject.focus.activation-requested"
-                : "clipboard.inject.focus.activation-failed",
+                ? .clipboardInjectFocusActivationRequested
+                : .clipboardInjectFocusActivationFailed,
             message: activated
                 ? "Requested foreground focus for the app that started voice input."
                 : "Could not restore the target app before text injection.",
@@ -720,7 +747,7 @@ public actor TextInjectionEngine {
         let current = await focusController.currentIdentity()
         guard target.matches(current) else {
             await recordFocusFailure(
-                event: "clipboard.inject.focus.changed",
+                event: .clipboardInjectFocusChanged,
                 activationAttempted: false,
                 activationSucceeded: false
             )
@@ -729,7 +756,7 @@ public actor TextInjectionEngine {
     }
 
     private func recordFocusFailure(
-        event: String,
+        event: DiagnosticEventName,
         activationAttempted: Bool,
         activationSucceeded: Bool
     ) async {
@@ -747,7 +774,7 @@ public actor TextInjectionEngine {
     }
 
     private func recordDiagnostic(
-        event: String,
+        event: DiagnosticEventName,
         message: String,
         level: DiagnosticLevel = .debug,
         metadata: [String: String] = [:]

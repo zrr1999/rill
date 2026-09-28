@@ -227,6 +227,17 @@ public enum MLXAudioModelCatalog {
 }
 
 public enum LocalSpeechModelCatalog {
+  public static func recognitionOptions(
+    settings: LocalSpeechSettings, workflow: WorkflowDefinition
+  ) -> SpeechRecognitionRequestOptions {
+    SpeechRecognitionRequestOptions(
+      modelID: effectiveModelIdentifier(settings: settings, modelOverride: SpeechRequestConfiguration(workflow: workflow).modelOverride),
+      language: LocalSpeechRecognitionPolicy.resolvedLanguage(
+        requestLanguage: workflow.plan.setup.speechRoute?.language,
+        workflowLanguage: workflow.metadata[WorkflowMetadataKey.languageOverride],
+        configurationLanguage: settings.language))
+  }
+
   public static let defaultModelIdentifier = MLXAudioModelID.qwen3ASR06BInt8.rawValue
 
   public static let distributableModelIdentifiers =

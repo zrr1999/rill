@@ -35,7 +35,7 @@ The application name remains the menu label for accessibility.
 Install librsvg (`brew install librsvg`) when editing the artwork, then run:
 
 ```bash
-scripts/render_brand_assets.sh
+scripts/assemble_app_bundle.sh render-brand
 bash scripts/tests/app_icon_test.sh
 ```
 
@@ -43,7 +43,7 @@ The generator writes the PNG and both PDFs and prints their SHA-256 values.
 `SOURCE_DATE_EPOCH=0` fixes the PDF creation timestamp. Normal builds and CI
 consume the committed exports and need no SVG conversion tools. Commit the
 SVG sources, exports, this provenance, and the updated PNG hash in
-`generate_app_icon.sh` and `tests/app_icon_test.sh` together.
+`assemble_app_bundle.sh app-icon` and `tests/app_icon_test.sh` together.
 
 | File | Reviewed SHA-256 |
 | --- | --- |

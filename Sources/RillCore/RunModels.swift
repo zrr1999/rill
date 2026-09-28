@@ -6,6 +6,7 @@ public enum WorkflowRunStage: String, Codable, Sendable, Equatable {
     case recognizing
     case resolving
     case transforming
+    case saving
     case delivering
     case completed
     case failed
@@ -18,6 +19,7 @@ public struct WorkflowTriggerEvent: Identifiable, Codable, Sendable, Equatable {
     public var sourceID: String
     public var metadata: [String: String]
     public var triggeredAt: Date
+    public var bufferDraftInput: BufferDraftInputIntent?
 
     public init(
         id: UUID = UUID(),
@@ -25,7 +27,8 @@ public struct WorkflowTriggerEvent: Identifiable, Codable, Sendable, Equatable {
         workflowID: UUID? = nil,
         sourceID: String,
         metadata: [String: String] = [:],
-        triggeredAt: Date = Date()
+        triggeredAt: Date = Date(),
+        bufferDraftInput: BufferDraftInputIntent? = nil
     ) {
         self.id = id
         self.binding = binding
@@ -33,6 +36,7 @@ public struct WorkflowTriggerEvent: Identifiable, Codable, Sendable, Equatable {
         self.sourceID = sourceID
         self.metadata = metadata
         self.triggeredAt = triggeredAt
+        self.bufferDraftInput = bufferDraftInput
     }
 }
 
@@ -286,17 +290,20 @@ public struct WorkflowActionReceipt: Codable, Sendable, Equatable {
     public let result: WorkflowActionResultCode
     public let duration: WorkflowRunDurationBucket
     public let durationMilliseconds: UInt64?
+    public let failureDisposition: OutputFailureDisposition?
 
     public init(
         actionIndex: Int,
         result: WorkflowActionResultCode,
         duration: WorkflowRunDurationBucket,
-        durationMilliseconds: UInt64? = nil
+        durationMilliseconds: UInt64? = nil,
+        failureDisposition: OutputFailureDisposition? = nil
     ) {
         self.actionIndex = actionIndex
         self.result = result
         self.duration = duration
         self.durationMilliseconds = durationMilliseconds
+        self.failureDisposition = failureDisposition
     }
 }
 

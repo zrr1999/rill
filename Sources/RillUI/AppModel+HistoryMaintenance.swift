@@ -1,11 +1,14 @@
-import RillWorkflows
 import Foundation
 import RillCore
+import RillWorkflows
+import RillRecords
+import RillKnowledge
+import RillSpeech
 
 extension AppModel {
   /// Starts the irreversible clipboard-mutation shutdown boundary.
   public func sealRecordMutationsForApplicationShutdown() {
-    hasBegunApplicationShutdown = true
+    beginApplicationShutdown()
     recordWorkspace.sealMutations()
     cancelResidentSpeechModelSynchronizationForApplicationShutdown()
   }
@@ -13,7 +16,7 @@ extension AppModel {
   /// Waits for mutations accepted before the shutdown boundary. Accepted
   /// writes are never cancelled because they may already own durable state.
   public func drainRecordMutationsForApplicationShutdown() async {
-    hasBegunApplicationShutdown = true
+    beginApplicationShutdown()
     await recordWorkspace.shutdown()
   }
 
@@ -29,7 +32,7 @@ extension AppModel {
     public func setRunHistoryRetentionPeriod(_ period: HistoryRetentionPeriod) {
         updateHistoryRetentionPeriod(
             period,
-            currentPeriod: runHistoryRetentionPeriod,
+            currentPeriod: history.runHistoryRetentionPeriod,
             key: .runHistoryRetentionPeriod,
             isRecordSetting: false
         )
@@ -43,9 +46,9 @@ extension AppModel {
 
     public func clearRunHistory() {
         guard !hasActiveOrQueuedVoiceRun else {
-            localHistoryMaintenanceBlockedReason = L10n.runText(
+            self.history.localHistoryMaintenanceBlockedReason = L10n.runText(
                 .clearRunHistoryBlockedActiveRun,
-                language: language
+                language: self.settings.language
             )
             return
         }
@@ -74,13 +77,13 @@ extension AppModel {
             if case .blocked = result {
                 return
             }
-            guard self.failedAudioRecoveryEnabled
-                || !self.failedAudioRecoveryReceipts.isEmpty else {
+            guard self.voice.failedAudioRecoveryEnabled
+                || !self.voice.failedAudioRecoveryReceipts.isEmpty else {
                 return
             }
             self.clearFailedAudioRecoveries()
         }
-        localHistoryMaintenanceTasks[taskID] = task
+        self.history.localHistoryMaintenanceTasks[taskID] = task
     }
 
     public func retryPendingLocalHistoryMaintenance() {
@@ -103,7 +106,7 @@ extension AppModel {
                 clearRunReceiptCacheBeforeRefresh: true
             )
         }
-        localHistoryMaintenanceTasks[taskID] = task
+        self.history.localHistoryMaintenanceTasks[taskID] = task
     }
 
     func performLocalHistoryRetention(
@@ -111,40 +114,40 @@ extension AppModel {
         startPeriodicMaintenanceAfterCompletion: Bool = false
     ) {
         guard !hasBegunApplicationShutdown else {
-            historyRetentionRerunRequested = false
-            shouldStartPeriodicHistoryRetentionMaintenance = false
+            self.history.historyRetentionRerunRequested = false
+            self.history.shouldStartPeriodicHistoryRetentionMaintenance = false
             return
         }
         if startPeriodicMaintenanceAfterCompletion {
-            shouldStartPeriodicHistoryRetentionMaintenance = true
+            self.history.shouldStartPeriodicHistoryRetentionMaintenance = true
         }
-        guard areHistoryRetentionSettingsAvailable else {
-            shouldStartPeriodicHistoryRetentionMaintenance = false
-            localHistoryMaintenanceBlockedReason = L10n.runText(
+        guard self.history.areHistoryRetentionSettingsAvailable else {
+            self.history.shouldStartPeriodicHistoryRetentionMaintenance = false
+            self.history.localHistoryMaintenanceBlockedReason = L10n.runText(
                 .retentionCleanupPausedLoadFailed,
-                language: language
+                language: self.settings.language
             )
             return
         }
         guard let localHistoryMaintenance else {
-            shouldStartPeriodicHistoryRetentionMaintenance = false
+            self.history.shouldStartPeriodicHistoryRetentionMaintenance = false
             guard recordRetentionPeriod != .forever ||
-                runHistoryRetentionPeriod != .forever else {
+                history.runHistoryRetentionPeriod != .forever else {
                 return
             }
-            localHistoryMaintenanceBlockedReason = L10n.runText(
+            self.history.localHistoryMaintenanceBlockedReason = L10n.runText(
                 .retentionCleanupServiceUnavailable,
-                language: language
+                language: self.settings.language
             )
             return
         }
-        guard !isLocalHistoryMaintenanceRunning else {
-            historyRetentionRerunRequested = true
+        guard !self.history.isLocalHistoryMaintenanceRunning else {
+            self.history.historyRetentionRerunRequested = true
             return
         }
         guard beginLocalHistoryMaintenance() else { return }
         let recordRetention = recordRetentionPeriod
-        let runRetention = runHistoryRetentionPeriod
+        let runRetention = history.runHistoryRetentionPeriod
 
         let taskID = UUID()
         let task = Task { @MainActor [weak self, localHistoryMaintenance] in
@@ -163,7 +166,7 @@ extension AppModel {
                 refreshDiagnostics: true
             )
         }
-        localHistoryMaintenanceTasks[taskID] = task
+        self.history.localHistoryMaintenanceTasks[taskID] = task
     }
 
     /// Closes every history-maintenance entry point, stops the periodic timer,
@@ -172,35 +175,32 @@ extension AppModel {
     /// cancelled: its durable transition must reach a stable completed, pending,
     /// or blocked result before quit.
     public func stopLocalHistoryMaintenanceForApplicationShutdown() async {
-        hasBegunApplicationShutdown = true
-        historyRetentionRerunRequested = false
-        shouldStartPeriodicHistoryRetentionMaintenance = false
-        historyLoadGeneration += 1
-        runReceiptLoadGeneration += 1
-        diagnosticsLoadGeneration += 1
-        runHistoryBrowseGeneration += 1
-        runHistoryBrowseTask?.cancel()
-        runHistoryBrowseTask = nil
-        for task in historyProjectionLoadTasks.values {
+        beginApplicationShutdown()
+        self.history.historyRetentionRerunRequested = false
+        self.history.shouldStartPeriodicHistoryRetentionMaintenance = false
+        self.history.historyLoadGeneration += 1
+        self.history.runReceiptLoadGeneration += 1
+        self.history.diagnosticsLoadGeneration += 1
+        self.history.runHistoryBrowseGeneration += 1
+        self.history.runHistoryBrowseTask?.cancel()
+        self.history.runHistoryBrowseTask = nil
+        for task in self.history.historyProjectionLoadTasks.values {
             task.cancel()
         }
 
-        let periodicTask = periodicHistoryRetentionMaintenanceTask
-        periodicHistoryRetentionMaintenanceTask = nil
-        periodicTask?.cancel()
-        await periodicTask?.value
+        await history.stopPeriodicMaintenance()
 
-        let activeTasks = Array(localHistoryMaintenanceTasks.values)
+        let activeTasks = Array(self.history.localHistoryMaintenanceTasks.values)
         for task in activeTasks {
             await task.value
         }
-        localHistoryMaintenanceTasks.removeAll()
+        self.history.localHistoryMaintenanceTasks.removeAll()
 
         // A maintenance completion may have started projection reads before the
         // terminal flag was set. No new reads can register after that flag, so
         // draining this owner to empty closes the final read/publish boundary.
-        while !historyProjectionLoadTasks.isEmpty {
-            let projectionTasks = Array(historyProjectionLoadTasks.values)
+        while !self.history.historyProjectionLoadTasks.isEmpty {
+            let projectionTasks = Array(self.history.historyProjectionLoadTasks.values)
             for task in projectionTasks {
                 task.cancel()
             }
@@ -213,8 +213,8 @@ extension AppModel {
     /// Waits for the current maintenance generation to reach a stable result
     /// without disabling future maintenance or the periodic scheduler.
     func waitForLocalHistoryMaintenance() async {
-        while !localHistoryMaintenanceTasks.isEmpty {
-            let tasks = Array(localHistoryMaintenanceTasks.values)
+        while !self.history.localHistoryMaintenanceTasks.isEmpty {
+            let tasks = Array(self.history.localHistoryMaintenanceTasks.values)
             for task in tasks {
                 await task.value
             }
@@ -228,47 +228,47 @@ extension AppModel {
         isRecordSetting: Bool
     ) {
         let settingIsInvalid = isRecordSetting
-            ? clipboardHistoryRetentionSettingIsInvalid
-            : runHistoryRetentionSettingIsInvalid
+            ? self.history.clipboardHistoryRetentionSettingIsInvalid
+            : self.history.runHistoryRetentionSettingIsInvalid
         guard !hasBegunApplicationShutdown else { return }
         guard period != currentPeriod || settingIsInvalid else { return }
         // Initial settings restore owns the authoritative retention snapshot.
         // Accepting a user mutation before that snapshot settles can let the
         // late read overwrite a newer, longer period and start irreversible
         // cleanup with stale policy. The Settings UI mirrors this guard.
-        guard !isLoadingSettings else { return }
-        guard !isUpdatingHistoryRetentionSettings, !isLocalHistoryMaintenanceRunning else { return }
-        guard !isRestoringSettings else { return }
+        guard !self.settings.isLoading else { return }
+        guard !self.history.isUpdatingHistoryRetentionSettings, !self.history.isLocalHistoryMaintenanceRunning else { return }
+        guard !self.settings.isRestoringSettings else { return }
         guard let settingsStore else {
-            historyRetentionSettingsWriteError = L10n.runText(
+            self.history.historyRetentionSettingsWriteError = L10n.runText(
                 .retentionSaveStorageUnavailable,
-                language: language
+                language: self.settings.language
             )
             refreshHistoryRetentionSettingsErrorPresentation()
             return
         }
 
-        historyRetentionSettingsWriteError = nil
+        self.history.historyRetentionSettingsWriteError = nil
         refreshHistoryRetentionSettingsErrorPresentation()
-        isUpdatingHistoryRetentionSettings = true
+        self.history.isUpdatingHistoryRetentionSettings = true
         let task = Task { [weak self, settingsStore] in
             do {
                 try await settingsStore.setString(period.rawValue, forKey: key)
                 guard let self else { return }
                 guard !self.hasBegunApplicationShutdown else {
-                    self.isUpdatingHistoryRetentionSettings = false
+                    self.history.isUpdatingHistoryRetentionSettings = false
                     return
                 }
                 let shouldPrune = Self.isShorterRetention(period, than: currentPeriod)
                 if isRecordSetting {
                     self.recordRetentionPeriod = period
-                    self.clipboardHistoryRetentionSettingIsInvalid = false
+                    self.history.clipboardHistoryRetentionSettingIsInvalid = false
                 } else {
-                    self.runHistoryRetentionPeriod = period
-                    self.runHistoryRetentionSettingIsInvalid = false
+                    self.history.applyRunHistoryRetentionPeriod(period)
+                    self.history.runHistoryRetentionSettingIsInvalid = false
                 }
                 self.refreshHistoryRetentionSettingsErrorPresentation()
-                self.isUpdatingHistoryRetentionSettings = false
+                self.history.isUpdatingHistoryRetentionSettings = false
 
                 if shouldPrune {
                     self.performLocalHistoryRetention()
@@ -277,11 +277,11 @@ extension AppModel {
                 }
             } catch {
                 guard let self else { return }
-                self.isUpdatingHistoryRetentionSettings = false
+                self.history.isUpdatingHistoryRetentionSettings = false
                 guard !self.hasBegunApplicationShutdown else { return }
-                self.historyRetentionSettingsWriteError = L10n.runText(
+                self.history.historyRetentionSettingsWriteError = L10n.runText(
                     .retentionSaveFailedRepair,
-                    language: self.language
+                    language: self.settings.language
                 )
                 self.refreshHistoryRetentionSettingsErrorPresentation()
                 self.append(
@@ -312,20 +312,20 @@ extension AppModel {
 
     private func beginLocalHistoryMaintenance() -> Bool {
         guard !hasBegunApplicationShutdown,
-              !isLocalHistoryMaintenanceRunning else {
+              !self.history.isLocalHistoryMaintenanceRunning else {
             return false
         }
-        isLocalHistoryMaintenanceRunning = true
-        localHistoryMaintenancePendingReason = nil
-        localHistoryMaintenanceBlockedReason = nil
+        self.history.isLocalHistoryMaintenanceRunning = true
+        self.history.localHistoryMaintenancePendingReason = nil
+        self.history.localHistoryMaintenanceBlockedReason = nil
         return true
     }
 
     private func finishWithUnavailableMaintenanceService() {
-        isLocalHistoryMaintenanceRunning = false
-        localHistoryMaintenanceBlockedReason = L10n.runText(
+        self.history.isLocalHistoryMaintenanceRunning = false
+        self.history.localHistoryMaintenanceBlockedReason = L10n.runText(
             .maintenanceServiceUnavailable,
-            language: language
+            language: self.settings.language
         )
     }
 
@@ -341,8 +341,8 @@ extension AppModel {
         switch result {
         case .completed(let counts):
             applyLocalHistoryMaintenanceCounts(counts)
-            localHistoryMaintenancePendingReason = nil
-            localHistoryMaintenanceBlockedReason = nil
+            self.history.localHistoryMaintenancePendingReason = nil
+            self.history.localHistoryMaintenanceBlockedReason = nil
             if counts.totalRemovedCount > 0 || counts.preservedActiveRecordCount > 0 {
                 append(
                     english: String(
@@ -362,24 +362,24 @@ extension AppModel {
             }
         case .pending(let counts, let reason):
             applyLocalHistoryMaintenanceCounts(counts)
-            localHistoryMaintenancePendingReason = localizedPendingReason(reason)
-            localHistoryMaintenanceBlockedReason = nil
+            self.history.localHistoryMaintenancePendingReason = localizedPendingReason(reason)
+            self.history.localHistoryMaintenanceBlockedReason = nil
         case .blocked(let reason):
-            lastLocalHistoryRemovedCount = 0
-            lastPreservedActiveRecordCount = 0
-            localHistoryMaintenancePendingReason = nil
-            localHistoryMaintenanceBlockedReason = localizedBlockReason(reason)
+            self.history.lastLocalHistoryRemovedCount = 0
+            self.history.lastPreservedActiveRecordCount = 0
+            self.history.localHistoryMaintenancePendingReason = nil
+            self.history.localHistoryMaintenanceBlockedReason = localizedBlockReason(reason)
         }
 
-        isLocalHistoryMaintenanceRunning = false
-        let shouldRerunRetention = historyRetentionRerunRequested
-        historyRetentionRerunRequested = false
-        let shouldStartPeriodicMaintenance = shouldStartPeriodicHistoryRetentionMaintenance
-        shouldStartPeriodicHistoryRetentionMaintenance = false
+        self.history.isLocalHistoryMaintenanceRunning = false
+        let shouldRerunRetention = self.history.historyRetentionRerunRequested
+        self.history.historyRetentionRerunRequested = false
+        let shouldStartPeriodicMaintenance = self.history.shouldStartPeriodicHistoryRetentionMaintenance
+        self.history.shouldStartPeriodicHistoryRetentionMaintenance = false
 
         guard !hasBegunApplicationShutdown else {
-            historyRetentionRerunRequested = false
-            shouldStartPeriodicHistoryRetentionMaintenance = false
+            self.history.historyRetentionRerunRequested = false
+            self.history.shouldStartPeriodicHistoryRetentionMaintenance = false
             return
         }
 
@@ -408,37 +408,23 @@ extension AppModel {
 
     private func startPeriodicHistoryRetentionMaintenanceIfNeeded() {
         guard !hasBegunApplicationShutdown else { return }
-        guard periodicHistoryRetentionMaintenanceTask == nil else { return }
+        guard self.history.periodicHistoryRetentionMaintenanceTask == nil else { return }
         guard localHistoryMaintenance != nil else { return }
         guard let interval = historyRetentionMaintenanceInterval else { return }
         guard interval > .zero else { return }
 
-        periodicHistoryRetentionMaintenanceTask = Task { [weak self] in
-            while !Task.isCancelled {
-                do {
-                    try await Task.sleep(for: interval)
-                } catch {
-                    return
-                }
-                guard !Task.isCancelled else { return }
-
-                let modelStillExists = await MainActor.run { [weak self] in
-                    guard let self else { return false }
-                    self.performLocalHistoryRetention()
-                    return true
-                }
-                guard modelStillExists else { return }
-            }
+        history.startPeriodicMaintenance(interval: interval) { [weak self] in
+            self?.performLocalHistoryRetention()
         }
     }
 
     private func finishLocalHistoryMaintenanceTask(id: UUID) {
-        localHistoryMaintenanceTasks.removeValue(forKey: id)
+        self.history.localHistoryMaintenanceTasks.removeValue(forKey: id)
     }
 
     private func applyLocalHistoryMaintenanceCounts(_ counts: LocalHistoryMaintenanceCounts) {
-        lastLocalHistoryRemovedCount = counts.totalRemovedCount
-        lastPreservedActiveRecordCount = counts.preservedActiveRecordCount
+        self.history.lastLocalHistoryRemovedCount = counts.totalRemovedCount
+        self.history.lastPreservedActiveRecordCount = counts.preservedActiveRecordCount
     }
 
     private func refreshHistoryCaches(
@@ -456,28 +442,28 @@ extension AppModel {
             // Invalidate an older read before changing the local projection.
             // A logical clear remains visible even if the follow-up repository
             // read fails; retention removes only locally known expired rows.
-            runReceiptLoadGeneration += 1
+            self.history.runReceiptLoadGeneration += 1
             if clearRunReceiptCacheBeforeRefresh {
-                workflowRunReceiptsByRunID.removeAll()
-            } else if let cutoff = runHistoryRetentionPeriod.cutoffDate(relativeTo: Date()) {
-                workflowRunReceiptsByRunID = workflowRunReceiptsByRunID.filter {
+                self.history.workflowRunReceiptsByRunID.removeAll()
+            } else if let cutoff = history.runHistoryRetentionPeriod.cutoffDate(relativeTo: Date()) {
+                self.history.workflowRunReceiptsByRunID = self.history.workflowRunReceiptsByRunID.filter {
                     $0.value.timestamp >= cutoff
                 }
             }
             loadHistory(reconcileRunPresentation: reconcileRunPresentation)
-            resetRunHistoryBrowsing()
+            history.resetRunHistoryBrowsing()
         }
         guard !hasBegunApplicationShutdown else { return }
         if diagnostics {
             if clearDiagnosticCacheBeforeRefresh {
-                diagnosticEvents.removeAll()
+                self.history.diagnosticEvents.removeAll()
             }
             loadDiagnostics()
         }
     }
 
     private func localizedPendingReason(_ reason: LocalHistoryMaintenancePendingReason) -> String {
-        switch (reason, language) {
+        switch (reason, self.settings.language) {
         case (.logicalDeletionFailed, .english):
             return "Some local history could not be removed. Retry cleanup."
         case (.logicalDeletionFailed, .simplifiedChinese):
@@ -498,7 +484,7 @@ extension AppModel {
     }
 
     private func localizedBlockReason(_ reason: LocalHistoryMaintenanceBlockReason) -> String {
-        switch (reason, language) {
+        switch (reason, self.settings.language) {
         case (.stateReadFailed, .english):
             return "Cleanup state could not be read. History was left unchanged."
         case (.stateReadFailed, .simplifiedChinese):

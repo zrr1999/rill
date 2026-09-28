@@ -3,7 +3,9 @@ name: "CI - Benchmarks"
 on:
   pull_request:
     paths:
-      - Sources/RillCore/RecordTextFormatting.swift
+      - Sources/RillCore/**
+      - Sources/RillRecords/**
+      - Sources/RillPersistence/**
       - Benchmarks/**
       - scripts/build_benchmarks.sh
       - .github/workflows/ci-benchmarks.yml
@@ -20,18 +22,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  preview-simulation:
+    name: Record preview CPU simulation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: swift-actions/setup-swift@7ca6abe6b3b0e8b5421b88be48feee39cbf52c6a # v2.4.0
+        with:
+          swift-version: "6.2.1"
+      - name: Build and validate preview workloads
+        run: bash scripts/build_benchmarks.sh --codspeed --preview-only
+      - name: Measure CPU simulation with CodSpeed
+        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
+        with:
+          mode: simulation
+          run: .artifacts/benchmarks/record-text
+
   benchmarks:
-    name: Record preview benchmarks
+    name: Record workload validation
     runs-on: macos-26
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build and validate benchmark workloads
-        run: bash scripts/build_benchmarks.sh --codspeed
-      - name: Measure with CodSpeed
-        uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
-        with:
-          mode: walltime
-          run: .artifacts/benchmarks/record-text
+        run: bash scripts/build_benchmarks.sh

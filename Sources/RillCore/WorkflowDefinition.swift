@@ -27,6 +27,7 @@ public enum TriggerBinding: String, Codable, Sendable, Equatable {
 }
 
 public enum WorkflowMetadataKey {
+    public static let collectSpeech = "rill.collect-speech"
     public static let targetRecordCollectionIDs = "record.target-collection-ids"
     public static let excludeOutputFromRecordCapture = "record.exclude-output-from-capture"
     public static let catalog = "catalog"

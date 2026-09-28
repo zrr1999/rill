@@ -40,7 +40,7 @@ public actor FailedAudioRecoveryController {
     private let recognitionOptionsProvider: @Sendable (
         WorkflowDefinition,
         ContextSnapshot
-    ) async -> SpeechRecognitionRequestOptions
+    ) async throws -> SpeechRecognitionRequestOptions
     private let runPreflight: RecognitionRunPreflight
     private let currentDate: @Sendable () -> Date
     private let removeManagedRecoveryTemporaryFile: @Sendable (CapturedAudio) throws -> Void
@@ -76,18 +76,15 @@ public actor FailedAudioRecoveryController {
         eventBus: EventBus,
         diagnostics: DiagnosticsRecorder? = nil,
         privacyRunGate: PrivacyRunGate? = nil,
-        contextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
         privacyContextProvider: (@Sendable () async -> ContextSnapshot)? = nil,
         authorizedContextProvider: (@Sendable (PrivacyPolicyDecision) async -> ContextSnapshot)? = nil,
         recognitionOptionsProvider: @escaping @Sendable (
             WorkflowDefinition,
             ContextSnapshot
-        ) async -> SpeechRecognitionRequestOptions = { _, _ in .empty },
+        ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
         runPreflight: @escaping RecognitionRunPreflight = { _ in },
         currentDate: @escaping @Sendable () -> Date = { Date() },
-        removeManagedRecoveryTemporaryFile: @escaping @Sendable (CapturedAudio) throws -> Void = {
-            _ = try $0.removeManagedTemporaryFile()
-        },
+        removeManagedRecoveryTemporaryFile: @escaping @Sendable (CapturedAudio) throws -> Void,
         cleanupRecoveryTemporaryFiles: @escaping @Sendable () async -> Bool = { true },
         initialMaintenanceRetryInterval: TimeInterval = 5,
         maximumMaintenanceRetryInterval: TimeInterval = 5 * 60
@@ -254,7 +251,7 @@ public actor FailedAudioRecoveryController {
                     generation: generation
                 )
                 await recordDiagnostic(
-                    event: "audio-recovery.index-refresh-failed",
+                    event: .audioRecoveryIndexRefreshFailed,
                     runID: originalRunID,
                     level: .warning,
                     metadata: ["outcome": "preserved"]
@@ -397,8 +394,8 @@ public actor FailedAudioRecoveryController {
             }
             await recordDiagnostic(
                 event: cleanupPending
-                    ? "audio-recovery.retry-completed-cleanup-pending"
-                    : "audio-recovery.retry-completed",
+                    ? .audioRecoveryRetryCompletedCleanupPending
+                    : .audioRecoveryRetryCompleted,
                 runID: retryRunID,
                 level: cleanupPending ? .warning : .info,
                 metadata: ["outcome": cleanupPending ? "cleanup-pending" : "completed"]
@@ -434,8 +431,8 @@ public actor FailedAudioRecoveryController {
             )
             await recordDiagnostic(
                 event: stateCleanupPending
-                    ? "audio-recovery.retry-failed-cleanup-pending"
-                    : "audio-recovery.retry-failed",
+                    ? .audioRecoveryRetryFailedCleanupPending
+                    : .audioRecoveryRetryFailed,
                 runID: retryRunID,
                 level: .warning,
                 metadata: [
@@ -468,8 +465,8 @@ public actor FailedAudioRecoveryController {
             }
             await recordDiagnostic(
                 event: cleanupPending
-                    ? "audio-recovery.plaintext-cleanup-failed"
-                    : "audio-recovery.plaintext-cleanup-recovered",
+                    ? .audioRecoveryPlaintextCleanupFailed
+                    : .audioRecoveryPlaintextCleanupRecovered,
                 runID: runID,
                 level: cleanupPending ? .error : .info,
                 metadata: [
@@ -687,7 +684,7 @@ public actor FailedAudioRecoveryController {
             scheduleExpirationMaintenanceRetry(generation: generation)
             guard canPublish(generation: generation) else { return }
             await recordDiagnostic(
-                event: "audio-recovery.expiration-failed",
+                event: .audioRecoveryExpirationFailed,
                 runID: UUID(),
                 level: .warning,
                 metadata: ["outcome": "cleanup-pending"]
@@ -771,14 +768,14 @@ public actor FailedAudioRecoveryController {
         if cleanupSucceeded {
             clearPlaintextCleanupPending()
             await recordDiagnostic(
-                event: "audio-recovery.plaintext-cleanup-completed",
+                event: .audioRecoveryPlaintextCleanupCompleted,
                 runID: UUID(),
                 metadata: ["outcome": "completed"]
             )
         } else {
             schedulePlaintextCleanupRetry()
             await recordDiagnostic(
-                event: "audio-recovery.plaintext-cleanup-retry-failed",
+                event: .audioRecoveryPlaintextCleanupRetryFailed,
                 runID: UUID(),
                 level: .warning,
                 metadata: ["outcome": "cleanup-pending"]
@@ -802,7 +799,7 @@ public actor FailedAudioRecoveryController {
             plaintextCleanupPending = true
             if !didObserveFailure {
                 await recordDiagnostic(
-                    event: "audio-recovery.plaintext-shutdown-cleanup-pending",
+                    event: .audioRecoveryPlaintextShutdownCleanupPending,
                     runID: UUID(),
                     level: .error,
                     metadata: ["outcome": "cleanup-pending"]
@@ -823,7 +820,7 @@ public actor FailedAudioRecoveryController {
         clearPlaintextCleanupPending()
         if didObserveFailure {
             await recordDiagnostic(
-                event: "audio-recovery.plaintext-shutdown-cleanup-completed",
+                event: .audioRecoveryPlaintextShutdownCleanupCompleted,
                 runID: UUID(),
                 metadata: ["outcome": "completed"]
             )
@@ -918,7 +915,7 @@ public actor FailedAudioRecoveryController {
     }
 
     private func recordDiagnostic(
-        event: String,
+        event: DiagnosticEventName,
         runID: UUID,
         level: DiagnosticLevel = .info,
         metadata: [String: String]

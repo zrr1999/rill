@@ -34,6 +34,7 @@ public actor CapturedAudioProcessingQueue {
         let triggerEvent: WorkflowTriggerEvent?
         let deferredCapture: DeferredCapturedAudio
         let enqueuedAt: Date
+        let bufferReservation: Task<BufferInputReservation?, Error>
 
         var runID: UUID { authorizationLease.runID }
         var workflow: WorkflowDefinition { authorizationLease.workflow }
@@ -53,6 +54,7 @@ public actor CapturedAudioProcessingQueue {
     private let ownershipTransferObserver: @Sendable (UUID) async -> Void
 
     private var pendingJobs: [Job] = []
+    private var lastBufferObservation: Task<BufferInputReservation?, Error>?
     private var activeJob: Job?
     private var drainTask: Task<Void, Never>?
     private var drainGeneration: UInt64 = 0
@@ -67,42 +69,13 @@ public actor CapturedAudioProcessingQueue {
         failedAudioRecoveryController: FailedAudioRecoveryController? = nil,
         benchmarkRecordingArchiveController: BenchmarkRecordingArchiveController? = nil,
         lane: Lane = .interactive,
-        publishesSnapshots: Bool = true
-    ) {
-        self.init(
-            sessionCoordinator: sessionCoordinator,
-            eventBus: eventBus,
-            diagnostics: diagnostics,
-            failedAudioRecoveryController: failedAudioRecoveryController,
-            benchmarkRecordingArchiveController: benchmarkRecordingArchiveController,
-            lane: lane,
-            publishesSnapshots: publishesSnapshots,
-            rejectedCapturedAudioRemoval: { capturedAudio in
-                _ = try capturedAudio.removeManagedTemporaryFile()
-            },
-            rejectedCleanupInitialRetryDelay: .milliseconds(100),
-            rejectedCleanupMaximumRetryDelay: .seconds(5),
-            rejectedCleanupSleep: { delay in
-                try await Task.sleep(for: delay)
-            },
-            ownershipTransferObserver: { _ in }
-        )
-    }
-
-    init(
-        sessionCoordinator: SessionCoordinator,
-        eventBus: EventBus,
-        diagnostics: DiagnosticsRecorder? = nil,
-        failedAudioRecoveryController: FailedAudioRecoveryController? = nil,
-        benchmarkRecordingArchiveController: BenchmarkRecordingArchiveController? = nil,
-        lane: Lane = .interactive,
         publishesSnapshots: Bool = true,
         rejectedCapturedAudioRemoval: @escaping @Sendable (
             CapturedAudio
         ) async throws -> Void,
-        rejectedCleanupInitialRetryDelay: Duration,
-        rejectedCleanupMaximumRetryDelay: Duration,
-        rejectedCleanupSleep: @escaping @Sendable (Duration) async throws -> Void,
+        rejectedCleanupInitialRetryDelay: Duration = .milliseconds(100),
+        rejectedCleanupMaximumRetryDelay: Duration = .seconds(5),
+        rejectedCleanupSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         ownershipTransferObserver: @escaping @Sendable (UUID) async -> Void = { _ in }
     ) {
         precondition(rejectedCleanupInitialRetryDelay > .zero)
@@ -158,17 +131,27 @@ public actor CapturedAudioProcessingQueue {
 
         // No suspension is permitted between the synchronous lease transition
         // above and this append. At every instant exactly one owner exists.
+        let previousObservation = lastBufferObservation
+        let bufferReservation = Task {
+            _ = try? await previousObservation?.value
+            guard triggerEvent?.bufferDraftInput == nil else { return nil as BufferInputReservation? }
+            return try await sessionCoordinator.observeCollectedSpeech(runID: runID, workflow: workflow)
+        }
+        lastBufferObservation = bufferReservation
         pendingJobs.append(
             Job(
                 authorizationLease: authorizationLease,
                 triggerEvent: triggerEvent,
                 deferredCapture: deferredCapture,
-                enqueuedAt: Date()
+                enqueuedAt: Date(),
+                bufferReservation: bufferReservation
             )
         )
+        // Assign input order before acknowledging submission, without waiting for disk.
+        _ = try? await bufferReservation.value
         await ownershipTransferObserver(runID)
         await recordDiagnostic(
-            event: "audio-processing.enqueued",
+            event: .audioProcessingEnqueued,
             message: "Queued a recorded workflow run for background processing.",
             runID: runID,
             metadata: [
@@ -237,6 +220,10 @@ public actor CapturedAudioProcessingQueue {
             activeJob.deferredCapture.cancel()
         }
         activeDrainTask?.cancel()
+        for job in abandonedJobs {
+            _ = try? await job.bufferReservation.value
+            await sessionCoordinator.finishCollectedSpeech(runID: job.runID)
+        }
         if let activeDrainTask {
             await activeDrainTask.value
         }
@@ -274,6 +261,10 @@ public actor CapturedAudioProcessingQueue {
             activeDrainTask?.cancel()
         } else {
             activeDrainTask = nil
+        }
+        for job in abandonedJobs {
+            _ = try? await job.bufferReservation.value
+            await sessionCoordinator.finishCollectedSpeech(runID: job.runID)
         }
         if let activeDrainTask {
             await activeDrainTask.value
@@ -345,7 +336,7 @@ public actor CapturedAudioProcessingQueue {
                 recordResolutionFailure: { [weak self] in
                     guard let self else { return }
                     await self.recordDiagnostic(
-                        event: "audio-processing.rejected-capture-resolution-failed",
+                        event: .audioProcessingRejectedCaptureResolutionFailed,
                         message: "Rejected audio capture resolution failed terminally.",
                         runID: runID,
                         level: .error
@@ -354,7 +345,7 @@ public actor CapturedAudioProcessingQueue {
                 recordRemovalFailure: { [weak self] in
                     guard let self else { return }
                     await self.recordDiagnostic(
-                        event: "audio-processing.rejected-cleanup-pending",
+                        event: .audioProcessingRejectedCleanupPending,
                         message: "Managed temporary audio cleanup remains pending.",
                         runID: runID,
                         level: .error
@@ -443,7 +434,7 @@ public actor CapturedAudioProcessingQueue {
             activeJob = job
             await publishSnapshot()
             await recordDiagnostic(
-                event: "audio-processing.started",
+                event: .audioProcessingStarted,
                 message: "Background processing started for a recorded workflow run.",
                 runID: job.runID,
                 metadata: [
@@ -456,6 +447,9 @@ public actor CapturedAudioProcessingQueue {
             var captureResolutionStarted = false
             do {
                 try Task.checkCancellation()
+                let reservation = try await job.bufferReservation.value
+                try await reservation?.committed.value
+                try Task.checkCancellation()
                 let authorizationClaim = try await job.authorizationLease.claim(
                     triggerEvent: job.triggerEvent
                 )
@@ -464,11 +458,14 @@ public actor CapturedAudioProcessingQueue {
                 let capturedAudio = try await job.deferredCapture.value()
                 capturedAudioForCleanup = capturedAudio
                 let timingKeys = ["captureStopMillis", "captureDrainMillis",
-                                  "capturePreviewRetireMillis", "captureFinalizeMillis"]
+                                  "capturePreviewRetireMillis", "captureFinalizeMillis",
+                                  "captureTailSampleCount", "previewDeliveredSampleCount",
+                                  "previewKeytermStatus", "previewRequestedKeytermCount",
+                                  "firstPreviewObservedMillis", "stablePreviewObservedMillis"]
                 let timing = capturedAudio.metadata.filter { timingKeys.contains($0.key) }
                 if !timing.isEmpty {
                     await recordDiagnostic(
-                        event: "audio-processing.capture-timing",
+                        event: .audioProcessingCaptureTiming,
                         message: "Capture finalization timings.", runID: job.runID,
                         metadata: timing
                     )
@@ -485,7 +482,8 @@ public actor CapturedAudioProcessingQueue {
                     contextSnapshot: authorization.authorizedContext.contextSnapshot,
                     recognitionOptions: authorization.authorizedContext.recognitionOptions,
                     waitsForAvailability: true,
-                    contextPreparation: authorization.authorizedContext.contextPreparation
+                    contextPreparation: authorization.authorizedContext.contextPreparation,
+                    preparedRecognition: authorization.authorizedContext.preparedRecognition
                 )
                 await preserveBenchmarkRecordingIfEnabled(
                     capturedAudio,
@@ -532,7 +530,7 @@ public actor CapturedAudioProcessingQueue {
                         )
                     )
                     await recordDiagnostic(
-                        event: "audio-processing.failed",
+                        event: .audioProcessingFailed,
                         message: "Queued audio processing failed.",
                         runID: job.runID,
                         level: .error
@@ -540,6 +538,8 @@ public actor CapturedAudioProcessingQueue {
                 }
             }
 
+            _ = try? await job.bufferReservation.value
+            await sessionCoordinator.finishCollectedSpeech(runID: job.runID)
             if let capturedAudioForCleanup {
                 await removeManagedTemporaryFile(from: capturedAudioForCleanup, for: job)
             }
@@ -599,7 +599,7 @@ public actor CapturedAudioProcessingQueue {
             )
         } catch {
             await recordDiagnostic(
-                event: "benchmark-recording.preserve-failed",
+                event: .benchmarkRecordingPreserveFailed,
                 message: "The recording could not be retained for the private ASR benchmark.",
                 runID: job.runID,
                 level: .warning,
@@ -645,7 +645,7 @@ public actor CapturedAudioProcessingQueue {
                 return
             }
             await recordDiagnostic(
-                event: "audio-recovery.preserved",
+                event: .audioRecoveryPreserved,
                 message: "A failed recording was protected for manual retry.",
                 runID: job.runID,
                 metadata: [
@@ -663,7 +663,7 @@ public actor CapturedAudioProcessingQueue {
                 )
             )
             await recordDiagnostic(
-                event: "audio-recovery.preserve-failed",
+                event: .audioRecoveryPreserveFailed,
                 message: "A failed recording could not be retained for recovery.",
                 runID: job.runID,
                 level: .warning,
@@ -704,7 +704,7 @@ public actor CapturedAudioProcessingQueue {
         do {
             try await rejectedCapturedAudioRemoval(capturedAudio)
             await recordDiagnostic(
-                event: "audio-processing.temporary-file-removed",
+                event: .audioProcessingTemporaryFileRemoved,
                 message: "Removed the managed temporary audio file after processing.",
                 runID: job.runID,
                 metadata: ["workflow": job.workflow.name]
@@ -716,7 +716,7 @@ public actor CapturedAudioProcessingQueue {
             // the managed file to be removed or explicitly cancel the retry.
             scheduleRejectedCapturedAudioRemoval(capturedAudio, runID: job.runID)
             await recordDiagnostic(
-                event: "audio-processing.temporary-file-removal-failed",
+                event: .audioProcessingTemporaryFileRemovalFailed,
                 message: "Managed temporary audio cleanup remains pending.",
                 runID: job.runID,
                 level: .error,
@@ -726,7 +726,7 @@ public actor CapturedAudioProcessingQueue {
     }
 
     private func recordDiagnostic(
-        event: String,
+        event: DiagnosticEventName,
         message: String,
         runID: UUID,
         level: DiagnosticLevel = .debug,

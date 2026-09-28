@@ -12,24 +12,56 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEPENDENCIES = {
     "RillCore": set(),
+    "CRime": set(),
+    "RillInputMethodContracts": set(),
+    "RillInputMethodIPC": {"RillInputMethodContracts"},
+    "RillInputMethodKit": {"CRime", "RillInputMethodContracts", "RillInputMethodIPC"},
+    "RillInputMethod": {"RillInputMethodContracts", "RillInputMethodKit"},
     "RillSpeechContracts": {"RillCore"},
     "RillRecords": {"RillCore"},
     "RillKnowledge": {"RillCore"},
     "RillSpeech": {"RillCore", "RillPlatform", "RillSpeechContracts"},
     "RillClipboard": {"RillCore", "RillPlatform", "RillRecords"},
-    "RillWorkflows": {"RillCore", "RillSpeechContracts", "RillSpeech", "RillRecords", "RillKnowledge"},
-    "CRime": set(),
-    "RillInputMethodContracts": set(),
-    "RillInputMethodIPC": {"RillInputMethodContracts"},
-    "RillInputMethodKit": {"CRime", "RillInputMethodContracts", "RillInputMethodIPC"},
-    "RillInputMethod": {"RillInputMethodKit", "RillInputMethodContracts"},
+    "RillWorkflows": {"RillCore", "RillKnowledge", "RillRecords", "RillSpeech", "RillSpeechContracts"},
     "RillPersistence": {"RillCore"},
-    "RillUI": {"RillCore", "RillInputMethodContracts", "RillInputMethodIPC", "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech"},
     "RillPlatform": {"RillCore", "RillInputMethodContracts", "TOML"},
-    "RillProviders": {"RillCore", "RillSpeechContracts", "RillSpeech", "OpenAI"},
-    "RillSpeechWorker": {"RillCore", "RillSpeechContracts", "RillMLXRuntime"},
+    "RillProviders": {"OpenAI", "RillCore", "RillSpeech", "RillSpeechContracts"},
+    "RillUI": {"RillCore", "RillInputMethodContracts", "RillInputMethodIPC", "RillKnowledge", "RillRecords", "RillSpeech", "RillWorkflows"},
+    "RillApp": {"RillClipboard", "RillCore", "RillKnowledge", "RillPersistence", "RillPlatform", "RillProviders", "RillRecords", "RillSpeech", "RillSpeechContracts", "RillUI", "RillWorkflows"},
+    "RillMLXRuntime": {"HuggingFace", "MLX", "MLXAudioCore", "MLXAudioSTT", "MLXAudioTTS", "MLXAudioVAD", "MLXEmbedders", "MLXHuggingFace", "MLXLMCommon", "MLXNN", "RillCore", "RillSpeechContracts", "Tokenizers"},
+    "RillSpeechWorker": {"RillCore", "RillMLXRuntime", "RillSpeechContracts"},
+    "RillTestSupport": {"RillCore", "RillDomainTestSupport", "RillKnowledge", "RillRecords", "RillSpeech", "RillUI", "RillWorkflows"},
+    "RillDomainTestSupport": {"RillCore", "RillKnowledge", "RillPlatform", "RillRecords", "RillSpeech", "RillWorkflows"},
 }
-DOMAIN_IMPORTS = {"Foundation", "CryptoKit", "Dispatch", "Darwin", "RillCore"}
+
+FOUNDATION_IMPORTS = {"Foundation", "CryptoKit", "Dispatch", "Darwin"}
+SYSTEM_IMPORTS = {
+    "RillCore": FOUNDATION_IMPORTS,
+    "RillTestSupport": FOUNDATION_IMPORTS,
+    "RillDomainTestSupport": FOUNDATION_IMPORTS,
+    "RillSpeechContracts": FOUNDATION_IMPORTS,
+    "RillRecords": FOUNDATION_IMPORTS,
+    "RillKnowledge": FOUNDATION_IMPORTS | {"NaturalLanguage"},
+    "RillSpeech": FOUNDATION_IMPORTS | {"OSLog"},
+    "RillWorkflows": FOUNDATION_IMPORTS,
+    "RillClipboard": FOUNDATION_IMPORTS | {"AppKit", "ApplicationServices"},
+    "CRime": set(),
+    "RillInputMethodContracts": FOUNDATION_IMPORTS,
+    "RillInputMethodIPC": FOUNDATION_IMPORTS | {"Security"},
+    "RillInputMethodKit": FOUNDATION_IMPORTS | {"AppKit", "InputMethodKit", "Carbon", "Combine", "SwiftUI"},
+    "RillInputMethod": FOUNDATION_IMPORTS | {"AppKit", "InputMethodKit"},
+    "RillMLXRuntime": FOUNDATION_IMPORTS,
+    "RillSpeechWorker": FOUNDATION_IMPORTS,
+    "RillPersistence": FOUNDATION_IMPORTS | {"OSLog", "SQLite3"},
+    "RillProviders": FOUNDATION_IMPORTS | {"OSLog"},
+    "RillPlatform": FOUNDATION_IMPORTS | {"AVFoundation", "AudioToolbox", "OSLog", "AppKit", "ApplicationServices",
+        "Carbon", "CoreGraphics", "ImageIO", "Observation", "ScreenCaptureKit", "Security",
+        "UniformTypeIdentifiers"},
+    "RillUI": FOUNDATION_IMPORTS | {"AppKit", "Carbon", "ImageIO", "Observation", "Quartz",
+        "QuartzCore", "QuickLookThumbnailing", "SwiftUI", "UniformTypeIdentifiers"},
+    "RillApp": FOUNDATION_IMPORTS | {"AppKit", "ApplicationServices", "Combine", "QuartzCore", "SwiftUI"},
+}
+TEST_IMPORTS = set().union(*SYSTEM_IMPORTS.values()) | {"Testing", "XCTest", "os"}
 
 
 def output(*command: str) -> str:
@@ -44,17 +76,23 @@ def main() -> None:
         actual = {next(iter(dependency.values()))[0] for dependency in dependencies}
         if actual != expected:
             raise SystemExit(f"{name}: expected dependencies {sorted(expected)}, found {sorted(actual)}")
-    mlx_dependencies = {next(iter(dependency.values()))[0] for dependency in targets["RillMLXRuntime"]["dependencies"]}
-    if mlx_dependencies & {"RillSpeech", "RillProviders", "RillPlatform", "RillApp", "OpenAI", "TOML"}:
-        raise SystemExit("MLX runtime must depend on shared speech contracts without host providers")
-    for name in ("RillCore", "RillRecords", "RillKnowledge", "RillWorkflows", "RillSpeechContracts", "RillInputMethodContracts"):
-        sources = sorted(str(path) for path in (ROOT / "Sources" / name).rglob("*.swift"))
-        imports = set(output("swiftc", "-frontend", "-emit-imported-modules", *sources).splitlines())
-        allowed = DOMAIN_IMPORTS | DEPENDENCIES[name]
-        if name == "RillKnowledge":
-            allowed |= {"NaturalLanguage"}
-        if unexpected := imports - allowed:
-            raise SystemExit(f"{name}: platform or SDK imports escaped their adapters: {sorted(unexpected)}")
+    production = {name for name, target in targets.items() if target["type"] != "test"}
+    if production != DEPENDENCIES.keys():
+        raise SystemExit(f"Every production target needs an explicit policy: {sorted(production ^ DEPENDENCIES.keys())}")
+    for name, target in targets.items():
+        is_test = target["type"] == "test"
+        source_root = ROOT / target.get("path", str(Path("Tests" if is_test else "Sources") / name))
+        sources = sorted(str(path) for path in source_root.rglob("*.swift"))
+        if name == "CRime" and list(source_root.rglob("*.c")):
+            continue
+        if not sources:
+            raise SystemExit(f"{name}: no source files checked")
+        imports = {module.split(".")[0] for module in output(
+            "swiftc", "-frontend", "-swift-version", "6", "-module-name", name, "-emit-imported-modules", *sources).splitlines()}
+        declared = {next(iter(dependency.values()))[0] for dependency in target["dependencies"]}
+        permitted = declared | (TEST_IMPORTS if is_test else SYSTEM_IMPORTS[name])
+        if unexpected := imports - permitted:
+            raise SystemExit(f"{name}: undeclared or forbidden imports: {sorted(unexpected)}")
     print("Module boundaries passed (SwiftPM graph and parsed imports)")
 
 

@@ -90,20 +90,24 @@ final class SpeechWorkerProtocolTests: XCTestCase {
     }
   }
 
-  func testRequestRejectsUnboundedOrNonAbsoluteAudioPath() {
+  func testRequestRejectsUnboundedOrNonAbsoluteAudioPath() throws {
     var request = makeRequest()
-    request.recognitionPayload?.audioFilePath = "relative.wav"
+    var payload = try XCTUnwrap(request.recognitionPayload)
+    payload.audioFilePath = "relative.wav"
+    request.payload = .recognizeOffline(payload)
     XCTAssertThrowsError(try SpeechWorkerProtocolCodec.encodeRequestLine(request)) { error in
       XCTAssertEqual(error as? SpeechWorkerProtocolError, .invalidRequest)
     }
 
     request = makeRequest()
-    request.recognitionPayload?.audioFilePath =
+    payload = try XCTUnwrap(request.recognitionPayload)
+    payload.audioFilePath =
       "/"
       + String(
         repeating: "x",
         count: SpeechWorkerProtocol.maximumAudioPathByteCount
       )
+    request.payload = .recognizeOffline(payload)
     XCTAssertThrowsError(try SpeechWorkerProtocolCodec.encodeRequestLine(request)) { error in
       XCTAssertEqual(error as? SpeechWorkerProtocolError, .invalidRequest)
     }
@@ -111,14 +115,18 @@ final class SpeechWorkerProtocolTests: XCTestCase {
 
   func testLongAudioIsAcceptedOnlyForTrustedMLXModels() throws {
     var mlxRequest = makeRequest()
-    mlxRequest.recognitionPayload?.modelID = MLXAudioModelID.qwen3ASR17BInt8.rawValue
-    mlxRequest.recognitionPayload?.audioDurationSeconds = 3_600
+    var payload = try XCTUnwrap(mlxRequest.recognitionPayload)
+    payload.modelID = MLXAudioModelID.qwen3ASR17BInt8.rawValue
+    payload.audioDurationSeconds = 3_600
+    mlxRequest.payload = .recognizeOffline(payload)
     XCTAssertNoThrow(try SpeechWorkerProtocolCodec.encodeRequestLine(mlxRequest))
 
     var sherpaRequest = makeRequest()
-    sherpaRequest.recognitionPayload?.modelID =
+    payload = try XCTUnwrap(sherpaRequest.recognitionPayload)
+    payload.modelID =
       "sherpa-onnx-qwen3-asr-0.6b-int8-2026-03-25"
-    sherpaRequest.recognitionPayload?.audioDurationSeconds = 3_600
+    payload.audioDurationSeconds = 3_600
+    sherpaRequest.payload = .recognizeOffline(payload)
     XCTAssertThrowsError(
       try SpeechWorkerProtocolCodec.encodeRequestLine(sherpaRequest)
     ) { error in

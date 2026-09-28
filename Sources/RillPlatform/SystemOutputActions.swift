@@ -108,3 +108,17 @@ public struct FocusedApplicationInsertAction: OutputAction {
     return .injected
   }
 }
+
+extension TextInjectionEngine.InjectionError: OutputFailureDescribing {
+  public var outputFailureDisposition: OutputFailureDisposition {
+    switch self {
+    case .accessibilityPermissionRequired, .unableToCreatePasteEvent,
+      .protectedClipboardCannotBeReplaced, .clipboardChangedBeforeTemporaryWrite,
+      .clipboardContentsCannotBePreserved, .temporaryClipboardTransactionInProgress,
+      .targetFocusCannotBeVerified, .targetFocusActivationFailed:
+      .notApplied
+    case .unableToCreateKeyboardEvent, .targetFocusChanged, .deliveredButClipboardRestorationFailed:
+      .unknown
+    }
+  }
+}

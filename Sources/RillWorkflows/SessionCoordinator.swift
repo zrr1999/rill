@@ -1,8 +1,8 @@
 import Dispatch
 import Foundation
 import RillCore
-import RillKnowledge
 import RillRecords
+import RillKnowledge
 
 public actor SessionCoordinator {
     public enum State: Sendable, Equatable {
@@ -38,8 +38,7 @@ public actor SessionCoordinator {
             case .noSpeech:
                 return HistoryFailureSanitizer.noSpeechMessage
             case .unsupportedWorkflow(.legacyClipboardAutomationUnsupported):
-                return
-                    "Legacy clipboard event automation is disabled until production actions and execution receipts are available."
+                return "Legacy clipboard event automation is disabled until production actions and execution receipts are available."
             case .unsupportedWorkflow(.invalidEventType):
                 return "The workflow declares an invalid event type."
             case .unsupportedWorkflow(.plannedCapabilityUnavailable):
@@ -75,25 +74,32 @@ public actor SessionCoordinator {
     private let actionRegistry: OutputActionRegistry
     private let workflowPlanCompiler: WorkflowPlanCompiler
     private let candidateResolver: CandidateResolver
+    private var speechBufferCleanupTasks: [UUID: Task<Void, Never>] = [:]
+    private var bufferCleanupIsShuttingDown = false
+    private var speechBufferInputs: [UUID: BufferInputReservation] = [:]
     private let recordStore: RecordStore
     private let recordDeliveryCoordinator: RecordDeliveryCoordinator
     private let recordDeliverySettlementTaskOwner: RecordDeliverySettlementTaskOwner
     private let eventBus: EventBus
     private let diagnostics: DiagnosticsRecorder?
     private let runReceiptRecorder: WorkflowRunReceiptRecorder?
-    private let vocabularyCollectionProvider: @Sendable () async throws -> [VocabularyCollection]
-    private let recognitionOptionsProvider:
-        @Sendable (
-            WorkflowDefinition,
-            ContextSnapshot
-        ) async -> SpeechRecognitionRequestOptions
+    private let vocabularyCollectionProvider:
+        @Sendable () async throws -> [VocabularyCollection]
+    private let recognitionOptionsProvider: @Sendable (
+        WorkflowDefinition,
+        ContextSnapshot
+    ) async throws -> SpeechRecognitionRequestOptions
     private let recognitionTimeoutPolicy: RecognitionTimeoutPolicy
     private let recognitionTimeoutExecutor: RecognitionTimeoutExecutor
     private let defaultRecordDeliveryActionID: String
     private let processingClock: @Sendable () -> UInt64
 
     private typealias RunSession = WorkflowRunSession
-    private var runDiagnostics: WorkflowRunDiagnostics { .init(diagnostics: diagnostics) }
+    private var runDiagnostics: WorkflowRunReporter { .init(diagnostics: diagnostics, eventBus: eventBus, lane: lane) }
+    private var outputExecutor: WorkflowOutputExecutor {
+        .init(actionRegistry: actionRegistry, runReceiptRecorder: runReceiptRecorder,
+              eventBus: eventBus, diagnostics: diagnostics, lane: lane)
+    }
     private var textExecutor: WorkflowTextExecutor {
         .init(transformerRegistry: transformerRegistry, runReceiptRecorder: runReceiptRecorder,
               eventBus: eventBus, diagnostics: diagnostics, lane: lane, processingClock: processingClock,
@@ -101,7 +107,6 @@ public actor SessionCoordinator {
     }
 
     public init(
-        contextProvider _: any ContextProvider,
         lane: WorkflowRunLane = .primary,
         privacyContextProvider: @escaping @Sendable () async -> ContextSnapshot = { .empty },
         recognizerRegistry: SpeechRecognizerRegistry,
@@ -117,16 +122,15 @@ public actor SessionCoordinator {
         vocabularyRuleProvider: @escaping @Sendable () async throws -> [VocabularyRule] = { [] },
         vocabularyCollectionProvider:
             (@Sendable () async throws -> [VocabularyCollection])? = nil,
-        recognitionOptionsProvider:
-            @escaping @Sendable (
-                WorkflowDefinition,
-                ContextSnapshot
-            ) async -> SpeechRecognitionRequestOptions = { _, _ in .empty },
+        recognitionOptionsProvider: @escaping @Sendable (
+            WorkflowDefinition,
+            ContextSnapshot
+        ) async throws -> SpeechRecognitionRequestOptions = { _, _ in .empty },
         recognitionTimeoutPolicy: RecognitionTimeoutPolicy = .standard,
-        recognitionAudioCleanupOwner: ManagedTemporaryAudioCleanupOwner =
-            ManagedTemporaryAudioCleanupOwner(),
+        recognitionAudioCleanupOwner: any ManagedTemporaryAudioCleaning,
         defaultRecordDeliveryActionID: String = "system-clipboard.copy",
-        processingClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }
+        processingClock: @escaping @Sendable () -> UInt64 = { DispatchTime.now().uptimeNanoseconds },
+        recognitionAudioIsolator: @escaping @Sendable (CapturedAudio) throws -> CapturedAudio
     ) {
         self.lane = lane
         self.privacyContextProvider = privacyContextProvider
@@ -155,13 +159,14 @@ public actor SessionCoordinator {
             ?? {
                 let rules = try await vocabularyRuleProvider()
                 return [
-                    .personal(entries: rules.map(VocabularyEntry.init(rule:)))
+                    .personal(entries: rules.map(VocabularyEntry.init(rule:))),
                 ]
             }
         self.recognitionOptionsProvider = recognitionOptionsProvider
         self.recognitionTimeoutPolicy = recognitionTimeoutPolicy
         self.recognitionTimeoutExecutor = RecognitionTimeoutExecutor(
-            cleanupOwner: recognitionAudioCleanupOwner
+            cleanupOwner: recognitionAudioCleanupOwner,
+            isolateAudio: recognitionAudioIsolator
         )
         self.defaultRecordDeliveryActionID = defaultRecordDeliveryActionID
         self.processingClock = processingClock
@@ -172,6 +177,11 @@ public actor SessionCoordinator {
     }
 
     public func shutdownRecordDeliverySettlements() async {
+        bufferCleanupIsShuttingDown = true
+        let cleanupTasks = Array(speechBufferCleanupTasks.values)
+        for task in cleanupTasks { task.cancel() }
+        for task in cleanupTasks { await task.value }
+        speechBufferCleanupTasks.removeAll()
         await recordDeliverySettlementTaskOwner.shutdown()
     }
 
@@ -229,9 +239,8 @@ public actor SessionCoordinator {
 
     private func grantNextRunLaneWaiterIfPossible() {
         guard runLaneOwner == nil,
-            case .idle = state,
-            !runLaneWaiters.isEmpty
-        else {
+              case .idle = state,
+              !runLaneWaiters.isEmpty else {
             return
         }
         let waiter = runLaneWaiters.removeFirst()
@@ -241,21 +250,21 @@ public actor SessionCoordinator {
     }
 }
 
-extension SessionCoordinator.State {
-    fileprivate func belongs(to runID: UUID) -> Bool {
+private extension SessionCoordinator.State {
+    func belongs(to runID: UUID) -> Bool {
         switch self {
         case .idle:
             false
         case .running(let activeRunID), .resolving(let activeRunID),
-            .delivering(let activeRunID):
+             .delivering(let activeRunID):
             activeRunID == runID
         }
     }
 }
 
-extension SessionCoordinator {
+public extension SessionCoordinator {
     /// Pure configuration check: no context capture, authorization, provider calls, or outputs.
-    public func run(
+    func run(
         runID providedRunID: UUID? = nil,
         triggerEvent: WorkflowTriggerEvent? = nil,
         capturedAudio: CapturedAudio? = nil,
@@ -297,7 +306,7 @@ extension SessionCoordinator {
     /// recognized by the local wake-phrase gate. The workflow is compiled for
     /// text input, so recognition is not repeated while vocabulary transforms,
     /// LLM steps, outputs, receipts, and lifecycle events remain unchanged.
-    public func runRecognizedText(
+    func runRecognizedText(
         _ text: String,
         runID providedRunID: UUID? = nil,
         triggerEvent: WorkflowTriggerEvent? = nil,
@@ -369,7 +378,7 @@ extension SessionCoordinator {
         waitsForAvailability: Bool = false,
         contextPreparation: RunContextPreparation? = nil,
         preparedRecognition: PreparedRecognitionContext? = nil
-    ) async -> WorkflowRunExecutionResult {
+     ) async -> WorkflowRunExecutionResult {
         let runID = providedRunID ?? UUID()
         var completed = false
         defer {
@@ -500,7 +509,7 @@ extension SessionCoordinator {
 
         var failureStage = WorkflowRunStage.preparing
         do {
-            let session = try await startRunSession(
+            var session = try await startRunSession(
                 for: workflow,
                 runID: runID,
                 trigger: effectiveReceiptTrigger,
@@ -510,6 +519,13 @@ extension SessionCoordinator {
                 compilationInput: preRecognizedText == nil ? nil : .text,
                 receiptIsActive: receiptIsActive
             )
+            session.bufferDraftInput = triggerEvent?.bufferDraftInput
+            if session.bufferDraftInput != nil {
+                guard workflow.plan.output.actions.count == 1,
+                      workflow.plan.output.actions.first?.id == RecordActionID.store else {
+                    throw SessionError.missingAction(RecordActionID.store)
+                }
+            }
             failureStage = .recognizing
             let recognition: RecognitionResult
             let recognitionDurationMilliseconds: UInt64?
@@ -553,7 +569,8 @@ extension SessionCoordinator {
                 in: session,
                 initialSteps: processingSteps,
                 correctionContext: correctionContext,
-                allowsSpeechTextFallback: (capturedAudio != nil || preRecognizedText != nil)
+                allowsSpeechTextFallback:
+                    (capturedAudio != nil || preRecognizedText != nil)
                     && workflow.speechMode != .voiceAssistant
             )
             try Task.checkCancellation()
@@ -684,17 +701,17 @@ extension SessionCoordinator {
         case .noSpeech:
             return .noSpeech
         case .missingRecognizer, .missingTransformer, .missingAction, .invalidWorkflowPlan,
-            .unsupportedWorkflow,
-            .privacyAuthorizationRequired, .authorizationInvocationMismatch:
+             .unsupportedWorkflow,
+             .privacyAuthorizationRequired, .authorizationInvocationMismatch:
             return .configuration
         }
     }
 
-    public func deliverNextRecord(actionID: String? = nil) async {
+    func deliverNextRecord(actionID: String? = nil) async {
         await deliverNextRecord(for: FocusedApplicationIdentity(), actionID: actionID)
     }
 
-    public func deliverNextRecord(
+    func deliverNextRecord(
         for targetApplication: FocusedApplicationIdentity,
         actionID: String? = nil,
         expectedTarget: FocusedApplicationTargetIdentity? = nil
@@ -707,7 +724,7 @@ extension SessionCoordinator {
         )
     }
 
-    public func deliverRecord(
+    func deliverRecord(
         matching subject: RecordDeliverySubject,
         to target: FocusedApplicationTargetIdentity,
         actionID: String? = nil
@@ -720,17 +737,15 @@ extension SessionCoordinator {
         )
     }
 
-    public func reuseRecord(
+    func reuseRecord(
         _ subject: RecordReuseSubject,
         to target: FocusedApplicationTargetIdentity?,
         copyOnly: Bool = false
     ) async -> RecordReuseOutcome {
         guard copyOnly || target != nil else { return .targetUnavailable }
-        return await deliverRecord(
-            for: FocusedApplicationIdentity(bundleIdentifier: target?.bundleIdentifier),
-            actionID: copyOnly
-                ? RecordActionID.systemClipboardCopy : RecordActionID.focusedApplicationInsert,
-            exactSubject: nil, expectedTarget: target, reuseSubject: subject)
+        return await deliverRecord(for: FocusedApplicationIdentity(bundleIdentifier: target?.bundleIdentifier),
+                            actionID: copyOnly ? RecordActionID.systemClipboardCopy : RecordActionID.focusedApplicationInsert,
+                            exactSubject: nil, expectedTarget: target, reuseSubject: subject)
     }
 
     private func deliverRecord(
@@ -794,11 +809,9 @@ extension SessionCoordinator {
         let preparation: RecordOutputPreparation
         do {
             if let reuseSubject {
-                preparation = RecordOutputPreparation(
-                    reuse: try await recordDeliveryCoordinator.beginReuse(
-                        reuseSubject,
-                        sink: Self.sinkIdentity(for: selectedActionID) ?? .focusedApplication
-                    ))
+                preparation = RecordOutputPreparation(reuse: try await recordDeliveryCoordinator.beginReuse(
+                    reuseSubject, sink: Self.sinkIdentity(for: selectedActionID) ?? .focusedApplication
+                ))
             } else if let exactSubject {
                 let sink = Self.sinkIdentity(for: selectedActionID) ?? .focusedApplication
                 let lease = try await recordDeliveryCoordinator.beginDelivery(
@@ -807,16 +820,13 @@ extension SessionCoordinator {
                 )
                 preparation = .init(lease: lease, route: nil)
             } else {
-                preparation = RecordOutputPreparation(
-                    try await recordDeliveryCoordinator.beginDelivery(
-                        to: targetApplication,
-                        requestedSink: Self.sinkIdentity(for: selectedActionID)
-                    ))
+                preparation = RecordOutputPreparation(try await recordDeliveryCoordinator.beginDelivery(
+                    to: targetApplication,
+                    requestedSink: Self.sinkIdentity(for: selectedActionID)
+                ))
             }
         } catch let error as RecordStoreError
-            where error == .membershipUnavailable || error == .manualSelectionRequired
-            || error == .recordUnavailable
-        {
+        where error == .membershipUnavailable || error == .manualSelectionRequired || error == .recordUnavailable {
             await finishRunReceipt(
                 runID: runID,
                 isActive: receiptIsActive,
@@ -834,8 +844,7 @@ extension SessionCoordinator {
                 workflow: recordDeliveryWorkflow,
                 message: HistoryFailureSanitizer.genericMessage
             )
-            return (error as? RecordStoreError) == .persistenceUnavailable
-                ? .storageUnavailable : .blocked
+            return (error as? RecordStoreError) == .persistenceUnavailable ? .storageUnavailable : .blocked
         }
         let route = preparation.route
         if let route {
@@ -864,7 +873,7 @@ extension SessionCoordinator {
                     recordID: lease.record.id,
                     to: collectionID
                 )
-                await finishRecordedAction(
+                await outputExecutor.finishRecordedAction(
                     runID: runID,
                     actionIndex: 0,
                     result: .storedRecord,
@@ -897,7 +906,7 @@ extension SessionCoordinator {
                 )
                 await runDiagnostics.recordStage(.completed, runID: runID, workflow: workflow.presentation)
             } catch {
-                await finishRecordedAction(
+                await outputExecutor.finishRecordedAction(
                     runID: runID,
                     actionIndex: 0,
                     result: .failed,
@@ -968,7 +977,7 @@ extension SessionCoordinator {
             let deliverySummary: DeliveryExecutionSummary
             var committedOutputFailure: CommittedOutputFailure?
             do {
-                let result = try await executeRecordedAction(
+                let result = try await outputExecutor.executeRecordedAction(
                     action,
                     actionID: selectedActionID,
                     actionIndex: 0,
@@ -1007,7 +1016,7 @@ extension SessionCoordinator {
                 } else {
                     try await recordDeliveryCoordinator.cancelDelivery(lease.id)
                 }
-            } catch  where deliverySummary.successfulActionCount > 0 {
+            } catch where deliverySummary.successfulActionCount > 0 {
                 await recordDeliverySettlementTaskOwner.schedule(leaseID: lease.id)
                 await finishRunReceipt(
                     runID: runID,
@@ -1058,8 +1067,7 @@ extension SessionCoordinator {
             )
             await runDiagnostics.recordStage(.completed, runID: runID, workflow: workflow.presentation)
             state = .idle
-            return deliverySummary.successfulActionCount > 0
-                ? (deliverySink == .systemClipboard ? .copied : .delivered) : .blocked
+            return deliverySummary.successfulActionCount > 0 ? (deliverySink == .systemClipboard ? .copied : .delivered) : .blocked
         } catch {
             if let cancellation = workflowRunCancellationSummary(
                 for: error,
@@ -1101,27 +1109,21 @@ private struct RecordOutputPreparation {
     let route: DeliveryRouteRule?
 
     init(lease: RecordDeliveryLease, route: DeliveryRouteRule?) {
-        id = lease.id
-        record = lease.record
-        sink = lease.sink
-        self.route = route
+        id = lease.id; record = lease.record; sink = lease.sink; self.route = route
     }
     init(_ preparation: RecordDeliveryCoordinator.Preparation) {
         self.init(lease: preparation.lease, route: preparation.route)
     }
     init(reuse: RecordReuseLease) {
-        id = reuse.id
-        record = reuse.record
-        sink = reuse.sink
-        route = nil
+        id = reuse.id; record = reuse.record; sink = reuse.sink; route = nil
     }
 }
 
-extension SessionCoordinator {
-    fileprivate static let committedOutputSettlementMessage =
+private extension SessionCoordinator {
+    static let committedOutputSettlementMessage =
         "The output may already have been delivered. Rill is retrying local bookkeeping; do not repeat this action."
 
-    fileprivate static func actionID(for sink: RecordSinkIdentity) -> String {
+    static func actionID(for sink: RecordSinkIdentity) -> String {
         switch sink {
         case .focusedApplication: RecordActionID.focusedApplicationInsert
         case .systemClipboard: RecordActionID.systemClipboardCopy
@@ -1129,7 +1131,7 @@ extension SessionCoordinator {
         }
     }
 
-    fileprivate static func sinkIdentity(for actionID: String) -> RecordSinkIdentity? {
+    static func sinkIdentity(for actionID: String) -> RecordSinkIdentity? {
         switch actionID {
         case RecordActionID.focusedApplicationInsert: .focusedApplication
         case RecordActionID.systemClipboardCopy: .systemClipboard
@@ -1138,7 +1140,7 @@ extension SessionCoordinator {
         }
     }
 
-    fileprivate func rejectAuthorizedInvocation(
+    func rejectAuthorizedInvocation(
         runID: UUID,
         workflow: WorkflowDefinition,
         trigger: WorkflowRunTriggerKind,
@@ -1170,7 +1172,7 @@ extension SessionCoordinator {
         )
     }
 
-    fileprivate func runReceiptTrigger(
+    func runReceiptTrigger(
         for triggerEvent: WorkflowTriggerEvent?
     ) -> WorkflowRunTriggerKind {
         guard let triggerEvent else { return .manual }
@@ -1186,7 +1188,7 @@ extension SessionCoordinator {
         }
     }
 
-    fileprivate func beginRunReceipt(
+    func beginRunReceipt(
         runID: UUID,
         workflowID: UUID?,
         trigger: WorkflowRunTriggerKind,
@@ -1206,7 +1208,7 @@ extension SessionCoordinator {
         } catch let error as WorkflowRunReceiptRecorderError {
             switch error {
             case .runAlreadyStarted, .terminalAlreadyFinalized:
-                await recordRunReceiptCoordinationFailure(
+                await outputExecutor.recordRunReceiptCoordinationFailure(
                     runID: runID,
                     reason: "duplicate-run-id"
                 )
@@ -1216,14 +1218,14 @@ extension SessionCoordinator {
                 // Receipt storage availability must not redefine execution.
                 return .inactive
             default:
-                await recordRunReceiptCoordinationFailure(
+                await outputExecutor.recordRunReceiptCoordinationFailure(
                     runID: runID,
                     reason: "begin-failed"
                 )
                 return .inactive
             }
         } catch {
-            await recordRunReceiptCoordinationFailure(
+            await outputExecutor.recordRunReceiptCoordinationFailure(
                 runID: runID,
                 reason: "begin-failed"
             )
@@ -1231,7 +1233,7 @@ extension SessionCoordinator {
         }
     }
 
-    fileprivate func finishRunReceipt(
+    func finishRunReceipt(
         runID: UUID,
         isActive: Bool,
         termination: WorkflowRunTermination
@@ -1249,7 +1251,7 @@ extension SessionCoordinator {
                 return
             }
             guard case .persistenceFailed = error else {
-                await recordRunReceiptCoordinationFailure(
+                await outputExecutor.recordRunReceiptCoordinationFailure(
                     runID: runID,
                     reason: "finish-failed"
                 )
@@ -1258,21 +1260,20 @@ extension SessionCoordinator {
             // Persistence failure was already recorded by the recorder. The
             // runCompleted/runFailed lifecycle still reflects actual execution.
         } catch {
-            await recordRunReceiptCoordinationFailure(
+            await outputExecutor.recordRunReceiptCoordinationFailure(
                 runID: runID,
                 reason: "finish-failed"
             )
         }
     }
 
-    fileprivate func terminalReceiptForFailure(
+    func terminalReceiptForFailure(
         _ error: any Error,
         stage: WorkflowRunStage,
         code: WorkflowRunFailureCode
     ) -> WorkflowRunTermination {
         if let actionFailure = error as? OutputActionExecutionFailure,
-            actionFailure.successfulActionCount > 0
-        {
+           actionFailure.successfulActionCount > 0 {
             return .partiallyCompleted(code: .processing)
         }
         if code == .cancelled {
@@ -1281,7 +1282,7 @@ extension SessionCoordinator {
         return .failed(stage: stage, code: code)
     }
 
-    fileprivate func workflowRunCancellationSummary(
+    func workflowRunCancellationSummary(
         for error: any Error,
         runID: UUID,
         stage: WorkflowRunStage
@@ -1301,156 +1302,7 @@ extension SessionCoordinator {
         )
     }
 
-    fileprivate func executeRecordedAction(
-        _ action: any OutputAction,
-        actionID: String,
-        actionIndex: Int,
-        text: String,
-        recordDraft: RecordDraft? = nil,
-        context: ActionContext,
-        runID: UUID,
-        workflow: WorkflowPresentation,
-        receiptIsActive: Bool
-    ) async throws -> ActionResult {
-        let actionStartedAt = ContinuousClock.now
-        try Task.checkCancellation()
-        if receiptIsActive, let runReceiptRecorder {
-            do {
-                try await runReceiptRecorder.beginAction(
-                    runID: runID,
-                    actionIndex: actionIndex
-                )
-            } catch {
-                await recordRunReceiptCoordinationFailure(
-                    runID: runID,
-                    reason: "action-begin-failed"
-                )
-                throw RunReceiptActionPreparationFailure()
-            }
-        }
-
-        let result: ActionResult
-        do {
-            try Task.checkCancellation()
-            let record =
-                recordDraft
-                ?? RecordDraft(
-                    payload: .text(text),
-                    provenance: RecordProvenance(
-                        source: RecordSourceIdentity(kind: .workflow),
-                        sourceApplicationName: context.contextSnapshot.focus.applicationName,
-                        sourceBundleIdentifier: context.contextSnapshot.focus.bundleIdentifier,
-                        workflowID: context.workflow.id,
-                        workflowRunID: context.runID,
-                        workflow: context.workflow.presentation,
-                        captureTags: context.workflow.excludesOutputFromRecordCapture
-                            ? [.excludeFromWorkflowCapture]
-                            : [],
-                        alternatives: context.recognitionResult.candidateSets.flatMap { set in
-                            set.candidates.map(\.text)
-                        }
-                    ),
-                    createdAt: context.finishedAt
-                )
-            result = try await action.execute(record: record, context: context)
-        } catch let failure as CommittedOutputFailure {
-            let result = ActionResult.injected
-            await finishRecordedAction(
-                runID: runID,
-                actionIndex: actionIndex,
-                result: WorkflowActionResultCode(result),
-                receiptIsActive: receiptIsActive
-            )
-            await eventBus.publish(.actionExecuted(run: .init(runID: runID, lane: lane), actionID: actionID, result: result))
-            await runDiagnostics.recordAction(
-                runID: runID,
-                workflow: workflow,
-                actionID: actionID,
-                result: result,
-                durationMilliseconds: DiagnosticTiming.milliseconds(since: actionStartedAt)
-            )
-            throw failure
-        } catch is CancellationError {
-            await finishRecordedAction(
-                runID: runID,
-                actionIndex: actionIndex,
-                result: .cancelled,
-                receiptIsActive: receiptIsActive
-            )
-            throw CancellationError()
-        } catch {
-            await finishRecordedAction(
-                runID: runID,
-                actionIndex: actionIndex,
-                result: .failed,
-                receiptIsActive: receiptIsActive
-            )
-            await runDiagnostics.recordAction(
-                runID: runID,
-                workflow: workflow,
-                actionID: actionID,
-                result: .failed(""),
-                durationMilliseconds: DiagnosticTiming.milliseconds(since: actionStartedAt)
-            )
-            throw error
-        }
-
-        await finishRecordedAction(
-            runID: runID,
-            actionIndex: actionIndex,
-            result: WorkflowActionResultCode(result),
-            receiptIsActive: receiptIsActive
-        )
-        await eventBus.publish(.actionExecuted(run: .init(runID: runID, lane: lane), actionID: actionID, result: result))
-        await runDiagnostics.recordAction(
-            runID: runID,
-            workflow: workflow,
-            actionID: actionID,
-            result: result,
-            durationMilliseconds: DiagnosticTiming.milliseconds(since: actionStartedAt)
-        )
-        return result
-    }
-
-    fileprivate func finishRecordedAction(
-        runID: UUID,
-        actionIndex: Int,
-        result: WorkflowActionResultCode,
-        receiptIsActive: Bool
-    ) async {
-        guard receiptIsActive, let runReceiptRecorder else { return }
-        do {
-            try await runReceiptRecorder.finishAction(
-                runID: runID,
-                actionIndex: actionIndex,
-                result: result
-            )
-        } catch {
-            await recordRunReceiptCoordinationFailure(
-                runID: runID,
-                reason: "action-finish-failed"
-            )
-        }
-    }
-
-    fileprivate func recordRunReceiptCoordinationFailure(
-        runID: UUID,
-        reason: String
-    ) async {
-        guard let diagnostics else { return }
-        await diagnostics.record(
-            DiagnosticEvent(
-                runID: runID,
-                subsystem: .session,
-                level: .error,
-                event: "run-receipt.coordination.failed",
-                message: "Run receipt coordination failed.",
-                metadata: ["reason": reason]
-            )
-        )
-    }
-
-    fileprivate func publishFailure(
+    func publishFailure(
         runID: UUID?,
         workflow: WorkflowPresentation?,
         message: String,
@@ -1462,7 +1314,7 @@ extension SessionCoordinator {
                     runID: runID,
                     subsystem: .session,
                     level: .error,
-                    event: "session.failure",
+                    event: .sessionFailure,
                     message: message,
                     metadata: failure.map {
                         ["stage": $0.stage.rawValue, "failureCode": $0.code.rawValue]
@@ -1473,14 +1325,14 @@ extension SessionCoordinator {
         await eventBus.publish(.runFailed(runID: runID, workflow: workflow, message: message))
     }
 
-    fileprivate func publishCancellation(_ summary: WorkflowRunCancelledSummary) async {
+    func publishCancellation(_ summary: WorkflowRunCancelledSummary) async {
         if let diagnostics {
             await diagnostics.record(
                 DiagnosticEvent(
                     runID: summary.runID,
                     subsystem: .session,
                     level: .info,
-                    event: "session.cancelled",
+                    event: .sessionCancelled,
                     message: "Workflow run was cancelled.",
                     metadata: [
                         "outcome": summary.wasPartiallyCompleted ? "partial" : "cancelled",
@@ -1530,7 +1382,7 @@ extension SessionCoordinator {
             workflow: workflow.presentation,
             metadata: [
                 "workflowID": workflow.id.uuidString,
-                "trigger": workflow.trigger.rawValue,
+                "trigger": workflow.trigger.rawValue
             ]
         )
 
@@ -1539,7 +1391,7 @@ extension SessionCoordinator {
         if let providedRecognitionOptions {
             recognitionOptions = providedRecognitionOptions
         } else {
-            recognitionOptions = await recognitionOptionsProvider(workflow, contextSnapshot)
+            recognitionOptions = try await recognitionOptionsProvider(workflow, contextSnapshot)
         }
         if let preparedRecognition, compilationInput == nil {
             await recordCompiledPlan(preparedRecognition.plan, runID: runID, workflow: workflow.presentation)
@@ -1557,7 +1409,9 @@ extension SessionCoordinator {
                 ?? workflow.metadata[WorkflowMetadataKey.languageOverride]
         )
         let collections: [VocabularyCollection]
-        if workflow.plan.setup.vocabularyBindings.isEmpty {
+        if let snapshot = recognitionOptions.vocabulary {
+            collections = snapshot.collections
+        } else if workflow.plan.setup.vocabularyBindings.isEmpty {
             collections = []
         } else {
             do {
@@ -1615,8 +1469,9 @@ extension SessionCoordinator {
             metadata: ["recognizerID": recognizerID]
         )
         var options = session.recognitionOptions
+        options.vocabulary = nil
         if !recognizer.capabilities.supports(.keyterm),
-            session.resolvedPlan.validHotwordCount > 0
+           session.resolvedPlan.validHotwordCount > 0
         {
             await recordUnsupportedRecognitionHints(
                 count: session.resolvedPlan.validHotwordCount,
@@ -1627,9 +1482,8 @@ extension SessionCoordinator {
         }
         let request = RecognitionRequest(
             runID: session.runID,
-            workflow: session.workflow,
             contextSnapshot: session.contextSnapshot,
-            triggerEvent: triggerEvent,
+            priority: triggerEvent?.binding == .hotkey ? .interactive : .foregroundFinal,
             capturedAudio: capturedAudio,
             options: options
         )
@@ -1678,15 +1532,15 @@ extension SessionCoordinator {
         session: RunSession
     ) async {
         guard let diagnostics else { return }
-        let event: String
+        let event: DiagnosticEventName
         let message: String
         let metadata = ["recognizerID": recognizerID]
         switch error {
         case .timedOut:
-            event = "session.recognition.timeout"
+            event = .sessionRecognitionTimeout
             message = "Speech recognition exceeded its runtime deadline."
         case .previousOperationStillFinishing:
-            event = "session.recognition.recovery-pending"
+            event = .sessionRecognitionRecoveryPending
             message = "The recognizer is still retiring a previous operation."
         }
         await diagnostics.record(
@@ -1767,7 +1621,7 @@ extension SessionCoordinator {
                 runID: session.runID,
                 subsystem: .providers,
                 level: .info,
-                event: "session.recognition-hints.unsupported",
+                event: .sessionRecognitionHintsUnsupported,
                 message: "The selected recognizer does not support the resolved recognition hints.",
                 metadata: [
                     "count": String(count),
@@ -1789,7 +1643,7 @@ extension SessionCoordinator {
                 runID: runID,
                 subsystem: .session,
                 level: .debug,
-                event: "session.workflow-plan.compiled",
+                event: .sessionWorkflowPlanCompiled,
                 message: "Compiled the workflow plan for this run.",
                 metadata: [
                     "workflow": workflow.fallbackName,
@@ -1813,86 +1667,10 @@ extension SessionCoordinator {
         in session: RunSession
     ) async throws -> DeliveryExecutionSummary {
         state = .delivering(session.runID)
-        let deliveryMetadata = [
-            "actionCount": String(session.resolvedPlan.declaration.output.actions.count)
-        ]
-        await runDiagnostics.recordStage(
-            .delivering,
-            runID: session.runID,
-            workflow: session.presentation,
-            metadata: deliveryMetadata
+        return try await outputExecutor.deliver(
+            finalText: finalText, recognition: recognition, in: session,
+            bufferEntryID: speechBufferInputs[session.runID]?.id
         )
-        var actionContext = ActionContext(
-            runID: session.runID,
-            workflow: session.workflow,
-            contextSnapshot: session.contextSnapshot,
-            recognitionResult: recognition,
-            finalText: finalText,
-            startedAt: session.startedAt,
-            finishedAt: Date()
-        )
-
-        var summary = DeliveryExecutionSummary()
-        for (actionIndex, reference) in session.resolvedPlan.declaration.output.actions.enumerated()
-        {
-            guard let action = actionRegistry.action(for: reference.id) else {
-                throw SessionError.missingAction(reference.id)
-            }
-            actionContext.actionConfiguration = session.resolvedPlan.outputConfigurations[actionIndex]
-            let result: ActionResult
-            do {
-                try Task.checkCancellation()
-                if let condition = reference.condition,
-                    try !condition.evaluate(text: finalText, context: session.contextSnapshot)
-                {
-                    if session.receiptIsActive, let runReceiptRecorder {
-                        try await runReceiptRecorder.beginAction(
-                            runID: session.runID, actionIndex: actionIndex)
-                        try await runReceiptRecorder.finishAction(
-                            runID: session.runID, actionIndex: actionIndex,
-                            result: WorkflowActionResultCode.skipped)
-                    }
-                    summary.skippedActionCount += 1
-                    continue
-                }
-                result = try await executeRecordedAction(
-                    action,
-                    actionID: reference.id,
-                    actionIndex: actionIndex,
-                    text: finalText,
-                    context: actionContext,
-                    runID: session.runID,
-                    workflow: session.presentation,
-                    receiptIsActive: session.receiptIsActive
-                )
-            } catch is CancellationError {
-                throw OutputActionCancellation(
-                    successfulActionCount: summary.successfulActionCount
-                )
-            } catch let failure as CommittedOutputFailure {
-                throw OutputActionExecutionFailure(
-                    message: failure.message,
-                    successfulActionCount: summary.successfulActionCount + 1
-                )
-            } catch {
-                throw OutputActionExecutionFailure(
-                    message: error.localizedDescription,
-                    successfulActionCount: summary.successfulActionCount
-                )
-            }
-            switch result {
-            case .injected, .copiedToClipboard, .storedRecord, .externalOutput:
-                summary.successfulActionCount += 1
-            case .skipped:
-                summary.skippedActionCount += 1
-            case .failed(let message):
-                throw OutputActionExecutionFailure(
-                    message: message,
-                    successfulActionCount: summary.successfulActionCount
-                )
-            }
-        }
-        return summary
     }
 
     @discardableResult
@@ -1919,9 +1697,7 @@ extension SessionCoordinator {
             .completed,
             runID: session.runID,
             workflow: session.presentation,
-            metadata: [
-                "durationMillis": String(Int(Date().timeIntervalSince(session.startedAt) * 1000))
-            ]
+            metadata: ["durationMillis": String(Int(Date().timeIntervalSince(session.startedAt) * 1000))]
         )
         state = .idle
         return summary
@@ -1936,45 +1712,47 @@ private enum RunReceiptRegistration: Sendable, Equatable {
     case duplicate
 }
 
-private struct DeliveryExecutionSummary: Sendable, Equatable {
-    var successfulActionCount = 0
-    var skippedActionCount = 0
-
-    var terminalReceipt: WorkflowRunTermination {
-        if successfulActionCount == 0, skippedActionCount > 0 {
-            return .skipped(reason: .allActionsSkipped)
-        }
-        if successfulActionCount > 0, skippedActionCount > 0 {
-            return .partiallyCompleted(code: .processing)
-        }
-        return .completed
-    }
-}
-
-private struct OutputActionExecutionFailure: Error, LocalizedError {
-    let message: String
-    let successfulActionCount: Int
-
-    var errorDescription: String? { message }
-}
-
-private struct OutputActionCancellation: Error {
-    let successfulActionCount: Int
-}
-
-private struct RunReceiptActionPreparationFailure: Error, LocalizedError {
-    var errorDescription: String? {
-        "The output action could not start because run receipt coordination failed."
-    }
-}
-
-extension SessionCoordinator.State {
-    fileprivate var runIdentifier: UUID? {
+private extension SessionCoordinator.State {
+    var runIdentifier: UUID? {
         switch self {
         case .idle:
             return nil
         case .running(let runID), .resolving(let runID), .delivering(let runID):
             return runID
+        }
+    }
+}
+
+
+extension SessionCoordinator {
+    func observeCollectedSpeech(runID: UUID, workflow: WorkflowDefinition) async throws -> BufferInputReservation? {
+        guard workflow.metadata[WorkflowMetadataKey.collectSpeech] == "true" else { return nil }
+        if let reservation = speechBufferInputs[runID] { return reservation }
+        let reservation = try await recordStore.observeBufferInput(in: RecordBuffer.speechID)
+        speechBufferInputs[runID] = reservation
+        return reservation
+    }
+
+    func finishCollectedSpeech(runID: UUID) async {
+        guard let reservation = speechBufferInputs[runID] else { return }
+        _ = try? await reservation.committed.value
+        let id = reservation.id
+        do {
+            try await recordStore.cancelBufferInput(id)
+            speechBufferInputs.removeValue(forKey: runID)
+        } catch {
+            guard !bufferCleanupIsShuttingDown, speechBufferCleanupTasks[runID] == nil else { return }
+            speechBufferCleanupTasks[runID] = Task {
+                while !Task.isCancelled {
+                    do {
+                        try await Task.sleep(for: .milliseconds(250))
+                        try await recordStore.cancelBufferInput(id)
+                        speechBufferInputs.removeValue(forKey: runID)
+                        break
+                    } catch { if Task.isCancelled { break } }
+                }
+                speechBufferCleanupTasks.removeValue(forKey: runID)
+            }
         }
     }
 }

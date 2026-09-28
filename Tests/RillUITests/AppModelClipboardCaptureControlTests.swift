@@ -1,28 +1,31 @@
 import XCTest
+import RillTestSupport
 @testable import RillCore
 @testable import RillUI
 
 @MainActor
 extension AppModelTests {
     func testSystemClipboardCaptureControlsForwardActionsAndReflectControllerState() {
-        let harness = makeHarness()
         var enablementRequests: [Bool] = []
         var preferenceRevisions: [UInt64] = []
         var ignoreNextRequestCount = 0
-        harness.model.installSystemClipboardCaptureControlActions(
-            setEnabled: { enabled, revision in
-                enablementRequests.append(enabled)
-                preferenceRevisions.append(revision)
-            },
-            ignoreNextExternalChange: { ignoreNextRequestCount += 1 }
+        let harness = makeHarness(
+            recordInteractionServices: makeRecordInteractionServicesForTesting(
+                setCaptureEnabled: { enabled, revision in
+                    enablementRequests.append(enabled)
+                    preferenceRevisions.append(revision)
+                },
+                ignoreNextExternalChange: { ignoreNextRequestCount += 1 }
+            )
         )
+
         XCTAssertEqual(enablementRequests, [true])
         XCTAssertEqual(preferenceRevisions, [0])
 
         harness.model.toggleClipboardCaptureEnabled()
         XCTAssertEqual(enablementRequests, [true, false])
         XCTAssertEqual(preferenceRevisions, [0, 1])
-        XCTAssertFalse(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertFalse(harness.model.settings.systemClipboardCaptureEnabled)
 
         harness.model.updateSystemClipboardCaptureControlState(
             SystemClipboardCaptureControlSnapshot(revision: 1, state: .paused)
@@ -34,7 +37,7 @@ extension AppModelTests {
         harness.model.toggleClipboardCaptureEnabled()
         XCTAssertEqual(enablementRequests, [true, false, true])
         XCTAssertEqual(preferenceRevisions, [0, 1, 2])
-        XCTAssertTrue(harness.model.systemClipboardCaptureEnabled)
+        XCTAssertTrue(harness.model.settings.systemClipboardCaptureEnabled)
         harness.model.updateSystemClipboardCaptureControlState(
             SystemClipboardCaptureControlSnapshot(revision: 2, state: .ignoringNextExternalChange)
         )

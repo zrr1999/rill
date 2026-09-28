@@ -79,13 +79,11 @@ public enum RecordSemanticPanelState: Equatable {
 public final class RecordQuickPanelModel {
   public var pasteTargetName: String?
 
-  public var searchText = "" { didSet { if oldValue != searchText { scheduleSearch() } } }
-  public var pinnedOnly = false { didSet { if oldValue != pinnedOnly { scheduleSearch() } } }
-  public var currentAppOnly = false {
-    didSet { if oldValue != currentAppOnly { scheduleSearch() } }
-  }
-  public var kind: RecordPayloadKind? { didSet { if oldValue != kind { scheduleSearch() } } }
-  public var selectedID: RecordID? { didSet { if selectedID != oldValue { loadPreview() } } }
+  public private(set) var searchText = ""
+  public private(set) var pinnedOnly = false
+  public private(set) var currentAppOnly = false
+  public private(set) var kind: RecordPayloadKind?
+  public private(set) var selectedID: RecordID?
   public private(set) var results: [RecordSummary] = []
   public private(set) var capacity = RecordCapacity(count: 0, byteCount: 0)
   public private(set) var isSearching = false
@@ -94,6 +92,7 @@ public final class RecordQuickPanelModel {
   public private(set) var preview: RecordProjection?
   public private(set) var message: QuickRecordText?
   public private(set) var nextOffset: Int?
+  public let buffers: RecordBufferModel
   public let cleanup: RecordCleanupModel
   public let jev: RecordJevPanelModel?
   public private(set) var semanticResults: [RecordSummary] = []
@@ -115,7 +114,13 @@ public final class RecordQuickPanelModel {
   private var searchRevision: UInt64?
   private var searchCursor: RecordSearchCursor?
 
-  public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, jevSettings: JevAPISettingsModel? = nil) {
+  public init(
+    store: RecordStore,
+    semanticSearch: RecordSemanticSearch? = nil,
+    jevSettings: JevAPISettingsModel? = nil,
+    buffers: RecordBufferModel? = nil
+  ) {
+    self.buffers = buffers ?? RecordBufferModel(store: store)
     self.store = store
     self.semanticSearch = semanticSearch
     jev = jevSettings.map { RecordJevPanelModel(settings: $0) }
@@ -128,7 +133,46 @@ public final class RecordQuickPanelModel {
     for task in semanticTasks.values { task.cancel() }
   }
 
+  public func setSearchText(_ value: String) {
+    guard !isClosed, searchText != value else { return }
+    searchText = value
+    scheduleSearch()
+  }
+
+  public func setPinnedOnly(_ value: Bool) {
+    guard !isClosed, pinnedOnly != value else { return }
+    pinnedOnly = value
+    scheduleSearch()
+  }
+
+  public func setCurrentAppOnly(_ value: Bool) {
+    guard !isClosed, currentAppOnly != value else { return }
+    currentAppOnly = value
+    scheduleSearch()
+  }
+
+  public func setKind(_ value: RecordPayloadKind?) {
+    guard !isClosed, kind != value else { return }
+    kind = value
+    scheduleSearch()
+  }
+
+  public func select(_ id: RecordID?) {
+    guard !isClosed, selectedID != id else { return }
+    selectedID = id
+    loadPreview()
+  }
+
+  func waitForSearch() async {
+    repeat {
+      let generation = searchGeneration
+      await searchTask?.value
+      if generation == searchGeneration { return }
+    } while true
+  }
+
   public func start(sourceBundleIdentifier: String?) {
+    buffers.start()
     stop()
     self.sourceBundleIdentifier = sourceBundleIdentifier
     searchText = ""
@@ -210,7 +254,7 @@ public final class RecordQuickPanelModel {
     semanticState = .idle
     semanticProgress = nil
     semanticLimitedRecordCount = 0
-    if !results.contains(where: { $0.id == selectedID }) { selectedID = results.first?.id }
+    if !results.contains(where: { $0.id == selectedID }) { select(results.first?.id) }
   }
 
   public func searchByMeaning(downloadIfNeeded: Bool = false) {
@@ -238,7 +282,7 @@ public final class RecordQuickPanelModel {
         self.semanticLimitedRecordCount = result.limitedRecordCount
         self.semanticState = .ready
         self.semanticProgress = nil
-        if self.selectedID == nil { self.selectedID = self.selectableResults.first?.id }
+        if self.selectedID == nil { self.select(self.selectableResults.first?.id) }
       } catch {
         guard !Task.isCancelled, let self, self.semanticRequestID == requestID else { return }
         switch error {
@@ -260,12 +304,12 @@ public final class RecordQuickPanelModel {
   public func moveSelection(_ offset: Int) {
     let results = selectableResults
     guard !results.isEmpty else {
-      selectedID = nil
+      select(nil)
       return
     }
     let index =
       selectedID.flatMap { id in results.firstIndex { $0.id == id } } ?? (offset > 0 ? -1 : 0)
-    selectedID = results[min(max(index + offset, 0), results.count - 1)].id
+    select(results[min(max(index + offset, 0), results.count - 1)].id)
   }
 
   public func togglePreview() {
@@ -371,7 +415,7 @@ public final class RecordQuickPanelModel {
 
   public func selectJevCandidate(_ id: RecordID) {
     guard !isClosed, selectableResults.contains(where: { $0.id == id }) else { return }
-    selectedID = id
+    select(id)
   }
 
   private func scheduleSearch(offset: Int = 0) {

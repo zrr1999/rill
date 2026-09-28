@@ -2340,7 +2340,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       timestamp: Date(timeIntervalSince1970: 15),
       subsystem: .records,
       level: .info,
-      event: "persistence.must-remain",
+      event: .persistenceMustRemain,
       message: "History cleanup must not remove diagnostics."
     )
     try await store.save(diagnostic)
@@ -2469,7 +2469,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       runID: runID,
       subsystem: .providers,
       level: .warning,
-      event: "providers.warning",
+      event: .providersWarning,
       message: "provider warning",
       metadata: ["source": "tests"]
     )
@@ -2542,7 +2542,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         DiagnosticEvent(
           subsystem: .session,
           level: .warning,
-          event: eventCode,
+          untrustedEvent: eventCode,
           message: "unsafe diagnostic event"
         )
       )
@@ -2593,7 +2593,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       DiagnosticEvent(
         subsystem: .providers,
         level: .warning,
-        event: unknownEventCode,
+        untrustedEvent: unknownEventCode,
         message: "unsafe",
         metadata: [
           "actionID": alphanumericCanary,
@@ -2838,7 +2838,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       timestamp: Date(timeIntervalSince1970: 200),
       subsystem: .records,
       level: .warning,
-      event: "persistence.sentinel-control",
+      event: .persistenceSentinelControl,
       message: "Diagnostic control remains after history cleanup."
     )
 
@@ -2890,7 +2890,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       timestamp: Date(timeIntervalSince1970: 200),
       subsystem: .session,
       level: .warning,
-      event: persistedEventSentinel,
+      untrustedEvent: persistedEventSentinel,
       message: diagnosticSentinel
     )
 
@@ -3608,7 +3608,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       timestamp: Date(timeIntervalSince1970: timestamp),
       subsystem: .session,
       level: .info,
-      event: "diagnostic.\(name)",
+      untrustedEvent: "diagnostic.\(name)",
       message: name
     )
   }

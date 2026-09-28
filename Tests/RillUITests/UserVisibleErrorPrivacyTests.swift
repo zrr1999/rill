@@ -75,9 +75,9 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertFalse(harness.model.areHistoryRetentionSettingsAvailable)
-        XCTAssertNotNil(harness.model.historyRetentionSettingsError)
-        XCTAssertNotNil(harness.model.privacySettingsLoadError)
+        XCTAssertFalse(harness.model.history.areHistoryRetentionSettingsAvailable)
+        XCTAssertNotNil(harness.model.history.historyRetentionSettingsError)
+        XCTAssertNotNil(harness.model.settings.privacySettingsLoadError)
         XCTAssertThrowsError(try source.currentSettings())
         assertSentinelIsAbsent(from: harness.model)
     }
@@ -98,9 +98,9 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
 
         await harness.model.waitForInitialVoiceConfiguration()
 
-        XCTAssertEqual(harness.model.recordHistoryVisibility, .all)
+        XCTAssertEqual(harness.model.settings.recordHistoryVisibility, .all)
         XCTAssertFalse(source.hasAvailableSettings)
-        XCTAssertNotNil(harness.model.privacySettingsLoadError)
+        XCTAssertNotNil(harness.model.settings.privacySettingsLoadError)
         let activity = await store.activitySnapshot()
         XCTAssertEqual(activity.storage[.privacyCloudConfirmationRequired], sentinel)
         XCTAssertNil(activity.setCounts[.privacyCloudConfirmationRequired])
@@ -117,11 +117,11 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         await harness.model.waitForInitialVoiceConfiguration()
 
         harness.model.setPrivacyCloudConfirmationRequired(false)
-        await harness.model.waitForPendingPrivacySettingsWrite()
+        await harness.model.settings.writes.flush()
 
-        XCTAssertNotNil(harness.model.privacySettingsSaveError)
-        XCTAssertFalse(harness.model.isSavingPrivacySettings)
-        XCTAssertFalse(harness.model.privacyPolicySettings.cloudConfirmationRequired)
+        XCTAssertNotNil(harness.model.settings.privacySettingsSaveError)
+        XCTAssertFalse(harness.model.settings.isSavingPrivacySettings)
+        XCTAssertFalse(harness.model.settings.privacyPolicySettings.cloudConfirmationRequired)
         assertSentinelIsAbsent(from: harness.model)
     }
 
@@ -141,7 +141,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         await waitForHistoryMaintenance(harness)
 
         XCTAssertEqual(harness.model.recordRetentionPeriod, .thirtyDays)
-        XCTAssertNotNil(harness.model.historyRetentionSettingsError)
+        XCTAssertNotNil(harness.model.history.historyRetentionSettingsError)
         let maintenanceCalls = await maintenance.callSnapshot()
         XCTAssertTrue(maintenanceCalls.isEmpty)
         assertSentinelIsAbsent(from: harness.model)
@@ -159,7 +159,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         harness.model.runWorkflow(harness.workflow)
         await harness.model.waitForInteractiveWorkflowRun()
         XCTAssertNotNil(harness.model.lastFailure)
-        XCTAssertFalse(harness.model.isRunning)
+        XCTAssertFalse(harness.model.voice.isRunning)
         assertSentinelIsAbsent(from: harness.model)
     }
 
@@ -171,7 +171,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             .runFailed(runID: nil, workflow: nil, message: sentinel)
         )
         await waitForEventProcessing(harness)
-        let expectedFailure = harness.model.language == .english
+        let expectedFailure = harness.model.settings.language == .english
             ? HistoryFailureSanitizer.genericMessage
             : "工作流失败。请在诊断中查看安全摘要后重试。"
         XCTAssertEqual(
@@ -184,7 +184,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         )
         await waitForEventProcessing(harness)
 
-        let entry = try XCTUnwrap(harness.model.eventFeed.last)
+        let entry = try XCTUnwrap(harness.model.history.eventFeed.last)
         XCTAssertEqual(entry.english, "An output action failed. Open Diagnostics for a safe summary, then retry.")
         assertSentinelIsAbsent(from: harness.model)
     }
@@ -193,7 +193,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         let harness = makeHarness()
         await waitForListenerSetup(harness)
 
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         await harness.eventBus.publish(
             .runFailed(
                 runID: nil,
@@ -204,7 +204,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         await waitForEventProcessing(harness)
         XCTAssertEqual(harness.model.lastFailure, HistoryFailureSanitizer.noSpeechMessage)
 
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
         await harness.eventBus.publish(
             .runFailed(
                 runID: nil,
@@ -220,7 +220,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         let harness = makeHarness()
         await waitForListenerSetup(harness)
 
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -234,7 +234,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             HistoryFailureSanitizer.globalInputUnavailableMessage
         )
 
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -250,7 +250,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         let harness = makeHarness()
         await waitForListenerSetup(harness)
 
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -264,7 +264,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             HistoryFailureSanitizer.recognitionTimeoutMessage
         )
 
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -283,7 +283,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
         let harness = makeHarness()
         await waitForListenerSetup(harness)
 
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -297,7 +297,7 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
             HistoryFailureSanitizer.recognitionRecoveryPendingMessage
         )
 
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
         await harness.eventBus.publish(
             .runFailed(
                 runID: UUID(),
@@ -315,11 +315,11 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
     func testUnknownFailedAudioRecoveryErrorUsesFixedBilingualCopy() {
         let harness = makeHarness()
 
-        harness.model.language = .english
+        harness.model.applyLanguage(.english)
         let english = harness.model.localizedRecoveryErrorDetail(
             UserVisibleErrorPrivacySentinel.backend
         )
-        harness.model.language = .simplifiedChinese
+        harness.model.applyLanguage(.simplifiedChinese)
         let simplifiedChinese = harness.model.localizedRecoveryErrorDetail(
             UserVisibleErrorPrivacySentinel.backend
         )
@@ -340,12 +340,12 @@ final class UserVisibleErrorPrivacyTests: XCTestCase {
     ) {
         let visibleText = [
             model.lastFailure,
-            model.privacySettingsLoadError,
-            model.privacySettingsSaveError,
-            model.historyRetentionSettingsError,
+            model.settings.privacySettingsLoadError,
+            model.settings.privacySettingsSaveError,
+            model.history.historyRetentionSettingsError,
         ]
         .compactMap { $0 }
-        + model.eventFeed.flatMap { [$0.english, $0.simplifiedChinese] }
+        + model.history.eventFeed.flatMap { [$0.english, $0.simplifiedChinese] }
 
         XCTAssertFalse(
             visibleText.contains { $0.contains(sentinel) },

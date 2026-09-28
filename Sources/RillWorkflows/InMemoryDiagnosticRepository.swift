@@ -1,7 +1,7 @@
 import Foundation
 import RillCore
 
-public actor InMemoryDiagnosticRepository: DiagnosticRepository {
+public actor InMemoryDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
     private struct StoredEvent: Sendable {
         var event: DiagnosticEvent
         var generation: RunHistoryWriteGeneration

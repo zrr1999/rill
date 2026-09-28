@@ -1,7 +1,8 @@
-
 @testable import RillApp
 @testable import RillRecords
 @testable import RillWorkflows
+import RillDomainTestSupport
+import RillTestSupport
 import AppKit
 import XCTest
 @testable import RillCore
@@ -484,15 +485,15 @@ final class RecordPanelControllerTests: XCTestCase {
         let eventBus = EventBus()
         let resolver = CandidateResolver(eventBus: eventBus)
         let actionRegistry = OutputActionRegistry(actions: [])
-        let coordinator = SessionCoordinator(
-            contextProvider: RecordPanelDigitTestContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: actionRegistry,
             candidateResolver: resolver,
             eventBus: eventBus
         )
-        return AppModel(
+        return makeAppModelForTesting(
             workflows: [],
             eventBus: eventBus,
             sessionCoordinator: coordinator,
@@ -531,6 +532,10 @@ private struct LargePanelCatalogFixture: RecordCatalogPersistenceStore {
         for collection in seed.collections { try append(.collection, collection.id.description, collection) }
         for rule in seed.captureRules { try append(.captureRule, rule.id.description, rule) }
         for rule in seed.deliveryRules { try append(.deliveryRule, rule.id.description, rule) }
+        for buffer in RecordBuffer.defaults {
+          nodes.append(.init(kind: .buffer, id: buffer.id.description, value: try encoder.encode(buffer)))
+        }
+        nodes.append(.init(kind: .bufferClock, id: "input-sequence", value: try encoder.encode(UInt64(1))))
         var order: [RecordID] = []
         var references: [RecordGraphPersistenceBlobReference] = []
         for index in 0..<10_000 {

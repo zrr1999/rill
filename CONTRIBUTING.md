@@ -19,8 +19,8 @@
 swift --version
 xcrun metal -v
 uv run --quiet --no-project --python '>=3.11' python --version
-scripts/swift_locked.sh build
-bash scripts/test.sh
+scripts/preflight.sh swift build
+scripts/preflight.sh test
 ```
 
 安装 Git hooks，并通过统一入口运行开发门禁：
@@ -30,6 +30,7 @@ just install
 just check
 just build          # 默认只构建 Debug RillApp
 just test
+scripts/preflight.sh swift test-domain --filter SessionCoordinatorTests
 just test-scripts   # 独立运行构建、发布、安全和图标脚本测试
 just bench          # 校验离线性能样本；CodSpeed 用法见 Benchmarks/README.md
 just ci             # 保留增量产物的完整门禁
@@ -41,11 +42,11 @@ just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 这些项目专用检查集中在 `just ci` / `scripts/preflight.sh`，生成物和安全门禁
 仍然是提交前必须完成的检查。新增通用检查时优先复用维护中的上游工具。
 
-`scripts/tests/run.sh` 是脚本策略测试的统一入口，由 `just test-scripts` 和
+`scripts/preflight.sh test-scripts` 是脚本策略测试的统一入口，由 `just test-scripts` 和
 完整预检共同调用；各测试文件只负责自己的行为，不再嵌套运行其他测试套件。
 第三方许可证检查需要真实依赖 checkout，仍在预检完成 Release 构建后执行。
 
-不要删除、绕过或手工改写 `Package.resolved`。所有 SwiftPM 构建和测试都应通过 `scripts/swift_locked.sh` 运行，以保证使用仓库锁定的依赖图。
+不要删除、绕过或手工改写 `Package.resolved`。所有 SwiftPM 构建和测试都应通过 `scripts/preflight.sh swift` 运行，以保证使用仓库锁定的依赖图。
 
 原生 MLX 路径固定使用 `mlx-audio-swift` 0.1.3 与 `mlx-swift` 0.31.4。
 `mlx-swift` 0.31.5/0.31.6 的 `CudaBuild` package plugin 会破坏当前 Xcode
@@ -68,7 +69,7 @@ CI 直接调用的 Python 脚本随附 `.py.lock`，并使用 `--no-build --lock
 
 ```bash
 tool_dir="$HOME/.local/share/rill/bin"
-bash scripts/install_gitleaks.sh --destination "$tool_dir"
+scripts/preflight.sh install-gitleaks --destination "$tool_dir"
 export PATH="$tool_dir:$PATH"
 gitleaks version
 ```
@@ -83,6 +84,9 @@ Debug 使用当前 worktree 的 `.build`，Release 使用 `.artifacts/build/rele
 
 `just build RillApp` 适合 App/UI 日常修改，不编译语音 worker 和 MLX。
 `swift test --filter` 只限定测试执行范围，不保证缩小首次编译范围。
+`test-domain` 从同一份 Package.swift 排除 App、UI、MLX 和原生验收测试目标，
+保留领域测试所需的依赖，并使用独立的 `.artifacts/build/domain-tests`。锁文件校验不变；
+完整 CI 仍使用未裁剪的生产图。该模式不替代 `just ci` 或 Release 模型验收。
 完整预检和打包使用绑定源码摘要的构建回执及独立产物快照；装配过程中源码或
 产物不匹配会失败。许可证验证读取该次构建实际使用的依赖 checkouts。
 
@@ -96,7 +100,7 @@ SDK、Metal 及构建参数；增加、删除或修改未提交文件也参与�
 
 - `just cache-status` 显示容量，`just cache-clean` 删除非活动条目。
 - 默认限制 10 GiB，成功使用后按最近使用情况淘汰；活动条目持有锁。
-- `scripts/swift_locked.sh release --worker-cache off` 强制使用源码。
+- `scripts/preflight.sh swift release --worker-cache off` 强制使用源码。
 - `--result-file PATH` 写入带校验值的 JSON 回执及产品快照；PATH 应放在被 Git
   忽略的目录或工作区之外。`assemble_app_bundle.sh --build-result PATH` 消费该回执。
 - `--show-bin-path` 仍返回当前 SwiftPM 产品目录。缓存命中的 worker 可以来自
@@ -137,7 +141,7 @@ SIGN_IDENTITY="Apple Development" bash scripts/release.sh --install
 | [SECURITY.md](SECURITY.md) | 支持版本、漏洞报告渠道及披露规则 |
 | [PRIVACY.md](PRIVACY.md) | 随 App 分发的技术隐私与数据流说明 |
 | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)、[LOCAL_MODEL_NOTICES.md](LOCAL_MODEL_NOTICES.md) | 第三方依赖与模型的许可及来源证据 |
-| [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[工作流](docs/workflow-toml.md)、[上下文纠错](docs/contextual-correction.md)、[UI](docs/ui-direction.md) | 开发者维护的模块、状态、执行与界面契约 |
+| [架构](docs/architecture.md)、[Record](docs/record-architecture.md)、[连续输出](docs/continuous-output.md)、[工作流](docs/workflow-toml.md)、[上下文纠错](docs/contextual-correction.md)、[UI](docs/ui-direction.md) | 开发者维护的模块、状态、执行与界面契约 |
 | [输入法工程](docs/input-method-development.md) | 独立输入法打包、探针、迁移核对与原生验收方法 |
 | [图标设计](docs/icon-design.md) | 应用与菜单栏图标的设计说明、预览及资源维护入口 |
 | [发布步骤](docs/releasing.md)、[验收清单](docs/release-qa-checklist.md) | 维护者发布流程和特定候选包的验收要求 |
@@ -187,8 +191,8 @@ RillApp           组合根
 开发时可以先运行定向测试：
 
 ```bash
-scripts/swift_locked.sh test --filter MainShellFocusIntegrationTests
-scripts/swift_locked.sh test --filter SessionCoordinatorTests
+scripts/preflight.sh swift test --filter MainShellFocusIntegrationTests
+scripts/preflight.sh swift test --filter SessionCoordinatorTests
 ```
 
 提交前必须运行完整测试与仓库门禁；`just ci` 是本地与 CI 的统一入口：
@@ -217,7 +221,7 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 | [policy-pr.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/policy-pr.yml) | Policy - PR | 只读校验 PR 标题和正文 |
 | [automation-pr-title.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题后，重跑对应的 PR 检查 |
 | [ci-tests.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-tests.yml) | CI - Tests | Linux 文档构建，以及按修改范围运行的 macOS 测试、依赖和发布预检 |
-| [ci-benchmarks.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-benchmarks.yml) | CI - Benchmarks | CodSpeed 文本预览性能测量 |
+| [ci-benchmarks.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-benchmarks.yml) | CI - Benchmarks | CodSpeed Linux 文本预览 CPU simulation 与 macOS 加密 Stack/Queue 离线校验 |
 | [cd-release.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/cd-release.yml) | CD - Release | 手动验证版本标签，经受保护环境审核后签名、公证并上传 Release 草稿 |
 
 job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接报告检查结果，
@@ -261,7 +265,7 @@ job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接
   uv run --script scripts/generate_third_party_notices.py --check
   ```
 
-- 图标的矢量事实源是 `Resources/AppIcon/Rill.svg` 和 `RillMenuBar.svg`。修改后运行 `scripts/render_brand_assets.sh`（需要 librsvg），同步提交受审 PNG、菜单栏 PDF 和同目录 `README.md` 中的 SHA-256；PNG 的新 hash 也须同步到 ICNS 生成器和图标测试。`scripts/render_app_icon_renditions.swift` 从 PNG 生成包含透明圆角和小尺寸光学调整的传统 macOS renditions，`scripts/generate_app_icon.sh` 再装配 ICNS。正常构建直接使用已提交的 PNG/PDF，不依赖 SVG 工具。`scripts/release.sh` 默认把本地产物写入被忽略的 `.artifacts/release/`；仓库根目录禁止出现 `Rill.app`、`Rill.dmg` 或 `Rill.dmg.sha256`，也不应提交临时装配目录、本地发布产物或 `.rill-release.*` 私有 staging。
+- 图标的矢量事实源是 `Resources/AppIcon/Rill.svg` 和 `RillMenuBar.svg`。修改后运行 `scripts/assemble_app_bundle.sh render-brand`（需要 librsvg），同步提交受审 PNG、菜单栏 PDF 和同目录 `README.md` 中的 SHA-256；PNG 的新 hash 也须同步到装配脚本里的 ICNS 校验和图标测试。`scripts/render_app_icon_renditions.swift` 从 PNG 生成包含透明圆角和小尺寸光学调整的传统 macOS renditions，`scripts/assemble_app_bundle.sh app-icon` 再装配 ICNS。正常构建直接使用已提交的 PNG/PDF，不依赖 SVG 工具。`scripts/release.sh` 默认把本地产物写入被忽略的 `.artifacts/release/`；仓库根目录禁止出现 `Rill.app`、`Rill.dmg` 或 `Rill.dmg.sha256`，也不应提交临时装配目录、本地发布产物或 `.rill-release.*` 私有 staging。
 
 生成器、事实源和生成结果应放在同一个提交中。
 
@@ -288,8 +292,8 @@ ZenDev CLI 及其 commit/review 组件在本地和 CI 中固定为相同版本�
 提供 base 时只检查它之后引入的提交：
 
 ```bash
-bash scripts/check_commit_messages.sh
-bash scripts/check_commit_messages.sh origin/main HEAD
+scripts/preflight.sh commit-messages
+scripts/preflight.sh commit-messages origin/main HEAD
 ```
 
 主分支保护由维护者在仓库 rules 中配置；required checks 直接引用实际 job 的

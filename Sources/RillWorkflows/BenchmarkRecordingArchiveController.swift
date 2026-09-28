@@ -51,7 +51,7 @@ public actor BenchmarkRecordingArchiveController {
         runID: runID,
         subsystem: .session,
         level: .info,
-        event: "benchmark-recording.preserved",
+        event: .benchmarkRecordingPreserved,
         message: "Encrypted audio was retained for the private ASR benchmark.",
         metadata: [
           "outcome": outcome.rawValue,

@@ -47,6 +47,10 @@ public struct KeyboardShortcut: Sendable, Equatable {
     }
 }
 
+public extension KeyboardShortcut {
+    static let outputNext = KeyboardShortcut(keyCode: 9, modifiers: [.command, .shift])
+}
+
 public enum GlobalHotkeyPolicy {
     public enum Rejection: Sendable, Equatable {
         case missingModifier

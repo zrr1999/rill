@@ -12,12 +12,12 @@ public actor DiagnosticsRecorder: DiagnosticHistoryMaintaining {
     private var currentGeneration: RunHistoryWriteGeneration = .initial
     private var lastClearIntentID: UUID?
     private let eventBus: EventBus?
-    private let repository: (any DiagnosticRepository)?
+    private let repository: (any DiagnosticRepository & DiagnosticHistoryMaintaining)?
 
     public init(
         capacity: Int = 200,
         eventBus: EventBus? = nil,
-        repository: (any DiagnosticRepository)? = nil
+        repository: (any DiagnosticRepository & DiagnosticHistoryMaintaining)? = nil
     ) {
         self.capacity = capacity
         self.eventBus = eventBus
@@ -57,7 +57,7 @@ public actor DiagnosticsRecorder: DiagnosticHistoryMaintaining {
                         runID: sanitizedEvent.runID,
                         subsystem: .session,
                         level: .error,
-                        event: "diagnostics.repository.save.failed",
+                        event: .diagnosticsRepositorySaveFailed,
                         message: "The diagnostic repository rejected an event.",
                         metadata: ["event": sanitizedEvent.event]
                     )
@@ -118,17 +118,6 @@ public actor DiagnosticsRecorder: DiagnosticHistoryMaintaining {
             removedCount = events.count(where: { $0.event.timestamp < cutoff })
         }
         events.removeAll { $0.event.timestamp < cutoff }
-        return removedCount
-    }
-
-    public func deleteEvents(through upperBound: Date) async throws -> Int {
-        let removedCount: Int
-        if let repository {
-            removedCount = try await repository.deleteEvents(through: upperBound)
-        } else {
-            removedCount = events.count(where: { $0.event.timestamp <= upperBound })
-        }
-        events.removeAll { $0.event.timestamp <= upperBound }
         return removedCount
     }
 

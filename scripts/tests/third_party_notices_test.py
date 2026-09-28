@@ -21,10 +21,7 @@ import unittest
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 GENERATOR = PROJECT_DIR / "scripts" / "generate_third_party_notices.py"
 ASSEMBLER = PROJECT_DIR / "scripts" / "assemble_app_bundle.sh"
-EXECUTABLE_VERIFIER = PROJECT_DIR / "scripts" / "verify_release_executable.sh"
-VALIDATE_MANIFEST = PROJECT_DIR / "scripts" / "validate_builtin_workflow_manifest.py"
-WRITE_INFO_PLIST = PROJECT_DIR / "scripts" / "write_info_plist.py"
-APP_ICON_GENERATOR = PROJECT_DIR / "scripts" / "generate_app_icon.sh"
+WORKFLOW_GENERATOR = PROJECT_DIR / "scripts" / "generate_builtin_workflows.py"
 APP_ICON_RENDITION_RENDERER = (
     PROJECT_DIR / "scripts" / "render_app_icon_renditions.swift"
 )
@@ -173,6 +170,108 @@ class Fixture:
             b"fixture metal library"
         )
         return build_dir
+
+    def prepare_packaging(self) -> None:
+        scripts = self.root / "scripts"
+        for source in (
+            GENERATOR,
+            ASSEMBLER,
+            WORKFLOW_GENERATOR,
+            APP_ICON_RENDITION_RENDERER,
+        ):
+            shutil.copy2(source, scripts / source.name)
+        # This suite isolates outer bundle resource provenance. The packaged Rime
+        # runtime is exercised separately against real binaries in preflight.
+        (scripts / "assemble_input_method.py").write_text(
+            "import pathlib, sys\n"
+            "pathlib.Path(sys.argv[sys.argv.index('--output') + 1]).mkdir(parents=True)\n",
+            encoding="utf-8",
+        )
+        self.app_bundle_resources = self.root / "Resources" / "AppBundle"
+        shutil.copytree(APP_BUNDLE_RESOURCES, self.app_bundle_resources)
+        self.app_icon_source = (
+            self.root / "Resources" / "AppIcon" / APP_ICON_SOURCE.name
+        )
+        self.app_icon_source.parent.mkdir(parents=True)
+        shutil.copy2(APP_ICON_SOURCE, self.app_icon_source)
+        self.privacy_notice = self.root / PRIVACY_NOTICE.name
+        shutil.copy2(PRIVACY_NOTICE, self.privacy_notice)
+        self.local_model_notices = self.root / LOCAL_MODEL_NOTICES.name
+        shutil.copy2(LOCAL_MODEL_NOTICES, self.local_model_notices)
+        for document in ("LICENSE", "README.md"):
+            shutil.copy2(PROJECT_DIR / document, self.root / document)
+        self.fake_bin = self.root / "bin"
+        self.fake_bin.mkdir()
+        fake_lipo = self.fake_bin / "lipo"
+        fake_lipo.write_text(
+            """#!/bin/sh
+if [ "$#" -ne 2 ] || [ "$2" != "-archs" ]; then
+    exit 64
+fi
+printf '%s\\n' arm64
+""",
+            encoding="utf-8",
+        )
+        fake_lipo.chmod(0o755)
+        fake_xcrun = self.fake_bin / "xcrun"
+        fake_xcrun.write_text(
+            """#!/bin/sh
+if [ "$#" -ne 5 ] || [ "$1" != "vtool" ] || [ "$2" != "-arch" ] \\
+    || [ "$4" != "-show-build" ]; then
+    exit 64
+fi
+case "$3" in
+    arm64) ;;
+    *) exit 64 ;;
+esac
+cat <<'EOF'
+Load command 9
+      cmd LC_BUILD_VERSION
+  cmdsize 32
+ platform MACOS
+    minos 14.0
+      sdk 15.2
+   ntools 1
+     tool LD
+  version 1115.7
+EOF
+""",
+            encoding="utf-8",
+        )
+        fake_xcrun.chmod(0o755)
+        self.assembler_env = {"PATH": f"{self.fake_bin}:{os.environ['PATH']}"}
+        self.app_bundle = self.root / "output" / "Rill.app"
+        self.build_dir: Path | None = None
+        self.assembler = scripts / ASSEMBLER.name
+
+    def assemble(
+        self, env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        if self.build_dir is None:
+            self.build_dir = self.create_build_products()
+        return run(
+            [
+                "bash",
+                str(self.assembler),
+                "--build-dir",
+                str(self.build_dir),
+                "--app-bundle",
+                str(self.app_bundle),
+                "--version",
+                "1.2.3",
+                "--build-number",
+                "42",
+                "--build-kind",
+                "test",
+                "--source-revision",
+                "a" * 40,
+                "--source-dirty",
+                "false",
+                "--version-label",
+                "1.2.3-test+fixture",
+            ],
+            env=self.assembler_env if env is None else env,
+        )
 
 
 class ThirdPartyNoticesTests(unittest.TestCase):
@@ -370,110 +469,27 @@ class ThirdPartyNoticesTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Checkout index flags are not allowed", result.stderr)
 
+    def expect_rejected(
+        self,
+        fragment: str,
+        *,
+        env: dict[str, str] | None = None,
+        bundle_remains: bool = False,
+    ) -> None:
+        rejected = self.fixture.assemble(env)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn(fragment, rejected.stderr)
+        if bundle_remains:
+            self.assertTrue(self.fixture.app_bundle.exists())
+
     def test_assembler_packages_reviewed_resources_and_rejects_drift(self) -> None:
-        copied_generator = self.fixture.root / "scripts" / GENERATOR.name
-        copied_assembler = self.fixture.root / "scripts" / ASSEMBLER.name
-        copied_verifier = self.fixture.root / "scripts" / EXECUTABLE_VERIFIER.name
-        copied_manifest_validator = (
-            self.fixture.root / "scripts" / VALIDATE_MANIFEST.name
-        )
-        copied_info_plist_writer = self.fixture.root / "scripts" / WRITE_INFO_PLIST.name
-        copied_icon_generator = self.fixture.root / "scripts" / APP_ICON_GENERATOR.name
-        copied_icon_renderer = (
-            self.fixture.root / "scripts" / APP_ICON_RENDITION_RENDERER.name
-        )
-        shutil.copy2(GENERATOR, copied_generator)
-        shutil.copy2(ASSEMBLER, copied_assembler)
-        shutil.copy2(EXECUTABLE_VERIFIER, copied_verifier)
-        shutil.copy2(VALIDATE_MANIFEST, copied_manifest_validator)
-        shutil.copy2(WRITE_INFO_PLIST, copied_info_plist_writer)
-        shutil.copy2(APP_ICON_GENERATOR, copied_icon_generator)
-        shutil.copy2(APP_ICON_RENDITION_RENDERER, copied_icon_renderer)
-        # This suite isolates outer bundle resource provenance. The packaged Rime
-        # runtime is exercised separately against real binaries in preflight.
-        (self.fixture.root / "scripts/assemble_input_method.py").write_text(
-            "import pathlib, sys\n"
-            "pathlib.Path(sys.argv[sys.argv.index('--output') + 1]).mkdir(parents=True)\n",
-            encoding="utf-8",
-        )
-        copied_app_bundle_resources = self.fixture.root / "Resources" / "AppBundle"
-        shutil.copytree(APP_BUNDLE_RESOURCES, copied_app_bundle_resources)
-        copied_app_icon_source = (
-            self.fixture.root / "Resources" / "AppIcon" / APP_ICON_SOURCE.name
-        )
-        copied_app_icon_source.parent.mkdir(parents=True)
-        shutil.copy2(APP_ICON_SOURCE, copied_app_icon_source)
-        copied_privacy_notice = self.fixture.root / PRIVACY_NOTICE.name
-        shutil.copy2(PRIVACY_NOTICE, copied_privacy_notice)
-        copied_local_model_notices = self.fixture.root / LOCAL_MODEL_NOTICES.name
-        shutil.copy2(LOCAL_MODEL_NOTICES, copied_local_model_notices)
         project_documents = ("LICENSE", "README.md")
-        for document in project_documents:
-            shutil.copy2(PROJECT_DIR / document, self.fixture.root / document)
-        fake_bin = self.fixture.root / "bin"
-        fake_bin.mkdir()
-        fake_lipo = fake_bin / "lipo"
-        fake_lipo.write_text(
-            """#!/bin/sh
-if [ "$#" -ne 2 ] || [ "$2" != "-archs" ]; then
-    exit 64
-fi
-printf '%s\\n' arm64
-""",
-            encoding="utf-8",
-        )
-        fake_lipo.chmod(0o755)
-        fake_xcrun = fake_bin / "xcrun"
-        fake_xcrun.write_text(
-            """#!/bin/sh
-if [ "$#" -ne 5 ] || [ "$1" != "vtool" ] || [ "$2" != "-arch" ] \\
-    || [ "$4" != "-show-build" ]; then
-    exit 64
-fi
-case "$3" in
-    arm64) ;;
-    *) exit 64 ;;
-esac
-cat <<'EOF'
-Load command 9
-      cmd LC_BUILD_VERSION
-  cmdsize 32
- platform MACOS
-    minos 14.0
-      sdk 15.2
-   ntools 1
-     tool LD
-  version 1115.7
-EOF
-""",
-            encoding="utf-8",
-        )
-        fake_xcrun.chmod(0o755)
-        assembler_env = {"PATH": f"{fake_bin}:{os.environ['PATH']}"}
+        self.fixture.prepare_packaging()
         self.fixture.generate()
-        build_dir = self.fixture.create_build_products()
-        app_bundle = self.fixture.root / "output" / "Rill.app"
-        command = [
-            "bash",
-            str(copied_assembler),
-            "--build-dir",
-            str(build_dir),
-            "--app-bundle",
-            str(app_bundle),
-            "--version",
-            "1.2.3",
-            "--build-number",
-            "42",
-            "--build-kind",
-            "test",
-            "--source-revision",
-            "a" * 40,
-            "--source-dirty",
-            "false",
-            "--version-label",
-            "1.2.3-test+fixture",
-        ]
-        assembled = run(command, env=assembler_env)
+        assembled = self.fixture.assemble()
+        app_bundle = self.fixture.app_bundle
+        build_dir = self.fixture.build_dir
+        assert build_dir is not None
         self.assertEqual(assembled.returncode, 0, assembled.stderr)
         packaged_speech_worker = (
             app_bundle / "Contents" / "Helpers" / "RillSpeechWorker"
@@ -515,14 +531,14 @@ EOF
         )
         self.assertEqual(
             packaged_privacy_notice.read_bytes(),
-            copied_privacy_notice.read_bytes(),
+            self.fixture.privacy_notice.read_bytes(),
         )
         packaged_local_model_notices = (
             app_bundle / "Contents" / "Resources" / LOCAL_MODEL_NOTICES.name
         )
         self.assertEqual(
             packaged_local_model_notices.read_bytes(),
-            copied_local_model_notices.read_bytes(),
+            self.fixture.local_model_notices.read_bytes(),
         )
         self.assertFalse(
             (
@@ -551,7 +567,7 @@ EOF
         }
         for localization, expected_description in expected_descriptions.items():
             source = (
-                copied_app_bundle_resources
+                self.fixture.app_bundle_resources
                 / f"{localization}.lproj"
                 / "InfoPlist.strings"
             )
@@ -601,11 +617,8 @@ EOF
                         source.unlink()
                     else:
                         source.write_bytes(b"")
-                    rejected = run(command, env=assembler_env)
-                    self.assertNotEqual(rejected.returncode, 0)
-                    self.assertIn(
-                        f"Project document not found or empty: {document}",
-                        rejected.stderr,
+                    self.expect_rejected(
+                        f"Project document not found or empty: {document}"
                     )
                     self.assertEqual(
                         (app_bundle / "Contents" / "Resources" / document).read_bytes(),
@@ -613,7 +626,7 @@ EOF
                     )
                     shutil.copy2(PROJECT_DIR / document, source)
 
-        fake_ditto = fake_bin / "ditto"
+        fake_ditto = self.fixture.fake_bin / "ditto"
         fake_ditto.write_text(
             """#!/bin/sh
 /usr/bin/ditto "$@" || exit $?
@@ -626,43 +639,32 @@ fi
         fake_ditto.chmod(0o755)
         for document in project_documents:
             with self.subTest(document=document, state="changed after copying"):
-                rejected = run(
-                    command,
-                    env={**assembler_env, "RILL_TEST_CHANGED_DOCUMENT": document},
-                )
-                self.assertNotEqual(rejected.returncode, 0)
-                self.assertIn(
+                self.expect_rejected(
                     f"Packaged project document differs from the repository source: {document}",
-                    rejected.stderr,
+                    env={
+                        **self.fixture.assembler_env,
+                        "RILL_TEST_CHANGED_DOCUMENT": document,
+                    },
                 )
         fake_ditto.unlink()
-        assembled = run(command, env=assembler_env)
+        assembled = self.fixture.assemble()
         self.assertEqual(assembled.returncode, 0, assembled.stderr)
 
         self.fixture.output.unlink()
-        rejected = run(command, env=assembler_env)
-        self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn("missing or unreadable", rejected.stderr)
-        self.assertTrue(app_bundle.exists())
+        self.expect_rejected("missing or unreadable", bundle_remains=True)
 
         self.fixture.generate()
-        copied_local_model_notices.unlink()
-        rejected = run(command, env=assembler_env)
-        self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn("Local model notices not found", rejected.stderr)
-        self.assertTrue(app_bundle.exists())
+        self.fixture.local_model_notices.unlink()
+        self.expect_rejected("Local model notices not found", bundle_remains=True)
 
-        shutil.copy2(LOCAL_MODEL_NOTICES, copied_local_model_notices)
+        shutil.copy2(LOCAL_MODEL_NOTICES, self.fixture.local_model_notices)
         simplified_chinese_source = (
-            copied_app_bundle_resources / "zh-Hans.lproj" / "InfoPlist.strings"
+            self.fixture.app_bundle_resources / "zh-Hans.lproj" / "InfoPlist.strings"
         )
         simplified_chinese_source.unlink()
-        rejected = run(command, env=assembler_env)
-        self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn(
-            "Localized Info.plist strings not found: zh-Hans", rejected.stderr
+        self.expect_rejected(
+            "Localized Info.plist strings not found: zh-Hans", bundle_remains=True
         )
-        self.assertTrue(app_bundle.exists())
 
         shutil.copy2(
             APP_BUNDLE_RESOURCES / "zh-Hans.lproj" / "InfoPlist.strings",
@@ -672,24 +674,18 @@ fi
             '"CFBundleDisplayName" = "Rill";\n"CFBundleName" = "Rill";\n',
             encoding="utf-8",
         )
-        rejected = run(command, env=assembler_env)
-        self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn(
+        self.expect_rejected(
             "Missing NSMicrophoneUsageDescription in localized Info.plist strings: "
             "zh-Hans",
-            rejected.stderr,
+            bundle_remains=True,
         )
-        self.assertTrue(app_bundle.exists())
 
         shutil.copy2(
             APP_BUNDLE_RESOURCES / "zh-Hans.lproj" / "InfoPlist.strings",
             simplified_chinese_source,
         )
-        copied_app_icon_source.unlink()
-        rejected = run(command, env=assembler_env)
-        self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn("App icon source not found", rejected.stderr)
-        self.assertTrue(app_bundle.exists())
+        self.fixture.app_icon_source.unlink()
+        self.expect_rejected("App icon source not found", bundle_remains=True)
 
     def test_repository_notice_is_current(self) -> None:
         checkouts = os.environ.get(

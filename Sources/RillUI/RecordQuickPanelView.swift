@@ -100,6 +100,7 @@ enum RecordQuickPanelLayoutPolicy {
 
 public struct RecordQuickPanelView: View {
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+  @State private var showsAdvancedSearch = false
   @Bindable private var model: RecordQuickPanelModel
   private let language: AppLanguage
   private let onPaste: (RecordReuseSubject) -> Void
@@ -128,7 +129,7 @@ public struct RecordQuickPanelView: View {
   public var body: some View {
     VStack(spacing: 0) {
       RecordSearchField(
-        text: $model.searchText, placeholder: text(.search), onMove: model.moveSelection,
+        text: Binding(get: { model.searchText }, set: { model.setSearchText($0) }), placeholder: text(.search), onMove: model.moveSelection,
         onSubmit: pasteSelection,
         onDigit: { index in
           guard let subject = model.subject(at: index) else { return }
@@ -140,11 +141,22 @@ public struct RecordQuickPanelView: View {
       )
       .frame(height: 30)
       .padding(RillSpacing.panel)
+      HStack(spacing: 8) {
+        Text(language == .simplifiedChinese ? "下一项" : "Next").fontWeight(.medium)
+        Text(model.buffers.snapshot?.nextHeader?.preview ?? (model.buffers.snapshot?.next == nil ? "—" : (language == .simplifiedChinese ? "处理中" : "Processing")))
+          .lineLimit(1)
+        Spacer(minLength: 4)
+        Text(model.buffers.snapshot?.nextHeader?.provenance.sourceApplicationName ?? "")
+          .lineLimit(1).foregroundStyle(.secondary)
+        Text("\(model.buffers.snapshot?.remainingCount ?? 0)").monospacedDigit()
+      }
+      .font(.caption).padding(.horizontal, RillSpacing.panel).padding(.bottom, 8)
+      .accessibilityIdentifier("quick-records.next-output")
       HStack(spacing: RillSpacing.row) {
-        Toggle(text(.pinned), isOn: $model.pinnedOnly).toggleStyle(.button)
-        Toggle(text(.currentApp), isOn: $model.currentAppOnly).toggleStyle(.button).disabled(
+        Toggle(text(.pinned), isOn: Binding(get: { model.pinnedOnly }, set: { model.setPinnedOnly($0) })).toggleStyle(.button)
+        Toggle(text(.currentApp), isOn: Binding(get: { model.currentAppOnly }, set: { model.setCurrentAppOnly($0) })).toggleStyle(.button).disabled(
           !model.canFilterCurrentApp)
-        Picker(text(.allTypes), selection: $model.kind) {
+        Picker(text(.allTypes), selection: Binding(get: { model.kind }, set: { model.setKind($0) })) {
           Text(text(.allTypes)).tag(RecordPayloadKind?.none)
           Text(text(.text)).tag(RecordPayloadKind?.some(.text))
           Text(text(.image)).tag(RecordPayloadKind?.some(.image))
@@ -165,6 +177,8 @@ public struct RecordQuickPanelView: View {
       .controlSize(.small)
       .padding(.horizontal, RillSpacing.panel)
       .padding(.bottom, RillSpacing.row)
+      if model.canSearchByMeaning || model.jev != nil {
+        DisclosureGroup(text(.advancedSearch), isExpanded: $showsAdvancedSearch) {
       if model.canSearchByMeaning { semanticControls }
       if let jev = model.jev {
         HStack {
@@ -177,6 +191,11 @@ public struct RecordQuickPanelView: View {
         .sheet(isPresented: Binding(get: { jev.isPresented }, set: { if !$0 { jev.invalidate() } })) {
           RecordJevSheet(model: jev, language: language, onSelect: model.selectJevCandidate, onConfigure: onConfigureJev, onRetry: model.compareWithJev)
         }
+      }
+        }
+        .font(.caption)
+        .padding(.horizontal, RillSpacing.panel)
+        .padding(.bottom, RillSpacing.row)
       }
       Divider()
       GeometryReader { geometry in
@@ -250,7 +269,7 @@ public struct RecordQuickPanelView: View {
 
   private var resultList: some View {
       ScrollViewReader { proxy in
-        List(selection: $model.selectedID) {
+        List(selection: Binding(get: { model.selectedID }, set: { model.select($0) })) {
           ForEach(Array(model.results.enumerated()), id: \.element.id) { index, item in
             selectableRow(item, index: index)
           }
@@ -331,7 +350,7 @@ public struct RecordQuickPanelView: View {
       .onTapGesture(count: 2) { onPaste(item.reuseSubject) }
       .contextMenu {
         Button(text(.preview)) {
-          model.selectedID = item.id
+          model.select(item.id)
           if !model.isPreviewVisible { model.togglePreview() }
         }
         Button(text(.paste)) { onPaste(item.reuseSubject) }

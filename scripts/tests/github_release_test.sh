@@ -4,7 +4,6 @@ PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd -P)"
 TEST_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TEST_ROOT"' EXIT
 mkdir -p "$TEST_ROOT/scripts" "$TEST_ROOT/bin"
-cp "$PROJECT_DIR/scripts/github_release.sh" "$TEST_ROOT/scripts/"
 printf 'Candidate notes\n' > "$TEST_ROOT/notes.md"
 export EVENTS="$TEST_ROOT/events"
 export PATH="$TEST_ROOT/bin:$PATH"
@@ -34,7 +33,7 @@ case "$*" in
   *) exit 91 ;;
 esac
 MOCK
-cat > "$TEST_ROOT/scripts/release.sh" <<'MOCK'
+cat > "$TEST_ROOT/scripts/notarize.sh" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "$*" == --notarize ]] || exit 92
@@ -45,7 +44,8 @@ printf 'new notarized fixture\n' > "$RELEASE_OUTPUT_DIR/Rill.dmg"
 if [[ "${BAD_HASH:-}" == yes ]]; then printf 'tampered\n' >> "$RELEASE_OUTPUT_DIR/Rill.dmg"; fi
 MOCK
 chmod +x "$TEST_ROOT/bin/"* "$TEST_ROOT/scripts/"*.sh
-run() { bash "$TEST_ROOT/scripts/github_release.sh" "${TAG:-v1.2.3}" "$TEST_ROOT/notes.md" > "$TEST_ROOT/output" 2>&1; }
+export RILL_NOTARIZE_SCRIPT="$TEST_ROOT/scripts/notarize.sh"
+run() { bash "$PROJECT_DIR/scripts/release.sh" github "${TAG:-v1.2.3}" "$TEST_ROOT/notes.md" > "$TEST_ROOT/output" 2>&1; }
 for scenario in invalid-tag local-mismatch dirty remote-mismatch api-failure existing build-failure bad-hash drift; do
   rm -f "$EVENTS"
   unset TAG LOCAL_COMMIT DIRTY REMOTE_OBJECT API_FAILURE EXISTING BUILD_FAILURE BAD_HASH DRIFT

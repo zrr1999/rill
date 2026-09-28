@@ -25,7 +25,7 @@ public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    public var titleKey: UIStrings.Key {
+    public var titleKey: L10n.InterfaceKey {
         switch self {
         case .stream: return .sidebarStream
         case .workflows: return .sidebarWorkflows
@@ -209,7 +209,7 @@ public struct MainShellView: View {
                     }
                 }
 
-                Section(UIStrings.text(.recordCollections, language: model.language)) {
+                Section(L10n.text(.recordCollections, language: model.settings.language)) {
                     ForEach(model.recordWorkspace.snapshot.collections) { collection in
                         sidebarCollectionRow(collection)
                             .tag(SidebarDestination.recordCollection(collection.id))
@@ -244,14 +244,14 @@ public struct MainShellView: View {
                 ideal: MainShellLayoutMetrics.sidebarColumnIdealWidth,
                 max: MainShellLayoutMetrics.sidebarColumnMaxWidth
             )
-            .navigationTitle(UIStrings.text(.appTitle, language: model.language))
+            .navigationTitle(L10n.text(.appTitle, language: model.settings.language))
         } detail: {
             ZStack {
                 VStack(spacing: 0) {
                     if let persistencePresentation =
                         LocalPersistenceStatusPresentation.make(
                             status: model.localPersistenceStatus,
-                            language: model.language
+                            language: model.settings.language
                         )
                     {
                         LocalPersistenceStatusBanner(
@@ -294,7 +294,7 @@ public struct MainShellView: View {
                         onRecordRetry: { globalHistorySearchRetryGeneration &+= 1 },
                         historyFailureActionTitle:
                             globalHistoryLoadFailurePresentation.actionTitle,
-                        language: model.language,
+                        language: model.settings.language,
                         focusRequest: globalSearchFocusRequest,
                         onMoveSelection: { moveGlobalSearchSelection(by: $0) },
                         onSubmit: submitGlobalSearchSelection,
@@ -321,14 +321,14 @@ public struct MainShellView: View {
                         Text(
                             L10n.string(
                                 .applicationShutdownTitle,
-                                language: model.language
+                                language: model.settings.language
                             )
                         )
                         .font(.headline)
                         Text(
                             L10n.string(
                                 .applicationShutdownDetail,
-                                language: model.language
+                                language: model.settings.language
                             )
                         )
                         .foregroundStyle(.secondary)
@@ -350,8 +350,8 @@ public struct MainShellView: View {
                 Button(action: presentGlobalSearch) {
                     Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
                 }
-                .help(GlobalSearchText.searchCommand(language: model.language))
-                .accessibilityLabel(GlobalSearchText.searchCommand(language: model.language))
+                .help(GlobalSearchText.searchCommand(language: model.settings.language))
+                .accessibilityLabel(GlobalSearchText.searchCommand(language: model.settings.language))
                 .accessibilityIdentifier("global-search.open")
                 .disabled(
                     !MainShellInteractionPolicy.allowsToolbarInteraction(
@@ -408,7 +408,7 @@ extension MainShellView {
         case .workflows:
             WorkflowsView(model: model)
         case .records:
-            RecordWorkspaceView(workspace: model.recordWorkspace, language: model.language, copySelection: model.copyRecord)
+            RecordWorkspaceView(workspace: model.recordWorkspace, language: model.settings.language, copySelection: model.copyRecord)
         case .diagnostics:
             DiagnosticsView(model: model)
         case .settings:
@@ -473,7 +473,7 @@ extension MainShellView {
             case .section(.settings):
                 model.settingsNavigationRequest?.id
             case .section(.stream):
-                model.historyNavigationRequest?.id
+                model.history.historyNavigationRequest?.id
             case .section, .recordCollection, .workflow:
                 nil
             }
@@ -487,9 +487,9 @@ extension MainShellView {
     private var filteredGlobalSearchResults: [GlobalSearchResult] {
         GlobalSearchIndex.filter(
             GlobalSearchIndex.makeStaticResults(
-                language: model.language,
-                workflows: model.workflows
-            ) + GlobalSearchIndex.collectionResults(model.recordWorkspace.snapshot.collections, language: model.language)
+                language: model.settings.language,
+                workflows: model.workflowLibrary.workflows
+            ) + GlobalSearchIndex.collectionResults(model.recordWorkspace.snapshot.collections, language: model.settings.language)
                 + search.results(matching: globalHistorySearchTaskIdentity),
             query: search.query
         )
@@ -499,11 +499,11 @@ extension MainShellView {
         GlobalHistorySearchTaskIdentity(
             isPresented: isGlobalSearchPresented,
             query: search.query,
-            language: model.language.rawValue,
-            previewMode: model.privacyPolicySettings.historyPreviewMode.rawValue,
-            retentionPeriod: model.runHistoryRetentionPeriod.rawValue,
-            workflowSearchSnapshot: model.workflows.map {
-                "\($0.id.uuidString):\(UIStrings.workflowName($0.presentation, language: model.language))"
+            language: model.settings.language.rawValue,
+            previewMode: model.settings.privacyPolicySettings.historyPreviewMode.rawValue,
+            retentionPeriod: model.history.runHistoryRetentionPeriod.rawValue,
+            workflowSearchSnapshot: model.workflowLibrary.workflows.map {
+                "\($0.id.uuidString):\(L10n.workflowName($0.presentation, language: model.settings.language))"
             },
             retryGeneration: globalHistorySearchRetryGeneration,
             recordRevision: model.recordWorkspace.snapshot.revision
@@ -518,7 +518,7 @@ extension MainShellView {
     private var globalHistoryLoadFailurePresentation: HistoryLoadFailurePresentation {
         HistoryLoadFailurePresentation.make(
             persistenceStatus: model.localPersistenceStatus,
-            language: model.language
+            language: model.settings.language
         )
     }
 
@@ -645,12 +645,12 @@ extension MainShellView {
                 try await model.recordWorkspace.searchRecords(query, after: cursor, limit: limit)
             },
             history: { query, limit in
-                try await model.searchRunHistory(
-                    query: query, language: model.language,
-                    previewMode: model.privacyPolicySettings.historyPreviewMode, limit: limit
+                try await model.history.searchRunHistory(
+                    query: query, language: model.settings.language,
+                    previewMode: model.settings.privacyPolicySettings.historyPreviewMode, limit: limit
                 )
             },
-            language: model.language
+            language: model.settings.language
         )
     }
 
@@ -661,8 +661,8 @@ extension MainShellView {
         case .section(.records):
             return model.recordWorkspace.revealedRecordID != nil
         case .section(.stream):
-            guard model.historyNavigationRequest != nil else { return false }
-            switch model.runHistoryDeepLinkState {
+            guard model.history.historyNavigationRequest != nil else { return false }
+            switch model.history.runHistoryDeepLinkState {
             case .expired, .failed:
                 return false
             case .idle, .resolving, .resolved:
@@ -710,11 +710,11 @@ extension MainShellView {
 
     private func sidebarSectionRow(_ section: SidebarSection) -> some View {
         Label(
-            (section == .records ? L10n.workspace(.allRecords, language: model.language) : UIStrings.text(section.titleKey, language: model.language)),
+            (section == .records ? L10n.workspace(.allRecords, language: model.settings.language) : L10n.text(section.titleKey, language: model.settings.language)),
             systemImage: section.symbolName
         )
         .tag(SidebarDestination.section(section))
-        .accessibilityLabel((section == .records ? L10n.workspace(.allRecords, language: model.language) : UIStrings.text(section.titleKey, language: model.language)))
+        .accessibilityLabel((section == .records ? L10n.workspace(.allRecords, language: model.settings.language) : L10n.text(section.titleKey, language: model.settings.language)))
         .accessibilityIdentifier("sidebar.\(section.rawValue)")
         .accessibilityFocused(
             $accessibilityFocusedSidebarDestination,
@@ -726,7 +726,7 @@ extension MainShellView {
         VStack(spacing: 0) {
             Divider()
             Button(action: selectSettingsFromSidebarFooter) {
-                Label(UIStrings.text(.sidebarSettings, language: model.language), systemImage: SidebarSection.settings.symbolName)
+                Label(L10n.text(.sidebarSettings, language: model.settings.language), systemImage: SidebarSection.settings.symbolName)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, MainShellLayoutMetrics.sidebarFooterRowHorizontalPadding)
                     .padding(.vertical, MainShellLayoutMetrics.sidebarFooterRowVerticalPadding)

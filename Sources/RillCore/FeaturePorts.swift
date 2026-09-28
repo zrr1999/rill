@@ -21,8 +21,10 @@ public protocol RecordDeliveryPerforming: Sendable {
 }
 
 public protocol SystemClipboardRecordCapturing: Sendable {
+  func observeBufferInput(in bufferID: RecordBufferID) async throws -> BufferInputReservation
+  func cancelBufferInput(_ id: BufferEntryID) async throws
   func captureSystemClipboard(
     snapshot: SystemClipboardSnapshot, sourceApplication: FocusedApplicationIdentity,
-    allowsWorkflowCapture: Bool
+    allowsWorkflowCapture: Bool, bufferEntryID: BufferEntryID?
   ) async throws -> RecordProjection
 }
