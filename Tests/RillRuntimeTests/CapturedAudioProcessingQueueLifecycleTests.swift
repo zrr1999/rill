@@ -649,7 +649,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         )
     }
 
-    func testShortInputCleansAudioWithoutRecognitionRecoveryOrBenchmarkArchive() async throws {
+    func testShortContentInputRecognizesAndCleansAudioWithoutRecoveryOrBenchmarkArchive() async throws {
         for ownership: CapturedAudioFileOwnership in [.managedTemporary, .callerManaged] {
             let probe = AudioLifecycleExecutionProbe()
             let recovery = AudioRecoveryStoreProbe()
@@ -671,8 +671,8 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
             let execution = await probe.snapshot()
             let preserved = await recovery.preserveCallCount
             let archived = await archive.entries
-            XCTAssertEqual(execution.recognition, 0)
-            XCTAssertEqual(execution.action, 0)
+            XCTAssertEqual(execution.recognition, 1)
+            XCTAssertEqual(execution.action, 1)
             XCTAssertEqual(preserved, 0)
             XCTAssertTrue(archived.isEmpty)
             XCTAssertEqual(FileManager.default.fileExists(atPath: fileURL.path), ownership == .callerManaged)
