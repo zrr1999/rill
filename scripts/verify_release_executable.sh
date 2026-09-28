@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-MIN_MACOS="14.0"
+MIN_MACOS="26.0"
 REQUIRED_ARCHITECTURE="arm64"
 
 error() {

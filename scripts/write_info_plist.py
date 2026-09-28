@@ -40,7 +40,7 @@ def main() -> int:
         "CFBundleShortVersionString": version,
         "CFBundleVersion": build_number,
         "CFBundleInfoDictionaryVersion": "6.0",
-        "LSMinimumSystemVersion": "14.0",
+        "LSMinimumSystemVersion": "26.0",
         "LSUIElement": True,
         "NSMicrophoneUsageDescription": microphone_usage_description,
         "NSPrincipalClass": "NSApplication",

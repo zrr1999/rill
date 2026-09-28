@@ -41,7 +41,7 @@ def assemble(executable: Path, output: Path) -> None:
         "CFBundleIdentifier": identifier, "CFBundleName": "Rill", "CFBundleDisplayName": "Rill",
         "CFBundleDevelopmentRegion": "en",
         "CFBundleExecutable": "RillInputMethod", "CFBundlePackageType": "APPL",
-        "CFBundleVersion": "2", "CFBundleShortVersionString": "0.1.0", "LSMinimumSystemVersion": "14.0",
+        "CFBundleVersion": "2", "CFBundleShortVersionString": "0.1.0", "LSMinimumSystemVersion": "26.0",
         "LSUIElement": True, "NSPrincipalClass": "NSApplication",
         "InputMethodConnectionName": "RillInputMethodConnection",
         "InputMethodServerControllerClass": "RillInputController",

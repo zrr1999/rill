@@ -13,7 +13,7 @@ Rill 是本地优先的 macOS 语音输入与记录应用。按住 Fn 说话，�
 
 ## 安装
 
-需要 Apple Silicon Mac 和 macOS 14.0 或更高版本。首次准备模型需要联网，
+需要 Apple Silicon Mac 和 macOS 26.0 或更高版本。首次准备模型需要联网，
 运行打包后的 App 无需安装 Python、uv 或开发工具。
 
 从 [Releases](https://github.com/zrr1999/rill/releases) 检查可用版本；

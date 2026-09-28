@@ -4,7 +4,7 @@ import Foundation
 
 let package = Package(
   name: "RillMacOS",
-  platforms: [.macOS(.v14)],
+  platforms: [.macOS(.v26)],
   products: [
     .executable(name: "RillApp", targets: ["RillApp"]),
     .executable(name: "RillSpeechWorker", targets: ["RillSpeechWorker"]),

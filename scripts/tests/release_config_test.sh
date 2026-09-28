@@ -1285,7 +1285,7 @@ case "$architecture" in
 arm64)
   command_name="${FAKE_VTOOL_ARM64_COMMAND:-${FAKE_VTOOL_COMMAND:-LC_BUILD_VERSION}}"
   platform="${FAKE_VTOOL_ARM64_PLATFORM:-${FAKE_VTOOL_PLATFORM:-MACOS}}"
-  minos="${FAKE_VTOOL_ARM64_MINOS:-${FAKE_VTOOL_MINOS:-14.0}}"
+  minos="${FAKE_VTOOL_ARM64_MINOS:-${FAKE_VTOOL_MINOS:-26.0}}"
   ;;
 *)
   echo "unexpected architecture: $architecture" >&2
@@ -1364,12 +1364,12 @@ EOF
     PATH="$fake_bin:$PATH" \
       FAKE_LIPO_LOG="$lipo_invocation_log" \
       FAKE_VTOOL_LOG="$vtool_invocation_log" \
-      FAKE_VTOOL_ARM64_MINOS=14.1 \
+      FAKE_VTOOL_ARM64_MINOS=26.1 \
       bash "$EXECUTABLE_VERIFIER" "$executable" 2>&1
   )"
   status=$?
   set -e
-  if [[ "$status" -eq 0 || "$output" != *"arm64 slice must require macOS 14.0 exactly"* ]]; then
+  if [[ "$status" -eq 0 || "$output" != *"arm64 slice must require macOS 26.0 exactly"* ]]; then
     echo "FAIL: executable verifier accepts a newer arm64 deployment target" >&2
     printf '%s\n' "$output" >&2
     exit 1
@@ -1419,7 +1419,7 @@ EOF
   fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: both executables require an arm64-only macOS 14 slice"
+  echo "PASS: both executables require an arm64-only macOS 26 slice"
 }
 
 run_local_build_identity_case() {

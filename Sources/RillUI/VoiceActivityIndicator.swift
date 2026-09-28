@@ -128,10 +128,12 @@ private struct VoiceActivityLayerMeter: NSViewRepresentable {
     VoiceActivityMeterView()
   }
 
-  func updateNSView(_ view: VoiceActivityMeterView, context _: Context) {
+  func updateNSView(_ view: VoiceActivityMeterView, context: Context) {
+    let color = accentColor.resolve(in: context.environment)
     view.update(
       levels: levels,
-      accentColor: NSColor(accentColor),
+      accentColor: NSColor(srgbRed: CGFloat(color.red), green: CGFloat(color.green),
+                           blue: CGFloat(color.blue), alpha: CGFloat(color.opacity)),
       barWidth: barWidth,
       barSpacing: barSpacing,
       minHeight: minHeight,

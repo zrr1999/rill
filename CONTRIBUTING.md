@@ -4,7 +4,7 @@
 
 ## 开发环境
 
-- macOS 14.0 或更高版本
+- macOS 26.0 或更高版本
 - Xcode 26 或更高版本，并选择包含 Swift 6.2+ 的 Command Line Tools；本地
   默认开发工具链为 Xcode 27
 - 与所选 Xcode build version 匹配的 Metal Toolchain；运行 `xcodebuild -downloadComponent MetalToolchain` 安装，`xcrun metal -v` 必须成功。若组件已安装但验证仍失败，请通过 `DEVELOPER_DIR` 临时选择一个组件可用的并存稳定版 Xcode
@@ -203,11 +203,11 @@ git diff --check
 git diff --cached --check
 ```
 
-`scripts/preflight.sh` 会先运行依赖安全 policy tests 和 reviewed baseline 离线检查，再用固定版本的 Gitleaks 扫描完整 Git 历史与 tracked + untracked(nonignored) 当前源码快照；之后检查脚本语法、生成物和仓库根发布产物卫生，保留现有增量产物，执行 arm64-only Release 构建、验证最低 macOS 版本、装配并临时签名 App、运行完整测试。CI 在此基础上单独运行 live OSV exact-commit 查询，避免把可用网络伪装成本地确定性门禁。当前源码扫描拒绝 symlink 与非普通文件，并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。`just ci-clean` / `scripts/preflight.sh --clean` 在开始时分别清理 Debug 和 Release；GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可恢复由工具链、依赖和构建驱动分键的 SwiftPM 缓存，并经过相同的构建指纹及完整门禁验证。只有 main 保存完整 SwiftPM 构建缓存；PR 只恢复缓存，避免多个 PR 的大体积快照挤占默认分支的共享基线。预检不能替代在 macOS 14 的 Apple Silicon 真机上验证最终公证包，也不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
+`scripts/preflight.sh` 会先运行依赖安全 policy tests 和 reviewed baseline 离线检查，再用固定版本的 Gitleaks 扫描完整 Git 历史与 tracked + untracked(nonignored) 当前源码快照；之后检查脚本语法、生成物和仓库根发布产物卫生，保留现有增量产物，执行 arm64-only Release 构建、验证最低 macOS 版本、装配并临时签名 App、运行完整测试。CI 在此基础上单独运行 live OSV exact-commit 查询，避免把可用网络伪装成本地确定性门禁。当前源码扫描拒绝 symlink 与非普通文件，并保留扫描清单；Gitleaks 返回后会重新枚举源文件集并逐字节比对原文件与快照，扫描期间发生任何增删改都必须失败后重试。扫描日志始终脱敏；`.gitleaks.toml` 只允许经过审查的公开模型 hash/revision 精确值，并同时约束 rule、路径和完整行，不允许关闭通用凭据规则。`just ci-clean` / `scripts/preflight.sh --clean` 在开始时分别清理 Debug 和 Release；GitHub main / 手动 CI 与正式公证发布强制使用此模式。PR CI 可恢复由工具链、依赖和构建驱动分键的 SwiftPM 缓存，并经过相同的构建指纹及完整门禁验证。只有 main 保存完整 SwiftPM 构建缓存；PR 只恢复缓存，避免多个 PR 的大体积快照挤占默认分支的共享基线。预检不能替代在 macOS 26 的 Apple Silicon 真机上验证最终公证包，也不能替代 `docs/release-qa-checklist.md` 中的人工交互和辅助功能检查。
 
 修复竞态或生命周期问题时，应优先使用可控的 fake、barrier 或 lease 写确定性测试；不要依赖固定 `sleep` 猜测时序。涉及 SwiftUI/AppKit 焦点、系统权限、全局快捷键、VoiceOver、签名或公证时，除自动化测试外还需记录真实环境验收结果。
 
-主窗口搜索由 MainShell 的浮层与 AppKit `NSSearchField` bridge 共同拥有，以便在 macOS 14 上确定性处理首次/重复 `Cmd-F`、方向键、`Return` 与 `Esc`；不要未经同等真实 App 回归就替换为 `.searchable`。普通页面路由由 shell 恢复侧栏焦点，typed Record / History 目的地则由详情页持有目标焦点，Settings 深链由独立设置窗口持有目标焦点。鼠标选择后的恢复必须跨到主 RunLoop 的 default mode，不能只靠 `Task.yield()` 猜测 AppKit mouse tracking / first-responder 时序；修改任一侧时都应覆盖 全部记录 → 记录集 → 活动的方向键、List selection、快速路由与 exact 详情 AX 焦点。
+主窗口搜索由 MainShell 的浮层与 AppKit `NSSearchField` bridge 共同拥有，以便在 macOS 26 上确定性处理首次/重复 `Cmd-F`、方向键、`Return` 与 `Esc`；不要未经同等真实 App 回归就替换为 `.searchable`。普通页面路由由 shell 恢复侧栏焦点，typed Record / History 目的地则由详情页持有目标焦点，Settings 深链由独立设置窗口持有目标焦点。鼠标选择后的恢复必须跨到主 RunLoop 的 default mode，不能只靠 `Task.yield()` 猜测 AppKit mouse tracking / first-responder 时序；修改任一侧时都应覆盖 全部记录 → 活动 → 工作流 → 记录集的方向键、List selection、快速路由与 exact 详情 AX 焦点。
 
 ## GitHub Actions 命名
 

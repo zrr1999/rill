@@ -17,8 +17,8 @@ done
 
 case "$(uname -s)" in
   Darwin)
-    compiler=(xcrun swiftc -target arm64-apple-macosx14.0)
-    c_compiler=(xcrun clang -target arm64-apple-macosx14.0)
+    compiler=(xcrun swiftc -target arm64-apple-macosx26.0)
+    c_compiler=(xcrun clang -target arm64-apple-macosx26.0)
     ;;
   Linux)
     if ! $preview_only; then

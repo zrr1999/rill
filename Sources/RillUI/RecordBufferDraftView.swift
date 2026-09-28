@@ -198,8 +198,9 @@ public struct RecordBufferDraftView: View {
   private func diffText(original: String, edited: String) -> Text {
     BufferTextDiff(original: original, edited: edited).segments.reduce(Text("")) { result, segment in
       let part = Text(segment.text)
-      return result + (segment.kind == .removed ? part.strikethrough().foregroundColor(.red)
-        : segment.kind == .inserted ? part.underline().foregroundColor(.accentColor) : part)
+      let styled = segment.kind == .removed ? part.strikethrough().foregroundColor(.red)
+        : segment.kind == .inserted ? part.underline().foregroundColor(.accentColor) : part
+      return Text("\(result)\(styled)")
     }
   }
 
