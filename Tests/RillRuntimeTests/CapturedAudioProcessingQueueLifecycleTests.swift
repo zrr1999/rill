@@ -649,7 +649,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         )
     }
 
-    func testShortContentInputRecognizesAndCleansAudioWithoutRecoveryOrBenchmarkArchive() async throws {
+    func testShortContentInputArchivesBeforeCleaningAudioWithoutRecovery() async throws {
         for ownership: CapturedAudioFileOwnership in [.managedTemporary, .callerManaged] {
             let probe = AudioLifecycleExecutionProbe()
             let recovery = AudioRecoveryStoreProbe()
@@ -658,7 +658,8 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
                 recognitionShouldFail: false, recoveryStore: recovery, recoveryEnabled: true,
                 benchmarkArchiveStore: archive, benchmarkArchiveEnabled: true, executionProbe: probe
             )
-            let fileURL = try makeAudioFile()
+            let bytes = Data([0x41, 0x42])
+            let fileURL = try makeAudioFile(bytes: bytes)
             defer { try? FileManager.default.removeItem(at: fileURL) }
             var audio = try makeCapturedAudio(fileURL: fileURL, ownership: ownership)
             audio.durationSeconds = 0.1
@@ -674,7 +675,9 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
             XCTAssertEqual(execution.recognition, 1)
             XCTAssertEqual(execution.action, 1)
             XCTAssertEqual(preserved, 0)
-            XCTAssertTrue(archived.isEmpty)
+            XCTAssertEqual(archived.count, 1)
+            XCTAssertEqual(archived.first?.bytes, bytes)
+            XCTAssertEqual(archived.first?.outcome, .completed)
             XCTAssertEqual(FileManager.default.fileExists(atPath: fileURL.path), ownership == .callerManaged)
         }
     }
