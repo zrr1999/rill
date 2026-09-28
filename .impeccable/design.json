@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-28T15:18:14Z",
+  "generatedAt": "2026-09-28T16:04:12Z",
   "title": "Design System: Rill",
   "extensions": {
     "platform": {
@@ -470,8 +470,10 @@
     ],
     "evidenceBoundary": {
       "implementation": "Approved native implementation, documented from current source.",
-      "visualEvidence": "ScreenCaptureKit compositor captures of ephemeral synthetic native test windows on macOS 27.0 (26A428), Xcode 27.0 (27A5228h).",
+      "visualEvidence": "Existing ScreenCaptureKit compositor captures show ephemeral synthetic native test windows on macOS 27.0 (26A428), Xcode 27.0 (27A5228h). They do not cover the newly integrated unified panel or the latest workflow corrections.",
       "pendingAtRefresh": [
+        "Compositor captures of the integrated unified panel",
+        "Compositor captures of the latest workflow corrections",
         "Physical macOS 26 interaction",
         "Fn",
         "IME composition",
@@ -482,7 +484,63 @@
       ],
       "acceptanceContract": "docs/release-qa-checklist.md",
       "notCanonized": "Stale preimplementation wording is removed. Previous review findings about clipped controls, competing titles, selected text, waveform contrast, and label truncation are defects rather than tokens. Code fixes are present; final visual and interaction acceptance is not asserted.",
-      "automatedValidation": "Record command results with the reviewed commit and pull request."
+      "automatedValidation": "Record automated validation command results with the reviewed commit and pull request.",
+      "captureStatus": "The Mac is locked at this refresh; updated compositor captures remain pending."
+    },
+    "nativeDrafts": {
+      "listStyle": "List(selection:).listStyle(.inset)",
+      "selection": "Native foreground and background resolve together for active and inactive windows.",
+      "collectionControls": {
+        "style": "Toggle.toggleStyle(.checkbox)",
+        "independent": true,
+        "voice": "Collect voice in Drafts uses the existing built-in Fn output-mode command. Turning it off restores direct Fn dictation; Record new item still collects into Drafts.",
+        "clipboard": "Collect clipboard in Drafts uses the existing clipboard-capture command and admits new copies after enabling, subject to privacy exclusions.",
+        "availability": "Each checkbox follows canMutateScalarSettings for its own settings domain.",
+        "source": {
+          "path": "Sources/RillUI/RecordBufferDraftView.swift",
+          "symbol": "collectionControls"
+        }
+      },
+      "source": {
+        "path": "Sources/RillUI/RecordBufferDraftView.swift",
+        "symbol": "itemList"
+      }
+    },
+    "nativePanelBehavior": {
+      "automaticPresentation": "After settings load, an enabled collection source is restored; an off-to-on source change also requests presentation. If the panel is hidden, show and collapse without activation. Preserve an already open editor.",
+      "afterSend": "Send selected uses the captured draft target, collapses the editor, and leaves the pending strip visible. Confirmation and recovery remain owned by the existing output state.",
+      "editingVisit": "FloatingRecordPanel.becomeKey invokes beginEditingVisit only when entering a new key-window editing visit. Capture the draft target before super.becomeKey.",
+      "noRecapture": [
+        "Background presentation",
+        "Mode changes within the same active editing visit",
+        "Send selected"
+      ],
+      "targetValidation": "The displayed draft target is controller-owned and revalidated at output; persistent visibility does not authorize a stale target.",
+      "framePersistence": {
+        "name": "RillRecordPanel",
+        "save": "NSWindow.saveFrame(usingName:) on expanded moves, resizes, and before collapse.",
+        "restore": "NSWindow.setFrameUsingName(_:) when creating the native panel.",
+        "collapse": "Retain expanded size; do not overwrite the saved expanded frame with strip geometry.",
+        "expand": "Use the current strip top-left, restore the retained expanded size, and clamp to the visible screen."
+      },
+      "sources": [
+        {
+          "path": "Sources/RillApp/RecordPanelController.swift",
+          "symbol": "observeCollectionPreferences / configureDrafts"
+        },
+        {
+          "path": "Sources/RillApp/RecordPanelController.swift",
+          "symbol": "beginEditingVisit / FloatingRecordPanel.becomeKey"
+        },
+        {
+          "path": "Sources/RillApp/RecordPanelController.swift",
+          "symbol": "collapse / expand / saveExpandedFrame / show"
+        },
+        {
+          "path": "Sources/RillApp/VoiceInputApplication.swift",
+          "symbol": "startCollectionObservation callback"
+        }
+      ]
     }
   },
   "components": [
@@ -528,13 +586,25 @@
       "name": "Editable draft",
       "kind": "input",
       "refersTo": "draft-editor",
-      "description": "Opaque native text editor with independent saved-state feedback; sample content is synthetic.",
+      "description": "Opaque native text editor alongside an inset native item list and independent collection-source controls; sample content is synthetic.",
       "html": "<textarea class=\"ds-editor\" aria-label=\"Pending text\">Review the next draft before sending.</textarea>",
       "css": ".ds-editor { appearance: auto; color-scheme: light dark; font: 15px system-ui; padding: 14px; background: Field; color: FieldText; }",
       "native": "NSTextView with textColor/textBackgroundColor, native undo and IME; Return edits, Command-Return sends outside composition.",
       "source": {
         "path": "Sources/RillUI/BufferDraftTextEditor.swift",
         "symbol": "makeNSView"
+      }
+    },
+    {
+      "name": "Draft collection sources",
+      "kind": "input",
+      "description": "Two independent native checkboxes above the Drafts list and editor; browser controls are semantic proxies.",
+      "html": "<div class=\"ds-draft-sources\"><label><input type=\"checkbox\"> Collect voice in Drafts</label><label><input type=\"checkbox\"> Collect clipboard in Drafts</label></div>",
+      "css": ".ds-draft-sources { display: flex; gap: 24px; color-scheme: light dark; font: caption; } .ds-draft-sources input { appearance: auto; }",
+      "native": "Toggle.toggleStyle(.checkbox), each bound to its existing setting and independently disabled while that settings domain cannot mutate.",
+      "source": {
+        "path": "Sources/RillUI/RecordBufferDraftView.swift",
+        "symbol": "collectionControls"
       }
     },
     {

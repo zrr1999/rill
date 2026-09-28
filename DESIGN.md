@@ -118,10 +118,13 @@ values or tonal ramps.
 
 The implementation has compositor-rendered evidence from temporary synthetic
 windows on macOS 27.0 (26A428), using Xcode 27.0 (27A5228h). Those captures are
-visual evidence, not installed-app or release acceptance. Automated validation is recorded with each reviewed change. Physical macOS 26,
-Fn, IME, VoiceOver, cross-application output, and multi-display acceptance remain
-pending for this implementation. Use the [release acceptance contract](docs/release-qa-checklist.md);
-local galleries are review aids, not durable design authority.
+visual evidence, not installed-app or release acceptance. The integrated unified
+panel and the latest workflow corrections still require new compositor captures;
+the Mac is locked at this refresh. Record automated validation with the reviewed
+change and pull request. Physical macOS 26, Fn, IME,
+VoiceOver, cross-application output, and multi-display acceptance remain pending.
+Use the [release acceptance contract](docs/release-qa-checklist.md); local
+galleries are review aids, not durable design authority.
 
 ## Colors
 
@@ -190,9 +193,9 @@ insets and the native editor's padding, remain local to their owners.
 | Main window | Default size in frontmatter; sidebar min/ideal/max 180/200/260pt | [App scene](Sources/RillApp/VoiceInputApplication.swift), [MainShellView](Sources/RillUI/MainShellView.swift) |
 | Records | Split list/detail at 700pt of record content width; narrower content shows list or selected detail | [RecordWorkspaceView](Sources/RillUI/RecordWorkspaceView.swift) |
 | Settings | Preferred size in frontmatter; minimum 720×560pt; sidebar min/ideal/max 160/176/220pt | [SettingsWindowView](Sources/RillUI/SettingsWindowView.swift) |
-| Unified panel | Default and minimum sizes in frontmatter; expanded dimensions retained during collapse | [RecordPanelPresentation](Sources/RillUI/RecordPanelPresentation.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
+| Unified panel | Default and minimum sizes in frontmatter; native frame saving retains expanded position and size | [RecordPanelPresentation](Sources/RillUI/RecordPanelPresentation.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Collections preview | Side preview at 760pt or wider when open; preview below results otherwise | [RecordQuickPanelView](Sources/RillUI/RecordQuickPanelView.swift) |
-| Drafts | Native list min/ideal/max 180/215/300pt and editor minimum 330pt | [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift) |
+| Drafts | Native inset list min/ideal/max 180/215/300pt and editor minimum 330pt | [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift) |
 | Pending strip | Fixed surface size in frontmatter; drag, expand, and close without taking keyboard focus | [UnifiedRecordPanelView](Sources/RillUI/UnifiedRecordPanelView.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Recording overlay | Fixed compact/expanded surface sizes in frontmatter; shadow insets are outside those surfaces | [LiveSubtitleOverlay](Sources/RillUI/LiveSubtitleOverlay.swift) |
 
@@ -277,12 +280,35 @@ Collections and Drafts behind one segmented control and one
 Hidden content remains mounted but cannot receive interaction or accessibility
 focus. Collections keeps Copy, Add to Drafts, and explicit output distinct.
 
+Drafts retains two independent native checkbox controls for collecting voice and
+clipboard content. Voice collection changes the built-in Fn output mode; turning
+it off returns Fn dictation to the current application while Record new item
+still collects into Drafts. Clipboard collection admits new copies after it is
+enabled and follows existing privacy exclusions. Each control uses its existing
+settings command and mutation availability. The item list uses `.listStyle(.inset)`
+with native selection colors. See
+[RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift).
+
 The pending strip shows a count, next-item summary, expand, and close. It is
-separate from the recorder's position and state. Expanding or switching modes
-does not send content; confirmation and recovery use the existing output state.
-The captured external target is a read-only display of controller state and is
-revalidated at the output boundary. A persistent strip does not authorize reuse
-of a stale target.
+separate from the recorder's position and state. When a collection source is
+restored as enabled after settings load, or is newly enabled while the panel is
+hidden, the controller shows the collapsed strip without taking keyboard focus.
+An already open editor retains its current input. Send selected collapses the
+editor and keeps the strip visible; confirmation and recovery continue through
+the existing output state. Expanding or switching modes does not send content.
+
+The draft output target is captured when the panel begins a new active editing
+visit, immediately before becoming the key window. Background presentation,
+mode changes within the same editing visit, and Send do not recapture or retarget
+it. The displayed target remains controller-owned and is revalidated at the
+output boundary. A persistent strip does not authorize reuse of a stale target.
+
+Expanded position and size use native `saveFrame(usingName:)` and
+`setFrameUsingName(_:)` under `RillRecordPanel`. Collapse retains the expanded
+size without replacing the saved frame with the strip geometry. Expanding from
+a dragged strip uses its current top-left position, restores the retained size,
+and clamps the result to the visible screen. These behaviors are owned by
+[RecordPanelController](Sources/RillApp/RecordPanelController.swift).
 
 ### Cards and disclosure
 

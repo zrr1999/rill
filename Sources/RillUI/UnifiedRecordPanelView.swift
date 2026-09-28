@@ -86,8 +86,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
           .allowsHitTesting(presentation.mode == .collections)
           .disabled(presentation.mode != .collections || presentation.isCollapsed)
           .accessibilityHidden(presentation.mode != .collections)
-        RecordBufferDraftView(model: buffers.editor, voice: model.voice,
-                              language: model.settings.language, embedded: true)
+        RecordBufferDraftView(model: model, embedded: true)
           .opacity(presentation.mode == .drafts ? 1 : 0)
           .allowsHitTesting(presentation.mode == .drafts)
           .disabled(presentation.mode != .drafts || presentation.isCollapsed)

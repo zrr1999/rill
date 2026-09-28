@@ -474,6 +474,13 @@ is established per app and content type; see [continuous output](continuous-outp
 
 ### Editable pending drafts
 
+- [ ] Enable voice collection and clipboard collection separately, both in Settings
+      and in Drafts. Each enables the same saved preference and opens the resident
+      panel without stealing key focus. Relaunch with either enabled and check restoration.
+- [ ] Send a pending item and switch applications: Drafts stays visible. Close it
+      explicitly, then enable the other source to reopen it without losing edits or selection.
+- [ ] Focus an external text field, enter the already-visible Drafts window, and
+      send. Each new editing visit captures that target; arrivals and Send never recapture it.
 - [ ] Open Drafts from both the menu bar and Record toolbar in Chinese/English,
       light/dark appearance and a narrow window; inspect selection contrast and VoiceOver labels.
 - [ ] With the physical Chinese IME, compose, choose candidates, replace a selection,
@@ -487,8 +494,8 @@ is established per app and content type; see [continuous output](continuous-outp
 - [ ] Close during creation/saving, reopen and restart with an empty first draft,
       edited speech and unapplied suggestions. On save failure, local text remains
       available to retry or explicitly save as a new draft.
-- [ ] Open from an external editor, then change its selection, close its window or
-      switch applications. Send must retain the item instead of choosing a new target.
+- [ ] Invalidate the captured target or its selection during editing, without
+      starting a new editing visit. Send must retain the item instead of choosing a new target.
       Opening from Rill must support preparing the item and explicit shortcut handoff.
 - [ ] Verify Fn release when the panel opens during capture, editor key pass-through,
       uncertain-output confirmation and shutdown while a draft write is blocked.

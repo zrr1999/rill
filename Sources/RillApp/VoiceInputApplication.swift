@@ -45,6 +45,7 @@ struct RillApplication: App {
         container.model.installRecordPanelAction { showPanel(.collections, true, true) }
         container.model.recordWorkspace.buffers.openEditorAction = { showPanel(.drafts, false, true) }
         container.bufferOutput.presentStatus = { showPanel(.drafts, false, false) }
+        recordPanelController.startCollectionObservation { showPanel(.drafts, false, false) }
         container.model.voice.installLiveSubtitlePanelAction {
             [liveSubtitlePanelController] snapshot, language in
             let cancellableRunID = snapshot.flatMap { snapshot in

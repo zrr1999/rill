@@ -4,16 +4,25 @@ import SwiftUI
 public struct RecordBufferDraftView: View {
   @Bindable private var model: RecordBufferDraftModel
   @Bindable private var voice: VoiceRunModel
-  private let language: AppLanguage
+  @Bindable private var settings: SettingsPersistenceModel
+  private let setVoiceCollection: (Bool) -> Void
+  private let setClipboardCollection: (Bool) -> Void
   private let embedded: Bool
+  private var language: AppLanguage { settings.language }
   @State private var showsDiscard = false
   @State private var comparesRecognition = true
 
-  public init(model: RecordBufferDraftModel, voice: VoiceRunModel, language: AppLanguage, embedded: Bool = false) {
-    self.model = model
-    self.voice = voice
-    self.language = language
+  public init(model: AppModel, embedded: Bool = false) {
+    self.model = model.recordWorkspace.buffers.editor
+    self.voice = model.voice
+    self.settings = model.settings
     self.embedded = embedded
+    setVoiceCollection = { [weak model] enabled in
+      model?.setBuiltinPushToTalkOutputMode(enabled ? .saveToVoiceGroup : .pasteIntoApp)
+    }
+    setClipboardCollection = { [weak model] enabled in
+      model?.setSystemClipboardCaptureEnabled(enabled)
+    }
   }
 
   private func text(_ zh: String, _ en: String) -> String { language == .simplifiedChinese ? zh : en }
@@ -43,6 +52,7 @@ public struct RecordBufferDraftView: View {
       }
       .disabled(model.isBusy)
       .padding(14)
+      collectionControls
       Divider()
       HSplitView {
         itemList.frame(minWidth: 180, idealWidth: 215, maxWidth: 300)
@@ -60,6 +70,33 @@ public struct RecordBufferDraftView: View {
     } message: {
       Text(text("草稿修改将被丢弃，原始记录仍保留。", "Draft edits will be discarded. The original record is retained."))
     }
+  }
+
+  private var collectionControls: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 24) {
+        Toggle(text("语音进入待发区", "Collect voice in Drafts"), isOn: Binding(
+          get: { settings.builtinPushToTalkOutputMode == .saveToVoiceGroup },
+          set: { setVoiceCollection($0) }))
+          .disabled(!settings.canMutateScalarSettings(in: .input))
+          .help(text("关闭后，Fn 听写直接输入当前应用；“录音新建”仍会收进待发区。",
+                     "When off, Fn dictation types into the current app. Record new item still collects here."))
+          .accessibilityIdentifier("record-buffer.collect-voice")
+        Toggle(text("剪贴板进入待发区", "Collect clipboard in Drafts"), isOn: Binding(
+          get: { settings.systemClipboardCaptureEnabled },
+          set: { setClipboardCollection($0) }))
+          .disabled(!settings.canMutateScalarSettings(in: .systemClipboard))
+          .help(text("收集开启后的新复制内容，并遵守隐私排除设置。",
+                     "Collects new copies after enabling, subject to your privacy exclusions."))
+          .accessibilityIdentifier("record-buffer.collect-clipboard")
+        Spacer(minLength: 0)
+      }
+      .toggleStyle(.checkbox)
+      Text(text("开启后自动显示，重启后保持；新内容不会打断当前编辑。",
+                "Opens automatically, including after restart. New items keep your editing selection."))
+        .font(.caption).foregroundStyle(.secondary)
+    }
+    .padding(.horizontal, 14).padding(.bottom, 12)
   }
 
   private var itemList: some View {
@@ -87,7 +124,7 @@ public struct RecordBufferDraftView: View {
         }
       }
     }
-    .listStyle(.sidebar)
+    .listStyle(.inset)
     .onKeyPress(.return) { model.send(); return .handled }
     .disabled(model.isBusy || model.session?.hasMarkedText == true)
     .overlay {
@@ -188,7 +225,7 @@ public struct RecordBufferDraftView: View {
         Button(role: .destructive) { showsDiscard = true } label: {
           Label(text("移除", "Remove"), systemImage: "trash")
         }.disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
-        Button(text("关闭", "Close"), action: model.closeAction)
+        Button(text("隐藏", "Hide"), action: model.closeAction)
         Button(text("发送所选项", "Send selected"), action: model.send)
           .buttonStyle(.borderedProminent)
           .disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)

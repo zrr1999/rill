@@ -101,6 +101,33 @@ final class RecordQuickPanelTests: XCTestCase {
     XCTAssertEqual(panel.results.count, 2)
   }
 
+  func testResidentPanelRefreshesSourceWithoutClearingSearch() async throws {
+    let store = RecordStore()
+    let first = try await store.ingest(draft("shared first", app: "com.example.first"), into: [])
+    let second = try await store.ingest(draft("shared second", app: "com.example.second"), into: [])
+    let panel = RecordQuickPanelModel(store: store)
+    panel.start(sourceBundleIdentifier: nil)
+    defer { panel.stop() }
+    panel.setSearchText("shared")
+    await settle(panel)
+    panel.select(first.id)
+    panel.updateSourceApplication("com.example.first")
+    XCTAssertTrue(panel.canFilterCurrentApp)
+    XCTAssertEqual(panel.searchText, "shared")
+    XCTAssertEqual(panel.selectedID, first.id)
+    panel.setCurrentAppOnly(true)
+    await settle(panel)
+    XCTAssertEqual(panel.results.map(\.id), [first.id])
+    panel.updateSourceApplication("com.example.second")
+    await settle(panel)
+    XCTAssertEqual(panel.results.map(\.id), [second.id])
+    XCTAssertEqual(panel.searchText, "shared")
+    panel.updateSourceApplication(nil)
+    await settle(panel)
+    XCTAssertFalse(panel.currentAppOnly)
+    XCTAssertEqual(panel.results.count, 2)
+  }
+
   func testCleanupCancelAndStaleConfirmationKeepRecordsUntilNewConfirmation() async throws {
     let store = RecordStore()
     let first = try await store.ingest(draft("first", app: "editor"), into: [])

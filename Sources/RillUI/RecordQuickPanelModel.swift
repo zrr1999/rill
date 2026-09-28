@@ -153,6 +153,15 @@ public final class RecordQuickPanelModel {
     scheduleSearch()
   }
 
+  public func updateSourceApplication(_ identifier: String?) {
+    guard !isClosed, pendingComparison == nil, sourceBundleIdentifier != identifier else { return }
+    sourceBundleIdentifier = identifier
+    if currentAppOnly {
+      currentAppOnly = identifier != nil
+      scheduleSearch()
+    }
+  }
+
   public func setCollection(_ id: RecordCollectionID?) {
     guard !isClosed, collectionID != id else { return }
     collectionID = id
