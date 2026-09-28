@@ -210,6 +210,50 @@ private actor SuspendedAcceptedInsertRunReceiptRepository: WorkflowRunReceiptRep
 
 @MainActor
 final class AppModelRunReceiptTests: XCTestCase {
+    func testDiscardedCaptureReturnsToIdleBeforeARunStarts() {
+        let model = makeHarness().model
+        let workflowID = UUID()
+        let runID = UUID()
+        model.workflowAudioRunState = .recording(workflowID: workflowID)
+        model.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .recording)))
+        model.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .hidden)))
+        XCTAssertEqual(model.workflowAudioRunState, .transcribing(workflowID: workflowID))
+
+        model.handle(.runDiscarded(runID: runID))
+
+        XCTAssertEqual(model.workflowAudioRunState, .idle)
+        XCTAssertNil(model.currentCaptureLiveSubtitleSnapshot)
+        XCTAssertNil(model.liveSubtitleSnapshot)
+        XCTAssertFalse(model.isRunning)
+        XCTAssertNil(model.lastFailure)
+        XCTAssertTrue(model.historyRecords.isEmpty)
+    }
+
+    func testDiscardedInputClearsOnlyItsOwnPresentationWithoutFailureOrHistory() {
+        let harness = makeHarness()
+        let model = harness.model
+        let run = RunSnapshot(
+            runID: UUID(), workflowID: UUID(), workflow: .init(fallbackName: "Voice"), trigger: .hotkey
+        )
+        model.handle(.runStarted(run))
+        model.handle(.runDiscarded(runID: run.runID))
+        XCTAssertFalse(model.isRunning)
+        XCTAssertNil(model.lastFailure)
+        XCTAssertTrue(model.historyRecords.isEmpty)
+
+        let newer = RunSnapshot(
+            runID: UUID(), workflowID: UUID(), workflow: .init(fallbackName: "New voice"), trigger: .hotkey
+        )
+        model.handle(.runStarted(newer))
+        model.handle(.runDiscarded(runID: run.runID))
+        XCTAssertEqual(model.activeRunID, newer.runID)
+        XCTAssertTrue(model.isRunning)
+        model.handle(.runFailed(runID: newer.runID, workflow: newer.workflow, message: "Provider unavailable"))
+        XCTAssertNotNil(model.lastFailure)
+        model.handle(.runDiscarded(runID: run.runID))
+        XCTAssertNotNil(model.lastFailure)
+    }
+
     func testAppModelLoadsDurableRunReceiptsWithoutEventReplay() async throws {
         let receipt = try makeReceipt(trigger: .recordReplay)
         let repository = try InMemoryWorkflowRunReceiptRepository(receipts: [receipt])
@@ -319,7 +363,7 @@ final class AppModelRunReceiptTests: XCTestCase {
         )
 
         let loaded = await waitUntil {
-            harness.model.historyRecords.contains { $0.runID == runID }
+            harness.model.history.historyRecords.contains { $0.runID == runID }
         }
 
         XCTAssertTrue(loaded)
@@ -356,7 +400,7 @@ final class AppModelRunReceiptTests: XCTestCase {
         )
 
         let loaded = await waitUntil {
-            harness.model.historyRecords.contains { $0.runID == runID }
+            harness.model.history.historyRecords.contains { $0.runID == runID }
         }
 
         XCTAssertTrue(loaded)
@@ -401,7 +445,7 @@ final class AppModelRunReceiptTests: XCTestCase {
         )
 
         let loaded = await waitUntil {
-            harness.model.historyRecords.count == 2
+            harness.model.history.historyRecords.count == 2
                 && harness.model.workflowRunReceipt(for: legacyVoiceRunID) == voiceReceipt
                 && harness.model.workflowRunReceipt(for: conflictingRunID) == conflictingReceipt
         }
@@ -433,7 +477,7 @@ final class AppModelRunReceiptTests: XCTestCase {
 
         harness.model.clearRunHistory()
         let maintenanceFinished = await waitUntil {
-            !harness.model.isLocalHistoryMaintenanceRunning
+            !harness.model.history.isLocalHistoryMaintenanceRunning
         }
 
         XCTAssertTrue(maintenanceFinished)
@@ -460,7 +504,7 @@ final class AppModelRunReceiptTests: XCTestCase {
 
         harness.model.clearRunHistory()
         let maintenanceFinished = await waitUntil {
-            !harness.model.isLocalHistoryMaintenanceRunning
+            !harness.model.history.isLocalHistoryMaintenanceRunning
         }
         XCTAssertTrue(maintenanceFinished)
         let queryCountBeforeLateEvent = await repository.observedQueryCount()
@@ -585,7 +629,7 @@ final class AppModelRunReceiptTests: XCTestCase {
         )
         harness.model.clearRunHistory()
         let maintenanceFinished = await waitUntil {
-            !harness.model.isLocalHistoryMaintenanceRunning
+            !harness.model.history.isLocalHistoryMaintenanceRunning
                 && harness.model.workflowRunReceipt(for: receipt.runID) == nil
         }
         XCTAssertTrue(maintenanceFinished)
@@ -606,7 +650,7 @@ final class AppModelRunReceiptTests: XCTestCase {
 
         let storedHistory = try await historyRepository.records(matching: .all)
         XCTAssertTrue(storedHistory.isEmpty)
-        XCTAssertFalse(harness.model.historyRecords.contains { $0.runID == receipt.runID })
+        XCTAssertFalse(harness.model.history.historyRecords.contains { $0.runID == receipt.runID })
     }
 
     private func makeReceipt(

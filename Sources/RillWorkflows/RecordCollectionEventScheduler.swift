@@ -190,7 +190,7 @@ public actor RecordCollectionEventScheduler: RecordCollectionEventSink {
                     runID: runID,
                     subsystem: .records,
                     level: .error,
-                    event: "record.trigger.receipt-unavailable",
+                    event: .recordTriggerReceiptUnavailable,
                     message: "A Record collection trigger decision could not be stored.",
                     metadata: ["eventKind": descriptor.kind.rawValue]
                 )
@@ -203,8 +203,8 @@ public actor RecordCollectionEventScheduler: RecordCollectionEventSink {
                 subsystem: .records,
                 level: .info,
                 event: reason == .loopPrevented
-                    ? "record.trigger.loop-prevented"
-                    : "record.trigger.skipped",
+                    ? .recordTriggerLoopPrevented
+                    : .recordTriggerSkipped,
                 message: matched
                     ? "A Record collection trigger matched and was skipped."
                     : "A Record collection trigger was skipped.",

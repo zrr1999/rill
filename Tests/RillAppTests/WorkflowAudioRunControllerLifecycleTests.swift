@@ -1,6 +1,6 @@
-
-@testable import RillApp
 @testable import RillWorkflows
+import RillPlatform
+import RillDomainTestSupport
 import Foundation
 import XCTest
 @testable import RillCore
@@ -51,15 +51,15 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fileURL) }
         let captureService = ManagedFileAudioCaptureService(fileURL: fileURL)
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
-            contextProvider: WorkflowAudioCleanupContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
             eventBus: eventBus
         )
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )
@@ -71,7 +71,7 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
             maximumRetryDelay: .milliseconds(1),
             sleep: { _ in }
         )
-        let controller = WorkflowAudioRunController(
+        let controller = makeTestWorkflowAudioRunController(
             audioCaptureService: captureService,
             capturedAudioProcessingQueue: queue,
             privacyRunGate: makeWorkflowAudioLifecycleTestPrivacyGate(),
@@ -97,19 +97,19 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fileURL) }
         let captureService = ManagedFileAudioCaptureService(fileURL: fileURL)
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
-            contextProvider: WorkflowAudioCleanupContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
             eventBus: eventBus
         )
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )
-        let controller = WorkflowAudioRunController(
+        let controller = makeTestWorkflowAudioRunController(
             audioCaptureService: captureService,
             capturedAudioProcessingQueue: queue,
             privacyRunGate: makeWorkflowAudioLifecycleTestPrivacyGate()
@@ -138,17 +138,17 @@ final class WorkflowAudioRunControllerLifecycleTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fileURL) }
         let captureService = ManagedFileAudioCaptureService(fileURL: fileURL)
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
-            contextProvider: WorkflowAudioCleanupContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
             transformerRegistry: TextTransformerRegistry(transformers: []),
             actionRegistry: OutputActionRegistry(actions: []),
             candidateResolver: CandidateResolver(eventBus: eventBus),
             eventBus: eventBus
         )
-        let controller = WorkflowAudioRunController(
+        let controller = makeTestWorkflowAudioRunController(
             audioCaptureService: captureService,
-            capturedAudioProcessingQueue: CapturedAudioProcessingQueue(
+            capturedAudioProcessingQueue: makeTestCapturedAudioProcessingQueue(
                 sessionCoordinator: coordinator,
                 eventBus: eventBus
             ),

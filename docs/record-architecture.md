@@ -1,6 +1,6 @@
 # Record architecture
 
-Status: accepted, Record catalog v2 / SQLite schema 13.
+Status: accepted, Record catalog v4 / SQLite schema 14.
 
 ## Decision
 
@@ -9,23 +9,38 @@ clipboard is one source and one sink. It does not own stored content, grouping,
 routing, delivery state, or workflow history.
 
 `RecordStore` is the single actor that owns immutable Records and the mutable
-metadata, activity, membership, collection, route, lease, and persistence CAS
+metadata, activity, membership, collection, buffer, route, lease, and persistence CAS
 coordinates around them. `RecordIngestionCoordinator` owns source → privacy →
 route → atomic ingest. `RecordDeliveryCoordinator` owns target route → exact
-membership lease → sink → content-free receipt.
+membership lease → sink → content-free receipt. Sink identities are checked once at construction; duplicate
+identities return `RegistrationError.duplicateSink` before any lease or output.
+The sink registry is immutable for the coordinator lifetime.
 
 ## Invariants
 
 - A Record payload never changes. Edit and Replace create a derived Record.
-- A membership belongs to exactly one Record and one collection and carries a
-  stable ordinal, active/consumed state, and revision.
+- An editable pending draft belongs to a buffer entry, not the Record. Sending
+  commits a derived Record and replaces that exact entry without changing its
+  sequence, memberships or capture routes. See [draft contracts](continuous-output.md#editable-drafts).
+- A membership belongs to exactly one Record and one collection and carries an
+  ordinal, active/consumed state, and revision. Reactivating a consumed
+  membership keeps its identity and assigns a new ordinal.
 - All Records is a virtual de-duplicated timeline, not a privileged collection.
 - Removing a membership never deletes its Record; global deletion is explicit.
 - Selection and consumption are independent policies. Stack, Queue, and List
   are only presets.
 - Capture routing creates one Record and the stable union of every matched
-  destination. Delivery routing uses highest priority, then stable rule ID, and
-  retains the rule's ordered collection list.
+  destination, unless the canonical payload matches an existing Record. A match
+  reuses the earliest Record: its SHA-256 selects candidates and exact payload
+  equality confirms them. Provenance and creation time stay with that Record.
+  Missing destination memberships are added. A consumed membership in a requested
+  destination becomes active and receives a new ordinal at the front of that
+  collection. Edit and Replace still create a derived Record and are not folded
+  into an existing payload. A system-clipboard capture counts as a copy, including
+  the first one. Successful delivery to any other sink counts as a use. Copying
+  the Record back to the system clipboard counts as another copy and does not
+  increment the use count. Delivery routing uses highest priority, then stable
+  rule ID, and retains the rule's ordered collection list.
 - A successful delivery consumes only the leased origin membership. A failed
   delivery releases the lease and records only a closed failure code.
 - Workflow execution history remains `WorkflowResultRecord` plus
@@ -43,7 +58,11 @@ previews, capture controls, privacy changes, and shutdown never write back to
 the clipboard. The capture port exposes reads only; the global input tap has no
 native paste interception or replay path.
 
-Only explicitly requested output uses the shared delivery workflow. Text,
+Command-Shift-V uses independent buffers and clipboard-free text or native drag
+output; see [continuous output](continuous-output.md) for its confirmation,
+reservation, and migration contracts.
+
+Other explicitly requested output uses the shared delivery workflow. Text,
 images, and files all use its target checks and conditional clipboard transaction;
 restoration must preserve a newer external copy. Pausing history capture does
 not disable explicit output.
@@ -70,15 +89,24 @@ manage their own rendering, caches, and access behavior.
 
 ## Persistence and migration
 
-SQLite schema 13 stores encrypted catalog nodes and immutable payload blobs
+SQLite schema 14 stores encrypted catalog nodes and immutable payload blobs
 separately. The catalog holds headers and previews; payloads are loaded on demand
 through a bounded cache. Metadata-only changes retain the payload ciphertext.
 
+Record headers store a SHA-256 of the canonical payload bytes. Headers written
+before the digest existed are filled from the stored payload on the next
+non-derived ingest and committed with that graph write. A failed commit rolls
+the digest fill back with the rest of the graph.
+
 The pre-Record clipboard graph is decoded only by `LegacyClipboardMigration`.
-Record graph v1 remains readable and is converted to catalog v2 on the next
-commit. Catalog mutations, payload writes, and legacy-row removal share one
+Record graph v1 and catalogs v2/v3 remain readable and migrate forward to catalog v4.
+Legacy pending memberships become disabled buffers; new default buffers start
+empty. Encrypted buffer deltas share the graph transaction and revision owner. Catalog mutations, payload writes, and legacy-row removal share one
 transaction with revision checks and authenticated readback. A failed commit
 rolls back the database transaction and the RecordStore's committed graph state.
+Catalog v4 adds mutable draft bodies to encrypted buffer entries. A v3 catalog's
+first mutation upgrades the manifest atomically; older binaries reject v4 instead
+of silently discarding edits and sending the original Record.
 
 The migration is forward-only. There is no dual runtime or downgrade contract.
 Old workflow TOML names remain accepted at the file-loader boundary and are
@@ -185,8 +213,11 @@ Real-key network acceptance and macOS keyboard/secure-field behavior require sep
 `RecordStorageLimits.productDefault` admits up to 10,000 Records and 512 MiB of
 payload, with per-item limits of 1 MiB text and 32 MiB images. Each Record may
 have at most 32 memberships, the graph at most 320,000 memberships, and each
-route at most 32 collection references. Pinned Records and Records with any
-active membership are protected from automatic retention. Clipboard transfer
+route at most 32 collection references. Retention review protects pinned or
+tagged Records, Records in collections other than Inbox, buffered Records,
+and active output leases. Explicit single-Record deletion removes its buffer
+references atomically, except while that Record is being output or awaiting
+confirmation. Clipboard transfer
 budgets are separate from the durable catalog's storage limits.
 
 ## Module and lifecycle boundaries
@@ -198,3 +229,13 @@ clear barriers retain their transactional guarantees. UI persistence task
 ownership is separate from AppModel's settings presentation and retry policy.
 
 See [Architecture](architecture.md) for the dependency graph and state owners.
+
+
+### Explicit recognition corrections
+
+`RecordStore.saveTextCorrection` resolves the original immutable text by workflow
+run ID and creates a new user-derived Record. It preserves the source and its
+memberships. The correction has no collection membership, so saving it cannot
+trigger routing or repeat delivery. An operation ID makes retries idempotent;
+a deleted original is not resurrected. The workspace owns and drains the accepted
+write. Remembering vocabulary is a separate, scope-visible command.

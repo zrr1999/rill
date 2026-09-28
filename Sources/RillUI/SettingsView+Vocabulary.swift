@@ -5,7 +5,7 @@ import RillCore
 extension SettingsView {
   var vocabularySection: some View {
     settingsDisclosure(.vocabulary) {
-      if let vocabularyRulesError = model.vocabularyRulesError {
+      if let vocabularyRulesError = model.vocabulary.error {
         settingsDomainLoadFailure(
           message: vocabularyRulesError,
           retryIdentifier: "settings.vocabulary.retry"
@@ -13,11 +13,11 @@ extension SettingsView {
       }
 
       VStack(alignment: .leading, spacing: 10) {
-        Text(L10n.settingsText(.settingsVocabularyMovedNotice, language: model.language))
+        Text(L10n.settingsText(.settingsVocabularyMovedNotice, language: model.settings.language))
           .font(.callout)
           .foregroundStyle(.secondary)
 
-        ForEach(model.vocabularyCollections) { collection in
+        ForEach(model.vocabulary.vocabularyCollections) { collection in
           HStack {
             Label(
               collection.name,
@@ -38,7 +38,7 @@ extension SettingsView {
           Label(
             L10n.settingsText(
               .settingsManageVocabularyCollections,
-              language: model.language
+              language: model.settings.language
             ),
             systemImage: SidebarSection.workflows.symbolName
           )
@@ -48,7 +48,7 @@ extension SettingsView {
       }
       .disabled(!model.areVocabularyRulesAvailable)
     }
-    .disabled(model.isLoadingSettings)
+    .disabled(model.settings.isLoading)
   }
 
   func settingsDomainLoadFailure(
@@ -59,11 +59,11 @@ extension SettingsView {
       Label(message, systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue)
         .font(.callout)
         .foregroundStyle(.orange)
-      Button(L10n.historySettingsText(.retry, language: model.language)) {
+      Button(L10n.historySettingsText(.retry, language: model.settings.language)) {
         model.retryUnavailableStoredSettingsDomains()
       }
       .buttonStyle(.bordered)
-      .disabled(model.isRetryingUnavailableSettingsDomains)
+      .disabled(model.settings.isRetryingUnavailableSettingsDomains)
       .accessibilityIdentifier(retryIdentifier)
     }
   }
@@ -83,14 +83,14 @@ extension SettingsView {
   func vocabularyRuleRow(_ rule: VocabularyRule) -> some View {
     HStack(alignment: .top, spacing: 12) {
       Toggle(
-        UIStrings.targetedAccessibilityLabel(
+        L10n.targetedAccessibilityLabel(
           .vocabularyRule,
           target: vocabularyRuleTitle(rule),
-          language: model.language
+          language: model.settings.language
         ),
         isOn: Binding(
           get: { rule.enabled },
-          set: { model.setVocabularyRuleEnabled(rule.id, isEnabled: $0) }
+          set: { model.vocabulary.setVocabularyRuleEnabled(rule.id, isEnabled: $0) }
         )
       )
       .labelsHidden()
@@ -98,10 +98,10 @@ extension SettingsView {
 
       VStack(alignment: .leading, spacing: 4) {
         HStack(spacing: 6) {
-          Text(L10n.vocabularyRuleKind(rule.kind, language: model.language))
+          Text(L10n.vocabularyRuleKind(rule.kind, language: model.settings.language))
             .font(.caption.weight(.semibold))
           if rule.kind == .mapping {
-            Text(L10n.vocabularyMatchMode(rule.matchMode, language: model.language))
+            Text(L10n.vocabularyMatchMode(rule.matchMode, language: model.settings.language))
               .font(.caption)
               .foregroundStyle(.secondary)
           }
@@ -115,7 +115,7 @@ extension SettingsView {
           .foregroundStyle(.secondary)
 
         if rule.kind == .hotword {
-          Text(L10n.string(.vocabularyHotwordBehavior, language: model.language))
+          Text(L10n.string(.vocabularyHotwordBehavior, language: model.settings.language))
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -124,16 +124,16 @@ extension SettingsView {
       Spacer()
 
       Button(role: .destructive) {
-        model.deleteVocabularyRule(rule.id)
+        model.vocabulary.deleteVocabularyRule(rule.id)
       } label: {
         Image(systemName: RillSystemSymbol.trash.rawValue)
       }
       .buttonStyle(.plain)
       .accessibilityLabel(
-        UIStrings.targetedAccessibilityLabel(
+        L10n.targetedAccessibilityLabel(
           .vocabularyDeleteRule,
           target: vocabularyRuleTitle(rule),
-          language: model.language
+          language: model.settings.language
         )
       )
       .accessibilityIdentifier("vocabulary.rule.\(rule.id.uuidString).delete")
@@ -151,7 +151,7 @@ extension SettingsView {
     L10n.vocabularyScopeSummary(
       scope,
       groupName: vocabularyGroupName(scope.recordCollectionID),
-      language: model.language
+      language: model.settings.language
     )
   }
 
@@ -161,7 +161,7 @@ extension SettingsView {
   }
 
   func addVocabularyRule() {
-    model.addVocabularyRule(
+    model.vocabulary.addVocabularyRule(
       kind: vocabularyKind,
       pattern: vocabularyPattern,
       replacement: vocabularyKind == .mapping ? vocabularyReplacement : "",

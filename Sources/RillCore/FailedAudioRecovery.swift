@@ -35,7 +35,7 @@ public struct WorkflowRunFailureSummary: Codable, Sendable, Equatable {
         switch stage {
         case .preparing, .capturingInput, .recognizing, .resolving, .transforming:
             return true
-        case .delivering, .completed, .failed:
+        case .saving, .delivering, .completed, .failed:
             return false
         }
     }
@@ -67,6 +67,8 @@ public struct WorkflowRunCancelledSummary: Codable, Sendable, Equatable {
 
 public enum WorkflowRunExecutionResult: Sendable, Equatable {
     case completed(WorkflowRunSummary)
+    /// No usable voice input; no output or durable run history was produced.
+    case noInput
     case cancelled(WorkflowRunCancelledSummary)
     case failed(WorkflowRunFailureSummary)
 }

@@ -1,3 +1,4 @@
+import RillPlatform
 import Foundation
 import XCTest
 
@@ -43,6 +44,7 @@ final class SpeechSynthesisActionsTests: XCTestCase {
     let action = SpeakTextAction(
       synthesizer: synthesizer,
       playback: playback,
+      removeTemporaryAsset: { _ = try $0.removeManagedTemporaryFile() },
       playbackStateChanged: { isPlaying in
         await states.append(isPlaying)
       }
@@ -73,7 +75,7 @@ final class SpeechSynthesisActionsTests: XCTestCase {
       outcome: .success(asset)
     )
     let playback = StubPlayback(failure: TestError.failed)
-    let action = SpeakTextAction(synthesizer: synthesizer, playback: playback)
+    let action = SpeakTextAction(synthesizer: synthesizer, playback: playback, removeTemporaryAsset: { _ = try $0.removeManagedTemporaryFile() })
 
     let result = try await action.execute(
       text: "hello",

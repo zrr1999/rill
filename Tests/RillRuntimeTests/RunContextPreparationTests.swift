@@ -1,11 +1,76 @@
-
-@testable import RillCore
 @testable import RillKnowledge
+@testable import RillRecords
 @testable import RillWorkflows
+@testable import RillCore
+import RillDomainTestSupport
 import Foundation
 import Testing
 
 struct RunContextPreparationTests {
+    @Test func vocabularyNeedsNoScreenOrSummaryAndIsReleasedAtFreeze() async throws {
+        let grant = ContextReferenceAuthorization(providerFingerprint: "fixture")
+        let reference = try CorrectionVocabularyReference(terms: ["Rill", "ProjectBeyondASRBudget"])
+        let preparation = try await RunContextPreparation.prepare(
+            focus: ContextSnapshot.empty.focus, screenEnabled: false, memoryEnabled: false,
+            vocabularyReference: reference, excludedApplications: [],
+            capture: ContextTestCapture { Issue.record("Unexpected capture"); throw TestFailure.failed },
+            summarizer: ContextTestSummarizer(image: { Issue.record("Unexpected summary"); throw TestFailure.failed }),
+            memories: { Issue.record("Unexpected memory read"); return [] },
+            authorization: grant, audioLifetime: AudioCaptureLifetime(runID: UUID()))
+        preparation.recordingStarted()
+        let frozen = try preparation.freeze(transcript: "real")
+        #expect(frozen.request.vocabularyReference == reference)
+        #expect(frozen.receipt.vocabulary == reference.receipt)
+        #expect(frozen.receipt.image == .disabled)
+        #expect(frozen.receipt.memorySummary == .disabled)
+        #expect(throws: ContextCorrectionError.self) { try preparation.freeze(transcript: "again") }
+        preparation.cancel()
+        #expect(frozen.request.authorization?.isValid == false)
+        #expect(grant.isValid)
+    }
+
+    @Test func optionalPreparationTimeoutPreservesVocabularyWithoutLateMutation() throws {
+        let reference = try CorrectionVocabularyReference(terms: ["Rill"])
+        let preparation = RunContextPreparation.skipped(authorization: .init(providerFingerprint: "fixture"),
+            audioLifetime: AudioCaptureLifetime(runID: UUID()), screenEnabled: true, memoryEnabled: true,
+            status: .timedOut, vocabularyReference: reference)
+        let frozen = try preparation.freeze(transcript: "real")
+        #expect(frozen.request.vocabularyReference == reference)
+        #expect(frozen.request.imageSummary == nil)
+        #expect(frozen.receipt.image == .timedOut)
+        #expect(frozen.receipt.vocabulary?.status == .ready)
+    }
+
+    @Test(arguments: [false, true], [false, true])
+    func vocabularyReachesOneMainRequestAndHistoryReportsItsOutcome(fails: Bool, empty: Bool) async throws {
+        let reference = try CorrectionVocabularyReference(terms: empty ? [] : ["Rill", "ReferenceOnlyTerm"])
+        let prompt = empty ? "Translate into English" : LLMTextProcessing.cleanupPrompt
+        let preparation = RunContextPreparation.skipped(authorization: .init(providerFingerprint: "fixture"),
+            audioLifetime: AudioCaptureLifetime(runID: UUID()), screenEnabled: false, memoryEnabled: false,
+            status: .disabled, vocabularyReference: reference)
+        let transformer = VocabularyReceiptTransformer(fails: fails)
+        let bus = EventBus()
+        let coordinator = makeTestSessionCoordinator(
+            recognizerRegistry: .init(recognizers: [ContextQueueRecognizer(result: .init(rawText: "real", bestText: "real"))]),
+            transformerRegistry: .init(transformers: [transformer]), actionRegistry: .init(actions: [ContextQueueAction()]),
+            candidateResolver: CandidateResolver(eventBus: bus), eventBus: bus)
+        let workflow = WorkflowDefinition(name: "Vocabulary receipt", pipeline: .init(recognizerID: "context.test",
+            postProcessSteps: [.init(kind: .llmRewrite, prompt: prompt)], outputActions: [.init(id: "context.output")]),
+            ui: .init(symbolName: "waveform", accentColorName: "blue"))
+        let audio = try CapturedAudio(durationSeconds: 0.2,
+            format: .init(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16), inlineData: Data([0, 0]))
+        let outcome = await coordinator.runReportingOutcome(workflow: workflow, capturedAudio: audio,
+            contextSnapshot: .empty, contextPreparation: preparation)
+        guard case .completed(let summary) = outcome else { Issue.record("Expected completion: \(outcome)"); return }
+        #expect(summary.finalText == (fails ? "real" : "Rill"))
+        #expect(await transformer.prompts == [prompt])
+        #expect(await transformer.requests.count == (empty ? 0 : 1))
+        #expect(await transformer.requests.first?.vocabularyReference == (empty ? nil : reference))
+        #expect(summary.correctionSource?.references?.vocabulary?.status == (empty ? .unavailable : (fails ? .deliveryUnconfirmed : .sent)))
+        #expect(summary.correctionSource?.references?.vocabulary?.includedCount == (empty ? 0 : 2))
+        #expect(!String(decoding: try JSONEncoder().encode(summary.correctionSource), as: UTF8.self).contains("ReferenceOnlyTerm"))
+    }
+
     private static let captureSetupTimeout: Duration = .seconds(2)
 
     @Test func explicitSelectionVocabularyAndCleanupSurviveWithoutRefreshingFrozenReferences() async throws {
@@ -22,7 +87,7 @@ struct RunContextPreparationTests {
         let bus = EventBus()
         let resolver = CandidateResolver(eventBus: bus)
         let transformer = ContextQueueTransformer()
-        let coordinator = SessionCoordinator(contextProvider: ContextQueueContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ContextQueueRecognizer(result: recognition)]),
             transformerRegistry: TextTransformerRegistry(transformers: [transformer]),
             actionRegistry: OutputActionRegistry(actions: [ContextQueueAction()]), candidateResolver: resolver, eventBus: bus,
@@ -221,18 +286,18 @@ struct RunContextPreparationTests {
         let transformer = ContextQueueTransformer()
         let eventBus = EventBus()
         let diagnostics = DiagnosticsRecorder(eventBus: eventBus)
-        let coordinator = SessionCoordinator(
-            contextProvider: ContextQueueContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [ContextQueueRecognizer()]),
             transformerRegistry: TextTransformerRegistry(transformers: [transformer]),
             actionRegistry: OutputActionRegistry(actions: [ContextQueueAction()]),
             candidateResolver: CandidateResolver(eventBus: eventBus), eventBus: eventBus, diagnostics: diagnostics
         )
-        let queue = CapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
+        let queue = makeTestCapturedAudioProcessingQueue(sessionCoordinator: coordinator, eventBus: eventBus)
         let workflow = WorkflowDefinition(name: "Context queue", pipeline: PipelineDeclaration(
             recognizerID: "context.test", postProcessSteps: [PostProcessStep(kind: .llmRewrite, prompt: "Cleanup")], outputActions: [OutputActionReference(id: "context.output")]
         ), ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue"))
-        let audio = try CapturedAudio(durationSeconds: 0.2,
+        let audio = try CapturedAudio(durationSeconds: 1,
             format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16), inlineData: Data([0, 0]))
         let transfer = await queue.enqueue(authorizationLease: makeAudioProcessingTestLease(
             runID: UUID(), workflow: workflow, contextPreparation: preparation
@@ -367,5 +432,30 @@ private actor ContextQueueTransformer: TextTransformer {
 
 private struct ContextQueueAction: OutputAction {
     let id = "context.output"
-    func execute(text: String, context: ActionContext) async throws -> ActionResult { .copiedToClipboard }
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
+        return .copiedToClipboard
+    }
+}
+
+private actor VocabularyReceiptTransformer: TracedTextTransformer {
+    nonisolated let id = "vocabulary.receipt"
+    nonisolated let supportedKinds: [PostProcessStepKind] = [.llmRewrite]
+    let fails: Bool
+    private(set) var requests: [ContextualCorrectionRequest] = []
+    private(set) var prompts: [String] = []
+    init(fails: Bool) { self.fails = fails }
+    func transform(text: String, step: PostProcessStep, context: TransformContext) throws -> String {
+        try transformWithTrace(text: text, step: step, context: context).text
+    }
+    func transformWithTrace(text: String, step: PostProcessStep, context: TransformContext) throws -> TracedTextTransformation {
+        prompts.append(step.prompt ?? "")
+        if let request = context.correctionRequest { requests.append(request) }
+        if fails { throw VocabularyReceiptFailure() }
+        return .init(text: "Rill", trace: .init(providerID: id, modelID: "fixture", systemPrompt: "", workflowPrompt: "",
+            messages: [.init(role: .user, content: text)], responseText: "Rill"))
+    }
+}
+private struct VocabularyReceiptFailure: SpeechTextFallbackEligibleError {
+    var allowsSpeechTextFallback: Bool { true }
 }

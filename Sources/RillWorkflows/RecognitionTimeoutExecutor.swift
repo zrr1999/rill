@@ -62,14 +62,6 @@ enum RecognitionDeadlineError: Error, LocalizedError, Sendable, Equatable {
   }
 }
 
-private enum RecognitionAudioIsolationError: Error, LocalizedError, Sendable {
-  case unavailable
-
-  var errorDescription: String? {
-    "Speech recognition could not safely prepare the recorded audio."
-  }
-}
-
 /// Races a recognizer against a monotonic deadline without structurally waiting
 /// for a provider that ignores cooperative task cancellation.
 ///
@@ -90,16 +82,19 @@ actor RecognitionTimeoutExecutor {
     let isolatedAudio: CapturedAudio?
   }
 
+  private let isolateAudio: @Sendable (CapturedAudio) throws -> CapturedAudio
   private let sleep: Sleep
-  private let cleanupOwner: ManagedTemporaryAudioCleanupOwner
+  private let cleanupOwner: any ManagedTemporaryAudioCleaning
   private var activeOperationsByRecognizer: [String: ActiveOperation] = [:]
 
   init(
     sleep: @escaping Sleep = { duration in
       try await ContinuousClock().sleep(for: duration)
     },
-    cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner()
+    cleanupOwner: any ManagedTemporaryAudioCleaning,
+    isolateAudio: @escaping @Sendable (CapturedAudio) throws -> CapturedAudio
   ) {
+    self.isolateAudio = isolateAudio
     self.sleep = sleep
     self.cleanupOwner = cleanupOwner
   }
@@ -180,62 +175,15 @@ actor RecognitionTimeoutExecutor {
   private func isolateManagedAudio(in request: RecognitionRequest) throws -> PreparedRequest {
     guard let capturedAudio = request.capturedAudio,
       capturedAudio.fileOwnership == .managedTemporary,
-      let sourceURL = capturedAudio.fileURL
+      capturedAudio.fileURL != nil
     else {
       return PreparedRequest(request: request, isolatedAudio: nil)
     }
 
-    let resourceValues: URLResourceValues
-    do {
-      resourceValues = try sourceURL.resourceValues(
-        forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-      )
-    } catch {
-      throw RecognitionAudioIsolationError.unavailable
-    }
-    guard resourceValues.isRegularFile == true,
-      resourceValues.isSymbolicLink != true
-    else {
-      throw RecognitionAudioIsolationError.unavailable
-    }
-
-    let fileManager = FileManager.default
-    var isolatedURL = fileManager.temporaryDirectory
-      .appendingPathComponent(
-        "\(RecognitionTemporaryAudioNamespace.currentProcessFilenamePrefix)\(UUID().uuidString)"
-      )
-    if !sourceURL.pathExtension.isEmpty {
-      isolatedURL.appendPathExtension(sourceURL.pathExtension)
-    }
-
-    do {
-      try fileManager.linkItem(at: sourceURL, to: isolatedURL)
-    } catch {
-      try? fileManager.removeItem(at: isolatedURL)
-      do {
-        try fileManager.copyItem(at: sourceURL, to: isolatedURL)
-      } catch {
-        try? fileManager.removeItem(at: isolatedURL)
-        throw RecognitionAudioIsolationError.unavailable
-      }
-    }
-
-    do {
-      let isolatedAudio = try CapturedAudio(
-        durationSeconds: capturedAudio.durationSeconds,
-        format: capturedAudio.format,
-        fileURL: isolatedURL,
-        inlineData: capturedAudio.inlineData,
-        fileOwnership: .managedTemporary,
-        metadata: capturedAudio.metadata
-      )
-      var isolatedRequest = request
-      isolatedRequest.capturedAudio = isolatedAudio
-      return PreparedRequest(request: isolatedRequest, isolatedAudio: isolatedAudio)
-    } catch {
-      try? fileManager.removeItem(at: isolatedURL)
-      throw RecognitionAudioIsolationError.unavailable
-    }
+    let isolatedAudio = try isolateAudio(capturedAudio)
+    var isolatedRequest = request
+    isolatedRequest.capturedAudio = isolatedAudio
+    return PreparedRequest(request: isolatedRequest, isolatedAudio: isolatedAudio)
   }
 
   private func operationDidFinish(_ operationID: UUID, recognizerID: String) async {

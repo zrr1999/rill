@@ -1,3 +1,4 @@
+@testable import RillWorkflows
 import Foundation
 import Testing
 @testable import RillCore

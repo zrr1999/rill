@@ -13,7 +13,7 @@ Attach evidence from the exact candidate commit before beginning device QA:
 - `just ci`: maintained prek hooks, generated artifacts, offline dependency policy,
   full Git/source secret scans, release-policy tests, an arm64 Release build,
   bundle and signing smoke checks, and the complete Swift test suite.
-- `bash scripts/check_commit_messages.sh`: complete messages validated with the
+- `scripts/preflight.sh commit-messages`: complete messages validated with the
   pinned ZenDev profile.
 - `uv run --script scripts/check_dependency_security.py --live-osv`: current
   advisory results for the exact locked dependency revisions.
@@ -341,8 +341,9 @@ Complete the pass in both App languages.
       TTS model work never queues on the ASR worker supervisor.
 - [ ] During a long streaming hypothesis, the live-subtitle panel keeps its
       standard fixed frame; text preserves the latest two lines without width
-      or height growth. Preparing/processing compact states use their own fixed
-      frame and neither layout steals key focus from the foreground App.
+      or height growth. Once expanded, the current run keeps that frame through
+      processing even when the hypothesis becomes empty. A new run resets the
+      compact layout; neither layout steals key focus from the foreground App.
 - [ ] Record wake-listening idle CPU and memory, cold model preparation time,
       warm startup time, and detection latency on every supported Mac tier.
       Repeat the chain with built-in microphone/speaker and headphones, on the
@@ -453,3 +454,42 @@ other speech-scope branch `N/A` in the copied candidate checklist; leaving both
 branches unresolved is not acceptable. A feature can be treated as out of scope
 only when its UI, documentation, and stored-configuration migration are updated
 in the same release.
+
+## Continuous output (Command-Shift-V)
+
+Use the exact candidate and an isolated test database. Application compatibility
+is established per app and content type; see [continuous output](continuous-output.md).
+
+- [ ] Native Command-C/X/V pass through with capture on/off and with pending entries.
+- [ ] Default and custom Output Next shortcuts work, report conflicts, and do not repeat while held.
+- [ ] Verify Chinese IME, emoji, long multiline text, selection replacement, shortcut release,
+      and focus changes. No output may press Return to send or submit.
+- [ ] Confirm unverified text explicitly, then advance exactly once. Retry targets the same entry.
+- [ ] Accept/cancel image, promised PNG, single-file and multi-file drags. Originals remain unchanged.
+      Rejection, missing source, write failure, or partial delivery retains the fixed entry.
+- [ ] Record general-pasteboard contents and changeCount before and after text/image/file output,
+      cancellation, retry, and confirmation. Repeat with a newer external copy during output;
+      only that external copy may change the general pasteboard.
+- [ ] Restart with ready and unconfirmed entries; ready entries persist and unconfirmed ones cannot resend automatically.
+- [ ] Legacy buffers are disabled after migration, default buffers are empty, and Raycast history is not backfilled.
+
+### Editable pending drafts
+
+- [ ] Open Drafts from both the menu bar and Record toolbar in Chinese/English,
+      light/dark appearance and a narrow window; inspect selection contrast and VoiceOver labels.
+- [ ] With the physical Chinese IME, compose, choose candidates, replace a selection,
+      undo and enter multiline text. Return must not send during composition;
+      Command-Return sends only after composition. Escape unwinds composition, editor, then panel.
+- [ ] Copy externally and complete another recognition while editing. List arrivals
+      must not switch drafts, move the caret, consume the IME key or write the general pasteboard.
+- [ ] Try Record New Item and Dictate Here, including edits, selection changes,
+      switching drafts and closing during recognition. Late results remain bound
+      proposals; applying a final result is one native undo step.
+- [ ] Close during creation/saving, reopen and restart with an empty first draft,
+      edited speech and unapplied suggestions. On save failure, local text remains
+      available to retry or explicitly save as a new draft.
+- [ ] Open from an external editor, then change its selection, close its window or
+      switch applications. Send must retain the item instead of choosing a new target.
+      Opening from Rill must support preparing the item and explicit shortcut handoff.
+- [ ] Verify Fn release when the panel opens during capture, editor key pass-through,
+      uncertain-output confirmation and shutdown while a draft write is blocked.

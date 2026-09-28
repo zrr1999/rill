@@ -1,7 +1,7 @@
 import Foundation
 import RillCore
 
-public actor InMemoryHistoryRepository: HistoryRepository {
+public actor InMemoryHistoryRepository: HistoryRepository, HistoryMaintaining {
     private struct StoredRecord: Sendable {
         var record: WorkflowResultRecord
         var generation: RunHistoryWriteGeneration

@@ -25,6 +25,7 @@ public struct WorkflowRunReceiptRepositoryChange: Sendable, Equatable {
 
 public enum RillEvent: Sendable, Equatable {
     case runStarted(RunSnapshot)
+    case runStageChanged(run: WorkflowRunIdentity, stage: WorkflowRunStage)
     case contextCaptured(run: WorkflowRunIdentity, snapshot: ContextSnapshot)
     case recognitionCompleted(run: WorkflowRunIdentity, result: RecognitionResult)
     case liveSubtitleUpdated(LiveSubtitleSnapshot)
@@ -37,11 +38,14 @@ public enum RillEvent: Sendable, Equatable {
     case runTextStepRecorded(runID: UUID, step: WorkflowTextStep)
     case actionExecuted(run: WorkflowRunIdentity, actionID: String, result: ActionResult)
     case recordPanelRequested
+    case recordBufferOutputRequested
+    case recordBufferInputFailed(recordID: RecordID)
     /// Invalidates subscriber snapshots after a terminal receipt is accepted.
     /// Repository membership may already have changed again by delivery time.
     case runReceiptRepositoryChanged(WorkflowRunReceiptRepositoryChange)
     case runHistoryUpdated(WorkflowRunHistoryUpdate)
     case runCompleted(WorkflowRunSummary)
+    case runDiscarded(runID: UUID)
     case runCancelled(WorkflowRunCancelledSummary)
     case runFailed(runID: UUID?, workflow: WorkflowPresentation?, message: String)
     case diagnostic(DiagnosticEvent)

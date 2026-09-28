@@ -7,6 +7,13 @@ import RillKnowledge
 
 @MainActor @Observable
 public final class WorkflowLibraryModel {
+  public var workflowEditorError: String?
+  public internal(set) var workflowExplanationState: WorkflowExplanationLoadState = .idle
+  let workflowExplanationTaskOwner = ReplacingTaskOwner()
+  var workflowExplanationGeneration = 0
+  public internal(set) var isUpdatingWorkflowEnabledStates = false
+  @ObservationIgnored var workflowFileMonitorTask: Task<Void, Never>?
+
   public internal(set) var builtInWorkflows: [WorkflowDefinition]
   public internal(set) var customWorkflows: [WorkflowDefinition] = []
   public internal(set) var workflows: [WorkflowDefinition]
@@ -24,7 +31,12 @@ public final class WorkflowLibraryModel {
   public internal(set) var usesWorkflowFilesAsSource: Bool = false
   public internal(set) var hasModifiedWorkflowLibrary: Bool = false
   public internal(set) var workflowLibraryError: String?
-  init(workflows: [WorkflowDefinition]) {
+  let settings: SettingsPersistenceModel
+  let explainResolvedWorkflowAction: @Sendable (WorkflowResolvedExecutionPlan) async throws -> WorkflowExplanationReceipt
+  init(workflows: [WorkflowDefinition], settings: SettingsPersistenceModel,
+    explain: @escaping @Sendable (WorkflowResolvedExecutionPlan) async throws -> WorkflowExplanationReceipt) {
+    self.settings = settings
+    self.explainResolvedWorkflowAction = explain
     self.builtInWorkflows = workflows
     self.workflows = workflows
   }
@@ -68,10 +80,10 @@ public final class WorkflowLibraryModel {
     [
       WorkflowNameDuplicationPolicy.normalizedName(workflow.name),
       WorkflowNameDuplicationPolicy.normalizedName(
-        UIStrings.workflowName(workflow.presentation, language: .english)
+        L10n.workflowName(workflow.presentation, language: .english)
       ),
       WorkflowNameDuplicationPolicy.normalizedName(
-        UIStrings.workflowName(workflow.presentation, language: .simplifiedChinese)
+        L10n.workflowName(workflow.presentation, language: .simplifiedChinese)
       ),
     ]
   }
@@ -197,4 +209,32 @@ public final class WorkflowLibraryModel {
       && (workflowEnabledStates[workflow.id] ?? true)
   }
 
+}
+
+
+public enum WorkflowExplanationFailure: Sendable, Equatable {
+  case workflowUnavailable
+  case providerUnavailable
+  case invalidReceipt
+}
+
+
+public enum WorkflowExplanationLoadState: Sendable, Equatable {
+  case idle
+  case loading(workflowID: UUID)
+  case loaded(WorkflowExplanationReceipt)
+  case failed(workflowID: UUID, reason: WorkflowExplanationFailure)
+}
+
+
+public struct WorkflowTriggerConflict: Identifiable, Equatable, Sendable {
+  public let trigger: TriggerBinding
+  public let workflowIDs: [UUID]
+
+  public var id: String { trigger.rawValue }
+
+  public init(trigger: TriggerBinding, workflowIDs: [UUID]) {
+    self.trigger = trigger
+    self.workflowIDs = workflowIDs
+  }
 }

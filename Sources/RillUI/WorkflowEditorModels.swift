@@ -550,20 +550,20 @@ public struct WorkflowEditorDraft: Equatable, Sendable {
         case .pasteIntoApp, .copyToClipboard, .saveToQueue, .speakOnly:
             return nil
         case .sendToWebhook:
-            return UIStrings.externalOutputValidationMessage(.webhookUnavailable, language: language)
+            return L10n.externalOutputValidationMessage(.webhookUnavailable, language: language)
         case .runShortcut:
             return shortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? UIStrings.externalOutputValidationMessage(.shortcutNameRequired, language: language)
+                ? L10n.externalOutputValidationMessage(.shortcutNameRequired, language: language)
                 : nil
         case .appendToMarkdown:
             let path = markdownAppendPath.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !path.isEmpty else {
-                return UIStrings.externalOutputValidationMessage(.markdownPathRequired, language: language)
+                return L10n.externalOutputValidationMessage(.markdownPathRequired, language: language)
             }
             let pathExtension = URL(fileURLWithPath: path).pathExtension.lowercased()
             return pathExtension == "md" || pathExtension == "markdown"
                 ? nil
-                : UIStrings.externalOutputValidationMessage(.markdownPathInvalid, language: language)
+                : L10n.externalOutputValidationMessage(.markdownPathInvalid, language: language)
         }
     }
 

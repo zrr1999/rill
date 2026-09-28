@@ -1,3 +1,4 @@
+@testable import RillWorkflows
 @testable import RillRecords
 import Foundation
 import XCTest

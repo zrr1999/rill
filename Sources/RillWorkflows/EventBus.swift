@@ -201,8 +201,8 @@ private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Senda
 extension RillEvent {
   fileprivate var retainsDeliveryAfterCancellation: Bool {
     switch self {
-    case .runCompleted, .runCancelled, .runFailed, .runReceiptRepositoryChanged, .runHistoryUpdated,
-      .audioProcessingQueueUpdated, .failedAudioRecoveryUpdated:
+    case .runCompleted, .runDiscarded, .runCancelled, .runFailed, .runReceiptRepositoryChanged, .runHistoryUpdated,
+      .audioProcessingQueueUpdated, .failedAudioRecoveryUpdated, .recordBufferInputFailed:
       true
     case .liveSubtitleUpdated(let snapshot): !snapshot.isVisible
     default: false

@@ -1,6 +1,10 @@
-
-@testable import RillCore
+@testable import RillSpeech
+@testable import RillKnowledge
+@testable import RillRecords
 @testable import RillWorkflows
+@testable import RillCore
+import RillPlatform
+import RillDomainTestSupport
 import Foundation
 import XCTest
 
@@ -177,8 +181,9 @@ private struct QueuedWhitespaceRecognizer: SpeechRecognizer {
 private struct QueuedNoopAction: OutputAction {
     let id = "record.store"
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        .skipped("queue-policy-test")
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
+        return .skipped("queue-policy-test")
     }
 }
 
@@ -245,7 +250,7 @@ private struct QueuedPolicyFixture {
 }
 
 final class QueuedAudioPolicyRevalidationTests: XCTestCase {
-    func testNoSpeechFailureDoesNotRetainQueuedAudioForRecovery() async throws {
+    func testEmptySpeechInputDoesNotRetainQueuedAudioForRecovery() async throws {
         let runID = UUID()
         let workflow = queuedWorkflow(
             name: "Queued no speech",
@@ -256,14 +261,14 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
         try Data([0, 1, 2]).write(to: fileURL)
         defer { try? FileManager.default.removeItem(at: fileURL) }
         let capturedAudio = try CapturedAudio(
-            durationSeconds: 0.2,
+            durationSeconds: 1,
             format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
             fileURL: fileURL,
             fileOwnership: .managedTemporary
         )
         let eventBus = EventBus()
-        let coordinator = SessionCoordinator(
-            contextProvider: QueuedPolicyContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [QueuedWhitespaceRecognizer(id: "whitespace.recognizer")]
             ),
@@ -275,13 +280,13 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
             eventBus: eventBus
         )
         let recoveryStore = QueuedRecoveryStoreProbe()
-        let recoveryController = FailedAudioRecoveryController(
+        let recoveryController = makeTestFailedAudioRecoveryController(
             store: recoveryStore,
             sessionCoordinator: coordinator,
             eventBus: eventBus
         )
         try await recoveryController.refresh(isEnabled: true)
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus,
             failedAudioRecoveryController: recoveryController
@@ -342,7 +347,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
         try Data([0, 1, 2]).write(to: fileURL)
         defer { try? FileManager.default.removeItem(at: fileURL) }
         let capturedAudio = try CapturedAudio(
-            durationSeconds: 0.1,
+            durationSeconds: 1,
             format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
             fileURL: fileURL,
             fileOwnership: .managedTemporary
@@ -351,8 +356,8 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
 
         let eventBus = EventBus()
         let recognition = QueuedRecognitionBarrier(blockedRunID: UUID())
-        let coordinator = SessionCoordinator(
-            contextProvider: QueuedPolicyContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
+
             recognizerRegistry: SpeechRecognizerRegistry(
                 recognizers: [
                     QueuedPolicyRecognizer(id: "sherpa-onnx.local", barrier: recognition),
@@ -366,7 +371,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
             eventBus: eventBus
         )
         let recoveryStore = QueuedRecoveryStoreProbe()
-        let recoveryController = FailedAudioRecoveryController(
+        let recoveryController = makeTestFailedAudioRecoveryController(
             store: recoveryStore,
             sessionCoordinator: coordinator,
             eventBus: eventBus,
@@ -374,7 +379,7 @@ final class QueuedAudioPolicyRevalidationTests: XCTestCase {
         )
         try await recoveryController.refresh(isEnabled: true)
         let removal = QueuedTransientRemovalProbe()
-        let queue = CapturedAudioProcessingQueue(
+        let queue = makeTestCapturedAudioProcessingQueue(
             sessionCoordinator: coordinator,
             eventBus: eventBus,
             failedAudioRecoveryController: recoveryController,
@@ -569,8 +574,8 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
 
     let eventBus = EventBus()
     let recognition = QueuedRecognitionBarrier(blockedRunID: firstRunID)
-    let coordinator = SessionCoordinator(
-        contextProvider: QueuedPolicyContextProvider(),
+    let coordinator = makeTestSessionCoordinator(
+
         recognizerRegistry: SpeechRecognizerRegistry(
             recognizers: [
                 QueuedPolicyRecognizer(id: "sherpa-onnx.local", barrier: recognition),
@@ -595,7 +600,7 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
         }
     )
     let cleanup = QueuedCleanupProbe()
-    let queue = CapturedAudioProcessingQueue(
+    let queue = makeTestCapturedAudioProcessingQueue(
         sessionCoordinator: coordinator,
         eventBus: eventBus,
         rejectedCapturedAudioRemoval: { capturedAudio in
@@ -613,7 +618,7 @@ private func makeQueuedPolicyFixture() async throws -> QueuedPolicyFixture {
         }
     }
     let audio = try CapturedAudio(
-        durationSeconds: 0.1,
+        durationSeconds: 1,
         format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
         inlineData: Data([0, 1])
     )

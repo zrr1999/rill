@@ -276,6 +276,7 @@ enum HistoryTimelineTextKey: String, CaseIterable, Sendable {
 enum HistoryRunDetailTextKey {
     case recording, transcription, polishing, languageModel, notRecorded
     case diagnostics, noDiagnostics, legacyDiagnostics, details, textResults
+    case noDiagnosticIssues, showDiagnosticIssues, collapseDetails
 }
 
 extension L10n {
@@ -286,7 +287,10 @@ extension L10n {
         case .polishing: .init(english: "Polishing API", simplifiedChinese: "润色 API")
         case .languageModel: .init(english: "Answer API", simplifiedChinese: "回答 API")
         case .notRecorded: .init(english: "Not recorded", simplifiedChinese: "未记录")
-        case .diagnostics: .init(english: "Diagnostics for this run", simplifiedChinese: "本次运行诊断")
+        case .diagnostics: .init(english: "Diagnostics", simplifiedChinese: "诊断")
+        case .noDiagnosticIssues: .init(english: "No warnings or errors.", simplifiedChinese: "没有警告或错误。")
+        case .showDiagnosticIssues: .init(english: "Show issues only", simplifiedChinese: "仅显示问题")
+        case .collapseDetails: .init(english: "Collapse details", simplifiedChinese: "收起详情")
         case .noDiagnostics: .init(english: "No retained diagnostics for this run.", simplifiedChinese: "没有保留本次运行的诊断记录。")
         case .legacyDiagnostics: .init(english: "This older entry has no run ID to link diagnostics.", simplifiedChinese: "这条旧记录没有运行标识，无法关联诊断。")
         case .details: .init(english: "Execution details & diagnostics", simplifiedChinese: "执行详情与诊断")
@@ -298,6 +302,10 @@ extension L10n {
     static func historyMeasuredDuration(_ milliseconds: UInt64?, language: AppLanguage) -> String {
         milliseconds.map { historyProcessingDuration($0, language: language) }
             ?? historyRunDetail(.notRecorded, language: language)
+    }
+
+    static func historyShowAllDiagnostics(_ count: Int, language: AppLanguage) -> String {
+        language == .simplifiedChinese ? "显示全部（\(count)）" : "Show all (\(count))"
     }
 
     static func historyStepResult(_ result: WorkflowStepResultCode, language: AppLanguage) -> String {

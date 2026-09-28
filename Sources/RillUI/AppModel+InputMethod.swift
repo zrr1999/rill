@@ -7,6 +7,7 @@ extension AppModel {
   public func installInputMethodFeature(
     privacy: @escaping () throws -> PrivacyPolicySettings,
     install: @escaping (URL?) async throws -> String,
+    inspectInstallation: @escaping () -> InputMethodInstallationState = { .notInstalled },
     bridgeDirectory: String = LocalInputMethodChannel.directory
   ) {
     guard let settingsStore else { return }
@@ -14,7 +15,7 @@ extension AppModel {
       settings: settingsStore, privacy: privacy,
       confirmRule: { [weak self] phrase, id in
         guard let self else { throw CocoaError(.userCancelled) }
-        let outcome = self.saveVocabularyCorrectionRule(
+        let outcome = self.vocabulary.saveVocabularyCorrectionRule(
           VocabularyRule(id: id, kind: .hotword, pattern: phrase, replacement: ""))
         let ruleID: UUID
         let ownsRule: Bool
@@ -39,14 +40,14 @@ extension AppModel {
       },
       revokeRule: { [weak self] id in
         guard let self else { throw CocoaError(.userCancelled) }
-        self.deleteVocabularyRule(id)
+        self.vocabulary.deleteVocabularyRule(id)
         await self.persistenceWrites.flush()
         guard let encoded = try await settingsStore.string(forKey: .vocabularyLibrary),
           let document = try? JSONDecoder().decode(
             VocabularyLibraryDocument.self, from: Data(encoded.utf8)),
           !document.collections.contains(where: { $0.entries.contains(where: { $0.id == id }) })
         else { throw CocoaError(.fileWriteUnknown) }
-      }, install: install,
+      }, install: install, inspectInstallation: inspectInstallation,
       ownedRuleIDs: {
         guard let encoded = try await settingsStore.string(forKey: .vocabularyLibrary) else {
           return []

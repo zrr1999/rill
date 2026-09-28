@@ -6,7 +6,7 @@ import XCTest
 @testable import RillProviders
 
 final class RoutedLocalSpeechRecognizerTests: XCTestCase {
-  func testMultipleQwenModelsReuseOneMLXBackendWithoutReloadingTheRouter() async throws {
+  func testChangingSelectionDoesNotReselectTheFrozenRequestModel() async throws {
     let selection = LocalSpeechSelection(
       modelID: MLXAudioModelID.qwen3ASR06BInt8.rawValue
     )
@@ -16,7 +16,7 @@ final class RoutedLocalSpeechRecognizerTests: XCTestCase {
     )
     let router = RoutedLocalSpeechRecognizer(
       settingsProvider: {
-        LocalSpeechSettings(model: await selection.modelID())
+        LocalSpeechSettings(model: await selection.modelID(), enabledModelIDs: Set(MLXAudioModelID.allCases.map(\.rawValue)))
       },
       backends: [mlx]
     )
@@ -28,6 +28,7 @@ final class RoutedLocalSpeechRecognizerTests: XCTestCase {
     XCTAssertEqual(first.bestText, "mlx")
     XCTAssertEqual(second.bestText, "mlx")
     let mlxSnapshot = await mlx.snapshot()
+    XCTAssertEqual(mlxSnapshot.modelIDs, Array(repeating: MLXAudioModelID.qwen3ASR06BInt8.rawValue, count: 2))
     XCTAssertEqual(mlxSnapshot.recognitions, 2)
     XCTAssertEqual(mlxSnapshot.releases, 0)
   }
@@ -35,7 +36,7 @@ final class RoutedLocalSpeechRecognizerTests: XCTestCase {
   func testRouterReportsARegisteredCatalogBackendThatHasNoImplementation() async {
     let router = RoutedLocalSpeechRecognizer(
       settingsProvider: {
-        LocalSpeechSettings(model: MLXAudioModelID.qwen3ASR17BInt8.rawValue)
+        LocalSpeechSettings(model: MLXAudioModelID.qwen3ASR17BInt8.rawValue, enabledModelIDs: Set(MLXAudioModelID.allCases.map(\.rawValue)))
       },
       backends: []
     )
@@ -74,15 +75,8 @@ final class RoutedLocalSpeechRecognizerTests: XCTestCase {
   private func makeRequest() -> RecognitionRequest {
     RecognitionRequest(
       runID: UUID(),
-      workflow: WorkflowDefinition(
-        name: "Local speech",
-        pipeline: PipelineDeclaration(
-          recognizerID: "local-speech",
-          outputActions: []
-        ),
-        ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "accent")
-      ),
-      contextSnapshot: .empty
+      contextSnapshot: .empty,
+      options: .init(modelID: MLXAudioModelID.qwen3ASR06BInt8.rawValue)
     )
   }
 }
@@ -105,6 +99,7 @@ private actor LocalSpeechSelection {
 
 private actor RecordingLocalSpeechBackend: LocalSpeechBackendRecognizer {
   struct Snapshot {
+    let modelIDs: [String?]
     let recognitions: Int
     let releases: Int
     let stops: Int
@@ -115,6 +110,7 @@ private actor RecordingLocalSpeechBackend: LocalSpeechBackendRecognizer {
   nonisolated let capabilities = SpeechRecognizerCapabilities.none
 
   private let resultText: String
+  private var modelIDs: [String?] = []
   private var recognitionCount = 0
   private var releaseCount = 0
   private var stopCount = 0
@@ -126,6 +122,7 @@ private actor RecordingLocalSpeechBackend: LocalSpeechBackendRecognizer {
   }
 
   func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
+    modelIDs.append(request.options.modelID)
     recognitionCount += 1
     return RecognitionResult(rawText: resultText, bestText: resultText)
   }
@@ -140,6 +137,7 @@ private actor RecordingLocalSpeechBackend: LocalSpeechBackendRecognizer {
 
   func snapshot() -> Snapshot {
     Snapshot(
+      modelIDs: modelIDs,
       recognitions: recognitionCount,
       releases: releaseCount,
       stops: stopCount

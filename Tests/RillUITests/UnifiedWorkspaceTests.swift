@@ -1,3 +1,4 @@
+import RillTestSupport
 import XCTest
 @testable import RillCore
 @testable import RillWorkflows
@@ -7,6 +8,24 @@ import XCTest
 
 @MainActor
 final class UnifiedWorkspaceTests: XCTestCase {
+    func testBufferInputFailureShowsRecoveryWithoutInterruptingTheActiveRun() {
+        let model = makeHarness().model
+        model.applyLanguage(.english)
+        let activeRunID = UUID()
+        model.voice.activeRunID = activeRunID
+        model.voice.isRunning = true
+        var messages: [String] = []
+        model.recordWorkspace.buffers.showMessageAction = { messages.append($0) }
+
+        model.handle(.recordBufferInputFailed(recordID: RecordID()))
+
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertTrue(messages.first?.contains("All Records") == true)
+        XCTAssertTrue(messages.first?.contains("Add to") == true)
+        XCTAssertEqual(model.voice.activeRunID, activeRunID)
+        XCTAssertTrue(model.voice.isRunning)
+    }
+
     func testAllRecordsIsDefaultAndSettingsPreservesContentNavigation() async throws {
         let model = makeHarness().model
         await model.recordWorkspace.refresh()
@@ -99,10 +118,10 @@ final class UnifiedWorkspaceTests: XCTestCase {
         let workspace = RecordWorkspaceModel(store: store)
         await workspace.refresh()
         workspace.selectCollection(RecordCollection.inboxID)
-        workspace.showsPinnedOnly = true
-        workspace.sourceAppFilterBundleIdentifier = "com.example.unrelated"
-        workspace.payloadKindFilter = .image
-        workspace.searchText = "unrelated"
+        workspace.setShowsPinnedOnly(true)
+        workspace.setSourceAppFilter("com.example.unrelated")
+        workspace.setPayloadKindFilter(.image)
+        workspace.setSearchText("unrelated")
         await workspace.revealRecord(target.id)
         XCTAssertEqual(workspace.selectedVisibleRecord?.id, target.id)
         XCTAssertNil(workspace.selectedCollectionID)
@@ -241,10 +260,11 @@ final class UnifiedWorkspaceTests: XCTestCase {
     }
 
     func testWorkspaceCopyIsExplicitAndReportsActualOutcome() async throws {
-        let model = makeHarness().model
         let subject = RecordReuseSubject(recordID: RecordID(), metadataRevision: 0)
         var received: RecordReuseSubject?
-        model.installRecordCopyAction { value in received = value; return .storageUnavailable }
+        let model = makeHarness(recordInteractionServices: makeRecordInteractionServicesForTesting(
+            copy: { value in received = value; return .storageUnavailable }
+        )).model
         XCTAssertNil(received)
         let outcome = await model.copyRecord(subject)
         XCTAssertEqual(received, subject)

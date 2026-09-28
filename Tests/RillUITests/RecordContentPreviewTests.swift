@@ -63,22 +63,22 @@ struct RecordContentPreviewTests {
     defer { panel.stop() }
     await waitUntil { !panel.isSearching && panel.results.count == 2 }
     #expect(panel.preview == nil)
-    panel.selectedID = image.id
+    panel.select(image.id)
     panel.togglePreview()
     await waitUntil { !panel.isLoadingPreview }
     #expect(panel.preview?.id == image.id)
-    panel.selectedID = file.id
+    panel.select(file.id)
     #expect(panel.preview == nil)
     await waitUntil { !panel.isLoadingPreview }
     #expect(panel.isPreviewVisible)
     #expect(panel.preview?.id == file.id)
-    panel.kind = .files
+    panel.setKind(.files)
     #expect(panel.preview?.id == file.id)
     await waitUntil { !panel.isSearching }
     #expect(panel.preview?.id == file.id)
-    panel.kind = nil
+    panel.setKind(nil)
     await waitUntil { !panel.isSearching }
-    panel.selectedID = image.id
+    panel.select(image.id)
     panel.closePreview()
     await Task.yield()
     #expect(!panel.isPreviewVisible)

@@ -1,44 +1,74 @@
 import Foundation
 import Observation
 import RillCore
-import RillWorkflows
-import RillRecords
 import RillKnowledge
+import RillRecords
+import RillWorkflows
 
 @MainActor @Observable
 public final class VocabularyLibraryModel {
-  public internal(set) var vocabularyRules: [VocabularyRule] = []
+  public var vocabularyRules: [VocabularyRule] {
+    AppSettingsCodec.sortedVocabularyRules(
+      VocabularyLegacyMigrator.project(
+        vocabularyCollections, bindings: vocabularyCollectionBindings))
+  }
   public internal(set) var vocabularyCollections: [VocabularyCollection] = [.personal()]
   public internal(set) var vocabularyCollectionBindings: [VocabularyCollectionBinding] = [
     .init(collectionID: VocabularyCollection.personalID)
   ]
   public internal(set) var availability: StoredSettingsDomainAvailability = .available
   public internal(set) var error: String?
-  private(set) var revision = 0
-  var isApplying = false
   private let settings: SettingsPersistenceModel
   private let source: VocabularyRuleSource
 
-  init(settings: SettingsPersistenceModel, source: VocabularyRuleSource) {
+  private let didChange: @MainActor ([VocabularyCollectionBinding]) -> Void
+  private let saveFailed: @MainActor () -> Void
+
+  init(
+    settings: SettingsPersistenceModel, source: VocabularyRuleSource,
+    didChange: @escaping @MainActor ([VocabularyCollectionBinding]) -> Void,
+    saveFailed: @escaping @MainActor () -> Void
+  ) {
     self.settings = settings
     self.source = source
+    self.didChange = didChange
+    self.saveFailed = saveFailed
   }
 
-  func setLegacyRules(_ rules: [VocabularyRule]) {
-    vocabularyRules = rules
-    guard !isApplying else { return }
+  private var canEdit: Bool {
+    !settings.hasBegunApplicationShutdown && !settings.isLoading && availability == .available
+  }
+
+  func restore(collections: [VocabularyCollection], bindings: [VocabularyCollectionBinding]) {
+    vocabularyCollections = collections
+    vocabularyCollectionBindings = bindings
+    source.updateCollections(collections)
+  }
+
+  func restoreLegacyRules(_ rules: [VocabularyRule]) {
     let migrated = VocabularyLegacyMigrator.migrate(rules)
-    vocabularyCollections = migrated.collections
-    vocabularyCollectionBindings = migrated.bindings
-    source.updateCollections(vocabularyCollections)
+    restore(collections: migrated.collections, bindings: migrated.bindings)
+    didChange(vocabularyCollectionBindings)
   }
 
   func commit() {
-    vocabularyRules = AppSettingsCodec.sortedVocabularyRules(
-      VocabularyLegacyMigrator.project(
-        vocabularyCollections, bindings: vocabularyCollectionBindings))
-    revision += 1
     source.updateCollections(vocabularyCollections)
+    didChange(vocabularyCollectionBindings)
+    guard !settings.isRestoringSettings, !settings.hasBegunApplicationShutdown,
+      availability == .available
+    else { return }
+    let document = VocabularyLibraryDocument(
+      collections: vocabularyCollections, defaultBindings: vocabularyCollectionBindings)
+    settings.submit(
+      key: AppSettingsCodec.vocabularyLibrarySettingKey,
+      category: .vocabulary, debounce: .zero,
+      operation: { store in
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try await store.setString(
+          String(decoding: encoder.encode(document), as: UTF8.self),
+          forKey: AppSettingsCodec.vocabularyLibrarySettingKey)
+      }, onFailure: saveFailed)
   }
 
   func addVocabularyRule(
@@ -50,7 +80,7 @@ public final class VocabularyLibraryModel {
     scope: VocabularyRuleScope,
     priority: Int = 0
   ) {
-    guard !settings.isLoading, availability == .available else { return }
+    guard canEdit else { return }
     let trimmedPattern = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedPattern.isEmpty else { return }
     let rule = VocabularyRule(
@@ -67,7 +97,7 @@ public final class VocabularyLibraryModel {
   }
 
   func createVocabularyCollection(named name: String) {
-    guard !settings.isLoading, availability == .available else { return }
+    guard canEdit else { return }
     let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !name.isEmpty else { return }
     vocabularyCollections.append(VocabularyCollection(name: name))
@@ -75,6 +105,7 @@ public final class VocabularyLibraryModel {
   }
 
   func setVocabularyCollectionEnabled(_ collectionID: UUID, isEnabled: Bool) {
+    guard canEdit else { return }
     guard
       let index = vocabularyCollections.firstIndex(where: {
         $0.id == collectionID
@@ -92,6 +123,7 @@ public final class VocabularyLibraryModel {
     pattern: String,
     replacement: String = ""
   ) {
+    guard canEdit else { return }
     guard
       let index = vocabularyCollections.firstIndex(where: {
         $0.id == collectionID
@@ -116,6 +148,7 @@ public final class VocabularyLibraryModel {
   }
 
   func deleteVocabularyEntry(_ entryID: UUID, from collectionID: UUID) {
+    guard canEdit else { return }
     guard
       let index = vocabularyCollections.firstIndex(where: {
         $0.id == collectionID
@@ -139,7 +172,7 @@ public final class VocabularyLibraryModel {
     _ proposedRule: VocabularyRule,
     to targetCollectionID: UUID?
   ) -> VocabularyCorrectionSaveOutcome {
-    guard !settings.isLoading, availability == .available else { return .notReady }
+    guard canEdit else { return .notReady }
     let pattern = proposedRule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !pattern.isEmpty else { return .invalid }
 
@@ -206,7 +239,7 @@ public final class VocabularyLibraryModel {
   }
 
   func setVocabularyRuleEnabled(_ ruleID: UUID, isEnabled: Bool) {
-    guard !settings.isLoading, availability == .available else { return }
+    guard canEdit else { return }
     for collectionIndex in vocabularyCollections.indices {
       guard
         let entryIndex = vocabularyCollections[collectionIndex].entries.firstIndex(
@@ -224,7 +257,7 @@ public final class VocabularyLibraryModel {
   }
 
   func deleteVocabularyRule(_ ruleID: UUID) {
-    guard !settings.isLoading, availability == .available else { return }
+    guard canEdit else { return }
     for index in vocabularyCollections.indices {
       let oldCount = vocabularyCollections[index].entries.count
       vocabularyCollections[index].entries.removeAll { $0.id == ruleID }

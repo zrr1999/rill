@@ -49,12 +49,12 @@ final class RecordWorkspaceModelTests: XCTestCase {
         XCTAssertEqual(Set(updated.memberships.map(\.collectionID)), [second.id, third.id])
 
         await model.updateMetadata(for: updated, tags: ["Project Alpha"], isPinned: true)
-        model.searchText = "project alpha"
+        model.setSearchText("project alpha")
         await waitForSearch(model)
-        model.showsPinnedOnly = true
+        model.setShowsPinnedOnly(true)
         XCTAssertEqual(model.visibleRecords.map(\.id), [projection.id])
 
-        model.searchText = "missing"
+        model.setSearchText("missing")
         XCTAssertTrue(model.visibleRecords.isEmpty)
     }
 
@@ -135,10 +135,10 @@ final class RecordWorkspaceModelTests: XCTestCase {
         await model.refresh()
         XCTAssertEqual(model.visibleRecords.count, 3)
 
-        model.sourceAppFilterBundleIdentifier = "com.apple.Safari"
+        model.setSourceAppFilter("com.apple.Safari")
         XCTAssertEqual(model.visibleRecords.map(\.id), [safari.id])
 
-        model.sourceAppFilterBundleIdentifier = nil
+        model.setSourceAppFilter(nil)
         XCTAssertEqual(model.visibleRecords.count, 3)
     }
 
@@ -182,7 +182,7 @@ final class RecordWorkspaceModelTests: XCTestCase {
         _ = try await store.ingest(draft("needle second"), into: [])
         let model = RecordWorkspaceModel(store: store)
         await model.refresh()
-        model.searchText = "needle"
+        model.setSearchText("needle")
         await waitForSearch(model)
         let first = try XCTUnwrap(model.visibleRecords.first)
         let neighbor = try XCTUnwrap(model.visibleRecords.last)
@@ -207,10 +207,10 @@ final class RecordWorkspaceModelTests: XCTestCase {
         await model.refresh()
         model.selectedRecordID = record.id
         XCTAssertEqual(model.selectedVisibleRecord?.id, record.id)
-        model.searchText = "no match"
+        model.setSearchText("no match")
         XCTAssertNil(model.selectedVisibleRecord)
         XCTAssertEqual(model.selectedRecordID, record.id)
-        model.searchText = ""
+        model.setSearchText("")
         XCTAssertEqual(model.selectedVisibleRecord?.id, record.id)
     }
 

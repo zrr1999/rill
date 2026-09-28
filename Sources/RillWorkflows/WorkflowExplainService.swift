@@ -67,6 +67,7 @@ public enum WorkflowExecutionPlanResolver {
         )
         switch (outputDependsOnSettings, output) {
         case (true, .builtinPasteIntoApplication):
+            resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.collectSpeech)
             resolvedWorkflow.plan.output.actions = [
                 OutputActionReference(id: "record.store"),
                 OutputActionReference(id: "focused-application.insert"),
@@ -76,6 +77,8 @@ public enum WorkflowExecutionPlanResolver {
                 RecordCollection.voiceInputID.rawValue.uuidString
             resolvedWorkflow.metadata.removeValue(forKey: WorkflowMetadataKey.legacyTargetRecordCollectionID)
         case (true, .builtinSaveToVoiceGroup):
+            resolvedWorkflow.metadata[WorkflowMetadataKey.collectSpeech] = "true"
+            resolvedWorkflow.metadata[WorkflowMetadataKey.livePreviewPlacement] = LivePreviewPlacement.overlay.rawValue
             resolvedWorkflow.plan.output.actions = [OutputActionReference(id: "record.store")]
             resolvedWorkflow.plan.output.deliveryPolicy = .init(strategy: .collectionFirst)
             resolvedWorkflow.metadata[WorkflowMetadataKey.targetRecordCollectionIDs] =
@@ -244,12 +247,7 @@ public struct WorkflowComponentProfileRegistry: Sendable {
         var destination: WorkflowExplanationProcessingDestination
     }
 
-    fileprivate enum ConfigurationRequirement: Sendable {
-        case none
-        case webhook
-        case shortcut
-        case markdownFile
-    }
+    fileprivate typealias ConfigurationRequirement = WorkflowOutputConfigurationRequirement
 
     fileprivate struct OutputEffectProfile: Sendable {
         var effect: WorkflowExplanationOutputEffect
@@ -434,75 +432,14 @@ public struct WorkflowComponentProfileRegistry: Sendable {
                     processingDestination: $0.destination
                 )
             },
-            configurationState: closedConfigurationState(
-                for: profile.configurationRequirement,
-                configuration: reference.configuration
+            configurationState: profile.configurationRequirement.state(
+                of: reference.configuration, stage: .declaration
             ),
             sourceItemReplacement: profile.sourceItemReplacement
         )
     }
 
-    private func closedConfigurationState(
-        for requirement: ConfigurationRequirement,
-        configuration: [String: String]
-    ) -> WorkflowExplanationConfigurationState {
-        switch requirement {
-        case .none:
-            return .notRequired
-        case .webhook:
-            let secureReference = closedTrimmed(
-                configuration[ExternalOutputActionConfigurationKey.webhookSecureReference]
-            )
-            if !secureReference.isEmpty {
-                return WebhookConfigurationReference(rawValue: secureReference) == nil
-                    ? .invalid
-                    : .configured
-            }
-            let rawURL = closedTrimmed(
-                configuration[ExternalOutputActionConfigurationKey.webhookURL]
-            )
-            guard !rawURL.isEmpty else { return .missing }
-            guard let url = URL(string: rawURL),
-                  SecureTransportPolicy.allowsSensitiveHTTPURL(url) else {
-                return .invalid
-            }
-            let rawHeaders = closedTrimmed(
-                configuration[ExternalOutputActionConfigurationKey.webhookHeadersJSON]
-            )
-            guard rawHeaders.isEmpty || closedContainsOnlyStringHeaderValues(rawHeaders) else {
-                return .invalid
-            }
-            return .configured
-        case .shortcut:
-            return closedTrimmed(
-                configuration[ExternalOutputActionConfigurationKey.shortcutName]
-            ).isEmpty ? .missing : .configured
-        case .markdownFile:
-            let path = closedTrimmed(
-                configuration[ExternalOutputActionConfigurationKey.markdownAppendPath]
-            )
-            guard !path.isEmpty else { return .missing }
-            switch NSString(string: path).pathExtension.lowercased() {
-            case "md", "markdown":
-                return .configured
-            default:
-                return .invalid
-            }
-        }
-    }
 
-    private func closedContainsOnlyStringHeaderValues(_ rawHeaders: String) -> Bool {
-        guard let data = rawHeaders.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let headers = object as? [String: Any] else {
-            return false
-        }
-        return headers.values.allSatisfy { $0 is String }
-    }
-
-    private func closedTrimmed(_ value: String?) -> String {
-        value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    }
 }
 
 /// Explains only a plan whose setting-dependent choices were resolved by
@@ -827,9 +764,8 @@ public struct WorkflowExplainService: Sendable {
                 availability = .available
             }
 
-            let configurationState = configurationState(
-                for: profile.configurationRequirement,
-                configuration: reference.configuration
+            let configurationState = profile.configurationRequirement.state(
+                of: reference.configuration, stage: .resolved
             )
             switch configurationState {
             case .missing:
@@ -862,51 +798,6 @@ public struct WorkflowExplainService: Sendable {
                 )
             }
         }
-    }
-
-    private func configurationState(
-        for requirement: WorkflowComponentProfileRegistry.ConfigurationRequirement,
-        configuration: [String: String]
-    ) -> WorkflowExplanationConfigurationState {
-        switch requirement {
-        case .none:
-            return .notRequired
-        case .webhook:
-            let rawURL = trimmed(configuration[ExternalOutputActionConfigurationKey.webhookURL])
-            guard !rawURL.isEmpty else { return .missing }
-            guard let url = URL(string: rawURL), SecureTransportPolicy.allowsSensitiveHTTPURL(url) else {
-                return .invalid
-            }
-            let rawHeaders = trimmed(
-                configuration[ExternalOutputActionConfigurationKey.webhookHeadersJSON]
-            )
-            guard rawHeaders.isEmpty || containsOnlyStringHeaderValues(rawHeaders) else {
-                return .invalid
-            }
-            return .configured
-        case .shortcut:
-            return trimmed(configuration[ExternalOutputActionConfigurationKey.shortcutName]).isEmpty
-                ? .missing
-                : .configured
-        case .markdownFile:
-            let path = trimmed(configuration[ExternalOutputActionConfigurationKey.markdownAppendPath])
-            guard !path.isEmpty else { return .missing }
-            switch NSString(string: path).pathExtension.lowercased() {
-            case "md", "markdown":
-                return .configured
-            default:
-                return .invalid
-            }
-        }
-    }
-
-    private func containsOnlyStringHeaderValues(_ rawHeaders: String) -> Bool {
-        guard let data = rawHeaders.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data),
-              let headers = object as? [String: Any] else {
-            return false
-        }
-        return headers.values.allSatisfy { $0 is String }
     }
 
     private func triggerCategory(

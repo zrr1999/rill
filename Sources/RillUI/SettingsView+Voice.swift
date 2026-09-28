@@ -10,21 +10,21 @@ extension SettingsView {
       Divider()
 
       LabeledContent(
-        L10n.settingsText(.settingsWakeWordListener, language: model.language)
+        L10n.settingsText(.settingsWakeWordListener, language: model.settings.language)
       ) {
         Text(wakeWordRuntimeStatusText)
           .foregroundStyle(wakeWordRuntimeStatusColor)
       }
 
       voiceResourceStatus(
-        state: model.wakeWordResourceState,
-        readyText: L10n.settingsText(.settingsWakeWordASRReady, language: model.language)
+        state: model.voice.wakeWordResourceState,
+        readyText: L10n.settingsText(.settingsWakeWordASRReady, language: model.settings.language)
       )
 
-      if voiceAssistantActionVisibility.showsWakeWordPreparation {
+      if model.voice.wakeWordResourceState.canPrepare {
         Button(
           resourcePreparationButtonTitle(
-            state: model.wakeWordResourceState,
+            state: model.voice.wakeWordResourceState,
             resourceNameKey: .settingsLocalASRResourceName
           )
         ) {
@@ -34,7 +34,7 @@ extension SettingsView {
       }
 
       Toggle(
-        L10n.settingsText(.settingsEnableWakeWordListening, language: model.language),
+        L10n.settingsText(.settingsEnableWakeWordListening, language: model.settings.language),
         isOn: Binding(
           get: { wakeListeningDraftEnabled },
           set: { requestWakeWordListening($0) }
@@ -48,11 +48,11 @@ extension SettingsView {
       .accessibilityIdentifier("settings.wake-word.enabled")
 
       VStack(alignment: .leading, spacing: 5) {
-        Text(L10n.settingsText(.settingsWakePhrasesTitle, language: model.language))
+        Text(L10n.settingsText(.settingsWakePhrasesTitle, language: model.settings.language))
           .font(.caption.weight(.medium))
           .foregroundStyle(.secondary)
         TextField(
-          L10n.settingsText(.settingsWakePhrasesPlaceholder, language: model.language),
+          L10n.settingsText(.settingsWakePhrasesPlaceholder, language: model.settings.language),
           text: $wakePhrasesText,
           axis: .vertical
         )
@@ -63,7 +63,7 @@ extension SettingsView {
         .accessibilityIdentifier("settings.wake-word.phrases")
 
         HStack(spacing: 8) {
-          Button(L10n.settingsText(.settingsSavePhrases, language: model.language)) {
+          Button(L10n.settingsText(.settingsSavePhrases, language: model.settings.language)) {
             applyWakeWordSettings(
               enableListening: wakeListeningDraftEnabled
             )
@@ -80,7 +80,7 @@ extension SettingsView {
           Spacer()
 
           if let workflowName = model.wakeWordSettingsSnapshot.workflowName {
-            Text(L10n.settingsWorkflowName(workflowName, language: model.language))
+            Text(L10n.settingsWorkflowName(workflowName, language: model.settings.language))
             .font(.caption)
             .foregroundStyle(.secondary)
           }
@@ -94,11 +94,11 @@ extension SettingsView {
           .transition(.opacity)
       }
 
-      Text(L10n.settingsText(.settingsWakeWordScopeDetail, language: model.language))
+      Text(L10n.settingsText(.settingsWakeWordScopeDetail, language: model.settings.language))
       .font(.caption)
       .foregroundStyle(.secondary)
 
-      Text(L10n.settingsText(.settingsWakeWordPrivacyDetail, language: model.language))
+      Text(L10n.settingsText(.settingsWakeWordPrivacyDetail, language: model.settings.language))
       .font(.caption)
       .foregroundStyle(.secondary)
     }
@@ -120,7 +120,7 @@ extension SettingsView {
   ) -> some View {
     switch state {
     case .notInstalled:
-      Text(L10n.settingsText(.settingsResourceNotInstalled, language: model.language))
+      Text(L10n.settingsText(.settingsResourceNotInstalled, language: model.settings.language))
         .font(.caption)
         .foregroundStyle(.secondary)
     case .preparing(let progress):
@@ -136,7 +136,7 @@ extension SettingsView {
         HStack(spacing: 8) {
           ProgressView()
             .controlSize(.small)
-          Text(L10n.settingsText(.settingsResourcePreparingDownload, language: model.language))
+          Text(L10n.settingsText(.settingsResourcePreparingDownload, language: model.settings.language))
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -159,21 +159,13 @@ extension SettingsView {
     }
   }
 
-  var voiceAssistantActionVisibility: VoiceAssistantSettingsActionVisibility {
-    VoiceAssistantSettingsActionVisibility(
-      wakeWordState: model.wakeWordResourceState,
-      ttsState: model.ttsResourceState,
-      isSpeechPlaybackActive: model.isSpeechPlaybackActive
-    )
-  }
-
   var voiceAssistantSetupOverview: some View {
     let readiness = model.voiceAssistantReadiness
     return VStack(alignment: .leading, spacing: 10) {
       Label(
         readiness.canEnableListening
-          ? L10n.settingsText(.settingsAssistantSetupReady, language: model.language)
-          : L10n.settingsText(.settingsAssistantSetupIncomplete, language: model.language),
+          ? L10n.settingsText(.settingsAssistantSetupReady, language: model.settings.language)
+          : L10n.settingsText(.settingsAssistantSetupIncomplete, language: model.settings.language),
         systemImage: readiness.canEnableListening
           ? RillSystemSymbol.checkmarkSealFill.rawValue
           : RillSystemSymbol.checklist.rawValue
@@ -182,34 +174,34 @@ extension SettingsView {
       .foregroundStyle(readiness.canEnableListening ? .green : .primary)
 
       voiceAssistantReadinessRow(
-        title: UIStrings.text(.microphone, language: model.language),
+        title: L10n.text(.microphone, language: model.settings.language),
         detail: microphoneReadinessDetail(readiness.microphone),
         isReady: readiness.microphone == .granted
       )
       voiceAssistantReadinessRow(
-        title: L10n.settingsText(.settingsReadinessLocalRecognition, language: model.language),
+        title: L10n.settingsText(.settingsReadinessLocalRecognition, language: model.settings.language),
         detail: localSpeechReadinessDetail(readiness.localSpeech),
         isReady: readiness.isLocalSpeechReady
       )
       voiceAssistantReadinessRow(
-        title: L10n.settingsText(.settingsReadinessLLMAnswer, language: model.language),
+        title: L10n.settingsText(.settingsReadinessLLMAnswer, language: model.settings.language),
         detail: llmReadinessDetail(readiness.llm),
         isReady: readiness.llm.permitsListening
       )
       voiceAssistantReadinessRow(
-        title: L10n.settingsText(.settingsReadinessCloudPrivacy, language: model.language),
+        title: L10n.settingsText(.settingsReadinessCloudPrivacy, language: model.settings.language),
         detail: privacyReadinessDetail(readiness.privacy),
         isReady: readiness.privacy.permitsListening
       )
       voiceAssistantReadinessRow(
-        title: L10n.settingsText(.settingsReadinessSpeechOutput, language: model.language),
+        title: L10n.settingsText(.settingsReadinessSpeechOutput, language: model.settings.language),
         detail: speechOutputReadinessDetail(readiness.speechOutput),
         isReady: true
       )
 
       HStack(spacing: RillSpacing.row) {
         if readiness.microphone != .granted {
-          Button(L10n.settingsText(.settingsReviewPermissions, language: model.language)) {
+          Button(L10n.settingsText(.settingsReviewPermissions, language: model.settings.language)) {
             model.showSettings(.permissions)
           }
           .accessibilityIdentifier("settings.voice-assistant.review-permissions")
@@ -217,13 +209,13 @@ extension SettingsView {
         if readiness.llm != .notRequired,
           readiness.llm != .verified
         {
-          Button(L10n.settingsText(.settingsConfigureVerifyLLM, language: model.language)) {
+          Button(L10n.settingsText(.settingsConfigureVerifyLLM, language: model.settings.language)) {
             model.showSettings(.providers)
           }
           .accessibilityIdentifier("settings.voice-assistant.configure-llm")
         }
         if readiness.privacy == .unavailable {
-          Button(L10n.settingsText(.settingsRepairPrivacySettings, language: model.language)) {
+          Button(L10n.settingsText(.settingsRepairPrivacySettings, language: model.settings.language)) {
             model.showSettings(.privacy)
           }
           .accessibilityIdentifier("settings.voice-assistant.repair-privacy")
@@ -259,33 +251,33 @@ extension SettingsView {
   }
 
   func microphoneReadinessDetail(_ state: PermissionState) -> String {
-    L10n.microphoneReadinessDetail(state, language: model.language)
+    L10n.microphoneReadinessDetail(state, language: model.settings.language)
   }
 
   func localSpeechReadinessDetail(
     _ state: VoiceAssistantResourceState
   ) -> String {
-    L10n.localSpeechReadinessDetail(state, language: model.language)
+    L10n.localSpeechReadinessDetail(state, language: model.settings.language)
   }
 
   func llmReadinessDetail(_ state: VoiceAssistantLLMReadiness) -> String {
-    L10n.llmReadinessDetail(state, language: model.language)
+    L10n.llmReadinessDetail(state, language: model.settings.language)
   }
 
   func privacyReadinessDetail(
     _ state: VoiceAssistantPrivacyReadiness
   ) -> String {
-    L10n.privacyReadinessDetail(state, language: model.language)
+    L10n.privacyReadinessDetail(state, language: model.settings.language)
   }
 
   func speechOutputReadinessDetail(
     _ state: VoiceAssistantSpeechOutputReadiness
   ) -> String {
-    L10n.speechOutputReadinessDetail(state, language: model.language)
+    L10n.speechOutputReadinessDetail(state, language: model.settings.language)
   }
 
   var wakeWordModelIsReady: Bool {
-    if case .ready = model.wakeWordResourceState {
+    if case .ready = model.voice.wakeWordResourceState {
       return true
     }
     return false
@@ -336,11 +328,11 @@ extension SettingsView {
     state: VoiceAssistantResourceState,
     resourceNameKey: SettingsTextKey
   ) -> String {
-    let resourceName = L10n.settingsText(resourceNameKey, language: model.language)
+    let resourceName = L10n.settingsText(resourceNameKey, language: model.settings.language)
     if case .failed = state {
-      return L10n.settingsResourceRetryTitle(resourceName, language: model.language)
+      return L10n.settingsResourceRetryTitle(resourceName, language: model.settings.language)
     }
-    return L10n.settingsResourceDownloadTitle(resourceName, language: model.language)
+    return L10n.settingsResourceDownloadTitle(resourceName, language: model.settings.language)
   }
 
   func voiceResourceUnavailableText(
@@ -348,16 +340,16 @@ extension SettingsView {
   ) -> String {
     switch reason {
     case .distributionLicenseUnverified:
-      return L10n.settingsText(.settingsVoiceResourceUnavailable, language: model.language)
+      return L10n.settingsText(.settingsVoiceResourceUnavailable, language: model.settings.language)
     }
   }
 
   var wakeWordRuntimeStatusText: String {
-    L10n.wakeWordRuntimeStatus(model.wakeWordRuntimeState, language: model.language)
+    L10n.wakeWordRuntimeStatus(model.voice.wakeWordRuntimeState, language: model.settings.language)
   }
 
   var wakeWordRuntimeStatusColor: Color {
-    switch model.wakeWordRuntimeState {
+    switch model.voice.wakeWordRuntimeState {
     case .listening:
       .green
     case .failed:

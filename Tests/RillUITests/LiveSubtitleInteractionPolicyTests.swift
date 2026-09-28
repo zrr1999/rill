@@ -173,28 +173,28 @@ final class LiveSubtitleInteractionPolicyTests: XCTestCase {
         .offline,
         language: .english
       ),
-      "Offline — processed entirely on this Mac"
+      "On this Mac — processed locally"
     )
     XCTAssertEqual(
       LiveSubtitleInteractionPolicy.networkDisclosureTitle(
         .online,
         language: .simplifiedChinese
       ),
-      "联网 — 此工作流会使用网络服务"
+      "包含联网步骤 — 此工作流会使用网络服务"
     )
     XCTAssertEqual(
       LiveSubtitleInteractionPolicy.networkDisclosureShortTitle(
         .offline,
         language: .simplifiedChinese
       ),
-      "离线"
+      "本机"
     )
     XCTAssertEqual(
       LiveSubtitleInteractionPolicy.networkDisclosureShortTitle(
         .online,
         language: .english
       ),
-      "Online"
+      "Network steps"
     )
   }
 

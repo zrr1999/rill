@@ -2,6 +2,16 @@ import Foundation
 import Observation
 import RillCore
 
+public enum ContextMemoryFailure: Sendable, Equatable {
+  case settingsLoad, revocation, authorization, storage, mutation, correction, unavailable
+}
+
+public enum ContextMemoryMutationResult: Sendable, Equatable {
+  case saved
+  case failed(ContextMemoryFailure)
+  case stopped
+}
+
 @MainActor @Observable
 public final class ContextMemoryModel {
     public private(set) var settings = ContextFeatureSettings()
@@ -96,7 +106,7 @@ public final class ContextMemoryModel {
         return task
     }
 
-    public func apply(screen: Bool, memory: Bool, workflowIDs: Set<UUID>) {
+    public func apply(screen: Bool, memory: Bool, workflowIDs: Set<UUID>, vocabulary: Bool = false) {
         guard !isLoading, !isSaving, !stopped else { return }
         let revision = suspendAuthorization()
         isSaving = true
@@ -106,8 +116,9 @@ public final class ContextMemoryModel {
                 var proposed = ContextFeatureSettings()
                 proposed.screenContextEnabled = screen
                 proposed.memoryEnabled = memory
+                proposed.vocabularyCorrectionEnabled = vocabulary
                 proposed.authorizedWorkflowIDs = workflowIDs
-                if screen || memory { proposed.providerFingerprint = try await fingerprint() }
+                if screen || memory || vocabulary { proposed.providerFingerprint = try await fingerprint() }
                 if screen { hasScreenPermission = screenPermission(true) }
                 guard revision == self.revision, !stopped else { return }
                 try await persist(proposed).value

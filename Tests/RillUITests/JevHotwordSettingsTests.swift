@@ -19,7 +19,7 @@ struct JevHotwordSettingsTests {
     func selection() throws -> HotwordSelection.Selection {
       let id = UUID()
       return try service.select(runID: id, workflow: workflow, collections: [], context: context,
-        options: .init(modelIdentifier: "qwen"), candidates: [.init(id: UUID(), term: "Rill", priority: 0)],
+        options: .init(modelID: "qwen"), candidates: [.init(id: UUID(), term: "Rill", priority: 0)],
         lifetime: .init(runID: id))
     }
     #expect(!settings.isHotwordSelectionEnabled)

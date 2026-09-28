@@ -20,6 +20,7 @@ enum AppSettingsCodec {
     .recordHistoryVisibility,
     .legacyClipboardHistoryVisibility,
     .recordPanelHotkey,
+    .bufferOutputHotkey,
     .legacyClipboardPanelHotkey,
     .preferredSpeechEngine,
     .localSpeechModel,
@@ -108,37 +109,6 @@ enum AppSettingsCodec {
           message:
             "Existing workflows could not be migrated to TOML; the legacy library remains active."))
       return InitialWorkflowFileLoad(result: initial, didMigrateLegacyWorkflows: false)
-    }
-  }
-
-  static func retireLegacyWorkflowDefinitions(
-    in settingsStore: (any SettingsStore)?,
-    preserving customizations: [WorkflowCustomization]
-  ) async {
-    guard let settingsStore else { return }
-    let document = WorkflowLibraryDocument(
-      customWorkflows: [],
-      customizations: customizations
-    )
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.sortedKeys]
-    guard let data = try? encoder.encode(document) else { return }
-    do {
-      if let source = try await settingsStore.string(forKey: workflowLibrarySettingKey),
-        let library = try loadWorkflowLibrary(from: source), !library.customWorkflows.isEmpty
-      {
-        let recovery = try encoder.encode(library.customWorkflows)
-        try await settingsStore.setString(
-          String(decoding: recovery, as: UTF8.self), forKey: .customWorkflows)
-      }
-      try await settingsStore.setString(
-        String(decoding: data, as: UTF8.self),
-        forKey: workflowLibrarySettingKey
-      )
-
-    } catch {
-      // TOML already verified successfully and remains authoritative. Retaining
-      // the legacy payload is a safe, retryable cleanup failure.
     }
   }
 
@@ -384,6 +354,7 @@ enum AppSettingsCodec {
         ?? storedSettings[.legacyClipboardCaptureEnabled],
       recordHistoryVisibility: storedSettings[.recordHistoryVisibility]
         ?? storedSettings[.legacyClipboardHistoryVisibility],
+      bufferOutputHotkey: storedSettings[.bufferOutputHotkey],
       recordPanelHotkey: storedSettings[.recordPanelHotkey]
         ?? storedSettings[.legacyClipboardPanelHotkey],
       preferredSpeechEngine: storedSettings[.preferredSpeechEngine],
@@ -440,6 +411,7 @@ enum AppSettingsCodec {
     case .systemClipboardCaptureEnabled,
       .recordHistoryVisibility,
       .recordPanelHotkey,
+      .bufferOutputHotkey,
       .recordMergeSimilar:
       .systemClipboard
     case .preferredSpeechEngine,
@@ -796,6 +768,12 @@ enum AppSettingsCodec {
     }
     if let value = values[.systemClipboardCaptureEnabled], storedBooleanIfValid(value) == nil {
       invalidKeys.insert(.systemClipboardCaptureEnabled)
+    }
+    if let value = values[.bufferOutputHotkey],
+      (HotkeyBindingDescriptor(storageString: value).storageString != value
+        || value == HotkeyBindingDescriptor.doubleCommand.storageString)
+    {
+      invalidKeys.insert(.bufferOutputHotkey)
     }
     if let value = values[.recordPanelHotkey],
       HotkeyBindingDescriptor(storageString: value).storageString != value

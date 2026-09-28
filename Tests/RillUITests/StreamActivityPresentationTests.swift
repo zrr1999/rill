@@ -1,8 +1,22 @@
 import XCTest
+import RillCore
 
 @testable import RillUI
 
 final class StreamActivityPresentationTests: XCTestCase {
+    func testActualProcessingStageReplacesGenericTranscribing() {
+        let presentation = StreamActivityPresentation.make(
+            isRunning: true, workflowAudioRunState: .transcribing(workflowID: UUID()),
+            isAudioProcessingQueueVisible: true, language: .simplifiedChinese,
+            activeStage: .saving)
+        XCTAssertEqual(presentation?.phase, .saving)
+        XCTAssertEqual(presentation?.title, "保存中")
+        let recording = StreamActivityPresentation.make(
+            isRunning: true, workflowAudioRunState: .recording(workflowID: UUID()),
+            isAudioProcessingQueueVisible: true, language: .english, activeStage: .delivering)
+        XCTAssertEqual(recording?.phase, .recording)
+    }
+
     func testIdleStatesHideTheCard() {
         XCTAssertNil(
             StreamActivityPresentation.make(
@@ -55,7 +69,7 @@ final class StreamActivityPresentationTests: XCTestCase {
         XCTAssertEqual(preparing?.phase, .preparing)
         XCTAssertEqual(
             preparing?.title,
-            UIStrings.text(.workflowPreparingAudio, language: .english)
+            L10n.text(.workflowPreparingAudio, language: .english)
         )
         XCTAssertEqual(preparing?.symbol, .hourglass)
 
@@ -68,7 +82,7 @@ final class StreamActivityPresentationTests: XCTestCase {
         XCTAssertEqual(recording?.phase, .recording)
         XCTAssertEqual(
             recording?.title,
-            UIStrings.text(.streamActivityRecording, language: .english)
+            L10n.text(.streamActivityRecording, language: .english)
         )
         XCTAssertEqual(recording?.symbol, .micFill)
 
@@ -81,7 +95,7 @@ final class StreamActivityPresentationTests: XCTestCase {
         XCTAssertEqual(transcribing?.phase, .transcribing)
         XCTAssertEqual(
             transcribing?.title,
-            UIStrings.text(.workflowTranscribing, language: .english)
+            L10n.text(.workflowTranscribing, language: .english)
         )
         XCTAssertEqual(transcribing?.symbol, .waveform)
     }
@@ -96,7 +110,7 @@ final class StreamActivityPresentationTests: XCTestCase {
         XCTAssertEqual(presentation?.phase, .transcribing)
         XCTAssertEqual(
             presentation?.title,
-            UIStrings.text(.workflowTranscribing, language: .english)
+            L10n.text(.workflowTranscribing, language: .english)
         )
     }
 

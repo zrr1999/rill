@@ -14,8 +14,9 @@ private struct ValidatorRecognizer: SpeechRecognizer {
 private struct ValidatorAction: OutputAction {
     let id = "validator.action"
 
-    func execute(text: String, context: ActionContext) async throws -> ActionResult {
-        .copiedToClipboard
+    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+        _ = try record.requireText(for: id)
+        return .copiedToClipboard
     }
 }
 

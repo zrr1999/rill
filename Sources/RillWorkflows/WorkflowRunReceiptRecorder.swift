@@ -13,6 +13,7 @@ public enum WorkflowRunReceiptRecorderError: Error, Sendable, Equatable {
     case unexpectedActionIndex(expected: Int, actual: Int)
     case actionIndexMismatch(expected: Int, actual: Int)
     case terminalWhileActionInProgress(runID: UUID)
+    case cannotDiscardProcessedRun(runID: UUID)
     case conflictingPreparedTerminal(runID: UUID)
     case persistenceFailed(runID: UUID)
     case writeObsoletedByClearBarrier(runID: UUID)
@@ -146,6 +147,22 @@ public actor WorkflowRunReceiptRecorder {
         pendingRuns[runID] = run
     }
 
+    /// Retires an input attempt before any text processing or output takes place.
+    /// The run ID remains terminal, but nothing is written or published to history.
+    func discardEmptyInput(runID: UUID) throws {
+        let run = try mutablePendingRun(runID: runID)
+        guard run.preparedTerminal == nil, !run.terminalWriteIsInProgress,
+              run.finalText == nil, run.activeAction == nil, run.nextActionIndex == 0,
+              run.actionDetails.isEmpty,
+              run.activeStep == nil || run.activeStep?.kind == .recognizeSpeech,
+              run.stepDetails.allSatisfy({ $0.kind == .recognizeSpeech }),
+              run.textSteps.isEmpty else {
+            throw WorkflowRunReceiptRecorderError.cannotDiscardProcessedRun(runID: runID)
+        }
+        pendingRuns.removeValue(forKey: runID)
+        rememberFinalizedRunID(runID)
+    }
+
     public func recordTextStep(runID: UUID, step: WorkflowTextStep) {
         guard var run = pendingRuns[runID], run.preparedTerminal == nil else { return }
         run.textSteps.append(step)
@@ -235,7 +252,8 @@ public actor WorkflowRunReceiptRecorder {
     public func finishAction(
         runID: UUID,
         actionIndex: Int,
-        result: WorkflowActionResultCode
+        result: WorkflowActionResultCode,
+        failureDisposition: OutputFailureDisposition? = nil
     ) throws {
         var run = try mutablePendingRun(runID: runID)
         guard run.preparedTerminal == nil else {
@@ -263,7 +281,8 @@ public actor WorkflowRunReceiptRecorder {
                 to: finishedAt
             ),
             durationMilliseconds: finishedAt >= activeAction.startedAtNanoseconds
-                ? (finishedAt - activeAction.startedAtNanoseconds) / 1_000_000 : nil
+                ? (finishedAt - activeAction.startedAtNanoseconds) / 1_000_000 : nil,
+            failureDisposition: failureDisposition
         )
         if run.actionDetails.count < WorkflowRunReceipt.maximumActionDetails {
             run.actionDetails.append(detail)
@@ -505,7 +524,7 @@ public actor WorkflowRunReceiptRecorder {
                 runID: runID,
                 subsystem: .session,
                 level: .error,
-                event: "run-receipt.persistence.failed",
+                event: .runReceiptPersistenceFailed,
                 message: "A terminal run receipt could not be persisted."
             )
         )

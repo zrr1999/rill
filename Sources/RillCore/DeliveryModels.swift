@@ -16,6 +16,8 @@ public struct ActionContext: Sendable, Equatable {
     public var contextSnapshot: ContextSnapshot
     public var recognitionResult: RecognitionResult
     public var finalText: String
+    public var bufferEntryID: BufferEntryID?
+    public var bufferDraftInput: BufferDraftInputIntent?
     public var sourceRecordSubject: RecordDeliverySubject?
     public var startedAt: Date
     public var finishedAt: Date
@@ -31,10 +33,14 @@ public struct ActionContext: Sendable, Equatable {
         recognitionResult: RecognitionResult,
         finalText: String,
         sourceRecordSubject: RecordDeliverySubject? = nil,
+        bufferEntryID: BufferEntryID? = nil,
+        bufferDraftInput: BufferDraftInputIntent? = nil,
         startedAt: Date,
         finishedAt: Date
     ) {
         self.actionConfiguration = nil
+        self.bufferEntryID = bufferEntryID
+        self.bufferDraftInput = bufferDraftInput
         self.runID = runID
         self.workflow = workflow
         self.contextSnapshot = contextSnapshot

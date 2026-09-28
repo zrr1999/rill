@@ -75,7 +75,7 @@ final class RecordQuickPanelRenderTests: XCTestCase {
       panel.start(sourceBundleIdentifier: nil)
       let deadline = ContinuousClock.now.advanced(by: .seconds(2))
       while panel.capacity.count != 2, ContinuousClock.now < deadline { await Task.yield() }
-      panel.searchText = "撤销上次提交但保留代码改动"
+      panel.setSearchText("撤销上次提交但保留代码改动")
       while panel.isSearching, ContinuousClock.now < deadline { await Task.yield() }
       panel.searchByMeaning()
       while panel.semanticState == .working, ContinuousClock.now < deadline { await Task.yield() }
@@ -124,7 +124,7 @@ final class RecordQuickPanelRenderTests: XCTestCase {
     for _ in 0..<100 where panel.results.count < 2 { await waitForMainRunLoopDefaultMode() }
     panel.togglePreview()
     for record in [image, files] {
-      panel.selectedID = record.id
+      panel.select(record.id)
       for _ in 0..<100 where panel.preview?.id != record.id { await waitForMainRunLoopDefaultMode() }
       XCTAssertEqual(panel.preview?.id, record.id)
       for dark in [false, true] {

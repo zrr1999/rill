@@ -67,6 +67,8 @@ struct HotkeyRecorderView: View {
     let commitRecordPanelShortcutRecording: (UUID, UInt16) -> Void
     let onRecord: (RillCore.KeyboardShortcut) -> Void
     let onReset: () -> Void
+    var commandLabel: String? = nil
+    var identifier = "settings.clipboard-hotkey"
 
     @State private var isRecording = false
     @State private var recordingSuspensionID: UUID?
@@ -102,14 +104,14 @@ struct HotkeyRecorderView: View {
                     )
             }
             .contentShape(RoundedRectangle(cornerRadius: RillRadius.row, style: .continuous))
-            .accessibilityLabel(UIStrings.text(.recordPanelHotkeyRecorderLabel, language: language))
+            .accessibilityLabel(commandLabel ?? L10n.text(.recordPanelHotkeyRecorderLabel, language: language))
             .accessibilityValue(Text(currentBindingLabel))
-            .accessibilityIdentifier("settings.clipboard-hotkey.keycap")
+            .accessibilityIdentifier("\(identifier).keycap")
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isRecording)
 
             HStack(spacing: 10) {
                 Button(
-                    UIStrings.text(
+                    L10n.text(
                         isRecording
                             ? .recordPanelHotkeyRecording
                             : .recordPanelHotkeyRecord,
@@ -118,20 +120,20 @@ struct HotkeyRecorderView: View {
                 ) {
                     isRecording ? cancelRecording() : startRecording()
                 }
-                .accessibilityLabel(UIStrings.text(.recordPanelHotkeyRecorderLabel, language: language))
+                .accessibilityLabel(commandLabel ?? L10n.text(.recordPanelHotkeyRecorderLabel, language: language))
                 .accessibilityValue(Text(currentBindingLabel))
-                .accessibilityHint(UIStrings.text(.recordPanelHotkeyHint, language: language))
-                .accessibilityIdentifier("settings.clipboard-hotkey.record")
+                .accessibilityHint(L10n.text(.recordPanelHotkeyHint, language: language))
+                .accessibilityIdentifier("\(identifier).record")
 
-                Button(UIStrings.text(.recordPanelHotkeyReset, language: language)) {
+                Button(L10n.text(.recordPanelHotkeyReset, language: language)) {
                     cancelRecording()
                     onReset()
                 }
                 .help(L10n.settingsText(.settingsHotkeyResetHelp, language: language))
-                .accessibilityIdentifier("settings.clipboard-hotkey.reset")
+                .accessibilityIdentifier("\(identifier).reset")
             }
 
-            Text(UIStrings.text(.recordPanelHotkeyHint, language: language))
+            Text(L10n.text(.recordPanelHotkeyHint, language: language))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -152,12 +154,12 @@ struct HotkeyRecorderView: View {
 
     private var currentBindingLabel: String {
         if isRecording {
-            return UIStrings.text(.recordPanelHotkeyRecording, language: language)
+            return L10n.text(.recordPanelHotkeyRecording, language: language)
         }
 
         switch binding {
         case .doubleCommand:
-            return UIStrings.text(.recordPanelHotkeyDefault, language: language)
+            return L10n.text(.recordPanelHotkeyDefault, language: language)
         case .keyboardShortcut(let shortcut):
             return format(shortcut)
         }

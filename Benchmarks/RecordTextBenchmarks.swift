@@ -2,52 +2,18 @@ import Foundation
 
 @main
 struct RecordTextBenchmarks {
-    static func main() throws {
-        #if CODSPEED
-        var reports: [[String: Any]] = []
-        guard let hooks = instrument_hooks_init() else {
-            fatalError("Could not initialize CodSpeed instrumentation")
-        }
-        defer { instrument_hooks_deinit(hooks) }
-        let instrumented = instrument_hooks_is_instrumented(hooks)
-        precondition(instrument_hooks_set_integration(
-            hooks, CodSpeedResults.integrationName, CodSpeedResults.integrationVersion
-        ) == 0)
-        #endif
+    static func main() {
+        let recorder = CodSpeedRecorder()
 
         for workload in workloads {
-            var samples: [Double] = []
-            #if CODSPEED
-            if instrumented {
-                _ = workload.__codspeed_root_frame__run()
-                precondition(instrument_hooks_start_benchmark(hooks) == 0)
-            }
-            let rounds = instrumented ? 20 : 1
-            #else
-            let rounds = 1
-            #endif
-
-            for _ in 0..<rounds {
-                let start = ContinuousClock.now
-                let outputBytes = workload.__codspeed_root_frame__run()
-                let elapsed = start.duration(to: .now).components
-                samples.append(Double(elapsed.seconds) * 1e9 + Double(elapsed.attoseconds) / 1e9)
-                precondition(outputBytes == workload.expected.utf8.count * workload.iterations)
-            }
-
-            #if CODSPEED
-            if instrumented {
-                precondition(instrument_hooks_stop_benchmark(hooks) == 0)
-                let uri = "Benchmarks/RecordTextBenchmarks.swift::\(workload.name)[\(workload.iterations)]"
-                precondition(instrument_hooks_set_executed_benchmark(hooks, getpid(), uri) == 0)
-                reports.append(CodSpeedResults.benchmark(name: workload.name, uri: uri, samples: samples))
-            }
-            #endif
-            print("Validated \(workload.name): \(rounds) batches of \(workload.iterations) previews")
+            _ = workload.__codspeed_root_frame__run()
+            let uri = "Benchmarks/RecordTextBenchmarks.swift::\(workload.name)[\(workload.iterations)]"
+            recorder.begin()
+            let outputBytes = workload.__codspeed_root_frame__run()
+            recorder.end(uri: uri)
+            precondition(outputBytes == workload.expected.utf8.count * workload.iterations)
+            print("Validated \(workload.name): \(workload.iterations) previews")
         }
-        #if CODSPEED
-        if !reports.isEmpty { try CodSpeedResults.write(reports) }
-        #endif
     }
 
     private static var workloads: [PreviewWorkload] {
