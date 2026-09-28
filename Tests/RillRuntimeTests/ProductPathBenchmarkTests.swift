@@ -232,6 +232,9 @@ private struct HostPipeline {
       }
       return .init(status: "failed", failure: measured.failure ?? failure.code.rawValue,
         texts: measured.raw.map { ["raw": $0] } ?? [:], metrics: measured.metrics, storedBeforeDispatch: false)
+    case .noInput:
+      return .init(status: "ok", failure: nil, texts: [:], metrics: measured.metrics,
+        storedBeforeDispatch: false, productOutcome: "no_input")
     case .cancelled:
       return .init(status: "cancelled", failure: "cancelled", texts: measured.raw.map { ["raw": $0] } ?? [:], metrics: measured.metrics, storedBeforeDispatch: false)
     }
