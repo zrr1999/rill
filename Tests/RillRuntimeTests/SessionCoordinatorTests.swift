@@ -765,7 +765,7 @@ final class SessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(deliveredValues, ["question | first | second"])
     }
 
-    func testShortAudioSkipsRecognitionAndReceiptButBoundaryDurationIsAccepted() async throws {
+    func testShortAudioWithContentIsRecognizedRegardlessOfDuration() async throws {
         let eventBus = EventBus()
         let repository = InMemoryWorkflowRunReceiptRepository()
         let recorder = WorkflowRunReceiptRecorder(repository: repository, eventBus: eventBus)
@@ -789,7 +789,7 @@ final class SessionCoordinatorTests: XCTestCase {
             candidateResolver: CandidateResolver(eventBus: eventBus),
             eventBus: eventBus, runReceiptRecorder: recorder
         )
-        for duration in [0, 0.01, 0.299, 0.3] {
+        for (index, duration) in [0.0, 0.01, 0.299, 0.3].enumerated() {
             let runID = UUID()
             let audio = try CapturedAudio(
                 durationSeconds: duration,
@@ -802,17 +802,12 @@ final class SessionCoordinatorTests: XCTestCase {
             let receipts = try await repository.receipts(matching: .init(runID: runID))
             let requests = await recognitionProbe.snapshot()
             let actions = await actionProbe.snapshot()
-            if duration < 0.3 {
-                XCTAssertEqual(outcome, .noInput)
-                XCTAssertTrue(receipts.isEmpty)
-                XCTAssertTrue(requests.isEmpty)
-                XCTAssertTrue(actions.isEmpty)
-            } else {
-                guard case .completed = outcome else { return XCTFail("300 ms input must be recognized") }
-                XCTAssertEqual(receipts.count, 1)
-                XCTAssertEqual(requests.count, 1)
-                XCTAssertEqual(actions.count, 1)
+            guard case .completed = outcome else {
+                return XCTFail("Audio containing recognized content must complete at \(duration) seconds")
             }
+            XCTAssertEqual(receipts.count, index + 1)
+            XCTAssertEqual(requests.count, index + 1)
+            XCTAssertEqual(actions.count, index + 1)
         }
     }
 

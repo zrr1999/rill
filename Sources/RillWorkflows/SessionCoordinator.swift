@@ -429,16 +429,6 @@ public extension SessionCoordinator {
         }
         defer { releaseRunLane(runID: runID) }
 
-        // Use the recorded payload duration, never time spent preparing the microphone.
-        if workflow.inputKind == .audio, preRecognizedText == nil,
-           effectiveReceiptTrigger != .failedAudioRecovery,
-           let capturedAudio, capturedAudio.durationSeconds.isFinite,
-           capturedAudio.durationSeconds >= 0, capturedAudio.durationSeconds < 0.3 {
-            contextPreparation?.cancel()
-            await eventBus.publish(.runDiscarded(runID: runID))
-            return .noInput
-        }
-
         let receiptRegistration = await beginRunReceipt(
             runID: runID,
             workflowID: workflow.id,
