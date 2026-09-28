@@ -6,6 +6,31 @@ import XCTest
 
 @MainActor
 final class RecordQuickPanelTests: XCTestCase {
+  func testCollectionScopeFiltersResultsWithoutChangingManagementSelection() async throws {
+    let store = RecordStore()
+    let collection = try await store.createCollection(name: "Clipboard", preset: .list)
+    let inside = try await store.ingest(draft("design notes", app: "editor"), into: [collection.id])
+    let outside = try await store.ingest(draft("design outside", app: "editor"), into: [])
+    let workspace = RecordWorkspaceModel(store: store)
+    await workspace.refresh()
+    workspace.selectedRecordID = outside.id
+    let panel = workspace.makeQuickPanelModel()
+    panel.start(sourceBundleIdentifier: nil)
+    await panel.waitForSearch()
+    panel.setCollection(collection.id)
+    panel.setSearchText("design")
+    await panel.waitForSearch()
+    XCTAssertEqual(panel.results.map(\.id), [inside.id])
+    XCTAssertEqual(panel.selectedID, inside.id)
+    XCTAssertEqual(workspace.selectedRecordID, outside.id)
+    panel.setCollection(nil)
+    await panel.waitForSearch()
+    XCTAssertEqual(Set(panel.results.map(\.id)), Set([inside.id, outside.id]))
+    XCTAssertEqual(panel.selectedID, inside.id)
+    await panel.shutdown()
+    await workspace.shutdown()
+  }
+
   func testLiteralMatchBeyondFirstScanBatchWinsOverRecentApproximateMatches() async throws {
     let store = RecordStore()
     let exact = try await store.ingest(draft("jtb exact", app: "editor"), into: [])

@@ -97,6 +97,65 @@ private actor RecordPanelOperationGate {
 
 @MainActor
 final class RecordPanelControllerTests: XCTestCase {
+    func testUnifiedPanelPreservesEditorUndoSearchAndCompositionAcrossModesAndCollapse() async throws {
+        let workspace = RecordWorkspaceModel(store: RecordStore())
+        let model = makeModel(recordWorkspace: workspace)
+        let controller = RecordPanelController(pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false }, reduceMotionProvider: { true })
+        let existing = Set(NSApp.windows.map(\.windowNumber))
+        controller.show(model: model, mode: .drafts, deliverSelection: { _, _ in
+            XCTFail("Mode changes cannot deliver records"); return .blocked
+        }, onDeliveryAbort: {})
+        let editor = workspace.buffers.editor
+        editor.newItem()
+        await editor.waitForPendingWrites()
+        let window = try XCTUnwrap(NSApp.windows.first { $0 is NSPanel && $0.isVisible && !existing.contains($0.windowNumber) })
+        func nativeEditor(in view: NSView) -> NSTextView? {
+            if let text = view as? NSTextView, text.accessibilityIdentifier() == "record-buffer.editor" { return text }
+            return view.subviews.lazy.compactMap { nativeEditor(in: $0) }.first
+        }
+        for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
+        let native = try XCTUnwrap(nativeEditor(in: XCTUnwrap(window.contentView)))
+        XCTAssertTrue(window.makeFirstResponder(native))
+        native.insertText("保留这段编辑", replacementRange: NSRange(location: 0, length: 0))
+        native.breakUndoCoalescing()
+        XCTAssertTrue(native.undoManager?.canUndo == true)
+        controller.show(model: model, mode: .collections, toggle: false, activate: false,
+                        deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
+        XCTAssertEqual(controller.presentation.mode, .drafts)
+        XCTAssertTrue(window.firstResponder === native,
+                      "Asynchronous output status must preserve the active editor and caret.")
+        let sessionID = editor.session?.id
+        controller.selectMode(.collections)
+        controller.quickPanelModel?.setSearchText("保留")
+        controller.selectMode(.drafts)
+        controller.collapse()
+        for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
+        XCTAssertTrue(controller.isVisible)
+        XCTAssertTrue(controller.presentation.isCollapsed)
+        XCTAssertEqual(window.frame.width, 320, accuracy: 1)
+        XCTAssertEqual(window.frame.height, 56, accuracy: 1)
+        XCTAssertFalse(window.isKeyWindow)
+        XCTAssertFalse(window.canBecomeKey)
+        XCTAssertFalse(controller.digitSelectionHandler?(0) ?? true)
+        controller.expand()
+        for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
+        XCTAssertTrue(nativeEditor(in: try XCTUnwrap(window.contentView)) === native)
+        XCTAssertEqual(editor.session?.id, sessionID)
+        XCTAssertEqual(native.string, "保留这段编辑")
+        XCTAssertEqual(controller.quickPanelModel?.searchText, "保留")
+        native.undoManager?.undo()
+        XCTAssertEqual(native.string, "")
+        native.setMarkedText("中文", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
+        controller.selectMode(.collections)
+        controller.collapse()
+        XCTAssertEqual(controller.presentation.mode, .drafts)
+        XCTAssertFalse(controller.presentation.isCollapsed)
+        XCTAssertTrue(native.hasMarkedText())
+        native.unmarkText()
+        await controller.shutdown()
+        await workspace.shutdown()
+    }
+
     func testMarkedTextPreventsBothPanelDigitDispatchPathsFromPasting() async throws {
         let target = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.Editor")
         let store = RecordStore()

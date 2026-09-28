@@ -40,7 +40,10 @@ after L yields `LDHICBA`; input ending at C yields `CLBA`.
 
 ## Editable drafts
 
-The Drafts panel exposes these same entries; it is not another queue or history.
+The unified quick panel exposes these same entries in Drafts mode; it is not another queue or history.
+Collections and Drafts retain their native views when switching modes or collapsing
+to the 320×56pt pending strip. The strip remains nonactivating and can be dragged
+or closed; opening it never sends an item.
 `RecordStore` owns each `BufferTextDraft`, its immutable baseline and optional raw
 recognition text, revision, committed revision and pending speech suggestions.
 The UI owns one native `NSTextView` editing session, selection and unsaved text.
@@ -69,11 +72,12 @@ it does not classify every edit as an ASR error or teach vocabulary automaticall
 
 Return is native newline in the editor and Send in the focused list. Command-Return
 sends only outside IME composition. Escape belongs to the input method first,
-then leaves editing focus, then closes the panel. Native undo owns applied final
+then leaves editing focus, then collapses the panel. The collapsed strip does not
+take keyboard focus; its close button dismisses it. Native undo owns applied final
 speech edits. The global hotkey tap passes editor keystrokes through while still
 settling any already-held Fn gesture.
 
-Before opening the nonactivating panel, `BufferDraftPanelController` captures the
+Before opening the nonactivating panel, `RecordPanelController` captures the
 external PID/control, selected range and readable selected text. Sending never
 recaptures a different target. The output boundary revalidates identity, selection
 and secure input; drift retains the item for explicit target handoff. Opening from

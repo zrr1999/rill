@@ -8,7 +8,7 @@
 
 ## 安装与校验
 
-- 系统要求：Apple Silicon，macOS 14.0 或更高版本。
+- 系统要求：Apple Silicon，macOS 26.0 或更高版本。
 - 下载 `Rill.dmg` 和 `Rill.dmg.sha256`，在同一目录运行
   `shasum -a 256 --check Rill.dmg.sha256`，再打开 DMG 安装。
 - 首次准备语音模型需要联网；0.6B 约 1.01 GB，1.7B 约 2.46 GB。

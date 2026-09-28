@@ -1,0 +1,597 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-28T15:18:14Z",
+  "title": "Design System: Rill",
+  "extensions": {
+    "platform": {
+      "name": "macOS",
+      "minimumVersion": "26.0",
+      "frameworks": [
+        "SwiftUI",
+        "AppKit"
+      ],
+      "measurementUnit": "macOS logical point",
+      "tokenPrimitives": "../DESIGN.md",
+      "sourcePathBase": "repository root",
+      "nativeTypography": "Frontmatter families name system roles. SwiftUI text styles are not converted to fixed CSS font sizes.",
+      "previewBoundary": "Component HTML is a semantic browser proxy with one CSS pixel per logical point for preview geometry. Browser system colors and controls are not AppKit colors, SF Symbols, Liquid Glass, native focus behavior, or acceptance evidence."
+    },
+    "nativeColors": {
+      "accent": {
+        "role": "primary",
+        "value": "Color.accentColor",
+        "purpose": "Primary actions and custom selection; follows the user accent."
+      },
+      "label": {
+        "role": "neutral",
+        "value": "Color.primary / NSColor.labelColor",
+        "purpose": "Primary labels and normal recording waveform."
+      },
+      "secondary-label": {
+        "role": "neutral",
+        "value": "Color.secondary / NSColor.secondaryLabelColor",
+        "purpose": "Supporting labels, hints, and recognition hypothesis."
+      },
+      "window-background": {
+        "role": "neutral",
+        "value": "NSColor.windowBackgroundColor",
+        "purpose": "Opaque panel base and recorder Reduce Transparency fallback."
+      },
+      "control-background": {
+        "role": "neutral",
+        "value": "NSColor.controlBackgroundColor",
+        "purpose": "Custom floating-control accessibility fallback."
+      },
+      "editor-background": {
+        "role": "neutral",
+        "value": "NSColor.textBackgroundColor",
+        "purpose": "Opaque native editor."
+      },
+      "editor-text": {
+        "role": "neutral",
+        "value": "NSColor.textColor",
+        "purpose": "Native editor foreground."
+      },
+      "separator": {
+        "role": "neutral",
+        "value": "NSColor.separatorColor / native Divider",
+        "purpose": "Surface separation."
+      },
+      "list-selection": {
+        "role": "selection",
+        "value": "Native List(selection:) foreground and background",
+        "purpose": "Resolve active and inactive selection together; do not force selected text color."
+      },
+      "warning": {
+        "role": "status",
+        "value": "Color.orange",
+        "purpose": "Warnings and attention with text or action."
+      },
+      "failure": {
+        "role": "status",
+        "value": "Color.red",
+        "purpose": "Failure and critical duration limit with text or action."
+      }
+    },
+    "nativeColorPolicy": {
+      "fixedHexEquivalent": false,
+      "synthesizedTonalRamp": false,
+      "reason": "AppKit and SwiftUI resolve these roles using appearance, contrast, accent, and window emphasis. A fixed CSS palette would be a second source of truth.",
+      "layerResolution": "VoiceActivityLayerMeter.updateNSView resolves Color in context.environment before creating the NSColor used by Core Animation.",
+      "sources": [
+        {
+          "path": "Sources/RillUI/VoiceActivityIndicator.swift",
+          "symbol": "VoiceActivityLayerMeter.updateNSView"
+        },
+        {
+          "path": "Sources/RillUI/LiveSubtitleOverlay.swift",
+          "symbol": "primaryTextColor / secondaryTextColor / surfaceTint / borderColor"
+        },
+        {
+          "path": "Sources/RillUI/BufferDraftTextEditor.swift",
+          "symbol": "makeNSView"
+        },
+        {
+          "path": "Sources/RillUI/RecordBufferDraftView.swift",
+          "symbol": "itemList"
+        }
+      ]
+    },
+    "typographyMeta": {
+      "title": {
+        "displayName": "Native title",
+        "nativeStyle": "Font.title2.weight(.semibold)",
+        "purpose": "Sheet and content-operation titles.",
+        "source": {
+          "path": "Sources/RillUI/RecordWorkspaceView.swift",
+          "symbol": "createCollectionSheet / membershipSheet"
+        }
+      },
+      "headline": {
+        "displayName": "Native headline",
+        "nativeStyle": "Font.headline",
+        "purpose": "Section and disclosure headings.",
+        "source": {
+          "path": "Sources/RillUI/RecordWorkspaceView.swift",
+          "symbol": "collection and metadata headings"
+        }
+      },
+      "body": {
+        "displayName": "Native body",
+        "nativeStyle": "Font.body or inherited native default",
+        "purpose": "Ordinary text and labels.",
+        "source": {
+          "path": "Sources/RillUI/RillCard.swift",
+          "symbol": "RillTextPreview"
+        }
+      },
+      "supporting": {
+        "displayName": "Native caption",
+        "nativeStyle": "Font.caption",
+        "purpose": "Source, time, save state, and hints.",
+        "source": {
+          "path": "Sources/RillUI/RecordBufferDraftView.swift",
+          "symbol": "editor / footer"
+        }
+      },
+      "subtitle": {
+        "displayName": "Live subtitle",
+        "nativeStyle": "Font.callout.weight(.medium)",
+        "purpose": "Recognition text in the preserved expanded recorder.",
+        "source": {
+          "path": "Sources/RillUI/LiveSubtitleOverlay.swift",
+          "symbol": "expandedBody"
+        }
+      },
+      "timer": {
+        "displayName": "Recording timer",
+        "nativeStyle": "Font.caption.monospacedDigit().weight(.semibold)",
+        "purpose": "Stable recording time and countdown.",
+        "source": {
+          "path": "Sources/RillUI/LiveSubtitleOverlay.swift",
+          "symbol": "recordingTimer"
+        }
+      },
+      "key-hint": {
+        "displayName": "Recorder key hint",
+        "nativeStyle": "Font.caption2.monospaced().weight(.medium)",
+        "purpose": "Esc key hint.",
+        "source": {
+          "path": "Sources/RillUI/LiveSubtitleOverlay.swift",
+          "symbol": "escapeHint"
+        }
+      },
+      "draft-editor": {
+        "displayName": "Native draft editor",
+        "nativeStyle": "NSFont.systemFont(ofSize: 15)",
+        "purpose": "Editable text with native selection and undo.",
+        "source": {
+          "path": "Sources/RillUI/BufferDraftTextEditor.swift",
+          "symbol": "makeNSView"
+        }
+      }
+    },
+    "tokenSources": {
+      "spacing": {
+        "path": "Sources/RillUI/RillCard.swift",
+        "symbol": "RillSpacing"
+      },
+      "rounded.shared": {
+        "path": "Sources/RillUI/RillSelection.swift",
+        "symbol": "RillRadius"
+      },
+      "rounded.recorder": {
+        "path": "Sources/RillUI/LiveSubtitleOverlay.swift",
+        "symbol": "LiveSubtitleOverlayMetrics"
+      },
+      "components.main-window": {
+        "path": "Sources/RillApp/VoiceInputApplication.swift",
+        "symbol": "WindowGroup.defaultSize"
+      },
+      "components.main-sidebar": {
+        "path": "Sources/RillUI/MainShellView.swift",
+        "symbol": "MainShellLayoutMetrics"
+      },
+      "components.settings": {
+        "path": "Sources/RillUI/SettingsWindowView.swift",
+        "symbol": "body"
+      },
+      "components.unified-panel": {
+        "path": "Sources/RillApp/RecordPanelController.swift",
+        "symbol": "defaultPanelSize / minimumPanelSize"
+      },
+      "components.panel-mode-control": {
+        "path": "Sources/RillUI/UnifiedRecordPanelView.swift",
+        "symbol": "expandedContent"
+      },
+      "components.pending-strip": {
+        "path": "Sources/RillUI/UnifiedRecordPanelView.swift",
+        "symbol": "pendingStrip"
+      },
+      "components.panel-search": {
+        "path": "Sources/RillUI/RecordQuickPanelView.swift",
+        "symbol": "body"
+      },
+      "components.draft-editor": {
+        "path": "Sources/RillUI/BufferDraftTextEditor.swift",
+        "symbol": "makeNSView"
+      },
+      "components.card": {
+        "path": "Sources/RillUI/RillCard.swift",
+        "symbol": "rillCard"
+      },
+      "components.recorder": {
+        "path": "Sources/RillUI/LiveSubtitleOverlay.swift",
+        "symbol": "LiveSubtitleOverlayMetrics / compactBody / expandedBody"
+      }
+    },
+    "breakpoints": [
+      {
+        "name": "records-split",
+        "value": "700pt",
+        "condition": "Record content width >= 700; otherwise selected detail or list.",
+        "source": {
+          "path": "Sources/RillUI/RecordWorkspaceView.swift",
+          "symbol": "RecordWorkspaceLayoutPolicy.splitMinimumWidth"
+        }
+      },
+      {
+        "name": "collections-side-preview",
+        "value": "760pt",
+        "condition": "Quick panel content width >= 760 and preview is open; otherwise preview below results.",
+        "source": {
+          "path": "Sources/RillUI/RecordQuickPanelView.swift",
+          "symbol": "RecordQuickPanelLayoutPolicy.usesSidePreview"
+        }
+      }
+    ],
+    "layoutConstraints": {
+      "main-sidebar": {
+        "minimum": "180pt",
+        "maximum": "260pt",
+        "preferredRef": "components.main-sidebar.width"
+      },
+      "settings-window": {
+        "minimumWidth": "720pt",
+        "minimumHeight": "560pt",
+        "preferredRef": "components.settings-window"
+      },
+      "settings-sidebar": {
+        "minimum": "160pt",
+        "maximum": "220pt",
+        "preferredRef": "components.settings-sidebar.width"
+      },
+      "drafts-list": {
+        "minimum": "180pt",
+        "preferred": "215pt",
+        "maximum": "300pt",
+        "source": {
+          "path": "Sources/RillUI/RecordBufferDraftView.swift",
+          "symbol": "body"
+        }
+      },
+      "drafts-editor": {
+        "minimumWidth": "330pt",
+        "minimumTextHeight": "140pt",
+        "source": {
+          "path": "Sources/RillUI/RecordBufferDraftView.swift",
+          "symbol": "editor"
+        }
+      },
+      "collections-results": {
+        "minimumWidth": "300pt",
+        "preferredWidth": "360pt",
+        "source": {
+          "path": "Sources/RillUI/RecordQuickPanelView.swift",
+          "symbol": "body"
+        }
+      },
+      "collections-bottom-preview": {
+        "maximumHeight": "180pt",
+        "source": {
+          "path": "Sources/RillUI/RecordQuickPanelView.swift",
+          "symbol": "body"
+        }
+      }
+    },
+    "materials": [
+      {
+        "name": "floating-controls",
+        "value": "glassEffect(.regular, in: .rect(cornerRadius: RillRadius.section))",
+        "scope": "Unified panel header and pending strip.",
+        "fallback": "NSColor.controlBackgroundColor when Reduce Transparency or Increase Contrast is enabled.",
+        "source": {
+          "path": "Sources/RillUI/UnifiedRecordPanelView.swift",
+          "symbol": "FloatingControlSurface"
+        }
+      },
+      {
+        "name": "recorder",
+        "value": "thinMaterial + windowBackgroundColor tint",
+        "tintOpacity": 0.08,
+        "increasedContrastTintOpacity": 0.16,
+        "fallback": "Opaque NSColor.windowBackgroundColor under Reduce Transparency.",
+        "source": {
+          "path": "Sources/RillUI/LiveSubtitleOverlay.swift",
+          "symbol": "LiveSubtitleSurfaceStyle / surfaceBackground"
+        }
+      },
+      {
+        "name": "card-tones",
+        "value": "quaternary foreground-style fill over the owning surface",
+        "opacities": {
+          "prominent": 0.45,
+          "regular": 0.35,
+          "subdued": 0.2
+        },
+        "source": {
+          "path": "Sources/RillUI/RillCard.swift",
+          "symbol": "RillCardProminence"
+        }
+      }
+    ],
+    "borders": [
+      {
+        "name": "recorder",
+        "value": "separatorColor stroke",
+        "width": "0.75pt",
+        "opacity": 0.55,
+        "increasedContrastOpacity": 0.9,
+        "source": {
+          "path": "Sources/RillUI/LiveSubtitleOverlay.swift",
+          "symbol": "surface / borderColor"
+        }
+      },
+      {
+        "name": "custom-selection",
+        "value": "accentColor wash and stroke",
+        "fillOpacity": 0.12,
+        "strokeOpacity": 0.5,
+        "width": "1pt",
+        "increasedContrastStrokeOpacity": 1,
+        "increasedContrastWidth": "2pt",
+        "source": {
+          "path": "Sources/RillUI/RillSelection.swift",
+          "symbol": "RillSelectionWrapper"
+        }
+      },
+      {
+        "name": "interactive-card-hover",
+        "value": "Color.primary stroke",
+        "width": "1pt",
+        "hoverOpacity": 0.22,
+        "restOpacity": 0,
+        "source": {
+          "path": "Sources/RillUI/RillCard.swift",
+          "symbol": "RillCardButtonBody"
+        }
+      }
+    ],
+    "shadows": [
+      {
+        "name": "recorder",
+        "value": "SwiftUI shadow(color: .black.opacity(0.13), radius: 12, y: 4)",
+        "increasedContrastValue": "SwiftUI shadow(color: .black.opacity(0.2), radius: 12, y: 4)",
+        "insets": {
+          "top": "16pt",
+          "leading": "16pt",
+          "bottom": "20pt",
+          "trailing": "16pt"
+        },
+        "purpose": "One recorder shadow outside the documented content size.",
+        "source": {
+          "path": "Sources/RillUI/LiveSubtitleOverlay.swift",
+          "symbol": "LiveSubtitleOverlayMetrics / shadowColor"
+        }
+      },
+      {
+        "name": "unified-panel",
+        "value": "NSPanel.hasShadow = true",
+        "purpose": "Native panel depth; no copied CSS shadow.",
+        "source": {
+          "path": "Sources/RillApp/RecordPanelController.swift",
+          "symbol": "present panel configuration"
+        }
+      }
+    ],
+    "motion": [
+      {
+        "name": "card-hover",
+        "value": "spring(response: 0.2, dampingFraction: 1.0)",
+        "reducedMotion": "No animation.",
+        "source": {
+          "path": "Sources/RillUI/RillCard.swift",
+          "symbol": "RillCardButtonBody"
+        }
+      },
+      {
+        "name": "card-press",
+        "value": "spring(response: 0.25, dampingFraction: 0.8), scale 0.985",
+        "reducedMotion": "No animation or press scale.",
+        "source": {
+          "path": "Sources/RillUI/RillCard.swift",
+          "symbol": "RillCardButtonBody"
+        }
+      },
+      {
+        "name": "custom-selection",
+        "value": "spring(response: 0.3, dampingFraction: 1)",
+        "reducedMotion": "No animation.",
+        "source": {
+          "path": "Sources/RillUI/RillSelection.swift",
+          "symbol": "RillSelectionWrapper"
+        }
+      },
+      {
+        "name": "unified-panel-entrance",
+        "value": "0.15s, CAMediaTimingFunction.easeOut",
+        "reducedMotion": "Show directly.",
+        "source": {
+          "path": "Sources/RillApp/RecordPanelController.swift",
+          "symbol": "present"
+        }
+      },
+      {
+        "name": "unified-panel-exit",
+        "value": "0.12s, CAMediaTimingFunction.easeIn",
+        "reducedMotion": "Hide directly.",
+        "source": {
+          "path": "Sources/RillApp/RecordPanelController.swift",
+          "symbol": "hidePanel"
+        }
+      },
+      {
+        "name": "recorder-fade",
+        "value": "0.1s entrance / 0.1s exit",
+        "reducedMotion": "Show or hide directly.",
+        "source": {
+          "path": "Sources/RillApp/LiveSubtitlePanelController.swift",
+          "symbol": "LiveSubtitlePanelAnimationPolicy"
+        }
+      },
+      {
+        "name": "recorder-resize",
+        "value": "0.16s AppKit geometry transition",
+        "reducedMotion": "Set geometry directly.",
+        "source": {
+          "path": "Sources/RillApp/LiveSubtitlePanelController.swift",
+          "symbol": "LiveSubtitlePanelAnimationPolicy"
+        }
+      },
+      {
+        "name": "waveform",
+        "value": "0.08s linear interpolation; 0.04s target interval",
+        "reducedMotion": "Update measured levels without interpolation.",
+        "source": {
+          "path": "Sources/RillUI/VoiceActivityIndicator.swift",
+          "symbol": "meterAnimationDuration / meterTargetInterval"
+        }
+      }
+    ],
+    "evidenceBoundary": {
+      "implementation": "Approved native implementation, documented from current source.",
+      "visualEvidence": "ScreenCaptureKit compositor captures of ephemeral synthetic native test windows on macOS 27.0 (26A428), Xcode 27.0 (27A5228h).",
+      "pendingAtRefresh": [
+        "Physical macOS 26 interaction",
+        "Fn",
+        "IME composition",
+        "VoiceOver",
+        "Cross-application output",
+        "Multi-display behavior",
+        "Installed-app and release acceptance"
+      ],
+      "acceptanceContract": "docs/release-qa-checklist.md",
+      "notCanonized": "Stale preimplementation wording is removed. Previous review findings about clipped controls, competing titles, selected text, waveform contrast, and label truncation are defects rather than tokens. Code fixes are present; final visual and interaction acceptance is not asserted.",
+      "automatedValidation": "Record command results with the reviewed commit and pull request."
+    }
+  },
+  "components": [
+    {
+      "name": "Explicit output action",
+      "kind": "button",
+      "description": "Native bordered-prominent output action; the browser sample only demonstrates the labeled control.",
+      "html": "<button class=\"ds-output\" type=\"button\">Send selected</button>",
+      "css": ".ds-output { appearance: auto; color-scheme: light dark; font: caption; }",
+      "native": "Button.buttonStyle(.borderedProminent); native hover, active, disabled, and focus states.",
+      "source": {
+        "path": "Sources/RillUI/RecordBufferDraftView.swift",
+        "symbol": "footer"
+      }
+    },
+    {
+      "name": "Panel search",
+      "kind": "input",
+      "refersTo": "panel-search",
+      "description": "NSSearchField bridge; browser search input is a semantic proxy and does not implement panel commands.",
+      "html": "<div class=\"ds-search-wrap\"><input class=\"ds-search\" type=\"search\" aria-label=\"Search records\" placeholder=\"Search records\"></div>",
+      "css": ".ds-search-wrap { padding: 16px; } .ds-search { appearance: auto; color-scheme: light dark; height: 30px; width: 100%; font: caption; }",
+      "native": "RecordSearchField with native first/repeated focus, movement, Return, shortcuts, and layered Escape.",
+      "source": {
+        "path": "Sources/RillUI/RecordQuickPanelView.swift",
+        "symbol": "body"
+      }
+    },
+    {
+      "name": "Main navigation",
+      "kind": "nav",
+      "refersTo": "main-sidebar",
+      "description": "Top route order, represented by a native browser selection control; actual sidebar is a SwiftUI List.",
+      "html": "<select class=\"ds-nav\" size=\"3\" aria-label=\"Main navigation\"><option selected>All Records</option><option>Activity</option><option>Workflows</option></select>",
+      "css": ".ds-nav { appearance: auto; color-scheme: light dark; width: 200px; font: caption; }",
+      "native": "NavigationSplitView and List(selection:); Collections follow the top group and Settings is in the bottom inset.",
+      "source": {
+        "path": "Sources/RillUI/MainShellView.swift",
+        "symbol": "leadingSections / body"
+      }
+    },
+    {
+      "name": "Editable draft",
+      "kind": "input",
+      "refersTo": "draft-editor",
+      "description": "Opaque native text editor with independent saved-state feedback; sample content is synthetic.",
+      "html": "<textarea class=\"ds-editor\" aria-label=\"Pending text\">Review the next draft before sending.</textarea>",
+      "css": ".ds-editor { appearance: auto; color-scheme: light dark; font: 15px system-ui; padding: 14px; background: Field; color: FieldText; }",
+      "native": "NSTextView with textColor/textBackgroundColor, native undo and IME; Return edits, Command-Return sends outside composition.",
+      "source": {
+        "path": "Sources/RillUI/BufferDraftTextEditor.swift",
+        "symbol": "makeNSView"
+      }
+    },
+    {
+      "name": "Grouped content card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Shared container shape and insets; browser Canvas deliberately does not imitate SwiftUI quaternary material.",
+      "html": "<div class=\"ds-card\">Content requiring attention</div>",
+      "css": ".ds-card { color-scheme: light dark; border-radius: 14px; padding: 16px; background: Canvas; color: CanvasText; font: caption; }",
+      "native": "rillCard uses a continuous rounded rectangle and RillCardProminence quaternary fill. No custom shadow.",
+      "source": {
+        "path": "Sources/RillUI/RillCard.swift",
+        "symbol": "rillCard"
+      }
+    }
+  ],
+  "narrative": {
+    "northStar": "Quiet native Mac workspace",
+    "overview": "Rill uses SwiftUI and AppKit on macOS 26 or later. System typography, semantic colors, native selection, and compact controls keep dictation and content reuse close to the user's current task. The existing Rill identity and recording overlay remain the visual baseline. Content, its current state, and the next useful action establish hierarchy.",
+    "keyCharacteristics": [
+      "Native navigation and controls, with opaque reading and editing surfaces.",
+      "All Records, Activity, and Workflows grouped above Collections.",
+      "Collections and Drafts share one panel and retain their native view state.",
+      "The existing compact and expanded recording overlay remains recognizable."
+    ],
+    "rules": [
+      {
+        "name": "The Native Selection Rule",
+        "body": "Let native lists and controls resolve selection background and foreground together. Custom row selection uses `rillSelection`; its accent wash and contrast-aware border are a separate treatment, not a replacement for native list selection.",
+        "section": "colors"
+      },
+      {
+        "name": "The Stable Label Rule",
+        "body": "Preserve functional labels and counts at their intrinsic width. Truncate the next-item preview, not the Drafts entry name; allow longer English and Chinese labels to wrap where the control permits it.",
+        "section": "typography"
+      },
+      {
+        "name": "The Content Surface Rule",
+        "body": "Keep text and payloads on their own opaque surface. Apply translucent material to navigation and controls without lowering the opacity of their text or icons.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** preserve native controls, semantic colors, system typography, and the existing Rill icon assets.",
+      "**Do** keep content and editing opaque, with accessibility fallbacks local to the material owner.",
+      "**Do** preserve RecordStore, draft revision, privacy, capture, and delivery ownership while changing presentation.",
+      "**Do** preserve search focus, exact navigation, Settings deep links, native undo, IME precedence, and layered Escape.",
+      "**Do** keep Copy, Add to Drafts, and explicit output distinct, with save and copy feedback based on actual results.",
+      "**Do** preserve the current recording overlay structure and use measured audio levels for its waveform.",
+      "**Do** verify English and Chinese, light and dark appearance, compact widths, and each accessibility display setting in the native app."
+    ],
+    "donts": [
+      "**Don't** replace semantic colors with a fixed RGB palette or synthesize a native tonal ramp from mockups.",
+      "**Don't** force a selected text color independently of the native selection background and window emphasis.",
+      "**Don't** create another content store, editor window, or output target when switching Collections and Drafts.",
+      "**Don't** turn workflow descriptions into visual editing controls or model summaries into a new global selector.",
+      "**Don't** treat static renders, synthetic browser previews, or local checks as physical macOS or release acceptance."
+    ]
+  }
+}

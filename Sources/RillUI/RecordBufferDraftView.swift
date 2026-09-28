@@ -5,13 +5,15 @@ public struct RecordBufferDraftView: View {
   @Bindable private var model: RecordBufferDraftModel
   @Bindable private var voice: VoiceRunModel
   private let language: AppLanguage
+  private let embedded: Bool
   @State private var showsDiscard = false
   @State private var comparesRecognition = true
 
-  public init(model: RecordBufferDraftModel, voice: VoiceRunModel, language: AppLanguage) {
+  public init(model: RecordBufferDraftModel, voice: VoiceRunModel, language: AppLanguage, embedded: Bool = false) {
     self.model = model
     self.voice = voice
     self.language = language
+    self.embedded = embedded
   }
 
   private func text(_ zh: String, _ en: String) -> String { language == .simplifiedChinese ? zh : en }
@@ -23,8 +25,10 @@ public struct RecordBufferDraftView: View {
   public var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 12) {
-        Text(text("待发区", "Drafts")).font(.headline)
-        Text("\(model.items.count)").monospacedDigit().foregroundStyle(.secondary)
+        if !embedded {
+          Text(text("待发区", "Drafts")).font(.headline)
+          Text("\(model.items.count)").monospacedDigit().foregroundStyle(.secondary)
+        }
         Spacer()
         Button { model.newItem() } label: {
           Label(text("新建", "New item"), systemImage: "square.and.pencil")
@@ -47,7 +51,7 @@ public struct RecordBufferDraftView: View {
       Divider()
       footer.padding(12)
     }
-    .frame(minWidth: 580, minHeight: 520)
+    .frame(minWidth: 580, minHeight: embedded ? 420 : 520)
     .background(.background)
     .accessibilityIdentifier("record-buffer.drafts")
     .alert(text("移除此待发项？", "Remove this pending item?"), isPresented: $showsDiscard) {
@@ -75,7 +79,6 @@ public struct RecordBufferDraftView: View {
               }
             }
             .padding(.vertical, 4)
-            .foregroundStyle(model.selectedID == item.id ? Color(nsColor: .alternateSelectedControlTextColor) : Color.primary)
             .tag(item.id)
           }
         } header: {
