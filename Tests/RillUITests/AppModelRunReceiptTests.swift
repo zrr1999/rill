@@ -214,19 +214,19 @@ final class AppModelRunReceiptTests: XCTestCase {
         let model = makeHarness().model
         let workflowID = UUID()
         let runID = UUID()
-        model.workflowAudioRunState = .recording(workflowID: workflowID)
+        model.voice.workflowAudioRunState = .recording(workflowID: workflowID)
         model.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .recording)))
         model.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .hidden)))
-        XCTAssertEqual(model.workflowAudioRunState, .transcribing(workflowID: workflowID))
+        XCTAssertEqual(model.voice.workflowAudioRunState, .transcribing(workflowID: workflowID))
 
         model.handle(.runDiscarded(runID: runID))
 
-        XCTAssertEqual(model.workflowAudioRunState, .idle)
-        XCTAssertNil(model.currentCaptureLiveSubtitleSnapshot)
-        XCTAssertNil(model.liveSubtitleSnapshot)
-        XCTAssertFalse(model.isRunning)
+        XCTAssertEqual(model.voice.workflowAudioRunState, .idle)
+        XCTAssertNil(model.voice.currentCaptureLiveSubtitleSnapshot)
+        XCTAssertNil(model.voice.liveSubtitleSnapshot)
+        XCTAssertFalse(model.voice.isRunning)
         XCTAssertNil(model.lastFailure)
-        XCTAssertTrue(model.historyRecords.isEmpty)
+        XCTAssertTrue(model.history.historyRecords.isEmpty)
     }
 
     func testDiscardedInputClearsOnlyItsOwnPresentationWithoutFailureOrHistory() {
@@ -237,17 +237,17 @@ final class AppModelRunReceiptTests: XCTestCase {
         )
         model.handle(.runStarted(run))
         model.handle(.runDiscarded(runID: run.runID))
-        XCTAssertFalse(model.isRunning)
+        XCTAssertFalse(model.voice.isRunning)
         XCTAssertNil(model.lastFailure)
-        XCTAssertTrue(model.historyRecords.isEmpty)
+        XCTAssertTrue(model.history.historyRecords.isEmpty)
 
         let newer = RunSnapshot(
             runID: UUID(), workflowID: UUID(), workflow: .init(fallbackName: "New voice"), trigger: .hotkey
         )
         model.handle(.runStarted(newer))
         model.handle(.runDiscarded(runID: run.runID))
-        XCTAssertEqual(model.activeRunID, newer.runID)
-        XCTAssertTrue(model.isRunning)
+        XCTAssertEqual(model.voice.activeRunID, newer.runID)
+        XCTAssertTrue(model.voice.isRunning)
         model.handle(.runFailed(runID: newer.runID, workflow: newer.workflow, message: "Provider unavailable"))
         XCTAssertNotNil(model.lastFailure)
         model.handle(.runDiscarded(runID: run.runID))
