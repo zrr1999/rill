@@ -265,11 +265,11 @@ short-circuit in order, accept 1–64 children, and can nest with `not`.
 
 ## Outputs, tests and receipts
 
-Live voice input shorter than 300 milliseconds is discarded before recognition.
-An empty recognition result also ends without a failure, output, history entry or
-run receipt. These attempts still release capture state and remove managed
-temporary audio. Explicit retries from failed-audio recovery retain their retry
-and failure receipts.
+An empty recognition result ends without a failure, output, history entry or run
+receipt. Audio duration alone does not discard a run, so short utterances with
+recognized content still follow the normal workflow. These attempts still
+release capture state and remove managed temporary audio. Explicit retries from
+failed-audio recovery retain their retry and failure receipts.
 
 Outputs have `id`, executable `kind`, optional `description`, optional `condition`
 and an optional string `config` dictionary. Shipped choices include:
