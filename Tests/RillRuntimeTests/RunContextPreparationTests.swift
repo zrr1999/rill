@@ -57,7 +57,7 @@ struct RunContextPreparationTests {
         let workflow = WorkflowDefinition(name: "Vocabulary receipt", pipeline: .init(recognizerID: "context.test",
             postProcessSteps: [.init(kind: .llmRewrite, prompt: prompt)], outputActions: [.init(id: "context.output")]),
             ui: .init(symbolName: "waveform", accentColorName: "blue"))
-        let audio = try CapturedAudio(durationSeconds: 0.2,
+        let audio = try CapturedAudio(durationSeconds: 0.3,
             format: .init(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16), inlineData: Data([0, 0]))
         let outcome = await coordinator.runReportingOutcome(workflow: workflow, capturedAudio: audio,
             contextSnapshot: .empty, contextPreparation: preparation)
