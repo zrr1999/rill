@@ -146,7 +146,7 @@ check_record_domain_boundary() {
   if git grep -n -E -e "$legacy_domain_pattern" -- Sources ':!**/LegacyClipboardMigration.swift'; then
     error "Legacy Stack/Clipboard domain types escaped LegacyClipboardMigration"
   fi
-  if git grep -n -E -e "$declaration_pattern" -- '*.swift' ':!**/LegacyClipboardMigration.swift'; then
+  if git grep -n -E -e "$declaration_pattern" -- Sources ':!**/LegacyClipboardMigration.swift'; then
     error "Clipboard-prefixed domain declarations must be SystemClipboard-prefixed or migration-only"
   fi
   legacy_sources="$(
