@@ -780,8 +780,7 @@ final class SessionCoordinatorTests: XCTestCase {
             ),
             ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
         )
-        let coordinator = SessionCoordinator(
-            contextProvider: MockContextProvider(),
+        let coordinator = makeTestSessionCoordinator(
             recognizerRegistry: SpeechRecognizerRegistry(recognizers: [
                 OptionsProbeRecognizer(supportsKeyterms: false, probe: recognitionProbe),
             ]),
