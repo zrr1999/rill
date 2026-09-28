@@ -805,7 +805,7 @@ final class SessionCoordinatorTests: XCTestCase {
             guard case .completed = outcome else {
                 return XCTFail("Audio containing recognized content must complete at \(duration) seconds")
             }
-            XCTAssertEqual(receipts.count, index + 1)
+            XCTAssertEqual(receipts.count, 1)
             XCTAssertEqual(requests.count, index + 1)
             XCTAssertEqual(actions.count, index + 1)
         }
