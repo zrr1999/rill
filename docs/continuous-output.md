@@ -73,11 +73,19 @@ then leaves editing focus, then closes the panel. Native undo owns applied final
 speech edits. The global hotkey tap passes editor keystrokes through while still
 settling any already-held Fn gesture.
 
-Before opening the nonactivating panel, `BufferDraftPanelController` captures the
-external PID/control, selected range and readable selected text. Sending never
-recaptures a different target. The output boundary revalidates identity, selection
-and secure input; drift retains the item for explicit target handoff. Opening from
-Rill itself can prepare the selected item for the next output shortcut.
+Enabling voice collection or clipboard capture opens the resident Drafts window
+without taking key focus. Saved source preferences restore it after startup, and
+sending leaves it visible. Closing the window only hides it; collection remains
+enabled. The source controls use the existing settings and capture paths.
+
+Before each editing visit takes key focus, `BufferDraftPanelController` captures
+the external PID/control, selected range and readable selected text. Automatic
+presentation, new arrivals and sending never recapture a different target. The
+output boundary revalidates identity, selection and secure input; drift during
+editing retains the item. Returning from an external target for a new editing visit
+captures it again and restores the selected draft's editing protection after a
+failed send. Entering from Rill itself can prepare the selected item for the next
+output shortcut.
 
 Each draft text field retains the normal 1 MiB payload limit. Draft text bytes
 (baseline, raw recognition, current text and suggestions) share a separate 16 MiB

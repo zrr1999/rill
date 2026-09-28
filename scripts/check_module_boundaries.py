@@ -59,7 +59,7 @@ SYSTEM_IMPORTS = {
         "UniformTypeIdentifiers"},
     "RillUI": FOUNDATION_IMPORTS | {"AppKit", "Carbon", "ImageIO", "Observation", "Quartz",
         "QuartzCore", "QuickLookThumbnailing", "SwiftUI", "UniformTypeIdentifiers"},
-    "RillApp": FOUNDATION_IMPORTS | {"AppKit", "ApplicationServices", "Combine", "QuartzCore", "SwiftUI"},
+    "RillApp": FOUNDATION_IMPORTS | {"AppKit", "ApplicationServices", "Combine", "Observation", "QuartzCore", "SwiftUI"},
 }
 TEST_IMPORTS = set().union(*SYSTEM_IMPORTS.values()) | {"Testing", "XCTest", "os"}
 

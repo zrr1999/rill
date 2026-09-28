@@ -262,7 +262,7 @@ private struct BufferUnverifiableTarget: CursorTextPreviewTarget {
   var wasChecked = false
 }
 
-private final class BufferVerifiableTarget: CursorTextPreviewTarget, @unchecked Sendable {
+final class BufferVerifiableTarget: CursorTextPreviewTarget, @unchecked Sendable {
   private let lock = NSLock()
   private var storedValue = ""
   private var selection = NSRange(location: 0, length: 0)

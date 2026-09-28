@@ -1,4 +1,5 @@
 import AppKit
+import Observation
 import RillPlatform
 import RillUI
 import SwiftUI
@@ -12,6 +13,10 @@ final class BufferDraftPanelController: NSObject, NSWindowDelegate {
   private var target: RecordBufferTextOutput.Target?
   private var panel: DraftPanel?
   private var isClosed = false
+  private var lastCollectionPreferences = (voice: false, clipboard: false)
+
+  var isVisible: Bool { panel?.isVisible == true }
+  var isKey: Bool { panel?.isKeyWindow == true }
 
   init(model: AppModel, output: BufferOutputController,
        textOutput: RecordBufferTextOutput = .init(), editingActivity: @escaping (Bool) -> Void) {
@@ -24,17 +29,39 @@ final class BufferDraftPanelController: NSObject, NSWindowDelegate {
     model.recordWorkspace.buffers.editor.sendAction = { [weak self] id in
       guard let self else { return }
       let captured = self.target
-      self.hide()
+      // Return the key focus to the captured application without ending the
+      // editor session or closing the resident panel.
+      self.panel?.makeFirstResponder(nil)
+      self.panel?.orderOut(nil)
+      self.editingActivity(false)
       self.output.output(id, capturedTarget: captured)
+      self.panel?.orderFrontRegardless()
     }
   }
 
-  func show() {
+  func start() {
+    observeCollectionPreferences()
+  }
+
+  private func observeCollectionPreferences() {
     guard !isClosed, let model else { return }
-    if panel?.isVisible != true {
-      target = textOutput.captureDraftTarget()
-      model.recordWorkspace.buffers.editor.targetName = target?.applicationName
+    let preferences = withObservationTracking {
+      let settings = model.settings
+      return (loading: settings.isLoading,
+        voice: settings.builtinPushToTalkOutputMode == .saveToVoiceGroup,
+        clipboard: settings.systemClipboardCaptureEnabled)
+    } onChange: { [weak self] in
+      Task { @MainActor [weak self] in self?.observeCollectionPreferences() }
     }
+    guard !preferences.loading else { return }
+    let newlyEnabled = (preferences.voice && !lastCollectionPreferences.voice)
+      || (preferences.clipboard && !lastCollectionPreferences.clipboard)
+    lastCollectionPreferences = (preferences.voice, preferences.clipboard)
+    if newlyEnabled { show(activate: false) }
+  }
+
+  func show(activate: Bool = true) {
+    guard !isClosed, let model else { return }
     if panel == nil {
       let panel = DraftPanel(contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
         styleMask: [.titled, .closable, .resizable, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -47,13 +74,24 @@ final class BufferDraftPanelController: NSObject, NSWindowDelegate {
       panel.contentMinSize = NSSize(width: 580, height: 520)
       panel.delegate = self
       panel.onEscape = { [weak self] in self?.hide() }
-      panel.contentView = NSHostingView(rootView: RecordBufferDraftView(
-        model: model.recordWorkspace.buffers.editor, voice: model.voice, language: model.settings.language))
+      panel.onWillBecomeKey = { [weak self] in self?.beginEditingVisit() }
+      panel.contentView = NSHostingView(rootView: RecordBufferDraftView(model: model))
       panel.center()
+      panel.setFrameAutosaveName("RillDrafts")
       self.panel = panel
     }
-    model.recordWorkspace.buffers.editor.open()
-    panel?.makeKeyAndOrderFront(nil)
+    if !isVisible { model.recordWorkspace.buffers.editor.open() }
+    if activate {
+      panel?.makeKeyAndOrderFront(nil)
+    } else {
+      panel?.orderFrontRegardless()
+    }
+  }
+
+  private func beginEditingVisit() {
+    target = textOutput.captureDraftTarget()
+    model?.recordWorkspace.buffers.editor.targetName = target?.applicationName
+    model?.recordWorkspace.buffers.editor.open()
   }
 
   func hide() {
@@ -78,7 +116,12 @@ final class BufferDraftPanelController: NSObject, NSWindowDelegate {
 
 private final class DraftPanel: NSPanel {
   var onEscape: () -> Void = {}
+  var onWillBecomeKey: () -> Void = {}
   override var canBecomeKey: Bool { true }
   override var canBecomeMain: Bool { false }
+  override func becomeKey() {
+    onWillBecomeKey()
+    super.becomeKey()
+  }
   override func cancelOperation(_ sender: Any?) { onEscape() }
 }
