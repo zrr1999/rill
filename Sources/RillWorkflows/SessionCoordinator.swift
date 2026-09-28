@@ -626,7 +626,10 @@ public extension SessionCoordinator {
                     state = .idle
                     return .noInput
                 } catch {
-                    await recordRunReceiptCoordinationFailure(runID: runID, reason: "discard-failed")
+                    await outputExecutor.recordRunReceiptCoordinationFailure(
+                        runID: runID,
+                        reason: "discard-failed"
+                    )
                 }
             }
             if let cancellation = workflowRunCancellationSummary(
