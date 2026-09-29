@@ -3085,6 +3085,7 @@ final class RecordingSessionManagerTests: XCTestCase {
             return XCTFail("Expected the final physical Fn release after tap recovery.")
         }
         await manager.processHotkeyEvent(physicalReleaseEvent)
+        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
 
         let finishCallCount = await audioCaptureService.finishCallCount
         let finalState = await manager.currentState()
