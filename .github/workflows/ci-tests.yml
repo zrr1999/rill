@@ -156,12 +156,35 @@ jobs:
       - name: Run preflight
         env:
           EVENT_NAME: ${{ github.event_name }}
+          RILL_PREFLIGHT_REPORT_DIR: ${{ runner.temp }}/rill-preflight
+          RILL_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          RILL_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [[ "$EVENT_NAME" == pull_request ]]; then
             bash scripts/preflight.sh
           else
             bash scripts/preflight.sh --clean
           fi
+
+      - name: Summarize preflight
+        if: ${{ always() }}
+        run: |
+          shopt -s nullglob
+          reports=("$RUNNER_TEMP"/rill-preflight/run.*/summary.md)
+          if [[ "${#reports[@]}" -gt 0 ]]; then
+            cat "${reports[@]}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No preflight report was produced. Check setup steps and preflight initialization.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload preflight reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rill-preflight
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Save Swift build arenas
         if: ${{ github.ref == 'refs/heads/main' && !cancelled() && steps.build-cache.outcome == 'success' && steps.build-cache.outputs.cache-hit != 'true' }}
