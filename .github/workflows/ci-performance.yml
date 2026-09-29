@@ -1,4 +1,4 @@
-name: "CI - Benchmarks"
+name: "CI - Performance"
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ on:
       - Sources/RillPersistence/**
       - Benchmarks/**
       - scripts/build_benchmarks.sh
-      - .github/workflows/ci-benchmarks.yml
+      - .github/workflows/ci-performance.yml
   push:
     branches:
       - main
@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-benchmarks-${{ github.ref }}
+  group: ci-performance-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -40,14 +40,3 @@ jobs:
         with:
           mode: simulation
           run: .artifacts/benchmarks/record-text
-
-  benchmarks:
-    name: Record workload validation
-    runs-on: macos-26
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Build and validate benchmark workloads
-        run: bash scripts/build_benchmarks.sh

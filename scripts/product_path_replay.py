@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import uuid
 
-import asr_benchmark
+import asr_run_data
 import asr_replay
 import build_driver
 
@@ -45,7 +45,7 @@ def finish_reports(reports, cases, cache_state, repetitions):
     try:
         for report in reports:
             validate_report_identity(report, "passed")
-        _, rows = asr_benchmark.read_run(reports[0], cases)
+        _, rows = asr_run_data.read_run(reports[0], cases)
         expected = {(identifier, cache_state, repetition)
                     for identifier in cases for repetition in range(1, repetitions + 1)}
         if set(rows) != expected:
@@ -71,7 +71,7 @@ def main():
     root = Path(__file__).resolve().parents[1]
     receipt = build_driver.receipt_products(args.build_receipt, root)
     worker = Path(receipt["productsDirectory"]) / "RillSpeechWorker"
-    cases = asr_benchmark.read_corpus(args.corpus, require_references=False)
+    cases = asr_run_data.read_corpus(args.corpus, require_references=False)
     if not cases:
         parser.error("The corpus is empty.")
     configuration_bytes = args.configuration.read_bytes()
@@ -110,13 +110,13 @@ def main():
                    "warmupOutput": str(warmup.resolve()) if warmup else None,
                    "language": config.get("language"), "keyterms": config.get("keyterms", []),
                    "replacements": config.get("replacements", []), "repetitions": args.repetitions, "cases": fixtures}
-        with tempfile.TemporaryDirectory(prefix="rill-host-benchmark-") as directory:
+        with tempfile.TemporaryDirectory(prefix="rill-host-replay-") as directory:
             path = Path(directory) / "request.json"
             path.write_text(json.dumps(request))
             path.chmod(0o600)
-            environment = dict(os.environ, RILL_PRODUCT_BENCHMARK_REQUEST=str(path))
+            environment = dict(os.environ, RILL_PRODUCT_REPLAY_REQUEST=str(path))
             subprocess.run([str(root / "scripts/preflight.sh"), "swift", "test-domain", "-c", "release", "--filter",
-                            "ProductPathBenchmarkTests/authorizedReleaseCorpusThroughProductionHostPipeline"],
+                            "ProductPathReplayTests/authorizedReleaseCorpusThroughProductionHostPipeline"],
                            cwd=root, env=environment, check=True)
         build_driver.receipt_products(args.build_receipt, root)
     except BaseException:

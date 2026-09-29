@@ -1,5 +1,9 @@
 # Performance benchmarks
 
+Quality evaluation corpora and manual CE belong to [Evals](../Evals/README.md).
+Paired ASR performance reports use `just bench-performance asr --target METRIC`;
+see the [ASR run contract](../docs/asr-evaluation.md).
+
 The suite runs production Record code with synthetic, offline data. It does not
 read user clipboard contents, recordings, files, Keychain keys or network services.
 
@@ -22,7 +26,7 @@ memory logs are diagnostics, not evidence of a regression or improvement.
 Build and validate every workload on macOS:
 
 ```sh
-just bench
+just validate-performance-workloads
 ```
 
 Build and measure the portable preview workloads on Linux:
@@ -47,12 +51,13 @@ surround one batch after one warmup; URI construction, aggregate validation and
 logging stay outside the window. Each preview checks its result inside the
 workload. No walltime samples or walltime result JSON are emitted by this suite.
 
-`just bench` needs neither the download nor a CodSpeed login. `just ci` includes
+`just validate-performance-workloads` needs neither the download nor a CodSpeed login. `just ci` includes
 fast preview validation and tests buffer behavior through the Runtime tests.
 
 ## CI and interpretation
 
-The workflow runs on `main`, relevant PRs and manual dispatch. Preview simulation
+`CI - Performance` runs on `main`, relevant PRs and manual dispatch.
+`CI - Tests` separately validates the macOS Record workloads. Preview simulation
 runs directly on Ubuntu 24.04 with Swift 6.2.1 and a commit-pinned setup action.
 The native runner supports the simulator's `setarch` call. Actions are pinned to
 commits; this public repository uses tokenless uploads and `contents: read`.

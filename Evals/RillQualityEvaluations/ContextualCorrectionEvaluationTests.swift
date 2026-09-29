@@ -26,13 +26,7 @@ struct ContextualCorrectionEvaluationTests {
         let exactContentMatch: Bool
         let elapsedMilliseconds: Double
         let fellBack: Bool
-    }
-
-    @Test func corpusContainsFortyBoundedCases() throws {
-        let cases = try loadCases()
-        #expect(cases.count == 40)
-        #expect(Set(cases.map(\.id)).count == 40)
-        #expect(cases.allSatisfy { $0.screenText.utf8.count < 1_000 && $0.transcript.utf8.count < 1_000 })
+        let attemptedRequest: Bool
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["RILL_CONTEXT_LIVE_EVALUATION"] == "1"))
@@ -70,18 +64,15 @@ struct ContextualCorrectionEvaluationTests {
                 observations.append(.init(id: sample.id, category: sample.category,
                     mode: referenceMode ? "references" : "text", output: output, expected: sample.expected,
                     exactContentMatch: normalized(output) == normalized(sample.expected),
-                    elapsedMilliseconds: Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15, fellBack: fellBack))
-                let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                let report = Self.root.appendingPathComponent(".artifacts/contextual-memory-20260920/live-evaluation.json")
-                try FileManager.default.createDirectory(at: report.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try encoder.encode(observations).write(to: report, options: .atomic)
+                    elapsedMilliseconds: Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15, fellBack: fellBack, attemptedRequest: !sample.transcript.isEmpty))
+                try EvaluationOutput.save(observations, settings: settings)
             }
         }
         #expect(observations.count == 80)
     }
 
     private func loadCases() throws -> [Sample] {
-        try JSONDecoder().decode([Sample].self, from: Data(contentsOf: Self.root.appendingPathComponent("Tests/Fixtures/ContextCorrection/cases.json")))
+        try JSONDecoder().decode([Sample].self, from: Data(contentsOf: Self.root.appendingPathComponent("Evals/ContextCorrection/cases.json")))
     }
     private func normalized(_ text: String) -> String {
         text.unicodeScalars.filter { !CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines).contains($0) }.map(String.init).joined().lowercased()

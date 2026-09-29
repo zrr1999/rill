@@ -1,0 +1,52 @@
+name: "CE - Quality"
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Quality evaluation suite (sends fixed synthetic cases to the configured provider)
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - text-rewrite
+          - vocabulary-correction
+          - context-correction
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    name: Quality evaluation (${{ matrix.suite }})
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(inputs.suite == 'all' && '["text-rewrite","vocabulary-correction","context-correction"]' || format('["{0}"]', inputs.suite)) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.17"
+      - name: Run the selected quality evaluation
+        env:
+          EVALUATION_SUITE: ${{ matrix.suite }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+        run: uv run --script scripts/eval_quality.py "$EVALUATION_SUITE"
+      - name: Save content-free quality and performance summaries
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: quality-${{ matrix.suite }}-${{ github.sha }}
+          path: .artifacts/evals/**/summaries/*-report.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30
