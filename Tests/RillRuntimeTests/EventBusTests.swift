@@ -27,6 +27,7 @@ final class EventBusTests: XCTestCase {
 
   func testCancelledPublishersStillDeliverTerminalAndFinalState() async {
     let events: [RillEvent] = [
+      .runDiscarded(runID: UUID()),
       .runCancelled(.init(runID: UUID(), stage: .recognizing, wasPartiallyCompleted: false)),
       .runFailed(runID: UUID(), workflow: nil, message: "failed"),
       .runCompleted(

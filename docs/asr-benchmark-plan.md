@@ -98,7 +98,7 @@ uv run --script scripts/asr_benchmark.py \
 已有获授权 PCM WAV 也可以使用下面的工具。
 
 ```sh
-scripts/swift_locked.sh release --result-file /private/path/release.json
+scripts/preflight.sh swift release --result-file /private/path/release.json
 uv run --script scripts/asr_replay.py --build-receipt /private/path/release.json \
   --corpus /private/path/corpus.json --configuration /private/path/configuration.json \
   --cache-state cold_process --repetitions 3 --output /private/path/cold.jsonl

@@ -232,6 +232,17 @@ private struct HostPipeline {
       }
       return .init(status: "failed", failure: measured.failure ?? failure.code.rawValue,
         texts: measured.raw.map { ["raw": $0] } ?? [:], metrics: measured.metrics, storedBeforeDispatch: false)
+    case .noInput:
+      if let raw = measured.raw {
+        guard try await !store.snapshot().records.contains(where: { $0.record.provenance.workflowRunID == runID }),
+          measured.metrics["host_replay_to_saved_ms"] == nil, !measured.storedBeforeDispatch else {
+          throw BenchmarkFailure.incompletePipeline
+        }
+        return .init(status: "ok", failure: nil, texts: ["raw": raw], metrics: measured.metrics,
+          storedBeforeDispatch: false, productOutcome: "no_speech")
+      }
+      return .init(status: "ok", failure: nil, texts: [:], metrics: measured.metrics,
+        storedBeforeDispatch: false, productOutcome: "no_input")
     case .cancelled:
       return .init(status: "cancelled", failure: "cancelled", texts: measured.raw.map { ["raw": $0] } ?? [:], metrics: measured.metrics, storedBeforeDispatch: false)
     }

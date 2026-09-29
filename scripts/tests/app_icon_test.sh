@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 SOURCE_PNG="$PROJECT_DIR/Resources/AppIcon/AppIcon-1024-routed-voice-cursor.png"
 SOURCE_README="$PROJECT_DIR/Resources/AppIcon/README.md"
-GENERATOR="$PROJECT_DIR/scripts/generate_app_icon.sh"
+GENERATOR="$PROJECT_DIR/scripts/assemble_app_bundle.sh"
 RENDITION_RENDERER="$PROJECT_DIR/scripts/render_app_icon_renditions.swift"
 EXPECTED_SOURCE_SHA256="c6c6bd3647ca2cc2ae860c27832d2f8150c5832320ed7b4b7b95eae902fe2642"
 MAX_SOURCE_BYTES=$((500 * 1024))
@@ -78,7 +78,7 @@ source_property() {
   exit 1
 }
 
-"$GENERATOR" "$SOURCE_PNG" "$OUTPUT_ICNS"
+bash "$GENERATOR" app-icon "$SOURCE_PNG" "$OUTPUT_ICNS"
 [[ -s "$OUTPUT_ICNS" ]] || {
   echo "FAIL: app icon generator produced no ICNS artifact" >&2
   exit 1

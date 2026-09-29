@@ -13,7 +13,7 @@ Attach evidence from the exact candidate commit before beginning device QA:
 - `just ci`: maintained prek hooks, generated artifacts, offline dependency policy,
   full Git/source secret scans, release-policy tests, an arm64 Release build,
   bundle and signing smoke checks, and the complete Swift test suite.
-- `bash scripts/check_commit_messages.sh`: complete messages validated with the
+- `scripts/preflight.sh commit-messages`: complete messages validated with the
   pinned ZenDev profile.
 - `uv run --script scripts/check_dependency_security.py --live-osv`: current
   advisory results for the exact locked dependency revisions.

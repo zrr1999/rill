@@ -13,6 +13,54 @@
 #
 set -euo pipefail
 
+if [[ "${1-}" == "github" ]]; then
+  shift
+  error() { echo "error: $*" >&2; exit 1; }
+  if [[ $# != 2 ]]; then
+    error "Usage: bash scripts/release.sh github vMAJOR.MINOR.PATCH NOTES.md"
+  fi
+  TAG="$1"
+  [[ "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || error "Invalid release tag"
+  [[ -s "$2" ]] || error "Release notes must be a nonempty file"
+  NOTES="$(cd "$(dirname "$2")" && pwd -P)/$(basename "$2")"
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+  PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+  cd "$PROJECT_DIR"
+  command -v gh >/dev/null || error "Install GitHub CLI and authenticate first"
+  REPOSITORY="zrr1999/rill"
+  HEAD_COMMIT="$(git rev-parse HEAD)"
+  [[ "$(git rev-parse "refs/tags/$TAG^{commit}")" == "$HEAD_COMMIT" ]] || error "Tag must point at HEAD"
+  [[ -z "$(git status --porcelain --untracked-files=all)" ]] || error "Working tree must be clean"
+  TAG_OBJECT="$(git rev-parse "refs/tags/$TAG")"
+  verify_remote_tag() {
+    local remote_object
+    remote_object="$(gh api "repos/$REPOSITORY/git/ref/tags/$TAG" --jq .object.sha)"
+    [[ "$remote_object" == "$TAG_OBJECT" ]] || error "Remote tag does not match local tag"
+  }
+  verify_remote_tag
+  EXISTING="$(gh api --paginate "repos/$REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$TAG\") | .id")"
+  [[ -z "$EXISTING" ]] || error "Release already exists; inspect it before retrying"
+  mkdir -p .artifacts/release
+  CANDIDATE_DIR="$(mktemp -d "$PROJECT_DIR/.artifacts/release/github-$TAG.XXXXXX")"
+  cp "$NOTES" "$CANDIDATE_DIR/release-notes.md"
+  echo "Candidate directory: $CANDIDATE_DIR"
+  # The release test points this at a notarize stub. Production re-enters this script.
+  RELEASE_OUTPUT_DIR="$CANDIDATE_DIR" bash "${RILL_NOTARIZE_SCRIPT:-$SCRIPT_DIR/release.sh}" --notarize
+  [[ "$(git rev-parse HEAD)" == "$HEAD_COMMIT" ]] || error "HEAD changed during build"
+  verify_remote_tag
+  [[ -s "$CANDIDATE_DIR/Rill.dmg" && -s "$CANDIDATE_DIR/Rill.dmg.sha256" ]] || error "Missing notarized release artifacts"
+  (
+    cd "$CANDIDATE_DIR"
+    shasum -a 256 --check Rill.dmg.sha256
+  )
+  gh release create "$TAG" \
+    "$CANDIDATE_DIR/Rill.dmg" "$CANDIDATE_DIR/Rill.dmg.sha256" \
+    --repo "$REPOSITORY" --verify-tag --draft \
+    --title "Rill $TAG" --notes-file "$CANDIDATE_DIR/release-notes.md"
+  echo "Draft uploaded. Complete QA against these exact assets before publishing."
+  exit
+fi
+
 # ─── 配置 ────────────────────────────────────────────────────────
 APP_NAME="Rill"
 BUNDLE_ID="dev.zrr.Rill"
@@ -335,7 +383,9 @@ preserve_install_recovery_staging() {
     >&2
 }
 
-install_existing_coordinates_are_original() {
+install_coordinates_match() {
+  local expected_candidate="$1"
+  local expected_target="$2"
   local candidate_identity=""
   local target_identity=""
 
@@ -343,20 +393,8 @@ install_existing_coordinates_are_original() {
     || return 1
   target_identity="$(install_path_identity "$INSTALL_TRANSACTION_TARGET")" \
     || return 1
-  [[ "$candidate_identity" == "$INSTALL_TRANSACTION_NEW_IDENTITY" \
-    && "$target_identity" == "$INSTALL_TRANSACTION_OLD_IDENTITY" ]]
-}
-
-install_existing_coordinates_are_swapped() {
-  local candidate_identity=""
-  local target_identity=""
-
-  candidate_identity="$(install_path_identity "$INSTALL_TRANSACTION_CANDIDATE")" \
-    || return 1
-  target_identity="$(install_path_identity "$INSTALL_TRANSACTION_TARGET")" \
-    || return 1
-  [[ "$candidate_identity" == "$INSTALL_TRANSACTION_OLD_IDENTITY" \
-    && "$target_identity" == "$INSTALL_TRANSACTION_NEW_IDENTITY" ]]
+  [[ "$candidate_identity" == "$expected_candidate" \
+    && "$target_identity" == "$expected_target" ]]
 }
 
 rollback_install_transaction_if_needed() {
@@ -496,7 +534,9 @@ install_verified_app() {
     if ! "$ATOMIC_SWAP_HELPER" "$candidate_app" "$target_app"; then
       error "无法原子替换已安装 App；旧版保持不变"
     fi
-    if ! install_existing_coordinates_are_swapped; then
+    if ! install_coordinates_match \
+      "$INSTALL_TRANSACTION_OLD_IDENTITY" \
+      "$INSTALL_TRANSACTION_NEW_IDENTITY"; then
       if rollback_install_transaction_if_needed; then
         error "安装目标在原子替换期间发生并发变化；已恢复原坐标"
       fi
@@ -528,7 +568,9 @@ install_verified_app() {
   fi
 
   if $had_existing_app; then
-    if ! install_existing_coordinates_are_swapped; then
+    if ! install_coordinates_match \
+      "$INSTALL_TRANSACTION_OLD_IDENTITY" \
+      "$INSTALL_TRANSACTION_NEW_IDENTITY"; then
       if rollback_install_transaction_if_needed; then
         error "安装后文件身份发生并发变化；已原子恢复旧版 App"
       fi
@@ -1052,13 +1094,51 @@ plist_extract_literal_raw() {
   plutil -extract "$(plist_literal_keypath "$key")" raw -o - "$plist"
 }
 
-verify_signed_speech_worker() {
-  local speech_worker="$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_NAME"
-  local signature_details=""
+require_signature_identity() {
+  local signature_details="$1"
+  local expected_identifier="$2"
+  local subject="$3"
   local signed_identifier=""
   local signed_authority=""
   local team_identifier=""
   local timestamp=""
+
+  signed_identifier="$(signature_detail_value "$signature_details" "Identifier")"
+  signed_authority="$(signature_detail_value "$signature_details" "Authority")"
+  team_identifier="$(signature_detail_value "$signature_details" "TeamIdentifier")"
+  timestamp="$(signature_detail_value "$signature_details" "Timestamp")"
+
+  [[ "$signed_identifier" == "$expected_identifier" ]] \
+    || error "${subject}签名标识不匹配：期望 '$expected_identifier'，实际 '$signed_identifier'"
+  [[ "$signed_authority" == "$RESOLVED_SIGN_IDENTITY_NAME" ]] \
+    || error "${subject}签名证书不匹配：期望 '$RESOLVED_SIGN_IDENTITY_NAME'，实际 '$signed_authority'"
+  [[ -n "$team_identifier" && "$team_identifier" != "not set" ]] \
+    || error "${subject}签名缺少有效 TeamIdentifier"
+  [[ -n "$timestamp" ]] || error "${subject}签名缺少可信时间戳"
+  if ! printf '%s\n' "$signature_details" \
+    | grep -Eq '^CodeDirectory .*flags=.*\([^)]*runtime[^)]*\)'; then
+    error "${subject}签名未启用 hardened runtime"
+  fi
+  if $DO_NOTARIZE; then
+    if ! printf '%s\n' "$signature_details" \
+      | grep -Fxq 'Authority=Developer ID Certification Authority'; then
+      if [[ -n "$subject" ]]; then
+        error "${subject} Developer ID 签名链不完整"
+      fi
+      error "Developer ID 签名链缺少 Developer ID Certification Authority"
+    fi
+    if ! printf '%s\n' "$signature_details" | grep -Fxq 'Authority=Apple Root CA'; then
+      if [[ -n "$subject" ]]; then
+        error "${subject}签名链缺少 Apple Root CA"
+      fi
+      error "Developer ID 签名链缺少 Apple Root CA"
+    fi
+  fi
+}
+
+verify_signed_speech_worker() {
+  local speech_worker="$APP_BUNDLE/Contents/Helpers/$SPEECH_WORKER_NAME"
+  local signature_details=""
   local signed_entitlements="$RELEASE_TEMP_DIR/speech-worker-entitlements.plist"
   local forbidden_entitlement=""
   local forbidden_entitlement_value=""
@@ -1068,30 +1148,10 @@ verify_signed_speech_worker() {
   if ! signature_details="$(codesign -d --verbose=4 "$speech_worker" 2>&1)"; then
     error "无法读取语音识别辅助进程的签名详情"
   fi
-
-  signed_identifier="$(signature_detail_value "$signature_details" "Identifier")"
-  signed_authority="$(signature_detail_value "$signature_details" "Authority")"
-  team_identifier="$(signature_detail_value "$signature_details" "TeamIdentifier")"
-  timestamp="$(signature_detail_value "$signature_details" "Timestamp")"
-
-  [[ "$signed_identifier" == "$SPEECH_WORKER_IDENTIFIER" ]] \
-    || error "语音识别辅助进程签名标识不匹配：期望 '$SPEECH_WORKER_IDENTIFIER'，实际 '$signed_identifier'"
-  [[ "$signed_authority" == "$RESOLVED_SIGN_IDENTITY_NAME" ]] \
-    || error "语音识别辅助进程签名证书不匹配：期望 '$RESOLVED_SIGN_IDENTITY_NAME'，实际 '$signed_authority'"
-  [[ -n "$team_identifier" && "$team_identifier" != "not set" ]] \
-    || error "语音识别辅助进程签名缺少有效 TeamIdentifier"
-  [[ -n "$timestamp" ]] || error "语音识别辅助进程签名缺少可信时间戳"
-  if ! printf '%s\n' "$signature_details" \
-    | grep -Eq '^CodeDirectory .*flags=.*\([^)]*runtime[^)]*\)'; then
-    error "语音识别辅助进程签名未启用 hardened runtime"
-  fi
-  if $DO_NOTARIZE; then
-    printf '%s\n' "$signature_details" \
-      | grep -Fxq 'Authority=Developer ID Certification Authority' \
-      || error "语音识别辅助进程 Developer ID 签名链不完整"
-    printf '%s\n' "$signature_details" | grep -Fxq 'Authority=Apple Root CA' \
-      || error "语音识别辅助进程签名链缺少 Apple Root CA"
-  fi
+  require_signature_identity \
+    "$signature_details" \
+    "$SPEECH_WORKER_IDENTIFIER" \
+    "语音识别辅助进程"
 
   : >"$signed_entitlements"
   if ! codesign -d --entitlements :- "$speech_worker" \
@@ -1123,10 +1183,6 @@ verify_signed_speech_worker() {
 
 verify_signed_app() {
   local signature_details=""
-  local signed_identifier=""
-  local signed_authority=""
-  local team_identifier=""
-  local timestamp=""
   local signed_entitlements="$RELEASE_TEMP_DIR/signed-entitlements.plist"
   local microphone_entitlement=""
   local application_identifier=""
@@ -1139,28 +1195,7 @@ verify_signed_app() {
   if ! signature_details="$(codesign -d --verbose=4 "$APP_BUNDLE" 2>&1)"; then
     error "无法读取签名详情"
   fi
-
-  signed_identifier="$(signature_detail_value "$signature_details" "Identifier")"
-  signed_authority="$(signature_detail_value "$signature_details" "Authority")"
-  team_identifier="$(signature_detail_value "$signature_details" "TeamIdentifier")"
-  timestamp="$(signature_detail_value "$signature_details" "Timestamp")"
-
-  [[ "$signed_identifier" == "$BUNDLE_ID" ]] || \
-    error "签名标识不匹配：期望 '$BUNDLE_ID'，实际 '$signed_identifier'"
-  [[ "$signed_authority" == "$RESOLVED_SIGN_IDENTITY_NAME" ]] || \
-    error "签名证书不匹配：期望 '$RESOLVED_SIGN_IDENTITY_NAME'，实际 '$signed_authority'"
-  [[ -n "$team_identifier" && "$team_identifier" != "not set" ]] || \
-    error "签名缺少有效 TeamIdentifier"
-  [[ -n "$timestamp" ]] || error "签名缺少可信时间戳"
-  if ! printf '%s\n' "$signature_details" | grep -Eq '^CodeDirectory .*flags=.*\([^)]*runtime[^)]*\)'; then
-    error "签名未启用 hardened runtime"
-  fi
-  if $DO_NOTARIZE; then
-    printf '%s\n' "$signature_details" | grep -Fxq 'Authority=Developer ID Certification Authority' || \
-      error "Developer ID 签名链缺少 Developer ID Certification Authority"
-    printf '%s\n' "$signature_details" | grep -Fxq 'Authority=Apple Root CA' || \
-      error "Developer ID 签名链缺少 Apple Root CA"
-  fi
+  require_signature_identity "$signature_details" "$BUNDLE_ID" ""
 
   if ! codesign -d --entitlements :- "$APP_BUNDLE" >"$signed_entitlements" 2>/dev/null; then
     error "无法读取已签名应用的 entitlements"
@@ -1426,7 +1461,7 @@ fi
 WORKER_CACHE="auto"
 $DO_NOTARIZE && WORKER_CACHE="off"
 BUILD_RESULT="$RELEASE_TEMP_DIR/build-result.json"
-"$SCRIPT_DIR/swift_locked.sh" release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
+uv run --no-build --locked --script "$SCRIPT_DIR/build_driver.py" release --worker-cache "$WORKER_CACHE" --result-file "$BUILD_RESULT"
 revalidate_notarized_release_source "构建后"
 
 resolve_build_identity

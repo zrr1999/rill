@@ -247,24 +247,39 @@ final class UIRenderEvidenceTests: XCTestCase {
             ((view as? NSSplitView).map { [$0] } ?? [])
                 + view.subviews.flatMap { splits(in: $0) }
         }
+        host.autoresizingMask = [.width, .height]
+        // Window chrome and sidebar widths differ between macOS versions. Exercise
+        // both presentations with room on either side of the 700pt content threshold.
+        let sizes: [(width: CGFloat, splitCount: Int)] = [
+            (1280, 2), (1100, 2), (800, 1), (1280, 2),
+        ]
         for section in [SidebarSection.records, .workflows] {
-          model.selectSidebarSection(section)
-          for width in [960.0, 1280.0, 900.0, 960.0] {
-            window.setFrame(NSRect(origin: window.frame.origin, size: NSSize(width: width, height: 720)), display: true)
-            for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
-            host.layoutSubtreeIfNeeded()
-            let splitViews = splits(in: host)
-            XCTAssertEqual(splitViews.count, 2)
-            guard let outer = splitViews.first, let inner = splitViews.last else { continue }
-            let outerBounds = outer.convert(outer.bounds, to: host)
-            let innerBounds = inner.convert(inner.bounds, to: host)
-            XCTAssertGreaterThanOrEqual(innerBounds.minX, outerBounds.minX + MainShellLayoutMetrics.sidebarColumnMinWidth)
-            XCTAssertLessThanOrEqual(innerBounds.maxX, outerBounds.maxX)
-            XCTAssertGreaterThanOrEqual(innerBounds.minY, outerBounds.minY + host.safeAreaInsets.top)
-            inner.setPosition(340, ofDividerAt: 0)
-            inner.layoutSubtreeIfNeeded()
-            XCTAssertTrue(inner.subviews.allSatisfy { $0.frame.maxX <= inner.bounds.maxX })
-          }
+            model.selectSidebarSection(section)
+            for size in sizes {
+                window.setFrame(NSRect(origin: window.frame.origin, size: NSSize(width: size.width, height: 720)), display: true)
+                let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+                var splitViews: [NSSplitView]
+                repeat {
+                    await waitForMainRunLoopDefaultMode()
+                    window.layoutIfNeeded()
+                    host.layoutSubtreeIfNeeded()
+                    splitViews = splits(in: host)
+                } while splitViews.count != size.splitCount && ContinuousClock.now < deadline
+
+                let context = "section=\(section), window=\(window.frame), splits=\(splitViews.map(\.frame))"
+                XCTAssertEqual(splitViews.count, size.splitCount, context)
+                guard size.splitCount == 2, splitViews.count == 2 else { continue }
+                let outer = splitViews[0]
+                let inner = splitViews[1]
+                let outerBounds = outer.convert(outer.bounds, to: host)
+                let innerBounds = inner.convert(inner.bounds, to: host)
+                XCTAssertGreaterThanOrEqual(innerBounds.minX, outerBounds.minX + MainShellLayoutMetrics.sidebarColumnMinWidth, context)
+                XCTAssertLessThanOrEqual(innerBounds.maxX, outerBounds.maxX, context)
+                XCTAssertGreaterThanOrEqual(innerBounds.minY, outerBounds.minY + host.safeAreaInsets.top, context)
+                inner.setPosition(340, ofDividerAt: 0)
+                inner.layoutSubtreeIfNeeded()
+                XCTAssertTrue(inner.subviews.allSatisfy { $0.frame.maxX <= inner.bounds.maxX }, context)
+            }
         }
         await workspace.shutdown()
     }

@@ -115,7 +115,7 @@ def main():
             path.write_text(json.dumps(request))
             path.chmod(0o600)
             environment = dict(os.environ, RILL_PRODUCT_BENCHMARK_REQUEST=str(path))
-            subprocess.run([str(root / "scripts/swift_locked.sh"), "test-domain", "-c", "release", "--filter",
+            subprocess.run([str(root / "scripts/preflight.sh"), "swift", "test-domain", "-c", "release", "--filter",
                             "ProductPathBenchmarkTests/authorizedReleaseCorpusThroughProductionHostPipeline"],
                            cwd=root, env=environment, check=True)
         build_driver.receipt_products(args.build_receipt, root)

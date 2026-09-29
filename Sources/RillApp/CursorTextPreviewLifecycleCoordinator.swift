@@ -23,6 +23,8 @@ actor CursorTextPreviewLifecycleCoordinator {
           await coordinator.finish(runID: summary.runID)
         case .runCancelled(let summary):
           await coordinator.finish(runID: summary.runID)
+        case .runDiscarded(let runID):
+          await coordinator.finish(runID: runID)
         case .runFailed(let runID, _, _):
           if let runID {
             await coordinator.finish(runID: runID)

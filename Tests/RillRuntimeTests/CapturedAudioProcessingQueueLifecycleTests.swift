@@ -649,6 +649,39 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         )
     }
 
+    func testShortContentInputArchivesBeforeCleaningAudioWithoutRecovery() async throws {
+        for ownership: CapturedAudioFileOwnership in [.managedTemporary, .callerManaged] {
+            let probe = AudioLifecycleExecutionProbe()
+            let recovery = AudioRecoveryStoreProbe()
+            let archive = BenchmarkArchiveStoreProbe()
+            let queue = await makeQueue(
+                recognitionShouldFail: false, recoveryStore: recovery, recoveryEnabled: true,
+                benchmarkArchiveStore: archive, benchmarkArchiveEnabled: true, executionProbe: probe
+            )
+            let bytes = Data([0x41, 0x42])
+            let fileURL = try makeAudioFile(bytes: bytes)
+            defer { try? FileManager.default.removeItem(at: fileURL) }
+            var audio = try makeCapturedAudio(fileURL: fileURL, ownership: ownership)
+            audio.durationSeconds = 0.1
+            await queue.enqueue(
+                authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: makeWorkflow()),
+                triggerEvent: nil, deferredCapture: .resolved(audio)
+            )
+            await waitUntilDrained(queue)
+            await queue.shutdown()
+            let execution = await probe.snapshot()
+            let preserved = await recovery.preserveCallCount
+            let archived = await archive.entries
+            XCTAssertEqual(execution.recognition, 1)
+            XCTAssertEqual(execution.action, 1)
+            XCTAssertEqual(preserved, 0)
+            XCTAssertEqual(archived.count, 1)
+            XCTAssertEqual(archived.first?.bytes, bytes)
+            XCTAssertEqual(archived.first?.outcome, .completed)
+            XCTAssertEqual(FileManager.default.fileExists(atPath: fileURL.path), ownership == .callerManaged)
+        }
+    }
+
     func testQueueRemovesManagedTemporaryFileAfterProcessingOutcome() async throws {
         for recognitionShouldFail in [false, true] {
             let fileURL = try makeAudioFile()

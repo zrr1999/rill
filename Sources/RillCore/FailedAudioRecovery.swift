@@ -67,6 +67,8 @@ public struct WorkflowRunCancelledSummary: Codable, Sendable, Equatable {
 
 public enum WorkflowRunExecutionResult: Sendable, Equatable {
     case completed(WorkflowRunSummary)
+    /// No usable voice input; no output or durable run history was produced.
+    case noInput
     case cancelled(WorkflowRunCancelledSummary)
     case failed(WorkflowRunFailureSummary)
 }
