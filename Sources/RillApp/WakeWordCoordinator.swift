@@ -188,6 +188,8 @@ actor WakeWordCoordinator {
       terminalRunID = summary.runID
     case .runCancelled(let summary):
       terminalRunID = summary.runID
+    case .runDiscarded(let runID):
+      terminalRunID = runID
     case .runFailed(let runID, _, _):
       terminalRunID = runID
     default:

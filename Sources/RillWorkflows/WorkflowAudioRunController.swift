@@ -470,7 +470,7 @@ public actor WorkflowAudioRunController {
         runID: runID,
         workflow: workflow.presentation,
         liveAudioSession: liveAudioSession,
-        message: HistoryFailureSanitizer.noSpeechMessage
+        failureMessage: nil
       )
     case .inputEndedUnexpectedly:
       state = .stopping(runID)
@@ -478,7 +478,7 @@ public actor WorkflowAudioRunController {
         runID: runID,
         workflow: workflow.presentation,
         liveAudioSession: liveAudioSession,
-        message: "The microphone input ended unexpectedly."
+        failureMessage: "The microphone input ended unexpectedly."
       )
     }
   }
@@ -487,7 +487,7 @@ public actor WorkflowAudioRunController {
     runID: UUID,
     workflow: WorkflowPresentation,
     liveAudioSession: AuthorizedLiveAudioSession,
-    message: String
+    failureMessage: String?
   ) {
     invalidateRecordingCues(runID: runID)
     _ = liveAudioSession.audioLifetime.cancel()
@@ -499,9 +499,13 @@ public actor WorkflowAudioRunController {
       if cancellationResult == .queueOwned {
         await self.capturedAudioProcessingQueue.cancel(runID: runID)
       }
-      await self.eventBus?.publish(
-        .runFailed(runID: runID, workflow: workflow, message: message)
-      )
+      if let failureMessage {
+        await self.eventBus?.publish(
+          .runFailed(runID: runID, workflow: workflow, message: failureMessage)
+        )
+      } else {
+        await self.eventBus?.publish(.runDiscarded(runID: runID))
+      }
       await self.retireTerminalCancellationTask(runID: runID)
     }
     terminalCancellationTasks[runID] = task
