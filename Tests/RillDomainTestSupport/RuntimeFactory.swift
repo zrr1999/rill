@@ -92,9 +92,7 @@ public func makeTestRecordingSessionManager(
     },
     recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
     pushToTalkGestureStateProvider: (@Sendable (PushToTalkGesture) -> Bool)? = nil,
-    deferredReleaseSleep: @escaping @Sendable (Duration) async throws -> Void = {
-      try await Task.sleep(for: $0)
-    },
+    deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)? = nil,
     cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
     recordingCueAction:
       @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }

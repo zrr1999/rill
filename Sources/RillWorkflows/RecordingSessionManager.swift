@@ -129,7 +129,7 @@ public actor RecordingSessionManager {
   private let recordingDurationLimitProvider: @Sendable () async -> RecordingDurationLimit
   private let recognizerDurationProvider: @Sendable (String) -> Double?
   private let pushToTalkGestureStateProvider: @Sendable (PushToTalkGesture) -> Bool
-  private let deferredReleaseSleep: @Sendable (Duration) async throws -> Void
+  private let deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)?
   private let cleanupOwner: any ManagedTemporaryAudioCleaning
   private let recordingCueAction: @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void
 
@@ -206,9 +206,7 @@ public actor RecordingSessionManager {
     },
     recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
     pushToTalkGestureStateProvider: (@Sendable (PushToTalkGesture) -> Bool)? = nil,
-    deferredReleaseSleep: @escaping @Sendable (Duration) async throws -> Void = {
-      try await Task.sleep(for: $0)
-    },
+    deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)? = nil,
     cleanupOwner: any ManagedTemporaryAudioCleaning,
     recordingCueAction:
       @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }
@@ -1739,7 +1737,11 @@ extension RecordingSessionManager {
     let taskID = UUID()
     let sleep = deferredReleaseSleep
     let task = Task { [weak self] in
-      try? await sleep(delay)
+      if let sleep {
+        try? await sleep(delay)
+      } else {
+        try? await Task.sleep(for: delay)
+      }
       guard let self else { return }
       if !Task.isCancelled {
         await self.handleDeferredRelease(taskID: taskID, gesture: gesture)

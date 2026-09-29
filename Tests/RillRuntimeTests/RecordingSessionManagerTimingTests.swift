@@ -574,9 +574,7 @@ private func makeManager(
     diagnostics: DiagnosticsRecorder?,
     cueProbe: RecordingTimingCueProbe = RecordingTimingCueProbe(),
     longRecordingModeEnabled: Bool = false,
-    deferredReleaseSleep: @escaping @Sendable (Duration) async throws -> Void = {
-        try await Task.sleep(for: $0)
-    },
+    deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)? = nil,
     recordingCueAction: (@Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void)? = nil
 ) -> RecordingSessionManager {
     let eventBus = EventBus()
