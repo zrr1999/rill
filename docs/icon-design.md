@@ -59,17 +59,17 @@ SVG 导出的 PNG 是不透明方形。现有 ICNS 生成流程负责透明圆�
 | --- | --- |
 | [Rill.svg][app-svg] | 应用图标的可编辑矢量源 |
 | [RillMenuBar.svg][menu-svg] | 菜单栏轮廓及可选记录提示点 |
-| [render_brand_assets.sh][brand-generator] | 生成 1024 px PNG 和两种菜单栏 PDF |
+| `assemble_app_bundle.sh render-brand` | 生成 1024 px PNG 和两种菜单栏 PDF |
 | [render_app_icon_renditions.swift][icon-renderer] | 生成带圆角、阴影和光学调整的各尺寸图标 |
-| [generate_app_icon.sh][icon-generator] | 校验受审 PNG 并装配 ICNS |
+| `assemble_app_bundle.sh app-icon` | 校验受审 PNG 并装配 ICNS |
 
 在包含该实现的 checkout 中，安装 `librsvg` 后重新导出：
 
 ```sh
 brew install librsvg
-scripts/render_brand_assets.sh
+scripts/assemble_app_bundle.sh render-brand
 bash scripts/tests/app_icon_test.sh
-scripts/swift_locked.sh test --filter RillMenuBarIconTests
+scripts/preflight.sh swift test --filter RillMenuBarIconTests
 ```
 
 常规构建使用提交的 PNG / PDF，无需安装 SVG 转换工具。源 SVG、导出文件、
@@ -93,6 +93,4 @@ scripts/swift_locked.sh test --filter RillMenuBarIconTests
 [asset-readme]: https://github.com/zrr1999/rill/blob/6982d572bf4c349fca0401eb95dfda36f55927c8/Resources/AppIcon/README.md
 [app-svg]: https://github.com/zrr1999/rill/blob/6982d572bf4c349fca0401eb95dfda36f55927c8/Resources/AppIcon/Rill.svg
 [menu-svg]: https://github.com/zrr1999/rill/blob/6982d572bf4c349fca0401eb95dfda36f55927c8/Resources/AppIcon/RillMenuBar.svg
-[brand-generator]: https://github.com/zrr1999/rill/blob/6982d572bf4c349fca0401eb95dfda36f55927c8/scripts/render_brand_assets.sh
 [icon-renderer]: https://github.com/zrr1999/rill/blob/6982d572bf4c349fca0401eb95dfda36f55927c8/scripts/render_app_icon_renditions.swift
-[icon-generator]: https://github.com/zrr1999/rill/blob/6982d572bf4c349fca0401eb95dfda36f55927c8/scripts/generate_app_icon.sh
