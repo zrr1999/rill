@@ -24,6 +24,9 @@ struct WorkflowDocumentLibraryView: View {
                         workflowList.frame(minWidth: 250, idealWidth: 290, maxWidth: 360)
                         workflowDetail.frame(minWidth: 340, maxWidth: .infinity)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(1)
+                    .clipped()
                 } else if showsCompactList || selection == nil {
                     workflowList
                 } else {
@@ -117,11 +120,6 @@ struct WorkflowDocumentLibraryView: View {
                             }
                         }
                         Spacer()
-                        Toggle(L10n.workflowDocument(.labelEnabled, language: model.settings.language), isOn: Binding(
-                            get: { model.isWorkflowEnabled(workflow) },
-                            set: { model.setWorkflowEnabled($0, for: workflow.id) }
-                        )).toggleStyle(.switch).fixedSize()
-                            .disabled(model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id) || model.workflowLibrary.isUpdatingWorkflowEnabledStates || model.settings.isLoading)
                     }
                     if let readiness = model.workflowEnablementError(for: workflow) {
                         Label(readiness, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue).foregroundStyle(.orange)
@@ -135,6 +133,11 @@ struct WorkflowDocumentLibraryView: View {
                             Text("\(index + 1). " + L10n.actionName(action.id, language: model.settings.language))
                         }
                     }
+                    Toggle(L10n.workflowDocument(.labelEnabled, language: model.settings.language), isOn: Binding(
+                            get: { model.isWorkflowEnabled(workflow) },
+                            set: { model.setWorkflowEnabled($0, for: workflow.id) }
+                        )).toggleStyle(.switch).fixedSize()
+                            .disabled(model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id) || model.workflowLibrary.isUpdatingWorkflowEnabledStates || model.settings.isLoading)
                     DisclosureGroup(L10n.workflowExplanationCopy(.transforms, language: model.settings.language)) {
                         VStack(alignment: .leading, spacing: RillSpacing.row) {
                             ForEach(Array(workflow.plan.process.allSteps.enumerated()), id: \.offset) { index, step in
@@ -143,12 +146,13 @@ struct WorkflowDocumentLibraryView: View {
                         }.frame(maxWidth: .infinity, alignment: .leading)
                     }.id(workflow.id)
                     HStack {
-                        Button(L10n.workflowDocument(.labelOpenFile, language: model.settings.language)) { open(workflow) }
-                            .accessibilityIdentifier("workflow.document.open.\(workflow.id)")
                         Button(L10n.workflowDocument(workflow.inputKind == .audio ? .labelRun : .labelRunClipboardText, language: model.settings.language)) {
                             if workflow.inputKind == .audio { model.runWorkflow(workflow) }
                             else if let text = NSPasteboard.general.string(forType: .string) { model.runWorkflowText(text, workflow: workflow) }
                         }.disabled(!model.isWorkflowEnabled(workflow) || model.voice.isRunning || model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id))
+                            .buttonStyle(.borderedProminent)
+                        Button(L10n.workflowDocument(.labelOpenFile, language: model.settings.language)) { open(workflow) }
+                            .accessibilityIdentifier("workflow.document.open.\(workflow.id)")
                         Menu {
                             Button(L10n.workflowExplanationCopy(.button, language: model.settings.language)) {
                                 model.workflowLibrary.explainWorkflowBeforeRun(workflow)

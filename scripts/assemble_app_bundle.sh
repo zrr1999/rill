@@ -13,7 +13,7 @@ BUNDLE_ID="dev.zrr.Rill"
 APP_EXECUTABLE_PRODUCT="RillApp"
 SPEECH_WORKER_PRODUCT="RillSpeechWorker"
 INPUT_METHOD_PRODUCT="RillInputMethod"
-MIN_MACOS="14.0"
+MIN_MACOS="26.0"
 OWN_RESOURCE_BUNDLE="RillMacOS_RillApp.bundle"
 MLX_RESOURCE_BUNDLE="mlx-swift_Cmlx.bundle"
 WORKFLOW_MANIFEST="BuiltinWorkflowManifest.json"
@@ -39,7 +39,6 @@ error() {
 
 verify_release_executable() {
   local executable="${1-}"
-  local MIN_MACOS="14.0"
   local REQUIRED_ARCHITECTURE="arm64"
   local architectures=""
 
@@ -138,7 +137,7 @@ payload = {
     "CFBundleShortVersionString": version,
     "CFBundleVersion": build_number,
     "CFBundleInfoDictionaryVersion": "6.0",
-    "LSMinimumSystemVersion": "14.0",
+    "LSMinimumSystemVersion": "26.0",
     "LSUIElement": True,
     "NSMicrophoneUsageDescription": microphone_usage_description,
     "NSPrincipalClass": "NSApplication",

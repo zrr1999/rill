@@ -18,25 +18,34 @@ struct RillApplication: App {
         let recordPanelController: RecordPanelController = RecordPanelController()
         let liveSubtitlePanelController = LiveSubtitlePanelController()
 
-        container.model.installRecordPanelAction { [recordPanelController, model = container.model] in
+        recordPanelController.configureDrafts(
+            model: container.model, output: container.bufferOutput,
+            editingActivity: container.setDraftEditorActive)
+        let showPanel: (RecordPanelPresentation.Mode, Bool, Bool) -> Void = {
+            [weak recordPanelController, weak model = container.model,
+             delivery = container.systemClipboardCaptureController.recordDelivery] mode, toggle, activate in
+            guard let recordPanelController, let model else { return }
             recordPanelController.show(
-                model: model,
+                model: model, mode: mode, toggle: toggle, activate: activate,
                 deliverSelection: { subject, target in
-                    await container.systemClipboardCaptureController.recordDelivery.reuseRecord(
+                    await delivery.reuseRecord(
                         subject,
                         to: target
                     )
                 },
                 copySelection: { subject in
-                    await container.systemClipboardCaptureController.recordDelivery.reuseRecord(
+                    await delivery.reuseRecord(
                         subject, copyOnly: true)
                 },
                 onDeliveryAbort: {
-                    await container.systemClipboardCaptureController.recordDelivery
-                        .reportSelectedRecordDeliveryUnavailable()
+                    await delivery.reportSelectedRecordDeliveryUnavailable()
                 }
             )
         }
+        container.model.installRecordPanelAction { showPanel(.collections, true, true) }
+        container.model.recordWorkspace.buffers.openEditorAction = { showPanel(.drafts, false, true) }
+        container.bufferOutput.presentStatus = { showPanel(.drafts, false, false) }
+        recordPanelController.startCollectionObservation { showPanel(.drafts, false, false) }
         container.model.voice.installLiveSubtitlePanelAction {
             [liveSubtitlePanelController] snapshot, language in
             let cancellableRunID = snapshot.flatMap { snapshot in

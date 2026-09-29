@@ -6,6 +6,31 @@ import XCTest
 
 @MainActor
 final class RecordQuickPanelTests: XCTestCase {
+  func testCollectionScopeFiltersResultsWithoutChangingManagementSelection() async throws {
+    let store = RecordStore()
+    let collection = try await store.createCollection(name: "Clipboard", preset: .list)
+    let inside = try await store.ingest(draft("design notes", app: "editor"), into: [collection.id])
+    let outside = try await store.ingest(draft("design outside", app: "editor"), into: [])
+    let workspace = RecordWorkspaceModel(store: store)
+    await workspace.refresh()
+    workspace.selectedRecordID = outside.id
+    let panel = workspace.makeQuickPanelModel()
+    panel.start(sourceBundleIdentifier: nil)
+    await panel.waitForSearch()
+    panel.setCollection(collection.id)
+    panel.setSearchText("design")
+    await panel.waitForSearch()
+    XCTAssertEqual(panel.results.map(\.id), [inside.id])
+    XCTAssertEqual(panel.selectedID, inside.id)
+    XCTAssertEqual(workspace.selectedRecordID, outside.id)
+    panel.setCollection(nil)
+    await panel.waitForSearch()
+    XCTAssertEqual(Set(panel.results.map(\.id)), Set([inside.id, outside.id]))
+    XCTAssertEqual(panel.selectedID, inside.id)
+    await panel.shutdown()
+    await workspace.shutdown()
+  }
+
   func testLiteralMatchBeyondFirstScanBatchWinsOverRecentApproximateMatches() async throws {
     let store = RecordStore()
     let exact = try await store.ingest(draft("jtb exact", app: "editor"), into: [])
@@ -72,6 +97,33 @@ final class RecordQuickPanelTests: XCTestCase {
     panel.start(sourceBundleIdentifier: nil)
     await settle(panel)
     XCTAssertEqual(panel.searchText, "")
+    XCTAssertFalse(panel.currentAppOnly)
+    XCTAssertEqual(panel.results.count, 2)
+  }
+
+  func testResidentPanelRefreshesSourceWithoutClearingSearch() async throws {
+    let store = RecordStore()
+    let first = try await store.ingest(draft("shared first", app: "com.example.first"), into: [])
+    let second = try await store.ingest(draft("shared second", app: "com.example.second"), into: [])
+    let panel = RecordQuickPanelModel(store: store)
+    panel.start(sourceBundleIdentifier: nil)
+    defer { panel.stop() }
+    panel.setSearchText("shared")
+    await settle(panel)
+    panel.select(first.id)
+    panel.updateSourceApplication("com.example.first")
+    XCTAssertTrue(panel.canFilterCurrentApp)
+    XCTAssertEqual(panel.searchText, "shared")
+    XCTAssertEqual(panel.selectedID, first.id)
+    panel.setCurrentAppOnly(true)
+    await settle(panel)
+    XCTAssertEqual(panel.results.map(\.id), [first.id])
+    panel.updateSourceApplication("com.example.second")
+    await settle(panel)
+    XCTAssertEqual(panel.results.map(\.id), [second.id])
+    XCTAssertEqual(panel.searchText, "shared")
+    panel.updateSourceApplication(nil)
+    await settle(panel)
     XCTAssertFalse(panel.currentAppOnly)
     XCTAssertEqual(panel.results.count, 2)
   }

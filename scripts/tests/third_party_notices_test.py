@@ -229,8 +229,8 @@ Load command 9
       cmd LC_BUILD_VERSION
   cmdsize 32
  platform MACOS
-    minos 14.0
-      sdk 15.2
+    minos 26.0
+      sdk 26.0
    ntools 1
      tool LD
   version 1115.7

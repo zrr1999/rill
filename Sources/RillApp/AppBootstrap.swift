@@ -15,6 +15,8 @@ import RillWorkflows
 @MainActor
 struct AppContainer {
   let model: AppModel
+  let bufferOutput: BufferOutputController
+  let setDraftEditorActive: (Bool) -> Void
   let globalInputOwner: GlobalInputOwner
   let systemClipboardCaptureController: SystemClipboardCaptureController
   let recordingSessionManager: RecordingSessionManager
@@ -1820,8 +1822,22 @@ private enum AppContainerFactory {
     runtime: RuntimeServices,
     startupTaskCoordinator: ApplicationStartupTaskCoordinator
   ) -> AppContainer {
-    AppContainer(
+    let bufferOutput = BufferOutputController(
+      store: core.recordStore, model: model, injectionEngine: platform.injectionEngine)
+    model.recordWorkspace.buffers.editor.dictationAction = { [weak model] input in
+      model?.dictateToBuffer(input)
+    }
+    model.recordWorkspace.buffers.outputAction = { bufferOutput.output($0) }
+    model.recordWorkspace.buffers.showMessageAction = { bufferOutput.showMessage($0) }
+    model.recordWorkspace.buffers.confirmAction = { bufferOutput.confirm() }
+    model.recordWorkspace.buffers.retryAction = { bufferOutput.retry() }
+    model.recordWorkspace.buffers.cancelAction = { bufferOutput.cancel() }
+    model.recordWorkspace.buffers.shutdownAction = { await bufferOutput.shutdown() }
+    model.recordWorkspace.buffers.start()
+    return AppContainer(
       model: model,
+      bufferOutput: bufferOutput,
+      setDraftEditorActive: { platform.hotkeyTap.setDraftEditorActive($0) },
       globalInputOwner: runtime.globalInputOwner,
       systemClipboardCaptureController: runtime.systemClipboardCaptureController,
       recordingSessionManager: runtime.recordingSessionManager,
@@ -2314,22 +2330,6 @@ private enum AppModelFactory {
       recordInteractionServices: makeRecordInteractionServices(platform: platform, runtime: runtime)
     )
     model = resolvedModel
-    let bufferOutput = BufferOutputController(
-      store: core.recordStore, model: resolvedModel, injectionEngine: platform.injectionEngine)
-    let bufferDraftPanel = BufferDraftPanelController(model: resolvedModel, output: bufferOutput,
-      editingActivity: { platform.hotkeyTap.setDraftEditorActive($0) })
-    resolvedModel.recordWorkspace.buffers.openEditorAction = { bufferDraftPanel.show() }
-    resolvedModel.recordWorkspace.buffers.editor.dictationAction = { [weak resolvedModel] input in
-      resolvedModel?.dictateToBuffer(input)
-    }
-    resolvedModel.recordWorkspace.buffers.outputAction = { bufferOutput.output($0) }
-    resolvedModel.recordWorkspace.buffers.showMessageAction = { bufferOutput.showMessage($0) }
-    resolvedModel.recordWorkspace.buffers.confirmAction = { bufferOutput.confirm() }
-    resolvedModel.recordWorkspace.buffers.retryAction = { bufferOutput.retry() }
-    resolvedModel.recordWorkspace.buffers.cancelAction = { bufferOutput.cancel() }
-    resolvedModel.recordWorkspace.buffers.shutdownAction = { bufferDraftPanel.shutdown(); await bufferOutput.shutdown() }
-    resolvedModel.recordWorkspace.buffers.start()
-    bufferDraftPanel.start()
     if let wakeWordTriggerSource = providers.wakeWordTriggerSource {
       Task { @MainActor [weak resolvedModel] in
         for await status in wakeWordTriggerSource.statusStream() {

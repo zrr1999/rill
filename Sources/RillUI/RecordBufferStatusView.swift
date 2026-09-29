@@ -95,16 +95,21 @@ struct RecordBufferToolbar: View {
 
   var body: some View {
     HStack {
-      Button(text("待发区", "Drafts"), action: workspace.buffers.openEditorAction)
-      Label(text("下一项", "Next"), systemImage: "text.insert")
-      Text(
-        workspace.buffers.snapshot?.nextHeader?.preview
-          ?? (workspace.buffers.snapshot?.next == nil
-            ? text("空", "Empty") : text("处理中", "Processing"))
-      )
-      .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-      Text("\(workspace.buffers.snapshot?.remainingCount ?? 0)").monospacedDigit()
-      Menu(text("待输出容器", "Output buffers")) {
+      Button(action: workspace.buffers.openEditorAction) {
+        HStack(spacing: 8) {
+          Label(text("待发", "Drafts"), systemImage: "tray")
+            .fixedSize()
+          Text("\(workspace.buffers.snapshot?.remainingCount ?? 0)").monospacedDigit().fixedSize()
+          Text(workspace.buffers.snapshot?.nextHeader?.preview
+            ?? (workspace.buffers.snapshot?.next == nil ? text("空", "Empty") : text("处理中", "Processing")))
+            .foregroundStyle(.secondary).lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
+      .buttonStyle(.borderless)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityIdentifier("records.open-drafts")
+      Menu {
         ForEach(workspace.buffers.snapshot?.buffers ?? []) { summary in
           if summary.buffer.policy == .set {
             Button("{} \(summary.buffer.name) (\(summary.count))") {
@@ -135,7 +140,11 @@ struct RecordBufferToolbar: View {
         Button(text("新建 Set", "New Set")) {
           workspace.buffers.createSet(name: text("手动取用", "Reusable items"))
         }
+      } label: {
+        Image(systemName: "ellipsis.circle")
       }
+      .help(text("管理待发容器", "Manage output buffers"))
+      .accessibilityLabel(text("管理待发容器", "Manage output buffers"))
     }
     .padding(10)
     .task { workspace.buffers.start() }

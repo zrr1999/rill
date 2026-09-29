@@ -260,9 +260,9 @@ public struct LiveSubtitleOverlay: View {
     if hypothesis.isEmpty {
       return Text(confirmed).foregroundStyle(primaryTextColor)
     }
-    return Text(confirmed).foregroundStyle(primaryTextColor)
-      + Text(" ").foregroundStyle(primaryTextColor)
-      + Text(hypothesis).foregroundStyle(secondaryTextColor)
+    let confirmedText = Text(confirmed).foregroundStyle(primaryTextColor)
+    let hypothesisText = Text(hypothesis).foregroundStyle(secondaryTextColor)
+    return Text("\(confirmedText) \(hypothesisText)")
   }
 
   @ViewBuilder

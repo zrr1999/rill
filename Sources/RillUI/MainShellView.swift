@@ -183,7 +183,7 @@ public struct MainShellView: View {
     @State private var sidebarFocusRequestGeneration = 0
     @State private var sidebarFocusCoordinator = SidebarFocusCoordinator()
     private let sidebarFocusTurnWaiter: @MainActor @Sendable () async -> Void
-    private static let leadingSections: [SidebarSection] = [.records]
+    static let leadingSections: [SidebarSection] = [.records, .stream, .workflows]
 
     public init(model: AppModel) {
         self.model = model
@@ -220,10 +220,6 @@ public struct MainShellView: View {
                     }
                 }
 
-                Section {
-                    sidebarSectionRow(.stream)
-                    sidebarSectionRow(.workflows)
-                }
             }
             .background(SidebarFocusAnchor(coordinator: sidebarFocusCoordinator))
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -345,7 +341,44 @@ public struct MainShellView: View {
             \.rillGlobalSearchPresentationAction,
             GlobalSearchPresentationAction(presentGlobalSearch)
         )
+        .sheet(isPresented: Binding(
+            get: { model.voiceSetupPresentation == .presented },
+            set: { if !$0 { model.voiceSetupPresentation = .dismissed } }
+        )) {
+            VStack(alignment: .leading, spacing: 16) {
+                ViewThatFits(in: .vertical) {
+                    VoiceSetupView(model: model).fixedSize(horizontal: false, vertical: true)
+                    ScrollView { VoiceSetupView(model: model) }
+                }
+                .frame(maxHeight: 360)
+                HStack {
+                    Spacer()
+                    Button(model.settings.language == .simplifiedChinese ? "稍后设置" : "Set up later") {
+                        model.voiceSetupPresentation = .dismissed
+                    }.keyboardShortcut(.cancelAction)
+                }
+            }
+            .padding(20).frame(width: 540)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("voice-setup.initial")
+        }
+        .onChange(of: model.settingsPresentationGeneration) { _, _ in
+            if model.voiceSetupPresentation == .presented { model.voiceSetupPresentation = .dismissed }
+        }
+        .onChange(of: model.voiceSetupReadiness, initial: true) { _, _ in
+            model.considerInitialVoiceSetup()
+        }
         .toolbar {
+            if !model.voiceSetupReadiness.isComplete, model.voiceSetupPresentation != .waiting {
+                ToolbarItem(id: "rill.voice-setup") {
+                    Button {
+                        model.voiceSetupPresentation = .presented
+                    } label: {
+                        Label(model.settings.language == .simplifiedChinese ? "完成准备" : "Finish Setup", systemImage: "checklist")
+                    }
+                    .accessibilityIdentifier("voice-setup.resume")
+                }
+            }
             ToolbarItem(id: "rill.global-search") {
                 Button(action: presentGlobalSearch) {
                     Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)

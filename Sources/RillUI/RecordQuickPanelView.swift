@@ -99,7 +99,6 @@ enum RecordQuickPanelLayoutPolicy {
 }
 
 public struct RecordQuickPanelView: View {
-  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   @State private var showsAdvancedSearch = false
   @Bindable private var model: RecordQuickPanelModel
   private let language: AppLanguage
@@ -141,18 +140,16 @@ public struct RecordQuickPanelView: View {
       )
       .frame(height: 30)
       .padding(RillSpacing.panel)
-      HStack(spacing: 8) {
-        Text(language == .simplifiedChinese ? "下一项" : "Next").fontWeight(.medium)
-        Text(model.buffers.snapshot?.nextHeader?.preview ?? (model.buffers.snapshot?.next == nil ? "—" : (language == .simplifiedChinese ? "处理中" : "Processing")))
-          .lineLimit(1)
-        Spacer(minLength: 4)
-        Text(model.buffers.snapshot?.nextHeader?.provenance.sourceApplicationName ?? "")
-          .lineLimit(1).foregroundStyle(.secondary)
-        Text("\(model.buffers.snapshot?.remainingCount ?? 0)").monospacedDigit()
-      }
-      .font(.caption).padding(.horizontal, RillSpacing.panel).padding(.bottom, 8)
-      .accessibilityIdentifier("quick-records.next-output")
       HStack(spacing: RillSpacing.row) {
+        Picker(language == .simplifiedChinese ? "记录集" : "Collection", selection: Binding(
+          get: { model.collectionID }, set: { model.setCollection($0) })) {
+          Text(language == .simplifiedChinese ? "全部记录" : "All Records").tag(RecordCollectionID?.none)
+          ForEach(model.collections) { collection in
+            Text(collection.name).tag(Optional(collection.id))
+          }
+        }
+        .labelsHidden().frame(maxWidth: 170)
+        .accessibilityIdentifier("quick-records.collection")
         Toggle(text(.pinned), isOn: Binding(get: { model.pinnedOnly }, set: { model.setPinnedOnly($0) })).toggleStyle(.button)
         Toggle(text(.currentApp), isOn: Binding(get: { model.currentAppOnly }, set: { model.setCurrentAppOnly($0) })).toggleStyle(.button).disabled(
           !model.canFilterCurrentApp)
@@ -171,8 +168,6 @@ public struct RecordQuickPanelView: View {
         }
         .help(text(.preview)).accessibilityLabel(text(.preview)).disabled(
           model.selectedRecord == nil && !model.isPreviewVisible)
-        Button(action: onClose) { Image(systemName: RillSystemSymbol.xmarkCircleFill.rawValue) }
-          .help(text(.close)).accessibilityLabel(text(.close))
       }
       .controlSize(.small)
       .padding(.horizontal, RillSpacing.panel)
@@ -229,11 +224,23 @@ public struct RecordQuickPanelView: View {
           Text("↑↓").foregroundStyle(.secondary).accessibilityHidden(true)
           Text(text(.paste) + " ↩").font(.caption).foregroundStyle(.secondary)
           Spacer()
+          Menu {
+            ForEach(model.buffers.snapshot?.buffers ?? []) { summary in
+              Button(summary.buffer.name) {
+                if let id = model.selectedID { model.buffers.enqueue(id, bufferID: summary.id) }
+              }
+            }
+          } label: {
+            Label(language == .simplifiedChinese ? "加入待发" : "Add to Drafts", systemImage: "text.badge.plus")
+          }
+          .disabled(model.selectedID == nil)
+          .accessibilityIdentifier("quick-records.add-to-drafts")
           Button(text(.copy)) {
             if let subject = model.selectedRecord?.reuseSubject { onCopy(subject) }
           }
           .disabled(model.selectedRecord == nil)
-          Button(RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language), action: pasteSelection).disabled(model.selectedRecord == nil)
+          Button(RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language), action: pasteSelection)
+            .buttonStyle(.borderedProminent).disabled(model.selectedRecord == nil)
         }
         .controlSize(.small)
         RecordCapacityView(capacity: model.capacity, language: language) {
@@ -241,10 +248,7 @@ public struct RecordQuickPanelView: View {
         }
       }.padding(RillSpacing.panel)
     }
-    .background {
-      if reduceTransparency { Color(nsColor: .windowBackgroundColor) }
-      else { Rectangle().fill(.regularMaterial) }
-    }
+    .background(Color(nsColor: .windowBackgroundColor))
     .sheet(
       isPresented: Binding(
         get: { model.cleanup.plan != nil }, set: { if !$0 { model.cleanup.cancel() } })
@@ -417,6 +421,7 @@ struct RecordSearchField: NSViewRepresentable {
   }
   func updateNSView(_ field: SearchField, context: Context) {
     context.coordinator.parent = self
+    field.isEnabled = context.environment.isEnabled
     if field.stringValue != text { field.stringValue = text }
     field.placeholderString = placeholder
     field.onDigit = onDigit

@@ -78,6 +78,8 @@ public enum RecordSemanticPanelState: Equatable {
 @MainActor @Observable
 public final class RecordQuickPanelModel {
   public var pasteTargetName: String?
+  public private(set) var collections: [RecordCollection] = []
+  public private(set) var collectionID: RecordCollectionID?
 
   public private(set) var searchText = ""
   public private(set) var pinnedOnly = false
@@ -151,6 +153,21 @@ public final class RecordQuickPanelModel {
     scheduleSearch()
   }
 
+  public func updateSourceApplication(_ identifier: String?) {
+    guard !isClosed, pendingComparison == nil, sourceBundleIdentifier != identifier else { return }
+    sourceBundleIdentifier = identifier
+    if currentAppOnly {
+      currentAppOnly = identifier != nil
+      scheduleSearch()
+    }
+  }
+
+  public func setCollection(_ id: RecordCollectionID?) {
+    guard !isClosed, collectionID != id else { return }
+    collectionID = id
+    scheduleSearch()
+  }
+
   public func setKind(_ value: RecordPayloadKind?) {
     guard !isClosed, kind != value else { return }
     kind = value
@@ -176,6 +193,7 @@ public final class RecordQuickPanelModel {
     stop()
     self.sourceBundleIdentifier = sourceBundleIdentifier
     searchText = ""
+    collectionID = nil
     pinnedOnly = false
     currentAppOnly = false
     kind = nil
@@ -204,6 +222,10 @@ public final class RecordQuickPanelModel {
   func receiveCatalogSnapshot(_ snapshot: RecordCatalogSnapshot) {
     guard !isClosed else { return }
     capacity = snapshot.capacity
+    collections = snapshot.collections
+    if let collectionID, !collections.contains(where: { $0.id == collectionID }) {
+      self.collectionID = nil
+    }
     // The initial stream snapshot may arrive after a query has already published.
     if searchRevision.map({ snapshot.revision > $0 }) ?? true { scheduleSearch() }
   }
@@ -265,7 +287,7 @@ public final class RecordQuickPanelModel {
     semanticRequestID = requestID
     semanticState = .working
     semanticProgress = .preparing(0)
-    let query = RecordQuery(text: searchText,
+    let query = RecordQuery(text: searchText, collectionID: collectionID,
       sourceBundleIdentifier: currentAppOnly ? sourceBundleIdentifier : nil,
       kind: kind, pinnedOnly: pinnedOnly)
     semanticTasks[requestID] = Task { [weak self] in
@@ -399,10 +421,11 @@ public final class RecordQuickPanelModel {
     return RecordComparisonReturn(query: jev.query, resultLimit: results.count, candidateIDs: jev.candidateIDs,
       semanticIDs: semanticResults.map(\.id), selectedID: selectedID,
       sourceBundleIdentifier: sourceBundleIdentifier, currentAppOnly: currentAppOnly,
-      kind: kind, pinnedOnly: pinnedOnly)
+      kind: kind, pinnedOnly: pinnedOnly, collectionID: collectionID)
   }
 
   public func restoreComparison(_ context: RecordComparisonReturn) {
+    collectionID = context.collectionID
     sourceBundleIdentifier = context.sourceBundleIdentifier
     currentAppOnly = context.currentAppOnly
     kind = context.kind
@@ -422,7 +445,7 @@ public final class RecordQuickPanelModel {
     guard !isClosed else { return }
     if let context = pendingComparison,
       context.query != searchText || context.kind != kind || context.pinnedOnly != pinnedOnly
-        || context.currentAppOnly != currentAppOnly {
+        || context.currentAppOnly != currentAppOnly || context.collectionID != collectionID {
       pendingComparison = nil
     }
     if offset == 0 {
@@ -435,7 +458,7 @@ public final class RecordQuickPanelModel {
     searchGeneration &+= 1
     let generation = searchGeneration
     let query = RecordQuery(
-      text: searchText, sourceBundleIdentifier: currentAppOnly ? sourceBundleIdentifier : nil,
+      text: searchText, collectionID: collectionID, sourceBundleIdentifier: currentAppOnly ? sourceBundleIdentifier : nil,
       kind: kind, pinnedOnly: pinnedOnly)
     let cursor = offset == 0 ? nil : searchCursor
     let pageLimit = max(50, pendingComparison?.resultLimit ?? 50)
@@ -460,6 +483,7 @@ public final class RecordQuickPanelModel {
               && (!context.currentAppOnly || record.header.provenance.sourceBundleIdentifier == context.sourceBundleIdentifier)
               && (context.kind == nil || record.header.kind == context.kind)
               && (!context.pinnedOnly || record.metadata.isPinned)
+              && (context.collectionID == nil || record.memberships.contains { $0.collectionID == context.collectionID })
           }
           let byID = Dictionary(uniqueKeysWithValues: available.map { ($0.id, $0) })
           let candidates = context.candidateIDs.compactMap { byID[$0] }

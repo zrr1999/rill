@@ -1,4 +1,5 @@
 import AppKit
+import ScreenCaptureKit
 import SwiftUI
 import XCTest
 @testable import RillCore
@@ -10,6 +11,62 @@ import XCTest
 /// Opt-in rendered evidence with ephemeral services, never the user's settings or clipboard.
 @MainActor
 final class UIRenderEvidenceTests: XCTestCase {
+    func testRenderUnifiedRecordPanel() async throws {
+        guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
+            throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
+        }
+        let output = URL(fileURLWithPath: directory)
+        try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        let store = RecordStore()
+        let ids = try await seedRecords(store)
+        _ = try await store.enqueueRecord(ids.last!.1, in: RecordBuffer.speechID)
+        let workspace = RecordWorkspaceModel(store: store)
+        let model = makeHarness(recordWorkspace: workspace).model
+        let session = workspace.makeQuickPanelModel()
+        session.start(sourceBundleIdentifier: nil)
+        await session.waitForSearch()
+        session.togglePreview()
+        session.pasteTargetName = "Notes"
+        workspace.buffers.editor.open()
+        await workspace.buffers.editor.refresh()
+        if let first = workspace.buffers.editor.items.first { workspace.buffers.editor.select(first.id) }
+        await workspace.buffers.editor.waitForPendingWrites()
+        workspace.buffers.editor.targetName = "Notes"
+        let presentation = RecordPanelPresentation()
+        for language in AppLanguage.allCases {
+            model.setInterfaceLanguage(language)
+            for dark in [false, true] {
+                let variant = "\(language.rawValue)-\(dark ? "dark" : "light")"
+                for mode in RecordPanelPresentation.Mode.allCases {
+                    presentation.mode = mode
+                    for width in [620.0, 820.0] {
+                        let view = UnifiedRecordPanelView(presentation: presentation, model: model,
+                            onModeChange: { presentation.mode = $0 }, onCollapse: {}, onExpand: {}, onClose: {}) {
+                            RecordQuickPanelView(model: session, language: language, capturePaused: false,
+                                onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: { _ in })
+                        }
+                        try await render(view, size: NSSize(width: width, height: 600), dark: dark, floating: true,
+                            to: output.appendingPathComponent("unified-\(mode.rawValue)-\(variant)-\(Int(width)).png"))
+                    }
+                }
+                presentation.isCollapsed = true
+                try await render(UnifiedRecordPanelView(presentation: presentation, model: model,
+                    onModeChange: { _ in }, onCollapse: {}, onExpand: {}, onClose: {}) { Color.clear },
+                    size: NSSize(width: 320, height: 56), dark: dark, floating: true,
+                    to: output.appendingPathComponent("pending-strip-\(variant).png"))
+                presentation.isCollapsed = false
+                try await render(VoiceSetupView(model: model), size: NSSize(width: 500, height: 360), dark: dark,
+                    to: output.appendingPathComponent("setup-\(variant).png"))
+                model.voiceSetupPresentation = .presented
+                try await render(MainShellView(model: model), size: NSSize(width: 960, height: 720), dark: dark,
+                    to: output.appendingPathComponent("setup-window-\(variant).png"))
+                model.voiceSetupPresentation = .dismissed
+            }
+        }
+        await session.shutdown()
+        await workspace.shutdown()
+    }
+
     func testRenderEditableDrafts() async throws {
         guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
             throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
@@ -94,6 +151,15 @@ final class UIRenderEvidenceTests: XCTestCase {
                 )
                 try await render(content, size: size, dark: dark,
                     to: output.appendingPathComponent("subtitle-controls-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+                for expanded in [false, true] {
+                    let overlay = LiveSubtitleOverlay(snapshot: snapshots[0], language: language,
+                        expandedLayout: expanded, includesShadow: false)
+                    try await render(overlay, size: NSSize(
+                        width: expanded ? LiveSubtitleOverlayMetrics.expandedSurfaceWidth : LiveSubtitleOverlayMetrics.compactSurfaceWidth,
+                        height: expanded ? LiveSubtitleOverlayMetrics.expandedSurfaceHeight : LiveSubtitleOverlayMetrics.compactSurfaceHeight),
+                        dark: dark, floating: true,
+                        to: output.appendingPathComponent("subtitle-\(expanded ? "expanded" : "compact")-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+                }
             }
         }
     }
@@ -116,6 +182,7 @@ final class UIRenderEvidenceTests: XCTestCase {
             finalText: "Review the design and copy the final notes. 检查设计并复用最终笔记。", outcome: .completed, trigger: .hotkey))
         let model = makeHarness(workflows: [workflow], workflowFileStore: files, historyRepository: history,
             recordWorkspace: workspace).model
+        model.voiceSetupPresentation = .dismissed
         await model.reloadWorkflowFiles()
         for language in AppLanguage.allCases {
             model.setInterfaceLanguage(language)
@@ -123,38 +190,95 @@ final class UIRenderEvidenceTests: XCTestCase {
                 let variant = "\(language.rawValue)-\(dark ? "dark" : "light")"
                 for width in [960, 1280] {
                     for section in [SidebarSection.records, .stream, .workflows] {
-                        model.selectSidebarSection(section)
-                        try await render(MainShellView(model: model), size: NSSize(width: width, height: 720), dark: dark,
-                            to: output.appendingPathComponent("\(section.rawValue)-\(variant)-\(width).png"))
+                          model.selectSidebarSection(section)
+                          try await render(MainShellView(model: model), size: NSSize(width: width, height: 720), dark: dark,
+                                to: output.appendingPathComponent("\(section.rawValue)-\(variant)-\(width).png"))
+                        }
                     }
-                }
-                for pane in SettingsPane.allCases {
-                    model.selectedSettingsPane = pane
-                    try await render(SettingsWindowView(model: model), size: NSSize(width: 760, height: 640), dark: dark,
-                        to: output.appendingPathComponent("settings-\(pane.rawValue)-\(variant).png"))
-                }
-                for (name, id) in sampleIDs {
-                    await workspace.revealRecord(id)
-                    try await render(RecordWorkspaceView(workspace: workspace, language: language, copySelection: { _ in .copied }),
-                        size: NSSize(width: 980, height: 660), dark: dark,
-                        to: output.appendingPathComponent("payload-\(name)-\(variant).png"))
-                }
-                try await render(RecordWorkspaceView(workspace: workspace, language: language, copySelection: { _ in .storageUnavailable }),
-                    size: NSSize(width: 620, height: 660), dark: dark,
-                    to: output.appendingPathComponent("records-compact-\(variant).png"))
-                workspace.setPayloadKindFilter(.image)
-                workspace.setShowsPinnedOnly(true)
-                try await render(RecordWorkspaceView(workspace: workspace, language: language),
-                    size: NSSize(width: 720, height: 560), dark: dark,
-                    to: output.appendingPathComponent("records-no-results-\(variant).png"))
-                workspace.setPayloadKindFilter(nil)
-                workspace.setShowsPinnedOnly(false)
-                try await render(GlobalSearchResultsView(query: .constant("unavailable"), results: [], selectedResultID: nil,
-                    historySearchState: .failed, recordSearchState: .failed, historyFailureActionTitle: "Retry", language: language,
-                    focusRequest: 0, onMoveSelection: { _ in }, onSubmit: {}, onCancel: {},
-                    onHistorySearchFailureAction: {}, onHighlight: { _ in }, onSelect: { _ in }),
-                    size: NSSize(width: 620, height: 420), dark: dark,
-                    to: output.appendingPathComponent("search-failure-\(variant).png"))
+                    for pane in SettingsPane.allCases {
+                        model.selectedSettingsPane = pane
+                        try await render(SettingsWindowView(model: model), size: NSSize(width: 760, height: 640), dark: dark,
+                            to: output.appendingPathComponent("settings-\(pane.rawValue)-\(variant).png"))
+                    }
+                    for (name, id) in sampleIDs {
+                        await workspace.revealRecord(id)
+                        try await render(RecordWorkspaceView(workspace: workspace, language: language, copySelection: { _ in .copied }),
+                            size: NSSize(width: 980, height: 660), dark: dark,
+                            to: output.appendingPathComponent("payload-\(name)-\(variant).png"))
+                    }
+                    try await render(RecordWorkspaceView(workspace: workspace, language: language, copySelection: { _ in .storageUnavailable }),
+                        size: NSSize(width: 620, height: 660), dark: dark,
+                        to: output.appendingPathComponent("records-compact-\(variant).png"))
+                    workspace.setPayloadKindFilter(.image)
+                    workspace.setShowsPinnedOnly(true)
+                    try await render(RecordWorkspaceView(workspace: workspace, language: language),
+                        size: NSSize(width: 720, height: 560), dark: dark,
+                        to: output.appendingPathComponent("records-no-results-\(variant).png"))
+                    workspace.setPayloadKindFilter(nil)
+                    workspace.setShowsPinnedOnly(false)
+                    try await render(GlobalSearchResultsView(query: .constant("unavailable"), results: [], selectedResultID: nil,
+                        historySearchState: .failed, recordSearchState: .failed, historyFailureActionTitle: "Retry", language: language,
+                        focusRequest: 0, onMoveSelection: { _ in }, onSubmit: {}, onCancel: {},
+                        onHistorySearchFailureAction: {}, onHighlight: { _ in }, onSelect: { _ in }),
+                        size: NSSize(width: 620, height: 420), dark: dark,
+                        to: output.appendingPathComponent("search-failure-\(variant).png"))
+              }
+        }
+        await workspace.shutdown()
+    }
+
+    func testNestedSplitsStayInsideDetailColumnAfterWindowResize() async throws {
+        let store = RecordStore()
+        let records = try await seedRecords(store)
+        let workspace = RecordWorkspaceModel(store: store)
+        await workspace.refresh()
+        await workspace.revealRecord(try XCTUnwrap(records.last?.1))
+        let model = makeHarness(recordWorkspace: workspace).model
+        model.voiceSetupPresentation = .dismissed
+        let host = NSHostingView(rootView: MainShellView(model: model))
+        host.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 960, height: 720),
+            styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.orderFront(nil)
+        defer { window.orderOut(nil); window.contentView = nil; window.close() }
+        func splits(in view: NSView) -> [NSSplitView] {
+            ((view as? NSSplitView).map { [$0] } ?? [])
+                + view.subviews.flatMap { splits(in: $0) }
+        }
+        host.autoresizingMask = [.width, .height]
+        // Window chrome and sidebar widths differ between macOS versions. Exercise
+        // both presentations with room on either side of the 700pt content threshold.
+        let sizes: [(width: CGFloat, splitCount: Int)] = [
+            (1280, 2), (1100, 2), (800, 1), (1280, 2),
+        ]
+        for section in [SidebarSection.records, .workflows] {
+            model.selectSidebarSection(section)
+            for size in sizes {
+                window.setFrame(NSRect(origin: window.frame.origin, size: NSSize(width: size.width, height: 720)), display: true)
+                let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+                var splitViews: [NSSplitView]
+                repeat {
+                    await waitForMainRunLoopDefaultMode()
+                    window.layoutIfNeeded()
+                    host.layoutSubtreeIfNeeded()
+                    splitViews = splits(in: host)
+                } while splitViews.count != size.splitCount && ContinuousClock.now < deadline
+
+                let context = "section=\(section), window=\(window.frame), splits=\(splitViews.map(\.frame))"
+                XCTAssertEqual(splitViews.count, size.splitCount, context)
+                guard size.splitCount == 2, splitViews.count == 2 else { continue }
+                let outer = splitViews[0]
+                let inner = splitViews[1]
+                let outerBounds = outer.convert(outer.bounds, to: host)
+                let innerBounds = inner.convert(inner.bounds, to: host)
+                XCTAssertGreaterThanOrEqual(innerBounds.minX, outerBounds.minX + MainShellLayoutMetrics.sidebarColumnMinWidth, context)
+                XCTAssertLessThanOrEqual(innerBounds.maxX, outerBounds.maxX, context)
+                XCTAssertGreaterThanOrEqual(innerBounds.minY, outerBounds.minY + host.safeAreaInsets.top, context)
+                inner.setPosition(340, ofDividerAt: 0)
+                inner.layoutSubtreeIfNeeded()
+                XCTAssertTrue(inner.subviews.allSatisfy { $0.frame.maxX <= inner.bounds.maxX }, context)
             }
         }
         await workspace.shutdown()
@@ -224,26 +348,70 @@ final class UIRenderEvidenceTests: XCTestCase {
     }
 
     private func render<Content: View>(
-        _ content: Content, size: NSSize, dark: Bool, focusWindow: Bool = false, to url: URL
+        _ content: Content, size: NSSize, dark: Bool, focusWindow: Bool = false,
+        floating: Bool = false, to url: URL
     ) async throws {
+        if let match = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_MATCH"],
+           !url.lastPathComponent.contains(match) { return }
         let originalAppearance = NSApplication.shared.appearance
-        let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        let highContrast = ProcessInfo.processInfo.environment["RILL_UI_HIGH_CONTRAST"] == "1"
+        let appearance = NSAppearance(named: highContrast
+            ? (dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
+            : (dark ? .darkAqua : .aqua))
         NSApplication.shared.appearance = appearance
         defer { NSApplication.shared.appearance = originalAppearance }
-        let view = NSHostingView(rootView: content.environment(\.colorScheme, dark ? .dark : .light).background(dark ? Color(white: 0.12) : Color(white: 0.98)))
-        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        // Match SwiftUI scenes: the native titlebar overlaps full-size content.
+        let view = NSHostingView(rootView: content.environment(\.colorScheme, dark ? .dark : .light)
+            .background(floating ? Color.clear : (dark ? Color(white: 0.12) : Color(white: 0.98))))
+        view.sizingOptions = []
+        let window: NSWindow = floating
+            ? NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            : NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        if floating { window.isOpaque = false; window.backgroundColor = .clear }
         window.appearance = appearance
         window.isReleasedWhenClosed = false
         window.contentView = view
-        view.frame = NSRect(origin: .zero, size: size)
+        view.autoresizingMask = [.width, .height]
         if focusWindow { window.makeKeyAndOrderFront(nil) } else { window.orderFront(nil) }
-        defer { window.orderOut(nil); window.close() }
+        defer { window.orderOut(nil); window.contentView = nil; window.close() }
         for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
         window.layoutIfNeeded()
         view.layoutSubtreeIfNeeded()
+        if ProcessInfo.processInfo.environment["RILL_UI_LAYOUT_DIAGNOSTICS"] == "1" {
+            func describe(_ node: NSView, depth: Int = 0) -> [String] {
+                let name = String(describing: type(of: node))
+                let row = "\(String(repeating: " ", count: depth))\(name) frame=\(node.frame) bounds=\(node.bounds) hidden=\(node.isHidden) alpha=\(node.alphaValue) safe=\(node.safeAreaInsets)"
+                return [row] + node.subviews.flatMap { describe($0, depth: depth + 1) }
+            }
+            let rows = ["window=\(window.frame) content=\(window.contentLayoutRect) mask=\(window.styleMask.rawValue)"] + describe(view)
+            try rows.joined(separator: "\n").write(to: url.deletingPathExtension().appendingPathExtension("layout.txt"), atomically: true, encoding: .utf8)
+        }
+        if ProcessInfo.processInfo.environment["RILL_UI_COMPOSITOR_CAPTURE"] == "1" {
+            guard CGPreflightScreenCaptureAccess() else {
+                throw XCTSkip("Compositor evidence requires existing Screen Recording permission; no prompt was requested.")
+            }
+            let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+            let ownWindow = try XCTUnwrap(content.windows.first {
+                $0.windowID == CGWindowID(window.windowNumber)
+                    && $0.owningApplication?.processID == ProcessInfo.processInfo.processIdentifier
+            })
+            let configuration = SCStreamConfiguration()
+            configuration.width = Int(window.frame.width * window.backingScaleFactor)
+            configuration.height = Int(window.frame.height * window.backingScaleFactor)
+            configuration.showsCursor = false
+            configuration.capturesAudio = false
+            configuration.ignoreShadowsSingleWindow = true
+            configuration.includeChildWindows = true
+            let image = try await SCScreenshotManager.captureImage(
+                contentFilter: SCContentFilter(desktopIndependentWindow: ownWindow), configuration: configuration)
+            let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
+            try png.write(to: url)
+            return
+        }
         let representation = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
         appearance?.performAsCurrentDrawingAppearance { view.cacheDisplay(in: view.bounds, to: representation) }
         let png = try XCTUnwrap(representation.representation(using: .png, properties: [:]))
         try png.write(to: url)
+
     }
 }

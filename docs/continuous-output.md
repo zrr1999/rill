@@ -40,7 +40,10 @@ after L yields `LDHICBA`; input ending at C yields `CLBA`.
 
 ## Editable drafts
 
-The Drafts panel exposes these same entries; it is not another queue or history.
+The unified quick panel exposes these same entries in Drafts mode; it is not another queue or history.
+Collections and Drafts retain their native views when switching modes or collapsing
+to the 320×56pt pending strip. The strip remains nonactivating and can be dragged
+or closed; opening it never sends an item.
 `RecordStore` owns each `BufferTextDraft`, its immutable baseline and optional raw
 recognition text, revision, committed revision and pending speech suggestions.
 The UI owns one native `NSTextView` editing session, selection and unsaved text.
@@ -69,23 +72,24 @@ it does not classify every edit as an ASR error or teach vocabulary automaticall
 
 Return is native newline in the editor and Send in the focused list. Command-Return
 sends only outside IME composition. Escape belongs to the input method first,
-then leaves editing focus, then closes the panel. Native undo owns applied final
+then leaves editing focus, then collapses the panel. The collapsed strip does not
+take keyboard focus; its close button dismisses it. Native undo owns applied final
 speech edits. The global hotkey tap passes editor keystrokes through while still
 settling any already-held Fn gesture.
 
-Enabling voice collection or clipboard capture opens the resident Drafts window
+Enabling voice collection or clipboard capture shows the compact pending strip
 without taking key focus. Saved source preferences restore it after startup, and
-sending leaves it visible. Closing the window only hides it; collection remains
+sending leaves the strip visible. Closing only hides the panel; collection remains
 enabled. The source controls use the existing settings and capture paths.
 
-Before each editing visit takes key focus, `BufferDraftPanelController` captures
-the external PID/control, selected range and readable selected text. Automatic
-presentation, new arrivals and sending never recapture a different target. The
-output boundary revalidates identity, selection and secure input; drift during
-editing retains the item. Returning from an external target for a new editing visit
-captures it again and restores the selected draft's editing protection after a
-failed send. Entering from Rill itself can prepare the selected item for the next
-output shortcut.
+When an explicit editing visit makes the panel key, `RecordPanelController`
+captures the external PID/control, selected range and readable selected text.
+Background presentation, new entries, switching modes and sending never recapture
+a different target. The output boundary revalidates identity, selection and secure
+input; drift during editing retains the item. Returning for a new editing visit
+captures the target again and restores the selected draft's editing protection
+after a failed send. Entering from Rill itself can prepare the selected item for
+the next output shortcut.
 
 Each draft text field retains the normal 1 MiB payload limit. Draft text bytes
 (baseline, raw recognition, current text and suggestions) share a separate 16 MiB

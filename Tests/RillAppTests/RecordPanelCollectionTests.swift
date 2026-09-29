@@ -11,24 +11,25 @@ import RillWorkflows
 @testable import RillUI
 
 @MainActor
-final class BufferDraftPanelControllerTests: XCTestCase {
+final class RecordPanelCollectionTests: XCTestCase {
   func testRestoredCollectionWaitsForSettingsAndOpensWithoutFocusOrTargetCapture() async throws {
     for voice in [false, true] {
       let settings: [AppSettingKey: String] = voice
         ? [.builtinPushToTalkOutputMode: BuiltinPushToTalkOutputMode.saveToVoiceGroup.rawValue]
         : [.systemClipboardCaptureEnabled: "true"]
       let (model, output) = makeHarness(RecordStore(), initialSettings: settings)
-      let controller = BufferDraftPanelController(model: model, output: output,
+      let controller = makeController(model: model, output: output,
         textOutput: .init(capture: { XCTFail("Background presentation must not capture an output target"); return nil }),
         editingActivity: { active in XCTAssertFalse(active) })
-      defer { controller.shutdown() }
+      addTeardownBlock { await controller.shutdown() }
       let clipboardCount = NSPasteboard.general.changeCount
       let keyWindow = NSApp.keyWindow
-      controller.start()
+      observeCollection(controller, model: model)
       XCTAssertFalse(controller.isVisible)
 
       try await waitUntil { controller.isVisible }
       XCTAssertFalse(controller.isKey)
+      XCTAssertTrue(controller.presentation.isCollapsed)
       XCTAssertTrue(NSApp.keyWindow === keyWindow)
       XCTAssertTrue(model.recordWorkspace.buffers.editor.isVisible)
       XCTAssertEqual(NSPasteboard.general.changeCount, clipboardCount)
@@ -41,9 +42,9 @@ final class BufferDraftPanelControllerTests: XCTestCase {
     let store = RecordStore()
     let id = try await store.createBufferDraft(text: "Keep this draft")
     let (model, output) = makeHarness(store)
-    let controller = BufferDraftPanelController(model: model, output: output, editingActivity: { _ in })
-    defer { controller.shutdown() }
-    controller.start()
+    let controller = makeController(model: model, output: output, editingActivity: { _ in })
+    addTeardownBlock { await controller.shutdown() }
+    observeCollection(controller, model: model)
     XCTAssertFalse(controller.isVisible)
 
     XCTAssertTrue(model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup))
@@ -54,7 +55,7 @@ final class BufferDraftPanelControllerTests: XCTestCase {
     await editor.waitForPendingWrites()
     let session = try XCTUnwrap(editor.session)
     session.selection = .init(location: 5, length: 4)
-    controller.hide()
+    controller.dismiss()
     XCTAssertFalse(controller.isVisible)
 
     XCTAssertTrue(model.setSystemClipboardCaptureEnabled(true))
@@ -65,7 +66,7 @@ final class BufferDraftPanelControllerTests: XCTestCase {
     XCTAssertEqual(session.text, "Keep this draft")
     XCTAssertFalse(controller.isKey)
 
-    controller.shutdown()
+    await controller.shutdown()
     XCTAssertTrue(model.setSystemClipboardCaptureEnabled(false))
     XCTAssertTrue(model.setSystemClipboardCaptureEnabled(true))
     await editor.shutdown()
@@ -86,16 +87,19 @@ final class BufferDraftPanelControllerTests: XCTestCase {
         })
       }, modifiersHeld: { false }, isSecure: { false })
       let (model, output) = makeHarness(store, textOutput: textOutput)
-      let controller = BufferDraftPanelController(model: model, output: output,
+      let controller = makeController(model: model, output: output,
         textOutput: textOutput, editingActivity: { _ in })
-      defer { controller.shutdown() }
-      controller.show()
+      addTeardownBlock { await controller.shutdown() }
+      show(controller, model: model)
       let editor = model.recordWorkspace.buffers.editor
       await editor.refresh()
       editor.select(id)
       await editor.waitForPendingWrites()
       let capturesBeforeSend = captureCount
       XCTAssertGreaterThan(capturesBeforeSend, 0)
+      controller.selectMode(.collections)
+      controller.selectMode(.drafts)
+      XCTAssertEqual(captureCount, capturesBeforeSend)
       if changeTarget {
         XCTAssertTrue(element.replaceText(in: .init(location: 0, length: 0), with: "external edit",
                                          selection: .init(location: 13, length: 0)))
@@ -115,7 +119,7 @@ final class BufferDraftPanelControllerTests: XCTestCase {
       XCTAssertEqual(element.value, changeTarget ? "external edit" : "Review before sending")
       XCTAssertEqual(NSPasteboard.general.changeCount, clipboardCount)
       if changeTarget {
-        controller.show()
+        show(controller, model: model)
         await editor.waitForPendingWrites()
         XCTAssertGreaterThan(captureCount, capturesBeforeSend)
         do {
@@ -136,6 +140,71 @@ final class BufferDraftPanelControllerTests: XCTestCase {
       await editor.shutdown()
       await output.shutdown()
     }
+  }
+
+  func testBackgroundCollectionPreservesAndRestoresSettingsComparison() async throws {
+    let store = RecordStore()
+    let record = try await store.ingest(.init(payload: .text("retained candidate"),
+      provenance: .init(source: .init(kind: .systemClipboard))), into: [])
+    let (model, output) = makeHarness(store)
+    let controller = makeController(model: model, output: output, editingActivity: { _ in })
+    addTeardownBlock { await controller.shutdown() }
+    let context = RecordComparisonReturn(query: "retained", resultLimit: 50, candidateIDs: [record.id],
+      semanticIDs: [], selectedID: record.id, sourceBundleIdentifier: nil, currentAppOnly: false,
+      kind: .text, pinnedOnly: false)
+    var resumed = false
+    model.offerComparisonReturn(context) { [weak controller, weak model] returned in
+      guard let controller, let model else { return }
+      resumed = true
+      XCTAssertEqual(returned, context)
+      controller.show(model: model, mode: .collections, toggle: false,
+                      deliverSelection: { _, _ in XCTFail("Navigation cannot output"); return .blocked },
+                      onDeliveryAbort: {}, restoring: returned)
+    }
+    observeCollection(controller, model: model)
+    XCTAssertTrue(model.setSystemClipboardCaptureEnabled(true))
+    try await waitUntil { controller.isVisible }
+    XCTAssertTrue(controller.presentation.isCollapsed)
+    XCTAssertEqual(model.comparisonReturn, context)
+
+    model.resumeComparison()
+    XCTAssertTrue(resumed)
+    XCTAssertNil(model.comparisonReturn)
+    XCTAssertEqual(controller.presentation.mode, .collections)
+    await controller.quickPanelModel?.waitForSearch()
+    XCTAssertEqual(controller.quickPanelModel?.searchText, context.query)
+    XCTAssertEqual(controller.quickPanelModel?.kind, .text)
+    XCTAssertEqual(controller.quickPanelModel?.selectedID, record.id)
+    await controller.shutdown()
+    await model.recordWorkspace.buffers.editor.shutdown()
+    await output.shutdown()
+  }
+
+  private func makeController(model: AppModel, output: BufferOutputController,
+                              textOutput: RecordBufferTextOutput = .init(capture: { nil }),
+                              editingActivity: @escaping (Bool) -> Void) -> RecordPanelController {
+    let controller = RecordPanelController(pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false },
+                                          reduceMotionProvider: { true })
+    controller.configureDrafts(model: model, output: output, textOutput: textOutput, editingActivity: editingActivity)
+    output.presentStatus = { [weak controller, weak model] in
+      guard let controller, let model else { return }
+      controller.show(model: model, mode: .drafts, toggle: false, activate: false,
+                      deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
+    }
+    return controller
+  }
+
+  private func observeCollection(_ controller: RecordPanelController, model: AppModel) {
+    controller.startCollectionObservation { [weak controller, weak model] in
+      guard let controller, let model else { return }
+      controller.show(model: model, mode: .drafts, toggle: false, activate: false,
+                      deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
+    }
+  }
+
+  private func show(_ controller: RecordPanelController, model: AppModel) {
+    controller.show(model: model, mode: .drafts, toggle: false,
+                    deliverSelection: { _, _ in .blocked }, onDeliveryAbort: {})
   }
 
   private func makeHarness(_ store: RecordStore, initialSettings: [AppSettingKey: String]? = nil,

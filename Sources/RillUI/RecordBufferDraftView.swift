@@ -7,14 +7,16 @@ public struct RecordBufferDraftView: View {
   @Bindable private var settings: SettingsPersistenceModel
   private let setVoiceCollection: (Bool) -> Void
   private let setClipboardCollection: (Bool) -> Void
+  private let embedded: Bool
   private var language: AppLanguage { settings.language }
   @State private var showsDiscard = false
   @State private var comparesRecognition = true
 
-  public init(model: AppModel) {
+  public init(model: AppModel, embedded: Bool = false) {
     self.model = model.recordWorkspace.buffers.editor
     self.voice = model.voice
     self.settings = model.settings
+    self.embedded = embedded
     setVoiceCollection = { [weak model] enabled in
       model?.setBuiltinPushToTalkOutputMode(enabled ? .saveToVoiceGroup : .pasteIntoApp)
     }
@@ -32,8 +34,10 @@ public struct RecordBufferDraftView: View {
   public var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 12) {
-        Text(text("待发区", "Drafts")).font(.headline)
-        Text("\(model.items.count)").monospacedDigit().foregroundStyle(.secondary)
+        if !embedded {
+          Text(text("待发区", "Drafts")).font(.headline)
+          Text("\(model.items.count)").monospacedDigit().foregroundStyle(.secondary)
+        }
         Spacer()
         Button { model.newItem() } label: {
           Label(text("新建", "New item"), systemImage: "square.and.pencil")
@@ -57,7 +61,7 @@ public struct RecordBufferDraftView: View {
       Divider()
       footer.padding(12)
     }
-    .frame(minWidth: 580, minHeight: 520)
+    .frame(minWidth: 580, minHeight: embedded ? 420 : 520)
     .background(.background)
     .accessibilityIdentifier("record-buffer.drafts")
     .alert(text("移除此待发项？", "Remove this pending item?"), isPresented: $showsDiscard) {
@@ -234,8 +238,9 @@ public struct RecordBufferDraftView: View {
   private func diffText(original: String, edited: String) -> Text {
     BufferTextDiff(original: original, edited: edited).segments.reduce(Text("")) { result, segment in
       let part = Text(segment.text)
-      return result + (segment.kind == .removed ? part.strikethrough().foregroundColor(.red)
-        : segment.kind == .inserted ? part.underline().foregroundColor(.accentColor) : part)
+      let styled = segment.kind == .removed ? part.strikethrough().foregroundColor(.red)
+        : segment.kind == .inserted ? part.underline().foregroundColor(.accentColor) : part
+      return Text("\(result)\(styled)")
     }
   }
 

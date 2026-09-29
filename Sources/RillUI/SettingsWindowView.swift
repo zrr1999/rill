@@ -17,12 +17,34 @@ public struct SettingsWindowView: View {
             .padding()
             Divider()
         }
-        TabView(selection: $model.selectedSettingsPane) {
-            ForEach(SettingsPane.allCases) { pane in
-                SettingsView(model: model, pane: pane)
-                    .tabItem { Label(pane.title(language: model.settings.language), systemImage: pane.symbolName) }
-                    .tag(pane)
+        NavigationSplitView {
+            List(selection: Binding<SettingsPane?>(
+                get: { model.selectedSettingsPane },
+                set: { if let pane = $0 { model.selectedSettingsPane = pane } }
+            )) {
+                ForEach(SettingsPane.allCases) { pane in
+                    Label {
+                        Text(pane.title(language: model.settings.language))
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    } icon: {
+                        Image(systemName: pane.symbolName)
+                    }
+                        .tag(pane)
+                        .accessibilityIdentifier("settings.pane.\(pane.rawValue)")
+                }
             }
+            .navigationSplitViewColumnWidth(min: 160, ideal: 176, max: 220)
+        } detail: {
+            ZStack {
+                ForEach(SettingsPane.allCases) { pane in
+                    SettingsView(model: model, pane: pane)
+                        .opacity(model.selectedSettingsPane == pane ? 1 : 0)
+                        .allowsHitTesting(model.selectedSettingsPane == pane)
+                        .disabled(model.selectedSettingsPane != pane)
+                        .accessibilityHidden(model.selectedSettingsPane != pane)
+                }
+            }
+            .navigationTitle(model.selectedSettingsPane.title(language: model.settings.language))
         }
       }
         .frame(minWidth: 720, idealWidth: 760, minHeight: 560, idealHeight: 640)

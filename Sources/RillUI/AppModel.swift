@@ -46,6 +46,7 @@ public final class AppModel {
   public let history: RunHistoryModel
   public internal(set) var settingsNavigationRequest: SettingsNavigationRequest?
   public var selectedSettingsPane: SettingsPane = .general
+  public var voiceSetupPresentation: VoiceSetupPresentation = .waiting
   public internal(set) var settingsPresentationGeneration = 0
   var handledSettingsPresentationGeneration = 0
   let recordInteractions: RecordInteractionServices

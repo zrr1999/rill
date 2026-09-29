@@ -59,13 +59,12 @@ language, and whether the account was newly created.
 
 | Required environment | Hardware / OS evidence | Result | Evidence path |
 | --- | --- | --- | --- |
-| macOS 14, Apple Silicon |  |  |  |
-| macOS 15, Apple Silicon |  |  |  |
+| macOS 26.0, Apple Silicon |  |  |  |
 | Latest macOS supported by the candidate, Apple Silicon |  |  |  |
 | Clean local account |  |  |  |
 
 `LC_BUILD_VERSION minos` and deployment-target checks are build evidence only;
-they do not replace running the notarized candidate on macOS 14.
+they do not replace running the notarized candidate on macOS 26.
 
 ## Installation and trust
 
@@ -102,13 +101,13 @@ For a declared `cloud + trusted local` candidate:
 
 ## App icon surfaces
 
-Run these checks on macOS 14, macOS 15, and the latest supported macOS with the
+Run these checks on macOS 26.0 and the current supported macOS with the
 exact installed candidate. Clear stale Finder/Dock icon caches or reinstall the
 candidate before recording a failure.
 
 - [ ] Applications, Finder, Dock, Launchpad, Spotlight, and the App switcher all
       show the routed voice cursor artwork rather than a generic or stale icon.
-- [ ] On macOS 14 and 15, every surface shows a transparent rounded icon body
+- [ ] On macOS 26, every surface shows a transparent rounded icon body
       with no opaque square corners, fringe, or clipped shadow.
 - [ ] At 16 px and 32 px, two input lanes, a separate coral routing node, and a
       separate coral insertion cursor remain distinguishable in light and dark

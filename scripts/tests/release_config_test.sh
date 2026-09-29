@@ -1210,7 +1210,7 @@ case "$architecture" in
 arm64)
   command_name="${FAKE_VTOOL_ARM64_COMMAND:-${FAKE_VTOOL_COMMAND:-LC_BUILD_VERSION}}"
   platform="${FAKE_VTOOL_ARM64_PLATFORM:-${FAKE_VTOOL_PLATFORM:-MACOS}}"
-  minos="${FAKE_VTOOL_ARM64_MINOS:-${FAKE_VTOOL_MINOS:-14.0}}"
+  minos="${FAKE_VTOOL_ARM64_MINOS:-${FAKE_VTOOL_MINOS:-26.0}}"
   ;;
 *)
   echo "unexpected architecture: $architecture" >&2
@@ -1224,7 +1224,7 @@ Load command 1
   cmdsize 32
  platform $platform
     minos $minos
-      sdk 15.2
+      sdk 26.0
    ntools 1
      tool LD
   version 1.0
@@ -1274,8 +1274,8 @@ EOF
     "FAKE_LIPO_ARCHS=x86_64 arm64"
   reject_executable \
     "executable verifier accepts a newer arm64 deployment target" \
-    "arm64 slice must require macOS 14.0 exactly" \
-    FAKE_VTOOL_ARM64_MINOS=14.1
+    "arm64 slice must require macOS 26.0 exactly" \
+    FAKE_VTOOL_ARM64_MINOS=26.1
   reject_executable \
     "executable verifier accepts a non-macOS platform" \
     "arm64 slice must target the macOS platform" \
@@ -1297,7 +1297,7 @@ EOF
   fi
 
   PASSED=$((PASSED + 1))
-  echo "PASS: both executables require an arm64-only macOS 14 slice"
+  echo "PASS: both executables require an arm64-only macOS 26 slice"
 }
 
 run_local_build_identity_case() {

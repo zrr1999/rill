@@ -44,7 +44,8 @@ struct BufferDraftTextEditor: NSViewRepresentable {
 
   func updateNSView(_ scroll: NSScrollView, context: Context) {
     guard let view = scroll.documentView as? BufferDraftTextView else { return }
-    view.isEditable = !model.isBusy
+    view.isInteractionEnabled = context.environment.isEnabled
+    view.isEditable = !model.isBusy && context.environment.isEnabled
     guard !view.hasMarkedText(), view.string != session.text else { return }
     context.coordinator.isUpdating = true
     // insertText participates in the native undo stack; one final ASR result
@@ -104,6 +105,9 @@ struct BufferDraftTextEditor: NSViewRepresentable {
 }
 
 final class BufferDraftTextView: NSTextView {
+  var isInteractionEnabled = true
+  override var acceptsFirstResponder: Bool { isInteractionEnabled && super.acceptsFirstResponder }
+
   var onSubmit: () -> Void = {}
   var onFocusChanged: (Bool) -> Void = { _ in }
   var onCompositionEnded: () -> Void = {}

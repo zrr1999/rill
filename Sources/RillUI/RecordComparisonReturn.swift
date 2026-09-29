@@ -11,6 +11,7 @@ public struct RecordComparisonReturn: Sendable, Equatable {
   public let currentAppOnly: Bool
   public let kind: RecordPayloadKind?
   public let pinnedOnly: Bool
+  public var collectionID: RecordCollectionID? = nil
 }
 
 extension AppModel {

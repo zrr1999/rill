@@ -27,9 +27,12 @@ extension SettingsView {
         .accessibilityIdentifier("settings.local-speech-unavailable")
       }
 
-      Text(L10n.settingsText(.settingsSpeechModelEnablementDetail, language: model.settings.language))
-        .font(.caption)
-        .foregroundStyle(.secondary)
+      LabeledContent(model.settings.language == .simplifiedChinese ? "当前语音模型" : "Current speech model") {
+        Text(model.trustedLocalSpeechModels.first { $0.id == model.selectedTrustedLocalSpeechModelIdentifier }
+          .map { model.localSpeechModelDisplayName($0.id) }
+          ?? L10n.speechEngine(model.settings.preferredSpeechEngine, language: model.settings.language))
+          .foregroundStyle(.secondary)
+      }
 
       if let metadataError = model.voice.downloadedLocalSpeechModelsError {
         settingsDomainLoadFailure(
@@ -39,19 +42,7 @@ extension SettingsView {
       }
 
       VStack(alignment: .leading, spacing: RillSpacing.row) {
-          Text(L10n.text(.settingsLocalSpeech, language: model.settings.language))
-            .font(.subheadline.weight(.medium))
-
           if model.localSpeechTrustMaterialAvailable {
-            Text(
-              L10n.localSpeechAvailabilityDescription(
-                model.localSpeechAvailability,
-                language: model.settings.language
-              )
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
             speechModelPoolSettings
 
             if model.speechModelResourceCatalog.isEmpty {
@@ -322,9 +313,6 @@ extension SettingsView {
       VStack(alignment: .leading, spacing: 10) {
         Text(L10n.settingsText(.settingsModelPoolTitle, language: model.settings.language))
           .font(.caption.weight(.semibold))
-        Text(L10n.settingsText(.settingsModelPoolDescription, language: model.settings.language))
-        .font(.caption)
-        .foregroundStyle(.secondary)
 
         if model.voice.speechModelPoolDegradedByMemoryPressure {
           Label(
@@ -348,6 +336,10 @@ extension SettingsView {
             }
             .disabled(model.settings.isLoading)
 
+            DisclosureGroup(model.settings.language == .simplifiedChinese ? "模型详情与常驻" : "Model details and residency") {
+              LabeledContent(model.settings.language == .simplifiedChinese ? "模型标识" : "Model ID") {
+                Text(descriptor.id).textSelection(.enabled)
+              }
             Toggle(
               L10n.settingsText(.settingsKeepResident, language: model.settings.language),
               isOn: Binding(
@@ -361,6 +353,9 @@ extension SettingsView {
               model.settings.isLoading
                 || !model.settings.enabledSpeechModelIDs.contains(descriptor.id)
             )
+            }
+            .font(.caption)
+
           }
           .padding(.vertical, 2)
         }
@@ -413,7 +408,11 @@ extension SettingsView {
       fromByteCount: Int64(clamping: descriptor.downloadByteCount),
       countStyle: .file
     )
-    return "\(capability) · \(descriptor.id) · \(size)"
+    let name = model.trustedLocalSpeechModels.first { $0.id == descriptor.id }
+      .map { model.localSpeechModelDisplayName($0.id) }
+      ?? model.ttsModelOptions.first { $0.id == descriptor.id }?.precision
+      ?? descriptor.id
+    return "\(capability) · \(name) · \(size)"
   }
 
 }

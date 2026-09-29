@@ -99,7 +99,7 @@ jobs:
 
           ## Installation and source
 
-          - Apple Silicon; macOS 14.0 or later. No automatic updates.
+          - Apple Silicon; macOS 26.0 or later. No automatic updates.
           - Download both Rill.dmg and Rill.dmg.sha256, then run shasum -a 256 --check Rill.dmg.sha256.
           - [Candidate source](https://github.com/zrr1999/rill/tree/$EXPECTED_COMMIT) (AGPL-3.0-only).
           - Complete the [release QA checklist](https://github.com/zrr1999/rill/blob/$EXPECTED_COMMIT/docs/release-qa-checklist.md) and verify corresponding source before publishing this draft.
