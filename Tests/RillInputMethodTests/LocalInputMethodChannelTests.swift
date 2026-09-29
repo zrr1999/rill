@@ -90,7 +90,7 @@ struct LocalInputMethodChannelTests {
     client.didConnect = { _ in
       for _ in 0..<40 { #expect(client.send(InputMethodMessage(.hello), to: restarted.path)) }
     }
-    for _ in 0..<100 where received == 0 {
+    for _ in 0..<100 where received < 40 {
       _ = client.send(InputMethodMessage(.hello), to: restarted.path)
       try await Task.sleep(for: .milliseconds(10))
     }

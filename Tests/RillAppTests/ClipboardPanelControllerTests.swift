@@ -97,6 +97,46 @@ private actor RecordPanelOperationGate {
 
 @MainActor
 final class RecordPanelControllerTests: XCTestCase {
+    func testOpeningAndReopeningRoutesTypingToSearchWithoutAnExtraClick() async throws {
+        let store = RecordStore()
+        _ = try await store.ingest(.init(payload: .text("searchable history"), provenance: .init(source: .init(kind: .systemClipboard))), into: [])
+        let model = makeModel(recordWorkspace: RecordWorkspaceModel(store: store))
+        let controller = RecordPanelController(
+            pasteTargetProvider: { nil }, pasteTargetRestorer: { _ in false }, reduceMotionProvider: { true })
+        let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
+        func searchField(in view: NSView) -> NSSearchField? {
+            if let field = view as? NSSearchField { return field }
+            return view.subviews.lazy.compactMap { searchField(in: $0) }.first
+        }
+        for _ in 0..<2 {
+            controller.show(model: model, deliverSelection: { _, _ in
+                XCTFail("Searching must not deliver a record")
+                return .blocked
+            }, onDeliveryAbort: {})
+            let window = try XCTUnwrap(NSApp.windows.first {
+                $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+            })
+            window.contentView?.layoutSubtreeIfNeeded()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+            while controller.quickPanelModel?.results.count != 1, ContinuousClock.now < deadline {
+                await Task.yield()
+            }
+            let field = try XCTUnwrap(searchField(in: XCTUnwrap(window.contentView)))
+            XCTAssertTrue(window.isKeyWindow)
+            let editor = try XCTUnwrap(window.firstResponder as? NSTextView)
+            XCTAssertTrue(field.currentEditor() === editor)
+            let event = try XCTUnwrap(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                windowNumber: window.windowNumber, context: nil, characters: "s",
+                charactersIgnoringModifiers: "s", isARepeat: false, keyCode: 1))
+            NSApp.sendEvent(event)
+            XCTAssertEqual(field.stringValue, "s")
+            XCTAssertEqual(controller.quickPanelModel?.searchText, "s")
+            controller.dismiss()
+        }
+        await controller.shutdown()
+    }
+
     func testMarkedTextPreventsBothPanelDigitDispatchPathsFromPasting() async throws {
         let target = try makeTarget(processIdentifier: 42, bundleIdentifier: "com.example.Editor")
         let store = RecordStore()
