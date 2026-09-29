@@ -106,8 +106,7 @@ and sidebar tokens are default or preferred sizes, except the explicitly named
 minimum and fixed recording/strip surfaces. `system-ui` and `ui-monospace` name
 native font families; the SwiftUI roles remain authoritative. Semantic colors
 cannot be represented faithfully as fixed CSS colors, so they are mapped below
-and in [.impeccable/design.json](.impeccable/design.json), without invented RGB
-values or tonal ramps.
+without invented RGB values or tonal ramps.
 
 **Key Characteristics:**
 
