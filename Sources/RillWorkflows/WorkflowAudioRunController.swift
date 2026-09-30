@@ -80,7 +80,7 @@ public actor WorkflowAudioRunController {
   private var captureSignalDrainTasks: [UUID: Task<Void, Never>] = [:]
   private var terminalCancellationTasks: [UUID: Task<Void, Never>] = [:]
   private var lifecycle: Lifecycle = .accepting
-  private var shutdownWaiters: [CheckedContinuation<Void, Never>] = []
+  private var shutdownWaiters = ShutdownWaiters()
   private var diagnosticTailTask: Task<Void, Never>?
   private var diagnosticQueueSealed = false
 
@@ -810,9 +810,7 @@ public actor WorkflowAudioRunController {
       lifecycle = .shuttingDown
       invalidateRecordingCues()
     case .shuttingDown:
-      await withCheckedContinuation { continuation in
-        shutdownWaiters.append(continuation)
-      }
+      await withCheckedContinuation { shutdownWaiters.add($0) }
       return
     case .terminated:
       return
@@ -836,11 +834,7 @@ public actor WorkflowAudioRunController {
     diagnosticTailTask = nil
     await pendingDiagnosticTask?.value
     lifecycle = .terminated
-    let waiters = shutdownWaiters
-    shutdownWaiters.removeAll()
-    for waiter in waiters {
-      waiter.resume()
-    }
+    shutdownWaiters.resumeAll()
   }
 
   func handleLiveAuthorizationRevocation(

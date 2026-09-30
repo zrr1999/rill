@@ -60,7 +60,7 @@ public actor CapturedAudioProcessingQueue {
     private var drainGeneration: UInt64 = 0
     private var rejectedCleanupTasks: [UUID: RejectedCleanupWork] = [:]
     private var lifecycle: Lifecycle = .accepting
-    private var shutdownWaiters: [CheckedContinuation<Void, Never>] = []
+    private var shutdownWaiters = ShutdownWaiters()
 
     public init(
         sessionCoordinator: SessionCoordinator,
@@ -195,9 +195,7 @@ public actor CapturedAudioProcessingQueue {
         case .terminated:
             return
         case .shuttingDown:
-            await withCheckedContinuation { continuation in
-                shutdownWaiters.append(continuation)
-            }
+            await withCheckedContinuation { shutdownWaiters.add($0) }
             return
         case .accepting:
             lifecycle = .shuttingDown
@@ -230,11 +228,7 @@ public actor CapturedAudioProcessingQueue {
         await publishSnapshot()
         await awaitRejectedCleanupTasks()
         lifecycle = .terminated
-        let waiters = shutdownWaiters
-        shutdownWaiters.removeAll()
-        for waiter in waiters {
-            waiter.resume()
-        }
+        shutdownWaiters.resumeAll()
     }
 
     /// Cancels and settles work for one accepted run without disturbing newer
