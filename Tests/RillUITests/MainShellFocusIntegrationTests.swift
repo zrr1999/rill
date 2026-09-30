@@ -4,6 +4,7 @@ import SwiftUI
 import RillCore
 import XCTest
 
+@testable import RillRecords
 @testable import RillUI
 
 private actor SidebarFocusTurnGate {
@@ -90,7 +91,7 @@ private actor MissingRunHistoryBrowser: RunHistoryBrowsing {
 
 @MainActor
 final class MainShellFocusIntegrationTests: XCTestCase {
-    func testJevDeepLinkFocusesSecureFieldInsideIndependentSettingsWindow() async throws {
+    func testJevDeepLinkFocusesSecureFieldInSettingsMode() async throws {
         _ = NSApplication.shared
         let fixture = JevPanelFixture()
         let workspace = RecordWorkspaceModel(store: fixture.store, cloudRanking: fixture.service)
@@ -1436,6 +1437,38 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertEqual(harness.model.selectedSettingsPane, .voice)
         let sidebar = try XCTUnwrap(sidebarTable(in: window))
         XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
+    }
+
+    func testLeavingSettingsThroughATypedRecordDoesNotClaimSidebar() async throws {
+        _ = NSApplication.shared
+        let store = RecordStore()
+        let projection = try await store.ingest(
+            RecordDraft(
+                payload: .text("typed destination"),
+                provenance: RecordProvenance(source: RecordSourceIdentity(kind: .user))
+            ),
+            into: []
+        )
+        let workspace = RecordWorkspaceModel(store: store)
+        await workspace.refresh()
+        let harness = makeHarness(recordWorkspace: workspace)
+        let window = makeWindow(model: harness.model)
+        defer { tearDown(window) }
+        await settle(window)
+        let sidebar = try XCTUnwrap(sidebarTable(in: window))
+        harness.model.presentSettings()
+        await settle(window)
+
+        await harness.model.showRecord(projection.id)
+        await settle(window)
+
+        XCTAssertFalse(harness.model.isShowingSettings)
+        XCTAssertEqual(harness.model.recordWorkspace.revealedRecordID, projection.id)
+        XCTAssertFalse(
+            isResponder(window.firstResponder, inside: sidebar),
+            "A typed record destination must keep detail focus after leaving settings."
+        )
+        await workspace.shutdown()
     }
 
     func testBackShortcutLeavesSettingsOnlyWhileGlobalSearchIsClosed() async throws {
