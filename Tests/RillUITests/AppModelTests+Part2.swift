@@ -1245,10 +1245,14 @@ extension AppModelTests {
         )
 
         harness.model.showRecordCollection(collectionID)
-        harness.model.selectSidebarSection(.settings)
+        harness.model.presentSettings()
 
+        XCTAssertTrue(harness.model.isShowingSettings)
         XCTAssertEqual(harness.model.selectedSidebarSection, .records)
-        XCTAssertTrue(harness.model.consumeSettingsPresentation())
+        XCTAssertEqual(harness.model.recordWorkspace.selectedCollectionID, collectionID)
+        harness.model.dismissSettings()
+        XCTAssertFalse(harness.model.isShowingSettings)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
         XCTAssertEqual(harness.model.recordWorkspace.selectedCollectionID, collectionID)
     }
 

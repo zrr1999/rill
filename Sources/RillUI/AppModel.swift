@@ -47,8 +47,8 @@ public final class AppModel {
   public internal(set) var settingsNavigationRequest: SettingsNavigationRequest?
   public var selectedSettingsPane: SettingsPane = .general
   public var voiceSetupPresentation: VoiceSetupPresentation = .waiting
-  public internal(set) var settingsPresentationGeneration = 0
-  var handledSettingsPresentationGeneration = 0
+  /// Settings replaces the main sidebar until the user returns or navigates elsewhere.
+  public internal(set) var isShowingSettings = false
   let recordInteractions: RecordInteractionServices
   internal var workflowEditorNavigationRequest: WorkflowEditorNavigationRequest?
 

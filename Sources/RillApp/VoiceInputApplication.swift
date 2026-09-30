@@ -80,10 +80,7 @@ struct RillApplication: App {
         .defaultSize(width: 960, height: 720)
         .commands {
             RillGlobalSearchCommands(language: container.model.settings.language)
-        }
-
-        Settings {
-            SettingsWindowView(model: container.model)
+            RillSettingsCommands(model: container.model)
         }
 
         MenuBarExtra {
@@ -144,17 +141,25 @@ private struct MenuBarContent: View {
 
 }
 
-private struct MainWindowContent: View {
-    @Environment(\.openSettings) private var openSettings
-    let container: AppContainer
+private struct RillSettingsCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+    let model: AppModel
 
-    private func presentRequestedSettings() {
-        if container.model.consumeSettingsPresentation() { openSettings() }
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button(L10n.text(.settingsTitle, language: model.settings.language)) {
+                model.presentSettings()
+                openWindow(id: RillApplication.mainWindowID)
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
     }
+}
+
+private struct MainWindowContent: View {
+    let container: AppContainer
 
     var body: some View {
         MainShellView(model: container.model)
-            .onChange(of: container.model.settingsPresentationGeneration) { _, _ in presentRequestedSettings() }
-            .onAppear { presentRequestedSettings() }
     }
 }

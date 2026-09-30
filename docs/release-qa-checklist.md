@@ -203,9 +203,10 @@ cannot be confused with deleting stored content.
 
 Complete the pass in both App languages.
 
-- [ ] All Records, collections, Activity, Workflows, and all six panes of the
-      independent Settings window have a coherent VoiceOver reading and focus order.
-      Settings → Data → Diagnostics remains accessible without changing the main route.
+- [ ] All Records, collections, Activity, Workflows, and all six settings panes in the
+      main window have a coherent VoiceOver reading and focus order. Back (⌘[) returns
+      to the page that was open before Settings. Settings → Data → Diagnostics remains
+      accessible without changing that saved route.
 - [ ] Restricted history previews expose only the same truncated text shown
       visually; disabled previews expose no body text.
 - [ ] Run History can move Older then Newer without duplicates or jumps, a new

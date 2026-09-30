@@ -361,9 +361,13 @@ public struct MenuBarStatusView: View {
         }
         .keyboardShortcut("o", modifiers: [.command, .shift])
 
-        SettingsLink {
+        Button {
+          model.presentSettings()
+          openMainWindow()
+        } label: {
           Label(L10n.text(.settingsTitle, language: model.settings.language), systemImage: RillSystemSymbol.gearshape.rawValue)
         }
+        .accessibilityIdentifier("menu.settings")
 
 
         Button {
@@ -462,12 +466,11 @@ public struct MenuBarStatusView: View {
         Divider()
 
         Button {
-          model.selectSidebarSection(.settings)
+          model.presentSettings()
           openMainWindow()
         } label: {
           Label(L10n.text(.settingsTitle, language: model.settings.language), systemImage: RillSystemSymbol.gearshape.rawValue)
         }
-        .keyboardShortcut(",", modifiers: .command)
 
         Button {
           openAbout()
