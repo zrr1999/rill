@@ -142,8 +142,14 @@ the matching hotkey is released. A matching re-press cancels that deadline and
 continues the same run. Its existing 140 ms startup debounce remains separate.
 Deferred releases retain run identity and participate in cancellation and shutdown
 draining; cancellation, authorization revocation, explicit stops and duration
-limits do not wait for the release delay. Stop feedback follows actual capture
-closure, so the recording surface and live preview remain active during the tail.
+limits do not wait for the release delay. A run-scoped release event hides the
+recording surface immediately. `VoiceRunModel` keeps capture state separate from
+panel visibility, so tail updates cannot reopen the panel and Esc remains armed
+until capture closes. A matching re-press restores the same capture presentation.
+The stop cue follows actual capture closure to keep it out of the recorded tail.
+`HotkeyEventTap` answers gesture-state queries from its recognizer: an observed
+key-up cannot be overridden by stale system flags. System sampling is reserved
+for recovering an interrupted tap that may have missed a physical transition.
 
 `EventBus` bounds each subscriber buffer and diagnostic tail. Consecutive
 presentation updates coalesce; lifecycle boundaries apply backpressure. Terminal
@@ -277,10 +283,20 @@ the migration adapter reads the file. Runtime test defaults live in
 
 ### 评测、诊断和功能命令
 
+质量评测位于 `Evals/`，真实模型由手动 CE 的 `RillQualityEvaluations` target 执行；
+性能工作负载位于 `Benchmarks/`，CodSpeed 仅报告 CPU simulation。
+`asr_run_data` 拥有原始回放数据的读取与配对，质量评分、性能比较和显式综合验收分别消费该数据。
+回放不依赖任何评分器；正常 CI 只验证评测工具和确定性契约。入口与报告见 [质量评测](../Evals/README.md)。
+
+归档源码统一使用 Corpus 命名。现有 `BenchmarkRecordings` 目录、`audio.benchmark-archive-enabled`
+设置值、`benchmark_recordings` / `benchmark_recordings_key` 加密上下文、验证标记和
+`benchmark-recording.*` 诊断事件值是持久化身份，保留原值；这不是第二套运行时模型。
+
+
 `DiagnosticEventName` 是诊断生产端的固定事件类型；字符串只在 JSON/SQLite 边界出现，
 未知持久化事件转换为 invalid sentinel，保留旧格式兼容。敏感内容仍由既有清洗器限制。
-`BenchmarkRecordingArchiveModel` 单独拥有设置写入、元数据选择、授权和导出任务；
-Platform 的 `BenchmarkCorpusExporter` 负责认证读取、私有暂存和原子发布。
+`CorpusRecordingArchiveModel` 单独拥有设置写入、元数据选择、授权和导出任务；
+Platform 的 `CorpusExporter` 负责认证读取、私有暂存和原子发布。
 历史维护周期任务归 `RunHistoryModel`，时钟显式注入；测试控制 tick 和完成条件。
 设置可用性、LLM 验证及其代际取消归 `SettingsPersistenceModel`，工作流解释的任务、
 失效和回执校验归 `WorkflowLibraryModel`；视图直接发出功能命令，不再经过 AppModel 转发。

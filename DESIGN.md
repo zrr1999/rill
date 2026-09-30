@@ -195,7 +195,7 @@ insets and the native editor's padding, remain local to their owners.
 | --- | --- | --- |
 | Main window | Default size in frontmatter; sidebar min/ideal/max 180/200/260pt | [App scene](Sources/RillApp/VoiceInputApplication.swift), [MainShellView](Sources/RillUI/MainShellView.swift) |
 | Records | Split list/detail at 700pt of record content width; narrower content shows list or selected detail | [RecordWorkspaceView](Sources/RillUI/RecordWorkspaceView.swift) |
-| Settings | Preferred size in frontmatter; minimum 720×560pt; sidebar min/ideal/max 160/176/220pt | [SettingsWindowView](Sources/RillUI/SettingsWindowView.swift) |
+| Settings | Same main window; settings sidebar min/ideal/max 160/176/220pt; Back returns to the previous page | [MainShellView](Sources/RillUI/MainShellView.swift), [SettingsDetailView](Sources/RillUI/SettingsWindowView.swift) |
 | Unified panel | Default and compact verification sizes in frontmatter; geometry is selected before opening and stays fixed during interaction | [RecordPanelPlacement](Sources/RillApp/RecordPanelPlacement.swift), [RecordPanelController](Sources/RillApp/RecordPanelController.swift) |
 | Collections preview | Fixed 194pt list column beside an opaque content preview | [RecordQuickPanelView](Sources/RillUI/RecordQuickPanelView.swift) |
 | Drafts | Fixed 194pt native list with single-line titles and metadata beside the native editor | [RecordBufferDraftView](Sources/RillUI/RecordBufferDraftView.swift) |
@@ -203,8 +203,8 @@ insets and the native editor's padding, remain local to their owners.
 | Recording overlay | Fixed compact/expanded surface sizes in frontmatter; shadow insets are outside those surfaces | [LiveSubtitleOverlay](Sources/RillUI/LiveSubtitleOverlay.swift) |
 
 The six Settings panes are General, Input, Voice & Models, Vocabulary & Memory,
-Privacy, and Data. They use a native sidebar and grouped forms. The selected pane
-owns the window title; mounted hidden panes preserve drafts while remaining
+Privacy, and Data. They replace the main sidebar until Back. The selected pane
+is the window subtitle; mounted hidden panes preserve drafts while remaining
 outside hit testing and accessibility navigation.
 
 Main-window navigation keeps All Records, Activity, and Workflows in one top

@@ -323,7 +323,8 @@ final class BufferOutputController: NSObject {
       panel?.isFloatingPanel = true
       panel?.becomesKeyOnlyIfNeeded = true
       panel?.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-      panel?.title = model?.settings.language == .simplifiedChinese ? "Rill · 输出下一项" : "Rill · Output Next"
+      panel?.title = L10n.surface(
+        .rillOutputNext, language: model?.settings.language ?? .english)
       panel?.center()
     }
     panel?.contentView = content

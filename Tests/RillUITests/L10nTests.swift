@@ -14,7 +14,7 @@ final class L10nTests: XCTestCase {
     )
     XCTAssertEqual(
       L10n.string(.menuCopyLastResult, language: .simplifiedChinese),
-      "复制上次转写结果"
+      "复制上次转写"
     )
     let longRecordingKey = try XCTUnwrap(L10n.Key(rawValue: "menuLongRecording"))
     let longRecordingToggleKey = try XCTUnwrap(L10n.Key(rawValue: "menuLongRecordingToggle"))

@@ -47,8 +47,11 @@ public final class AppModel {
   public internal(set) var settingsNavigationRequest: SettingsNavigationRequest?
   public var selectedSettingsPane: SettingsPane = .general
   public var voiceSetupPresentation: VoiceSetupPresentation = .waiting
-  public internal(set) var settingsPresentationGeneration = 0
-  var handledSettingsPresentationGeneration = 0
+  /// Settings replaces the main sidebar until the user returns or navigates elsewhere.
+  public internal(set) var isShowingSettings = false
+  /// Bumped only by `dismissSettings()`. Content navigation leaves settings without
+  /// asking the shell to reclaim the sidebar; typed destinations own that focus.
+  public internal(set) var settingsSidebarFocusRestoreGeneration: UInt64 = 0
   let recordInteractions: RecordInteractionServices
   internal var workflowEditorNavigationRequest: WorkflowEditorNavigationRequest?
 
@@ -95,7 +98,7 @@ public final class AppModel {
   public let vocabulary: VocabularyLibraryModel
   public internal(set) var recordRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
 
-  public let benchmarkArchive: BenchmarkRecordingArchiveModel
+  public let corpusArchive: CorpusRecordingArchiveModel
   public var enabledManualWorkflows: [WorkflowDefinition] {
     enabledWorkflows(for: .manual)
   }
@@ -310,10 +313,10 @@ public final class AppModel {
     refreshFailedAudioRecoveryAction: @escaping @Sendable (Bool) async throws -> Void,
     loadFailedAudioRecoveryReceiptsAction:
       @escaping @Sendable () async throws -> [FailedAudioRecoveryReceipt],
-    clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void,
-    refreshBenchmarkRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void,
-    benchmarkArchiveReader: (any BenchmarkRecordingArchiveReading)?,
-    benchmarkCorpusExporter: (any BenchmarkCorpusExporting)?,
+    clearCorpusRecordingArchiveAction: @escaping @Sendable () async throws -> Void,
+    refreshCorpusRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void,
+    corpusArchiveReader: (any CorpusRecordingArchiveReading)?,
+    corpusExporter: (any CorpusExporting)?,
     authorizeWorkflowRunAction:
       @escaping @Sendable (
         WorkflowDefinition
@@ -451,9 +454,9 @@ public final class AppModel {
     self.clearFailedAudioRecoveryAction = clearFailedAudioRecoveryAction
     self.refreshFailedAudioRecoveryAction = refreshFailedAudioRecoveryAction
     self.loadFailedAudioRecoveryReceiptsAction = loadFailedAudioRecoveryReceiptsAction
-    self.benchmarkArchive = BenchmarkRecordingArchiveModel(settings: settings, store: settingsStore,
-      reader: benchmarkArchiveReader, exporter: benchmarkCorpusExporter,
-      refresh: refreshBenchmarkRecordingArchiveAction, clear: clearBenchmarkRecordingArchiveAction)
+    self.corpusArchive = CorpusRecordingArchiveModel(settings: settings, store: settingsStore,
+      reader: corpusArchiveReader, exporter: corpusExporter,
+      refresh: refreshCorpusRecordingArchiveAction, clear: clearCorpusRecordingArchiveAction)
     self.authorizeWorkflowRunAction = authorizeWorkflowRunAction
     self.writeClipboardTextAction = writeClipboardTextAction
     self.deliverNextRecordAction = deliverNextRecordAction
@@ -670,7 +673,7 @@ extension AppModel {
     hasBegunApplicationShutdown = true
     guard hasBegunApplicationShutdown, !oldValue else { return }
     history.hasBegunApplicationShutdown = true
-    benchmarkArchive.beginShutdown()
+    corpusArchive.beginShutdown()
     settings.beginShutdown()
     voice.stopResourcePreparationForApplicationShutdown()
     workflowLibrary.cancelWorkflowExplanation()

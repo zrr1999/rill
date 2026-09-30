@@ -277,7 +277,7 @@ public struct RecordWorkspaceView: View {
             }
             .fixedSize(horizontal: true, vertical: false)
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: RillSpacing.dense) {
                 collectionPresetPicker(collection)
                     .frame(maxWidth: .infinity)
                 HStack(spacing: 16) {
@@ -335,8 +335,7 @@ public struct RecordWorkspaceView: View {
     }
 
     private var hasRecordFilters: Bool {
-        !workspace.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || workspace.showsPinnedOnly || workspace.sourceAppFilterBundleIdentifier != nil || workspace.payloadKindFilter != nil
+        workspace.showsPinnedOnly || workspace.sourceAppFilterBundleIdentifier != nil || workspace.payloadKindFilter != nil
     }
 
     private var recordSources: [(id: String, name: String)] {

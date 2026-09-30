@@ -4,6 +4,7 @@ import SwiftUI
 import RillCore
 import XCTest
 
+@testable import RillRecords
 @testable import RillUI
 
 private actor SidebarFocusTurnGate {
@@ -90,7 +91,7 @@ private actor MissingRunHistoryBrowser: RunHistoryBrowsing {
 
 @MainActor
 final class MainShellFocusIntegrationTests: XCTestCase {
-    func testJevDeepLinkFocusesSecureFieldInsideIndependentSettingsWindow() async throws {
+    func testJevDeepLinkFocusesSecureFieldInSettingsMode() async throws {
         _ = NSApplication.shared
         let fixture = JevPanelFixture()
         let workspace = RecordWorkspaceModel(store: fixture.store, cloudRanking: fixture.service)
@@ -99,7 +100,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: SettingsWindowView(model: model))
+        window.contentView = NSHostingView(rootView: MainShellView(model: model))
         window.makeKeyAndOrderFront(nil)
         defer { tearDown(window) }
         await settle(window)
@@ -1391,7 +1392,7 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         )
     }
 
-    func testSettingsRequestLeavesMainWindowSelectionAndResponderIntact() async throws {
+    func testSettingsRequestKeepsContentSelectionAndFocusesSettings() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
         let window = makeWindow(model: harness.model)
@@ -1407,36 +1408,152 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         harness.model.showSettings(.privacy)
         await settle(window)
 
+        XCTAssertTrue(harness.model.isShowingSettings)
         XCTAssertEqual(harness.model.selectedSidebarSection, selectedSection)
         XCTAssertEqual(harness.model.selectedSettingsPane, .privacy)
-        XCTAssertEqual(harness.model.settingsNavigationRequest?.section, .privacy)
-        XCTAssertTrue(window.firstResponder === responder)
-        XCTAssertTrue(harness.model.consumeSettingsPresentation())
-        XCTAssertFalse(harness.model.consumeSettingsPresentation())
+        XCTAssertNil(harness.model.settingsNavigationRequest)
+        let focused = try XCTUnwrap(window.firstResponder as? NSView)
+        XCTAssertFalse(focused === responder)
+        XCTAssertTrue(focused.isDescendant(of: try XCTUnwrap(window.contentView)))
     }
 
-    func testTypedSettingsDestinationAppearsInIndependentWindow() async throws {
+    func testReturningFromSettingsRestoresThePreviousPage() async throws {
         _ = NSApplication.shared
         let harness = makeHarness()
-        let mainWindow = makeWindow(model: harness.model)
-        defer { tearDown(mainWindow) }
-        await settle(mainWindow)
-        let destination = harness.model.selectedSidebarSection
+        let window = makeWindow(model: harness.model)
+        defer { tearDown(window) }
+        await settle(window)
+        let collectionID = RecordCollection.inboxID
+        harness.model.showRecordCollection(collectionID)
         harness.model.showSettings(.speech)
-        let settingsWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 640), styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        settingsWindow.isReleasedWhenClosed = false
-        settingsWindow.contentView = NSHostingView(rootView: SettingsWindowView(model: harness.model))
-        settingsWindow.makeKeyAndOrderFront(nil)
-        defer { tearDown(settingsWindow) }
-        await settle(settingsWindow)
+        await settle(window)
 
-        XCTAssertEqual(harness.model.selectedSidebarSection, destination)
+        harness.model.dismissSettings()
+        await settle(window)
+
+        XCTAssertFalse(harness.model.isShowingSettings)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .records)
+        XCTAssertEqual(harness.model.recordWorkspace.selectedCollectionID, collectionID)
         XCTAssertEqual(harness.model.selectedSettingsPane, .voice)
+        let sidebar = try XCTUnwrap(sidebarTable(in: window))
+        XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
+    }
+
+    func testLeavingSettingsThroughATypedRecordDoesNotClaimSidebar() async throws {
+        _ = NSApplication.shared
+        let store = RecordStore()
+        let projection = try await store.ingest(
+            RecordDraft(
+                payload: .text("typed destination"),
+                provenance: RecordProvenance(source: RecordSourceIdentity(kind: .user))
+            ),
+            into: []
+        )
+        let workspace = RecordWorkspaceModel(store: store)
+        await workspace.refresh()
+        let harness = makeHarness(recordWorkspace: workspace)
+        let window = makeWindow(model: harness.model)
+        defer { tearDown(window) }
+        await settle(window)
+        let sidebar = try XCTUnwrap(sidebarTable(in: window))
+        harness.model.presentSettings()
+        await settle(window)
+
+        await harness.model.showRecord(projection.id)
+        await settle(window)
+
+        XCTAssertFalse(harness.model.isShowingSettings)
+        XCTAssertEqual(harness.model.recordWorkspace.revealedRecordID, projection.id)
+        XCTAssertFalse(
+            isResponder(window.firstResponder, inside: sidebar),
+            "A typed record destination must keep detail focus after leaving settings."
+        )
+        await workspace.shutdown()
+    }
+
+    func testBackShortcutLeavesSettingsOnlyWhileGlobalSearchIsClosed() async throws {
+        _ = NSApplication.shared
+        let harness = makeHarness()
+        harness.model.presentSettings()
+        let window = makeWindow(model: harness.model)
+        defer { tearDown(window) }
+        await settle(window)
+        let back = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, characters: "[",
+            charactersIgnoringModifiers: "[", isARepeat: false, keyCode: 33))
+
+        _ = window.performKeyEquivalent(with: back)
+        await settle(window)
+        XCTAssertFalse(harness.model.isShowingSettings)
+
+        harness.model.presentSettings()
+        await settle(window)
+        let search = try XCTUnwrap(window.toolbar?.items.first {
+            $0.itemIdentifier.rawValue.contains("rill.global-search")
+        }?.view)
+        click(search, in: window)
+        await settle(window)
+        _ = window.performKeyEquivalent(with: back)
+        await settle(window)
+        XCTAssertTrue(harness.model.isShowingSettings, "Global search owns the window until it is dismissed.")
+    }
+
+    func testContentNavigationLeavesSettingsAndKeepsTheLastPane() {
+        let harness = makeHarness()
+        harness.model.showSettings(.privacy)
+        harness.model.showRecordCollection(RecordCollection.inboxID)
+        XCTAssertFalse(harness.model.isShowingSettings)
+        XCTAssertEqual(harness.model.selectedSettingsPane, .privacy)
+        XCTAssertEqual(harness.model.recordWorkspace.selectedCollectionID, RecordCollection.inboxID)
+
+        harness.model.showSettings(.speech)
+        harness.model.showRunHistory()
+        XCTAssertFalse(harness.model.isShowingSettings)
+        XCTAssertEqual(harness.model.selectedSidebarSection, .stream)
+        XCTAssertEqual(harness.model.selectedSettingsPane, .voice)
+    }
+
+    func testDismissSettingsDropsComparisonReturnButResumeStillWorksBeforeDismiss() {
+        let model = makeHarness().model
+        let context = RecordComparisonReturn(
+            query: "sample", resultLimit: 1, candidateIDs: [RecordID()],
+            semanticIDs: [], selectedID: nil, sourceBundleIdentifier: nil, currentAppOnly: false,
+            kind: nil, pinnedOnly: false)
+        var resumed = 0
+        model.offerComparisonReturn(context) { _ in resumed += 1 }
+        model.presentSettings()
+        model.resumeComparison()
+        XCTAssertEqual(resumed, 1)
+        XCTAssertNil(model.comparisonReturn)
+
+        model.offerComparisonReturn(context) { _ in resumed += 1 }
+        model.presentSettings()
+        model.dismissSettings()
+        model.resumeComparison()
+        XCTAssertEqual(resumed, 1)
+        XCTAssertFalse(model.isShowingSettings)
+        XCTAssertNil(model.comparisonReturn)
+    }
+
+    func testSettingsDeepLinkIsReadyBeforeTheWindowAppears() async throws {
+        _ = NSApplication.shared
+        let harness = makeHarness()
+        harness.model.showSettings(.storage)
+        XCTAssertTrue(harness.model.isShowingSettings)
+        XCTAssertEqual(harness.model.selectedSettingsPane, .data)
+        XCTAssertEqual(harness.model.settingsNavigationRequest?.section, .storage)
+
+        let window = makeWindow(model: harness.model)
+        defer { tearDown(window) }
+        await settle(window)
+
         XCTAssertNil(harness.model.settingsNavigationRequest)
-        let responder = try XCTUnwrap(settingsWindow.firstResponder as? NSView)
-        XCTAssertTrue(responder.isDescendant(of: try XCTUnwrap(settingsWindow.contentView)))
-        XCTAssertTrue(settingsWindow.isVisible)
-        XCTAssertTrue(mainWindow.isVisible)
+        XCTAssertEqual(harness.model.selectedSettingsPane, .data)
+        let responder = try XCTUnwrap(window.firstResponder as? NSView)
+        XCTAssertGreaterThan(responder.bounds.height, 0)
+        XCTAssertLessThan(responder.bounds.height, 80,
+            "A settings deep link should focus the disclosure header, not its expanded contents.")
     }
 
     func testSettingsNavigationFocusStaysWithinDisclosureHeader() async throws {

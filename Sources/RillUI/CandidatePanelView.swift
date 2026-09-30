@@ -8,6 +8,7 @@ public struct CandidatePanelView: View {
     let onDismiss: () -> Void
 
     @State private var selections: [UUID: UUID] = [:]
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     public init(
         candidateCase: CandidateResolutionCase,
@@ -60,7 +61,7 @@ public struct CandidatePanelView: View {
                         .font(.subheadline.weight(.medium))
                     Text(candidateSet.surfaceText)
                         .textSelection(.enabled)
-                    FlowLayout(spacing: 10) {
+                    FlowLayout(spacing: RillSpacing.dense) {
                         ForEach(candidateSet.candidates) { candidate in
                             let isSelected = currentSelection(for: candidateSet) == candidate.id
                             Button {
@@ -77,7 +78,7 @@ public struct CandidatePanelView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(10)
+                                .padding(RillSpacing.dense)
                                 .rillSelection(isSelected, cornerRadius: RillRadius.section)
                             }
                             .buttonStyle(CandidateButtonStyle(cornerRadius: RillRadius.section))
@@ -114,7 +115,14 @@ public struct CandidatePanelView: View {
             }
         }
         .padding(RillSpacing.panel)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: RillRadius.panel, style: .continuous))
+        .background {
+            let shape = RoundedRectangle(cornerRadius: RillRadius.panel, style: .continuous)
+            if reduceTransparency {
+                shape.fill(Color(nsColor: .windowBackgroundColor))
+            } else {
+                shape.fill(.thinMaterial)
+            }
+        }
     }
 
     private func currentSelection(for set: CandidateSet) -> UUID? {

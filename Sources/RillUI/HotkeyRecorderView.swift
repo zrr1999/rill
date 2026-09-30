@@ -109,7 +109,7 @@ struct HotkeyRecorderView: View {
             .accessibilityIdentifier("\(identifier).keycap")
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isRecording)
 
-            HStack(spacing: 10) {
+            HStack(spacing: RillSpacing.dense) {
                 Button(
                     L10n.text(
                         isRecording

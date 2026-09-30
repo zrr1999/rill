@@ -8,17 +8,15 @@ public struct RecordBufferSummaryView: View {
     self.model = model
     self.language = language
   }
-  private func text(_ zh: String, _ en: String) -> String {
-    language == .simplifiedChinese ? zh : en
-  }
+  private func text(_ key: SurfaceText) -> String { L10n.surface(key, language: language) }
 
   public var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: RillSpacing.dense) {
       HStack {
-        Text(text("输出下一项", "Output Next")).font(.headline)
+        Text(text(.outputNext)).font(.headline)
         Spacer()
         Text("\(model.snapshot?.remainingCount ?? 0)").monospacedDigit()
-          .accessibilityLabel(text("剩余数量", "Remaining count"))
+          .accessibilityLabel(text(.remainingCount))
       }
       if let header = model.snapshot?.nextHeader {
         Text(header.preview.isEmpty ? header.kind.rawValue : header.preview).lineLimit(2)
@@ -27,7 +25,7 @@ public struct RecordBufferSummaryView: View {
       } else {
         Text(
           model.snapshot?.next?.state == .preparing
-            ? text("处理中", "Processing") : text("没有待输出内容", "Nothing pending")
+            ? text(.processingStatus) : text(.nothingToOutput)
         )
         .foregroundStyle(.secondary)
       }
@@ -42,40 +40,36 @@ public struct RecordBufferStatusView: View {
     self.model = model
     self.language = language
   }
-  private func text(_ zh: String, _ en: String) -> String {
-    language == .simplifiedChinese ? zh : en
-  }
+  private func text(_ key: SurfaceText) -> String { L10n.surface(key, language: language) }
 
   public var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: RillSpacing.dense) {
       RecordBufferSummaryView(model: model, language: language)
       if let active = model.snapshot?.active {
         if active.state == .awaitingConfirmation || active.state == .delivering {
-          Text(text("结果待确认", "Confirm the result")).font(.headline)
+          Text(text(.confirmTheResult)).font(.headline)
           Text(
-            text(
-              "只有确认内容已插入，才会推进。部分输出时请先检查目标。",
-              "Advance only after confirming insertion. Check the target after a partial output.")
+            text(.advanceOnlyAfterConfirmingInsertion)
           )
           .font(.caption)
           HStack {
-            Button(text("已插入", "Inserted"), action: model.confirmAction)
-            Button(text("重试此项", "Retry item"), action: model.retryAction)
+            Button(text(.inserted), action: model.confirmAction)
+            Button(text(.retryItem), action: model.retryAction)
           }.disabled(model.isSending)
         } else if active.state == .delivered {
-          Text(text("已输出，等待保存状态", "Delivered; settlement pending"))
-          Button(text("重试保存", "Retry saving"), action: model.confirmAction)
+          Text(text(.deliveredSettlementPending))
+          Button(text(.retrySaving), action: model.confirmAction)
         }
       }
       if let message = model.message { Text(message).font(.caption) }
       HStack {
-        Button(text("打开待发区", "Open drafts"), action: model.openEditorAction)
+        Button(text(.openDrafts), action: model.openEditorAction)
         if model.snapshot?.active == nil {
-          Text(text("聚焦目标后按输出快捷键", "Focus the target and press the output shortcut"))
+          Text(text(.focusTheTargetAndPress))
             .font(.caption).foregroundStyle(.secondary)
         }
         Spacer()
-        Button(text("关闭", "Close"), action: model.cancelAction)
+        Button(text(.close), action: model.cancelAction)
       }
     }
     .padding(16)
@@ -89,19 +83,17 @@ struct RecordBufferToolbar: View {
   let language: AppLanguage
   @State private var setEntries: [BufferEntry] = []
   @State private var selectedSet: RecordBufferID?
-  private func text(_ zh: String, _ en: String) -> String {
-    language == .simplifiedChinese ? zh : en
-  }
+  private func text(_ key: SurfaceText) -> String { L10n.surface(key, language: language) }
 
   var body: some View {
     HStack {
       Button(action: workspace.buffers.openEditorAction) {
         HStack(spacing: 8) {
-          Label(text("待发", "Drafts"), systemImage: "tray")
+          Label(text(.drafts), systemImage: RillSystemSymbol.tray.rawValue)
             .fixedSize()
           Text("\(workspace.buffers.snapshot?.remainingCount ?? 0)").monospacedDigit().fixedSize()
           Text(workspace.buffers.snapshot?.nextHeader?.preview
-            ?? (workspace.buffers.snapshot?.next == nil ? text("空", "Empty") : text("处理中", "Processing")))
+            ?? (workspace.buffers.snapshot?.next == nil ? text(.empty) : text(.processingStatus)))
             .foregroundStyle(.secondary).lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -132,21 +124,21 @@ struct RecordBufferToolbar: View {
         Divider()
         if let recordID = workspace.selectedRecordID {
           ForEach(workspace.buffers.snapshot?.buffers ?? []) { summary in
-            Button(text("加入 ", "Add to ") + summary.buffer.name) {
+            Button(text(.addTo) + summary.buffer.name) {
               workspace.buffers.enqueue(recordID, bufferID: summary.id)
             }
           }
         }
-        Button(text("新建 Set", "New Set")) {
-          workspace.buffers.createSet(name: text("手动取用", "Reusable items"))
+        Button(text(.newSet)) {
+          workspace.buffers.createSet(name: text(.reusableItems))
         }
       } label: {
-        Image(systemName: "ellipsis.circle")
+        Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue)
       }
-      .help(text("管理待发容器", "Manage output buffers"))
-      .accessibilityLabel(text("管理待发容器", "Manage output buffers"))
+      .help(text(.manageOutputBuffers))
+      .accessibilityLabel(text(.manageOutputBuffers))
     }
-    .padding(10)
+    .padding(RillSpacing.dense)
     .task { workspace.buffers.start() }
     .popover(
       isPresented: Binding(get: { selectedSet != nil }, set: { if !$0 { selectedSet = nil } })
@@ -164,7 +156,7 @@ struct RecordBufferToolbar: View {
               workspace.buffers.outputAction(entry.id)
             }.lineLimit(2)
           }
-          if setEntries.isEmpty { Text(text("暂无内容", "Empty")) }
+          if setEntries.isEmpty { RillEmptyState(title: text(.noItems), symbol: .tray) }
         }
       }.padding().frame(width: 320, height: 320)
     }
