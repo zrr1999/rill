@@ -273,11 +273,12 @@ the More menu. Selection, hover, keyboard focus, and inactive-window appearance
 come from native controls. Functional icons use SF Symbols through existing
 project conventions; icon-only buttons retain help and accessibility labels.
 
-The floating workspace follows the approved B preview: a quiet text action for
-finishing editing or adding a draft, a subtle outlined Copy button, and a solid
-foreground-colored Send button. `RecordPanelActionStyle` styles native Buttons
-without replacing their activation or accessibility semantics. Their 31pt height
-and fixed widths do not change with selection, status, or output confirmation.
+The floating workspace keeps the approved B proportions and uses a quiet text
+action for finishing editing or adding a draft, native `.glass` for Copy, and
+accent-colored `.glassProminent` for Send. Native styles own activation,
+accessibility, and pointer feedback. The 32pt action slots have fixed widths;
+`buttonSizing(.flexible)` fills the assigned width without moving controls when
+selection, status, or output confirmation changes.
 
 ### Search and text input
 
