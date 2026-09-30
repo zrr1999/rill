@@ -47,7 +47,6 @@ final class SealedCaptureHandoffTests: XCTestCase {
 
     func testRejectedEnqueueDiscardsAndDoesNotReportQueued() async throws {
         let probe = HandoffProbe()
-        probe.enqueueResult = .rejected
         let outcome = try await SealedCaptureHandoff.transfer(
             finish: { probe.capture },
             owns: { true },
@@ -66,6 +65,45 @@ final class SealedCaptureHandoffTests: XCTestCase {
         XCTAssertTrue(probe.discarded)
         XCTAssertTrue(probe.rejected)
     }
+
+    func testSealFailureCancelsCaptureUsesSealDiscardAndRethrows() async throws {
+        let probe = HandoffProbe()
+        let capture = DeferredCapturedAudio(task: Task {
+            try await Task.sleep(for: .seconds(10))
+            throw HandoffTestError.captureNotCancelled
+        })
+        do {
+            _ = try await SealedCaptureHandoff.transfer(
+                finish: { capture },
+                owns: { true },
+                ownsForQueue: { true },
+                seal: { throw HandoffTestError.sealFailed },
+                stoppedCue: { XCTFail("The stop cue follows a sealed capture.") },
+                beforeLease: { _ in },
+                lease: { "lease" },
+                enqueue: { _, _ in
+                    XCTFail("A capture that failed to seal must not be queued.")
+                    return .accepted
+                },
+                discard: { _ in probe.discarded = true },
+                discardAfterSealFailure: { _ in probe.sealDiscarded = true },
+                afterRejected: {},
+                afterLostOwnership: {}
+            )
+            XCTFail("Seal failure must propagate.")
+        } catch HandoffTestError.sealFailed {}
+        XCTAssertTrue(probe.sealDiscarded)
+        XCTAssertFalse(probe.discarded)
+        do {
+            _ = try await capture.value()
+            XCTFail("An unsealed capture must be cancelled.")
+        } catch is CancellationError {}
+    }
+}
+
+private enum HandoffTestError: Error {
+    case sealFailed
+    case captureNotCancelled
 }
 
 private final class HandoffProbe: @unchecked Sendable {
