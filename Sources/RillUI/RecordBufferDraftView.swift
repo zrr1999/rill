@@ -7,16 +7,22 @@ public struct RecordBufferDraftView: View {
   @Bindable private var settings: SettingsPersistenceModel
   private let setVoiceCollection: (Bool) -> Void
   private let setClipboardCollection: (Bool) -> Void
-  private let embedded: Bool
+  private let onFinishEditing: () -> Void
+  private let copyText: (String) -> Void
   private var language: AppLanguage { settings.language }
   @State private var showsDiscard = false
   @State private var comparesRecognition = true
+  @State private var query = ""
+  @State private var showsCollectionControls = false
+  @State private var showsDetails = false
+  @State private var showsFailure = false
 
-  public init(model: AppModel, embedded: Bool = false) {
+  public init(model: AppModel, onFinishEditing: @escaping () -> Void = {}) {
     self.model = model.recordWorkspace.buffers.editor
     self.voice = model.voice
     self.settings = model.settings
-    self.embedded = embedded
+    self.onFinishEditing = onFinishEditing
+    copyText = { [weak model] in model?.copyTextToClipboard($0) }
     setVoiceCollection = { [weak model] enabled in
       model?.setBuiltinPushToTalkOutputMode(enabled ? .saveToVoiceGroup : .pasteIntoApp)
     }
@@ -31,37 +37,12 @@ public struct RecordBufferDraftView: View {
     return false
   }
 
+  private func panelText(_ key: RecordPanelText) -> String {
+    L10n.recordPanel(key, language: language)
+  }
+
   public var body: some View {
-    VStack(spacing: 0) {
-      HStack(spacing: 12) {
-        if !embedded {
-          Text(text("待发区", "Drafts")).font(.headline)
-          Text("\(model.items.count)").monospacedDigit().foregroundStyle(.secondary)
-        }
-        Spacer()
-        Button { model.newItem() } label: {
-          Label(text("新建", "New item"), systemImage: "square.and.pencil")
-        }
-        .accessibilityIdentifier("record-buffer.new")
-        .disabled(model.session?.hasMarkedText == true)
-        Button(action: model.dictateNewItem) {
-          Label(isRecording ? text("结束录音", "Finish recording") : text("录音新建", "Record new item"),
-                systemImage: isRecording ? "stop.circle" : "mic")
-        }
-        .disabled(voice.isRunning && !isRecording)
-      }
-      .disabled(model.isBusy)
-      .padding(14)
-      collectionControls
-      Divider()
-      HSplitView {
-        itemList.frame(minWidth: 180, idealWidth: 215, maxWidth: 300)
-        editor.frame(minWidth: 330, maxWidth: .infinity, maxHeight: .infinity)
-      }
-      Divider()
-      footer.padding(12)
-    }
-    .frame(minWidth: 580, minHeight: embedded ? 420 : 520)
+    content
     .background(.background)
     .accessibilityIdentifier("record-buffer.drafts")
     .alert(text("移除此待发项？", "Remove this pending item?"), isPresented: $showsDiscard) {
@@ -70,6 +51,96 @@ public struct RecordBufferDraftView: View {
     } message: {
       Text(text("草稿修改将被丢弃，原始记录仍保留。", "Draft edits will be discarded. The original record is retained."))
     }
+    .sheet(isPresented: $showsCollectionControls) {
+      VStack(alignment: .leading, spacing: 16) {
+        Text(panelText(.draftSources)).font(.headline)
+        collectionControls
+        HStack { Spacer(); Button(panelText(.done)) { showsCollectionControls = false } }
+      }.padding(20).frame(width: 560)
+    }
+    .sheet(isPresented: $showsDetails) {
+      VStack(alignment: .leading, spacing: 0) {
+        if let session = model.session { ScrollView { draftDetails(session) } }
+        HStack { Spacer(); Button(panelText(.done)) { showsDetails = false } }.padding(12)
+      }.frame(width: 520, height: 340)
+    }
+    .sheet(isPresented: $showsFailure) {
+      VStack(alignment: .leading, spacing: 16) {
+        if let failure = model.failure {
+          Text(failureText(failure))
+          failureActions(failure)
+        }
+        HStack { Spacer(); Button(panelText(.done)) { showsFailure = false } }
+      }.padding(20).frame(width: 440)
+    }
+  }
+
+  private var content: some View {
+    VStack(spacing: 0) {
+      HSplitView {
+        VStack(spacing: 8) {
+          HStack {
+            Text(panelText(.draftList)).font(.caption).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            Button { model.newItem() } label: { Image(systemName: RillSystemSymbol.plus.rawValue) }
+              .help(panelText(.newDraft))
+              .accessibilityLabel(panelText(.newDraft))
+              .accessibilityIdentifier("record-buffer.new")
+              .disabled(model.isBusy || model.session?.hasMarkedText == true)
+            Menu {
+              Button(isRecording ? text("结束录音", "Finish recording") : text("录音新建", "Record new item"),
+                     action: model.dictateNewItem)
+                .disabled(model.isBusy || model.session?.hasMarkedText == true || (voice.isRunning && !isRecording))
+              Button(panelText(.configureDraftSources)) { showsCollectionControls = true }
+              Divider()
+              Button(text("移除此项", "Remove item"), role: .destructive) { showsDiscard = true }
+                .disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
+            } label: { Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue) }
+            .menuStyle(.borderlessButton).frame(width: 22)
+            .accessibilityLabel(panelText(.draftOptions))
+          }.controlSize(.small).padding(.horizontal, 12).padding(.top, 12)
+          TextField(panelText(.searchDrafts), text: $query)
+            .textFieldStyle(.roundedBorder).padding(.horizontal, 10)
+            .accessibilityIdentifier("record-buffer.search")
+          itemList
+        }.frame(minWidth: 180, idealWidth: 220, maxWidth: 280)
+        editor.frame(minWidth: 310, maxWidth: .infinity, maxHeight: .infinity)
+      }
+      Divider()
+      footer
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+
+  private var footer: some View {
+    HStack(spacing: 8) {
+      if let failure = model.failure {
+        Button { showsFailure = true } label: {
+          Label(failureText(failure), systemImage: RillSystemSymbol.exclamationmarkCircle.rawValue).lineLimit(1)
+        }.buttonStyle(.plain).foregroundStyle(.red).help(failureText(failure))
+      } else {
+        Text(model.targetName.map { text("发送到 ", "Send to ") + $0 }
+          ?? panelText(.sendWhenReady))
+          .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+      }
+      Spacer(minLength: 0)
+      Button(panelText(.doneEditing), action: onFinishEditing)
+        .frame(width: 88)
+        .disabled(model.session == nil || model.session?.hasMarkedText == true)
+        .accessibilityIdentifier("record-buffer.finish-editing")
+      Button(panelText(.copy)) { if let session = model.session { copyText(session.text) } }
+        .frame(width: 60)
+        .disabled(model.session?.text.isEmpty != false || model.isBusy || model.session?.hasMarkedText == true)
+        .accessibilityIdentifier("record-buffer.copy")
+      Button(panelText(.send), action: model.send)
+        .frame(width: 84)
+        .buttonStyle(.borderedProminent)
+        .disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
+        .help(text("编辑时按 ⌘Return 发送；Return 换行。", "⌘Return sends while editing; Return inserts a newline."))
+        .accessibilityIdentifier("record-buffer.send")
+    }
+    .controlSize(.small).padding(.horizontal, 14).frame(height: 56)
+    .accessibilityIdentifier("record-buffer.actions")
   }
 
   private var collectionControls: some View {
@@ -102,25 +173,27 @@ public struct RecordBufferDraftView: View {
   private var itemList: some View {
     List(selection: Binding(get: { model.selectedID }, set: { if let id = $0 { model.select(id) } })) {
       ForEach(model.buffers) { summary in
-        Section {
-          let entries = model.items.filter { $0.id.bufferID == summary.id }
-          ForEach(summary.buffer.policy == .stack ? entries.reversed() : entries) { item in
-            VStack(alignment: .leading, spacing: 5) {
-              Text(item.state == .preparing ? text("正在识别…", "Recognizing…")
-                : preview(item))
-                .lineLimit(3)
-              if item.hasEdits || item.suggestionCount > 0 || item.state != .ready {
-                Text(item.suggestionCount > 0 ? text("有待应用结果", "Result to review")
-                  : item.hasEdits ? text("已编辑", "Edited") : text("处理中", "In progress"))
-                  .font(.caption).foregroundStyle(.secondary)
+        let entries = visibleItems.filter { $0.id.bufferID == summary.id }
+        if !entries.isEmpty {
+          Section {
+            ForEach(summary.buffer.policy == .stack ? entries.reversed() : entries) { item in
+              VStack(alignment: .leading, spacing: 5) {
+                Text(item.state == .preparing ? text("正在识别…", "Recognizing…")
+                  : preview(item))
+                  .lineLimit(3)
+                if item.hasEdits || item.suggestionCount > 0 || item.state != .ready {
+                  Text(item.suggestionCount > 0 ? text("有待应用结果", "Result to review")
+                    : item.hasEdits ? text("已编辑", "Edited") : text("处理中", "In progress"))
+                    .font(.caption).foregroundStyle(.secondary)
+                }
               }
+              .padding(.vertical, 4)
+              .tag(item.id)
             }
-            .padding(.vertical, 4)
-            .tag(item.id)
+          } header: {
+            Text(bufferName(summary.buffer) + " · " + policyName(summary.buffer.policy)
+              + (summary.buffer.isEnabled ? "" : text(" · 已停用", " · Disabled")))
           }
-        } header: {
-          Text(bufferName(summary.buffer) + " · " + policyName(summary.buffer.policy)
-            + (summary.buffer.isEnabled ? "" : text(" · 已停用", " · Disabled")))
         }
       }
     }
@@ -128,11 +201,17 @@ public struct RecordBufferDraftView: View {
     .onKeyPress(.return) { model.send(); return .handled }
     .disabled(model.isBusy || model.session?.hasMarkedText == true)
     .overlay {
-      if model.items.isEmpty {
-        Text(text("新建草稿，或将语音结果\n先收进待发区。", "Create a draft or collect\nvoice results here first."))
+      if visibleItems.isEmpty {
+        Text(query.isEmpty
+             ? text("新建草稿，或将语音结果\n先收进待发区。", "Create a draft or collect\nvoice results here first.")
+             : panelText(.noMatchingDrafts))
           .foregroundStyle(.secondary).multilineTextAlignment(.center).padding()
       }
     }
+  }
+
+  private var visibleItems: [BufferItemSummary] {
+    query.isEmpty ? model.items : model.items.filter { preview($0).localizedStandardContains(query) }
   }
 
   @ViewBuilder private var editor: some View {
@@ -141,32 +220,42 @@ public struct RecordBufferDraftView: View {
         HStack {
           Text(text("编辑内容", "Edit text")).font(.subheadline.weight(.medium))
           Spacer()
-          Text(model.isSaving ? text("保存中…", "Saving…")
-            : session.hasUnsavedChanges ? text("尚未保存", "Unsaved") : text("已保存", "Saved"))
-            .font(.caption).foregroundStyle(.secondary)
           Button(action: model.dictateHere) {
-            Label(text("在此听写", "Dictate here"), systemImage: "mic.badge.plus")
+            Label(text("在此听写", "Dictate here"), systemImage: RillSystemSymbol.micBadgePlus.rawValue)
           }
           .disabled(model.isBusy || voice.isRunning || session.hasMarkedText)
         }.padding(12).fixedSize(horizontal: false, vertical: true)
         BufferDraftTextEditor(model: model, session: session,
                               accessibilityLabel: text("待发内容", "Pending text"))
           .id(session.id)
-          .frame(minHeight: 140)
-        Divider()
-        ScrollView {
-          draftDetails(session)
-        }
-        .frame(minHeight: 44, idealHeight: model.showsChanges || !session.saved.suggestions.isEmpty ? 200 : 44,
-               maxHeight: model.showsChanges || !session.saved.suggestions.isEmpty ? 240 : 44)
+          .frame(minHeight: 48)
+        HStack {
+          saveState(session)
+          Spacer(minLength: 8)
+          Button(session.saved.suggestions.isEmpty ? panelText(.reviewEdits) : panelText(.reviewResults)) {
+            model.showsChanges = true
+            showsDetails = true
+          }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
+        }.padding(.horizontal, 12).frame(height: 32)
       }
     } else {
       ContentUnavailableView {
-        Label(text("选择待发项", "Select an item"), systemImage: "text.cursor")
+        Label(text("选择待发项", "Select an item"), systemImage: RillSystemSymbol.textCursor.rawValue)
       } description: {
         Text(text("文字可直接修改、选中和撤销。识别中的条目完成后即可编辑。", "Edit, select and undo text here. Pending recognition becomes editable when it finishes."))
       }
     }
+  }
+
+  private func saveState(_ session: BufferEditingSession) -> some View {
+    Text(model.isSaving ? text("保存中…", "Saving…")
+      : session.hasUnsavedChanges ? text("尚未保存", "Unsaved") : text("已保存", "Saved"))
+      .font(.caption).foregroundStyle(.secondary)
+  }
+
+  @ViewBuilder private func failureActions(_ failure: RecordBufferDraftModel.Failure) -> some View {
+    if failure == .saving { Button(panelText(.retrySave), action: model.retrySaving) }
+    if failure == .changed { Button(text("另存新草稿", "Save as new draft"), action: model.saveAsNewItem) }
   }
 
   private func draftDetails(_ session: BufferEditingSession) -> some View {
@@ -205,33 +294,6 @@ public struct RecordBufferDraftView: View {
           }.padding(.top, 8)
         }
       }.padding(12)
-    }
-  }
-
-  private var footer: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if let failure = model.failure {
-        HStack {
-          Text(failureText(failure)).font(.caption).foregroundStyle(.red)
-          if failure == .saving { Button(text("重试保存", "Retry save"), action: model.retrySaving) }
-          if failure == .changed { Button(text("另存新草稿", "Save as new draft"), action: model.saveAsNewItem) }
-        }
-      }
-      HStack {
-        Text(model.targetName.map { text("发送到 ", "Send to ") + $0 }
-          ?? text("发送后可回到目标输入框，按输出快捷键取用。", "Focus the target and use the output shortcut after preparing the item."))
-          .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-        Spacer()
-        Button(role: .destructive) { showsDiscard = true } label: {
-          Label(text("移除", "Remove"), systemImage: "trash")
-        }.disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
-        Button(text("隐藏", "Hide"), action: model.closeAction)
-        Button(text("发送所选项", "Send selected"), action: model.send)
-          .buttonStyle(.borderedProminent)
-          .disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
-          .help(text("编辑时按 ⌘Return 发送；Return 换行。", "⌘Return sends while editing; Return inserts a newline."))
-          .accessibilityIdentifier("record-buffer.send")
-      }
     }
   }
 

@@ -39,22 +39,19 @@ final class UIRenderEvidenceTests: XCTestCase {
                 let variant = "\(language.rawValue)-\(dark ? "dark" : "light")"
                 for mode in RecordPanelPresentation.Mode.allCases {
                     presentation.mode = mode
-                    for width in [620.0, 820.0] {
+                    for size in [NSSize(width: 620, height: 320), NSSize(width: 820, height: 560)] {
                         let view = UnifiedRecordPanelView(presentation: presentation, model: model,
-                            onModeChange: { presentation.mode = $0 }, onCollapse: {}, onExpand: {}, onClose: {}) {
+                            onModeChange: { presentation.mode = $0 }) {
                             RecordQuickPanelView(model: session, language: language, capturePaused: false,
                                 onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: { _ in })
                         }
-                        try await render(view, size: NSSize(width: width, height: 600), dark: dark, floating: true,
-                            to: output.appendingPathComponent("unified-\(mode.rawValue)-\(variant)-\(Int(width)).png"))
+                        try await render(view, size: size, dark: dark, floating: true,
+                            to: output.appendingPathComponent("unified-\(mode.rawValue)-\(variant)-\(Int(size.width)).png"))
                     }
                 }
-                presentation.isCollapsed = true
-                try await render(UnifiedRecordPanelView(presentation: presentation, model: model,
-                    onModeChange: { _ in }, onCollapse: {}, onExpand: {}, onClose: {}) { Color.clear },
-                    size: NSSize(width: 320, height: 56), dark: dark, floating: true,
-                    to: output.appendingPathComponent("pending-strip-\(variant).png"))
-                presentation.isCollapsed = false
+                try await render(RecordPanelCapsuleView(model: model, onExpand: {}, onClose: {}),
+                    size: NSSize(width: 260, height: 48), dark: dark, floating: true,
+                    to: output.appendingPathComponent("pending-capsule-\(variant).png"))
                 try await render(VoiceSetupView(model: model), size: NSSize(width: 500, height: 360), dark: dark,
                     to: output.appendingPathComponent("setup-\(variant).png"))
                 model.voiceSetupPresentation = .presented

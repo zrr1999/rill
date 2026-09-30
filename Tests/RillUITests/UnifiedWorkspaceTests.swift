@@ -254,11 +254,6 @@ final class UnifiedWorkspaceTests: XCTestCase {
         XCTAssertTrue(search.results(matching: request("old")).isEmpty)
     }
 
-    func testQuickPanelPreviewUsesExactWidthBoundary() {
-        XCTAssertFalse(RecordQuickPanelLayoutPolicy.usesSidePreview(width: 759))
-        XCTAssertTrue(RecordQuickPanelLayoutPolicy.usesSidePreview(width: 760))
-    }
-
     func testWorkspaceCopyIsExplicitAndReportsActualOutcome() async throws {
         let subject = RecordReuseSubject(recordID: RecordID(), metadataRevision: 0)
         var received: RecordReuseSubject?

@@ -5,154 +5,119 @@ import SwiftUI
 public struct UnifiedRecordPanelView<Records: View>: View {
   @Bindable private var presentation: RecordPanelPresentation
   @Bindable private var model: AppModel
+  @State private var showsOutputReview = false
   private let records: Records
   private let onModeChange: (RecordPanelPresentation.Mode) -> Void
-  private let onCollapse: () -> Void
-  private let onExpand: () -> Void
-  private let onClose: () -> Void
-  private let onNeedsAttention: () -> Void
+  private let onFinishEditing: () -> Void
+  private let onInteractionChange: () -> Void
 
   public init(presentation: RecordPanelPresentation, model: AppModel,
               onModeChange: @escaping (RecordPanelPresentation.Mode) -> Void,
-              onCollapse: @escaping () -> Void, onExpand: @escaping () -> Void,
-              onClose: @escaping () -> Void, onNeedsAttention: @escaping () -> Void = {},
+              onFinishEditing: @escaping () -> Void = {},
+              onInteractionChange: @escaping () -> Void = {},
               @ViewBuilder records: () -> Records) {
     self.presentation = presentation
     self.model = model
     self.onModeChange = onModeChange
-    self.onCollapse = onCollapse
-    self.onExpand = onExpand
-    self.onClose = onClose
-    self.onNeedsAttention = onNeedsAttention
+    self.onFinishEditing = onFinishEditing
+    self.onInteractionChange = onInteractionChange
     self.records = records()
   }
 
   private var buffers: RecordBufferModel { model.recordWorkspace.buffers }
-  private func text(_ zh: String, _ en: String) -> String {
-    model.settings.language == .simplifiedChinese ? zh : en
+  private func panelText(_ key: RecordPanelText) -> String {
+    L10n.recordPanel(key, language: model.settings.language)
   }
 
   public var body: some View {
-    ZStack(alignment: .topLeading) {
-      expandedContent
-        .frame(width: presentation.isCollapsed ? presentation.expandedWidth : nil,
-               height: presentation.isCollapsed ? presentation.expandedHeight : nil)
-        .opacity(presentation.isCollapsed ? 0 : 1)
-        .allowsHitTesting(!presentation.isCollapsed)
-        .accessibilityHidden(presentation.isCollapsed)
-      if presentation.isCollapsed { pendingStrip }
-    }
-    .frame(width: presentation.isCollapsed ? 320 : nil, height: presentation.isCollapsed ? 56 : nil,
-           alignment: .topLeading)
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .clipped()
-    .background(Color(nsColor: .windowBackgroundColor))
-    .accessibilityIdentifier("record-panel.unified")
-    .onChange(of: buffers.editor.failure) { _, failure in
-      if failure != nil, presentation.isCollapsed { onNeedsAttention() }
-    }
-  }
-
-  private var expandedContent: some View {
     VStack(spacing: 0) {
       HStack(spacing: 12) {
-        Picker(text("面板内容", "Panel content"), selection: Binding(
+        Picker(panelText(.panelContent), selection: Binding(
           get: { presentation.mode }, set: { onModeChange($0) })) {
-          Text(text("记录集", "Collections")).tag(RecordPanelPresentation.Mode.collections)
-          Text(text("待发", "Drafts") + " · \(buffers.snapshot?.remainingCount ?? 0)")
+          Text(panelText(.drafts) + " · \(buffers.snapshot?.remainingCount ?? 0)")
             .tag(RecordPanelPresentation.Mode.drafts)
+          Text(panelText(.collections)).tag(RecordPanelPresentation.Mode.collections)
         }
         .pickerStyle(.segmented).labelsHidden().frame(width: 260)
         .disabled(buffers.editor.session?.hasMarkedText == true)
         .accessibilityIdentifier("record-panel.mode")
         Spacer(minLength: 8)
         Toggle(isOn: $presentation.isPinned) {
-          Label(text("保持显示", "Keep open"), systemImage: presentation.isPinned ? "pin.fill" : "pin")
+          Label(panelText(.keepOpen), systemImage: presentation.isPinned ? RillSystemSymbol.pinFill.rawValue : RillSystemSymbol.pin.rawValue)
         }
         .toggleStyle(.button).labelStyle(.iconOnly)
-        .help(text("切换应用时保持面板展开", "Keep the panel expanded when switching apps"))
-        Button(action: onCollapse) { Image(systemName: "rectangle.compress.vertical") }
-          .accessibilityLabel(text("折叠为待发条", "Collapse to pending strip"))
-          .help(text("折叠为待发条", "Collapse to pending strip"))
-          .disabled(buffers.editor.session?.hasMarkedText == true)
-        Button(action: onClose) { Image(systemName: "xmark") }
-          .accessibilityLabel(text("关闭面板", "Close panel"))
+        .help(panelText(.keepOpenHelp))
+        .accessibilityIdentifier("record-panel.pin")
       }
-      .controlSize(.small).padding(12)
+      .controlSize(.small).padding(.horizontal, 14).frame(height: 52)
       .rillFloatingControlSurface()
+      notice
       ZStack {
         records
           .opacity(presentation.mode == .collections ? 1 : 0)
           .allowsHitTesting(presentation.mode == .collections)
           .disabled(presentation.mode != .collections || presentation.isCollapsed)
-          .accessibilityHidden(presentation.mode != .collections)
-        RecordBufferDraftView(model: model, embedded: true)
+          .accessibilityHidden(presentation.mode != .collections || presentation.isCollapsed)
+        RecordBufferDraftView(model: model, onFinishEditing: onFinishEditing)
           .opacity(presentation.mode == .drafts ? 1 : 0)
           .allowsHitTesting(presentation.mode == .drafts)
           .disabled(presentation.mode != .drafts || presentation.isCollapsed)
-          .accessibilityHidden(presentation.mode != .drafts)
+          .accessibilityHidden(presentation.mode != .drafts || presentation.isCollapsed)
       }
-      if buffers.snapshot?.active != nil || buffers.message != nil {
-        Divider()
-        outputFeedback.padding(12)
-      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color(nsColor: .windowBackgroundColor))
+    .accessibilityIdentifier("record-panel.unified")
+    .onChange(of: presentation.isPinned) { _, _ in onInteractionChange() }
+    .onChange(of: buffers.editor.session?.isFocused) { _, _ in onInteractionChange() }
+    .onChange(of: buffers.editor.session?.hasMarkedText) { _, _ in onInteractionChange() }
+    .sheet(isPresented: $showsOutputReview) {
+      VStack(alignment: .leading, spacing: 16) {
+        Text(panelText(.outputStatus)).font(.headline)
+        outputFeedback
+        HStack { Spacer(); Button(panelText(.done)) { showsOutputReview = false } }
+      }.padding(20).frame(width: 420)
     }
   }
 
-  private var pendingStrip: some View {
+  private var notice: some View {
     HStack(spacing: 8) {
-      Button(action: onExpand) {
-        HStack(spacing: 10) {
-          Image(systemName: needsAttention ? "exclamationmark.circle" : "tray.full")
-            .foregroundStyle(needsAttention ? Color.orange : Color.accentColor)
-          VStack(alignment: .leading, spacing: 3) {
-            Text(text("待发", "Drafts") + " · \(buffers.snapshot?.remainingCount ?? 0)")
-              .font(.caption.weight(.semibold))
-            Text(stripSummary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-          }
-          Spacer(minLength: 0)
-          Image(systemName: "arrow.up.left.and.arrow.down.right").font(.caption)
-        }
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .accessibilityIdentifier("record-panel.expand")
-      Button(action: onClose) { Image(systemName: "xmark").font(.caption) }
-        .buttonStyle(.plain).accessibilityLabel(text("关闭待发条", "Close pending strip"))
+      Image(systemName: needsAttention ? RillSystemSymbol.exclamationmarkCircle.rawValue : RillSystemSymbol.checkmarkCircle.rawValue)
+        .foregroundStyle(needsAttention ? Color.orange : Color.secondary)
+        .frame(width: 16)
+      Text(noticeText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+      Spacer(minLength: 0)
+      Button(panelText(.review)) { showsOutputReview = true }
+        .controlSize(.small)
+        .opacity(needsAttention ? 1 : 0)
+        .disabled(!needsAttention)
+        .accessibilityHidden(!needsAttention)
+        .accessibilityIdentifier("record-panel.review-output")
     }
-    .padding(.horizontal, 12).frame(width: 320, height: 56)
-    .rillFloatingControlSurface()
-    .accessibilityIdentifier("record-panel.pending-strip")
+    .padding(.horizontal, 14).frame(height: 36)
+    .overlay(alignment: .bottom) { Divider() }
+    .accessibilityIdentifier("record-panel.output-status")
   }
 
-  private var needsAttention: Bool {
-    buffers.editor.failure != nil || buffers.message != nil || buffers.snapshot?.active != nil
-  }
-
-  private var stripSummary: String {
-    if buffers.editor.failure != nil { return text("修改尚未保存，展开处理", "Edits need attention") }
-    if buffers.snapshot?.active != nil { return text("输出结果待确认", "Output needs confirmation") }
-    if let message = buffers.message { return message }
-    return buffers.snapshot?.nextHeader?.preview
-      ?? (buffers.snapshot?.next == nil ? text("没有待发内容", "Nothing pending") : text("处理中…", "Processing…"))
+  private var needsAttention: Bool { buffers.snapshot?.active != nil || buffers.message != nil }
+  private var noticeText: String {
+    if buffers.snapshot?.active != nil { return panelText(.previousOutputNeedsConfirmation) }
+    return buffers.message ?? panelText(.localContent)
   }
 
   private var outputFeedback: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: 12) {
       if let active = buffers.snapshot?.active {
+        Text(active.state == .delivered
+             ? panelText(.deliveredButNotSaved)
+             : panelText(.confirmInsertion))
         HStack {
-          Text(active.state == .delivered
-               ? text("已输出，状态尚未保存", "Delivered; state not saved")
-               : text("检查目标中的内容，再确认输出结果。", "Check the target before confirming insertion."))
-            .font(.caption)
-          Spacer()
-          Button(active.state == .delivered ? text("重试保存", "Retry save") : text("已插入", "Inserted"),
+          Button(active.state == .delivered ? panelText(.retrySave) : panelText(.inserted),
                  action: buffers.confirmAction)
           if active.state != .delivered {
-            Button(text("重试此项", "Retry item"), action: buffers.retryAction)
+            Button(panelText(.retryItem), action: buffers.retryAction)
           }
-        }
-        .disabled(buffers.isSending)
+        }.disabled(buffers.isSending)
       }
       if let message = buffers.message {
         Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
@@ -163,6 +128,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
 }
 
 private struct FloatingControlSurface: ViewModifier {
+  var cornerRadius: CGFloat
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   @Environment(\.colorSchemeContrast) private var contrast
 
@@ -171,13 +137,15 @@ private struct FloatingControlSurface: ViewModifier {
       content.background(Color(nsColor: .controlBackgroundColor))
     } else {
       content.background {
-        RoundedRectangle(cornerRadius: RillRadius.section)
-          .glassEffect(.regular, in: .rect(cornerRadius: RillRadius.section))
+        RoundedRectangle(cornerRadius: cornerRadius)
+          .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
       }
     }
   }
 }
 
 extension View {
-  func rillFloatingControlSurface() -> some View { modifier(FloatingControlSurface()) }
+  func rillFloatingControlSurface(cornerRadius: CGFloat = RillRadius.section) -> some View {
+    modifier(FloatingControlSurface(cornerRadius: cornerRadius))
+  }
 }
