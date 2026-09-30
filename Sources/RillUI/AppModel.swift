@@ -49,6 +49,9 @@ public final class AppModel {
   public var voiceSetupPresentation: VoiceSetupPresentation = .waiting
   /// Settings replaces the main sidebar until the user returns or navigates elsewhere.
   public internal(set) var isShowingSettings = false
+  /// Bumped only by `dismissSettings()`. Content navigation leaves settings without
+  /// asking the shell to reclaim the sidebar; typed destinations own that focus.
+  public internal(set) var settingsSidebarFocusRestoreGeneration: UInt64 = 0
   let recordInteractions: RecordInteractionServices
   internal var workflowEditorNavigationRequest: WorkflowEditorNavigationRequest?
 

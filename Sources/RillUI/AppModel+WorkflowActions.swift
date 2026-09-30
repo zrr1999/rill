@@ -1064,9 +1064,11 @@ extension AppModel {
   }
 
   public func dismissSettings() {
+    guard isShowingSettings else { return }
     isShowingSettings = false
     settingsNavigationRequest = nil
     discardComparisonReturn()
+    settingsSidebarFocusRestoreGeneration &+= 1
   }
 
   /// Content navigation replaces settings, but keeps the last settings pane.
