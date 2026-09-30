@@ -890,7 +890,7 @@ public actor WorkflowAudioRunController {
       workflow = currentWorkflow
       retireCaptureSignalSubscription(runID: runID)
     case .preparing(let currentRunID, let currentWorkflow) where currentRunID == runID,
-         .starting(let currentRunID, let currentWorkflow, _) where currentRunID == runID:
+      .starting(let currentRunID, let currentWorkflow, _) where currentRunID == runID:
       workflow = currentWorkflow
     default:
       return

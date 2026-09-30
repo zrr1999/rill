@@ -46,10 +46,11 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
 
   func testLivePreviewPlacementDefaultsToOverlayAndRoundTripsCursor() throws {
     let legacy = try XDGWorkflowFileStore.decode(
-      String(decoding: try XDGWorkflowFileStore.encode(
-        workflow: makeWorkflow(),
-        isEnabled: true
-      ), as: UTF8.self)
+      String(
+        decoding: try XDGWorkflowFileStore.encode(
+          workflow: makeWorkflow(),
+          isEnabled: true
+        ), as: UTF8.self)
     )
     XCTAssertEqual(
       legacy.workflow.metadata[WorkflowMetadataKey.livePreviewPlacement]
@@ -72,23 +73,23 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
   func testLegacyRecordActionsStrategyAndMetadataNormalizeWithoutRewritingSource() async throws {
     let collectionID = UUID(uuidString: "12345678-1234-1234-1234-123456789ABC")!
     let legacy = """
-    schema_version = 1
-    id = "11111111-2222-3333-4444-555555555555"
-    name = "Legacy workflow"
-    trigger = "manual"
-    process = []
-    [ui]
-    symbol = "sparkles"
-    accent = "blue"
-    [setup]
-    [output]
-    strategy = "stack-first"
-    [[output.actions]]
-    id = "stack.push"
-    [metadata]
-    "\(WorkflowMetadataKey.legacyTargetRecordCollectionID)" = "\(collectionID.uuidString)"
-    "\(WorkflowMetadataKey.excludeOutputFromWorkflowCapture)" = "true"
-    """
+      schema_version = 1
+      id = "11111111-2222-3333-4444-555555555555"
+      name = "Legacy workflow"
+      trigger = "manual"
+      process = []
+      [ui]
+      symbol = "sparkles"
+      accent = "blue"
+      [setup]
+      [output]
+      strategy = "stack-first"
+      [[output.actions]]
+      id = "stack.push"
+      [metadata]
+      "\(WorkflowMetadataKey.legacyTargetRecordCollectionID)" = "\(collectionID.uuidString)"
+      "\(WorkflowMetadataKey.excludeOutputFromWorkflowCapture)" = "true"
+      """
     let directory = temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -235,7 +236,8 @@ final class XDGWorkflowFileStoreTests: XCTestCase {
       .deletingLastPathComponent()
       .deletingLastPathComponent()
       .deletingLastPathComponent()
-    let templateDirectory = repositoryRoot
+    let templateDirectory =
+      repositoryRoot
       .appendingPathComponent("Sources/RillApp/Resources/WorkflowTemplates")
     let templates = try FileManager.default.contentsOfDirectory(
       at: templateDirectory,

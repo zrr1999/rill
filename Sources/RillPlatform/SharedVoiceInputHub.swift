@@ -114,8 +114,7 @@ public actor SharedVoiceInputHub {
   private let interactiveProcessor: AppleVoiceProcessingAudioProcessor
   private var subscribers: [UUID: Subscriber] = [:]
   private nonisolated let activityStreamValue: AsyncStream<SharedVoiceInputActivity>
-  private nonisolated let activityContinuation:
-    AsyncStream<SharedVoiceInputActivity>.Continuation
+  private nonisolated let activityContinuation: AsyncStream<SharedVoiceInputActivity>.Continuation
   private var producerContinuation: AsyncThrowingStream<[Float], Error>.Continuation?
   private var producerTask: Task<Void, Never>?
   private var producerGeneration: UInt64 = 0
@@ -297,7 +296,8 @@ public actor SharedVoiceInputHub {
 
     var failedSubscribers: [UUID] = []
     let activity = makeActivity()
-    for (id, subscriber) in subscribers where SharedVoiceInputArbitration.shouldDeliver(
+    for (id, subscriber) in subscribers
+    where SharedVoiceInputArbitration.shouldDeliver(
       to: subscriber.channel,
       activity: activity
     ) {

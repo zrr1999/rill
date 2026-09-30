@@ -1367,7 +1367,8 @@ extension SQLitePersistenceStore {
     let databaseID = try SQLiteAuthenticatedSchemaFloor.validatedDatabaseID(
       on: handle, localDataProtector: localDataProtector
     )
-    try execute("""
+    try execute(
+      """
       CREATE TABLE record_catalog_nodes (
         key TEXT PRIMARY KEY NOT NULL,
         kind TEXT NOT NULL,
@@ -1389,7 +1390,8 @@ extension SQLitePersistenceStore {
 
   static func migrateToV14(on handle: OpaquePointer?, localDataProtector: any LocalDataProtector) throws {
     let databaseID = try SQLiteAuthenticatedSchemaFloor.validatedDatabaseID(on: handle, localDataProtector: localDataProtector)
-    try execute("""
+    try execute(
+      """
       CREATE TABLE context_memories (id TEXT PRIMARY KEY NOT NULL, payload TEXT NOT NULL);
       CREATE TABLE context_memory_sources (
         source_id TEXT PRIMARY KEY NOT NULL,
@@ -1415,8 +1417,9 @@ extension SQLitePersistenceStore {
       """, on: handle)
     try SQLiteWriterBarrier.installTriggers(on: handle, tableNames: writerBarrierTableNames + memoryTableNames)
     try SQLiteSchemaWriterBarrier.memory.install(on: handle, tables: writerBarrierTableNames + memoryTableNames)
-    try SQLiteAuthenticatedSchemaFloor.upgrade(on: handle, validatedDatabaseID: databaseID,
-                                              localDataProtector: localDataProtector, schemaFloor: 14)
+    try SQLiteAuthenticatedSchemaFloor.upgrade(
+      on: handle, validatedDatabaseID: databaseID,
+      localDataProtector: localDataProtector, schemaFloor: 14)
     try setSchemaVersion(14, on: handle)
     try validateAuthenticatedStorageBoundary(on: handle, localDataProtector: localDataProtector)
   }
@@ -1464,10 +1467,12 @@ extension SQLitePersistenceStore {
     on handle: OpaquePointer?,
     localDataProtector: any LocalDataProtector
   ) throws {
-    guard try authenticatedSchemaFloor(
-      on: handle,
-      localDataProtector: localDataProtector
-    ) == SQLiteAuthenticatedSchemaFloor.legacySchemaFloor else {
+    guard
+      try authenticatedSchemaFloor(
+        on: handle,
+        localDataProtector: localDataProtector
+      ) == SQLiteAuthenticatedSchemaFloor.legacySchemaFloor
+    else {
       throw SQLitePersistenceError.migrationFailed(
         "Legacy authenticated schema metadata is unavailable."
       )

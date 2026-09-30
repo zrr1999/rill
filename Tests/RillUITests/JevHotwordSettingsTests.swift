@@ -7,18 +7,23 @@ import RillWorkflows
 @MainActor
 struct JevHotwordSettingsTests {
   @Test func settingsDefaultOffAndRevocationIsSynchronous() async throws {
-    let context = ContextSnapshot(focus: .init(applicationName: "Editor", bundleIdentifier: "example.editor",
-      processIdentifier: 42, focusedRole: "AXTextArea", selectedText: "", secureInput: false),
+    let context = ContextSnapshot(
+      focus: .init(
+        applicationName: "Editor", bundleIdentifier: "example.editor",
+        processIdentifier: 42, focusedRole: "AXTextArea", selectedText: "", secureInput: false),
       clipboard: .init(plainText: "", changeCount: 0))
     let fixture = JevPanelFixture()
-    let service = HotwordSelection(provider: NeverHotwordProvider(), settings: fixture.service.settings,
+    let service = HotwordSelection(
+      provider: NeverHotwordProvider(), settings: fixture.service.settings,
       privacy: .init(initialSettings: .defaults), currentFocus: { context.focus })
     let settings = JevAPISettingsModel(service: fixture.service, hotwordSelection: service)
-    let workflow = WorkflowDefinition(name: "Dictation", pipeline: .init(recognizerID: "local-speech", outputActions: []),
+    let workflow = WorkflowDefinition(
+      name: "Dictation", pipeline: .init(recognizerID: "local-speech", outputActions: []),
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     func selection() throws -> HotwordSelection.Selection {
       let id = UUID()
-      return try service.select(runID: id, workflow: workflow, collections: [], context: context,
+      return try service.select(
+        runID: id, workflow: workflow, collections: [], context: context,
         options: .init(modelID: "qwen"), candidates: [.init(id: UUID(), term: "Rill", priority: 0)],
         lifetime: .init(runID: id))
     }

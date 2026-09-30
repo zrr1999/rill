@@ -36,7 +36,8 @@ extension AppModel {
   }
 
   public func disableWakeWordListening() {
-    for workflow in self.workflowLibrary.workflows where
+    for workflow in self.workflowLibrary.workflows
+    where
       workflow.trigger == .wakeWord && isWorkflowEnabled(workflow)
     {
       setWorkflowEnabled(false, for: workflow.id)
@@ -167,19 +168,21 @@ extension AppModel {
       if let editorError = self.workflowLibrary.workflowEditorError {
         return .failed(editorError)
       }
-      savedWorkflowID = self.workflowLibrary.customWorkflows.first(where: {
-        $0.trigger == .wakeWord
-          && !previousCustomWorkflowIDs.contains($0.id)
-      })?.id
+      savedWorkflowID =
+        self.workflowLibrary.customWorkflows.first(where: {
+          $0.trigger == .wakeWord
+            && !previousCustomWorkflowIDs.contains($0.id)
+        })?.id
     }
     guard let savedWorkflowID else {
       return .failed(L10n.runText(.wakeWorkflowNotFound, language: self.settings.language))
     }
 
-    for workflow in self.workflowLibrary.workflows where
+    for workflow in self.workflowLibrary.workflows
+    where
       workflow.trigger == .wakeWord
-        && workflow.id != savedWorkflowID
-        && isWorkflowEnabled(workflow)
+      && workflow.id != savedWorkflowID
+      && isWorkflowEnabled(workflow)
     {
       setWorkflowEnabled(false, for: workflow.id)
     }
@@ -201,9 +204,10 @@ extension AppModel {
   private func voiceAssistantReadiness(
     for workflow: WorkflowDefinition?
   ) -> VoiceAssistantReadiness {
-    let requiresLLM = workflow?.plan.process.allSteps.contains(where: {
-      $0.kind == .llmRewrite || $0.kind == .llmAnswer
-    }) ?? false
+    let requiresLLM =
+      workflow?.plan.process.allSteps.contains(where: {
+        $0.kind == .llmRewrite || $0.kind == .llmAnswer
+      }) ?? false
 
     let llm: VoiceAssistantLLMReadiness
     if !requiresLLM {
@@ -253,9 +257,10 @@ extension AppModel {
       )
     }
 
-    let usesSpeechOutput = workflow?.plan.output.actions.contains(where: {
-      $0.id == SpeechOutputActionID.speak
-    }) ?? false
+    let usesSpeechOutput =
+      workflow?.plan.output.actions.contains(where: {
+        $0.id == SpeechOutputActionID.speak
+      }) ?? false
     let speechOutput: VoiceAssistantSpeechOutputReadiness
     if !usesSpeechOutput {
       speechOutput = .notRequired

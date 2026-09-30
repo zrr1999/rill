@@ -267,8 +267,7 @@ private actor CountingNativeEmbedder: RecordEmbeddingProvider {
   var documentCalls = 0
   var documentWindows = 0
   init(base: RecordWorkerEmbedder) { self.base = base }
-  func prepare(downloadIfNeeded: Bool, progress: @escaping @Sendable (Double) -> Void) async throws
-  {
+  func prepare(downloadIfNeeded: Bool, progress: @escaping @Sendable (Double) -> Void) async throws {
     try await base.prepare(downloadIfNeeded: downloadIfNeeded, progress: progress)
   }
   func embed(_ text: String, purpose: RecordEmbeddingPurpose) async throws -> RecordTextEmbedding {

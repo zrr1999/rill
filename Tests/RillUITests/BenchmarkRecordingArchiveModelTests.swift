@@ -59,7 +59,8 @@ struct BenchmarkRecordingArchiveModelTests {
     let store = UITestSettingsStore()
     let settings = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
     settings.isLoading = false
-    return BenchmarkRecordingArchiveModel(settings: settings, store: store,
+    return BenchmarkRecordingArchiveModel(
+      settings: settings, store: store,
       reader: reader, exporter: exporter, refresh: { _ in }, clear: {})
   }
 }
@@ -76,10 +77,12 @@ private actor SelectionReadGate: BenchmarkRecordingArchiveReading {
     if blocks {
       blocks = false
       entered = true
-      observers.forEach { $0.resume() }; observers = []
+      observers.forEach { $0.resume() }
+      observers = []
       await withCheckedContinuation { waiting = $0 }
     }
-    return .init(runID: id, workflowID: UUID(), createdAt: Date(), durationSeconds: 1,
+    return .init(
+      runID: id, workflowID: UUID(), createdAt: Date(), durationSeconds: 1,
       format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16), plaintextByteCount: 2,
       trigger: .hotkey, outcome: .completed, metadata: [:])
   }
@@ -88,7 +91,10 @@ private actor SelectionReadGate: BenchmarkRecordingArchiveReading {
     if entered { return }
     await withCheckedContinuation { observers.append($0) }
   }
-  func release() { waiting?.resume(); waiting = nil }
+  func release() {
+    waiting?.resume()
+    waiting = nil
+  }
 }
 
 private actor SelectionExportProbe: BenchmarkCorpusExporting {
@@ -97,12 +103,16 @@ private actor SelectionExportProbe: BenchmarkCorpusExporting {
   private var observers: [CheckedContinuation<Void, Never>] = []
   func export(_ selection: BenchmarkCorpusSelection, to directory: URL) async throws -> URL {
     self.selection = selection
-    observers.forEach { $0.resume() }; observers = []
+    observers.forEach { $0.resume() }
+    observers = []
     return try await withCheckedThrowingContinuation { waiting = $0 }
   }
   func waitForExport() async {
     if selection != nil { return }
     await withCheckedContinuation { observers.append($0) }
   }
-  func complete(_ error: BenchmarkCorpusExportError) { waiting?.resume(throwing: error); waiting = nil }
+  func complete(_ error: BenchmarkCorpusExportError) {
+    waiting?.resume(throwing: error)
+    waiting = nil
+  }
 }

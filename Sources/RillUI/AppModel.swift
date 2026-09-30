@@ -194,12 +194,10 @@ public final class AppModel {
   let localSpeechSettingsSource: LocalSpeechSettingsSource
   let settingsWriteDebounceDuration: Duration
   let historyRetentionMaintenanceInterval: Duration?
-  let synchronizeResidentSpeechModelsAction:
-    @Sendable (_ added: Set<String>, _ removed: Set<String>) async -> Void
+  let synchronizeResidentSpeechModelsAction: @Sendable (_ added: Set<String>, _ removed: Set<String>) async -> Void
   let prepareEnabledSpeechModelAction: @Sendable (_ modelID: String) async -> Void
   let setLocalSpeechRuntimeEnabledAction: @Sendable (Bool) -> Void
-  let startWorkflowAudioRunAction:
-    @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void
+  let startWorkflowAudioRunAction: @Sendable (WorkflowDefinition, TriggerBinding, BufferDraftInputIntent?) async throws -> Void
   let finishWorkflowAudioRunAction: @Sendable () async throws -> Void
   let retryFailedAudioRecoveryAction:
     @Sendable (
@@ -209,8 +207,7 @@ public final class AppModel {
   let deleteFailedAudioRecoveryAction: @Sendable (UUID) async throws -> Void
   let clearFailedAudioRecoveryAction: @Sendable () async throws -> Void
   let refreshFailedAudioRecoveryAction: @Sendable (Bool) async throws -> Void
-  let loadFailedAudioRecoveryReceiptsAction:
-    @Sendable () async throws -> [FailedAudioRecoveryReceipt]
+  let loadFailedAudioRecoveryReceiptsAction: @Sendable () async throws -> [FailedAudioRecoveryReceipt]
   let authorizeWorkflowRunAction:
     @Sendable (
       WorkflowDefinition
@@ -251,7 +248,6 @@ public final class AppModel {
   var persistenceWrites: PersistenceWriteCoordinator { settings.writes }
   var clipboardUpdateDebounceTask: Task<Void, Never>?
   private(set) var hasBegunApplicationShutdown = false
-
 
   public init(
     workflows initialWorkflows: [WorkflowDefinition],
@@ -362,11 +358,13 @@ public final class AppModel {
       effectiveLocalSpeechAvailability = declaredLocalSpeechAvailability
     }
     let exposesTrustedCatalog = effectiveLocalSpeechAvailability.isAvailable && catalogIsValid
-    let settings = SettingsPersistenceModel(store: settingsStore, language: language,
+    let settings = SettingsPersistenceModel(
+      store: settingsStore, language: language,
       verifyOpenAIConfiguration: verifyOpenAIConfigurationAction,
       configurationChanged: workflowLibraryChangedAction)
     self.settings = settings
-    self.workflowLibrary = WorkflowLibraryModel(workflows: initialWorkflows,
+    self.workflowLibrary = WorkflowLibraryModel(
+      workflows: initialWorkflows,
       settings: settings, explain: explainResolvedWorkflowAction)
     // Capture remains closed until durable settings prove it is enabled.
     // Test and preview compositions that explicitly skip loading retain the
@@ -402,7 +400,8 @@ public final class AppModel {
     self.historyRepository = historyRepository
     self.runHistoryBrowser = runHistoryBrowser
     self.history = RunHistoryModel(browser: runHistoryBrowser, workflows: self.workflowLibrary, maintenanceSleep: historyMaintenanceSleep)
-    self.voice = VoiceRunModel(settings: settings, resources: voiceResourceServices,
+    self.voice = VoiceRunModel(
+      settings: settings, resources: voiceResourceServices,
       supportedTTSModelIDs: Set(ttsModelOptions.map(\.id)),
       liveSubtitlePreparingHideDelay: liveSubtitlePreparingHideDelay,
       resourceAvailabilityChanged: workflowLibraryChangedAction,
@@ -414,15 +413,18 @@ public final class AppModel {
     self.localHistoryMaintenance = localHistoryMaintenance
     self.diagnosticRepository = diagnosticRepository
     self.settingsStore = settingsStore
-    self.vocabulary = VocabularyLibraryModel(settings: settings, source: vocabularyRuleSource,
+    self.vocabulary = VocabularyLibraryModel(
+      settings: settings, source: vocabularyRuleSource,
       didChange: { [workflowLibrary] bindings in
         workflowLibrary.cancelWorkflowExplanation()
         workflowLibrary.rebuild(defaultVocabularyBindings: bindings)
         workflowLibraryChangedAction()
-      }, saveFailed: { [history] in
-        history.append(EventFeedEntry(
-          english: L10n.runText(.settingsSaveFailedRetry, language: .english),
-          simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)))
+      },
+      saveFailed: { [history] in
+        history.append(
+          EventFeedEntry(
+            english: L10n.runText(.settingsSaveFailedRetry, language: .english),
+            simplifiedChinese: L10n.runText(.settingsSaveFailedRetry, language: .simplifiedChinese)))
       })
     self.workflowFileStore = workflowFileStore
     self.credentialStore = credentialStore
@@ -451,7 +453,8 @@ public final class AppModel {
     self.clearFailedAudioRecoveryAction = clearFailedAudioRecoveryAction
     self.refreshFailedAudioRecoveryAction = refreshFailedAudioRecoveryAction
     self.loadFailedAudioRecoveryReceiptsAction = loadFailedAudioRecoveryReceiptsAction
-    self.benchmarkArchive = BenchmarkRecordingArchiveModel(settings: settings, store: settingsStore,
+    self.benchmarkArchive = BenchmarkRecordingArchiveModel(
+      settings: settings, store: settingsStore,
       reader: benchmarkArchiveReader, exporter: benchmarkCorpusExporter,
       refresh: refreshBenchmarkRecordingArchiveAction, clear: clearBenchmarkRecordingArchiveAction)
     self.authorizeWorkflowRunAction = authorizeWorkflowRunAction

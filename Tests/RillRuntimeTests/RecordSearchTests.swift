@@ -60,12 +60,16 @@ private actor HeldSearchPage {
     calls += 1
     return await withCheckedContinuation {
       pending = $0
-      entered?.resume(); entered = nil
+      entered?.resume()
+      entered = nil
     }
   }
   func waitUntilEntered() async {
     if pending != nil { return }
     await withCheckedContinuation { entered = $0 }
   }
-  func release() { pending?.resume(returning: .init(revision: 1, records: [], nextOffset: 256)); pending = nil }
+  func release() {
+    pending?.resume(returning: .init(revision: 1, records: [], nextOffset: 256))
+    pending = nil
+  }
 }

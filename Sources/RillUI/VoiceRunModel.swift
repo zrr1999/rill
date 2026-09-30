@@ -31,8 +31,7 @@ public final class VoiceRunModel {
   @ObservationIgnored var liveSubtitleMeterRefreshGeneration = 0
   var updateLiveSubtitlePanelAction: (@MainActor (LiveSubtitleSnapshot?, AppLanguage) -> Void)?
 
-  let prepareLocalSpeech:
-    @Sendable (LocalSpeechSettings, @escaping @Sendable (Progress) -> Void) async throws -> String
+  let prepareLocalSpeech: @Sendable (LocalSpeechSettings, @escaping @Sendable (Progress) -> Void) async throws -> String
   let releaseLocalSpeech: @Sendable () -> Void
   let stopLocalSpeech: @Sendable () async -> Void
   let appendEvent: @MainActor (EventFeedEntry) -> Void
@@ -71,8 +70,7 @@ public final class VoiceRunModel {
   public internal(set) var localSpeechPreparationTotalUnitCount: Int64 = 0
   public internal(set) var localSpeechPreparedModelIdentifier: String?
   public internal(set) var downloadedLocalSpeechModels: [String] = []
-  public internal(set) var downloadedLocalSpeechModelsAvailability:
-    StoredSettingsDomainAvailability = .available
+  public internal(set) var downloadedLocalSpeechModelsAvailability: StoredSettingsDomainAvailability = .available
   public internal(set) var downloadedLocalSpeechModelsError: String?
   public var localSpeechPreparationError: String?
   public internal(set) var wakeWordResourceState: VoiceAssistantResourceState = .notInstalled
@@ -85,8 +83,7 @@ public final class VoiceRunModel {
   public internal(set) var failedAudioRecoveryEnabled = false
   public internal(set) var isUpdatingFailedAudioRecovery = false
   public internal(set) var retryingFailedAudioRecoveryIDs: Set<UUID> = []
-  public internal(set) var failedAudioRecoveryUnavailableReasonsByRunID:
-    [UUID: FailedAudioRecoveryError] = [:]
+  public internal(set) var failedAudioRecoveryUnavailableReasonsByRunID: [UUID: FailedAudioRecoveryError] = [:]
   public var failedAudioRecoveryError: String?
   var pendingInteractiveWorkflowTask: Task<Void, Never>?
   var interactiveWorkflowTaskGeneration = 0

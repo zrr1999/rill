@@ -135,12 +135,21 @@ public final class LocalInputMethodChannel {
     connections.removeAll()
     listener?.cancel()
     listener = nil
-    if ownsPath { unlink(path); ownsPath = false }
-    if lockDescriptor >= 0 { close(lockDescriptor); lockDescriptor = -1 }
+    if ownsPath {
+      unlink(path)
+      ownsPath = false
+    }
+    if lockDescriptor >= 0 {
+      close(lockDescriptor)
+      lockDescriptor = -1
+    }
   }
 
   private func connect(_ destination: String) {
-    if ownsPath { unlink(path); ownsPath = false }
+    if ownsPath {
+      unlink(path)
+      ownsPath = false
+    }
     guard let descriptor = try? Self.makeSocket(boundTo: path) else { return }
     ownsPath = true
     // A busy local listener is retried on the next heartbeat, without retaining this event.
@@ -165,13 +174,19 @@ public final class LocalInputMethodChannel {
       let peer = withUnsafeBytes(of: address.sun_path) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
       guard address.sun_family == AF_UNIX, isLocal(peer), connections[peer] == nil,
         connections.count < 16, Self.configure(accepted)
-      else { close(accepted); continue }
+      else {
+        close(accepted)
+        continue
+      }
       authenticateConnection(accepted, peer: peer)
     }
   }
 
   private func authenticateConnection(_ descriptor: Int32, peer: String) {
-    guard let token = LocalInputMethodPeerIdentity.token(for: descriptor) else { close(descriptor); return }
+    guard let token = LocalInputMethodPeerIdentity.token(for: descriptor) else {
+      close(descriptor)
+      return
+    }
     let connection = Connection(descriptor: descriptor, token: token)
     connections[peer] = connection
     let id = connection.id
@@ -207,7 +222,10 @@ public final class LocalInputMethodChannel {
     for _ in 0..<32 {
       if connection.bytes.count >= 4 {
         let length = connection.bytes.prefix(4).reduce(0) { ($0 << 8) | Int($1) }
-        guard length > 0, length <= 8_192 else { disconnect(peer); return }
+        guard length > 0, length <= 8_192 else {
+          disconnect(peer)
+          return
+        }
         if connection.bytes.count >= length + 4 {
           let payload = Data(connection.bytes.dropFirst(4).prefix(length))
           connection.bytes.removeFirst(length + 4)
@@ -224,7 +242,10 @@ public final class LocalInputMethodChannel {
       let received = recv(connection.descriptor, &bytes, bytes.count, MSG_DONTWAIT)
       if received < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) { return }
       if received < 0 && errno == EINTR { continue }
-      guard received > 0 else { disconnect(peer); return }
+      guard received > 0 else {
+        disconnect(peer)
+        return
+      }
       connection.bytes.append(contentsOf: bytes.prefix(received))
     }
     // Bound each callback, including messages already buffered in user space.

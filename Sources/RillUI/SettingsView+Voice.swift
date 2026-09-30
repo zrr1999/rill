@@ -81,8 +81,8 @@ extension SettingsView {
 
           if let workflowName = model.wakeWordSettingsSnapshot.workflowName {
             Text(L10n.settingsWorkflowName(workflowName, language: model.settings.language))
-            .font(.caption)
-            .foregroundStyle(.secondary)
+              .font(.caption)
+              .foregroundStyle(.secondary)
           }
         }
       }
@@ -95,12 +95,12 @@ extension SettingsView {
       }
 
       Text(L10n.settingsText(.settingsWakeWordScopeDetail, language: model.settings.language))
-      .font(.caption)
-      .foregroundStyle(.secondary)
+        .font(.caption)
+        .foregroundStyle(.secondary)
 
       Text(L10n.settingsText(.settingsWakeWordPrivacyDetail, language: model.settings.language))
-      .font(.caption)
-      .foregroundStyle(.secondary)
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
     .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isApplyingWakeWordSettings)
     .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: wakeWordSettingsError == nil)

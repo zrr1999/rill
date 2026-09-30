@@ -263,8 +263,7 @@ struct RecordBufferTests {
     #expect(try await migrated.catalogSnapshot().records.count == 2)
   }
 
-  @Test func explicitDeletionClearsBufferReferencesAtomicallyAndProtectsActiveOutput() async throws
-  {
+  @Test func explicitDeletionClearsBufferReferencesAtomicallyAndProtectsActiveOutput() async throws {
     let persistence = BufferCatalogFake()
     let store = RecordStore(persistence: persistence)
     let record = try await store.ingest(draft("delete deliberately"), into: [])
@@ -357,8 +356,7 @@ actor BufferCatalogFake: RecordCatalogPersistenceStore {
     return try #require(blobs[reference.recordID]?.payload)
   }
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
-  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64
-  { throw RecordStoreError.persistenceUnavailable }
+  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 { throw RecordStoreError.persistenceUnavailable }
   func removeRecordGraph() async throws -> RecordGraphRemovalResult {
     throw RecordStoreError.persistenceUnavailable
   }

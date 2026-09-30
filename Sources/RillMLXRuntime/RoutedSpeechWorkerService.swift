@@ -27,7 +27,8 @@ public actor RoutedSpeechWorkerService:
     progress: @escaping @Sendable (SpeechWorkerProgress) -> Void
   ) async -> SpeechWorkerResponse {
     if request.embeddingPayload != nil
-      || request.modelPreparationPayload?.modelID == RecordEmbeddingModelCatalog.modelID {
+      || request.modelPreparationPayload?.modelID == RecordEmbeddingModelCatalog.modelID
+    {
       return await recordEmbedding.handle(request, progress: progress)
     }
     let modelID =

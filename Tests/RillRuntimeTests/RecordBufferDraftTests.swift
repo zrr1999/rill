@@ -68,8 +68,11 @@ struct RecordBufferDraftTests {
     let commit = Task { try await store.commitBufferDraft(id, draftID: draft.id, expectedRevision: 1) }
     for await _ in started.stream {}
     let runID = UUID()
-    _ = try await store.ingestBufferDictation(capture("late speech", runID: runID),
-      recognitionText: "late speech", for: .init(entryID: id, draftID: draft.id, revision: 1,
+    _ = try await store.ingestBufferDictation(
+      capture("late speech", runID: runID),
+      recognitionText: "late speech",
+      for: .init(
+        entryID: id, draftID: draft.id, revision: 1,
         selection: .init(location: 0), editingSessionID: UUID()))
     release.continuation.finish()
     try await commit.value
@@ -84,13 +87,15 @@ struct RecordBufferDraftTests {
     let persistence = BufferCatalogFake()
     let store = RecordStore(persistence: persistence)
     let entry = try await store.reserveBufferInput(in: RecordBuffer.speechID)
-    let original = try await store.ingest(capture("去北京开会"), into: [RecordCollection.voiceInputID],
+    let original = try await store.ingest(
+      capture("去北京开会"), into: [RecordCollection.voiceInputID],
       fulfilling: entry, recognitionText: "去背景开会")
     let second = try await store.reserveBufferInput(in: RecordBuffer.speechID)
     _ = try await store.ingest(capture("下一条"), into: [], fulfilling: second)
     let editing = UUID()
     let draft = try await store.openBufferDraft(entry, editingSessionID: editing)
-    let updated = try await store.saveBufferDraft(entry, draftID: draft.id,
+    let updated = try await store.saveBufferDraft(
+      entry, draftID: draft.id,
       expectedRevision: draft.revision, text: "去上海开会\n明天出发")
     await #expect(throws: BufferOutputError.editing) { _ = try await store.beginBufferOutput() }
     await store.closeBufferEditingSession(editing)
@@ -143,7 +148,8 @@ struct RecordBufferDraftTests {
     let session = UUID()
     let draft = try await store.openBufferDraft(first, editingSessionID: session)
     let saved = try await store.saveBufferDraft(first, draftID: draft.id, expectedRevision: 0, text: "去北京")
-    let intent = BufferDraftInputIntent(entryID: first, draftID: draft.id, revision: saved.revision,
+    let intent = BufferDraftInputIntent(
+      entryID: first, draftID: draft.id, revision: saved.revision,
       selection: .init(location: 1, length: 2), editingSessionID: session)
     _ = try await store.saveBufferDraft(first, draftID: draft.id, expectedRevision: saved.revision, text: "去南京")
     let second = try await store.createBufferDraft()
@@ -161,7 +167,8 @@ struct RecordBufferDraftTests {
     let duplicate = try await store.ingestBufferDictation(recognition, recognitionText: "伤害", for: intent)
     #expect(duplicate.id == result.id)
     let restored = RecordStore(persistence: persistence)
-    let applied = try await restored.resolveBufferSuggestion(runID, in: first, draftID: draft.id,
+    let applied = try await restored.resolveBufferSuggestion(
+      runID, in: first, draftID: draft.id,
       expectedRevision: pending.revision, insertingAt: .init(location: 1, length: 2))
     #expect(applied.text == "去上海")
     #expect(applied.suggestions.isEmpty)
@@ -173,7 +180,8 @@ struct RecordBufferDraftTests {
     let store = RecordStore(persistence: persistence)
     let id = try await store.createBufferDraft()
     let draft = try #require(try await store.bufferDraft(for: id))
-    let intent = BufferDraftInputIntent(entryID: id, draftID: draft.id, revision: 0,
+    let intent = BufferDraftInputIntent(
+      entryID: id, draftID: draft.id, revision: 0,
       selection: .init(location: 0), editingSessionID: UUID())
     await persistence.rejectNext()
     await #expect(throws: RecordStoreError.persistenceUnavailable) {

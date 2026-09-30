@@ -264,7 +264,8 @@ public actor RecordingSessionManager {
 
   func waitForHotkeyLifecycleTasksToDrainForTesting() async {
     while true {
-      let tasks = Array(livePushToTalkStartTasks.values)
+      let tasks =
+        Array(livePushToTalkStartTasks.values)
         + Array(livePushToTalkReleaseTasks.values)
         + finishingRecordings.values.compactMap(\.task)
       guard !tasks.isEmpty else { return }
@@ -758,10 +759,12 @@ public actor RecordingSessionManager {
         guard currentFocus.hasSamePrivacyIdentity(as: expectedFocus) else {
           return .empty
         }
-        guard let context = await targetBoundAuthorizedContextProvider(
-          decision,
-          expectedFocus
-        ) else {
+        guard
+          let context = await targetBoundAuthorizedContextProvider(
+            decision,
+            expectedFocus
+          )
+        else {
           return .empty
         }
         let capturedFocus = FocusPrivacyIdentitySample(
@@ -1675,9 +1678,11 @@ extension RecordingSessionManager {
       message:
         "Push-to-talk recording finished for \(gesture.rawValue) and is being queued for background processing.",
       runID: runID,
-      metadata: ["captureFinishMillis": captureFinishMillis,
-                 "captureSealMillis": captureSealMillis,
-                 "captureCueMillis": captureCueMillis]
+      metadata: [
+        "captureFinishMillis": captureFinishMillis,
+        "captureSealMillis": captureSealMillis,
+        "captureCueMillis": captureCueMillis,
+      ]
     )
     guard ownsFinishingRecording(runID: runID, operationID: operationID),
       !Task.isCancelled

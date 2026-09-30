@@ -9,20 +9,25 @@ public actor BenchmarkCorpusExporter: BenchmarkCorpusExporting {
   private let removeEntry: @Sendable (Int32, String, Int32) -> Bool
 
   public init(archive: any BenchmarkRecordingArchiveReading) {
-    self.init(archive: archive, removeEntry: { directory, name, flags in
-      unlinkat(directory, name, flags) == 0 || errno == ENOENT
-    })
+    self.init(
+      archive: archive,
+      removeEntry: { directory, name, flags in
+        unlinkat(directory, name, flags) == 0 || errno == ENOENT
+      })
   }
 
-  init(archive: any BenchmarkRecordingArchiveReading,
-    removeEntry: @escaping @Sendable (Int32, String, Int32) -> Bool) {
+  init(
+    archive: any BenchmarkRecordingArchiveReading,
+    removeEntry: @escaping @Sendable (Int32, String, Int32) -> Bool
+  ) {
     self.archive = archive
     self.removeEntry = removeEntry
   }
 
   public func export(_ selection: BenchmarkCorpusSelection, to parent: URL) async throws -> URL {
     guard !selection.runIDs.isEmpty, Set(selection.runIDs).count == selection.runIDs.count,
-      parent.isFileURL else { throw BenchmarkRecordingArchiveError.invalidEntry }
+      parent.isFileURL
+    else { throw BenchmarkRecordingArchiveError.invalidEntry }
     try Task.checkCancellation()
     let directory = parent.resolvingSymlinksInPath()
     let parentFD = Darwin.open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
@@ -43,34 +48,38 @@ public actor BenchmarkCorpusExporter: BenchmarkCorpusExporting {
     var writtenFiles: [String] = []
     defer { Darwin.close(stagingFD) }
     do {
-    var cases: [CorpusCase] = []
-    for runID in selection.runIDs {
+      var cases: [CorpusCase] = []
+      for runID in selection.runIDs {
+        try Task.checkCancellation()
+        let recording = try await archive.recording(runID: runID)
+        try Task.checkCancellation()
+        guard recording.receipt.runID == runID,
+          recording.receipt.format == .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16)
+        else { throw BenchmarkRecordingArchiveError.unsupportedPayload }
+        let file = runID.uuidString + ".wav"
+        writtenFiles.append(file)
+        try write(recording.audioBytes, named: file, in: stagingFD)
+        cases.append(
+          CorpusCase(
+            id: runID.uuidString, audio_path: file,
+            audio_sha256: SHA256.hash(data: recording.audioBytes).map { String(format: "%02x", $0) }.joined(),
+            split: selection.split.rawValue))
+      }
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+      writtenFiles.append("corpus.json")
+      try write(
+        encoder.encode(Corpus(evidence_kind: selection.evidenceKind.rawValue, cases: cases)),
+        named: "corpus.json", in: stagingFD)
+      writtenFiles.append("README.txt")
+      try write(Data(Self.instructions.utf8), named: "README.txt", in: stagingFD)
       try Task.checkCancellation()
-      let recording = try await archive.recording(runID: runID)
-      try Task.checkCancellation()
-      guard recording.receipt.runID == runID,
-        recording.receipt.format == .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16)
-      else { throw BenchmarkRecordingArchiveError.unsupportedPayload }
-      let file = runID.uuidString + ".wav"
-      writtenFiles.append(file)
-      try write(recording.audioBytes, named: file, in: stagingFD)
-      cases.append(CorpusCase(id: runID.uuidString, audio_path: file,
-        audio_sha256: SHA256.hash(data: recording.audioBytes).map { String(format: "%02x", $0) }.joined(),
-        split: selection.split.rawValue))
-    }
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    writtenFiles.append("corpus.json")
-    try write(encoder.encode(Corpus(evidence_kind: selection.evidenceKind.rawValue, cases: cases)),
-      named: "corpus.json", in: stagingFD)
-    writtenFiles.append("README.txt")
-    try write(Data(Self.instructions.utf8), named: "README.txt", in: stagingFD)
-    try Task.checkCancellation()
-    guard fsync(stagingFD) == 0,
-      renameatx_np(parentFD, stagingName, parentFD, name, UInt32(RENAME_EXCL)) == 0 else {
-      throw BenchmarkRecordingArchiveError.storageUnavailable
-    }
-    return directory.appendingPathComponent(name, isDirectory: true)
+      guard fsync(stagingFD) == 0,
+        renameatx_np(parentFD, stagingName, parentFD, name, UInt32(RENAME_EXCL)) == 0
+      else {
+        throw BenchmarkRecordingArchiveError.storageUnavailable
+      }
+      return directory.appendingPathComponent(name, isDirectory: true)
     } catch {
       var cleaned = true
       for file in writtenFiles {

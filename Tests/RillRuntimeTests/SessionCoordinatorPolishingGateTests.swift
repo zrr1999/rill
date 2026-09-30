@@ -101,7 +101,8 @@ struct SessionCoordinatorPolishingGateTests {
       actionRegistry: .init(actions: [RecordStoreAction(ingestion: RecordIngestionCoordinator(store: store)), delivery]),
       candidateResolver: CandidateResolver(eventBus: eventBus), recordStore: store,
       eventBus: eventBus, runReceiptRecorder: WorkflowRunReceiptRecorder(repository: receipts))
-    return Fixture(coordinator: coordinator, workflow: workflow, gate: gate, transformer: transformer,
+    return Fixture(
+      coordinator: coordinator, workflow: workflow, gate: gate, transformer: transformer,
       store: store, delivery: delivery, receipts: receipts)
   }
 }
@@ -114,7 +115,10 @@ private actor PolishingGateProbe: TextPolishingGate {
   let skip: Bool
   let cancel: Bool
   var inputs: [String] = []
-  init(skip: Bool, cancel: Bool) { self.skip = skip; self.cancel = cancel }
+  init(skip: Bool, cancel: Bool) {
+    self.skip = skip
+    self.cancel = cancel
+  }
   func shouldSkip(text: String, step: PostProcessStep, context: TransformContext) throws -> Bool {
     inputs.append(text)
     if cancel { throw CancellationError() }
@@ -132,9 +136,12 @@ private actor PolishingTransformerProbe: TracedTextTransformer {
   func transformWithTrace(text: String, step: PostProcessStep, context: TransformContext) throws -> TracedTextTransformation {
     calls += 1
     let output = text + " rewritten"
-    return .init(text: output, trace: .init(providerID: id, modelID: "test",
-      systemPrompt: "", workflowPrompt: step.prompt ?? "", messages: [.init(role: .user, content: text)],
-      responseText: output))
+    return .init(
+      text: output,
+      trace: .init(
+        providerID: id, modelID: "test",
+        systemPrompt: "", workflowPrompt: step.prompt ?? "", messages: [.init(role: .user, content: text)],
+        responseText: output))
   }
 }
 
@@ -145,7 +152,7 @@ private actor PolishingDeliveryProbe: OutputAction {
   var wasStoredBeforeDelivery = false
   init(store: RecordStore) { self.store = store }
   func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-      let text = try record.requireText(for: id)
+    let text = try record.requireText(for: id)
     texts.append(text)
     let snapshot = try await store.catalogSnapshot()
     if let id = snapshot.records.first?.id {

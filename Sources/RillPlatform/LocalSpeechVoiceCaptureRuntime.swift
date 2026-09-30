@@ -260,7 +260,7 @@ actor LocalSpeechVoiceCaptureRuntime {
   typealias PCMInactivitySleep = @Sendable (Duration) async throws -> Void
   typealias StreamingPreviewSessionFactory =
     @Sendable (_ request: AudioCaptureRequest) async ->
-      (any LocalSpeechStreamingPreviewSession)?
+    (any LocalSpeechStreamingPreviewSession)?
 
   private struct PreparingCapture: Sendable {
     let request: AudioCaptureRequest
@@ -597,7 +597,8 @@ actor LocalSpeechVoiceCaptureRuntime {
     timing["stablePreviewObservedMillis"] = stablePreviewObservedMillis
     timing["captureTailSampleCount"] = String(drainedTailSampleCount)
     timing["previewDeliveredSampleCount"] = String(streamingPreviewSampleCount)
-    timing["previewKeytermStatus"] = (request.options.hints.keyterms.isEmpty
+    timing["previewKeytermStatus"] =
+      (request.options.hints.keyterms.isEmpty
       ? RecognitionHintApplicationStatus.notRequested
       : streamingPreviewSession?.keytermStatus ?? .unavailable).rawValue
     timing["previewRequestedKeytermCount"] = String(request.options.hints.keyterms.count)

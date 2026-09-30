@@ -39,14 +39,17 @@ public struct RecordBufferDraftView: View {
           Text("\(model.items.count)").monospacedDigit().foregroundStyle(.secondary)
         }
         Spacer()
-        Button { model.newItem() } label: {
+        Button {
+          model.newItem()
+        } label: {
           Label(text("新建", "New item"), systemImage: "square.and.pencil")
         }
         .accessibilityIdentifier("record-buffer.new")
         .disabled(model.session?.hasMarkedText == true)
         Button(action: model.dictateNewItem) {
-          Label(isRecording ? text("结束录音", "Finish recording") : text("录音新建", "Record new item"),
-                systemImage: isRecording ? "stop.circle" : "mic")
+          Label(
+            isRecording ? text("结束录音", "Finish recording") : text("录音新建", "Record new item"),
+            systemImage: isRecording ? "stop.circle" : "mic")
         }
         .disabled(voice.isRunning && !isRecording)
       }
@@ -75,26 +78,41 @@ public struct RecordBufferDraftView: View {
   private var collectionControls: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 24) {
-        Toggle(text("语音进入待发区", "Collect voice in Drafts"), isOn: Binding(
-          get: { settings.builtinPushToTalkOutputMode == .saveToVoiceGroup },
-          set: { setVoiceCollection($0) }))
-          .disabled(!settings.canMutateScalarSettings(in: .input))
-          .help(text("关闭后，Fn 听写直接输入当前应用；“录音新建”仍会收进待发区。",
-                     "When off, Fn dictation types into the current app. Record new item still collects here."))
-          .accessibilityIdentifier("record-buffer.collect-voice")
-        Toggle(text("剪贴板进入待发区", "Collect clipboard in Drafts"), isOn: Binding(
-          get: { settings.systemClipboardCaptureEnabled },
-          set: { setClipboardCollection($0) }))
-          .disabled(!settings.canMutateScalarSettings(in: .systemClipboard))
-          .help(text("收集开启后的新复制内容，并遵守隐私排除设置。",
-                     "Collects new copies after enabling, subject to your privacy exclusions."))
-          .accessibilityIdentifier("record-buffer.collect-clipboard")
+        Toggle(
+          text("语音进入待发区", "Collect voice in Drafts"),
+          isOn: Binding(
+            get: { settings.builtinPushToTalkOutputMode == .saveToVoiceGroup },
+            set: { setVoiceCollection($0) })
+        )
+        .disabled(!settings.canMutateScalarSettings(in: .input))
+        .help(
+          text(
+            "关闭后，Fn 听写直接输入当前应用；“录音新建”仍会收进待发区。",
+            "When off, Fn dictation types into the current app. Record new item still collects here.")
+        )
+        .accessibilityIdentifier("record-buffer.collect-voice")
+        Toggle(
+          text("剪贴板进入待发区", "Collect clipboard in Drafts"),
+          isOn: Binding(
+            get: { settings.systemClipboardCaptureEnabled },
+            set: { setClipboardCollection($0) })
+        )
+        .disabled(!settings.canMutateScalarSettings(in: .systemClipboard))
+        .help(
+          text(
+            "收集开启后的新复制内容，并遵守隐私排除设置。",
+            "Collects new copies after enabling, subject to your privacy exclusions.")
+        )
+        .accessibilityIdentifier("record-buffer.collect-clipboard")
         Spacer(minLength: 0)
       }
       .toggleStyle(.checkbox)
-      Text(text("开启后自动显示，重启后保持；新内容不会打断当前编辑。",
-                "Opens automatically, including after restart. New items keep your editing selection."))
-        .font(.caption).foregroundStyle(.secondary)
+      Text(
+        text(
+          "开启后自动显示，重启后保持；新内容不会打断当前编辑。",
+          "Opens automatically, including after restart. New items keep your editing selection.")
+      )
+      .font(.caption).foregroundStyle(.secondary)
     }
     .padding(.horizontal, 14).padding(.bottom, 12)
   }
@@ -106,26 +124,36 @@ public struct RecordBufferDraftView: View {
           let entries = model.items.filter { $0.id.bufferID == summary.id }
           ForEach(summary.buffer.policy == .stack ? entries.reversed() : entries) { item in
             VStack(alignment: .leading, spacing: 5) {
-              Text(item.state == .preparing ? text("正在识别…", "Recognizing…")
-                : preview(item))
-                .lineLimit(3)
+              Text(
+                item.state == .preparing
+                  ? text("正在识别…", "Recognizing…")
+                  : preview(item)
+              )
+              .lineLimit(3)
               if item.hasEdits || item.suggestionCount > 0 || item.state != .ready {
-                Text(item.suggestionCount > 0 ? text("有待应用结果", "Result to review")
-                  : item.hasEdits ? text("已编辑", "Edited") : text("处理中", "In progress"))
-                  .font(.caption).foregroundStyle(.secondary)
+                Text(
+                  item.suggestionCount > 0
+                    ? text("有待应用结果", "Result to review")
+                    : item.hasEdits ? text("已编辑", "Edited") : text("处理中", "In progress")
+                )
+                .font(.caption).foregroundStyle(.secondary)
               }
             }
             .padding(.vertical, 4)
             .tag(item.id)
           }
         } header: {
-          Text(bufferName(summary.buffer) + " · " + policyName(summary.buffer.policy)
-            + (summary.buffer.isEnabled ? "" : text(" · 已停用", " · Disabled")))
+          Text(
+            bufferName(summary.buffer) + " · " + policyName(summary.buffer.policy)
+              + (summary.buffer.isEnabled ? "" : text(" · 已停用", " · Disabled")))
         }
       }
     }
     .listStyle(.inset)
-    .onKeyPress(.return) { model.send(); return .handled }
+    .onKeyPress(.return) {
+      model.send()
+      return .handled
+    }
     .disabled(model.isBusy || model.session?.hasMarkedText == true)
     .overlay {
       if model.items.isEmpty {
@@ -141,24 +169,30 @@ public struct RecordBufferDraftView: View {
         HStack {
           Text(text("编辑内容", "Edit text")).font(.subheadline.weight(.medium))
           Spacer()
-          Text(model.isSaving ? text("保存中…", "Saving…")
-            : session.hasUnsavedChanges ? text("尚未保存", "Unsaved") : text("已保存", "Saved"))
-            .font(.caption).foregroundStyle(.secondary)
+          Text(
+            model.isSaving
+              ? text("保存中…", "Saving…")
+              : session.hasUnsavedChanges ? text("尚未保存", "Unsaved") : text("已保存", "Saved")
+          )
+          .font(.caption).foregroundStyle(.secondary)
           Button(action: model.dictateHere) {
             Label(text("在此听写", "Dictate here"), systemImage: "mic.badge.plus")
           }
           .disabled(model.isBusy || voice.isRunning || session.hasMarkedText)
         }.padding(12).fixedSize(horizontal: false, vertical: true)
-        BufferDraftTextEditor(model: model, session: session,
-                              accessibilityLabel: text("待发内容", "Pending text"))
-          .id(session.id)
-          .frame(minHeight: 140)
+        BufferDraftTextEditor(
+          model: model, session: session,
+          accessibilityLabel: text("待发内容", "Pending text")
+        )
+        .id(session.id)
+        .frame(minHeight: 140)
         Divider()
         ScrollView {
           draftDetails(session)
         }
-        .frame(minHeight: 44, idealHeight: model.showsChanges || !session.saved.suggestions.isEmpty ? 200 : 44,
-               maxHeight: model.showsChanges || !session.saved.suggestions.isEmpty ? 240 : 44)
+        .frame(
+          minHeight: 44, idealHeight: model.showsChanges || !session.saved.suggestions.isEmpty ? 200 : 44,
+          maxHeight: model.showsChanges || !session.saved.suggestions.isEmpty ? 240 : 44)
       }
     } else {
       ContentUnavailableView {
@@ -199,9 +233,13 @@ public struct RecordBufferDraftView: View {
               diffText(original: original, edited: session.text)
                 .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
             }.frame(height: 100)
-            Text(text("删除带删除线，新增带下划线。改写不一定是识别错误，差异不会自动写入词库。",
-                      "Deletions are struck through; additions are underlined. Rewrites are not necessarily recognition errors. No vocabulary is learned automatically."))
-              .font(.caption).foregroundStyle(.secondary)
+            Text(
+              text(
+                "删除带删除线，新增带下划线。改写不一定是识别错误，差异不会自动写入词库。",
+                "Deletions are struck through; additions are underlined. Rewrites are not necessarily recognition errors. No vocabulary is learned automatically."
+              )
+            )
+            .font(.caption).foregroundStyle(.secondary)
           }.padding(.top, 8)
         }
       }.padding(12)
@@ -218,11 +256,15 @@ public struct RecordBufferDraftView: View {
         }
       }
       HStack {
-        Text(model.targetName.map { text("发送到 ", "Send to ") + $0 }
-          ?? text("发送后可回到目标输入框，按输出快捷键取用。", "Focus the target and use the output shortcut after preparing the item."))
-          .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+        Text(
+          model.targetName.map { text("发送到 ", "Send to ") + $0 }
+            ?? text("发送后可回到目标输入框，按输出快捷键取用。", "Focus the target and use the output shortcut after preparing the item.")
+        )
+        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
         Spacer()
-        Button(role: .destructive) { showsDiscard = true } label: {
+        Button(role: .destructive) {
+          showsDiscard = true
+        } label: {
           Label(text("移除", "Remove"), systemImage: "trash")
         }.disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
         Button(text("隐藏", "Hide"), action: model.closeAction)
@@ -238,7 +280,9 @@ public struct RecordBufferDraftView: View {
   private func diffText(original: String, edited: String) -> Text {
     BufferTextDiff(original: original, edited: edited).segments.reduce(Text("")) { result, segment in
       let part = Text(segment.text)
-      let styled = segment.kind == .removed ? part.strikethrough().foregroundColor(.red)
+      let styled =
+        segment.kind == .removed
+        ? part.strikethrough().foregroundColor(.red)
         : segment.kind == .inserted ? part.underline().foregroundColor(.accentColor) : part
       return Text("\(result)\(styled)")
     }
@@ -250,7 +294,8 @@ public struct RecordBufferDraftView: View {
     return buffer.name
   }
   private func preview(_ item: BufferItemSummary) -> String {
-    let preview = model.session?.entryID == item.id
+    let preview =
+      model.session?.entryID == item.id
       ? RecordTextFormatting.previewText(model.session?.text ?? "", limit: 160) : item.preview
     return preview.isEmpty ? text("空白草稿", "Empty draft") : preview
   }

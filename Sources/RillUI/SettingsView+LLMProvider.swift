@@ -5,9 +5,11 @@ extension SettingsView {
   var apiProviderSettingsSection: some View {
     settingsDisclosure(.providers) {
       if let settings = model.recordWorkspace.jevSettings {
-        JevAPISettingsView(settings: settings, language: model.settings.language,
-          focusedItem: $focusedSettingsItem, accessibilityFocusedItem: $accessibilityFocusedSettingsItem)
-          .id(SettingsItem.jevCredential)
+        JevAPISettingsView(
+          settings: settings, language: model.settings.language,
+          focusedItem: $focusedSettingsItem, accessibilityFocusedItem: $accessibilityFocusedSettingsItem
+        )
+        .id(SettingsItem.jevCredential)
         jevPolishingSettingsSection(settings)
         if settings.supportsHotwordSelection {
           JevHotwordSettingsView(settings: settings, language: model.settings.language)
@@ -168,21 +170,27 @@ extension SettingsView {
     return VStack(alignment: .leading, spacing: RillSpacing.row) {
       Text(chinese ? "Jev 润色判断" : "Jev polishing prediction")
         .font(.subheadline.weight(.medium))
-      Text(chinese
-        ? "启用后，智能整理会先将转写文本与润色要求发送到 TypeSafe Jev。明确无需润色时跳过 LLM，原文仍会保存并输出；判断不确定或失败时继续润色。"
-        : "When enabled, Smart Cleanup sends the transcript and rewrite instructions to TypeSafe Jev first. If clearly ready, the text is saved and delivered without an LLM rewrite. Uncertain or failed predictions continue with polishing.")
-        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-      Toggle(chinese ? "用 Jev 判断是否需要润色" : "Use Jev to decide whether polishing is needed",
-        isOn: $jev.isPolishingEnabled)
-        .disabled(!jev.isConfigured)
-        .accessibilityIdentifier("settings.jev-polishing.enabled")
-        .id(SettingsItem.jevPolishing)
-        .focused($focusedSettingsItem, equals: .jevPolishing)
-        .accessibilityFocused($accessibilityFocusedSettingsItem, equals: .jevPolishing)
-      Text(chinese
-        ? "开关和 Key 仅在本次 App 会话中保留。不会发送音频、屏幕或记忆；使用这些参考信息时仍直接润色。"
-        : "The switch and key are kept only for this app session. Audio, screen and memory references are never sent to Jev; runs using those references proceed directly to polishing.")
-        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+      Text(
+        chinese
+          ? "启用后，智能整理会先将转写文本与润色要求发送到 TypeSafe Jev。明确无需润色时跳过 LLM，原文仍会保存并输出；判断不确定或失败时继续润色。"
+          : "When enabled, Smart Cleanup sends the transcript and rewrite instructions to TypeSafe Jev first. If clearly ready, the text is saved and delivered without an LLM rewrite. Uncertain or failed predictions continue with polishing."
+      )
+      .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+      Toggle(
+        chinese ? "用 Jev 判断是否需要润色" : "Use Jev to decide whether polishing is needed",
+        isOn: $jev.isPolishingEnabled
+      )
+      .disabled(!jev.isConfigured)
+      .accessibilityIdentifier("settings.jev-polishing.enabled")
+      .id(SettingsItem.jevPolishing)
+      .focused($focusedSettingsItem, equals: .jevPolishing)
+      .accessibilityFocused($accessibilityFocusedSettingsItem, equals: .jevPolishing)
+      Text(
+        chinese
+          ? "开关和 Key 仅在本次 App 会话中保留。不会发送音频、屏幕或记忆；使用这些参考信息时仍直接润色。"
+          : "The switch and key are kept only for this app session. Audio, screen and memory references are never sent to Jev; runs using those references proceed directly to polishing."
+      )
+      .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
   }
 }

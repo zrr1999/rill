@@ -3,234 +3,234 @@ import XCTest
 @testable import RillCore
 
 final class WorkflowPlanTests: XCTestCase {
-    func testTextInputProjectionPreservesBranchesVocabularyAndOutputs() throws {
-        var plan = makeVoiceWorkflow().plan
-        plan.setup.vocabularyBindings = [VocabularyCollectionBinding(collectionID: UUID())]
-        plan.process.steps.insert(WorkflowProcessStep(kind: .resolveUncertainty), at: 1)
-        var branch = WorkflowProcessStep(kind: .conditional)
-        branch.condition = .comparison(field: .text, operation: .contains, value: "Rill")
-        branch.thenSteps = [WorkflowProcessStep(kind: .normalizeWhitespace)]
-        branch.elseSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: "Polish")]
-        plan.process.steps.append(branch)
-        let original = plan
+  func testTextInputProjectionPreservesBranchesVocabularyAndOutputs() throws {
+    var plan = makeVoiceWorkflow().plan
+    plan.setup.vocabularyBindings = [VocabularyCollectionBinding(collectionID: UUID())]
+    plan.process.steps.insert(WorkflowProcessStep(kind: .resolveUncertainty), at: 1)
+    var branch = WorkflowProcessStep(kind: .conditional)
+    branch.condition = .comparison(field: .text, operation: .contains, value: "Rill")
+    branch.thenSteps = [WorkflowProcessStep(kind: .normalizeWhitespace)]
+    branch.elseSteps = [WorkflowProcessStep(kind: .llmRewrite, prompt: "Polish")]
+    plan.process.steps.append(branch)
+    let original = plan
 
-        let textPlan = plan.acceptingTextInput()
+    let textPlan = plan.acceptingTextInput()
 
-        try WorkflowPlanValidator.validate(textPlan, input: .text)
-        XCTAssertEqual(plan, original)
-        XCTAssertNil(textPlan.setup.speechRoute)
-        XCTAssertEqual(textPlan.setup.vocabularyBindings, plan.setup.vocabularyBindings)
-        XCTAssertEqual(textPlan.process.steps, [plan.process.steps[2], branch])
-        XCTAssertEqual(textPlan.output, plan.output)
-        XCTAssertEqual(textPlan.acceptingTextInput(), textPlan)
+    try WorkflowPlanValidator.validate(textPlan, input: .text)
+    XCTAssertEqual(plan, original)
+    XCTAssertNil(textPlan.setup.speechRoute)
+    XCTAssertEqual(textPlan.setup.vocabularyBindings, plan.setup.vocabularyBindings)
+    XCTAssertEqual(textPlan.process.steps, [plan.process.steps[2], branch])
+    XCTAssertEqual(textPlan.output, plan.output)
+    XCTAssertEqual(textPlan.acceptingTextInput(), textPlan)
+  }
+
+  func testTextInputProjectionDoesNotHideInvalidNestedSpeech() {
+    var plan = makeVoiceWorkflow().plan
+    var branch = WorkflowProcessStep(kind: .conditional)
+    branch.condition = .comparison(field: .text, operation: .contains, value: "Rill")
+    branch.thenSteps = [WorkflowProcessStep(kind: .recognizeSpeech)]
+    plan.process.steps.append(branch)
+
+    XCTAssertThrowsError(
+      try WorkflowPlanValidator.validate(plan.acceptingTextInput(), input: .text)
+    )
+  }
+
+  func testWorkflowDefinitionEncodesPlanWithoutLegacyPipeline() throws {
+    let workflow = makeVoiceWorkflow()
+
+    let data = try JSONEncoder().encode(workflow)
+    let object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: data) as? [String: Any]
+    )
+    let decoded = try JSONDecoder().decode(WorkflowDefinition.self, from: data)
+
+    XCTAssertNotNil(object["plan"])
+    XCTAssertNil(object["pipeline"])
+    XCTAssertEqual(decoded, workflow)
+  }
+
+  func testLegacyPipelineDecodesIntoThreePhasePlan() throws {
+    let workflow = makeVoiceWorkflow()
+    var object = try XCTUnwrap(
+      JSONSerialization.jsonObject(
+        with: JSONEncoder().encode(workflow)
+      ) as? [String: Any]
+    )
+    object.removeValue(forKey: "plan")
+    object["pipeline"] = [
+      "recognizerID": "legacy.recognizer",
+      "postProcessSteps": [],
+      "outputActions": [
+        ["id": "system-clipboard.copy", "configuration": [:]]
+      ],
+      "uncertaintyPolicy": [
+        "mode": "off",
+        "confidenceThreshold": 0,
+        "timeoutSeconds": 0,
+      ],
+      "deliveryPolicy": ["strategy": "clipboardOnly"],
+    ]
+
+    let decoded = try JSONDecoder().decode(
+      WorkflowDefinition.self,
+      from: JSONSerialization.data(withJSONObject: object)
+    )
+
+    XCTAssertEqual(decoded.plan.setup.speechRoute?.recognizerID, "legacy.recognizer")
+    XCTAssertEqual(
+      decoded.plan.process.steps.map(\.kind),
+      [.recognizeSpeech, .applyVocabulary]
+    )
+    XCTAssertEqual(decoded.plan.output.actions.map(\.id), ["system-clipboard.copy"])
+  }
+
+  func testValidatorRejectsRecognitionOutsideFirstPosition() {
+    var workflow = makeVoiceWorkflow()
+    workflow.plan.process.steps = [
+      WorkflowProcessStep(kind: .applyVocabulary),
+      WorkflowProcessStep(kind: .recognizeSpeech),
+    ]
+
+    XCTAssertThrowsError(
+      try WorkflowPlanValidator.validate(workflow.plan, input: .audio)
+    ) { error in
+      XCTAssertEqual(
+        error as? WorkflowPlanValidationError,
+        .recognitionMustBeFirst
+      )
     }
+  }
 
-    func testTextInputProjectionDoesNotHideInvalidNestedSpeech() {
-        var plan = makeVoiceWorkflow().plan
-        var branch = WorkflowProcessStep(kind: .conditional)
-        branch.condition = .comparison(field: .text, operation: .contains, value: "Rill")
-        branch.thenSteps = [WorkflowProcessStep(kind: .recognizeSpeech)]
-        plan.process.steps.append(branch)
+  func testValidatorAllowsTextOnlyPlanAndRejectsEmptyOutput() throws {
+    var plan = WorkflowPlan(
+      setup: WorkflowSetupPhase(),
+      process: WorkflowProcessPhase(
+        steps: [WorkflowProcessStep(kind: .applyVocabulary)]
+      ),
+      output: WorkflowOutputPhase(
+        actions: [OutputActionReference(id: "system-clipboard.copy")]
+      )
+    )
 
-        XCTAssertThrowsError(
-            try WorkflowPlanValidator.validate(plan.acceptingTextInput(), input: .text)
-        )
+    XCTAssertNoThrow(try WorkflowPlanValidator.validate(plan, input: .text))
+    plan.output.actions = []
+    XCTAssertThrowsError(
+      try WorkflowPlanValidator.validate(plan, input: .text)
+    ) { error in
+      XCTAssertEqual(error as? WorkflowPlanValidationError, .missingOutput)
     }
+  }
 
-    func testWorkflowDefinitionEncodesPlanWithoutLegacyPipeline() throws {
-        let workflow = makeVoiceWorkflow()
-
-        let data = try JSONEncoder().encode(workflow)
-        let object = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: data) as? [String: Any]
+  func testBindingConditionsAreAndWithinBindingAndOrAcrossBindings() {
+    let collectionID = UUID()
+    let hotwordID = UUID()
+    let collection = VocabularyCollection(
+      id: collectionID,
+      name: "Scoped",
+      entries: [
+        VocabularyEntry(
+          id: hotwordID,
+          content: .hotword(phrase: "Rill")
         )
-        let decoded = try JSONDecoder().decode(WorkflowDefinition.self, from: data)
-
-        XCTAssertNotNil(object["plan"])
-        XCTAssertNil(object["pipeline"])
-        XCTAssertEqual(decoded, workflow)
-    }
-
-    func testLegacyPipelineDecodesIntoThreePhasePlan() throws {
-        let workflow = makeVoiceWorkflow()
-        var object = try XCTUnwrap(
-            JSONSerialization.jsonObject(
-                with: JSONEncoder().encode(workflow)
-            ) as? [String: Any]
+      ]
+    )
+    let bindings = [
+      VocabularyCollectionBinding(
+        collectionID: collectionID,
+        condition: WorkflowBindingCondition(
+          bundleIdentifier: "com.example.editor",
+          locale: "zh-CN"
         )
-        object.removeValue(forKey: "plan")
-        object["pipeline"] = [
-            "recognizerID": "legacy.recognizer",
-            "postProcessSteps": [],
-            "outputActions": [
-                ["id": "system-clipboard.copy", "configuration": [:]],
-            ],
-            "uncertaintyPolicy": [
-                "mode": "off",
-                "confidenceThreshold": 0,
-                "timeoutSeconds": 0,
-            ],
-            "deliveryPolicy": ["strategy": "clipboardOnly"],
-        ]
+      ),
+      VocabularyCollectionBinding(
+        collectionID: collectionID,
+        condition: WorkflowBindingCondition(locale: "en-US")
+      ),
+    ]
 
-        let decoded = try JSONDecoder().decode(
-            WorkflowDefinition.self,
-            from: JSONSerialization.data(withJSONObject: object)
-        )
+    let chinese = VocabularyCollectionResolver.resolve(
+      bindings: bindings,
+      collections: [collection],
+      context: VocabularyRuleContext(
+        bundleIdentifier: "com.example.editor",
+        locale: "zh-CN"
+      )
+    )
+    let english = VocabularyCollectionResolver.resolve(
+      bindings: bindings,
+      collections: [collection],
+      context: VocabularyRuleContext(locale: "en-US")
+    )
+    let mismatch = VocabularyCollectionResolver.resolve(
+      bindings: bindings,
+      collections: [collection],
+      context: VocabularyRuleContext(
+        bundleIdentifier: "com.example.other",
+        locale: "zh-CN"
+      )
+    )
 
-        XCTAssertEqual(decoded.plan.setup.speechRoute?.recognizerID, "legacy.recognizer")
-        XCTAssertEqual(
-            decoded.plan.process.steps.map(\.kind),
-            [.recognizeSpeech, .applyVocabulary]
-        )
-        XCTAssertEqual(decoded.plan.output.actions.map(\.id), ["system-clipboard.copy"])
-    }
+    XCTAssertEqual(chinese.hotwordRules.map(\.id), [hotwordID])
+    XCTAssertEqual(english.hotwordRules.map(\.id), [hotwordID])
+    XCTAssertTrue(mismatch.hotwordRules.isEmpty)
+  }
 
-    func testValidatorRejectsRecognitionOutsideFirstPosition() {
-        var workflow = makeVoiceWorkflow()
-        workflow.plan.process.steps = [
-            WorkflowProcessStep(kind: .applyVocabulary),
+  func testLegacyMigrationIsDeterministicAndPreservesRuleState() {
+    let scopedID = UUID(uuidString: "22144B4B-93D3-4B0D-A797-3A78D5FF788A")!
+    let rule = VocabularyRule(
+      id: scopedID,
+      kind: .mapping,
+      enabled: false,
+      pattern: "codex",
+      replacement: "Codex",
+      matchMode: .wordBoundary,
+      caseSensitive: true,
+      scope: VocabularyRuleScope(
+        bundleIdentifier: "com.openai.codex",
+        locale: "zh-CN"
+      ),
+      priority: 7,
+      createdAt: Date(timeIntervalSince1970: 123)
+    )
+
+    let first = VocabularyLegacyMigrator.migrate([rule])
+    let second = VocabularyLegacyMigrator.migrate([rule])
+
+    XCTAssertEqual(first, second)
+    XCTAssertEqual(first.collections[0].entries[0].id, scopedID)
+    XCTAssertFalse(first.collections[0].entries[0].enabled)
+    XCTAssertEqual(
+      first.bindings[0].condition,
+      WorkflowBindingCondition(
+        bundleIdentifier: "com.openai.codex",
+        locale: "zh-CN"
+      )
+    )
+  }
+
+  private func makeVoiceWorkflow() -> WorkflowDefinition {
+    WorkflowDefinition(
+      name: "Plan Test",
+      plan: WorkflowPlan(
+        setup: WorkflowSetupPhase(
+          speechRoute: WorkflowSpeechRoute(
+            recognizerID: "test.recognizer"
+          )
+        ),
+        process: WorkflowProcessPhase(
+          steps: [
             WorkflowProcessStep(kind: .recognizeSpeech),
-        ]
-
-        XCTAssertThrowsError(
-            try WorkflowPlanValidator.validate(workflow.plan, input: .audio)
-        ) { error in
-            XCTAssertEqual(
-                error as? WorkflowPlanValidationError,
-                .recognitionMustBeFirst
-            )
-        }
-    }
-
-    func testValidatorAllowsTextOnlyPlanAndRejectsEmptyOutput() throws {
-        var plan = WorkflowPlan(
-            setup: WorkflowSetupPhase(),
-            process: WorkflowProcessPhase(
-                steps: [WorkflowProcessStep(kind: .applyVocabulary)]
-            ),
-            output: WorkflowOutputPhase(
-                actions: [OutputActionReference(id: "system-clipboard.copy")]
-            )
+            WorkflowProcessStep(kind: .applyVocabulary),
+          ]
+        ),
+        output: WorkflowOutputPhase(
+          actions: [OutputActionReference(id: "system-clipboard.copy")],
+          deliveryPolicy: DeliveryPolicy(strategy: .systemClipboardOnly)
         )
-
-        XCTAssertNoThrow(try WorkflowPlanValidator.validate(plan, input: .text))
-        plan.output.actions = []
-        XCTAssertThrowsError(
-            try WorkflowPlanValidator.validate(plan, input: .text)
-        ) { error in
-            XCTAssertEqual(error as? WorkflowPlanValidationError, .missingOutput)
-        }
-    }
-
-    func testBindingConditionsAreAndWithinBindingAndOrAcrossBindings() {
-        let collectionID = UUID()
-        let hotwordID = UUID()
-        let collection = VocabularyCollection(
-            id: collectionID,
-            name: "Scoped",
-            entries: [
-                VocabularyEntry(
-                    id: hotwordID,
-                    content: .hotword(phrase: "Rill")
-                ),
-            ]
-        )
-        let bindings = [
-            VocabularyCollectionBinding(
-                collectionID: collectionID,
-                condition: WorkflowBindingCondition(
-                    bundleIdentifier: "com.example.editor",
-                    locale: "zh-CN"
-                )
-            ),
-            VocabularyCollectionBinding(
-                collectionID: collectionID,
-                condition: WorkflowBindingCondition(locale: "en-US")
-            ),
-        ]
-
-        let chinese = VocabularyCollectionResolver.resolve(
-            bindings: bindings,
-            collections: [collection],
-            context: VocabularyRuleContext(
-                bundleIdentifier: "com.example.editor",
-                locale: "zh-CN"
-            )
-        )
-        let english = VocabularyCollectionResolver.resolve(
-            bindings: bindings,
-            collections: [collection],
-            context: VocabularyRuleContext(locale: "en-US")
-        )
-        let mismatch = VocabularyCollectionResolver.resolve(
-            bindings: bindings,
-            collections: [collection],
-            context: VocabularyRuleContext(
-                bundleIdentifier: "com.example.other",
-                locale: "zh-CN"
-            )
-        )
-
-        XCTAssertEqual(chinese.hotwordRules.map(\.id), [hotwordID])
-        XCTAssertEqual(english.hotwordRules.map(\.id), [hotwordID])
-        XCTAssertTrue(mismatch.hotwordRules.isEmpty)
-    }
-
-    func testLegacyMigrationIsDeterministicAndPreservesRuleState() {
-        let scopedID = UUID(uuidString: "22144B4B-93D3-4B0D-A797-3A78D5FF788A")!
-        let rule = VocabularyRule(
-            id: scopedID,
-            kind: .mapping,
-            enabled: false,
-            pattern: "codex",
-            replacement: "Codex",
-            matchMode: .wordBoundary,
-            caseSensitive: true,
-            scope: VocabularyRuleScope(
-                bundleIdentifier: "com.openai.codex",
-                locale: "zh-CN"
-            ),
-            priority: 7,
-            createdAt: Date(timeIntervalSince1970: 123)
-        )
-
-        let first = VocabularyLegacyMigrator.migrate([rule])
-        let second = VocabularyLegacyMigrator.migrate([rule])
-
-        XCTAssertEqual(first, second)
-        XCTAssertEqual(first.collections[0].entries[0].id, scopedID)
-        XCTAssertFalse(first.collections[0].entries[0].enabled)
-        XCTAssertEqual(
-            first.bindings[0].condition,
-            WorkflowBindingCondition(
-                bundleIdentifier: "com.openai.codex",
-                locale: "zh-CN"
-            )
-        )
-    }
-
-    private func makeVoiceWorkflow() -> WorkflowDefinition {
-        WorkflowDefinition(
-            name: "Plan Test",
-            plan: WorkflowPlan(
-                setup: WorkflowSetupPhase(
-                    speechRoute: WorkflowSpeechRoute(
-                        recognizerID: "test.recognizer"
-                    )
-                ),
-                process: WorkflowProcessPhase(
-                    steps: [
-                        WorkflowProcessStep(kind: .recognizeSpeech),
-                        WorkflowProcessStep(kind: .applyVocabulary),
-                    ]
-                ),
-                output: WorkflowOutputPhase(
-                    actions: [OutputActionReference(id: "system-clipboard.copy")],
-                    deliveryPolicy: DeliveryPolicy(strategy: .systemClipboardOnly)
-                )
-            ),
-            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
-        )
-    }
+      ),
+      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
+    )
+  }
 }

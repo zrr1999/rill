@@ -51,9 +51,10 @@ public struct TextTransformerRegistry: Sendable {
   private let kinds: ComponentIndex<PostProcessStepKind, any TextTransformer>
   public init(transformers: [any TextTransformer]) {
     identities = .init(entries: transformers.map { ($0.id, $0) }, duplicate: ComponentRegistrationError.duplicateTransformer)
-    kinds = .init(entries: transformers.flatMap { transformer in
-      transformer.supportedKinds.map { ($0, transformer) }
-    }, duplicate: ComponentRegistrationError.duplicateTransformerKind)
+    kinds = .init(
+      entries: transformers.flatMap { transformer in
+        transformer.supportedKinds.map { ($0, transformer) }
+      }, duplicate: ComponentRegistrationError.duplicateTransformerKind)
   }
   public func validate() throws {
     try identities.validate()

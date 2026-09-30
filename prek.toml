@@ -45,3 +45,9 @@ hooks = [
   # Use published components instead of the upstream checkout's uv workspace.
   { id = "zendev-message-check", args = ["--profile", "zendev"], additional_dependencies = ["--no-sources", "zendev-commit==0.4.0", "zendev-review==0.4.0"], stages = ["commit-msg"] },
 ]
+
+[[repos]]
+repo = "local"
+hooks = [
+  { id = "swift-format", name = "swift format", entry = "swift format lint --strict --configuration .swift-format --", language = "system", types = ["swift"], stages = ["pre-commit"] },
+]

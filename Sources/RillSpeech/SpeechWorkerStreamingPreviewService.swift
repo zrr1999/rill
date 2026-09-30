@@ -31,9 +31,10 @@ public actor SpeechWorkerStreamingPreviewService {
         settings.enabledModelIDs.contains(modelID)
       else { return nil }
       let language = request.options.language
-      let profile = SpeechWorkerStreamingProfile(
-        rawValue: configuration.streamingProfile ?? ""
-      ) ?? Self.defaultProfile(for: request)
+      let profile =
+        SpeechWorkerStreamingProfile(
+          rawValue: configuration.streamingProfile ?? ""
+        ) ?? Self.defaultProfile(for: request)
       let livePreview = configuration.livePreviewEnabled
       guard livePreview || request.endpointControl != nil else { return nil }
       let workerSession = try await supervisor.startStreaming(
@@ -104,7 +105,6 @@ public actor SpeechWorkerStreamingPreviewService {
     }
     return .realtime
   }
-
 
 }
 

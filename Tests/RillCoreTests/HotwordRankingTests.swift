@@ -13,8 +13,9 @@ struct HotwordRankingTests {
       HotwordCandidate(id: UUID(), term: "MLX", priority: 0),
       HotwordCandidate(id: UUID(), term: "Spore", priority: 0),
     ]
-    #expect(try HotwordRankingPolicy.ranked(candidates, scores: [uncertain, uncertain, uncertain, relevant])
-      == ["Manual", "Spore", "Rill", "MLX"])
+    #expect(
+      try HotwordRankingPolicy.ranked(candidates, scores: [uncertain, uncertain, uncertain, relevant])
+        == ["Manual", "Spore", "Rill", "MLX"])
   }
 
   @Test func lowConfidenceAndAmbiguousRelevanceNeverPromote() throws {
@@ -29,9 +30,11 @@ struct HotwordRankingTests {
       try HotwordRankingPolicy.ranked(candidates, scores: [relevant])
     }
     #expect(throws: HotwordRankingError.invalidResponse) {
-      try HotwordRankingPolicy.ranked(candidates, scores: [
-        .init(score: .nan, confidence: 1, probabilities: [0, 0, 1]), relevant,
-      ])
+      try HotwordRankingPolicy.ranked(
+        candidates,
+        scores: [
+          .init(score: .nan, confidence: 1, probabilities: [0, 0, 1]), relevant,
+        ])
     }
   }
 
@@ -58,9 +61,15 @@ struct HotwordRankingTests {
 
   @Test func oversizedSelectionIsOmittedWithoutTruncatingMeaning() {
     let allowed = String(repeating: "中", count: 600)
-    #expect(HotwordRankingRequest(application: "", workflow: "", selectedText: allowed,
-      candidates: []).selectedText == allowed)
-    #expect(HotwordRankingRequest(application: "", workflow: "", selectedText: allowed + "文",
-      candidates: []).selectedText.isEmpty)
+    #expect(
+      HotwordRankingRequest(
+        application: "", workflow: "", selectedText: allowed,
+        candidates: []
+      ).selectedText == allowed)
+    #expect(
+      HotwordRankingRequest(
+        application: "", workflow: "", selectedText: allowed + "文",
+        candidates: []
+      ).selectedText.isEmpty)
   }
 }

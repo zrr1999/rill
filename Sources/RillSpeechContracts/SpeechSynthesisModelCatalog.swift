@@ -212,11 +212,12 @@ public enum SpeechSynthesisModelInventory {
           for: descriptor,
           modelRootURL: modelRootURL
         )
-        return (try? validatePublication(
-          publicationURL,
-          descriptor: descriptor,
-          verifyDigests: false
-        )) == true
+        return
+          (try? validatePublication(
+            publicationURL,
+            descriptor: descriptor,
+            verifyDigests: false
+          )) == true
           ? descriptor.id.rawValue
           : nil
       }

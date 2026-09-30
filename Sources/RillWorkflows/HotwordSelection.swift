@@ -53,10 +53,12 @@ public final class HotwordSelection {
   private var lastPrivacy: PrivacyPolicySettingsSource.Snapshot?
   private var closed = false
 
-  public init(provider: any HotwordRankingProvider, settings: JevSessionSettingsSource, privacy: PrivacyPolicySettingsSource,
+  public init(
+    provider: any HotwordRankingProvider, settings: JevSessionSettingsSource, privacy: PrivacyPolicySettingsSource,
     currentFocus: @escaping @MainActor @Sendable () -> FocusSnapshot,
     report: @escaping @Sendable (DiagnosticEvent) async -> Void = { _ in },
-    now: @escaping @Sendable () -> Date = Date.init, timeout: Duration = .seconds(2)) {
+    now: @escaping @Sendable () -> Date = Date.init, timeout: Duration = .seconds(2)
+  ) {
     self.provider = provider
     self.settings = settings
     self.privacy = privacy
@@ -72,9 +74,11 @@ public final class HotwordSelection {
     authorization = credential == nil ? nil : UUID()
   }
 
-  public func select(runID: UUID, workflow: WorkflowDefinition, collections: [VocabularyCollection],
+  public func select(
+    runID: UUID, workflow: WorkflowDefinition, collections: [VocabularyCollection],
     context: ContextSnapshot, options: SpeechRecognitionRequestOptions, candidates: [HotwordCandidate],
-    lifetime: AudioCaptureLifetime) throws -> Selection {
+    lifetime: AudioCaptureLifetime
+  ) throws -> Selection {
     let fallback = candidates.map(\.term)
     guard !closed, let authorization, credentialIsCurrent else {
       configure(isEnabled: false)
@@ -87,15 +91,22 @@ public final class HotwordSelection {
       invalidate()
       return Selection(terms: fallback, status: .privacy, preparation: nil)
     }
-    if lastPrivacy != policy { invalidate(); lastPrivacy = policy }
-    let request = HotwordRankingRequest(application: context.focus.applicationName ?? "",
+    if lastPrivacy != policy {
+      invalidate()
+      lastPrivacy = policy
+    }
+    let request = HotwordRankingRequest(
+      application: context.focus.applicationName ?? "",
       workflow: workflow.name, selectedText: context.focus.selectedText, candidates: fallback)
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys]
-    let key = Self.digest(try encoder.encode(Identity(request: request, workflow: workflow,
-      collections: collections, candidates: candidates, bundleIdentifier: context.focus.bundleIdentifier,
-      selectionDigest: Self.digest(Data(context.focus.selectedText.utf8)), language: options.language,
-      model: model, authorization: authorization, privacy: policy.settings, privacyRevision: policy.revision)))
+    let key = Self.digest(
+      try encoder.encode(
+        Identity(
+          request: request, workflow: workflow,
+          collections: collections, candidates: candidates, bundleIdentifier: context.focus.bundleIdentifier,
+          selectionDigest: Self.digest(Data(context.focus.selectedText.utf8)), language: options.language,
+          model: model, authorization: authorization, privacy: policy.settings, privacyRevision: policy.revision)))
     cache = cache.filter { $0.value.expires > now() }
     access &+= 1
     if var cached = cache[key] {
@@ -108,19 +119,23 @@ public final class HotwordSelection {
     focus.selectedText = ""
     let sourceFocus = focus
     let preparation = HotwordRankingPreparation { [weak self] in
-      await self?.warm(key: key, runID: runID, request: request, candidates: candidates,
+      await self?.warm(
+        key: key, runID: runID, request: request, candidates: candidates,
         authorization: authorization, policy: policy, focus: sourceFocus, lifetime: lifetime)
     }
     preparations[runID] = preparation
     return Selection(terms: fallback, status: .miss, preparation: preparation)
   }
 
-  private func warm(key: String, runID: UUID, request: HotwordRankingRequest,
+  private func warm(
+    key: String, runID: UUID, request: HotwordRankingRequest,
     candidates: [HotwordCandidate], authorization: UUID, policy: PrivacyPolicySettingsSource.Snapshot,
-    focus: FocusSnapshot, lifetime: AudioCaptureLifetime) async {
+    focus: FocusSnapshot, lifetime: AudioCaptureLifetime
+  ) async {
     guard !Task.isCancelled, !closed, activeKey == nil,
       self.authorization == authorization, lifetime.isActive,
-      permittedPolicy(for: focus) == policy else { return }
+      permittedPolicy(for: focus) == policy
+    else { return }
     if let cached = cache[key], cached.expires > now() { return }
     activeKey = key
     defer { activeKey = nil }
@@ -136,7 +151,8 @@ public final class HotwordSelection {
           return
         }
         if self.permittedPolicy(for: focus) != policy
-          || Self.wasRevoked(lifetime) {
+          || Self.wasRevoked(lifetime)
+        {
           self.invalidate()
           return
         }
@@ -146,13 +162,17 @@ public final class HotwordSelection {
     var outcome = "ready"
     do {
       let scores = try await operations.run(timeout: timeout) { [self, provider] in
-        guard await permitsRequest(authorization: authorization, policy: policy,
-          focus: focus, lifetime: lifetime) else { throw CancellationError() }
+        guard
+          await permitsRequest(
+            authorization: authorization, policy: policy,
+            focus: focus, lifetime: lifetime)
+        else { throw CancellationError() }
         return try await provider.score(request, apiKey: credential.apiKey)
       }
       try Task.checkCancellation()
       guard !closed, self.authorization == authorization, credentialIsCurrent, !Self.wasRevoked(lifetime),
-        permittedPolicy(for: focus) == policy else { return }
+        permittedPolicy(for: focus) == policy
+      else { return }
       let terms = try HotwordRankingPolicy.ranked(candidates, scores: scores)
       access &+= 1
       cache[key] = CacheEntry(terms: terms, expires: now().addingTimeInterval(300), access: access)
@@ -168,17 +188,22 @@ public final class HotwordSelection {
     }
     let elapsed = start.duration(to: .now).components
     let millis = max(0, elapsed.seconds * 1_000 + elapsed.attoseconds / 1_000_000_000_000_000)
-    await report(DiagnosticEvent(runID: runID, subsystem: .session, level: .debug,
-      event: .hotwordRankingCompleted, message: "Hotword ranking completed.",
-      metadata: ["hotwordRankingOutcome": outcome, "hotwordCandidateCount": String(candidates.count),
-        "durationMillis": String(millis)]))
+    await report(
+      DiagnosticEvent(
+        runID: runID, subsystem: .session, level: .debug,
+        event: .hotwordRankingCompleted, message: "Hotword ranking completed.",
+        metadata: [
+          "hotwordRankingOutcome": outcome, "hotwordCandidateCount": String(candidates.count),
+          "durationMillis": String(millis),
+        ]))
   }
 
   private func permittedPolicy(for source: FocusSnapshot) -> PrivacyPolicySettingsSource.Snapshot? {
     guard let policy = try? privacy.currentSnapshot() else { return nil }
     let current = currentFocus()
     guard source.bundleIdentifier != nil, current.bundleIdentifier == source.bundleIdentifier,
-      current.processIdentifier == source.processIdentifier else { return nil }
+      current.processIdentifier == source.processIdentifier
+    else { return nil }
     for focus in [source, current] {
       let context = ContextSnapshot(focus: focus, clipboard: .init(plainText: "", changeCount: 0))
       let decision = PrivacyPolicy.evaluate(context: context, processingDestinations: [.cloudText], settings: policy.settings)
@@ -191,8 +216,10 @@ public final class HotwordSelection {
     return policy
   }
 
-  private func permitsRequest(authorization: UUID, policy: PrivacyPolicySettingsSource.Snapshot,
-    focus: FocusSnapshot, lifetime: AudioCaptureLifetime) -> Bool {
+  private func permitsRequest(
+    authorization: UUID, policy: PrivacyPolicySettingsSource.Snapshot,
+    focus: FocusSnapshot, lifetime: AudioCaptureLifetime
+  ) -> Bool {
     !closed && self.authorization == authorization && credentialIsCurrent && !Self.wasRevoked(lifetime)
       && permittedPolicy(for: focus) == policy
   }

@@ -12,11 +12,13 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   private let onClose: () -> Void
   private let onNeedsAttention: () -> Void
 
-  public init(presentation: RecordPanelPresentation, model: AppModel,
-              onModeChange: @escaping (RecordPanelPresentation.Mode) -> Void,
-              onCollapse: @escaping () -> Void, onExpand: @escaping () -> Void,
-              onClose: @escaping () -> Void, onNeedsAttention: @escaping () -> Void = {},
-              @ViewBuilder records: () -> Records) {
+  public init(
+    presentation: RecordPanelPresentation, model: AppModel,
+    onModeChange: @escaping (RecordPanelPresentation.Mode) -> Void,
+    onCollapse: @escaping () -> Void, onExpand: @escaping () -> Void,
+    onClose: @escaping () -> Void, onNeedsAttention: @escaping () -> Void = {},
+    @ViewBuilder records: () -> Records
+  ) {
     self.presentation = presentation
     self.model = model
     self.onModeChange = onModeChange
@@ -35,15 +37,19 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   public var body: some View {
     ZStack(alignment: .topLeading) {
       expandedContent
-        .frame(width: presentation.isCollapsed ? presentation.expandedWidth : nil,
-               height: presentation.isCollapsed ? presentation.expandedHeight : nil)
+        .frame(
+          width: presentation.isCollapsed ? presentation.expandedWidth : nil,
+          height: presentation.isCollapsed ? presentation.expandedHeight : nil
+        )
         .opacity(presentation.isCollapsed ? 0 : 1)
         .allowsHitTesting(!presentation.isCollapsed)
         .accessibilityHidden(presentation.isCollapsed)
       if presentation.isCollapsed { pendingStrip }
     }
-    .frame(width: presentation.isCollapsed ? 320 : nil, height: presentation.isCollapsed ? 56 : nil,
-           alignment: .topLeading)
+    .frame(
+      width: presentation.isCollapsed ? 320 : nil, height: presentation.isCollapsed ? 56 : nil,
+      alignment: .topLeading
+    )
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .clipped()
     .background(Color(nsColor: .windowBackgroundColor))
@@ -56,8 +62,11 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   private var expandedContent: some View {
     VStack(spacing: 0) {
       HStack(spacing: 12) {
-        Picker(text("面板内容", "Panel content"), selection: Binding(
-          get: { presentation.mode }, set: { onModeChange($0) })) {
+        Picker(
+          text("面板内容", "Panel content"),
+          selection: Binding(
+            get: { presentation.mode }, set: { onModeChange($0) })
+        ) {
           Text(text("记录集", "Collections")).tag(RecordPanelPresentation.Mode.collections)
           Text(text("待发", "Drafts") + " · \(buffers.snapshot?.remainingCount ?? 0)")
             .tag(RecordPanelPresentation.Mode.drafts)
@@ -141,13 +150,16 @@ public struct UnifiedRecordPanelView<Records: View>: View {
     VStack(alignment: .leading, spacing: 8) {
       if let active = buffers.snapshot?.active {
         HStack {
-          Text(active.state == .delivered
-               ? text("已输出，状态尚未保存", "Delivered; state not saved")
-               : text("检查目标中的内容，再确认输出结果。", "Check the target before confirming insertion."))
-            .font(.caption)
+          Text(
+            active.state == .delivered
+              ? text("已输出，状态尚未保存", "Delivered; state not saved")
+              : text("检查目标中的内容，再确认输出结果。", "Check the target before confirming insertion.")
+          )
+          .font(.caption)
           Spacer()
-          Button(active.state == .delivered ? text("重试保存", "Retry save") : text("已插入", "Inserted"),
-                 action: buffers.confirmAction)
+          Button(
+            active.state == .delivered ? text("重试保存", "Retry save") : text("已插入", "Inserted"),
+            action: buffers.confirmAction)
           if active.state != .delivered {
             Button(text("重试此项", "Retry item"), action: buffers.retryAction)
           }

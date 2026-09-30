@@ -72,7 +72,8 @@ final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
     let audio = try makeAudio(bytes: Data([1, 2, 3]))
     defer { _ = try? audio.removeManagedTemporaryFile() }
     let runID = UUID()
-    _ = try await store.preserve(audio: audio, runID: runID, workflowID: UUID(),
+    _ = try await store.preserve(
+      audio: audio, runID: runID, workflowID: UUID(),
       trigger: .hotkey, outcome: .completed, metadata: [:], now: Date())
     let stored = fixture.archiveDirectory.appendingPathComponent(runID.uuidString + ".rillaudio")
     try Data("tampered".utf8).write(to: stored)

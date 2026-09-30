@@ -12,9 +12,14 @@ extension L10n {
   }
 
   private static let benchmarkArchiveTable: [BenchmarkArchiveTextKey: LocalizedText] = [
-    .cleanupPending: .init(english: "Incomplete plaintext export could not be removed. Delete the folder after resolving the storage problem.", simplifiedChinese: "未完成的明文导出无法清理。请解决存储问题后删除该目录。"),
+    .cleanupPending: .init(
+      english: "Incomplete plaintext export could not be removed. Delete the folder after resolving the storage problem.",
+      simplifiedChinese: "未完成的明文导出无法清理。请解决存储问题后删除该目录。"),
     .title: .init(english: "Export evaluation recordings", simplifiedChinese: "导出评测录音"),
-    .disclosure: .init(english: "Selected recordings will be decrypted to local WAV files. Nothing is uploaded. Keep the folder private. Listen and add human reference text before comparing recognition quality; a missing reference is not silence.", simplifiedChinese: "选中的录音将解密为本地 WAV 文件，不会上传。请妥善保管目录，并在比较识别质量前听取录音、填写人工参考文本；缺失标注不代表静音。"),
+    .disclosure: .init(
+      english:
+        "Selected recordings will be decrypted to local WAV files. Nothing is uploaded. Keep the folder private. Listen and add human reference text before comparing recognition quality; a missing reference is not silence.",
+      simplifiedChinese: "选中的录音将解密为本地 WAV 文件，不会上传。请妥善保管目录，并在比较识别质量前听取录音、填写人工参考文本；缺失标注不代表静音。"),
     .empty: .init(english: "No readable archived recordings.", simplifiedChinese: "没有可读取的归档录音。"),
     .selectAll: .init(english: "Select all", simplifiedChinese: "全选"),
     .selectNone: .init(english: "Clear selection", simplifiedChinese: "取消选择"),
@@ -26,7 +31,8 @@ extension L10n {
     .split: .init(english: "Dataset", simplifiedChinese: "数据集"),
     .development: .init(english: "Development", simplifiedChinese: "开发集"),
     .validation: .init(english: "Held-out validation", simplifiedChinese: "保留验收集"),
-    .authorize: .init(english: "I authorize plaintext export of the selected recordings and confirm their source.", simplifiedChinese: "我授权导出所选录音的明文文件，并确认其来源。"),
+    .authorize: .init(
+      english: "I authorize plaintext export of the selected recordings and confirm their source.", simplifiedChinese: "我授权导出所选录音的明文文件，并确认其来源。"),
     .exported: .init(english: "Exported. Reference text still needs annotation.", simplifiedChinese: "已导出，参考文本仍待人工标注。"),
     .showInFinder: .init(english: "Show in Finder", simplifiedChinese: "在访达中显示"),
     .close: .init(english: "Close", simplifiedChinese: "关闭"),

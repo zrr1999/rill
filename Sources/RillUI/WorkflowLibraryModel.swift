@@ -33,8 +33,10 @@ public final class WorkflowLibraryModel {
   public internal(set) var workflowLibraryError: String?
   let settings: SettingsPersistenceModel
   let explainResolvedWorkflowAction: @Sendable (WorkflowResolvedExecutionPlan) async throws -> WorkflowExplanationReceipt
-  init(workflows: [WorkflowDefinition], settings: SettingsPersistenceModel,
-    explain: @escaping @Sendable (WorkflowResolvedExecutionPlan) async throws -> WorkflowExplanationReceipt) {
+  init(
+    workflows: [WorkflowDefinition], settings: SettingsPersistenceModel,
+    explain: @escaping @Sendable (WorkflowResolvedExecutionPlan) async throws -> WorkflowExplanationReceipt
+  ) {
     self.settings = settings
     self.explainResolvedWorkflowAction = explain
     self.builtInWorkflows = workflows
@@ -211,13 +213,11 @@ public final class WorkflowLibraryModel {
 
 }
 
-
 public enum WorkflowExplanationFailure: Sendable, Equatable {
   case workflowUnavailable
   case providerUnavailable
   case invalidReceipt
 }
-
 
 public enum WorkflowExplanationLoadState: Sendable, Equatable {
   case idle
@@ -225,7 +225,6 @@ public enum WorkflowExplanationLoadState: Sendable, Equatable {
   case loaded(WorkflowExplanationReceipt)
   case failed(workflowID: UUID, reason: WorkflowExplanationFailure)
 }
-
 
 public struct WorkflowTriggerConflict: Identifiable, Equatable, Sendable {
   public let trigger: TriggerBinding

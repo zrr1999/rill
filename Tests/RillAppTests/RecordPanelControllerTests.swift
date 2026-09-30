@@ -92,9 +92,10 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     let controller = makeController(reduceMotion: true)
     let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
     controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
-    let panel = try XCTUnwrap(NSApp.windows.first {
-      $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
-    })
+    let panel = try XCTUnwrap(
+      NSApp.windows.first {
+        $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+      })
     otherWindow.makeKeyAndOrderFront(nil)
     XCTAssertTrue(otherWindow.isKeyWindow)
     panel.makeKey()

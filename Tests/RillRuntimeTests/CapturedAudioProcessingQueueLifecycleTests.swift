@@ -8,1317 +8,1319 @@ import Foundation
 import XCTest
 
 private actor AudioLifecycleExecutionProbe {
-    private var contextCount = 0
-    private var recognitionCount = 0
-    private var actionCount = 0
+  private var contextCount = 0
+  private var recognitionCount = 0
+  private var actionCount = 0
 
-    func recordContext() {
-        contextCount += 1
-    }
+  func recordContext() {
+    contextCount += 1
+  }
 
-    func recordRecognition() {
-        recognitionCount += 1
-    }
+  func recordRecognition() {
+    recognitionCount += 1
+  }
 
-    func recordAction() {
-        actionCount += 1
-    }
+  func recordAction() {
+    actionCount += 1
+  }
 
-    func snapshot() -> (context: Int, recognition: Int, action: Int) {
-        (contextCount, recognitionCount, actionCount)
-    }
+  func snapshot() -> (context: Int, recognition: Int, action: Int) {
+    (contextCount, recognitionCount, actionCount)
+  }
 }
 
 private struct RejectedCleanupTestError: Error, LocalizedError {
-    var errorDescription: String? {
-        "cleanup-retry-canary at /Users/alice/private-recording.wav"
-    }
+  var errorDescription: String? {
+    "cleanup-retry-canary at /Users/alice/private-recording.wav"
+  }
 }
 
 private actor RejectedCleanupRetryProbe {
-    private let failuresBeforeSuccess: Int
-    private var attemptCount = 0
-    private var retryDelays: [Duration] = []
+  private let failuresBeforeSuccess: Int
+  private var attemptCount = 0
+  private var retryDelays: [Duration] = []
 
-    init(failuresBeforeSuccess: Int) {
-        self.failuresBeforeSuccess = failuresBeforeSuccess
-    }
+  init(failuresBeforeSuccess: Int) {
+    self.failuresBeforeSuccess = failuresBeforeSuccess
+  }
 
-    func remove(_ capturedAudio: CapturedAudio) throws {
-        attemptCount += 1
-        if attemptCount <= failuresBeforeSuccess {
-            throw RejectedCleanupTestError()
-        }
-        _ = try capturedAudio.removeManagedTemporaryFile()
+  func remove(_ capturedAudio: CapturedAudio) throws {
+    attemptCount += 1
+    if attemptCount <= failuresBeforeSuccess {
+      throw RejectedCleanupTestError()
     }
+    _ = try capturedAudio.removeManagedTemporaryFile()
+  }
 
-    func sleep(for delay: Duration) {
-        retryDelays.append(delay)
-    }
+  func sleep(for delay: Duration) {
+    retryDelays.append(delay)
+  }
 
-    func snapshot() -> (attempts: Int, delays: [Duration]) {
-        (attemptCount, retryDelays)
-    }
+  func snapshot() -> (attempts: Int, delays: [Duration]) {
+    (attemptCount, retryDelays)
+  }
 }
 
 private actor CleanupRetrySleepGate {
-    private var entered = false
-    private var released = false
-    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
-    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+  private var entered = false
+  private var released = false
+  private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+  private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
 
-    func sleep() async {
-        entered = true
-        let waiters = entryWaiters
-        entryWaiters.removeAll()
-        for waiter in waiters { waiter.resume() }
-        guard !released else { return }
-        await withCheckedContinuation { continuation in
-            releaseWaiters.append(continuation)
-        }
+  func sleep() async {
+    entered = true
+    let waiters = entryWaiters
+    entryWaiters.removeAll()
+    for waiter in waiters { waiter.resume() }
+    guard !released else { return }
+    await withCheckedContinuation { continuation in
+      releaseWaiters.append(continuation)
     }
+  }
 
-    func waitUntilEntered() async {
-        guard !entered else { return }
-        await withCheckedContinuation { continuation in
-            entryWaiters.append(continuation)
-        }
+  func waitUntilEntered() async {
+    guard !entered else { return }
+    await withCheckedContinuation { continuation in
+      entryWaiters.append(continuation)
     }
+  }
 
-    func release() {
-        released = true
-        let waiters = releaseWaiters
-        releaseWaiters.removeAll()
-        for waiter in waiters { waiter.resume() }
-    }
+  func release() {
+    released = true
+    let waiters = releaseWaiters
+    releaseWaiters.removeAll()
+    for waiter in waiters { waiter.resume() }
+  }
 }
 
 private actor ProcessingCleanupRetryGate {
-    private var attempts = 0
-    private var retryEntered = false
-    private var retryReleased = false
-    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
-    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+  private var attempts = 0
+  private var retryEntered = false
+  private var retryReleased = false
+  private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+  private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
 
-    func remove(_ capturedAudio: CapturedAudio) async throws {
-        attempts += 1
-        if attempts == 1 {
-            throw RejectedCleanupTestError()
-        }
-
-        retryEntered = true
-        let waiters = entryWaiters
-        entryWaiters.removeAll()
-        for waiter in waiters {
-            waiter.resume()
-        }
-        if !retryReleased {
-            await withCheckedContinuation { continuation in
-                releaseWaiters.append(continuation)
-            }
-        }
-        _ = try capturedAudio.removeManagedTemporaryFile()
+  func remove(_ capturedAudio: CapturedAudio) async throws {
+    attempts += 1
+    if attempts == 1 {
+      throw RejectedCleanupTestError()
     }
 
-    func waitUntilRetryEntered() async {
-        guard !retryEntered else { return }
-        await withCheckedContinuation { continuation in
-            entryWaiters.append(continuation)
-        }
+    retryEntered = true
+    let waiters = entryWaiters
+    entryWaiters.removeAll()
+    for waiter in waiters {
+      waiter.resume()
     }
-
-    func releaseRetry() {
-        retryReleased = true
-        let waiters = releaseWaiters
-        releaseWaiters.removeAll()
-        for waiter in waiters {
-            waiter.resume()
-        }
+    if !retryReleased {
+      await withCheckedContinuation { continuation in
+        releaseWaiters.append(continuation)
+      }
     }
+    _ = try capturedAudio.removeManagedTemporaryFile()
+  }
 
-    var attemptCount: Int { attempts }
+  func waitUntilRetryEntered() async {
+    guard !retryEntered else { return }
+    await withCheckedContinuation { continuation in
+      entryWaiters.append(continuation)
+    }
+  }
+
+  func releaseRetry() {
+    retryReleased = true
+    let waiters = releaseWaiters
+    releaseWaiters.removeAll()
+    for waiter in waiters {
+      waiter.resume()
+    }
+  }
+
+  var attemptCount: Int { attempts }
 }
 
 private actor QueueShutdownCompletionProbe {
-    private var isComplete = false
+  private var isComplete = false
 
-    func markComplete() {
-        isComplete = true
-    }
+  func markComplete() {
+    isComplete = true
+  }
 
-    var completed: Bool { isComplete }
+  var completed: Bool { isComplete }
 }
 
 private actor QueueOwnershipTransferGate {
-    private var entered = false
-    private var released = false
-    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
-    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+  private var entered = false
+  private var released = false
+  private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+  private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
 
-    func suspendAfterTransfer() async {
-        entered = true
-        let waiters = entryWaiters
-        entryWaiters.removeAll()
-        for waiter in waiters {
-            waiter.resume()
-        }
-        guard !released else { return }
-        await withCheckedContinuation { continuation in
-            releaseWaiters.append(continuation)
-        }
+  func suspendAfterTransfer() async {
+    entered = true
+    let waiters = entryWaiters
+    entryWaiters.removeAll()
+    for waiter in waiters {
+      waiter.resume()
     }
+    guard !released else { return }
+    await withCheckedContinuation { continuation in
+      releaseWaiters.append(continuation)
+    }
+  }
 
-    func waitUntilEntered() async {
-        guard !entered else { return }
-        await withCheckedContinuation { continuation in
-            entryWaiters.append(continuation)
-        }
+  func waitUntilEntered() async {
+    guard !entered else { return }
+    await withCheckedContinuation { continuation in
+      entryWaiters.append(continuation)
     }
+  }
 
-    func release() {
-        released = true
-        let waiters = releaseWaiters
-        releaseWaiters.removeAll()
-        for waiter in waiters {
-            waiter.resume()
-        }
+  func release() {
+    released = true
+    let waiters = releaseWaiters
+    releaseWaiters.removeAll()
+    for waiter in waiters {
+      waiter.resume()
     }
+  }
 }
 
 private final class DeferredCancellationCleanupProbe: @unchecked Sendable {
-    private let lock = NSLock()
-    private let fileURL: URL
-    private var cancellationCount = 0
+  private let lock = NSLock()
+  private let fileURL: URL
+  private var cancellationCount = 0
 
-    init(fileURL: URL) {
-        self.fileURL = fileURL
-    }
+  init(fileURL: URL) {
+    self.fileURL = fileURL
+  }
 
-    func makeDeferredCapture() -> DeferredCapturedAudio {
-        let fileURL = fileURL
-        return DeferredCapturedAudio(
-            task: Task {
-                try await withTaskCancellationHandler {
-                    try await Task.sleep(for: .seconds(60))
-                    throw CancellationError()
-                } onCancel: { [weak self] in
-                    try? FileManager.default.removeItem(at: fileURL)
-                    self?.lock.withLock {
-                        self?.cancellationCount += 1
-                    }
-                }
-            }
-        )
-    }
+  func makeDeferredCapture() -> DeferredCapturedAudio {
+    let fileURL = fileURL
+    return DeferredCapturedAudio(
+      task: Task {
+        try await withTaskCancellationHandler {
+          try await Task.sleep(for: .seconds(60))
+          throw CancellationError()
+        } onCancel: { [weak self] in
+          try? FileManager.default.removeItem(at: fileURL)
+          self?.lock.withLock {
+            self?.cancellationCount += 1
+          }
+        }
+      }
+    )
+  }
 
-    var cancellations: Int {
-        lock.withLock { cancellationCount }
-    }
+  var cancellations: Int {
+    lock.withLock { cancellationCount }
+  }
 }
 
 private struct AudioLifecycleContextProvider: ContextProvider {
-    let probe: AudioLifecycleExecutionProbe
+  let probe: AudioLifecycleExecutionProbe
 
-    func captureContext() async -> ContextSnapshot {
-        await probe.recordContext()
-        return .empty
-    }
+  func captureContext() async -> ContextSnapshot {
+    await probe.recordContext()
+    return .empty
+  }
 }
 
 private struct AudioLifecycleRecognizer: SpeechRecognizer {
-    enum TestError: Error {
-        case recognitionFailed
-    }
+  enum TestError: Error {
+    case recognitionFailed
+  }
 
-    let id = "audio-lifecycle.recognizer"
-    let shouldFail: Bool
-    let probe: AudioLifecycleExecutionProbe
+  let id = "audio-lifecycle.recognizer"
+  let shouldFail: Bool
+  let probe: AudioLifecycleExecutionProbe
 
-    func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
-        await probe.recordRecognition()
-        if shouldFail {
-            throw TestError.recognitionFailed
-        }
-        return RecognitionResult(rawText: "recorded", bestText: "recorded")
+  func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
+    await probe.recordRecognition()
+    if shouldFail {
+      throw TestError.recognitionFailed
     }
+    return RecognitionResult(rawText: "recorded", bestText: "recorded")
+  }
 }
 
 private struct AudioLifecycleAction: OutputAction {
-    let id = "audio-lifecycle.action"
-    let probe: AudioLifecycleExecutionProbe
-    var recordStore: RecordStore?
+  let id = "audio-lifecycle.action"
+  let probe: AudioLifecycleExecutionProbe
+  var recordStore: RecordStore?
 
-    func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-        let text = try record.requireText(for: id)
-        await probe.recordAction()
-        if let recordStore {
-            _ = try await recordStore.ingest(
-                .init(payload: .text(text), provenance: .init(source: .init(kind: .voiceInput))),
-                into: [], fulfilling: context.bufferEntryID
-            )
-            return .storedRecord
-        }
-        return .copiedToClipboard
+  func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
+    let text = try record.requireText(for: id)
+    await probe.recordAction()
+    if let recordStore {
+      _ = try await recordStore.ingest(
+        .init(payload: .text(text), provenance: .init(source: .init(kind: .voiceInput))),
+        into: [], fulfilling: context.bufferEntryID
+      )
+      return .storedRecord
     }
+    return .copiedToClipboard
+  }
 }
 
 private actor AudioRecoveryStoreProbe: FailedAudioRecoveryStore {
-    private(set) var preservedBytes: [Data] = []
-    private(set) var preserveCallCount = 0
-    private var storedReceipts: [FailedAudioRecoveryReceipt] = []
+  private(set) var preservedBytes: [Data] = []
+  private(set) var preserveCallCount = 0
+  private var storedReceipts: [FailedAudioRecoveryReceipt] = []
 
-    func preserve(
-        audio: CapturedAudio,
-        originalRunID: UUID,
-        workflowID: UUID,
-        failure: WorkflowRunFailureSummary,
-        now: Date
-    ) async throws -> FailedAudioRecoveryReceipt {
-        preserveCallCount += 1
-        let bytes = try Data(contentsOf: XCTUnwrap(audio.fileURL))
-        preservedBytes.append(bytes)
-        let receipt = FailedAudioRecoveryReceipt(
-            originalRunID: originalRunID,
-            workflowID: workflowID,
-            createdAt: now,
-            expiresAt: now.addingTimeInterval(60),
-            durationSeconds: audio.durationSeconds,
-            format: audio.format,
-            plaintextByteCount: bytes.count,
-            failureStage: failure.stage,
-            failureCode: failure.code
-        )
-        storedReceipts.append(receipt)
-        return receipt
-    }
+  func preserve(
+    audio: CapturedAudio,
+    originalRunID: UUID,
+    workflowID: UUID,
+    failure: WorkflowRunFailureSummary,
+    now: Date
+  ) async throws -> FailedAudioRecoveryReceipt {
+    preserveCallCount += 1
+    let bytes = try Data(contentsOf: XCTUnwrap(audio.fileURL))
+    preservedBytes.append(bytes)
+    let receipt = FailedAudioRecoveryReceipt(
+      originalRunID: originalRunID,
+      workflowID: workflowID,
+      createdAt: now,
+      expiresAt: now.addingTimeInterval(60),
+      durationSeconds: audio.durationSeconds,
+      format: audio.format,
+      plaintextByteCount: bytes.count,
+      failureStage: failure.stage,
+      failureCode: failure.code
+    )
+    storedReceipts.append(receipt)
+    return receipt
+  }
 
-    func receipts(now: Date) async throws -> [FailedAudioRecoveryReceipt] {
-        storedReceipts
-    }
+  func receipts(now: Date) async throws -> [FailedAudioRecoveryReceipt] {
+    storedReceipts
+  }
 
-    func materializeForRetry(
-        id: UUID,
-        attemptID: UUID,
-        now: Date
-    ) async throws -> CapturedAudio {
-        throw FailedAudioRecoveryError.notFound
-    }
+  func materializeForRetry(
+    id: UUID,
+    attemptID: UUID,
+    now: Date
+  ) async throws -> CapturedAudio {
+    throw FailedAudioRecoveryError.notFound
+  }
 
-    func restoreAfterFailedRetry(id: UUID, attemptID: UUID) async throws {}
+  func restoreAfterFailedRetry(id: UUID, attemptID: UUID) async throws {}
 
-    func delete(id: UUID) async throws {
-        storedReceipts.removeAll { $0.id == id }
-    }
+  func delete(id: UUID) async throws {
+    storedReceipts.removeAll { $0.id == id }
+  }
 
-    func deleteAll() async throws {
-        storedReceipts.removeAll()
-    }
+  func deleteAll() async throws {
+    storedReceipts.removeAll()
+  }
 
-    func purgeExpired(now: Date) async throws -> Int { 0 }
+  func purgeExpired(now: Date) async throws -> Int { 0 }
 }
 
 private actor BenchmarkArchiveStoreProbe: BenchmarkRecordingArchiveStore {
-    struct Entry: Sendable, Equatable {
-        let bytes: Data
-        let runID: UUID
-        let workflowID: UUID
-        let trigger: WorkflowRunTriggerKind?
-        let outcome: BenchmarkRecordingOutcome
-        let metadata: [String: String]
-    }
+  struct Entry: Sendable, Equatable {
+    let bytes: Data
+    let runID: UUID
+    let workflowID: UUID
+    let trigger: WorkflowRunTriggerKind?
+    let outcome: BenchmarkRecordingOutcome
+    let metadata: [String: String]
+  }
 
-    private(set) var entries: [Entry] = []
+  private(set) var entries: [Entry] = []
 
-    func preserve(
-        audio: CapturedAudio,
-        runID: UUID,
-        workflowID: UUID,
-        trigger: WorkflowRunTriggerKind?,
-        outcome: BenchmarkRecordingOutcome,
-        metadata: [String: String],
-        now: Date
-    ) async throws -> BenchmarkRecordingReceipt {
-        guard let fileURL = audio.fileURL else {
-            throw BenchmarkRecordingArchiveError.unsupportedPayload
-        }
-        let bytes = try Data(contentsOf: fileURL)
-        entries.append(
-            Entry(
-                bytes: bytes,
-                runID: runID,
-                workflowID: workflowID,
-                trigger: trigger,
-                outcome: outcome,
-                metadata: metadata
-            )
-        )
-        return BenchmarkRecordingReceipt(
-            runID: runID,
-            workflowID: workflowID,
-            createdAt: now,
-            durationSeconds: audio.durationSeconds,
-            format: audio.format,
-            plaintextByteCount: bytes.count,
-            trigger: trigger,
-            outcome: outcome,
-            metadata: metadata
-        )
+  func preserve(
+    audio: CapturedAudio,
+    runID: UUID,
+    workflowID: UUID,
+    trigger: WorkflowRunTriggerKind?,
+    outcome: BenchmarkRecordingOutcome,
+    metadata: [String: String],
+    now: Date
+  ) async throws -> BenchmarkRecordingReceipt {
+    guard let fileURL = audio.fileURL else {
+      throw BenchmarkRecordingArchiveError.unsupportedPayload
     }
+    let bytes = try Data(contentsOf: fileURL)
+    entries.append(
+      Entry(
+        bytes: bytes,
+        runID: runID,
+        workflowID: workflowID,
+        trigger: trigger,
+        outcome: outcome,
+        metadata: metadata
+      )
+    )
+    return BenchmarkRecordingReceipt(
+      runID: runID,
+      workflowID: workflowID,
+      createdAt: now,
+      durationSeconds: audio.durationSeconds,
+      format: audio.format,
+      plaintextByteCount: bytes.count,
+      trigger: trigger,
+      outcome: outcome,
+      metadata: metadata
+    )
+  }
 
-    func delete(runID: UUID) async throws {
-        entries.removeAll { $0.runID == runID }
-    }
+  func delete(runID: UUID) async throws {
+    entries.removeAll { $0.runID == runID }
+  }
 
-    func deleteAll() async throws {
-        entries.removeAll()
-    }
+  func deleteAll() async throws {
+    entries.removeAll()
+  }
 }
 
 final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
-    func testCollectedSpeechPositionsExistBeforeDeferredAudioAndCancelCleanly() async throws {
-        let store = RecordStore()
-        let queue = await makeQueue(recognitionShouldFail: false, recordStore: store)
-        var workflow = makeWorkflow()
-        workflow.metadata[WorkflowMetadataKey.collectSpeech] = "true"
-        let runIDs = [UUID(), UUID()]
-        for runID in runIDs {
-            await queue.enqueue(
-                authorizationLease: makeAudioProcessingTestLease(runID: runID, workflow: workflow),
-                triggerEvent: nil,
-                deferredCapture: DeferredCapturedAudio(task: Task {
-                    try await Task.sleep(for: .seconds(5))
-                    throw CancellationError()
-                })
-            )
+  func testCollectedSpeechPositionsExistBeforeDeferredAudioAndCancelCleanly() async throws {
+    let store = RecordStore()
+    let queue = await makeQueue(recognitionShouldFail: false, recordStore: store)
+    var workflow = makeWorkflow()
+    workflow.metadata[WorkflowMetadataKey.collectSpeech] = "true"
+    let runIDs = [UUID(), UUID()]
+    for runID in runIDs {
+      await queue.enqueue(
+        authorizationLease: makeAudioProcessingTestLease(runID: runID, workflow: workflow),
+        triggerEvent: nil,
+        deferredCapture: DeferredCapturedAudio(
+          task: Task {
+            try await Task.sleep(for: .seconds(5))
+            throw CancellationError()
+          })
+      )
+    }
+    let clipboard = try await store.reserveBufferInput(in: RecordBuffer.clipboardID)
+    let positions = try await store.entries(in: RecordBuffer.speechID)
+    XCTAssertEqual(positions.count, 2)
+    XCTAssertTrue(positions.allSatisfy { $0.state == .preparing && $0.id.sequence < clipboard.sequence })
+    await queue.cancel(runID: runIDs[0])
+    let remaining = try await store.entries(in: RecordBuffer.speechID)
+    XCTAssertEqual(remaining.map(\.id), positions.dropFirst().map(\.id))
+    await queue.cancel(runID: runIDs[1])
+    await queue.shutdown()
+    let cancelled = try await store.entries(in: RecordBuffer.speechID)
+    XCTAssertTrue(cancelled.isEmpty)
+  }
+
+  func testOnlySuccessfulCollectionModeFillsSpeechBuffer() async throws {
+    for (collects, fails) in [(false, false), (true, false), (true, true)] {
+      let store = RecordStore()
+      let queue = await makeQueue(recognitionShouldFail: fails, recordStore: store)
+      var workflow = makeWorkflow()
+      if collects { workflow.metadata[WorkflowMetadataKey.collectSpeech] = "true" }
+      let file = try makeAudioFile()
+      defer { try? FileManager.default.removeItem(at: file) }
+      await queue.enqueue(
+        authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: workflow),
+        triggerEvent: nil,
+        deferredCapture: .resolved(try makeCapturedAudio(fileURL: file, ownership: .managedTemporary))
+      )
+      await waitUntilDrained(queue)
+      let entries = try await store.entries(in: RecordBuffer.speechID)
+      let records = try await store.catalogSnapshot().records
+      XCTAssertEqual(entries.count, collects && !fails ? 1 : 0)
+      XCTAssertEqual(records.count, fails ? 0 : 1)
+      if collects && !fails { XCTAssertEqual(entries.first?.recordID, records.first?.id) }
+      await queue.shutdown()
+    }
+  }
+
+  func testLegacyClipboardWorkflowCleansManagedTemporaryFileWithoutProcessing() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let executionProbe = AudioLifecycleExecutionProbe()
+    let recoveryStore = AudioRecoveryStoreProbe()
+    let queue = await makeQueue(
+      recognitionShouldFail: false,
+      recoveryStore: recoveryStore,
+      recoveryEnabled: true,
+      executionProbe: executionProbe
+    )
+    var workflow = makeWorkflow()
+    workflow.metadata["eventType"] = "groupItemCreated"
+
+    await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(
+        runID: UUID(),
+        workflow: workflow
+      ),
+      triggerEvent: nil,
+      deferredCapture: .resolved(
+        try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+      )
+    )
+
+    await waitUntilRejectedCleanupFinishes(queue)
+
+    let counts = await executionProbe.snapshot()
+    let preservedBytes = await recoveryStore.preservedBytes
+    let pendingCount = await queue.pendingCount
+    XCTAssertEqual(pendingCount, 0)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+    XCTAssertEqual(counts.context, 0)
+    XCTAssertEqual(counts.recognition, 0)
+    XCTAssertEqual(counts.action, 0)
+    XCTAssertTrue(preservedBytes.isEmpty)
+  }
+
+  func testLegacyClipboardCleanupRetriesAfterTransientFailureWithoutProcessing() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let executionProbe = AudioLifecycleExecutionProbe()
+    let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 1)
+    let recoveryStore = AudioRecoveryStoreProbe()
+    let diagnostics = DiagnosticsRecorder()
+    let queue = await makeQueue(
+      recognitionShouldFail: false,
+      recoveryStore: recoveryStore,
+      recoveryEnabled: true,
+      executionProbe: executionProbe,
+      diagnostics: diagnostics,
+      rejectedCapturedAudioRemoval: { capturedAudio in
+        try await cleanupProbe.remove(capturedAudio)
+      },
+      rejectedCleanupInitialRetryDelay: .milliseconds(1),
+      rejectedCleanupMaximumRetryDelay: .milliseconds(4),
+      rejectedCleanupSleep: { delay in
+        await cleanupProbe.sleep(for: delay)
+      }
+    )
+    var workflow = makeWorkflow()
+    workflow.metadata["eventType"] = "groupItemCreated"
+
+    await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(
+        runID: UUID(),
+        workflow: workflow
+      ),
+      triggerEvent: nil,
+      deferredCapture: .resolved(
+        try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+      )
+    )
+    await waitUntilRejectedCleanupFinishes(queue)
+
+    let cleanup = await cleanupProbe.snapshot()
+    let execution = await executionProbe.snapshot()
+    let preserveCallCount = await recoveryStore.preserveCallCount
+    let pendingCount = await queue.pendingCount
+    let rejectedCleanupCount = await queue.rejectedCleanupCount
+    let diagnosticEvents = await diagnostics.snapshot()
+    let cleanupFailure = try XCTUnwrap(
+      diagnosticEvents.first {
+        $0.event == "audio-processing.rejected-cleanup-pending"
+      }
+    )
+    XCTAssertEqual(cleanup.attempts, 2)
+    XCTAssertEqual(cleanup.delays, [.milliseconds(1)])
+    XCTAssertEqual(pendingCount, 0)
+    XCTAssertEqual(rejectedCleanupCount, 0)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+    XCTAssertEqual(execution.context, 0)
+    XCTAssertEqual(execution.recognition, 0)
+    XCTAssertEqual(execution.action, 0)
+    XCTAssertEqual(preserveCallCount, 0)
+    XCTAssertEqual(cleanupFailure.message, DiagnosticEventSanitizer.sanitizedMessage)
+    XCTAssertEqual(cleanupFailure.metadata, ["lane": "interactive"])
+    XCTAssertFalse(cleanupFailure.message.lowercased().contains("canary"))
+  }
+
+  func testLegacyClipboardCleanupRetryDelayStopsGrowingAtMaximum() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let executionProbe = AudioLifecycleExecutionProbe()
+    let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 4)
+    let queue = await makeQueue(
+      recognitionShouldFail: false,
+      executionProbe: executionProbe,
+      rejectedCapturedAudioRemoval: { capturedAudio in
+        try await cleanupProbe.remove(capturedAudio)
+      },
+      rejectedCleanupInitialRetryDelay: .milliseconds(1),
+      rejectedCleanupMaximumRetryDelay: .milliseconds(2),
+      rejectedCleanupSleep: { delay in
+        await cleanupProbe.sleep(for: delay)
+      }
+    )
+    var workflow = makeWorkflow()
+    workflow.metadata["eventType"] = "groupItemCreated"
+
+    await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(
+        runID: UUID(),
+        workflow: workflow
+      ),
+      triggerEvent: nil,
+      deferredCapture: .resolved(
+        try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+      )
+    )
+    await waitUntilRejectedCleanupFinishes(queue)
+
+    let cleanup = await cleanupProbe.snapshot()
+    let execution = await executionProbe.snapshot()
+    XCTAssertEqual(cleanup.attempts, 5)
+    XCTAssertEqual(
+      cleanup.delays,
+      [.milliseconds(1), .milliseconds(2), .milliseconds(2), .milliseconds(2)]
+    )
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+    XCTAssertEqual(execution.context, 0)
+    XCTAssertEqual(execution.recognition, 0)
+    XCTAssertEqual(execution.action, 0)
+  }
+
+  func testRejectedCaptureResolutionFailureIsTerminalWithoutRetryOrProcessing() async throws {
+    let executionProbe = AudioLifecycleExecutionProbe()
+    let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 0)
+    let recoveryStore = AudioRecoveryStoreProbe()
+    let diagnostics = DiagnosticsRecorder()
+    let queue = await makeQueue(
+      recognitionShouldFail: false,
+      recoveryStore: recoveryStore,
+      recoveryEnabled: true,
+      executionProbe: executionProbe,
+      diagnostics: diagnostics,
+      rejectedCapturedAudioRemoval: { capturedAudio in
+        try await cleanupProbe.remove(capturedAudio)
+      },
+      rejectedCleanupInitialRetryDelay: .milliseconds(1),
+      rejectedCleanupMaximumRetryDelay: .milliseconds(2),
+      rejectedCleanupSleep: { delay in
+        await cleanupProbe.sleep(for: delay)
+      }
+    )
+    let workflow = makeWorkflow()
+    let failedCapture = DeferredCapturedAudio(
+      task: Task<CapturedAudio, Error> {
+        throw RejectedCleanupTestError()
+      }
+    )
+
+    await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(
+        runID: UUID(),
+        workflow: workflow
+      ),
+      triggerEvent: WorkflowTriggerEvent(
+        binding: .manual,
+        workflowID: UUID(),
+        sourceID: "rejected-capture-resolution-test"
+      ),
+      deferredCapture: failedCapture
+    )
+    await waitUntilDrained(queue)
+    await waitUntilRejectedCleanupFinishes(queue)
+    try? await Task.sleep(for: .milliseconds(10))
+
+    let cleanup = await cleanupProbe.snapshot()
+    let execution = await executionProbe.snapshot()
+    let preserveCallCount = await recoveryStore.preserveCallCount
+    let rejectedCleanupCount = await queue.rejectedCleanupCount
+    let diagnosticEvents = await diagnostics.snapshot()
+    let resolutionFailures = diagnosticEvents.filter {
+      $0.event == "audio-processing.rejected-capture-resolution-failed"
+    }
+    XCTAssertEqual(cleanup.attempts, 0)
+    XCTAssertTrue(cleanup.delays.isEmpty)
+    XCTAssertEqual(rejectedCleanupCount, 0)
+    XCTAssertEqual(execution.context, 0)
+    XCTAssertEqual(execution.recognition, 0)
+    XCTAssertEqual(execution.action, 0)
+    XCTAssertEqual(preserveCallCount, 0)
+    XCTAssertEqual(resolutionFailures.count, 1)
+    XCTAssertEqual(
+      resolutionFailures.first?.message,
+      DiagnosticEventSanitizer.sanitizedMessage
+    )
+    XCTAssertEqual(
+      resolutionFailures.first?.metadata,
+      ["lane": "interactive"]
+    )
+    XCTAssertFalse(
+      diagnosticEvents.contains {
+        $0.event == "audio-processing.rejected-cleanup-pending"
+      }
+    )
+    XCTAssertFalse(
+      resolutionFailures.first?.message.lowercased().contains("canary") == true
+    )
+  }
+
+  func testShortContentInputArchivesBeforeCleaningAudioWithoutRecovery() async throws {
+    for ownership: CapturedAudioFileOwnership in [.managedTemporary, .callerManaged] {
+      let probe = AudioLifecycleExecutionProbe()
+      let recovery = AudioRecoveryStoreProbe()
+      let archive = BenchmarkArchiveStoreProbe()
+      let queue = await makeQueue(
+        recognitionShouldFail: false, recoveryStore: recovery, recoveryEnabled: true,
+        benchmarkArchiveStore: archive, benchmarkArchiveEnabled: true, executionProbe: probe
+      )
+      let bytes = Data([0x41, 0x42])
+      let fileURL = try makeAudioFile(bytes: bytes)
+      defer { try? FileManager.default.removeItem(at: fileURL) }
+      var audio = try makeCapturedAudio(fileURL: fileURL, ownership: ownership)
+      audio.durationSeconds = 0.1
+      await queue.enqueue(
+        authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: makeWorkflow()),
+        triggerEvent: nil, deferredCapture: .resolved(audio)
+      )
+      await waitUntilDrained(queue)
+      await queue.shutdown()
+      let execution = await probe.snapshot()
+      let preserved = await recovery.preserveCallCount
+      let archived = await archive.entries
+      XCTAssertEqual(execution.recognition, 1)
+      XCTAssertEqual(execution.action, 1)
+      XCTAssertEqual(preserved, 0)
+      XCTAssertEqual(archived.count, 1)
+      XCTAssertEqual(archived.first?.bytes, bytes)
+      XCTAssertEqual(archived.first?.outcome, .completed)
+      XCTAssertEqual(FileManager.default.fileExists(atPath: fileURL.path), ownership == .callerManaged)
+    }
+  }
+
+  func testQueueRemovesManagedTemporaryFileAfterProcessingOutcome() async throws {
+    for recognitionShouldFail in [false, true] {
+      let fileURL = try makeAudioFile()
+      defer { try? FileManager.default.removeItem(at: fileURL) }
+      let queue = await makeQueue(recognitionShouldFail: recognitionShouldFail)
+
+      await queue.enqueue(
+        authorizationLease: makeAudioProcessingTestLease(
+          runID: UUID(),
+          workflow: makeWorkflow()
+        ),
+        triggerEvent: nil,
+        deferredCapture: .resolved(
+          try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+        )
+      )
+
+      await waitUntilDrained(queue)
+      XCTAssertFalse(
+        FileManager.default.fileExists(atPath: fileURL.path),
+        "Managed audio remained after recognitionShouldFail=\(recognitionShouldFail)."
+      )
+    }
+  }
+
+  func testProcessingOutcomesRetryTransientManagedFileRemovalFailure() async throws {
+    for recognitionShouldFail in [false, true] {
+      let fileURL = try makeAudioFile()
+      defer { try? FileManager.default.removeItem(at: fileURL) }
+      let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 1)
+      let queue = await makeQueue(
+        recognitionShouldFail: recognitionShouldFail,
+        rejectedCapturedAudioRemoval: { capturedAudio in
+          try await cleanupProbe.remove(capturedAudio)
+        },
+        rejectedCleanupSleep: { delay in
+          await cleanupProbe.sleep(for: delay)
         }
-        let clipboard = try await store.reserveBufferInput(in: RecordBuffer.clipboardID)
-        let positions = try await store.entries(in: RecordBuffer.speechID)
-        XCTAssertEqual(positions.count, 2)
-        XCTAssertTrue(positions.allSatisfy { $0.state == .preparing && $0.id.sequence < clipboard.sequence })
-        await queue.cancel(runID: runIDs[0])
-        let remaining = try await store.entries(in: RecordBuffer.speechID)
-        XCTAssertEqual(remaining.map(\.id), positions.dropFirst().map(\.id))
-        await queue.cancel(runID: runIDs[1])
-        await queue.shutdown()
-        let cancelled = try await store.entries(in: RecordBuffer.speechID)
-        XCTAssertTrue(cancelled.isEmpty)
+      )
+
+      await queue.enqueue(
+        authorizationLease: makeAudioProcessingTestLease(
+          runID: UUID(),
+          workflow: makeWorkflow()
+        ),
+        triggerEvent: nil,
+        deferredCapture: .resolved(
+          try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+        )
+      )
+
+      await waitUntilDrained(queue)
+      await waitUntilRejectedCleanupFinishes(queue)
+      let cleanup = await cleanupProbe.snapshot()
+      XCTAssertEqual(cleanup.attempts, 2)
+      XCTAssertTrue(cleanup.delays.isEmpty)
+      XCTAssertFalse(
+        FileManager.default.fileExists(atPath: fileURL.path),
+        "Managed audio remained after recognitionShouldFail=\(recognitionShouldFail)."
+      )
     }
+  }
 
-    func testOnlySuccessfulCollectionModeFillsSpeechBuffer() async throws {
-        for (collects, fails) in [(false, false), (true, false), (true, true)] {
-            let store = RecordStore()
-            let queue = await makeQueue(recognitionShouldFail: fails, recordStore: store)
-            var workflow = makeWorkflow()
-            if collects { workflow.metadata[WorkflowMetadataKey.collectSpeech] = "true" }
-            let file = try makeAudioFile()
-            defer { try? FileManager.default.removeItem(at: file) }
-            await queue.enqueue(
-                authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: workflow),
-                triggerEvent: nil,
-                deferredCapture: .resolved(try makeCapturedAudio(fileURL: file, ownership: .managedTemporary))
-            )
-            await waitUntilDrained(queue)
-            let entries = try await store.entries(in: RecordBuffer.speechID)
-            let records = try await store.catalogSnapshot().records
-            XCTAssertEqual(entries.count, collects && !fails ? 1 : 0)
-            XCTAssertEqual(records.count, fails ? 0 : 1)
-            if collects && !fails { XCTAssertEqual(entries.first?.recordID, records.first?.id) }
-            await queue.shutdown()
-        }
+  func testShutdownWaitsForManagedFileRemovalRetry() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let cleanupGate = ProcessingCleanupRetryGate()
+    let completionProbe = QueueShutdownCompletionProbe()
+    let queue = await makeQueue(
+      recognitionShouldFail: false,
+      rejectedCapturedAudioRemoval: { capturedAudio in
+        try await cleanupGate.remove(capturedAudio)
+      }
+    )
+
+    await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(
+        runID: UUID(),
+        workflow: makeWorkflow()
+      ),
+      triggerEvent: nil,
+      deferredCapture: .resolved(
+        try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+      )
+    )
+    await cleanupGate.waitUntilRetryEntered()
+
+    let shutdownTask = Task {
+      await queue.shutdown()
+      await completionProbe.markComplete()
     }
+    await Task.yield()
+    let completedBeforeRelease = await completionProbe.completed
+    XCTAssertFalse(completedBeforeRelease)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
 
-    func testLegacyClipboardWorkflowCleansManagedTemporaryFileWithoutProcessing() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let executionProbe = AudioLifecycleExecutionProbe()
-        let recoveryStore = AudioRecoveryStoreProbe()
-        let queue = await makeQueue(
-            recognitionShouldFail: false,
-            recoveryStore: recoveryStore,
-            recoveryEnabled: true,
-            executionProbe: executionProbe
-        )
-        var workflow = makeWorkflow()
-        workflow.metadata["eventType"] = "groupItemCreated"
+    await cleanupGate.releaseRetry()
+    await shutdownTask.value
 
-        await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(
-                runID: UUID(),
-                workflow: workflow
-            ),
-            triggerEvent: nil,
-            deferredCapture: .resolved(
-                try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-            )
-        )
+    let completedAfterRelease = await completionProbe.completed
+    let attemptCount = await cleanupGate.attemptCount
+    XCTAssertTrue(completedAfterRelease)
+    XCTAssertEqual(attemptCount, 2)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+  }
 
-        await waitUntilRejectedCleanupFinishes(queue)
+  func testOptInQueueProtectsFailedManagedAudioBeforeRemovingPlaintext() async throws {
+    let fileURL = try makeAudioFile(bytes: Data([0x11, 0x22, 0x33]))
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let recoveryStore = AudioRecoveryStoreProbe()
+    let queue = await makeQueue(
+      recognitionShouldFail: true,
+      recoveryStore: recoveryStore,
+      recoveryEnabled: true
+    )
+    let workflow = makeWorkflow()
 
-        let counts = await executionProbe.snapshot()
-        let preservedBytes = await recoveryStore.preservedBytes
-        let pendingCount = await queue.pendingCount
-        XCTAssertEqual(pendingCount, 0)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-        XCTAssertEqual(counts.context, 0)
-        XCTAssertEqual(counts.recognition, 0)
-        XCTAssertEqual(counts.action, 0)
-        XCTAssertTrue(preservedBytes.isEmpty)
-    }
+    await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: workflow),
+      triggerEvent: nil,
+      deferredCapture: .resolved(
+        try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+      )
+    )
 
-    func testLegacyClipboardCleanupRetriesAfterTransientFailureWithoutProcessing() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let executionProbe = AudioLifecycleExecutionProbe()
-        let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 1)
-        let recoveryStore = AudioRecoveryStoreProbe()
-        let diagnostics = DiagnosticsRecorder()
-        let queue = await makeQueue(
-            recognitionShouldFail: false,
-            recoveryStore: recoveryStore,
-            recoveryEnabled: true,
-            executionProbe: executionProbe,
-            diagnostics: diagnostics,
-            rejectedCapturedAudioRemoval: { capturedAudio in
-                try await cleanupProbe.remove(capturedAudio)
-            },
-            rejectedCleanupInitialRetryDelay: .milliseconds(1),
-            rejectedCleanupMaximumRetryDelay: .milliseconds(4),
-            rejectedCleanupSleep: { delay in
-                await cleanupProbe.sleep(for: delay)
-            }
-        )
-        var workflow = makeWorkflow()
-        workflow.metadata["eventType"] = "groupItemCreated"
+    await waitUntilDrained(queue)
+    let preservedBytes = await recoveryStore.preservedBytes
+    XCTAssertEqual(preservedBytes, [Data([0x11, 0x22, 0x33])])
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+  }
 
-        await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(
-                runID: UUID(),
-                workflow: workflow
-            ),
-            triggerEvent: nil,
-            deferredCapture: .resolved(
-                try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-            )
-        )
-        await waitUntilRejectedCleanupFinishes(queue)
+  func testOptInQueueArchivesEveryProcessedRecordingBeforeRemovingPlaintext() async throws {
+    for (recognitionShouldFail, expectedOutcome) in [
+      (false, BenchmarkRecordingOutcome.completed),
+      (true, BenchmarkRecordingOutcome.failed),
+    ] {
+      let bytes = Data([0x41, recognitionShouldFail ? 0x42 : 0x43])
+      let fileURL = try makeAudioFile(bytes: bytes)
+      defer { try? FileManager.default.removeItem(at: fileURL) }
+      let archiveStore = BenchmarkArchiveStoreProbe()
+      let queue = await makeQueue(
+        recognitionShouldFail: recognitionShouldFail,
+        benchmarkArchiveStore: archiveStore,
+        benchmarkArchiveEnabled: true
+      )
+      let workflow = makeWorkflow()
+      let runID = UUID()
 
-        let cleanup = await cleanupProbe.snapshot()
-        let execution = await executionProbe.snapshot()
-        let preserveCallCount = await recoveryStore.preserveCallCount
-        let pendingCount = await queue.pendingCount
-        let rejectedCleanupCount = await queue.rejectedCleanupCount
-        let diagnosticEvents = await diagnostics.snapshot()
-        let cleanupFailure = try XCTUnwrap(
-            diagnosticEvents.first {
-                $0.event == "audio-processing.rejected-cleanup-pending"
-            }
-        )
-        XCTAssertEqual(cleanup.attempts, 2)
-        XCTAssertEqual(cleanup.delays, [.milliseconds(1)])
-        XCTAssertEqual(pendingCount, 0)
-        XCTAssertEqual(rejectedCleanupCount, 0)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-        XCTAssertEqual(execution.context, 0)
-        XCTAssertEqual(execution.recognition, 0)
-        XCTAssertEqual(execution.action, 0)
-        XCTAssertEqual(preserveCallCount, 0)
-        XCTAssertEqual(cleanupFailure.message, DiagnosticEventSanitizer.sanitizedMessage)
-        XCTAssertEqual(cleanupFailure.metadata, ["lane": "interactive"])
-        XCTAssertFalse(cleanupFailure.message.lowercased().contains("canary"))
-    }
-
-    func testLegacyClipboardCleanupRetryDelayStopsGrowingAtMaximum() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let executionProbe = AudioLifecycleExecutionProbe()
-        let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 4)
-        let queue = await makeQueue(
-            recognitionShouldFail: false,
-            executionProbe: executionProbe,
-            rejectedCapturedAudioRemoval: { capturedAudio in
-                try await cleanupProbe.remove(capturedAudio)
-            },
-            rejectedCleanupInitialRetryDelay: .milliseconds(1),
-            rejectedCleanupMaximumRetryDelay: .milliseconds(2),
-            rejectedCleanupSleep: { delay in
-                await cleanupProbe.sleep(for: delay)
-            }
-        )
-        var workflow = makeWorkflow()
-        workflow.metadata["eventType"] = "groupItemCreated"
-
-        await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(
-                runID: UUID(),
-                workflow: workflow
-            ),
-            triggerEvent: nil,
-            deferredCapture: .resolved(
-                try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-            )
-        )
-        await waitUntilRejectedCleanupFinishes(queue)
-
-        let cleanup = await cleanupProbe.snapshot()
-        let execution = await executionProbe.snapshot()
-        XCTAssertEqual(cleanup.attempts, 5)
-        XCTAssertEqual(
-            cleanup.delays,
-            [.milliseconds(1), .milliseconds(2), .milliseconds(2), .milliseconds(2)]
-        )
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-        XCTAssertEqual(execution.context, 0)
-        XCTAssertEqual(execution.recognition, 0)
-        XCTAssertEqual(execution.action, 0)
-    }
-
-    func testRejectedCaptureResolutionFailureIsTerminalWithoutRetryOrProcessing() async throws {
-        let executionProbe = AudioLifecycleExecutionProbe()
-        let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 0)
-        let recoveryStore = AudioRecoveryStoreProbe()
-        let diagnostics = DiagnosticsRecorder()
-        let queue = await makeQueue(
-            recognitionShouldFail: false,
-            recoveryStore: recoveryStore,
-            recoveryEnabled: true,
-            executionProbe: executionProbe,
-            diagnostics: diagnostics,
-            rejectedCapturedAudioRemoval: { capturedAudio in
-                try await cleanupProbe.remove(capturedAudio)
-            },
-            rejectedCleanupInitialRetryDelay: .milliseconds(1),
-            rejectedCleanupMaximumRetryDelay: .milliseconds(2),
-            rejectedCleanupSleep: { delay in
-                await cleanupProbe.sleep(for: delay)
-            }
-        )
-        let workflow = makeWorkflow()
-        let failedCapture = DeferredCapturedAudio(
-            task: Task<CapturedAudio, Error> {
-                throw RejectedCleanupTestError()
-            }
-        )
-
-        await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(
-                runID: UUID(),
-                workflow: workflow
-            ),
-            triggerEvent: WorkflowTriggerEvent(
-                binding: .manual,
-                workflowID: UUID(),
-                sourceID: "rejected-capture-resolution-test"
-            ),
-            deferredCapture: failedCapture
-        )
-        await waitUntilDrained(queue)
-        await waitUntilRejectedCleanupFinishes(queue)
-        try? await Task.sleep(for: .milliseconds(10))
-
-        let cleanup = await cleanupProbe.snapshot()
-        let execution = await executionProbe.snapshot()
-        let preserveCallCount = await recoveryStore.preserveCallCount
-        let rejectedCleanupCount = await queue.rejectedCleanupCount
-        let diagnosticEvents = await diagnostics.snapshot()
-        let resolutionFailures = diagnosticEvents.filter {
-            $0.event == "audio-processing.rejected-capture-resolution-failed"
-        }
-        XCTAssertEqual(cleanup.attempts, 0)
-        XCTAssertTrue(cleanup.delays.isEmpty)
-        XCTAssertEqual(rejectedCleanupCount, 0)
-        XCTAssertEqual(execution.context, 0)
-        XCTAssertEqual(execution.recognition, 0)
-        XCTAssertEqual(execution.action, 0)
-        XCTAssertEqual(preserveCallCount, 0)
-        XCTAssertEqual(resolutionFailures.count, 1)
-        XCTAssertEqual(
-            resolutionFailures.first?.message,
-            DiagnosticEventSanitizer.sanitizedMessage
-        )
-        XCTAssertEqual(
-            resolutionFailures.first?.metadata,
-            ["lane": "interactive"]
-        )
-        XCTAssertFalse(
-            diagnosticEvents.contains {
-                $0.event == "audio-processing.rejected-cleanup-pending"
-            }
-        )
-        XCTAssertFalse(
-            resolutionFailures.first?.message.lowercased().contains("canary") == true
-        )
-    }
-
-    func testShortContentInputArchivesBeforeCleaningAudioWithoutRecovery() async throws {
-        for ownership: CapturedAudioFileOwnership in [.managedTemporary, .callerManaged] {
-            let probe = AudioLifecycleExecutionProbe()
-            let recovery = AudioRecoveryStoreProbe()
-            let archive = BenchmarkArchiveStoreProbe()
-            let queue = await makeQueue(
-                recognitionShouldFail: false, recoveryStore: recovery, recoveryEnabled: true,
-                benchmarkArchiveStore: archive, benchmarkArchiveEnabled: true, executionProbe: probe
-            )
-            let bytes = Data([0x41, 0x42])
-            let fileURL = try makeAudioFile(bytes: bytes)
-            defer { try? FileManager.default.removeItem(at: fileURL) }
-            var audio = try makeCapturedAudio(fileURL: fileURL, ownership: ownership)
-            audio.durationSeconds = 0.1
-            await queue.enqueue(
-                authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: makeWorkflow()),
-                triggerEvent: nil, deferredCapture: .resolved(audio)
-            )
-            await waitUntilDrained(queue)
-            await queue.shutdown()
-            let execution = await probe.snapshot()
-            let preserved = await recovery.preserveCallCount
-            let archived = await archive.entries
-            XCTAssertEqual(execution.recognition, 1)
-            XCTAssertEqual(execution.action, 1)
-            XCTAssertEqual(preserved, 0)
-            XCTAssertEqual(archived.count, 1)
-            XCTAssertEqual(archived.first?.bytes, bytes)
-            XCTAssertEqual(archived.first?.outcome, .completed)
-            XCTAssertEqual(FileManager.default.fileExists(atPath: fileURL.path), ownership == .callerManaged)
-        }
-    }
-
-    func testQueueRemovesManagedTemporaryFileAfterProcessingOutcome() async throws {
-        for recognitionShouldFail in [false, true] {
-            let fileURL = try makeAudioFile()
-            defer { try? FileManager.default.removeItem(at: fileURL) }
-            let queue = await makeQueue(recognitionShouldFail: recognitionShouldFail)
-
-            await queue.enqueue(
-                authorizationLease: makeAudioProcessingTestLease(
-                    runID: UUID(),
-                    workflow: makeWorkflow()
-                ),
-                triggerEvent: nil,
-                deferredCapture: .resolved(
-                    try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-                )
-            )
-
-            await waitUntilDrained(queue)
-            XCTAssertFalse(
-                FileManager.default.fileExists(atPath: fileURL.path),
-                "Managed audio remained after recognitionShouldFail=\(recognitionShouldFail)."
-            )
-        }
-    }
-
-    func testProcessingOutcomesRetryTransientManagedFileRemovalFailure() async throws {
-        for recognitionShouldFail in [false, true] {
-            let fileURL = try makeAudioFile()
-            defer { try? FileManager.default.removeItem(at: fileURL) }
-            let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 1)
-            let queue = await makeQueue(
-                recognitionShouldFail: recognitionShouldFail,
-                rejectedCapturedAudioRemoval: { capturedAudio in
-                    try await cleanupProbe.remove(capturedAudio)
-                },
-                rejectedCleanupSleep: { delay in
-                    await cleanupProbe.sleep(for: delay)
-                }
-            )
-
-            await queue.enqueue(
-                authorizationLease: makeAudioProcessingTestLease(
-                    runID: UUID(),
-                    workflow: makeWorkflow()
-                ),
-                triggerEvent: nil,
-                deferredCapture: .resolved(
-                    try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-                )
-            )
-
-            await waitUntilDrained(queue)
-            await waitUntilRejectedCleanupFinishes(queue)
-            let cleanup = await cleanupProbe.snapshot()
-            XCTAssertEqual(cleanup.attempts, 2)
-            XCTAssertTrue(cleanup.delays.isEmpty)
-            XCTAssertFalse(
-                FileManager.default.fileExists(atPath: fileURL.path),
-                "Managed audio remained after recognitionShouldFail=\(recognitionShouldFail)."
-            )
-        }
-    }
-
-    func testShutdownWaitsForManagedFileRemovalRetry() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let cleanupGate = ProcessingCleanupRetryGate()
-        let completionProbe = QueueShutdownCompletionProbe()
-        let queue = await makeQueue(
-            recognitionShouldFail: false,
-            rejectedCapturedAudioRemoval: { capturedAudio in
-                try await cleanupGate.remove(capturedAudio)
-            }
-        )
-
-        await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(
-                runID: UUID(),
-                workflow: makeWorkflow()
-            ),
-            triggerEvent: nil,
-            deferredCapture: .resolved(
-                try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-            )
-        )
-        await cleanupGate.waitUntilRetryEntered()
-
-        let shutdownTask = Task {
-            await queue.shutdown()
-            await completionProbe.markComplete()
-        }
-        await Task.yield()
-        let completedBeforeRelease = await completionProbe.completed
-        XCTAssertFalse(completedBeforeRelease)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
-
-        await cleanupGate.releaseRetry()
-        await shutdownTask.value
-
-        let completedAfterRelease = await completionProbe.completed
-        let attemptCount = await cleanupGate.attemptCount
-        XCTAssertTrue(completedAfterRelease)
-        XCTAssertEqual(attemptCount, 2)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-    }
-
-    func testOptInQueueProtectsFailedManagedAudioBeforeRemovingPlaintext() async throws {
-        let fileURL = try makeAudioFile(bytes: Data([0x11, 0x22, 0x33]))
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let recoveryStore = AudioRecoveryStoreProbe()
-        let queue = await makeQueue(
-            recognitionShouldFail: true,
-            recoveryStore: recoveryStore,
-            recoveryEnabled: true
-        )
-        let workflow = makeWorkflow()
-
-        await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: workflow),
-            triggerEvent: nil,
-            deferredCapture: .resolved(
-                try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-            )
-        )
-
-        await waitUntilDrained(queue)
-        let preservedBytes = await recoveryStore.preservedBytes
-        XCTAssertEqual(preservedBytes, [Data([0x11, 0x22, 0x33])])
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-    }
-
-    func testOptInQueueArchivesEveryProcessedRecordingBeforeRemovingPlaintext() async throws {
-        for (recognitionShouldFail, expectedOutcome) in [
-            (false, BenchmarkRecordingOutcome.completed),
-            (true, BenchmarkRecordingOutcome.failed),
-        ] {
-            let bytes = Data([0x41, recognitionShouldFail ? 0x42 : 0x43])
-            let fileURL = try makeAudioFile(bytes: bytes)
-            defer { try? FileManager.default.removeItem(at: fileURL) }
-            let archiveStore = BenchmarkArchiveStoreProbe()
-            let queue = await makeQueue(
-                recognitionShouldFail: recognitionShouldFail,
-                benchmarkArchiveStore: archiveStore,
-                benchmarkArchiveEnabled: true
-            )
-            let workflow = makeWorkflow()
-            let runID = UUID()
-
-            await queue.enqueue(
-                authorizationLease: makeAudioProcessingTestLease(
-                    runID: runID,
-                    workflow: workflow
-                ),
-                triggerEvent: WorkflowTriggerEvent(
-                    binding: .hotkey,
-                    workflowID: workflow.id,
-                    sourceID: "benchmark-archive-test"
-                ),
-                deferredCapture: .resolved(
-                    try makeCapturedAudio(
-                        fileURL: fileURL,
-                        ownership: .managedTemporary
-                    )
-                )
-            )
-
-            await waitUntilDrained(queue)
-            let entries = await archiveStore.entries
-            XCTAssertEqual(entries.count, 1)
-            XCTAssertEqual(entries.first?.bytes, bytes)
-            XCTAssertEqual(entries.first?.runID, runID)
-            XCTAssertEqual(entries.first?.workflowID, workflow.id)
-            XCTAssertEqual(entries.first?.trigger, .hotkey)
-            XCTAssertEqual(entries.first?.outcome, expectedOutcome)
-            XCTAssertEqual(
-                entries.first?.metadata["recognizerID"],
-                "audio-lifecycle.recognizer"
-            )
-            XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-        }
-    }
-
-    func testQueueDoesNotRetainFailedAudioWithoutExplicitOptIn() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let recoveryStore = AudioRecoveryStoreProbe()
-        let queue = await makeQueue(
-            recognitionShouldFail: true,
-            recoveryStore: recoveryStore,
-            recoveryEnabled: false
-        )
-        let workflow = makeWorkflow()
-
-        await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: workflow),
-            triggerEvent: nil,
-            deferredCapture: .resolved(
-                try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-            )
-        )
-
-        await waitUntilDrained(queue)
-        let preservedBytes = await recoveryStore.preservedBytes
-        XCTAssertTrue(preservedBytes.isEmpty)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-    }
-
-    func testQueueNeverRemovesCallerManagedFile() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let queue = await makeQueue(recognitionShouldFail: false)
-        let workflow = makeWorkflow()
-
-        await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: workflow),
-            triggerEvent: nil,
-            deferredCapture: .resolved(try makeCapturedAudio(fileURL: fileURL, ownership: .callerManaged))
-        )
-
-        await waitUntilDrained(queue)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
-    }
-
-    func testTerminatedQueueRejectsEnqueueAndLeavesCleanupWithCaller() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let executionProbe = AudioLifecycleExecutionProbe()
-        let queue = await makeQueue(
-            recognitionShouldFail: false,
-            executionProbe: executionProbe
-        )
-        await queue.shutdown()
-        let deferredCapture = DeferredCapturedAudio.resolved(
-            try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-        )
-
-        let transfer = await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(
-                runID: UUID(),
-                workflow: makeWorkflow()
-            ),
-            triggerEvent: nil,
-            deferredCapture: deferredCapture
-        )
-
-        XCTAssertEqual(transfer, .rejected)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
-        let execution = await executionProbe.snapshot()
-        XCTAssertEqual(execution.context, 0)
-        XCTAssertEqual(execution.recognition, 0)
-        XCTAssertEqual(execution.action, 0)
-
-        _ = try await deferredCapture.value().removeManagedTemporaryFile()
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-    }
-
-    func testCancellationAfterAuthorizationClaimCleansUnresolvedCapture() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let executionProbe = AudioLifecycleExecutionProbe()
-        let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 0)
-        let queue = await makeQueue(
-            recognitionShouldFail: false,
-            executionProbe: executionProbe,
-            rejectedCapturedAudioRemoval: { capturedAudio in
-                try await cleanupProbe.remove(capturedAudio)
-            }
-        )
-        let claimReturned = expectation(description: "Authorization succeeds while the drain task is cancelled")
-        let transfer = await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(
-                runID: UUID(),
-                workflow: makeWorkflow(),
-                beforeClaimReturns: {
-                    withUnsafeCurrentTask { $0?.cancel() }
-                    claimReturned.fulfill()
-                }
-            ),
-            triggerEvent: nil,
-            deferredCapture: .resolved(
-                try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-            )
-        )
-        XCTAssertEqual(transfer, .accepted)
-        await fulfillment(of: [claimReturned], timeout: 2)
-
-        await queue.shutdown()
-
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-        let pendingCount = await queue.pendingCount
-        let cleanup = await cleanupProbe.snapshot()
-        let execution = await executionProbe.snapshot()
-        XCTAssertEqual(pendingCount, 0)
-        XCTAssertEqual(cleanup.attempts, 1)
-        XCTAssertEqual(execution.context, 0)
-        XCTAssertEqual(execution.recognition, 0)
-        XCTAssertEqual(execution.action, 0)
-    }
-
-    func testRunCancellationDuringAcceptedTransferWindowCleansExactlyOnce() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let runID = UUID()
-        let transferGate = QueueOwnershipTransferGate()
-        let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 0)
-        let executionProbe = AudioLifecycleExecutionProbe()
-        let queue = await makeQueue(
-            recognitionShouldFail: false,
-            executionProbe: executionProbe,
-            rejectedCapturedAudioRemoval: { capturedAudio in
-                try await cleanupProbe.remove(capturedAudio)
-            },
-            ownershipTransferObserver: { _ in
-                await transferGate.suspendAfterTransfer()
-            }
-        )
-        let deferredCapture = DeferredCapturedAudio.resolved(
-            try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-        )
-        let authorizationLease = makeAudioProcessingTestLease(
-            runID: runID,
-            workflow: makeWorkflow()
-        )
-        let enqueueTask = Task {
-            await queue.enqueue(
-                authorizationLease: authorizationLease,
-                triggerEvent: nil,
-                deferredCapture: deferredCapture
-            )
-        }
-        await transferGate.waitUntilEntered()
-
-        await queue.cancel(runID: runID)
-
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-        let pendingCount = await queue.pendingCount
-        let cleanup = await cleanupProbe.snapshot()
-        XCTAssertEqual(pendingCount, 0)
-        XCTAssertEqual(cleanup.attempts, 1)
-        let execution = await executionProbe.snapshot()
-        XCTAssertEqual(execution.context, 0)
-        XCTAssertEqual(execution.recognition, 0)
-        XCTAssertEqual(execution.action, 0)
-
-        await transferGate.release()
-        let transfer = await enqueueTask.value
-        XCTAssertEqual(transfer, .accepted)
-        await queue.shutdown()
-    }
-
-    func testShutdownDuringAcceptedTransferWindowSettlesAllWaitersAndCleanup() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let runID = UUID()
-        let transferGate = QueueOwnershipTransferGate()
-        let executionProbe = AudioLifecycleExecutionProbe()
-        let queue = await makeQueue(
-            recognitionShouldFail: false,
-            executionProbe: executionProbe,
-            ownershipTransferObserver: { _ in
-                await transferGate.suspendAfterTransfer()
-            }
-        )
-        let deferredCapture = DeferredCapturedAudio.resolved(
-            try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-        )
-        let authorizationLease = makeAudioProcessingTestLease(
-            runID: runID,
-            workflow: makeWorkflow()
-        )
-        let enqueueTask = Task {
-            await queue.enqueue(
-                authorizationLease: authorizationLease,
-                triggerEvent: nil,
-                deferredCapture: deferredCapture
-            )
-        }
-        await transferGate.waitUntilEntered()
-
-        async let firstShutdown: Void = queue.shutdown()
-        async let secondShutdown: Void = queue.shutdown()
-        _ = await (firstShutdown, secondShutdown)
-
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-        let pendingCount = await queue.pendingCount
-        let cleanupCount = await queue.rejectedCleanupCount
-        XCTAssertEqual(pendingCount, 0)
-        XCTAssertEqual(cleanupCount, 0)
-        await transferGate.release()
-        let transfer = await enqueueTask.value
-        XCTAssertEqual(transfer, .accepted)
-        let execution = await executionProbe.snapshot()
-        XCTAssertEqual(execution.context, 0)
-        XCTAssertEqual(execution.recognition, 0)
-        XCTAssertEqual(execution.action, 0)
-    }
-
-    func testShutdownCancelsUnderlyingActiveDeferredTaskAndReturns() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let runID = UUID()
-        let cancellationProbe = DeferredCancellationCleanupProbe(fileURL: fileURL)
-        let executionProbe = AudioLifecycleExecutionProbe()
-        let queue = await makeQueue(
-            recognitionShouldFail: false,
-            executionProbe: executionProbe
-        )
-        let transfer = await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(
-                runID: runID,
-                workflow: makeWorkflow()
-            ),
-            triggerEvent: nil,
-            deferredCapture: cancellationProbe.makeDeferredCapture()
-        )
-        XCTAssertEqual(transfer, .accepted)
-        await waitUntilActive(runID: runID, queue: queue)
-
-        await queue.shutdown()
-
-        XCTAssertEqual(cancellationProbe.cancellations, 1)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-        let pendingCount = await queue.pendingCount
-        XCTAssertEqual(pendingCount, 0)
-        let execution = await executionProbe.snapshot()
-        XCTAssertEqual(execution.context, 0)
-        XCTAssertEqual(execution.recognition, 0)
-        XCTAssertEqual(execution.action, 0)
-    }
-
-    func testCancellingFirstShutdownStillTerminatesQueueAndResumesConcurrentWaiter() async throws {
-        let fileURL = try makeAudioFile()
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-        let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 1)
-        let sleepGate = CleanupRetrySleepGate()
-        let queue = await makeQueue(
-            recognitionShouldFail: false,
-            rejectedCapturedAudioRemoval: { capturedAudio in
-                try await cleanupProbe.remove(capturedAudio)
-            },
-            rejectedCleanupSleep: { _ in
-                await sleepGate.sleep()
-            }
-        )
-        var unsupportedWorkflow = makeWorkflow()
-        unsupportedWorkflow.metadata["eventType"] = "groupItemCreated"
-        let transfer = await queue.enqueue(
-            authorizationLease: makeAudioProcessingTestLease(
-                runID: UUID(),
-                workflow: unsupportedWorkflow
-            ),
-            triggerEvent: nil,
-            deferredCapture: .resolved(
-                try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
-            )
-        )
-        XCTAssertEqual(transfer, .accepted)
-        await sleepGate.waitUntilEntered()
-
-        let firstShutdown = Task { await queue.shutdown() }
-        await waitUntilShutdownBegins(queue)
-        let concurrentShutdown = Task { await queue.shutdown() }
-        await Task.yield()
-        firstShutdown.cancel()
-        await sleepGate.release()
-        await firstShutdown.value
-        await concurrentShutdown.value
-
-        let cleanupCount = await queue.rejectedCleanupCount
-        XCTAssertEqual(cleanupCount, 0)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-        let cleanup = await cleanupProbe.snapshot()
-        XCTAssertEqual(cleanup.attempts, 2)
-        await queue.shutdown()
-    }
-
-    private func makeQueue(
-        recognitionShouldFail: Bool,
-        recordStore: RecordStore? = nil,
-        recoveryStore: (any FailedAudioRecoveryStore)? = nil,
-        recoveryEnabled: Bool = false,
-        benchmarkArchiveStore: (any BenchmarkRecordingArchiveStore)? = nil,
-        benchmarkArchiveEnabled: Bool = false,
-        executionProbe providedExecutionProbe: AudioLifecycleExecutionProbe? = nil,
-        diagnostics providedDiagnostics: DiagnosticsRecorder? = nil,
-        rejectedCapturedAudioRemoval: (
-            @Sendable (CapturedAudio) async throws -> Void
-        )? = nil,
-        rejectedCleanupInitialRetryDelay: Duration = .milliseconds(1),
-        rejectedCleanupMaximumRetryDelay: Duration = .milliseconds(4),
-        rejectedCleanupSleep: (@Sendable (Duration) async throws -> Void)? = nil,
-        ownershipTransferObserver: (@Sendable (UUID) async -> Void)? = nil
-    ) async -> CapturedAudioProcessingQueue {
-        let executionProbe = providedExecutionProbe ?? AudioLifecycleExecutionProbe()
-        let eventBus = EventBus()
-        let diagnostics = providedDiagnostics ?? DiagnosticsRecorder(eventBus: eventBus)
-        let coordinator = makeTestSessionCoordinator(
-
-            recognizerRegistry: SpeechRecognizerRegistry(
-                recognizers: [
-                    AudioLifecycleRecognizer(
-                        shouldFail: recognitionShouldFail,
-                        probe: executionProbe
-                    ),
-                ]
-            ),
-            transformerRegistry: TextTransformerRegistry(transformers: []),
-            actionRegistry: OutputActionRegistry(
-                actions: [AudioLifecycleAction(probe: executionProbe, recordStore: recordStore)]
-            ),
-            candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
-            recordStore: recordStore ?? RecordStore(),
-            eventBus: eventBus,
-            diagnostics: diagnostics
-        )
-        let recoveryController = recoveryStore.map { store in
-            makeTestFailedAudioRecoveryController(
-                store: store,
-                sessionCoordinator: coordinator,
-                eventBus: eventBus,
-                diagnostics: diagnostics
-            )
-        }
-        if let recoveryController {
-            try? await recoveryController.refresh(isEnabled: recoveryEnabled)
-        }
-        let benchmarkArchiveController = benchmarkArchiveStore.map { store in
-            BenchmarkRecordingArchiveController(
-                store: store,
-                diagnostics: diagnostics
-            )
-        }
-        if let benchmarkArchiveController {
-            await benchmarkArchiveController.refresh(
-                isEnabled: benchmarkArchiveEnabled
-            )
-        }
-        if rejectedCapturedAudioRemoval != nil || ownershipTransferObserver != nil {
-            let sleep = rejectedCleanupSleep ?? { delay in
-                try await Task.sleep(for: delay)
-            }
-            return makeTestCapturedAudioProcessingQueue(
-                sessionCoordinator: coordinator,
-                eventBus: eventBus,
-                diagnostics: diagnostics,
-                failedAudioRecoveryController: recoveryController,
-                benchmarkRecordingArchiveController: benchmarkArchiveController,
-                rejectedCapturedAudioRemoval: rejectedCapturedAudioRemoval ?? { capturedAudio in
-                    _ = try capturedAudio.removeManagedTemporaryFile()
-                },
-                rejectedCleanupInitialRetryDelay: rejectedCleanupInitialRetryDelay,
-                rejectedCleanupMaximumRetryDelay: rejectedCleanupMaximumRetryDelay,
-                rejectedCleanupSleep: sleep,
-                ownershipTransferObserver: ownershipTransferObserver ?? { _ in }
-            )
-        }
-        return makeTestCapturedAudioProcessingQueue(
-            sessionCoordinator: coordinator,
-            eventBus: eventBus,
-            diagnostics: diagnostics,
-            failedAudioRecoveryController: recoveryController,
-            benchmarkRecordingArchiveController: benchmarkArchiveController
-        )
-    }
-
-    private func makeWorkflow() -> WorkflowDefinition {
-        WorkflowDefinition(
-            name: "Audio Lifecycle Workflow",
-            pipeline: PipelineDeclaration(
-                recognizerID: "audio-lifecycle.recognizer",
-                outputActions: [OutputActionReference(id: "audio-lifecycle.action")]
-            ),
-            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
-        )
-    }
-
-    private func makeAudioFile(bytes: Data = Data([0x00])) throws -> URL {
-        let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("rill-queue-lifecycle-" + UUID().uuidString + ".wav")
-        try bytes.write(to: fileURL)
-        return fileURL
-    }
-
-    private func makeCapturedAudio(
-        fileURL: URL,
-        ownership: CapturedAudioFileOwnership
-    ) throws -> CapturedAudio {
-        try CapturedAudio(
-            durationSeconds: 1,
-            format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
+      await queue.enqueue(
+        authorizationLease: makeAudioProcessingTestLease(
+          runID: runID,
+          workflow: workflow
+        ),
+        triggerEvent: WorkflowTriggerEvent(
+          binding: .hotkey,
+          workflowID: workflow.id,
+          sourceID: "benchmark-archive-test"
+        ),
+        deferredCapture: .resolved(
+          try makeCapturedAudio(
             fileURL: fileURL,
-            fileOwnership: ownership
+            ownership: .managedTemporary
+          )
         )
-    }
+      )
 
-    private func waitUntilDrained(_ queue: CapturedAudioProcessingQueue) async {
-        for _ in 0..<200 {
-            if await queue.pendingCount == 0 {
-                return
-            }
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        XCTFail("The captured audio processing queue did not drain.")
+      await waitUntilDrained(queue)
+      let entries = await archiveStore.entries
+      XCTAssertEqual(entries.count, 1)
+      XCTAssertEqual(entries.first?.bytes, bytes)
+      XCTAssertEqual(entries.first?.runID, runID)
+      XCTAssertEqual(entries.first?.workflowID, workflow.id)
+      XCTAssertEqual(entries.first?.trigger, .hotkey)
+      XCTAssertEqual(entries.first?.outcome, expectedOutcome)
+      XCTAssertEqual(
+        entries.first?.metadata["recognizerID"],
+        "audio-lifecycle.recognizer"
+      )
+      XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
     }
+  }
 
-    private func waitUntilRejectedCleanupFinishes(
-        _ queue: CapturedAudioProcessingQueue
-    ) async {
-        for _ in 0..<200 {
-            if await queue.rejectedCleanupCount == 0 {
-                return
-            }
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        XCTFail("The rejected captured audio cleanup did not finish.")
-    }
+  func testQueueDoesNotRetainFailedAudioWithoutExplicitOptIn() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let recoveryStore = AudioRecoveryStoreProbe()
+    let queue = await makeQueue(
+      recognitionShouldFail: true,
+      recoveryStore: recoveryStore,
+      recoveryEnabled: false
+    )
+    let workflow = makeWorkflow()
 
-    private func waitUntilActive(
-        runID: UUID,
-        queue: CapturedAudioProcessingQueue
-    ) async {
-        for _ in 0..<200 {
-            if await queue.activeRunIDForTesting == runID {
-                return
-            }
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        XCTFail("The captured audio processing queue did not activate the run.")
-    }
+    await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: workflow),
+      triggerEvent: nil,
+      deferredCapture: .resolved(
+        try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+      )
+    )
 
-    private func waitUntilShutdownBegins(_ queue: CapturedAudioProcessingQueue) async {
-        for _ in 0..<200 {
-            if await queue.isShutdownInProgressForTesting {
-                return
-            }
-            try? await Task.sleep(for: .milliseconds(5))
+    await waitUntilDrained(queue)
+    let preservedBytes = await recoveryStore.preservedBytes
+    XCTAssertTrue(preservedBytes.isEmpty)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+  }
+
+  func testQueueNeverRemovesCallerManagedFile() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let queue = await makeQueue(recognitionShouldFail: false)
+    let workflow = makeWorkflow()
+
+    await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(runID: UUID(), workflow: workflow),
+      triggerEvent: nil,
+      deferredCapture: .resolved(try makeCapturedAudio(fileURL: fileURL, ownership: .callerManaged))
+    )
+
+    await waitUntilDrained(queue)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+  }
+
+  func testTerminatedQueueRejectsEnqueueAndLeavesCleanupWithCaller() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let executionProbe = AudioLifecycleExecutionProbe()
+    let queue = await makeQueue(
+      recognitionShouldFail: false,
+      executionProbe: executionProbe
+    )
+    await queue.shutdown()
+    let deferredCapture = DeferredCapturedAudio.resolved(
+      try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+    )
+
+    let transfer = await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(
+        runID: UUID(),
+        workflow: makeWorkflow()
+      ),
+      triggerEvent: nil,
+      deferredCapture: deferredCapture
+    )
+
+    XCTAssertEqual(transfer, .rejected)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
+    let execution = await executionProbe.snapshot()
+    XCTAssertEqual(execution.context, 0)
+    XCTAssertEqual(execution.recognition, 0)
+    XCTAssertEqual(execution.action, 0)
+
+    _ = try await deferredCapture.value().removeManagedTemporaryFile()
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+  }
+
+  func testCancellationAfterAuthorizationClaimCleansUnresolvedCapture() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let executionProbe = AudioLifecycleExecutionProbe()
+    let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 0)
+    let queue = await makeQueue(
+      recognitionShouldFail: false,
+      executionProbe: executionProbe,
+      rejectedCapturedAudioRemoval: { capturedAudio in
+        try await cleanupProbe.remove(capturedAudio)
+      }
+    )
+    let claimReturned = expectation(description: "Authorization succeeds while the drain task is cancelled")
+    let transfer = await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(
+        runID: UUID(),
+        workflow: makeWorkflow(),
+        beforeClaimReturns: {
+          withUnsafeCurrentTask { $0?.cancel() }
+          claimReturned.fulfill()
         }
-        XCTFail("The captured audio processing queue did not begin shutdown.")
+      ),
+      triggerEvent: nil,
+      deferredCapture: .resolved(
+        try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+      )
+    )
+    XCTAssertEqual(transfer, .accepted)
+    await fulfillment(of: [claimReturned], timeout: 2)
+
+    await queue.shutdown()
+
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+    let pendingCount = await queue.pendingCount
+    let cleanup = await cleanupProbe.snapshot()
+    let execution = await executionProbe.snapshot()
+    XCTAssertEqual(pendingCount, 0)
+    XCTAssertEqual(cleanup.attempts, 1)
+    XCTAssertEqual(execution.context, 0)
+    XCTAssertEqual(execution.recognition, 0)
+    XCTAssertEqual(execution.action, 0)
+  }
+
+  func testRunCancellationDuringAcceptedTransferWindowCleansExactlyOnce() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let runID = UUID()
+    let transferGate = QueueOwnershipTransferGate()
+    let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 0)
+    let executionProbe = AudioLifecycleExecutionProbe()
+    let queue = await makeQueue(
+      recognitionShouldFail: false,
+      executionProbe: executionProbe,
+      rejectedCapturedAudioRemoval: { capturedAudio in
+        try await cleanupProbe.remove(capturedAudio)
+      },
+      ownershipTransferObserver: { _ in
+        await transferGate.suspendAfterTransfer()
+      }
+    )
+    let deferredCapture = DeferredCapturedAudio.resolved(
+      try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+    )
+    let authorizationLease = makeAudioProcessingTestLease(
+      runID: runID,
+      workflow: makeWorkflow()
+    )
+    let enqueueTask = Task {
+      await queue.enqueue(
+        authorizationLease: authorizationLease,
+        triggerEvent: nil,
+        deferredCapture: deferredCapture
+      )
     }
+    await transferGate.waitUntilEntered()
+
+    await queue.cancel(runID: runID)
+
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+    let pendingCount = await queue.pendingCount
+    let cleanup = await cleanupProbe.snapshot()
+    XCTAssertEqual(pendingCount, 0)
+    XCTAssertEqual(cleanup.attempts, 1)
+    let execution = await executionProbe.snapshot()
+    XCTAssertEqual(execution.context, 0)
+    XCTAssertEqual(execution.recognition, 0)
+    XCTAssertEqual(execution.action, 0)
+
+    await transferGate.release()
+    let transfer = await enqueueTask.value
+    XCTAssertEqual(transfer, .accepted)
+    await queue.shutdown()
+  }
+
+  func testShutdownDuringAcceptedTransferWindowSettlesAllWaitersAndCleanup() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let runID = UUID()
+    let transferGate = QueueOwnershipTransferGate()
+    let executionProbe = AudioLifecycleExecutionProbe()
+    let queue = await makeQueue(
+      recognitionShouldFail: false,
+      executionProbe: executionProbe,
+      ownershipTransferObserver: { _ in
+        await transferGate.suspendAfterTransfer()
+      }
+    )
+    let deferredCapture = DeferredCapturedAudio.resolved(
+      try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+    )
+    let authorizationLease = makeAudioProcessingTestLease(
+      runID: runID,
+      workflow: makeWorkflow()
+    )
+    let enqueueTask = Task {
+      await queue.enqueue(
+        authorizationLease: authorizationLease,
+        triggerEvent: nil,
+        deferredCapture: deferredCapture
+      )
+    }
+    await transferGate.waitUntilEntered()
+
+    async let firstShutdown: Void = queue.shutdown()
+    async let secondShutdown: Void = queue.shutdown()
+    _ = await (firstShutdown, secondShutdown)
+
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+    let pendingCount = await queue.pendingCount
+    let cleanupCount = await queue.rejectedCleanupCount
+    XCTAssertEqual(pendingCount, 0)
+    XCTAssertEqual(cleanupCount, 0)
+    await transferGate.release()
+    let transfer = await enqueueTask.value
+    XCTAssertEqual(transfer, .accepted)
+    let execution = await executionProbe.snapshot()
+    XCTAssertEqual(execution.context, 0)
+    XCTAssertEqual(execution.recognition, 0)
+    XCTAssertEqual(execution.action, 0)
+  }
+
+  func testShutdownCancelsUnderlyingActiveDeferredTaskAndReturns() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let runID = UUID()
+    let cancellationProbe = DeferredCancellationCleanupProbe(fileURL: fileURL)
+    let executionProbe = AudioLifecycleExecutionProbe()
+    let queue = await makeQueue(
+      recognitionShouldFail: false,
+      executionProbe: executionProbe
+    )
+    let transfer = await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(
+        runID: runID,
+        workflow: makeWorkflow()
+      ),
+      triggerEvent: nil,
+      deferredCapture: cancellationProbe.makeDeferredCapture()
+    )
+    XCTAssertEqual(transfer, .accepted)
+    await waitUntilActive(runID: runID, queue: queue)
+
+    await queue.shutdown()
+
+    XCTAssertEqual(cancellationProbe.cancellations, 1)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+    let pendingCount = await queue.pendingCount
+    XCTAssertEqual(pendingCount, 0)
+    let execution = await executionProbe.snapshot()
+    XCTAssertEqual(execution.context, 0)
+    XCTAssertEqual(execution.recognition, 0)
+    XCTAssertEqual(execution.action, 0)
+  }
+
+  func testCancellingFirstShutdownStillTerminatesQueueAndResumesConcurrentWaiter() async throws {
+    let fileURL = try makeAudioFile()
+    defer { try? FileManager.default.removeItem(at: fileURL) }
+    let cleanupProbe = RejectedCleanupRetryProbe(failuresBeforeSuccess: 1)
+    let sleepGate = CleanupRetrySleepGate()
+    let queue = await makeQueue(
+      recognitionShouldFail: false,
+      rejectedCapturedAudioRemoval: { capturedAudio in
+        try await cleanupProbe.remove(capturedAudio)
+      },
+      rejectedCleanupSleep: { _ in
+        await sleepGate.sleep()
+      }
+    )
+    var unsupportedWorkflow = makeWorkflow()
+    unsupportedWorkflow.metadata["eventType"] = "groupItemCreated"
+    let transfer = await queue.enqueue(
+      authorizationLease: makeAudioProcessingTestLease(
+        runID: UUID(),
+        workflow: unsupportedWorkflow
+      ),
+      triggerEvent: nil,
+      deferredCapture: .resolved(
+        try makeCapturedAudio(fileURL: fileURL, ownership: .managedTemporary)
+      )
+    )
+    XCTAssertEqual(transfer, .accepted)
+    await sleepGate.waitUntilEntered()
+
+    let firstShutdown = Task { await queue.shutdown() }
+    await waitUntilShutdownBegins(queue)
+    let concurrentShutdown = Task { await queue.shutdown() }
+    await Task.yield()
+    firstShutdown.cancel()
+    await sleepGate.release()
+    await firstShutdown.value
+    await concurrentShutdown.value
+
+    let cleanupCount = await queue.rejectedCleanupCount
+    XCTAssertEqual(cleanupCount, 0)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+    let cleanup = await cleanupProbe.snapshot()
+    XCTAssertEqual(cleanup.attempts, 2)
+    await queue.shutdown()
+  }
+
+  private func makeQueue(
+    recognitionShouldFail: Bool,
+    recordStore: RecordStore? = nil,
+    recoveryStore: (any FailedAudioRecoveryStore)? = nil,
+    recoveryEnabled: Bool = false,
+    benchmarkArchiveStore: (any BenchmarkRecordingArchiveStore)? = nil,
+    benchmarkArchiveEnabled: Bool = false,
+    executionProbe providedExecutionProbe: AudioLifecycleExecutionProbe? = nil,
+    diagnostics providedDiagnostics: DiagnosticsRecorder? = nil,
+    rejectedCapturedAudioRemoval: (
+      @Sendable (CapturedAudio) async throws -> Void
+    )? = nil,
+    rejectedCleanupInitialRetryDelay: Duration = .milliseconds(1),
+    rejectedCleanupMaximumRetryDelay: Duration = .milliseconds(4),
+    rejectedCleanupSleep: (@Sendable (Duration) async throws -> Void)? = nil,
+    ownershipTransferObserver: (@Sendable (UUID) async -> Void)? = nil
+  ) async -> CapturedAudioProcessingQueue {
+    let executionProbe = providedExecutionProbe ?? AudioLifecycleExecutionProbe()
+    let eventBus = EventBus()
+    let diagnostics = providedDiagnostics ?? DiagnosticsRecorder(eventBus: eventBus)
+    let coordinator = makeTestSessionCoordinator(
+
+      recognizerRegistry: SpeechRecognizerRegistry(
+        recognizers: [
+          AudioLifecycleRecognizer(
+            shouldFail: recognitionShouldFail,
+            probe: executionProbe
+          )
+        ]
+      ),
+      transformerRegistry: TextTransformerRegistry(transformers: []),
+      actionRegistry: OutputActionRegistry(
+        actions: [AudioLifecycleAction(probe: executionProbe, recordStore: recordStore)]
+      ),
+      candidateResolver: CandidateResolver(eventBus: eventBus, diagnostics: diagnostics),
+      recordStore: recordStore ?? RecordStore(),
+      eventBus: eventBus,
+      diagnostics: diagnostics
+    )
+    let recoveryController = recoveryStore.map { store in
+      makeTestFailedAudioRecoveryController(
+        store: store,
+        sessionCoordinator: coordinator,
+        eventBus: eventBus,
+        diagnostics: diagnostics
+      )
+    }
+    if let recoveryController {
+      try? await recoveryController.refresh(isEnabled: recoveryEnabled)
+    }
+    let benchmarkArchiveController = benchmarkArchiveStore.map { store in
+      BenchmarkRecordingArchiveController(
+        store: store,
+        diagnostics: diagnostics
+      )
+    }
+    if let benchmarkArchiveController {
+      await benchmarkArchiveController.refresh(
+        isEnabled: benchmarkArchiveEnabled
+      )
+    }
+    if rejectedCapturedAudioRemoval != nil || ownershipTransferObserver != nil {
+      let sleep =
+        rejectedCleanupSleep ?? { delay in
+          try await Task.sleep(for: delay)
+        }
+      return makeTestCapturedAudioProcessingQueue(
+        sessionCoordinator: coordinator,
+        eventBus: eventBus,
+        diagnostics: diagnostics,
+        failedAudioRecoveryController: recoveryController,
+        benchmarkRecordingArchiveController: benchmarkArchiveController,
+        rejectedCapturedAudioRemoval: rejectedCapturedAudioRemoval ?? { capturedAudio in
+          _ = try capturedAudio.removeManagedTemporaryFile()
+        },
+        rejectedCleanupInitialRetryDelay: rejectedCleanupInitialRetryDelay,
+        rejectedCleanupMaximumRetryDelay: rejectedCleanupMaximumRetryDelay,
+        rejectedCleanupSleep: sleep,
+        ownershipTransferObserver: ownershipTransferObserver ?? { _ in }
+      )
+    }
+    return makeTestCapturedAudioProcessingQueue(
+      sessionCoordinator: coordinator,
+      eventBus: eventBus,
+      diagnostics: diagnostics,
+      failedAudioRecoveryController: recoveryController,
+      benchmarkRecordingArchiveController: benchmarkArchiveController
+    )
+  }
+
+  private func makeWorkflow() -> WorkflowDefinition {
+    WorkflowDefinition(
+      name: "Audio Lifecycle Workflow",
+      pipeline: PipelineDeclaration(
+        recognizerID: "audio-lifecycle.recognizer",
+        outputActions: [OutputActionReference(id: "audio-lifecycle.action")]
+      ),
+      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "blue")
+    )
+  }
+
+  private func makeAudioFile(bytes: Data = Data([0x00])) throws -> URL {
+    let fileURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("rill-queue-lifecycle-" + UUID().uuidString + ".wav")
+    try bytes.write(to: fileURL)
+    return fileURL
+  }
+
+  private func makeCapturedAudio(
+    fileURL: URL,
+    ownership: CapturedAudioFileOwnership
+  ) throws -> CapturedAudio {
+    try CapturedAudio(
+      durationSeconds: 1,
+      format: AudioFormat(sampleRateHz: 16_000, channelCount: 1, encoding: .pcm16),
+      fileURL: fileURL,
+      fileOwnership: ownership
+    )
+  }
+
+  private func waitUntilDrained(_ queue: CapturedAudioProcessingQueue) async {
+    for _ in 0..<200 {
+      if await queue.pendingCount == 0 {
+        return
+      }
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    XCTFail("The captured audio processing queue did not drain.")
+  }
+
+  private func waitUntilRejectedCleanupFinishes(
+    _ queue: CapturedAudioProcessingQueue
+  ) async {
+    for _ in 0..<200 {
+      if await queue.rejectedCleanupCount == 0 {
+        return
+      }
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    XCTFail("The rejected captured audio cleanup did not finish.")
+  }
+
+  private func waitUntilActive(
+    runID: UUID,
+    queue: CapturedAudioProcessingQueue
+  ) async {
+    for _ in 0..<200 {
+      if await queue.activeRunIDForTesting == runID {
+        return
+      }
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    XCTFail("The captured audio processing queue did not activate the run.")
+  }
+
+  private func waitUntilShutdownBegins(_ queue: CapturedAudioProcessingQueue) async {
+    for _ in 0..<200 {
+      if await queue.isShutdownInProgressForTesting {
+        return
+      }
+      try? await Task.sleep(for: .milliseconds(5))
+    }
+    XCTFail("The captured audio processing queue did not begin shutdown.")
+  }
 }

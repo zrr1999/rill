@@ -36,10 +36,12 @@ public final class BenchmarkRecordingArchiveModel {
       && evidenceKind != nil && authorizesPlaintextExport && exporter != nil
   }
 
-  init(settings: SettingsPersistenceModel, store: (any SettingsStore)?,
+  init(
+    settings: SettingsPersistenceModel, store: (any SettingsStore)?,
     reader: (any BenchmarkRecordingArchiveReading)?, exporter: (any BenchmarkCorpusExporting)?,
     refresh: @escaping @Sendable (Bool) async throws -> Void,
-    clear: @escaping @Sendable () async throws -> Void) {
+    clear: @escaping @Sendable () async throws -> Void
+  ) {
     self.settings = settings
     self.store = store
     self.reader = reader
@@ -57,7 +59,10 @@ public final class BenchmarkRecordingArchiveModel {
 
   public func setEnabled(_ enabled: Bool) {
     guard !shuttingDown, !settings.isLoading, enabled != isEnabled, !isUpdating else { return }
-    guard let store else { errorKey = .benchmarkStorageUnavailable; return }
+    guard let store else {
+      errorKey = .benchmarkStorageUnavailable
+      return
+    }
     isUpdating = true
     errorKey = nil
     let task = Task { [self] in
@@ -142,7 +147,8 @@ public final class BenchmarkRecordingArchiveModel {
 
   public func exportSelection(to directory: URL) {
     guard canExport, let evidenceKind, let exporter else { return }
-    let selected = BenchmarkCorpusSelection(runIDs: selection.sorted { $0.uuidString < $1.uuidString },
+    let selected = BenchmarkCorpusSelection(
+      runIDs: selection.sorted { $0.uuidString < $1.uuidString },
       evidenceKind: evidenceKind, split: split)
     let id = UUID()
     operationID = id
@@ -174,5 +180,8 @@ public final class BenchmarkRecordingArchiveModel {
     operation?.cancel()
   }
   func waitForOperation() async { await operation?.value }
-  func beginShutdown() { shuttingDown = true; cancelSelection() }
+  func beginShutdown() {
+    shuttingDown = true
+    cancelSelection()
+  }
 }

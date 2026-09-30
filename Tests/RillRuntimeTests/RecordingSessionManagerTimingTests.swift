@@ -8,818 +8,817 @@ import XCTest
 @testable import RillPlatform
 
 private struct RecordingTimingContextProvider: ContextProvider {
-    func captureContext() async -> ContextSnapshot { .empty }
+  func captureContext() async -> ContextSnapshot { .empty }
 }
 
 private struct RecordingTimingRecognizer: SpeechRecognizer {
-    let id = "recording.timing-recognizer"
+  let id = "recording.timing-recognizer"
 
-    func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
-        _ = request
-        return RecognitionResult(rawText: "recorded", bestText: "recorded")
-    }
+  func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
+    _ = request
+    return RecognitionResult(rawText: "recorded", bestText: "recorded")
+  }
 }
 
 private actor BlockingRecordingDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
-    private let blockedEvent: String
-    private var events: [DiagnosticEvent] = []
-    private var hasEnteredBlockedSave = false
-    private var isReleased = false
-    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
-    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+  private let blockedEvent: String
+  private var events: [DiagnosticEvent] = []
+  private var hasEnteredBlockedSave = false
+  private var isReleased = false
+  private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+  private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
 
-    init(blockedEvent: String) {
-        self.blockedEvent = blockedEvent
-    }
+  init(blockedEvent: String) {
+    self.blockedEvent = blockedEvent
+  }
 
-    func save(_ event: DiagnosticEvent) async throws {
-        try await save(event, generation: .initial)
-    }
+  func save(_ event: DiagnosticEvent) async throws {
+    try await save(event, generation: .initial)
+  }
 
-    func save(
-        _ event: DiagnosticEvent,
-        generation: RunHistoryWriteGeneration
-    ) async throws {
-        _ = generation
-        if event.event == blockedEvent {
-            hasEnteredBlockedSave = true
-            let waiters = entryWaiters
-            entryWaiters.removeAll()
-            for waiter in waiters {
-                waiter.resume()
-            }
-            if !isReleased {
-                await withCheckedContinuation { continuation in
-                    releaseWaiters.append(continuation)
-                }
-            }
-        }
-        events.append(event)
-    }
-
-    func events(matching query: DiagnosticQuery) async throws -> [DiagnosticEvent] {
-        _ = query
-        return events
-    }
-
-    func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration {
-        .initial
-    }
-
-    func deleteEvents(olderThan cutoff: Date) async throws -> Int {
-        let previousCount = events.count
-        events.removeAll { $0.timestamp < cutoff }
-        return previousCount - events.count
-    }
-
-    func deleteEvents(through upperBound: Date) async throws -> Int {
-        let previousCount = events.count
-        events.removeAll { $0.timestamp <= upperBound }
-        return previousCount - events.count
-    }
-
-    func deleteEvents(
-        obsoletedBy transition: RunHistoryClearTransition,
-        preservingLegacyRowsAfter legacyUpperBound: Date?
-    ) async throws -> Int {
-        _ = transition
-        _ = legacyUpperBound
-        let removedCount = events.count
-        events.removeAll()
-        return removedCount
-    }
-
-    func deleteAllEvents() async throws -> Int {
-        let removedCount = events.count
-        events.removeAll()
-        return removedCount
-    }
-
-    func waitUntilBlockedSaveEntered() async {
-        guard !hasEnteredBlockedSave else { return }
+  func save(
+    _ event: DiagnosticEvent,
+    generation: RunHistoryWriteGeneration
+  ) async throws {
+    _ = generation
+    if event.event == blockedEvent {
+      hasEnteredBlockedSave = true
+      let waiters = entryWaiters
+      entryWaiters.removeAll()
+      for waiter in waiters {
+        waiter.resume()
+      }
+      if !isReleased {
         await withCheckedContinuation { continuation in
-            entryWaiters.append(continuation)
+          releaseWaiters.append(continuation)
         }
+      }
     }
+    events.append(event)
+  }
 
-    func releaseBlockedSave() {
-        isReleased = true
-        let waiters = releaseWaiters
-        releaseWaiters.removeAll()
-        for waiter in waiters {
-            waiter.resume()
-        }
+  func events(matching query: DiagnosticQuery) async throws -> [DiagnosticEvent] {
+    _ = query
+    return events
+  }
+
+  func captureRunHistoryWriteGeneration() async throws -> RunHistoryWriteGeneration {
+    .initial
+  }
+
+  func deleteEvents(olderThan cutoff: Date) async throws -> Int {
+    let previousCount = events.count
+    events.removeAll { $0.timestamp < cutoff }
+    return previousCount - events.count
+  }
+
+  func deleteEvents(through upperBound: Date) async throws -> Int {
+    let previousCount = events.count
+    events.removeAll { $0.timestamp <= upperBound }
+    return previousCount - events.count
+  }
+
+  func deleteEvents(
+    obsoletedBy transition: RunHistoryClearTransition,
+    preservingLegacyRowsAfter legacyUpperBound: Date?
+  ) async throws -> Int {
+    _ = transition
+    _ = legacyUpperBound
+    let removedCount = events.count
+    events.removeAll()
+    return removedCount
+  }
+
+  func deleteAllEvents() async throws -> Int {
+    let removedCount = events.count
+    events.removeAll()
+    return removedCount
+  }
+
+  func waitUntilBlockedSaveEntered() async {
+    guard !hasEnteredBlockedSave else { return }
+    await withCheckedContinuation { continuation in
+      entryWaiters.append(continuation)
     }
+  }
+
+  func releaseBlockedSave() {
+    isReleased = true
+    let waiters = releaseWaiters
+    releaseWaiters.removeAll()
+    for waiter in waiters {
+      waiter.resume()
+    }
+  }
 }
 
 private actor RecordingTimingAudioCaptureService: AudioCaptureService {
-    struct Snapshot: Sendable, Equatable {
-        let isInputRunning: Bool
-        let startCallCount: Int
-        let finishCallCount: Int
-        let cancelCallCount: Int
-    }
+  struct Snapshot: Sendable, Equatable {
+    let isInputRunning: Bool
+    let startCallCount: Int
+    let finishCallCount: Int
+    let cancelCallCount: Int
+  }
 
-    private let audio: CapturedAudio
-    private var activeRunID: UUID?
-    private var startCallCount = 0
-    private var finishCallCount = 0
-    private var cancelCallCount = 0
-    private var cancellationWaiters:
-        [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+  private let audio: CapturedAudio
+  private var activeRunID: UUID?
+  private var startCallCount = 0
+  private var finishCallCount = 0
+  private var cancelCallCount = 0
+  private var cancellationWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
-    init(audio: CapturedAudio) {
-        self.audio = audio
-    }
+  init(audio: CapturedAudio) {
+    self.audio = audio
+  }
 
-    func startCapture(_ request: AudioCaptureRequest) async throws {
-        startCallCount += 1
-        activeRunID = request.runID
-    }
+  func startCapture(_ request: AudioCaptureRequest) async throws {
+    startCallCount += 1
+    activeRunID = request.runID
+  }
 
-    func finishCapture() async throws -> CapturedAudio {
-        finishCallCount += 1
-        activeRunID = nil
-        return audio
-    }
+  func finishCapture() async throws -> CapturedAudio {
+    finishCallCount += 1
+    activeRunID = nil
+    return audio
+  }
 
-    func finishCaptureDeferred() async throws -> DeferredCapturedAudio {
-        finishCallCount += 1
-        activeRunID = nil
-        return .resolved(audio)
-    }
+  func finishCaptureDeferred() async throws -> DeferredCapturedAudio {
+    finishCallCount += 1
+    activeRunID = nil
+    return .resolved(audio)
+  }
 
-    func cancelCapture() async {
-        cancelCallCount += 1
-        activeRunID = nil
-        resumeCancellationWaiters()
-    }
+  func cancelCapture() async {
+    cancelCallCount += 1
+    activeRunID = nil
+    resumeCancellationWaiters()
+  }
 
-    func cancelCapture(runID: UUID) async {
-        guard activeRunID == runID else { return }
-        cancelCallCount += 1
-        activeRunID = nil
-        resumeCancellationWaiters()
-    }
+  func cancelCapture(runID: UUID) async {
+    guard activeRunID == runID else { return }
+    cancelCallCount += 1
+    activeRunID = nil
+    resumeCancellationWaiters()
+  }
 
-    func snapshot() -> Snapshot {
-        Snapshot(
-            isInputRunning: activeRunID != nil,
-            startCallCount: startCallCount,
-            finishCallCount: finishCallCount,
-            cancelCallCount: cancelCallCount
-        )
-    }
+  func snapshot() -> Snapshot {
+    Snapshot(
+      isInputRunning: activeRunID != nil,
+      startCallCount: startCallCount,
+      finishCallCount: finishCallCount,
+      cancelCallCount: cancelCallCount
+    )
+  }
 
-    func waitUntilCancelled(callCount expectedCount: Int = 1) async {
-        guard cancelCallCount < expectedCount else { return }
-        await withCheckedContinuation { continuation in
-            cancellationWaiters.append((expectedCount, continuation))
-        }
+  func waitUntilCancelled(callCount expectedCount: Int = 1) async {
+    guard cancelCallCount < expectedCount else { return }
+    await withCheckedContinuation { continuation in
+      cancellationWaiters.append((expectedCount, continuation))
     }
+  }
 
-    private func resumeCancellationWaiters() {
-        let waiters = cancellationWaiters.filter { $0.count <= cancelCallCount }
-        cancellationWaiters.removeAll { $0.count <= cancelCallCount }
-        for waiter in waiters {
-            waiter.continuation.resume()
-        }
+  private func resumeCancellationWaiters() {
+    let waiters = cancellationWaiters.filter { $0.count <= cancelCallCount }
+    cancellationWaiters.removeAll { $0.count <= cancelCallCount }
+    for waiter in waiters {
+      waiter.continuation.resume()
     }
+  }
 }
 
 private actor RecordingTimingCueProbe {
-    private let shouldBlock: Bool
-    private var callCount = 0
-    private var hasEntered = false
-    private var isReleased = false
-    private var entryWaiters: [CheckedContinuation<Void, Never>] = []
-    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+  private let shouldBlock: Bool
+  private var callCount = 0
+  private var hasEntered = false
+  private var isReleased = false
+  private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+  private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
 
-    init(shouldBlock: Bool = false) {
-        self.shouldBlock = shouldBlock
-    }
+  init(shouldBlock: Bool = false) {
+    self.shouldBlock = shouldBlock
+  }
 
-    func perform() async {
-        callCount += 1
-        hasEntered = true
-        let waiters = entryWaiters
-        entryWaiters.removeAll()
-        for waiter in waiters {
-            waiter.resume()
-        }
-        guard shouldBlock, !isReleased else { return }
-        await withCheckedContinuation { continuation in
-            releaseWaiters.append(continuation)
-        }
+  func perform() async {
+    callCount += 1
+    hasEntered = true
+    let waiters = entryWaiters
+    entryWaiters.removeAll()
+    for waiter in waiters {
+      waiter.resume()
     }
+    guard shouldBlock, !isReleased else { return }
+    await withCheckedContinuation { continuation in
+      releaseWaiters.append(continuation)
+    }
+  }
 
-    func waitUntilEntered() async {
-        guard !hasEntered else { return }
-        await withCheckedContinuation { continuation in
-            entryWaiters.append(continuation)
-        }
+  func waitUntilEntered() async {
+    guard !hasEntered else { return }
+    await withCheckedContinuation { continuation in
+      entryWaiters.append(continuation)
     }
+  }
 
-    func release() {
-        isReleased = true
-        let waiters = releaseWaiters
-        releaseWaiters.removeAll()
-        for waiter in waiters {
-            waiter.resume()
-        }
+  func release() {
+    isReleased = true
+    let waiters = releaseWaiters
+    releaseWaiters.removeAll()
+    for waiter in waiters {
+      waiter.resume()
     }
+  }
 
-    func calls() -> Int {
-        callCount
-    }
+  func calls() -> Int {
+    callCount
+  }
 }
 
 private actor RecordingTimingCompletionProbe {
-    private var isComplete = false
+  private var isComplete = false
 
-    func markComplete() {
-        isComplete = true
-    }
+  func markComplete() {
+    isComplete = true
+  }
 
-    func snapshot() -> Bool {
-        isComplete
-    }
+  func snapshot() -> Bool {
+    isComplete
+  }
 }
 
 private actor SequencedRecordingTimingCueProbe {
-    private var callCount = 0
-    private var releasedCalls: Set<Int> = []
-    private var entryWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
-    private var releaseWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
+  private var callCount = 0
+  private var releasedCalls: Set<Int> = []
+  private var entryWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+  private var releaseWaiters: [Int: CheckedContinuation<Void, Never>] = [:]
 
-    func perform() async {
-        callCount += 1
-        let call = callCount
-        let readyWaiters = entryWaiters.filter { $0.count <= call }
-        entryWaiters.removeAll { $0.count <= call }
-        for waiter in readyWaiters {
-            waiter.continuation.resume()
-        }
-        guard !releasedCalls.contains(call) else { return }
-        await withCheckedContinuation { continuation in
-            releaseWaiters[call] = continuation
-        }
+  func perform() async {
+    callCount += 1
+    let call = callCount
+    let readyWaiters = entryWaiters.filter { $0.count <= call }
+    entryWaiters.removeAll { $0.count <= call }
+    for waiter in readyWaiters {
+      waiter.continuation.resume()
     }
+    guard !releasedCalls.contains(call) else { return }
+    await withCheckedContinuation { continuation in
+      releaseWaiters[call] = continuation
+    }
+  }
 
-    func waitUntilCallCount(_ expectedCount: Int) async {
-        guard callCount < expectedCount else { return }
-        await withCheckedContinuation { continuation in
-            entryWaiters.append((expectedCount, continuation))
-        }
+  func waitUntilCallCount(_ expectedCount: Int) async {
+    guard callCount < expectedCount else { return }
+    await withCheckedContinuation { continuation in
+      entryWaiters.append((expectedCount, continuation))
     }
+  }
 
-    func release(call: Int) {
-        releasedCalls.insert(call)
-        releaseWaiters.removeValue(forKey: call)?.resume()
-    }
+  func release(call: Int) {
+    releasedCalls.insert(call)
+    releaseWaiters.removeValue(forKey: call)?.resume()
+  }
 }
 
 final class RecordingSessionManagerTimingTests: XCTestCase {
-    func testInvalidatedCueTokenSuppressesLateSynchronousEffect() {
-        let token = RecordingCueToken()
-        token.invalidate()
-        var didPerform = false
+  func testInvalidatedCueTokenSuppressesLateSynchronousEffect() {
+    let token = RecordingCueToken()
+    token.invalidate()
+    var didPerform = false
 
-        token.performIfValid {
-            didPerform = true
-        }
-
-        XCTAssertFalse(didPerform)
+    token.performIfValid {
+      didPerform = true
     }
 
-    func testCancelledRecordingInvalidatesInjectedCueBeforePlatformEffect() async throws {
-        let (tokens, continuation) = AsyncStream<RecordingCueToken>.makeStream()
-        let manager = makeManager(
-            audioCaptureService: try makeAudioCaptureService(testName: #function),
-            diagnostics: nil,
-            recordingCueAction: { _, token in continuation.yield(token) }
-        )
-        await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
-        let receivedToken = await tokens.first { _ in true }
-        let token = try XCTUnwrap(receivedToken)
-        await manager.cancelCurrentRecording()
+    XCTAssertFalse(didPerform)
+  }
 
-        var didPerform = false
-        token.performIfValid { didPerform = true }
+  func testCancelledRecordingInvalidatesInjectedCueBeforePlatformEffect() async throws {
+    let (tokens, continuation) = AsyncStream<RecordingCueToken>.makeStream()
+    let manager = makeManager(
+      audioCaptureService: try makeAudioCaptureService(testName: #function),
+      diagnostics: nil,
+      recordingCueAction: { _, token in continuation.yield(token) }
+    )
+    await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+    let receivedToken = await tokens.first { _ in true }
+    let token = try XCTUnwrap(receivedToken)
+    await manager.cancelCurrentRecording()
 
-        XCTAssertFalse(didPerform)
-        await manager.stopForApplicationShutdown()
-        continuation.finish()
+    var didPerform = false
+    token.performIfValid { didPerform = true }
+
+    XCTAssertFalse(didPerform)
+    await manager.stopForApplicationShutdown()
+    continuation.finish()
+  }
+
+  func testFinishingDiagnosticCannotDelayInputShutdown() async throws {
+    let repository = BlockingRecordingDiagnosticRepository(
+      blockedEvent: "recording.finishing"
+    )
+    let diagnostics = DiagnosticsRecorder(repository: repository)
+    let audioCaptureService = try makeAudioCaptureService(testName: #function)
+    let manager = makeManager(
+      audioCaptureService: audioCaptureService,
+      diagnostics: diagnostics
+    )
+
+    await manager.beginPushToTalk()
+    let finishTask = Task {
+      await manager.endPushToTalk()
+    }
+    await repository.waitUntilBlockedSaveEntered()
+
+    let capture = await audioCaptureService.snapshot()
+    XCTAssertEqual(
+      capture.finishCallCount,
+      1,
+      "The capture service must stop input before diagnostic persistence can suspend."
+    )
+    XCTAssertFalse(
+      capture.isInputRunning,
+      "No microphone input may remain active while the finishing diagnostic is blocked."
+    )
+
+    await repository.releaseBlockedSave()
+    await finishTask.value
+    await manager.stopForApplicationShutdown()
+  }
+
+  func testBlockedStartedDiagnosticDoesNotDelayStartCueAndShutdownDrainsIt() async throws {
+    let repository = BlockingRecordingDiagnosticRepository(
+      blockedEvent: "recording.started"
+    )
+    let diagnostics = DiagnosticsRecorder(repository: repository)
+    let audioCaptureService = try makeAudioCaptureService(testName: #function)
+    let cueProbe = RecordingTimingCueProbe()
+    let manager = makeManager(
+      audioCaptureService: audioCaptureService,
+      diagnostics: diagnostics,
+      cueProbe: cueProbe
+    )
+    let startTask = Task {
+      await manager.beginPushToTalk()
+    }
+    await repository.waitUntilBlockedSaveEntered()
+    await cueProbe.waitUntilEntered()
+
+    let captureWhileDiagnosticIsBlocked = await audioCaptureService.snapshot()
+    let cueCallsWhileDiagnosticIsBlocked = await cueProbe.calls()
+    XCTAssertTrue(captureWhileDiagnosticIsBlocked.isInputRunning)
+    XCTAssertEqual(
+      cueCallsWhileDiagnosticIsBlocked,
+      1,
+      "A durable diagnostic write must not delay feedback after capture is ready."
+    )
+    await startTask.value
+
+    let shutdownCompletion = RecordingTimingCompletionProbe()
+    let shutdownTask = Task {
+      await manager.stopForApplicationShutdown()
+      await shutdownCompletion.markComplete()
+    }
+    await audioCaptureService.waitUntilCancelled()
+    for _ in 0..<100 {
+      await Task.yield()
+    }
+    let completedBeforeDiagnosticRelease = await shutdownCompletion.snapshot()
+    XCTAssertFalse(
+      completedBeforeDiagnosticRelease,
+      "Shutdown must still drain an accepted diagnostic write."
+    )
+
+    await repository.releaseBlockedSave()
+    await shutdownTask.value
+
+    let finalCueCalls = await cueProbe.calls()
+    XCTAssertEqual(
+      finalCueCalls,
+      1,
+      "The already-delivered start cue must not be duplicated after diagnostic persistence resumes."
+    )
+  }
+
+  func testBlockedHotkeyDiagnosticDoesNotDelayCaptureStartOrRelease() async throws {
+    let repository = BlockingRecordingDiagnosticRepository(
+      blockedEvent: "recording.hotkey.pressed"
+    )
+    let diagnostics = DiagnosticsRecorder(repository: repository)
+    let audioCaptureService = try makeAudioCaptureService(testName: #function)
+    let cueProbe = RecordingTimingCueProbe()
+    let manager = makeManager(
+      audioCaptureService: audioCaptureService,
+      diagnostics: diagnostics,
+      cueProbe: cueProbe
+    )
+
+    await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+    await repository.waitUntilBlockedSaveEntered()
+    await cueProbe.waitUntilEntered()
+
+    var capture = await audioCaptureService.snapshot()
+    XCTAssertTrue(capture.isInputRunning)
+    guard case .recording = await manager.currentState() else {
+      return XCTFail("Capture must become ready while hotkey diagnostics are blocked.")
     }
 
-    func testFinishingDiagnosticCannotDelayInputShutdown() async throws {
-        let repository = BlockingRecordingDiagnosticRepository(
-            blockedEvent: "recording.finishing"
-        )
-        let diagnostics = DiagnosticsRecorder(repository: repository)
-        let audioCaptureService = try makeAudioCaptureService(testName: #function)
-        let manager = makeManager(
-            audioCaptureService: audioCaptureService,
-            diagnostics: diagnostics
-        )
+    await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
+    await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
+    capture = await audioCaptureService.snapshot()
+    XCTAssertFalse(
+      capture.isInputRunning,
+      "The release grace period must stop input without waiting for the earlier press diagnostic."
+    )
+    XCTAssertEqual(capture.finishCallCount, 1)
 
-        await manager.beginPushToTalk()
-        let finishTask = Task {
-            await manager.endPushToTalk()
-        }
-        await repository.waitUntilBlockedSaveEntered()
+    await repository.releaseBlockedSave()
+    await manager.stopForApplicationShutdown()
+  }
 
-        let capture = await audioCaptureService.snapshot()
-        XCTAssertEqual(
-            capture.finishCallCount,
-            1,
-            "The capture service must stop input before diagnostic persistence can suspend."
-        )
-        XCTAssertFalse(
-            capture.isInputRunning,
-            "No microphone input may remain active while the finishing diagnostic is blocked."
-        )
+  func testShutdownWaitsForEnteredRecordingCueToComplete() async throws {
+    let audioCaptureService = try makeAudioCaptureService(testName: #function)
+    let cueProbe = RecordingTimingCueProbe(shouldBlock: true)
+    let manager = makeManager(
+      audioCaptureService: audioCaptureService,
+      diagnostics: nil,
+      cueProbe: cueProbe
+    )
 
-        await repository.releaseBlockedSave()
-        await finishTask.value
-        await manager.stopForApplicationShutdown()
+    await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+    await cueProbe.waitUntilEntered()
+
+    let completion = RecordingTimingCompletionProbe()
+    let shutdownTask = Task {
+      await manager.stopForApplicationShutdown()
+      await completion.markComplete()
+    }
+    await audioCaptureService.waitUntilCancelled()
+    for _ in 0..<100 {
+      await Task.yield()
     }
 
-    func testBlockedStartedDiagnosticDoesNotDelayStartCueAndShutdownDrainsIt() async throws {
-        let repository = BlockingRecordingDiagnosticRepository(
-            blockedEvent: "recording.started"
-        )
-        let diagnostics = DiagnosticsRecorder(repository: repository)
-        let audioCaptureService = try makeAudioCaptureService(testName: #function)
-        let cueProbe = RecordingTimingCueProbe()
-        let manager = makeManager(
-            audioCaptureService: audioCaptureService,
-            diagnostics: diagnostics,
-            cueProbe: cueProbe
-        )
-        let startTask = Task {
-            await manager.beginPushToTalk()
-        }
-        await repository.waitUntilBlockedSaveEntered()
-        await cueProbe.waitUntilEntered()
+    let completedBeforeCueRelease = await completion.snapshot()
+    XCTAssertFalse(
+      completedBeforeCueRelease,
+      "Shutdown must retain and drain a start task that is already performing its cue."
+    )
 
-        let captureWhileDiagnosticIsBlocked = await audioCaptureService.snapshot()
-        let cueCallsWhileDiagnosticIsBlocked = await cueProbe.calls()
-        XCTAssertTrue(captureWhileDiagnosticIsBlocked.isInputRunning)
-        XCTAssertEqual(
-            cueCallsWhileDiagnosticIsBlocked,
-            1,
-            "A durable diagnostic write must not delay feedback after capture is ready."
-        )
-        await startTask.value
+    await cueProbe.release()
+    await shutdownTask.value
+    let completedAfterCueRelease = await completion.snapshot()
+    XCTAssertTrue(completedAfterCueRelease)
+  }
 
-        let shutdownCompletion = RecordingTimingCompletionProbe()
-        let shutdownTask = Task {
-            await manager.stopForApplicationShutdown()
-            await shutdownCompletion.markComplete()
-        }
-        await audioCaptureService.waitUntilCancelled()
-        for _ in 0..<100 {
-            await Task.yield()
-        }
-        let completedBeforeDiagnosticRelease = await shutdownCompletion.snapshot()
-        XCTAssertFalse(
-            completedBeforeDiagnosticRelease,
-            "Shutdown must still drain an accepted diagnostic write."
-        )
+  func testOldCueCompletionCannotClearNewRunTaskBeforeShutdownDrain() async throws {
+    let audioCaptureService = try makeAudioCaptureService(testName: #function)
+    let cueProbe = SequencedRecordingTimingCueProbe()
+    let manager = makeManager(
+      audioCaptureService: audioCaptureService,
+      diagnostics: nil,
+      recordingCueAction: { _, _ in
+        await cueProbe.perform()
+      }
+    )
 
-        await repository.releaseBlockedSave()
-        await shutdownTask.value
+    await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+    await cueProbe.waitUntilCallCount(1)
+    await manager.cancelCurrentRecording()
 
-        let finalCueCalls = await cueProbe.calls()
-        XCTAssertEqual(
-            finalCueCalls,
-            1,
-            "The already-delivered start cue must not be duplicated after diagnostic persistence resumes."
-        )
+    await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+    await cueProbe.waitUntilCallCount(2)
+    await cueProbe.release(call: 1)
+    while await manager.completedStartCueCountForTesting < 1 {
+      await Task.yield()
     }
 
-    func testBlockedHotkeyDiagnosticDoesNotDelayCaptureStartOrRelease() async throws {
-        let repository = BlockingRecordingDiagnosticRepository(
-            blockedEvent: "recording.hotkey.pressed"
-        )
-        let diagnostics = DiagnosticsRecorder(repository: repository)
-        let audioCaptureService = try makeAudioCaptureService(testName: #function)
-        let cueProbe = RecordingTimingCueProbe()
-        let manager = makeManager(
-            audioCaptureService: audioCaptureService,
-            diagnostics: diagnostics,
-            cueProbe: cueProbe
-        )
-
-        await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
-        await repository.waitUntilBlockedSaveEntered()
-        await cueProbe.waitUntilEntered()
-
-        var capture = await audioCaptureService.snapshot()
-        XCTAssertTrue(capture.isInputRunning)
-        guard case .recording = await manager.currentState() else {
-            return XCTFail("Capture must become ready while hotkey diagnostics are blocked.")
-        }
-
-        await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
-        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
-        capture = await audioCaptureService.snapshot()
-        XCTAssertFalse(
-            capture.isInputRunning,
-            "The release grace period must stop input without waiting for the earlier press diagnostic."
-        )
-        XCTAssertEqual(capture.finishCallCount, 1)
-
-        await repository.releaseBlockedSave()
-        await manager.stopForApplicationShutdown()
+    let completion = RecordingTimingCompletionProbe()
+    let shutdownTask = Task {
+      await manager.stopForApplicationShutdown()
+      await completion.markComplete()
     }
-
-    func testShutdownWaitsForEnteredRecordingCueToComplete() async throws {
-        let audioCaptureService = try makeAudioCaptureService(testName: #function)
-        let cueProbe = RecordingTimingCueProbe(shouldBlock: true)
-        let manager = makeManager(
-            audioCaptureService: audioCaptureService,
-            diagnostics: nil,
-            cueProbe: cueProbe
-        )
-
-        await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
-        await cueProbe.waitUntilEntered()
-
-        let completion = RecordingTimingCompletionProbe()
-        let shutdownTask = Task {
-            await manager.stopForApplicationShutdown()
-            await completion.markComplete()
-        }
-        await audioCaptureService.waitUntilCancelled()
-        for _ in 0..<100 {
-            await Task.yield()
-        }
-
-        let completedBeforeCueRelease = await completion.snapshot()
-        XCTAssertFalse(
-            completedBeforeCueRelease,
-            "Shutdown must retain and drain a start task that is already performing its cue."
-        )
-
-        await cueProbe.release()
-        await shutdownTask.value
-        let completedAfterCueRelease = await completion.snapshot()
-        XCTAssertTrue(completedAfterCueRelease)
+    await audioCaptureService.waitUntilCancelled(callCount: 2)
+    for _ in 0..<100 {
+      await Task.yield()
     }
+    let completedBeforeSecondCueRelease = await completion.snapshot()
+    XCTAssertFalse(
+      completedBeforeSecondCueRelease,
+      "A stale run must not clear the newer pending start task that shutdown must drain."
+    )
 
-    func testOldCueCompletionCannotClearNewRunTaskBeforeShutdownDrain() async throws {
-        let audioCaptureService = try makeAudioCaptureService(testName: #function)
-        let cueProbe = SequencedRecordingTimingCueProbe()
-        let manager = makeManager(
-            audioCaptureService: audioCaptureService,
-            diagnostics: nil,
-            recordingCueAction: { _, _ in
-                await cueProbe.perform()
-            }
-        )
+    await cueProbe.release(call: 2)
+    await shutdownTask.value
+    let completedAfterSecondCueRelease = await completion.snapshot()
+    XCTAssertTrue(completedAfterSecondCueRelease)
+  }
 
-        await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
-        await cueProbe.waitUntilCallCount(1)
-        await manager.cancelCurrentRecording()
+  func testShutdownDrainsCancelledOldAndCurrentStartTasks() async throws {
+    let audioCaptureService = try makeAudioCaptureService(testName: #function)
+    let cueProbe = SequencedRecordingTimingCueProbe()
+    let manager = makeManager(
+      audioCaptureService: audioCaptureService,
+      diagnostics: nil,
+      recordingCueAction: { _, _ in
+        await cueProbe.perform()
+      }
+    )
 
-        await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
-        await cueProbe.waitUntilCallCount(2)
-        await cueProbe.release(call: 1)
-        while await manager.completedStartCueCountForTesting < 1 {
-            await Task.yield()
-        }
+    await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+    await cueProbe.waitUntilCallCount(1)
+    await manager.cancelCurrentRecording()
 
-        let completion = RecordingTimingCompletionProbe()
-        let shutdownTask = Task {
-            await manager.stopForApplicationShutdown()
-            await completion.markComplete()
-        }
-        await audioCaptureService.waitUntilCancelled(callCount: 2)
-        for _ in 0..<100 {
-            await Task.yield()
-        }
-        let completedBeforeSecondCueRelease = await completion.snapshot()
-        XCTAssertFalse(
-            completedBeforeSecondCueRelease,
-            "A stale run must not clear the newer pending start task that shutdown must drain."
-        )
+    await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+    await cueProbe.waitUntilCallCount(2)
 
-        await cueProbe.release(call: 2)
-        await shutdownTask.value
-        let completedAfterSecondCueRelease = await completion.snapshot()
-        XCTAssertTrue(completedAfterSecondCueRelease)
+    let completion = RecordingTimingCompletionProbe()
+    let shutdownTask = Task {
+      await manager.stopForApplicationShutdown()
+      await completion.markComplete()
     }
+    await audioCaptureService.waitUntilCancelled(callCount: 2)
 
-    func testShutdownDrainsCancelledOldAndCurrentStartTasks() async throws {
-        let audioCaptureService = try makeAudioCaptureService(testName: #function)
-        let cueProbe = SequencedRecordingTimingCueProbe()
-        let manager = makeManager(
-            audioCaptureService: audioCaptureService,
-            diagnostics: nil,
-            recordingCueAction: { _, _ in
-                await cueProbe.perform()
-            }
-        )
-
-        await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
-        await cueProbe.waitUntilCallCount(1)
-        await manager.cancelCurrentRecording()
-
-        await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
-        await cueProbe.waitUntilCallCount(2)
-
-        let completion = RecordingTimingCompletionProbe()
-        let shutdownTask = Task {
-            await manager.stopForApplicationShutdown()
-            await completion.markComplete()
-        }
-        await audioCaptureService.waitUntilCancelled(callCount: 2)
-
-        await cueProbe.release(call: 2)
-        for _ in 0..<100 {
-            await Task.yield()
-        }
-        let completedAfterCurrentTaskReleased = await completion.snapshot()
-        XCTAssertFalse(
-            completedAfterCurrentTaskReleased,
-            "Shutdown must retain an older cancelled start task until it actually exits."
-        )
-
-        await cueProbe.release(call: 1)
-        await shutdownTask.value
-        let completedAfterAllTasksReleased = await completion.snapshot()
-        XCTAssertTrue(completedAfterAllTasksReleased)
+    await cueProbe.release(call: 2)
+    for _ in 0..<100 {
+      await Task.yield()
     }
+    let completedAfterCurrentTaskReleased = await completion.snapshot()
+    XCTAssertFalse(
+      completedAfterCurrentTaskReleased,
+      "Shutdown must retain an older cancelled start task until it actually exits."
+    )
+
+    await cueProbe.release(call: 1)
+    await shutdownTask.value
+    let completedAfterAllTasksReleased = await completion.snapshot()
+    XCTAssertTrue(completedAfterAllTasksReleased)
+  }
 }
 
 private func makeAudioCaptureService(
-    testName: String
+  testName: String
 ) throws -> RecordingTimingAudioCaptureService {
-    let audio = try CapturedAudio(
-        durationSeconds: 1,
-        format: AudioFormat(
-            sampleRateHz: 16_000,
-            channelCount: 1,
-            encoding: .pcm16
-        ),
-        inlineData: Data(testName.utf8)
-    )
-    return RecordingTimingAudioCaptureService(audio: audio)
+  let audio = try CapturedAudio(
+    durationSeconds: 1,
+    format: AudioFormat(
+      sampleRateHz: 16_000,
+      channelCount: 1,
+      encoding: .pcm16
+    ),
+    inlineData: Data(testName.utf8)
+  )
+  return RecordingTimingAudioCaptureService(audio: audio)
 }
 
 private func makeManager(
-    audioCaptureService: RecordingTimingAudioCaptureService,
-    diagnostics: DiagnosticsRecorder?,
-    cueProbe: RecordingTimingCueProbe = RecordingTimingCueProbe(),
-    longRecordingModeEnabled: Bool = false,
-    deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)? = nil,
-    recordingCueAction: (@Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void)? = nil
+  audioCaptureService: RecordingTimingAudioCaptureService,
+  diagnostics: DiagnosticsRecorder?,
+  cueProbe: RecordingTimingCueProbe = RecordingTimingCueProbe(),
+  longRecordingModeEnabled: Bool = false,
+  deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)? = nil,
+  recordingCueAction: (@Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void)? = nil
 ) -> RecordingSessionManager {
-    let eventBus = EventBus()
-    let coordinator = makeTestSessionCoordinator(
+  let eventBus = EventBus()
+  let coordinator = makeTestSessionCoordinator(
 
-        recognizerRegistry: SpeechRecognizerRegistry(
-            recognizers: [RecordingTimingRecognizer()]
-        ),
-        transformerRegistry: TextTransformerRegistry(transformers: []),
-        actionRegistry: OutputActionRegistry(actions: []),
-        candidateResolver: CandidateResolver(eventBus: eventBus),
-        eventBus: eventBus,
-        diagnostics: diagnostics
-    )
-    let queue = makeTestCapturedAudioProcessingQueue(
-        sessionCoordinator: coordinator,
-        eventBus: eventBus,
-        diagnostics: diagnostics
-    )
-    let workflow = WorkflowDefinition(
-        name: "Recording Timing Workflow",
-        trigger: .hotkey,
-        pipeline: PipelineDeclaration(
-            recognizerID: "recording.timing-recognizer",
-            outputActions: []
-        ),
-        ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
-    )
-    let privacyRunGate = PrivacyRunGate(
-        settingsProvider: {
-            PrivacyPolicySettings(
-                sensitiveAppRules: [],
-                cloudConfirmationRequired: false
-            )
-        },
-        cloudConfirmationProvider: { _, _, _ in true },
-        destinationClassifier: { _ in .classified([.localSpeech]) }
-    )
+    recognizerRegistry: SpeechRecognizerRegistry(
+      recognizers: [RecordingTimingRecognizer()]
+    ),
+    transformerRegistry: TextTransformerRegistry(transformers: []),
+    actionRegistry: OutputActionRegistry(actions: []),
+    candidateResolver: CandidateResolver(eventBus: eventBus),
+    eventBus: eventBus,
+    diagnostics: diagnostics
+  )
+  let queue = makeTestCapturedAudioProcessingQueue(
+    sessionCoordinator: coordinator,
+    eventBus: eventBus,
+    diagnostics: diagnostics
+  )
+  let workflow = WorkflowDefinition(
+    name: "Recording Timing Workflow",
+    trigger: .hotkey,
+    pipeline: PipelineDeclaration(
+      recognizerID: "recording.timing-recognizer",
+      outputActions: []
+    ),
+    ui: WorkflowUIConfig(symbolName: "mic.fill", accentColorName: "red")
+  )
+  let privacyRunGate = PrivacyRunGate(
+    settingsProvider: {
+      PrivacyPolicySettings(
+        sensitiveAppRules: [],
+        cloudConfirmationRequired: false
+      )
+    },
+    cloudConfirmationProvider: { _, _, _ in true },
+    destinationClassifier: { _ in .classified([.localSpeech]) }
+  )
 
-    return makeTestRecordingSessionManager(
-        audioCaptureService: audioCaptureService,
-        hotkeyTap: HotkeyEventTap(),
-        capturedAudioProcessingQueue: queue,
-        eventBus: eventBus,
-        diagnostics: diagnostics,
-        privacyRunGate: privacyRunGate,
-        workflowProvider: { [workflow] },
-        longRecordingModeProvider: { longRecordingModeEnabled },
-        deferredReleaseSleep: deferredReleaseSleep,
-        recordingCueAction: recordingCueAction ?? { _, _ in
-            await cueProbe.perform()
-        }
-    )
+  return makeTestRecordingSessionManager(
+    audioCaptureService: audioCaptureService,
+    hotkeyTap: HotkeyEventTap(),
+    capturedAudioProcessingQueue: queue,
+    eventBus: eventBus,
+    diagnostics: diagnostics,
+    privacyRunGate: privacyRunGate,
+    workflowProvider: { [workflow] },
+    longRecordingModeProvider: { longRecordingModeEnabled },
+    deferredReleaseSleep: deferredReleaseSleep,
+    recordingCueAction: recordingCueAction ?? { _, _ in
+      await cueProbe.perform()
+    }
+  )
 }
 
 private struct RecordingReleaseSleepGate: Sendable {
-    struct PendingSleep: Sendable {
-        let duration: Duration
-        let continuation: CheckedContinuation<Void, Never>
-    }
+  struct PendingSleep: Sendable {
+    let duration: Duration
+    let continuation: CheckedContinuation<Void, Never>
+  }
 
-    let pending: AsyncStream<PendingSleep>
-    private let continuation: AsyncStream<PendingSleep>.Continuation
+  let pending: AsyncStream<PendingSleep>
+  private let continuation: AsyncStream<PendingSleep>.Continuation
 
-    init() {
-        (pending, continuation) = AsyncStream.makeStream()
-    }
+  init() {
+    (pending, continuation) = AsyncStream.makeStream()
+  }
 
-    // Deliberately ignores cancellation so tests can deliver a stale timer.
-    func sleep(for duration: Duration) async {
-        await withCheckedContinuation { waiter in
-            continuation.yield(PendingSleep(duration: duration, continuation: waiter))
-        }
+  // Deliberately ignores cancellation so tests can deliver a stale timer.
+  func sleep(for duration: Duration) async {
+    await withCheckedContinuation { waiter in
+      continuation.yield(PendingSleep(duration: duration, continuation: waiter))
     }
+  }
 }
 
 @Suite(.timeLimit(.minutes(1)))
 struct RecordingSessionManagerReleaseDelayTests {
-    @Test(arguments: [PushToTalkGesture.fnHold, .controlOptionShiftSpace])
-    func releaseKeepsInputOpenUntilGracePeriodEnds(gesture: PushToTalkGesture) async throws {
-        let gate = RecordingReleaseSleepGate()
-        var pending = gate.pending.makeAsyncIterator()
-        let audio = try makeAudioCaptureService(testName: #function)
-        let cues = RecordingTimingCueProbe()
-        let manager = makeManager(
-            audioCaptureService: audio,
-            diagnostics: nil,
-            cueProbe: cues,
-            deferredReleaseSleep: { await gate.sleep(for: $0) }
-        )
-        await manager.beginPushToTalk(triggeredBy: gesture)
-        let recordingState = await manager.currentState()
+  @Test(arguments: [PushToTalkGesture.fnHold, .controlOptionShiftSpace])
+  func releaseKeepsInputOpenUntilGracePeriodEnds(gesture: PushToTalkGesture) async throws {
+    let gate = RecordingReleaseSleepGate()
+    var pending = gate.pending.makeAsyncIterator()
+    let audio = try makeAudioCaptureService(testName: #function)
+    let cues = RecordingTimingCueProbe()
+    let manager = makeManager(
+      audioCaptureService: audio,
+      diagnostics: nil,
+      cueProbe: cues,
+      deferredReleaseSleep: { await gate.sleep(for: $0) }
+    )
+    await manager.beginPushToTalk(triggeredBy: gesture)
+    let recordingState = await manager.currentState()
 
-        await manager.processHotkeyEvent(.pushToTalkReleased(gesture))
-        let release = try #require(await pending.next())
-        #expect(release.duration == .milliseconds(500))
-        #expect(await manager.currentState() == recordingState)
-        #expect(await audio.snapshot().isInputRunning)
-        #expect(await audio.snapshot().finishCallCount == 0)
-        #expect(await cues.calls() == 1)
+    await manager.processHotkeyEvent(.pushToTalkReleased(gesture))
+    let release = try #require(await pending.next())
+    #expect(release.duration == .milliseconds(500))
+    #expect(await manager.currentState() == recordingState)
+    #expect(await audio.snapshot().isInputRunning)
+    #expect(await audio.snapshot().finishCallCount == 0)
+    #expect(await cues.calls() == 1)
 
-        // A duplicate key-up must not restart or extend the deadline.
-        await manager.processHotkeyEvent(.pushToTalkReleased(gesture))
-        release.continuation.resume()
-        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
+    // A duplicate key-up must not restart or extend the deadline.
+    await manager.processHotkeyEvent(.pushToTalkReleased(gesture))
+    release.continuation.resume()
+    await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
 
-        #expect(await audio.snapshot().finishCallCount == 1)
-        #expect(await audio.snapshot().isInputRunning == false)
-        #expect(await cues.calls() == 2)
-        #expect(await manager.currentState() == .idle)
-        await manager.stopForApplicationShutdown()
+    #expect(await audio.snapshot().finishCallCount == 1)
+    #expect(await audio.snapshot().isInputRunning == false)
+    #expect(await cues.calls() == 2)
+    #expect(await manager.currentState() == .idle)
+    await manager.stopForApplicationShutdown()
+  }
+
+  @Test
+  func repressContinuesSameCaptureAndNextReleaseGetsNewGracePeriod() async throws {
+    let gate = RecordingReleaseSleepGate()
+    var pending = gate.pending.makeAsyncIterator()
+    let audio = try makeAudioCaptureService(testName: #function)
+    let cues = RecordingTimingCueProbe()
+    let manager = makeManager(
+      audioCaptureService: audio,
+      diagnostics: nil,
+      cueProbe: cues,
+      deferredReleaseSleep: { await gate.sleep(for: $0) }
+    )
+    await manager.beginPushToTalk()
+    let recordingState = await manager.currentState()
+    await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
+    let firstRelease = try #require(await pending.next())
+
+    await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+    firstRelease.continuation.resume()
+    await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
+    #expect(await manager.currentState() == recordingState)
+    #expect(await audio.snapshot().startCallCount == 1)
+    #expect(await audio.snapshot().finishCallCount == 0)
+    #expect(await audio.snapshot().isInputRunning)
+    #expect(await cues.calls() == 1)
+
+    await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
+    let secondRelease = try #require(await pending.next())
+    #expect(secondRelease.duration == .milliseconds(500))
+    secondRelease.continuation.resume()
+    await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
+    #expect(await audio.snapshot().finishCallCount == 1)
+    #expect(await cues.calls() == 2)
+    await manager.stopForApplicationShutdown()
+  }
+
+  @Test
+  func unrelatedGestureCannotCancelPendingRelease() async throws {
+    let gate = RecordingReleaseSleepGate()
+    var pending = gate.pending.makeAsyncIterator()
+    let audio = try makeAudioCaptureService(testName: #function)
+    let manager = makeManager(
+      audioCaptureService: audio,
+      diagnostics: nil,
+      deferredReleaseSleep: { await gate.sleep(for: $0) }
+    )
+    await manager.beginPushToTalk()
+    await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
+    let release = try #require(await pending.next())
+    await manager.processHotkeyEvent(.pushToTalkPressed(.controlOptionShiftSpace))
+    await manager.processHotkeyEvent(.pushToTalkReleased(.controlOptionShiftSpace))
+    release.continuation.resume()
+    await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
+    #expect(await audio.snapshot().finishCallCount == 1)
+    #expect(await manager.currentState() == .idle)
+    await manager.stopForApplicationShutdown()
+  }
+
+  @Test(arguments: [false, true])
+  func cancellationStopsImmediatelyAndOldTimerCannotStopNewRun(inputUnavailable: Bool) async throws {
+    let gate = RecordingReleaseSleepGate()
+    var pending = gate.pending.makeAsyncIterator()
+    let audio = try makeAudioCaptureService(testName: #function)
+    let cues = RecordingTimingCueProbe()
+    let manager = makeManager(
+      audioCaptureService: audio,
+      diagnostics: nil,
+      cueProbe: cues,
+      deferredReleaseSleep: { await gate.sleep(for: $0) }
+    )
+    await manager.beginPushToTalk()
+    await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
+    let release = try #require(await pending.next())
+
+    if inputUnavailable {
+      await manager.processHotkeyEvent(.globalInputUnavailable)
+    } else {
+      await manager.cancelCurrentRecording()
     }
+    #expect(await audio.snapshot().isInputRunning == false)
+    #expect(await audio.snapshot().cancelCallCount == 1)
+    #expect(await audio.snapshot().finishCallCount == 0)
+    #expect(await cues.calls() == 1)
 
-    @Test
-    func repressContinuesSameCaptureAndNextReleaseGetsNewGracePeriod() async throws {
-        let gate = RecordingReleaseSleepGate()
-        var pending = gate.pending.makeAsyncIterator()
-        let audio = try makeAudioCaptureService(testName: #function)
-        let cues = RecordingTimingCueProbe()
-        let manager = makeManager(
-            audioCaptureService: audio,
-            diagnostics: nil,
-            cueProbe: cues,
-            deferredReleaseSleep: { await gate.sleep(for: $0) }
-        )
-        await manager.beginPushToTalk()
-        let recordingState = await manager.currentState()
-        await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
-        let firstRelease = try #require(await pending.next())
+    await manager.beginPushToTalk()
+    let newState = await manager.currentState()
+    release.continuation.resume()
+    await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
+    #expect(await manager.currentState() == newState)
+    #expect(await audio.snapshot().isInputRunning)
+    #expect(await audio.snapshot().finishCallCount == 0)
+    await manager.stopForApplicationShutdown()
+  }
 
-        await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
-        firstRelease.continuation.resume()
-        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
-        #expect(await manager.currentState() == recordingState)
-        #expect(await audio.snapshot().startCallCount == 1)
-        #expect(await audio.snapshot().finishCallCount == 0)
-        #expect(await audio.snapshot().isInputRunning)
-        #expect(await cues.calls() == 1)
+  @Test
+  func shutdownCancelsCaptureBeforeDrainingReleaseTimer() async throws {
+    let gate = RecordingReleaseSleepGate()
+    var pending = gate.pending.makeAsyncIterator()
+    let audio = try makeAudioCaptureService(testName: #function)
+    let manager = makeManager(
+      audioCaptureService: audio,
+      diagnostics: nil,
+      deferredReleaseSleep: { await gate.sleep(for: $0) }
+    )
+    await manager.beginPushToTalk()
+    await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
+    let release = try #require(await pending.next())
+    let shutdown = Task { await manager.stopForApplicationShutdown() }
+    await audio.waitUntilCancelled()
+    #expect(await audio.snapshot().isInputRunning == false)
+    #expect(await audio.snapshot().finishCallCount == 0)
+    release.continuation.resume()
+    await shutdown.value
+    #expect(await manager.currentState() == .idle)
+    #expect(await audio.snapshot().finishCallCount == 0)
+  }
 
-        await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
-        let secondRelease = try #require(await pending.next())
-        #expect(secondRelease.duration == .milliseconds(500))
-        secondRelease.continuation.resume()
-        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
-        #expect(await audio.snapshot().finishCallCount == 1)
-        #expect(await cues.calls() == 2)
-        await manager.stopForApplicationShutdown()
-    }
-
-    @Test
-    func unrelatedGestureCannotCancelPendingRelease() async throws {
-        let gate = RecordingReleaseSleepGate()
-        var pending = gate.pending.makeAsyncIterator()
-        let audio = try makeAudioCaptureService(testName: #function)
-        let manager = makeManager(
-            audioCaptureService: audio,
-            diagnostics: nil,
-            deferredReleaseSleep: { await gate.sleep(for: $0) }
-        )
-        await manager.beginPushToTalk()
-        await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
-        let release = try #require(await pending.next())
-        await manager.processHotkeyEvent(.pushToTalkPressed(.controlOptionShiftSpace))
-        await manager.processHotkeyEvent(.pushToTalkReleased(.controlOptionShiftSpace))
-        release.continuation.resume()
-        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
-        #expect(await audio.snapshot().finishCallCount == 1)
-        #expect(await manager.currentState() == .idle)
-        await manager.stopForApplicationShutdown()
-    }
-
-    @Test(arguments: [false, true])
-    func cancellationStopsImmediatelyAndOldTimerCannotStopNewRun(inputUnavailable: Bool) async throws {
-        let gate = RecordingReleaseSleepGate()
-        var pending = gate.pending.makeAsyncIterator()
-        let audio = try makeAudioCaptureService(testName: #function)
-        let cues = RecordingTimingCueProbe()
-        let manager = makeManager(
-            audioCaptureService: audio,
-            diagnostics: nil,
-            cueProbe: cues,
-            deferredReleaseSleep: { await gate.sleep(for: $0) }
-        )
-        await manager.beginPushToTalk()
-        await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
-        let release = try #require(await pending.next())
-
-        if inputUnavailable {
-            await manager.processHotkeyEvent(.globalInputUnavailable)
-        } else {
-            await manager.cancelCurrentRecording()
-        }
-        #expect(await audio.snapshot().isInputRunning == false)
-        #expect(await audio.snapshot().cancelCallCount == 1)
-        #expect(await audio.snapshot().finishCallCount == 0)
-        #expect(await cues.calls() == 1)
-
-        await manager.beginPushToTalk()
-        let newState = await manager.currentState()
-        release.continuation.resume()
-        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
-        #expect(await manager.currentState() == newState)
-        #expect(await audio.snapshot().isInputRunning)
-        #expect(await audio.snapshot().finishCallCount == 0)
-        await manager.stopForApplicationShutdown()
-    }
-
-    @Test
-    func shutdownCancelsCaptureBeforeDrainingReleaseTimer() async throws {
-        let gate = RecordingReleaseSleepGate()
-        var pending = gate.pending.makeAsyncIterator()
-        let audio = try makeAudioCaptureService(testName: #function)
-        let manager = makeManager(
-            audioCaptureService: audio,
-            diagnostics: nil,
-            deferredReleaseSleep: { await gate.sleep(for: $0) }
-        )
-        await manager.beginPushToTalk()
-        await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
-        let release = try #require(await pending.next())
-        let shutdown = Task { await manager.stopForApplicationShutdown() }
-        await audio.waitUntilCancelled()
-        #expect(await audio.snapshot().isInputRunning == false)
-        #expect(await audio.snapshot().finishCallCount == 0)
-        release.continuation.resume()
-        await shutdown.value
-        #expect(await manager.currentState() == .idle)
-        #expect(await audio.snapshot().finishCallCount == 0)
-    }
-
-    @Test
-    func toggleRecordingStillStopsOnSecondPressWithoutGracePeriod() async throws {
-        let audio = try makeAudioCaptureService(testName: #function)
-        let manager = makeManager(
-            audioCaptureService: audio,
-            diagnostics: nil,
-            longRecordingModeEnabled: true,
-            deferredReleaseSleep: { _ in Issue.record("Toggle recording must not delay stopping.") }
-        )
-        await manager.toggleLongRecording()
-        await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
-        #expect(await audio.snapshot().isInputRunning)
-        await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
-        #expect(await audio.snapshot().isInputRunning == false)
-        #expect(await audio.snapshot().finishCallCount == 1)
-        await manager.stopForApplicationShutdown()
-    }
+  @Test
+  func toggleRecordingStillStopsOnSecondPressWithoutGracePeriod() async throws {
+    let audio = try makeAudioCaptureService(testName: #function)
+    let manager = makeManager(
+      audioCaptureService: audio,
+      diagnostics: nil,
+      longRecordingModeEnabled: true,
+      deferredReleaseSleep: { _ in Issue.record("Toggle recording must not delay stopping.") }
+    )
+    await manager.toggleLongRecording()
+    await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
+    #expect(await audio.snapshot().isInputRunning)
+    await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+    #expect(await audio.snapshot().isInputRunning == false)
+    #expect(await audio.snapshot().finishCallCount == 1)
+    await manager.stopForApplicationShutdown()
+  }
 }

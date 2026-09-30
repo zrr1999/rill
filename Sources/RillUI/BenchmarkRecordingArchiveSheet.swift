@@ -64,7 +64,10 @@ struct BenchmarkRecordingArchiveSheet: View {
         }
       }
       HStack {
-        Button(text(.close)) { model.cancelSelection(); dismiss() }.keyboardShortcut(.cancelAction)
+        Button(text(.close)) {
+          model.cancelSelection()
+          dismiss()
+        }.keyboardShortcut(.cancelAction)
         Spacer()
         if model.state == .exporting { ProgressView().controlSize(.small) }
         Button(text(.exportSelection), action: chooseDestination)
@@ -80,7 +83,11 @@ struct BenchmarkRecordingArchiveSheet: View {
 
   private func text(_ key: BenchmarkArchiveTextKey) -> String { L10n.benchmarkArchive(key, language: language) }
   private func outcomeKey(_ outcome: BenchmarkRecordingOutcome) -> BenchmarkArchiveTextKey {
-    switch outcome { case .completed: .completed; case .failed: .failed; case .cancelled: .cancelled }
+    switch outcome {
+    case .completed: .completed
+    case .failed: .failed
+    case .cancelled: .cancelled
+    }
   }
 
   private func chooseDestination() {

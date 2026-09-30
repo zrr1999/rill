@@ -3,7 +3,8 @@ import RillCore
 
 enum RunFailurePresentation {
   static func localizedText(for untrustedMessage: String?) -> LocalizedText {
-    let safeMessage = HistoryFailureSanitizer.sanitize(untrustedMessage)
+    let safeMessage =
+      HistoryFailureSanitizer.sanitize(untrustedMessage)
       ?? HistoryFailureSanitizer.genericMessage
     let simplifiedChinese: String
     switch safeMessage {

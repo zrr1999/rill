@@ -94,7 +94,7 @@ private struct TimeoutProbeAction: OutputAction {
   let probe: TimeoutActionProbe
 
   func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-      _ = try record.requireText(for: id)
+    _ = try record.requireText(for: id)
     await probe.record(context.workflow.name)
     return .copiedToClipboard
   }

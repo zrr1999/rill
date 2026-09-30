@@ -377,11 +377,12 @@ enum AppBootstrap {
     if let blockReason = event.blockReason {
       metadata["blockReason"] = blockReason.rawValue
     }
-    let name: DiagnosticEventName = switch event.outcome {
-    case .completed: .historyMaintenanceCompleted
-    case .pending: .historyMaintenancePending
-    case .blocked: .historyMaintenanceBlocked
-    }
+    let name: DiagnosticEventName =
+      switch event.outcome {
+      case .completed: .historyMaintenanceCompleted
+      case .pending: .historyMaintenancePending
+      case .blocked: .historyMaintenanceBlocked
+      }
     return DiagnosticEvent(
       subsystem: .platform,
       level: level,
@@ -746,13 +747,16 @@ private enum AppContainerFactory {
       runtime: runtime
     )
     contextMemoryController?.installRuntimeIdleCheck {
-      [weak coordinator = runtime.coordinator, weak recording = runtime.recordingSessionManager,
-       weak workflowRecording = runtime.workflowAudioRunController,
-       weak interactive = runtime.capturedAudioProcessingQueue, weak assistant = runtime.assistantAudioProcessingQueue] in
+      [
+        weak coordinator = runtime.coordinator, weak recording = runtime.recordingSessionManager,
+        weak workflowRecording = runtime.workflowAudioRunController,
+        weak interactive = runtime.capturedAudioProcessingQueue, weak assistant = runtime.assistantAudioProcessingQueue
+      ] in
       guard let coordinator, let recording, let workflowRecording, let interactive, let assistant else { return false }
       guard await coordinator.currentState() == .idle, await recording.currentState() == .idle,
-            await workflowRecording.isIdle, await interactive.pendingCount == 0,
-            await assistant.pendingCount == 0 else { return false }
+        await workflowRecording.isIdle, await interactive.pendingCount == 0,
+        await assistant.pendingCount == 0
+      else { return false }
       return true
     }
     contextMemoryController?.attach(model)
@@ -999,8 +1003,9 @@ private enum AppContainerFactory {
     let ttsSpeechWorkerSupervisor = SpeechWorkerSupervisor(
       configuration: .init(executableURL: speechWorkerExecutableURL)
     )
-    let recordEmbedder = RecordWorkerEmbedder(supervisor: SpeechWorkerSupervisor(
-      configuration: .init(executableURL: speechWorkerExecutableURL)))
+    let recordEmbedder = RecordWorkerEmbedder(
+      supervisor: SpeechWorkerSupervisor(
+        configuration: .init(executableURL: speechWorkerExecutableURL)))
     let mlxAudioSwiftRecognizer = MLXAudioSwiftWorkerRecognizer(
       supervisor: speechWorkerSupervisor,
       settingsProvider: {
@@ -1195,22 +1200,26 @@ private enum AppContainerFactory {
       authorizationBridge: cloudProcessingAuthorizationBridge
     )
     privacyRunGate.prepareCorrectionContext = { runID, workflow, context, options, vocabulary, lifetime in
-      try await contextMemoryController?.prepare(runID: runID, workflow: workflow, context: context, recognitionOptions: options, audioLifetime: lifetime, vocabularyCandidates: vocabulary)
+      try await contextMemoryController?.prepare(
+        runID: runID, workflow: workflow, context: context, recognitionOptions: options, audioLifetime: lifetime, vocabularyCandidates: vocabulary)
     }
     let liveRecognition = LiveRecognitionContextResolver(
-      compiler: WorkflowPlanCompiler(recognizerRegistry: registries.recognizerRegistry,
+      compiler: WorkflowPlanCompiler(
+        recognizerRegistry: registries.recognizerRegistry,
         transformerRegistry: registries.transformerRegistry, actionRegistry: registries.actionRegistry),
       collections: { try core.vocabularyRuleSource.currentCollections() },
       selection: providers.hotwordSelection,
       sanitize: LocalSpeechRecognitionPolicy.sanitizedQwenHotwords,
       report: { event in await core.diagnostics.record(event) })
     privacyRunGate.prepareLiveRecognition = { runID, workflow, context, options, lifetime in
-      return try await liveRecognition.prepare(runID: runID, workflow: workflow,
+      return try await liveRecognition.prepare(
+        runID: runID, workflow: workflow,
         context: context, options: options, lifetime: lifetime)
     }
     let preparedPrivacyRunGate = privacyRunGate
     let recognitionOptionsProvider: RecognitionOptionsProvider = { workflow, context in
-      let vocabulary = workflow.plan.setup.vocabularyBindings.isEmpty
+      let vocabulary =
+        workflow.plan.setup.vocabularyBindings.isEmpty
         ? nil : try core.vocabularyRuleSource.snapshot()
       var options = SpeechRecognitionRequestOptions(language: workflow.plan.setup.speechRoute?.language)
       if workflow.plan.setup.speechRoute != nil {
@@ -2038,11 +2047,14 @@ private enum AppModelFactory {
       eventBus: core.eventBus,
       sessionCoordinator: runtime.coordinator,
       outputActionRegistry: registries.actionRegistry,
-      recordWorkspace: RecordWorkspaceModel(store: core.recordStore,
+      recordWorkspace: RecordWorkspaceModel(
+        store: core.recordStore,
         semanticSearch: RecordSemanticSearch(store: core.recordStore, embedder: providers.recordEmbedder),
-        cloudRanking: RecordCloudRanking(store: core.recordStore, provider: JevRecordRankingProvider(),
+        cloudRanking: RecordCloudRanking(
+          store: core.recordStore, provider: JevRecordRankingProvider(),
           settings: providers.jevSessionSettings,
-          privacy: core.privacySettingsSource, currentFocus: {
+          privacy: core.privacySettingsSource,
+          currentFocus: {
             await MainActor.run { platform.focusTracker.capturePrivacyIdentitySample().focus }
           }),
         hotwordSelection: providers.hotwordSelection),
@@ -2215,8 +2227,9 @@ private enum AppModelFactory {
         try? await providers.streamingPreviewService.releaseLoadedModels()
       },
       startWorkflowAudioRunAction: { workflow, binding, intent in
-        let trigger = WorkflowTriggerEvent(binding: binding, workflowID: workflow.id,
-            sourceID: "rill-interactive-recording", bufferDraftInput: intent)
+        let trigger = WorkflowTriggerEvent(
+          binding: binding, workflowID: workflow.id,
+          sourceID: "rill-interactive-recording", bufferDraftInput: intent)
         try await runtime.workflowAudioRunController.startRun(workflow: workflow, binding: binding, triggerEvent: trigger)
       },
       finishWorkflowAudioRunAction: {

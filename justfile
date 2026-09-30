@@ -11,6 +11,10 @@ check:
     uvx prek==0.5.3 validate-config prek.toml
     uvx prek==0.5.3 -c prek.toml run --all-files
 
+# Format Swift sources with the repository's two-space configuration.
+fmt:
+    swift format --configuration .swift-format --in-place --recursive Sources Tests Package.swift
+
 # Build the documentation and reject broken links and anchors.
 docs:
     uv run --no-build --locked --script scripts/docs.py build

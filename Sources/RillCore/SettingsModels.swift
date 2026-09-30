@@ -70,8 +70,7 @@ public enum AppSettingKey: String, Codable, Sendable, Equatable {
   case legacyClipboardPanelHotkey = "clipboard.panel-hotkey"
 }
 
-public enum PreferredSpeechEngine: String, Codable, CaseIterable, Identifiable, Sendable, Equatable
-{
+public enum PreferredSpeechEngine: String, Codable, CaseIterable, Identifiable, Sendable, Equatable {
   case local
 
   public var id: String { rawValue }

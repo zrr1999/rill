@@ -89,7 +89,8 @@ final class AppModelBenchmarkRecordingArchiveTests: XCTestCase {
   func testRollbackWriteFailureKeepsDurablePreferenceVisibleAndAllowsRetry() async throws {
     let settingsStore = RollbackFailingArchiveSettingsStore()
     let probe = BenchmarkArchiveActionProbe()
-    let harness = makeHarness(settingsStore: settingsStore,
+    let harness = makeHarness(
+      settingsStore: settingsStore,
       refreshBenchmarkRecordingArchiveAction: { enabled in
         await probe.refresh(enabled)
         if enabled { throw BenchmarkRecordingArchiveError.storageUnavailable }
@@ -114,7 +115,8 @@ final class AppModelBenchmarkRecordingArchiveTests: XCTestCase {
 
   func testDisableRemainsDurablyOffWhenRuntimeCleanupFails() async throws {
     let settingsStore = UITestSettingsStore(storage: [.benchmarkRecordingArchiveEnabled: "true"])
-    let harness = makeHarness(settingsStore: settingsStore,
+    let harness = makeHarness(
+      settingsStore: settingsStore,
       refreshBenchmarkRecordingArchiveAction: { _ in throw BenchmarkRecordingArchiveError.storageUnavailable })
     await harness.model.waitForInitialVoiceConfiguration()
     harness.model.benchmarkArchive.setEnabled(false)

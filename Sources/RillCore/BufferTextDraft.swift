@@ -115,7 +115,8 @@ public struct BufferItemSummary: Sendable, Equatable, Identifiable {
     id = entry.id
     state = entry.state
     kind = header?.kind ?? .text
-    preview = entry.draft.map { RecordTextFormatting.previewText($0.text, limit: 160) }
+    preview =
+      entry.draft.map { RecordTextFormatting.previewText($0.text, limit: 160) }
       ?? header?.preview ?? ""
     hasEdits = entry.draft?.needsCommit ?? false
     suggestionCount = entry.draft?.suggestions.count ?? 0

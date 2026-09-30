@@ -76,12 +76,15 @@ public final class RecordBufferTextOutput {
   /// identity and the readable selection; never recapture at send time.
   public func captureDraftTarget() -> Target? {
     guard let target = captureTarget(), let range = target.element.selectedRange(),
-      let selectedText = target.element.selectedText(in: range) else { return nil }
-    return Target(element: target.element, isCurrent: target.isCurrent, post: target.post,
-                  applicationName: target.applicationName, selectionIsUnchanged: {
-      target.element.selectedRange() == range
-        && target.element.selectedText(in: range) == selectedText
-    })
+      let selectedText = target.element.selectedText(in: range)
+    else { return nil }
+    return Target(
+      element: target.element, isCurrent: target.isCurrent, post: target.post,
+      applicationName: target.applicationName,
+      selectionIsUnchanged: {
+        target.element.selectedRange() == range
+          && target.element.selectedText(in: range) == selectedText
+      })
   }
 
   public func insert(_ text: String, into target: Target) async -> BufferTextResult {

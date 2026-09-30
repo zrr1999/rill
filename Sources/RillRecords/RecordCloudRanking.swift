@@ -36,9 +36,11 @@ public actor RecordCloudRanking {
   private var active: Task<RecordCloudRankingResult, Error>?
   private var closed = false
 
-  public init(store: RecordStore, provider: any RecordRankingProvider,
+  public init(
+    store: RecordStore, provider: any RecordRankingProvider,
     settings: JevSessionSettingsSource = JevSessionSettingsSource(),
-    privacy: PrivacyPolicySettingsSource, currentFocus: @escaping @Sendable () async -> FocusSnapshot) {
+    privacy: PrivacyPolicySettingsSource, currentFocus: @escaping @Sendable () async -> FocusSnapshot
+  ) {
     self.store = store
     self.settings = settings
     self.provider = provider
@@ -80,7 +82,8 @@ public actor RecordCloudRanking {
       candidates.append(.init(id: id, text: clipped, isTruncated: clipped != text))
     }
     guard !candidates.isEmpty else { throw RecordRankingError.invalidInput }
-    let review = RecordRankingReview(id: UUID(), query: query, candidates: candidates,
+    let review = RecordRankingReview(
+      id: UUID(), query: query, candidates: candidates,
       catalogRevision: snapshot.revision, created: .now)
     try await validate(review)
     guard !closed else { throw CancellationError() }
@@ -108,12 +111,17 @@ public actor RecordCloudRanking {
         response.scores.allSatisfy({ $0.isFinite && (0...2).contains($0) })
       else { throw RecordRankingError.invalidResponse }
       let elapsed = start.duration(to: .now).components
-      return RecordCloudRankingResult(review: review, response: response,
+      return RecordCloudRankingResult(
+        review: review, response: response,
         elapsedMilliseconds: Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
     }
     active = task
     defer { active = nil }
-    return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+    return try await withTaskCancellationHandler {
+      try await task.value
+    } onCancel: {
+      task.cancel()
+    }
   }
 
   public func shutdown() async {
@@ -147,10 +155,12 @@ public actor RecordCloudRanking {
   }
 
   private func checkProvenance(_ provenance: RecordProvenance, settings: PrivacyPolicySettings) throws {
-    let focus = FocusSnapshot(applicationName: provenance.sourceApplicationName,
+    let focus = FocusSnapshot(
+      applicationName: provenance.sourceApplicationName,
       bundleIdentifier: provenance.sourceBundleIdentifier, processIdentifier: nil, focusedRole: nil,
       selectedText: "", secureInput: false)
-    let context = ContextSnapshot(focus: focus,
+    let context = ContextSnapshot(
+      focus: focus,
       clipboard: .init(plainText: "", changeCount: 0, captureTags: provenance.captureTags))
     let decision = PrivacyPolicy.evaluate(context: context, processingDestinations: [.cloudText], settings: settings)
     guard !decision.blocksCloudProcessing, decision.allowsWorkflowCapture else { throw RecordRankingError.privacyBlocked }

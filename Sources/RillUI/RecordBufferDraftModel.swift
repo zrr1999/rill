@@ -84,7 +84,10 @@ public final class RecordBufferDraftModel {
     retired?.cancel()
     observation = nil
     let previousObservation = observationDrain
-    observationDrain = Task { await previousObservation?.value; await retired?.value }
+    observationDrain = Task {
+      await previousObservation?.value
+      await retired?.value
+    }
     if let session { startSaving(session) }
     let previous = closeTask
     let pendingCommand = commandTask
@@ -155,8 +158,9 @@ public final class RecordBufferDraftModel {
     perform {
       try await self.flush()
       if let session = self.session {
-        try await self.store.commitBufferDraft(id, draftID: session.saved.id,
-                                               expectedRevision: session.saved.revision)
+        try await self.store.commitBufferDraft(
+          id, draftID: session.saved.id,
+          expectedRevision: session.saved.revision)
         await self.store.closeBufferEditingSession(session.id)
         if let draft = try await self.store.bufferDraft(for: id) { session.saved = draft }
       }
@@ -169,8 +173,11 @@ public final class RecordBufferDraftModel {
     let selection = session.selection
     perform {
       try await self.flush()
-      self.dictationAction(.draft(.init(entryID: session.entryID, draftID: session.saved.id,
-        revision: session.saved.revision, selection: selection, editingSessionID: session.id)))
+      self.dictationAction(
+        .draft(
+          .init(
+            entryID: session.entryID, draftID: session.saved.id,
+            revision: session.saved.revision, selection: selection, editingSessionID: session.id)))
     }
   }
 
@@ -183,11 +190,14 @@ public final class RecordBufferDraftModel {
     let range = insert ? session.selection : nil
     perform {
       try await self.flush()
-      let draft = try await self.store.resolveBufferSuggestion(suggestion.id, in: session.entryID,
+      let draft = try await self.store.resolveBufferSuggestion(
+        suggestion.id, in: session.entryID,
         draftID: session.saved.id, expectedRevision: session.saved.revision, insertingAt: range)
-      self.adopt(draft, in: session, selection: range.map {
-        .init(location: $0.location + suggestion.text.utf16.count)
-      })
+      self.adopt(
+        draft, in: session,
+        selection: range.map {
+          .init(location: $0.location + suggestion.text.utf16.count)
+        })
     }
   }
 
@@ -228,13 +238,16 @@ public final class RecordBufferDraftModel {
       while session.hasUnsavedChanges, !session.hasMarkedText {
         let text = session.text
         do {
-          session.saved = try await store.saveBufferDraft(session.entryID,
+          session.saved = try await store.saveBufferDraft(
+            session.entryID,
             draftID: session.saved.id, expectedRevision: session.saved.revision, text: text)
           failure = nil
         } catch {
           if let storageError = error as? RecordStoreError, storageError == .payloadLimitReached || storageError == .totalPayloadLimitReached {
             failure = .capacity
-          } else { failure = error is BufferDraftError ? .changed : .saving }
+          } else {
+            failure = error is BufferDraftError ? .changed : .saving
+          }
           isSaving = false
           saveTask = nil
           return
@@ -259,10 +272,12 @@ public final class RecordBufferDraftModel {
     let precedingClose = closeTask
     commandTask = Task {
       await precedingClose?.value
-      do { try await operation(); failure = nil }
-      catch BufferDraftError.empty { failure = .empty }
-      catch BufferDraftError.changed { if failure == nil { failure = .changed } }
-      catch { if failure == nil { failure = .saving } }
+      do {
+        try await operation()
+        failure = nil
+      } catch BufferDraftError.empty { failure = .empty } catch BufferDraftError.changed { if failure == nil { failure = .changed } } catch {
+        if failure == nil { failure = .saving }
+      }
       isBusy = false
       commandTask = nil
       await refresh()
@@ -284,8 +299,12 @@ public final class RecordBufferDraftModel {
         return
       }
       guard items.contains(where: { $0.id == session.entryID }) else {
-        if !session.hasUnsavedChanges { self.session = nil; selectedID = nil }
-        else { failure = .changed }
+        if !session.hasUnsavedChanges {
+          self.session = nil
+          selectedID = nil
+        } else {
+          failure = .changed
+        }
         return
       }
       guard !isBusy, saveTask == nil, !session.hasUnsavedChanges, !session.hasMarkedText,
@@ -301,17 +320,21 @@ public final class RecordBufferDraftModel {
       // Lock the editor before crossing the store actor. Uncommitted IME text
       // and local keystrokes can therefore never race automatic insertion.
       perform {
-        let updated = try await self.store.resolveBufferSuggestion(suggestion.id,
+        let updated = try await self.store.resolveBufferSuggestion(
+          suggestion.id,
           in: session.entryID, draftID: draft.id, expectedRevision: draft.revision,
           insertingAt: intent.selection)
-        self.adopt(updated, in: session,
+        self.adopt(
+          updated, in: session,
           selection: .init(location: intent.selection.location + suggestion.text.utf16.count))
       }
     } catch { failure = .loading }
   }
 
-  private func adopt(_ draft: BufferTextDraft, in session: BufferEditingSession,
-                     selection: BufferTextRange? = nil) {
+  private func adopt(
+    _ draft: BufferTextDraft, in session: BufferEditingSession,
+    selection: BufferTextRange? = nil
+  ) {
     session.saved = draft
     session.text = draft.text
     if let selection { session.selection = selection }

@@ -202,7 +202,8 @@ final class BufferOutputController: NSObject {
 
   private func presentPendingMessageIfPossible() {
     guard !isClosed, task == nil, dragSettlementTask == nil, !isPresentingDrag,
-      let message = pendingMessage, let model else { return }
+      let message = pendingMessage, let model
+    else { return }
     pendingMessage = nil
     model.recordWorkspace.buffers.message = message
     showConfirmation()

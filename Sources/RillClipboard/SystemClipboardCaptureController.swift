@@ -21,8 +21,7 @@ extension SystemClipboardPort: SystemClipboardAccess {
     currentDescriptor()
   }
 
-  public func readClipboardSnapshot(ifChangeCountIs expected: Int) async -> SystemClipboardSnapshot?
-  {
+  public func readClipboardSnapshot(ifChangeCountIs expected: Int) async -> SystemClipboardSnapshot? {
     await readSnapshot(ifChangeCountIs: expected)
   }
 
@@ -69,8 +68,7 @@ public actor SystemClipboardCaptureController {
   private let diagnostics: (any DiagnosticRecording)?
   private let privacySettingsProvider: @Sendable () async throws -> PrivacyPolicySettings
   private let focusIdentitySampleProvider: @Sendable () async -> FocusPrivacyIdentitySample
-  private let captureControlStateObserver:
-    @Sendable (SystemClipboardCaptureControlSnapshot) async -> Void
+  private let captureControlStateObserver: @Sendable (SystemClipboardCaptureControlSnapshot) async -> Void
 
   private var started = false
   private var stopped = false
@@ -629,7 +627,8 @@ extension SystemClipboardCaptureController {
     var acceptedBufferInput = false
     defer {
       if !acceptedBufferInput,
-        clipboardReadRetry?.changeCount != descriptor.changeCount || clipboardReadRetry?.nextAttempt == nil {
+        clipboardReadRetry?.changeCount != descriptor.changeCount || clipboardReadRetry?.nextAttempt == nil
+      {
         abandonObservedBufferInput()
       }
     }
@@ -833,8 +832,7 @@ extension SystemClipboardCaptureController {
   }
 
   private func cancelBufferInputWithRetry(_ id: BufferEntryID) async {
-    do { try await recordStore.cancelBufferInput(id) }
-    catch {
+    do { try await recordStore.cancelBufferInput(id) } catch {
       guard !stopped, bufferCancellationRetries[id] == nil else { return }
       bufferCancellationRetries[id] = Task {
         while !Task.isCancelled {
@@ -901,8 +899,7 @@ extension SystemClipboardCaptureController {
   }
 
   @discardableResult
-  fileprivate func transitionCaptureControl(to state: SystemClipboardCaptureControlState) -> UInt64
-  {
+  fileprivate func transitionCaptureControl(to state: SystemClipboardCaptureControlState) -> UInt64 {
     captureControlSnapshot.revision &+= 1
     captureControlSnapshot.state = state
     clipboardReadRetry = nil

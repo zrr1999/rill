@@ -365,7 +365,6 @@ public struct MenuBarStatusView: View {
           Label(L10n.text(.settingsTitle, language: model.settings.language), systemImage: RillSystemSymbol.gearshape.rawValue)
         }
 
-
         Button {
           model.showRunHistory()
           openMainWindow()
@@ -533,9 +532,11 @@ public struct MenuBarStatusView: View {
         .accessibilityIdentifier("menu.status.persistence-detail")
     }
 
-    Button(model.settings.language == .simplifiedChinese ? "打开待发区" : "Open drafts",
-      action: model.recordWorkspace.buffers.openEditorAction)
-      .accessibilityIdentifier("menu.open-drafts")
+    Button(
+      model.settings.language == .simplifiedChinese ? "打开待发区" : "Open drafts",
+      action: model.recordWorkspace.buffers.openEditorAction
+    )
+    .accessibilityIdentifier("menu.open-drafts")
 
     Label(panelState.outputModeTitle, systemImage: RillSystemSymbol.textformat.rawValue)
       .accessibilityIdentifier("menu.status.output-mode")
@@ -554,7 +555,6 @@ public struct MenuBarStatusView: View {
     model.showSettings(.storage)
     openMainWindow()
   }
-
 
   private var panelState: MenuBarOperationPanelState {
     MenuBarOperationPanelState(

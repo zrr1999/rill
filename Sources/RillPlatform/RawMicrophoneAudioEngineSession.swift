@@ -206,8 +206,9 @@ private final class LiveRawMicrophoneAudioEngineSession:
     diagnosticsLock.withLock {
       let now = ProcessInfo.processInfo.systemUptime
       let isAudible = conversion.diagnostics.outputRMS >= 0.001
-      guard conversion.shouldReportDiagnostics
-        || (isAudible && now - lastDiagnosticsUptime >= 0.5)
+      guard
+        conversion.shouldReportDiagnostics
+          || (isAudible && now - lastDiagnosticsUptime >= 0.5)
       else {
         return false
       }

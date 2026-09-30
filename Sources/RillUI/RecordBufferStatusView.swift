@@ -100,10 +100,12 @@ struct RecordBufferToolbar: View {
           Label(text("待发", "Drafts"), systemImage: "tray")
             .fixedSize()
           Text("\(workspace.buffers.snapshot?.remainingCount ?? 0)").monospacedDigit().fixedSize()
-          Text(workspace.buffers.snapshot?.nextHeader?.preview
-            ?? (workspace.buffers.snapshot?.next == nil ? text("空", "Empty") : text("处理中", "Processing")))
-            .foregroundStyle(.secondary).lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
+          Text(
+            workspace.buffers.snapshot?.nextHeader?.preview
+              ?? (workspace.buffers.snapshot?.next == nil ? text("空", "Empty") : text("处理中", "Processing"))
+          )
+          .foregroundStyle(.secondary).lineLimit(1)
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
       .buttonStyle(.borderless)

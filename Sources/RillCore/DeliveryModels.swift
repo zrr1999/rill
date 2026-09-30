@@ -1,211 +1,212 @@
 import Foundation
 
 public enum ActionResult: Sendable, Equatable {
-    case injected
-    case copiedToClipboard
-    case storedRecord
-    case externalOutput(String)
-    case skipped(String)
-    case failed(String)
+  case injected
+  case copiedToClipboard
+  case storedRecord
+  case externalOutput(String)
+  case skipped(String)
+  case failed(String)
 }
 
 public struct ActionContext: Sendable, Equatable {
-    public var actionConfiguration: WorkflowActionConfiguration?
-    public var runID: UUID
-    public var workflow: WorkflowDefinition
-    public var contextSnapshot: ContextSnapshot
-    public var recognitionResult: RecognitionResult
-    public var finalText: String
-    public var bufferEntryID: BufferEntryID?
-    public var bufferDraftInput: BufferDraftInputIntent?
-    public var sourceRecordSubject: RecordDeliverySubject?
-    public var startedAt: Date
-    public var finishedAt: Date
+  public var actionConfiguration: WorkflowActionConfiguration?
+  public var runID: UUID
+  public var workflow: WorkflowDefinition
+  public var contextSnapshot: ContextSnapshot
+  public var recognitionResult: RecognitionResult
+  public var finalText: String
+  public var bufferEntryID: BufferEntryID?
+  public var bufferDraftInput: BufferDraftInputIntent?
+  public var sourceRecordSubject: RecordDeliverySubject?
+  public var startedAt: Date
+  public var finishedAt: Date
 
-    public var sourceRecordID: RecordID? {
-        sourceRecordSubject?.recordID
-    }
+  public var sourceRecordID: RecordID? {
+    sourceRecordSubject?.recordID
+  }
 
-    public init(
-        runID: UUID,
-        workflow: WorkflowDefinition,
-        contextSnapshot: ContextSnapshot,
-        recognitionResult: RecognitionResult,
-        finalText: String,
-        sourceRecordSubject: RecordDeliverySubject? = nil,
-        bufferEntryID: BufferEntryID? = nil,
-        bufferDraftInput: BufferDraftInputIntent? = nil,
-        startedAt: Date,
-        finishedAt: Date
-    ) {
-        self.actionConfiguration = nil
-        self.bufferEntryID = bufferEntryID
-        self.bufferDraftInput = bufferDraftInput
-        self.runID = runID
-        self.workflow = workflow
-        self.contextSnapshot = contextSnapshot
-        self.recognitionResult = recognitionResult
-        self.finalText = finalText
-        self.sourceRecordSubject = sourceRecordSubject
-        self.startedAt = startedAt
-        self.finishedAt = finishedAt
-    }
-    public func configuration(for actionID: String) throws -> WorkflowActionConfiguration {
-        if let actionConfiguration { return actionConfiguration }
-        return try WorkflowActionConfiguration(workflow.plan.output.actions.first { $0.id == actionID }
-            ?? OutputActionReference(id: actionID))
-    }
+  public init(
+    runID: UUID,
+    workflow: WorkflowDefinition,
+    contextSnapshot: ContextSnapshot,
+    recognitionResult: RecognitionResult,
+    finalText: String,
+    sourceRecordSubject: RecordDeliverySubject? = nil,
+    bufferEntryID: BufferEntryID? = nil,
+    bufferDraftInput: BufferDraftInputIntent? = nil,
+    startedAt: Date,
+    finishedAt: Date
+  ) {
+    self.actionConfiguration = nil
+    self.bufferEntryID = bufferEntryID
+    self.bufferDraftInput = bufferDraftInput
+    self.runID = runID
+    self.workflow = workflow
+    self.contextSnapshot = contextSnapshot
+    self.recognitionResult = recognitionResult
+    self.finalText = finalText
+    self.sourceRecordSubject = sourceRecordSubject
+    self.startedAt = startedAt
+    self.finishedAt = finishedAt
+  }
+  public func configuration(for actionID: String) throws -> WorkflowActionConfiguration {
+    if let actionConfiguration { return actionConfiguration }
+    return try WorkflowActionConfiguration(
+      workflow.plan.output.actions.first { $0.id == actionID }
+        ?? OutputActionReference(id: actionID))
+  }
 
 }
 
 /// One executed text-processing step, retained in encrypted activity history.
 public struct WorkflowTextStep: Codable, Sendable, Equatable {
-    public let kind: WorkflowProcessStepKind
-    public let result: WorkflowStepResultCode
-    public let outputText: String?
-    public let didChange: Bool?
-    public let tokenUsage: LanguageModelTokenUsage?
-    public let durationMilliseconds: UInt64?
+  public let kind: WorkflowProcessStepKind
+  public let result: WorkflowStepResultCode
+  public let outputText: String?
+  public let didChange: Bool?
+  public let tokenUsage: LanguageModelTokenUsage?
+  public let durationMilliseconds: UInt64?
 
-    public init(
-        kind: WorkflowProcessStepKind,
-        result: WorkflowStepResultCode = .completed,
-        outputText: String? = nil,
-        didChange: Bool? = nil,
-        tokenUsage: LanguageModelTokenUsage? = nil,
-        durationMilliseconds: UInt64? = nil
-    ) {
-        self.kind = kind
-        self.result = result
-        self.outputText = outputText
-        self.didChange = didChange
-        self.tokenUsage = tokenUsage
-        self.durationMilliseconds = durationMilliseconds
-    }
+  public init(
+    kind: WorkflowProcessStepKind,
+    result: WorkflowStepResultCode = .completed,
+    outputText: String? = nil,
+    didChange: Bool? = nil,
+    tokenUsage: LanguageModelTokenUsage? = nil,
+    durationMilliseconds: UInt64? = nil
+  ) {
+    self.kind = kind
+    self.result = result
+    self.outputText = outputText
+    self.didChange = didChange
+    self.tokenUsage = tokenUsage
+    self.durationMilliseconds = durationMilliseconds
+  }
 }
 
 /// Voice-run provenance and ordered text results. Optional traces preserve
 /// compatibility with older history and exclude credentials and captured app content.
 public struct RecognitionCorrectionSource: Codable, Sendable, Equatable {
-    public var preMappingText: String
-    public var context: VocabularyRuleContext
-    public var languageModelInputTexts: [String]?
-    public var languageModelTraces: [LanguageModelTrace]?
-    public var processingSteps: [WorkflowTextStep]?
-    public var references: CorrectionReferenceReceipt?
-    public var userCorrections: [ConfirmedMemoryCorrection]?
+  public var preMappingText: String
+  public var context: VocabularyRuleContext
+  public var languageModelInputTexts: [String]?
+  public var languageModelTraces: [LanguageModelTrace]?
+  public var processingSteps: [WorkflowTextStep]?
+  public var references: CorrectionReferenceReceipt?
+  public var userCorrections: [ConfirmedMemoryCorrection]?
 
-    public init(
-        preMappingText: String,
-        context: VocabularyRuleContext,
-        languageModelInputTexts: [String]? = nil,
-        languageModelTraces: [LanguageModelTrace]? = nil,
-        processingSteps: [WorkflowTextStep]? = nil,
-        references: CorrectionReferenceReceipt? = nil,
-        userCorrections: [ConfirmedMemoryCorrection]? = nil
-    ) {
-        self.preMappingText = preMappingText
-        self.context = context
-        self.languageModelInputTexts = languageModelInputTexts
-        self.languageModelTraces = languageModelTraces
-        self.processingSteps = processingSteps
-        self.references = references
-        self.userCorrections = userCorrections
-    }
+  public init(
+    preMappingText: String,
+    context: VocabularyRuleContext,
+    languageModelInputTexts: [String]? = nil,
+    languageModelTraces: [LanguageModelTrace]? = nil,
+    processingSteps: [WorkflowTextStep]? = nil,
+    references: CorrectionReferenceReceipt? = nil,
+    userCorrections: [ConfirmedMemoryCorrection]? = nil
+  ) {
+    self.preMappingText = preMappingText
+    self.context = context
+    self.languageModelInputTexts = languageModelInputTexts
+    self.languageModelTraces = languageModelTraces
+    self.processingSteps = processingSteps
+    self.references = references
+    self.userCorrections = userCorrections
+  }
 
-    /// Restricted activity exposes step previews, never prompts or captured context.
-    public var restrictedStepPreview: RecognitionCorrectionSource? {
-        guard let processingSteps, !processingSteps.isEmpty else { return nil }
-        return RecognitionCorrectionSource(
-            preMappingText: "",
-            context: VocabularyRuleContext(),
-            processingSteps: processingSteps.map { step in
-                WorkflowTextStep(
-                    kind: step.kind,
-                    result: step.result,
-                    outputText: step.outputText.map {
-                        RecordTextFormatting.previewText(
-                            $0, limit: RunHistoryContentAccess.restrictedPreviewCharacterLimit
-                        )
-                    },
-                    didChange: step.didChange,
-                    tokenUsage: step.tokenUsage,
-                    durationMilliseconds: step.durationMilliseconds
-                )
-            }
+  /// Restricted activity exposes step previews, never prompts or captured context.
+  public var restrictedStepPreview: RecognitionCorrectionSource? {
+    guard let processingSteps, !processingSteps.isEmpty else { return nil }
+    return RecognitionCorrectionSource(
+      preMappingText: "",
+      context: VocabularyRuleContext(),
+      processingSteps: processingSteps.map { step in
+        WorkflowTextStep(
+          kind: step.kind,
+          result: step.result,
+          outputText: step.outputText.map {
+            RecordTextFormatting.previewText(
+              $0, limit: RunHistoryContentAccess.restrictedPreviewCharacterLimit
+            )
+          },
+          didChange: step.didChange,
+          tokenUsage: step.tokenUsage,
+          durationMilliseconds: step.durationMilliseconds
         )
-    }
+      }
+    )
+  }
 }
 
 public enum WorkflowRunLane: String, Sendable, Equatable, Codable {
-    case primary
-    case assistant
+  case primary
+  case assistant
 }
 
 public struct WorkflowRunIdentity: Sendable, Equatable {
-    public let runID: UUID
-    public let lane: WorkflowRunLane
-    public init(runID: UUID, lane: WorkflowRunLane = .primary) {
-        self.runID = runID
-        self.lane = lane
-    }
+  public let runID: UUID
+  public let lane: WorkflowRunLane
+  public init(runID: UUID, lane: WorkflowRunLane = .primary) {
+    self.runID = runID
+    self.lane = lane
+  }
 }
 
 public struct WorkflowRunSummary: Sendable, Equatable {
-    public let lane: WorkflowRunLane
-    public var runID: UUID
-    public var workflowID: UUID
-    public var workflow: WorkflowPresentation
-    public var trigger: WorkflowRunTriggerKind
-    public var finalText: String
-    public var correctionSource: RecognitionCorrectionSource?
-    public var finishedAt: Date
-    public var contextHistoryUpdate: CorrectionHistoryUpdate?
+  public let lane: WorkflowRunLane
+  public var runID: UUID
+  public var workflowID: UUID
+  public var workflow: WorkflowPresentation
+  public var trigger: WorkflowRunTriggerKind
+  public var finalText: String
+  public var correctionSource: RecognitionCorrectionSource?
+  public var finishedAt: Date
+  public var contextHistoryUpdate: CorrectionHistoryUpdate?
 
-    public init(
-        runID: UUID,
-        lane: WorkflowRunLane = .primary,
-        workflowID: UUID,
-        workflow: WorkflowPresentation,
-        trigger: WorkflowRunTriggerKind,
-        finalText: String,
-        correctionSource: RecognitionCorrectionSource? = nil,
-        finishedAt: Date = Date(),
-        contextHistoryUpdate: CorrectionHistoryUpdate? = nil
-    ) {
-        self.lane = lane
-        self.runID = runID
-        self.workflowID = workflowID
-        self.workflow = workflow
-        self.trigger = trigger
-        self.finalText = finalText
-        self.correctionSource = correctionSource
-        self.finishedAt = finishedAt
-        self.contextHistoryUpdate = contextHistoryUpdate
-    }
+  public init(
+    runID: UUID,
+    lane: WorkflowRunLane = .primary,
+    workflowID: UUID,
+    workflow: WorkflowPresentation,
+    trigger: WorkflowRunTriggerKind,
+    finalText: String,
+    correctionSource: RecognitionCorrectionSource? = nil,
+    finishedAt: Date = Date(),
+    contextHistoryUpdate: CorrectionHistoryUpdate? = nil
+  ) {
+    self.lane = lane
+    self.runID = runID
+    self.workflowID = workflowID
+    self.workflow = workflow
+    self.trigger = trigger
+    self.finalText = finalText
+    self.correctionSource = correctionSource
+    self.finishedAt = finishedAt
+    self.contextHistoryUpdate = contextHistoryUpdate
+  }
 }
 
 public struct RunSnapshot: Sendable, Equatable {
-    public let lane: WorkflowRunLane
-    public var runID: UUID
-    public var workflowID: UUID
-    public var workflow: WorkflowPresentation
-    public var trigger: WorkflowRunTriggerKind
-    public var startedAt: Date
+  public let lane: WorkflowRunLane
+  public var runID: UUID
+  public var workflowID: UUID
+  public var workflow: WorkflowPresentation
+  public var trigger: WorkflowRunTriggerKind
+  public var startedAt: Date
 
-    public init(
-        runID: UUID,
-        lane: WorkflowRunLane = .primary,
-        workflowID: UUID,
-        workflow: WorkflowPresentation,
-        trigger: WorkflowRunTriggerKind,
-        startedAt: Date = Date()
-    ) {
-        self.lane = lane
-        self.runID = runID
-        self.workflowID = workflowID
-        self.workflow = workflow
-        self.trigger = trigger
-        self.startedAt = startedAt
-    }
+  public init(
+    runID: UUID,
+    lane: WorkflowRunLane = .primary,
+    workflowID: UUID,
+    workflow: WorkflowPresentation,
+    trigger: WorkflowRunTriggerKind,
+    startedAt: Date = Date()
+  ) {
+    self.lane = lane
+    self.runID = runID
+    self.workflowID = workflowID
+    self.workflow = workflow
+    self.trigger = trigger
+    self.startedAt = startedAt
+  }
 }

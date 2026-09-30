@@ -182,7 +182,10 @@ public struct SettingsView: View {
         case .general:
           Section { languageSection }
         case .input:
-          Section { builtinPushToTalkSection; recordPanelSection }
+          Section {
+            builtinPushToTalkSection
+            recordPanelSection
+          }
           if let input = model.inputMethod { InputMethodSettingsView(input: input, language: model.settings.language) }
         case .voice:
           Section { speechEngineSection }
@@ -192,9 +195,12 @@ public struct SettingsView: View {
           Section {
             vocabularySection
             if let memory = model.contextMemory {
-              ContextMemorySettingsView(memory: memory, workflows: model.workflowLibrary.workflows.filter(\.supportsContextualCorrection), language: model.settings.language, isExpanded: settingsDisclosureBinding(for: .contextMemory))
-                .id(SettingsSection.contextMemory)
-                .disclosureGroupStyle(settingsDisclosureStyle(for: .contextMemory))
+              ContextMemorySettingsView(
+                memory: memory, workflows: model.workflowLibrary.workflows.filter(\.supportsContextualCorrection), language: model.settings.language,
+                isExpanded: settingsDisclosureBinding(for: .contextMemory)
+              )
+              .id(SettingsSection.contextMemory)
+              .disclosureGroupStyle(settingsDisclosureStyle(for: .contextMemory))
             }
           }
         case .privacy:
@@ -464,7 +470,8 @@ extension SettingsView {
   }
 
   private func settingsDisclosureStyle(for section: SettingsSection) -> SettingsDisclosureStyle {
-    SettingsDisclosureStyle(section: section, keyboardFocus: $focusedSettingsSection,
+    SettingsDisclosureStyle(
+      section: section, keyboardFocus: $focusedSettingsSection,
       accessibilityFocus: $accessibilityFocusedSettingsSection)
   }
 
@@ -521,8 +528,7 @@ extension SettingsView {
     // Navigation scroll, not decorative motion: keep the fixed duration
     // easing so section positioning stays predictable.
     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-      if let item = request.item { proxy.scrollTo(item, anchor: .top) }
-      else { proxy.scrollTo(request.section, anchor: .top) }
+      if let item = request.item { proxy.scrollTo(item, anchor: .top) } else { proxy.scrollTo(request.section, anchor: .top) }
     }
     await waitForMainRunLoopDefaultMode()
     guard !Task.isCancelled, model.settingsNavigationRequest?.id == request.id else { return }
