@@ -572,12 +572,13 @@ private func makeAudioCaptureService(
 private func makeManager(
     audioCaptureService: RecordingTimingAudioCaptureService,
     diagnostics: DiagnosticsRecorder?,
+    eventBus: EventBus = EventBus(),
+    hotkeyTap: HotkeyEventTap = HotkeyEventTap(),
     cueProbe: RecordingTimingCueProbe = RecordingTimingCueProbe(),
     longRecordingModeEnabled: Bool = false,
     deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)? = nil,
     recordingCueAction: (@Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void)? = nil
 ) -> RecordingSessionManager {
-    let eventBus = EventBus()
     let coordinator = makeTestSessionCoordinator(
 
         recognizerRegistry: SpeechRecognizerRegistry(
@@ -616,7 +617,7 @@ private func makeManager(
 
     return makeTestRecordingSessionManager(
         audioCaptureService: audioCaptureService,
-        hotkeyTap: HotkeyEventTap(),
+        hotkeyTap: hotkeyTap,
         capturedAudioProcessingQueue: queue,
         eventBus: eventBus,
         diagnostics: diagnostics,
@@ -653,15 +654,63 @@ private struct RecordingReleaseSleepGate: Sendable {
 
 @Suite(.timeLimit(.minutes(1)))
 struct RecordingSessionManagerReleaseDelayTests {
+    @Test(arguments: [false, true])
+    func physicalReleaseFinishesEvenWhenSystemFlagsRemainPressed(interruptFirst: Bool) async throws {
+        let gate = RecordingReleaseSleepGate()
+        var pending = gate.pending.makeAsyncIterator()
+        let audio = try makeAudioCaptureService(testName: #function)
+        let tap = HotkeyEventTap(
+            physicalKeyStateProvider: { _ in true },
+            pushToTalkGestureStateProvider: { _ in true }
+        )
+        let manager = makeManager(
+            audioCaptureService: audio,
+            diagnostics: nil,
+            hotkeyTap: tap,
+            deferredReleaseSleep: { await gate.sleep(for: $0) }
+        )
+        _ = tap.testingHandlePushToTalk(
+            type: .flagsChanged, keyCode: 63, flags: [.maskSecondaryFn]
+        )
+        await manager.beginPushToTalk()
+        if interruptFirst {
+            let interruption = try #require(tap.testingInterruptPushToTalk(preservingActiveTrigger: true))
+            await manager.processHotkeyEvent(interruption)
+            let interruptedRelease = try #require(await pending.next())
+            interruptedRelease.continuation.resume()
+            await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
+            #expect(await audio.snapshot().isInputRunning)
+            #expect(await audio.snapshot().finishCallCount == 0)
+        }
+        let output = tap.testingHandlePushToTalk(type: .flagsChanged, keyCode: 63, flags: [])
+        guard case .swallow(let event?) = output else {
+            Issue.record("The observed key-up must emit a release.")
+            await manager.stopForApplicationShutdown()
+            return
+        }
+        await manager.processHotkeyEvent(event)
+        let release = try #require(await pending.next())
+        release.continuation.resume()
+        await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
+        #expect(await audio.snapshot().finishCallCount == 1)
+        #expect(await audio.snapshot().isInputRunning == false)
+        #expect(await manager.currentState() == .idle)
+        await manager.stopForApplicationShutdown()
+    }
+
     @Test(arguments: [PushToTalkGesture.fnHold, .controlOptionShiftSpace])
     func releaseKeepsInputOpenUntilGracePeriodEnds(gesture: PushToTalkGesture) async throws {
         let gate = RecordingReleaseSleepGate()
         var pending = gate.pending.makeAsyncIterator()
         let audio = try makeAudioCaptureService(testName: #function)
         let cues = RecordingTimingCueProbe()
+        let eventBus = EventBus()
+        let events = await eventBus.stream()
+        var updates = events.makeAsyncIterator()
         let manager = makeManager(
             audioCaptureService: audio,
             diagnostics: nil,
+            eventBus: eventBus,
             cueProbe: cues,
             deferredReleaseSleep: { await gate.sleep(for: $0) }
         )
@@ -675,6 +724,13 @@ struct RecordingSessionManagerReleaseDelayTests {
         #expect(await audio.snapshot().isInputRunning)
         #expect(await audio.snapshot().finishCallCount == 0)
         #expect(await cues.calls() == 1)
+        guard case .recording(let runID) = recordingState else {
+            release.continuation.resume()
+            await manager.stopForApplicationShutdown()
+            Issue.record("Expected active capture before the release deadline.")
+            return
+        }
+        #expect(await nextRecordingRelease(in: &updates) == .recordingReleaseChanged(runID: runID, isReleased: true))
 
         // A duplicate key-up must not restart or extend the deadline.
         await manager.processHotkeyEvent(.pushToTalkReleased(gesture))
@@ -694,18 +750,29 @@ struct RecordingSessionManagerReleaseDelayTests {
         var pending = gate.pending.makeAsyncIterator()
         let audio = try makeAudioCaptureService(testName: #function)
         let cues = RecordingTimingCueProbe()
+        let eventBus = EventBus()
+        let events = await eventBus.stream()
+        var updates = events.makeAsyncIterator()
         let manager = makeManager(
             audioCaptureService: audio,
             diagnostics: nil,
+            eventBus: eventBus,
             cueProbe: cues,
             deferredReleaseSleep: { await gate.sleep(for: $0) }
         )
         await manager.beginPushToTalk()
         let recordingState = await manager.currentState()
+        guard case .recording(let runID) = recordingState else {
+            Issue.record("Expected active capture before releasing.")
+            await manager.stopForApplicationShutdown()
+            return
+        }
         await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
         let firstRelease = try #require(await pending.next())
+        #expect(await nextRecordingRelease(in: &updates) == .recordingReleaseChanged(runID: runID, isReleased: true))
 
         await manager.processHotkeyEvent(.pushToTalkPressed(.fnHold))
+        #expect(await nextRecordingRelease(in: &updates) == .recordingReleaseChanged(runID: runID, isReleased: false))
         firstRelease.continuation.resume()
         await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
         #expect(await manager.currentState() == recordingState)
@@ -716,6 +783,7 @@ struct RecordingSessionManagerReleaseDelayTests {
 
         await manager.processHotkeyEvent(.pushToTalkReleased(.fnHold))
         let secondRelease = try #require(await pending.next())
+        #expect(await nextRecordingRelease(in: &updates) == .recordingReleaseChanged(runID: runID, isReleased: true))
         #expect(secondRelease.duration == .milliseconds(500))
         secondRelease.continuation.resume()
         await manager.waitForHotkeyLifecycleTasksToDrainForTesting()
@@ -822,4 +890,11 @@ struct RecordingSessionManagerReleaseDelayTests {
         #expect(await audio.snapshot().finishCallCount == 1)
         await manager.stopForApplicationShutdown()
     }
+}
+
+private func nextRecordingRelease(in events: inout AsyncStream<RillEvent>.Iterator) async -> RillEvent? {
+    while let event = await events.next() {
+        if case .recordingReleaseChanged = event { return event }
+    }
+    return nil
 }
