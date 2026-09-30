@@ -197,9 +197,11 @@ final class UIRenderEvidenceTests: XCTestCase {
                     }
                     for pane in SettingsPane.allCases {
                         model.selectedSettingsPane = pane
-                        try await render(SettingsWindowView(model: model), size: NSSize(width: 760, height: 640), dark: dark,
+                        model.presentSettings()
+                        try await render(MainShellView(model: model), size: NSSize(width: 960, height: 720), dark: dark,
                             to: output.appendingPathComponent("settings-\(pane.rawValue)-\(variant).png"))
                     }
+                    model.dismissSettings()
                     for (name, id) in sampleIDs {
                         await workspace.revealRecord(id)
                         try await render(RecordWorkspaceView(workspace: workspace, language: language, copySelection: { _ in .copied }),
