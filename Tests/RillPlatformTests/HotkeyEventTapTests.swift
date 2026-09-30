@@ -4,6 +4,40 @@ import XCTest
 import Testing
 @testable import RillPlatform
 
+struct HotkeyGestureStateTests {
+    @Test func observedFunctionKeyReleaseOverridesStaleSystemFlags() {
+        let tap = HotkeyEventTap(
+            physicalKeyStateProvider: { _ in true },
+            pushToTalkGestureStateProvider: { _ in true }
+        )
+        _ = tap.testingHandlePushToTalk(
+            type: .flagsChanged, keyCode: 63, flags: [.maskSecondaryFn]
+        )
+        #expect(tap.isPushToTalkGestureActive(.fnHold))
+
+        #expect(
+            tap.testingHandlePushToTalk(type: .flagsChanged, keyCode: 63, flags: [])
+                == .swallow(.pushToTalkReleased(.fnHold))
+        )
+        #expect(!tap.isPushToTalkGestureActive(.fnHold))
+    }
+
+    @Test func observedShortcutReleaseOverridesStaleSystemKeyState() {
+        let tap = HotkeyEventTap(
+            physicalKeyStateProvider: { _ in true },
+            pushToTalkGestureStateProvider: { _ in true }
+        )
+        _ = tap.testingHandlePushToTalk(
+            type: .keyDown, keyCode: 49, flags: [.maskControl, .maskAlternate, .maskShift]
+        )
+        #expect(tap.isPushToTalkGestureActive(.controlOptionShiftSpace))
+
+        _ = tap.testingHandlePushToTalk(type: .keyUp, keyCode: 49, flags: [])
+        #expect(!tap.isPushToTalkGestureActive(.controlOptionShiftSpace))
+        #expect(!tap.isPushToTalkGestureActive(.fnHold))
+    }
+}
+
 final class HotkeyEventTapTests: XCTestCase {
     func testEventTapHealthAcceptsValidEnabledTapWithoutReenabling() {
         var enableCount = 0
