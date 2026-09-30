@@ -107,14 +107,14 @@ public func makeAppModelForTesting(
       @escaping @Sendable () async throws -> [FailedAudioRecoveryReceipt] = {
         throw FailedAudioRecoveryError.storageUnavailable
       },
-    clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void = {
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+    clearCorpusRecordingArchiveAction: @escaping @Sendable () async throws -> Void = {
+      throw CorpusRecordingArchiveError.storageUnavailable
     },
-    refreshBenchmarkRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void = { _ in
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+    refreshCorpusRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void = { _ in
+      throw CorpusRecordingArchiveError.storageUnavailable
     },
-    benchmarkArchiveReader: (any BenchmarkRecordingArchiveReading)? = nil,
-    benchmarkCorpusExporter: (any BenchmarkCorpusExporting)? = nil,
+    corpusArchiveReader: (any CorpusRecordingArchiveReading)? = nil,
+    corpusExporter: (any CorpusExporting)? = nil,
     authorizeWorkflowRunAction:
       @escaping @Sendable (
         WorkflowDefinition
@@ -200,10 +200,10 @@ public func makeAppModelForTesting(
     clearFailedAudioRecoveryAction: clearFailedAudioRecoveryAction,
     refreshFailedAudioRecoveryAction: refreshFailedAudioRecoveryAction,
     loadFailedAudioRecoveryReceiptsAction: loadFailedAudioRecoveryReceiptsAction,
-    clearBenchmarkRecordingArchiveAction: clearBenchmarkRecordingArchiveAction,
-    refreshBenchmarkRecordingArchiveAction: refreshBenchmarkRecordingArchiveAction,
-    benchmarkArchiveReader: benchmarkArchiveReader,
-    benchmarkCorpusExporter: benchmarkCorpusExporter,
+    clearCorpusRecordingArchiveAction: clearCorpusRecordingArchiveAction,
+    refreshCorpusRecordingArchiveAction: refreshCorpusRecordingArchiveAction,
+    corpusArchiveReader: corpusArchiveReader,
+    corpusExporter: corpusExporter,
     authorizeWorkflowRunAction: authorizeWorkflowRunAction,
     explainResolvedWorkflowAction: explainResolvedWorkflowAction,
     writeClipboardTextAction: writeClipboardTextAction,

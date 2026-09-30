@@ -219,7 +219,7 @@ above remain historical evidence, not directly comparable CodSpeed baselines.
 Run the current benchmark suite and the separate clipboard-capture checks with:
 
 ```sh
-just bench
+just validate-performance-workloads
 RILL_CLIPBOARD_LATENCY=1 scripts/swift_locked.sh test \
   --filter 'RecordBuffer|RecordBufferTextOutput|ClipboardCaptureLatency|BufferHotkey|BufferFilePromise'
 just ci

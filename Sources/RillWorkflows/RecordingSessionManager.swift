@@ -1670,10 +1670,7 @@ extension RecordingSessionManager {
         )
       },
       discard: { await self.discard($0, runID: runID) },
-      discardAfterSealFailure: { capture in
-        capture.cancel()
-        await self.discard(capture, runID: runID)
-      },
+      discardAfterSealFailure: { await self.discard($0, runID: runID) },
       afterRejected: {
         if self.activeRunID == runID { self.resetState() }
         self.removeFinishingRecording(runID: runID, operationID: operationID)

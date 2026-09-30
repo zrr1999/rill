@@ -179,7 +179,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
 
     XCTAssertTrue(state.canCopyLastResult)
     XCTAssertEqual(state.trimmedLastResult, "hello menu")
-    XCTAssertNil(state.statusDetail)
+    XCTAssertEqual(state.statusDetail, "Hold Fn to talk")
   }
 
   func testFailureStatusTakesPriorityOverRunningAndStackState() {
@@ -200,7 +200,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     XCTAssertEqual(state.outputModeTitle, "先收进待发区")
   }
 
-  func testStackStatusUsesLocalizedItemCountWhenIdle() {
+  func testIdleStatusKeepsTheRecordingHintRegardlessOfRecordCount() {
     let state = MenuBarOperationPanelState(
       language: .english,
       isRunning: false,
@@ -210,9 +210,9 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
       outputMode: .pasteIntoApp
     )
 
-    XCTAssertEqual(state.statusTitle, "Rill Idle")
-    XCTAssertEqual(state.statusSystemImage, "square.stack.3d.up.fill")
-    XCTAssertEqual(state.statusDetail, "Ready to paste: 2 items")
+    XCTAssertEqual(state.statusTitle, "Rill Ready")
+    XCTAssertEqual(state.statusSystemImage, "checkmark.circle")
+    XCTAssertEqual(state.statusDetail, "Hold Fn to talk")
   }
 
   func testLongRecordingModeTitleReflectsToggleState() {
@@ -227,6 +227,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     )
 
     XCTAssertEqual(state.longRecordingModeTitle, "Press Once to Start/Stop")
+    XCTAssertEqual(state.statusDetail, "Press Fn to start, then press again to stop")
   }
 
   func testRunningStatusExplainsCurrentActivity() {
@@ -257,6 +258,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     )
 
     XCTAssertEqual(state.clipboardCaptureStatusTitle, "剪贴板捕获已关闭")
+    XCTAssertEqual(state.clipboardMenuTitle, "剪贴板 · 关闭")
     XCTAssertEqual(state.clipboardCaptureToggleTitle, "开启剪贴板捕获")
     XCTAssertEqual(state.clipboardCaptureStatusSystemImage, "power.circle.fill")
     XCTAssertFalse(state.canIgnoreNextExternalCopy)
@@ -274,6 +276,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     )
 
     XCTAssertEqual(state.clipboardCaptureStatusTitle, "Next external copy will be ignored")
+    XCTAssertEqual(state.clipboardMenuTitle, "Clipboard · Ignoring Next Copy")
     XCTAssertEqual(state.clipboardCaptureToggleTitle, "Turn Off Clipboard Capture")
     XCTAssertEqual(state.clipboardCaptureStatusSystemImage, "eye.slash.fill")
     XCTAssertFalse(state.canIgnoreNextExternalCopy)
@@ -291,6 +294,7 @@ final class MenuBarOperationPanelStateTests: XCTestCase {
     )
 
     XCTAssertEqual(state.clipboardCaptureStatusTitle, "Turning on clipboard capture…")
+    XCTAssertEqual(state.clipboardMenuTitle, "Clipboard · Starting…")
     XCTAssertTrue(state.canToggleClipboardCapture)
     XCTAssertFalse(state.canIgnoreNextExternalCopy)
   }

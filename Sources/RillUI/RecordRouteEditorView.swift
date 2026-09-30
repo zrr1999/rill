@@ -226,7 +226,9 @@ struct RecordRouteEditorView: View {
     }
 
     private func emptyRoutes(_ message: String) -> some View {
-        RillEmptyState(title: message, symbol: .point3ConnectedTrianglepathDotted)
+        Text(message)
+            .foregroundStyle(.secondary)
+            .rillCard(.subdued, cornerRadius: RillRadius.row, padding: RillSpacing.panel)
     }
 
     private func routeCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {

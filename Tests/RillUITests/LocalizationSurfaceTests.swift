@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import XCTest
 
+@testable import RillCore
 @testable import RillUI
 
 func containsHan(_ text: String) -> Bool {
@@ -37,6 +38,15 @@ final class LocalizationSurfaceTests: XCTestCase {
     assertEnglishHasNoHan(L10n.inputMethodSuggestionDetail(count: 2, applications: "Notes", language: .english))
   }
 
+  func testSurfaceTableCoversEveryKeyWithoutLiteralEscapes() {
+    for key in SurfaceText.allCases {
+      XCTAssertNotEqual(L10n.surface(key, language: .simplifiedChinese), String(describing: key))
+      for language in AppLanguage.allCases {
+        XCTAssertFalse(L10n.surface(key, language: language).contains("\\"), "\(key)")
+      }
+    }
+  }
+
   private func assertEnglishHasNoHan(_ english: String, file: StaticString = #filePath, line: UInt = #line) {
     XCTAssertFalse(containsHan(english), english, file: file, line: line)
   }
@@ -44,7 +54,7 @@ final class LocalizationSurfaceTests: XCTestCase {
 
 @MainActor
 final class EnglishSurfaceAccessibilityTests: XCTestCase {
-  func testEnglishSettingsAndDraftSummaryExposeNoHan() async {
+  func testEnglishSettingsExposeNoHan() async {
     let model = makeHarness().model
     model.applyLanguage(.english)
     model.presentSettings()

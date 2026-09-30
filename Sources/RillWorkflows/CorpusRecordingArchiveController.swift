@@ -2,14 +2,14 @@ import Foundation
 import RillCore
 
 /// Owns the opt-in policy separately from encrypted archive mechanics.
-public actor BenchmarkRecordingArchiveController {
-  private let store: any BenchmarkRecordingArchiveStore
+public actor CorpusRecordingArchiveController {
+  private let store: any CorpusRecordingArchiveStore
   private let diagnostics: DiagnosticsRecorder?
   private var isEnabled = false
   private var policyGeneration: UInt64 = 0
 
   public init(
-    store: any BenchmarkRecordingArchiveStore,
+    store: any CorpusRecordingArchiveStore,
     diagnostics: DiagnosticsRecorder? = nil
   ) {
     self.store = store
@@ -27,10 +27,10 @@ public actor BenchmarkRecordingArchiveController {
     runID: UUID,
     workflowID: UUID,
     trigger: WorkflowRunTriggerKind?,
-    outcome: BenchmarkRecordingOutcome,
+    outcome: CorpusRecordingOutcome,
     metadata: [String: String],
     now: Date = Date()
-  ) async throws -> BenchmarkRecordingReceipt? {
+  ) async throws -> CorpusRecordingReceipt? {
     guard isEnabled else { return nil }
     let generation = policyGeneration
     let receipt = try await store.preserve(
@@ -51,8 +51,8 @@ public actor BenchmarkRecordingArchiveController {
         runID: runID,
         subsystem: .session,
         level: .info,
-        event: .benchmarkRecordingPreserved,
-        message: "Encrypted audio was retained for the private ASR benchmark.",
+        event: .corpusRecordingPreserved,
+        message: "Encrypted audio was retained for the private evaluation corpus.",
         metadata: [
           "outcome": outcome.rawValue,
           "plaintextByteCount": String(receipt.plaintextByteCount),
