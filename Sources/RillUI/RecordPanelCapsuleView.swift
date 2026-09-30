@@ -29,8 +29,7 @@ public struct RecordPanelCapsuleView: View {
   public var body: some View {
     HStack(spacing: 8) {
       HStack(spacing: 10) {
-        Image(systemName: RillSystemSymbol.line3Horizontal.rawValue)
-          .font(.system(size: 10)).rotationEffect(.degrees(90)).foregroundStyle(.secondary)
+        dragGrip
         Image(systemName: RillSystemSymbol.tray.rawValue).font(.system(size: 14)).foregroundStyle(.secondary)
         Text(panelText(.drafts)).font(.system(size: 14, weight: .medium))
         Text("\(buffers.snapshot?.remainingCount ?? 0)")
@@ -59,6 +58,20 @@ public struct RecordPanelCapsuleView: View {
     .frame(width: 260, height: 48)
     .recordPanelGlass(in: Capsule(), interactive: true)
     .accessibilityIdentifier("record-panel.capsule")
+  }
+
+  private var dragGrip: some View {
+    VStack(spacing: 3) {
+      ForEach(0..<3) { _ in
+        HStack(spacing: 3) {
+          Circle().frame(width: 2, height: 2)
+          Circle().frame(width: 2, height: 2)
+        }
+      }
+    }
+    .foregroundStyle(.secondary)
+    .frame(width: 12, height: 16)
+    .accessibilityHidden(true)
   }
 }
 
