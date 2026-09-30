@@ -142,11 +142,11 @@ public struct RecordQuickPanelView: View {
       .padding(RillSpacing.panel)
       HStack(spacing: RillSpacing.row) {
         Picker(
-          language == .simplifiedChinese ? "记录集" : "Collection",
+          L10n.surface(.collection, language: language),
           selection: Binding(
             get: { model.collectionID }, set: { model.setCollection($0) })
         ) {
-          Text(language == .simplifiedChinese ? "全部记录" : "All Records").tag(RecordCollectionID?.none)
+          Text(L10n.surface(.allRecords, language: language)).tag(RecordCollectionID?.none)
           ForEach(model.collections) { collection in
             Text(collection.name).tag(Optional(collection.id))
           }
@@ -234,7 +234,7 @@ public struct RecordQuickPanelView: View {
               }
             }
           } label: {
-            Label(language == .simplifiedChinese ? "加入待发" : "Add to Drafts", systemImage: "text.badge.plus")
+            Label(L10n.surface(.addToDrafts, language: language), systemImage: RillSystemSymbol.textBadgePlus.rawValue)
           }
           .disabled(model.selectedID == nil)
           .accessibilityIdentifier("quick-records.add-to-drafts")

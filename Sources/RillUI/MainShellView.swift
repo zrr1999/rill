@@ -7,7 +7,6 @@ public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
   case workflows
   case records
   case diagnostics
-  case settings
 
   public var id: String { rawValue }
 
@@ -21,7 +20,6 @@ public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
     case .workflows: return .point3ConnectedTrianglepathDotted
     case .records: return .squareStack3dUp
     case .diagnostics: return .stethoscope
-    case .settings: return .gearshape
     }
   }
 
@@ -31,7 +29,6 @@ public enum SidebarSection: String, CaseIterable, Identifiable, Sendable {
     case .workflows: return .sidebarWorkflows
     case .records: return .sidebarRecords
     case .diagnostics: return .sidebarDiagnostics
-    case .settings: return .sidebarSettings
     }
   }
 }
@@ -174,6 +171,7 @@ enum MainShellLayoutMetrics {
 public struct MainShellView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
   @Bindable private var model: AppModel
   @AccessibilityFocusState private var accessibilityFocusedSidebarDestination: SidebarDestination?
   @State private var search = GlobalSearchModel()
@@ -182,6 +180,7 @@ public struct MainShellView: View {
   @State private var globalSearchFocusRequest = 0
   @State private var sidebarFocusRequestGeneration = 0
   @State private var sidebarFocusCoordinator = SidebarFocusCoordinator()
+  @FocusState private var settingsBackButtonFocused: Bool
   private let sidebarFocusTurnWaiter: @MainActor @Sendable () async -> Void
   static let leadingSections: [SidebarSection] = [.records, .stream, .workflows]
 
@@ -202,28 +201,12 @@ public struct MainShellView: View {
 
   public var body: some View {
     NavigationSplitView {
-      List(selection: sidebarSelection) {
-        Section {
-          ForEach(Self.leadingSections) { section in
-            sidebarSectionRow(section)
-          }
+      Group {
+        if model.isShowingSettings {
+          settingsSidebar
+        } else {
+          contentSidebar
         }
-
-        Section(L10n.text(.recordCollections, language: model.settings.language)) {
-          ForEach(model.recordWorkspace.snapshot.collections) { collection in
-            sidebarCollectionRow(collection)
-              .tag(SidebarDestination.recordCollection(collection.id))
-              .accessibilityFocused(
-                $accessibilityFocusedSidebarDestination,
-                equals: .recordCollection(collection.id)
-              )
-          }
-        }
-
-      }
-      .background(SidebarFocusAnchor(coordinator: sidebarFocusCoordinator))
-      .safeAreaInset(edge: .bottom, spacing: 0) {
-        sidebarSettingsFooter
       }
       .allowsHitTesting(
         MainShellInteractionPolicy.allowsSidebarInteraction(
@@ -235,12 +218,11 @@ public struct MainShellView: View {
           isGlobalSearchPresented: isGlobalSearchPresented
         )
       )
-      .navigationSplitViewColumnWidth(
-        min: MainShellLayoutMetrics.sidebarColumnMinWidth,
-        ideal: MainShellLayoutMetrics.sidebarColumnIdealWidth,
-        max: MainShellLayoutMetrics.sidebarColumnMaxWidth
-      )
       .navigationTitle(L10n.text(.appTitle, language: model.settings.language))
+      .navigationSubtitle(
+        model.isShowingSettings
+          ? model.selectedSettingsPane.title(language: model.settings.language) : ""
+      )
     } detail: {
       ZStack {
         VStack(spacing: 0) {
@@ -312,7 +294,7 @@ public struct MainShellView: View {
       if model.isApplicationShuttingDown {
         ZStack {
           Rectangle()
-            .fill(.ultraThinMaterial)
+            .fill(reduceTransparency ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor)) : AnyShapeStyle(.ultraThinMaterial))
 
           VStack(spacing: MainShellLayoutMetrics.shutdownOverlaySpacing) {
             ProgressView()
@@ -358,7 +340,7 @@ public struct MainShellView: View {
         .frame(maxHeight: 360)
         HStack {
           Spacer()
-          Button(model.settings.language == .simplifiedChinese ? "稍后设置" : "Set up later") {
+          Button(L10n.surface(.setUpLater, language: model.settings.language)) {
             model.voiceSetupPresentation = .dismissed
           }.keyboardShortcut(.cancelAction)
         }
@@ -367,9 +349,30 @@ public struct MainShellView: View {
       .fixedSize(horizontal: false, vertical: true)
       .accessibilityIdentifier("voice-setup.initial")
     }
-    .onChange(of: model.settingsPresentationGeneration) { _, _ in
-      if model.voiceSetupPresentation == .presented { model.voiceSetupPresentation = .dismissed }
+    .onChange(of: model.isShowingSettings) { _, isShowing in
+      if isShowing {
+        if model.voiceSetupPresentation == .presented { model.voiceSetupPresentation = .dismissed }
+        if model.settingsNavigationRequest == nil { settingsBackButtonFocused = true }
+      }
     }
+    .onChange(of: model.settingsSidebarFocusRestoreGeneration) { _, generation in
+      guard generation > 0 else { return }
+      let destination = currentSidebarDestination
+      guard
+        MainShellInteractionPolicy.shouldRestoreSidebarFocus(
+          isGlobalSearchPresented: isGlobalSearchPresented,
+          detailOwnsFocus: typedDetailOwnsFocus(for: destination)
+        )
+      else { return }
+      sidebarFocusRequestGeneration &+= 1
+      scheduleOnMainRunLoopInteractiveModes {
+        _ = sidebarFocusCoordinator.claimSidebarFocusForRoute(
+          origin: .programmatic,
+          destination: destination
+        )
+      }
+    }
+    .background(SettingsWindowCloseObserver { model.discardComparisonReturn() })
     .onChange(of: model.voiceSetupReadiness, initial: true) { _, _ in
       model.considerInitialVoiceSetup()
     }
@@ -379,7 +382,7 @@ public struct MainShellView: View {
           Button {
             model.voiceSetupPresentation = .presented
           } label: {
-            Label(model.settings.language == .simplifiedChinese ? "完成准备" : "Finish Setup", systemImage: "checklist")
+            Label(L10n.surface(.finishSetup, language: model.settings.language), systemImage: RillSystemSymbol.checklist.rawValue)
           }
           .accessibilityIdentifier("voice-setup.resume")
         }
@@ -439,18 +442,100 @@ public struct MainShellView: View {
 
 extension MainShellView {
   @ViewBuilder
+  private var contentSidebar: some View {
+    List(selection: sidebarSelection) {
+      Section {
+        ForEach(Self.leadingSections) { section in
+          sidebarSectionRow(section)
+        }
+      }
+
+      Section(L10n.text(.recordCollections, language: model.settings.language)) {
+        ForEach(model.recordWorkspace.snapshot.collections) { collection in
+          sidebarCollectionRow(collection)
+            .tag(SidebarDestination.recordCollection(collection.id))
+            .accessibilityFocused(
+              $accessibilityFocusedSidebarDestination,
+              equals: .recordCollection(collection.id)
+            )
+        }
+      }
+    }
+    .background(SidebarFocusAnchor(coordinator: sidebarFocusCoordinator))
+    .safeAreaInset(edge: .bottom, spacing: 0) {
+      sidebarSettingsFooter
+    }
+    .navigationSplitViewColumnWidth(
+      min: MainShellLayoutMetrics.sidebarColumnMinWidth,
+      ideal: MainShellLayoutMetrics.sidebarColumnIdealWidth,
+      max: MainShellLayoutMetrics.sidebarColumnMaxWidth
+    )
+  }
+
+  private var settingsSidebar: some View {
+    List(selection: settingsPaneSelection) {
+      Section {
+        Button {
+          model.dismissSettings()
+        } label: {
+          Label(
+            L10n.text(.settingsBack, language: model.settings.language),
+            systemImage: RillSystemSymbol.chevronLeft.rawValue
+          )
+        }
+        .buttonStyle(.plain)
+        .focused($settingsBackButtonFocused)
+        .keyboardShortcut("[", modifiers: .command)
+        .disabled(
+          !MainShellInteractionPolicy.allowsSidebarInteraction(
+            isGlobalSearchPresented: isGlobalSearchPresented
+          )
+        )
+        .accessibilityIdentifier("settings.back")
+      }
+      Section {
+        ForEach(SettingsPane.allCases) { pane in
+          Label {
+            Text(pane.title(language: model.settings.language))
+              .lineLimit(2)
+              .fixedSize(horizontal: false, vertical: true)
+          } icon: {
+            Image(systemName: pane.symbolName)
+          }
+          .tag(pane)
+          .accessibilityIdentifier("settings.pane.\(pane.rawValue)")
+        }
+      }
+    }
+    .navigationSplitViewColumnWidth(min: 160, ideal: 176, max: 220)
+  }
+
+  private var settingsPaneSelection: Binding<SettingsPane?> {
+    Binding(
+      get: { model.selectedSettingsPane },
+      set: { pane in
+        if let pane { model.selectedSettingsPane = pane }
+      }
+    )
+  }
+
+  @ViewBuilder
   private var detailContent: some View {
-    switch model.selectedSidebarSection {
-    case .stream:
-      StreamView(model: model)
-    case .workflows:
-      WorkflowsView(model: model)
-    case .records:
-      RecordWorkspaceView(workspace: model.recordWorkspace, language: model.settings.language, copySelection: model.copyRecord)
-    case .diagnostics:
-      DiagnosticsView(model: model)
-    case .settings:
-      SettingsView(model: model)
+    if model.isShowingSettings {
+      SettingsDetailView(model: model)
+    } else {
+      switch model.selectedSidebarSection {
+      case .stream:
+        StreamView(model: model)
+      case .workflows:
+        WorkflowsView(model: model)
+      case .records:
+        RecordWorkspaceView(
+          workspace: model.recordWorkspace, language: model.settings.language,
+          copySelection: model.copyRecord)
+      case .diagnostics:
+        DiagnosticsView(model: model)
+      }
     }
   }
 
@@ -507,13 +592,15 @@ extension MainShellView {
   private var sidebarFocusTaskIdentity: SidebarFocusTaskIdentity {
     let destination = currentSidebarDestination
     let typedDetailRequestID: UUID? =
-      switch destination {
-      case .section(.settings):
+      if model.isShowingSettings {
         model.settingsNavigationRequest?.id
-      case .section(.stream):
-        model.history.historyNavigationRequest?.id
-      case .section, .recordCollection, .workflow:
-        nil
+      } else {
+        switch destination {
+        case .section(.stream):
+          model.history.historyNavigationRequest?.id
+        case .section, .recordCollection, .workflow:
+          nil
+        }
       }
     return SidebarFocusTaskIdentity(
       destination: destination,
@@ -693,9 +780,8 @@ extension MainShellView {
   }
 
   private func typedDetailOwnsFocus(for destination: SidebarDestination) -> Bool {
+    if model.isShowingSettings { return true }
     switch destination {
-    case .section(.settings):
-      return model.settingsNavigationRequest != nil
     case .section(.records):
       return model.recordWorkspace.revealedRecordID != nil
     case .section(.stream):
@@ -728,7 +814,7 @@ extension MainShellView {
   }
 
   private func sidebarCollectionRow(_ collection: RecordCollection) -> some View {
-    HStack(spacing: 10) {
+    HStack(spacing: RillSpacing.dense) {
       Label(collection.name, systemImage: RillSystemSymbol.squareStack3dUp.rawValue)
       Spacer(minLength: 8)
       Text("\(collectionRecordCount(collection.id))")
@@ -766,7 +852,7 @@ extension MainShellView {
     VStack(spacing: 0) {
       Divider()
       Button(action: selectSettingsFromSidebarFooter) {
-        Label(L10n.text(.sidebarSettings, language: model.settings.language), systemImage: SidebarSection.settings.symbolName)
+        Label(L10n.text(.sidebarSettings, language: model.settings.language), systemImage: RillSystemSymbol.gearshape.rawValue)
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.horizontal, MainShellLayoutMetrics.sidebarFooterRowHorizontalPadding)
           .padding(.vertical, MainShellLayoutMetrics.sidebarFooterRowVerticalPadding)

@@ -291,7 +291,7 @@ public struct HistoryTimelineView: View {
       }
 
       if model.history.runHistoryPaginationFailed {
-        HStack(spacing: 10) {
+        HStack(spacing: RillSpacing.dense) {
           Label(
             L10n.text(.historyPaginationFailed, language: model.settings.language),
             systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue
@@ -534,22 +534,15 @@ public struct HistoryTimelineView: View {
   }
 
   private var emptyState: some View {
-    VStack(spacing: 12) {
-      Image(systemName: RillSystemSymbol.clockArrowCirclepath.rawValue)
-        .font(.largeTitle)
-        .foregroundStyle(.tertiary)
-        .accessibilityHidden(true)
-      Text(
-        L10n.text(
-          model.history.usesPagedRunHistory && model.history.canLoadNewerRunHistoryPage
-            ? .historyPageEmpty
-            : emptyKey,
-          language: model.settings.language
-        )
-      )
-      .font(.title3)
-      .foregroundStyle(.secondary)
-    }
+    RillEmptyState(
+      title: L10n.text(
+        model.history.usesPagedRunHistory && model.history.canLoadNewerRunHistoryPage
+          ? .historyPageEmpty
+          : emptyKey,
+        language: model.settings.language
+      ),
+      symbol: .clockArrowCirclepath
+    )
     .frame(maxWidth: .infinity, minHeight: Self.stateMinHeight)
   }
 
@@ -988,7 +981,7 @@ public struct HistoryTimelineView: View {
         }
       }
     }
-    .padding(10)
+    .padding(RillSpacing.dense)
     .background(.background.opacity(0.45), in: RoundedRectangle(cornerRadius: RillRadius.row))
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("history.llm-trace")
@@ -1064,7 +1057,7 @@ public struct HistoryTimelineView: View {
     index: Int
   ) -> String {
     if trace.inputProvenance == .transcriptOnly {
-      return model.settings.language == .simplifiedChinese ? "发送的语音正文（参考另列，原图不保存）" : "Speech text sent (references listed separately; image not retained)"
+      return L10n.surface(.speechTextSentReferencesListed, language: model.settings.language)
     }
     if trace.inputProvenance == .legacyRecognition {
       return L10n.historyTimelineText(.recognizedInputLegacy, language: model.settings.language)

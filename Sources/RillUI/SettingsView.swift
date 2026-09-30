@@ -340,7 +340,7 @@ extension SettingsView {
 
       Divider()
 
-      Text(model.settings.language == .simplifiedChinese ? "输出下一项" : "Output Next").font(.headline)
+      Text(L10n.surface(.outputNext, language: model.settings.language)).font(.headline)
       HotkeyRecorderView(
         binding: model.settings.bufferOutputHotkeyBinding,
         language: model.settings.language,
@@ -349,16 +349,16 @@ extension SettingsView {
         commitRecordPanelShortcutRecording: { model.commitRecordPanelShortcutRecording($0, keyCode: $1) },
         onRecord: { model.setBufferOutputHotkeyShortcut($0) },
         onReset: { model.setBufferOutputHotkeyShortcut(.outputNext) },
-        commandLabel: model.settings.language == .simplifiedChinese ? "输出下一项快捷键" : "Output Next shortcut",
+        commandLabel: L10n.surface(.outputNextShortcut, language: model.settings.language),
         identifier: "settings.output-next-hotkey"
       )
       .disabled(model.settings.hasUnavailableScalarSettings(in: .systemClipboard))
       if model.settings.bufferOutputHotkeyBinding == model.settings.recordPanelHotkeyBinding {
-        Text(model.settings.language == .simplifiedChinese ? "快捷键冲突：请修改其中一个绑定。" : "Shortcut conflict: change one binding.")
+        Text(L10n.surface(.shortcutConflictChangeOneBinding, language: model.settings.language))
           .foregroundStyle(.red)
       }
       Divider()
-      Text(model.settings.language == .simplifiedChinese ? "剪贴板面板" : "Clipboard panel").font(.headline)
+      Text(L10n.surface(.clipboardPanel, language: model.settings.language)).font(.headline)
       HotkeyRecorderView(
         binding: model.settings.recordPanelHotkeyBinding,
         language: model.settings.language,
@@ -873,7 +873,7 @@ struct SettingsDisclosureStyle: DisclosureGroupStyle {
   func makeBody(configuration: Configuration) -> some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 8) {
-        Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+        Image(systemName: configuration.isExpanded ? RillSystemSymbol.chevronDown.rawValue : RillSystemSymbol.chevronRight.rawValue)
           .font(.caption.weight(.semibold))
           .frame(width: 12)
           .accessibilityHidden(true)

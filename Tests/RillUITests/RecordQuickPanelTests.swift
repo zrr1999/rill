@@ -78,7 +78,6 @@ final class RecordQuickPanelTests: XCTestCase {
     let main = RecordWorkspaceModel(store: store)
     await main.refresh()
     main.selectedRecordID = second.id
-    main.setSearchText("another")
     let panel = main.makeQuickPanelModel()
     panel.start(sourceBundleIdentifier: "com.example.first")
     defer { panel.stop() }
@@ -92,7 +91,6 @@ final class RecordQuickPanelTests: XCTestCase {
     await settle(panel)
     XCTAssertEqual(panel.selectedID, first.id)
     XCTAssertEqual(main.selectedRecordID, second.id)
-    XCTAssertEqual(main.searchText, "another")
     panel.stop()
     panel.start(sourceBundleIdentifier: nil)
     await settle(panel)

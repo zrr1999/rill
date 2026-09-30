@@ -13,7 +13,7 @@ struct InputMethodSettingsView: View {
   }
 
   var body: some View {
-    Section("输入法") {
+    Section(L10n.inputMethod(.sectionTitle, language: language)) {
       Text(L10n.inputMethod(.description, language: language))
         .font(.caption).foregroundStyle(.secondary)
       Text(L10n.inputMethodState(input.installationState, language: language))
@@ -55,12 +55,13 @@ struct InputMethodSettingsView: View {
         }
       }
       Toggle(
-        "从打字生成词汇建议", isOn: Binding(get: { input.state.enabled }, set: { input.setEnabled($0) })
+        L10n.inputMethod(.learnFromTyping, language: language),
+        isOn: Binding(get: { input.state.enabled }, set: { input.setEnabled($0) })
       )
       .disabled(!input.isReady)
-      Text("仅采集下方选定的应用。在本机提取词汇，确认后才供语音识别使用；未确认建议保留 30 天。")
+      Text(L10n.inputMethod(.learnNotice, language: language))
         .font(.caption).foregroundStyle(.secondary)
-      Button("选择允许学习的应用…") {
+      Button(L10n.inputMethod(.chooseApps, language: language)) {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
@@ -78,7 +79,7 @@ struct InputMethodSettingsView: View {
         HStack {
           Text(applicationName(app))
           Spacer()
-          Button("移除") { input.setApplication(app, allowed: false) }
+          Button(L10n.inputMethod(.remove, language: language)) { input.setApplication(app, allowed: false) }
         }
       }
       ForEach(
@@ -88,23 +89,27 @@ struct InputMethodSettingsView: View {
           VStack(alignment: .leading) {
             Text(suggestion.phrase)
             Text(
-              "\(suggestion.count) 次 · \(suggestion.applications.sorted().map(applicationName).joined(separator: ", "))"
+              L10n.inputMethodSuggestionDetail(
+                count: suggestion.count,
+                applications: suggestion.applications.sorted().map(applicationName).joined(separator: ", "),
+                language: language
+              )
             )
             .font(.caption).foregroundStyle(.secondary)
           }
           Spacer()
           if suggestion.status == .pending {
-            Button("确认") { Task { await input.confirm(suggestion) } }
-            Button("忽略") { Task { await input.ignore(suggestion.id) } }
+            Button(L10n.inputMethod(.confirm, language: language)) { Task { await input.confirm(suggestion) } }
+            Button(L10n.inputMethod(.ignore, language: language)) { Task { await input.ignore(suggestion.id) } }
           } else {
-            Text("已确认").foregroundStyle(.secondary)
+            Text(L10n.inputMethod(.confirmed, language: language)).foregroundStyle(.secondary)
           }
-          Button(suggestion.ownsConfirmedRule ? "撤销词汇" : "删除建议") {
+          Button(L10n.inputMethod(suggestion.ownsConfirmedRule ? .revokeVocabulary : .deleteSuggestion, language: language)) {
             Task { await input.remove(suggestion) }
           }
         }
       }
-      Button("清空未确认建议") { Task { await input.clearPending() } }.disabled(!input.isReady)
+      Button(L10n.inputMethod(.clearPending, language: language)) { Task { await input.clearPending() } }.disabled(!input.isReady)
     }
     .onAppear { input.refreshInstallationState() }
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in

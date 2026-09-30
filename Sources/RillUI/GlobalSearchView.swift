@@ -26,7 +26,7 @@ struct GlobalSearchResultsView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      HStack(spacing: 10) {
+      HStack(spacing: RillSpacing.dense) {
         Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
           .foregroundStyle(.secondary)
           .accessibilityHidden(true)
@@ -191,7 +191,7 @@ struct GlobalSearchResultsView: View {
     _ category: GlobalSearchResultCategory,
     results: [GlobalSearchResult]
   ) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: RillSpacing.dense) {
       Text(category.title(language: language))
         .font(.headline)
         .foregroundStyle(.secondary)

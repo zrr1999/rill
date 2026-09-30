@@ -263,7 +263,7 @@ enum GlobalSearchIndex {
   }
 
   private static func pageResults(language: AppLanguage) -> [GlobalSearchResult] {
-    SidebarSection.allCases.filter { $0 != .settings && $0 != .diagnostics }.map { section in
+    SidebarSection.allCases.filter { $0 != .diagnostics }.map { section in
       let title = section == .records ? L10n.workspace(.allRecords, language: language) : L10n.text(section.titleKey, language: language)
       return GlobalSearchResult(
         destination: .sidebar(section),

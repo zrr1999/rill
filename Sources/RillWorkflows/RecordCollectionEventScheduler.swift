@@ -47,7 +47,7 @@ public actor RecordCollectionEventScheduler: RecordCollectionEventSink {
   private var rememberedEventIDs: Set<UUID> = []
   private var rememberedEventOrder: [UUID] = []
   private var capacityWaiters: [CheckedContinuation<Void, Never>] = []
-  private var shutdownWaiters: [CheckedContinuation<Void, Never>] = []
+  private var shutdownWaiters = ShutdownWaiters()
 
   public init(
     receiptRecorder: WorkflowRunReceiptRecorder?,
@@ -87,7 +87,7 @@ public actor RecordCollectionEventScheduler: RecordCollectionEventSink {
     case .terminated:
       return
     case .shuttingDown:
-      await withCheckedContinuation { shutdownWaiters.append($0) }
+      await withCheckedContinuation { shutdownWaiters.add($0) }
       return
     case .accepting:
       lifecycle = .shuttingDown
@@ -97,9 +97,7 @@ public actor RecordCollectionEventScheduler: RecordCollectionEventSink {
     blockedSubmitters.forEach { $0.resume() }
     if let drainTask { await drainTask.value }
     lifecycle = .terminated
-    let waiters = shutdownWaiters
-    shutdownWaiters.removeAll()
-    waiters.forEach { $0.resume() }
+    shutdownWaiters.resumeAll()
   }
 
   func waitUntilIdleForTesting() async {

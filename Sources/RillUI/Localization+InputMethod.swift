@@ -1,9 +1,10 @@
 import RillCore
 import RillInputMethodContracts
 
-enum InputMethodText {
+enum InputMethodText: CaseIterable {
   case description, install, repair, installing, importProfile, importNotice, importPanel
-  case activationHelp, openSettings
+  case activationHelp, openSettings, sectionTitle, learnFromTyping, learnNotice, chooseApps
+  case remove, confirm, ignore, confirmed, revokeVocabulary, deleteSuggestion, clearPending
 }
 
 extension L10n {
@@ -34,6 +35,38 @@ extension L10n {
       "In System Settings → Keyboard → Text Input → Edit, click + and add Rill. If Rill is missing, log out and back in, then add it. No reinstallation is needed."
     case (.openSettings, .simplifiedChinese): "打开系统输入法设置"
     case (.openSettings, .english): "Open System Input Source Settings"
+    case (.sectionTitle, .simplifiedChinese): "输入法"
+    case (.sectionTitle, .english): "Input Method"
+    case (.learnFromTyping, .simplifiedChinese): "从打字生成词汇建议"
+    case (.learnFromTyping, .english): "Suggest vocabulary from typing"
+    case (.learnNotice, .simplifiedChinese): "仅采集下方选定的应用。在本机提取词汇，确认后才供语音识别使用；未确认建议保留 30 天。"
+    case (.learnNotice, .english):
+      "Only the apps you select below are collected. Vocabulary is extracted on this Mac and used for speech recognition after you confirm it. Unconfirmed suggestions are kept for 30 days."
+    case (.chooseApps, .simplifiedChinese): "选择允许学习的应用…"
+    case (.chooseApps, .english): "Choose Apps Allowed to Learn…"
+    case (.remove, .simplifiedChinese): "移除"
+    case (.remove, .english): "Remove"
+    case (.confirm, .simplifiedChinese): "确认"
+    case (.confirm, .english): "Confirm"
+    case (.ignore, .simplifiedChinese): "忽略"
+    case (.ignore, .english): "Ignore"
+    case (.confirmed, .simplifiedChinese): "已确认"
+    case (.confirmed, .english): "Confirmed"
+    case (.revokeVocabulary, .simplifiedChinese): "撤销词汇"
+    case (.revokeVocabulary, .english): "Revoke Vocabulary"
+    case (.deleteSuggestion, .simplifiedChinese): "删除建议"
+    case (.deleteSuggestion, .english): "Delete Suggestion"
+    case (.clearPending, .simplifiedChinese): "清空未确认建议"
+    case (.clearPending, .english): "Clear Unconfirmed Suggestions"
+    }
+  }
+
+  public static func inputMethodSuggestionDetail(
+    count: Int, applications: String, language: AppLanguage
+  ) -> String {
+    switch language {
+    case .simplifiedChinese: "\(count) 次 · \(applications)"
+    case .english: "\(count) times · \(applications)"
     }
   }
 

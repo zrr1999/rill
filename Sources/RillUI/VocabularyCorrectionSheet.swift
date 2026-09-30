@@ -72,7 +72,7 @@ public struct VocabularyCorrectionSheet: View {
           .font(.headline)
         Text(draft.originalText)
           .textSelection(.enabled)
-          .rillCard(.regular, cornerRadius: RillRadius.badge, padding: 10)
+          .rillCard(.regular, cornerRadius: RillRadius.badge, padding: RillSpacing.dense)
       }
 
       VStack(alignment: .leading, spacing: 6) {
@@ -97,7 +97,7 @@ public struct VocabularyCorrectionSheet: View {
 
   @ViewBuilder
   private var suggestionSection: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: RillSpacing.dense) {
       Text(L10n.string(.vocabularyCorrectionSuggestions, language: model.settings.language))
         .font(.headline)
 
@@ -130,7 +130,7 @@ public struct VocabularyCorrectionSheet: View {
         compatibleCollections(for: option.scope.knownConstraints).first?.id
       saveIssue = nil
     } label: {
-      HStack(alignment: .top, spacing: 10) {
+      HStack(alignment: .top, spacing: RillSpacing.dense) {
         Image(
           systemName: draft.selectedOptionID == option.id
             ? RillSystemSymbol.largecircleFillCircle.rawValue
@@ -149,7 +149,7 @@ public struct VocabularyCorrectionSheet: View {
         Spacer(minLength: 0)
       }
       .contentShape(Rectangle())
-      .padding(10)
+      .padding(RillSpacing.dense)
       .rillSelection(draft.selectedOptionID == option.id, cornerRadius: RillRadius.row)
     }
     .buttonStyle(RillCardButtonStyle(cornerRadius: RillRadius.row))
@@ -158,7 +158,7 @@ public struct VocabularyCorrectionSheet: View {
   }
 
   private var scopeSection: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: RillSpacing.dense) {
       Text(L10n.string(.vocabularyCorrectionScopeTitle, language: model.settings.language))
         .font(.headline)
       Text(L10n.string(.vocabularyCorrectionScopeDescription, language: model.settings.language))

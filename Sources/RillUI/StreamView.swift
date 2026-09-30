@@ -111,7 +111,7 @@ public struct StreamView: View {
 
   private func voiceFailureBanner(message: String) -> some View {
     VStack(alignment: .leading, spacing: 12) {
-      HStack(alignment: .firstTextBaseline, spacing: 10) {
+      HStack(alignment: .firstTextBaseline, spacing: RillSpacing.dense) {
         Label(
           L10n.string(.voiceFailureTitle, language: model.settings.language),
           systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue

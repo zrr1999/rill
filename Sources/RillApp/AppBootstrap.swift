@@ -2923,17 +2923,18 @@ private enum CloudPrivacyConfirmation {
     processingDestinations: [PrivacyProcessingDestination]
   ) -> Response {
     let usesChinese = Locale.current.identifier.lowercased().hasPrefix("zh")
+    let language: AppLanguage = usesChinese ? .simplifiedChinese : .english
     let alert = NSAlert()
     alert.alertStyle = .warning
-    alert.messageText = usesChinese ? "允许云端处理？" : "Allow cloud processing?"
+    alert.messageText = L10n.cloudPrivacyTitle(language: language)
     alert.informativeText = CloudPrivacyConfirmationCopy.informativeText(
       workflowName: workflow.name,
       processingDestinations: processingDestinations,
       usesChinese: usesChinese
     )
-    alert.addButton(withTitle: usesChinese ? "允许并记住" : "Allow and Remember")
-    alert.addButton(withTitle: usesChinese ? "仅这一次" : "Allow Once")
-    alert.addButton(withTitle: usesChinese ? "取消" : "Cancel")
+    alert.addButton(withTitle: L10n.cloudPrivacyAllowAndRemember(language: language))
+    alert.addButton(withTitle: L10n.cloudPrivacyAllowOnce(language: language))
+    alert.addButton(withTitle: L10n.cloudPrivacyCancel(language: language))
     return switch alert.runModal() {
     case .alertFirstButtonReturn: .alwaysAllow
     case .alertSecondButtonReturn: .allowOnce
@@ -2950,29 +2951,10 @@ enum CloudPrivacyConfirmationCopy {
   ) -> String {
     let sendsSpeech = processingDestinations.contains(.cloudSpeech)
     let sendsText = processingDestinations.contains(.cloudText)
-    let processingCopy =
-      switch (usesChinese, sendsSpeech, sendsText) {
-      case (false, true, false):
-        "The workflow “\(workflowName)” will stream microphone audio and any matching cloud-recognition terms to its cloud speech service while recording. Rill continuously checks the current focus and privacy settings and stops the run if they become restricted. Nothing from this run has left this Mac yet."
-      case (true, true, false):
-        "工作流“\(workflowName)”会在录音期间，将麦克风音频以及范围匹配的云端识别术语流式发送到云端语音服务。Rill 会持续检查当前焦点与隐私设置；一旦变为受限状态，就会停止本次运行。本次内容尚未离开本机。"
-      case (false, false, true):
-        "The workflow “\(workflowName)” will send its final transcript to the configured cloud text service for rewriting. Nothing from this run has left this Mac yet."
-      case (true, false, true):
-        "工作流“\(workflowName)”会将最终转写发送到已配置的云端文本服务进行润色。本次内容尚未离开本机。"
-      case (false, true, true):
-        "The workflow “\(workflowName)” will stream microphone audio and matching cloud-recognition terms while recording, then send its final transcript to the configured cloud text service for rewriting. Rill continuously checks the current focus and privacy settings and stops the run if they become restricted. Nothing from this run has left this Mac yet."
-      case (true, true, true):
-        "工作流“\(workflowName)”会在录音期间流式发送麦克风音频和范围匹配的云端识别术语，随后将最终转写发送到已配置的云端文本服务进行润色。Rill 会持续检查当前焦点与隐私设置；一旦变为受限状态，就会停止本次运行。本次内容尚未离开本机。"
-      case (false, false, false):
-        "The workflow “\(workflowName)” requested cloud processing, but its cloud destination could not be classified. Cancel unless this is expected. Nothing from this run has left this Mac yet."
-      case (true, false, false):
-        "工作流“\(workflowName)”请求了云端处理，但无法对云端目的地进行分类。如非预期，请取消。本次内容尚未离开本机。"
-      }
-    let authorizationCopy =
-      usesChinese
-      ? "选择“允许并记住”后，此工作流及云端服务配置不变时不再询问，重启 Rill 后仍然有效。可随时在“设置 > 隐私”中撤销，或选择“仅这一次”。"
-      : "Choose “Allow and Remember” to skip this prompt for this workflow and cloud-service configuration, including after restarting Rill. Revoke it anytime in Settings > Privacy, or choose “Allow Once”."
+    let language: AppLanguage = usesChinese ? .simplifiedChinese : .english
+    let processingCopy = L10n.cloudPrivacyProcessing(
+      workflowName: workflowName, sendsSpeech: sendsSpeech, sendsText: sendsText, language: language)
+    let authorizationCopy = L10n.cloudPrivacyAuthorization(language: language)
     return processingCopy + "\n\n" + authorizationCopy
   }
 }

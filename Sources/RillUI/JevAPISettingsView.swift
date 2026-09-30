@@ -10,15 +10,15 @@ struct JevAPISettingsView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: RillSpacing.row) {
-      Text("Jev · TypeSafe")
+      Text(text(.brandTitle))
         .font(.subheadline.weight(.medium))
       Text(text(.settingsDescription))
         .font(.caption).foregroundStyle(.secondary)
-      LabeledContent("API Key") {
-        SecureField("TypeSafe API Key", text: $apiKey)
+      LabeledContent(text(.apiKey)) {
+        SecureField(text(.apiKeyPlaceholder), text: $apiKey)
           .textFieldStyle(.roundedBorder)
           .labelsHidden()
-          .accessibilityLabel("TypeSafe API Key")
+          .accessibilityLabel(text(.apiKeyPlaceholder))
           .focused(focusedItem, equals: .jevCredential)
           .accessibilityFocused(accessibilityFocusedItem, equals: .jevCredential)
           .accessibilityIdentifier("settings.jev.api-key")

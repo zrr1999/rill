@@ -1057,7 +1057,6 @@ private struct FloatingRecordView: View {
   let onConfigureJev: () -> Void
   let onClose: () -> Void
   @Environment(\.openWindow) private var openWindow
-  @Environment(\.openSettings) private var openSettings
 
   var body: some View {
     UnifiedRecordPanelView(
@@ -1077,8 +1076,8 @@ private struct FloatingRecordView: View {
         onConfigureJev: { request in
           onConfigureJev()
           model.showSettings(request.section, item: request.item)
-          if model.consumeSettingsPresentation() { openSettings() }
           NSApp.activate(ignoringOtherApps: true)
+          openWindow(id: "main")
         }
       )
     }
