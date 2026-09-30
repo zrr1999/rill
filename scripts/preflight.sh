@@ -168,7 +168,7 @@ check_record_domain_boundary() {
 run_swift_tests() {
   local native_tests='RillPlatformTests|RillUITests|RillAppTests'
   echo 'Running domain tests in parallel...'
-  locked_swift test --parallel --num-workers 4 --skip "$native_tests"
+  locked_swift test --parallel --num-workers 4 --skip "$native_tests|RillQualityEvaluations"
   echo 'Running native platform, UI, and app tests serially...'
   locked_swift test --skip-build --filter "$native_tests"
 }
@@ -177,10 +177,11 @@ run_script_tests() {
   local test_dir="$SCRIPT_DIR/tests"
   echo 'Testing dependency security policy...'
   uv run --script "$test_dir/dependency_security_test.py"
-  echo 'Testing paired ASR comparisons...'
-  uv run --script "$test_dir/asr_benchmark_test.py"
+  echo 'Testing evaluation and performance analysis tools...'
+  uv run --script "$test_dir/asr_analysis_test.py"
+  uv run --script "$test_dir/quality_evaluation_test.py"
   uv run --script "$test_dir/asr_replay_test.py"
-  uv run --script "$test_dir/product_path_benchmark_test.py"
+  uv run --script "$test_dir/product_path_replay_test.py"
   echo 'Testing diagnostic export...'
   uv run --script "$test_dir/diagnostic_export_test.py"
   echo 'Testing secret scanning...'

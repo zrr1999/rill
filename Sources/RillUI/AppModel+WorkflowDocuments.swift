@@ -31,7 +31,7 @@ extension AppModel {
         definition.metadata["workflow.origin"] = "user"
         if duplicate {
             definition.id = UUID()
-            definition.name += L10n.surface(.copy, language: self.settings.language)
+            definition.name += L10n.surface(.duplicateNameSuffix, language: self.settings.language)
             definition.metadata.removeValue(forKey: WorkflowMetadataKey.builtinKind)
             definition.metadata.removeValue(forKey: WorkflowMetadataKey.exclusiveGroup)
         }

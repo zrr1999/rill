@@ -35,7 +35,7 @@ public struct RecordBufferDraftView: View {
     VStack(spacing: 0) {
       HStack(spacing: 12) {
         if !embedded {
-          Text(text(.drafts2)).font(.headline)
+          Text(text(.draftsArea)).font(.headline)
           Text("\(model.items.count)").monospacedDigit().foregroundStyle(.secondary)
         }
         Spacer()
@@ -117,7 +117,7 @@ public struct RecordBufferDraftView: View {
           }
         } header: {
           Text(bufferName(summary.buffer) + " · " + policyName(summary.buffer.policy)
-            + (summary.buffer.isEnabled ? "" : text(.disabled)))
+            + (summary.buffer.isEnabled ? "" : text(.disabledSuffix)))
         }
       }
     }
