@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 import XCTest
 
-@testable import RillCore
 @testable import RillUI
 
 func containsHan(_ text: String) -> Bool {
