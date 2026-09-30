@@ -5,20 +5,20 @@ enum SettingsDestructiveConfirmation: Sendable {
   case clipboardHistory
   case runHistory
   case failedAudioRecovery
-  case benchmarkRecordingArchive
+  case corpusRecordingArchive
   case sensitiveAppRule(UUID)
 }
 
 enum SettingsSheetDestination: Identifiable {
   case privacyNotice(PrivacyNoticeDocument)
-  case benchmarkArchive
+  case corpusArchive
 
   var id: String {
     switch self {
     case .privacyNotice:
       return "privacy-notice"
-    case .benchmarkArchive:
-      return "benchmark-archive"
+    case .corpusArchive:
+      return "corpus-archive"
     }
   }
 }
@@ -226,8 +226,8 @@ public struct SettingsView: View {
       switch destination {
       case .privacyNotice(let document):
         PrivacyNoticeSheet(document: document, language: model.settings.language)
-      case .benchmarkArchive:
-        BenchmarkRecordingArchiveSheet(model: model.benchmarkArchive, language: model.settings.language)
+      case .corpusArchive:
+        CorpusRecordingArchiveSheet(model: model.corpusArchive, language: model.settings.language)
       }
     }
     .confirmationDialog(
@@ -548,9 +548,9 @@ extension SettingsView {
         .settingsFailedAudioRecoveryClearConfirmation,
         language: model.settings.language
       )
-    case .benchmarkRecordingArchive:
+    case .corpusRecordingArchive:
       L10n.string(
-        .settingsBenchmarkRecordingArchiveClearConfirmation,
+        .settingsCorpusRecordingArchiveClearConfirmation,
         language: model.settings.language
       )
     case .sensitiveAppRule:
@@ -568,8 +568,8 @@ extension SettingsView {
       L10n.historySettingsText(.clearRun, language: model.settings.language)
     case .failedAudioRecovery:
       L10n.string(.settingsFailedAudioRecoveryClear, language: model.settings.language)
-    case .benchmarkRecordingArchive:
-      L10n.string(.settingsBenchmarkRecordingArchiveClear, language: model.settings.language)
+    case .corpusRecordingArchive:
+      L10n.string(.settingsCorpusRecordingArchiveClear, language: model.settings.language)
     case .sensitiveAppRule:
       L10n.privacyText(.deleteRule, language: model.settings.language)
     }
@@ -591,9 +591,9 @@ extension SettingsView {
         .settingsFailedAudioRecoveryClearConfirmationDetail,
         language: model.settings.language
       )
-    case .benchmarkRecordingArchive:
+    case .corpusRecordingArchive:
       L10n.string(
-        .settingsBenchmarkRecordingArchiveClearConfirmationDetail,
+        .settingsCorpusRecordingArchiveClearConfirmationDetail,
         language: model.settings.language
       )
     case .sensitiveAppRule:
@@ -614,8 +614,8 @@ extension SettingsView {
       model.clearRunHistory()
     case .failedAudioRecovery:
       model.clearFailedAudioRecoveries()
-    case .benchmarkRecordingArchive:
-      model.benchmarkArchive.clear()
+    case .corpusRecordingArchive:
+      model.corpusArchive.clear()
     case .sensitiveAppRule(let ruleID):
       if let rule = model.settings.privacyPolicySettings.sensitiveAppRules.first(where: {
         $0.id == ruleID
