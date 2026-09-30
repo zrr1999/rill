@@ -1256,6 +1256,18 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.recordWorkspace.selectedCollectionID, collectionID)
     }
 
+    func testDismissSettingsRestoresSidebarFocusButContentNavigationDoesNot() {
+        let harness = makeHarness()
+        harness.model.presentSettings()
+        XCTAssertEqual(harness.model.settingsSidebarFocusRestoreGeneration, 0)
+        harness.model.dismissSettings()
+        XCTAssertEqual(harness.model.settingsSidebarFocusRestoreGeneration, 1)
+        harness.model.presentSettings()
+        harness.model.selectSidebarSection(.stream)
+        XCTAssertFalse(harness.model.isShowingSettings)
+        XCTAssertEqual(harness.model.settingsSidebarFocusRestoreGeneration, 1)
+    }
+
     func testShowWorkflowSelectsWorkflowSidebarDestination() throws {
         let harness = makeHarness()
         let workflow = try XCTUnwrap(harness.model.workflowLibrary.workflows.first)
