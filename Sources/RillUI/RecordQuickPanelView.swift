@@ -123,7 +123,7 @@ public struct RecordQuickPanelView: View {
 
   public var body: some View {
     VStack(spacing: 0) {
-      HStack(spacing: 0) {
+      HStack(spacing: RecordPanelAppearance.paneInset) {
         VStack(spacing: 9) {
           HStack(spacing: 4) {
             Menu {
@@ -140,7 +140,8 @@ public struct RecordQuickPanelView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityIdentifier("quick-records.collection")
             Button { showsFilters = true } label: { Image(systemName: RillSystemSymbol.sliderHorizontal3.rawValue) }
-              .buttonStyle(RecordPanelIconStyle()).foregroundStyle(.secondary)
+              .buttonStyle(.borderless).font(.system(size: 12)).frame(width: 28, height: 28)
+              .foregroundStyle(.secondary)
               .accessibilityLabel(panelText(.searchAndFilterOptions))
           }.controlSize(.small).frame(height: 25).padding(.horizontal, 13).padding(.top, 10)
           RecordSearchField(text: Binding(get: { model.searchText }, set: { model.setSearchText($0) }),
@@ -149,29 +150,33 @@ public struct RecordQuickPanelView: View {
             .padding(.horizontal, 6).recordPanelSearchSurface().padding(.horizontal, 9)
           resultList
         }.frame(width: RecordPanelAppearance.sidebarWidth)
-        Divider().opacity(0.45)
+          .recordPanelGlass(in: RecordPanelAppearance.paneShape)
         contentPreview
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .background(RecordPanelAppearance.paper)
+          .clipShape(RecordPanelAppearance.paneShape)
       }
-      Divider().opacity(0.45)
+      .padding(RecordPanelAppearance.paneInset)
       HStack(spacing: 8) {
         Text(statusText).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
         Spacer(minLength: 0)
         addToDrafts.frame(width: 88)
         Button(text(.copy)) {
           if let subject = model.selectedRecord?.reuseSubject { onCopy(subject) }
-        }.buttonStyle(RecordPanelActionStyle()).frame(width: 60).disabled(model.selectedRecord == nil)
+        }.buttonStyle(.glass).buttonBorderShape(.capsule).buttonSizing(.flexible)
+          .frame(width: 60, height: 32).disabled(model.selectedRecord == nil)
           .accessibilityIdentifier("quick-records.copy")
         Button(action: pasteSelection) {
           Text(RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language))
-            .lineLimit(1).frame(width: 68)
+            .lineLimit(1)
         }
-        .buttonStyle(RecordPanelActionStyle(role: .primary)).frame(width: 84).disabled(model.selectedRecord == nil)
+        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).buttonSizing(.flexible)
+        .tint(.accentColor).frame(width: 84, height: 32).disabled(model.selectedRecord == nil)
         .help(RecordDeliveryTitle.make(applicationName: model.pasteTargetName, language: language))
         .accessibilityIdentifier("quick-records.insert")
       }
-      .controlSize(.small).padding(.horizontal, 15).frame(height: 56)
+      .font(.system(size: 12)).controlSize(.large)
+      .padding(.horizontal, 15).frame(height: 56)
       .accessibilityIdentifier("quick-records.actions")
     }
     .onAppear { if !model.isPreviewVisible { model.togglePreview() } }
@@ -198,7 +203,7 @@ public struct RecordQuickPanelView: View {
       }
     } label: { Text(panelText(.addToDrafts)) }
     .menuStyle(.borderlessButton).menuIndicator(.hidden)
-    .font(.system(size: 12)).foregroundStyle(Color.accentColor).frame(height: 31)
+    .font(.system(size: 12)).foregroundStyle(Color.accentColor).frame(height: 32)
     .disabled(model.selectedID == nil)
     .accessibilityIdentifier("quick-records.add-to-drafts")
   }

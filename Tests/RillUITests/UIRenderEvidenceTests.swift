@@ -68,7 +68,8 @@ final class UIRenderEvidenceTests: XCTestCase {
                                 .shadow(color: .black.opacity(0.15), radius: 18, y: 10)
                         }
                     }
-                    try await render(scene, size: NSSize(width: 760, height: 610), dark: dark, floating: true,
+                    try await render(scene, size: NSSize(width: 760, height: 610), dark: dark,
+                        focusWindow: true, floating: true,
                         to: output.appendingPathComponent("floating-scene-\(mode.rawValue)-\(variant).png"))
                 }
                 try await render(RecordPanelCapsuleView(model: model, onExpand: {}, onClose: {}),
@@ -386,7 +387,7 @@ final class UIRenderEvidenceTests: XCTestCase {
             .background(floating ? Color.clear : (dark ? Color(white: 0.12) : Color(white: 0.98))))
         view.sizingOptions = []
         let window: NSWindow = floating
-            ? NSPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            ? RenderPanel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             : NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: [.titled, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         if floating { window.isOpaque = false; window.backgroundColor = .clear }
         window.appearance = appearance
@@ -437,4 +438,8 @@ final class UIRenderEvidenceTests: XCTestCase {
         try png.write(to: url)
 
     }
+}
+
+private final class RenderPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
 }

@@ -50,15 +50,14 @@ public struct RecordPanelCapsuleView: View {
       .accessibilityValue(needsAttention ? panelText(.needsAttention) : "")
       .accessibilityAction { onExpand() }
       Button(action: onClose) { Image(systemName: RillSystemSymbol.xmark.rawValue).font(.caption).frame(width: 28, height: 32) }
-        .buttonStyle(RecordPanelIconStyle()).foregroundStyle(.secondary)
+        .buttonStyle(.borderless).foregroundStyle(.secondary)
         .disabled(buffers.editor.session?.hasMarkedText == true)
         .accessibilityLabel(panelText(.closeFloatingWindow))
         .accessibilityIdentifier("record-panel.close")
     }
     .padding(.leading, 14).padding(.trailing, 8)
     .frame(width: 260, height: 48)
-    .rillFloatingControlSurface(cornerRadius: 24)
-    .clipShape(Capsule())
+    .recordPanelGlass(in: Capsule(), interactive: true)
     .accessibilityIdentifier("record-panel.capsule")
   }
 }

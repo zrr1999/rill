@@ -76,7 +76,7 @@ public struct RecordBufferDraftView: View {
 
   private var content: some View {
     VStack(spacing: 0) {
-      HStack(spacing: 0) {
+      HStack(spacing: RecordPanelAppearance.paneInset) {
         VStack(spacing: 9) {
           HStack(spacing: 4) {
             Text(panelText(.draftList)).font(.system(size: 11)).foregroundStyle(.secondary)
@@ -113,11 +113,12 @@ public struct RecordBufferDraftView: View {
           .padding(.horizontal, 8).recordPanelSearchSurface().padding(.horizontal, 9)
           itemList
         }.frame(width: RecordPanelAppearance.sidebarWidth)
-        Divider().opacity(0.45)
+          .recordPanelGlass(in: RecordPanelAppearance.paneShape)
         editor.frame(maxWidth: .infinity, maxHeight: .infinity)
           .background(RecordPanelAppearance.paper)
+          .clipShape(RecordPanelAppearance.paneShape)
       }
-      Divider().opacity(0.45)
+      .padding(RecordPanelAppearance.paneInset)
       footer
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -136,23 +137,24 @@ public struct RecordBufferDraftView: View {
       }
       Spacer(minLength: 0)
       Button(panelText(.doneEditing), action: onFinishEditing)
-        .buttonStyle(RecordPanelActionStyle(role: .quiet))
-        .frame(width: 88)
+        .buttonStyle(.borderless).foregroundStyle(Color.accentColor)
+        .frame(width: 88, height: 32)
         .disabled(model.session == nil || model.session?.hasMarkedText == true)
         .accessibilityIdentifier("record-buffer.finish-editing")
       Button(panelText(.copy)) { if let session = model.session { copyText(session.text) } }
-        .buttonStyle(RecordPanelActionStyle())
-        .frame(width: 60)
+        .buttonStyle(.glass).buttonBorderShape(.capsule).buttonSizing(.flexible)
+        .frame(width: 60, height: 32)
         .disabled(model.session?.text.isEmpty != false || model.isBusy || model.session?.hasMarkedText == true)
         .accessibilityIdentifier("record-buffer.copy")
       Button(panelText(.send), action: model.send)
-        .buttonStyle(RecordPanelActionStyle(role: .primary))
-        .frame(width: 84)
+        .buttonStyle(.glassProminent).buttonBorderShape(.capsule).buttonSizing(.flexible)
+        .tint(.accentColor).frame(width: 84, height: 32)
         .disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
         .help(text(.returnSendsWhileEditingReturn))
         .accessibilityIdentifier("record-buffer.send")
     }
-    .controlSize(.small).padding(.horizontal, 15).frame(height: 56)
+    .font(.system(size: 12)).controlSize(.large)
+    .padding(.horizontal, 15).frame(height: 56)
     .accessibilityIdentifier("record-buffer.actions")
   }
 

@@ -117,12 +117,12 @@ without invented RGB values or tonal ramps.
 - Collections and Drafts share one panel and retain their native view state.
 - The existing compact and expanded recording overlay remains recognizable.
 
-The implementation has compositor-rendered evidence from temporary synthetic
-windows on macOS 27.0 (26A428), using Xcode 27.0 (27A5228h). Those captures are
-visual evidence, not installed-app or release acceptance. The integrated unified
-panel and the latest workflow corrections still require new compositor captures;
-the Mac is locked at this refresh. Record automated validation with the reviewed
-change and pull request. Physical macOS 26, Fn, IME,
+The floating panel has compositor-rendered evidence from temporary synthetic
+windows on macOS 27.0 (26A428), using Xcode 27.0 (27A5228h). Captures cover both
+modes, English and Chinese, light and dark appearances, three page sizes, and
+focused scenes for native control states. Those captures are visual evidence,
+not installed-app or release acceptance. Record automated validation with the
+reviewed change and pull request. Physical macOS 26, Fn, IME,
 VoiceOver, cross-application output, and multi-display acceptance remain pending.
 Use the [release acceptance contract](docs/release-qa-checklist.md); local
 galleries are review aids, not durable design authority.
@@ -214,13 +214,21 @@ exact record navigation opens detail again even for the same selected record.
 
 ## Elevation & Depth
 
-Native window and panel depth carries the hierarchy. Custom Liquid Glass is
-limited to floating control chrome: the unified panel shell and pending capsule
-use a clear view with `.glassEffect(.regular)`. The shell is shared by the toolbar,
-status, sidebar, and footer; it is not a filled shape underneath another glass
-layer. Reading surfaces, record
-previews, and draft editing stay opaque. Native navigation and toolbars retain
-their platform treatment; individual records do not receive glass shells.
+Native window and panel depth carries the hierarchy. The unified panel uses a
+standard material backdrop, with Liquid Glass on the pending capsule, navigation
+sidebar, selected mode, and action buttons. Each mounted mode owns a separate
+`GlassEffectContainer` so hidden effects cannot join the visible pane. The header
+has its own container. Custom effects apply directly to their content;
+native `.glass` and `.glassProminent` button styles own pointer, pressed, and
+disabled feedback. The primary action uses the system accent color. Reading
+surfaces, record previews, and draft editing stay opaque; individual records do
+not receive glass shells.
+
+The sidebar and paper are inset 8pt. `ConcentricRectangle` resolves their corners
+inside the panel's container shape. The selected mode uses `glassEffectID` and
+a short matched geometry transition, without animating the editor or window
+geometry. This follows Apple's [Liquid Glass guidance](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views)
+and [material hierarchy](https://developer.apple.com/design/human-interface-guidelines/materials).
 
 **The Content Surface Rule.** Keep text and payloads on their own opaque surface.
 Apply translucent material to navigation and controls without lowering the
@@ -230,8 +238,8 @@ The preserved recorder uses `.thinMaterial` with a semantic window-color tint.
 Reduce Transparency changes it to an opaque window background. Increase Contrast
 strengthens its tint and separator border. For the unified panel's custom glass,
 either Reduce Transparency or Increase Contrast selects an opaque control
-background. These fallbacks come from the corresponding source views, not a
-generic shared opacity rule.
+background. Native materials and glass buttons also retain their system
+accessibility adaptations.
 
 The recorder has one soft black shadow and a separator stroke; its exact shadow,
 tint, and border values are in the sidecar. The floating panel uses
