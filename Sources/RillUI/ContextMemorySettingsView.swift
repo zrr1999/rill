@@ -80,7 +80,7 @@ struct ContextMemorySettingsView: View {
         if pendingMemory {
             parts.append(text(.theCurrentLlmReceivesAuthorized))
         }
-        parts.append(text(.providerChangesRequireAuthorizatioAgain)
+        parts.append(text(.providerChangesRequireReauthorization)
             + consentWorkflows.map(\.name).joined(separator: "、"))
         return parts.joined(separator: "\n\n")
     }
@@ -135,7 +135,7 @@ private struct MemoryManagementView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(memory.summary).textSelection(.enabled)
                     Text("\(evidenceLabel(memory.evidenceKind)) · \(stateLabel(memory.state)) · \(memory.sources.count) "
-                         + text(.sources) + (memory.sourceHistoryDeleted ? text(.historyDeleted) : ""))
+                         + text(.sources) + (memory.sourceHistoryDeleted ? text(.historyDeletedSuffix) : ""))
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(memory.corrections, id: \.self) { correction in
                         Text(correction.original + " → " + correction.corrected).font(.callout.monospaced())

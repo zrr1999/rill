@@ -25,7 +25,7 @@ public struct RecordBufferSummaryView: View {
       } else {
         Text(
           model.snapshot?.next?.state == .preparing
-            ? text(.processing2) : text(.nothingPending2)
+            ? text(.processingStatus) : text(.nothingToOutput)
         )
         .foregroundStyle(.secondary)
       }
@@ -93,7 +93,7 @@ struct RecordBufferToolbar: View {
             .fixedSize()
           Text("\(workspace.buffers.snapshot?.remainingCount ?? 0)").monospacedDigit().fixedSize()
           Text(workspace.buffers.snapshot?.nextHeader?.preview
-            ?? (workspace.buffers.snapshot?.next == nil ? text(.empty) : text(.processing2)))
+            ?? (workspace.buffers.snapshot?.next == nil ? text(.empty) : text(.processingStatus)))
             .foregroundStyle(.secondary).lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -156,7 +156,7 @@ struct RecordBufferToolbar: View {
               workspace.buffers.outputAction(entry.id)
             }.lineLimit(2)
           }
-          if setEntries.isEmpty { Text(text(.empty2)) }
+          if setEntries.isEmpty { Text(text(.noItems)) }
         }
       }.padding().frame(width: 320, height: 320)
     }
