@@ -348,15 +348,23 @@ public struct MainShellView: View {
             if isShowing {
                 if model.voiceSetupPresentation == .presented { model.voiceSetupPresentation = .dismissed }
                 if model.settingsNavigationRequest == nil { settingsBackButtonFocused = true }
-            } else {
-                let destination = currentSidebarDestination
-                sidebarFocusRequestGeneration &+= 1
-                scheduleOnMainRunLoopInteractiveModes {
-                    _ = sidebarFocusCoordinator.claimSidebarFocusForRoute(
-                        origin: .programmatic,
-                        destination: destination
-                    )
-                }
+            }
+        }
+        .onChange(of: model.settingsSidebarFocusRestoreGeneration) { _, generation in
+            guard generation > 0 else { return }
+            let destination = currentSidebarDestination
+            guard
+                MainShellInteractionPolicy.shouldRestoreSidebarFocus(
+                    isGlobalSearchPresented: isGlobalSearchPresented,
+                    detailOwnsFocus: typedDetailOwnsFocus(for: destination)
+                )
+            else { return }
+            sidebarFocusRequestGeneration &+= 1
+            scheduleOnMainRunLoopInteractiveModes {
+                _ = sidebarFocusCoordinator.claimSidebarFocusForRoute(
+                    origin: .programmatic,
+                    destination: destination
+                )
             }
         }
         .background(SettingsWindowCloseObserver { model.discardComparisonReturn() })
