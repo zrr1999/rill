@@ -1,21 +1,21 @@
 import RillCore
 
-enum BenchmarkArchiveTextKey: String, CaseIterable {
+enum CorpusArchiveTextKey: String, CaseIterable {
   case title, disclosure, empty, selectAll, selectNone, source, chooseSource
   case microphone, synthetic, publicFixture, split, development, validation
   case cleanupPending, authorize, exported, showInFinder, close, exportSelection, completed, failed, cancelled
 }
 
 extension L10n {
-  static func benchmarkArchive(_ key: BenchmarkArchiveTextKey, language: AppLanguage) -> String {
-    benchmarkArchiveTable[key]?.string(for: language) ?? key.rawValue
+  static func corpusArchive(_ key: CorpusArchiveTextKey, language: AppLanguage) -> String {
+    corpusArchiveTable[key]?.string(for: language) ?? key.rawValue
   }
 
-  private static let benchmarkArchiveTable: [BenchmarkArchiveTextKey: LocalizedText] = [
+  private static let corpusArchiveTable: [CorpusArchiveTextKey: LocalizedText] = [
     .cleanupPending: .init(
       english: "Incomplete plaintext export could not be removed. Delete the folder after resolving the storage problem.",
       simplifiedChinese: "未完成的明文导出无法清理。请解决存储问题后删除该目录。"),
-    .title: .init(english: "Export evaluation recordings", simplifiedChinese: "导出评测录音"),
+    .title: .init(english: "Export corpus recordings", simplifiedChinese: "导出语料录音"),
     .disclosure: .init(
       english:
         "Selected recordings will be decrypted to local WAV files. Nothing is uploaded. Keep the folder private. Listen and add human reference text before comparing recognition quality; a missing reference is not silence.",

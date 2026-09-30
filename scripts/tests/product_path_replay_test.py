@@ -10,8 +10,8 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
-import asr_benchmark
-import product_path_benchmark as host
+import asr_run_data
+import product_path_replay as host
 
 
 class HostEvidenceTests(unittest.TestCase):
@@ -38,12 +38,12 @@ class HostEvidenceTests(unittest.TestCase):
         for state in ("pending", "invalid"):
             host.validate_report_identity(self.path, state)
             with self.assertRaisesRegex(ValueError, "not validated"):
-                asr_benchmark.read_run(self.path, self.cases)
+                asr_run_data.read_run(self.path, self.cases)
         self.path.unlink()
         self.header.update(evidence_validation="passed", analysis_role="warmup")
         self.write()
         with self.assertRaisesRegex(ValueError, "cannot be scored"):
-            asr_benchmark.read_run(self.path, self.cases)
+            asr_run_data.read_run(self.path, self.cases)
 
     def test_validation_preserves_rows_and_private_permissions(self):
         self.write()
@@ -58,7 +58,7 @@ class HostEvidenceTests(unittest.TestCase):
         self.row.update(status="failed", texts={})
         self.write()
         self.assertEqual(host.finish_reports([self.path], self.cases, "warm", 1), 2)
-        _, rows = asr_benchmark.read_run(self.path, self.cases)
+        _, rows = asr_run_data.read_run(self.path, self.cases)
         self.assertEqual(rows["one", "warm", 1]["texts"], {})
 
     def test_wrong_cache_state_invalidates_even_when_row_count_matches(self):

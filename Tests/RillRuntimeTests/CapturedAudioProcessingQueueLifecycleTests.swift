@@ -317,13 +317,13 @@ private actor AudioRecoveryStoreProbe: FailedAudioRecoveryStore {
   func purgeExpired(now: Date) async throws -> Int { 0 }
 }
 
-private actor BenchmarkArchiveStoreProbe: BenchmarkRecordingArchiveStore {
+private actor CorpusArchiveStoreProbe: CorpusRecordingArchiveStore {
   struct Entry: Sendable, Equatable {
     let bytes: Data
     let runID: UUID
     let workflowID: UUID
     let trigger: WorkflowRunTriggerKind?
-    let outcome: BenchmarkRecordingOutcome
+    let outcome: CorpusRecordingOutcome
     let metadata: [String: String]
   }
 
@@ -334,12 +334,12 @@ private actor BenchmarkArchiveStoreProbe: BenchmarkRecordingArchiveStore {
     runID: UUID,
     workflowID: UUID,
     trigger: WorkflowRunTriggerKind?,
-    outcome: BenchmarkRecordingOutcome,
+    outcome: CorpusRecordingOutcome,
     metadata: [String: String],
     now: Date
-  ) async throws -> BenchmarkRecordingReceipt {
+  ) async throws -> CorpusRecordingReceipt {
     guard let fileURL = audio.fileURL else {
-      throw BenchmarkRecordingArchiveError.unsupportedPayload
+      throw CorpusRecordingArchiveError.unsupportedPayload
     }
     let bytes = try Data(contentsOf: fileURL)
     entries.append(
@@ -352,7 +352,7 @@ private actor BenchmarkArchiveStoreProbe: BenchmarkRecordingArchiveStore {
         metadata: metadata
       )
     )
-    return BenchmarkRecordingReceipt(
+    return CorpusRecordingReceipt(
       runID: runID,
       workflowID: workflowID,
       createdAt: now,
@@ -654,10 +654,10 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     for ownership: CapturedAudioFileOwnership in [.managedTemporary, .callerManaged] {
       let probe = AudioLifecycleExecutionProbe()
       let recovery = AudioRecoveryStoreProbe()
-      let archive = BenchmarkArchiveStoreProbe()
+      let archive = CorpusArchiveStoreProbe()
       let queue = await makeQueue(
         recognitionShouldFail: false, recoveryStore: recovery, recoveryEnabled: true,
-        benchmarkArchiveStore: archive, benchmarkArchiveEnabled: true, executionProbe: probe
+        corpusArchiveStore: archive, corpusArchiveEnabled: true, executionProbe: probe
       )
       let bytes = Data([0x41, 0x42])
       let fileURL = try makeAudioFile(bytes: bytes)
@@ -816,17 +816,17 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
 
   func testOptInQueueArchivesEveryProcessedRecordingBeforeRemovingPlaintext() async throws {
     for (recognitionShouldFail, expectedOutcome) in [
-      (false, BenchmarkRecordingOutcome.completed),
-      (true, BenchmarkRecordingOutcome.failed),
+      (false, CorpusRecordingOutcome.completed),
+      (true, CorpusRecordingOutcome.failed),
     ] {
       let bytes = Data([0x41, recognitionShouldFail ? 0x42 : 0x43])
       let fileURL = try makeAudioFile(bytes: bytes)
       defer { try? FileManager.default.removeItem(at: fileURL) }
-      let archiveStore = BenchmarkArchiveStoreProbe()
+      let archiveStore = CorpusArchiveStoreProbe()
       let queue = await makeQueue(
         recognitionShouldFail: recognitionShouldFail,
-        benchmarkArchiveStore: archiveStore,
-        benchmarkArchiveEnabled: true
+        corpusArchiveStore: archiveStore,
+        corpusArchiveEnabled: true
       )
       let workflow = makeWorkflow()
       let runID = UUID()
@@ -839,7 +839,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         triggerEvent: WorkflowTriggerEvent(
           binding: .hotkey,
           workflowID: workflow.id,
-          sourceID: "benchmark-archive-test"
+          sourceID: "corpus-archive-test"
         ),
         deferredCapture: .resolved(
           try makeCapturedAudio(
@@ -1164,8 +1164,8 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     recordStore: RecordStore? = nil,
     recoveryStore: (any FailedAudioRecoveryStore)? = nil,
     recoveryEnabled: Bool = false,
-    benchmarkArchiveStore: (any BenchmarkRecordingArchiveStore)? = nil,
-    benchmarkArchiveEnabled: Bool = false,
+    corpusArchiveStore: (any CorpusRecordingArchiveStore)? = nil,
+    corpusArchiveEnabled: Bool = false,
     executionProbe providedExecutionProbe: AudioLifecycleExecutionProbe? = nil,
     diagnostics providedDiagnostics: DiagnosticsRecorder? = nil,
     rejectedCapturedAudioRemoval: (
@@ -1209,15 +1209,15 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
     if let recoveryController {
       try? await recoveryController.refresh(isEnabled: recoveryEnabled)
     }
-    let benchmarkArchiveController = benchmarkArchiveStore.map { store in
-      BenchmarkRecordingArchiveController(
+    let corpusArchiveController = corpusArchiveStore.map { store in
+      CorpusRecordingArchiveController(
         store: store,
         diagnostics: diagnostics
       )
     }
-    if let benchmarkArchiveController {
-      await benchmarkArchiveController.refresh(
-        isEnabled: benchmarkArchiveEnabled
+    if let corpusArchiveController {
+      await corpusArchiveController.refresh(
+        isEnabled: corpusArchiveEnabled
       )
     }
     if rejectedCapturedAudioRemoval != nil || ownershipTransferObserver != nil {
@@ -1230,7 +1230,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
         eventBus: eventBus,
         diagnostics: diagnostics,
         failedAudioRecoveryController: recoveryController,
-        benchmarkRecordingArchiveController: benchmarkArchiveController,
+        corpusRecordingArchiveController: corpusArchiveController,
         rejectedCapturedAudioRemoval: rejectedCapturedAudioRemoval ?? { capturedAudio in
           _ = try capturedAudio.removeManagedTemporaryFile()
         },
@@ -1245,7 +1245,7 @@ final class CapturedAudioProcessingQueueLifecycleTests: XCTestCase {
       eventBus: eventBus,
       diagnostics: diagnostics,
       failedAudioRecoveryController: recoveryController,
-      benchmarkRecordingArchiveController: benchmarkArchiveController
+      corpusRecordingArchiveController: corpusArchiveController
     )
   }
 

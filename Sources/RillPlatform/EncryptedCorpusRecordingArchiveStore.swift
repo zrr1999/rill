@@ -7,7 +7,7 @@ import RillCore
 /// Audio and metadata use separate authenticated fields under the same root key as
 /// other protected local Rill content. The directory marker binds an unbounded archive
 /// without decrypting every audio artifact during application startup.
-public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveStore, BenchmarkRecordingArchiveReading {
+public actor EncryptedCorpusRecordingArchiveStore: CorpusRecordingArchiveStore, CorpusRecordingArchiveReading {
   public enum ExistingKeyProbeResult: Sendable, Equatable {
     case unbound
     case boundAndValid
@@ -55,7 +55,7 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
         in: .userDomainMask
       ).first
     else {
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+      throw CorpusRecordingArchiveError.storageUnavailable
     }
     return
       appSupportURL
@@ -99,16 +99,16 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
     guard isRegularFile(markerURL),
       let envelope = try? String(contentsOf: markerURL, encoding: .utf8)
     else {
-      throw BenchmarkRecordingArchiveError.invalidEntry
+      throw CorpusRecordingArchiveError.invalidEntry
     }
     let plaintext: Data
     do {
       plaintext = try localDataProtector.open(envelope, context: markerContext)
     } catch {
-      throw BenchmarkRecordingArchiveError.invalidEntry
+      throw CorpusRecordingArchiveError.invalidEntry
     }
     guard plaintext == markerPlaintext else {
-      throw BenchmarkRecordingArchiveError.invalidEntry
+      throw CorpusRecordingArchiveError.invalidEntry
     }
     return .boundAndValid
   }
@@ -118,25 +118,25 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
     runID: UUID,
     workflowID: UUID,
     trigger: WorkflowRunTriggerKind?,
-    outcome: BenchmarkRecordingOutcome,
+    outcome: CorpusRecordingOutcome,
     metadata: [String: String],
     now: Date
-  ) async throws -> BenchmarkRecordingReceipt {
+  ) async throws -> CorpusRecordingReceipt {
     guard audio.fileOwnership == .managedTemporary,
       let sourceURL = audio.fileURL?.standardizedFileURL,
       sourceURL.isFileURL,
       Self.isRegularFile(sourceURL)
     else {
-      throw BenchmarkRecordingArchiveError.unsupportedPayload
+      throw CorpusRecordingArchiveError.unsupportedPayload
     }
 
     let plaintext: Data
     do {
       plaintext = try Data(contentsOf: sourceURL, options: [.mappedIfSafe, .uncached])
     } catch {
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+      throw CorpusRecordingArchiveError.storageUnavailable
     }
-    let receipt = BenchmarkRecordingReceipt(
+    let receipt = CorpusRecordingReceipt(
       runID: runID,
       workflowID: workflowID,
       createdAt: now,
@@ -159,7 +159,7 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
         context: Self.protectionContext(runID: runID, field: "receipt")
       )
     } catch {
-      throw BenchmarkRecordingArchiveError.protectionUnavailable
+      throw CorpusRecordingArchiveError.protectionUnavailable
     }
     try commit(
       protectedAudio: protectedAudio,
@@ -176,36 +176,36 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
       .sorted { $0.uuidString < $1.uuidString }
   }
 
-  public func receipt(runID: UUID) async throws -> BenchmarkRecordingReceipt {
+  public func receipt(runID: UUID) async throws -> CorpusRecordingReceipt {
     do {
       let receiptBytes = try readProtectedArtifact(at: receiptURL(for: runID), runID: runID, field: "receipt")
-      let receipt = try JSONDecoder().decode(BenchmarkRecordingReceipt.self, from: receiptBytes)
+      let receipt = try JSONDecoder().decode(CorpusRecordingReceipt.self, from: receiptBytes)
       guard receipt.schemaVersion == 1, receipt.runID == runID,
         receipt.durationSeconds.isFinite, receipt.durationSeconds >= 0,
         receipt.plaintextByteCount >= 0
       else {
-        throw BenchmarkRecordingArchiveError.invalidEntry
+        throw CorpusRecordingArchiveError.invalidEntry
       }
       return receipt
-    } catch { throw BenchmarkRecordingArchiveError.invalidEntry }
+    } catch { throw CorpusRecordingArchiveError.invalidEntry }
   }
 
-  public func recording(runID: UUID) async throws -> BenchmarkRecording {
+  public func recording(runID: UUID) async throws -> CorpusRecording {
     do {
       let receipt = try await receipt(runID: runID)
       let audio = try readProtectedArtifact(at: audioURL(for: runID), runID: runID, field: "audio")
       guard audio.count == receipt.plaintextByteCount else {
-        throw BenchmarkRecordingArchiveError.invalidEntry
+        throw CorpusRecordingArchiveError.invalidEntry
       }
-      return BenchmarkRecording(receipt: receipt, audioBytes: audio)
+      return CorpusRecording(receipt: receipt, audioBytes: audio)
     } catch {
-      throw BenchmarkRecordingArchiveError.invalidEntry
+      throw CorpusRecordingArchiveError.invalidEntry
     }
   }
 
   private func readProtectedArtifact(at url: URL, runID: UUID, field: String) throws -> Data {
     let descriptor = Darwin.open(url.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
-    guard descriptor >= 0 else { throw BenchmarkRecordingArchiveError.invalidEntry }
+    guard descriptor >= 0 else { throw CorpusRecordingArchiveError.invalidEntry }
     let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
     defer { try? file.close() }
     var information = stat()
@@ -213,7 +213,7 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
       information.st_mode & S_IFMT == S_IFREG,
       let envelope = try file.readToEnd()
     else {
-      throw BenchmarkRecordingArchiveError.invalidEntry
+      throw CorpusRecordingArchiveError.invalidEntry
     }
     return try localDataProtector.openBinary(envelope, context: Self.protectionContext(runID: runID, field: field))
   }
@@ -228,7 +228,7 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
     do {
       names = try fileManager.contentsOfDirectory(atPath: directoryURL.path)
     } catch {
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+      throw CorpusRecordingArchiveError.storageUnavailable
     }
     for name in names where Self.isOwnedArtifactName(name) {
       try removeOwnedArtifactIfPresent(at: directoryURL.appendingPathComponent(name))
@@ -245,7 +245,7 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
     guard !fileManager.fileExists(atPath: audioURL.path),
       !fileManager.fileExists(atPath: receiptURL.path)
     else {
-      throw BenchmarkRecordingArchiveError.invalidEntry
+      throw CorpusRecordingArchiveError.invalidEntry
     }
     let transactionID = UUID().uuidString
     let temporaryAudioURL = directoryURL.appendingPathComponent(
@@ -267,7 +267,7 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
     } catch {
       try? Self.removeNonDirectoryEntry(at: temporaryAudioURL)
       try? Self.removeNonDirectoryEntry(at: temporaryReceiptURL)
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+      throw CorpusRecordingArchiveError.storageUnavailable
     }
   }
 
@@ -317,19 +317,19 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
           fileManager: fileManager
         ) == .boundAndValid
       else {
-        throw BenchmarkRecordingArchiveError.invalidEntry
+        throw CorpusRecordingArchiveError.invalidEntry
       }
       return
     }
     let names = try fileManager.contentsOfDirectory(atPath: directoryURL.path)
     guard !names.contains(where: isOwnedArtifactName) else {
-      throw BenchmarkRecordingArchiveError.invalidEntry
+      throw CorpusRecordingArchiveError.invalidEntry
     }
     let envelope: String
     do {
       envelope = try localDataProtector.seal(markerPlaintext, context: markerContext)
     } catch {
-      throw BenchmarkRecordingArchiveError.protectionUnavailable
+      throw CorpusRecordingArchiveError.protectionUnavailable
     }
     try writePrivate(Data(envelope.utf8), to: markerURL)
   }
@@ -348,16 +348,16 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
         forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
       )
       guard values.isDirectory == true, values.isSymbolicLink != true else {
-        throw BenchmarkRecordingArchiveError.storageUnavailable
+        throw CorpusRecordingArchiveError.storageUnavailable
       }
       try fileManager.setAttributes(
         [.posixPermissions: NSNumber(value: Int16(0o700))],
         ofItemAtPath: directoryURL.path
       )
-    } catch let error as BenchmarkRecordingArchiveError {
+    } catch let error as CorpusRecordingArchiveError {
       throw error
     } catch {
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+      throw CorpusRecordingArchiveError.storageUnavailable
     }
   }
 
@@ -387,12 +387,12 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
     do {
       try data.write(to: url, options: [.atomic])
       guard chmod(url.path, S_IRUSR | S_IWUSR) == 0 else {
-        throw BenchmarkRecordingArchiveError.storageUnavailable
+        throw CorpusRecordingArchiveError.storageUnavailable
       }
-    } catch let error as BenchmarkRecordingArchiveError {
+    } catch let error as CorpusRecordingArchiveError {
       throw error
     } catch {
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+      throw CorpusRecordingArchiveError.storageUnavailable
     }
   }
 
@@ -400,10 +400,10 @@ public actor EncryptedBenchmarkRecordingArchiveStore: BenchmarkRecordingArchiveS
     var information = stat()
     guard lstat(url.path, &information) == 0 else {
       if errno == ENOENT { return }
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+      throw CorpusRecordingArchiveError.storageUnavailable
     }
     guard information.st_mode & S_IFMT != S_IFDIR, unlink(url.path) == 0 else {
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+      throw CorpusRecordingArchiveError.storageUnavailable
     }
   }
 }

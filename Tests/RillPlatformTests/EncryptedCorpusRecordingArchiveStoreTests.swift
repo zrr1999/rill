@@ -5,7 +5,45 @@ import XCTest
 @testable import RillCore
 @testable import RillPlatform
 
-final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
+final class EncryptedCorpusRecordingArchiveStoreTests: XCTestCase {
+  func testExistingArchiveIdentitySurvivesTerminologyChange() async throws {
+    let fixture = try makeFixture()
+    defer { fixture.cleanup() }
+    try FileManager.default.createDirectory(at: fixture.archiveDirectory, withIntermediateDirectories: true)
+    let protector = try makeProtector(keyByte: 0x71)
+    let runID = UUID()
+    let audio = Data([0, 1, 2, 3])
+    let receipt = try JSONSerialization.data(
+      withJSONObject: [
+        "schemaVersion": 1, "runID": runID.uuidString, "workflowID": UUID().uuidString,
+        "createdAt": 100, "durationSeconds": 1,
+        "format": ["sampleRateHz": 16000, "channelCount": 1, "encoding": "pcm16"],
+        "plaintextByteCount": audio.count, "trigger": "hotkey", "outcome": "completed", "metadata": [:],
+      ] as [String: Any])
+    let marker = try protector.seal(
+      Data("Rill benchmark recording key verification v1".utf8),
+      context: .init(namespace: "benchmark_recordings_key", recordID: "1", field: "key_verification"))
+    try Data(marker.utf8).write(to: fixture.archiveDirectory.appendingPathComponent(".key-verification"))
+    for (field, suffix, bytes) in [("audio", ".rillaudio", audio), ("receipt", ".rillmeta", receipt)] {
+      let protected = try protector.sealBinary(
+        bytes,
+        context: .init(namespace: "benchmark_recordings", recordID: runID.uuidString, field: field))
+      try protected.write(to: fixture.archiveDirectory.appendingPathComponent(runID.uuidString + suffix))
+    }
+    let store = try makeStore(directoryURL: fixture.archiveDirectory, keyByte: 0x71)
+    let reopened = try await store.recording(runID: runID)
+    XCTAssertEqual(reopened.audioBytes, audio)
+    XCTAssertEqual(reopened.receipt.outcome, .completed)
+    XCTAssertEqual(reopened.receipt.trigger, .hotkey)
+    XCTAssertEqual(reopened.receipt.schemaVersion, 1)
+    XCTAssertEqual(AppSettingKey.corpusRecordingArchiveEnabled.rawValue, "audio.benchmark-archive-enabled")
+    XCTAssertEqual(DiagnosticEventName.corpusRecordingPreserved.rawValue, "benchmark-recording.preserved")
+    XCTAssertEqual(try EncryptedCorpusRecordingArchiveStore.defaultDirectoryURL().lastPathComponent, "BenchmarkRecordings")
+    try await store.deleteAll()
+    let remaining = try await store.recordingIDs()
+    XCTAssertTrue(remaining.isEmpty)
+  }
+
   func testPreserveStoresOnlyEncryptedPrivateArtifacts() async throws {
     let fixture = try makeFixture()
     defer { fixture.cleanup() }
@@ -57,7 +95,7 @@ final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
     ).intValue
     XCTAssertEqual(directoryPermissions & 0o777, 0o700)
     XCTAssertEqual(
-      try EncryptedBenchmarkRecordingArchiveStore.probeExistingDataProtectionKey(
+      try EncryptedCorpusRecordingArchiveStore.probeExistingDataProtectionKey(
         directoryURL: fixture.archiveDirectory,
         localDataProtector: makeProtector(keyByte: keyByte)
       ),
@@ -80,13 +118,13 @@ final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
     do {
       _ = try await store.recording(runID: runID)
       XCTFail("Authenticated audio must be required")
-    } catch { XCTAssertEqual(error as? BenchmarkRecordingArchiveError, .invalidEntry) }
+    } catch { XCTAssertEqual(error as? CorpusRecordingArchiveError, .invalidEntry) }
     try FileManager.default.removeItem(at: stored)
     try FileManager.default.createSymbolicLink(at: stored, withDestinationURL: try XCTUnwrap(audio.fileURL))
     do {
       _ = try await store.recording(runID: runID)
       XCTFail("Replay reads must not follow symbolic links")
-    } catch { XCTAssertEqual(error as? BenchmarkRecordingArchiveError, .invalidEntry) }
+    } catch { XCTAssertEqual(error as? CorpusRecordingArchiveError, .invalidEntry) }
   }
 
   func testWrongKeyCannotOpenExistingArchiveBinding() throws {
@@ -97,7 +135,7 @@ final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
     XCTAssertThrowsError(
       try makeStore(directoryURL: fixture.archiveDirectory, keyByte: 0x42)
     ) {
-      XCTAssertEqual($0 as? BenchmarkRecordingArchiveError, .invalidEntry)
+      XCTAssertEqual($0 as? CorpusRecordingArchiveError, .invalidEntry)
     }
   }
 
@@ -124,7 +162,7 @@ final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
     XCTAssertTrue(try ownedFiles(in: fixture.archiveDirectory).isEmpty)
     XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
     XCTAssertTrue(
-      EncryptedBenchmarkRecordingArchiveStore.requiresExistingDataProtectionKey(
+      EncryptedCorpusRecordingArchiveStore.requiresExistingDataProtectionKey(
         directoryURL: fixture.archiveDirectory
       )
     )
@@ -153,7 +191,7 @@ final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
       )
       XCTFail("Expected unsupported payload.")
     } catch {
-      XCTAssertEqual(error as? BenchmarkRecordingArchiveError, .unsupportedPayload)
+      XCTAssertEqual(error as? CorpusRecordingArchiveError, .unsupportedPayload)
     }
   }
 
@@ -164,8 +202,8 @@ final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
   private func makeStore(
     directoryURL: URL,
     keyByte: UInt8
-  ) throws -> EncryptedBenchmarkRecordingArchiveStore {
-    try EncryptedBenchmarkRecordingArchiveStore(
+  ) throws -> EncryptedCorpusRecordingArchiveStore {
+    try EncryptedCorpusRecordingArchiveStore(
       directoryURL: directoryURL,
       localDataProtector: makeProtector(keyByte: keyByte)
     )
@@ -179,7 +217,7 @@ final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
 
   private func makeAudio(bytes: Data) throws -> CapturedAudio {
     let url = FileManager.default.temporaryDirectory
-      .appendingPathComponent("rill-benchmark-test-\(UUID().uuidString).wav")
+      .appendingPathComponent("rill-replay-test-\(UUID().uuidString).wav")
     try bytes.write(to: url)
     return try CapturedAudio(
       durationSeconds: 1,
@@ -197,16 +235,16 @@ final class EncryptedBenchmarkRecordingArchiveStoreTests: XCTestCase {
     ).filter { $0.pathExtension == "rillaudio" || $0.pathExtension == "rillmeta" }
   }
 
-  private func makeFixture() throws -> BenchmarkArchiveFixture {
+  private func makeFixture() throws -> CorpusArchiveFixture {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     let archiveDirectory = root.appendingPathComponent("archive", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    return BenchmarkArchiveFixture(root: root, archiveDirectory: archiveDirectory)
+    return CorpusArchiveFixture(root: root, archiveDirectory: archiveDirectory)
   }
 }
 
-private struct BenchmarkArchiveFixture {
+private struct CorpusArchiveFixture {
   let root: URL
   let archiveDirectory: URL
 

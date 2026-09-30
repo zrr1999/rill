@@ -289,7 +289,7 @@ struct StoredAppSettingsSnapshot: Sendable {
   let recordRetentionPeriod: String?
   let runHistoryRetentionPeriod: String?
   let failedAudioRecoveryEnabled: String?
-  let benchmarkRecordingArchiveEnabled: String?
+  let corpusRecordingArchiveEnabled: String?
   let builtinPushToTalkOutputMode: String?
   let longRecordingModeEnabled: String?
   let recordingDurationLimit: String?
@@ -471,7 +471,7 @@ extension AppModel {
     applyStoredPrivacySettings(settings)
     applyStoredHistoryRetentionSettings(settings)
     applyStoredFailedAudioRecoverySetting(settings)
-    benchmarkArchive.applyStored(settings.benchmarkRecordingArchiveEnabled, available: settings.persistentSettingsStoreWasAvailable)
+    corpusArchive.applyStored(settings.corpusRecordingArchiveEnabled, available: settings.persistentSettingsStoreWasAvailable)
     rebuildWorkflowLibrary()
     self.settings.isRestoringSettings = false
     synchronizeLocalSpeechSettingsSource()
@@ -1831,7 +1831,7 @@ extension AppModel {
     await self.settings.settingsReadTaskOwner.cancelAllAndDrain()
     await settings.waitForOpenAIVerificationTasks()
     await workflowLibrary.waitForWorkflowExplanationTasks()
-    await benchmarkArchive.waitForOperation()
+    await corpusArchive.waitForOperation()
   }
 
   public func drainPendingSettingsWritesForApplicationShutdown(

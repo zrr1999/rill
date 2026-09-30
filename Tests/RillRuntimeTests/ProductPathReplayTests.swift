@@ -11,10 +11,10 @@ import RillSpeech
 import Testing
 @testable import RillWorkflows
 
-struct ProductPathBenchmarkTests {
+struct ProductPathReplayTests {
   @Test func fixedFixtureExercisesRecognitionProcessingCommitAndOrderedOutput() async throws {
     let fixture = try HostPipeline(
-      recognizer: FixedBenchmarkRecognizer(), keyterms: [],
+      recognizer: FixedReplayRecognizer(), keyterms: [],
       replacements: [.init(pattern: "rill", replacement: "Rill")])
     defer { fixture.remove() }
     let result = try await fixture.run(
@@ -34,7 +34,7 @@ struct ProductPathBenchmarkTests {
 
   @Test func unexpectedModelIdentityCannotBecomeScoredText() async throws {
     let fixture = try HostPipeline(
-      recognizer: FixedBenchmarkRecognizer(), keyterms: [],
+      recognizer: FixedReplayRecognizer(), keyterms: [],
       replacements: [], expectedModel: ("expected", "revision"))
     defer { fixture.remove() }
     let result = try await fixture.run(
@@ -50,7 +50,7 @@ struct ProductPathBenchmarkTests {
   }
 
   @Test func recognizedSilenceIsSuccessfulRecognitionWithoutCommitOrOutput() async throws {
-    let fixture = try HostPipeline(recognizer: FixedBenchmarkRecognizer(text: ""), keyterms: [], replacements: [])
+    let fixture = try HostPipeline(recognizer: FixedReplayRecognizer(text: ""), keyterms: [], replacements: [])
     defer { fixture.remove() }
     let result = try await fixture.run(
       audio: CapturedAudio(
@@ -65,14 +65,14 @@ struct ProductPathBenchmarkTests {
     #expect(try await fixture.store.snapshot().records.isEmpty)
   }
 
-  @Test(.enabled(if: ProcessInfo.processInfo.environment["RILL_PRODUCT_BENCHMARK_REQUEST"] != nil))
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["RILL_PRODUCT_REPLAY_REQUEST"] != nil))
   func authorizedReleaseCorpusThroughProductionHostPipeline() async throws {
     #if DEBUG
-      throw BenchmarkFailure.releaseRequired
+      throw ReplayFailure.releaseRequired
     #else
       let environment = ProcessInfo.processInfo.environment
-      let requestURL = URL(fileURLWithPath: try #require(environment["RILL_PRODUCT_BENCHMARK_REQUEST"]))
-      let request = try JSONDecoder().decode(HostBenchmarkRequest.self, from: Data(contentsOf: requestURL))
+      let requestURL = URL(fileURLWithPath: try #require(environment["RILL_PRODUCT_REPLAY_REQUEST"]))
+      let request = try JSONDecoder().decode(HostReplayRequest.self, from: Data(contentsOf: requestURL))
       let supervisor = SpeechWorkerSupervisor(configuration: .init(executableURL: URL(fileURLWithPath: request.worker)))
       let settings = LocalSpeechSettings(
         model: request.modelID, downloadIfNeeded: false,
@@ -99,7 +99,7 @@ struct ProductPathBenchmarkTests {
           try warmup.seekToEnd()
           try warmup.write(contentsOf: JSONEncoder().encode(result) + Data([10]))
           try warmup.synchronize()
-          guard result.status == "ok" else { throw BenchmarkFailure.incompletePipeline }
+          guard result.status == "ok" else { throw ReplayFailure.incompletePipeline }
         }
         for repetition in 1...request.repetitions {
           for item in request.cases {
@@ -128,9 +128,9 @@ struct ProductPathBenchmarkTests {
   }
 }
 
-private enum BenchmarkFailure: Error { case releaseRequired, fixtureChanged, incompletePipeline, outputBeforeCommit, modelIdentityMismatch }
+private enum ReplayFailure: Error { case releaseRequired, fixtureChanged, incompletePipeline, outputBeforeCommit, modelIdentityMismatch }
 
-private struct HostBenchmarkRequest: Decodable {
+private struct HostReplayRequest: Decodable {
   struct Fixture: Decodable {
     let id: String
     let audioPath: String
@@ -146,17 +146,17 @@ private struct HostBenchmarkRequest: Decodable {
   let warmupOutput: String?
   let language: String?
   let keyterms: [String]
-  let replacements: [BenchmarkReplacement]
+  let replacements: [ReplayReplacement]
   let repetitions: Int
   let cases: [Fixture]
 }
 
-private struct BenchmarkReplacement: Codable, Sendable {
+private struct ReplayReplacement: Codable, Sendable {
   let pattern: String
   let replacement: String
 }
 
-private struct HostBenchmarkResult: Encodable, Sendable {
+private struct HostReplayResult: Encodable, Sendable {
   var caseID = "fixture"
   var audioSHA256 = ""
   var repetition = 1
@@ -183,10 +183,10 @@ private struct HostPipeline {
   let measurements: HostMeasurements
 
   init(
-    recognizer: any SpeechRecognizer, keyterms: [String], replacements: [BenchmarkReplacement],
+    recognizer: any SpeechRecognizer, keyterms: [String], replacements: [ReplayReplacement],
     expectedModel: (id: String, revision: String)? = nil
   ) throws {
-    directory = FileManager.default.temporaryDirectory.appendingPathComponent("rill-host-benchmark-" + UUID().uuidString)
+    directory = FileManager.default.temporaryDirectory.appendingPathComponent("rill-host-replay-" + UUID().uuidString)
     try FileManager.default.createDirectory(
       at: directory, withIntermediateDirectories: false,
       attributes: [.posixPermissions: 0o700])
@@ -221,14 +221,14 @@ private struct HostPipeline {
       transformerRegistry: .init(transformers: [WhitespaceNormalizerTransformer()]),
       actionRegistry: .init(actions: [
         save,
-        IsolatedBenchmarkOutput(measurements: measurements),
+        IsolatedReplayOutput(measurements: measurements),
       ]),
       candidateResolver: CandidateResolver(eventBus: eventBus), recordStore: store,
       eventBus: eventBus, runReceiptRecorder: WorkflowRunReceiptRecorder(repository: database),
       vocabularyCollectionProvider: { [collection] })
   }
 
-  func run(audio: CapturedAudio, options: SpeechRecognitionRequestOptions) async throws -> HostBenchmarkResult {
+  func run(audio: CapturedAudio, options: SpeechRecognitionRequestOptions) async throws -> HostReplayResult {
     let runID = UUID()
     await measurements.begin()
     let result = await coordinator.runReportingOutcome(
@@ -240,7 +240,7 @@ private struct HostPipeline {
       let receipts = try await database.receipts(matching: .init(runID: runID))
       guard receipts.first?.actionDetails.map(\.result) == [.storedRecord, .copiedToClipboard],
         measured.storedBeforeDispatch
-      else { throw BenchmarkFailure.incompletePipeline }
+      else { throw ReplayFailure.incompletePipeline }
       let raw = try #require(measured.raw)
       let vocabulary = summary.correctionSource?.processingSteps?.first { $0.kind == .applyVocabulary }?.outputText
       return .init(
@@ -252,7 +252,7 @@ private struct HostPipeline {
         guard try await !store.snapshot().records.contains(where: { $0.record.provenance.workflowRunID == runID }),
           measured.metrics["host_replay_to_saved_ms"] == nil, !measured.storedBeforeDispatch
         else {
-          throw BenchmarkFailure.incompletePipeline
+          throw ReplayFailure.incompletePipeline
         }
         return .init(
           status: "ok", failure: nil, texts: ["raw": raw], metrics: measured.metrics,
@@ -266,7 +266,7 @@ private struct HostPipeline {
         guard try await !store.snapshot().records.contains(where: { $0.record.provenance.workflowRunID == runID }),
           measured.metrics["host_replay_to_saved_ms"] == nil, !measured.storedBeforeDispatch
         else {
-          throw BenchmarkFailure.incompletePipeline
+          throw ReplayFailure.incompletePipeline
         }
         return .init(
           status: "ok", failure: nil, texts: ["raw": raw], metrics: measured.metrics,
@@ -314,7 +314,7 @@ private actor HostMeasurements {
     guard let storedID, let stored = try await store.record(id: storedID),
       stored.record.provenance.workflowRunID == runID && stored.record.payload == draft.payload
     else {
-      throw BenchmarkFailure.outputBeforeCommit
+      throw ReplayFailure.outputBeforeCommit
     }
     storedBeforeDispatch = true
     metrics["host_replay_to_isolated_dispatch_ms"] = milliseconds(to: dispatchedAt)
@@ -338,7 +338,7 @@ private struct MeasuredRecognizer: SpeechRecognizer {
       result.metadata["provider.model"] != expectedModel.id || result.metadata["provider.model_revision"] != expectedModel.revision
     {
       await measurements.identityMismatch()
-      throw BenchmarkFailure.modelIdentityMismatch
+      throw ReplayFailure.modelIdentityMismatch
     }
     await measurements.recognized(result.rawText, at: .now)
     return result
@@ -355,7 +355,7 @@ private struct MeasuredIngestion: RecordIngestionSink {
   }
 }
 
-private struct IsolatedBenchmarkOutput: OutputAction {
+private struct IsolatedReplayOutput: OutputAction {
   let id = "system-clipboard.copy"
   let measurements: HostMeasurements
   func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
@@ -364,7 +364,7 @@ private struct IsolatedBenchmarkOutput: OutputAction {
   }
 }
 
-private struct FixedBenchmarkRecognizer: SpeechRecognizer {
+private struct FixedReplayRecognizer: SpeechRecognizer {
   let id = "local-speech"
   let capabilities = SpeechRecognizerCapabilities(supportedHintKinds: [.keyterm])
   var text = "  rill 不要 删除 2026  "
@@ -375,12 +375,12 @@ private struct FixedBenchmarkRecognizer: SpeechRecognizer {
 
 private func sha256(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
-private func copyFixture(_ item: HostBenchmarkRequest.Fixture) throws -> CapturedAudio {
+private func copyFixture(_ item: HostReplayRequest.Fixture) throws -> CapturedAudio {
   let bytes = try Data(contentsOf: URL(fileURLWithPath: item.audioPath))
-  guard item.consent == "authorized", sha256(bytes) == item.audioSHA256 else { throw BenchmarkFailure.fixtureChanged }
-  let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("rill-benchmark-" + UUID().uuidString + ".wav")
+  guard item.consent == "authorized", sha256(bytes) == item.audioSHA256 else { throw ReplayFailure.fixtureChanged }
+  let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("rill-replay-" + UUID().uuidString + ".wav")
   let descriptor = Darwin.open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-  guard descriptor >= 0 else { throw BenchmarkFailure.fixtureChanged }
+  guard descriptor >= 0 else { throw ReplayFailure.fixtureChanged }
   let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
   defer { try? file.close() }
   do {

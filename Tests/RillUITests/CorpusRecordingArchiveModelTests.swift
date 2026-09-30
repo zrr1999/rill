@@ -4,7 +4,7 @@ import Testing
 @testable import RillUI
 
 @MainActor
-struct BenchmarkRecordingArchiveModelTests {
+struct CorpusRecordingArchiveModelTests {
   @Test func closingAndReopeningWaitsForOldReadAndClearsExportAuthorization() async throws {
     let reader = SelectionReadGate()
     let exporter = SelectionExportProbe()
@@ -55,17 +55,17 @@ struct BenchmarkRecordingArchiveModelTests {
     #expect(!model.authorizesPlaintextExport)
   }
 
-  private func makeModel(reader: SelectionReadGate, exporter: SelectionExportProbe) -> BenchmarkRecordingArchiveModel {
+  private func makeModel(reader: SelectionReadGate, exporter: SelectionExportProbe) -> CorpusRecordingArchiveModel {
     let store = UITestSettingsStore()
     let settings = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
     settings.isLoading = false
-    return BenchmarkRecordingArchiveModel(
+    return CorpusRecordingArchiveModel(
       settings: settings, store: store,
       reader: reader, exporter: exporter, refresh: { _ in }, clear: {})
   }
 }
 
-private actor SelectionReadGate: BenchmarkRecordingArchiveReading {
+private actor SelectionReadGate: CorpusRecordingArchiveReading {
   nonisolated let id = UUID()
   private var blocks: Bool
   private var entered = false
@@ -73,7 +73,7 @@ private actor SelectionReadGate: BenchmarkRecordingArchiveReading {
   private var observers: [CheckedContinuation<Void, Never>] = []
   init(blocks: Bool = true) { self.blocks = blocks }
   func recordingIDs() async throws -> [UUID] { [id] }
-  func receipt(runID: UUID) async throws -> BenchmarkRecordingReceipt {
+  func receipt(runID: UUID) async throws -> CorpusRecordingReceipt {
     if blocks {
       blocks = false
       entered = true
@@ -86,7 +86,7 @@ private actor SelectionReadGate: BenchmarkRecordingArchiveReading {
       format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16), plaintextByteCount: 2,
       trigger: .hotkey, outcome: .completed, metadata: [:])
   }
-  func recording(runID: UUID) async throws -> BenchmarkRecording { throw BenchmarkRecordingArchiveError.invalidEntry }
+  func recording(runID: UUID) async throws -> CorpusRecording { throw CorpusRecordingArchiveError.invalidEntry }
   func waitForRead() async {
     if entered { return }
     await withCheckedContinuation { observers.append($0) }
@@ -97,11 +97,11 @@ private actor SelectionReadGate: BenchmarkRecordingArchiveReading {
   }
 }
 
-private actor SelectionExportProbe: BenchmarkCorpusExporting {
-  private(set) var selection: BenchmarkCorpusSelection?
+private actor SelectionExportProbe: CorpusExporting {
+  private(set) var selection: CorpusSelection?
   private var waiting: CheckedContinuation<URL, Error>?
   private var observers: [CheckedContinuation<Void, Never>] = []
-  func export(_ selection: BenchmarkCorpusSelection, to directory: URL) async throws -> URL {
+  func export(_ selection: CorpusSelection, to directory: URL) async throws -> URL {
     self.selection = selection
     observers.forEach { $0.resume() }
     observers = []
@@ -111,7 +111,7 @@ private actor SelectionExportProbe: BenchmarkCorpusExporting {
     if selection != nil { return }
     await withCheckedContinuation { observers.append($0) }
   }
-  func complete(_ error: BenchmarkCorpusExportError) {
+  func complete(_ error: CorpusExportError) {
     waiting?.resume(throwing: error)
     waiting = nil
   }

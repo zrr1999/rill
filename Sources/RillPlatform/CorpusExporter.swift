@@ -4,11 +4,11 @@ import Foundation
 import RillCore
 
 /// Plaintext leaves encrypted storage only for an explicit, immutable selection.
-public actor BenchmarkCorpusExporter: BenchmarkCorpusExporting {
-  private let archive: any BenchmarkRecordingArchiveReading
+public actor CorpusExporter: CorpusExporting {
+  private let archive: any CorpusRecordingArchiveReading
   private let removeEntry: @Sendable (Int32, String, Int32) -> Bool
 
-  public init(archive: any BenchmarkRecordingArchiveReading) {
+  public init(archive: any CorpusRecordingArchiveReading) {
     self.init(
       archive: archive,
       removeEntry: { directory, name, flags in
@@ -17,33 +17,33 @@ public actor BenchmarkCorpusExporter: BenchmarkCorpusExporting {
   }
 
   init(
-    archive: any BenchmarkRecordingArchiveReading,
+    archive: any CorpusRecordingArchiveReading,
     removeEntry: @escaping @Sendable (Int32, String, Int32) -> Bool
   ) {
     self.archive = archive
     self.removeEntry = removeEntry
   }
 
-  public func export(_ selection: BenchmarkCorpusSelection, to parent: URL) async throws -> URL {
+  public func export(_ selection: CorpusSelection, to parent: URL) async throws -> URL {
     guard !selection.runIDs.isEmpty, Set(selection.runIDs).count == selection.runIDs.count,
       parent.isFileURL
-    else { throw BenchmarkRecordingArchiveError.invalidEntry }
+    else { throw CorpusRecordingArchiveError.invalidEntry }
     try Task.checkCancellation()
     let directory = parent.resolvingSymlinksInPath()
     let parentFD = Darwin.open(directory.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
-    guard parentFD >= 0 else { throw BenchmarkRecordingArchiveError.storageUnavailable }
+    guard parentFD >= 0 else { throw CorpusRecordingArchiveError.storageUnavailable }
     defer { Darwin.close(parentFD) }
     let name = "Rill-Evaluation-" + UUID().uuidString
     let stagingName = "." + name + ".partial"
     guard mkdirat(parentFD, stagingName, 0o700) == 0 else {
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+      throw CorpusRecordingArchiveError.storageUnavailable
     }
     let stagingFD = openat(parentFD, stagingName, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
     guard stagingFD >= 0 else {
       guard removeEntry(parentFD, stagingName, AT_REMOVEDIR) else {
-        throw BenchmarkCorpusExportError.cleanupPending(directory.appendingPathComponent(stagingName))
+        throw CorpusExportError.cleanupPending(directory.appendingPathComponent(stagingName))
       }
-      throw BenchmarkRecordingArchiveError.storageUnavailable
+      throw CorpusRecordingArchiveError.storageUnavailable
     }
     var writtenFiles: [String] = []
     defer { Darwin.close(stagingFD) }
@@ -55,7 +55,7 @@ public actor BenchmarkCorpusExporter: BenchmarkCorpusExporting {
         try Task.checkCancellation()
         guard recording.receipt.runID == runID,
           recording.receipt.format == .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16)
-        else { throw BenchmarkRecordingArchiveError.unsupportedPayload }
+        else { throw CorpusRecordingArchiveError.unsupportedPayload }
         let file = runID.uuidString + ".wav"
         writtenFiles.append(file)
         try write(recording.audioBytes, named: file, in: stagingFD)
@@ -77,7 +77,7 @@ public actor BenchmarkCorpusExporter: BenchmarkCorpusExporting {
       guard fsync(stagingFD) == 0,
         renameatx_np(parentFD, stagingName, parentFD, name, UInt32(RENAME_EXCL)) == 0
       else {
-        throw BenchmarkRecordingArchiveError.storageUnavailable
+        throw CorpusRecordingArchiveError.storageUnavailable
       }
       return directory.appendingPathComponent(name, isDirectory: true)
     } catch {
@@ -87,7 +87,7 @@ public actor BenchmarkCorpusExporter: BenchmarkCorpusExporting {
       }
       if !removeEntry(parentFD, stagingName, AT_REMOVEDIR) { cleaned = false }
       guard cleaned else {
-        throw BenchmarkCorpusExportError.cleanupPending(directory.appendingPathComponent(stagingName, isDirectory: true))
+        throw CorpusExportError.cleanupPending(directory.appendingPathComponent(stagingName, isDirectory: true))
       }
       throw error
     }
@@ -95,7 +95,7 @@ public actor BenchmarkCorpusExporter: BenchmarkCorpusExporting {
 
   private func write(_ data: Data, named name: String, in directory: Int32) throws {
     let descriptor = openat(directory, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
-    guard descriptor >= 0 else { throw BenchmarkRecordingArchiveError.storageUnavailable }
+    guard descriptor >= 0 else { throw CorpusRecordingArchiveError.storageUnavailable }
     let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
     defer { try? file.close() }
     try file.write(contentsOf: data)

@@ -4,13 +4,13 @@ import RillCore
 import Testing
 @testable import RillPlatform
 
-struct BenchmarkCorpusExporterTests {
+struct CorpusExporterTests {
   @Test func exportsOnlyExplicitSelectionWithNoInventedReferences() async throws {
     let fixture = try Fixture()
     defer { fixture.remove() }
     let selected = try await fixture.preserve()
     _ = try await fixture.preserve()
-    let directory = try await BenchmarkCorpusExporter(archive: fixture.archive).export(
+    let directory = try await CorpusExporter(archive: fixture.archive).export(
       .init(runIDs: [selected], evidenceKind: .synthetic, split: .validation), to: fixture.exports)
     let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
     #expect(Set(files) == [selected.uuidString + ".wav", "README.txt", "corpus.json"])
@@ -38,8 +38,8 @@ struct BenchmarkCorpusExporterTests {
     try Data("tampered".utf8).write(to: await fixture.archive.directoryURL.appendingPathComponent(damaged.uuidString + ".rillaudio"))
     // Listing metadata must not open or trust the damaged audio.
     #expect(try await fixture.archive.receipt(runID: damaged).runID == damaged)
-    await #expect(throws: BenchmarkRecordingArchiveError.invalidEntry) {
-      _ = try await BenchmarkCorpusExporter(archive: fixture.archive).export(
+    await #expect(throws: CorpusRecordingArchiveError.invalidEntry) {
+      _ = try await CorpusExporter(archive: fixture.archive).export(
         .init(runIDs: [first, damaged], evidenceKind: .synthetic, split: .development), to: fixture.exports)
     }
     #expect(try FileManager.default.contentsOfDirectory(atPath: fixture.exports.path).isEmpty)
@@ -50,11 +50,11 @@ struct BenchmarkCorpusExporterTests {
     defer { fixture.remove() }
     let first = try await fixture.preserve()
     let missing = UUID()
-    let exporter = BenchmarkCorpusExporter(archive: fixture.archive, removeEntry: { _, _, _ in false })
+    let exporter = CorpusExporter(archive: fixture.archive, removeEntry: { _, _, _ in false })
     do {
       _ = try await exporter.export(.init(runIDs: [first, missing], evidenceKind: .synthetic, split: .development), to: fixture.exports)
       Issue.record("Missing recording must fail")
-    } catch BenchmarkCorpusExportError.cleanupPending(let url) {
+    } catch CorpusExportError.cleanupPending(let url) {
       #expect(url.deletingLastPathComponent().standardizedFileURL.path == fixture.exports.resolvingSymlinksInPath().standardizedFileURL.path)
       #expect(try Data(contentsOf: url.appendingPathComponent(first.uuidString + ".wav")) == fixture.audioBytes)
     }
@@ -67,7 +67,7 @@ struct BenchmarkCorpusExporterTests {
     let delayed = try await fixture.preserve()
     let gate = ReadGate(archive: fixture.archive, delayed: delayed)
     let task = Task {
-      try await BenchmarkCorpusExporter(archive: gate).export(
+      try await CorpusExporter(archive: gate).export(
         .init(runIDs: [first, delayed], evidenceKind: .synthetic, split: .development), to: fixture.exports)
     }
     await gate.waitUntilReading()
@@ -84,19 +84,19 @@ struct BenchmarkCorpusExporterTests {
 
   private struct Fixture {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    let archive: EncryptedBenchmarkRecordingArchiveStore
+    let archive: EncryptedCorpusRecordingArchiveStore
     let exports: URL
     let audioBytes = Data([0, 1, 2, 3])
     init() throws {
       exports = directory.appendingPathComponent("exports")
       try FileManager.default.createDirectory(at: exports, withIntermediateDirectories: true)
-      archive = try EncryptedBenchmarkRecordingArchiveStore(
+      archive = try EncryptedCorpusRecordingArchiveStore(
         directoryURL: directory.appendingPathComponent("encrypted"),
         localDataProtector: AESGCMDataProtector(key: Data(repeating: 7, count: AESGCMDataProtector.keyByteCount)))
     }
     func preserve() async throws -> UUID {
       let id = UUID()
-      let url = FileManager.default.temporaryDirectory.appendingPathComponent("rill-benchmark-test-" + id.uuidString + ".wav")
+      let url = FileManager.default.temporaryDirectory.appendingPathComponent("rill-replay-test-" + id.uuidString + ".wav")
       try audioBytes.write(to: url)
       defer { try? FileManager.default.removeItem(at: url) }
       let audio = try CapturedAudio(
@@ -110,19 +110,19 @@ struct BenchmarkCorpusExporterTests {
   }
 }
 
-private actor ReadGate: BenchmarkRecordingArchiveReading {
-  let archive: EncryptedBenchmarkRecordingArchiveStore
+private actor ReadGate: CorpusRecordingArchiveReading {
+  let archive: EncryptedCorpusRecordingArchiveStore
   let delayed: UUID
   var waiting: CheckedContinuation<Void, Never>?
   var entered = false
   var observers: [CheckedContinuation<Void, Never>] = []
-  init(archive: EncryptedBenchmarkRecordingArchiveStore, delayed: UUID) {
+  init(archive: EncryptedCorpusRecordingArchiveStore, delayed: UUID) {
     self.archive = archive
     self.delayed = delayed
   }
   func recordingIDs() async throws -> [UUID] { try await archive.recordingIDs() }
-  func receipt(runID: UUID) async throws -> BenchmarkRecordingReceipt { try await archive.receipt(runID: runID) }
-  func recording(runID: UUID) async throws -> BenchmarkRecording {
+  func receipt(runID: UUID) async throws -> CorpusRecordingReceipt { try await archive.receipt(runID: runID) }
+  func recording(runID: UUID) async throws -> CorpusRecording {
     if runID == delayed {
       entered = true
       observers.forEach { $0.resume() }

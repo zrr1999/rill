@@ -3,13 +3,13 @@ import Observation
 import RillCore
 
 @MainActor @Observable
-public final class BenchmarkRecordingArchiveModel {
+public final class CorpusRecordingArchiveModel {
   public private(set) var isEnabled = false
   public private(set) var isUpdating = false
-  public private(set) var receipts: [BenchmarkRecordingReceipt] = []
+  public private(set) var receipts: [CorpusRecordingReceipt] = []
   public var selection: Set<UUID> = []
-  public var evidenceKind: BenchmarkEvidenceKind?
-  public var split: BenchmarkCorpusSplit = .development
+  public var evidenceKind: CorpusEvidenceKind?
+  public var split: CorpusSplit = .development
   public var authorizesPlaintextExport = false
   public private(set) var state: State = .idle
   public private(set) var lastExportedURL: URL?
@@ -18,8 +18,8 @@ public final class BenchmarkRecordingArchiveModel {
   private var errorKey: RunStatusTextKey?
   private let settings: SettingsPersistenceModel
   private let store: (any SettingsStore)?
-  private let reader: (any BenchmarkRecordingArchiveReading)?
-  private let exporter: (any BenchmarkCorpusExporting)?
+  private let reader: (any CorpusRecordingArchiveReading)?
+  private let exporter: (any CorpusExporting)?
   private let refreshAction: @Sendable (Bool) async throws -> Void
   private let clearAction: @Sendable () async throws -> Void
   private var operation: Task<Void, Never>?
@@ -38,7 +38,7 @@ public final class BenchmarkRecordingArchiveModel {
 
   init(
     settings: SettingsPersistenceModel, store: (any SettingsStore)?,
-    reader: (any BenchmarkRecordingArchiveReading)?, exporter: (any BenchmarkCorpusExporting)?,
+    reader: (any CorpusRecordingArchiveReading)?, exporter: (any CorpusExporting)?,
     refresh: @escaping @Sendable (Bool) async throws -> Void,
     clear: @escaping @Sendable () async throws -> Void
   ) {
@@ -53,14 +53,14 @@ public final class BenchmarkRecordingArchiveModel {
   func applyStored(_ value: String?, available: Bool) {
     isEnabled = available && value == "true"
     if available && ![nil, "", "true", "false"].contains(value) {
-      errorKey = .benchmarkSettingInvalid
+      errorKey = .corpusSettingInvalid
     }
   }
 
   public func setEnabled(_ enabled: Bool) {
     guard !shuttingDown, !settings.isLoading, enabled != isEnabled, !isUpdating else { return }
     guard let store else {
-      errorKey = .benchmarkStorageUnavailable
+      errorKey = .corpusStorageUnavailable
       return
     }
     isUpdating = true
@@ -68,7 +68,7 @@ public final class BenchmarkRecordingArchiveModel {
     let task = Task { [self] in
       defer { isUpdating = false }
       do {
-        try await store.setString(enabled ? "true" : "false", forKey: .benchmarkRecordingArchiveEnabled)
+        try await store.setString(enabled ? "true" : "false", forKey: .corpusRecordingArchiveEnabled)
         isEnabled = enabled
         do {
           try await refreshAction(enabled)
@@ -76,17 +76,17 @@ public final class BenchmarkRecordingArchiveModel {
           if enabled {
             try? await refreshAction(false)
             do {
-              try await store.setString("false", forKey: .benchmarkRecordingArchiveEnabled)
+              try await store.setString("false", forKey: .corpusRecordingArchiveEnabled)
               isEnabled = false
             } catch {
-              errorKey = .benchmarkEnabledStorageUnavailable
+              errorKey = .corpusEnabledStorageUnavailable
               return
             }
           }
-          errorKey = .benchmarkRetentionUpdateFailed
+          errorKey = .corpusRetentionUpdateFailed
         }
       } catch {
-        errorKey = .benchmarkRetentionUpdateFailed
+        errorKey = .corpusRetentionUpdateFailed
       }
     }
     settings.writes.track(task)
@@ -103,7 +103,7 @@ public final class BenchmarkRecordingArchiveModel {
         try await clearAction()
         receipts = []
         selection = []
-      } catch { errorKey = .benchmarkClearFailed }
+      } catch { errorKey = .corpusClearFailed }
     }
     settings.writes.track(task)
   }
@@ -125,8 +125,8 @@ public final class BenchmarkRecordingArchiveModel {
       await previous?.value
       do {
         try Task.checkCancellation()
-        guard let reader else { throw BenchmarkRecordingArchiveError.storageUnavailable }
-        var loaded: [BenchmarkRecordingReceipt] = []
+        guard let reader else { throw CorpusRecordingArchiveError.storageUnavailable }
+        var loaded: [CorpusRecordingReceipt] = []
         for id in try await reader.recordingIDs() {
           try Task.checkCancellation()
           loaded.append(try await reader.receipt(runID: id))
@@ -140,14 +140,14 @@ public final class BenchmarkRecordingArchiveModel {
       } catch {
         guard operationID == id else { return }
         state = .selecting
-        errorKey = .benchmarkReadFailed
+        errorKey = .corpusReadFailed
       }
     }
   }
 
   public func exportSelection(to directory: URL) {
     guard canExport, let evidenceKind, let exporter else { return }
-    let selected = BenchmarkCorpusSelection(
+    let selected = CorpusSelection(
       runIDs: selection.sorted { $0.uuidString < $1.uuidString },
       evidenceKind: evidenceKind, split: split)
     let id = UUID()
@@ -161,7 +161,7 @@ public final class BenchmarkRecordingArchiveModel {
         // A committed export remains discoverable even if its sheet closed meanwhile.
         lastExportedURL = url
         if operationID == id { state = .selecting }
-      } catch BenchmarkCorpusExportError.cleanupPending(let url) {
+      } catch CorpusExportError.cleanupPending(let url) {
         if !cleanupPendingURLs.contains(url) { cleanupPendingURLs.append(url) }
         if operationID == id { state = .selecting }
       } catch is CancellationError {
@@ -169,7 +169,7 @@ public final class BenchmarkRecordingArchiveModel {
       } catch {
         guard operationID == id else { return }
         state = .selecting
-        errorKey = .benchmarkExportFailed
+        errorKey = .corpusExportFailed
       }
     }
   }

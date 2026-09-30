@@ -11,9 +11,9 @@ check:
     uvx prek==0.5.3 validate-config prek.toml
     uvx prek==0.5.3 -c prek.toml run --all-files
 
-# Format Swift sources with the repository's two-space configuration.
+# Format every tracked Swift file, matching the swift-format hook scope.
 fmt:
-    swift format --configuration .swift-format --in-place --recursive Sources Tests Package.swift
+    git ls-files -z '*.swift' | xargs -0 swift format --configuration .swift-format --in-place
 
 # Build the documentation and reject broken links and anchors.
 docs:
@@ -36,8 +36,27 @@ test-scripts:
     scripts/preflight.sh test-scripts
 
 # Build and validate the production performance workloads.
-bench:
+validate-performance-workloads:
     bash scripts/build_benchmarks.sh
+
+# Run one explicit quality evaluation (real LLM calls are opt-in).
+[positional-arguments]
+eval-quality suite *args:
+    uv run --script scripts/eval_quality.py "$@"
+
+# Compare paired ASR performance; --target defines the measurement boundary.
+[positional-arguments]
+bench-performance suite *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    test "$1" = asr || { echo "Supported performance comparison suite: asr" >&2; exit 2; }
+    shift
+    uv run --script scripts/asr_perf.py "$@"
+
+# Apply the explicit ASR experiment admission policy to two matching reports.
+[positional-arguments]
+accept-asr *args:
+    uv run --script scripts/asr_acceptance.py "$@"
 
 # Reproduce the complete local CI gate.
 ci:

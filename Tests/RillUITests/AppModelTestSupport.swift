@@ -620,11 +620,11 @@ func makeHarness(
   refreshFailedAudioRecoveryAction: @escaping @Sendable (Bool) async throws -> Void = { _ in },
   loadFailedAudioRecoveryReceiptsAction:
     @escaping @Sendable () async throws -> [FailedAudioRecoveryReceipt] = { [] },
-  clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void = {},
-  refreshBenchmarkRecordingArchiveAction:
+  clearCorpusRecordingArchiveAction: @escaping @Sendable () async throws -> Void = {},
+  refreshCorpusRecordingArchiveAction:
     @escaping @Sendable (Bool) async throws -> Void = { _ in },
-  benchmarkArchiveReader: (any BenchmarkRecordingArchiveReading)? = nil,
-  benchmarkCorpusExporter: (any BenchmarkCorpusExporting)? = nil,
+  corpusArchiveReader: (any CorpusRecordingArchiveReading)? = nil,
+  corpusExporter: (any CorpusExporting)? = nil,
   authorizeWorkflowRunAction:
     @escaping @Sendable (
       WorkflowDefinition
@@ -735,10 +735,10 @@ func makeHarness(
     clearFailedAudioRecoveryAction: clearFailedAudioRecoveryAction,
     refreshFailedAudioRecoveryAction: refreshFailedAudioRecoveryAction,
     loadFailedAudioRecoveryReceiptsAction: loadFailedAudioRecoveryReceiptsAction,
-    clearBenchmarkRecordingArchiveAction: clearBenchmarkRecordingArchiveAction,
-    refreshBenchmarkRecordingArchiveAction: refreshBenchmarkRecordingArchiveAction,
-    benchmarkArchiveReader: benchmarkArchiveReader,
-    benchmarkCorpusExporter: benchmarkCorpusExporter,
+    clearCorpusRecordingArchiveAction: clearCorpusRecordingArchiveAction,
+    refreshCorpusRecordingArchiveAction: refreshCorpusRecordingArchiveAction,
+    corpusArchiveReader: corpusArchiveReader,
+    corpusExporter: corpusExporter,
     authorizeWorkflowRunAction: authorizeWorkflowRunAction,
     explainResolvedWorkflowAction: explainResolvedWorkflowAction,
     writeClipboardTextAction: writeClipboardTextAction,

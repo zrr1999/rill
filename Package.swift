@@ -154,6 +154,10 @@ let package = Package(
       ]
     ),
     .testTarget(
+      name: "RillQualityEvaluations",
+      dependencies: ["RillCore", "RillProviders", "RillPlatform"],
+      path: "Evals/RillQualityEvaluations"),
+    .testTarget(
       name: "RillProvidersTests",
       dependencies: [
         .product(name: "OpenAI", package: "OpenAI"),

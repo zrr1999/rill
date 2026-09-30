@@ -95,7 +95,7 @@ public final class AppModel {
   public let vocabulary: VocabularyLibraryModel
   public internal(set) var recordRetentionPeriod: HistoryRetentionPeriod = .defaultPeriod
 
-  public let benchmarkArchive: BenchmarkRecordingArchiveModel
+  public let corpusArchive: CorpusRecordingArchiveModel
   public var enabledManualWorkflows: [WorkflowDefinition] {
     enabledWorkflows(for: .manual)
   }
@@ -306,10 +306,10 @@ public final class AppModel {
     refreshFailedAudioRecoveryAction: @escaping @Sendable (Bool) async throws -> Void,
     loadFailedAudioRecoveryReceiptsAction:
       @escaping @Sendable () async throws -> [FailedAudioRecoveryReceipt],
-    clearBenchmarkRecordingArchiveAction: @escaping @Sendable () async throws -> Void,
-    refreshBenchmarkRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void,
-    benchmarkArchiveReader: (any BenchmarkRecordingArchiveReading)?,
-    benchmarkCorpusExporter: (any BenchmarkCorpusExporting)?,
+    clearCorpusRecordingArchiveAction: @escaping @Sendable () async throws -> Void,
+    refreshCorpusRecordingArchiveAction: @escaping @Sendable (Bool) async throws -> Void,
+    corpusArchiveReader: (any CorpusRecordingArchiveReading)?,
+    corpusExporter: (any CorpusExporting)?,
     authorizeWorkflowRunAction:
       @escaping @Sendable (
         WorkflowDefinition
@@ -453,10 +453,10 @@ public final class AppModel {
     self.clearFailedAudioRecoveryAction = clearFailedAudioRecoveryAction
     self.refreshFailedAudioRecoveryAction = refreshFailedAudioRecoveryAction
     self.loadFailedAudioRecoveryReceiptsAction = loadFailedAudioRecoveryReceiptsAction
-    self.benchmarkArchive = BenchmarkRecordingArchiveModel(
+    self.corpusArchive = CorpusRecordingArchiveModel(
       settings: settings, store: settingsStore,
-      reader: benchmarkArchiveReader, exporter: benchmarkCorpusExporter,
-      refresh: refreshBenchmarkRecordingArchiveAction, clear: clearBenchmarkRecordingArchiveAction)
+      reader: corpusArchiveReader, exporter: corpusExporter,
+      refresh: refreshCorpusRecordingArchiveAction, clear: clearCorpusRecordingArchiveAction)
     self.authorizeWorkflowRunAction = authorizeWorkflowRunAction
     self.writeClipboardTextAction = writeClipboardTextAction
     self.deliverNextRecordAction = deliverNextRecordAction
@@ -673,7 +673,7 @@ extension AppModel {
     hasBegunApplicationShutdown = true
     guard hasBegunApplicationShutdown, !oldValue else { return }
     history.hasBegunApplicationShutdown = true
-    benchmarkArchive.beginShutdown()
+    corpusArchive.beginShutdown()
     settings.beginShutdown()
     voice.stopResourcePreparationForApplicationShutdown()
     workflowLibrary.cancelWorkflowExplanation()

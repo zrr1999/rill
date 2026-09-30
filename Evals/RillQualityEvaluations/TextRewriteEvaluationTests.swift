@@ -43,7 +43,7 @@ struct TextRewriteEvaluationTests {
       [Sample].self,
       from: Data(
         contentsOf:
-          Self.root.appendingPathComponent("Tests/Fixtures/TextRewrite/cases.json")))
+          Self.root.appendingPathComponent("Evals/TextRewrite/cases.json")))
     try #require(!samples.isEmpty)
     let workflow = WorkflowDefinition(
       name: "Cleanup evaluation",
@@ -51,8 +51,6 @@ struct TextRewriteEvaluationTests {
       ui: .init(symbolName: "waveform", accentColorName: "blue"))
     let step = PostProcessStep(kind: .llmRewrite, prompt: LLMTextProcessing.cleanupPrompt)
     var observations: [Observation] = []
-    let report = Self.root.appendingPathComponent(".artifacts/text-rewrite/live-evaluation.json")
-    try FileManager.default.createDirectory(at: report.deletingLastPathComponent(), withIntermediateDirectories: true)
 
     for repetition in 1...3 {
       for sample in samples {
@@ -85,11 +83,7 @@ struct TextRewriteEvaluationTests {
               output: output, matchesExpectedContent: matched,
               elapsedMilliseconds: Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15,
               failed: output == nil))
-          let encoder = JSONEncoder()
-          encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-          encoder.dateEncodingStrategy = .iso8601
-          try encoder.encode(Report(model: model, startedAt: startedAt, observations: observations))
-            .write(to: report, options: .atomic)
+          try EvaluationOutput.save(Report(model: model, startedAt: startedAt, observations: observations), settings: settings)
           #expect(matched, "Cleanup changed the content or failed: \(sample.id), contextual=\(contextual), repetition=\(repetition)")
         }
       }

@@ -2,8 +2,8 @@ import AppKit
 import RillCore
 import SwiftUI
 
-struct BenchmarkRecordingArchiveSheet: View {
-  @Bindable var model: BenchmarkRecordingArchiveModel
+struct CorpusRecordingArchiveSheet: View {
+  @Bindable var model: CorpusRecordingArchiveModel
   let language: AppLanguage
   @Environment(\.dismiss) private var dismiss
   @State private var choosingDestination = false
@@ -39,14 +39,14 @@ struct BenchmarkRecordingArchiveSheet: View {
       }
       HStack {
         Picker(text(.source), selection: $model.evidenceKind) {
-          Text(text(.chooseSource)).tag(nil as BenchmarkEvidenceKind?)
-          Text(text(.microphone)).tag(BenchmarkEvidenceKind.microphone as BenchmarkEvidenceKind?)
-          Text(text(.synthetic)).tag(BenchmarkEvidenceKind.synthetic as BenchmarkEvidenceKind?)
-          Text(text(.publicFixture)).tag(BenchmarkEvidenceKind.publicFixture as BenchmarkEvidenceKind?)
+          Text(text(.chooseSource)).tag(nil as CorpusEvidenceKind?)
+          Text(text(.microphone)).tag(CorpusEvidenceKind.microphone as CorpusEvidenceKind?)
+          Text(text(.synthetic)).tag(CorpusEvidenceKind.synthetic as CorpusEvidenceKind?)
+          Text(text(.publicFixture)).tag(CorpusEvidenceKind.publicFixture as CorpusEvidenceKind?)
         }
         Picker(text(.split), selection: $model.split) {
-          Text(text(.development)).tag(BenchmarkCorpusSplit.development)
-          Text(text(.validation)).tag(BenchmarkCorpusSplit.validation)
+          Text(text(.development)).tag(CorpusSplit.development)
+          Text(text(.validation)).tag(CorpusSplit.validation)
         }
       }
       Toggle(text(.authorize), isOn: $model.authorizesPlaintextExport)
@@ -81,8 +81,8 @@ struct BenchmarkRecordingArchiveSheet: View {
     .onDisappear { model.cancelSelection() }
   }
 
-  private func text(_ key: BenchmarkArchiveTextKey) -> String { L10n.benchmarkArchive(key, language: language) }
-  private func outcomeKey(_ outcome: BenchmarkRecordingOutcome) -> BenchmarkArchiveTextKey {
+  private func text(_ key: CorpusArchiveTextKey) -> String { L10n.corpusArchive(key, language: language) }
+  private func outcomeKey(_ outcome: CorpusRecordingOutcome) -> CorpusArchiveTextKey {
     switch outcome {
     case .completed: .completed
     case .failed: .failed

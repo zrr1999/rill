@@ -5,7 +5,7 @@ import XCTest
 @testable import RillUI
 
 @MainActor
-final class BenchmarkArchiveRenderTests: XCTestCase {
+final class CorpusArchiveRenderTests: XCTestCase {
   func testRenderExplicitArchiveSelection() async throws {
     guard let directory = ProcessInfo.processInfo.environment["RILL_UI_SNAPSHOT_DIR"] else {
       throw XCTSkip("Set RILL_UI_SNAPSHOT_DIR to export native render evidence.")
@@ -17,11 +17,11 @@ final class BenchmarkArchiveRenderTests: XCTestCase {
       for dark in [false, true] {
         let settings = SettingsPersistenceModel(store: nil, language: language, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
         settings.isLoading = false
-        let model = BenchmarkRecordingArchiveModel(
+        let model = CorpusRecordingArchiveModel(
           settings: settings, store: nil,
           reader: RenderArchive(), exporter: nil, refresh: { _ in }, clear: {})
         let view = NSHostingView(
-          rootView: BenchmarkRecordingArchiveSheet(model: model, language: language)
+          rootView: CorpusRecordingArchiveSheet(model: model, language: language)
             .environment(\.colorScheme, dark ? .dark : .light)
             .background(Color(nsColor: .windowBackgroundColor)))
         let window = NSWindow(
@@ -42,7 +42,7 @@ final class BenchmarkArchiveRenderTests: XCTestCase {
         let representation = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: representation)
         let png = try XCTUnwrap(representation.representation(using: .png, properties: [:]))
-        try png.write(to: output.appendingPathComponent("benchmark-archive-\(language.rawValue)-\(dark ? "dark" : "light").png"))
+        try png.write(to: output.appendingPathComponent("corpus-archive-\(language.rawValue)-\(dark ? "dark" : "light").png"))
         window.close()
         model.cancelSelection()
         await model.waitForOperation()
@@ -51,14 +51,14 @@ final class BenchmarkArchiveRenderTests: XCTestCase {
   }
 }
 
-private struct RenderArchive: BenchmarkRecordingArchiveReading {
+private struct RenderArchive: CorpusRecordingArchiveReading {
   let ids = (0..<3).map { _ in UUID() }
   func recordingIDs() async throws -> [UUID] { ids }
-  func receipt(runID: UUID) async throws -> BenchmarkRecordingReceipt {
+  func receipt(runID: UUID) async throws -> CorpusRecordingReceipt {
     .init(
       runID: runID, workflowID: UUID(), createdAt: Date(timeIntervalSince1970: 1_790_292_600),
       durationSeconds: 12.5, format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16),
       plaintextByteCount: 400_000, trigger: .hotkey, outcome: .completed, metadata: [:])
   }
-  func recording(runID: UUID) async throws -> BenchmarkRecording { throw BenchmarkRecordingArchiveError.invalidEntry }
+  func recording(runID: UUID) async throws -> CorpusRecording { throw CorpusRecordingArchiveError.invalidEntry }
 }
