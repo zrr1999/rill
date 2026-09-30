@@ -13,6 +13,7 @@ final class LocalizationSettingsTests: XCTestCase {
       XCTAssertFalse(english.isEmpty)
       XCTAssertFalse(simplifiedChinese.isEmpty)
       XCTAssertNotEqual(english, simplifiedChinese)
+      XCTAssertFalse(containsHan(english), english)
     }
   }
 

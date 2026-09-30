@@ -1049,7 +1049,7 @@ public struct HistoryTimelineView: View {
         index: Int
     ) -> String {
         if trace.inputProvenance == .transcriptOnly {
-            return model.settings.language == .simplifiedChinese ? "发送的语音正文（参考另列，原图不保存）" : "Speech text sent (references listed separately; image not retained)"
+            return L10n.surface(.speechTextSentReferencesListed, language: model.settings.language)
         }
         if trace.inputProvenance == .legacyRecognition {
             return L10n.historyTimelineText(.recognizedInputLegacy, language: model.settings.language)

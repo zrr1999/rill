@@ -83,9 +83,7 @@ extension SettingsView {
 
       Text(
         verbatim:
-          model.settings.language == .simplifiedChinese
-          ? "使用 DeepSeek：Base URL 填写 https://api.deepseek.com，模型选择 DeepSeek V4.1 Flash。润色时自动关闭思考。"
-          : "For DeepSeek, use https://api.deepseek.com and choose DeepSeek V4.1 Flash. Thinking is disabled for polishing."
+          L10n.surface(.forDeepseekUseHttpsApi, language: model.settings.language)
       )
       .font(.caption)
       .foregroundStyle(.secondary)

@@ -1121,7 +1121,7 @@ extension AppModel {
 
   public func setRecordPanelHotkeyShortcut(_ shortcut: KeyboardShortcut) {
     guard GlobalHotkeyPolicy.accepts(shortcut), .keyboardShortcut(shortcut) != settings.bufferOutputHotkeyBinding else {
-      lastFailure = settings.language == .simplifiedChinese ? "快捷键与输出下一项冲突。" : "Shortcut conflicts with Output Next."
+      lastFailure = L10n.surface(.shortcutConflictsWithOutputNext, language: settings.language)
       return
     }
     applyRecordPanelHotkeyBinding(.keyboardShortcut(shortcut))
@@ -1444,7 +1444,7 @@ extension AppModel {
 extension AppModel {
   public func setBufferOutputHotkeyShortcut(_ shortcut: KeyboardShortcut) {
     guard GlobalHotkeyPolicy.accepts(shortcut), .keyboardShortcut(shortcut) != settings.recordPanelHotkeyBinding else {
-      lastFailure = settings.language == .simplifiedChinese ? "快捷键与剪贴板面板冲突。" : "Shortcut conflicts with the clipboard panel."
+      lastFailure = L10n.surface(.shortcutConflictsWithTheClipboard, language: settings.language)
       return
     }
     applyBufferOutputHotkeyBinding(.keyboardShortcut(shortcut))
