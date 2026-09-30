@@ -162,8 +162,15 @@ clipboard-panel shortcut cases with Clipboard Capture both enabled and disabled.
       the explicit panel shortcut.
 - [ ] Push-to-talk press/release, event-tap interruption, and permission loss do
       not leave recording latched.
-- [ ] With Toggle Recording off, physical Fn release is the authoritative stop and
-      a new recording can start immediately after the microphone boundary closes.
+- [ ] With Toggle Recording off, release physical Fn about half a second before
+      finishing a phrase: capture, live preview and the recording surface remain
+      active for 500 ms, and the final words reach recognition. The stop cue plays
+      only after capture closes; a new recording can then start.
+- [ ] Re-press Fn during that 500 ms tail: the same recording continues without
+      another start cue, and the next release receives a fresh 500 ms tail.
+- [ ] During the tail, Esc, input/authorization loss and App shutdown stop capture
+      immediately without a stop cue or delayed output. A stale release timer must
+      not stop a subsequent recording.
 - [ ] With Toggle Recording on, Fn release does not stop; the second press stops
       exactly once. Local Qwen still stops automatically at 20 seconds; other
       recognizers retain their provider limits. Restore Toggle Recording off before

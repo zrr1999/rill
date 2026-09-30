@@ -26,6 +26,7 @@ public final class RecordingCueToken: @unchecked Sendable {
 
 public actor RecordingSessionManager {
   private static let preparingReleaseDebounce = Duration.milliseconds(140)
+  private static let recordingReleaseDelay = Duration.milliseconds(500)
   /// The warm Fn path reaches microphone readiness in under the product's
   /// 250 ms target. Publishing a separate preparing surface before that point
   /// produces two WindowServer presentation commits for one physical press.
@@ -69,7 +70,7 @@ public actor RecordingSessionManager {
     var deferredReleaseMatured = false
   }
 
-  private enum DeferredPushToTalkReleaseTarget: Sendable {
+  private enum DeferredPushToTalkReleaseTarget: Sendable, Equatable {
     case run(UUID)
     case startTask(UUID)
   }
@@ -128,6 +129,7 @@ public actor RecordingSessionManager {
   private let recordingDurationLimitProvider: @Sendable () async -> RecordingDurationLimit
   private let recognizerDurationProvider: @Sendable (String) -> Double?
   private let pushToTalkGestureStateProvider: @Sendable (PushToTalkGesture) -> Bool
+  private let deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)?
   private let cleanupOwner: any ManagedTemporaryAudioCleaning
   private let recordingCueAction: @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void
 
@@ -154,6 +156,7 @@ public actor RecordingSessionManager {
   private var activeTriggerEvent: WorkflowTriggerEvent?
   private var activeLiveAudioSession: AuthorizedLiveAudioSession?
   private var activeControlMode: RecordingControlMode?
+  private var activeGesture: PushToTalkGesture?
   private var activeStartCueToken: RecordingCueToken?
   private var finishingRecordings: [UUID: FinishingRecording] = [:]
   private var managedCancellations: [UUID: ManagedCancellation] = [:]
@@ -203,6 +206,7 @@ public actor RecordingSessionManager {
     },
     recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
     pushToTalkGestureStateProvider: (@Sendable (PushToTalkGesture) -> Bool)? = nil,
+    deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)? = nil,
     cleanupOwner: any ManagedTemporaryAudioCleaning,
     recordingCueAction:
       @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }
@@ -230,6 +234,7 @@ public actor RecordingSessionManager {
     self.recognizerDurationProvider = recognizerDurationProvider
     self.cleanupOwner = cleanupOwner
     self.recordingCueAction = recordingCueAction
+    self.deferredReleaseSleep = deferredReleaseSleep
     self.pushToTalkGestureStateProvider =
       pushToTalkGestureStateProvider
       ?? { [hotkeyTap] gesture in
@@ -312,6 +317,7 @@ public actor RecordingSessionManager {
     guard !hasBegunApplicationShutdown else { return }
     switch event {
     case .pushToTalkPressed(let gesture):
+      guard activeControlMode != .holdToTalk || activeGesture == gesture else { return }
       cancelActiveDeferredRelease()
       enqueueDiagnostic(
         level: .debug,
@@ -365,7 +371,8 @@ public actor RecordingSessionManager {
       )
       await endPushToTalk(
         triggeredBy: gesture,
-        waitsForFinishingCompletion: waitsForFinishingCompletion
+        waitsForFinishingCompletion: waitsForFinishingCompletion,
+        defersRecordingRelease: true
       )
     case .globalInputUnavailable:
       await handleGlobalInputUnavailable(
@@ -651,6 +658,7 @@ public actor RecordingSessionManager {
     activeRunID = runID
     activeWorkflow = workflow
     activeControlMode = controlMode
+    activeGesture = gesture
     activeStartCueToken = startCueToken
     if let streamStartTaskID {
       retargetDeferredRelease(
@@ -1068,9 +1076,10 @@ public actor RecordingSessionManager {
 
   private func endPushToTalk(
     triggeredBy gesture: PushToTalkGesture,
-    waitsForFinishingCompletion: Bool
+    waitsForFinishingCompletion: Bool,
+    defersRecordingRelease: Bool = false
   ) async {
-    guard let workflow = activeWorkflow else { return }
+    guard let workflow = activeWorkflow, activeGesture == gesture else { return }
     if activeControlMode == .toggle {
       enqueueDiagnostic(
         level: .debug,
@@ -1098,6 +1107,14 @@ public actor RecordingSessionManager {
       }
       scheduleDeferredRelease(target: .run(runID), gesture: gesture)
     case .recording(let runID):
+      if defersRecordingRelease {
+        scheduleDeferredRelease(
+          target: .run(runID),
+          gesture: gesture,
+          delay: Self.recordingReleaseDelay
+        )
+        return
+      }
       guard
         let task = beginFinishingPushToTalkRecording(
           runID: runID,
@@ -1541,6 +1558,7 @@ extension RecordingSessionManager {
     activeStartCueToken?.invalidate()
     activeStartCueToken = nil
     cancelMaximumDurationTask(runID: runID)
+    cancelActiveDeferredRelease()
     state = .transcribing(runID)
     let operationID = UUID()
     let stopCueToken = RecordingCueToken()
@@ -1615,8 +1633,8 @@ extension RecordingSessionManager {
     stopCueToken: RecordingCueToken
   ) async throws {
     // Stopping the privacy-sensitive input is the first suspension point
-    // after the release/stop gesture. Diagnostics and feedback must never
-    // extend the microphone boundary.
+    // after the release grace period or explicit stop. Diagnostics and feedback
+    // must never extend the microphone boundary.
     let captureFinishStart = ContinuousClock.now
     let deferredCapture = try await audioCaptureService.finishCaptureDeferred()
     let captureFinishMillis = DiagnosticTiming.milliseconds(since: captureFinishStart)
@@ -1711,13 +1729,19 @@ extension RecordingSessionManager {
 
   private func scheduleDeferredRelease(
     target: DeferredPushToTalkReleaseTarget,
-    gesture: PushToTalkGesture
+    gesture: PushToTalkGesture,
+    delay: Duration = preparingReleaseDebounce
   ) {
-    guard !hasBegunApplicationShutdown else { return }
+    guard !hasBegunApplicationShutdown, activeDeferredReleaseTarget != target else { return }
     cancelActiveDeferredRelease()
     let taskID = UUID()
+    let sleep = deferredReleaseSleep
     let task = Task { [weak self] in
-      try? await Task.sleep(for: Self.preparingReleaseDebounce)
+      if let sleep {
+        try? await sleep(delay)
+      } else {
+        try? await Task.sleep(for: delay)
+      }
       guard let self else { return }
       if !Task.isCancelled {
         await self.handleDeferredRelease(taskID: taskID, gesture: gesture)
@@ -1772,7 +1796,7 @@ extension RecordingSessionManager {
         pendingStreamHotkeyStart = pending
       }
     case .run(let runID):
-      await cancelPreparationAfterDeferredRelease(
+      await completeDeferredRelease(
         runID: runID,
         gesture: gesture,
         gestureWasChecked: true
@@ -1792,7 +1816,7 @@ extension RecordingSessionManager {
     activeDeferredReleaseTarget = .run(runID)
   }
 
-  fileprivate func cancelPreparationAfterDeferredRelease(
+  fileprivate func completeDeferredRelease(
     runID: UUID,
     gesture: PushToTalkGesture,
     gestureWasChecked: Bool = false
@@ -1822,7 +1846,7 @@ extension RecordingSessionManager {
         level: .debug,
         event: .recordingFinishedAfterDeferredRelease,
         message:
-          "Push-to-talk was released during startup and remained released after recording became active, so the active run is finishing now.",
+          "Push-to-talk remained released through the grace period, so the active run is finishing now.",
         runID: runID
       )
       await endPushToTalk(triggeredBy: gesture)
@@ -1844,6 +1868,7 @@ extension RecordingSessionManager {
     activeTriggerEvent = nil
     activeLiveAudioSession = nil
     activeControlMode = nil
+    activeGesture = nil
     pendingStreamHotkeyStart = nil
     activePushToTalkStartTaskID = nil
     activeStartCueToken?.invalidate()

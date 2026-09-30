@@ -137,6 +137,14 @@ lifetime, monitors revocation, rechecks immediately before capture, and starts
 context preparation only after capture begins. Gesture and window state remain
 with their respective controllers.
 
+`RecordingSessionManager` keeps active hold-to-talk capture open for 500 ms after
+the matching hotkey is released. A matching re-press cancels that deadline and
+continues the same run. Its existing 140 ms startup debounce remains separate.
+Deferred releases retain run identity and participate in cancellation and shutdown
+draining; cancellation, authorization revocation, explicit stops and duration
+limits do not wait for the release delay. Stop feedback follows actual capture
+closure, so the recording surface and live preview remain active during the tail.
+
 `EventBus` bounds each subscriber buffer and diagnostic tail. Consecutive
 presentation updates coalesce; lifecycle boundaries apply backpressure. Terminal
 run, history, and final presentation updates retain admission even when their

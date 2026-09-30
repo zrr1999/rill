@@ -92,6 +92,7 @@ public func makeTestRecordingSessionManager(
     },
     recognizerDurationProvider: @escaping @Sendable (String) -> Double? = { _ in nil },
     pushToTalkGestureStateProvider: (@Sendable (PushToTalkGesture) -> Bool)? = nil,
+    deferredReleaseSleep: (@Sendable (Duration) async throws -> Void)? = nil,
     cleanupOwner: ManagedTemporaryAudioCleanupOwner = ManagedTemporaryAudioCleanupOwner(),
     recordingCueAction:
       @escaping @Sendable (RecordingInteractionCue, RecordingCueToken) async -> Void = { _, _ in }
@@ -116,6 +117,7 @@ public func makeTestRecordingSessionManager(
     recordingDurationLimitProvider: recordingDurationLimitProvider,
     recognizerDurationProvider: recognizerDurationProvider,
     pushToTalkGestureStateProvider: pushToTalkGestureStateProvider,
+    deferredReleaseSleep: deferredReleaseSleep,
     cleanupOwner: cleanupOwner,
     recordingCueAction: recordingCueAction
   )
