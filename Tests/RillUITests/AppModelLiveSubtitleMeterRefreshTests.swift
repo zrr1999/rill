@@ -220,6 +220,99 @@ private actor LiveSubtitleMeterRefreshGate {
 }
 
 @MainActor
+struct RecordingReleasePresentationTests {
+  @Test(arguments: [false, true])
+  func releaseHidesTailUpdatesButKeepsEscapeUntilCaptureCloses(releaseBeforeSnapshot: Bool) {
+    let app = makeHarness().model
+    let runID = UUID()
+    var cancellableRunID: UUID?
+    app.voice.installLiveAudioCancellationAction { cancellableRunID = $0 }
+    if releaseBeforeSnapshot {
+      app.handle(.recordingReleaseChanged(runID: runID, isReleased: true))
+    }
+    app.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .recording)))
+    if !releaseBeforeSnapshot {
+      #expect(app.voice.liveSubtitleSnapshot?.runID == runID)
+      app.handle(.recordingReleaseChanged(runID: runID, isReleased: true))
+    }
+    #expect(app.voice.liveSubtitleSnapshot == nil)
+    #expect(cancellableRunID == runID)
+
+    app.handle(.liveSubtitleUpdated(.init(
+      runID: runID, phase: .recording, confirmedText: "last words", levelMeter: [0.8]
+    )))
+    app.voice.refreshLiveSubtitlePresentation()
+    #expect(app.voice.liveSubtitleSnapshot == nil)
+    #expect(cancellableRunID == runID)
+
+    app.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .hidden)))
+    #expect(app.voice.liveSubtitleSnapshot == nil)
+    #expect(cancellableRunID == nil)
+  }
+
+  @Test func repressRestoresSameCaptureAndOldReleaseCannotHideNextRun() {
+    let app = makeHarness().model
+    let runID = UUID()
+    let startedAt = Date()
+    app.handle(.liveSubtitleUpdated(.init(
+      runID: runID, phase: .recording, confirmedText: "phrase", recordingStartedAt: startedAt
+    )))
+    app.handle(.recordingReleaseChanged(runID: runID, isReleased: true))
+    app.handle(.recordingReleaseChanged(runID: runID, isReleased: false))
+    #expect(app.voice.liveSubtitleSnapshot?.runID == runID)
+    #expect(app.voice.liveSubtitleSnapshot?.recordingStartedAt == startedAt)
+    #expect(app.voice.liveSubtitleSnapshot?.confirmedText == "phrase")
+    app.handle(.recordingReleaseChanged(runID: runID, isReleased: true))
+    app.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .hidden)))
+
+    let nextRunID = UUID()
+    app.handle(.liveSubtitleUpdated(.init(runID: nextRunID, phase: .recording)))
+    app.handle(.recordingReleaseChanged(runID: runID, isReleased: true))
+    app.handle(.recordingReleaseChanged(runID: runID, isReleased: false))
+    #expect(app.voice.liveSubtitleSnapshot?.runID == nextRunID)
+  }
+
+  @Test func pendingMeterCannotReopenReleasedCapture() async throws {
+    let app = makeHarness().model
+    let gate = LiveSubtitleMeterRefreshGate()
+    app.voice.waitForLiveSubtitleMeterRefresh = { _ in await gate.wait() }
+    let runID = UUID()
+    app.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .listening)))
+    app.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .recording)))
+    app.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .recording, levelMeter: [0.4])))
+    let meterTask = try #require(app.voice.pendingLiveSubtitleMeterRefreshTask)
+    await gate.waitUntilScheduled()
+
+    app.handle(.recordingReleaseChanged(runID: runID, isReleased: true))
+    #expect(meterTask.isCancelled)
+    await gate.releaseAll()
+    await meterTask.value
+    #expect(app.voice.liveSubtitleSnapshot == nil)
+  }
+
+  @Test func releaseDoesNotSuppressFailureAndShutdownDisarmsEscape() {
+    let app = makeHarness().model
+    let runID = UUID()
+    var cancellableRunID: UUID?
+    app.voice.installLiveAudioCancellationAction { cancellableRunID = $0 }
+    app.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .recording)))
+    app.handle(.recordingReleaseChanged(runID: runID, isReleased: true))
+    app.handle(.liveSubtitleUpdated(.init(runID: runID, phase: .failed)))
+    #expect(app.voice.liveSubtitleSnapshot?.phase == .failed)
+    #expect(cancellableRunID == nil)
+
+    let nextRunID = UUID()
+    app.handle(.liveSubtitleUpdated(.init(runID: nextRunID, phase: .recording)))
+    app.handle(.recordingReleaseChanged(runID: nextRunID, isReleased: true))
+    #expect(cancellableRunID == nextRunID)
+    app.beginApplicationShutdown()
+    #expect(cancellableRunID == nil)
+    app.handle(.recordingReleaseChanged(runID: nextRunID, isReleased: false))
+    #expect(app.voice.liveSubtitleSnapshot == nil)
+  }
+}
+
+@MainActor
 struct LiveSubtitleHideTests {
   @Test func preparationHidesOnlyAfterItsTimerCompletes() async throws {
     let app = makeHarness().model

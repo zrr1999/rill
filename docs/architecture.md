@@ -142,8 +142,14 @@ the matching hotkey is released. A matching re-press cancels that deadline and
 continues the same run. Its existing 140 ms startup debounce remains separate.
 Deferred releases retain run identity and participate in cancellation and shutdown
 draining; cancellation, authorization revocation, explicit stops and duration
-limits do not wait for the release delay. Stop feedback follows actual capture
-closure, so the recording surface and live preview remain active during the tail.
+limits do not wait for the release delay. A run-scoped release event hides the
+recording surface immediately. `VoiceRunModel` keeps capture state separate from
+panel visibility, so tail updates cannot reopen the panel and Esc remains armed
+until capture closes. A matching re-press restores the same capture presentation.
+The stop cue follows actual capture closure to keep it out of the recorded tail.
+`HotkeyEventTap` answers gesture-state queries from its recognizer: an observed
+key-up cannot be overridden by stale system flags. System sampling is reserved
+for recovering an interrupted tap that may have missed a physical transition.
 
 `EventBus` bounds each subscriber buffer and diagnostic tail. Consecutive
 presentation updates coalesce; lifecycle boundaries apply backpressure. Terminal

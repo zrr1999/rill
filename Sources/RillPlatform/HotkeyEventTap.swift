@@ -114,8 +114,8 @@ public final class HotkeyEventTap: GlobalInputSource, @unchecked Sendable {
         }
     }
 
-    /// Enables global Escape cancellation only while one live-audio run owns
-    /// the nonactivating recording surface. Idle Escape events keep flowing to
+    /// Enables global Escape cancellation while a live-audio run owns capture,
+    /// including its hidden release tail. Idle Escape events keep flowing to
     /// the foreground application unchanged.
     public func setLiveAudioEscapeCancellationRunID(_ runID: UUID?) {
         withLock {
@@ -222,7 +222,15 @@ public final class HotkeyEventTap: GlobalInputSource, @unchecked Sendable {
     }
 
     public func isPushToTalkGestureActive(_ gesture: PushToTalkGesture) -> Bool {
-        pushToTalkGestureStateProvider(gesture)
+        withLock {
+            guard pushToTalkRecognizer.activeGesture == gesture else { return false }
+            // Observed key-up owns the release even if session flags remain set.
+            // Only an interrupted tap needs a physical sample to fill an event gap.
+            if pushToTalkRecognizer.interruptedActiveGesture == gesture {
+                return pushToTalkGestureStateProvider(gesture)
+            }
+            return true
+        }
     }
 
     private static func systemPushToTalkGestureIsActive(_ gesture: PushToTalkGesture) -> Bool {
@@ -424,7 +432,7 @@ extension HotkeyEventTap {
         liveAudioEscapeRecognizer.resetLatch()
         let activeGesture = pushToTalkRecognizer.activeGesture
         let shouldPreserveActiveTrigger = activeGesture.map {
-            isPushToTalkGestureActive($0)
+            pushToTalkGestureStateProvider($0)
         } ?? false
         return pushToTalkRecognizer.interrupt(
             preservingActiveTrigger: shouldPreserveActiveTrigger
@@ -442,7 +450,7 @@ extension HotkeyEventTap {
             !physicalKeyStateProvider($0)
         }
         guard let interruptedGesture = pushToTalkRecognizer.interruptedActiveGesture else { return }
-        guard !isPushToTalkGestureActive(interruptedGesture) else { return }
+        guard !pushToTalkGestureStateProvider(interruptedGesture) else { return }
         pushToTalkRecognizer.clearInterruptedActiveTrigger()
     }
 

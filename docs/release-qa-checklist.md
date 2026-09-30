@@ -163,11 +163,14 @@ clipboard-panel shortcut cases with Clipboard Capture both enabled and disabled.
 - [ ] Push-to-talk press/release, event-tap interruption, and permission loss do
       not leave recording latched.
 - [ ] With Toggle Recording off, release physical Fn about half a second before
-      finishing a phrase: capture, live preview and the recording surface remain
-      active for 500 ms, and the final words reach recognition. The stop cue plays
+      finishing a phrase: the recording surface disappears immediately and stays
+      hidden while capture continues for 500 ms; the final words reach recognition. The stop cue plays
       only after capture closes; a new recording can then start.
 - [ ] Re-press Fn during that 500 ms tail: the same recording continues without
-      another start cue, and the next release receives a fresh 500 ms tail.
+      another start cue, its surface reappears, and the next release receives a fresh 500 ms tail.
+- [ ] Hold Fn for 20, 60 and 120 seconds with a recognizer that permits that duration,
+      then release once: capture closes after the tail without another key press.
+      Repeat after an event-tap interruption and check that no recording remains latched.
 - [ ] During the tail, Esc, input/authorization loss and App shutdown stop capture
       immediately without a stop cue or delayed output. A stale release timer must
       not stop a subsequent recording.
