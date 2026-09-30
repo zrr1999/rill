@@ -696,71 +696,35 @@ public actor WorkflowAudioRunController {
   ) async throws {
     var captureBoundaryCrossed = false
     do {
-      let deferredCapture = try await audioCaptureService.finishCaptureDeferred()
-      captureBoundaryCrossed = true
-      releaseCaptureBoundary(runID: runID)
-      guard ownsFinishingRun(runID: runID, operationID: operationID),
-        !Task.isCancelled
-      else {
-        await discard(
-          deferredCapture,
-          liveAudioSession: liveAudioSession
-        )
-        return
-      }
-      do {
-        try await liveAudioSession.sealCapture()
-      } catch {
-        deferredCapture.cancel()
-        await discardManagedTemporaryCapture(deferredCapture, runID: runID)
-        throw error
-      }
-      guard ownsFinishingRun(runID: runID, operationID: operationID),
-        !Task.isCancelled
-      else {
-        await discard(
-          deferredCapture,
-          liveAudioSession: liveAudioSession
-        )
-        return
-      }
-      await recordingCueAction(.stopped, stopCueToken)
-      stopCueToken.invalidate()
-      guard ownsFinishingRun(runID: runID, operationID: operationID),
-        !Task.isCancelled
-      else {
-        await discard(deferredCapture, liveAudioSession: liveAudioSession)
-        return
-      }
-      let authorizationLease = try await liveAudioSession.processingLeaseForEnqueue()
-      guard ownsFinishingRun(runID: runID, operationID: operationID),
-        !Task.isCancelled
-      else {
-        await discard(
-          deferredCapture,
-          liveAudioSession: liveAudioSession
-        )
-        return
-      }
-      let ownershipTransfer = await capturedAudioProcessingQueue.enqueue(
-        authorizationLease: authorizationLease,
-        triggerEvent: triggerEvent,
-        deferredCapture: deferredCapture
+      let outcome = try await SealedCaptureHandoff.transfer(
+        finish: {
+          let capture = try await self.audioCaptureService.finishCaptureDeferred()
+          captureBoundaryCrossed = true
+          self.releaseCaptureBoundary(runID: runID)
+          return capture
+        },
+        owns: { self.ownsFinishingRun(runID: runID, operationID: operationID) && !Task.isCancelled },
+        ownsForQueue: { self.ownsFinishingRun(runID: runID, operationID: operationID) && !Task.isCancelled },
+        seal: { try await liveAudioSession.sealCapture() },
+        stoppedCue: {
+          await self.recordingCueAction(.stopped, stopCueToken)
+          stopCueToken.invalidate()
+        },
+        beforeLease: { _ in },
+        lease: { try await liveAudioSession.processingLeaseForEnqueue() },
+        enqueue: { authorizationLease, deferredCapture in
+          await self.capturedAudioProcessingQueue.enqueue(
+            authorizationLease: authorizationLease,
+            triggerEvent: triggerEvent,
+            deferredCapture: deferredCapture
+          )
+        },
+        discard: { await self.discard($0, liveAudioSession: liveAudioSession) },
+        discardAfterSealFailure: { await self.discardManagedTemporaryCapture($0, runID: runID) },
+        afterRejected: { self.removeFinishingRun(runID: runID, operationID: operationID) },
+        afterLostOwnership: { await self.capturedAudioProcessingQueue.cancel(runID: runID) }
       )
-      guard ownershipTransfer == .accepted else {
-        await discard(
-          deferredCapture,
-          liveAudioSession: liveAudioSession
-        )
-        removeFinishingRun(runID: runID, operationID: operationID)
-        return
-      }
-      guard ownsFinishingRun(runID: runID, operationID: operationID),
-        !Task.isCancelled
-      else {
-        await capturedAudioProcessingQueue.cancel(runID: runID)
-        return
-      }
+      guard case .queued = outcome else { return }
       removeFinishingRun(runID: runID, operationID: operationID)
       enqueueDiagnostic(
         level: .info,

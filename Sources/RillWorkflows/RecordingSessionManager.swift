@@ -1647,88 +1647,51 @@ extension RecordingSessionManager {
     // Stopping the privacy-sensitive input is the first suspension point
     // after the release grace period or explicit stop. Diagnostics and feedback
     // must never extend the microphone boundary.
-    let captureFinishStart = ContinuousClock.now
-    let deferredCapture = try await audioCaptureService.finishCaptureDeferred()
-    let captureFinishMillis = DiagnosticTiming.milliseconds(since: captureFinishStart)
-    guard ownsFinishingRecording(runID: runID, operationID: operationID),
-      !Task.isCancelled
-    else {
-      await discard(deferredCapture, runID: runID)
-      return
-    }
-    let captureSealStart = ContinuousClock.now
-    do {
-      try await liveAudioSession.sealCapture()
-    } catch {
-      deferredCapture.cancel()
-      await discard(deferredCapture, runID: runID)
-      throw error
-    }
-    guard ownsFinishingRecording(runID: runID, operationID: operationID),
-      !Task.isCancelled
-    else {
-      await discard(deferredCapture, runID: runID)
-      return
-    }
-    let captureSealMillis = DiagnosticTiming.milliseconds(since: captureSealStart)
-    let captureCueStart = ContinuousClock.now
-    await recordingCueAction(.stopped, stopCueToken)
-    let captureCueMillis = DiagnosticTiming.milliseconds(since: captureCueStart)
-    stopCueToken.invalidate()
-    guard ownsFinishingRecording(runID: runID, operationID: operationID),
-      !Task.isCancelled
-    else {
-      await discard(deferredCapture, runID: runID)
-      return
-    }
-    enqueueDiagnostic(
-      level: .debug,
-      event: .recordingFinishing,
-      message:
-        "Push-to-talk recording finished for \(gesture.rawValue) and is being queued for background processing.",
-      runID: runID,
-      metadata: ["captureFinishMillis": captureFinishMillis,
-                 "captureSealMillis": captureSealMillis,
-                 "captureCueMillis": captureCueMillis]
-    )
-    guard ownsFinishingRecording(runID: runID, operationID: operationID),
-      !Task.isCancelled
-    else {
-      await discard(deferredCapture, runID: runID)
-      return
-    }
-    let processingLease = try await liveAudioSession.processingLeaseForEnqueue()
-    guard ownsFinishingRecording(runID: runID, operationID: operationID),
-      !Task.isCancelled,
-      activeRunID == runID
-    else {
-      await discard(deferredCapture, runID: runID)
-      return
-    }
-    let ownershipTransfer = await capturedAudioProcessingQueue.enqueue(
-      authorizationLease: processingLease,
-      triggerEvent: triggerEvent,
-      deferredCapture: deferredCapture
-    )
-    guard ownershipTransfer == .accepted else {
-      await discard(deferredCapture, runID: runID)
-      if activeRunID == runID {
-        resetState()
+    let outcome = try await SealedCaptureHandoff.transfer(
+      finish: { try await self.audioCaptureService.finishCaptureDeferred() },
+      owns: { self.ownsFinishingRecording(runID: runID, operationID: operationID) && !Task.isCancelled },
+      ownsForQueue: {
+        self.ownsFinishingRecording(runID: runID, operationID: operationID) && !Task.isCancelled
+          && self.activeRunID == runID
+      },
+      seal: { try await liveAudioSession.sealCapture() },
+      stoppedCue: {
+        await self.recordingCueAction(.stopped, stopCueToken)
+        stopCueToken.invalidate()
+      },
+      beforeLease: { timings in
+        self.enqueueDiagnostic(
+          level: .debug,
+          event: .recordingFinishing,
+          message:
+            "Push-to-talk recording finished for \(gesture.rawValue) and is being queued for background processing.",
+          runID: runID,
+          metadata: [
+            "captureFinishMillis": timings.finishMillis,
+            "captureSealMillis": timings.sealMillis,
+            "captureCueMillis": timings.cueMillis,
+          ]
+        )
+      },
+      lease: { try await liveAudioSession.processingLeaseForEnqueue() },
+      enqueue: { processingLease, deferredCapture in
+        await self.capturedAudioProcessingQueue.enqueue(
+          authorizationLease: processingLease,
+          triggerEvent: triggerEvent,
+          deferredCapture: deferredCapture
+        )
+      },
+      discard: { await self.discard($0, runID: runID) },
+      discardAfterSealFailure: { await self.discard($0, runID: runID) },
+      afterRejected: {
+        if self.activeRunID == runID { self.resetState() }
+        self.removeFinishingRecording(runID: runID, operationID: operationID)
+      },
+      afterLostOwnership: {
+        await self.capturedAudioProcessingQueue.cancel(runID: runID)
       }
-      removeFinishingRecording(runID: runID, operationID: operationID)
-      return
-    }
-    guard ownsFinishingRecording(runID: runID, operationID: operationID),
-      !Task.isCancelled,
-      activeRunID == runID
-    else {
-      // A concurrent Stop observed queue ownership and requested the
-      // queue's run-scoped cancellation while enqueue was suspended.
-      await capturedAudioProcessingQueue.cancel(runID: runID)
-      return
-    }
-    // Clear the exact run synchronously before diagnostics can re-enter and
-    // allow a newer capture to start.
+    )
+    guard case .queued = outcome else { return }
     resetState()
     removeFinishingRecording(runID: runID, operationID: operationID)
     enqueueDiagnostic(
