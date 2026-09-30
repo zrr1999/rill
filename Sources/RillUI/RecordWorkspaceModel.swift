@@ -149,15 +149,7 @@ public final class RecordWorkspaceModel {
     }
 
     public var visibleRecords: [RecordSummary] {
-        let records: [RecordSummary]
-        if let selectedCollectionID {
-            records = recordsByCollection[selectedCollectionID] ?? []
-        } else {
-            // All Records is a virtual, de-duplicated RecordStore timeline.
-            records = snapshot.records
-        }
-
-        return records.filter { projection in
+        recordsInCurrentScope.filter { projection in
             if let sourceAppFilterBundleIdentifier,
                projection.header.provenance.sourceBundleIdentifier != sourceAppFilterBundleIdentifier {
                 return false
@@ -166,6 +158,14 @@ public final class RecordWorkspaceModel {
             guard !showsPinnedOnly || projection.metadata.isPinned else { return false }
             return true
         }
+    }
+
+    private var recordsInCurrentScope: [RecordSummary] {
+        if let selectedCollectionID {
+            return recordsByCollection[selectedCollectionID] ?? []
+        }
+        // All Records is a virtual, de-duplicated RecordStore timeline.
+        return snapshot.records
     }
 
     private func rebuildCollectionIndex() {
@@ -453,9 +453,13 @@ public final class RecordWorkspaceModel {
     }
 
     private func repairRecordSelection() {
-        if selectedRecordID == nil || !visibleRecords.contains(where: { $0.id == selectedRecordID }) {
-            selectedRecordID = visibleRecords.first?.id
+        if let selectedRecordID, visibleRecords.contains(where: { $0.id == selectedRecordID }) {
+            return
         }
+        if let selectedRecordID, recordsInCurrentScope.contains(where: { $0.id == selectedRecordID }) {
+            return
+        }
+        self.selectedRecordID = visibleRecords.first?.id
     }
 
 
