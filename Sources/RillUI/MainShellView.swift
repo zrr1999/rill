@@ -207,6 +207,16 @@ public struct MainShellView: View {
                     contentSidebar
                 }
             }
+            .allowsHitTesting(
+                MainShellInteractionPolicy.allowsSidebarInteraction(
+                    isGlobalSearchPresented: isGlobalSearchPresented
+                )
+            )
+            .accessibilityHidden(
+                !MainShellInteractionPolicy.allowsSidebarInteraction(
+                    isGlobalSearchPresented: isGlobalSearchPresented
+                )
+            )
             .navigationTitle(L10n.text(.appTitle, language: model.settings.language))
             .navigationSubtitle(
                 model.isShowingSettings
@@ -441,16 +451,6 @@ extension MainShellView {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             sidebarSettingsFooter
         }
-        .allowsHitTesting(
-            MainShellInteractionPolicy.allowsSidebarInteraction(
-                isGlobalSearchPresented: isGlobalSearchPresented
-            )
-        )
-        .accessibilityHidden(
-            !MainShellInteractionPolicy.allowsSidebarInteraction(
-                isGlobalSearchPresented: isGlobalSearchPresented
-            )
-        )
         .navigationSplitViewColumnWidth(
             min: MainShellLayoutMetrics.sidebarColumnMinWidth,
             ideal: MainShellLayoutMetrics.sidebarColumnIdealWidth,
@@ -461,7 +461,9 @@ extension MainShellView {
     private var settingsSidebar: some View {
         List(selection: settingsPaneSelection) {
             Section {
-                Button(action: returnFromSettings) {
+                Button {
+                    model.dismissSettings()
+                } label: {
                     Label(
                         L10n.text(.settingsBack, language: model.settings.language),
                         systemImage: RillSystemSymbol.chevronLeft.rawValue
@@ -470,6 +472,11 @@ extension MainShellView {
                 .buttonStyle(.plain)
                 .focused($settingsBackButtonFocused)
                 .keyboardShortcut("[", modifiers: .command)
+                .disabled(
+                    !MainShellInteractionPolicy.allowsSidebarInteraction(
+                        isGlobalSearchPresented: isGlobalSearchPresented
+                    )
+                )
                 .accessibilityIdentifier("settings.back")
             }
             Section {
@@ -496,10 +503,6 @@ extension MainShellView {
                 if let pane { model.selectedSettingsPane = pane }
             }
         )
-    }
-
-    private func returnFromSettings() {
-        model.dismissSettings()
     }
 
     @ViewBuilder
