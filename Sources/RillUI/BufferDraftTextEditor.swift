@@ -12,6 +12,9 @@ struct BufferDraftTextEditor: NSViewRepresentable {
   func makeNSView(context: Context) -> NSScrollView {
     let scroll = NSScrollView()
     scroll.hasVerticalScroller = true
+    scroll.autohidesScrollers = true
+    scroll.scrollerStyle = .overlay
+    scroll.drawsBackground = false
     scroll.borderType = .noBorder
     let view = BufferDraftTextView()
     view.isRichText = false
@@ -20,18 +23,25 @@ struct BufferDraftTextEditor: NSViewRepresentable {
     view.isAutomaticQuoteSubstitutionEnabled = false
     view.isAutomaticDashSubstitutionEnabled = false
     view.isAutomaticTextReplacementEnabled = false
-    view.font = .systemFont(ofSize: 15)
+    view.font = .systemFont(ofSize: 14)
     view.textColor = .textColor
-    view.backgroundColor = .textBackgroundColor
-    view.textContainerInset = NSSize(width: 14, height: 14)
+    view.drawsBackground = false
+    view.textContainerInset = NSSize(width: 22, height: 4)
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.lineSpacing = 7
+    view.defaultParagraphStyle = paragraph
+    view.typingAttributes[.paragraphStyle] = paragraph
     view.isVerticallyResizable = true
     view.isHorizontallyResizable = false
     view.autoresizingMask = [.width]
     view.textContainer?.widthTracksTextView = true
+    view.textContainer?.lineFragmentPadding = 0
     view.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
     view.setAccessibilityIdentifier("record-buffer.editor")
     view.setAccessibilityLabel(accessibilityLabel)
     view.string = session.text
+    view.textStorage?.addAttribute(.paragraphStyle, value: paragraph,
+      range: NSRange(location: 0, length: view.string.utf16.count))
     view.delegate = context.coordinator
     view.onSubmit = { [weak model] in model?.send() }
     view.onFocusChanged = { [weak session] focused in session?.isFocused = focused }

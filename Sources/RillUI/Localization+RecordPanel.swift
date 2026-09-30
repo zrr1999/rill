@@ -24,6 +24,7 @@ enum RecordPanelText: CaseIterable {
   case configureDraftSources
   case draftList
   case newDraft
+  case newItem
   case draftOptions
   case searchDrafts
   case sendWhenReady
@@ -86,6 +87,8 @@ extension L10n {
     case (.draftList, .simplifiedChinese): "待发列表"
     case (.newDraft, .english): "New draft"
     case (.newDraft, .simplifiedChinese): "新建草稿"
+    case (.newItem, .english): "New"
+    case (.newItem, .simplifiedChinese): "新建"
     case (.draftOptions, .english): "Draft options"
     case (.draftOptions, .simplifiedChinese): "待发选项"
     case (.searchDrafts, .english): "Search drafts"
@@ -113,5 +116,9 @@ extension L10n {
     case (.addToDrafts, .english): "Add to Drafts"
     case (.addToDrafts, .simplifiedChinese): "加入待发"
     }
+  }
+
+  static func recordPanelCharacterCount(_ count: Int, language: AppLanguage) -> String {
+    language == .simplifiedChinese ? "\(count) 字" : "\(count) \(count == 1 ? "character" : "characters")"
   }
 }

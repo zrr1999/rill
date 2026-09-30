@@ -29,11 +29,12 @@ public struct RecordPanelCapsuleView: View {
   public var body: some View {
     HStack(spacing: 8) {
       HStack(spacing: 10) {
-        Image(systemName: RillSystemSymbol.line3Horizontal.rawValue).font(.caption2).foregroundStyle(.tertiary)
-        Image(systemName: RillSystemSymbol.tray.rawValue).foregroundStyle(.secondary)
-        Text(panelText(.drafts)).font(.subheadline.weight(.medium))
+        Image(systemName: RillSystemSymbol.line3Horizontal.rawValue)
+          .font(.system(size: 10)).rotationEffect(.degrees(90)).foregroundStyle(.secondary)
+        Image(systemName: RillSystemSymbol.tray.rawValue).font(.system(size: 14)).foregroundStyle(.secondary)
+        Text(panelText(.drafts)).font(.system(size: 14, weight: .medium))
         Text("\(buffers.snapshot?.remainingCount ?? 0)")
-          .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+          .font(.system(size: 14).monospacedDigit()).foregroundStyle(.secondary)
           .frame(width: 40, alignment: .leading).lineLimit(1)
         Spacer(minLength: 0)
         Image(systemName: RillSystemSymbol.exclamationmarkCircle.rawValue).foregroundStyle(.orange)
@@ -49,7 +50,7 @@ public struct RecordPanelCapsuleView: View {
       .accessibilityValue(needsAttention ? panelText(.needsAttention) : "")
       .accessibilityAction { onExpand() }
       Button(action: onClose) { Image(systemName: RillSystemSymbol.xmark.rawValue).font(.caption).frame(width: 28, height: 32) }
-        .buttonStyle(.plain)
+        .buttonStyle(RecordPanelIconStyle()).foregroundStyle(.secondary)
         .disabled(buffers.editor.session?.hasMarkedText == true)
         .accessibilityLabel(panelText(.closeFloatingWindow))
         .accessibilityIdentifier("record-panel.close")

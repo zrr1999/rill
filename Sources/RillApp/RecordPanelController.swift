@@ -536,7 +536,7 @@ final class RecordPanelController: NSObject, NSWindowDelegate {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.contentView?.wantsLayer = true
-        panel.contentView?.layer?.cornerRadius = RillRadius.panel
+        panel.contentView?.layer?.cornerRadius = RecordPanelAppearance.cornerRadius
         panel.contentView?.layer?.masksToBounds = true
         self.panel = panel
         if activate { present(panel) } else { showCapsule() }
@@ -1092,6 +1092,6 @@ private struct FloatingRecordView: View {
             }
         )
         }
-        .clipShape(RoundedRectangle(cornerRadius: RillRadius.panel, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
     }
 }

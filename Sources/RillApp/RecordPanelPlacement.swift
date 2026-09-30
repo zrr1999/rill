@@ -2,7 +2,7 @@ import AppKit
 
 enum RecordPanelPlacement {
     static let capsuleSize = NSSize(width: 260, height: 48)
-    static let pageSize = NSSize(width: 820, height: 560)
+    static let pageSize = NSSize(width: 668, height: 468)
     static let gap: CGFloat = 14
     static let margin: CGFloat = 12
 

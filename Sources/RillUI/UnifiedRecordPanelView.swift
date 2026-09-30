@@ -6,6 +6,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   @Bindable private var presentation: RecordPanelPresentation
   @Bindable private var model: AppModel
   @State private var showsOutputReview = false
+  @State private var hoveredMode: RecordPanelPresentation.Mode?
   private let records: Records
   private let onModeChange: (RecordPanelPresentation.Mode) -> Void
   private let onFinishEditing: () -> Void
@@ -32,25 +33,20 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   public var body: some View {
     VStack(spacing: 0) {
       HStack(spacing: 12) {
-        Picker(panelText(.panelContent), selection: Binding(
-          get: { presentation.mode }, set: { onModeChange($0) })) {
-          Text(panelText(.drafts) + " · \(buffers.snapshot?.remainingCount ?? 0)")
-            .tag(RecordPanelPresentation.Mode.drafts)
-          Text(panelText(.collections)).tag(RecordPanelPresentation.Mode.collections)
-        }
-        .pickerStyle(.segmented).labelsHidden().frame(width: 260)
-        .disabled(buffers.editor.session?.hasMarkedText == true)
-        .accessibilityIdentifier("record-panel.mode")
+        modeControl
         Spacer(minLength: 8)
         Toggle(isOn: $presentation.isPinned) {
           Label(panelText(.keepOpen), systemImage: presentation.isPinned ? RillSystemSymbol.pinFill.rawValue : RillSystemSymbol.pin.rawValue)
         }
-        .toggleStyle(.button).labelStyle(.iconOnly)
+        .toggleStyle(.button).labelStyle(.iconOnly).buttonStyle(.plain)
+        .font(.system(size: 13)).frame(width: 30, height: 30)
+        .foregroundStyle(presentation.isPinned ? Color.accentColor : Color.secondary)
+        .background(presentation.isPinned ? Color.accentColor.opacity(0.12) : .clear,
+                    in: RoundedRectangle(cornerRadius: 7))
         .help(panelText(.keepOpenHelp))
         .accessibilityIdentifier("record-panel.pin")
       }
-      .controlSize(.small).padding(.horizontal, 14).frame(height: 52)
-      .rillFloatingControlSurface()
+      .controlSize(.small).padding(.horizontal, 14).frame(height: 53)
       notice
       ZStack {
         records
@@ -66,7 +62,8 @@ public struct UnifiedRecordPanelView<Records: View>: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Color(nsColor: .windowBackgroundColor))
+    .rillFloatingControlSurface(cornerRadius: RecordPanelAppearance.cornerRadius)
+    .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
     .accessibilityIdentifier("record-panel.unified")
     .onChange(of: presentation.isPinned) { _, _ in onInteractionChange() }
     .onChange(of: buffers.editor.session?.isFocused) { _, _ in onInteractionChange() }
@@ -80,22 +77,58 @@ public struct UnifiedRecordPanelView<Records: View>: View {
     }
   }
 
+  private var modeControl: some View {
+    HStack(spacing: 2) {
+      ForEach(RecordPanelPresentation.Mode.allCases, id: \.self) { mode in
+        let selected = presentation.mode == mode
+        Button { onModeChange(mode) } label: {
+          HStack(spacing: 5) {
+            Text(panelText(mode == .drafts ? .drafts : .collections))
+            if mode == .drafts {
+              Text("\(buffers.snapshot?.remainingCount ?? 0)")
+                .monospacedDigit().foregroundStyle(.secondary)
+                .frame(width: 30).lineLimit(1).minimumScaleFactor(0.7)
+            }
+          }
+          .font(.system(size: 12, weight: selected ? .medium : .regular))
+          .foregroundStyle(selected ? Color.primary : Color.secondary)
+          .frame(width: 92, height: 29)
+          .background(selected ? RecordPanelAppearance.paper
+            : Color.primary.opacity(hoveredMode == mode ? 0.05 : 0),
+                      in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+          .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .onHover { hoveredMode = $0 ? mode : nil }
+        .accessibilityAddTraits(selected ? .isSelected : [])
+      }
+    }
+    .padding(3)
+    .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 9))
+    .disabled(buffers.editor.session?.hasMarkedText == true)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(panelText(.panelContent))
+    .accessibilityIdentifier("record-panel.mode")
+  }
+
   private var notice: some View {
     HStack(spacing: 8) {
       Image(systemName: needsAttention ? RillSystemSymbol.exclamationmarkCircle.rawValue : RillSystemSymbol.checkmarkCircle.rawValue)
         .foregroundStyle(needsAttention ? Color.orange : Color.secondary)
-        .frame(width: 16)
-      Text(noticeText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        .font(.system(size: 13)).frame(width: 16)
+      Text(noticeText).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
       Spacer(minLength: 0)
       Button(panelText(.review)) { showsOutputReview = true }
-        .controlSize(.small)
+        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.accentColor)
+        .frame(width: 48, height: 29)
         .opacity(needsAttention ? 1 : 0)
         .disabled(!needsAttention)
         .accessibilityHidden(!needsAttention)
         .accessibilityIdentifier("record-panel.review-output")
     }
-    .padding(.horizontal, 14).frame(height: 36)
-    .overlay(alignment: .bottom) { Divider() }
+    .padding(.horizontal, 16).frame(height: 36)
+    .overlay(alignment: .top) { Divider().opacity(0.45) }
+    .overlay(alignment: .bottom) { Divider().opacity(0.45) }
     .accessibilityIdentifier("record-panel.output-status")
   }
 
@@ -137,7 +170,7 @@ private struct FloatingControlSurface: ViewModifier {
       content.background(Color(nsColor: .controlBackgroundColor))
     } else {
       content.background {
-        RoundedRectangle(cornerRadius: cornerRadius)
+        Color.clear
           .glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
       }
     }
