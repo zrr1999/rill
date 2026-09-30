@@ -48,7 +48,7 @@ extension SettingsView {
         .font(.caption)
         .foregroundStyle(.green)
       case .inaccessible:
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+        HStack(alignment: .firstTextBaseline, spacing: RillSpacing.dense) {
           Label(
             L10n.string(.settingsOpenAIInaccessible, language: model.settings.language),
             systemImage: RillSystemSymbol.exclamationmarkTriangleFill.rawValue
@@ -117,7 +117,7 @@ extension SettingsView {
         }
       }
 
-      HStack(spacing: 10) {
+      HStack(spacing: RillSpacing.dense) {
         Button(L10n.string(.settingsOpenAIVerify, language: model.settings.language)) {
           model.settings.verifyOpenAIConfiguration()
         }

@@ -12,7 +12,7 @@ extension SettingsView {
         )
       }
 
-      VStack(alignment: .leading, spacing: 10) {
+      VStack(alignment: .leading, spacing: RillSpacing.dense) {
         Text(L10n.settingsText(.settingsVocabularyMovedNotice, language: model.settings.language))
           .font(.callout)
           .foregroundStyle(.secondary)

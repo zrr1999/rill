@@ -196,7 +196,7 @@ struct WorkflowExplanationSheet: View {
         title: String,
         rows: [WorkflowExplanationPresentationRow]
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: RillSpacing.dense) {
             Text(title)
                 .font(.headline)
 

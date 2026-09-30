@@ -161,7 +161,7 @@ extension SettingsView {
 
   var voiceAssistantSetupOverview: some View {
     let readiness = model.voiceAssistantReadiness
-    return VStack(alignment: .leading, spacing: 10) {
+    return VStack(alignment: .leading, spacing: RillSpacing.dense) {
       Label(
         readiness.canEnableListening
           ? L10n.settingsText(.settingsAssistantSetupReady, language: model.settings.language)
@@ -223,7 +223,7 @@ extension SettingsView {
       }
       .buttonStyle(.bordered)
     }
-    .padding(10)
+    .padding(RillSpacing.dense)
     // RillCard prominent-tier fill at badge radius; padding stays manual.
     .background(
       .quaternary.opacity(RillCardProminence.prominent.fillOpacity),

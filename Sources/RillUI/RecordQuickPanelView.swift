@@ -231,7 +231,7 @@ public struct RecordQuickPanelView: View {
               }
             }
           } label: {
-            Label(L10n.surface(.addToDrafts, language: language), systemImage: "text.badge.plus")
+            Label(L10n.surface(.addToDrafts, language: language), systemImage: RillSystemSymbol.textBadgePlus.rawValue)
           }
           .disabled(model.selectedID == nil)
           .accessibilityIdentifier("quick-records.add-to-drafts")

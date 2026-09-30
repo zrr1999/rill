@@ -139,7 +139,7 @@ extension SettingsView {
           .font(.caption)
           .foregroundStyle(.secondary)
         }
-        .padding(10)
+        .padding(RillSpacing.dense)
         // RillCard prominent-tier fill at badge radius; padding stays manual.
         .background(
           .quaternary.opacity(RillCardProminence.prominent.fillOpacity),

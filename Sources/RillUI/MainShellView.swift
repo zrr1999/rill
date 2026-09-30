@@ -171,6 +171,7 @@ enum MainShellLayoutMetrics {
 public struct MainShellView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Bindable private var model: AppModel
     @AccessibilityFocusState private var accessibilityFocusedSidebarDestination: SidebarDestination?
     @State private var search = GlobalSearchModel()
@@ -290,7 +291,7 @@ public struct MainShellView: View {
             if model.isApplicationShuttingDown {
                 ZStack {
                     Rectangle()
-                        .fill(.ultraThinMaterial)
+                        .fill(reduceTransparency ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor)) : AnyShapeStyle(.ultraThinMaterial))
 
                     VStack(spacing: MainShellLayoutMetrics.shutdownOverlaySpacing) {
                         ProgressView()
@@ -376,7 +377,7 @@ public struct MainShellView: View {
                     Button {
                         model.voiceSetupPresentation = .presented
                     } label: {
-                        Label(L10n.surface(.finishSetup, language: model.settings.language), systemImage: "checklist")
+                        Label(L10n.surface(.finishSetup, language: model.settings.language), systemImage: RillSystemSymbol.checklist.rawValue)
                     }
                     .accessibilityIdentifier("voice-setup.resume")
                 }
@@ -808,7 +809,7 @@ extension MainShellView {
     }
 
     private func sidebarCollectionRow(_ collection: RecordCollection) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: RillSpacing.dense) {
             Label(collection.name, systemImage: RillSystemSymbol.squareStack3dUp.rawValue)
             Spacer(minLength: 8)
             Text("\(collectionRecordCount(collection.id))")

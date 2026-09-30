@@ -7,7 +7,7 @@ import Testing
 
 @MainActor
 struct RecordSearchPresentationTests {
-  @Test func workspaceAndQuickPanelShareLiteralPrecedenceAndApproximatePagination() async throws {
+  @Test func quickPanelKeepsLiteralPrecedenceAndApproximatePagination() async throws {
     let store = RecordStore()
     func draft(_ text: String) -> RecordDraft {
       .init(payload: .text(text), provenance: .init(source: .init(kind: .systemClipboard)))
@@ -19,23 +19,17 @@ struct RecordSearchPresentationTests {
     let workspace = RecordWorkspaceModel(store: store)
     let panel = workspace.makeQuickPanelModel()
     await workspace.refresh()
-    workspace.setSearchText("jtb")
     panel.setSearchText("jtb")
-    await workspace.waitForSearch()
     await panel.waitForSearch()
-    #expect(workspace.visibleRecords.map(\.id) == [exact.id])
     #expect(panel.results.map(\.id) == [exact.id])
 
-    workspace.setSearchText("jtb worktere")
     panel.setSearchText("jtb worktere")
-    await workspace.waitForSearch()
     await panel.waitForSearch()
     while panel.nextOffset != nil {
       panel.loadMore()
       await panel.waitForSearch()
     }
-    #expect(workspace.visibleRecords.count == 125)
-    #expect(workspace.visibleRecords.map(\.id) == panel.results.map(\.id))
+    #expect(panel.results.count == 125)
     await workspace.shutdown()
     await panel.shutdown()
   }

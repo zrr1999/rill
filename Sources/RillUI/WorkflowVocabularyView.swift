@@ -69,7 +69,7 @@ struct VocabularyCollectionCard: View {
                     .padding(.top, 8)
             }
         }
-        .rillCard(.regular, cornerRadius: RillRadius.row, padding: 10)
+        .rillCard(.regular, cornerRadius: RillRadius.row, padding: RillSpacing.dense)
         .alert(
             L10n.workflowText(.workflowDeleteCollectionTitle, language: model.settings.language),
             isPresented: $confirmsCollectionDeletion

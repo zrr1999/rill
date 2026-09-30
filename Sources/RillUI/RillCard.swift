@@ -7,6 +7,8 @@ public enum RillSpacing {
     public static let compact: CGFloat = 4
     /// Gap between rows and items within a group.
     public static let row: CGFloat = 8
+    /// List-row density between `row` (8) and `card` (12).
+    public static let dense: CGFloat = 10
     /// Inner padding of small cards and nested groups.
     public static let card: CGFloat = 12
     /// Default card/panel padding (`rillCard` default).
@@ -15,6 +17,17 @@ public enum RillSpacing {
     public static let section: CGFloat = 20
     /// Page-level margins.
     public static let page: CGFloat = 24
+}
+
+struct RillEmptyState: View {
+    let title: String
+    let symbol: RillSystemSymbol
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(title, systemImage: symbol.rawValue)
+        }
+    }
 }
 
 /// Visual weight of a Rill card, mapped to one consistent fill treatment.
