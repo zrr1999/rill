@@ -40,7 +40,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
-        run: uv run --script scripts/eval_quality.py "$EVALUATION_SUITE"
+        run: uv run --no-build --locked --script scripts/eval_quality.py "$EVALUATION_SUITE"
       - name: Save content-free quality and performance summaries
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
