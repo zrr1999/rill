@@ -65,15 +65,15 @@ public struct UnifiedRecordPanelView<Records: View>: View {
         .accessibilityIdentifier("record-panel.mode")
         Spacer(minLength: 8)
         Toggle(isOn: $presentation.isPinned) {
-          Label(text(.keepOpen), systemImage: presentation.isPinned ? "pin.fill" : "pin")
+          Label(text(.keepOpen), systemImage: presentation.isPinned ? RillSystemSymbol.pinFill.rawValue : RillSystemSymbol.pin.rawValue)
         }
         .toggleStyle(.button).labelStyle(.iconOnly)
         .help(text(.keepThePanelExpandedWhen))
-        Button(action: onCollapse) { Image(systemName: "rectangle.compress.vertical") }
+        Button(action: onCollapse) { Image(systemName: RillSystemSymbol.rectangleCompressVertical.rawValue) }
           .accessibilityLabel(text(.collapseToPendingStrip))
           .help(text(.collapseToPendingStrip))
           .disabled(buffers.editor.session?.hasMarkedText == true)
-        Button(action: onClose) { Image(systemName: "xmark") }
+        Button(action: onClose) { Image(systemName: RillSystemSymbol.xmark.rawValue) }
           .accessibilityLabel(text(.closePanel))
       }
       .controlSize(.small).padding(12)
@@ -100,7 +100,7 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   private var pendingStrip: some View {
     HStack(spacing: 8) {
       Button(action: onExpand) {
-        HStack(spacing: 10) {
+        HStack(spacing: RillSpacing.dense) {
           Image(systemName: needsAttention ? "exclamationmark.circle" : "tray.full")
             .foregroundStyle(needsAttention ? Color.orange : Color.accentColor)
           VStack(alignment: .leading, spacing: 3) {
@@ -109,13 +109,13 @@ public struct UnifiedRecordPanelView<Records: View>: View {
             Text(stripSummary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
           }
           Spacer(minLength: 0)
-          Image(systemName: "arrow.up.left.and.arrow.down.right").font(.caption)
+          Image(systemName: RillSystemSymbol.arrowUpLeftAndArrowDownRight.rawValue).font(.caption)
         }
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
       .accessibilityIdentifier("record-panel.expand")
-      Button(action: onClose) { Image(systemName: "xmark").font(.caption) }
+      Button(action: onClose) { Image(systemName: RillSystemSymbol.xmark.rawValue).font(.caption) }
         .buttonStyle(.plain).accessibilityLabel(text(.closePendingStrip))
     }
     .padding(.horizontal, 12).frame(width: 320, height: 56)

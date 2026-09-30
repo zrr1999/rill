@@ -310,7 +310,7 @@ extension SettingsView {
   @ViewBuilder
   var speechModelPoolSettings: some View {
     if !model.speechModelResourceCatalog.isEmpty {
-      VStack(alignment: .leading, spacing: 10) {
+      VStack(alignment: .leading, spacing: RillSpacing.dense) {
         Text(L10n.settingsText(.settingsModelPoolTitle, language: model.settings.language))
           .font(.caption.weight(.semibold))
 

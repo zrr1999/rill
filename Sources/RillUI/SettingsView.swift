@@ -867,7 +867,7 @@ struct SettingsDisclosureStyle: DisclosureGroupStyle {
   func makeBody(configuration: Configuration) -> some View {
     VStack(alignment: .leading, spacing: 0) {
       HStack(spacing: 8) {
-        Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+        Image(systemName: configuration.isExpanded ? RillSystemSymbol.chevronDown.rawValue : RillSystemSymbol.chevronRight.rawValue)
           .font(.caption.weight(.semibold))
           .frame(width: 12)
           .accessibilityHidden(true)

@@ -11,7 +11,7 @@ public struct RecordBufferSummaryView: View {
   private func text(_ key: SurfaceText) -> String { L10n.surface(key, language: language) }
 
   public var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: RillSpacing.dense) {
       HStack {
         Text(text(.outputNext)).font(.headline)
         Spacer()
@@ -43,7 +43,7 @@ public struct RecordBufferStatusView: View {
   private func text(_ key: SurfaceText) -> String { L10n.surface(key, language: language) }
 
   public var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: RillSpacing.dense) {
       RecordBufferSummaryView(model: model, language: language)
       if let active = model.snapshot?.active {
         if active.state == .awaitingConfirmation || active.state == .delivering {
@@ -89,7 +89,7 @@ struct RecordBufferToolbar: View {
     HStack {
       Button(action: workspace.buffers.openEditorAction) {
         HStack(spacing: 8) {
-          Label(text(.drafts), systemImage: "tray")
+          Label(text(.drafts), systemImage: RillSystemSymbol.tray.rawValue)
             .fixedSize()
           Text("\(workspace.buffers.snapshot?.remainingCount ?? 0)").monospacedDigit().fixedSize()
           Text(workspace.buffers.snapshot?.nextHeader?.preview
@@ -133,12 +133,12 @@ struct RecordBufferToolbar: View {
           workspace.buffers.createSet(name: text(.reusableItems))
         }
       } label: {
-        Image(systemName: "ellipsis.circle")
+        Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue)
       }
       .help(text(.manageOutputBuffers))
       .accessibilityLabel(text(.manageOutputBuffers))
     }
-    .padding(10)
+    .padding(RillSpacing.dense)
     .task { workspace.buffers.start() }
     .popover(
       isPresented: Binding(get: { selectedSet != nil }, set: { if !$0 { selectedSet = nil } })
@@ -156,7 +156,7 @@ struct RecordBufferToolbar: View {
               workspace.buffers.outputAction(entry.id)
             }.lineLimit(2)
           }
-          if setEntries.isEmpty { Text(text(.empty2)) }
+          if setEntries.isEmpty { RillEmptyState(title: text(.empty2), symbol: .tray) }
         }
       }.padding().frame(width: 320, height: 320)
     }

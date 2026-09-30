@@ -49,12 +49,10 @@ final class RecordWorkspaceModelTests: XCTestCase {
         XCTAssertEqual(Set(updated.memberships.map(\.collectionID)), [second.id, third.id])
 
         await model.updateMetadata(for: updated, tags: ["Project Alpha"], isPinned: true)
-        model.setSearchText("project alpha")
-        await waitForSearch(model)
         model.setShowsPinnedOnly(true)
         XCTAssertEqual(model.visibleRecords.map(\.id), [projection.id])
-
-        model.setSearchText("missing")
+        model.setShowsPinnedOnly(false)
+        model.setPayloadKindFilter(.image)
         XCTAssertTrue(model.visibleRecords.isEmpty)
     }
 
@@ -182,21 +180,16 @@ final class RecordWorkspaceModelTests: XCTestCase {
         _ = try await store.ingest(draft("needle second"), into: [])
         let model = RecordWorkspaceModel(store: store)
         await model.refresh()
-        model.setSearchText("needle")
-        await waitForSearch(model)
         let first = try XCTUnwrap(model.visibleRecords.first)
         let neighbor = try XCTUnwrap(model.visibleRecords.last)
         model.selectedRecordID = first.id
         await model.deleteRecord(first.id)
         await model.cleanup.confirm()
         await model.refresh()
-        await waitForSearch(model)
         XCTAssertEqual(model.selectedRecordID, neighbor.id)
-        XCTAssertEqual(model.searchText, "needle")
         await model.deleteRecord(neighbor.id)
         await model.cleanup.confirm()
         await model.refresh()
-        await waitForSearch(model)
         XCTAssertNil(model.selectedRecordID)
     }
 
@@ -207,20 +200,12 @@ final class RecordWorkspaceModelTests: XCTestCase {
         await model.refresh()
         model.selectedRecordID = record.id
         XCTAssertEqual(model.selectedVisibleRecord?.id, record.id)
-        model.setSearchText("no match")
+        model.setPayloadKindFilter(.image)
         XCTAssertNil(model.selectedVisibleRecord)
-        XCTAssertEqual(model.selectedRecordID, record.id)
-        model.setSearchText("")
+        model.clearFilters()
+        XCTAssertEqual(model.visibleRecords.map(\.id), [record.id])
+        model.selectedRecordID = record.id
         XCTAssertEqual(model.selectedVisibleRecord?.id, record.id)
-    }
-
-    private func waitForSearch(_ model: RecordWorkspaceModel) async {
-        for _ in 0..<100 {
-            await Task.yield()
-            if !model.isSearching { return }
-            try? await Task.sleep(for: .milliseconds(10))
-        }
-        XCTFail("Search did not settle")
     }
 
     private func draft(_ text: String, bundleID: String? = nil) -> RecordDraft {

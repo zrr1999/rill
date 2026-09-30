@@ -13,7 +13,6 @@ public final class RecordWorkspaceModel {
     private var recordsByCollection: [RecordCollectionID: [RecordSummary]] = [:]
     public var selectedCollectionID: RecordCollectionID?
     public var selectedRecordID: RecordID?
-    public private(set) var searchText = ""
     public private(set) var payloadKindFilter: RecordPayloadKind?
     public private(set) var revealedRecordID: RecordID?
     public private(set) var unavailableRecordID: RecordID?
@@ -35,12 +34,8 @@ public final class RecordWorkspaceModel {
     private let semanticSearch: RecordSemanticSearch?
     public let jevSettings: JevAPISettingsModel?
     private var observationTask: Task<Void, Never>?
-    private var searchTask: Task<Void, Never>?
-    private var searchGeneration = 0
     private var mutationTask: Task<Void, Never>?
     private var isClosed = false
-    private var searchMatches: Set<RecordID> = []
-    public private(set) var isSearching = false
 
     public init(store: RecordStore, semanticSearch: RecordSemanticSearch? = nil, cloudRanking: RecordCloudRanking? = nil,
                 hotwordSelection: HotwordSelection? = nil) {
@@ -51,14 +46,7 @@ public final class RecordWorkspaceModel {
         cleanup = RecordCleanupModel(store: store)
     }
 
-    isolated deinit { observationTask?.cancel(); searchTask?.cancel() }
-
-    public func setSearchText(_ value: String) {
-        guard !isClosed, searchText != value else { return }
-        searchText = value
-        scheduleSearch()
-        repairRecordSelection()
-    }
+    isolated deinit { observationTask?.cancel() }
 
     public func setPayloadKindFilter(_ value: RecordPayloadKind?) {
         guard !isClosed, payloadKindFilter != value else { return }
@@ -80,20 +68,10 @@ public final class RecordWorkspaceModel {
 
     public func clearFilters() {
         guard !isClosed else { return }
-        searchText = ""
         showsPinnedOnly = false
         sourceAppFilterBundleIdentifier = nil
         payloadKindFilter = nil
-        scheduleSearch()
         repairRecordSelection()
-    }
-
-    func waitForSearch() async {
-        repeat {
-            let generation = searchGeneration
-            await searchTask?.value
-            if generation == searchGeneration { return }
-        } while true
     }
 
     public func sealMutations() {
@@ -104,7 +82,6 @@ public final class RecordWorkspaceModel {
     public func shutdown() async {
         sealMutations()
         observationTask?.cancel()
-        searchTask?.cancel()
         await mutationTask?.value
         await cleanup.shutdown()
         await buffers.shutdown()
@@ -180,7 +157,6 @@ public final class RecordWorkspaceModel {
             records = snapshot.records
         }
 
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return records.filter { projection in
             if let sourceAppFilterBundleIdentifier,
                projection.header.provenance.sourceBundleIdentifier != sourceAppFilterBundleIdentifier {
@@ -188,8 +164,7 @@ public final class RecordWorkspaceModel {
             }
             if let payloadKindFilter, projection.header.kind != payloadKindFilter { return false }
             guard !showsPinnedOnly || projection.metadata.isPinned else { return false }
-            guard !query.isEmpty else { return true }
-            return searchMatches.contains(projection.id)
+            return true
         }
     }
 
@@ -245,44 +220,7 @@ public final class RecordWorkspaceModel {
         guard snapshot.revision >= self.snapshot.revision else { return }
         self.snapshot = snapshot
         rebuildCollectionIndex()
-        if !isClosed { scheduleSearch() }
         repairSelection()
-    }
-
-    private func scheduleSearch() {
-        guard !isClosed else { return }
-        searchTask?.cancel()
-        searchTask = nil
-        searchGeneration &+= 1
-        let generation = searchGeneration
-        searchMatches = []
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { isSearching = false; return }
-        isSearching = true
-        searchTask = Task { [weak self, store] in
-            do {
-                var cursor: RecordSearchCursor?
-                var matches: Set<RecordID> = []
-                repeat {
-                    let page = try await RecordSearch.page(in: store, query: .init(text: query), after: cursor, limit: 100)
-                    try Task.checkCancellation()
-                    matches.formUnion(page.records.map(\.id))
-                    cursor = page.cursor
-                } while cursor != nil
-                guard let self, !Task.isCancelled, searchGeneration == generation else { return }
-                searchMatches = matches
-                isSearching = false
-                repairSelection()
-            } catch is CancellationError {
-            } catch RecordStoreError.membershipChanged {
-                guard !Task.isCancelled else { return }
-                self?.scheduleSearch()
-            } catch {
-                guard !Task.isCancelled else { return }
-                self?.isSearching = false
-                self?.errorMessage = error.localizedDescription
-            }
-        }
     }
 
     public func cancelNavigation() {
@@ -515,7 +453,6 @@ public final class RecordWorkspaceModel {
     }
 
     private func repairRecordSelection() {
-        guard !isSearching else { return }
         if selectedRecordID == nil || !visibleRecords.contains(where: { $0.id == selectedRecordID }) {
             selectedRecordID = visibleRecords.first?.id
         }

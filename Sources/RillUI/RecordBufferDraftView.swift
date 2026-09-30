@@ -40,7 +40,7 @@ public struct RecordBufferDraftView: View {
         }
         Spacer()
         Button { model.newItem() } label: {
-          Label(text(.newItem), systemImage: "square.and.pencil")
+          Label(text(.newItem), systemImage: RillSystemSymbol.squareAndPencil.rawValue)
         }
         .accessibilityIdentifier("record-buffer.new")
         .disabled(model.session?.hasMarkedText == true)
@@ -142,7 +142,7 @@ public struct RecordBufferDraftView: View {
             : session.hasUnsavedChanges ? text(.unsaved) : text(.saved))
             .font(.caption).foregroundStyle(.secondary)
           Button(action: model.dictateHere) {
-            Label(text(.dictateHere), systemImage: "mic.badge.plus")
+            Label(text(.dictateHere), systemImage: RillSystemSymbol.micBadgePlus.rawValue)
           }
           .disabled(model.isBusy || voice.isRunning || session.hasMarkedText)
         }.padding(12).fixedSize(horizontal: false, vertical: true)
@@ -159,7 +159,7 @@ public struct RecordBufferDraftView: View {
       }
     } else {
       ContentUnavailableView {
-        Label(text(.selectAnItem), systemImage: "text.cursor")
+        Label(text(.selectAnItem), systemImage: RillSystemSymbol.textCursor.rawValue)
       } description: {
         Text(text(.editSelectAndUndoText))
       }
@@ -219,7 +219,7 @@ public struct RecordBufferDraftView: View {
           .font(.caption).foregroundStyle(.secondary).lineLimit(2)
         Spacer()
         Button(role: .destructive) { showsDiscard = true } label: {
-          Label(text(.remove), systemImage: "trash")
+          Label(text(.remove), systemImage: RillSystemSymbol.trash.rawValue)
         }.disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
         Button(text(.hide), action: model.closeAction)
         Button(text(.sendSelected), action: model.send)
