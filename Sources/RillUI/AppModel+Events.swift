@@ -314,6 +314,8 @@ extension AppModel {
       )
     case .liveSubtitleUpdated(let snapshot):
       voice.applyLiveSubtitleUpdate(snapshot)
+    case .recordingReleaseChanged(let runID, let isReleased):
+      voice.applyRecordingRelease(runID: runID, isReleased: isReleased)
     case .audioProcessingQueueUpdated(let snapshot):
       voice.audioProcessingQueueSnapshot = snapshot.isVisible ? snapshot : nil
       voice.refreshLiveSubtitlePresentation()

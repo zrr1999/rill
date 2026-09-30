@@ -12,6 +12,7 @@ public final class VoiceRunModel {
   // Meter frames update the floating panel without invalidating the application view graph.
   @ObservationIgnored public internal(set) var liveSubtitleSnapshot: LiveSubtitleSnapshot?
   @ObservationIgnored var currentCaptureLiveSubtitleSnapshot: LiveSubtitleSnapshot?
+  @ObservationIgnored var releasedCaptureRunID: UUID?
 
   var workflowAudioCaptureRunID: UUID?
   var audioProcessingQueueSnapshot: AudioProcessingQueueSnapshot?
@@ -30,6 +31,7 @@ public final class VoiceRunModel {
   @ObservationIgnored var pendingLiveSubtitleMeterRefreshTask: Task<Void, Never>?
   @ObservationIgnored var liveSubtitleMeterRefreshGeneration = 0
   var updateLiveSubtitlePanelAction: (@MainActor (LiveSubtitleSnapshot?, AppLanguage) -> Void)?
+  var updateLiveAudioCancellationAction: (@MainActor (UUID?) -> Void)?
 
   let prepareLocalSpeech: @Sendable (LocalSpeechSettings, @escaping @Sendable (Progress) -> Void) async throws -> String
   let releaseLocalSpeech: @Sendable () -> Void

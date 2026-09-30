@@ -50,14 +50,11 @@ struct RillApplication: App {
     recordPanelController.startCollectionObservation { showPanel(.drafts, false, false) }
     container.model.voice.installLiveSubtitlePanelAction {
       [liveSubtitlePanelController] snapshot, language in
-      let cancellableRunID = snapshot.flatMap { snapshot in
-        LiveSubtitlePresentationPolicy.isAudioCaptureActive(phase: snapshot.phase)
-          ? snapshot.runID
-          : nil
-      }
-      container.setLiveAudioEscapeCancellationRunID(cancellableRunID)
       liveSubtitlePanelController.update(snapshot: snapshot, language: language)
     }
+    container.model.voice.installLiveAudioCancellationAction(
+      container.setLiveAudioEscapeCancellationRunID
+    )
     liveSubtitlePanelController.installRemoveDurationLimitAction(
       container.removeLiveAudioDurationLimit
     )

@@ -29,6 +29,8 @@ public enum RillEvent: Sendable, Equatable {
   case contextCaptured(run: WorkflowRunIdentity, snapshot: ContextSnapshot)
   case recognitionCompleted(run: WorkflowRunIdentity, result: RecognitionResult)
   case liveSubtitleUpdated(LiveSubtitleSnapshot)
+  /// Presentation intent only; capture remains cancellable during the release tail.
+  case recordingReleaseChanged(runID: UUID, isReleased: Bool)
   case audioProcessingQueueUpdated(AudioProcessingQueueSnapshot)
   case failedAudioRecoveryUpdated([FailedAudioRecoveryReceipt])
   case failedAudioRecoveryUnavailable(runID: UUID, reason: FailedAudioRecoveryError)
