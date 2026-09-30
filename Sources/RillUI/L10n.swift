@@ -32,6 +32,12 @@ public enum L10n {
     case clipboardRoutingTitle
     case close
     case menuAbout
+    case menuClipboardOn
+    case menuClipboardOff
+    case menuClipboardStarting
+    case menuClipboardIgnorePreparing
+    case menuClipboardIgnoringNext
+    case menuClipboardSettings
     case menuClipboardCaptureActive
     case menuClipboardCaptureOff
     case menuClipboardCaptureTurningOn
@@ -39,7 +45,7 @@ public enum L10n {
     case menuClipboardIgnoreNextPending
     case menuCopyLastResult
     case menuIgnoreNextExternalCopy
-    case menuInterfaceLanguage
+    case menuHoldToTalkHint
     case menuLocalEngine
     case menuLongRecording
     case menuLongRecordingToggle
@@ -49,11 +55,14 @@ public enum L10n {
     case menuNoManualWorkflows
     case menuNoTextStyleWorkflows
     case menuOpenMainWindow
+    case menuOpenDrafts
+    case menuManualWorkflows
     case menuPasteIntoApp
     case menuDeliverNextRecord
     case menuTurnOffClipboardCapture
     case menuQuit
     case menuRecentResults
+    case menuRecordingMode
     case menuTurnOnClipboardCapture
     case menuSaveToVoiceGroup
     case menuSpeechEngine
@@ -70,6 +79,9 @@ public enum L10n {
     case menuStatusSetupLoadingDetail
     case menuTextOutput
     case menuTextStyles
+    case menuToggleRecordingHint
+    case menuVoiceInput
+    case menuVoiceInputSettings
     case menuWorkflows
     case vocabularyAddRule
     case vocabularyAnyApp
@@ -206,6 +218,30 @@ public enum L10n {
       english: "About Rill",
       simplifiedChinese: "关于 Rill"
     ),
+    .menuClipboardOn: .init(
+      english: "Clipboard · On",
+      simplifiedChinese: "剪贴板 · 开启"
+    ),
+    .menuClipboardOff: .init(
+      english: "Clipboard · Off",
+      simplifiedChinese: "剪贴板 · 关闭"
+    ),
+    .menuClipboardStarting: .init(
+      english: "Clipboard · Starting…",
+      simplifiedChinese: "剪贴板 · 开启中…"
+    ),
+    .menuClipboardIgnorePreparing: .init(
+      english: "Clipboard · Preparing Ignore…",
+      simplifiedChinese: "剪贴板 · 准备忽略…"
+    ),
+    .menuClipboardIgnoringNext: .init(
+      english: "Clipboard · Ignoring Next Copy",
+      simplifiedChinese: "剪贴板 · 忽略下一次复制"
+    ),
+    .menuClipboardSettings: .init(
+      english: "Clipboard Settings…",
+      simplifiedChinese: "剪贴板设置…"
+    ),
     .menuClipboardCaptureActive: .init(
       english: "Clipboard capture active",
       simplifiedChinese: "剪贴板捕获已开启"
@@ -227,16 +263,16 @@ public enum L10n {
       simplifiedChinese: "将忽略下一次外部复制"
     ),
     .menuCopyLastResult: .init(
-      english: "Copy Last Transcription Result",
-      simplifiedChinese: "复制上次转写结果"
+      english: "Copy Last Transcription",
+      simplifiedChinese: "复制上次转写"
     ),
     .menuIgnoreNextExternalCopy: .init(
       english: "Ignore Next External Copy",
       simplifiedChinese: "忽略下一次外部复制"
     ),
-    .menuInterfaceLanguage: .init(
-      english: "Interface Language",
-      simplifiedChinese: "界面语言"
+    .menuHoldToTalkHint: .init(
+      english: "Hold Fn to talk",
+      simplifiedChinese: "按住 Fn 说话"
     ),
     .menuLocalEngine: .init(
       english: "Local Speech",
@@ -274,6 +310,14 @@ public enum L10n {
       english: "Open Rill Main Window",
       simplifiedChinese: "打开 Rill 主窗口"
     ),
+    .menuOpenDrafts: .init(
+      english: "Open Drafts",
+      simplifiedChinese: "打开待发区"
+    ),
+    .menuManualWorkflows: .init(
+      english: "All Manual Workflows",
+      simplifiedChinese: "全部手动工作流"
+    ),
     .menuPasteIntoApp: .init(
       english: "Type into Current App and Save Record",
       simplifiedChinese: "输入到当前 App 并记录"
@@ -293,6 +337,10 @@ public enum L10n {
     .menuRecentResults: .init(
       english: "Recent Results",
       simplifiedChinese: "最近结果"
+    ),
+    .menuRecordingMode: .init(
+      english: "Recording Mode",
+      simplifiedChinese: "录音方式"
     ),
     .menuTurnOnClipboardCapture: .init(
       english: "Turn On Clipboard Capture",
@@ -331,8 +379,8 @@ public enum L10n {
       simplifiedChinese: "需要处理"
     ),
     .menuStatusReady: .init(
-      english: "Rill Idle",
-      simplifiedChinese: "Rill 空闲"
+      english: "Rill Ready",
+      simplifiedChinese: "Rill 就绪"
     ),
     .menuStatusRunning: .init(
       english: "Voice run active",
@@ -358,9 +406,21 @@ public enum L10n {
       english: "Text Style",
       simplifiedChinese: "文字风格"
     ),
+    .menuToggleRecordingHint: .init(
+      english: "Press Fn to start, then press again to stop",
+      simplifiedChinese: "按 Fn 开始，再按 Fn 结束"
+    ),
+    .menuVoiceInput: .init(
+      english: "Voice Input",
+      simplifiedChinese: "语音输入"
+    ),
+    .menuVoiceInputSettings: .init(
+      english: "Input Settings…",
+      simplifiedChinese: "输入设置…"
+    ),
     .menuWorkflows: .init(
-      english: "Workflows",
-      simplifiedChinese: "工作流"
+      english: "Run Workflow",
+      simplifiedChinese: "运行工作流"
     ),
     .vocabularyAddRule: .init(
       english: "Add Rule",
