@@ -348,7 +348,7 @@ public actor RecordStore {
         if let bufferEntryID {
             guard bufferEntries[bufferEntryID]?.state == .preparing else { throw BufferOutputError.unavailable }
         }
-        let destinations = stableUnique(destinationCollectionIDs)
+        let destinations = RecordGraphRules.stableUnique(destinationCollectionIDs)
         guard destinations.count <= RecordGraphLimits.maximumRouteCollections else {
             throw RecordStoreError.routeCollectionLimitReached
         }
@@ -509,7 +509,7 @@ public actor RecordStore {
             throw RecordStoreError.membershipChanged
         }
         if let tags {
-            let normalized = normalizedTags(tags)
+            let normalized = RecordGraphRules.normalizedTags(tags)
             try validateTags(normalized)
             metadata.tags = normalized
         }
@@ -712,14 +712,14 @@ public actor RecordStore {
             }
             graphState.captureRules = graphState.captureRules.map { rule in
                 var rule = rule
-                rule.destinationCollectionIDs = stableUnique(
+                rule.destinationCollectionIDs = RecordGraphRules.stableUnique(
                     rule.destinationCollectionIDs.map { $0 == collectionID ? replacementID : $0 }
                 )
                 return rule
             }
             graphState.deliveryRules = graphState.deliveryRules.map { rule in
                 var rule = rule
-                rule.sourceCollectionIDs = stableUnique(
+                rule.sourceCollectionIDs = RecordGraphRules.stableUnique(
                     rule.sourceCollectionIDs.map { $0 == collectionID ? replacementID : $0 }
                 )
                 if rule.sinkCollectionID == collectionID {
@@ -781,7 +781,7 @@ public actor RecordStore {
               Set(rules.map(\.id)).count == rules.count,
               rules.allSatisfy({
             $0.destinationCollectionIDs.count <= RecordGraphLimits.maximumRouteCollections
-                && stableUnique($0.destinationCollectionIDs) == $0.destinationCollectionIDs
+                && RecordGraphRules.stableUnique($0.destinationCollectionIDs) == $0.destinationCollectionIDs
                 && $0.destinationCollectionIDs.allSatisfy { graphState.collectionsByID[$0] != nil }
         }) else { throw RecordStoreError.invalidGraph }
         graphState.captureRules = rules
@@ -789,22 +789,12 @@ public actor RecordStore {
         try await persistCurrentGraph()
     }
 
-    private func isValidDeliveryRule(_ rule: DeliveryRouteRule, collectionIDs: Set<RecordCollectionID>) -> Bool {
-        guard rule.sourceCollectionIDs.count <= RecordGraphLimits.maximumRouteCollections,
-              stableUnique(rule.sourceCollectionIDs) == rule.sourceCollectionIDs,
-              rule.sourceCollectionIDs.allSatisfy(collectionIDs.contains) else { return false }
-        guard rule.sink == .recordCollection else { return rule.sinkCollectionID == nil }
-        if let destination = rule.sinkCollectionID { return collectionIDs.contains(destination) }
-        // Deleting a target preserves a disabled rule that can be repaired in the editor.
-        return !rule.isEnabled
-    }
-
     public func replaceDeliveryRules(_ rules: [DeliveryRouteRule]) async throws {
         try await ensureInitialized()
         let collectionIDs = Set(graphState.collectionsByID.keys)
         guard rules.count <= storageLimits.maximumDeliveryRouteCount,
               Set(rules.map(\.id)).count == rules.count,
-              rules.allSatisfy({ isValidDeliveryRule($0, collectionIDs: collectionIDs) })
+              rules.allSatisfy({ RecordGraphRules.isValidDeliveryRule($0, collectionIDs: collectionIDs) })
         else { throw RecordStoreError.invalidGraph }
         graphState.deliveryRules = rules
         noteMutation()
@@ -818,7 +808,7 @@ public actor RecordStore {
         guard envelope.requestedCollectionIDs.allSatisfy({ graphState.collectionsByID[$0] != nil }) else {
             throw RecordStoreError.collectionUnavailable
         }
-        var result = stableUnique(envelope.requestedCollectionIDs)
+        var result = RecordGraphRules.stableUnique(envelope.requestedCollectionIDs)
         for rule in graphState.captureRules
         where rule.isEnabled && rule.matcher.matches(envelope.draft.provenance) {
             for collectionID in rule.destinationCollectionIDs where !result.contains(collectionID) {
@@ -1258,15 +1248,6 @@ public actor RecordStore {
         publishSnapshotToObservers()
     }
 
-    private func stableUnique<T: Hashable>(_ values: [T]) -> [T] {
-        var seen: Set<T> = []
-        return values.filter { seen.insert($0).inserted }
-    }
-
-    private func normalizedTags(_ tags: [String]) -> [String] {
-        stableUnique(tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
-    }
-
     private static let contentDigestByteCount = 32
 
     private struct ContentLookup {
@@ -1304,7 +1285,7 @@ public actor RecordStore {
         markCatalogChange(.metadata, id: record.id)
         graphState.metadataByRecordID[record.id] = RecordMetadata(
             recordID: record.id,
-            tags: normalizedTags(draft.tags),
+            tags: RecordGraphRules.normalizedTags(draft.tags),
             isPinned: draft.isPinned
         )
         markCatalogChange(.activity, id: record.id)
@@ -1567,7 +1548,7 @@ public actor RecordStore {
             publishSnapshotToObservers()
             throw RecordStoreError.totalPayloadLimitReached
         }
-        try validateTags(normalizedTags(tags))
+        try validateTags(RecordGraphRules.normalizedTags(tags))
     }
 
     private func validateTags(_ tags: [String]) throws {
@@ -1719,12 +1700,12 @@ extension RecordStore {
               graph.captureRules.count == Set(graph.captureRules.map(\.id)).count,
               graph.captureRules.allSatisfy({ rule in
                   rule.destinationCollectionIDs.count <= RecordGraphLimits.maximumRouteCollections
-                    && stableUnique(rule.destinationCollectionIDs) == rule.destinationCollectionIDs
+                    && RecordGraphRules.stableUnique(rule.destinationCollectionIDs) == rule.destinationCollectionIDs
                     && rule.destinationCollectionIDs.allSatisfy(collectionIDs.contains)
               }),
               graph.deliveryRules.count <= storageLimits.maximumDeliveryRouteCount,
               graph.deliveryRules.count == Set(graph.deliveryRules.map(\.id)).count,
-              graph.deliveryRules.allSatisfy({ isValidDeliveryRule($0, collectionIDs: collectionIDs) })
+              graph.deliveryRules.allSatisfy({ RecordGraphRules.isValidDeliveryRule($0, collectionIDs: collectionIDs) })
         else { throw RecordStoreError.invalidGraph }
         let membershipCounts = Dictionary(grouping: graph.memberships, by: \.recordID).mapValues(\.count)
         guard membershipCounts.values.allSatisfy({ $0 <= RecordGraphLimits.maximumMembershipsPerRecord }) else {
