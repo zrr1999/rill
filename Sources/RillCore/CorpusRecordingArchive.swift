@@ -1,16 +1,16 @@
 import Foundation
 
-public enum BenchmarkRecordingOutcome: String, Codable, Sendable, Equatable {
+public enum CorpusRecordingOutcome: String, Codable, Sendable, Equatable {
   case completed
   case cancelled
   case failed
 }
 
-/// Content-free metadata for one encrypted benchmark recording.
+/// Content-free metadata for one encrypted corpus recording.
 ///
 /// Transcript bodies stay in run history and are joined by `runID` only when
-/// the user exports a private benchmark corpus.
-public struct BenchmarkRecordingReceipt: Codable, Sendable, Equatable {
+/// the user exports a private evaluation corpus.
+public struct CorpusRecordingReceipt: Codable, Sendable, Equatable {
   public let schemaVersion: Int
   public let runID: UUID
   public let workflowID: UUID
@@ -19,7 +19,7 @@ public struct BenchmarkRecordingReceipt: Codable, Sendable, Equatable {
   public let format: AudioFormat
   public let plaintextByteCount: Int
   public let trigger: WorkflowRunTriggerKind?
-  public let outcome: BenchmarkRecordingOutcome
+  public let outcome: CorpusRecordingOutcome
   public let metadata: [String: String]
 
   public init(
@@ -31,7 +31,7 @@ public struct BenchmarkRecordingReceipt: Codable, Sendable, Equatable {
     format: AudioFormat,
     plaintextByteCount: Int,
     trigger: WorkflowRunTriggerKind?,
-    outcome: BenchmarkRecordingOutcome,
+    outcome: CorpusRecordingOutcome,
     metadata: [String: String]
   ) {
     self.schemaVersion = schemaVersion
@@ -47,7 +47,7 @@ public struct BenchmarkRecordingReceipt: Codable, Sendable, Equatable {
   }
 }
 
-public enum BenchmarkRecordingArchiveError: Error, LocalizedError, Sendable, Equatable {
+public enum CorpusRecordingArchiveError: Error, LocalizedError, Sendable, Equatable {
   case invalidEntry
   case protectionUnavailable
   case storageUnavailable
@@ -56,74 +56,74 @@ public enum BenchmarkRecordingArchiveError: Error, LocalizedError, Sendable, Equ
   public var errorDescription: String? {
     switch self {
     case .invalidEntry:
-      "A benchmark recording could not be authenticated."
+      "A corpus recording could not be authenticated."
     case .protectionUnavailable:
-      "A benchmark recording could not be encrypted or opened."
+      "A corpus recording could not be encrypted or opened."
     case .storageUnavailable:
-      "Benchmark recording storage is unavailable."
+      "Corpus recording storage is unavailable."
     case .unsupportedPayload:
-      "Only Rill-managed file recordings can be archived for benchmarks."
+      "Only Rill-managed file recordings can be archived for evaluation."
     }
   }
 }
 
-public protocol BenchmarkRecordingArchiveStore: Sendable {
+public protocol CorpusRecordingArchiveStore: Sendable {
   func preserve(
     audio: CapturedAudio,
     runID: UUID,
     workflowID: UUID,
     trigger: WorkflowRunTriggerKind?,
-    outcome: BenchmarkRecordingOutcome,
+    outcome: CorpusRecordingOutcome,
     metadata: [String: String],
     now: Date
-  ) async throws -> BenchmarkRecordingReceipt
+  ) async throws -> CorpusRecordingReceipt
 
   func delete(runID: UUID) async throws
   func deleteAll() async throws
 }
 
 /// Explicit evaluation reads are separate from the live capture write port.
-public struct BenchmarkRecording: Sendable {
-  public let receipt: BenchmarkRecordingReceipt
+public struct CorpusRecording: Sendable {
+  public let receipt: CorpusRecordingReceipt
   public let audioBytes: Data
 
-  public init(receipt: BenchmarkRecordingReceipt, audioBytes: Data) {
+  public init(receipt: CorpusRecordingReceipt, audioBytes: Data) {
     self.receipt = receipt
     self.audioBytes = audioBytes
   }
 }
 
-public protocol BenchmarkRecordingArchiveReading: Sendable {
+public protocol CorpusRecordingArchiveReading: Sendable {
   func recordingIDs() async throws -> [UUID]
-  func receipt(runID: UUID) async throws -> BenchmarkRecordingReceipt
-  func recording(runID: UUID) async throws -> BenchmarkRecording
+  func receipt(runID: UUID) async throws -> CorpusRecordingReceipt
+  func recording(runID: UUID) async throws -> CorpusRecording
 }
 
-public enum BenchmarkEvidenceKind: String, Codable, Sendable, CaseIterable {
+public enum CorpusEvidenceKind: String, Codable, Sendable, CaseIterable {
   case microphone, synthetic
   case publicFixture = "public_fixture"
 }
 
-public enum BenchmarkCorpusSplit: String, Codable, Sendable, CaseIterable {
+public enum CorpusSplit: String, Codable, Sendable, CaseIterable {
   case development, validation
 }
 
-public struct BenchmarkCorpusSelection: Sendable, Equatable {
+public struct CorpusSelection: Sendable, Equatable {
   public let runIDs: [UUID]
-  public let evidenceKind: BenchmarkEvidenceKind
-  public let split: BenchmarkCorpusSplit
+  public let evidenceKind: CorpusEvidenceKind
+  public let split: CorpusSplit
 
-  public init(runIDs: [UUID], evidenceKind: BenchmarkEvidenceKind, split: BenchmarkCorpusSplit) {
+  public init(runIDs: [UUID], evidenceKind: CorpusEvidenceKind, split: CorpusSplit) {
     self.runIDs = runIDs
     self.evidenceKind = evidenceKind
     self.split = split
   }
 }
 
-public protocol BenchmarkCorpusExporting: Sendable {
-  func export(_ selection: BenchmarkCorpusSelection, to directory: URL) async throws -> URL
+public protocol CorpusExporting: Sendable {
+  func export(_ selection: CorpusSelection, to directory: URL) async throws -> URL
 }
 
-public enum BenchmarkCorpusExportError: Error, Sendable, Equatable {
+public enum CorpusExportError: Error, Sendable, Equatable {
   case cleanupPending(URL)
 }

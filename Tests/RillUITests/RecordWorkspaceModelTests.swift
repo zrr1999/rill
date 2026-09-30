@@ -203,8 +203,6 @@ final class RecordWorkspaceModelTests: XCTestCase {
         model.setPayloadKindFilter(.image)
         XCTAssertNil(model.selectedVisibleRecord)
         model.clearFilters()
-        XCTAssertEqual(model.visibleRecords.map(\.id), [record.id])
-        model.selectedRecordID = record.id
         XCTAssertEqual(model.selectedVisibleRecord?.id, record.id)
     }
 

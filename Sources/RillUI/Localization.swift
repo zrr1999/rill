@@ -97,6 +97,7 @@ extension L10n {
     case sidebarDiagnostics
     case sidebarSettings
     case settingsBack
+    case settingsMenuCommand
     case openWorkflowEditor
     case settingsTitle
     case settingsDescription
@@ -739,6 +740,10 @@ private let interfaceTextTable: [L10n.InterfaceKey: LocalizedText] = [
   .settingsBack: .init(
     english: "Back",
     simplifiedChinese: "返回"
+  ),
+  .settingsMenuCommand: .init(
+    english: "Settings…",
+    simplifiedChinese: "设置…"
   ),
   .openWorkflowEditor: .init(
     english: "Manage Workflows",

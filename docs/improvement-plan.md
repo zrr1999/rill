@@ -30,7 +30,7 @@ ASR/TTS/VAD/Embedding 共用下载、摘要与原子目录发布；各自的固�
 运行阶段按 run/lane 发布，已结束运行的晚到阶段不能重新激活 UI。
 输出失败收据可携带 `notApplied` 证据；无证据或旧收据一律视为结果未确认。
 
-验收方法和指标见 [ASR 基准](asr-benchmark-plan.md)，原生验收见
+验收方法和指标见 [ASR 评测与回放](asr-evaluation.md)，原生验收见
 [发布 QA](release-qa-checklist.md)。本地检查、Hosted CI、真实安装与其他机型分别记录。
 
 本轮可核验结果见 [质量验证记录](quality-improvement-validation.md)。

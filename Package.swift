@@ -146,6 +146,9 @@ let package = Package(
         "RillWorkflows", "RillRecords", "RillKnowledge", "RillSpeech",
       ]
     ),
+    .testTarget(name: "RillQualityEvaluations",
+      dependencies: ["RillCore", "RillProviders", "RillPlatform"],
+      path: "Evals/RillQualityEvaluations"),
     .testTarget(
       name: "RillProvidersTests",
       dependencies: [.product(name: "OpenAI", package: "OpenAI"),
