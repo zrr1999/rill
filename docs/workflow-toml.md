@@ -336,11 +336,10 @@ still answer requests. User-authored TOML prompts are not overwritten by updates
 
 The provider request contract and cleanup examples are covered by offline checks.
 An opt-in model evaluation sends only fixed synthetic samples in
-`Tests/Fixtures/TextRewrite/cases.json`, in both ordinary and contextual correction
-modes. Run it with `RILL_REWRITE_LIVE_EVALUATION=1`, `OPENAI_API_KEY`,
-`OPENAI_BASE_URL` and `OPENAI_MODEL` set, using
-`scripts/swift_locked.sh test --filter TextRewriteEvaluationTests`.
-Results are saved locally in `.artifacts/text-rewrite/live-evaluation.json`.
+`Evals/TextRewrite/cases.json`, in both ordinary and contextual correction
+modes. Run it with `just eval-quality text-rewrite`, `OPENAI_API_KEY`,
+`OPENAI_BASE_URL` and `OPENAI_MODEL` set.
+Results are saved locally in `.artifacts/evals/text-rewrite/<run-id>/observations.json`.
 Offline request checks do not establish model compliance; live results apply
 only to the tested provider, model and corpus.
 Comparisons ignore punctuation and whitespace but retain words, case and numbers.

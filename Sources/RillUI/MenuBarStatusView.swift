@@ -195,11 +195,10 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
       break
     }
 
-    if recordCount > 0 {
-      return L10n.menuClipboardReadyStatus(recordCount, language: language)
-    }
-
-    return nil
+    return L10n.string(
+      longRecordingModeEnabled ? .menuToggleRecordingHint : .menuHoldToTalkHint,
+      language: language
+    )
   }
 
   public var statusSystemImage: String {
@@ -218,10 +217,6 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
       return RillSystemSymbol.exclamationmarkCircleFill.rawValue
     case .ready:
       break
-    }
-
-    if recordCount > 0 {
-      return RillSystemSymbol.squareStack3dUpFill.rawValue
     }
 
     return RillSystemSymbol.checkmarkCircle.rawValue
@@ -256,6 +251,21 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     case .ignoringNextExternalChange:
       L10n.string(.menuClipboardIgnoreNextPending, language: language)
     }
+  }
+
+  public var clipboardMenuTitle: String {
+    let key: L10n.Key
+    if !systemClipboardCaptureEnabled {
+      key = .menuClipboardOff
+    } else {
+      key = switch clipboardCaptureState {
+      case .active: .menuClipboardOn
+      case .pausing, .paused, .resuming: .menuClipboardStarting
+      case .armingIgnoreNextExternalChange: .menuClipboardIgnorePreparing
+      case .ignoringNextExternalChange: .menuClipboardIgnoringNext
+      }
+    }
+    return L10n.string(key, language: language)
   }
 
   public var clipboardCaptureStatusSystemImage: String {
@@ -352,6 +362,85 @@ public struct MenuBarStatusView: View {
         Divider()
 
         Button {
+          model.recordWorkspace.buffers.openEditorAction()
+        } label: {
+          Label(
+            L10n.string(.menuOpenDrafts, language: model.settings.language),
+            systemImage: RillSystemSymbol.squareAndPencil.rawValue
+          )
+        }
+        .accessibilityIdentifier("menu.open-drafts")
+
+        Button {
+          model.selectSidebarSection(.records)
+          openMainWindow()
+        } label: {
+          Label(
+            L10n.workspace(.allRecords, language: model.settings.language),
+            systemImage: RillSystemSymbol.squareStack3dUp.rawValue
+          )
+        }
+        .keyboardShortcut("b", modifiers: .command)
+        .accessibilityIdentifier("menu.clipboard.open-history")
+
+        Button {
+          model.showRunHistory()
+          openMainWindow()
+        } label: {
+          Label(
+            L10n.text(.sidebarStream, language: model.settings.language),
+            systemImage: RillSystemSymbol.clockArrowCirclepath.rawValue
+          )
+        }
+        .accessibilityIdentifier("menu.open-activity")
+
+        Divider()
+
+        Button {
+          copyLastCompletedText()
+        } label: {
+          Label(
+            L10n.string(.menuCopyLastResult, language: model.settings.language),
+            systemImage: RillSystemSymbol.docOnDoc.rawValue
+          )
+        }
+        .keyboardShortcut("v", modifiers: [.command, .shift])
+        .disabled(!panelState.canCopyLastResult)
+        .accessibilityIdentifier("menu.copy-last-transcription")
+
+        Menu {
+          voiceInputMenu
+        } label: {
+          Label(
+            L10n.string(.menuVoiceInput, language: model.settings.language),
+            systemImage: RillSystemSymbol.micFill.rawValue
+          )
+        }
+        .accessibilityIdentifier("menu.voice-input")
+
+        Menu {
+          clipboardMenu
+        } label: {
+          Label(
+            panelState.clipboardMenuTitle,
+            systemImage: RillSystemSymbol.docOnClipboard.rawValue
+          )
+        }
+        .accessibilityIdentifier("menu.clipboard")
+
+        Menu {
+          workflowMenu
+        } label: {
+          Label(
+            L10n.string(.menuWorkflows, language: model.settings.language),
+            systemImage: RillSystemSymbol.point3ConnectedTrianglepathDotted.rawValue
+          )
+        }
+        .accessibilityIdentifier("menu.workflows")
+
+        Divider()
+
+        Button {
           openMainWindow()
         } label: {
           Label(
@@ -367,110 +456,8 @@ public struct MenuBarStatusView: View {
         } label: {
           Label(L10n.text(.settingsTitle, language: model.settings.language), systemImage: RillSystemSymbol.gearshape.rawValue)
         }
-        .accessibilityIdentifier("menu.settings")
-
-
-        Button {
-          model.showRunHistory()
-          openMainWindow()
-        } label: {
-          Label(
-            L10n.text(.historyScopeAll, language: model.settings.language),
-            systemImage: RillSystemSymbol.clockArrowCirclepath.rawValue)
-        }
-
-        Button {
-          model.selectSidebarSection(.records)
-          openMainWindow()
-        } label: {
-          Label(
-            L10n.workspace(.allRecords, language: model.settings.language),
-            systemImage: RillSystemSymbol.squareStack3dUp.rawValue
-          )
-        }
-        .keyboardShortcut("b", modifiers: .command)
-        .accessibilityIdentifier("menu.clipboard.open-history")
-
-        Button {
-          copyLastCompletedText()
-        } label: {
-          Label(
-            L10n.string(.menuCopyLastResult, language: model.settings.language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
-        }
-        .keyboardShortcut("v", modifiers: [.command, .shift])
-        .disabled(!panelState.canCopyLastResult)
-
-        Divider()
-
-        scalarSettingsUnavailableNotice(.systemClipboard)
-
-        Button {
-          model.toggleClipboardCaptureEnabled()
-        } label: {
-          Label(
-            panelState.clipboardCaptureToggleTitle,
-            systemImage: panelState.clipboardCaptureToggleSystemImage
-          )
-        }
-        .disabled(!panelState.canToggleClipboardCapture)
-        .accessibilityIdentifier("menu.clipboard.capture-toggle")
-
-        Button {
-          model.ignoreNextExternalClipboardChange()
-        } label: {
-          Label(
-            L10n.string(.menuIgnoreNextExternalCopy, language: model.settings.language),
-            systemImage: RillSystemSymbol.eyeSlash.rawValue
-          )
-        }
-        .disabled(!panelState.canIgnoreNextExternalCopy)
-        .accessibilityIdentifier("menu.clipboard.ignore-next")
-
-        Divider()
-
-        Menu {
-          languageMenu
-        } label: {
-          Label(L10n.string(.menuInterfaceLanguage, language: model.settings.language), systemImage: RillSystemSymbol.globe.rawValue)
-        }
-
-        Menu {
-          textStyleMenu
-        } label: {
-          Label(
-            L10n.string(.menuTextStyles, language: model.settings.language), systemImage: RillSystemSymbol.wandAndStars.rawValue)
-        }
-
-        Menu {
-          textOutputMenu
-        } label: {
-          Label(L10n.string(.menuTextOutput, language: model.settings.language), systemImage: RillSystemSymbol.textformat.rawValue)
-        }
-
-        Menu {
-          longRecordingMenu
-        } label: {
-          Label(
-            L10n.string(.menuLongRecording, language: model.settings.language), systemImage: RillSystemSymbol.recordCircle.rawValue)
-        }
-
-        Menu {
-          workflowMenu
-        } label: {
-          Label(
-            L10n.string(.menuWorkflows, language: model.settings.language),
-            systemImage: RillSystemSymbol.squareStack3dUp.rawValue
-          )
-        }
-
-        Divider()
-
-        Button {
-          model.presentSettings()
-          openMainWindow()
-        } label: {
-          Label(L10n.text(.settingsTitle, language: model.settings.language), systemImage: RillSystemSymbol.gearshape.rawValue)
-        }
+        .keyboardShortcut(",", modifiers: .command)
+        .accessibilityIdentifier("menu.open-settings")
 
         Button {
           openAbout()
@@ -483,11 +470,12 @@ public struct MenuBarStatusView: View {
         Button(role: .destructive) {
           quitApplication()
         } label: {
-          Label(L10n.string(.menuQuit, language: model.settings.language), systemImage: RillSystemSymbol.xmarkSquare.rawValue)
+          Label(L10n.string(.menuQuit, language: model.settings.language), systemImage: RillSystemSymbol.power.rawValue)
         }
         .keyboardShortcut("q", modifiers: .command)
       }
     }
+    .labelStyle(.titleAndIcon)
   }
 
   @ViewBuilder
@@ -503,7 +491,15 @@ public struct MenuBarStatusView: View {
         text: L10n.string(.applicationShutdownDetail, language: model.settings.language)
       )
       .accessibilityIdentifier("menu.status.shutdown-detail")
-    } else if panelState.voiceSetupStatus == .ready || model.voice.isRunning || model.lastFailure != nil {
+    } else if model.lastFailure != nil {
+      Button {
+        model.showRunHistory()
+        openMainWindow()
+      } label: {
+        Label(panelState.statusTitle, systemImage: panelState.statusSystemImage)
+      }
+      .accessibilityIdentifier("menu.status.open-activity")
+    } else if panelState.voiceSetupStatus == .ready || model.voice.isRunning {
       Label(panelState.statusTitle, systemImage: panelState.statusSystemImage)
         .accessibilityIdentifier("menu.status.summary")
     } else {
@@ -535,29 +531,16 @@ public struct MenuBarStatusView: View {
       MenuBarFixedWidthText(text: persistenceDetail)
         .accessibilityIdentifier("menu.status.persistence-detail")
     }
-
-    Button(model.settings.language == .simplifiedChinese ? "打开待发区" : "Open drafts",
-      action: model.recordWorkspace.buffers.openEditorAction)
-      .accessibilityIdentifier("menu.open-drafts")
-
-    Label(panelState.outputModeTitle, systemImage: RillSystemSymbol.textformat.rawValue)
-      .accessibilityIdentifier("menu.status.output-mode")
-
-    Label(panelState.longRecordingModeTitle, systemImage: RillSystemSymbol.recordCircle.rawValue)
-      .accessibilityIdentifier("menu.status.long-recording")
-
-    Label(
-      panelState.clipboardCaptureStatusTitle,
-      systemImage: panelState.clipboardCaptureStatusSystemImage
-    )
-    .accessibilityIdentifier("menu.status.clipboard-capture")
   }
 
   func openStorageSettings() {
-    model.showSettings(.storage)
-    openMainWindow()
+    openSettings(.storage)
   }
 
+  private func openSettings(_ section: SettingsSection) {
+    model.showSettings(section)
+    openMainWindow()
+  }
 
   private var panelState: MenuBarOperationPanelState {
     MenuBarOperationPanelState(
@@ -584,15 +567,6 @@ public struct MenuBarStatusView: View {
     model.copyTextToClipboard(text)
   }
 
-  private func selectionLabel(_ title: String, isSelected: Bool) -> some View {
-    Label(
-      title,
-      systemImage: isSelected
-        ? RillSystemSymbol.checkmark.rawValue
-        : RillSystemSymbol.circle.rawValue
-    )
-  }
-
   @ViewBuilder
   private func scalarSettingsUnavailableNotice(
     _ domain: ScalarSettingsDomain
@@ -609,18 +583,155 @@ public struct MenuBarStatusView: View {
   }
 }
 
-extension MenuBarStatusView {
+private extension MenuBarStatusView {
   @ViewBuilder
-  var languageMenu: some View {
-    scalarSettingsUnavailableNotice(.interface)
+  var voiceInputMenu: some View {
+    scalarSettingsUnavailableNotice(.input)
 
-    ForEach(AppLanguage.allCases) { language in
-      Button {
-        model.setInterfaceLanguage(language)
-      } label: {
-        selectionLabel(language.displayName, isSelected: model.settings.language == language)
-      }
-      .disabled(!model.settings.canMutateScalarSettings(in: .interface))
+    Picker(
+      L10n.string(.menuRecordingMode, language: model.settings.language),
+      selection: Binding(
+        get: { model.settings.longRecordingModeEnabled },
+        set: { model.setLongRecordingModeEnabled($0) }
+      )
+    ) {
+      Text(L10n.string(.menuLongRecordingToggleOff, language: model.settings.language))
+        .tag(false)
+      Text(L10n.string(.menuLongRecordingToggle, language: model.settings.language))
+        .tag(true)
+    }
+    .pickerStyle(.inline)
+    .disabled(!model.settings.canMutateScalarSettings(in: .input))
+
+    Divider()
+
+    Picker(
+      L10n.string(.menuTextOutput, language: model.settings.language),
+      selection: Binding(
+        get: { model.settings.builtinPushToTalkOutputMode },
+        set: { model.setBuiltinPushToTalkOutputMode($0) }
+      )
+    ) {
+      Text(L10n.string(.menuPasteIntoApp, language: model.settings.language))
+        .tag(BuiltinPushToTalkOutputMode.pasteIntoApp)
+      Text(L10n.string(.menuSaveToVoiceGroup, language: model.settings.language))
+        .tag(BuiltinPushToTalkOutputMode.saveToVoiceGroup)
+    }
+    .pickerStyle(.inline)
+    .disabled(!model.settings.canMutateScalarSettings(in: .input))
+
+    Divider()
+
+    Button {
+      openSettings(.input)
+    } label: {
+      Label(
+        L10n.string(.menuVoiceInputSettings, language: model.settings.language),
+        systemImage: RillSystemSymbol.gearshape.rawValue
+      )
+    }
+  }
+
+  @ViewBuilder
+  var clipboardMenu: some View {
+    Label(
+      panelState.clipboardCaptureStatusTitle,
+      systemImage: panelState.clipboardCaptureStatusSystemImage
+    )
+    .accessibilityIdentifier("menu.status.clipboard-capture")
+
+    if panelState.recordCount > 0 {
+      MenuBarFixedWidthText(
+        text: L10n.menuClipboardReadyStatus(panelState.recordCount, language: model.settings.language)
+      )
+      .accessibilityIdentifier("menu.clipboard.ready-count")
+    }
+
+    Divider()
+
+    scalarSettingsUnavailableNotice(.systemClipboard)
+
+    Button {
+      model.toggleClipboardCaptureEnabled()
+    } label: {
+      Label(
+        panelState.clipboardCaptureToggleTitle,
+        systemImage: panelState.clipboardCaptureToggleSystemImage
+      )
+    }
+    .disabled(!panelState.canToggleClipboardCapture)
+    .accessibilityIdentifier("menu.clipboard.capture-toggle")
+
+    Button {
+      model.ignoreNextExternalClipboardChange()
+    } label: {
+      Label(
+        L10n.string(.menuIgnoreNextExternalCopy, language: model.settings.language),
+        systemImage: RillSystemSymbol.eyeSlash.rawValue
+      )
+    }
+    .disabled(!panelState.canIgnoreNextExternalCopy)
+    .accessibilityIdentifier("menu.clipboard.ignore-next")
+
+    Button {
+      model.deliverNextRecord()
+    } label: {
+      Label(
+        L10n.string(.menuDeliverNextRecord, language: model.settings.language), systemImage: RillSystemSymbol.arrowDownDoc.rawValue)
+    }
+    .disabled(!panelState.canDeliverNextRecord)
+
+    Divider()
+
+    Button {
+      openSettings(.recordPanel)
+    } label: {
+      Label(
+        L10n.string(.menuClipboardSettings, language: model.settings.language),
+        systemImage: RillSystemSymbol.gearshape.rawValue
+      )
+    }
+  }
+
+  @ViewBuilder
+  var workflowMenu: some View {
+    Menu {
+      textStyleMenu
+    } label: {
+      Label(
+        L10n.string(.menuTextStyles, language: model.settings.language),
+        systemImage: RillSystemSymbol.wandAndStars.rawValue
+      )
+    }
+
+    Menu {
+      longRecordingWorkflowMenu
+    } label: {
+      Label(
+        L10n.string(.menuLongRecording, language: model.settings.language),
+        systemImage: RillSystemSymbol.recordCircle.rawValue
+      )
+    }
+
+    Menu {
+      manualWorkflowMenu
+    } label: {
+      Label(
+        L10n.string(.menuManualWorkflows, language: model.settings.language),
+        systemImage: RillSystemSymbol.squareStack3dUp.rawValue
+      )
+    }
+
+    Divider()
+
+    Button {
+      model.openWorkflowEditor()
+      openMainWindow()
+    } label: {
+      Label(
+        L10n.text(.openWorkflowEditor, language: model.settings.language),
+        systemImage: RillSystemSymbol.squareAndPencil.rawValue
+      )
     }
   }
 
@@ -645,81 +756,10 @@ extension MenuBarStatusView {
         .disabled(!model.canTriggerWorkflow(workflow))
       }
     }
-
-    Divider()
-
-    Button {
-      model.openWorkflowEditor()
-      openMainWindow()
-    } label: {
-      Label(
-        L10n.text(.openWorkflowEditor, language: model.settings.language),
-        systemImage: RillSystemSymbol.squareAndPencil.rawValue)
-    }
   }
 
   @ViewBuilder
-  var textOutputMenu: some View {
-    scalarSettingsUnavailableNotice(.input)
-
-    Button {
-      model.setBuiltinPushToTalkOutputMode(.pasteIntoApp)
-    } label: {
-      selectionLabel(
-        L10n.string(.menuPasteIntoApp, language: model.settings.language),
-        isSelected: model.settings.builtinPushToTalkOutputMode == .pasteIntoApp
-      )
-    }
-    .disabled(!model.settings.canMutateScalarSettings(in: .input))
-
-    Button {
-      model.setBuiltinPushToTalkOutputMode(.saveToVoiceGroup)
-    } label: {
-      selectionLabel(
-        L10n.string(.menuSaveToVoiceGroup, language: model.settings.language),
-        isSelected: model.settings.builtinPushToTalkOutputMode == .saveToVoiceGroup
-      )
-    }
-    .disabled(!model.settings.canMutateScalarSettings(in: .input))
-
-    Divider()
-
-    Button {
-      copyLastCompletedText()
-    } label: {
-      Label(L10n.string(.menuCopyLastResult, language: model.settings.language), systemImage: RillSystemSymbol.docOnDoc.rawValue)
-    }
-    .disabled(!panelState.canCopyLastResult)
-
-    Button {
-      model.deliverNextRecord()
-    } label: {
-      Label(
-        L10n.string(.menuDeliverNextRecord, language: model.settings.language), systemImage: RillSystemSymbol.arrowDownDoc.rawValue)
-    }
-    .disabled(!panelState.canDeliverNextRecord)
-  }
-
-  @ViewBuilder
-  var longRecordingMenu: some View {
-    scalarSettingsUnavailableNotice(.input)
-
-    Button {
-      model.setLongRecordingModeEnabled(!model.settings.longRecordingModeEnabled)
-    } label: {
-      selectionLabel(
-        L10n.string(.menuLongRecordingToggle, language: model.settings.language),
-        isSelected: model.settings.longRecordingModeEnabled
-      )
-    }
-    .disabled(!model.settings.canMutateScalarSettings(in: .input))
-
-    MenuBarFixedWidthText(
-      text: L10n.string(.settingsLongRecordingModeDescription, language: model.settings.language)
-    )
-
-    Divider()
-
+  var longRecordingWorkflowMenu: some View {
     if model.enabledLongRecordingWorkflows.isEmpty {
       Text(L10n.string(.menuNoLongRecordingWorkflows, language: model.settings.language))
     } else {
@@ -738,7 +778,7 @@ extension MenuBarStatusView {
   }
 
   @ViewBuilder
-  var workflowMenu: some View {
+  var manualWorkflowMenu: some View {
     if model.enabledManualWorkflows.isEmpty {
       Text(L10n.string(.menuNoManualWorkflows, language: model.settings.language))
     } else {
@@ -753,17 +793,6 @@ extension MenuBarStatusView {
         }
         .disabled(!model.canTriggerWorkflow(workflow))
       }
-    }
-
-    Divider()
-
-    Button {
-      model.openWorkflowEditor()
-      openMainWindow()
-    } label: {
-      Label(
-        L10n.text(.openWorkflowEditor, language: model.settings.language),
-        systemImage: RillSystemSymbol.squareAndPencil.rawValue)
     }
   }
 }
