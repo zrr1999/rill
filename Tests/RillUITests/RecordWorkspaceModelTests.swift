@@ -195,15 +195,21 @@ final class RecordWorkspaceModelTests: XCTestCase {
 
     func testFilteredSelectionHidesInspectorAndReturnsWhenFilterClears() async throws {
         let store = RecordStore()
-        let record = try await store.ingest(draft("visible record"), into: [])
+        _ = try await store.ingest(draft("first visible"), into: [])
+        _ = try await store.ingest(draft("selected visible"), into: [])
         let model = RecordWorkspaceModel(store: store)
         await model.refresh()
-        model.selectedRecordID = record.id
-        XCTAssertEqual(model.selectedVisibleRecord?.id, record.id)
+        let records = model.visibleRecords
+        XCTAssertEqual(records.count, 2)
+        let selected = try XCTUnwrap(records.last)
+        XCTAssertNotEqual(records.first?.id, selected.id)
+        model.selectedRecordID = selected.id
+        XCTAssertEqual(model.selectedVisibleRecord?.id, selected.id)
         model.setPayloadKindFilter(.image)
         XCTAssertNil(model.selectedVisibleRecord)
+        XCTAssertEqual(model.selectedRecordID, selected.id)
         model.clearFilters()
-        XCTAssertEqual(model.selectedVisibleRecord?.id, record.id)
+        XCTAssertEqual(model.selectedVisibleRecord?.id, selected.id)
     }
 
     private func draft(_ text: String, bundleID: String? = nil) -> RecordDraft {
