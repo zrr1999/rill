@@ -4,7 +4,7 @@ import XCTest
 
 @testable import RillCore
 
-private actor BenchmarkArchiveStoreProbe: BenchmarkRecordingArchiveStore {
+private actor CorpusArchiveStoreProbe: CorpusRecordingArchiveStore {
   private(set) var preservedRunIDs: [UUID] = []
   private(set) var deletedRunIDs: [UUID] = []
   private(set) var deleteAllCount = 0
@@ -14,12 +14,12 @@ private actor BenchmarkArchiveStoreProbe: BenchmarkRecordingArchiveStore {
     runID: UUID,
     workflowID: UUID,
     trigger: WorkflowRunTriggerKind?,
-    outcome: BenchmarkRecordingOutcome,
+    outcome: CorpusRecordingOutcome,
     metadata: [String: String],
     now: Date
-  ) async throws -> BenchmarkRecordingReceipt {
+  ) async throws -> CorpusRecordingReceipt {
     preservedRunIDs.append(runID)
-    return BenchmarkRecordingReceipt(
+    return CorpusRecordingReceipt(
       runID: runID,
       workflowID: workflowID,
       createdAt: now,
@@ -41,10 +41,10 @@ private actor BenchmarkArchiveStoreProbe: BenchmarkRecordingArchiveStore {
   }
 }
 
-final class BenchmarkRecordingArchiveControllerTests: XCTestCase {
+final class CorpusRecordingArchiveControllerTests: XCTestCase {
   func testRetentionRequiresExplicitEnableAndStopsWithoutDeletingExistingEntries() async throws {
-    let store = BenchmarkArchiveStoreProbe()
-    let controller = BenchmarkRecordingArchiveController(store: store)
+    let store = CorpusArchiveStoreProbe()
+    let controller = CorpusRecordingArchiveController(store: store)
     let audio = try makeAudio()
     let disabledRunID = UUID()
 
@@ -89,8 +89,8 @@ final class BenchmarkRecordingArchiveControllerTests: XCTestCase {
   }
 
   func testExplicitClearDeletesAllArchivedRecordings() async throws {
-    let store = BenchmarkArchiveStoreProbe()
-    let controller = BenchmarkRecordingArchiveController(store: store)
+    let store = CorpusArchiveStoreProbe()
+    let controller = CorpusRecordingArchiveController(store: store)
 
     try await controller.deleteAll()
 

@@ -1,11 +1,11 @@
-# ASR 质量与延迟验收
+# ASR 质量评测、回放与实验验收
 
 本方案以 `main@0fe5834` 为改进前基线。语音最终结果仍来自完整 WAV 的离线识别；流式输出只作预览。本文件描述可复现方法与缺失证据，不承诺未经测量的收益。
 
 ## 当前证据
 
-仓库包含 Release worker 回放工具 `scripts/asr_replay.py`、比较工具 `scripts/asr_benchmark.py` 和 120 个采集槽位
-`Benchmarks/ASR/collection-plan.json`，**不包含 120 条已录制、已授权的音频**。
+仓库包含 Release worker 回放工具 `scripts/asr_replay.py`、质量评分 `scripts/asr_eval.py`、性能比较 `scripts/asr_perf.py` 和 120 个采集槽位
+`Evals/ASR/collection-plan.json`，**不包含 120 条已录制、已授权的音频**。
 槽位分为 72 条开发集和 48 条保留验收集；参考文本当前为空，不能直接通过评分。
 填写参考文本前，应听取实际录音并人工复核；提示用户朗读的句子不能直接当作真值。
 Release 合成音频的 worker 与隔离宿主生命周期结果见 [验证记录](quality-improvement-validation.md)。
@@ -13,7 +13,7 @@ Release 合成音频的 worker 与隔离宿主生命周期结果见 [验证记�
 
 ## 数据与隐私
 
-1. 只使用获授权音频。Rill 的 benchmark 录音归档仍是用户主动启用、独立加密的本地归档；保留现有关闭与清除入口。
+1. 只使用获授权音频。Rill 的语料录音归档仍是用户主动启用、独立加密的本地归档；保留现有关闭与清除入口。
 2. 记录来源为 `microphone`、`synthetic` 或 `public_fixture`，三者分别报告。合成音频不能代替真人麦克风验收。
 3. 同一音频字节用于基线与候选；以 SHA-256 校验身份。固定开发集和验收集，不能按结果重分组。
 4. 语音、参考文本、识别结果和凭据不提交仓库。每轮原始结果存于本机私有目录；比较报告只包含标识、计数和统计，输出权限为 `0600`。
@@ -63,33 +63,52 @@ Release 合成音频的 worker 与隔离宿主生命周期结果见 [验证记�
 粘贴派发只表示宿主派发，不能推断目标应用已显示。现有分段耗时不能相加冒充未采集的端到端时间。
 峰值内存需声明进程范围（App、worker 或两者）并保持两组一致。
 
-## 比较命令
+## 独立比较与综合验收
+
+质量评测与性能基准共用同一份 corpus 和两份原始回放 JSONL，分别输出报告：
 
 ```bash
-uv run --script scripts/asr_benchmark.py \
-  --corpus /private/asr/corpus.json \
-  --baseline /private/asr/baseline.jsonl \
-  --candidate /private/asr/candidate.jsonl \
-  --output /private/asr/report.json \
-  --purpose quality --split validation
+just eval-quality asr --corpus /private/asr/corpus.json \
+  --baseline /private/asr/baseline.jsonl --candidate /private/asr/candidate.jsonl \
+  --output /private/asr/quality-report.json --split validation
+
+just bench-performance asr --corpus /private/asr/corpus.json \
+  --baseline /private/asr/baseline.jsonl --candidate /private/asr/candidate.jsonl \
+  --target release_to_final_ms --output /private/asr/performance-report.json --split validation
+
+just accept-asr --quality-report /private/asr/quality-report.json \
+  --performance-report /private/asr/performance-report.json \
+  --goal performance --output /private/asr/acceptance-report.json
 ```
 
-性能实验改用 `--purpose performance --target release_to_final_ms`。
-只有 `eligible` 返回 `0`；退化为 `reject`，证据不齐为 `incomplete`，均返回 `2`。
-`eligible` 只代表本次已提供数据的自动比较门槛，**不代表完整产品或发布验收**。
+原始 JSONL 保持 schema 1；独立报告是 schema 2，`kind` 为 `quality`、`performance`
+或 `acceptance`。报告包含语料和完整运行内容的 SHA-256、来源身份、分组覆盖情况、
+缺测原因及 `pass` / `fail` / `incomplete` 判定。通过返回 0，失败或证据不齐返回 2。
+不同语料、运行结果或 split 的报告不能组合。报告不会输出转写正文。
 
-评分保留大小写和标点、只做 NFC 正规化；CER 忽略空白，WER 将中文单字、英文词和标点作为 token。
-报告汇总及每个场景的样本量、CER/WER、关键内容错误、静音幻觉，以及按录音分组重采样的原始 CER 差值 95% 区间。
-同录音重复结果不视为独立语料。缺少两个独立非静音样本时不生成可信区间。
+质量评分保留大小写和标点、只做 NFC 正规化；CER 忽略空白，WER 将中文单字、英文词和标点作为 token。
+报告汇总及每个场景的 CER/WER、关键内容错误、静音幻觉，以及按录音分组重采样的原始 CER 差值 95% 区间。
+同录音重复结果不视为独立语料；缺少两个独立非静音样本时不生成可信区间，非劣性结论为 incomplete。
+汇总改善不能掩盖新增关键内容错误或静音幻觉。质量评分不需要耗时或内存数据。
 
-质量门槛要求汇总和主要场景不退化，不能用别的样本改善掩盖新增关键内容错误或静音幻觉。
-性能实验要求目标 P95 至少改善 10%，其他已测关键延迟和峰值内存不得恶化超过 5%。
-这些数字是实验准入值，不是已获得的收益；缺少目标耗时或内存测量不能通过。
-同时人工审核整段遗漏、尾音、误改及编辑成本；独立记录 Fn、权限、焦点、IME、VoiceOver 等原生验收。
+性能比较不需要人工参考文本，但仍核验音频身份、成功工作量及测量范围；失败和取消不得丢弃。
+`--target` 必填，例如 worker 回放使用 `worker_request_ms`，宿主隔离回放使用 `host_replay_to_final_ms`。
+同等性能通过默认回归检查；目标和其他已测指标的 P95 不得恶化超过 5%。目标缺测为 incomplete，
+其他指标的缺失保持缺失。CPU simulation、worker 请求、宿主回放和真实松键延迟分别解释，不能互相替代。
+
+独立分析支持小规模及合成数据。`accept-asr` 才要求至少 120 个语料条目、至少 40 条保留验收样本、
+每个 case/cache 条件至少三次重复、麦克风来源、完整配对，以及质量与性能各自通过。
+综合验收还要求目标耗时与峰值内存完整；`--goal performance` 要求目标 P95 至少改善 10%，
+`--goal quality` 只保留默认性能回归预算。零基线不能证明性能改善。
+这些是实验准入规则，**不是完整产品或发布验收**。整段遗漏、尾音、误改、编辑成本以及 Fn、权限、
+焦点、IME、VoiceOver 等仍需人工核验。
+
+ASR 的 CE 在本机显式运行，私有录音不上传 GitHub。三套 LLM 的托管手动 CE、报告规则和凭据配置见
+[质量评测入口](../Evals/README.md)；普通 PR CI 只验证工具、契约和性能工作负载。
 
 ## Release worker 回放
 
-`EncryptedBenchmarkRecordingArchiveStore` 提供独立的只读评测接口，逐条校验 receipt、
+`EncryptedCorpusRecordingArchiveStore` 提供独立的只读评测接口，逐条校验 receipt、
 音频认证与长度，拒绝符号链接；不会在应用启动时解密整个归档。在“设置 → 存储”中可选择归档录音、
 声明麦克风/合成/公开 fixture 来源、选择开发集或保留验收集，并明确授权导出到本地私有目录。
 导出只包含选中的 WAV、SHA256、待填写参考文本的 corpus 和说明文件；不填虚假的空白参考。
@@ -151,12 +170,12 @@ configuration 指定 `model_id`、仓库锁定的 `model_revision`、可选 `lan
 
 ## Release 宿主处理路径
 
-`scripts/product_path_benchmark.py` 通过生产 SessionCoordinator、真实 Release worker、词汇处理、
+`scripts/product_path_replay.py` 通过生产 SessionCoordinator、真实 Release worker、词汇处理、
 空白规范化、加密 SQLite 提交和隔离输出端运行清单。它不访问麦克风、不粘贴、不下载模型，
 也不写入用户数据库。配置中的 `replacements` 是 `pattern` / `replacement` 对；没有 LLM 步骤。
 
 ```sh
-uv run --script scripts/product_path_benchmark.py --build-receipt /private/path/release.json \
+uv run --script scripts/product_path_replay.py --build-receipt /private/path/release.json \
   --corpus /private/path/corpus.json --configuration /private/path/configuration.json \
   --cache-state warm --repetitions 3 --output /private/path/host-warm.jsonl
 ```

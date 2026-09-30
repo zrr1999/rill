@@ -1438,6 +1438,34 @@ final class MainShellFocusIntegrationTests: XCTestCase {
         XCTAssertTrue(isResponder(window.firstResponder, inside: sidebar))
     }
 
+    func testBackShortcutLeavesSettingsOnlyWhileGlobalSearchIsClosed() async throws {
+        _ = NSApplication.shared
+        let harness = makeHarness()
+        harness.model.presentSettings()
+        let window = makeWindow(model: harness.model)
+        defer { tearDown(window) }
+        await settle(window)
+        let back = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, characters: "[",
+            charactersIgnoringModifiers: "[", isARepeat: false, keyCode: 33))
+
+        _ = window.performKeyEquivalent(with: back)
+        await settle(window)
+        XCTAssertFalse(harness.model.isShowingSettings)
+
+        harness.model.presentSettings()
+        await settle(window)
+        let search = try XCTUnwrap(window.toolbar?.items.first {
+            $0.itemIdentifier.rawValue.contains("rill.global-search")
+        }?.view)
+        click(search, in: window)
+        await settle(window)
+        _ = window.performKeyEquivalent(with: back)
+        await settle(window)
+        XCTAssertTrue(harness.model.isShowingSettings, "Global search owns the window until it is dismissed.")
+    }
+
     func testContentNavigationLeavesSettingsAndKeepsTheLastPane() {
         let harness = makeHarness()
         harness.model.showSettings(.privacy)

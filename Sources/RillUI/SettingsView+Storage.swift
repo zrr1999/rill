@@ -94,20 +94,20 @@ extension SettingsView {
       Divider()
 
       Toggle(
-        L10n.string(.settingsBenchmarkRecordingArchive, language: model.settings.language),
+        L10n.string(.settingsCorpusRecordingArchive, language: model.settings.language),
         isOn: Binding(
-          get: { model.benchmarkArchive.isEnabled },
-          set: { model.benchmarkArchive.setEnabled($0) }
+          get: { model.corpusArchive.isEnabled },
+          set: { model.corpusArchive.setEnabled($0) }
         )
       )
       .disabled(
         model.settings.isLoading
-          || model.benchmarkArchive.isUpdating
+          || model.corpusArchive.isUpdating
       )
 
       Text(
         L10n.string(
-          .settingsBenchmarkRecordingArchiveDescription,
+          .settingsCorpusRecordingArchiveDescription,
           language: model.settings.language
         )
       )
@@ -116,21 +116,21 @@ extension SettingsView {
 
       Button(
         L10n.string(
-          .settingsBenchmarkRecordingArchiveClear,
+          .settingsCorpusRecordingArchiveClear,
           language: model.settings.language
         ),
         role: .destructive
       ) {
-        destructiveConfirmation = .benchmarkRecordingArchive
+        destructiveConfirmation = .corpusRecordingArchive
       }
-      .disabled(model.benchmarkArchive.isUpdating)
+      .disabled(model.corpusArchive.isUpdating)
 
-      Button(L10n.benchmarkArchive(.title, language: model.settings.language)) {
-        presentedSheet = .benchmarkArchive
+      Button(L10n.corpusArchive(.title, language: model.settings.language)) {
+        presentedSheet = .corpusArchive
       }
-      .disabled(model.benchmarkArchive.isUpdating)
+      .disabled(model.corpusArchive.isUpdating)
 
-      if let error = model.benchmarkArchive.error {
+      if let error = model.corpusArchive.error {
         Label(error, systemImage: RillSystemSymbol.exclamationmarkTriangle.rawValue)
           .font(.caption)
           .foregroundStyle(.red)

@@ -3,7 +3,7 @@ import XCTest
 @testable import RillCore
 @testable import RillUI
 
-private actor BenchmarkArchiveActionProbe {
+private actor CorpusArchiveActionProbe {
   private(set) var refreshValues: [Bool] = []
   private(set) var clearCount = 0
 
@@ -17,33 +17,33 @@ private actor BenchmarkArchiveActionProbe {
 }
 
 @MainActor
-final class AppModelBenchmarkRecordingArchiveTests: XCTestCase {
+final class AppModelCorpusRecordingArchiveTests: XCTestCase {
   func testArchiveIsDefaultOffAndPersistsExplicitChanges() async throws {
     let settingsStore = UITestSettingsStore()
-    let probe = BenchmarkArchiveActionProbe()
+    let probe = CorpusArchiveActionProbe()
     let harness = makeHarness(
       settingsStore: settingsStore,
-      refreshBenchmarkRecordingArchiveAction: { isEnabled in
+      refreshCorpusRecordingArchiveAction: { isEnabled in
         await probe.refresh(isEnabled)
       }
     )
     await harness.model.waitForInitialVoiceConfiguration()
 
-    XCTAssertFalse(harness.model.benchmarkArchive.isEnabled)
+    XCTAssertFalse(harness.model.corpusArchive.isEnabled)
 
-    harness.model.benchmarkArchive.setEnabled(true)
+    harness.model.corpusArchive.setEnabled(true)
     await harness.model.flushPendingPersistenceWrites()
-    XCTAssertTrue(harness.model.benchmarkArchive.isEnabled)
+    XCTAssertTrue(harness.model.corpusArchive.isEnabled)
     let enabledValue = try await settingsStore.string(
-      forKey: .benchmarkRecordingArchiveEnabled
+      forKey: .corpusRecordingArchiveEnabled
     )
     XCTAssertEqual(enabledValue, "true")
 
-    harness.model.benchmarkArchive.setEnabled(false)
+    harness.model.corpusArchive.setEnabled(false)
     await harness.model.flushPendingPersistenceWrites()
-    XCTAssertFalse(harness.model.benchmarkArchive.isEnabled)
+    XCTAssertFalse(harness.model.corpusArchive.isEnabled)
     let disabledValue = try await settingsStore.string(
-      forKey: .benchmarkRecordingArchiveEnabled
+      forKey: .corpusRecordingArchiveEnabled
     )
     XCTAssertEqual(disabledValue, "false")
     let refreshValues = await probe.refreshValues
@@ -52,98 +52,98 @@ final class AppModelBenchmarkRecordingArchiveTests: XCTestCase {
 
   func testStoredOptInLoadsWithoutRewritingSetting() async {
     let settingsStore = UITestSettingsStore(
-      storage: [.benchmarkRecordingArchiveEnabled: "true"]
+      storage: [.corpusRecordingArchiveEnabled: "true"]
     )
     let harness = makeHarness(settingsStore: settingsStore)
 
     await harness.model.waitForInitialVoiceConfiguration()
 
-    XCTAssertTrue(harness.model.benchmarkArchive.isEnabled)
+    XCTAssertTrue(harness.model.corpusArchive.isEnabled)
     let activity = await settingsStore.activitySnapshot()
-    XCTAssertNil(activity.setCounts[.benchmarkRecordingArchiveEnabled])
+    XCTAssertNil(activity.setCounts[.corpusRecordingArchiveEnabled])
   }
 
   func testEnableFailureRollsBackDurableOptIn() async throws {
     let settingsStore = UITestSettingsStore()
     let harness = makeHarness(
       settingsStore: settingsStore,
-      refreshBenchmarkRecordingArchiveAction: { isEnabled in
+      refreshCorpusRecordingArchiveAction: { isEnabled in
         if isEnabled {
-          throw BenchmarkRecordingArchiveError.storageUnavailable
+          throw CorpusRecordingArchiveError.storageUnavailable
         }
       }
     )
     await harness.model.waitForInitialVoiceConfiguration()
 
-    harness.model.benchmarkArchive.setEnabled(true)
+    harness.model.corpusArchive.setEnabled(true)
     await harness.model.flushPendingPersistenceWrites()
 
-    XCTAssertFalse(harness.model.benchmarkArchive.isEnabled)
-    XCTAssertNotNil(harness.model.benchmarkArchive.error)
+    XCTAssertFalse(harness.model.corpusArchive.isEnabled)
+    XCTAssertNotNil(harness.model.corpusArchive.error)
     let persistedValue = try await settingsStore.string(
-      forKey: .benchmarkRecordingArchiveEnabled
+      forKey: .corpusRecordingArchiveEnabled
     )
     XCTAssertEqual(persistedValue, "false")
   }
 
   func testRollbackWriteFailureKeepsDurablePreferenceVisibleAndAllowsRetry() async throws {
     let settingsStore = RollbackFailingArchiveSettingsStore()
-    let probe = BenchmarkArchiveActionProbe()
+    let probe = CorpusArchiveActionProbe()
     let harness = makeHarness(settingsStore: settingsStore,
-      refreshBenchmarkRecordingArchiveAction: { enabled in
+      refreshCorpusRecordingArchiveAction: { enabled in
         await probe.refresh(enabled)
-        if enabled { throw BenchmarkRecordingArchiveError.storageUnavailable }
+        if enabled { throw CorpusRecordingArchiveError.storageUnavailable }
       })
     await harness.model.waitForInitialVoiceConfiguration()
     harness.model.setInterfaceLanguage(.english)
-    harness.model.benchmarkArchive.setEnabled(true)
+    harness.model.corpusArchive.setEnabled(true)
     await harness.model.flushPendingPersistenceWrites()
-    XCTAssertTrue(harness.model.benchmarkArchive.isEnabled)
-    let persisted1 = try await settingsStore.string(forKey: .benchmarkRecordingArchiveEnabled)
+    XCTAssertTrue(harness.model.corpusArchive.isEnabled)
+    let persisted1 = try await settingsStore.string(forKey: .corpusRecordingArchiveEnabled)
     XCTAssertEqual(persisted1, "true")
-    XCTAssertTrue(harness.model.benchmarkArchive.error?.contains("No new benchmark audio") == true)
+    XCTAssertTrue(harness.model.corpusArchive.error?.contains("No new corpus audio") == true)
     let disabledRuntime = await probe.refreshValues
     XCTAssertEqual(disabledRuntime.suffix(2), [true, false])
-    harness.model.benchmarkArchive.setEnabled(false)
+    harness.model.corpusArchive.setEnabled(false)
     await harness.model.flushPendingPersistenceWrites()
-    XCTAssertFalse(harness.model.benchmarkArchive.isEnabled)
-    let persisted2 = try await settingsStore.string(forKey: .benchmarkRecordingArchiveEnabled)
+    XCTAssertFalse(harness.model.corpusArchive.isEnabled)
+    let persisted2 = try await settingsStore.string(forKey: .corpusRecordingArchiveEnabled)
     XCTAssertEqual(persisted2, "false")
-    XCTAssertNil(harness.model.benchmarkArchive.error)
+    XCTAssertNil(harness.model.corpusArchive.error)
   }
 
   func testDisableRemainsDurablyOffWhenRuntimeCleanupFails() async throws {
-    let settingsStore = UITestSettingsStore(storage: [.benchmarkRecordingArchiveEnabled: "true"])
+    let settingsStore = UITestSettingsStore(storage: [.corpusRecordingArchiveEnabled: "true"])
     let harness = makeHarness(settingsStore: settingsStore,
-      refreshBenchmarkRecordingArchiveAction: { _ in throw BenchmarkRecordingArchiveError.storageUnavailable })
+      refreshCorpusRecordingArchiveAction: { _ in throw CorpusRecordingArchiveError.storageUnavailable })
     await harness.model.waitForInitialVoiceConfiguration()
-    harness.model.benchmarkArchive.setEnabled(false)
+    harness.model.corpusArchive.setEnabled(false)
     await harness.model.flushPendingPersistenceWrites()
-    XCTAssertFalse(harness.model.benchmarkArchive.isEnabled)
-    let persisted3 = try await settingsStore.string(forKey: .benchmarkRecordingArchiveEnabled)
+    XCTAssertFalse(harness.model.corpusArchive.isEnabled)
+    let persisted3 = try await settingsStore.string(forKey: .corpusRecordingArchiveEnabled)
     XCTAssertEqual(persisted3, "false")
-    XCTAssertNotNil(harness.model.benchmarkArchive.error)
+    XCTAssertNotNil(harness.model.corpusArchive.error)
   }
 
   func testClearRequiresExplicitActionAndKeepsRetentionPreference() async {
     let settingsStore = UITestSettingsStore(
-      storage: [.benchmarkRecordingArchiveEnabled: "true"]
+      storage: [.corpusRecordingArchiveEnabled: "true"]
     )
-    let probe = BenchmarkArchiveActionProbe()
+    let probe = CorpusArchiveActionProbe()
     let harness = makeHarness(
       settingsStore: settingsStore,
-      clearBenchmarkRecordingArchiveAction: {
+      clearCorpusRecordingArchiveAction: {
         await probe.clear()
       }
     )
     await harness.model.waitForInitialVoiceConfiguration()
 
-    harness.model.benchmarkArchive.clear()
+    harness.model.corpusArchive.clear()
     await harness.model.flushPendingPersistenceWrites()
 
     let clearCount = await probe.clearCount
     XCTAssertEqual(clearCount, 1)
-    XCTAssertTrue(harness.model.benchmarkArchive.isEnabled)
+    XCTAssertTrue(harness.model.corpusArchive.isEnabled)
   }
 }
 
@@ -155,7 +155,7 @@ private actor RollbackFailingArchiveSettingsStore: SettingsStore {
     storage.filter { keys.contains($0.key) }
   }
   func setString(_ value: String, forKey key: AppSettingKey) async throws {
-    if key == .benchmarkRecordingArchiveEnabled {
+    if key == .corpusRecordingArchiveEnabled {
       archiveWrites += 1
       if archiveWrites == 2 { throw UITestSettingsStoreError.requestedFailure }
     }

@@ -339,14 +339,15 @@ extension AppModelTests {
         XCTAssertNil(harness.model.workflowEditorNavigationRequest)
     }
 
-    func testMainWindowRoutesPreserveIndependentSettingsNavigation() async throws {
+    func testContentRoutesDropPendingSettingsNavigationButSettingsKeepsContentNavigation() async throws {
         let harness = makeHarness(workflow: makeDefaultWorkflow())
         await waitForEventProcessing(harness)
 
         harness.model.showSettings(.speech)
         XCTAssertNotNil(harness.model.settingsNavigationRequest)
         harness.model.selectSidebarSection(.stream)
-        XCTAssertNotNil(harness.model.settingsNavigationRequest)
+        XCTAssertFalse(harness.model.isShowingSettings)
+        XCTAssertNil(harness.model.settingsNavigationRequest)
 
         harness.model.showHistoryEntry(UUID())
         XCTAssertNotNil(harness.model.history.historyNavigationRequest)
@@ -355,7 +356,8 @@ extension AppModelTests {
         XCTAssertEqual(harness.model.settingsNavigationRequest?.section, .privacy)
 
         harness.model.showHistoryEntry(UUID())
-        XCTAssertNotNil(harness.model.settingsNavigationRequest)
+        XCTAssertFalse(harness.model.isShowingSettings)
+        XCTAssertNil(harness.model.settingsNavigationRequest)
         XCTAssertNotNil(harness.model.history.historyNavigationRequest)
         harness.model.selectSidebarSection(.records)
         XCTAssertNil(harness.model.history.historyNavigationRequest)

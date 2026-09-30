@@ -133,15 +133,15 @@ summaries, queue-to-provider delivery, encoding and redaction, source deduplicat
 provenance, encrypted persistence, clear/revoke/delete races, expiry, daily limits,
 background preemption, and stale UI authorization completions.
 
-`Tests/Fixtures/ContextCorrection/cases.json` contains 40 fixed synthetic cases.
+`Evals/ContextCorrection/cases.json` contains 40 fixed synthetic cases.
 The opt-in provider test renders each reference in memory and compares the existing
 text-only cleanup with reference-assisted cleanup. It writes only text outcomes,
 content-match judgments, fallback counts and latency to
-`.artifacts/contextual-memory-20260920/live-evaluation.json`:
+the private run directory under `.artifacts/evals/context-correction/`:
 
 ```sh
 # Supply DEEPSEEK_API_KEY securely in this process environment.
-RILL_CONTEXT_LIVE_EVALUATION=1 scripts/preflight.sh swift test --filter ContextualCorrectionEvaluationTests
+just eval-quality context-correction
 RILL_CONTEXT_MAC_PROBE=1 scripts/preflight.sh swift test --filter ScreenContextCaptureTests
 ```
 
@@ -151,7 +151,7 @@ improvements, unnecessary changes, invented facts and lost negation/conditions;
 report latency and fallback rate alongside accuracy. The dataset is intentionally
 small and cannot establish production accuracy.
 
-The vocabulary-only corpus in `Tests/Fixtures/VocabularyCorrection/cases.json`
+The vocabulary-only corpus in `Evals/VocabularyCorrection/cases.json`
 contains 40 fixed synthetic cases covering names beyond the ASR candidate cap,
 identifiers, irrelevant terms, renamed projects, negation, numbers and reference
 injection. Its opt-in evaluation holds the correction prompt, transcript and
@@ -162,12 +162,12 @@ prompt. Empty transcription makes no request.
 
 ```sh
 # Supply DEEPSEEK_API_KEY securely in this process environment.
-RILL_VOCABULARY_LIVE_EVALUATION=1 scripts/swift_locked.sh test --filter VocabularyCorrectionEvaluationTests
+just eval-quality vocabulary-correction
 ```
 
-The report at `.artifacts/vocabulary-correction/live-evaluation.json` contains
+The report at `.artifacts/evals/vocabulary-correction/<run-id>/observations.json` contains
 per-call output, exact matches, fallback flags, reported token usage, reference
-counts and P50/P95 request latency. Missing token usage stays null. Exact matches
+counts. The separate performance summary contains P50/P95 request latency. Missing token usage stays null. Exact matches
 ignore only surrounding whitespace, preserving identifier case and punctuation;
 manual review must distinguish harmless formatting from semantic overcorrection.
 These request measurements do not measure microphone-to-insertion latency or ASR
@@ -202,3 +202,9 @@ Mac probe reports permission/display availability and capture metadata; it does 
 replace microphone, insertion or multi-display acceptance.
 
 API shape: [DeepSeek Responses](https://api-docs.deepseek.com/guides/responses_api/).
+
+Quality and performance summaries are separate schema-2 reports under each run's
+`summaries/` directory. Vocabulary and context results are report-only (`not_assessed`),
+not automatic quality passes. Provider latency is request-scoped and has no regression
+verdict without a comparison policy. [CE](../Evals/README.md) runs these evaluations
+only on explicit request; their scoring and corpus checks remain in ordinary CI.

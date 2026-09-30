@@ -18,7 +18,7 @@ public enum SurfaceText: CaseIterable, Sendable {
   case retrySave
   case inserted
   case retryItem
-  case drafts2
+  case draftsArea
   case newItem
   case finishRecording
   case recordNewItem
@@ -35,7 +35,7 @@ public enum SurfaceText: CaseIterable, Sendable {
   case resultToReview
   case edited
   case inProgress
-  case disabled
+  case disabledSuffix
   case createADraftOrCollect
   case editText
   case saving
@@ -73,8 +73,8 @@ public enum SurfaceText: CaseIterable, Sendable {
   case couldNotStartRecordingCheck
   case outputNext
   case remainingCount
-  case processing2
-  case nothingPending2
+  case processingStatus
+  case nothingToOutput
   case confirmTheResult
   case advanceOnlyAfterConfirmingInsertion
   case deliveredSettlementPending
@@ -87,7 +87,7 @@ public enum SurfaceText: CaseIterable, Sendable {
   case newSet
   case reusableItems
   case manageOutputBuffers
-  case empty2
+  case noItems
   case contextCorrectionMemory
   case speechRemainsTheOnlyContent
   case useVocabularyForSmartCleanup
@@ -105,7 +105,7 @@ public enum SurfaceText: CaseIterable, Sendable {
   case smartCleanupSendsItsApplicable
   case theCurrentLlmReceivesThe
   case theCurrentLlmReceivesAuthorized
-  case providerChangesRequireAuthorizatioAgain
+  case providerChangesRequireReauthorization
   case userStatement
   case explicitCorrection
   case screenObservation
@@ -116,7 +116,7 @@ public enum SurfaceText: CaseIterable, Sendable {
   case refresh
   case done
   case sources
-  case historyDeleted
+  case historyDeletedSuffix
   case proposedReplacement
   case edit
   case confirmed
@@ -153,7 +153,7 @@ public enum SurfaceText: CaseIterable, Sendable {
   case shortcutConflictChangeOneBinding
   case clipboardPanel
   case theLegacyWorkflowLibraryHas
-  case copy
+  case duplicateNameSuffix
   case newWorkflow
   case theWorkflowCouldNotFinish
   case termsCommaSeparated
@@ -199,7 +199,7 @@ private let surfaceTable: [SurfaceText: LocalizedText] = [
   .retrySave: .init(english: "Retry save", simplifiedChinese: "重试保存"),
   .inserted: .init(english: "Inserted", simplifiedChinese: "已插入"),
   .retryItem: .init(english: "Retry item", simplifiedChinese: "重试此项"),
-  .drafts2: .init(english: "Drafts", simplifiedChinese: "待发区"),
+  .draftsArea: .init(english: "Drafts", simplifiedChinese: "待发区"),
   .newItem: .init(english: "New item", simplifiedChinese: "新建"),
   .finishRecording: .init(english: "Finish recording", simplifiedChinese: "结束录音"),
   .recordNewItem: .init(english: "Record new item", simplifiedChinese: "录音新建"),
@@ -216,8 +216,8 @@ private let surfaceTable: [SurfaceText: LocalizedText] = [
   .resultToReview: .init(english: "Result to review", simplifiedChinese: "有待应用结果"),
   .edited: .init(english: "Edited", simplifiedChinese: "已编辑"),
   .inProgress: .init(english: "In progress", simplifiedChinese: "处理中"),
-  .disabled: .init(english: " · Disabled", simplifiedChinese: " · 已停用"),
-  .createADraftOrCollect: .init(english: "Create a draft or collect\\nvoice results here first.", simplifiedChinese: "新建草稿，或将语音结果\\n先收进待发区。"),
+  .disabledSuffix: .init(english: " · Disabled", simplifiedChinese: " · 已停用"),
+  .createADraftOrCollect: .init(english: "Create a draft or collect\nvoice results here first.", simplifiedChinese: "新建草稿，或将语音结果\n先收进待发区。"),
   .editText: .init(english: "Edit text", simplifiedChinese: "编辑内容"),
   .saving: .init(english: "Saving…", simplifiedChinese: "保存中…"),
   .unsaved: .init(english: "Unsaved", simplifiedChinese: "尚未保存"),
@@ -254,8 +254,8 @@ private let surfaceTable: [SurfaceText: LocalizedText] = [
   .couldNotStartRecordingCheck: .init(english: "Could not start recording. Check voice settings.", simplifiedChinese: "无法开始录音，请检查语音设置。"),
   .outputNext: .init(english: "Output Next", simplifiedChinese: "输出下一项"),
   .remainingCount: .init(english: "Remaining count", simplifiedChinese: "剩余数量"),
-  .processing2: .init(english: "Processing", simplifiedChinese: "处理中"),
-  .nothingPending2: .init(english: "Nothing pending", simplifiedChinese: "没有待输出内容"),
+  .processingStatus: .init(english: "Processing", simplifiedChinese: "处理中"),
+  .nothingToOutput: .init(english: "Nothing pending", simplifiedChinese: "没有待输出内容"),
   .confirmTheResult: .init(english: "Confirm the result", simplifiedChinese: "结果待确认"),
   .advanceOnlyAfterConfirmingInsertion: .init(english: "Advance only after confirming insertion. Check the target after a partial output.", simplifiedChinese: "只有确认内容已插入，才会推进。部分输出时请先检查目标。"),
   .deliveredSettlementPending: .init(english: "Delivered; settlement pending", simplifiedChinese: "已输出，等待保存状态"),
@@ -268,7 +268,7 @@ private let surfaceTable: [SurfaceText: LocalizedText] = [
   .newSet: .init(english: "New Set", simplifiedChinese: "新建 Set"),
   .reusableItems: .init(english: "Reusable items", simplifiedChinese: "手动取用"),
   .manageOutputBuffers: .init(english: "Manage output buffers", simplifiedChinese: "管理待发容器"),
-  .empty2: .init(english: "Empty", simplifiedChinese: "暂无内容"),
+  .noItems: .init(english: "Empty", simplifiedChinese: "暂无内容"),
   .contextCorrectionMemory: .init(english: "Context correction & memory", simplifiedChinese: "上下文纠错与记忆"),
   .speechRemainsTheOnlyContent: .init(english: "Speech remains the only content source. References help correct recognition errors.", simplifiedChinese: "语音识别正文是唯一内容主体；参考仅用于纠正识别错误。"),
   .useVocabularyForSmartCleanup: .init(english: "Use vocabulary for Smart Cleanup", simplifiedChinese: "润色使用词库"),
@@ -286,7 +286,7 @@ private let surfaceTable: [SurfaceText: LocalizedText] = [
   .smartCleanupSendsItsApplicable: .init(english: "Smart Cleanup sends its applicable hotwords to the current LLM as correction references. No screen or history access is needed. Reference terms are not copied into history.", simplifiedChinese: "Smart Cleanup 将适用热词发送给当前 LLM 作为纠错参考，无需访问屏幕或历史，也不会将参考词表复制到历史中。"),
   .theCurrentLlmReceivesThe: .init(english: "The current LLM receives the pre-recording image and its optional summary. Screen summaries are encrypted locally.", simplifiedChinese: "当前 LLM 将收到录音前图片及可选摘要，屏幕摘要在本地加密保存。"),
   .theCurrentLlmReceivesAuthorized: .init(english: "The current LLM receives authorized voice history, explicit corrections and saved screen observations for idle organization, plus relevant terms and confirmed corrections during recordings. Memories survive history cleanup; deletion excludes their sources from relearning.", simplifiedChinese: "当前 LLM 将收到已授权的语音历史、明确纠正和已存屏幕观察，用于空闲整理；录音时还会接收相关术语和已确认纠正。记忆独立于历史留存，删除记忆会排除其来源，防止再次生成。"),
-  .providerChangesRequireAuthorizatioAgain: .init(english: "Provider changes require authorization again. Workflows: ", simplifiedChinese: "服务变更需重新授权。工作流："),
+  .providerChangesRequireReauthorization: .init(english: "Provider changes require authorization again. Workflows: ", simplifiedChinese: "服务变更需重新授权。工作流："),
   .userStatement: .init(english: "User statement", simplifiedChinese: "用户陈述"),
   .explicitCorrection: .init(english: "Explicit correction", simplifiedChinese: "明确纠正"),
   .screenObservation: .init(english: "Screen observation", simplifiedChinese: "屏幕观察"),
@@ -297,7 +297,7 @@ private let surfaceTable: [SurfaceText: LocalizedText] = [
   .refresh: .init(english: "Refresh", simplifiedChinese: "刷新"),
   .done: .init(english: "Done", simplifiedChinese: "完成"),
   .sources: .init(english: "sources", simplifiedChinese: "条来源"),
-  .historyDeleted: .init(english: " · history deleted", simplifiedChinese: " · 原始历史已清理"),
+  .historyDeletedSuffix: .init(english: " · history deleted", simplifiedChinese: " · 原始历史已清理"),
   .proposedReplacement: .init(english: "Proposed replacement: ", simplifiedChinese: "拟替代："),
   .edit: .init(english: "Edit", simplifiedChinese: "编辑"),
   .confirmed: .init(english: "Confirmed", simplifiedChinese: "已确认"),
@@ -334,7 +334,7 @@ private let surfaceTable: [SurfaceText: LocalizedText] = [
   .shortcutConflictChangeOneBinding: .init(english: "Shortcut conflict: change one binding.", simplifiedChinese: "快捷键冲突：请修改其中一个绑定。"),
   .clipboardPanel: .init(english: "Clipboard panel", simplifiedChinese: "剪贴板面板"),
   .theLegacyWorkflowLibraryHas: .init(english: "The legacy workflow library has not migrated to TOML. Repair the workflow directory and restart before creating or opening a file; existing workflows are preserved.", simplifiedChinese: "旧工作流尚未完成 TOML 迁移。请修复工作流目录并重新启动，再创建或打开文件；现有工作流已保留。"),
-  .copy: .init(english: " Copy", simplifiedChinese: " 副本"),
+  .duplicateNameSuffix: .init(english: " Copy", simplifiedChinese: " 副本"),
   .newWorkflow: .init(english: "New workflow", simplifiedChinese: "新工作流"),
   .theWorkflowCouldNotFinish: .init(english: "The workflow could not finish. Review Privacy and provider settings.", simplifiedChinese: "工作流未能完成，请检查隐私和服务商设置。"),
   .termsCommaSeparated: .init(english: "Terms (comma separated)", simplifiedChinese: "术语（用逗号分隔）"),

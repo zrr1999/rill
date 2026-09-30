@@ -21,7 +21,7 @@ public enum RillSpacing {
 
 struct RillEmptyState: View {
     let title: String
-    var symbol: RillSystemSymbol
+    let symbol: RillSystemSymbol
 
     var body: some View {
         ContentUnavailableView {

@@ -32,7 +32,7 @@ just build          # 默认只构建 Debug RillApp
 just test
 scripts/preflight.sh swift test-domain --filter SessionCoordinatorTests
 just test-scripts   # 独立运行构建、发布、安全和图标脚本测试
-just bench          # 校验离线性能样本；CodSpeed 用法见 Benchmarks/README.md
+just validate-performance-workloads # 校验离线性能工作负载；CodSpeed 用法见 Benchmarks/README.md
 just ci             # 保留增量产物的完整门禁
 just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 ```
@@ -209,11 +209,22 @@ git diff --cached --check
 
 主窗口搜索由 MainShell 的浮层与 AppKit `NSSearchField` bridge 共同拥有，以便在 macOS 26 上确定性处理首次/重复 `Cmd-F`、方向键、`Return` 与 `Esc`；不要未经同等真实 App 回归就替换为 `.searchable`。普通页面路由由 shell 恢复侧栏焦点，typed Record / History 目的地则由详情页持有目标焦点，Settings 深链由主窗口的设置模式持有目标焦点。鼠标选择后的恢复必须跨到主 RunLoop 的 default mode，不能只靠 `Task.yield()` 猜测 AppKit mouse tracking / first-responder 时序；修改任一侧时都应覆盖 全部记录 → 活动 → 工作流 → 记录集的方向键、List selection、快速路由与 exact 详情 AX 焦点，以及进入设置后再返回。
 
+## 质量评测与性能基准
+
+`Evals/` 属于质量评测：ASR、文本改写、词汇纠错和上下文纠错。`Benchmarks/` 属于性能基准。
+`just eval-quality <suite>` 显式运行质量评测，`just bench-performance asr --target <metric>` 比较已采集的性能。
+真实 LLM 评测集中在 `RillQualityEvaluations`，由手动 CE 或本地显式命令执行；普通 CI 不运行它们，
+但始终测试评分器、回放数据校验和语料格式。详见 [质量评测](Evals/README.md)、
+[性能基准](Benchmarks/README.md) 和 [ASR 回放及验收](docs/asr-evaluation.md)。
+
+`just validate-performance-workloads` 验证工作负载结果。macOS 共享 runner 的耗时日志不提供性能结论；
+`CI - Tests` 中的 `Record workload validation` 按相关源码范围运行。CPU simulation 比较由 `CI - Performance` 负责。
+
 ## GitHub Actions 命名
 
 参考 ZenDev 和 Volvox，workflow 文件使用小写 kebab-case，按职责使用 `ci-`、
-`cd-`、`policy-` 或 `automation-` 前缀；显示名称对应 `CI - <Purpose>`、
-`CD - <Purpose>`、`Policy - <Purpose>` 或 `Automation - <Purpose>`。
+`ce-`、`cd-`、`policy-` 或 `automation-` 前缀；显示名称对应 `CI - <Purpose>`、
+`CE - <Purpose>`、`CD - <Purpose>`、`Policy - <Purpose>` 或 `Automation - <Purpose>`。
 PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 
 | Workflow | 显示名称 | 职责 |
@@ -221,7 +232,8 @@ PR 和提交规范采用 ZenDev 当前的 `Policy - PR` 分类。
 | [policy-pr.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/policy-pr.yml) | Policy - PR | 只读校验 PR 标题和正文 |
 | [automation-pr-title.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/automation-pr-title.yml) | Automation - PR Title | 规范化 ImgBot 默认标题后，重跑对应的 PR 检查 |
 | [ci-tests.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-tests.yml) | CI - Tests | Linux 文档构建，以及按修改范围运行的 macOS 测试、依赖和发布预检 |
-| [ci-benchmarks.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-benchmarks.yml) | CI - Benchmarks | CodSpeed Linux 文本预览 CPU simulation 与 macOS 加密 Stack/Queue 离线校验 |
+| [ci-performance.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ci-performance.yml) | CI - Performance | CodSpeed Linux 文本预览 CPU simulation |
+| [ce-quality.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/ce-quality.yml) | CE - Quality | 手动运行固定合成语料的 LLM 质量评测，不作为 PR 检查 |
 | [cd-release.yml](https://github.com/zrr1999/rill/blob/main/.github/workflows/cd-release.yml) | CD - Release | 手动验证版本标签，经受保护环境审核后签名、公证并上传 Release 草稿 |
 
 job ID 使用小写 kebab-case，检查名称描述具体职责。各 job 直接报告检查结果，
