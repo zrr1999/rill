@@ -27,7 +27,7 @@ extension SettingsView {
         .accessibilityIdentifier("settings.local-speech-unavailable")
       }
 
-      LabeledContent(model.settings.language == .simplifiedChinese ? "当前语音模型" : "Current speech model") {
+      LabeledContent(L10n.surface(.currentSpeechModel, language: model.settings.language)) {
         Text(model.trustedLocalSpeechModels.first { $0.id == model.selectedTrustedLocalSpeechModelIdentifier }
           .map { model.localSpeechModelDisplayName($0.id) }
           ?? L10n.speechEngine(model.settings.preferredSpeechEngine, language: model.settings.language))
@@ -336,8 +336,8 @@ extension SettingsView {
             }
             .disabled(model.settings.isLoading)
 
-            DisclosureGroup(model.settings.language == .simplifiedChinese ? "模型详情与常驻" : "Model details and residency") {
-              LabeledContent(model.settings.language == .simplifiedChinese ? "模型标识" : "Model ID") {
+            DisclosureGroup(L10n.surface(.modelDetailsAndResidency, language: model.settings.language)) {
+              LabeledContent(L10n.surface(.modelId, language: model.settings.language)) {
                 Text(descriptor.id).textSelection(.enabled)
               }
             Toggle(

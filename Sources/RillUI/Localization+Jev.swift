@@ -4,12 +4,18 @@ enum JevText: CaseIterable {
   case title, open, disclosure, saveKey, clearKey, keyReady, keyNotice, fragment, candidate, score
   case select, rubric, working, close, send
   case credentialTitle, polishingTitle, returnToComparison, cancelReturn, retryPreview, privacySettings
+  case brandTitle, apiKey, apiKeyPlaceholder
   case providersTitle, settingsDescription, configureNotice, openSettings, invalidKey
 }
 
 extension L10n {
   static func jev(_ key: JevText, language: AppLanguage) -> String {
     switch (key, language) {
+    case (.brandTitle, .english), (.brandTitle, .simplifiedChinese): "Jev · TypeSafe"
+    case (.apiKey, .english): "API Key"
+    case (.apiKey, .simplifiedChinese): "API 密钥"
+    case (.apiKeyPlaceholder, .english): "TypeSafe API Key"
+    case (.apiKeyPlaceholder, .simplifiedChinese): "TypeSafe API 密钥"
     case (.credentialTitle, .english): "Jev API Key"
     case (.credentialTitle, .simplifiedChinese): "Jev API 密钥"
     case (.polishingTitle, .english): "Jev polishing prediction"

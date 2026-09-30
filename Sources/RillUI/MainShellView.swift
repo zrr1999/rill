@@ -324,7 +324,7 @@ public struct MainShellView: View {
                 .frame(maxHeight: 360)
                 HStack {
                     Spacer()
-                    Button(model.settings.language == .simplifiedChinese ? "稍后设置" : "Set up later") {
+                    Button(L10n.surface(.setUpLater, language: model.settings.language)) {
                         model.voiceSetupPresentation = .dismissed
                     }.keyboardShortcut(.cancelAction)
                 }
@@ -358,7 +358,7 @@ public struct MainShellView: View {
                     Button {
                         model.voiceSetupPresentation = .presented
                     } label: {
-                        Label(model.settings.language == .simplifiedChinese ? "完成准备" : "Finish Setup", systemImage: "checklist")
+                        Label(L10n.surface(.finishSetup, language: model.settings.language), systemImage: "checklist")
                     }
                     .accessibilityIdentifier("voice-setup.resume")
                 }

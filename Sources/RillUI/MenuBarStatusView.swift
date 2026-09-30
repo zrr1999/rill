@@ -536,7 +536,7 @@ public struct MenuBarStatusView: View {
         .accessibilityIdentifier("menu.status.persistence-detail")
     }
 
-    Button(model.settings.language == .simplifiedChinese ? "打开待发区" : "Open drafts",
+    Button(L10n.surface(.openDrafts, language: model.settings.language),
       action: model.recordWorkspace.buffers.openEditorAction)
       .accessibilityIdentifier("menu.open-drafts")
 
