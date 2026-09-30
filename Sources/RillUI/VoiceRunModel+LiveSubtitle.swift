@@ -5,6 +5,7 @@ extension VoiceRunModel {
   func applyCurrentCaptureLiveSubtitleSnapshot(_ newValue: LiveSubtitleSnapshot?) {
     let oldValue = currentCaptureLiveSubtitleSnapshot
     currentCaptureLiveSubtitleSnapshot = newValue
+    syncLiveAudioCancellation()
     guard
       hasLiveSubtitleSemanticChange(
         from: oldValue,
@@ -153,12 +154,31 @@ extension VoiceRunModel {
     }
   }
 
+  func applyRecordingRelease(runID: UUID, isReleased: Bool) {
+    guard !settings.hasBegunApplicationShutdown,
+      currentCaptureLiveSubtitleSnapshot == nil
+        || currentCaptureLiveSubtitleSnapshot?.runID == runID
+    else { return }
+    if isReleased {
+      releasedCaptureRunID = runID
+      cancelPendingLiveSubtitleMeterRefresh()
+      cancelLiveSubtitleHide()
+    } else if releasedCaptureRunID == runID {
+      releasedCaptureRunID = nil
+    }
+    refreshLiveSubtitlePresentation()
+  }
+
   func refreshLiveSubtitlePresentation() {
     guard !settings.hasBegunApplicationShutdown else {
       setLiveSubtitlePresentation(nil)
       return
     }
     if var captureSnapshot = currentCaptureLiveSubtitleSnapshot, captureSnapshot.isVisible {
+      if releasedCaptureRunID == captureSnapshot.runID, captureSnapshot.phase != .failed {
+        setLiveSubtitlePresentation(nil)
+        return
+      }
       captureSnapshot.queuedRunCount = queuedBackgroundRunCount(from: audioProcessingQueueSnapshot)
       setLiveSubtitlePresentation(captureSnapshot)
       return

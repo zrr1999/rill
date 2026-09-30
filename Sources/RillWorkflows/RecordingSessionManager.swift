@@ -318,6 +318,12 @@ public actor RecordingSessionManager {
     switch event {
     case .pushToTalkPressed(let gesture):
       guard activeControlMode != .holdToTalk || activeGesture == gesture else { return }
+      let resumedRunID: UUID?
+      if case .recording(let runID) = state, activeControlMode == .holdToTalk {
+        resumedRunID = runID
+      } else {
+        resumedRunID = nil
+      }
       cancelActiveDeferredRelease()
       enqueueDiagnostic(
         level: .debug,
@@ -325,6 +331,10 @@ public actor RecordingSessionManager {
         message: "Received push-to-talk press for \(gesture.rawValue).",
         runID: activeRunID
       )
+      if let resumedRunID {
+        await eventBus.publish(.recordingReleaseChanged(runID: resumedRunID, isReleased: false))
+        return
+      }
       // Busy stream events are decisions about the state in which they
       // arrived. Do not suspend for settings and then reinterpret the
       // same press as a fresh idle start after finalization completes.
@@ -1108,11 +1118,13 @@ public actor RecordingSessionManager {
       scheduleDeferredRelease(target: .run(runID), gesture: gesture)
     case .recording(let runID):
       if defersRecordingRelease {
-        scheduleDeferredRelease(
+        if scheduleDeferredRelease(
           target: .run(runID),
           gesture: gesture,
           delay: Self.recordingReleaseDelay
-        )
+        ), !pushToTalkGestureStateProvider(gesture) {
+          await eventBus.publish(.recordingReleaseChanged(runID: runID, isReleased: true))
+        }
         return
       }
       guard
@@ -1690,12 +1702,13 @@ extension RecordingSessionManager {
     )
   }
 
+  @discardableResult
   private func scheduleDeferredRelease(
     target: DeferredPushToTalkReleaseTarget,
     gesture: PushToTalkGesture,
     delay: Duration = preparingReleaseDebounce
-  ) {
-    guard !hasBegunApplicationShutdown, activeDeferredReleaseTarget != target else { return }
+  ) -> Bool {
+    guard !hasBegunApplicationShutdown, activeDeferredReleaseTarget != target else { return false }
     cancelActiveDeferredRelease()
     let taskID = UUID()
     let sleep = deferredReleaseSleep
@@ -1714,6 +1727,7 @@ extension RecordingSessionManager {
     activePushToTalkReleaseTaskID = taskID
     activeDeferredReleaseTarget = target
     livePushToTalkReleaseTasks[taskID] = task
+    return true
   }
 
   fileprivate func cancelActiveDeferredRelease() {
