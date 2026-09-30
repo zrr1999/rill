@@ -136,11 +136,11 @@ public enum L10n {
     case settingsFailedAudioRecoveryClearConfirmation
     case settingsFailedAudioRecoveryClearConfirmationDetail
     case settingsFailedAudioRecoveryDescription
-    case settingsBenchmarkRecordingArchive
-    case settingsBenchmarkRecordingArchiveClear
-    case settingsBenchmarkRecordingArchiveClearConfirmation
-    case settingsBenchmarkRecordingArchiveClearConfirmationDetail
-    case settingsBenchmarkRecordingArchiveDescription
+    case settingsCorpusRecordingArchive
+    case settingsCorpusRecordingArchiveClear
+    case settingsCorpusRecordingArchiveClearConfirmation
+    case settingsCorpusRecordingArchiveClearConfirmationDetail
+    case settingsCorpusRecordingArchiveDescription
     case historyFailedAudioDelete
     case historyFailedAudioDeleteConfirmation
     case historyFailedAudioDeleteConfirmationDetail
@@ -635,24 +635,24 @@ public enum L10n {
       simplifiedChinese:
         "默认关闭。符合条件的录音会使用本机 Keychain 密钥加密保存，最长 24 小时（最多 3 条、单条 16 MB、总计 32 MB）。重试会重新检查当前隐私与服务配置，只写入历史，不会重复执行输出动作。"
     ),
-    .settingsBenchmarkRecordingArchive: .init(
-      english: "Save recordings for ASR benchmark",
-      simplifiedChinese: "保存录音用于 ASR Benchmark"
+    .settingsCorpusRecordingArchive: .init(
+      english: "Save corpus recordings",
+      simplifiedChinese: "保存语料录音"
     ),
-    .settingsBenchmarkRecordingArchiveClear: .init(
-      english: "Clear Benchmark Recordings",
-      simplifiedChinese: "清除 Benchmark 录音"
+    .settingsCorpusRecordingArchiveClear: .init(
+      english: "Clear Corpus Recordings",
+      simplifiedChinese: "清除语料录音"
     ),
-    .settingsBenchmarkRecordingArchiveClearConfirmation: .init(
-      english: "Delete all benchmark recordings?",
-      simplifiedChinese: "删除全部 Benchmark 录音吗？"
+    .settingsCorpusRecordingArchiveClearConfirmation: .init(
+      english: "Delete all corpus recordings?",
+      simplifiedChinese: "删除全部语料录音吗？"
     ),
-    .settingsBenchmarkRecordingArchiveClearConfirmationDetail: .init(
+    .settingsCorpusRecordingArchiveClearConfirmationDetail: .init(
       english:
-        "This permanently removes every encrypted benchmark recording. Run history and transcripts are not changed.",
-      simplifiedChinese: "这会永久删除全部加密的 Benchmark 录音；运行历史和转写不会改变。"
+        "This permanently removes every encrypted corpus recording. Run history and transcripts are not changed.",
+      simplifiedChinese: "这会永久删除全部加密的语料录音；运行历史和转写不会改变。"
     ),
-    .settingsBenchmarkRecordingArchiveDescription: .init(
+    .settingsCorpusRecordingArchiveDescription: .init(
       english:
         "Off by default. When enabled, every recording that reaches workflow processing is encrypted with the local Keychain key and kept until cleared. Nothing is uploaded automatically. Turning this off stops new saves but keeps the existing archive.",
       simplifiedChinese:
