@@ -111,7 +111,11 @@ final class RecordPanelControllerTests: XCTestCase {
     let editor = workspace.buffers.editor
     editor.newItem()
     await editor.waitForPendingWrites()
-    let window = try XCTUnwrap(NSApp.windows.first { $0 is NSPanel && $0.isVisible && !existing.contains($0.windowNumber) })
+    let window = try XCTUnwrap(NSApp.windows.first { $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existing.contains($0.windowNumber) })
+    let capsule = try XCTUnwrap(
+      NSApp.windows.first { $0.identifier?.rawValue == "record-panel.capsule" && $0.isVisible && !existing.contains($0.windowNumber) })
+    let capsuleFrame = capsule.frame
+    let pageFrame = window.frame
     func nativeEditor(in view: NSView) -> NSTextView? {
       if let text = view as? NSTextView, text.accessibilityIdentifier() == "record-buffer.editor" { return text }
       return view.subviews.lazy.compactMap { nativeEditor(in: $0) }.first
@@ -137,17 +141,30 @@ final class RecordPanelControllerTests: XCTestCase {
     for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
     XCTAssertTrue(controller.isVisible)
     XCTAssertTrue(controller.presentation.isCollapsed)
-    XCTAssertEqual(window.frame.width, 320, accuracy: 1)
-    XCTAssertEqual(window.frame.height, 56, accuracy: 1)
+    XCTAssertEqual(window.frame, pageFrame)
+    XCTAssertEqual(capsule.frame, capsuleFrame)
+    XCTAssertEqual(capsule.frame.size, NSSize(width: 260, height: 48))
+    XCTAssertFalse(window.isVisible)
+    XCTAssertTrue(capsule.isVisible)
+    XCTAssertFalse(capsule.canBecomeKey)
     XCTAssertFalse(window.isKeyWindow)
     XCTAssertFalse(window.canBecomeKey)
     XCTAssertFalse(controller.digitSelectionHandler?(0) ?? true)
-    controller.expand()
+    controller.expand(activate: false)
+    XCTAssertFalse(controller.isKey, "Hovering must not capture focus from the external app")
+    XCTAssertEqual(capsule.frame, capsuleFrame)
+    XCTAssertEqual(window.frame, pageFrame)
+    controller.selectMode(.drafts)
     for _ in 0..<12 { await waitForMainRunLoopDefaultMode() }
     XCTAssertTrue(nativeEditor(in: try XCTUnwrap(window.contentView)) === native)
     XCTAssertEqual(editor.session?.id, sessionID)
     XCTAssertEqual(native.string, "保留这段编辑")
     XCTAssertEqual(controller.quickPanelModel?.searchText, "保留")
+    controller.moveFloatingPanels(by: NSPoint(x: -20, y: -20))
+    XCTAssertEqual(window.frame.size, pageFrame.size)
+    XCTAssertEqual(capsule.frame.size, capsuleFrame.size)
+    XCTAssertEqual(window.frame.minX - pageFrame.minX, capsule.frame.minX - capsuleFrame.minX)
+    XCTAssertEqual(window.frame.minY - pageFrame.minY, capsule.frame.minY - capsuleFrame.minY)
     native.undoManager?.undo()
     XCTAssertEqual(native.string, "")
     native.setMarkedText("中文", selectedRange: NSRange(location: 2, length: 0), replacementRange: NSRange(location: NSNotFound, length: 0))
@@ -181,7 +198,7 @@ final class RecordPanelControllerTests: XCTestCase {
         }, onDeliveryAbort: {})
       let window = try XCTUnwrap(
         NSApp.windows.first {
-          $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+          $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
         })
       window.contentView?.layoutSubtreeIfNeeded()
       let deadline = ContinuousClock.now.advanced(by: .seconds(2))
@@ -224,7 +241,8 @@ final class RecordPanelControllerTests: XCTestCase {
       }, onDeliveryAbort: {})
     let deadline = ContinuousClock.now.advanced(by: .seconds(2))
     while controller.quickPanelModel?.results.isEmpty != false, ContinuousClock.now < deadline { await Task.yield() }
-    let window = try XCTUnwrap(NSApp.windows.first { $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
+    let window = try XCTUnwrap(
+      NSApp.windows.first { $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
     window.contentView?.layoutSubtreeIfNeeded()
     func searchField(in view: NSView) -> NSSearchField? {
       if let field = view as? NSSearchField { return field }
@@ -563,7 +581,8 @@ final class RecordPanelControllerTests: XCTestCase {
     for iteration in 0..<31 {
       let started = ContinuousClock.now
       controller.show(model: model, deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
-      let window = try XCTUnwrap(NSApp.windows.first { $0 is NSPanel && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
+      let window = try XCTUnwrap(
+        NSApp.windows.first { $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber) })
       window.contentView?.layoutSubtreeIfNeeded()
       let deadline = started.advanced(by: .seconds(2))
       while controller.quickPanelModel?.results.count != 50, ContinuousClock.now < deadline {

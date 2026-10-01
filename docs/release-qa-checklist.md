@@ -485,6 +485,18 @@ is established per app and content type; see [continuous output](continuous-outp
 
 ### Editable pending drafts
 
+- [ ] Hover the freely placed capsule for 300ms: the separate page opens without
+      moving or resizing the capsule, stealing focus, or capturing an output target.
+      Drag from the capsule before the delay: it moves without opening the page.
+- [ ] Cross the gap to the page and return during the 700ms exit delay. The page
+      stays open. Keep a button pressed or edit with the pointer outside: it must
+      not collapse. Verify Keep open, attached sheets, and physical IME candidates.
+- [ ] Change modes, counts, selections and output status while preparing to click
+      Copy or Send. Window geometry and the bottom action positions stay fixed.
+      Drag the open pair near every screen edge and across displays: no automatic
+      side flip or resize occurs during the drag. Reopen after a display change.
+- [ ] Check capsule drag/close and keyboard or VoiceOver expansion. No separate
+      collapse button is present; Escape and pointer exit retain their own behavior.
 - [ ] Enable voice collection and clipboard collection separately, both in Settings
       and in Drafts. Each enables the same saved preference and opens the resident
       panel without stealing key focus. Relaunch with either enabled and check restoration.

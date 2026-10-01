@@ -5,164 +5,178 @@ import SwiftUI
 public struct UnifiedRecordPanelView<Records: View>: View {
   @Bindable private var presentation: RecordPanelPresentation
   @Bindable private var model: AppModel
+  @State private var showsOutputReview = false
+  @Namespace private var modeGlass
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   private let records: Records
   private let onModeChange: (RecordPanelPresentation.Mode) -> Void
-  private let onCollapse: () -> Void
-  private let onExpand: () -> Void
-  private let onClose: () -> Void
-  private let onNeedsAttention: () -> Void
+  private let onFinishEditing: () -> Void
+  private let onInteractionChange: () -> Void
 
   public init(
     presentation: RecordPanelPresentation, model: AppModel,
     onModeChange: @escaping (RecordPanelPresentation.Mode) -> Void,
-    onCollapse: @escaping () -> Void, onExpand: @escaping () -> Void,
-    onClose: @escaping () -> Void, onNeedsAttention: @escaping () -> Void = {},
+    onFinishEditing: @escaping () -> Void = {},
+    onInteractionChange: @escaping () -> Void = {},
     @ViewBuilder records: () -> Records
   ) {
     self.presentation = presentation
     self.model = model
     self.onModeChange = onModeChange
-    self.onCollapse = onCollapse
-    self.onExpand = onExpand
-    self.onClose = onClose
-    self.onNeedsAttention = onNeedsAttention
+    self.onFinishEditing = onFinishEditing
+    self.onInteractionChange = onInteractionChange
     self.records = records()
   }
 
   private var buffers: RecordBufferModel { model.recordWorkspace.buffers }
-  private func text(_ key: SurfaceText) -> String { L10n.surface(key, language: model.settings.language) }
-
-  public var body: some View {
-    ZStack(alignment: .topLeading) {
-      expandedContent
-        .frame(
-          width: presentation.isCollapsed ? presentation.expandedWidth : nil,
-          height: presentation.isCollapsed ? presentation.expandedHeight : nil
-        )
-        .opacity(presentation.isCollapsed ? 0 : 1)
-        .allowsHitTesting(!presentation.isCollapsed)
-        .accessibilityHidden(presentation.isCollapsed)
-      if presentation.isCollapsed { pendingStrip }
-    }
-    .frame(
-      width: presentation.isCollapsed ? 320 : nil, height: presentation.isCollapsed ? 56 : nil,
-      alignment: .topLeading
-    )
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .clipped()
-    .background(Color(nsColor: .windowBackgroundColor))
-    .accessibilityIdentifier("record-panel.unified")
-    .onChange(of: buffers.editor.failure) { _, failure in
-      if failure != nil, presentation.isCollapsed { onNeedsAttention() }
-    }
+  private func panelText(_ key: RecordPanelText) -> String {
+    L10n.recordPanel(key, language: model.settings.language)
   }
 
-  private var expandedContent: some View {
-    VStack(spacing: 0) {
-      HStack(spacing: 12) {
-        Picker(
-          text(.panelContent),
-          selection: Binding(
-            get: { presentation.mode }, set: { onModeChange($0) })
-        ) {
-          Text(text(.collections)).tag(RecordPanelPresentation.Mode.collections)
-          Text(text(.drafts) + " · \(buffers.snapshot?.remainingCount ?? 0)")
-            .tag(RecordPanelPresentation.Mode.drafts)
-        }
-        .pickerStyle(.segmented).labelsHidden().frame(width: 260)
-        .disabled(buffers.editor.session?.hasMarkedText == true)
-        .accessibilityIdentifier("record-panel.mode")
-        Spacer(minLength: 8)
-        Toggle(isOn: $presentation.isPinned) {
-          Label(text(.keepOpen), systemImage: presentation.isPinned ? RillSystemSymbol.pinFill.rawValue : RillSystemSymbol.pin.rawValue)
-        }
-        .toggleStyle(.button).labelStyle(.iconOnly)
-        .help(text(.keepThePanelExpandedWhen))
-        Button(action: onCollapse) { Image(systemName: RillSystemSymbol.rectangleCompressVertical.rawValue) }
-          .accessibilityLabel(text(.collapseToPendingStrip))
-          .help(text(.collapseToPendingStrip))
-          .disabled(buffers.editor.session?.hasMarkedText == true)
-        Button(action: onClose) { Image(systemName: RillSystemSymbol.xmark.rawValue) }
-          .accessibilityLabel(text(.closePanel))
+  public var body: some View {
+    panel
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(.ultraThinMaterial)
+      .containerShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
+      .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
+      .accessibilityIdentifier("record-panel.unified")
+      .onChange(of: presentation.isPinned) { _, _ in onInteractionChange() }
+      .onChange(of: buffers.editor.session?.isFocused) { _, _ in onInteractionChange() }
+      .onChange(of: buffers.editor.session?.hasMarkedText) { _, _ in onInteractionChange() }
+      .sheet(isPresented: $showsOutputReview) {
+        VStack(alignment: .leading, spacing: 16) {
+          Text(panelText(.outputStatus)).font(.headline)
+          outputFeedback
+          HStack {
+            Spacer()
+            Button(panelText(.done)) { showsOutputReview = false }
+          }
+        }.padding(20).frame(width: 420)
       }
-      .controlSize(.small).padding(12)
-      .rillFloatingControlSurface()
+  }
+
+  private var panel: some View {
+    VStack(spacing: 0) {
+      GlassEffectContainer(spacing: 8) {
+        HStack(spacing: 12) {
+          modeControl
+          Spacer(minLength: 8)
+          Toggle(isOn: $presentation.isPinned) {
+            Label(panelText(.keepOpen), systemImage: presentation.isPinned ? RillSystemSymbol.pinFill.rawValue : RillSystemSymbol.pin.rawValue)
+          }
+          .toggleStyle(.button).labelStyle(.iconOnly).buttonStyle(.glass)
+          .buttonBorderShape(.circle).buttonSizing(.flexible)
+          .font(.system(size: 13)).frame(width: 30, height: 30)
+          .help(panelText(.keepOpenHelp))
+          .accessibilityIdentifier("record-panel.pin")
+        }
+        .controlSize(.regular).padding(.horizontal, 14).frame(height: 53)
+      }
+      notice
       ZStack {
-        records
+        // Separate containers keep hidden panes out of the visible glass composite.
+        GlassEffectContainer(spacing: 8) { records }
           .opacity(presentation.mode == .collections ? 1 : 0)
           .allowsHitTesting(presentation.mode == .collections)
           .disabled(presentation.mode != .collections || presentation.isCollapsed)
-          .accessibilityHidden(presentation.mode != .collections)
-        RecordBufferDraftView(model: model, embedded: true)
-          .opacity(presentation.mode == .drafts ? 1 : 0)
-          .allowsHitTesting(presentation.mode == .drafts)
-          .disabled(presentation.mode != .drafts || presentation.isCollapsed)
-          .accessibilityHidden(presentation.mode != .drafts)
-      }
-      if buffers.snapshot?.active != nil || buffers.message != nil {
-        Divider()
-        outputFeedback.padding(12)
-      }
-    }
-  }
-
-  private var pendingStrip: some View {
-    HStack(spacing: 8) {
-      Button(action: onExpand) {
-        HStack(spacing: RillSpacing.dense) {
-          Image(systemName: needsAttention ? "exclamationmark.circle" : "tray.full")
-            .foregroundStyle(needsAttention ? Color.orange : Color.accentColor)
-          VStack(alignment: .leading, spacing: 3) {
-            Text(text(.drafts) + " · \(buffers.snapshot?.remainingCount ?? 0)")
-              .font(.caption.weight(.semibold))
-            Text(stripSummary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-          }
-          Spacer(minLength: 0)
-          Image(systemName: RillSystemSymbol.arrowUpLeftAndArrowDownRight.rawValue).font(.caption)
+          .accessibilityHidden(presentation.mode != .collections || presentation.isCollapsed)
+        GlassEffectContainer(spacing: 8) {
+          RecordBufferDraftView(model: model, onFinishEditing: onFinishEditing)
         }
-        .contentShape(Rectangle())
+        .opacity(presentation.mode == .drafts ? 1 : 0)
+        .allowsHitTesting(presentation.mode == .drafts)
+        .disabled(presentation.mode != .drafts || presentation.isCollapsed)
+        .accessibilityHidden(presentation.mode != .drafts || presentation.isCollapsed)
       }
-      .buttonStyle(.plain)
-      .accessibilityIdentifier("record-panel.expand")
-      Button(action: onClose) { Image(systemName: RillSystemSymbol.xmark.rawValue).font(.caption) }
-        .buttonStyle(.plain).accessibilityLabel(text(.closePendingStrip))
     }
-    .padding(.horizontal, 12).frame(width: 320, height: 56)
-    .rillFloatingControlSurface()
-    .accessibilityIdentifier("record-panel.pending-strip")
   }
 
-  private var needsAttention: Bool {
-    buffers.editor.failure != nil || buffers.message != nil || buffers.snapshot?.active != nil
+  private var modeControl: some View {
+    HStack(spacing: 2) {
+      ForEach(RecordPanelPresentation.Mode.allCases, id: \.self) { mode in
+        let selected = presentation.mode == mode
+        Button {
+          onModeChange(mode)
+        } label: {
+          if selected {
+            modeLabel(mode, selected: true)
+              .recordPanelGlass(in: Capsule(), interactive: true)
+              .glassEffectID("mode-selection", in: modeGlass)
+              .glassEffectTransition(reduceMotion ? .identity : .matchedGeometry)
+          } else {
+            modeLabel(mode, selected: false)
+          }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+      }
+    }
+    .padding(3)
+    .background(.thinMaterial, in: Capsule())
+    .animation(reduceMotion ? nil : .smooth(duration: 0.22), value: presentation.mode)
+    .disabled(buffers.editor.session?.hasMarkedText == true)
+    .accessibilityElement(children: .contain)
+    .accessibilityLabel(panelText(.panelContent))
+    .accessibilityIdentifier("record-panel.mode")
   }
 
-  private var stripSummary: String {
-    if buffers.editor.failure != nil { return text(.editsNeedAttention) }
-    if buffers.snapshot?.active != nil { return text(.outputNeedsConfirmation) }
-    if let message = buffers.message { return message }
-    return buffers.snapshot?.nextHeader?.preview
-      ?? (buffers.snapshot?.next == nil ? text(.nothingPending) : text(.processing))
+  private func modeLabel(_ mode: RecordPanelPresentation.Mode, selected: Bool) -> some View {
+    HStack(spacing: 5) {
+      Text(panelText(mode == .drafts ? .drafts : .collections))
+      if mode == .drafts {
+        Text("\(buffers.snapshot?.remainingCount ?? 0)")
+          .monospacedDigit().foregroundStyle(.secondary)
+          .frame(width: 30).lineLimit(1).minimumScaleFactor(0.7)
+      }
+    }
+    .font(.system(size: 12, weight: selected ? .medium : .regular))
+    .foregroundStyle(selected ? Color.primary : Color.secondary)
+    .frame(width: 92, height: 30)
+    .contentShape(Capsule())
+  }
+
+  private var notice: some View {
+    HStack(spacing: 8) {
+      Image(systemName: needsAttention ? RillSystemSymbol.exclamationmarkCircle.rawValue : RillSystemSymbol.checkmarkCircle.rawValue)
+        .foregroundStyle(needsAttention ? Color.orange : Color.secondary)
+        .font(.system(size: 13)).frame(width: 16)
+      Text(noticeText).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+      Spacer(minLength: 0)
+      Button(panelText(.review)) { showsOutputReview = true }
+        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.accentColor)
+        .frame(width: 48, height: 29)
+        .opacity(needsAttention ? 1 : 0)
+        .disabled(!needsAttention)
+        .accessibilityHidden(!needsAttention)
+        .accessibilityIdentifier("record-panel.review-output")
+    }
+    .padding(.horizontal, 16).frame(height: 36)
+    .overlay(alignment: .top) { Divider().opacity(0.45) }
+    .overlay(alignment: .bottom) { Divider().opacity(0.45) }
+    .accessibilityIdentifier("record-panel.output-status")
+  }
+
+  private var needsAttention: Bool { buffers.snapshot?.active != nil || buffers.message != nil }
+  private var noticeText: String {
+    if buffers.snapshot?.active != nil { return panelText(.previousOutputNeedsConfirmation) }
+    return buffers.message ?? panelText(.localContent)
   }
 
   private var outputFeedback: some View {
-    VStack(alignment: .leading, spacing: 8) {
+    VStack(alignment: .leading, spacing: 12) {
       if let active = buffers.snapshot?.active {
+        Text(
+          active.state == .delivered
+            ? panelText(.deliveredButNotSaved)
+            : panelText(.confirmInsertion))
         HStack {
-          Text(
-            active.state == .delivered
-              ? text(.deliveredStateNotSaved)
-              : text(.checkTheTargetBeforeConfirming)
-          )
-          .font(.caption)
-          Spacer()
           Button(
-            active.state == .delivered ? text(.retrySave) : text(.inserted),
+            active.state == .delivered ? panelText(.retrySave) : panelText(.inserted),
             action: buffers.confirmAction)
           if active.state != .delivered {
-            Button(text(.retryItem), action: buffers.retryAction)
+            Button(panelText(.retryItem), action: buffers.retryAction)
           }
-        }
-        .disabled(buffers.isSending)
+        }.disabled(buffers.isSending)
       }
       if let message = buffers.message {
         Text(message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
@@ -170,24 +184,4 @@ public struct UnifiedRecordPanelView<Records: View>: View {
     }
     .accessibilityIdentifier("record-panel.output-feedback")
   }
-}
-
-private struct FloatingControlSurface: ViewModifier {
-  @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-  @Environment(\.colorSchemeContrast) private var contrast
-
-  func body(content: Content) -> some View {
-    if reduceTransparency || contrast == .increased {
-      content.background(Color(nsColor: .controlBackgroundColor))
-    } else {
-      content.background {
-        RoundedRectangle(cornerRadius: RillRadius.section)
-          .glassEffect(.regular, in: .rect(cornerRadius: RillRadius.section))
-      }
-    }
-  }
-}
-
-extension View {
-  func rillFloatingControlSurface() -> some View { modifier(FloatingControlSurface()) }
 }
