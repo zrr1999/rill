@@ -46,7 +46,7 @@ struct WorkflowDocumentLibraryView: View {
       }
     }
     .navigationTitle(L10n.workflowDocument(.labelWorkflows, language: model.settings.language))
-    .toolbar { ToolbarItemGroup { libraryActions } }
+    .toolbar { ToolbarItemGroup(placement: .primaryAction) { libraryActions } }
     .task(id: model.settings.isLoading) {
       if !model.settings.isLoading { await model.reloadWorkflowFiles() }
       if selectedID == nil { selectedID = model.workflowLibrary.workflows.first?.id }
@@ -161,39 +161,53 @@ struct WorkflowDocumentLibraryView: View {
               }
             }.frame(maxWidth: .infinity, alignment: .leading)
           }.id(workflow.id)
-          HStack {
-            Button(L10n.workflowDocument(workflow.inputKind == .audio ? .labelRun : .labelRunClipboardText, language: model.settings.language)) {
-              if workflow.inputKind == .audio {
-                model.runWorkflow(workflow)
-              } else if let text = NSPasteboard.general.string(forType: .string) {
-                model.runWorkflowText(text, workflow: workflow)
-              }
-            }.disabled(!model.isWorkflowEnabled(workflow) || model.voice.isRunning || model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id))
-              .buttonStyle(.borderedProminent)
-            Button(L10n.workflowDocument(.labelOpenFile, language: model.settings.language)) { open(workflow) }
-              .accessibilityIdentifier("workflow.document.open.\(workflow.id)")
-            Menu {
-              Button(L10n.workflowExplanationCopy(.button, language: model.settings.language)) {
-                model.workflowLibrary.explainWorkflowBeforeRun(workflow)
-                explanation = .init(workflowID: workflow.id)
-              }
-              Button(L10n.workflowDocument(.labelDuplicate, language: model.settings.language)) { open(workflow, duplicate: true) }
-              Button(
-                L10n.workflowDocument(
-                  model.workflowLibrary.builtInWorkflows.contains(where: { $0.id == workflow.id }) ? .labelRestoreDefault : .labelDelete,
-                  language: model.settings.language), role: .destructive
-              ) { pendingDeletion = workflow }
-            } label: {
-              Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue)
-            }
-            .help(L10n.workflowDocument(.labelMoreActions, language: model.settings.language))
-          }
           Text(L10n.workflowDocument(.labelEditExternally, language: model.settings.language)).font(.caption).foregroundStyle(.secondary)
         }.padding(RillSpacing.page).frame(maxWidth: .infinity, alignment: .topLeading)
       }
+      .safeAreaBar(edge: .bottom, spacing: 0) {
+        GlassEffectContainer(spacing: RillSpacing.row) { workflowActions(workflow) }
+          .padding(RillSpacing.panel)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .scrollEdgeEffectStyle(.soft, for: .vertical)
     } else {
       ContentUnavailableView(
         L10n.workspace(.selectWorkflow, language: model.settings.language), systemImage: RillSystemSymbol.point3ConnectedTrianglepathDotted.rawValue)
+    }
+  }
+
+  private func workflowActions(_ workflow: WorkflowDefinition) -> some View {
+    HStack {
+      Button(L10n.workflowDocument(workflow.inputKind == .audio ? .labelRun : .labelRunClipboardText, language: model.settings.language)) {
+        if workflow.inputKind == .audio {
+          model.runWorkflow(workflow)
+        } else if let text = NSPasteboard.general.string(forType: .string) {
+          model.runWorkflowText(text, workflow: workflow)
+        }
+      }.disabled(!model.isWorkflowEnabled(workflow) || model.voice.isRunning || model.workflowLibrary.invalidWorkflowFileIDs.contains(workflow.id))
+        .buttonStyle(.glassProminent)
+      Button(L10n.workflowDocument(.labelOpenFile, language: model.settings.language)) { open(workflow) }
+        .buttonStyle(.glass)
+        .accessibilityIdentifier("workflow.document.open.\(workflow.id)")
+      Menu {
+        Button(L10n.workflowExplanationCopy(.button, language: model.settings.language)) {
+          model.workflowLibrary.explainWorkflowBeforeRun(workflow)
+          explanation = .init(workflowID: workflow.id)
+        }
+        Button(L10n.workflowDocument(.labelDuplicate, language: model.settings.language)) { open(workflow, duplicate: true) }
+        Button(
+          L10n.workflowDocument(
+            model.workflowLibrary.builtInWorkflows.contains(where: { $0.id == workflow.id }) ? .labelRestoreDefault : .labelDelete,
+            language: model.settings.language), role: .destructive
+        ) { pendingDeletion = workflow }
+      } label: {
+        Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue)
+      }
+      .help(L10n.workflowDocument(.labelMoreActions, language: model.settings.language))
+      .accessibilityLabel(L10n.workflowDocument(.labelMoreActions, language: model.settings.language))
+      .buttonStyle(.glass)
+      .menuIndicator(.hidden)
+      .buttonBorderShape(.circle)
     }
   }
 

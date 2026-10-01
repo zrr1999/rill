@@ -26,32 +26,6 @@ struct GlobalSearchResultsView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      HStack(spacing: RillSpacing.dense) {
-        Image(systemName: RillSystemSymbol.magnifyingglass.rawValue)
-          .foregroundStyle(.secondary)
-          .accessibilityHidden(true)
-
-        GlobalSearchField(
-          text: $query,
-          prompt: GlobalSearchText.searchPrompt(language: language),
-          focusRequest: focusRequest,
-          onMoveSelection: onMoveSelection,
-          onSubmit: onSubmit,
-          onCancel: onCancel
-        )
-        .frame(minHeight: 28)
-
-        Button(GlobalSearchText.cancel(language: language), action: onCancel)
-          .buttonStyle(.borderless)
-          .keyboardShortcut(.cancelAction)
-          .help(GlobalSearchText.cancelHelp(language: language))
-          .accessibilityIdentifier("global-search.cancel")
-      }
-      .padding(.horizontal, RillSpacing.section)
-      .padding(.vertical, 14)
-
-      Divider()
-
       if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         Group {
           if historySearchState == .searching {
@@ -165,6 +139,8 @@ struct GlobalSearchResultsView: View {
         }
       }
     }
+    .safeAreaBar(edge: .top, spacing: 0) { searchBar }
+    .scrollEdgeEffectStyle(.soft, for: .top)
     .background(.background)
     .animation(
       reduceMotion ? nil : .easeOut(duration: 0.15),
@@ -185,6 +161,28 @@ struct GlobalSearchResultsView: View {
     .onChange(of: selectedResultID) { _, selectedID in
       accessibilityFocusedResultID = selectedID
     }
+  }
+
+  private var searchBar: some View {
+    HStack(spacing: RillSpacing.dense) {
+      GlobalSearchField(
+        text: $query,
+        prompt: GlobalSearchText.searchPrompt(language: language),
+        focusRequest: focusRequest,
+        onMoveSelection: onMoveSelection,
+        onSubmit: onSubmit,
+        onCancel: onCancel
+      )
+      .frame(minHeight: 28)
+
+      Button(GlobalSearchText.cancel(language: language), action: onCancel)
+        .buttonStyle(.glass)
+        .keyboardShortcut(.cancelAction)
+        .help(GlobalSearchText.cancelHelp(language: language))
+        .accessibilityIdentifier("global-search.cancel")
+    }
+    .padding(.horizontal, RillSpacing.section)
+    .padding(.vertical, 14)
   }
 
   private func resultSection(

@@ -235,8 +235,11 @@ public struct HistoryTimelineView: View {
       HStack(alignment: .firstTextBaseline, spacing: 12) {
         VStack(alignment: .leading, spacing: 4) {
           Text(L10n.text(.historyScopeAll, language: model.settings.language))
-            .font(.headline)
+            .font(.title2.weight(.semibold))
+            .foregroundStyle(.primary)
+            .accessibilityAddTraits(.isHeader)
           Text(L10n.text(.historyDescription, language: model.settings.language))
+            .font(.callout)
         }
         Spacer(minLength: 12)
         if case .loaded = model.history.effectiveRunHistoryLoadState {
