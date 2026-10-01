@@ -94,9 +94,10 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     let controller = makeController(reduceMotion: true)
     let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
     controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
-    let panel = try XCTUnwrap(NSApp.windows.first {
-      $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
-    })
+    let panel = try XCTUnwrap(
+      NSApp.windows.first {
+        $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+      })
     otherWindow.makeKeyAndOrderFront(nil)
     XCTAssertTrue(otherWindow.isKeyWindow)
     panel.makeKey()
@@ -124,9 +125,10 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     let controller = makeController(reduceMotion: true)
     let existingWindowNumbers = Set(NSApplication.shared.windows.map(\.windowNumber))
     controller.show(model: makeModel(), deliverSelection: { _, _ in .delivered }, onDeliveryAbort: {})
-    let panel = try XCTUnwrap(NSApp.windows.first {
-      $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
-    })
+    let panel = try XCTUnwrap(
+      NSApp.windows.first {
+        $0.identifier?.rawValue == "record-panel.page" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+      })
     let session = try XCTUnwrap(controller.quickPanelModel)
     if !session.isPreviewVisible { session.togglePreview() }
     panel.cancelOperation(nil)
@@ -143,9 +145,10 @@ final class RecordPanelControllerReduceMotionTests: XCTestCase {
     controller.collapse()
     controller.expand(activate: false)
     XCTAssertFalse(controller.isKey)
-    let capsule = try XCTUnwrap(NSApp.windows.first {
-      $0.identifier?.rawValue == "record-panel.capsule" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
-    })
+    let capsule = try XCTUnwrap(
+      NSApp.windows.first {
+        $0.identifier?.rawValue == "record-panel.capsule" && $0.isVisible && !existingWindowNumbers.contains($0.windowNumber)
+      })
     let frame = capsule.frame
     func handle(in view: NSView) -> NSView? {
       if view.accessibilityIdentifier() == "record-panel.move-and-open" { return view }

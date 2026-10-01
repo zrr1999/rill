@@ -375,9 +375,10 @@ final class AppModelSettingsSaveStateTests: XCTestCase {
       settingsWriteDebounceDuration: .zero
     )
     await harness.model.waitForInitialVoiceConfiguration()
-    harness.model.applyLanguage(harness.model.settings.language == .english
-      ? .simplifiedChinese
-      : .english)
+    harness.model.applyLanguage(
+      harness.model.settings.language == .english
+        ? .simplifiedChinese
+        : .english)
 
     let drainTask = Task {
       await harness.model.drainPendingSettingsWritesForApplicationShutdown { delay in

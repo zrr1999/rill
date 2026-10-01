@@ -43,35 +43,44 @@ public struct RecordBufferDraftView: View {
 
   public var body: some View {
     content
-    .accessibilityIdentifier("record-buffer.drafts")
-    .alert(text(.removeThisPendingItem), isPresented: $showsDiscard) {
-      Button(text(.remove), role: .destructive) { model.discardSelected() }
-      Button(text(.cancel), role: .cancel) {}
-    } message: {
-      Text(text(.draftEditsWillBeDiscarded))
-    }
-    .sheet(isPresented: $showsCollectionControls) {
-      VStack(alignment: .leading, spacing: 16) {
-        Text(panelText(.draftSources)).font(.headline)
-        collectionControls
-        HStack { Spacer(); Button(panelText(.done)) { showsCollectionControls = false } }
-      }.padding(20).frame(width: 560)
-    }
-    .sheet(isPresented: $showsDetails) {
-      VStack(alignment: .leading, spacing: 0) {
-        if let session = model.session { ScrollView { draftDetails(session) } }
-        HStack { Spacer(); Button(panelText(.done)) { showsDetails = false } }.padding(12)
-      }.frame(width: 520, height: 340)
-    }
-    .sheet(isPresented: $showsFailure) {
-      VStack(alignment: .leading, spacing: 16) {
-        if let failure = model.failure {
-          Text(failureText(failure))
-          failureActions(failure)
-        }
-        HStack { Spacer(); Button(panelText(.done)) { showsFailure = false } }
-      }.padding(20).frame(width: 440)
-    }
+      .accessibilityIdentifier("record-buffer.drafts")
+      .alert(text(.removeThisPendingItem), isPresented: $showsDiscard) {
+        Button(text(.remove), role: .destructive) { model.discardSelected() }
+        Button(text(.cancel), role: .cancel) {}
+      } message: {
+        Text(text(.draftEditsWillBeDiscarded))
+      }
+      .sheet(isPresented: $showsCollectionControls) {
+        VStack(alignment: .leading, spacing: 16) {
+          Text(panelText(.draftSources)).font(.headline)
+          collectionControls
+          HStack {
+            Spacer()
+            Button(panelText(.done)) { showsCollectionControls = false }
+          }
+        }.padding(20).frame(width: 560)
+      }
+      .sheet(isPresented: $showsDetails) {
+        VStack(alignment: .leading, spacing: 0) {
+          if let session = model.session { ScrollView { draftDetails(session) } }
+          HStack {
+            Spacer()
+            Button(panelText(.done)) { showsDetails = false }
+          }.padding(12)
+        }.frame(width: 520, height: 340)
+      }
+      .sheet(isPresented: $showsFailure) {
+        VStack(alignment: .leading, spacing: 16) {
+          if let failure = model.failure {
+            Text(failureText(failure))
+            failureActions(failure)
+          }
+          HStack {
+            Spacer()
+            Button(panelText(.done)) { showsFailure = false }
+          }
+        }.padding(20).frame(width: 440)
+      }
   }
 
   private var content: some View {
@@ -81,24 +90,30 @@ public struct RecordBufferDraftView: View {
           HStack(spacing: 4) {
             Text(panelText(.draftList)).font(.system(size: 11)).foregroundStyle(.secondary)
             Spacer(minLength: 0)
-            Button { model.newItem() } label: {
+            Button {
+              model.newItem()
+            } label: {
               Label(panelText(.newItem), systemImage: RillSystemSymbol.plus.rawValue)
                 .font(.system(size: 11))
             }
-              .buttonStyle(.plain).foregroundStyle(.secondary)
-              .help(panelText(.newDraft))
-              .accessibilityLabel(panelText(.newDraft))
-              .accessibilityIdentifier("record-buffer.new")
-              .disabled(model.isBusy || model.session?.hasMarkedText == true)
+            .buttonStyle(.plain).foregroundStyle(.secondary)
+            .help(panelText(.newDraft))
+            .accessibilityLabel(panelText(.newDraft))
+            .accessibilityIdentifier("record-buffer.new")
+            .disabled(model.isBusy || model.session?.hasMarkedText == true)
             Menu {
-              Button(isRecording ? text(.finishRecording) : text(.recordNewItem),
-                     action: model.dictateNewItem)
-                .disabled(model.isBusy || model.session?.hasMarkedText == true || (voice.isRunning && !isRecording))
+              Button(
+                isRecording ? text(.finishRecording) : text(.recordNewItem),
+                action: model.dictateNewItem
+              )
+              .disabled(model.isBusy || model.session?.hasMarkedText == true || (voice.isRunning && !isRecording))
               Button(panelText(.configureDraftSources)) { showsCollectionControls = true }
               Divider()
               Button(text(.remove), role: .destructive) { showsDiscard = true }
                 .disabled(model.selectedID == nil || model.isBusy || model.session?.hasMarkedText == true)
-            } label: { Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue) }
+            } label: {
+              Image(systemName: RillSystemSymbol.ellipsisCircle.rawValue)
+            }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 22)
             .foregroundStyle(.secondary)
             .accessibilityLabel(panelText(.draftOptions))
@@ -127,13 +142,17 @@ public struct RecordBufferDraftView: View {
   private var footer: some View {
     HStack(spacing: 8) {
       if let failure = model.failure {
-        Button { showsFailure = true } label: {
+        Button {
+          showsFailure = true
+        } label: {
           Label(failureText(failure), systemImage: RillSystemSymbol.exclamationmarkCircle.rawValue).lineLimit(1)
         }.buttonStyle(.plain).foregroundStyle(.red).help(failureText(failure))
       } else {
-        Text(model.targetName.map { text(.sendTo) + $0 }
-          ?? panelText(.sendWhenReady))
-          .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+        Text(
+          model.targetName.map { text(.sendTo) + $0 }
+            ?? panelText(.sendWhenReady)
+        )
+        .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
       }
       Spacer(minLength: 0)
       Button(panelText(.doneEditing), action: onFinishEditing)
@@ -161,18 +180,24 @@ public struct RecordBufferDraftView: View {
   private var collectionControls: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 24) {
-        Toggle(text(.collectVoiceInDrafts), isOn: Binding(
-          get: { settings.builtinPushToTalkOutputMode == .saveToVoiceGroup },
-          set: { setVoiceCollection($0) }))
-          .disabled(!settings.canMutateScalarSettings(in: .input))
-          .help(text(.whenOffFnDictationTypes))
-          .accessibilityIdentifier("record-buffer.collect-voice")
-        Toggle(text(.collectClipboardInDrafts), isOn: Binding(
-          get: { settings.systemClipboardCaptureEnabled },
-          set: { setClipboardCollection($0) }))
-          .disabled(!settings.canMutateScalarSettings(in: .systemClipboard))
-          .help(text(.collectsNewCopiesAfterEnabling))
-          .accessibilityIdentifier("record-buffer.collect-clipboard")
+        Toggle(
+          text(.collectVoiceInDrafts),
+          isOn: Binding(
+            get: { settings.builtinPushToTalkOutputMode == .saveToVoiceGroup },
+            set: { setVoiceCollection($0) })
+        )
+        .disabled(!settings.canMutateScalarSettings(in: .input))
+        .help(text(.whenOffFnDictationTypes))
+        .accessibilityIdentifier("record-buffer.collect-voice")
+        Toggle(
+          text(.collectClipboardInDrafts),
+          isOn: Binding(
+            get: { settings.systemClipboardCaptureEnabled },
+            set: { setClipboardCollection($0) })
+        )
+        .disabled(!settings.canMutateScalarSettings(in: .systemClipboard))
+        .help(text(.collectsNewCopiesAfterEnabling))
+        .accessibilityIdentifier("record-buffer.collect-clipboard")
         Spacer(minLength: 0)
       }
       .toggleStyle(.checkbox)
@@ -191,12 +216,16 @@ public struct RecordBufferDraftView: View {
             VStack(alignment: .leading, spacing: 5) {
               Text(item.state == .preparing ? text(.recognizing) : preview(item))
                 .font(.system(size: 12, weight: .medium)).lineLimit(1)
-              Text(bufferName(summary.buffer) + " · " +
-                (item.suggestionCount > 0 ? text(.resultToReview)
-                 : item.hasEdits ? text(.edited)
-                 : item.state != .ready ? text(.inProgress) : policyName(summary.buffer.policy))
-                + (summary.buffer.isEnabled ? "" : text(.disabledSuffix)))
-                .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+              Text(
+                bufferName(summary.buffer) + " · "
+                  + (item.suggestionCount > 0
+                    ? text(.resultToReview)
+                    : item.hasEdits
+                      ? text(.edited)
+                      : item.state != .ready ? text(.inProgress) : policyName(summary.buffer.policy))
+                  + (summary.buffer.isEnabled ? "" : text(.disabledSuffix))
+              )
+              .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
             }
             .frame(maxWidth: .infinity, minHeight: 43, alignment: .leading)
             .padding(.vertical, 5)
@@ -208,14 +237,19 @@ public struct RecordBufferDraftView: View {
     }
     .listStyle(.inset)
     .scrollContentBackground(.hidden)
-    .onKeyPress(.return) { model.send(); return .handled }
+    .onKeyPress(.return) {
+      model.send()
+      return .handled
+    }
     .disabled(model.isBusy || model.session?.hasMarkedText == true)
     .overlay {
       if visibleItems.isEmpty {
-        Text(query.isEmpty
-             ? text(.createADraftOrCollect)
-             : panelText(.noMatchingDrafts))
-          .foregroundStyle(.secondary).multilineTextAlignment(.center).padding()
+        Text(
+          query.isEmpty
+            ? text(.createADraftOrCollect)
+            : panelText(.noMatchingDrafts)
+        )
+        .foregroundStyle(.secondary).multilineTextAlignment(.center).padding()
       }
     }
   }
@@ -230,10 +264,12 @@ public struct RecordBufferDraftView: View {
         HStack(alignment: .top, spacing: 12) {
           VStack(alignment: .leading, spacing: 4) {
             Text(text(.editText)).font(.system(size: 17, weight: .medium)).lineLimit(1)
-            Text(model.buffers.first(where: { $0.id == session.entryID.bufferID }).map {
-              bufferName($0.buffer) + " · " + policyName($0.buffer.policy)
-            } ?? panelText(.drafts))
-              .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            Text(
+              model.buffers.first(where: { $0.id == session.entryID.bufferID }).map {
+                bufferName($0.buffer) + " · " + policyName($0.buffer.policy)
+              } ?? panelText(.drafts)
+            )
+            .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
           }
           Spacer(minLength: 0)
           Button(action: model.dictateHere) {
@@ -243,10 +279,12 @@ public struct RecordBufferDraftView: View {
           .buttonStyle(.plain).foregroundStyle(.secondary).padding(.top, 4)
           .disabled(model.isBusy || voice.isRunning || session.hasMarkedText)
         }.padding(.horizontal, 22).padding(.top, 18).frame(height: 72, alignment: .top)
-        BufferDraftTextEditor(model: model, session: session,
-                              accessibilityLabel: text(.pendingText))
-          .id(session.id)
-          .frame(minHeight: 48)
+        BufferDraftTextEditor(
+          model: model, session: session,
+          accessibilityLabel: text(.pendingText)
+        )
+        .id(session.id)
+        .frame(minHeight: 48)
         HStack {
           saveState(session)
           Spacer(minLength: 8)
@@ -272,8 +310,10 @@ public struct RecordBufferDraftView: View {
       if !model.isSaving && !session.hasUnsavedChanges {
         Image(systemName: RillSystemSymbol.checkmark.rawValue)
       }
-      Text(model.isSaving ? text(.saving)
-        : session.hasUnsavedChanges ? text(.unsaved) : text(.saved))
+      Text(
+        model.isSaving
+          ? text(.saving)
+          : session.hasUnsavedChanges ? text(.unsaved) : text(.saved))
     }.font(.system(size: 11)).foregroundStyle(.secondary)
   }
 
@@ -323,7 +363,9 @@ public struct RecordBufferDraftView: View {
   private func diffText(original: String, edited: String) -> Text {
     BufferTextDiff(original: original, edited: edited).segments.reduce(Text("")) { result, segment in
       let part = Text(segment.text)
-      let styled = segment.kind == .removed ? part.strikethrough().foregroundColor(.red)
+      let styled =
+        segment.kind == .removed
+        ? part.strikethrough().foregroundColor(.red)
         : segment.kind == .inserted ? part.underline().foregroundColor(.accentColor) : part
       return Text("\(result)\(styled)")
     }
@@ -335,7 +377,8 @@ public struct RecordBufferDraftView: View {
     return buffer.name
   }
   private func preview(_ item: BufferItemSummary) -> String {
-    let preview = model.session?.entryID == item.id
+    let preview =
+      model.session?.entryID == item.id
       ? RecordTextFormatting.previewText(model.session?.text ?? "", limit: 160) : item.preview
     return preview.isEmpty ? text(.emptyDraft) : preview
   }

@@ -121,9 +121,12 @@ struct JevTextPolishingGateTests {
   @Test func privacyRevocationDuringPredictionCancelsInsteadOfRewriting() async throws {
     let fixture = fixture()
     PolishingURLProtocol.state.withLock {
-      $0.onRequest = { fixture.privacy.update(.init(sensitiveAppRules: [
-        .init(bundleIdentifier: "example.source", blocksCloudProcessing: true)
-      ])) }
+      $0.onRequest = {
+        fixture.privacy.update(
+          .init(sensitiveAppRules: [
+            .init(bundleIdentifier: "example.source", blocksCloudProcessing: true)
+          ]))
+      }
     }
     await #expect(throws: CancellationError.self) {
       try await fixture.gate.shouldSkip(text: "text", step: step, context: context())
@@ -173,22 +176,27 @@ struct JevTextPolishingGateTests {
   private var step: PostProcessStep { .init(kind: .llmRewrite, prompt: "Correct clear errors; preserve meaning and language.") }
 
   private func context() -> TransformContext {
-    let workflow = WorkflowDefinition(name: "Cleanup",
+    let workflow = WorkflowDefinition(
+      name: "Cleanup",
       pipeline: .init(recognizerID: "local-speech", postProcessSteps: [step], outputActions: [.init(id: "record.store")]),
       ui: .init(symbolName: "sparkles", accentColorName: "purple"),
       metadata: [WorkflowMetadataKey.builtinKind: "push-to-talk.polish"])
-    return .init(runID: UUID(), workflow: workflow,
-      contextSnapshot: .init(focus: Self.focus("example.source"),
+    return .init(
+      runID: UUID(), workflow: workflow,
+      contextSnapshot: .init(
+        focus: Self.focus("example.source"),
         clipboard: .init(plainText: "private-clipboard", changeCount: 0)),
       recognitionResult: .init(rawText: "text", bestText: "text"))
   }
 
   private static func focus(_ bundle: String) -> FocusSnapshot {
-    .init(applicationName: "Editor", bundleIdentifier: bundle, processIdentifier: 123,
+    .init(
+      applicationName: "Editor", bundleIdentifier: bundle, processIdentifier: 123,
       focusedRole: nil, selectedText: "private-selected-text", secureInput: false)
   }
 
-  private func fixture(response: String = response((0.01, 0.01, 0.98, 0.99)), status: Int = 200,
+  private func fixture(
+    response: String = response((0.01, 0.01, 0.98, 0.99)), status: Int = 200,
     timeout: Duration = .seconds(2), stalls: Bool = false
   ) -> (gate: JevTextPolishingGate, settings: JevSessionSettingsSource, privacy: PrivacyPolicySettingsSource) {
     PolishingURLProtocol.state.withLock { $0 = .init(response: response, status: status, stalls: stalls) }
@@ -198,7 +206,8 @@ struct JevTextPolishingGateTests {
     try! settings.setKey("unit-test-key")
     settings.setPolishingEnabled(true)
     let privacy = PrivacyPolicySettingsSource(initialSettings: .defaults)
-    let gate = JevTextPolishingGate(settings: settings, privacy: privacy,
+    let gate = JevTextPolishingGate(
+      settings: settings, privacy: privacy,
       currentFocus: { Self.focus("example.target") }, client: .init(session: URLSession(configuration: configuration)),
       timeout: timeout)
     return (gate, settings, privacy)

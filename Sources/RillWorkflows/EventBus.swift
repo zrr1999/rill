@@ -22,8 +22,7 @@ private enum EventBusCoalescingDisposition: Sendable {
 
 private final class EventBusBufferedChannel<Element: Sendable>: @unchecked Sendable {
   private let lock = NSLock()
-  private let coalescingDisposition:
-    @Sendable (_ incoming: Element) -> EventBusCoalescingDisposition
+  private let coalescingDisposition: @Sendable (_ incoming: Element) -> EventBusCoalescingDisposition
   private let capacity: Int
   private let diagnosticCapacity: Int
   private var pending: [(Element, EventBusAdmission)] = []

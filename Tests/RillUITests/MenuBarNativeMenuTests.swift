@@ -19,9 +19,10 @@ final class MenuBarNativeMenuTests: XCTestCase {
       )
       menu.update()
 
-      let firstAction = try XCTUnwrap(menu.items.firstIndex {
-        $0.title == L10n.string(.menuOpenDrafts, language: language)
-      })
+      let firstAction = try XCTUnwrap(
+        menu.items.firstIndex {
+          $0.title == L10n.string(.menuOpenDrafts, language: language)
+        })
       let actions = menu.items[firstAction...].filter { !$0.isSeparatorItem }
       XCTAssertEqual(actions.count, 11)
       for item in actions {
@@ -31,11 +32,13 @@ final class MenuBarNativeMenuTests: XCTestCase {
       let settings = actions.filter { $0.title == L10n.text(.settingsTitle, language: language) }
       XCTAssertEqual(settings.count, 1)
       XCTAssertEqual(settings.first?.keyEquivalent, ",")
-      XCTAssertEqual(actions.prefix(3).map(\.title), [
-        L10n.string(.menuOpenDrafts, language: language),
-        L10n.workspace(.allRecords, language: language),
-        L10n.text(.sidebarStream, language: language),
-      ])
+      XCTAssertEqual(
+        actions.prefix(3).map(\.title),
+        [
+          L10n.string(.menuOpenDrafts, language: language),
+          L10n.workspace(.allRecords, language: language),
+          L10n.text(.sidebarStream, language: language),
+        ])
       await model.recordWorkspace.shutdown()
     }
   }

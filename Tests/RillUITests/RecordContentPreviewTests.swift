@@ -53,10 +53,14 @@ struct RecordContentPreviewTests {
 
   @Test func previewFollowsSelectionWithoutMutatingRecordsAndClosesDuringLoad() async throws {
     let store = RecordStore()
-    let image = try await store.ingest(.init(payload: .image(try RecordPreviewFixture.imageData()),
-      provenance: .init(source: .init(kind: .systemClipboard))), into: [])
-    let file = try await store.ingest(.init(payload: .files([URL(fileURLWithPath: "/tmp/rill-preview.txt")]),
-      provenance: .init(source: .init(kind: .systemClipboard))), into: [])
+    let image = try await store.ingest(
+      .init(
+        payload: .image(try RecordPreviewFixture.imageData()),
+        provenance: .init(source: .init(kind: .systemClipboard))), into: [])
+    let file = try await store.ingest(
+      .init(
+        payload: .files([URL(fileURLWithPath: "/tmp/rill-preview.txt")]),
+        provenance: .init(source: .init(kind: .systemClipboard))), into: [])
     let before = try await store.catalogSnapshot()
     let panel = RecordQuickPanelModel(store: store)
     panel.start(sourceBundleIdentifier: nil)
@@ -106,9 +110,11 @@ struct RecordContentPreviewTests {
 
 enum RecordPreviewFixture {
   static func imageData(width: Int = 960, height: Int = 540) throws -> Data {
-    let context = try #require(CGContext(data: nil, width: width, height: height,
-      bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    let context = try #require(
+      CGContext(
+        data: nil, width: width, height: height,
+        bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
     context.setFillColor(CGColor(red: 0.06, green: 0.22, blue: 0.31, alpha: 1))
     context.fill(CGRect(x: 0, y: 0, width: width, height: height))
     context.setFillColor(CGColor(red: 0.16, green: 0.79, blue: 0.72, alpha: 1))

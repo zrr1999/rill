@@ -7,8 +7,10 @@ public struct PreparedRecognitionContext: Sendable {
   public let plan: ResolvedWorkflowPlan
   public let hotwordPreparation: HotwordRankingPreparation?
 
-  public init(options: SpeechRecognitionRequestOptions, plan: ResolvedWorkflowPlan,
-    hotwordPreparation: HotwordRankingPreparation? = nil) {
+  public init(
+    options: SpeechRecognitionRequestOptions, plan: ResolvedWorkflowPlan,
+    hotwordPreparation: HotwordRankingPreparation? = nil
+  ) {
     self.options = options
     self.plan = plan
     self.hotwordPreparation = hotwordPreparation
@@ -22,9 +24,11 @@ public struct LiveRecognitionContextResolver: Sendable {
   private let sanitize: @Sendable ([String]) -> [String]
   private let report: @Sendable (DiagnosticEvent) async -> Void
 
-  public init(compiler: WorkflowPlanCompiler, collections: @escaping @Sendable () throws -> [VocabularyCollection],
+  public init(
+    compiler: WorkflowPlanCompiler, collections: @escaping @Sendable () throws -> [VocabularyCollection],
     selection: HotwordSelection, sanitize: @escaping @Sendable ([String]) -> [String],
-    report: @escaping @Sendable (DiagnosticEvent) async -> Void = { _ in }) {
+    report: @escaping @Sendable (DiagnosticEvent) async -> Void = { _ in }
+  ) {
     self.compiler = compiler
     self.collections = collections
     self.selection = selection
@@ -32,11 +36,15 @@ public struct LiveRecognitionContextResolver: Sendable {
     self.report = report
   }
 
-  public func prepare(runID: UUID, workflow: WorkflowDefinition, context: ContextSnapshot,
-    options: SpeechRecognitionRequestOptions, lifetime: AudioCaptureLifetime) async throws -> PreparedRecognitionContext {
-    let vocabulary = try options.vocabulary?.collections
+  public func prepare(
+    runID: UUID, workflow: WorkflowDefinition, context: ContextSnapshot,
+    options: SpeechRecognitionRequestOptions, lifetime: AudioCaptureLifetime
+  ) async throws -> PreparedRecognitionContext {
+    let vocabulary =
+      try options.vocabulary?.collections
       ?? (workflow.plan.setup.vocabularyBindings.isEmpty ? [] : collections())
-    let scope = VocabularyRuleContext(contextSnapshot: context,
+    let scope = VocabularyRuleContext(
+      contextSnapshot: context,
       recordCollectionID: workflow.legacyTargetRecordCollectionID,
       locale: options.language ?? workflow.plan.setup.speechRoute?.language
         ?? workflow.metadata[WorkflowMetadataKey.languageOverride])
@@ -45,15 +53,21 @@ public struct LiveRecognitionContextResolver: Sendable {
     var frozenOptions = options
     var preparation: HotwordRankingPreparation?
     if plan.recognizerAcceptsHotwords, options.modelID != nil {
-      let selected = (try? await selection.select(runID: runID, workflow: workflow, collections: vocabulary,
-        context: context, options: options, candidates: candidates, lifetime: lifetime))
+      let selected =
+        (try? await selection.select(
+          runID: runID, workflow: workflow, collections: vocabulary,
+          context: context, options: options, candidates: candidates, lifetime: lifetime))
         ?? HotwordSelection.Selection(terms: plan.recognitionHints.keyterms, status: .unavailable, preparation: nil)
       plan.recognitionHints = RecognitionHints(keyterms: sanitize(selected.terms))
       preparation = selected.preparation
-      await report(DiagnosticEvent(runID: runID, subsystem: .session, level: .debug,
-        event: .hotwordRankingSelected, message: "Recognition hotwords frozen.",
-        metadata: ["hotwordCache": selected.status.rawValue, "hotwordCandidateCount": String(candidates.count),
-          "hotwordCount": String(plan.recognitionHints.keyterms.count)]))
+      await report(
+        DiagnosticEvent(
+          runID: runID, subsystem: .session, level: .debug,
+          event: .hotwordRankingSelected, message: "Recognition hotwords frozen.",
+          metadata: [
+            "hotwordCache": selected.status.rawValue, "hotwordCandidateCount": String(candidates.count),
+            "hotwordCount": String(plan.recognitionHints.keyterms.count),
+          ]))
     }
     frozenOptions.hints = plan.recognitionHints
     return PreparedRecognitionContext(options: frozenOptions, plan: plan, hotwordPreparation: preparation)

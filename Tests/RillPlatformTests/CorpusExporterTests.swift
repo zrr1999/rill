@@ -16,8 +16,10 @@ struct CorpusExporterTests {
     #expect(Set(files) == [selected.uuidString + ".wav", "README.txt", "corpus.json"])
     #expect(try mode(directory) == 0o700)
     for file in files { #expect(try mode(directory.appendingPathComponent(file)) == 0o600) }
-    let manifest = try #require(JSONSerialization.jsonObject(with:
-      Data(contentsOf: directory.appendingPathComponent("corpus.json"))) as? [String: Any])
+    let manifest = try #require(
+      JSONSerialization.jsonObject(
+        with:
+          Data(contentsOf: directory.appendingPathComponent("corpus.json"))) as? [String: Any])
     #expect(manifest["evidence_kind"] as? String == "synthetic")
     let entry = try #require((manifest["cases"] as? [[String: Any]])?.first)
     #expect(entry["split"] as? String == "validation")
@@ -88,7 +90,8 @@ struct CorpusExporterTests {
     init() throws {
       exports = directory.appendingPathComponent("exports")
       try FileManager.default.createDirectory(at: exports, withIntermediateDirectories: true)
-      archive = try EncryptedCorpusRecordingArchiveStore(directoryURL: directory.appendingPathComponent("encrypted"),
+      archive = try EncryptedCorpusRecordingArchiveStore(
+        directoryURL: directory.appendingPathComponent("encrypted"),
         localDataProtector: AESGCMDataProtector(key: Data(repeating: 7, count: AESGCMDataProtector.keyByteCount)))
     }
     func preserve() async throws -> UUID {
@@ -96,8 +99,10 @@ struct CorpusExporterTests {
       let url = FileManager.default.temporaryDirectory.appendingPathComponent("rill-replay-test-" + id.uuidString + ".wav")
       try audioBytes.write(to: url)
       defer { try? FileManager.default.removeItem(at: url) }
-      let audio = try CapturedAudio(durationSeconds: 1, format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16), fileURL: url, fileOwnership: .managedTemporary)
-      _ = try await archive.preserve(audio: audio, runID: id, workflowID: UUID(), trigger: .hotkey,
+      let audio = try CapturedAudio(
+        durationSeconds: 1, format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16), fileURL: url, fileOwnership: .managedTemporary)
+      _ = try await archive.preserve(
+        audio: audio, runID: id, workflowID: UUID(), trigger: .hotkey,
         outcome: .completed, metadata: ["private": "not exported"], now: Date())
       return id
     }
@@ -111,13 +116,17 @@ private actor ReadGate: CorpusRecordingArchiveReading {
   var waiting: CheckedContinuation<Void, Never>?
   var entered = false
   var observers: [CheckedContinuation<Void, Never>] = []
-  init(archive: EncryptedCorpusRecordingArchiveStore, delayed: UUID) { self.archive = archive; self.delayed = delayed }
+  init(archive: EncryptedCorpusRecordingArchiveStore, delayed: UUID) {
+    self.archive = archive
+    self.delayed = delayed
+  }
   func recordingIDs() async throws -> [UUID] { try await archive.recordingIDs() }
   func receipt(runID: UUID) async throws -> CorpusRecordingReceipt { try await archive.receipt(runID: runID) }
   func recording(runID: UUID) async throws -> CorpusRecording {
     if runID == delayed {
       entered = true
-      observers.forEach { $0.resume() }; observers = []
+      observers.forEach { $0.resume() }
+      observers = []
       await withCheckedContinuation { waiting = $0 }
     }
     return try await archive.recording(runID: runID)
@@ -126,5 +135,8 @@ private actor ReadGate: CorpusRecordingArchiveReading {
     if entered { return }
     await withCheckedContinuation { observers.append($0) }
   }
-  func release() { waiting?.resume(); waiting = nil }
+  func release() {
+    waiting?.resume()
+    waiting = nil
+  }
 }

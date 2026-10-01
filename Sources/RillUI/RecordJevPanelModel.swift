@@ -87,8 +87,7 @@ public final class RecordJevPanelModel {
     let version = generation
     tasks[id] = Task { [weak self] in
       defer { self?.tasks.removeValue(forKey: id) }
-      do { try await operation() }
-      catch {
+      do { try await operation() } catch {
         guard !Task.isCancelled, let self, self.generation == version else { return }
         self.state = .failed((error as? RecordRankingError) ?? .unavailable)
       }

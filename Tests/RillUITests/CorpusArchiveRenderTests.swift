@@ -17,12 +17,15 @@ final class CorpusArchiveRenderTests: XCTestCase {
       for dark in [false, true] {
         let settings = SettingsPersistenceModel(store: nil, language: language, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
         settings.isLoading = false
-        let model = CorpusRecordingArchiveModel(settings: settings, store: nil,
+        let model = CorpusRecordingArchiveModel(
+          settings: settings, store: nil,
           reader: RenderArchive(), exporter: nil, refresh: { _ in }, clear: {})
-        let view = NSHostingView(rootView: CorpusRecordingArchiveSheet(model: model, language: language)
-          .environment(\.colorScheme, dark ? .dark : .light)
-          .background(Color(nsColor: .windowBackgroundColor)))
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 670, height: 590),
+        let view = NSHostingView(
+          rootView: CorpusRecordingArchiveSheet(model: model, language: language)
+            .environment(\.colorScheme, dark ? .dark : .light)
+            .background(Color(nsColor: .windowBackgroundColor)))
+        let window = NSWindow(
+          contentRect: NSRect(x: 0, y: 0, width: 670, height: 590),
           styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -52,7 +55,8 @@ private struct RenderArchive: CorpusRecordingArchiveReading {
   let ids = (0..<3).map { _ in UUID() }
   func recordingIDs() async throws -> [UUID] { ids }
   func receipt(runID: UUID) async throws -> CorpusRecordingReceipt {
-    .init(runID: runID, workflowID: UUID(), createdAt: Date(timeIntervalSince1970: 1_790_292_600),
+    .init(
+      runID: runID, workflowID: UUID(), createdAt: Date(timeIntervalSince1970: 1_790_292_600),
       durationSeconds: 12.5, format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16),
       plaintextByteCount: 400_000, trigger: .hotkey, outcome: .completed, metadata: [:])
   }

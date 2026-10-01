@@ -127,27 +127,38 @@ public struct RecordQuickPanelView: View {
         VStack(spacing: 9) {
           HStack(spacing: 4) {
             Menu {
-              Picker(panelText(.collection), selection: Binding(
-                get: { model.collectionID }, set: { model.setCollection($0) })) {
+              Picker(
+                panelText(.collection),
+                selection: Binding(
+                  get: { model.collectionID }, set: { model.setCollection($0) })
+              ) {
                 Text(panelText(.allRecords)).tag(RecordCollectionID?.none)
                 ForEach(model.collections) { Text($0.name).tag(Optional($0.id)) }
               }.pickerStyle(.inline)
             } label: {
-              Text(model.collections.first(where: { $0.id == model.collectionID })?.name
-                ?? panelText(.allRecords)).lineLimit(1)
+              Text(
+                model.collections.first(where: { $0.id == model.collectionID })?.name
+                  ?? panelText(.allRecords)
+              ).lineLimit(1)
             }
             .menuStyle(.borderlessButton).font(.system(size: 11)).foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityIdentifier("quick-records.collection")
-            Button { showsFilters = true } label: { Image(systemName: RillSystemSymbol.sliderHorizontal3.rawValue) }
-              .buttonStyle(.borderless).font(.system(size: 12)).frame(width: 28, height: 28)
-              .foregroundStyle(.secondary)
-              .accessibilityLabel(panelText(.searchAndFilterOptions))
+            Button {
+              showsFilters = true
+            } label: {
+              Image(systemName: RillSystemSymbol.sliderHorizontal3.rawValue)
+            }
+            .buttonStyle(.borderless).font(.system(size: 12)).frame(width: 28, height: 28)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel(panelText(.searchAndFilterOptions))
           }.controlSize(.small).frame(height: 25).padding(.horizontal, 13).padding(.top, 10)
-          RecordSearchField(text: Binding(get: { model.searchText }, set: { model.setSearchText($0) }),
+          RecordSearchField(
+            text: Binding(get: { model.searchText }, set: { model.setSearchText($0) }),
             placeholder: text(.search), onMove: model.moveSelection, onSubmit: pasteSelection,
-            onDigit: { if let subject = model.subject(at: $0) { onPaste(subject) } }, onCancel: onClose)
-            .padding(.horizontal, 6).recordPanelSearchSurface().padding(.horizontal, 9)
+            onDigit: { if let subject = model.subject(at: $0) { onPaste(subject) } }, onCancel: onClose
+          )
+          .padding(.horizontal, 6).recordPanelSearchSurface().padding(.horizontal, 9)
           resultList
         }.frame(width: RecordPanelAppearance.sidebarWidth)
           .recordPanelGlass(in: RecordPanelAppearance.paneShape)
@@ -201,7 +212,9 @@ public struct RecordQuickPanelView: View {
           if let id = model.selectedID { model.buffers.enqueue(id, bufferID: summary.id) }
         }
       }
-    } label: { Text(panelText(.addToDrafts)) }
+    } label: {
+      Text(panelText(.addToDrafts))
+    }
     .menuStyle(.borderlessButton).menuIndicator(.hidden)
     .font(.system(size: 12)).foregroundStyle(Color.accentColor).frame(height: 32)
     .disabled(model.selectedID == nil)
@@ -225,18 +238,22 @@ public struct RecordQuickPanelView: View {
           .disabled(!model.canCompareWithJev)
           .accessibilityIdentifier("records.jev-review")
           .sheet(isPresented: Binding(get: { jev.isPresented }, set: { if !$0 { jev.invalidate() } })) {
-            RecordJevSheet(model: jev, language: language, onSelect: model.selectJevCandidate,
+            RecordJevSheet(
+              model: jev, language: language, onSelect: model.selectJevCandidate,
               onConfigure: onConfigureJev, onRetry: model.compareWithJev)
           }
       }
       RecordCapacityView(capacity: model.capacity, language: language) {
         Task { await model.cleanup.request() }
       }
-      HStack { Spacer(); Button(panelText(.done)) { showsFilters = false } }
+      HStack {
+        Spacer()
+        Button(panelText(.done)) { showsFilters = false }
+      }
     }.padding(20).frame(width: 440)
-    .sheet(isPresented: Binding(get: { model.cleanup.plan != nil }, set: { if !$0 { model.cleanup.cancel() } })) {
-      RecordCleanupSheet(model: model.cleanup, language: language)
-    }
+      .sheet(isPresented: Binding(get: { model.cleanup.plan != nil }, set: { if !$0 { model.cleanup.cancel() } })) {
+        RecordCleanupSheet(model: model.cleanup, language: language)
+      }
   }
 
   private var contentPreview: some View {
@@ -260,8 +277,11 @@ public struct RecordQuickPanelView: View {
       } else {
         VStack {
           Spacer()
-          if model.isLoadingPreview || model.isSearching { ProgressView().controlSize(.small) }
-          else { Text(text(.recordUnavailable)).font(.system(size: 12)).foregroundStyle(.secondary) }
+          if model.isLoadingPreview || model.isSearching {
+            ProgressView().controlSize(.small)
+          } else {
+            Text(text(.recordUnavailable)).font(.system(size: 12)).foregroundStyle(.secondary)
+          }
           Spacer()
         }
       }
@@ -269,35 +289,35 @@ public struct RecordQuickPanelView: View {
   }
 
   private var resultList: some View {
-      ScrollViewReader { proxy in
-        List(selection: Binding(get: { model.selectedID }, set: { model.select($0) })) {
-          ForEach(Array(model.results.enumerated()), id: \.element.id) { index, item in
-            selectableRow(item, index: index)
-          }
-          if model.nextOffset != nil {
-            Button(text(.loadMore)) { model.loadMore() }.disabled(model.isSearching)
-          }
-          if !model.additionalSemanticResults.isEmpty {
-            Section(text(.semanticCandidates)) {
-              ForEach(Array(model.additionalSemanticResults.enumerated()), id: \.element.id) { index, item in
-                selectableRow(item, index: model.results.count + index)
-              }
+    ScrollViewReader { proxy in
+      List(selection: Binding(get: { model.selectedID }, set: { model.select($0) })) {
+        ForEach(Array(model.results.enumerated()), id: \.element.id) { index, item in
+          selectableRow(item, index: index)
+        }
+        if model.nextOffset != nil {
+          Button(text(.loadMore)) { model.loadMore() }.disabled(model.isSearching)
+        }
+        if !model.additionalSemanticResults.isEmpty {
+          Section(text(.semanticCandidates)) {
+            ForEach(Array(model.additionalSemanticResults.enumerated()), id: \.element.id) { index, item in
+              selectableRow(item, index: model.results.count + index)
             }
           }
         }
-        .listStyle(.inset)
-        .scrollContentBackground(.hidden)
-        .overlay {
-          if model.selectableResults.isEmpty && !model.isSearching && model.semanticState != .working {
-            ContentUnavailableView(
-              model.searchText.isEmpty ? text(.noRecords) : text(.noResults),
-              systemImage: RillSystemSymbol.tray.rawValue)
-          }
-        }
-        .onChange(of: model.selectedID) { _, id in
-          if let id { proxy.scrollTo(id) }
+      }
+      .listStyle(.inset)
+      .scrollContentBackground(.hidden)
+      .overlay {
+        if model.selectableResults.isEmpty && !model.isSearching && model.semanticState != .working {
+          ContentUnavailableView(
+            model.searchText.isEmpty ? text(.noRecords) : text(.noResults),
+            systemImage: RillSystemSymbol.tray.rawValue)
         }
       }
+      .onChange(of: model.selectedID) { _, id in
+        if let id { proxy.scrollTo(id) }
+      }
+    }
   }
 
   private var semanticControls: some View {
@@ -447,8 +467,7 @@ struct RecordSearchField: NSViewRepresentable {
       guard let field = notification.object as? NSSearchField else { return }
       parent.text = field.stringValue
     }
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool
-    {
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
       guard !textView.hasMarkedText() else { return false }
       switch selector {
       case #selector(NSResponder.moveUp(_:)): parent.onMove(-1)

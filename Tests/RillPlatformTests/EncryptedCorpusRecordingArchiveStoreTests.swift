@@ -13,17 +13,20 @@ final class EncryptedCorpusRecordingArchiveStoreTests: XCTestCase {
     let protector = try makeProtector(keyByte: 0x71)
     let runID = UUID()
     let audio = Data([0, 1, 2, 3])
-    let receipt = try JSONSerialization.data(withJSONObject: [
-      "schemaVersion": 1, "runID": runID.uuidString, "workflowID": UUID().uuidString,
-      "createdAt": 100, "durationSeconds": 1,
-      "format": ["sampleRateHz": 16000, "channelCount": 1, "encoding": "pcm16"],
-      "plaintextByteCount": audio.count, "trigger": "hotkey", "outcome": "completed", "metadata": [:],
-    ] as [String: Any])
-    let marker = try protector.seal(Data("Rill benchmark recording key verification v1".utf8),
+    let receipt = try JSONSerialization.data(
+      withJSONObject: [
+        "schemaVersion": 1, "runID": runID.uuidString, "workflowID": UUID().uuidString,
+        "createdAt": 100, "durationSeconds": 1,
+        "format": ["sampleRateHz": 16000, "channelCount": 1, "encoding": "pcm16"],
+        "plaintextByteCount": audio.count, "trigger": "hotkey", "outcome": "completed", "metadata": [:],
+      ] as [String: Any])
+    let marker = try protector.seal(
+      Data("Rill benchmark recording key verification v1".utf8),
       context: .init(namespace: "benchmark_recordings_key", recordID: "1", field: "key_verification"))
     try Data(marker.utf8).write(to: fixture.archiveDirectory.appendingPathComponent(".key-verification"))
     for (field, suffix, bytes) in [("audio", ".rillaudio", audio), ("receipt", ".rillmeta", receipt)] {
-      let protected = try protector.sealBinary(bytes,
+      let protected = try protector.sealBinary(
+        bytes,
         context: .init(namespace: "benchmark_recordings", recordID: runID.uuidString, field: field))
       try protected.write(to: fixture.archiveDirectory.appendingPathComponent(runID.uuidString + suffix))
     }
@@ -107,7 +110,8 @@ final class EncryptedCorpusRecordingArchiveStoreTests: XCTestCase {
     let audio = try makeAudio(bytes: Data([1, 2, 3]))
     defer { _ = try? audio.removeManagedTemporaryFile() }
     let runID = UUID()
-    _ = try await store.preserve(audio: audio, runID: runID, workflowID: UUID(),
+    _ = try await store.preserve(
+      audio: audio, runID: runID, workflowID: UUID(),
       trigger: .hotkey, outcome: .completed, metadata: [:], now: Date())
     let stored = fixture.archiveDirectory.appendingPathComponent(runID.uuidString + ".rillaudio")
     try Data("tampered".utf8).write(to: stored)

@@ -72,10 +72,12 @@ enum QwenStreamingText {
   /// an upstream decoder stops emitting the protocol marker.
   private static func isIncompleteQwenLanguageEnvelope(_ candidate: String) -> Bool {
     guard candidate.count <= 96 else { return false }
-    guard candidate.range(
-      of: #"(?i)^language(?:\s|$)"#,
-      options: .regularExpression
-    ) != nil else {
+    guard
+      candidate.range(
+        of: #"(?i)^language(?:\s|$)"#,
+        options: .regularExpression
+      ) != nil
+    else {
       return false
     }
     return candidate.range(

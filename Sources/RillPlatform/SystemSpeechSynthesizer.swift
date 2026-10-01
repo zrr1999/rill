@@ -131,8 +131,7 @@ private final class SystemSpeechWriteSession: @unchecked Sendable {
         )
       }
       finish(
-        result.map { .success($0) } ??
-          .failure(SystemSpeechSynthesisError.synthesisFailed)
+        result.map { .success($0) } ?? .failure(SystemSpeechSynthesisError.synthesisFailed)
       )
       return
     }
@@ -160,8 +159,7 @@ private final class SystemSpeechWriteSession: @unchecked Sendable {
   }
 
   private func finish(_ result: Swift.Result<Result, Error>) {
-    let continuation:
-      CheckedContinuation<Result, Error>? = lock.withLock {
+    let continuation: CheckedContinuation<Result, Error>? = lock.withLock {
       guard !completed else { return nil }
       completed = true
       outputFile = nil

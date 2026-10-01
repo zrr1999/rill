@@ -40,7 +40,8 @@ struct BufferDraftTextEditor: NSViewRepresentable {
     view.setAccessibilityIdentifier("record-buffer.editor")
     view.setAccessibilityLabel(accessibilityLabel)
     view.string = session.text
-    view.textStorage?.addAttribute(.paragraphStyle, value: paragraph,
+    view.textStorage?.addAttribute(
+      .paragraphStyle, value: paragraph,
       range: NSRange(location: 0, length: view.string.utf16.count))
     view.delegate = context.coordinator
     view.onSubmit = { [weak model] in model?.send() }
@@ -103,7 +104,8 @@ struct BufferDraftTextEditor: NSViewRepresentable {
 
     func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
       guard !textView.hasMarkedText(),
-        (textView as? BufferDraftTextView)?.eventStartedWithMarkedText != true else { return false }
+        (textView as? BufferDraftTextView)?.eventStartedWithMarkedText != true
+      else { return false }
       if selector == #selector(NSResponder.cancelOperation(_:)) {
         textView.window?.makeFirstResponder(nil)
         session.isFocused = false
@@ -131,7 +133,8 @@ final class BufferDraftTextView: NSTextView {
 
   override func performKeyEquivalent(with event: NSEvent) -> Bool {
     if event.keyCode == 36, event.modifierFlags.intersection([.command, .shift, .control, .option]) == .command,
-      !hasMarkedText() {
+      !hasMarkedText()
+    {
       onSubmit()
       return true
     }
@@ -142,7 +145,8 @@ final class BufferDraftTextView: NSTextView {
     eventStartedWithMarkedText = hasMarkedText()
     defer { eventStartedWithMarkedText = false }
     if event.keyCode == 36, event.modifierFlags.intersection([.command, .shift, .control, .option]) == .command,
-      !eventStartedWithMarkedText {
+      !eventStartedWithMarkedText
+    {
       onSubmit()
       return
     }

@@ -10,8 +10,12 @@ import Testing
   func draftTargetRejectsDriftButCanVerifyItsOwnInsertion(change: String) async throws {
     let element = BufferTextTarget()
     element.update { $0.supportsReplacement = true }
-    let target = RecordBufferTextOutput.Target(element: element, isCurrent: { element.isFocused() },
-      post: { _ in Issue.record("A frozen AX target must not fall through"); return false })
+    let target = RecordBufferTextOutput.Target(
+      element: element, isCurrent: { element.isFocused() },
+      post: { _ in
+        Issue.record("A frozen AX target must not fall through")
+        return false
+      })
     let output = RecordBufferTextOutput(capture: { target }, modifiersHeld: { false }, isSecure: { false })
     let frozen = try #require(output.captureDraftTarget())
     element.update {
@@ -164,10 +168,12 @@ import Testing
     let target = RecordBufferTextOutput.Target(element: element, isCurrent: { true }, post: { _ in false })
     let modifiers = OutputModifierState()
     let started = AsyncStream<Void>.makeStream()
-    let output = RecordBufferTextOutput(capture: { target }, modifiersHeld: {
-      started.continuation.yield(())
-      return modifiers.held
-    }, isSecure: { false })
+    let output = RecordBufferTextOutput(
+      capture: { target },
+      modifiersHeld: {
+        started.continuation.yield(())
+        return modifiers.held
+      }, isSecure: { false })
     let delivery = Task { await engine.insertBufferText("buffer", into: target, using: output) }
     var iterator = started.stream.makeAsyncIterator()
     _ = await iterator.next()
@@ -191,7 +197,10 @@ import Testing
     let gate = OutputKeyboardGate()
     let engine = TextInjectionEngine(
       pasteboard: SystemClipboardPort(pasteboard: pasteboard), accessibilityChecker: { true },
-      keyboardChunkSender: { _ in await gate.enter(); return true })
+      keyboardChunkSender: { _ in
+        await gate.enter()
+        return true
+      })
     let element = BufferTextTarget()
     element.update { $0.supportsReplacement = true }
     let target = RecordBufferTextOutput.Target(element: element, isCurrent: { true }, post: { _ in false })
@@ -207,7 +216,8 @@ import Testing
   }
 
   private func makeEngine(_ pasteboard: NSPasteboard) -> TextInjectionEngine {
-    TextInjectionEngine(pasteboard: SystemClipboardPort(pasteboard: pasteboard),
+    TextInjectionEngine(
+      pasteboard: SystemClipboardPort(pasteboard: pasteboard),
       accessibilityChecker: { true }, keyboardChunkSender: { _ in true })
   }
 
@@ -283,7 +293,10 @@ private actor OutputKeyboardGate {
   func waitUntilEntered() async {
     if !entered { await withCheckedContinuation { observers.append($0) } }
   }
-  func release() { continuation?.resume(); continuation = nil }
+  func release() {
+    continuation?.resume()
+    continuation = nil
+  }
 }
 
 @MainActor private final class OutputModifierState { var held = true }

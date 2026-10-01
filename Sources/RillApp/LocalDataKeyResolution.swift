@@ -26,8 +26,9 @@ enum LocalDataKeyResolver {
     recoveryAccepts: (Data) throws -> Bool,
     archiveAccepts: (Data) throws -> Bool = { _ in true }
   ) throws -> LocalDataKeyResolutionDecision {
-    guard databaseRequiresExistingKey || recoveryRequiresExistingKey
-      || archiveRequiresExistingKey
+    guard
+      databaseRequiresExistingKey || recoveryRequiresExistingKey
+        || archiveRequiresExistingKey
     else {
       if let protected = candidates.first(where: { $0.source == .dataProtection }) {
         return .existing(protected)

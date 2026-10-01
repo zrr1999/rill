@@ -13,11 +13,13 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   private let onFinishEditing: () -> Void
   private let onInteractionChange: () -> Void
 
-  public init(presentation: RecordPanelPresentation, model: AppModel,
-              onModeChange: @escaping (RecordPanelPresentation.Mode) -> Void,
-              onFinishEditing: @escaping () -> Void = {},
-              onInteractionChange: @escaping () -> Void = {},
-              @ViewBuilder records: () -> Records) {
+  public init(
+    presentation: RecordPanelPresentation, model: AppModel,
+    onModeChange: @escaping (RecordPanelPresentation.Mode) -> Void,
+    onFinishEditing: @escaping () -> Void = {},
+    onInteractionChange: @escaping () -> Void = {},
+    @ViewBuilder records: () -> Records
+  ) {
     self.presentation = presentation
     self.model = model
     self.onModeChange = onModeChange
@@ -33,21 +35,24 @@ public struct UnifiedRecordPanelView<Records: View>: View {
 
   public var body: some View {
     panel
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(.ultraThinMaterial)
-    .containerShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
-    .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
-    .accessibilityIdentifier("record-panel.unified")
-    .onChange(of: presentation.isPinned) { _, _ in onInteractionChange() }
-    .onChange(of: buffers.editor.session?.isFocused) { _, _ in onInteractionChange() }
-    .onChange(of: buffers.editor.session?.hasMarkedText) { _, _ in onInteractionChange() }
-    .sheet(isPresented: $showsOutputReview) {
-      VStack(alignment: .leading, spacing: 16) {
-        Text(panelText(.outputStatus)).font(.headline)
-        outputFeedback
-        HStack { Spacer(); Button(panelText(.done)) { showsOutputReview = false } }
-      }.padding(20).frame(width: 420)
-    }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(.ultraThinMaterial)
+      .containerShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
+      .clipShape(RoundedRectangle(cornerRadius: RecordPanelAppearance.cornerRadius, style: .continuous))
+      .accessibilityIdentifier("record-panel.unified")
+      .onChange(of: presentation.isPinned) { _, _ in onInteractionChange() }
+      .onChange(of: buffers.editor.session?.isFocused) { _, _ in onInteractionChange() }
+      .onChange(of: buffers.editor.session?.hasMarkedText) { _, _ in onInteractionChange() }
+      .sheet(isPresented: $showsOutputReview) {
+        VStack(alignment: .leading, spacing: 16) {
+          Text(panelText(.outputStatus)).font(.headline)
+          outputFeedback
+          HStack {
+            Spacer()
+            Button(panelText(.done)) { showsOutputReview = false }
+          }
+        }.padding(20).frame(width: 420)
+      }
   }
 
   private var panel: some View {
@@ -78,10 +83,10 @@ public struct UnifiedRecordPanelView<Records: View>: View {
         GlassEffectContainer(spacing: 8) {
           RecordBufferDraftView(model: model, onFinishEditing: onFinishEditing)
         }
-          .opacity(presentation.mode == .drafts ? 1 : 0)
-          .allowsHitTesting(presentation.mode == .drafts)
-          .disabled(presentation.mode != .drafts || presentation.isCollapsed)
-          .accessibilityHidden(presentation.mode != .drafts || presentation.isCollapsed)
+        .opacity(presentation.mode == .drafts ? 1 : 0)
+        .allowsHitTesting(presentation.mode == .drafts)
+        .disabled(presentation.mode != .drafts || presentation.isCollapsed)
+        .accessibilityHidden(presentation.mode != .drafts || presentation.isCollapsed)
       }
     }
   }
@@ -90,7 +95,9 @@ public struct UnifiedRecordPanelView<Records: View>: View {
     HStack(spacing: 2) {
       ForEach(RecordPanelPresentation.Mode.allCases, id: \.self) { mode in
         let selected = presentation.mode == mode
-        Button { onModeChange(mode) } label: {
+        Button {
+          onModeChange(mode)
+        } label: {
           if selected {
             modeLabel(mode, selected: true)
               .recordPanelGlass(in: Capsule(), interactive: true)
@@ -158,12 +165,14 @@ public struct UnifiedRecordPanelView<Records: View>: View {
   private var outputFeedback: some View {
     VStack(alignment: .leading, spacing: 12) {
       if let active = buffers.snapshot?.active {
-        Text(active.state == .delivered
-             ? panelText(.deliveredButNotSaved)
-             : panelText(.confirmInsertion))
+        Text(
+          active.state == .delivered
+            ? panelText(.deliveredButNotSaved)
+            : panelText(.confirmInsertion))
         HStack {
-          Button(active.state == .delivered ? panelText(.retrySave) : panelText(.inserted),
-                 action: buffers.confirmAction)
+          Button(
+            active.state == .delivered ? panelText(.retrySave) : panelText(.inserted),
+            action: buffers.confirmAction)
           if active.state != .delivered {
             Button(panelText(.retryItem), action: buffers.retryAction)
           }

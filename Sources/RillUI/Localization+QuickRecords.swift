@@ -167,7 +167,6 @@ extension L10n {
   }
 }
 
-
 extension RecordReuseOutcome {
   var feedback: QuickRecordText? {
     switch self {

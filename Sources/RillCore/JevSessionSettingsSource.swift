@@ -39,5 +39,10 @@ public final class JevSessionSettingsSource: @unchecked Sendable {
     lock.withLock { credential?.id == value.id || polishing?.id == value.id }
   }
 
-  public func clear() { lock.withLock { credential = nil; polishing = nil } }
+  public func clear() {
+    lock.withLock {
+      credential = nil
+      polishing = nil
+    }
+  }
 }

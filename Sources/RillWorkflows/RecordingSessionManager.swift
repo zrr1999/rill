@@ -264,7 +264,8 @@ public actor RecordingSessionManager {
 
   func waitForHotkeyLifecycleTasksToDrainForTesting() async {
     while true {
-      let tasks = Array(livePushToTalkStartTasks.values)
+      let tasks =
+        Array(livePushToTalkStartTasks.values)
         + Array(livePushToTalkReleaseTasks.values)
         + finishingRecordings.values.compactMap(\.task)
       guard !tasks.isEmpty else { return }
@@ -768,10 +769,12 @@ public actor RecordingSessionManager {
         guard currentFocus.hasSamePrivacyIdentity(as: expectedFocus) else {
           return .empty
         }
-        guard let context = await targetBoundAuthorizedContextProvider(
-          decision,
-          expectedFocus
-        ) else {
+        guard
+          let context = await targetBoundAuthorizedContextProvider(
+            decision,
+            expectedFocus
+          )
+        else {
           return .empty
         }
         let capturedFocus = FocusPrivacyIdentitySample(

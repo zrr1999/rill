@@ -41,7 +41,11 @@ struct LocalInputMethodChannelTests {
     let directory = "/tmp/rill-refuse-\(UUID().uuidString.prefix(8))"
     let host = try LocalInputMethodChannel(host: true, directory: directory, authenticate: { _, _ in !refuseHost })
     let client = try LocalInputMethodChannel(host: false, directory: directory, authenticate: { _, _ in refuseHost })
-    defer { host.shutdown(); client.shutdown(); try? FileManager.default.removeItem(atPath: directory) }
+    defer {
+      host.shutdown()
+      client.shutdown()
+      try? FileManager.default.removeItem(atPath: directory)
+    }
     var disconnected = false
     host.receive = { _, _ in Issue.record("Refused connection delivered a message") }
     client.receive = { _, _ in Issue.record("Refused connection delivered a message") }
@@ -56,7 +60,11 @@ struct LocalInputMethodChannelTests {
     let directory = "/tmp/rill-identity-\(UUID().uuidString.prefix(8))"
     let host = try LocalInputMethodChannel(host: true, directory: directory)
     let client = try LocalInputMethodChannel(host: false, directory: directory)
-    defer { host.shutdown(); client.shutdown(); try? FileManager.default.removeItem(atPath: directory) }
+    defer {
+      host.shutdown()
+      client.shutdown()
+      try? FileManager.default.removeItem(atPath: directory)
+    }
     var disconnected = false
     client.didConnect = { _ in Issue.record("Test executable accepted as a signed Rill peer") }
     host.didConnect = { _ in Issue.record("Test executable accepted as a signed Rill peer") }
@@ -70,12 +78,19 @@ struct LocalInputMethodChannelTests {
     let directory = "/tmp/rill-batch-\(UUID().uuidString.prefix(8))"
     let entered = AsyncStream<Void>.makeStream()
     let gate = DispatchSemaphore(value: 0)
-    let host = try LocalInputMethodChannel(host: true, directory: directory, authenticate: { _, _ in
-      entered.continuation.yield(())
-      return gate.wait(timeout: .now() + 5) == .success
-    })
+    let host = try LocalInputMethodChannel(
+      host: true, directory: directory,
+      authenticate: { _, _ in
+        entered.continuation.yield(())
+        return gate.wait(timeout: .now() + 5) == .success
+      })
     let client = try LocalInputMethodChannel(host: false, directory: directory, authenticate: { _, _ in true })
-    defer { gate.signal(); host.shutdown(); client.shutdown(); try? FileManager.default.removeItem(atPath: directory) }
+    defer {
+      gate.signal()
+      host.shutdown()
+      client.shutdown()
+      try? FileManager.default.removeItem(atPath: directory)
+    }
     var accepted = false
     host.didConnect = { _ in accepted = true }
     _ = client.send(InputMethodMessage(.hello), to: host.path)
@@ -104,7 +119,11 @@ struct LocalInputMethodChannelTests {
     let host = try LocalInputMethodChannel(host: true, directory: directory, authenticate: { _, _ in true })
     let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
     #expect(descriptor >= 0)
-    defer { close(descriptor); host.shutdown(); try? FileManager.default.removeItem(atPath: directory) }
+    defer {
+      close(descriptor)
+      host.shutdown()
+      try? FileManager.default.removeItem(atPath: directory)
+    }
     var noSignal: Int32 = 1
     #expect(setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, 4) == 0)
     #expect(withAddress(directory + "/fixture.sock") { Darwin.bind(descriptor, $0, $1) } == 0)

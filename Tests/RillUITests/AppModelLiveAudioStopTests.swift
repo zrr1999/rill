@@ -4,251 +4,251 @@ import XCTest
 
 @MainActor
 final class AppModelLiveAudioStopTests: XCTestCase {
-    func testHiddenCaptureMovesAutomaticEndpointFromRecordingToTranscribing() {
-        let harness = makeHarness()
-        let runID = UUID()
-        let workflowID = UUID()
-        beginManualCapture(harness.model, runID: runID, workflowID: workflowID)
+  func testHiddenCaptureMovesAutomaticEndpointFromRecordingToTranscribing() {
+    let harness = makeHarness()
+    let runID = UUID()
+    let workflowID = UUID()
+    beginManualCapture(harness.model, runID: runID, workflowID: workflowID)
 
-        hideManualCapture(harness.model, runID: runID)
+    hideManualCapture(harness.model, runID: runID)
 
-        XCTAssertEqual(
-            harness.model.voice.workflowAudioRunState,
-            .transcribing(workflowID: workflowID)
+    XCTAssertEqual(
+      harness.model.voice.workflowAudioRunState,
+      .transcribing(workflowID: workflowID)
+    )
+    XCTAssertNil(harness.model.voice.currentCaptureLiveSubtitleSnapshot)
+    XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
+  }
+
+  func testMatchingLiveAuthorizationFailureClearsManualRecordingState() {
+    let harness = makeHarness()
+    let runID = UUID()
+    beginManualCapture(harness.model, runID: runID, providerID: "sherpa-onnx.local")
+
+    harness.model.handle(
+      .runFailed(
+        runID: runID,
+        workflow: nil,
+        message: "The live recording stopped because its privacy authorization changed."
+      )
+    )
+
+    XCTAssertFalse(harness.model.voice.isRunning)
+    XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+    XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
+  }
+
+  func testCaptureStartFailureClearsIdentityBoundDuringPreparation() async {
+    let startGate = WorkflowAudioStartGate()
+    let workflow = makeCapturedAudioWorkflow()
+    let harness = makeHarness(
+      workflow: workflow,
+      startWorkflowAudioRunAction: { _, _, _ in
+        try await startGate.suspendStart()
+      }
+    )
+
+    await harness.model.waitForInitialVoiceConfiguration()
+    harness.model.runWorkflow(workflow)
+    await startGate.waitUntilStarted()
+    let runID = UUID()
+    harness.model.handle(
+      .liveSubtitleUpdated(
+        LiveSubtitleSnapshot(runID: runID, phase: .preparing)
+      )
+    )
+    XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
+
+    await startGate.fail(message: "Microphone unavailable")
+    await harness.model.waitForWorkflowAudioActions()
+
+    XCTAssertFalse(harness.model.voice.isRunning)
+    XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+    XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
+  }
+
+  func testCaptureFinishFailureClearsBoundIdentity() async {
+    let workflow = makeCapturedAudioWorkflow()
+    let harness = makeHarness(
+      workflow: workflow,
+      finishWorkflowAudioRunAction: {
+        throw TestError.captureFinishFailed
+      }
+    )
+    let runID = UUID()
+    beginManualCapture(
+      harness.model,
+      runID: runID,
+      workflowID: workflow.id
+    )
+
+    harness.model.runWorkflow(workflow)
+    await harness.model.waitForWorkflowAudioActions()
+
+    XCTAssertFalse(harness.model.voice.isRunning)
+    XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+    XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
+  }
+
+  func testInteractiveShutdownClearsBoundCaptureIdentity() async {
+    let harness = makeHarness()
+    let runID = UUID()
+    beginManualCapture(harness.model, runID: runID)
+
+    await harness.model.stopInteractiveWorkflowRunsForApplicationShutdown()
+
+    XCTAssertFalse(harness.model.voice.isRunning)
+    XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+    XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
+  }
+
+  func testMatchingFailureAfterHiddenCaptureClearsManualRunState() {
+    let harness = makeHarness()
+    let runID = UUID()
+    beginManualCapture(harness.model, runID: runID)
+    hideManualCapture(harness.model, runID: runID)
+
+    harness.model.handle(
+      .runFailed(
+        runID: runID,
+        workflow: nil,
+        message: "No speech was detected before recording timed out."
+      )
+    )
+
+    XCTAssertFalse(harness.model.voice.isRunning)
+    XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+    XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
+  }
+
+  func testUnrelatedAndUnidentifiedFailuresDoNotClearHiddenManualCapture() {
+    let harness = makeHarness()
+    let runID = UUID()
+    let workflowID = UUID()
+    beginManualCapture(harness.model, runID: runID, workflowID: workflowID)
+    hideManualCapture(harness.model, runID: runID)
+
+    harness.model.handle(
+      .runFailed(runID: UUID(), workflow: nil, message: "Unrelated failure.")
+    )
+    harness.model.handle(
+      .runFailed(runID: nil, workflow: nil, message: "Unidentified failure.")
+    )
+
+    XCTAssertTrue(harness.model.voice.isRunning)
+    XCTAssertEqual(
+      harness.model.voice.workflowAudioRunState,
+      .transcribing(workflowID: workflowID)
+    )
+    XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
+  }
+
+  func testMatchingCancellationAfterHiddenCaptureClearsManualRunState() {
+    let harness = makeHarness()
+    let runID = UUID()
+    beginManualCapture(harness.model, runID: runID)
+    hideManualCapture(harness.model, runID: runID)
+
+    harness.model.handle(
+      .runCancelled(
+        WorkflowRunCancelledSummary(
+          runID: runID,
+          stage: .capturingInput,
+          wasPartiallyCompleted: false
         )
-        XCTAssertNil(harness.model.voice.currentCaptureLiveSubtitleSnapshot)
-        XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
-    }
+      )
+    )
 
-    func testMatchingLiveAuthorizationFailureClearsManualRecordingState() {
-        let harness = makeHarness()
-        let runID = UUID()
-        beginManualCapture(harness.model, runID: runID, providerID: "sherpa-onnx.local")
+    XCTAssertFalse(harness.model.voice.isRunning)
+    XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+    XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
+  }
 
-        harness.model.handle(
-            .runFailed(
-                runID: runID,
-                workflow: nil,
-                message: "The live recording stopped because its privacy authorization changed."
-            )
+  func testMatchingCompletionAfterHiddenCaptureClearsManualRunState() {
+    let harness = makeHarness()
+    let runID = UUID()
+    beginManualCapture(
+      harness.model,
+      runID: runID,
+      workflowID: harness.workflow.id
+    )
+    hideManualCapture(harness.model, runID: runID)
+
+    harness.model.handle(
+      .runCompleted(
+        WorkflowRunSummary(
+          runID: runID,
+          workflowID: harness.workflow.id,
+          workflow: harness.workflow.presentation,
+          trigger: .manual,
+          finalText: "hello"
         )
+      )
+    )
 
-        XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
-    }
+    XCTAssertFalse(harness.model.voice.isRunning)
+    XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+    XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
+  }
 
-    func testCaptureStartFailureClearsIdentityBoundDuringPreparation() async {
-        let startGate = WorkflowAudioStartGate()
-        let workflow = makeCapturedAudioWorkflow()
-        let harness = makeHarness(
-            workflow: workflow,
-            startWorkflowAudioRunAction: { _, _, _ in
-                try await startGate.suspendStart()
-            }
+  func testExplicitStopClearsOnlyMatchingVisibleCapture() {
+    let harness = makeHarness()
+    let runID = UUID()
+    beginManualCapture(harness.model, runID: runID, providerID: "sherpa-onnx.local")
+
+    harness.model.markLiveAudioRunStoppedByUser(runID: UUID())
+
+    XCTAssertTrue(harness.model.voice.isRunning)
+    XCTAssertEqual(harness.model.voice.liveSubtitleSnapshot?.runID, runID)
+    XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
+
+    harness.model.markLiveAudioRunStoppedByUser(runID: runID)
+
+    XCTAssertFalse(harness.model.voice.isRunning)
+    XCTAssertNil(harness.model.voice.liveSubtitleSnapshot)
+    XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
+    XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
+  }
+
+  private func beginManualCapture(
+    _ model: AppModel,
+    runID: UUID,
+    workflowID: UUID = UUID(),
+    providerID: String = "whisperkit.stream"
+  ) {
+    model.voice.isRunning = true
+    model.voice.workflowAudioRunState = .recording(workflowID: workflowID)
+    model.handle(
+      .liveSubtitleUpdated(
+        LiveSubtitleSnapshot(
+          runID: runID,
+          phase: .recording,
+          providerID: providerID
         )
+      )
+    )
+  }
 
-        await harness.model.waitForInitialVoiceConfiguration()
-        harness.model.runWorkflow(workflow)
-        await startGate.waitUntilStarted()
-        let runID = UUID()
-        harness.model.handle(
-            .liveSubtitleUpdated(
-                LiveSubtitleSnapshot(runID: runID, phase: .preparing)
-            )
-        )
-        XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
+  private func hideManualCapture(_ model: AppModel, runID: UUID) {
+    model.handle(
+      .liveSubtitleUpdated(
+        LiveSubtitleSnapshot(runID: runID, phase: .hidden)
+      )
+    )
+  }
 
-        await startGate.fail(message: "Microphone unavailable")
-        await harness.model.waitForWorkflowAudioActions()
+  private func makeCapturedAudioWorkflow() -> WorkflowDefinition {
+    WorkflowDefinition(
+      name: "Local Dictation",
+      pipeline: PipelineDeclaration(
+        recognizerID: "sherpa-onnx.local",
+        outputActions: [OutputActionReference(id: "ui.test.action")]
+      ),
+      ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
+    )
+  }
 
-        XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
-    }
-
-    func testCaptureFinishFailureClearsBoundIdentity() async {
-        let workflow = makeCapturedAudioWorkflow()
-        let harness = makeHarness(
-            workflow: workflow,
-            finishWorkflowAudioRunAction: {
-                throw TestError.captureFinishFailed
-            }
-        )
-        let runID = UUID()
-        beginManualCapture(
-            harness.model,
-            runID: runID,
-            workflowID: workflow.id
-        )
-
-        harness.model.runWorkflow(workflow)
-        await harness.model.waitForWorkflowAudioActions()
-
-        XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
-    }
-
-    func testInteractiveShutdownClearsBoundCaptureIdentity() async {
-        let harness = makeHarness()
-        let runID = UUID()
-        beginManualCapture(harness.model, runID: runID)
-
-        await harness.model.stopInteractiveWorkflowRunsForApplicationShutdown()
-
-        XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
-    }
-
-    func testMatchingFailureAfterHiddenCaptureClearsManualRunState() {
-        let harness = makeHarness()
-        let runID = UUID()
-        beginManualCapture(harness.model, runID: runID)
-        hideManualCapture(harness.model, runID: runID)
-
-        harness.model.handle(
-            .runFailed(
-                runID: runID,
-                workflow: nil,
-                message: "No speech was detected before recording timed out."
-            )
-        )
-
-        XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
-    }
-
-    func testUnrelatedAndUnidentifiedFailuresDoNotClearHiddenManualCapture() {
-        let harness = makeHarness()
-        let runID = UUID()
-        let workflowID = UUID()
-        beginManualCapture(harness.model, runID: runID, workflowID: workflowID)
-        hideManualCapture(harness.model, runID: runID)
-
-        harness.model.handle(
-            .runFailed(runID: UUID(), workflow: nil, message: "Unrelated failure.")
-        )
-        harness.model.handle(
-            .runFailed(runID: nil, workflow: nil, message: "Unidentified failure.")
-        )
-
-        XCTAssertTrue(harness.model.voice.isRunning)
-        XCTAssertEqual(
-            harness.model.voice.workflowAudioRunState,
-            .transcribing(workflowID: workflowID)
-        )
-        XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
-    }
-
-    func testMatchingCancellationAfterHiddenCaptureClearsManualRunState() {
-        let harness = makeHarness()
-        let runID = UUID()
-        beginManualCapture(harness.model, runID: runID)
-        hideManualCapture(harness.model, runID: runID)
-
-        harness.model.handle(
-            .runCancelled(
-                WorkflowRunCancelledSummary(
-                    runID: runID,
-                    stage: .capturingInput,
-                    wasPartiallyCompleted: false
-                )
-            )
-        )
-
-        XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
-    }
-
-    func testMatchingCompletionAfterHiddenCaptureClearsManualRunState() {
-        let harness = makeHarness()
-        let runID = UUID()
-        beginManualCapture(
-            harness.model,
-            runID: runID,
-            workflowID: harness.workflow.id
-        )
-        hideManualCapture(harness.model, runID: runID)
-
-        harness.model.handle(
-            .runCompleted(
-                WorkflowRunSummary(
-                    runID: runID,
-                    workflowID: harness.workflow.id,
-                    workflow: harness.workflow.presentation,
-                    trigger: .manual,
-                    finalText: "hello"
-                )
-            )
-        )
-
-        XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
-    }
-
-    func testExplicitStopClearsOnlyMatchingVisibleCapture() {
-        let harness = makeHarness()
-        let runID = UUID()
-        beginManualCapture(harness.model, runID: runID, providerID: "sherpa-onnx.local")
-
-        harness.model.markLiveAudioRunStoppedByUser(runID: UUID())
-
-        XCTAssertTrue(harness.model.voice.isRunning)
-        XCTAssertEqual(harness.model.voice.liveSubtitleSnapshot?.runID, runID)
-        XCTAssertEqual(harness.model.voice.workflowAudioCaptureRunID, runID)
-
-        harness.model.markLiveAudioRunStoppedByUser(runID: runID)
-
-        XCTAssertFalse(harness.model.voice.isRunning)
-        XCTAssertNil(harness.model.voice.liveSubtitleSnapshot)
-        XCTAssertEqual(harness.model.voice.workflowAudioRunState, .idle)
-        XCTAssertNil(harness.model.voice.workflowAudioCaptureRunID)
-    }
-
-    private func beginManualCapture(
-        _ model: AppModel,
-        runID: UUID,
-        workflowID: UUID = UUID(),
-        providerID: String = "whisperkit.stream"
-    ) {
-        model.voice.isRunning = true
-        model.voice.workflowAudioRunState = .recording(workflowID: workflowID)
-        model.handle(
-            .liveSubtitleUpdated(
-                LiveSubtitleSnapshot(
-                    runID: runID,
-                    phase: .recording,
-                    providerID: providerID
-                )
-            )
-        )
-    }
-
-    private func hideManualCapture(_ model: AppModel, runID: UUID) {
-        model.handle(
-            .liveSubtitleUpdated(
-                LiveSubtitleSnapshot(runID: runID, phase: .hidden)
-            )
-        )
-    }
-
-    private func makeCapturedAudioWorkflow() -> WorkflowDefinition {
-        WorkflowDefinition(
-            name: "Local Dictation",
-            pipeline: PipelineDeclaration(
-                recognizerID: "sherpa-onnx.local",
-                outputActions: [OutputActionReference(id: "ui.test.action")]
-            ),
-            ui: WorkflowUIConfig(symbolName: "waveform", accentColorName: "purple")
-        )
-    }
-
-    private enum TestError: Error {
-        case captureFinishFailed
-    }
+  private enum TestError: Error {
+    case captureFinishFailed
+  }
 }

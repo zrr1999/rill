@@ -15,11 +15,14 @@ private actor DraftRecordingProbe {
   func explicitDraftRecordingFreezesIntentAndNeverIncludesExternalInsertion(editing: Bool) async throws {
     let workflow = makeBuiltinPushToTalkWorkflow()
     let probe = DraftRecordingProbe()
-    let model = makeHarness(workflow: workflow,
+    let model = makeHarness(
+      workflow: workflow,
       permissionSnapshot: .init(accessibility: .granted, microphone: .granted),
-      startWorkflowAudioRunAction: { await probe.record($0, $1, $2) }).model
+      startWorkflowAudioRunAction: { await probe.record($0, $1, $2) }
+    ).model
     await model.waitForInitialVoiceConfiguration()
-    let intent = BufferDraftInputIntent(entryID: .init(bufferID: RecordBuffer.speechID, sequence: 7),
+    let intent = BufferDraftInputIntent(
+      entryID: .init(bufferID: RecordBuffer.speechID, sequence: 7),
       draftID: UUID(), revision: 4, selection: .init(location: 2, length: 3), editingSessionID: UUID())
     model.dictateToBuffer(editing ? .draft(intent) : .newItem)
     await model.waitForWorkflowAudioActions()

@@ -134,8 +134,8 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
 
     self.connection = SQLiteConnectionBox(db: handle)
     try SQLiteWriterBarrier.registerCapability(on: handle)
-      try SQLiteSchemaWriterBarrier.catalog.register(on: handle)
-      try SQLiteSchemaWriterBarrier.memory.register(on: handle)
+    try SQLiteSchemaWriterBarrier.catalog.register(on: handle)
+    try SQLiteSchemaWriterBarrier.memory.register(on: handle)
     try Self.execute(
       """
       PRAGMA journal_mode = WAL;
@@ -1263,7 +1263,9 @@ public actor SQLitePersistenceStore: DiagnosticRepository, DiagnosticHistoryMain
           try Task.checkCancellation()
           try execute("COMMIT;")
         }
-      } else { try execute("COMMIT;") }
+      } else {
+        try execute("COMMIT;")
+      }
       return result
     } catch {
       try? execute("ROLLBACK;")

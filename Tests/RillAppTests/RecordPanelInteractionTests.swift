@@ -23,8 +23,10 @@ struct RecordPanelInteractionTests {
     await harness.clock.waitForPendingCount(1)
     #expect(harness.clock.lastDelay == .milliseconds(700))
     let page = harness.frames.page!
-    harness.controller.pointerMoved(to: NSPoint(x: harness.frames.capsule.midX,
-      y: (page.maxY + harness.frames.capsule.minY) / 2))
+    harness.controller.pointerMoved(
+      to: NSPoint(
+        x: harness.frames.capsule.midX,
+        y: (page.maxY + harness.frames.capsule.minY) / 2))
     await harness.clock.waitForPendingCount(0)
     #expect(harness.collapseCount == 0)
     harness.controller.pointerMoved(to: NSPoint(x: page.midX, y: page.midY))
@@ -73,8 +75,10 @@ struct RecordPanelInteractionTests {
 
   @Test func closeTargetAndShutdownDoNotOpenThePage() async {
     let harness = HoverHarness()
-    harness.controller.pointerMoved(to: NSPoint(x: harness.frames.capsule.maxX - 12,
-                                                y: harness.frames.capsule.midY))
+    harness.controller.pointerMoved(
+      to: NSPoint(
+        x: harness.frames.capsule.maxX - 12,
+        y: harness.frames.capsule.midY))
     #expect(harness.clock.pendingCount == 0)
     harness.controller.pointerMoved(to: harness.handlePoint)
     await harness.clock.waitForPendingCount(1)
@@ -100,19 +104,22 @@ struct RecordPanelInteractionTests {
   @Test(arguments: [
     NSRect(x: 0, y: 24, width: 1440, height: 850),
     NSRect(x: -1280, y: 70, width: 1280, height: 700),
-    NSRect(x: 200, y: -900, width: 1024, height: 768)
+    NSRect(x: 200, y: -900, width: 1024, height: 768),
   ])
   func placementKeepsCapsuleSeparateAndPageOnScreen(_ screen: NSRect) {
     for fraction in [0.0, 0.5, 1.0] {
-      let capsule = NSRect(x: screen.minX + 12 + (screen.width - 284) * fraction,
+      let capsule = NSRect(
+        x: screen.minX + 12 + (screen.width - 284) * fraction,
         y: screen.minY + 12 + (screen.height - 72) * fraction, width: 260, height: 48)
       let page = RecordPanelPlacement.pageFrame(beside: capsule, in: screen)
       #expect(screen.contains(page))
       #expect(!page.intersects(capsule))
       #expect(page.height > 200)
       #expect(min(abs(page.maxY - capsule.minY), abs(page.minY - capsule.maxY)) == 14)
-      #expect(RecordPanelPlacement.contains(NSPoint(x: capsule.midX, y: capsule.midY),
-                                           capsule: capsule, page: page))
+      #expect(
+        RecordPanelPlacement.contains(
+          NSPoint(x: capsule.midX, y: capsule.midY),
+          capsule: capsule, page: page))
     }
   }
 
@@ -120,7 +127,8 @@ struct RecordPanelInteractionTests {
     let screen = NSRect(x: -1440, y: 0, width: 1440, height: 900)
     let capsule = NSRect(x: -850, y: 730, width: 260, height: 48)
     let page = RecordPanelPlacement.pageFrame(beside: capsule, in: screen)
-    let delta = RecordPanelPlacement.translation(NSPoint(x: 2000, y: -2000),
+    let delta = RecordPanelPlacement.translation(
+      NSPoint(x: 2000, y: -2000),
       capsule: capsule, page: page, in: screen)
     let movedCapsule = capsule.offsetBy(dx: delta.x, dy: delta.y)
     let movedPage = page.offsetBy(dx: delta.x, dy: delta.y)
@@ -148,7 +156,8 @@ private final class HoverHarness {
     canCollapse: { [weak self] in self?.allowsCollapse == true },
     expand: { [weak self] in
       guard let self else { return }
-      frames.page = RecordPanelPlacement.pageFrame(beside: frames.capsule,
+      frames.page = RecordPanelPlacement.pageFrame(
+        beside: frames.capsule,
         in: NSRect(x: 0, y: 0, width: 1440, height: 900))
       events.yield(.expanded)
     },
@@ -163,8 +172,13 @@ private final class HoverHarness {
   init(expanded: Bool = false) {
     (actions, events) = AsyncStream.makeStream()
     let capsule = NSRect(x: 500, y: 760, width: 260, height: 48)
-    frames = (capsule, expanded ? RecordPanelPlacement.pageFrame(beside: capsule,
-      in: NSRect(x: 0, y: 0, width: 1440, height: 900)) : nil)
+    frames = (
+      capsule,
+      expanded
+        ? RecordPanelPlacement.pageFrame(
+          beside: capsule,
+          in: NSRect(x: 0, y: 0, width: 1440, height: 900)) : nil
+    )
   }
 }
 
@@ -188,7 +202,9 @@ private final class PanelHoverClock {
         }
         notify()
       }
-    } onCancel: { Task { @MainActor in self.cancel(id) } }
+    } onCancel: {
+      Task { @MainActor in self.cancel(id) }
+    }
   }
 
   func waitForPendingCount(_ count: Int) async {
@@ -205,7 +221,9 @@ private final class PanelHoverClock {
   private func cancel(_ id: UUID) {
     if let continuation = pending.removeValue(forKey: id) {
       continuation.resume(throwing: CancellationError())
-    } else { cancelled.insert(id) }
+    } else {
+      cancelled.insert(id)
+    }
     notify()
   }
 

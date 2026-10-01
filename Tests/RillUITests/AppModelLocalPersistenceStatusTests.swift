@@ -4,37 +4,37 @@ import XCTest
 
 @MainActor
 final class AppModelLocalPersistenceStatusTests: XCTestCase {
-    func testDefaultStatusRemainsReadyForExistingCallSites() {
-        XCTAssertEqual(makeHarness().model.localPersistenceStatus, .ready)
-    }
+  func testDefaultStatusRemainsReadyForExistingCallSites() {
+    XCTAssertEqual(makeHarness().model.localPersistenceStatus, .ready)
+  }
 
-    func testInjectedSessionOnlyStatusIsPubliclyReadableAndImmutableAtRuntime() {
-        let status = LocalPersistenceStatus.sessionOnly(
-            reason: .persistentStorageUnavailable
-        )
-        let model = makeHarness(localPersistenceStatus: status).model
+  func testInjectedSessionOnlyStatusIsPubliclyReadableAndImmutableAtRuntime() {
+    let status = LocalPersistenceStatus.sessionOnly(
+      reason: .persistentStorageUnavailable
+    )
+    let model = makeHarness(localPersistenceStatus: status).model
 
-        XCTAssertEqual(model.localPersistenceStatus, status)
-        XCTAssertTrue(model.localPersistenceStatus.isSessionOnly)
-    }
+    XCTAssertEqual(model.localPersistenceStatus, status)
+    XCTAssertTrue(model.localPersistenceStatus.isSessionOnly)
+  }
 
-    func testMenuStorageActionUsesTypedStorageDestinationBeforeOpeningWindow() {
-        let model = makeHarness(
-            localPersistenceStatus: .sessionOnly(
-                reason: .persistentStorageUnavailable
-            )
-        ).model
-        var openedMainWindowCount = 0
-        let menu = MenuBarStatusView(
-            model: model,
-            openMainWindow: { openedMainWindowCount += 1 }
-        )
+  func testMenuStorageActionUsesTypedStorageDestinationBeforeOpeningWindow() {
+    let model = makeHarness(
+      localPersistenceStatus: .sessionOnly(
+        reason: .persistentStorageUnavailable
+      )
+    ).model
+    var openedMainWindowCount = 0
+    let menu = MenuBarStatusView(
+      model: model,
+      openMainWindow: { openedMainWindowCount += 1 }
+    )
 
-        menu.openStorageSettings()
+    menu.openStorageSettings()
 
-        XCTAssertEqual(model.selectedSidebarSection, .records)
-        XCTAssertEqual(model.selectedSettingsPane, .data)
-        XCTAssertEqual(model.settingsNavigationRequest?.section, .storage)
-        XCTAssertEqual(openedMainWindowCount, 1)
-    }
+    XCTAssertEqual(model.selectedSidebarSection, .records)
+    XCTAssertEqual(model.selectedSettingsPane, .data)
+    XCTAssertEqual(model.settingsNavigationRequest?.section, .storage)
+    XCTAssertEqual(openedMainWindowCount, 1)
+  }
 }

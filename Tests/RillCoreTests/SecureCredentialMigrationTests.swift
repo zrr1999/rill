@@ -2,340 +2,340 @@ import XCTest
 @testable import RillCore
 
 final class SecureCredentialMigrationTests: XCTestCase {
-    func testMigrationWritesSecureStoreBeforeRemovingLegacyValue() async throws {
-        let log = CredentialOperationLog()
-        let legacyStore = FakeLegacySettingsStore(
-            storage: [.openAIAPIKey: "legacy-secret"],
-            log: log
-        )
-        let secureStore = FakeSecureCredentialStore(log: log)
-        let eventRecorder = CredentialEventRecorder()
-        let store = MigratingSecureCredentialStore(
-            secureStore: secureStore,
-            legacySettingsStore: legacyStore,
-            eventReporter: { event in await eventRecorder.record(event) }
-        )
+  func testMigrationWritesSecureStoreBeforeRemovingLegacyValue() async throws {
+    let log = CredentialOperationLog()
+    let legacyStore = FakeLegacySettingsStore(
+      storage: [.openAIAPIKey: "legacy-secret"],
+      log: log
+    )
+    let secureStore = FakeSecureCredentialStore(log: log)
+    let eventRecorder = CredentialEventRecorder()
+    let store = MigratingSecureCredentialStore(
+      secureStore: secureStore,
+      legacySettingsStore: legacyStore,
+      eventReporter: { event in await eventRecorder.record(event) }
+    )
 
-        let value = try await store.credential(for: .openAIAPIKey)
-        let operations = await log.snapshot()
-        let secureValue = await secureStore.storedValue(for: .openAIAPIKey)
-        let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
-        let eventKinds = await eventRecorder.snapshot().map(\.kind)
+    let value = try await store.credential(for: .openAIAPIKey)
+    let operations = await log.snapshot()
+    let secureValue = await secureStore.storedValue(for: .openAIAPIKey)
+    let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
+    let eventKinds = await eventRecorder.snapshot().map(\.kind)
 
-        XCTAssertEqual(value, "legacy-secret")
-        XCTAssertEqual(
-            operations,
-            ["secure.read", "legacy.read", "secure.set", "legacy.remove"]
-        )
-        XCTAssertEqual(secureValue, "legacy-secret")
-        XCTAssertNil(legacyValue)
-        XCTAssertEqual(eventKinds, [.migrationSucceeded])
+    XCTAssertEqual(value, "legacy-secret")
+    XCTAssertEqual(
+      operations,
+      ["secure.read", "legacy.read", "secure.set", "legacy.remove"]
+    )
+    XCTAssertEqual(secureValue, "legacy-secret")
+    XCTAssertNil(legacyValue)
+    XCTAssertEqual(eventKinds, [.migrationSucceeded])
+  }
+
+  func testMigrationWriteFailurePreservesLegacyValueAndFailsClosed() async {
+    let log = CredentialOperationLog()
+    let legacyStore = FakeLegacySettingsStore(
+      storage: [.legacyWhisperKitModelToken: "legacy-token"],
+      log: log
+    )
+    let secureStore = FakeSecureCredentialStore(log: log, failSet: true)
+    let eventRecorder = CredentialEventRecorder()
+    let store = MigratingSecureCredentialStore(
+      secureStore: secureStore,
+      legacySettingsStore: legacyStore,
+      eventReporter: { event in await eventRecorder.record(event) }
+    )
+
+    do {
+      _ = try await store.credential(for: .legacyWhisperKitModelToken)
+      XCTFail("Expected migration to fail when secure storage rejects the write")
+    } catch {
+      XCTAssertEqual(
+        error as? SecureCredentialMigrationError,
+        .migrationWriteFailed(.legacyWhisperKitModelToken)
+      )
     }
 
-    func testMigrationWriteFailurePreservesLegacyValueAndFailsClosed() async {
-        let log = CredentialOperationLog()
-        let legacyStore = FakeLegacySettingsStore(
-            storage: [.legacyWhisperKitModelToken: "legacy-token"],
-            log: log
-        )
-        let secureStore = FakeSecureCredentialStore(log: log, failSet: true)
-        let eventRecorder = CredentialEventRecorder()
-        let store = MigratingSecureCredentialStore(
-            secureStore: secureStore,
-            legacySettingsStore: legacyStore,
-            eventReporter: { event in await eventRecorder.record(event) }
-        )
+    let legacyValue = await legacyStore.storedValue(for: .legacyWhisperKitModelToken)
+    let secureValue = await secureStore.storedValue(for: .legacyWhisperKitModelToken)
+    let operations = await log.snapshot()
+    let eventKinds = await eventRecorder.snapshot().map(\.kind)
+    XCTAssertEqual(legacyValue, "legacy-token")
+    XCTAssertNil(secureValue)
+    XCTAssertEqual(
+      operations,
+      ["secure.read", "legacy.read", "secure.set"]
+    )
+    XCTAssertEqual(eventKinds, [.migrationFailed])
+  }
 
-        do {
-            _ = try await store.credential(for: .legacyWhisperKitModelToken)
-            XCTFail("Expected migration to fail when secure storage rejects the write")
-        } catch {
-            XCTAssertEqual(
-                error as? SecureCredentialMigrationError,
-                .migrationWriteFailed(.legacyWhisperKitModelToken)
-            )
-        }
+  func testLegacyCleanupFailureKeepsKeychainValueAvailableAndDiagnosable() async throws {
+    let log = CredentialOperationLog()
+    let legacyStore = FakeLegacySettingsStore(
+      storage: [.openAIAPIKey: "legacy-secret"],
+      log: log,
+      failRemove: true
+    )
+    let secureStore = FakeSecureCredentialStore(log: log)
+    let eventRecorder = CredentialEventRecorder()
+    let store = MigratingSecureCredentialStore(
+      secureStore: secureStore,
+      legacySettingsStore: legacyStore,
+      eventReporter: { event in await eventRecorder.record(event) }
+    )
 
-        let legacyValue = await legacyStore.storedValue(for: .legacyWhisperKitModelToken)
-        let secureValue = await secureStore.storedValue(for: .legacyWhisperKitModelToken)
-        let operations = await log.snapshot()
-        let eventKinds = await eventRecorder.snapshot().map(\.kind)
-        XCTAssertEqual(legacyValue, "legacy-token")
-        XCTAssertNil(secureValue)
-        XCTAssertEqual(
-            operations,
-            ["secure.read", "legacy.read", "secure.set"]
-        )
-        XCTAssertEqual(eventKinds, [.migrationFailed])
+    let value = try await store.credential(for: .openAIAPIKey)
+    let secureValue = await secureStore.storedValue(for: .openAIAPIKey)
+    let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
+    let eventKinds = await eventRecorder.snapshot().map(\.kind)
+
+    XCTAssertEqual(value, "legacy-secret")
+    XCTAssertEqual(secureValue, "legacy-secret")
+    XCTAssertEqual(legacyValue, "legacy-secret")
+    XCTAssertEqual(eventKinds, [.legacyCleanupFailed])
+  }
+
+  func testSecureReadFailureNeverFallsBackToPlaintext() async {
+    let log = CredentialOperationLog()
+    let legacyStore = FakeLegacySettingsStore(
+      storage: [.openAIAPIKey: "legacy-secret"],
+      log: log
+    )
+    let secureStore = FakeSecureCredentialStore(log: log, failRead: true)
+    let eventRecorder = CredentialEventRecorder()
+    let store = MigratingSecureCredentialStore(
+      secureStore: secureStore,
+      legacySettingsStore: legacyStore,
+      eventReporter: { event in await eventRecorder.record(event) }
+    )
+
+    do {
+      _ = try await store.credential(for: .openAIAPIKey)
+      XCTFail("Expected a secure read failure")
+    } catch {
+      XCTAssertEqual(
+        error as? SecureCredentialMigrationError,
+        .secureReadFailed(.openAIAPIKey)
+      )
     }
 
-    func testLegacyCleanupFailureKeepsKeychainValueAvailableAndDiagnosable() async throws {
-        let log = CredentialOperationLog()
-        let legacyStore = FakeLegacySettingsStore(
-            storage: [.openAIAPIKey: "legacy-secret"],
-            log: log,
-            failRemove: true
-        )
-        let secureStore = FakeSecureCredentialStore(log: log)
-        let eventRecorder = CredentialEventRecorder()
-        let store = MigratingSecureCredentialStore(
-            secureStore: secureStore,
-            legacySettingsStore: legacyStore,
-            eventReporter: { event in await eventRecorder.record(event) }
-        )
+    let operations = await log.snapshot()
+    let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
+    let eventKinds = await eventRecorder.snapshot().map(\.kind)
+    XCTAssertEqual(operations, ["secure.read"])
+    XCTAssertEqual(legacyValue, "legacy-secret")
+    XCTAssertEqual(eventKinds, [.secureReadFailed])
+  }
 
-        let value = try await store.credential(for: .openAIAPIKey)
-        let secureValue = await secureStore.storedValue(for: .openAIAPIKey)
-        let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
-        let eventKinds = await eventRecorder.snapshot().map(\.kind)
+  func testClearFailureOnLegacyRemovalDoesNotRemoveSecureValue() async {
+    let log = CredentialOperationLog()
+    let legacyStore = FakeLegacySettingsStore(
+      storage: [.openAIAPIKey: "legacy-secret"],
+      log: log,
+      failRemove: true
+    )
+    let secureStore = FakeSecureCredentialStore(
+      storage: [.openAIAPIKey: "current-secret"],
+      log: log
+    )
+    let store = MigratingSecureCredentialStore(
+      secureStore: secureStore,
+      legacySettingsStore: legacyStore
+    )
 
-        XCTAssertEqual(value, "legacy-secret")
-        XCTAssertEqual(secureValue, "legacy-secret")
-        XCTAssertEqual(legacyValue, "legacy-secret")
-        XCTAssertEqual(eventKinds, [.legacyCleanupFailed])
+    do {
+      try await store.removeCredential(for: .openAIAPIKey)
+      XCTFail("Expected legacy cleanup failure")
+    } catch {
+      XCTAssertEqual(
+        error as? SecureCredentialMigrationError,
+        .legacyRemovalFailed(.openAIAPIKey)
+      )
     }
 
-    func testSecureReadFailureNeverFallsBackToPlaintext() async {
-        let log = CredentialOperationLog()
-        let legacyStore = FakeLegacySettingsStore(
-            storage: [.openAIAPIKey: "legacy-secret"],
-            log: log
-        )
-        let secureStore = FakeSecureCredentialStore(log: log, failRead: true)
-        let eventRecorder = CredentialEventRecorder()
-        let store = MigratingSecureCredentialStore(
-            secureStore: secureStore,
-            legacySettingsStore: legacyStore,
-            eventReporter: { event in await eventRecorder.record(event) }
-        )
+    let secureValue = await secureStore.storedValue(for: .openAIAPIKey)
+    let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
+    let operations = await log.snapshot()
+    XCTAssertEqual(secureValue, "current-secret")
+    XCTAssertEqual(legacyValue, "legacy-secret")
+    XCTAssertEqual(operations, ["legacy.remove"])
+  }
 
-        do {
-            _ = try await store.credential(for: .openAIAPIKey)
-            XCTFail("Expected a secure read failure")
-        } catch {
-            XCTAssertEqual(
-                error as? SecureCredentialMigrationError,
-                .secureReadFailed(.openAIAPIKey)
-            )
-        }
+  func testConcurrentUserWriteWinsOverInFlightLegacyMigration() async throws {
+    let log = CredentialOperationLog()
+    let readGate = CredentialReadGate()
+    let legacyStore = FakeLegacySettingsStore(
+      storage: [.openAIAPIKey: "legacy-secret"],
+      log: log,
+      readGate: readGate
+    )
+    let secureStore = FakeSecureCredentialStore(log: log)
+    let store = MigratingSecureCredentialStore(
+      secureStore: secureStore,
+      legacySettingsStore: legacyStore
+    )
 
-        let operations = await log.snapshot()
-        let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
-        let eventKinds = await eventRecorder.snapshot().map(\.kind)
-        XCTAssertEqual(operations, ["secure.read"])
-        XCTAssertEqual(legacyValue, "legacy-secret")
-        XCTAssertEqual(eventKinds, [.secureReadFailed])
+    let migrationTask = Task {
+      try await store.credential(for: .openAIAPIKey)
+    }
+    await log.wait(for: "legacy.read")
+    let userWriteTask = Task {
+      try await store.setCredential("new-user-secret", for: .openAIAPIKey)
     }
 
-    func testClearFailureOnLegacyRemovalDoesNotRemoveSecureValue() async {
-        let log = CredentialOperationLog()
-        let legacyStore = FakeLegacySettingsStore(
-            storage: [.openAIAPIKey: "legacy-secret"],
-            log: log,
-            failRemove: true
-        )
-        let secureStore = FakeSecureCredentialStore(
-            storage: [.openAIAPIKey: "current-secret"],
-            log: log
-        )
-        let store = MigratingSecureCredentialStore(
-            secureStore: secureStore,
-            legacySettingsStore: legacyStore
-        )
+    await readGate.open()
+    let migratedValue = try await migrationTask.value
+    XCTAssertEqual(migratedValue, "legacy-secret")
+    try await userWriteTask.value
 
-        do {
-            try await store.removeCredential(for: .openAIAPIKey)
-            XCTFail("Expected legacy cleanup failure")
-        } catch {
-            XCTAssertEqual(
-                error as? SecureCredentialMigrationError,
-                .legacyRemovalFailed(.openAIAPIKey)
-            )
-        }
-
-        let secureValue = await secureStore.storedValue(for: .openAIAPIKey)
-        let legacyValue = await legacyStore.storedValue(for: .openAIAPIKey)
-        let operations = await log.snapshot()
-        XCTAssertEqual(secureValue, "current-secret")
-        XCTAssertEqual(legacyValue, "legacy-secret")
-        XCTAssertEqual(operations, ["legacy.remove"])
-    }
-
-    func testConcurrentUserWriteWinsOverInFlightLegacyMigration() async throws {
-        let log = CredentialOperationLog()
-        let readGate = CredentialReadGate()
-        let legacyStore = FakeLegacySettingsStore(
-            storage: [.openAIAPIKey: "legacy-secret"],
-            log: log,
-            readGate: readGate
-        )
-        let secureStore = FakeSecureCredentialStore(log: log)
-        let store = MigratingSecureCredentialStore(
-            secureStore: secureStore,
-            legacySettingsStore: legacyStore
-        )
-
-        let migrationTask = Task {
-            try await store.credential(for: .openAIAPIKey)
-        }
-        await log.wait(for: "legacy.read")
-        let userWriteTask = Task {
-            try await store.setCredential("new-user-secret", for: .openAIAPIKey)
-        }
-
-        await readGate.open()
-        let migratedValue = try await migrationTask.value
-        XCTAssertEqual(migratedValue, "legacy-secret")
-        try await userWriteTask.value
-
-        let finalValue = await secureStore.storedValue(for: .openAIAPIKey)
-        XCTAssertEqual(finalValue, "new-user-secret")
-    }
+    let finalValue = await secureStore.storedValue(for: .openAIAPIKey)
+    XCTAssertEqual(finalValue, "new-user-secret")
+  }
 }
 
 private enum FakeCredentialStoreError: Error {
-    case requestedFailure
+  case requestedFailure
 }
 
 private actor CredentialOperationLog {
-    private var entries: [String] = []
-    private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
+  private var entries: [String] = []
+  private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
 
-    func append(_ entry: String) {
-        entries.append(entry)
-        let matchingWaiters = waiters.removeValue(forKey: entry) ?? []
-        matchingWaiters.forEach { $0.resume() }
-    }
+  func append(_ entry: String) {
+    entries.append(entry)
+    let matchingWaiters = waiters.removeValue(forKey: entry) ?? []
+    matchingWaiters.forEach { $0.resume() }
+  }
 
-    func wait(for entry: String) async {
-        guard !entries.contains(entry) else { return }
-        await withCheckedContinuation { continuation in
-            waiters[entry, default: []].append(continuation)
-        }
+  func wait(for entry: String) async {
+    guard !entries.contains(entry) else { return }
+    await withCheckedContinuation { continuation in
+      waiters[entry, default: []].append(continuation)
     }
+  }
 
-    func snapshot() -> [String] {
-        entries
-    }
+  func snapshot() -> [String] {
+    entries
+  }
 }
 
 private actor CredentialReadGate {
-    private var isOpen = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+  private var isOpen = false
+  private var waiters: [CheckedContinuation<Void, Never>] = []
 
-    func wait() async {
-        guard !isOpen else { return }
-        await withCheckedContinuation { continuation in
-            waiters.append(continuation)
-        }
+  func wait() async {
+    guard !isOpen else { return }
+    await withCheckedContinuation { continuation in
+      waiters.append(continuation)
     }
+  }
 
-    func open() {
-        isOpen = true
-        let pendingWaiters = waiters
-        waiters = []
-        pendingWaiters.forEach { $0.resume() }
-    }
+  func open() {
+    isOpen = true
+    let pendingWaiters = waiters
+    waiters = []
+    pendingWaiters.forEach { $0.resume() }
+  }
 }
 
 private actor CredentialEventRecorder {
-    private var events: [SecureCredentialStoreEvent] = []
+  private var events: [SecureCredentialStoreEvent] = []
 
-    func record(_ event: SecureCredentialStoreEvent) {
-        events.append(event)
-    }
+  func record(_ event: SecureCredentialStoreEvent) {
+    events.append(event)
+  }
 
-    func snapshot() -> [SecureCredentialStoreEvent] {
-        events
-    }
+  func snapshot() -> [SecureCredentialStoreEvent] {
+    events
+  }
 }
 
 private actor FakeSecureCredentialStore: SecureCredentialStore {
-    private var storage: [SecureCredentialKey: String]
-    private let log: CredentialOperationLog
-    private let failRead: Bool
-    private let failSet: Bool
+  private var storage: [SecureCredentialKey: String]
+  private let log: CredentialOperationLog
+  private let failRead: Bool
+  private let failSet: Bool
 
-    init(
-        storage: [SecureCredentialKey: String] = [:],
-        log: CredentialOperationLog,
-        failRead: Bool = false,
-        failSet: Bool = false
-    ) {
-        self.storage = storage
-        self.log = log
-        self.failRead = failRead
-        self.failSet = failSet
-    }
+  init(
+    storage: [SecureCredentialKey: String] = [:],
+    log: CredentialOperationLog,
+    failRead: Bool = false,
+    failSet: Bool = false
+  ) {
+    self.storage = storage
+    self.log = log
+    self.failRead = failRead
+    self.failSet = failSet
+  }
 
-    func credential(for key: SecureCredentialKey) async throws -> String? {
-        await log.append("secure.read")
-        if failRead { throw FakeCredentialStoreError.requestedFailure }
-        return storage[key]
-    }
+  func credential(for key: SecureCredentialKey) async throws -> String? {
+    await log.append("secure.read")
+    if failRead { throw FakeCredentialStoreError.requestedFailure }
+    return storage[key]
+  }
 
-    func setCredential(_ value: String, for key: SecureCredentialKey) async throws {
-        await log.append("secure.set")
-        if failSet { throw FakeCredentialStoreError.requestedFailure }
-        storage[key] = value
-    }
+  func setCredential(_ value: String, for key: SecureCredentialKey) async throws {
+    await log.append("secure.set")
+    if failSet { throw FakeCredentialStoreError.requestedFailure }
+    storage[key] = value
+  }
 
-    func removeCredential(for key: SecureCredentialKey) async throws {
-        await log.append("secure.remove")
-        storage.removeValue(forKey: key)
-    }
+  func removeCredential(for key: SecureCredentialKey) async throws {
+    await log.append("secure.remove")
+    storage.removeValue(forKey: key)
+  }
 
-    func storedValue(for key: SecureCredentialKey) -> String? {
-        storage[key]
-    }
+  func storedValue(for key: SecureCredentialKey) -> String? {
+    storage[key]
+  }
 }
 
 private actor FakeLegacySettingsStore: SettingsStore {
-    private var storage: [AppSettingKey: String]
-    private let log: CredentialOperationLog
-    private let failRemove: Bool
-    private let readGate: CredentialReadGate?
+  private var storage: [AppSettingKey: String]
+  private let log: CredentialOperationLog
+  private let failRemove: Bool
+  private let readGate: CredentialReadGate?
 
-    init(
-        storage: [AppSettingKey: String],
-        log: CredentialOperationLog,
-        failRemove: Bool = false,
-        readGate: CredentialReadGate? = nil
-    ) {
-        self.storage = storage
-        self.log = log
-        self.failRemove = failRemove
-        self.readGate = readGate
-    }
+  init(
+    storage: [AppSettingKey: String],
+    log: CredentialOperationLog,
+    failRemove: Bool = false,
+    readGate: CredentialReadGate? = nil
+  ) {
+    self.storage = storage
+    self.log = log
+    self.failRemove = failRemove
+    self.readGate = readGate
+  }
 
-    func string(forKey key: AppSettingKey) async throws -> String? {
-        let value = storage[key]
-        await log.append("legacy.read")
-        await readGate?.wait()
-        return value
-    }
+  func string(forKey key: AppSettingKey) async throws -> String? {
+    let value = storage[key]
+    await log.append("legacy.read")
+    await readGate?.wait()
+    return value
+  }
 
-    func strings(forKeys keys: [AppSettingKey]) async throws -> [AppSettingKey: String] {
-        keys.reduce(into: [:]) { result, key in
-            result[key] = storage[key]
-        }
+  func strings(forKeys keys: [AppSettingKey]) async throws -> [AppSettingKey: String] {
+    keys.reduce(into: [:]) { result, key in
+      result[key] = storage[key]
     }
+  }
 
-    func setString(_ value: String, forKey key: AppSettingKey) async throws {
-        storage[key] = value
-    }
+  func setString(_ value: String, forKey key: AppSettingKey) async throws {
+    storage[key] = value
+  }
 
-    func setStringsAtomically(_ values: [AppSettingKey: String]) async throws {
-        storage.merge(values) { _, newValue in newValue }
-    }
+  func setStringsAtomically(_ values: [AppSettingKey: String]) async throws {
+    storage.merge(values) { _, newValue in newValue }
+  }
 
-    func removeValue(forKey key: AppSettingKey) async throws {
-        await log.append("legacy.remove")
-        if failRemove { throw FakeCredentialStoreError.requestedFailure }
-        storage.removeValue(forKey: key)
-    }
+  func removeValue(forKey key: AppSettingKey) async throws {
+    await log.append("legacy.remove")
+    if failRemove { throw FakeCredentialStoreError.requestedFailure }
+    storage.removeValue(forKey: key)
+  }
 
-    func storedValue(for key: AppSettingKey) -> String? {
-        storage[key]
-    }
+  func storedValue(for key: AppSettingKey) -> String? {
+    storage[key]
+  }
 }

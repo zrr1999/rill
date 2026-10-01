@@ -88,9 +88,11 @@ private struct RecordImageContent: View {
       } else if isLoading {
         ProgressView().controlSize(.small)
       } else {
-        Label(L10n.quickRecord(.imageUnavailable, language: language),
-          systemImage: RillSystemSymbol.photoBadgeExclamationmark.rawValue)
-          .foregroundStyle(.secondary)
+        Label(
+          L10n.quickRecord(.imageUnavailable, language: language),
+          systemImage: RillSystemSymbol.photoBadgeExclamationmark.rawValue
+        )
+        .foregroundStyle(.secondary)
       }
     }
     .task(id: id) {

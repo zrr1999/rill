@@ -48,9 +48,10 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     )
     await waitUntil { !harness.model.settings.isLoading }
 
-    harness.model.applyLanguage(harness.model.settings.language == .english
-      ? .simplifiedChinese
-      : .english)
+    harness.model.applyLanguage(
+      harness.model.settings.language == .english
+        ? .simplifiedChinese
+        : .english)
     await harness.model.flushPendingPersistenceWrites()
 
     let activity = await store.activitySnapshot()
@@ -203,7 +204,6 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertTrue(activity.setCounts.isEmpty)
     XCTAssertTrue(activity.removeCounts.isEmpty)
   }
-
 
   func testLocalSpeechSettingsSourceFailsClosedAndRecoversWithScalarDomain() async throws {
     let store = UITestSettingsStore(
@@ -407,7 +407,6 @@ final class AppModelScalarSettingsAvailabilityTests: XCTestCase {
     XCTAssertEqual(activity.storage[.localSpeechModel], selectedModel)
     XCTAssertEqual(activity.setCounts[.localSpeechModel], 1)
   }
-
 
   func testOpenAISettingsPersistCustomEndpointModelAndCredentialInCorrectStores() async {
     let store = UITestSettingsStore(

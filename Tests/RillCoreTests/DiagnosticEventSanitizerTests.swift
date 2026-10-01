@@ -5,38 +5,55 @@ import XCTest
 final class DiagnosticEventSanitizerTests: XCTestCase {
   func testHotwordDiagnosticsRetainOnlyClosedStatusCountsAndTiming() {
     for code in ["hotword-ranking.selected", "hotword-ranking.completed"] {
-      let safe = ["hotwordCache": "miss", "hotwordRankingOutcome": "timeout",
-                  "hotwordCandidateCount": "50", "hotwordCount": "16", "durationMillis": "2000"]
-      let event = DiagnosticEvent(subsystem: .session, level: .debug, untrustedEvent: code,
-        message: "private selection", metadata: safe.merging(
+      let safe = [
+        "hotwordCache": "miss", "hotwordRankingOutcome": "timeout",
+        "hotwordCandidateCount": "50", "hotwordCount": "16", "durationMillis": "2000",
+      ]
+      let event = DiagnosticEvent(
+        subsystem: .session, level: .debug, untrustedEvent: code,
+        message: "private selection",
+        metadata: safe.merging(
           ["selectedText": "private selection", "terms": "private terms", "apiKey": "secret"]) { $1 })
       let sanitized = DiagnosticEventSanitizer.sanitize(event)
       XCTAssertEqual(sanitized.event, code)
       XCTAssertEqual(sanitized.metadata, safe)
       XCTAssertEqual(sanitized.message, DiagnosticEventSanitizer.sanitizedMessage)
-      let invalid = DiagnosticEvent(subsystem: .session, level: .debug, untrustedEvent: code,
-        message: "", metadata: ["hotwordCache": "private selection", "hotwordRankingOutcome": "private terms",
-                                "hotwordCandidateCount": "-1", "durationMillis": "secret"])
+      let invalid = DiagnosticEvent(
+        subsystem: .session, level: .debug, untrustedEvent: code,
+        message: "",
+        metadata: [
+          "hotwordCache": "private selection", "hotwordRankingOutcome": "private terms",
+          "hotwordCandidateCount": "-1", "durationMillis": "secret",
+        ])
       XCTAssertTrue(DiagnosticEventSanitizer.sanitize(invalid).metadata.isEmpty)
     }
   }
 
   func testPerformanceCoordinatesSurviveWithoutOpeningFreeTextFields() {
-    for code in ["benchmark-recording.preserved", "benchmark-recording.preserve-failed",
-                 "audio-processing.capture-timing", "session.process.timing",
-                 "clipboard.inject.paste.posted"] {
+    for code in [
+      "benchmark-recording.preserved", "benchmark-recording.preserve-failed",
+      "audio-processing.capture-timing", "session.process.timing",
+      "clipboard.inject.paste.posted",
+    ] {
       let runID = UUID()
-      let event = DiagnosticEvent(runID: runID, subsystem: .session, level: .debug,
+      let event = DiagnosticEvent(
+        runID: runID, subsystem: .session, level: .debug,
         untrustedEvent: code, message: "private transcript",
-        metadata: ["durationMillis": "43", "captureStopMillis": "27",
-                   "captureDrainMillis": "private", "capturePreviewRetireMillis": "-1",
-                   "stepKind": "recognizeSpeech", "resultCode": "completed",
-                   "transcript": "private transcript", "apiKey": "secret"])
+        metadata: [
+          "durationMillis": "43", "captureStopMillis": "27",
+          "captureDrainMillis": "private", "capturePreviewRetireMillis": "-1",
+          "stepKind": "recognizeSpeech", "resultCode": "completed",
+          "transcript": "private transcript", "apiKey": "secret",
+        ])
       let sanitized = DiagnosticEventSanitizer.sanitize(event)
       XCTAssertEqual(sanitized.event, code)
       XCTAssertEqual(sanitized.runID, runID)
-      XCTAssertEqual(sanitized.metadata, ["durationMillis": "43", "captureStopMillis": "27",
-                                         "stepKind": "recognizeSpeech", "resultCode": "completed"])
+      XCTAssertEqual(
+        sanitized.metadata,
+        [
+          "durationMillis": "43", "captureStopMillis": "27",
+          "stepKind": "recognizeSpeech", "resultCode": "completed",
+        ])
       XCTAssertEqual(sanitized.message, DiagnosticEventSanitizer.sanitizedMessage)
     }
   }

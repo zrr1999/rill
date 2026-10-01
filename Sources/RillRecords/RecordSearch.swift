@@ -60,12 +60,17 @@ public enum RecordSearch {
       revision = page.revision
       matches.append(contentsOf: page.records)
       if let next = page.nextOffset {
-        if matches.count < limit { offset = next; continue }
-        return RecordSearchPage(revision: page.revision, records: matches,
+        if matches.count < limit {
+          offset = next
+          continue
+        }
+        return RecordSearchPage(
+          revision: page.revision, records: matches,
           cursor: .init(query: query, matching: scanQuery.matching, revision: page.revision, offset: next))
       }
       if cursor == nil, matches.isEmpty, scanQuery.matching == .literal,
-        !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      {
         scanQuery.matching = .approximate
         offset = 0
         continue

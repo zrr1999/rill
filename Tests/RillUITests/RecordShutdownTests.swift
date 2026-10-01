@@ -112,8 +112,7 @@ private actor SuspendedRecordWrite: RecordGraphPersistenceStore {
   }
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot { .empty }
   func removeRecordGraph() async throws -> RecordGraphRemovalResult { .removed }
-  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64
-  {
+  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 {
     if shouldBlock {
       shouldBlock = false
       await withCheckedContinuation { continuation in

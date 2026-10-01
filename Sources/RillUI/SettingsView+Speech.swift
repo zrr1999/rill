@@ -28,10 +28,12 @@ extension SettingsView {
       }
 
       LabeledContent(L10n.surface(.currentSpeechModel, language: model.settings.language)) {
-        Text(model.trustedLocalSpeechModels.first { $0.id == model.selectedTrustedLocalSpeechModelIdentifier }
-          .map { model.localSpeechModelDisplayName($0.id) }
-          ?? L10n.speechEngine(model.settings.preferredSpeechEngine, language: model.settings.language))
-          .foregroundStyle(.secondary)
+        Text(
+          model.trustedLocalSpeechModels.first { $0.id == model.selectedTrustedLocalSpeechModelIdentifier }
+            .map { model.localSpeechModelDisplayName($0.id) }
+            ?? L10n.speechEngine(model.settings.preferredSpeechEngine, language: model.settings.language)
+        )
+        .foregroundStyle(.secondary)
       }
 
       if let metadataError = model.voice.downloadedLocalSpeechModelsError {
@@ -42,189 +44,189 @@ extension SettingsView {
       }
 
       VStack(alignment: .leading, spacing: RillSpacing.row) {
-          if model.localSpeechTrustMaterialAvailable {
-            speechModelPoolSettings
+        if model.localSpeechTrustMaterialAvailable {
+          speechModelPoolSettings
 
-            if model.speechModelResourceCatalog.isEmpty {
-              if !model.trustedLocalSpeechModels.isEmpty {
-                Picker(
-                  L10n.text(.localSpeechModel, language: model.settings.language),
-                  selection: Binding(
-                    get: { model.selectedTrustedLocalSpeechModelIdentifier },
-                    set: { _ = model.setPreferredLocalSpeechModel($0) }
-                  )
-                ) {
-                  ForEach(modelsForSelectedLocalSpeechEngine) { descriptor in
-                    Text(
-                      model.settings.language == .english
-                        ? descriptor.englishName
-                        : descriptor.simplifiedChineseName
-                    )
-                    .tag(descriptor.id)
-                  }
-                }
-                .pickerStyle(.menu)
-                .disabled(
-                  model.settings.isLoading
-                    || !model.settings.canMutateScalarSettings(in: .localSpeech)
+          if model.speechModelResourceCatalog.isEmpty {
+            if !model.trustedLocalSpeechModels.isEmpty {
+              Picker(
+                L10n.text(.localSpeechModel, language: model.settings.language),
+                selection: Binding(
+                  get: { model.selectedTrustedLocalSpeechModelIdentifier },
+                  set: { _ = model.setPreferredLocalSpeechModel($0) }
                 )
-                .accessibilityIdentifier("settings.local-speech.model")
-
-                if let descriptor = modelsForSelectedLocalSpeechEngine.first(where: {
-                  $0.id == model.selectedTrustedLocalSpeechModelIdentifier
-                }) {
+              ) {
+                ForEach(modelsForSelectedLocalSpeechEngine) { descriptor in
                   Text(
                     model.settings.language == .english
-                      ? descriptor.englishDetail
-                      : descriptor.simplifiedChineseDetail
+                      ? descriptor.englishName
+                      : descriptor.simplifiedChineseName
                   )
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
-                  .accessibilityIdentifier("settings.local-speech.trusted-model-detail")
-                  Text(model.localSpeechModelHardwareDescription(descriptor))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityIdentifier(
-                      "settings.local-speech.trusted-model-hardware"
-                    )
-                  if model.recommendedLocalSpeechModelIdentifier != descriptor.id {
-                    Button(
-                      L10n.settingsText(
-                        .settingsUseHardwareRecommendation,
-                        language: model.settings.language
-                      )
-                    ) {
-                      model.selectRecommendedLocalSpeechModel()
-                    }
-                    .controlSize(.small)
-                    .disabled(model.settings.isLoading)
-                    .accessibilityIdentifier(
-                      "settings.local-speech.use-hardware-recommendation"
-                    )
-                  }
-                  Text(
-                    L10n.settingsText(
-                      .settingsStreamingPreviewModelDetail,
-                      language: model.settings.language
-                    )
-                  )
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
-                  .accessibilityIdentifier("settings.local-speech.streaming-preview-model")
+                  .tag(descriptor.id)
                 }
               }
-            }
-
-            if model.voice.localSpeechPreparationState == .preparing {
-              let preparationStage = LocalSpeechPreparationPresentation.stage(
-                displayedProgress: model.voice.localSpeechPreparationProgress
+              .pickerStyle(.menu)
+              .disabled(
+                model.settings.isLoading
+                  || !model.settings.canMutateScalarSettings(in: .localSpeech)
               )
-              VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                  Text(
-                    L10n.text(
-                      preparationStage.localizedKey,
-                      language: model.settings.language
-                    )
-                  )
-                  .foregroundStyle(.secondary)
-                  Spacer()
-                  if let downloadFraction = preparationStage.downloadFraction {
-                    Text(
-                      downloadFraction,
-                      format: .percent.precision(.fractionLength(0))
-                    )
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                  }
-                  Button(L10n.text(.localSpeechCancelPreparation, language: model.settings.language)) {
-                    model.voice.cancelLocalSpeechModelPreparation()
-                  }
-                  .buttonStyle(.bordered)
-                  .controlSize(.small)
-                  .accessibilityIdentifier("settings.local-speech.cancel-preparation")
-                }
-                if let downloadFraction = preparationStage.downloadFraction {
-                  ProgressView(value: downloadFraction, total: 1)
-                    .controlSize(.small)
-                    .progressViewStyle(.linear)
-                } else {
-                  ProgressView()
-                    .controlSize(.small)
-                }
-              }
-              .transition(.opacity)
-            } else if model.voice.localSpeechPreparationState == .ready {
-              VStack(alignment: .leading, spacing: RillSpacing.compact) {
-                HStack(alignment: .firstTextBaseline, spacing: RillSpacing.card) {
-                  Label(
-                    L10n.text(.localSpeechPreparationReady, language: model.settings.language),
-                    systemImage: RillSystemSymbol.checkmarkCircleFill.rawValue
-                  )
-                  .foregroundStyle(.green)
+              .accessibilityIdentifier("settings.local-speech.model")
 
-                  Spacer()
-
-                  Button(
-                    L10n.text(.localSpeechReleaseMemory, language: model.settings.language)
-                  ) {
-                    model.voice.releaseLocalSpeechModelMemory()
-                  }
-                  .buttonStyle(.bordered)
-                  .controlSize(.small)
-                  .help(
-                    L10n.text(
-                      .localSpeechReleaseMemoryHint,
-                      language: model.settings.language
-                    )
-                  )
-                  .accessibilityIdentifier("settings.local-speech.release-memory")
-                }
-
-                if let preparedModel = model.voice.localSpeechPreparedModelIdentifier {
-                  Text(preparedModel)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                }
-              }
-              .transition(.opacity)
-            }
-
-            if let testWorkflow = model.localSpeechTestWorkflow {
-              VStack(alignment: .leading, spacing: RillSpacing.compact) {
-                Button(model.workflowRunButtonTitle(for: testWorkflow)) {
-                  model.runWorkflow(testWorkflow)
-                }
-                .disabled(
-                  !model.canTriggerWorkflow(testWorkflow)
-                    || model.voice.localSpeechPreparationState == .preparing
+              if let descriptor = modelsForSelectedLocalSpeechEngine.first(where: {
+                $0.id == model.selectedTrustedLocalSpeechModelIdentifier
+              }) {
+                Text(
+                  model.settings.language == .english
+                    ? descriptor.englishDetail
+                    : descriptor.simplifiedChineseDetail
                 )
-                .accessibilityIdentifier("settings.local-speech.record-test")
-
-                Text(L10n.text(.localSpeechLocalTestHint, language: model.settings.language))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("settings.local-speech.trusted-model-detail")
+                Text(model.localSpeechModelHardwareDescription(descriptor))
                   .font(.caption)
                   .foregroundStyle(.secondary)
-              }
-            }
-
-            Text(
-              L10n.text(
-                model.trustedLocalSpeechModels.isEmpty
-                  ? .localSpeechPreparationHint
-                  : .localSpeechTrustedCatalogHint,
-                language: model.settings.language
-              )
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            if let error = model.voice.localSpeechPreparationError, !error.isEmpty {
-              Text(error)
+                  .accessibilityIdentifier(
+                    "settings.local-speech.trusted-model-hardware"
+                  )
+                if model.recommendedLocalSpeechModelIdentifier != descriptor.id {
+                  Button(
+                    L10n.settingsText(
+                      .settingsUseHardwareRecommendation,
+                      language: model.settings.language
+                    )
+                  ) {
+                    model.selectRecommendedLocalSpeechModel()
+                  }
+                  .controlSize(.small)
+                  .disabled(model.settings.isLoading)
+                  .accessibilityIdentifier(
+                    "settings.local-speech.use-hardware-recommendation"
+                  )
+                }
+                Text(
+                  L10n.settingsText(
+                    .settingsStreamingPreviewModelDetail,
+                    language: model.settings.language
+                  )
+                )
                 .font(.caption)
-                .foregroundStyle(.red)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("settings.local-speech.streaming-preview-model")
+              }
             }
           }
+
+          if model.voice.localSpeechPreparationState == .preparing {
+            let preparationStage = LocalSpeechPreparationPresentation.stage(
+              displayedProgress: model.voice.localSpeechPreparationProgress
+            )
+            VStack(alignment: .leading, spacing: 6) {
+              HStack {
+                Text(
+                  L10n.text(
+                    preparationStage.localizedKey,
+                    language: model.settings.language
+                  )
+                )
+                .foregroundStyle(.secondary)
+                Spacer()
+                if let downloadFraction = preparationStage.downloadFraction {
+                  Text(
+                    downloadFraction,
+                    format: .percent.precision(.fractionLength(0))
+                  )
+                  .font(.caption.monospacedDigit())
+                  .foregroundStyle(.secondary)
+                }
+                Button(L10n.text(.localSpeechCancelPreparation, language: model.settings.language)) {
+                  model.voice.cancelLocalSpeechModelPreparation()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier("settings.local-speech.cancel-preparation")
+              }
+              if let downloadFraction = preparationStage.downloadFraction {
+                ProgressView(value: downloadFraction, total: 1)
+                  .controlSize(.small)
+                  .progressViewStyle(.linear)
+              } else {
+                ProgressView()
+                  .controlSize(.small)
+              }
+            }
+            .transition(.opacity)
+          } else if model.voice.localSpeechPreparationState == .ready {
+            VStack(alignment: .leading, spacing: RillSpacing.compact) {
+              HStack(alignment: .firstTextBaseline, spacing: RillSpacing.card) {
+                Label(
+                  L10n.text(.localSpeechPreparationReady, language: model.settings.language),
+                  systemImage: RillSystemSymbol.checkmarkCircleFill.rawValue
+                )
+                .foregroundStyle(.green)
+
+                Spacer()
+
+                Button(
+                  L10n.text(.localSpeechReleaseMemory, language: model.settings.language)
+                ) {
+                  model.voice.releaseLocalSpeechModelMemory()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help(
+                  L10n.text(
+                    .localSpeechReleaseMemoryHint,
+                    language: model.settings.language
+                  )
+                )
+                .accessibilityIdentifier("settings.local-speech.release-memory")
+              }
+
+              if let preparedModel = model.voice.localSpeechPreparedModelIdentifier {
+                Text(preparedModel)
+                  .font(.caption.monospaced())
+                  .foregroundStyle(.secondary)
+              }
+            }
+            .transition(.opacity)
+          }
+
+          if let testWorkflow = model.localSpeechTestWorkflow {
+            VStack(alignment: .leading, spacing: RillSpacing.compact) {
+              Button(model.workflowRunButtonTitle(for: testWorkflow)) {
+                model.runWorkflow(testWorkflow)
+              }
+              .disabled(
+                !model.canTriggerWorkflow(testWorkflow)
+                  || model.voice.localSpeechPreparationState == .preparing
+              )
+              .accessibilityIdentifier("settings.local-speech.record-test")
+
+              Text(L10n.text(.localSpeechLocalTestHint, language: model.settings.language))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+          }
+
+          Text(
+            L10n.text(
+              model.trustedLocalSpeechModels.isEmpty
+                ? .localSpeechPreparationHint
+                : .localSpeechTrustedCatalogHint,
+              language: model.settings.language
+            )
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
+
+          if let error = model.voice.localSpeechPreparationError, !error.isEmpty {
+            Text(error)
+              .font(.caption)
+              .foregroundStyle(.red)
+          }
         }
+      }
       .animation(
         reduceMotion ? nil : .easeInOut(duration: 0.15),
         value: model.voice.localSpeechPreparationState
@@ -340,19 +342,19 @@ extension SettingsView {
               LabeledContent(L10n.surface(.modelId, language: model.settings.language)) {
                 Text(descriptor.id).textSelection(.enabled)
               }
-            Toggle(
-              L10n.settingsText(.settingsKeepResident, language: model.settings.language),
-              isOn: Binding(
-                get: { model.settings.residentSpeechModelIDs.contains(descriptor.id) },
-                set: { model.setSpeechModelResident(descriptor.id, resident: $0) }
+              Toggle(
+                L10n.settingsText(.settingsKeepResident, language: model.settings.language),
+                isOn: Binding(
+                  get: { model.settings.residentSpeechModelIDs.contains(descriptor.id) },
+                  set: { model.setSpeechModelResident(descriptor.id, resident: $0) }
+                )
               )
-            )
-            .toggleStyle(.checkbox)
-            .controlSize(.small)
-            .disabled(
-              model.settings.isLoading
-                || !model.settings.enabledSpeechModelIDs.contains(descriptor.id)
-            )
+              .toggleStyle(.checkbox)
+              .controlSize(.small)
+              .disabled(
+                model.settings.isLoading
+                  || !model.settings.enabledSpeechModelIDs.contains(descriptor.id)
+              )
             }
             .font(.caption)
 
@@ -408,7 +410,8 @@ extension SettingsView {
       fromByteCount: Int64(clamping: descriptor.downloadByteCount),
       countStyle: .file
     )
-    let name = model.trustedLocalSpeechModels.first { $0.id == descriptor.id }
+    let name =
+      model.trustedLocalSpeechModels.first { $0.id == descriptor.id }
       .map { model.localSpeechModelDisplayName($0.id) }
       ?? model.ttsModelOptions.first { $0.id == descriptor.id }?.precision
       ?? descriptor.id

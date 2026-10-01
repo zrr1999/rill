@@ -41,8 +41,7 @@ public final class SettingsPersistenceModel {
   public internal(set) var unavailableScalarSettingKeys: Set<AppSettingKey> = []
   public internal(set) var retryingUnavailableScalarSettingsDomains: Set<ScalarSettingsDomain> = []
   public internal(set) var openAICredentialAvailability: OpenAICredentialAvailability = .loading
-  public internal(set) var openAIConfigurationVerificationState:
-    OpenAIConfigurationVerificationState = .idle
+  public internal(set) var openAIConfigurationVerificationState: OpenAIConfigurationVerificationState = .idle
   public internal(set) var openAIVerificationFailure: OpenAIVerificationFailure?
   public internal(set) var isRetryingUnavailableSettingsDomains = false
   var isRestoringSettings = false
@@ -68,9 +67,11 @@ public final class SettingsPersistenceModel {
   let configurationChanged: @MainActor () -> Void
   private(set) var hasBegunApplicationShutdown = false
 
-  init(store: (any SettingsStore)?, language: AppLanguage,
+  init(
+    store: (any SettingsStore)?, language: AppLanguage,
     verifyOpenAIConfiguration: @escaping @Sendable (OpenAISettings) async throws -> Void,
-    configurationChanged: @escaping @MainActor () -> Void) {
+    configurationChanged: @escaping @MainActor () -> Void
+  ) {
     self.verifyOpenAIConfigurationAction = verifyOpenAIConfiguration
     self.configurationChanged = configurationChanged
     self.store = store
@@ -244,9 +245,10 @@ extension SettingsPersistenceModel {
       return
     }
 
-    submitAtomically(values.mapValues { value in
-      SettingsStringWrite(category: .privacy, encode: { value })
-    }, onFailure: onFailure)
+    submitAtomically(
+      values.mapValues { value in
+        SettingsStringWrite(category: .privacy, encode: { value })
+      }, onFailure: onFailure)
   }
 
   private func localizedPrivacySettingsSaveFailure() -> String {

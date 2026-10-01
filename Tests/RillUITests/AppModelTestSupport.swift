@@ -44,7 +44,7 @@ struct UITestAction: OutputAction {
   }
 
   func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-      _ = try record.requireText(for: id)
+    _ = try record.requireText(for: id)
     await log.increment()
     return .copiedToClipboard
   }
@@ -483,9 +483,10 @@ actor UITestWorkflowFileStore: WorkflowFileStore {
   private let rejectsSaves: Bool
 
   init(records: [WorkflowFileRecord] = [], rejectsSaves: Bool = false) {
-    recordsByID = Dictionary(uniqueKeysWithValues: records.map {
-      ($0.workflow.id, $0)
-    })
+    recordsByID = Dictionary(
+      uniqueKeysWithValues: records.map {
+        ($0.workflow.id, $0)
+      })
     self.rejectsSaves = rejectsSaves
   }
 
@@ -504,7 +505,8 @@ actor UITestWorkflowFileStore: WorkflowFileStore {
     isEnabled: Bool,
     replacing fileURL: URL?
   ) async throws -> URL {
-    let destination = fileURL
+    let destination =
+      fileURL
       ?? configurationDirectoryURL.appendingPathComponent(
         "\(workflow.id.uuidString.lowercased()).toml"
       )
@@ -853,18 +855,18 @@ func waitForFailedAudioRecovery(_ harness: AppModelTestHarness) async {
 }
 
 func appModelTestTrustedLocalSpeechModels() -> [LocalSpeechModelDescriptor] {
-    [
-        LocalSpeechModelDescriptor(
-            id: "qwen3-asr-0.6b-mlx-8bit",
-            engine: .mlxAudioSwift,
-            englishName: "Qwen3-ASR 0.6B INT8",
-            simplifiedChineseName: "Qwen3-ASR 0.6B INT8"
-        ),
-        LocalSpeechModelDescriptor(
-            id: "qwen3-asr-1.7b-mlx-8bit",
-            engine: .mlxAudioSwift,
-            englishName: "Qwen3-ASR 1.7B INT8",
-            simplifiedChineseName: "Qwen3-ASR 1.7B INT8"
-        ),
-    ]
+  [
+    LocalSpeechModelDescriptor(
+      id: "qwen3-asr-0.6b-mlx-8bit",
+      engine: .mlxAudioSwift,
+      englishName: "Qwen3-ASR 0.6B INT8",
+      simplifiedChineseName: "Qwen3-ASR 0.6B INT8"
+    ),
+    LocalSpeechModelDescriptor(
+      id: "qwen3-asr-1.7b-mlx-8bit",
+      engine: .mlxAudioSwift,
+      englishName: "Qwen3-ASR 1.7B INT8",
+      simplifiedChineseName: "Qwen3-ASR 1.7B INT8"
+    ),
+  ]
 }

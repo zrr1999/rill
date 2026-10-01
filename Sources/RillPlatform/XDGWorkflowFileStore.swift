@@ -28,7 +28,9 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     environment: [String: String],
     homeDirectoryURL: URL
   ) {
-    let stateBase = environment["XDG_STATE_HOME"].flatMap { $0.hasPrefix("/") ? URL(fileURLWithPath: $0, isDirectory: true) : nil } ?? homeDirectoryURL.appendingPathComponent(".local/state", isDirectory: true)
+    let stateBase =
+      environment["XDG_STATE_HOME"].flatMap { $0.hasPrefix("/") ? URL(fileURLWithPath: $0, isDirectory: true) : nil }
+      ?? homeDirectoryURL.appendingPathComponent(".local/state", isDirectory: true)
     stateDirectoryURL = stateBase.appendingPathComponent("rill/workflows", isDirectory: true)
     let baseURL: URL
     if let configuredPath = environment["XDG_CONFIG_HOME"],
@@ -37,10 +39,12 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     {
       baseURL = URL(fileURLWithPath: configuredPath, isDirectory: true)
     } else {
-      baseURL = homeDirectoryURL
+      baseURL =
+        homeDirectoryURL
         .appendingPathComponent(".config", isDirectory: true)
     }
-    configurationDirectoryURL = baseURL
+    configurationDirectoryURL =
+      baseURL
       .appendingPathComponent("rill", isDirectory: true)
       .appendingPathComponent("workflows", isDirectory: true)
       .standardizedFileURL
@@ -58,7 +62,9 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
       return WorkflowFileLoadResult()
     }
     guard isDirectory.boolValue else {
-      return WorkflowFileLoadResult(issues: [WorkflowFileIssue(filename: configurationDirectoryURL.lastPathComponent, message: "The workflow configuration path is not a directory.")])
+      return WorkflowFileLoadResult(issues: [
+        WorkflowFileIssue(filename: configurationDirectoryURL.lastPathComponent, message: "The workflow configuration path is not a directory.")
+      ])
     }
 
     let entries: [URL]
@@ -156,7 +162,8 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     isEnabled: Bool,
     replacing fileURL: URL?
   ) async throws -> URL {
-    try await saveDocument(WorkflowDocument(workflow: workflow, isEnabled: isEnabled), replacing: fileURL, expected: fileURL == nil ? .missing : .overwrite).fileURL
+    try await saveDocument(WorkflowDocument(workflow: workflow, isEnabled: isEnabled), replacing: fileURL, expected: fileURL == nil ? .missing : .overwrite)
+      .fileURL
   }
 
   public func decodeDocument(_ source: String) throws -> WorkflowDocument { try WorkflowDocumentCodec().decode(source) }
@@ -173,7 +180,8 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
   public func saveDocument(_ document: WorkflowDocument, replacing fileURL: URL?, expected: WorkflowFileExpectation) async throws -> WorkflowFileRecord {
     let source = try encodeDocument(document)
     let destination = try fileURL.map(validatedDirectChild) ?? configurationDirectoryURL.appendingPathComponent(Self.filename(for: document.workflow))
-    try await Self.writer.save(source: source, to: destination, expected: expected, historyDirectory: stateDirectoryURL.appendingPathComponent(document.workflow.id.uuidString))
+    try await Self.writer.save(
+      source: source, to: destination, expected: expected, historyDirectory: stateDirectoryURL.appendingPathComponent(document.workflow.id.uuidString))
     return WorkflowFileRecord(workflow: document.workflow, isEnabled: document.isEnabled, fileURL: destination, source: source)
   }
 
@@ -194,7 +202,8 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     let destination = try validatedDirectChild(fileURL)
     let source = try await readSource(at: destination)
     guard let id = Self.identifyWorkflow(source) else { throw WorkflowFileConflict.changed }
-    try await Self.writer.delete(at: destination, expected: expected,
+    try await Self.writer.delete(
+      at: destination, expected: expected,
       historyDirectory: stateDirectoryURL.appendingPathComponent(id.uuidString))
   }
 
@@ -242,7 +251,8 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
     for action in workflow.plan.output.actions {
       if action.id == ExternalOutputActionID.shortcutsRun {
         guard let name = action.configuration[ExternalOutputActionConfigurationKey.shortcutName],
-              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+          !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
           throw WorkflowDocumentError("output.actions.config.shortcuts.name", "A Shortcut name is required.")
         }
       }
@@ -256,11 +266,14 @@ public struct XDGWorkflowFileStore: WorkflowFileStore, Sendable {
           "Plaintext webhook workflows are not accepted."
         )
       }
-      guard !action.configuration.keys.contains(
-        ExternalOutputActionConfigurationKey.webhookURL
-      ), !action.configuration.keys.contains(
-        ExternalOutputActionConfigurationKey.webhookHeadersJSON
-      ) else {
+      guard
+        !action.configuration.keys.contains(
+          ExternalOutputActionConfigurationKey.webhookURL
+        ),
+        !action.configuration.keys.contains(
+          ExternalOutputActionConfigurationKey.webhookHeadersJSON
+        )
+      else {
         throw WorkflowFileStoreError.invalidWorkflow(
           "Plaintext webhook configuration is not accepted."
         )
@@ -385,10 +398,11 @@ struct WorkflowTOMLDocument: Codable {
     setup = try container.decode(WorkflowTOMLSetup.self, forKey: .setup)
     process = try container.decode([WorkflowTOMLProcessStep].self, forKey: .process)
     output = try container.decode(WorkflowTOMLOutput.self, forKey: .output)
-    metadata = try container.decodeIfPresent(
-      [String: String].self,
-      forKey: .metadata
-    ) ?? [:]
+    metadata =
+      try container.decodeIfPresent(
+        [String: String].self,
+        forKey: .metadata
+      ) ?? [:]
   }
 
   func workflow() throws -> WorkflowDefinition {
@@ -478,10 +492,11 @@ struct WorkflowTOMLSetup: Codable {
       WorkflowTOMLSpeechRoute.self,
       forKey: .speech
     )
-    vocabulary = try container.decodeIfPresent(
-      [WorkflowTOMLVocabularyBinding].self,
-      forKey: .vocabulary
-    ) ?? []
+    vocabulary =
+      try container.decodeIfPresent(
+        [WorkflowTOMLVocabularyBinding].self,
+        forKey: .vocabulary
+      ) ?? []
     wakeWord = try container.decodeIfPresent(
       WorkflowTOMLWakeWord.self,
       forKey: .wakeWord
@@ -586,7 +601,8 @@ struct WorkflowTOMLVocabularyBinding: Codable {
     id = binding.id
     collection = binding.collectionID
     uses = binding.uses.map(\.tomlValue).sorted()
-    when = binding.condition == .any
+    when =
+      binding.condition == .any
       ? nil
       : WorkflowTOMLBindingCondition(condition: binding.condition)
   }
@@ -740,10 +756,11 @@ struct WorkflowTOMLAction: Codable {
   init(from decoder: any Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     id = try container.decode(String.self, forKey: .id)
-    config = try container.decodeIfPresent(
-      [String: String].self,
-      forKey: .config
-    ) ?? [:]
+    config =
+      try container.decodeIfPresent(
+        [String: String].self,
+        forKey: .config
+      ) ?? [:]
   }
 
   var action: OutputActionReference {

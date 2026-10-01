@@ -77,8 +77,10 @@ public final class RunHistoryModel {
   var historyNavigationRequest: HistoryNavigationRequest?
   private let maintenanceSleep: @Sendable (Duration) async throws -> Void
 
-  init(browser: (any RunHistoryBrowsing)?, workflows: WorkflowLibraryModel,
-    maintenanceSleep: @escaping @Sendable (Duration) async throws -> Void) {
+  init(
+    browser: (any RunHistoryBrowsing)?, workflows: WorkflowLibraryModel,
+    maintenanceSleep: @escaping @Sendable (Duration) async throws -> Void
+  ) {
     self.maintenanceSleep = maintenanceSleep
     runHistoryBrowser = browser
     library = workflows
@@ -90,7 +92,8 @@ public final class RunHistoryModel {
 
   func startPeriodicMaintenance(interval: Duration, perform: @escaping @MainActor () -> Void) {
     guard !hasBegunApplicationShutdown, periodicHistoryRetentionMaintenanceTask == nil,
-      interval > .zero else { return }
+      interval > .zero
+    else { return }
     periodicHistoryRetentionMaintenanceTask = Task { [weak self, maintenanceSleep] in
       while !Task.isCancelled {
         do { try await maintenanceSleep(interval) } catch { return }
@@ -618,14 +621,12 @@ extension RunHistoryPageLocator {
   }
 }
 
-
 public enum RecordHistoryVisibility: String, CaseIterable, Identifiable, Sendable, Equatable {
   case remainingOnly = "remaining-only"
   case all = "all"
 
   public var id: String { rawValue }
 }
-
 
 actor DiagnosticEventRelay {
   let flushInterval: Duration

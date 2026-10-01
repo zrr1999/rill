@@ -960,8 +960,7 @@ public enum L10n {
     }
   }
 
-  public static func vocabularyRuleKind(_ kind: VocabularyRuleKind, language: AppLanguage) -> String
-  {
+  public static func vocabularyRuleKind(_ kind: VocabularyRuleKind, language: AppLanguage) -> String {
     switch (kind, language) {
     case (.hotword, .english):
       return "Hotword"
@@ -1306,8 +1305,7 @@ extension L10n {
     }
   }
 
-  public static func workflowName(_ workflow: WorkflowPresentation, language: AppLanguage) -> String
-  {
+  public static func workflowName(_ workflow: WorkflowPresentation, language: AppLanguage) -> String {
     guard let titleKey = workflow.titleKey else {
       return workflow.fallbackName
     }
@@ -1369,8 +1367,7 @@ extension L10n {
     }
   }
 
-  public static func spanSummary(lowerBound: Int, upperBound: Int, language: AppLanguage) -> String
-  {
+  public static func spanSummary(lowerBound: Int, upperBound: Int, language: AppLanguage) -> String {
     switch language {
     case .english:
       return "Span \(lowerBound)-\(upperBound)"
@@ -1429,8 +1426,7 @@ extension L10n {
     }
   }
 
-  public static func workflowDetail(_ workflow: WorkflowDefinition, language: AppLanguage) -> String
-  {
+  public static func workflowDetail(_ workflow: WorkflowDefinition, language: AppLanguage) -> String {
     VoiceWorkflowPresentation(workflow: workflow).detail(language: language)
   }
 
@@ -1585,8 +1581,7 @@ extension L10n {
     }
   }
 
-  public static func speechEngine(_ engine: PreferredSpeechEngine, language: AppLanguage) -> String
-  {
+  public static func speechEngine(_ engine: PreferredSpeechEngine, language: AppLanguage) -> String {
     switch (language, engine) {
     case (.english, .local):
       return "Local"

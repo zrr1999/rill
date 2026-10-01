@@ -32,7 +32,8 @@ final class SettingsPersistenceModelTests: XCTestCase {
     let gate = SettingsWriteGate()
     let cancelled = SettingsWriteGate()
     var changes = 0
-    let model = SettingsPersistenceModel(store: nil, language: .english,
+    let model = SettingsPersistenceModel(
+      store: nil, language: .english,
       verifyOpenAIConfiguration: { _ in
         await withTaskCancellationHandler {
           await gate.suspend()
@@ -65,10 +66,11 @@ final class SettingsPersistenceModelTests: XCTestCase {
     let store = UITestSettingsStore()
     let model = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
     await store.rejectNextAtomicWrite()
-    model.submitAtomically([
-      .workflowLibrary: .init(category: .workflows) { "migrated-workflows" },
-      .vocabularyLibrary: .init(category: .vocabulary) { "migrated-vocabulary" },
-    ], onFailure: {})
+    model.submitAtomically(
+      [
+        .workflowLibrary: .init(category: .workflows) { "migrated-workflows" },
+        .vocabularyLibrary: .init(category: .vocabulary) { "migrated-vocabulary" },
+      ], onFailure: {})
     await model.writes.flush()
     XCTAssertTrue(model.hasUnsavedWrites)
     let failed = await store.activitySnapshot()
@@ -90,17 +92,22 @@ final class SettingsPersistenceModelTests: XCTestCase {
     let store = UITestSettingsStore()
     let model = SettingsPersistenceModel(store: store, language: .english, verifyOpenAIConfiguration: { _ in }, configurationChanged: {})
     await store.rejectNextAtomicWrite()
-    model.submitAtomically([
-      .workflowLibrary: .init(category: .workflows) { "workflows" },
-      .vocabularyLibrary: .init(category: .vocabulary) { "vocabulary" },
-    ], onFailure: {})
+    model.submitAtomically(
+      [
+        .workflowLibrary: .init(category: .workflows) { "workflows" },
+        .vocabularyLibrary: .init(category: .vocabulary) { "vocabulary" },
+      ], onFailure: {})
     await model.writes.flush()
     model.retry(onFailure: { XCTFail("Retry should succeed") })
     await model.writes.flush()
     let saved = await store.activitySnapshot()
-    XCTAssertEqual(saved.atomicSnapshots, [[
-      .workflowLibrary: "workflows", .vocabularyLibrary: "vocabulary",
-    ]])
+    XCTAssertEqual(
+      saved.atomicSnapshots,
+      [
+        [
+          .workflowLibrary: "workflows", .vocabularyLibrary: "vocabulary",
+        ]
+      ])
     XCTAssertEqual(model.saveState, .saved)
   }
 

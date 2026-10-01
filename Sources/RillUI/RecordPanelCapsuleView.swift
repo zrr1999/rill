@@ -8,9 +8,11 @@ public struct RecordPanelCapsuleView: View {
   private let onDrag: (NSPoint) -> Void
   private let onDragActivity: (Bool) -> Void
 
-  public init(model: AppModel, onExpand: @escaping () -> Void, onClose: @escaping () -> Void,
-              onDrag: @escaping (NSPoint) -> Void = { _ in },
-              onDragActivity: @escaping (Bool) -> Void = { _ in }) {
+  public init(
+    model: AppModel, onExpand: @escaping () -> Void, onClose: @escaping () -> Void,
+    onDrag: @escaping (NSPoint) -> Void = { _ in },
+    onDragActivity: @escaping (Bool) -> Void = { _ in }
+  ) {
     self.model = model
     self.onExpand = onExpand
     self.onClose = onClose
@@ -41,8 +43,9 @@ public struct RecordPanelCapsuleView: View {
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .overlay {
-        CapsuleDragHandle(label: panelText(.moveAndOpen),
-                          onExpand: onExpand, onDrag: onDrag, onDragActivity: onDragActivity)
+        CapsuleDragHandle(
+          label: panelText(.moveAndOpen),
+          onExpand: onExpand, onDrag: onDrag, onDragActivity: onDragActivity)
       }
       .accessibilityElement(children: .ignore)
       .accessibilityLabel(panelText(.drafts) + " · \(buffers.snapshot?.remainingCount ?? 0)")
@@ -105,7 +108,10 @@ private struct CapsuleDragHandle: NSViewRepresentable {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
-    override func accessibilityPerformPress() -> Bool { onExpand(); return true }
+    override func accessibilityPerformPress() -> Bool {
+      onExpand()
+      return true
+    }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .openHand) }
 
     override func mouseDown(with event: NSEvent) {

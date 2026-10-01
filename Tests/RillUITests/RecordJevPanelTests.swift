@@ -209,7 +209,8 @@ struct RecordJevPanelTests {
     let second = try await fixture.insert("two")
     let third = try await fixture.insert("three")
     let panel = RecordQuickPanelModel(store: fixture.store, jevSettings: JevAPISettingsModel(service: fixture.service))
-    let context = RecordComparisonReturn(query: "meaning", resultLimit: 0, candidateIDs: [first.id],
+    let context = RecordComparisonReturn(
+      query: "meaning", resultLimit: 0, candidateIDs: [first.id],
       semanticIDs: [second.id, first.id, third.id], selectedID: third.id,
       sourceBundleIdentifier: nil, currentAppOnly: false, kind: nil, pinnedOnly: false)
     panel.restoreComparison(context)
@@ -259,15 +260,21 @@ struct JevPanelFixture {
     let provider = JevPanelProvider(held: held)
     self.store = store
     self.provider = provider
-    service = RecordCloudRanking(store: store, provider: provider,
-      privacy: .init(initialSettings: .defaults), currentFocus: {
-        .init(applicationName: "Rill", bundleIdentifier: "example.rill", processIdentifier: 1,
+    service = RecordCloudRanking(
+      store: store, provider: provider,
+      privacy: .init(initialSettings: .defaults),
+      currentFocus: {
+        .init(
+          applicationName: "Rill", bundleIdentifier: "example.rill", processIdentifier: 1,
           focusedRole: nil, selectedText: "", secureInput: false)
       })
   }
   func insert(_ text: String, app: String = "example.allowed") async throws -> RecordProjection {
-    try await store.ingest(.init(payload: .text(text), provenance: .init(
-      source: .init(kind: .systemClipboard), sourceApplicationName: "Terminal", sourceBundleIdentifier: app)), into: [])
+    try await store.ingest(
+      .init(
+        payload: .text(text),
+        provenance: .init(
+          source: .init(kind: .systemClipboard), sourceApplicationName: "Terminal", sourceBundleIdentifier: app)), into: [])
   }
 }
 
@@ -284,15 +291,20 @@ actor JevPanelProvider: RecordRankingProvider {
     if held {
       await withCheckedContinuation {
         continuation = $0
-        entered?.resume(); entered = nil
+        entered?.resume()
+        entered = nil
       }
     }
-    return .init(scores: candidates.map { $0.contains("--soft") ? 1.8 : 0.4 },
+    return .init(
+      scores: candidates.map { $0.contains("--soft") ? 1.8 : 0.4 },
       model: "jev-1.13.0", inputTokens: 321, outputTokens: 0)
   }
   func waitUntilEntered() async {
     if continuation != nil { return }
     await withCheckedContinuation { entered = $0 }
   }
-  func release() { continuation?.resume(); continuation = nil }
+  func release() {
+    continuation?.resume()
+    continuation = nil
+  }
 }

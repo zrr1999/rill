@@ -33,7 +33,8 @@ final class RecordApproximateSearchTests: XCTestCase {
   func testCachedPayloadDoesNotOutliveRecordAndFileNamesAreSearchable() async throws {
     let store = RecordStore()
     let file = try await store.ingest(
-      .init(payload: .files([URL(fileURLWithPath: "/tmp/剪贴板报告.pdf")]),
+      .init(
+        payload: .files([URL(fileURLWithPath: "/tmp/剪贴板报告.pdf")]),
         provenance: .init(source: .init(kind: .systemClipboard))), into: [])
     let query = RecordQuery(text: "jiantieban", kind: .files, matching: .approximate)
     let before = try await store.query(query)
@@ -48,7 +49,8 @@ final class RecordApproximateSearchTests: XCTestCase {
   }
 
   private func draft(_ text: String, app: String = "editor") -> RecordDraft {
-    .init(payload: .text(text),
+    .init(
+      payload: .text(text),
       provenance: .init(source: .init(kind: .systemClipboard), sourceBundleIdentifier: app))
   }
 }

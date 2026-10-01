@@ -29,7 +29,8 @@ struct WorkflowAudioRunControllerCueTests {
     try await fixture.controller.startRun(workflow: fixture.workflow, binding: binding)
     try await fixture.controller.finishRun()
 
-    let expected: [CueCapture.Event] = binding == .wakeWord
+    let expected: [CueCapture.Event] =
+      binding == .wakeWord
       ? [.started, .finished, .cue(.stopped)]
       : [.started, .cue(.started), .finished, .cue(.stopped)]
     #expect(await fixture.capture.events == expected)
@@ -62,9 +63,10 @@ struct WorkflowAudioRunControllerCueTests {
     try await finish.value
     try await fixture.controller.finishRun()
 
-    #expect(await fixture.capture.events == [
-      .started, .cue(.started), .finished, .started, .cue(.started), .finished, .cue(.stopped),
-    ])
+    #expect(
+      await fixture.capture.events == [
+        .started, .cue(.started), .finished, .started, .cue(.started), .finished, .cue(.stopped),
+      ])
     await fixture.shutdown()
   }
 

@@ -92,10 +92,12 @@ struct RecordBufferToolbar: View {
           Label(text(.drafts), systemImage: RillSystemSymbol.tray.rawValue)
             .fixedSize()
           Text("\(workspace.buffers.snapshot?.remainingCount ?? 0)").monospacedDigit().fixedSize()
-          Text(workspace.buffers.snapshot?.nextHeader?.preview
-            ?? (workspace.buffers.snapshot?.next == nil ? text(.empty) : text(.processingStatus)))
-            .foregroundStyle(.secondary).lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
+          Text(
+            workspace.buffers.snapshot?.nextHeader?.preview
+              ?? (workspace.buffers.snapshot?.next == nil ? text(.empty) : text(.processingStatus))
+          )
+          .foregroundStyle(.secondary).lineLimit(1)
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
       .buttonStyle(.borderless)

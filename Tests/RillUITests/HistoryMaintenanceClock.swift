@@ -38,6 +38,8 @@ actor HistoryMaintenanceClock {
   private func cancel(_ id: UUID) {
     if let continuation = pending.removeValue(forKey: id) {
       continuation.resume(throwing: CancellationError())
-    } else { cancelled.insert(id) }
+    } else {
+      cancelled.insert(id)
+    }
   }
 }
