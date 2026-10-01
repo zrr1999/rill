@@ -1,9 +1,48 @@
 import AppKit
 import Testing
 @testable import RillApp
+@testable import RillUI
 
 @Suite @MainActor
 struct RecordPanelInteractionTests {
+  @Test func shortPressRestartsHoverWithoutExpandingOrDragging() async throws {
+    let harness = HoverHarness()
+    defer { harness.controller.stop() }
+    var actions = harness.actions.makeAsyncIterator()
+    var dragActivity: [Bool] = []
+    var explicitOpenCount = 0
+    let handle = CapsuleDragHandle.Handle()
+    handle.onExpand = { explicitOpenCount += 1 }
+    handle.onDragActivity = {
+      dragActivity.append($0)
+      harness.controller.setDragging($0)
+    }
+    handle.onDrag = { _ in Issue.record("A short press must not move the capsule") }
+
+    harness.controller.pointerMoved(to: harness.handlePoint)
+    await harness.clock.waitForPendingCount(1)
+    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+      let event = try #require(
+        NSEvent.mouseEvent(
+          with: type, location: harness.handlePoint, modifierFlags: [], timestamp: 0,
+          windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
+      harness.controller.buttonChanged(0, isDown: type == .leftMouseDown)
+      if type == .leftMouseDown {
+        handle.mouseDown(with: event)
+        await harness.clock.waitForPendingCount(0)
+      } else {
+        handle.mouseUp(with: event)
+      }
+    }
+    #expect(explicitOpenCount == 0)
+    try #require(dragActivity.isEmpty)
+    #expect(harness.frames.page == nil)
+    await harness.clock.waitForPendingCount(1)
+    #expect(harness.clock.lastDelay == .milliseconds(300))
+    harness.clock.advance()
+    #expect(await actions.next() == .expanded)
+  }
+
   @Test func hoverOpensAfterItsDelayWithoutAButtonPress() async {
     let harness = HoverHarness()
     var actions = harness.actions.makeAsyncIterator()

@@ -78,7 +78,7 @@ public struct RecordPanelCapsuleView: View {
   }
 }
 
-private struct CapsuleDragHandle: NSViewRepresentable {
+struct CapsuleDragHandle: NSViewRepresentable {
   let label: String
   let onExpand: () -> Void
   let onDrag: (NSPoint) -> Void
@@ -117,25 +117,28 @@ private struct CapsuleDragHandle: NSViewRepresentable {
     override func mouseDown(with event: NSEvent) {
       origin = NSEvent.mouseLocation
       previous = origin
-      onDragActivity(true)
     }
 
     override func mouseDragged(with event: NSEvent) {
       guard let origin, let previous else { return }
       let point = NSEvent.mouseLocation
       guard isDragging || hypot(point.x - origin.x, point.y - origin.y) >= 5 else { return }
-      isDragging = true
+      if !isDragging {
+        isDragging = true
+        onDragActivity(true)
+      }
       NSCursor.closedHand.set()
       onDrag(NSPoint(x: point.x - previous.x, y: point.y - previous.y))
       self.previous = point
     }
 
     override func mouseUp(with event: NSEvent) {
+      let wasDragging = isDragging
       origin = nil
       previous = nil
       isDragging = false
       NSCursor.openHand.set()
-      onDragActivity(false)
+      if wasDragging { onDragActivity(false) }
     }
   }
 }
