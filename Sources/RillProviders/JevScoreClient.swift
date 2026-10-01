@@ -112,9 +112,11 @@ struct JevScoreClient: Sendable {
 }
 
 private final class NoJevRedirects: NSObject, URLSessionTaskDelegate {
-  func urlSession(_: URLSession, task _: URLSessionTask,
+  func urlSession(
+    _: URLSession, task _: URLSessionTask,
     willPerformHTTPRedirection _: HTTPURLResponse, newRequest _: URLRequest,
-    completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+    completionHandler: @escaping @Sendable (URLRequest?) -> Void
+  ) {
     completionHandler(nil)
   }
 }

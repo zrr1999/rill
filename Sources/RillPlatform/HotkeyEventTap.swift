@@ -3,783 +3,791 @@ import Foundation
 import RillCore
 
 struct HotkeyEventTapHealthChecker<Handle> {
-    let isValid: (Handle) -> Bool
-    let isEnabled: (Handle) -> Bool
-    let enable: (Handle) -> Void
+  let isValid: (Handle) -> Bool
+  let isEnabled: (Handle) -> Bool
+  let enable: (Handle) -> Void
 
-    func ensureAvailable(_ handle: Handle) -> Bool {
-        guard isValid(handle) else { return false }
-        if !isEnabled(handle) {
-            enable(handle)
-        }
-        return isValid(handle) && isEnabled(handle)
+  func ensureAvailable(_ handle: Handle) -> Bool {
+    guard isValid(handle) else { return false }
+    if !isEnabled(handle) {
+      enable(handle)
     }
+    return isValid(handle) && isEnabled(handle)
+  }
 }
 
 private extension HotkeyEventTapHealthChecker where Handle == CFMachPort {
-    static var system: Self {
-        Self(
-            isValid: { CFMachPortIsValid($0) },
-            isEnabled: { CGEvent.tapIsEnabled(tap: $0) },
-            enable: { CGEvent.tapEnable(tap: $0, enable: true) }
-        )
-    }
+  static var system: Self {
+    Self(
+      isValid: { CFMachPortIsValid($0) },
+      isEnabled: { CGEvent.tapIsEnabled(tap: $0) },
+      enable: { CGEvent.tapEnable(tap: $0, enable: true) }
+    )
+  }
 }
 
 public final class HotkeyEventTap: GlobalInputSource, @unchecked Sendable {
-    public typealias PushToTalkGesture = RillCore.PushToTalkGesture
-    public typealias Event = GlobalInputEvent
+  public typealias PushToTalkGesture = RillCore.PushToTalkGesture
+  public typealias Event = GlobalInputEvent
 
-    static let escapeKeyCode: CGKeyCode = 53
-    static let legacyPushToTalkKeyCode: CGKeyCode = 49
-    static let legacyPushToTalkModifiers: CGEventFlags = [.maskControl, .maskAlternate, .maskShift]
-    static let functionKeyCode: CGKeyCode = 63
-    static let globeKeyCode: CGKeyCode = 179
-    private static let callback: CGEventTapCallBack = { _, type, event, userInfo in
-        guard let userInfo else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        let tap = Unmanaged<HotkeyEventTap>.fromOpaque(userInfo).takeUnretainedValue()
-        return tap.handle(type: type, event: event)
+  static let escapeKeyCode: CGKeyCode = 53
+  static let legacyPushToTalkKeyCode: CGKeyCode = 49
+  static let legacyPushToTalkModifiers: CGEventFlags = [.maskControl, .maskAlternate, .maskShift]
+  static let functionKeyCode: CGKeyCode = 63
+  static let globeKeyCode: CGKeyCode = 179
+  private static let callback: CGEventTapCallBack = { _, type, event, userInfo in
+    guard let userInfo else {
+      return Unmanaged.passUnretained(event)
     }
 
-    private let lock = NSLock()
-    private var continuations: [UUID: AsyncStream<Event>.Continuation] = [:]
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var eventTapRunLoop: CFRunLoop?
-    private var eventTapThread: Thread?
-    private var retainedSelfPointer: UnsafeMutableRawPointer?
-    private var recordPanelShortcutEnabled = false
-    private var draftEditorActive = false
-    private var recordPanelShortcutRecordingSuspensions: Set<UUID> = []
-    private var recordPanelShortcutRecordingCommitKeyCodes: [UUID: CGKeyCode] = [:]
-    private var recordPanelHotkeyBinding: HotkeyBindingDescriptor = .doubleCommand
-    private var doubleCommandTapRecognizer = DoubleCommandTapRecognizer()
-    private var bufferOutputBinding: HotkeyBindingDescriptor = .keyboardShortcut(.outputNext)
-    private var bufferOutputRecognizer = RecordPanelShortcutRecognizer()
-    private var recordPanelShortcutRecognizer = RecordPanelShortcutRecognizer()
-    private var pushToTalkRecognizer = PushToTalkGestureRecognizer()
-    private var liveAudioEscapeRecognizer = LiveAudioEscapeRecognizer()
-    private let monotonicClock = ContinuousClock()
-    private let eventTapHealthChecker: HotkeyEventTapHealthChecker<CFMachPort>
-    private let physicalKeyStateProvider: @Sendable (CGKeyCode) -> Bool
-    private let pushToTalkGestureStateProvider: @Sendable (PushToTalkGesture) -> Bool
+    let tap = Unmanaged<HotkeyEventTap>.fromOpaque(userInfo).takeUnretainedValue()
+    return tap.handle(type: type, event: event)
+  }
 
-    public init() {
-        eventTapHealthChecker = .system
-        physicalKeyStateProvider = {
-            CGEventSource.keyState(.combinedSessionState, key: $0)
-        }
-        pushToTalkGestureStateProvider = Self.systemPushToTalkGestureIsActive
-    }
+  private let lock = NSLock()
+  private var continuations: [UUID: AsyncStream<Event>.Continuation] = [:]
+  private var eventTap: CFMachPort?
+  private var runLoopSource: CFRunLoopSource?
+  private var eventTapRunLoop: CFRunLoop?
+  private var eventTapThread: Thread?
+  private var retainedSelfPointer: UnsafeMutableRawPointer?
+  private var recordPanelShortcutEnabled = false
+  private var draftEditorActive = false
+  private var recordPanelShortcutRecordingSuspensions: Set<UUID> = []
+  private var recordPanelShortcutRecordingCommitKeyCodes: [UUID: CGKeyCode] = [:]
+  private var recordPanelHotkeyBinding: HotkeyBindingDescriptor = .doubleCommand
+  private var doubleCommandTapRecognizer = DoubleCommandTapRecognizer()
+  private var bufferOutputBinding: HotkeyBindingDescriptor = .keyboardShortcut(.outputNext)
+  private var bufferOutputRecognizer = RecordPanelShortcutRecognizer()
+  private var recordPanelShortcutRecognizer = RecordPanelShortcutRecognizer()
+  private var pushToTalkRecognizer = PushToTalkGestureRecognizer()
+  private var liveAudioEscapeRecognizer = LiveAudioEscapeRecognizer()
+  private let monotonicClock = ContinuousClock()
+  private let eventTapHealthChecker: HotkeyEventTapHealthChecker<CFMachPort>
+  private let physicalKeyStateProvider: @Sendable (CGKeyCode) -> Bool
+  private let pushToTalkGestureStateProvider: @Sendable (PushToTalkGesture) -> Bool
 
-    init(
-        physicalKeyStateProvider: @escaping @Sendable (CGKeyCode) -> Bool,
-        pushToTalkGestureStateProvider: @escaping @Sendable (PushToTalkGesture) -> Bool =
-            HotkeyEventTap.systemPushToTalkGestureIsActive
-    ) {
-        eventTapHealthChecker = .system
-        self.physicalKeyStateProvider = physicalKeyStateProvider
-        self.pushToTalkGestureStateProvider = pushToTalkGestureStateProvider
+  public init() {
+    eventTapHealthChecker = .system
+    physicalKeyStateProvider = {
+      CGEventSource.keyState(.combinedSessionState, key: $0)
     }
+    pushToTalkGestureStateProvider = Self.systemPushToTalkGestureIsActive
+  }
 
-    init(
-        eventTapHealthChecker: HotkeyEventTapHealthChecker<CFMachPort>,
-        physicalKeyStateProvider: @escaping @Sendable (CGKeyCode) -> Bool = {
-            CGEventSource.keyState(.combinedSessionState, key: $0)
-        },
-        pushToTalkGestureStateProvider: @escaping @Sendable (PushToTalkGesture) -> Bool =
-            HotkeyEventTap.systemPushToTalkGestureIsActive
-    ) {
-        self.eventTapHealthChecker = eventTapHealthChecker
-        self.physicalKeyStateProvider = physicalKeyStateProvider
-        self.pushToTalkGestureStateProvider = pushToTalkGestureStateProvider
-    }
+  init(
+    physicalKeyStateProvider: @escaping @Sendable (CGKeyCode) -> Bool,
+    pushToTalkGestureStateProvider: @escaping @Sendable (PushToTalkGesture) -> Bool =
+      HotkeyEventTap.systemPushToTalkGestureIsActive
+  ) {
+    eventTapHealthChecker = .system
+    self.physicalKeyStateProvider = physicalKeyStateProvider
+    self.pushToTalkGestureStateProvider = pushToTalkGestureStateProvider
+  }
 
-    deinit {
-        uninstall()
-    }
+  init(
+    eventTapHealthChecker: HotkeyEventTapHealthChecker<CFMachPort>,
+    physicalKeyStateProvider: @escaping @Sendable (CGKeyCode) -> Bool = {
+      CGEventSource.keyState(.combinedSessionState, key: $0)
+    },
+    pushToTalkGestureStateProvider: @escaping @Sendable (PushToTalkGesture) -> Bool =
+      HotkeyEventTap.systemPushToTalkGestureIsActive
+  ) {
+    self.eventTapHealthChecker = eventTapHealthChecker
+    self.physicalKeyStateProvider = physicalKeyStateProvider
+    self.pushToTalkGestureStateProvider = pushToTalkGestureStateProvider
+  }
 
-    public func stream() -> AsyncStream<Event> {
-        let id = UUID()
-        return AsyncStream { continuation in
-            withLock {
-                continuations[id] = continuation
-            }
-            continuation.onTermination = { [weak self, id] _ in
-                self?.removeContinuation(id)
-            }
-        }
-    }
+  deinit {
+    uninstall()
+  }
 
-    /// Enables global Escape cancellation while a live-audio run owns capture,
-    /// including its hidden release tail. Idle Escape events keep flowing to
-    /// the foreground application unchanged.
-    public func setLiveAudioEscapeCancellationRunID(_ runID: UUID?) {
-        withLock {
-            liveAudioEscapeRecognizer.setActiveRunID(runID)
-        }
+  public func stream() -> AsyncStream<Event> {
+    let id = UUID()
+    return AsyncStream { continuation in
+      withLock {
+        continuations[id] = continuation
+      }
+      continuation.onTermination = { [weak self, id] _ in
+        self?.removeContinuation(id)
+      }
     }
+  }
 
-    public func setRecordPanelHotkeyBinding(_ binding: HotkeyBindingDescriptor) {
-        withLock {
-            switch binding {
-            case .doubleCommand:
-                recordPanelHotkeyBinding = binding
-            case .keyboardShortcut(let shortcut) where GlobalHotkeyPolicy.accepts(shortcut):
-                recordPanelHotkeyBinding = binding
-            case .keyboardShortcut:
-                recordPanelHotkeyBinding = .doubleCommand
-            }
-            recordPanelShortcutRecognizer.reset()
-            doubleCommandTapRecognizer.reset()
-        }
+  /// Enables global Escape cancellation while a live-audio run owns capture,
+  /// including its hidden release tail. Idle Escape events keep flowing to
+  /// the foreground application unchanged.
+  public func setLiveAudioEscapeCancellationRunID(_ runID: UUID?) {
+    withLock {
+      liveAudioEscapeRecognizer.setActiveRunID(runID)
     }
+  }
 
-    public func setBufferOutputHotkeyBinding(_ binding: HotkeyBindingDescriptor) {
-        withLock {
-            guard case .keyboardShortcut(let shortcut) = binding, GlobalHotkeyPolicy.accepts(shortcut) else { return }
-            bufferOutputBinding = binding
-            bufferOutputRecognizer.reset()
-        }
+  public func setRecordPanelHotkeyBinding(_ binding: HotkeyBindingDescriptor) {
+    withLock {
+      switch binding {
+      case .doubleCommand:
+        recordPanelHotkeyBinding = binding
+      case .keyboardShortcut(let shortcut) where GlobalHotkeyPolicy.accepts(shortcut):
+        recordPanelHotkeyBinding = binding
+      case .keyboardShortcut:
+        recordPanelHotkeyBinding = .doubleCommand
+      }
+      recordPanelShortcutRecognizer.reset()
+      doubleCommandTapRecognizer.reset()
     }
+  }
 
-    /// Enables only the record-panel shortcut route. The shared event tap and
-    /// push-to-talk recognizer remain active so turning system clipboard capture
-    /// off does not disable voice input.
-    public func setRecordPanelShortcutEnabled(_ enabled: Bool) {
-        withLock {
-            recordPanelShortcutEnabled = enabled
-            if !enabled {
-                recordPanelShortcutRecognizer.reset()
-                doubleCommandTapRecognizer.reset()
-            }
-        }
+  public func setBufferOutputHotkeyBinding(_ binding: HotkeyBindingDescriptor) {
+    withLock {
+      guard case .keyboardShortcut(let shortcut) = binding, GlobalHotkeyPolicy.accepts(shortcut) else { return }
+      bufferOutputBinding = binding
+      bufferOutputRecognizer.reset()
     }
+  }
 
-    /// Temporarily gives an in-app shortcut recorder ownership of new global
-    /// shortcut presses. A push-to-talk gesture that was already active keeps
-    /// its release route so opening the recorder can never strand a capture.
-    public func beginRecordPanelShortcutRecording() -> UUID {
-        let suspensionID = UUID()
-        withLock {
-            recordPanelShortcutRecordingSuspensions.insert(suspensionID)
-            recordPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
-            recordPanelShortcutRecognizer.reset()
-            doubleCommandTapRecognizer.reset()
-        }
-        return suspensionID
+  /// Enables only the record-panel shortcut route. The shared event tap and
+  /// push-to-talk recognizer remain active so turning system clipboard capture
+  /// off does not disable voice input.
+  public func setRecordPanelShortcutEnabled(_ enabled: Bool) {
+    withLock {
+      recordPanelShortcutEnabled = enabled
+      if !enabled {
+        recordPanelShortcutRecognizer.reset()
+        doubleCommandTapRecognizer.reset()
+      }
     }
+  }
 
-    /// Releases one recorder lease. Repeated or stale releases are harmless,
-    /// and the capture preference remains the authoritative feature-level gate.
-    public func endRecordPanelShortcutRecording(_ suspensionID: UUID) {
-        withLock {
-            guard recordPanelShortcutRecordingSuspensions.remove(suspensionID) != nil else {
-                return
-            }
-            recordPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
-            recordPanelShortcutRecognizer.reset()
-            doubleCommandTapRecognizer.reset()
-        }
+  /// Temporarily gives an in-app shortcut recorder ownership of new global
+  /// shortcut presses. A push-to-talk gesture that was already active keeps
+  /// its release route so opening the recorder can never strand a capture.
+  public func beginRecordPanelShortcutRecording() -> UUID {
+    let suspensionID = UUID()
+    withLock {
+      recordPanelShortcutRecordingSuspensions.insert(suspensionID)
+      recordPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
+      recordPanelShortcutRecognizer.reset()
+      doubleCommandTapRecognizer.reset()
     }
+    return suspensionID
+  }
 
-    /// Transfers a recorder lease to the event tap until the physical commit
-    /// key is released. Repeats and the matching key-up are consumed by this
-    /// latch, and new push-to-talk presses remain suspended until it retires.
-    public func commitRecordPanelShortcutRecording(
-        _ suspensionID: UUID,
-        keyCode: UInt16
-    ) {
-        withLock {
-            guard recordPanelShortcutRecordingSuspensions.contains(suspensionID) else {
-                return
-            }
-            let commitKeyCode = CGKeyCode(keyCode)
-            if physicalKeyStateProvider(commitKeyCode) {
-                recordPanelShortcutRecordingCommitKeyCodes[suspensionID] = commitKeyCode
-            } else {
-                // The event tap can observe a fast key-up before the main thread
-                // commits the recorder decision. Retire that lease immediately;
-                // no later key-up exists to release a commit latch safely.
-                recordPanelShortcutRecordingSuspensions.remove(suspensionID)
-                recordPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
-            }
-            recordPanelShortcutRecognizer.reset()
-            doubleCommandTapRecognizer.reset()
-        }
+  /// Releases one recorder lease. Repeated or stale releases are harmless,
+  /// and the capture preference remains the authoritative feature-level gate.
+  public func endRecordPanelShortcutRecording(_ suspensionID: UUID) {
+    withLock {
+      guard recordPanelShortcutRecordingSuspensions.remove(suspensionID) != nil else {
+        return
+      }
+      recordPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
+      recordPanelShortcutRecognizer.reset()
+      doubleCommandTapRecognizer.reset()
     }
+  }
 
-    public func setDraftEditorActive(_ active: Bool) {
-        withLock {
-            draftEditorActive = active
-            recordPanelShortcutRecognizer.reset()
-            doubleCommandTapRecognizer.reset()
-            bufferOutputRecognizer.reset()
-        }
+  /// Transfers a recorder lease to the event tap until the physical commit
+  /// key is released. Repeats and the matching key-up are consumed by this
+  /// latch, and new push-to-talk presses remain suspended until it retires.
+  public func commitRecordPanelShortcutRecording(
+    _ suspensionID: UUID,
+    keyCode: UInt16
+  ) {
+    withLock {
+      guard recordPanelShortcutRecordingSuspensions.contains(suspensionID) else {
+        return
+      }
+      let commitKeyCode = CGKeyCode(keyCode)
+      if physicalKeyStateProvider(commitKeyCode) {
+        recordPanelShortcutRecordingCommitKeyCodes[suspensionID] = commitKeyCode
+      } else {
+        // The event tap can observe a fast key-up before the main thread
+        // commits the recorder decision. Retire that lease immediately;
+        // no later key-up exists to release a commit latch safely.
+        recordPanelShortcutRecordingSuspensions.remove(suspensionID)
+        recordPanelShortcutRecordingCommitKeyCodes.removeValue(forKey: suspensionID)
+      }
+      recordPanelShortcutRecognizer.reset()
+      doubleCommandTapRecognizer.reset()
     }
+  }
 
-    public func isPushToTalkGestureActive(_ gesture: PushToTalkGesture) -> Bool {
-        withLock {
-            guard pushToTalkRecognizer.activeGesture == gesture else { return false }
-            // Observed key-up owns the release even if session flags remain set.
-            // Only an interrupted tap needs a physical sample to fill an event gap.
-            if pushToTalkRecognizer.interruptedActiveGesture == gesture {
-                return pushToTalkGestureStateProvider(gesture)
-            }
-            return true
-        }
+  public func setDraftEditorActive(_ active: Bool) {
+    withLock {
+      draftEditorActive = active
+      recordPanelShortcutRecognizer.reset()
+      doubleCommandTapRecognizer.reset()
+      bufferOutputRecognizer.reset()
     }
+  }
 
-    private static func systemPushToTalkGestureIsActive(_ gesture: PushToTalkGesture) -> Bool {
-        switch gesture {
-        case .fnHold:
-            return CGEventSource.flagsState(.combinedSessionState).contains(.maskSecondaryFn)
-        case .controlOptionShiftSpace:
-            let flags = CGEventSource.flagsState(.combinedSessionState)
-            let relevantFlags = flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift])
-            return relevantFlags == Self.legacyPushToTalkModifiers
-                && CGEventSource.keyState(.combinedSessionState, key: Self.legacyPushToTalkKeyCode)
-        }
+  public func isPushToTalkGestureActive(_ gesture: PushToTalkGesture) -> Bool {
+    withLock {
+      guard pushToTalkRecognizer.activeGesture == gesture else { return false }
+      // Observed key-up owns the release even if session flags remain set.
+      // Only an interrupted tap needs a physical sample to fill an event gap.
+      if pushToTalkRecognizer.interruptedActiveGesture == gesture {
+        return pushToTalkGestureStateProvider(gesture)
+      }
+      return true
     }
+  }
+
+  private static func systemPushToTalkGestureIsActive(_ gesture: PushToTalkGesture) -> Bool {
+    switch gesture {
+    case .fnHold:
+      return CGEventSource.flagsState(.combinedSessionState).contains(.maskSecondaryFn)
+    case .controlOptionShiftSpace:
+      let flags = CGEventSource.flagsState(.combinedSessionState)
+      let relevantFlags = flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift])
+      return relevantFlags == Self.legacyPushToTalkModifiers
+        && CGEventSource.keyState(.combinedSessionState, key: Self.legacyPushToTalkKeyCode)
+    }
+  }
 }
 
 extension HotkeyEventTap {
-    @discardableResult
-    public func install() -> Bool {
-        if let existingTap = withLock({ eventTap }) {
-            let isAvailable = eventTapHealthChecker.ensureAvailable(existingTap)
-            if !isAvailable {
-                requestEventTapTeardown(expectedTap: existingTap)
-            }
-            return isAvailable
-        }
-
-        let installationSemaphore = DispatchSemaphore(value: 0)
-        let thread = Thread { [weak self] in
-            self?.runEventTapLoop(installationSemaphore: installationSemaphore)
-        }
-        thread.name = "dev.rill.hotkey-event-tap"
-        withLock {
-            eventTapThread = thread
-        }
-        thread.start()
-        installationSemaphore.wait()
-        guard let installedTap = withLock({ eventTap }) else { return false }
-        let isAvailable = eventTapHealthChecker.ensureAvailable(installedTap)
-        if !isAvailable {
-            requestEventTapTeardown(expectedTap: installedTap)
-        }
-        return isAvailable
+  @discardableResult
+  public func install() -> Bool {
+    if let existingTap = withLock({ eventTap }) {
+      let isAvailable = eventTapHealthChecker.ensureAvailable(existingTap)
+      if !isAvailable {
+        requestEventTapTeardown(expectedTap: existingTap)
+      }
+      return isAvailable
     }
 
-    public func uninstall() {
-        let teardownState = withLock { () -> (CFMachPort?, CFRunLoop?, Thread?) in
-            (eventTap, eventTapRunLoop, eventTapThread)
-        }
-        guard let tap = teardownState.0 else {
-            return
-        }
-        guard let runLoop = teardownState.1 else {
-            teardownEventTap(on: nil, expectedTap: tap)
-            return
-        }
+    let installationSemaphore = DispatchSemaphore(value: 0)
+    let thread = Thread { [weak self] in
+      self?.runEventTapLoop(installationSemaphore: installationSemaphore)
+    }
+    thread.name = "dev.rill.hotkey-event-tap"
+    withLock {
+      eventTapThread = thread
+    }
+    thread.start()
+    installationSemaphore.wait()
+    guard let installedTap = withLock({ eventTap }) else { return false }
+    let isAvailable = eventTapHealthChecker.ensureAvailable(installedTap)
+    if !isAvailable {
+      requestEventTapTeardown(expectedTap: installedTap)
+    }
+    return isAvailable
+  }
 
-        if Thread.current == teardownState.2 {
-            teardownEventTap(on: runLoop, expectedTap: tap)
-            return
-        }
-
-        let teardownSemaphore = DispatchSemaphore(value: 0)
-        CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) { [weak self] in
-            self?.teardownEventTap(on: runLoop, expectedTap: tap)
-            teardownSemaphore.signal()
-        }
-        CFRunLoopWakeUp(runLoop)
-        if teardownSemaphore.wait(timeout: .now() + .milliseconds(250)) == .timedOut {
-            // The run loop can exit after the state snapshot but before the
-            // scheduled block runs. Fall back to idempotent direct teardown
-            // instead of waiting forever on a stopped run loop.
-            teardownEventTap(on: nil, expectedTap: tap)
-            CFRunLoopWakeUp(runLoop)
-        }
+  public func uninstall() {
+    let teardownState = withLock { () -> (CFMachPort?, CFRunLoop?, Thread?) in
+      (eventTap, eventTapRunLoop, eventTapThread)
+    }
+    guard let tap = teardownState.0 else {
+      return
+    }
+    guard let runLoop = teardownState.1 else {
+      teardownEventTap(on: nil, expectedTap: tap)
+      return
     }
 
-    private func runEventTapLoop(installationSemaphore: DispatchSemaphore) {
-        autoreleasepool {
-            let runLoop = CFRunLoopGetCurrent()
-            let retainedPointer = Unmanaged.passRetained(self).toOpaque()
-            let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
-                | CGEventMask(1 << CGEventType.keyUp.rawValue)
-                | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
-                | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
-                | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
-                | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
-                | CGEventMask(1 << CGEventType.scrollWheel.rawValue)
-            guard let tap = CGEvent.tapCreate(
-                tap: .cgSessionEventTap,
-                place: .headInsertEventTap,
-                options: .defaultTap,
-                eventsOfInterest: eventMask,
-                callback: Self.callback,
-                userInfo: retainedPointer
-            ) else {
-                Unmanaged<HotkeyEventTap>.fromOpaque(retainedPointer).release()
-                withLock {
-                    eventTapThread = nil
-                }
-                installationSemaphore.signal()
-                return
-            }
-
-            let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-            withLock {
-                eventTap = tap
-                runLoopSource = source
-                eventTapRunLoop = runLoop
-                retainedSelfPointer = retainedPointer
-            }
-            CFRunLoopAddSource(runLoop, source, .commonModes)
-            let isAvailable = eventTapHealthChecker.ensureAvailable(tap)
-            if !isAvailable {
-                teardownEventTap(on: runLoop, expectedTap: tap)
-            }
-            installationSemaphore.signal()
-            guard isAvailable else { return }
-            defer {
-                teardownEventTap(on: runLoop, expectedTap: tap)
-            }
-            CFRunLoopRun()
-        }
+    if Thread.current == teardownState.2 {
+      teardownEventTap(on: runLoop, expectedTap: tap)
+      return
     }
 
-    private func requestEventTapTeardown(expectedTap: CFMachPort) {
-        let teardownState = withLock { () -> (CFRunLoop?, Thread?) in
-            (eventTapRunLoop, eventTapThread)
-        }
-        guard let runLoop = teardownState.0 else {
-            teardownEventTap(on: nil, expectedTap: expectedTap)
-            return
-        }
-        if Thread.current == teardownState.1 || teardownState.1?.isFinished == true {
-            teardownEventTap(on: runLoop, expectedTap: expectedTap)
-            return
-        }
-        CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) { [weak self] in
-            self?.teardownEventTap(on: runLoop, expectedTap: expectedTap)
-        }
-        CFRunLoopWakeUp(runLoop)
+    let teardownSemaphore = DispatchSemaphore(value: 0)
+    CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) { [weak self] in
+      self?.teardownEventTap(on: runLoop, expectedTap: tap)
+      teardownSemaphore.signal()
     }
-
-    private func teardownEventTap(on runLoop: CFRunLoop?, expectedTap: CFMachPort) {
-        let state = withLock {
-            () -> (CFMachPort, CFRunLoopSource?, UnsafeMutableRawPointer?)? in
-            guard let currentTap = eventTap, currentTap === expectedTap else { return nil }
-            resetRecognizersForEventTapTeardown()
-            let state = (currentTap, runLoopSource, retainedSelfPointer)
-            eventTap = nil
-            runLoopSource = nil
-            eventTapRunLoop = nil
-            eventTapThread = nil
-            retainedSelfPointer = nil
-            return state
-        }
-        guard let state else { return }
-        let tap = state.0
-        if let runLoop, let source = state.1 {
-            CFRunLoopRemoveSource(runLoop, source, .commonModes)
-        }
-        // Invalidating the Mach port also invalidates its run-loop source, so
-        // the bounded direct fallback does not need to remove that source from
-        // a run loop that may already have stopped on another thread.
-        CFMachPortInvalidate(tap)
-        emit(.globalInputUnavailable)
-        if let pointer = state.2 {
-            Unmanaged<HotkeyEventTap>.fromOpaque(pointer).release()
-        }
-        if let runLoop {
-            CFRunLoopStop(runLoop)
-        }
+    CFRunLoopWakeUp(runLoop)
+    if teardownSemaphore.wait(timeout: .now() + .milliseconds(250)) == .timedOut {
+      // The run loop can exit after the state snapshot but before the
+      // scheduled block runs. Fall back to idempotent direct teardown
+      // instead of waiting forever on a stopped run loop.
+      teardownEventTap(on: nil, expectedTap: tap)
+      CFRunLoopWakeUp(runLoop)
     }
+  }
 
-    private func resetRecognizersForEventTapTeardown() {
-        // A committed recorder lease can only finish by observing its key-up.
-        // Once this tap is gone, retaining that lease would disable the panel
-        // route forever after reinstall. Keep still-active UI recorder leases,
-        // whose owner can end them explicitly, but retire every committed one.
-        releaseCommittedRecordPanelShortcutRecordingSuspensions { _ in true }
-        doubleCommandTapRecognizer.reset()
-        recordPanelShortcutRecognizer.reset()
-        bufferOutputRecognizer.reset()
-        liveAudioEscapeRecognizer.reset()
-        _ = pushToTalkRecognizer.interrupt()
-    }
-
-    private func prepareRecognizersForEventTapRecovery() -> Event? {
-        // A timeout can consume the physical key-up. Release only commits whose
-        // key is already up; a still-held key keeps its latch so autorepeat cannot
-        // trigger the newly installed panel binding after the tap is re-enabled.
-        // A second check after re-enabling closes the interval between this sample
-        // and `CGEvent.tapEnable`, where a release would otherwise remain unseen.
-        releaseCommittedRecordPanelShortcutRecordingSuspensions {
-            !physicalKeyStateProvider($0)
-        }
-        recordPanelShortcutRecognizer.reset()
-        bufferOutputRecognizer.reset()
-        doubleCommandTapRecognizer.reset()
-        liveAudioEscapeRecognizer.resetLatch()
-        let activeGesture = pushToTalkRecognizer.activeGesture
-        let shouldPreserveActiveTrigger = activeGesture.map {
-            pushToTalkGestureStateProvider($0)
-        } ?? false
-        return pushToTalkRecognizer.interrupt(
-            preservingActiveTrigger: shouldPreserveActiveTrigger
+  private func runEventTapLoop(installationSemaphore: DispatchSemaphore) {
+    autoreleasepool {
+      let runLoop = CFRunLoopGetCurrent()
+      let retainedPointer = Unmanaged.passRetained(self).toOpaque()
+      let eventMask =
+        CGEventMask(1 << CGEventType.keyDown.rawValue)
+        | CGEventMask(1 << CGEventType.keyUp.rawValue)
+        | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+        | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
+        | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
+        | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
+        | CGEventMask(1 << CGEventType.scrollWheel.rawValue)
+      guard
+        let tap = CGEvent.tapCreate(
+          tap: .cgSessionEventTap,
+          place: .headInsertEventTap,
+          options: .defaultTap,
+          eventsOfInterest: eventMask,
+          callback: Self.callback,
+          userInfo: retainedPointer
         )
-    }
-
-    private func completeRecognizersForEventTapRecovery() {
-        // The tap is enabled before this sample. Commits and an interrupted
-        // push-to-talk gesture that went up during re-enable can no longer receive
-        // their physical release, so retire those latches now. The interruption
-        // already published the push-to-talk release; clearing that latch here must
-        // remain silent. Still-held inputs stay latched until the recovered tap
-        // observes their future key-up.
-        releaseCommittedRecordPanelShortcutRecordingSuspensions {
-            !physicalKeyStateProvider($0)
+      else {
+        Unmanaged<HotkeyEventTap>.fromOpaque(retainedPointer).release()
+        withLock {
+          eventTapThread = nil
         }
-        guard let interruptedGesture = pushToTalkRecognizer.interruptedActiveGesture else { return }
-        guard !pushToTalkGestureStateProvider(interruptedGesture) else { return }
-        pushToTalkRecognizer.clearInterruptedActiveTrigger()
-    }
+        installationSemaphore.signal()
+        return
+      }
 
-    private func releaseCommittedRecordPanelShortcutRecordingSuspensions(
-        where shouldRelease: (CGKeyCode) -> Bool
-    ) {
-        let releasableSuspensions = recordPanelShortcutRecordingCommitKeyCodes
-            .compactMap { suspensionID, keyCode in
-                shouldRelease(keyCode) ? suspensionID : nil
-            }
-        for suspensionID in releasableSuspensions {
-            recordPanelShortcutRecordingCommitKeyCodes.removeValue(
-                forKey: suspensionID
-            )
-            recordPanelShortcutRecordingSuspensions.remove(suspensionID)
-        }
+      let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+      withLock {
+        eventTap = tap
+        runLoopSource = source
+        eventTapRunLoop = runLoop
+        retainedSelfPointer = retainedPointer
+      }
+      CFRunLoopAddSource(runLoop, source, .commonModes)
+      let isAvailable = eventTapHealthChecker.ensureAvailable(tap)
+      if !isAvailable {
+        teardownEventTap(on: runLoop, expectedTap: tap)
+      }
+      installationSemaphore.signal()
+      guard isAvailable else { return }
+      defer {
+        teardownEventTap(on: runLoop, expectedTap: tap)
+      }
+      CFRunLoopRun()
     }
+  }
+
+  private func requestEventTapTeardown(expectedTap: CFMachPort) {
+    let teardownState = withLock { () -> (CFRunLoop?, Thread?) in
+      (eventTapRunLoop, eventTapThread)
+    }
+    guard let runLoop = teardownState.0 else {
+      teardownEventTap(on: nil, expectedTap: expectedTap)
+      return
+    }
+    if Thread.current == teardownState.1 || teardownState.1?.isFinished == true {
+      teardownEventTap(on: runLoop, expectedTap: expectedTap)
+      return
+    }
+    CFRunLoopPerformBlock(runLoop, CFRunLoopMode.commonModes.rawValue) { [weak self] in
+      self?.teardownEventTap(on: runLoop, expectedTap: expectedTap)
+    }
+    CFRunLoopWakeUp(runLoop)
+  }
+
+  private func teardownEventTap(on runLoop: CFRunLoop?, expectedTap: CFMachPort) {
+    let state = withLock {
+      () -> (CFMachPort, CFRunLoopSource?, UnsafeMutableRawPointer?)? in
+      guard let currentTap = eventTap, currentTap === expectedTap else { return nil }
+      resetRecognizersForEventTapTeardown()
+      let state = (currentTap, runLoopSource, retainedSelfPointer)
+      eventTap = nil
+      runLoopSource = nil
+      eventTapRunLoop = nil
+      eventTapThread = nil
+      retainedSelfPointer = nil
+      return state
+    }
+    guard let state else { return }
+    let tap = state.0
+    if let runLoop, let source = state.1 {
+      CFRunLoopRemoveSource(runLoop, source, .commonModes)
+    }
+    // Invalidating the Mach port also invalidates its run-loop source, so
+    // the bounded direct fallback does not need to remove that source from
+    // a run loop that may already have stopped on another thread.
+    CFMachPortInvalidate(tap)
+    emit(.globalInputUnavailable)
+    if let pointer = state.2 {
+      Unmanaged<HotkeyEventTap>.fromOpaque(pointer).release()
+    }
+    if let runLoop {
+      CFRunLoopStop(runLoop)
+    }
+  }
+
+  private func resetRecognizersForEventTapTeardown() {
+    // A committed recorder lease can only finish by observing its key-up.
+    // Once this tap is gone, retaining that lease would disable the panel
+    // route forever after reinstall. Keep still-active UI recorder leases,
+    // whose owner can end them explicitly, but retire every committed one.
+    releaseCommittedRecordPanelShortcutRecordingSuspensions { _ in true }
+    doubleCommandTapRecognizer.reset()
+    recordPanelShortcutRecognizer.reset()
+    bufferOutputRecognizer.reset()
+    liveAudioEscapeRecognizer.reset()
+    _ = pushToTalkRecognizer.interrupt()
+  }
+
+  private func prepareRecognizersForEventTapRecovery() -> Event? {
+    // A timeout can consume the physical key-up. Release only commits whose
+    // key is already up; a still-held key keeps its latch so autorepeat cannot
+    // trigger the newly installed panel binding after the tap is re-enabled.
+    // A second check after re-enabling closes the interval between this sample
+    // and `CGEvent.tapEnable`, where a release would otherwise remain unseen.
+    releaseCommittedRecordPanelShortcutRecordingSuspensions {
+      !physicalKeyStateProvider($0)
+    }
+    recordPanelShortcutRecognizer.reset()
+    bufferOutputRecognizer.reset()
+    doubleCommandTapRecognizer.reset()
+    liveAudioEscapeRecognizer.resetLatch()
+    let activeGesture = pushToTalkRecognizer.activeGesture
+    let shouldPreserveActiveTrigger =
+      activeGesture.map {
+        pushToTalkGestureStateProvider($0)
+      } ?? false
+    return pushToTalkRecognizer.interrupt(
+      preservingActiveTrigger: shouldPreserveActiveTrigger
+    )
+  }
+
+  private func completeRecognizersForEventTapRecovery() {
+    // The tap is enabled before this sample. Commits and an interrupted
+    // push-to-talk gesture that went up during re-enable can no longer receive
+    // their physical release, so retire those latches now. The interruption
+    // already published the push-to-talk release; clearing that latch here must
+    // remain silent. Still-held inputs stay latched until the recovered tap
+    // observes their future key-up.
+    releaseCommittedRecordPanelShortcutRecordingSuspensions {
+      !physicalKeyStateProvider($0)
+    }
+    guard let interruptedGesture = pushToTalkRecognizer.interruptedActiveGesture else { return }
+    guard !pushToTalkGestureStateProvider(interruptedGesture) else { return }
+    pushToTalkRecognizer.clearInterruptedActiveTrigger()
+  }
+
+  private func releaseCommittedRecordPanelShortcutRecordingSuspensions(
+    where shouldRelease: (CGKeyCode) -> Bool
+  ) {
+    let releasableSuspensions =
+      recordPanelShortcutRecordingCommitKeyCodes
+      .compactMap { suspensionID, keyCode in
+        shouldRelease(keyCode) ? suspensionID : nil
+      }
+    for suspensionID in releasableSuspensions {
+      recordPanelShortcutRecordingCommitKeyCodes.removeValue(
+        forKey: suspensionID
+      )
+      recordPanelShortcutRecordingSuspensions.remove(suspensionID)
+    }
+  }
 }
 
 extension HotkeyEventTap {
-    private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            let recovery = withLock { () -> (Event?, CFMachPort?) in
-                return (
-                    prepareRecognizersForEventTapRecovery(),
-                    eventTap
-                )
-            }
-            // A release can be lost while the tap is disabled. First publish a
-            // recoverable release for a latched gesture; if re-enabling fails,
-            // teardown publishes globalInputUnavailable so pending, hold, and
-            // toggle recordings all fail closed without a future key-up event.
-            if let releaseEvent = recovery.0 {
-                emit(releaseEvent)
-            }
-            if let tap = recovery.1 {
-                if eventTapHealthChecker.ensureAvailable(tap) {
-                    withLock {
-                        guard eventTap === tap else { return }
-                        completeRecognizersForEventTapRecovery()
-                    }
-                } else {
-                    requestEventTapTeardown(expectedTap: tap)
-                }
-            }
-            return Unmanaged.passUnretained(event)
-        }
-
-        if withLock({ draftEditorActive && pushToTalkRecognizer.activeGesture == nil }) {
-            return Unmanaged.passUnretained(event)
-        }
-        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-        if handleRecordPanelShortcutRecordingCommitKey(
-            type: type,
-            keyCode: keyCode
-        ) {
-            return nil
-        }
-        let shouldOpenRecordPanel = handleDoubleCommandPanelShortcut(
-            type: type,
-            keyCode: keyCode,
-            flags: event.flags,
-            at: monotonicClock.now
+  private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+      let recovery = withLock { () -> (Event?, CFMachPort?) in
+        return (
+          prepareRecognizersForEventTapRecovery(),
+          eventTap
         )
-        if shouldOpenRecordPanel {
-            emit(.recordPanelRequested)
-        }
-
-        let escapeHandling = handleLiveAudioEscape(
-            type: type,
-            keyCode: keyCode,
-            flags: event.flags
-        )
-        switch escapeHandling {
-        case .passThrough:
-            break
-        case .swallow(let runID):
-            if let runID {
-                emit(.liveAudioCancellationRequested(runID))
-            }
-            return nil
-        }
-
-        let pushToTalkHandling = handlePushToTalk(type: type, keyCode: keyCode, flags: event.flags)
-        switch pushToTalkHandling {
-        case .passThrough:
-            break
-        case .swallow(let emittedEvent):
-            if let emittedEvent {
-                emit(emittedEvent)
-            }
-            return nil
-        }
-
-        let bufferHandling = withLock {
-            guard !draftEditorActive, recordPanelShortcutRecordingSuspensions.isEmpty,
-                  bufferOutputBinding != recordPanelHotkeyBinding else {
-                bufferOutputRecognizer.reset()
-                return RecordPanelShortcutRecognizerOutput.passThrough
-            }
-            return bufferOutputRecognizer.handle(type: type, keyCode: keyCode, flags: event.flags, binding: bufferOutputBinding)
-        }
-        if case .swallow(let shouldEmit) = bufferHandling {
-            if shouldEmit { emit(.recordBufferOutputRequested) }
-            return nil
-        }
-
-        let recordPanelHandling = handleRecordPanelShortcut(
-            type: type,
-            keyCode: keyCode,
-            flags: event.flags
-        )
-        switch recordPanelHandling {
-        case .passThrough:
-            break
-        case .swallow(let shouldEmit):
-            if shouldEmit {
-                emit(.recordPanelRequested)
-            }
-            return nil
-        }
-
-        return Unmanaged.passUnretained(event)
-    }
-
-    private func handleLiveAudioEscape(
-        type: CGEventType,
-        keyCode: CGKeyCode,
-        flags: CGEventFlags
-    ) -> LiveAudioEscapeRecognizerOutput {
-        withLock {
-            liveAudioEscapeRecognizer.handle(type: type, keyCode: keyCode, flags: flags)
-        }
-    }
-
-    private func handleDoubleCommandPanelShortcut(
-        type: CGEventType,
-        keyCode: CGKeyCode,
-        flags: CGEventFlags,
-        at instant: ContinuousClock.Instant
-    ) -> Bool {
-        withLock {
-            guard isRecordPanelShortcutRouteEnabled,
-                  recordPanelHotkeyBinding == .doubleCommand
-            else {
-                doubleCommandTapRecognizer.reset()
-                return false
-            }
-            return doubleCommandTapRecognizer.handle(
-                type: type,
-                keyCode: keyCode,
-                flags: flags,
-                at: instant
-            )
-        }
-    }
-
-    private func handlePushToTalk(
-        type: CGEventType,
-        keyCode: CGKeyCode,
-        flags: CGEventFlags
-    ) -> PushToTalkGestureRecognizerOutput {
-        withLock {
-            if draftEditorActive || !recordPanelShortcutRecordingSuspensions.isEmpty,
-               pushToTalkRecognizer.activeGesture == nil {
-                // The app-local recorder must receive ordinary key events so
-                // it can reject reserved voice chords with its normal feedback.
-                // Only an already-latched voice gesture may continue through
-                // this gate, because its release is required to stop capture.
-                return .passThrough
-            }
-            return pushToTalkRecognizer.handle(type: type, keyCode: keyCode, flags: flags)
-        }
-    }
-
-    private func handleRecordPanelShortcut(
-        type: CGEventType,
-        keyCode: CGKeyCode,
-        flags: CGEventFlags
-    ) -> RecordPanelShortcutRecognizerOutput {
-        withLock {
-            guard isRecordPanelShortcutRouteEnabled else {
-                recordPanelShortcutRecognizer.reset()
-                return .passThrough
-            }
-            return recordPanelShortcutRecognizer.handle(
-                type: type,
-                keyCode: keyCode,
-                flags: flags,
-                binding: recordPanelHotkeyBinding
-            )
-        }
-    }
-
-    private func handleRecordPanelShortcutRecordingCommitKey(
-        type: CGEventType,
-        keyCode: CGKeyCode
-    ) -> Bool {
-        withLock {
-            guard type == .keyDown || type == .keyUp else { return false }
-            let matchingSuspensions = recordPanelShortcutRecordingCommitKeyCodes
-                .compactMap { suspensionID, commitKeyCode in
-                    commitKeyCode == keyCode ? suspensionID : nil
-                }
-            guard !matchingSuspensions.isEmpty else { return false }
-
-            if type == .keyUp {
-                for suspensionID in matchingSuspensions {
-                    recordPanelShortcutRecordingCommitKeyCodes.removeValue(
-                        forKey: suspensionID
-                    )
-                    recordPanelShortcutRecordingSuspensions.remove(suspensionID)
-                }
-                recordPanelShortcutRecognizer.reset()
-                doubleCommandTapRecognizer.reset()
-            }
-            return true
-        }
-    }
-
-    private func emit(_ event: Event) {
-        let activeContinuations = withLock {
-            Array(continuations.values)
-        }
-        for continuation in activeContinuations {
-            continuation.yield(event)
-        }
-    }
-
-    private func removeContinuation(_ id: UUID) {
-        withLock {
-            continuations.removeValue(forKey: id)
-        }
-    }
-
-    func testingHandle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        handle(type: type, event: event)
-    }
-
-    func testingIsRecordPanelShortcutEnabled() -> Bool {
-        withLock { isRecordPanelShortcutRouteEnabled }
-    }
-
-    func testingHandleDoubleCommandPanelShortcut(
-        type: CGEventType,
-        keyCode: CGKeyCode,
-        flags: CGEventFlags,
-        at instant: ContinuousClock.Instant
-    ) -> Bool {
-        handleDoubleCommandPanelShortcut(
-            type: type,
-            keyCode: keyCode,
-            flags: flags,
-            at: instant
-        )
-    }
-
-    func testingHandlePushToTalk(
-        type: CGEventType,
-        keyCode: CGKeyCode,
-        flags: CGEventFlags
-    ) -> PushToTalkGestureRecognizerOutput {
-        handlePushToTalk(type: type, keyCode: keyCode, flags: flags)
-    }
-
-    func testingHandleLiveAudioEscape(
-        type: CGEventType,
-        keyCode: CGKeyCode,
-        flags: CGEventFlags
-    ) -> LiveAudioEscapeRecognizerOutput {
-        handleLiveAudioEscape(type: type, keyCode: keyCode, flags: flags)
-    }
-
-    func testingHandleRecordPanelShortcut(
-        type: CGEventType,
-        keyCode: CGKeyCode,
-        flags: CGEventFlags
-    ) -> RecordPanelShortcutRecognizerOutput {
-        handleRecordPanelShortcut(type: type, keyCode: keyCode, flags: flags)
-    }
-
-    func testingHandleRecordPanelShortcutRecordingCommitKey(
-        type: CGEventType,
-        keyCode: CGKeyCode
-    ) -> Bool {
-        handleRecordPanelShortcutRecordingCommitKey(type: type, keyCode: keyCode)
-    }
-
-    func testingEmit(_ event: Event) {
-        emit(event)
-    }
-
-    func testingInterruptPushToTalk(
-        preservingActiveTrigger: Bool
-    ) -> Event? {
-        withLock {
-            pushToTalkRecognizer.interrupt(
-                preservingActiveTrigger: preservingActiveTrigger
-            )
-        }
-    }
-
-    func testingResetRecognizersForEventTapTeardown() -> Event {
-        withLock {
-            resetRecognizersForEventTapTeardown()
-        }
-        return .globalInputUnavailable
-    }
-
-    func testingPrepareRecognizersForEventTapRecovery() -> Event? {
-        withLock {
-            prepareRecognizersForEventTapRecovery()
-        }
-    }
-
-    func testingCompleteRecognizersForEventTapRecovery() {
-        withLock {
+      }
+      // A release can be lost while the tap is disabled. First publish a
+      // recoverable release for a latched gesture; if re-enabling fails,
+      // teardown publishes globalInputUnavailable so pending, hold, and
+      // toggle recordings all fail closed without a future key-up event.
+      if let releaseEvent = recovery.0 {
+        emit(releaseEvent)
+      }
+      if let tap = recovery.1 {
+        if eventTapHealthChecker.ensureAvailable(tap) {
+          withLock {
+            guard eventTap === tap else { return }
             completeRecognizersForEventTapRecovery()
+          }
+        } else {
+          requestEventTapTeardown(expectedTap: tap)
         }
+      }
+      return Unmanaged.passUnretained(event)
     }
 
-    @discardableResult
-    private func withLock<T>(_ body: () -> T) -> T {
-        lock.lock()
-        defer { lock.unlock() }
-        return body()
+    if withLock({ draftEditorActive && pushToTalkRecognizer.activeGesture == nil }) {
+      return Unmanaged.passUnretained(event)
+    }
+    let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+    if handleRecordPanelShortcutRecordingCommitKey(
+      type: type,
+      keyCode: keyCode
+    ) {
+      return nil
+    }
+    let shouldOpenRecordPanel = handleDoubleCommandPanelShortcut(
+      type: type,
+      keyCode: keyCode,
+      flags: event.flags,
+      at: monotonicClock.now
+    )
+    if shouldOpenRecordPanel {
+      emit(.recordPanelRequested)
     }
 
-    private var isRecordPanelShortcutRouteEnabled: Bool {
-        recordPanelShortcutEnabled && !draftEditorActive && recordPanelShortcutRecordingSuspensions.isEmpty
+    let escapeHandling = handleLiveAudioEscape(
+      type: type,
+      keyCode: keyCode,
+      flags: event.flags
+    )
+    switch escapeHandling {
+    case .passThrough:
+      break
+    case .swallow(let runID):
+      if let runID {
+        emit(.liveAudioCancellationRequested(runID))
+      }
+      return nil
     }
+
+    let pushToTalkHandling = handlePushToTalk(type: type, keyCode: keyCode, flags: event.flags)
+    switch pushToTalkHandling {
+    case .passThrough:
+      break
+    case .swallow(let emittedEvent):
+      if let emittedEvent {
+        emit(emittedEvent)
+      }
+      return nil
+    }
+
+    let bufferHandling = withLock {
+      guard !draftEditorActive, recordPanelShortcutRecordingSuspensions.isEmpty,
+        bufferOutputBinding != recordPanelHotkeyBinding
+      else {
+        bufferOutputRecognizer.reset()
+        return RecordPanelShortcutRecognizerOutput.passThrough
+      }
+      return bufferOutputRecognizer.handle(type: type, keyCode: keyCode, flags: event.flags, binding: bufferOutputBinding)
+    }
+    if case .swallow(let shouldEmit) = bufferHandling {
+      if shouldEmit { emit(.recordBufferOutputRequested) }
+      return nil
+    }
+
+    let recordPanelHandling = handleRecordPanelShortcut(
+      type: type,
+      keyCode: keyCode,
+      flags: event.flags
+    )
+    switch recordPanelHandling {
+    case .passThrough:
+      break
+    case .swallow(let shouldEmit):
+      if shouldEmit {
+        emit(.recordPanelRequested)
+      }
+      return nil
+    }
+
+    return Unmanaged.passUnretained(event)
+  }
+
+  private func handleLiveAudioEscape(
+    type: CGEventType,
+    keyCode: CGKeyCode,
+    flags: CGEventFlags
+  ) -> LiveAudioEscapeRecognizerOutput {
+    withLock {
+      liveAudioEscapeRecognizer.handle(type: type, keyCode: keyCode, flags: flags)
+    }
+  }
+
+  private func handleDoubleCommandPanelShortcut(
+    type: CGEventType,
+    keyCode: CGKeyCode,
+    flags: CGEventFlags,
+    at instant: ContinuousClock.Instant
+  ) -> Bool {
+    withLock {
+      guard isRecordPanelShortcutRouteEnabled,
+        recordPanelHotkeyBinding == .doubleCommand
+      else {
+        doubleCommandTapRecognizer.reset()
+        return false
+      }
+      return doubleCommandTapRecognizer.handle(
+        type: type,
+        keyCode: keyCode,
+        flags: flags,
+        at: instant
+      )
+    }
+  }
+
+  private func handlePushToTalk(
+    type: CGEventType,
+    keyCode: CGKeyCode,
+    flags: CGEventFlags
+  ) -> PushToTalkGestureRecognizerOutput {
+    withLock {
+      if draftEditorActive || !recordPanelShortcutRecordingSuspensions.isEmpty,
+        pushToTalkRecognizer.activeGesture == nil
+      {
+        // The app-local recorder must receive ordinary key events so
+        // it can reject reserved voice chords with its normal feedback.
+        // Only an already-latched voice gesture may continue through
+        // this gate, because its release is required to stop capture.
+        return .passThrough
+      }
+      return pushToTalkRecognizer.handle(type: type, keyCode: keyCode, flags: flags)
+    }
+  }
+
+  private func handleRecordPanelShortcut(
+    type: CGEventType,
+    keyCode: CGKeyCode,
+    flags: CGEventFlags
+  ) -> RecordPanelShortcutRecognizerOutput {
+    withLock {
+      guard isRecordPanelShortcutRouteEnabled else {
+        recordPanelShortcutRecognizer.reset()
+        return .passThrough
+      }
+      return recordPanelShortcutRecognizer.handle(
+        type: type,
+        keyCode: keyCode,
+        flags: flags,
+        binding: recordPanelHotkeyBinding
+      )
+    }
+  }
+
+  private func handleRecordPanelShortcutRecordingCommitKey(
+    type: CGEventType,
+    keyCode: CGKeyCode
+  ) -> Bool {
+    withLock {
+      guard type == .keyDown || type == .keyUp else { return false }
+      let matchingSuspensions =
+        recordPanelShortcutRecordingCommitKeyCodes
+        .compactMap { suspensionID, commitKeyCode in
+          commitKeyCode == keyCode ? suspensionID : nil
+        }
+      guard !matchingSuspensions.isEmpty else { return false }
+
+      if type == .keyUp {
+        for suspensionID in matchingSuspensions {
+          recordPanelShortcutRecordingCommitKeyCodes.removeValue(
+            forKey: suspensionID
+          )
+          recordPanelShortcutRecordingSuspensions.remove(suspensionID)
+        }
+        recordPanelShortcutRecognizer.reset()
+        doubleCommandTapRecognizer.reset()
+      }
+      return true
+    }
+  }
+
+  private func emit(_ event: Event) {
+    let activeContinuations = withLock {
+      Array(continuations.values)
+    }
+    for continuation in activeContinuations {
+      continuation.yield(event)
+    }
+  }
+
+  private func removeContinuation(_ id: UUID) {
+    withLock {
+      continuations.removeValue(forKey: id)
+    }
+  }
+
+  func testingHandle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    handle(type: type, event: event)
+  }
+
+  func testingIsRecordPanelShortcutEnabled() -> Bool {
+    withLock { isRecordPanelShortcutRouteEnabled }
+  }
+
+  func testingHandleDoubleCommandPanelShortcut(
+    type: CGEventType,
+    keyCode: CGKeyCode,
+    flags: CGEventFlags,
+    at instant: ContinuousClock.Instant
+  ) -> Bool {
+    handleDoubleCommandPanelShortcut(
+      type: type,
+      keyCode: keyCode,
+      flags: flags,
+      at: instant
+    )
+  }
+
+  func testingHandlePushToTalk(
+    type: CGEventType,
+    keyCode: CGKeyCode,
+    flags: CGEventFlags
+  ) -> PushToTalkGestureRecognizerOutput {
+    handlePushToTalk(type: type, keyCode: keyCode, flags: flags)
+  }
+
+  func testingHandleLiveAudioEscape(
+    type: CGEventType,
+    keyCode: CGKeyCode,
+    flags: CGEventFlags
+  ) -> LiveAudioEscapeRecognizerOutput {
+    handleLiveAudioEscape(type: type, keyCode: keyCode, flags: flags)
+  }
+
+  func testingHandleRecordPanelShortcut(
+    type: CGEventType,
+    keyCode: CGKeyCode,
+    flags: CGEventFlags
+  ) -> RecordPanelShortcutRecognizerOutput {
+    handleRecordPanelShortcut(type: type, keyCode: keyCode, flags: flags)
+  }
+
+  func testingHandleRecordPanelShortcutRecordingCommitKey(
+    type: CGEventType,
+    keyCode: CGKeyCode
+  ) -> Bool {
+    handleRecordPanelShortcutRecordingCommitKey(type: type, keyCode: keyCode)
+  }
+
+  func testingEmit(_ event: Event) {
+    emit(event)
+  }
+
+  func testingInterruptPushToTalk(
+    preservingActiveTrigger: Bool
+  ) -> Event? {
+    withLock {
+      pushToTalkRecognizer.interrupt(
+        preservingActiveTrigger: preservingActiveTrigger
+      )
+    }
+  }
+
+  func testingResetRecognizersForEventTapTeardown() -> Event {
+    withLock {
+      resetRecognizersForEventTapTeardown()
+    }
+    return .globalInputUnavailable
+  }
+
+  func testingPrepareRecognizersForEventTapRecovery() -> Event? {
+    withLock {
+      prepareRecognizersForEventTapRecovery()
+    }
+  }
+
+  func testingCompleteRecognizersForEventTapRecovery() {
+    withLock {
+      completeRecognizersForEventTapRecovery()
+    }
+  }
+
+  @discardableResult
+  private func withLock<T>(_ body: () -> T) -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    return body()
+  }
+
+  private var isRecordPanelShortcutRouteEnabled: Bool {
+    recordPanelShortcutEnabled && !draftEditorActive && recordPanelShortcutRecordingSuspensions.isEmpty
+  }
 }

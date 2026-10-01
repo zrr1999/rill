@@ -168,7 +168,8 @@ public actor RecordSemanticSearch {
           var products = SIMD4<Float>(repeating: 0)
           // Both vectors have already passed the fixed 1,024-dimension contract.
           for offset in stride(from: 0, to: queryVector.count, by: 4) {
-            products += SIMD4(queryVector[offset], queryVector[offset + 1], queryVector[offset + 2], queryVector[offset + 3])
+            products +=
+              SIMD4(queryVector[offset], queryVector[offset + 1], queryVector[offset + 2], queryVector[offset + 3])
               * SIMD4(vector[offset], vector[offset + 1], vector[offset + 2], vector[offset + 3])
           }
           return products.sum()

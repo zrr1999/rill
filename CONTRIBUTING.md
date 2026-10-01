@@ -27,6 +27,7 @@ scripts/preflight.sh test
 
 ```bash
 just install
+just fmt            # 按 .swift-format（两空格缩进）格式化所有受 Git 跟踪的 Swift 文件
 just check
 just build          # 默认只构建 Debug RillApp
 just test
@@ -37,8 +38,11 @@ just ci             # 保留增量产物的完整门禁
 just ci-clean       # 与 main / 手动 CI 一样的干净构建门禁
 ```
 
-`just check` 只运行 prek 内建检查以及上游提供的 TOML、Actionlint 和 Typos
-检查；不在 Git hook 中运行整仓构建、完整历史扫描或项目策略测试。
+`just check` 只运行 prek 内建检查、上游提供的 TOML、Actionlint 和 Typos
+检查，以及工具链自带的 `swift format lint --strict`；不在 Git hook 中运行整仓构建、
+完整历史扫描或项目策略测试。格式检查失败时运行 `just fmt`。`.git-blame-ignore-revs`
+记录整仓格式化提交，本地可用 `git config blame.ignoreRevsFile .git-blame-ignore-revs`
+让 `git blame` 跳过它。
 这些项目专用检查集中在 `just ci` / `scripts/preflight.sh`，生成物和安全门禁
 仍然是提交前必须完成的检查。新增通用检查时优先复用维护中的上游工具。
 
@@ -207,7 +211,7 @@ git diff --cached --check
 
 修复竞态或生命周期问题时，应优先使用可控的 fake、barrier 或 lease 写确定性测试；不要依赖固定 `sleep` 猜测时序。涉及 SwiftUI/AppKit 焦点、系统权限、全局快捷键、VoiceOver、签名或公证时，除自动化测试外还需记录真实环境验收结果。
 
-主窗口搜索由 MainShell 的浮层与 AppKit `NSSearchField` bridge 共同拥有，以便在 macOS 26 上确定性处理首次/重复 `Cmd-F`、方向键、`Return` 与 `Esc`；不要未经同等真实 App 回归就替换为 `.searchable`。普通页面路由由 shell 恢复侧栏焦点，typed Record / History 目的地则由详情页持有目标焦点，Settings 深链由主窗口的设置模式持有目标焦点。鼠标选择后的恢复必须跨到主 RunLoop 的 default mode，不能只靠 `Task.yield()` 猜测 AppKit mouse tracking / first-responder 时序；修改任一侧时都应覆盖 全部记录 → 活动 → 工作流 → 记录集的方向键、List selection、快速路由与 exact 详情 AX 焦点，以及进入设置后再返回。
+主窗口搜索由 MainShell 的浮层与 AppKit `NSSearchField` bridge 共同拥有，以便在 macOS 26 上确定性处理首次/重复 `Cmd-F`、方向键、`Return` 与 `Esc`；不要未经同等真实 App 回归就替换为 `.searchable`。普通页面路由由 shell 恢复侧栏焦点，typed Record / History 目的地则由详情页持有目标焦点，Settings 深链由独立设置窗口持有目标焦点。鼠标选择后的恢复必须跨到主 RunLoop 的 default mode，不能只靠 `Task.yield()` 猜测 AppKit mouse tracking / first-responder 时序；修改任一侧时都应覆盖 全部记录 → 活动 → 工作流 → 记录集的方向键、List selection、快速路由与 exact 详情 AX 焦点。
 
 ## 质量评测与性能基准
 

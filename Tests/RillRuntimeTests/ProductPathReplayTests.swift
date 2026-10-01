@@ -13,11 +13,14 @@ import Testing
 
 struct ProductPathReplayTests {
   @Test func fixedFixtureExercisesRecognitionProcessingCommitAndOrderedOutput() async throws {
-    let fixture = try HostPipeline(recognizer: FixedReplayRecognizer(), keyterms: [],
+    let fixture = try HostPipeline(
+      recognizer: FixedReplayRecognizer(), keyterms: [],
       replacements: [.init(pattern: "rill", replacement: "Rill")])
     defer { fixture.remove() }
-    let result = try await fixture.run(audio: CapturedAudio(durationSeconds: 1,
-      format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16), inlineData: Data([0, 0])),
+    let result = try await fixture.run(
+      audio: CapturedAudio(
+        durationSeconds: 1,
+        format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16), inlineData: Data([0, 0])),
       options: .init(modelID: "fixture"))
     #expect(result.status == "ok")
     #expect(result.texts["raw"] == "  rill 不要 删除 2026  ")
@@ -30,11 +33,14 @@ struct ProductPathReplayTests {
   }
 
   @Test func unexpectedModelIdentityCannotBecomeScoredText() async throws {
-    let fixture = try HostPipeline(recognizer: FixedReplayRecognizer(), keyterms: [],
+    let fixture = try HostPipeline(
+      recognizer: FixedReplayRecognizer(), keyterms: [],
       replacements: [], expectedModel: ("expected", "revision"))
     defer { fixture.remove() }
-    let result = try await fixture.run(audio: CapturedAudio(durationSeconds: 1,
-      format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16), inlineData: Data([0, 0])),
+    let result = try await fixture.run(
+      audio: CapturedAudio(
+        durationSeconds: 1,
+        format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16), inlineData: Data([0, 0])),
       options: .init(modelID: "expected"))
     #expect(result.status == "failed")
     #expect(result.failure == "model_identity_mismatch")
@@ -46,8 +52,10 @@ struct ProductPathReplayTests {
   @Test func recognizedSilenceIsSuccessfulRecognitionWithoutCommitOrOutput() async throws {
     let fixture = try HostPipeline(recognizer: FixedReplayRecognizer(text: ""), keyterms: [], replacements: [])
     defer { fixture.remove() }
-    let result = try await fixture.run(audio: CapturedAudio(durationSeconds: 1,
-      format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16), inlineData: Data([0, 0])),
+    let result = try await fixture.run(
+      audio: CapturedAudio(
+        durationSeconds: 1,
+        format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16), inlineData: Data([0, 0])),
       options: .init(modelID: "fixture"))
     #expect(result.status == "ok")
     #expect(result.productOutcome == "no_speech")
@@ -60,60 +68,62 @@ struct ProductPathReplayTests {
   @Test(.enabled(if: ProcessInfo.processInfo.environment["RILL_PRODUCT_REPLAY_REQUEST"] != nil))
   func authorizedReleaseCorpusThroughProductionHostPipeline() async throws {
     #if DEBUG
-    throw ReplayFailure.releaseRequired
+      throw ReplayFailure.releaseRequired
     #else
-    let environment = ProcessInfo.processInfo.environment
-    let requestURL = URL(fileURLWithPath: try #require(environment["RILL_PRODUCT_REPLAY_REQUEST"]))
-    let request = try JSONDecoder().decode(HostReplayRequest.self, from: Data(contentsOf: requestURL))
-    let supervisor = SpeechWorkerSupervisor(configuration: .init(executableURL: URL(fileURLWithPath: request.worker)))
-    let settings = LocalSpeechSettings(model: request.modelID, downloadIfNeeded: false,
-      enabledModelIDs: [request.modelID], residentModelIDs: [request.modelID])
-    let recognizer = MLXAudioSwiftWorkerRecognizer(supervisor: supervisor, settingsProvider: { settings })
-    do {
-      _ = try await recognizer.prepareModel(modelIdentifier: request.modelID, downloadIfNeeded: false)
-      let fixture = try HostPipeline(recognizer: recognizer, keyterms: request.keyterms, replacements: request.replacements,
-        expectedModel: (request.modelID, request.modelRevision))
-      defer { fixture.remove() }
-      let output = try FileHandle(forWritingTo: URL(fileURLWithPath: request.output))
-      defer { try? output.close() }
-      try output.seekToEnd()
-      if request.cacheState == "warm", let item = request.cases.first, let warmupOutput = request.warmupOutput {
-        let audio = try copyFixture(item)
-        defer { _ = try? audio.removeManagedTemporaryFile() }
-        var result = try await fixture.run(audio: audio, options: .init(modelID: request.modelID, language: request.language))
-        result.caseID = item.id
-        result.audioSHA256 = item.audioSHA256
-        result.cacheState = "first_inference"
-        let warmup = try FileHandle(forWritingTo: URL(fileURLWithPath: warmupOutput))
-        defer { try? warmup.close() }
-        try warmup.seekToEnd()
-        try warmup.write(contentsOf: JSONEncoder().encode(result) + Data([10]))
-        try warmup.synchronize()
-        guard result.status == "ok" else { throw ReplayFailure.incompletePipeline }
-      }
-      for repetition in 1...request.repetitions {
-        for item in request.cases {
-          if request.cacheState == "first_inference" {
-            try await recognizer.releaseLoadedModel()
-            _ = try await recognizer.prepareModel(modelIdentifier: request.modelID, downloadIfNeeded: false)
-          }
+      let environment = ProcessInfo.processInfo.environment
+      let requestURL = URL(fileURLWithPath: try #require(environment["RILL_PRODUCT_REPLAY_REQUEST"]))
+      let request = try JSONDecoder().decode(HostReplayRequest.self, from: Data(contentsOf: requestURL))
+      let supervisor = SpeechWorkerSupervisor(configuration: .init(executableURL: URL(fileURLWithPath: request.worker)))
+      let settings = LocalSpeechSettings(
+        model: request.modelID, downloadIfNeeded: false,
+        enabledModelIDs: [request.modelID], residentModelIDs: [request.modelID])
+      let recognizer = MLXAudioSwiftWorkerRecognizer(supervisor: supervisor, settingsProvider: { settings })
+      do {
+        _ = try await recognizer.prepareModel(modelIdentifier: request.modelID, downloadIfNeeded: false)
+        let fixture = try HostPipeline(
+          recognizer: recognizer, keyterms: request.keyterms, replacements: request.replacements,
+          expectedModel: (request.modelID, request.modelRevision))
+        defer { fixture.remove() }
+        let output = try FileHandle(forWritingTo: URL(fileURLWithPath: request.output))
+        defer { try? output.close() }
+        try output.seekToEnd()
+        if request.cacheState == "warm", let item = request.cases.first, let warmupOutput = request.warmupOutput {
           let audio = try copyFixture(item)
           defer { _ = try? audio.removeManagedTemporaryFile() }
           var result = try await fixture.run(audio: audio, options: .init(modelID: request.modelID, language: request.language))
           result.caseID = item.id
           result.audioSHA256 = item.audioSHA256
-          result.repetition = repetition
-          result.cacheState = request.cacheState
-          try output.write(contentsOf: JSONEncoder().encode(result) + Data([10]))
-          try output.synchronize()
+          result.cacheState = "first_inference"
+          let warmup = try FileHandle(forWritingTo: URL(fileURLWithPath: warmupOutput))
+          defer { try? warmup.close() }
+          try warmup.seekToEnd()
+          try warmup.write(contentsOf: JSONEncoder().encode(result) + Data([10]))
+          try warmup.synchronize()
+          guard result.status == "ok" else { throw ReplayFailure.incompletePipeline }
         }
+        for repetition in 1...request.repetitions {
+          for item in request.cases {
+            if request.cacheState == "first_inference" {
+              try await recognizer.releaseLoadedModel()
+              _ = try await recognizer.prepareModel(modelIdentifier: request.modelID, downloadIfNeeded: false)
+            }
+            let audio = try copyFixture(item)
+            defer { _ = try? audio.removeManagedTemporaryFile() }
+            var result = try await fixture.run(audio: audio, options: .init(modelID: request.modelID, language: request.language))
+            result.caseID = item.id
+            result.audioSHA256 = item.audioSHA256
+            result.repetition = repetition
+            result.cacheState = request.cacheState
+            try output.write(contentsOf: JSONEncoder().encode(result) + Data([10]))
+            try output.synchronize()
+          }
+        }
+        await fixture.coordinator.shutdownRecordDeliverySettlements()
+        try await supervisor.shutdown()
+      } catch {
+        try? await supervisor.shutdown()
+        throw error
       }
-      await fixture.coordinator.shutdownRecordDeliverySettlements()
-      try await supervisor.shutdown()
-    } catch {
-      try? await supervisor.shutdown()
-      throw error
-    }
     #endif
   }
 }
@@ -172,22 +182,33 @@ private struct HostPipeline {
   let workflow: WorkflowDefinition
   let measurements: HostMeasurements
 
-  init(recognizer: any SpeechRecognizer, keyterms: [String], replacements: [ReplayReplacement],
-    expectedModel: (id: String, revision: String)? = nil) throws {
+  init(
+    recognizer: any SpeechRecognizer, keyterms: [String], replacements: [ReplayReplacement],
+    expectedModel: (id: String, revision: String)? = nil
+  ) throws {
     directory = FileManager.default.temporaryDirectory.appendingPathComponent("rill-host-replay-" + UUID().uuidString)
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+    try FileManager.default.createDirectory(
+      at: directory, withIntermediateDirectories: false,
       attributes: [.posixPermissions: 0o700])
-    database = try SQLitePersistenceStore(databaseURL: directory.appendingPathComponent("evaluation.sqlite"),
+    database = try SQLitePersistenceStore(
+      databaseURL: directory.appendingPathComponent("evaluation.sqlite"),
       localDataProtector: AESGCMDataProtector(key: SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) }))
     store = RecordStore(persistence: database)
     measurements = HostMeasurements(store: store)
     let eventBus = EventBus()
-    let collection = VocabularyCollection.personal(entries:
-      keyterms.enumerated().map { VocabularyEntry(content: .hotword(phrase: $0.element), priority: -$0.offset) }
-      + replacements.enumerated().map { VocabularyEntry(rule: VocabularyRule(pattern: $0.element.pattern,
-        replacement: $0.element.replacement, priority: -$0.offset)) })
-    var declaration = WorkflowDefinition(name: "Private host replay",
-      pipeline: .init(recognizerID: recognizer.id,
+    let collection = VocabularyCollection.personal(
+      entries:
+        keyterms.enumerated().map { VocabularyEntry(content: .hotword(phrase: $0.element), priority: -$0.offset) }
+        + replacements.enumerated().map {
+          VocabularyEntry(
+            rule: VocabularyRule(
+              pattern: $0.element.pattern,
+              replacement: $0.element.replacement, priority: -$0.offset))
+        })
+    var declaration = WorkflowDefinition(
+      name: "Private host replay",
+      pipeline: .init(
+        recognizerID: recognizer.id,
         postProcessSteps: [.init(kind: .normalizeWhitespace)],
         outputActions: [.init(id: RecordActionID.store), .init(id: "system-clipboard.copy")],
         uncertaintyPolicy: .init(mode: .off)),
@@ -198,8 +219,10 @@ private struct HostPipeline {
     coordinator = makeTestSessionCoordinator(
       recognizerRegistry: .init(recognizers: [MeasuredRecognizer(base: recognizer, measurements: measurements, expectedModel: expectedModel)]),
       transformerRegistry: .init(transformers: [WhitespaceNormalizerTransformer()]),
-      actionRegistry: .init(actions: [save,
-        IsolatedReplayOutput(measurements: measurements)]),
+      actionRegistry: .init(actions: [
+        save,
+        IsolatedReplayOutput(measurements: measurements),
+      ]),
       candidateResolver: CandidateResolver(eventBus: eventBus), recordStore: store,
       eventBus: eventBus, runReceiptRecorder: WorkflowRunReceiptRecorder(repository: database),
       vocabularyCollectionProvider: { [collection] })
@@ -208,43 +231,53 @@ private struct HostPipeline {
   func run(audio: CapturedAudio, options: SpeechRecognitionRequestOptions) async throws -> HostReplayResult {
     let runID = UUID()
     await measurements.begin()
-    let result = await coordinator.runReportingOutcome(workflow: workflow, runID: runID,
+    let result = await coordinator.runReportingOutcome(
+      workflow: workflow, runID: runID,
       capturedAudio: audio, contextSnapshot: .empty, recognitionOptions: options)
     let measured = await measurements.snapshot()
     switch result {
     case .completed(let summary):
       let receipts = try await database.receipts(matching: .init(runID: runID))
       guard receipts.first?.actionDetails.map(\.result) == [.storedRecord, .copiedToClipboard],
-        measured.storedBeforeDispatch else { throw ReplayFailure.incompletePipeline }
+        measured.storedBeforeDispatch
+      else { throw ReplayFailure.incompletePipeline }
       let raw = try #require(measured.raw)
       let vocabulary = summary.correctionSource?.processingSteps?.first { $0.kind == .applyVocabulary }?.outputText
-      return .init(status: "ok", failure: nil,
+      return .init(
+        status: "ok", failure: nil,
         texts: ["raw": raw, "vocabulary": vocabulary ?? raw, "final": summary.finalText],
         metrics: measured.metrics, storedBeforeDispatch: measured.storedBeforeDispatch)
     case .failed(let failure):
       if failure.code == .noSpeech, let raw = measured.raw {
         guard try await !store.snapshot().records.contains(where: { $0.record.provenance.workflowRunID == runID }),
-          measured.metrics["host_replay_to_saved_ms"] == nil, !measured.storedBeforeDispatch else {
+          measured.metrics["host_replay_to_saved_ms"] == nil, !measured.storedBeforeDispatch
+        else {
           throw ReplayFailure.incompletePipeline
         }
-        return .init(status: "ok", failure: nil, texts: ["raw": raw], metrics: measured.metrics,
+        return .init(
+          status: "ok", failure: nil, texts: ["raw": raw], metrics: measured.metrics,
           storedBeforeDispatch: false, productOutcome: "no_speech")
       }
-      return .init(status: "failed", failure: measured.failure ?? failure.code.rawValue,
+      return .init(
+        status: "failed", failure: measured.failure ?? failure.code.rawValue,
         texts: measured.raw.map { ["raw": $0] } ?? [:], metrics: measured.metrics, storedBeforeDispatch: false)
     case .noInput:
       if let raw = measured.raw {
         guard try await !store.snapshot().records.contains(where: { $0.record.provenance.workflowRunID == runID }),
-          measured.metrics["host_replay_to_saved_ms"] == nil, !measured.storedBeforeDispatch else {
+          measured.metrics["host_replay_to_saved_ms"] == nil, !measured.storedBeforeDispatch
+        else {
           throw ReplayFailure.incompletePipeline
         }
-        return .init(status: "ok", failure: nil, texts: ["raw": raw], metrics: measured.metrics,
+        return .init(
+          status: "ok", failure: nil, texts: ["raw": raw], metrics: measured.metrics,
           storedBeforeDispatch: false, productOutcome: "no_speech")
       }
-      return .init(status: "ok", failure: nil, texts: [:], metrics: measured.metrics,
+      return .init(
+        status: "ok", failure: nil, texts: [:], metrics: measured.metrics,
         storedBeforeDispatch: false, productOutcome: "no_input")
     case .cancelled:
-      return .init(status: "cancelled", failure: "cancelled", texts: measured.raw.map { ["raw": $0] } ?? [:], metrics: measured.metrics, storedBeforeDispatch: false)
+      return .init(
+        status: "cancelled", failure: "cancelled", texts: measured.raw.map { ["raw": $0] } ?? [:], metrics: measured.metrics, storedBeforeDispatch: false)
     }
   }
   func remove() { try? FileManager.default.removeItem(at: directory) }
@@ -259,17 +292,28 @@ private actor HostMeasurements {
   var metrics: [String: Double] = [:]
   var storedBeforeDispatch = false
   init(store: RecordStore) { self.store = store }
-  func begin() { start = .now; raw = nil; failure = nil; storedID = nil; metrics = [:]; storedBeforeDispatch = false }
+  func begin() {
+    start = .now
+    raw = nil
+    failure = nil
+    storedID = nil
+    metrics = [:]
+    storedBeforeDispatch = false
+  }
   func recognized(_ text: String, at instant: ContinuousClock.Instant) {
     raw = text
     metrics["host_replay_to_final_ms"] = milliseconds(to: instant)
   }
-  func saved(id: RecordID, at instant: ContinuousClock.Instant) { storedID = id; metrics["host_replay_to_saved_ms"] = milliseconds(to: instant) }
+  func saved(id: RecordID, at instant: ContinuousClock.Instant) {
+    storedID = id
+    metrics["host_replay_to_saved_ms"] = milliseconds(to: instant)
+  }
   func identityMismatch() { failure = "model_identity_mismatch" }
   func dispatch(_ draft: RecordDraft, runID: UUID) async throws {
     let dispatchedAt = ContinuousClock.now
     guard let storedID, let stored = try await store.record(id: storedID),
-      stored.record.provenance.workflowRunID == runID && stored.record.payload == draft.payload else {
+      stored.record.provenance.workflowRunID == runID && stored.record.payload == draft.payload
+    else {
       throw ReplayFailure.outputBeforeCommit
     }
     storedBeforeDispatch = true
@@ -291,7 +335,8 @@ private struct MeasuredRecognizer: SpeechRecognizer {
   func recognize(_ request: RecognitionRequest) async throws -> RecognitionResult {
     let result = try await base.recognize(request)
     if let expectedModel,
-      result.metadata["provider.model"] != expectedModel.id || result.metadata["provider.model_revision"] != expectedModel.revision {
+      result.metadata["provider.model"] != expectedModel.id || result.metadata["provider.model_revision"] != expectedModel.revision
+    {
       await measurements.identityMismatch()
       throw ReplayFailure.modelIdentityMismatch
     }
@@ -340,7 +385,8 @@ private func copyFixture(_ item: HostReplayRequest.Fixture) throws -> CapturedAu
   defer { try? file.close() }
   do {
     try file.write(contentsOf: bytes)
-    return try CapturedAudio(durationSeconds: item.durationSeconds,
+    return try CapturedAudio(
+      durationSeconds: item.durationSeconds,
       format: .init(sampleRateHz: 16000, channelCount: 1, encoding: .pcm16), fileURL: temporary, fileOwnership: .managedTemporary)
   } catch {
     try? FileManager.default.removeItem(at: temporary)

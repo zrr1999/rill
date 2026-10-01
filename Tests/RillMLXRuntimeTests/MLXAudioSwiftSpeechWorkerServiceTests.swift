@@ -10,7 +10,8 @@ final class MLXAudioSwiftSpeechWorkerServiceTests: XCTestCase {
     let root = try makeTemporaryDirectory()
     defer { try? FileManager.default.removeItem(at: root) }
     let descriptor = SpeechSynthesisModelCatalog.qwen3TTS06BCustomVoiceBF16
-    let publication = root
+    let publication =
+      root
       .appendingPathComponent("tts", isDirectory: true)
       .appendingPathComponent(
         descriptor.id.rawValue + "-" + descriptor.revision.prefix(12),
@@ -319,7 +320,8 @@ final class MLXAudioSwiftSpeechWorkerServiceTests: XCTestCase {
       ("model.safetensors", Data("trusted-weights".utf8)),
     ]
     let descriptor = makeTestMLXAudioDescriptor(files: files)
-    let publication = root
+    let publication =
+      root
       .appendingPathComponent("mlx-audio", isDirectory: true)
       .appendingPathComponent("test_Authenticated-ASR", isDirectory: true)
     try FileManager.default.createDirectory(

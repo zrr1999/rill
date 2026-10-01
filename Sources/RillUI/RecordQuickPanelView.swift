@@ -141,8 +141,11 @@ public struct RecordQuickPanelView: View {
       .frame(height: 30)
       .padding(RillSpacing.panel)
       HStack(spacing: RillSpacing.row) {
-        Picker(L10n.surface(.collection, language: language), selection: Binding(
-          get: { model.collectionID }, set: { model.setCollection($0) })) {
+        Picker(
+          L10n.surface(.collection, language: language),
+          selection: Binding(
+            get: { model.collectionID }, set: { model.setCollection($0) })
+        ) {
           Text(L10n.surface(.allRecords, language: language)).tag(RecordCollectionID?.none)
           ForEach(model.collections) { collection in
             Text(collection.name).tag(Optional(collection.id))
@@ -174,19 +177,19 @@ public struct RecordQuickPanelView: View {
       .padding(.bottom, RillSpacing.row)
       if model.canSearchByMeaning || model.jev != nil {
         DisclosureGroup(text(.advancedSearch), isExpanded: $showsAdvancedSearch) {
-      if model.canSearchByMeaning { semanticControls }
-      if let jev = model.jev {
-        HStack {
-          Button(L10n.jev(.open, language: language)) { model.compareWithJev() }
-            .disabled(!model.canCompareWithJev)
-            .accessibilityIdentifier("records.jev-review")
-          Spacer()
-        }
-        .controlSize(.small).padding(.horizontal, RillSpacing.panel).padding(.bottom, RillSpacing.row)
-        .sheet(isPresented: Binding(get: { jev.isPresented }, set: { if !$0 { jev.invalidate() } })) {
-          RecordJevSheet(model: jev, language: language, onSelect: model.selectJevCandidate, onConfigure: onConfigureJev, onRetry: model.compareWithJev)
-        }
-      }
+          if model.canSearchByMeaning { semanticControls }
+          if let jev = model.jev {
+            HStack {
+              Button(L10n.jev(.open, language: language)) { model.compareWithJev() }
+                .disabled(!model.canCompareWithJev)
+                .accessibilityIdentifier("records.jev-review")
+              Spacer()
+            }
+            .controlSize(.small).padding(.horizontal, RillSpacing.panel).padding(.bottom, RillSpacing.row)
+            .sheet(isPresented: Binding(get: { jev.isPresented }, set: { if !$0 { jev.invalidate() } })) {
+              RecordJevSheet(model: jev, language: language, onSelect: model.selectJevCandidate, onConfigure: onConfigureJev, onRetry: model.compareWithJev)
+            }
+          }
         }
         .font(.caption)
         .padding(.horizontal, RillSpacing.panel)
@@ -272,34 +275,34 @@ public struct RecordQuickPanelView: View {
   }
 
   private var resultList: some View {
-      ScrollViewReader { proxy in
-        List(selection: Binding(get: { model.selectedID }, set: { model.select($0) })) {
-          ForEach(Array(model.results.enumerated()), id: \.element.id) { index, item in
-            selectableRow(item, index: index)
-          }
-          if model.nextOffset != nil {
-            Button(text(.loadMore)) { model.loadMore() }.disabled(model.isSearching)
-          }
-          if !model.additionalSemanticResults.isEmpty {
-            Section(text(.semanticCandidates)) {
-              ForEach(Array(model.additionalSemanticResults.enumerated()), id: \.element.id) { index, item in
-                selectableRow(item, index: model.results.count + index)
-              }
+    ScrollViewReader { proxy in
+      List(selection: Binding(get: { model.selectedID }, set: { model.select($0) })) {
+        ForEach(Array(model.results.enumerated()), id: \.element.id) { index, item in
+          selectableRow(item, index: index)
+        }
+        if model.nextOffset != nil {
+          Button(text(.loadMore)) { model.loadMore() }.disabled(model.isSearching)
+        }
+        if !model.additionalSemanticResults.isEmpty {
+          Section(text(.semanticCandidates)) {
+            ForEach(Array(model.additionalSemanticResults.enumerated()), id: \.element.id) { index, item in
+              selectableRow(item, index: model.results.count + index)
             }
           }
         }
-        .listStyle(.inset)
-        .overlay {
-          if model.selectableResults.isEmpty && !model.isSearching && model.semanticState != .working {
-            ContentUnavailableView(
-              model.searchText.isEmpty ? text(.noRecords) : text(.noResults),
-              systemImage: RillSystemSymbol.tray.rawValue)
-          }
-        }
-        .onChange(of: model.selectedID) { _, id in
-          if let id { proxy.scrollTo(id) }
+      }
+      .listStyle(.inset)
+      .overlay {
+        if model.selectableResults.isEmpty && !model.isSearching && model.semanticState != .working {
+          ContentUnavailableView(
+            model.searchText.isEmpty ? text(.noRecords) : text(.noResults),
+            systemImage: RillSystemSymbol.tray.rawValue)
         }
       }
+      .onChange(of: model.selectedID) { _, id in
+        if let id { proxy.scrollTo(id) }
+      }
+    }
   }
 
   private var semanticControls: some View {
@@ -450,8 +453,7 @@ struct RecordSearchField: NSViewRepresentable {
       guard let field = notification.object as? NSSearchField else { return }
       parent.text = field.stringValue
     }
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool
-    {
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
       guard !textView.hasMarkedText() else { return false }
       switch selector {
       case #selector(NSResponder.moveUp(_:)): parent.onMove(-1)

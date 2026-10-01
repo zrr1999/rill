@@ -44,10 +44,12 @@ extension AppModel {
         applyLocalSpeechModel(selectedModel)
       }
     }
-    voice.prepareLocalSpeechModel(settings: currentLocalSpeechSettings(),
-      allowedModelIDs: Set(trustedLocalSpeechModels.map(\.id))) { [weak self] model in
-        self?.recordDownloadedLocalSpeechModel(model)
-      }
+    voice.prepareLocalSpeechModel(
+      settings: currentLocalSpeechSettings(),
+      allowedModelIDs: Set(trustedLocalSpeechModels.map(\.id))
+    ) { [weak self] model in
+      self?.recordDownloadedLocalSpeechModel(model)
+    }
   }
 
   public func stopLocalSpeechPreparationForApplicationShutdown() async {

@@ -89,7 +89,8 @@ final class AppModelCorpusRecordingArchiveTests: XCTestCase {
   func testRollbackWriteFailureKeepsDurablePreferenceVisibleAndAllowsRetry() async throws {
     let settingsStore = RollbackFailingArchiveSettingsStore()
     let probe = CorpusArchiveActionProbe()
-    let harness = makeHarness(settingsStore: settingsStore,
+    let harness = makeHarness(
+      settingsStore: settingsStore,
       refreshCorpusRecordingArchiveAction: { enabled in
         await probe.refresh(enabled)
         if enabled { throw CorpusRecordingArchiveError.storageUnavailable }
@@ -114,7 +115,8 @@ final class AppModelCorpusRecordingArchiveTests: XCTestCase {
 
   func testDisableRemainsDurablyOffWhenRuntimeCleanupFails() async throws {
     let settingsStore = UITestSettingsStore(storage: [.corpusRecordingArchiveEnabled: "true"])
-    let harness = makeHarness(settingsStore: settingsStore,
+    let harness = makeHarness(
+      settingsStore: settingsStore,
       refreshCorpusRecordingArchiveAction: { _ in throw CorpusRecordingArchiveError.storageUnavailable })
     await harness.model.waitForInitialVoiceConfiguration()
     harness.model.corpusArchive.setEnabled(false)

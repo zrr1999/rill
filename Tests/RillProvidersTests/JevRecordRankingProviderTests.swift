@@ -30,11 +30,12 @@ struct JevRecordRankingProviderTests {
   func errorsDoNotRetryOrExposeResponseBodies(status: Int) async throws {
     JevFixtureProtocol.requests.withLock { $0 = [] }
     let provider = makeProvider(status: status)
-    let expected: RecordRankingError = switch status {
-    case 401, 403: .unauthorized
-    case 429, 529: .rateLimited
-    default: .unavailable
-    }
+    let expected: RecordRankingError =
+      switch status {
+      case 401, 403: .unauthorized
+      case 429, 529: .rateLimited
+      default: .unavailable
+      }
     await #expect(throws: expected) {
       try await provider.score(query: "query", candidates: ["text"], apiKey: "unit-test-key")
     }
@@ -82,7 +83,8 @@ struct JevRecordRankingProviderTests {
 
 private final class JevFixtureProtocol: URLProtocol {
   static let requests = OSAllocatedUnfairLock(initialState: [URLRequest]())
-  static let response = #"{"model":"jev-1.13.0","answers":{"candidate_1":{"type":"score","score":0.2,"confidence":0.5,"probabilities":{"0":0.8,"1":0.2,"2":0}},"candidate_0":{"type":"score","score":1.7,"confidence":0.5,"probabilities":{"0":0.1,"1":0.1,"2":0.8}}},"usage":{"input_tokens":123,"output_tokens":12}}"#
+  static let response =
+    #"{"model":"jev-1.13.0","answers":{"candidate_1":{"type":"score","score":0.2,"confidence":0.5,"probabilities":{"0":0.8,"1":0.2,"2":0}},"candidate_0":{"type":"score","score":1.7,"confidence":0.5,"probabilities":{"0":0.1,"1":0.1,"2":0.8}}},"usage":{"input_tokens":123,"output_tokens":12}}"#
   override class func canInit(with _: URLRequest) -> Bool { true }
   override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
   override func startLoading() {

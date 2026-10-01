@@ -37,15 +37,15 @@ final class RecordQuickPanelRenderTests: XCTestCase {
     XCTAssertNotNil(panel.preview)
     for dark in [false, true] {
       for width in [620, 900] {
-      let view = NSHostingView(
-        rootView: RecordQuickPanelView(
-          model: panel, language: .simplifiedChinese, capturePaused: false,
-          onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: { _ in }
-        )
-        .environment(\.colorScheme, dark ? .dark : .light))
-      try await render(
-        view, size: NSSize(width: width, height: 560), dark: dark,
-        to: output.appendingPathComponent("quick-panel-\(dark ? "dark" : "light")-\(width).png"))
+        let view = NSHostingView(
+          rootView: RecordQuickPanelView(
+            model: panel, language: .simplifiedChinese, capturePaused: false,
+            onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: { _ in }
+          )
+          .environment(\.colorScheme, dark ? .dark : .light))
+        try await render(
+          view, size: NSSize(width: width, height: 560), dark: dark,
+          to: output.appendingPathComponent("quick-panel-\(dark ? "dark" : "light")-\(width).png"))
       }
       await panel.cleanup.request()
       let cleanup = NSHostingView(
@@ -67,8 +67,10 @@ final class RecordQuickPanelRenderTests: XCTestCase {
     for missing in [false, true] {
       let store = RecordStore()
       for text in ["git reset --soft HEAD~1", "git revert HEAD"] {
-        _ = try await store.ingest(.init(payload: .text(text),
-          provenance: .init(source: .init(kind: .systemClipboard), sourceApplicationName: "Terminal")), into: [])
+        _ = try await store.ingest(
+          .init(
+            payload: .text(text),
+            provenance: .init(source: .init(kind: .systemClipboard), sourceApplicationName: "Terminal")), into: [])
       }
       let search = RecordSemanticSearch(store: store, embedder: PanelEmbeddingFixture(missing: missing))
       let panel = RecordQuickPanelModel(store: store, semanticSearch: search)
@@ -81,11 +83,14 @@ final class RecordQuickPanelRenderTests: XCTestCase {
       while panel.semanticState == .working, ContinuousClock.now < deadline { await Task.yield() }
       XCTAssertEqual(panel.semanticState, missing ? .needsModel : .ready)
       for dark in [false, true] {
-        let view = NSHostingView(rootView: RecordQuickPanelView(
-          model: panel, language: dark ? .english : .simplifiedChinese, capturePaused: false,
-          onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: { _ in })
+        let view = NSHostingView(
+          rootView: RecordQuickPanelView(
+            model: panel, language: dark ? .english : .simplifiedChinese, capturePaused: false,
+            onPaste: { _ in }, onCopy: { _ in }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: { _ in }
+          )
           .environment(\.colorScheme, dark ? .dark : .light))
-        try await render(view, size: NSSize(width: 620, height: 560), dark: dark,
+        try await render(
+          view, size: NSSize(width: 620, height: 560), dark: dark,
           to: output.appendingPathComponent("semantic-\(missing ? "download" : "ready")-\(dark ? "dark" : "light").png"))
       }
       await panel.shutdown()
@@ -114,10 +119,14 @@ final class RecordQuickPanelRenderTests: XCTestCase {
     pdf.closePDF()
     let urls = [imageURL, pdfURL, textURL, output.appendingPathComponent("missing-file.txt")]
     let store = RecordStore()
-    let image = try await store.ingest(.init(payload: .image(imageData),
-      provenance: .init(source: .init(kind: .systemClipboard), sourceApplicationName: "Preview")), into: [])
-    let files = try await store.ingest(.init(payload: .files(urls),
-      provenance: .init(source: .init(kind: .systemClipboard), sourceApplicationName: "Finder")), into: [])
+    let image = try await store.ingest(
+      .init(
+        payload: .image(imageData),
+        provenance: .init(source: .init(kind: .systemClipboard), sourceApplicationName: "Preview")), into: [])
+    let files = try await store.ingest(
+      .init(
+        payload: .files(urls),
+        provenance: .init(source: .init(kind: .systemClipboard), sourceApplicationName: "Finder")), into: [])
     let panel = RecordQuickPanelModel(store: store)
     panel.start(sourceBundleIdentifier: nil)
     defer { panel.stop() }
@@ -130,12 +139,15 @@ final class RecordQuickPanelRenderTests: XCTestCase {
       for dark in [false, true] {
         for width in [620, 900] {
           let language: AppLanguage = dark ? .english : .simplifiedChinese
-          let view = NSHostingView(rootView: RecordQuickPanelView(
-            model: panel, language: language, capturePaused: false,
-            onPaste: { _ in XCTFail("Preview must not paste.") },
-            onCopy: { _ in XCTFail("Preview must not copy.") }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: { _ in })
+          let view = NSHostingView(
+            rootView: RecordQuickPanelView(
+              model: panel, language: language, capturePaused: false,
+              onPaste: { _ in XCTFail("Preview must not paste.") },
+              onCopy: { _ in XCTFail("Preview must not copy.") }, onShowRecord: { _ in }, onClose: {}, onConfigureJev: { _ in }
+            )
             .environment(\.colorScheme, dark ? .dark : .light))
-          try await render(view, size: NSSize(width: width, height: 560), dark: dark,
+          try await render(
+            view, size: NSSize(width: width, height: 560), dark: dark,
             to: output.appendingPathComponent("preview-\(record.record.payload.kind)-\(dark ? "dark" : "light")-\(width).png"),
             settle: true)
         }
@@ -166,12 +178,17 @@ final class RecordQuickPanelRenderTests: XCTestCase {
           while model.state == .scoring, ContinuousClock.now < deadline { await Task.yield() }
           XCTAssertEqual(model.state, .ready)
         }
-        let view = NSHostingView(rootView: RecordJevSheet(model: model,
-          language: dark ? .english : .simplifiedChinese, onSelect: { _ in
-            // Rendering only; selection behavior is covered by RecordJevPanelTests.
-          }, onConfigure: { _ in }, onRetry: {})
+        let view = NSHostingView(
+          rootView: RecordJevSheet(
+            model: model,
+            language: dark ? .english : .simplifiedChinese,
+            onSelect: { _ in
+              // Rendering only; selection behavior is covered by RecordJevPanelTests.
+            }, onConfigure: { _ in }, onRetry: {}
+          )
           .environment(\.colorScheme, dark ? .dark : .light))
-        try await render(view, size: NSSize(width: 540, height: 620), dark: dark,
+        try await render(
+          view, size: NSSize(width: 540, height: 620), dark: dark,
           to: output.appendingPathComponent("jev-\(scored ? "result" : "review")-\(dark ? "dark" : "light").png"))
         await model.shutdown()
         await fixture.service.shutdown()

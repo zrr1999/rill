@@ -11,6 +11,10 @@ check:
     uvx prek==0.5.3 validate-config prek.toml
     uvx prek==0.5.3 -c prek.toml run --all-files
 
+# Format every tracked Swift file, matching the swift-format hook scope.
+fmt:
+    git ls-files -z '*.swift' | xargs -0 swift format --configuration .swift-format --in-place
+
 # Build the documentation and reject broken links and anchors.
 docs:
     uv run --no-build --locked --script scripts/docs.py build

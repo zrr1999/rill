@@ -64,7 +64,10 @@ struct CorpusRecordingArchiveSheet: View {
         }
       }
       HStack {
-        Button(text(.close)) { model.cancelSelection(); dismiss() }.keyboardShortcut(.cancelAction)
+        Button(text(.close)) {
+          model.cancelSelection()
+          dismiss()
+        }.keyboardShortcut(.cancelAction)
         Spacer()
         if model.state == .exporting { ProgressView().controlSize(.small) }
         Button(text(.exportSelection), action: chooseDestination)
@@ -80,7 +83,11 @@ struct CorpusRecordingArchiveSheet: View {
 
   private func text(_ key: CorpusArchiveTextKey) -> String { L10n.corpusArchive(key, language: language) }
   private func outcomeKey(_ outcome: CorpusRecordingOutcome) -> CorpusArchiveTextKey {
-    switch outcome { case .completed: .completed; case .failed: .failed; case .cancelled: .cancelled }
+    switch outcome {
+    case .completed: .completed
+    case .failed: .failed
+    case .cancelled: .cancelled
+    }
   }
 
   private func chooseDestination() {

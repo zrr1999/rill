@@ -466,8 +466,10 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     let fixtures: [(String, LanguageModelTokenUsage?)] = [
       ("null", nil),
       ("{}", nil),
-      (#"{"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}"#,
-       .init(inputTokens: 0, outputTokens: 0, totalTokens: 0)),
+      (
+        #"{"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}"#,
+        .init(inputTokens: 0, outputTokens: 0, totalTokens: 0)
+      ),
       (#"{"input_tokens": 12, "output_tokens": 3}"#, .init(inputTokens: 12, outputTokens: 3)),
       (#"{"total_tokens": 15}"#, .init(totalTokens: 15)),
       (#"{"input_tokens": -1, "output_tokens": 3}"#, .init(outputTokens: 3)),
@@ -477,15 +479,17 @@ final class OpenAITextRewriteTransformerTests: XCTestCase {
     ]
     for (usage, expected) in fixtures {
       let data = Data("{\"output_text\":\"answer\",\"usage\":\(usage)}".utf8)
-      let result = try XCTUnwrap(MacPawOpenAIResponsesClient.decodeCompatibleResponse(
-        from: data, httpStatusCode: 200
-      ))
+      let result = try XCTUnwrap(
+        MacPawOpenAIResponsesClient.decodeCompatibleResponse(
+          from: data, httpStatusCode: 200
+        ))
       XCTAssertEqual(result.outputText, "answer", usage)
       XCTAssertEqual(result.tokenUsage, expected, usage)
     }
-    let withoutUsage = try XCTUnwrap(MacPawOpenAIResponsesClient.decodeCompatibleResponse(
-      from: Data(#"{"output_text":"answer"}"#.utf8), httpStatusCode: 200
-    ))
+    let withoutUsage = try XCTUnwrap(
+      MacPawOpenAIResponsesClient.decodeCompatibleResponse(
+        from: Data(#"{"output_text":"answer"}"#.utf8), httpStatusCode: 200
+      ))
     XCTAssertNil(withoutUsage.tokenUsage)
   }
 

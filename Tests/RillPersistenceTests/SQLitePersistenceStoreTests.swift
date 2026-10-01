@@ -71,9 +71,11 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let store = try makeStore()
     let runID = UUID()
     let workflowID = UUID()
-    let receipt = try WorkflowRunReceipt(runID: runID, workflowID: workflowID, trigger: .hotkey,
+    let receipt = try WorkflowRunReceipt(
+      runID: runID, workflowID: workflowID, trigger: .hotkey,
       timestamp: Date(), duration: .unavailable, termination: .completed)
-    let record = WorkflowResultRecord(id: runID, runID: runID, workflowID: workflowID,
+    let record = WorkflowResultRecord(
+      id: runID, runID: runID, workflowID: workflowID,
       workflow: .init(fallbackName: "Atomic run"), finalText: "Preserved text",
       timestamp: receipt.timestamp, outcome: .completed, trigger: .hotkey)
     let generation = try await store.captureRunHistoryWriteGeneration()
@@ -91,13 +93,16 @@ final class SQLitePersistenceStoreTests: XCTestCase {
     let store = try makeStore()
     let recordID = UUID()
     try await store.save(WorkflowResultRecord(id: recordID, workflow: .init(fallbackName: "Existing"), outcome: .failed))
-    let receipt = try WorkflowRunReceipt(runID: UUID(), workflowID: UUID(), trigger: .hotkey,
+    let receipt = try WorkflowRunReceipt(
+      runID: UUID(), workflowID: UUID(), trigger: .hotkey,
       timestamp: Date(), duration: .unavailable, termination: .completed)
-    let conflicting = WorkflowResultRecord(id: recordID, runID: receipt.runID, workflowID: receipt.workflowID,
+    let conflicting = WorkflowResultRecord(
+      id: recordID, runID: receipt.runID, workflowID: receipt.workflowID,
       workflow: .init(fallbackName: "Atomic run"), finalText: "Preserved text",
       timestamp: receipt.timestamp, outcome: .completed, trigger: .hotkey)
     do {
-      try await store.commitTerminal(receipt, history: conflicting,
+      try await store.commitTerminal(
+        receipt, history: conflicting,
         generation: try await store.captureRunHistoryWriteGeneration())
       XCTFail("A conflicting body must reject the entire terminal transaction")
     } catch let error as HistoryRepositoryError {
@@ -168,7 +173,7 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         WorkflowStepReceipt(
           stepIndex: 1, kind: .llmRewrite, result: .completed,
           duration: .ms250To999, durationMilliseconds: 456
-        )
+        ),
       ],
       actionDetails: [
         WorkflowActionReceipt(
@@ -623,9 +628,11 @@ final class SQLitePersistenceStoreTests: XCTestCase {
       databaseURL: databaseURL,
       localDataProtector: baseProtector
     )
-    let receipt = try WorkflowRunReceipt(runID: UUID(), workflowID: UUID(), trigger: .hotkey,
+    let receipt = try WorkflowRunReceipt(
+      runID: UUID(), workflowID: UUID(), trigger: .hotkey,
       timestamp: Date(timeIntervalSince1970: 10_000), duration: .unavailable, termination: .completed)
-    let lateRecord = WorkflowResultRecord(id: receipt.runID, runID: receipt.runID, workflowID: receipt.workflowID,
+    let lateRecord = WorkflowResultRecord(
+      id: receipt.runID, runID: receipt.runID, workflowID: receipt.workflowID,
       workflow: .init(fallbackName: "Atomic"), finalText: "must-not-return", timestamp: receipt.timestamp,
       outcome: .completed, trigger: .hotkey)
     let generation = try await writingStore.captureRunHistoryWriteGeneration()
@@ -1915,7 +1922,8 @@ final class SQLitePersistenceStoreTests: XCTestCase {
         let message = String(cString: sqlite3_errmsg(legacy))
         XCTAssertNotEqual(result, SQLITE_OK, "Unexpectedly allowed \(blockedWrite.label).")
         XCTAssertTrue(
-          message.contains(SQLiteWriterBarrier.capabilityFunctionName) || message.contains("rill_catalog_writer_v13") || message.contains("rill_memory_writer_v14"),
+          message.contains(SQLiteWriterBarrier.capabilityFunctionName) || message.contains("rill_catalog_writer_v13")
+            || message.contains("rill_memory_writer_v14"),
           "\(blockedWrite.label) failed for an unrelated reason: \(message)"
         )
       }

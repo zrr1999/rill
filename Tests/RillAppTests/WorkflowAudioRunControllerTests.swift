@@ -20,20 +20,20 @@ private actor WorkflowAudioEventProbe {
 }
 
 actor BlockingControllerDiagnosticRepository: DiagnosticRepository, DiagnosticHistoryMaintaining {
-    func deleteEvents(olderThan cutoff: Date) async throws -> Int {
-        XCTFail("This recording test must not perform history maintenance.")
-        throw RunHistoryGenerationError.unsupported
-    }
+  func deleteEvents(olderThan cutoff: Date) async throws -> Int {
+    XCTFail("This recording test must not perform history maintenance.")
+    throw RunHistoryGenerationError.unsupported
+  }
 
-    func deleteAllEvents() async throws -> Int {
-        XCTFail("This recording test must not perform history maintenance.")
-        throw RunHistoryGenerationError.unsupported
-    }
+  func deleteAllEvents() async throws -> Int {
+    XCTFail("This recording test must not perform history maintenance.")
+    throw RunHistoryGenerationError.unsupported
+  }
 
-    func deleteEvents(obsoletedBy transition: RunHistoryClearTransition, preservingLegacyRowsAfter legacyUpperBound: Date?) async throws -> Int {
-        XCTFail("This recording test must not perform history maintenance.")
-        throw RunHistoryGenerationError.unsupported
-    }
+  func deleteEvents(obsoletedBy transition: RunHistoryClearTransition, preservingLegacyRowsAfter legacyUpperBound: Date?) async throws -> Int {
+    XCTFail("This recording test must not perform history maintenance.")
+    throw RunHistoryGenerationError.unsupported
+  }
 
   private let blockedEvent: String
   private var storedEvents: [DiagnosticEvent] = []
@@ -823,11 +823,12 @@ final class WorkflowAudioRunControllerTests: XCTestCase {
     }
     let events = await eventProbe.snapshot()
     XCTAssertTrue(events.contains(expected))
-    XCTAssertFalse(events.contains { event in
-      if case .runFailed(let runID, _, _) = event { return runID == request.runID }
-      if case .runReceiptRepositoryChanged(let change) = event { return change.runID == request.runID }
-      return false
-    })
+    XCTAssertFalse(
+      events.contains { event in
+        if case .runFailed(let runID, _, _) = event { return runID == request.runID }
+        if case .runReceiptRepositoryChanged(let change) = event { return change.runID == request.runID }
+        return false
+      })
 
     await controller.cancelRun(runID: restartedRunID)
     await controller.shutdown()

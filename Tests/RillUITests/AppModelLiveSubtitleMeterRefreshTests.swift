@@ -238,9 +238,11 @@ struct RecordingReleasePresentationTests {
     #expect(app.voice.liveSubtitleSnapshot == nil)
     #expect(cancellableRunID == runID)
 
-    app.handle(.liveSubtitleUpdated(.init(
-      runID: runID, phase: .recording, confirmedText: "last words", levelMeter: [0.8]
-    )))
+    app.handle(
+      .liveSubtitleUpdated(
+        .init(
+          runID: runID, phase: .recording, confirmedText: "last words", levelMeter: [0.8]
+        )))
     app.voice.refreshLiveSubtitlePresentation()
     #expect(app.voice.liveSubtitleSnapshot == nil)
     #expect(cancellableRunID == runID)
@@ -254,9 +256,11 @@ struct RecordingReleasePresentationTests {
     let app = makeHarness().model
     let runID = UUID()
     let startedAt = Date()
-    app.handle(.liveSubtitleUpdated(.init(
-      runID: runID, phase: .recording, confirmedText: "phrase", recordingStartedAt: startedAt
-    )))
+    app.handle(
+      .liveSubtitleUpdated(
+        .init(
+          runID: runID, phase: .recording, confirmedText: "phrase", recordingStartedAt: startedAt
+        )))
     app.handle(.recordingReleaseChanged(runID: runID, isReleased: true))
     app.handle(.recordingReleaseChanged(runID: runID, isReleased: false))
     #expect(app.voice.liveSubtitleSnapshot?.runID == runID)

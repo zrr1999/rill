@@ -63,7 +63,8 @@ extension SQLitePersistenceStore: HistoryRepository, HistoryMaintaining, Workflo
     } catch {
       throw SQLitePersistenceError.encodingValue(error.localizedDescription)
     }
-    return PreparedHistoryRecord(record: record, fallbackName: protectedFallbackName,
+    return PreparedHistoryRecord(
+      record: record, fallbackName: protectedFallbackName,
       finalText: protectedFinalText, correctionSource: correctionSourceJSON)
   }
 

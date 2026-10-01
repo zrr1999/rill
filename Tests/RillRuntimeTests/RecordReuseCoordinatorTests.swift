@@ -68,7 +68,7 @@ final class RecordReuseCoordinatorTests: XCTestCase {
     let receipts = InMemoryWorkflowRunReceiptRepository()
     let probe = ReuseOutputProbe()
     let coordinator = makeTestSessionCoordinator(
-       privacyContextProvider: { context },
+      privacyContextProvider: { context },
       recognizerRegistry: SpeechRecognizerRegistry(recognizers: []),
       transformerRegistry: TextTransformerRegistry(transformers: []),
       actionRegistry: OutputActionRegistry(actions: [
@@ -104,7 +104,7 @@ private struct ReuseOutputAction: OutputAction {
   let probe: ReuseOutputProbe
   let failAfterOutput: Bool
   func execute(record: RecordDraft, context: ActionContext) async throws -> ActionResult {
-      let text = try record.requireText(for: id)
+    let text = try record.requireText(for: id)
     await probe.record(text)
     if failAfterOutput { throw CommittedOutputFailure.clipboardRestorationFailedAfterInjection }
     return .injected

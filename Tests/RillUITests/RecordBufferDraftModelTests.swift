@@ -15,7 +15,8 @@ import Testing
     model.close()
     await model.waitForPendingWrites()
     let session = try #require(model.session)
-    let draft = try await store.saveBufferDraft(session.entryID, draftID: session.saved.id,
+    let draft = try await store.saveBufferDraft(
+      session.entryID, draftID: session.saved.id,
       expectedRevision: 0, text: "retained")
     try await store.commitBufferDraft(session.entryID, draftID: draft.id, expectedRevision: draft.revision)
     #expect(try await store.beginBufferOutput().record.payload.textValue == "retained")
@@ -84,7 +85,8 @@ import Testing
     await model.waitForPendingWrites()
     let session = try #require(model.session)
     session.isFocused = true
-    let intent = BufferDraftInputIntent(entryID: session.entryID, draftID: session.saved.id,
+    let intent = BufferDraftInputIntent(
+      entryID: session.entryID, draftID: session.saved.id,
       revision: session.saved.revision, selection: .init(location: 0), editingSessionID: session.id)
     session.hasMarkedText = true
     model.edit("beijing", sessionID: session.id)
@@ -111,7 +113,8 @@ import Testing
     model.newItem()
     await model.waitForPendingWrites()
     let first = try #require(model.session)
-    let intent = BufferDraftInputIntent(entryID: first.entryID, draftID: first.saved.id,
+    let intent = BufferDraftInputIntent(
+      entryID: first.entryID, draftID: first.saved.id,
       revision: 0, selection: .init(location: 0), editingSessionID: first.id)
     model.newItem()
     await model.waitForPendingWrites()
@@ -144,7 +147,10 @@ import Testing
     let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
     window.isReleasedWhenClosed = false
     window.contentView = view
-    defer { window.orderOut(nil); window.close() }
+    defer {
+      window.orderOut(nil)
+      window.close()
+    }
     view.isRichText = false
     view.allowsUndo = true
     view.string = "去北京开会"
@@ -152,12 +158,15 @@ import Testing
     window.makeFirstResponder(view)
     var submits = 0
     view.onSubmit = { submits += 1 }
-    view.setMarkedText("shanghai", selectedRange: NSRange(location: 8, length: 0),
+    view.setMarkedText(
+      "shanghai", selectedRange: NSRange(location: 8, length: 0),
       replacementRange: NSRange(location: NSNotFound, length: 0))
     #expect(view.hasMarkedText())
-    let commandReturn = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero,
-      modifierFlags: .command, timestamp: 0, windowNumber: window.windowNumber, context: nil,
-      characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+    let commandReturn = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero,
+        modifierFlags: .command, timestamp: 0, windowNumber: window.windowNumber, context: nil,
+        characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
     _ = view.performKeyEquivalent(with: commandReturn)
     #expect(submits == 0)
     view.insertText("上海", replacementRange: NSRange(location: NSNotFound, length: 0))
@@ -171,9 +180,11 @@ import Testing
     #expect(!view.string.contains("\n"))
     #expect(view.performKeyEquivalent(with: commandReturn))
     #expect(submits == 1)
-    let capsLockReturn = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero,
-      modifierFlags: [.command, .capsLock], timestamp: 0, windowNumber: window.windowNumber, context: nil,
-      characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+    let capsLockReturn = try #require(
+      NSEvent.keyEvent(
+        with: .keyDown, location: .zero,
+        modifierFlags: [.command, .capsLock], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+        characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
     #expect(view.performKeyEquivalent(with: capsLockReturn))
     #expect(submits == 2)
   }

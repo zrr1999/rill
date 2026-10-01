@@ -141,7 +141,8 @@ struct WorkflowTextExecutor: Sendable {
           // Prediction time is not LLM execution time. A skipped request has no LLM duration or trace.
           processingStartedAt = nil
           if step.kind == .llmRewrite, let textPolishingGate,
-            try await textPolishingGate.shouldSkip(text: finalText, step: step, context: context) {
+            try await textPolishingGate.shouldSkip(text: finalText, step: step, context: context)
+          {
             try Task.checkCancellation()
             try await finishProcessReceipt(session, result: .skipped)
             processingSteps.append(
@@ -268,12 +269,15 @@ struct WorkflowTextExecutor: Sendable {
       durationMilliseconds: durationMilliseconds
     )
     if let durationMilliseconds, let diagnostics {
-      await diagnostics.record(DiagnosticEvent(
-        runID: session.runID, subsystem: .session, level: .debug,
-        event: .sessionProcessTiming, message: "Measured workflow processing step.",
-        metadata: ["stepKind": kind.rawValue, "resultCode": result.rawValue,
-                   "durationMillis": String(durationMilliseconds)]
-      ))
+      await diagnostics.record(
+        DiagnosticEvent(
+          runID: session.runID, subsystem: .session, level: .debug,
+          event: .sessionProcessTiming, message: "Measured workflow processing step.",
+          metadata: [
+            "stepKind": kind.rawValue, "resultCode": result.rawValue,
+            "durationMillis": String(durationMilliseconds),
+          ]
+        ))
     }
     await runReceiptRecorder?.recordTextStep(runID: session.runID, step: step)
     await eventBus.publish(.runTextStepRecorded(runID: session.runID, step: step))

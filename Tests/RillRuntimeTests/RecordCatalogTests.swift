@@ -17,12 +17,16 @@ final class RecordCatalogTests: XCTestCase {
     let before = try XCTUnwrap(loaded)
     let orphan = RecordActivity(recordID: RecordID(), useCount: 1)
     do {
-      _ = try await fixture.persistence.commitRecordCatalog(.init(
-        expectedRevision: before.revision, manifest: before.manifest,
-        upserts: [.init(kind: .activity, id: orphan.recordID.description,
-          value: try JSONEncoder().encode(orphan))],
-        removedKeys: ["bufferEntry/\(entryID)"], newPayloadBlobs: [],
-        removedPayloadBlobIDs: [], preservesManifest: true))
+      _ = try await fixture.persistence.commitRecordCatalog(
+        .init(
+          expectedRevision: before.revision, manifest: before.manifest,
+          upserts: [
+            .init(
+              kind: .activity, id: orphan.recordID.description,
+              value: try JSONEncoder().encode(orphan))
+          ],
+          removedKeys: ["bufferEntry/\(entryID)"], newPayloadBlobs: [],
+          removedPayloadBlobIDs: [], preservesManifest: true))
       XCTFail("A manifest-preserving settlement must not create an orphan activity")
     } catch let error as SQLitePersistenceError {
       XCTAssertEqual(error, .clipboardPersistenceInvalidWriteSnapshot)
@@ -100,12 +104,15 @@ final class RecordCatalogTests: XCTestCase {
       let store = RecordStore(persistence: fixture.persistence)
       let collection = try await store.createCollection(name: "Referenced")
       let capture = CaptureRouteRule(matcher: .init(), destinationCollectionIDs: [collection.id])
-      let delivery = DeliveryRouteRule(matcher: .init(), priority: 1, sourceCollectionIDs: [collection.id],
+      let delivery = DeliveryRouteRule(
+        matcher: .init(), priority: 1, sourceCollectionIDs: [collection.id],
         sink: .recordCollection, sinkCollectionID: collection.id)
       try await store.replaceCaptureRules([capture])
       try await store.replaceDeliveryRules([delivery])
-      try await store.deleteCollection(collection.id, resolvingReferences:
-        replace ? .replace(with: RecordCollection.inboxID) : .disableAffectedRoutes)
+      try await store.deleteCollection(
+        collection.id,
+        resolvingReferences:
+          replace ? .replace(with: RecordCollection.inboxID) : .disableAffectedRoutes)
       let expected = try await store.catalogSnapshot()
       let actual = try await RecordStore(persistence: fixture.persistence).catalogSnapshot()
       XCTAssertEqual(actual.captureRules, expected.captureRules)
@@ -464,8 +471,7 @@ private struct LegacyCatalogTestWriter: RecordGraphPersistenceStore {
   func loadRecordGraph() async throws -> RecordGraphPersistenceReadSnapshot {
     try await store.loadRecordGraph()
   }
-  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64
-  { try await store.replaceRecordGraph(with: snapshot) }
+  func replaceRecordGraph(with snapshot: RecordGraphPersistenceWriteSnapshot) async throws -> Int64 { try await store.replaceRecordGraph(with: snapshot) }
   func removeRecordGraph() async throws -> RecordGraphRemovalResult {
     try await store.removeRecordGraph()
   }

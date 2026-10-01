@@ -1053,8 +1053,7 @@ final class AppleVoiceProcessingAudioProcessor:
   private var pendingMeterSampleCount = 0
   private var meterRMSSamples: [Float] = []
   private var captureGeneration: UInt64 = 0
-  private var bufferCallback:
-    (@Sendable ([Float]) -> AppleVoiceProcessingPCMStreamTerminalState.YieldDisposition)?
+  private var bufferCallback: (@Sendable ([Float]) -> AppleVoiceProcessingPCMStreamTerminalState.YieldDisposition)?
   private var streamTerminalState: AppleVoiceProcessingPCMStreamTerminalState?
   private var streamFailureCallback: (@Sendable (AppleVoiceProcessingAudioError) -> Void)?
   private var session: (any AppleVoiceProcessingAudioEngineSession)?

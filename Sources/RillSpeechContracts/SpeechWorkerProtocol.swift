@@ -767,9 +767,11 @@ public enum SpeechWorkerProtocolCodec {
         }
       }
       if let result = response.embeddingResult {
-        guard (1...16).contains(result.vectors.count), result.vectors.allSatisfy({ vector in
-          vector.count == 1_024 && vector.allSatisfy(\.isFinite)
-        }) else { throw SpeechWorkerProtocolError.invalidResponse }
+        guard (1...16).contains(result.vectors.count),
+          result.vectors.allSatisfy({ vector in
+            vector.count == 1_024 && vector.allSatisfy(\.isFinite)
+          })
+        else { throw SpeechWorkerProtocolError.invalidResponse }
       }
       if let preparedModelID = response.preparedModelID,
         !isBoundedPlainText(preparedModelID, maximumByteCount: 128)

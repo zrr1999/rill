@@ -182,7 +182,8 @@ public actor EncryptedCorpusRecordingArchiveStore: CorpusRecordingArchiveStore, 
       let receipt = try JSONDecoder().decode(CorpusRecordingReceipt.self, from: receiptBytes)
       guard receipt.schemaVersion == 1, receipt.runID == runID,
         receipt.durationSeconds.isFinite, receipt.durationSeconds >= 0,
-        receipt.plaintextByteCount >= 0 else {
+        receipt.plaintextByteCount >= 0
+      else {
         throw CorpusRecordingArchiveError.invalidEntry
       }
       return receipt
@@ -210,7 +211,8 @@ public actor EncryptedCorpusRecordingArchiveStore: CorpusRecordingArchiveStore, 
     var information = stat()
     guard fstat(descriptor, &information) == 0,
       information.st_mode & S_IFMT == S_IFREG,
-      let envelope = try file.readToEnd() else {
+      let envelope = try file.readToEnd()
+    else {
       throw CorpusRecordingArchiveError.invalidEntry
     }
     return try localDataProtector.openBinary(envelope, context: Self.protectionContext(runID: runID, field: field))

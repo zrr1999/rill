@@ -50,8 +50,7 @@ struct InputMethodSettingsView: View {
       if let status = input.status { Text(status).font(.caption) }
       if let error = input.error { Text(error).foregroundStyle(.red).font(.caption) }
       Button(L10n.inputMethod(.openSettings, language: language)) {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension")
-        {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension") {
           NSWorkspace.shared.open(url)
         }
       }
@@ -113,8 +112,7 @@ struct InputMethodSettingsView: View {
       Button(L10n.inputMethod(.clearPending, language: language)) { Task { await input.clearPending() } }.disabled(!input.isReady)
     }
     .onAppear { input.refreshInstallationState() }
-    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification))
-    { _ in
+    .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
       input.refreshInstallationState()
     }
     .onReceive(

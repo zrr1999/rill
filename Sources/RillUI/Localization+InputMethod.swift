@@ -40,7 +40,8 @@ extension L10n {
     case (.learnFromTyping, .simplifiedChinese): "从打字生成词汇建议"
     case (.learnFromTyping, .english): "Suggest vocabulary from typing"
     case (.learnNotice, .simplifiedChinese): "仅采集下方选定的应用。在本机提取词汇，确认后才供语音识别使用；未确认建议保留 30 天。"
-    case (.learnNotice, .english): "Only the apps you select below are collected. Vocabulary is extracted on this Mac and used for speech recognition after you confirm it. Unconfirmed suggestions are kept for 30 days."
+    case (.learnNotice, .english):
+      "Only the apps you select below are collected. Vocabulary is extracted on this Mac and used for speech recognition after you confirm it. Unconfirmed suggestions are kept for 30 days."
     case (.chooseApps, .simplifiedChinese): "选择允许学习的应用…"
     case (.chooseApps, .english): "Choose Apps Allowed to Learn…"
     case (.remove, .simplifiedChinese): "移除"

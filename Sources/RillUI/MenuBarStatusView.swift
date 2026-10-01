@@ -258,12 +258,13 @@ public struct MenuBarOperationPanelState: Sendable, Equatable {
     if !systemClipboardCaptureEnabled {
       key = .menuClipboardOff
     } else {
-      key = switch clipboardCaptureState {
-      case .active: .menuClipboardOn
-      case .pausing, .paused, .resuming: .menuClipboardStarting
-      case .armingIgnoreNextExternalChange: .menuClipboardIgnorePreparing
-      case .ignoringNextExternalChange: .menuClipboardIgnoringNext
-      }
+      key =
+        switch clipboardCaptureState {
+        case .active: .menuClipboardOn
+        case .pausing, .paused, .resuming: .menuClipboardStarting
+        case .armingIgnoreNextExternalChange: .menuClipboardIgnorePreparing
+        case .ignoringNextExternalChange: .menuClipboardIgnoringNext
+        }
     }
     return L10n.string(key, language: language)
   }

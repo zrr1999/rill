@@ -27,22 +27,31 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
         printf '%s' "$2"
       done
       """
-    let supervisor = SpeechWorkerSupervisor(configuration: .init(
-      executableURL: URL(fileURLWithPath: "/bin/sh"),
-      arguments: ["-c", script, "rill-hotwords", requestURL.path,
-        makeSuccessResponse(requestID: speechWorkerTestRequestID, generation: 1)]),
+    let supervisor = SpeechWorkerSupervisor(
+      configuration: .init(
+        executableURL: URL(fileURLWithPath: "/bin/sh"),
+        arguments: [
+          "-c", script, "rill-hotwords", requestURL.path,
+          makeSuccessResponse(requestID: speechWorkerTestRequestID, generation: 1),
+        ]),
       requestIDGenerator: { speechWorkerTestRequestID })
-    let recognizer = MLXAudioSwiftWorkerRecognizer(supervisor: supervisor, settingsProvider: {
-      LocalSpeechSettings(model: changedModel, language: "English", downloadIfNeeded: false,
-        enabledModelIDs: [frozenModel, changedModel])
-    }, workerTimeout: .seconds(2))
-    let audio = try CapturedAudio(durationSeconds: 1,
+    let recognizer = MLXAudioSwiftWorkerRecognizer(
+      supervisor: supervisor,
+      settingsProvider: {
+        LocalSpeechSettings(
+          model: changedModel, language: "English", downloadIfNeeded: false,
+          enabledModelIDs: [frozenModel, changedModel])
+      }, workerTimeout: .seconds(2))
+    let audio = try CapturedAudio(
+      durationSeconds: 1,
       format: .init(sampleRateHz: 16_000, channelCount: 1, encoding: .float32),
       fileURL: audioURL, fileOwnership: .managedTemporary)
     do {
-      _ = try await recognizer.recognize(.init(runID: UUID(),
-        contextSnapshot: .empty, capturedAudio: audio,
-        options: .init(modelID: frozenModel, language: nil, hints: .init(keyterms: ["Spore", "Rill"]))))
+      _ = try await recognizer.recognize(
+        .init(
+          runID: UUID(),
+          contextSnapshot: .empty, capturedAudio: audio,
+          options: .init(modelID: frozenModel, language: nil, hints: .init(keyterms: ["Spore", "Rill"]))))
       let request = try SpeechWorkerProtocolCodec.decodeRequestLine(Data(contentsOf: requestURL))
       let payload = try XCTUnwrap(request.recognitionPayload)
       XCTAssertEqual(payload.modelID, frozenModel)
@@ -70,8 +79,10 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
         if [ "$count" -eq 1 ]; then printf '%s' "$1"; else printf '%s' "$2"; fi
       done
       """
-    let supervisor = SpeechWorkerSupervisor(configuration: .init(executableURL: URL(fileURLWithPath: "/bin/sh"),
-      arguments: ["-c", script, "rill-embedding-fixture"] + responses), requestIDGenerator: { speechWorkerTestRequestID })
+    let supervisor = SpeechWorkerSupervisor(
+      configuration: .init(
+        executableURL: URL(fileURLWithPath: "/bin/sh"),
+        arguments: ["-c", script, "rill-embedding-fixture"] + responses), requestIDGenerator: { speechWorkerTestRequestID })
     let provider = RecordWorkerEmbedder(supervisor: supervisor)
     try await provider.prepare(downloadIfNeeded: false, progress: { _ in })
     let result = try await provider.embed("query", purpose: .query)
@@ -433,14 +444,16 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
     XCTAssertEqual(failure.runID, failedRunID)
     XCTAssertEqual(failure.event, "provider.local-speech.recognition.failed")
     XCTAssertEqual(failure.message, DiagnosticEventSanitizer.sanitizedMessage)
-    XCTAssertEqual(failure.metadata, [
-      "provider": "local-speech",
-      "provider.kind": "mlx-audio-swift",
-      "recognizerID": "local-speech",
-      "stage": "recognizing",
-      "outcome": "failed",
-      "failureCode": "model-disabled",
-    ])
+    XCTAssertEqual(
+      failure.metadata,
+      [
+        "provider": "local-speech",
+        "provider.kind": "mlx-audio-swift",
+        "recognizerID": "local-speech",
+        "stage": "recognizing",
+        "outcome": "failed",
+        "failureCode": "model-disabled",
+      ])
   }
 
   func testRecognizerRestartsWorkerAndRetriesOnceAfterRecognitionFailure() async throws {
@@ -512,9 +525,10 @@ final class SpeechWorkerSupervisorTests: XCTestCase {
         .compactMap { $0.metadata["outcome"] }
     )
     XCTAssertEqual(retryOutcomes, ["pending", "completed"])
-    XCTAssertTrue(events.allSatisfy { event in
-      event.metadata["failureCode"] == "recognitionFailed"
-    })
+    XCTAssertTrue(
+      events.allSatisfy { event in
+        event.metadata["failureCode"] == "recognitionFailed"
+      })
     try await recognizer.stopRuntime()
   }
 

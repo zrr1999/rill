@@ -151,8 +151,9 @@ private final class LiveSubtitlePanelPresentationModel: ObservableObject {
       language: language,
       expandedLayout: layout.isExpanded
     )
-    guard presentation.snapshot != nextPresentation.snapshot
-      || presentation.language != nextPresentation.language
+    guard
+      presentation.snapshot != nextPresentation.snapshot
+        || presentation.language != nextPresentation.language
     else {
       return false
     }

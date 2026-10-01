@@ -269,8 +269,10 @@ final class LocalSpeechVoiceCaptureRuntimeTests: XCTestCase {
     )
     XCTAssertNil(capturedAudio.metadata["streaming.preview.final"])
     XCTAssertEqual(preview.finishCount, 1)
-    for key in ["captureStopMillis", "captureDrainMillis",
-                "capturePreviewRetireMillis", "captureFinalizeMillis"] {
+    for key in [
+      "captureStopMillis", "captureDrainMillis",
+      "capturePreviewRetireMillis", "captureFinalizeMillis",
+    ] {
       XCTAssertNotNil(capturedAudio.metadata[key].flatMap(Int.init))
     }
   }
